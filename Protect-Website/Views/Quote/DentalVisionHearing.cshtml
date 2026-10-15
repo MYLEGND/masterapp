@@ -1937,6 +1937,7 @@ body.dvh-final-step-active .dq-form-panel {
                 <input type="hidden" name="MetaAdSetId" id="MetaAdSetId" />
                 <input type="hidden" name="MetaAdId" id="MetaAdId" />
                 <input type="hidden" name="Fbclid" id="Fbclid" />
+                <input type="hidden" name="Oppref" id="Oppref" />
                 <input type="hidden" name="ReferrerUrl" id="ReferrerUrl" />
                 <input type="hidden" name="LandingPageUrl" id="LandingPageUrl" />
 
@@ -2446,33 +2447,6 @@ body.dvh-final-step-active .dq-form-panel {
             if (processingFill) {
                 processingFill.style.width = '0%';
             }
-        }
-
-        function populateAttributionFields() {
-            var ids = window.legendTrackingIds;
-            var params = new URLSearchParams(window.location.search);
-            var attr = ids && ids.getAttribution ? (ids.getAttribution() || {}) : {};
-
-            function setHidden(name, value) {
-                var input = document.getElementById(name) || form.querySelector('input[name="' + name + '"]');
-                if (input && value != null) input.value = value;
-            }
-
-            setHidden('SessionId', ids && ids.getSessionId ? ids.getSessionId() : '');
-            setHidden('VisitorId', ids && ids.getVisitorId ? ids.getVisitorId() : '');
-            setHidden('UtmSource', attr.utmSource || params.get('utm_source') || '');
-            setHidden('UtmMedium', attr.utmMedium || params.get('utm_medium') || '');
-            setHidden('UtmCampaign', attr.utmCampaign || params.get('utm_campaign') || '');
-            setHidden('UtmId', attr.utmId || params.get('utm_id') || '');
-            setHidden('UtmTerm', attr.utmTerm || params.get('utm_term') || '');
-            setHidden('UtmContent', attr.utmContent || params.get('utm_content') || '');
-            setHidden('MetaCampaignId', attr.metaCampaignId || params.get('meta_campaign_id') || '');
-            setHidden('MetaAdSetId', attr.metaAdSetId || params.get('meta_adset_id') || '');
-            setHidden('MetaAdId', attr.metaAdId || params.get('meta_ad_id') || '');
-            setHidden('Fbclid', attr.fbclid || params.get('fbclid') || '');
-            setHidden('Oppref', attr.oppref || params.get('oppref') || '');
-            setHidden('ReferrerUrl', document.referrer || '');
-            setHidden('LandingPageUrl', window.location.href || '');
         }
 
         function trackCta(elementKey, label) {
@@ -3342,7 +3316,7 @@ body.dvh-final-step-active .dq-form-panel {
 
         form.addEventListener('submit', async function (event) {
             event.preventDefault();
-            populateAttributionFields();
+            window.LegendAnalytics?.syncFormAttribution?.(form);
             syncAgeHidden();
             syncDerivedContactFields();
             clearServerFeedback();
@@ -3453,7 +3427,7 @@ body.dvh-final-step-active .dq-form-panel {
             }
         });
 
-        populateAttributionFields();
+        window.LegendAnalytics?.syncFormAttribution?.(form);
         syncAgeHidden();
         syncDerivedContactFields();
         microStepConfigs.forEach(function (config) { syncChoiceCards(config.field); });

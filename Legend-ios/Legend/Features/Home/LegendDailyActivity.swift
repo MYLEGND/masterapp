@@ -774,7 +774,9 @@ enum LegendInAppNotificationProjection {
         social: MobileSocialSnapshot?,
         accountNotifications: [MobileActivityNotification]
     ) -> [LegendDailyActivityItem] {
-        var notifications = accountNotifications.map {
+        var notifications = accountNotifications
+            .filter { $0.kind.caseInsensitiveCompare("Engineering") != .orderedSame }
+            .map {
             LegendDailyActivityItem(
                 id: "account:\($0.id.uuidString)",
                 source: .account,
@@ -807,6 +809,7 @@ final class LegendDailyActivityStore: ObservableObject {
     @Published private(set) var today: [LegendDailyActivityItem] = []
     @Published private(set) var pastDue: [LegendDailyActivityItem] = []
     @Published private(set) var inAppNotifications: [LegendDailyActivityItem] = []
+    @Published private(set) var engineeringActions: [FounderEngineeringActionItem] = []
     @Published private(set) var unreadBadgeCount = 0
     @Published private(set) var categoryCounts: [LegendDailyActivityCategoryCount] = []
     @Published private(set) var completionFailure: String?
@@ -859,8 +862,23 @@ final class LegendDailyActivityStore: ObservableObject {
         planner.openDeviceSettings()
     }
 
+    func refreshInAppNotifications() async {
+        await messages.refreshActivityNotifications()
+        rebuild()
+    }
+
+    @discardableResult
+    func decideEngineering(workItemID: UUID, decision: String) async -> Bool {
+        let completed = await messages.decideFounderEngineering(
+            workItemID: workItemID,
+            decision: decision)
+        rebuild()
+        return completed
+    }
+
     func markNotificationsViewed() {
-        let identifiers = inAppNotifications.map(\.id)
+        let identifiers = inAppNotifications.map(\.id) +
+            engineeringActions.map { "engineering:\($0.workItemID.uuidString)" }
         var seen = viewedIdentifiers
         seen.formUnion(identifiers)
         viewedIdentifiers = seen
@@ -943,6 +961,9 @@ final class LegendDailyActivityStore: ObservableObject {
         messages.$activityNotifications
             .sink { [weak self] _ in self?.rebuild() }
             .store(in: &cancellables)
+        messages.$founderEngineeringActions
+            .sink { [weak self] _ in self?.rebuild() }
+            .store(in: &cancellables)
         planner.$items
             .sink { [weak self] _ in self?.rebuild() }
             .store(in: &cancellables)
@@ -957,6 +978,7 @@ final class LegendDailyActivityStore: ObservableObject {
         inAppNotifications = LegendInAppNotificationProjection.make(
             social: socialSnapshot,
             accountNotifications: messages.activityNotifications)
+        engineeringActions = messages.founderEngineeringActions
 
         let incompleteToday = today.filter { !isCompleted($0) }
         categoryCounts = [
@@ -971,6 +993,8 @@ final class LegendDailyActivityStore: ObservableObject {
 
         unreadBadgeCount = inAppNotifications.count {
             !viewedIdentifiers.contains($0.id)
+        } + engineeringActions.count {
+            !viewedIdentifiers.contains("engineering:\($0.workItemID.uuidString)")
         }
     }
 
@@ -1400,6 +1424,8 @@ struct LegendInAppNotificationsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedPost: MobileSocialPost?
     @State private var selectedProfile: LegendPublicProfileRoute?
+    @State private var engineeringDecisionInFlight: UUID?
+    @State private var denyCandidate: FounderEngineeringActionItem?
 
     var body: some View {
         NavigationStack {
@@ -1408,7 +1434,7 @@ struct LegendInAppNotificationsSheet: View {
                     LegendNextSheetHeader(
                         eyebrow: LegendLocalized("Your Legend"),
                         title: LegendLocalized("Notifications"),
-                        detail: LegendLocalized("Follows, reactions, comments, reposts, and account updates."),
+                        detail: LegendLocalized("Founder engineering actions, account updates, follows, reactions, comments, and reposts."),
                         dismiss: { dismiss() }
                     )
 
@@ -1420,6 +1446,104 @@ struct LegendInAppNotificationsSheet: View {
                         .font(LegendNextTypography.eyebrow)
                         .tracking(0.8)
                         .foregroundStyle(LegendNextColor.goldBright)
+                    }
+
+                    if !activity.engineeringActions.isEmpty {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                            Label(
+                                LegendLocalized("FOUNDER ENGINEERING"),
+                                systemImage: "wrench.and.screwdriver.fill"
+                            )
+                            .font(LegendNextTypography.eyebrow)
+                            .tracking(0.8)
+                            .foregroundStyle(LegendNextColor.goldBright)
+
+                            ForEach(activity.engineeringActions) { item in
+                                LegendNextSurface(
+                                    style: item.requiresFounderAction ? .navy : .elevated,
+                                    padding: LegendNextSpacing.md
+                                ) {
+                                    VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                                        HStack(alignment: .firstTextBaseline) {
+                                            Text(item.requiresFounderAction
+                                                ? LegendLocalized("YOUR ACTION")
+                                                : LegendLocalized("LEGEND STATUS"))
+                                                .font(LegendNextTypography.eyebrow)
+                                                .tracking(0.7)
+                                                .foregroundStyle(LegendNextColor.goldBright)
+                                            Spacer()
+                                            Text(item.updatedUTC, style: .relative)
+                                                .font(LegendNextTypography.caption)
+                                                .foregroundStyle(item.requiresFounderAction
+                                                    ? Color.white.opacity(0.65)
+                                                    : LegendNextColor.textTertiary)
+                                        }
+
+                                        Text(item.title)
+                                            .font(LegendNextTypography.cardTitle)
+                                            .foregroundStyle(item.requiresFounderAction
+                                                ? Color.white
+                                                : LegendNextColor.textPrimary)
+
+                                        Text(item.summary)
+                                            .font(LegendNextTypography.supporting)
+                                            .foregroundStyle(item.requiresFounderAction
+                                                ? Color.white.opacity(0.82)
+                                                : LegendNextColor.textSecondary)
+
+                                        VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                                            Text(LegendLocalized("NEXT STEP"))
+                                                .font(LegendNextTypography.eyebrow)
+                                                .foregroundStyle(LegendNextColor.goldBright)
+                                            Text(item.actionStep)
+                                                .font(LegendNextTypography.supporting)
+                                                .foregroundStyle(item.requiresFounderAction
+                                                    ? Color.white.opacity(0.90)
+                                                    : LegendNextColor.textPrimary)
+                                        }
+
+                                        DisclosureGroup(LegendLocalized("Technical details")) {
+                                            Text(item.technicalSummary)
+                                                .font(.caption.monospaced())
+                                                .foregroundStyle(item.requiresFounderAction
+                                                    ? Color.white.opacity(0.72)
+                                                    : LegendNextColor.textSecondary)
+                                                .textSelection(.enabled)
+                                                .padding(.top, LegendNextSpacing.xs)
+                                        }
+                                        .tint(LegendNextColor.goldBright)
+                                        .foregroundStyle(item.requiresFounderAction
+                                            ? Color.white.opacity(0.78)
+                                            : LegendNextColor.textSecondary)
+
+                                        if let primary = item.primaryAction,
+                                           let primaryLabel = item.primaryActionLabel {
+                                            Button(LegendLocalized(primaryLabel)) {
+                                                engineeringDecisionInFlight = item.workItemID
+                                                Task {
+                                                    _ = await activity.decideEngineering(
+                                                        workItemID: item.workItemID,
+                                                        decision: primary)
+                                                    engineeringDecisionInFlight = nil
+                                                    activity.markNotificationsViewed()
+                                                }
+                                            }
+                                            .buttonStyle(LegendNextButtonStyle(kind: .primary))
+                                            .disabled(engineeringDecisionInFlight != nil)
+                                        }
+
+                                        if item.secondaryAction != nil,
+                                           item.secondaryActionLabel != nil {
+                                            Button(LegendLocalized(item.secondaryActionLabel!)) {
+                                                denyCandidate = item
+                                            }
+                                            .buttonStyle(LegendNextButtonStyle(kind: .secondary))
+                                            .disabled(engineeringDecisionInFlight != nil)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     if activity.inAppNotifications.isEmpty {
@@ -1476,7 +1600,37 @@ struct LegendInAppNotificationsSheet: View {
             }
         }
         .task {
+            await activity.refreshInAppNotifications()
             activity.markNotificationsViewed()
+        }
+        .confirmationDialog(
+            LegendLocalized("Deny this release?"),
+            isPresented: Binding(
+                get: { denyCandidate != nil },
+                set: { if !$0 { denyCandidate = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let item = denyCandidate,
+               let decision = item.secondaryAction,
+               let label = item.secondaryActionLabel {
+                Button(LegendLocalized(label), role: .destructive) {
+                    engineeringDecisionInFlight = item.workItemID
+                    denyCandidate = nil
+                    Task {
+                        _ = await activity.decideEngineering(
+                            workItemID: item.workItemID,
+                            decision: decision)
+                        engineeringDecisionInFlight = nil
+                        activity.markNotificationsViewed()
+                    }
+                }
+            }
+            Button(LegendLocalized("Cancel"), role: .cancel) {
+                denyCandidate = nil
+            }
+        } message: {
+            Text(LegendLocalized("This closes this exact release request. It will not deploy."))
         }
         .legendNextSheetChrome(detents: [.large])
     }

@@ -1052,12 +1052,44 @@ class SocialViewModel(private val repository: SocialRepository, private val role
         }
     }
 }
-class NotificationsViewModel(private val repository: NotificationRepository, private val role: String) : ViewModel() {
+class NotificationsViewModel(
+    private val repository: NotificationRepository,
+    private val role: String,
+    private val isFounder: Boolean = false,
+) : ViewModel() {
     private val _state = MutableStateFlow<LoadState<NotificationSnapshot>>(LoadState.Idle)
     val state: StateFlow<LoadState<NotificationSnapshot>> = _state.asStateFlow()
     private val _activity = MutableStateFlow<LoadState<List<MessagingActivityNotification>>>(LoadState.Idle)
     val activity = _activity.asStateFlow()
-    fun loadActivity() = viewModelScope.launch { _activity.value = repository.activity(role) }
+    private val _engineering = MutableStateFlow<LoadState<List<FounderEngineeringActionItem>>>(LoadState.Idle)
+    val engineering = _engineering.asStateFlow()
+    private val _engineeringDecisionInFlight = MutableStateFlow<String?>(null)
+    val engineeringDecisionInFlight = _engineeringDecisionInFlight.asStateFlow()
+
+    fun loadActivity() = viewModelScope.launch {
+        _activity.value = repository.activity(role)
+        if (isFounder) {
+            _engineering.value = LoadState.Loading
+            _engineering.value = repository.founderEngineeringActions(role)
+        } else {
+            _engineering.value = LoadState.Data(emptyList())
+        }
+    }
+
+    fun decideEngineering(item: FounderEngineeringActionItem, decision: String) = viewModelScope.launch {
+        if (!isFounder || _engineeringDecisionInFlight.value != null) return@launch
+        _engineeringDecisionInFlight.value = item.workItemId
+        when (repository.decideFounderEngineering(role, item.workItemId, decision)) {
+            is LoadState.Data -> {
+                _activity.value = repository.activity(role)
+                _engineering.value = repository.founderEngineeringActions(role)
+            }
+            is LoadState.Error -> _engineering.value = repository.founderEngineeringActions(role)
+            else -> Unit
+        }
+        _engineeringDecisionInFlight.value = null
+    }
+
     fun load() = viewModelScope.launch { _state.value = LoadState.Loading; _state.value = repository.snapshot(role) }
 
     /**

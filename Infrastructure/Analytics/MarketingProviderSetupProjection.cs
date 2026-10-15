@@ -6,7 +6,12 @@ public sealed record MarketingProviderApiKeyRequest(string AdvertiserApiKey, Gui
 public sealed record MarketingProviderRevisionRequest(Guid ConnectionRevision);
 public sealed record MarketingMetaSetupSnapshot(bool Available, bool Connected, string? AccountId, string? AccountName,
     string? PixelId, bool CapiConfigured, string? TestEventCode, string? Error);
-public sealed record MarketingProviderSetupSnapshot(MarketingMetaSetupSnapshot Meta,
+public sealed record MarketingProviderSetupSnapshot(
+    MarketingMetaSetupSnapshot Meta,
+    MarketingProviderConnectionSnapshot Google,
+    MarketingProviderConnectionSnapshot TikTok,
+    MarketingProviderMeasurementConfiguration GoogleMeasurement,
+    MarketingProviderMeasurementConfiguration TikTokMeasurement,
     OpenAiAdsConnectionSnapshot Connection, OpenAiAdsProviderAccountSnapshot? Account,
     OpenAiAdsMeasurementCapabilitySnapshot? Capability, OpenAiMeasurementHealthSnapshot Health,
     MarketingMeasurementEvidenceSnapshot? Evidence, string? OpenAiError, string? EvidenceError);
@@ -29,6 +34,10 @@ public sealed class MarketingProviderSetupProjection(MarketingConnectionStore co
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception) { /* One unavailable destination does not hide the other. */ }
+        var google = await SafeExternalAsync(owner, MarketingDestinationKeys.Google, ct);
+        var tiktok = await SafeExternalAsync(owner, MarketingDestinationKeys.TikTok, ct);
+        var googleMeasurement = await SafeExternalMeasurementAsync(owner, MarketingDestinationKeys.Google, google.Revision, ct);
+        var tiktokMeasurement = await SafeExternalMeasurementAsync(owner, MarketingDestinationKeys.TikTok, tiktok.Revision, ct);
         var connection = new OpenAiAdsConnectionSnapshot(owner, false, false, Guid.Empty, null, null, null, null, null, null, null, [], null, null, false, false, null, null, null);
         OpenAiAdsProviderAccountSnapshot? account = null;
         OpenAiAdsMeasurementCapabilitySnapshot? capability = null;
@@ -55,7 +64,8 @@ public sealed class MarketingProviderSetupProjection(MarketingConnectionStore co
         try { observed = await evidence.GetAsync(owner, ct); }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception) { evidenceError = "Measurement evidence unavailable."; }
-        return new(meta, connection, account, capability, measurement, observed, openAiError, evidenceError);
+        return new(meta, google, tiktok, googleMeasurement, tiktokMeasurement,
+            connection, account, capability, measurement, observed, openAiError, evidenceError);
     }
 
     public async Task<object> GetAsync(MarketingOwnerScope owner, CancellationToken ct = default)
@@ -67,6 +77,8 @@ public sealed class MarketingProviderSetupProjection(MarketingConnectionStore co
             ownerKey = owner.Key,
             meta = new { setup.Meta.Available, setup.Meta.Connected, setup.Meta.AccountId, setup.Meta.AccountName,
                 setup.Meta.PixelId, setup.Meta.CapiConfigured, testModeConfigured = !string.IsNullOrWhiteSpace(setup.Meta.TestEventCode), setup.Meta.Error },
+            google = External(setup.Google, setup.GoogleMeasurement),
+            tiktok = External(setup.TikTok, setup.TikTokMeasurement),
             openAi = new { connection.Exists, connection.Connected, connection.Revision, connection.AccountId, connection.AccountName,
                 connection.PixelId, connection.ConversionDataSourceId, connection.PixelConfigured,
                 connection.ConversionsApiConfigured, connection.LastVerifiedUtc,
@@ -76,4 +88,65 @@ public sealed class MarketingProviderSetupProjection(MarketingConnectionStore co
             evidence = setup.Evidence, evidenceError = setup.EvidenceError
         };
     }
+
+    private async Task<MarketingProviderConnectionSnapshot> SafeExternalAsync(
+        MarketingOwnerScope owner,
+        string provider,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await connections.GetProviderConnectionAsync(owner, provider, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch
+        {
+            return new(owner, provider, false, false, false, false, null, null, null,
+                null, null, null, Guid.Empty, "status_unavailable");
+        }
+    }
+
+    private async Task<MarketingProviderMeasurementConfiguration> SafeExternalMeasurementAsync(
+        MarketingOwnerScope owner,
+        string provider,
+        Guid revision,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await connections.GetProviderMeasurementConfigurationAsync(owner, provider, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch
+        {
+            return new(owner, provider, null,
+                provider == MarketingDestinationKeys.Google ? "click" : "web",
+                [], revision, false, "measurement_status_unavailable");
+        }
+    }
+
+    public static object External(
+        MarketingProviderConnectionSnapshot connection,
+        MarketingProviderMeasurementConfiguration measurement) => new
+    {
+        connection.Provider,
+        connection.Exists,
+        connection.Connected,
+        connection.Ready,
+        connection.RequiresAccountSelection,
+        connection.AccountId,
+        connection.AccountName,
+        connection.AuthorizationMethod,
+        connection.ConnectedUtc,
+        connection.LastVerifiedUtc,
+        connection.CredentialExpiresUtc,
+        connection.Revision,
+        connection.Status,
+        optimizationReady = measurement.MappingReady,
+        measurementStatus = measurement.Status,
+        measurementEventSourceId = measurement.EventSourceId,
+        measurementEventSourceType = measurement.EventSourceType,
+        measurementHasCredential = measurement.HasMeasurementCredential,
+        measurementMappings = measurement.Mappings
+    };
 }

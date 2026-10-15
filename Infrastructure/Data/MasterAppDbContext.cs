@@ -252,6 +252,7 @@ public class MasterAppDbContext : DbContext
             entity.Property(row => row.AppVersion).HasMaxLength(80);
             entity.Property(row => row.SourceFilePath).HasMaxLength(180);
             entity.Property(row => row.StackTrace).HasMaxLength(2300);
+            entity.Property(row => row.StructuralReproducerJson);
             entity.Property(row => row.CorrelationId).HasMaxLength(32);
             entity.Property(row => row.Disposition).IsRequired().HasMaxLength(32);
             entity.Property(row => row.ReviewVersion).IsConcurrencyToken();
@@ -1270,6 +1271,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.Location).HasMaxLength(120);
             e.Property(x => x.PublicEmail).HasMaxLength(320);
             e.Property(x => x.PreferredCommunicationLanguage).HasMaxLength(32);
+            e.Property(x => x.FounderAssistantRulesJson).HasMaxLength(16_000).HasDefaultValue("[]");
             e.Property(x => x.AllowsConsentedTranslationLearning).HasDefaultValue(false);
             e.HasIndex(x => new { x.ProfileId, x.ParticipantType }).IsUnique();
 

@@ -13,7 +13,6 @@ using Microsoft.Extensions.Primitives;
 using Moq;
 using Protect_Website.Controllers;
 using Protect_Website.Models;
-using ProtectWebsite.Services.Communication;
 using ProtectWebsite.Services.Tracking;
 using Xunit;
 
@@ -27,7 +26,7 @@ public sealed class LaunchAuditRiskAssessmentTests
         var property = typeof(RiskAssessmentModel).GetProperty(nameof(RiskAssessmentModel.AcknowledgedDisclaimer))!;
         Assert.Empty(property.GetCustomAttributes(typeof(System.ComponentModel.DataAnnotations.RangeAttribute), true));
         await using var db = ControllerTestHelpers.BuildDb();
-        var sender = new Mock<IProtectEmailSender>(MockBehavior.Strict);
+        var sender = new Mock<IWebsiteInquiryEmailSender>(MockBehavior.Strict);
         var controller = new RiskAssessmentController(new ConfigurationBuilder().Build(), sender.Object, db,
             new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance),
             new WebsiteIntakeRecipientResolver(db, new ConfigurationBuilder().Build()),
@@ -51,7 +50,7 @@ public sealed class LaunchAuditRiskAssessmentTests
         var profile = new AgentTrackingProfile { Id = Guid.NewGuid(), AgentUserId = "test-agent", AgentUpn = "advisor@example.test", Slug = "test-agent", DisplayName = "Test Advisor" };
         db.AgentTrackingProfiles.Add(profile);
         await db.SaveChangesAsync();
-        var sender = new Mock<IProtectEmailSender>();
+        var sender = new Mock<IWebsiteInquiryEmailSender>();
         sender.SetupSequence(x => x.TrySendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
             It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false).ReturnsAsync(true);

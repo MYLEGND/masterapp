@@ -429,7 +429,7 @@ public sealed class LegendConnectResearchTransportSecurityTests
             ProviderPolicy: strictNativeOnly ? LegendConnectExternalProviderPolicy.NativeOnly
                 : LegendConnectExternalProviderPolicy.IndependentAnswering));
         Assert.False(result.Succeeded);
-        Assert.Equal("internet_research_external_generation_forbidden", result.FailureReason);
+        Assert.Equal("internet_research_openai_payg_forbidden", result.FailureReason);
         Assert.Empty(result.ExecutedQueries);
         Assert.Empty(result.QueryReceipts);
         Assert.Empty(result.SearchResults);

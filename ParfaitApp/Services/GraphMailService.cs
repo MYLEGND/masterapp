@@ -9,14 +9,6 @@ namespace ParfaitApp.Services;
 
 public interface IGraphMailService
 {
-    Task SendContactEmailsAsync(
-        string firstName,
-        string lastName,
-        string email,
-        string phone,
-        string message,
-        string requestIp);
-
     Task SendOrderReceiptAsync(ParfaitOrderRecord order, CancellationToken ct = default);
     Task SendOrderNotificationAsync(ParfaitOrderRecord order, CancellationToken ct = default);
     Task SendAutomationEmailAsync(string toEmail, string subject, string htmlBody, CancellationToken ct = default);
@@ -59,96 +51,6 @@ public class GraphMailService : IGraphMailService
         var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
         return new GraphServiceClient(credential, new[] { "https://graph.microsoft.com/.default" });
     }
-
-    public async Task SendContactEmailsAsync(
-        string firstName,
-        string lastName,
-        string email,
-        string phone,
-        string message,
-        string requestIp)
-    {
-        var senderUpn = ResolveSenderUpn();
-        var inbox = (_config["Contact:RecipientEmail"] ?? _config["GraphMail:NotifyInbox"] ?? "").Trim();
-        var siteName = (_config["Contact:WebsiteName"] ?? "Shop Parfait").Trim();
-
-        if (string.IsNullOrWhiteSpace(senderUpn))
-            throw new InvalidOperationException("Missing SenderUpn/Contact:SenderEmail config.");
-        if (string.IsNullOrWhiteSpace(inbox))
-            throw new InvalidOperationException("Missing Contact:RecipientEmail/NotifyInbox config.");
-
-        var graph = BuildClient();
-
-        // Encode inputs to avoid HTML injection
-        var enc = HtmlEncoder.Default;
-        var safeFullName = enc.Encode($"{firstName} {lastName}".Trim());
-        var safeEmail = enc.Encode(email.Trim());
-        var safePhone = enc.Encode(phone.Trim());
-        var safeIp = enc.Encode(requestIp.Trim());
-        var safeMsg = enc.Encode(message.Trim()).Replace("\n", "<br/>");
-
-        // 1) Internal email to your inbox
-        var internalSubject = $"[{siteName} Contact] {firstName} {lastName}";
-        var internalHtml =
-$@"
-<div style='font-family: Inter, Arial, sans-serif; line-height:1.6; color:#111;'>
-  <h2 style='margin:0 0 12px;'>New Contact Request — {enc.Encode(siteName)}</h2>
-
-  <div style='padding:14px 16px; border:1px solid #926950; border-radius:14px; background:#fff;'>
-    <p style='margin:0 0 8px;'><strong>Name:</strong> {safeFullName}</p>
-    <p style='margin:0 0 8px;'><strong>Email:</strong> {safeEmail}</p>
-    <p style='margin:0 0 8px;'><strong>Phone:</strong> {safePhone}</p>
-    <p style='margin:0 0 8px;'><strong>IP:</strong> {safeIp}</p>
-
-    <hr style='border:none; border-top:1px solid #eee; margin:12px 0;'/>
-    <p style='margin:0;'><strong>Message:</strong><br/>{safeMsg}</p>
-  </div>
-
-  <p style='margin-top:14px; color:#666; font-size:13px;'>
-    Submitted from the Parfait Contact Us page.
-  </p>
-</div>
-";
-
-        await SendMailAsync(graph, senderUpn, [inbox], internalSubject, internalHtml);
-
-        // 2) Confirmation to the client (optional but recommended)
-        var clientSubject = $"We received your message — {siteName}";
-        var clientHtml =
-$@"
-<div style='font-family: Inter, Arial, sans-serif; line-height:1.65; color:#111;'>
-  <h2 style='margin:0 0 10px;'>Hey {enc.Encode(firstName.Trim())},</h2>
-
-  <p style='margin:0 0 12px;'>
-    Thank you for reaching out to <strong>{enc.Encode(siteName)}</strong>. We received your message and will respond as soon as possible.
-  </p>
-
-  <div style='padding:14px 16px; border:1px solid #926950; border-radius:14px; background:#fff;'>
-    <p style='margin:0 0 8px; color:#926950; font-weight:700;'>Your message:</p>
-    <p style='margin:0; color:#333;'>{safeMsg}</p>
-  </div>
-
-  <p style='margin:14px 0 0; color:#444;'>
-    Build your Parfait Body. Own your power.
-  </p>
-
-  <p style='margin:14px 0 0; color:#666; font-size:13px;'>
-    If you didn’t submit this request, you can ignore this email.
-  </p>
-</div>
-";
-
-        try
-        {
-            await SendMailAsync(graph, senderUpn, [email.Trim()], clientSubject, clientHtml);
-        }
-        catch (Exception ex)
-        {
-            // Don't fail the whole request if the client confirmation fails
-            _logger.LogWarning(ex, "Client confirmation email failed to send. ClientEmail:{ClientEmail}", email);
-        }
-    }
-
 
     public async Task SendOrderReceiptAsync(ParfaitOrderRecord order, CancellationToken ct = default)
     {
@@ -212,13 +114,12 @@ $@"
         var inboxes = ResolveRecipients(
             DefaultParfaitOrdersInbox,
             _config["Commerce:OrdersInbox"],
-            _config["Contact:RecipientEmail"],
             _config["GraphMail:NotifyInbox"]);
 
         if (string.IsNullOrWhiteSpace(senderUpn))
             throw new InvalidOperationException("Missing SenderUpn/Contact:SenderEmail config.");
         if (inboxes.Count == 0)
-            throw new InvalidOperationException("Missing Commerce:OrdersInbox/Contact:RecipientEmail/NotifyInbox config.");
+            throw new InvalidOperationException("Missing Commerce:OrdersInbox/GraphMail:NotifyInbox config.");
 
         var graph = BuildClient();
         var enc = HtmlEncoder.Default;
@@ -283,7 +184,6 @@ $@"
         var senderUpn = ResolveSenderUpn(
             _config["GraphMail:ParfaitTeamSenderUpn"],
             _config["GraphMail:SenderUpn"],
-            _config["Contact:RecipientEmail"],
             _config["Contact:SenderEmail"]);
         var siteName = (_config["Contact:WebsiteName"] ?? "Parfait App").Trim();
 
@@ -360,7 +260,6 @@ $@"
         var candidates = preferredValues.Length == 0
             ? [
                 _config["GraphMail:SenderUpn"],
-                _config["Contact:RecipientEmail"],
                 _config["Contact:SenderEmail"]
             ]
             : preferredValues;

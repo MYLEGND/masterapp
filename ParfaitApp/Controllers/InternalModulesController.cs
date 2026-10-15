@@ -1,5 +1,6 @@
 using System.Globalization;
 using Infrastructure.Analytics;
+using Infrastructure.Security.UploadValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ParfaitApp.Models;
@@ -136,10 +137,30 @@ public sealed class InternalModulesController : Controller
 
     [HttpPost("commerce/products/images/upload")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> UploadProductImages(string productId, List<IFormFile> images)
+    [RequestSizeLimit(26_000_000)]
+    public async Task<IActionResult> UploadProductImages(CancellationToken cancellationToken)
     {
-        await _products.UploadImagesAsync(productId, images);
-        TempData["ProductStatus"] = "Images uploaded.";
+        var transport = await MultipartUploadTransport.ReadAsync(Request, cancellationToken);
+        if (!transport.IsValid || transport.Form is null)
+        {
+            TempData["ProductStatus"] = transport.ErrorMessage ?? "The product image upload could not be read.";
+            return RedirectToAction(nameof(Products));
+        }
+
+        var productId = transport.Form["productId"].FirstOrDefault() ?? string.Empty;
+        var images = transport.Form.Files
+            .Where(file => string.Equals(file.Name, "images", StringComparison.OrdinalIgnoreCase) && file.Length > 0)
+            .ToList();
+
+        try
+        {
+            await _products.UploadImagesAsync(productId, images);
+            TempData["ProductStatus"] = "Images uploaded.";
+        }
+        catch (ArgumentException ex)
+        {
+            TempData["ProductStatus"] = ex.Message;
+        }
         return RedirectToAction(nameof(Products));
     }
 

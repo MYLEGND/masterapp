@@ -1,0 +1,197 @@
+using System.Text.Json;
+using Domain.Entities;
+using Shared.Analytics;
+
+namespace Infrastructure.WebsiteEditing;
+
+public sealed record PublishedWebsiteBindingResolution(
+    WebsiteSignalBinding Binding,
+    string ElementId,
+    string? FieldKey,
+    string? SourceActionKey);
+
+/// <summary>
+/// Re-resolves browser-supplied binding identity against the immutable published
+/// website version. Browser payloads may reference a binding; they never define it.
+/// </summary>
+public static class PublishedWebsiteBindingResolver
+{
+    public static PublishedWebsiteBindingResolution? Resolve(
+        WebsiteContentVersion? version,
+        string siteKey,
+        string? path,
+        string? bindingId,
+        string? metadataJson = null)
+    {
+        if (version is null || string.IsNullOrWhiteSpace(bindingId))
+            return null;
+
+        WebsiteContentDocument document;
+        try
+        {
+            document = WebsiteContentSanitizer.ReadPersisted(
+                version.DocumentJson,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        }
+        catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
+
+        var route = NormalizeRoute(siteKey, path);
+        var matches = new List<PublishedWebsiteBindingResolution>();
+
+        if (document.LegacyMigration is { } legacy)
+        {
+            var page = legacy.Pages.FirstOrDefault(pair =>
+                string.Equals(NormalizeRoute(siteKey, pair.Key), route, StringComparison.OrdinalIgnoreCase)).Value;
+            if (page is null) return null;
+            foreach (var (elementId, element) in page.Elements)
+                Add(matches, elementId, null, element.ActionKey, element.Signals, bindingId);
+            foreach (var extra in page.Extras)
+                Add(matches, "extra:" + extra.Id, null, extra.ActionKey, extra.Signals, bindingId);
+        }
+        else
+        {
+            var page = document.Pages.FirstOrDefault(pair =>
+                string.Equals(NormalizeRoute(siteKey, pair.Key), route, StringComparison.OrdinalIgnoreCase)).Value;
+            if (page is null) return null;
+            Walk(page.Composition, node =>
+            {
+                Add(matches, node.Id, null, node.ActionKey, node.Signals, bindingId);
+                foreach (var (fieldKey, bindings) in node.FieldSignals ?? new())
+                {
+                    var controlAction = node.Experience?.Controls
+                        .SingleOrDefault(control =>
+                            string.Equals(control.Key, fieldKey, StringComparison.OrdinalIgnoreCase))
+                        ?.Action?.ActionKey;
+                    Add(matches, node.Id, fieldKey, controlAction, bindings, bindingId);
+                }
+            });
+        }
+
+        if (matches.Count == 0) return null;
+
+        var hintedElement = ReadConfiguredElementHint(metadataJson, bindingId);
+        if (!string.IsNullOrWhiteSpace(hintedElement))
+        {
+            var hinted = matches.Where(match =>
+                string.Equals(
+                    match.FieldKey is null ? match.ElementId : match.ElementId + ":field:" + match.FieldKey,
+                    hintedElement,
+                    StringComparison.Ordinal)).ToList();
+            if (hinted.Count == 1) matches = hinted;
+        }
+
+        if (matches.Count != 1) return null;
+        var resolved = matches[0];
+        if (resolved.Binding.DeliveryMode == "off" ||
+            AnalyticsEventCatalog.RequiresServerAuthority(resolved.Binding.EventName))
+            return null;
+        return resolved;
+    }
+
+    private static string? ReadConfiguredElementHint(string? metadataJson, string bindingId)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(metadataJson);
+            if (!document.RootElement.TryGetProperty("configuredSignalBindings", out var bindings) ||
+                bindings.ValueKind != JsonValueKind.Array)
+                return null;
+
+            foreach (var item in bindings.EnumerateArray())
+            {
+                var id = item.TryGetProperty("id", out var idProperty) && idProperty.ValueKind == JsonValueKind.String
+                    ? idProperty.GetString()
+                    : null;
+                if (!string.Equals(id, bindingId, StringComparison.Ordinal))
+                    continue;
+                return item.TryGetProperty("elementId", out var elementProperty) &&
+                       elementProperty.ValueKind == JsonValueKind.String
+                    ? elementProperty.GetString()
+                    : null;
+            }
+        }
+        catch (JsonException)
+        {
+        }
+        return null;
+    }
+
+    public static bool ObservedEventMatches(
+        string? observedEventName,
+        WebsiteSignalBinding binding)
+    {
+        if (string.IsNullOrWhiteSpace(observedEventName) ||
+            !AnalyticsEventCatalog.TryGet(observedEventName, out var definition) ||
+            !definition.AllowBrowser)
+            return false;
+
+        if (string.Equals(observedEventName, binding.EventName, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return AnalyticsEventCatalog.TryGetBehavior(observedEventName, out var observed) &&
+               observed.EditorTriggers.Contains(binding.Trigger, StringComparer.Ordinal);
+    }
+
+    public static bool ClaimsConfiguredBinding(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(metadataJson);
+            var root = document.RootElement;
+            return root.TryGetProperty("configuredWebsiteSignal", out var configured) &&
+                       configured.ValueKind == JsonValueKind.True ||
+                   root.TryGetProperty("configuredSignalBindings", out var bindings) &&
+                       bindings.ValueKind == JsonValueKind.Array && bindings.GetArrayLength() > 0;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static void Add(
+        List<PublishedWebsiteBindingResolution> matches,
+        string elementId,
+        string? fieldKey,
+        string? sourceActionKey,
+        IEnumerable<WebsiteSignalBinding>? bindings,
+        string bindingId)
+    {
+        foreach (var binding in bindings ?? [])
+            if (string.Equals(binding.Id, bindingId, StringComparison.Ordinal))
+                matches.Add(new(binding, elementId, fieldKey, sourceActionKey));
+    }
+
+    private static void Walk(
+        IEnumerable<WebsiteCompositionNode>? nodes,
+        Action<WebsiteCompositionNode> visit)
+    {
+        foreach (var node in nodes ?? [])
+        {
+            visit(node);
+            Walk(node.Children, visit);
+        }
+    }
+
+    private static string NormalizeRoute(string siteKey, string? value)
+    {
+        var route = string.IsNullOrWhiteSpace(value) ? "/" : value.Trim();
+        if (siteKey == WebsiteEditorSiteKeys.Protect)
+        {
+            if (route.StartsWith("/a/", StringComparison.OrdinalIgnoreCase))
+            {
+                var segments = route.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                route = segments.Length > 2 ? "/" + string.Join('/', segments.Skip(2)) : "/";
+            }
+            route = ProtectRouteCatalog.CanonicalPath(route);
+        }
+
+        route = route.Length > 1 ? route.TrimEnd('/') : route;
+        return route.Length == 0 ? "/" : route;
+    }
+}

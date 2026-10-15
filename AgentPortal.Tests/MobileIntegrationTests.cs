@@ -716,10 +716,10 @@ public sealed class MobileIntegrationTests
         await using var content = new MemoryStream([1, 2, 3]);
         var file = new FormFile(content, 0, content.Length, "file", "plan.pdf");
 
+        ControllerTestHelpers.AttachMultipartForm(controller.HttpContext, file);
         var result = await controller.UploadAttachment(
             conversationId,
             messageId,
-            file,
             CancellationToken.None);
 
         var response = Assert.IsType<OkObjectResult>(result).Value as MobileMessageAttachmentDto;
@@ -789,10 +789,10 @@ public sealed class MobileIntegrationTests
         await using var content = new MemoryStream([1, 2, 3]);
         var file = new FormFile(content, 0, content.Length, "file", "plan.pdf");
 
+        ControllerTestHelpers.AttachMultipartForm(controller.HttpContext, file);
         var result = await controller.UploadAttachment(
             Guid.NewGuid(),
             messageId,
-            file,
             CancellationToken.None);
 
         var response = Assert.IsType<ObjectResult>(result);

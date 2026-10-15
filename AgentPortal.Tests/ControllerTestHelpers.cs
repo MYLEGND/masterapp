@@ -45,6 +45,18 @@ internal static class ControllerTestHelpers
         return new ClaimsPrincipal(identity);
     }
 
+    public static void AttachMultipartForm(HttpContext httpContext, IFormFile file)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+        ArgumentNullException.ThrowIfNull(file);
+
+        var files = new FormFileCollection { file };
+        httpContext.Request.ContentType = "multipart/form-data; boundary=legend-test";
+        httpContext.Request.Form = new FormCollection(
+            new Dictionary<string, Microsoft.Extensions.Primitives.StringValues>(),
+            files);
+    }
+
     internal static IServiceScopeFactory BuildIsolatedFounderHistoryScopes(MasterAppDbContext identityDb)
     {
         // Protected-data/model fixtures keep operational data read-only while
@@ -209,7 +221,7 @@ internal static class ControllerTestHelpers
         var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
         var featureFlags = Options.Create(new AgentPortal.Models.AppFeatureFlags());
         var importValidator = new AgentPortal.Services.ImportValidation.LeadImportValidator();
-        var metaSignalOutcomes = new MetaSignalCrmOutcomeService(db, NullLogger<MetaSignalCrmOutcomeService>.Instance);
+        var metaSignalOutcomes = new CanonicalCrmOutcomeService(db, NullLogger<CanonicalCrmOutcomeService>.Instance);
         var clientBillingWorkspaceService = new ClientBillingWorkspaceService(db);
         var controller = new LeadsController(db, timeResolver, prod, effCtx, execution, commitments, NullLogger<LeadsController>.Instance, featureFlags, importValidator, metaSignalOutcomes, clientBillingWorkspaceService)
         {

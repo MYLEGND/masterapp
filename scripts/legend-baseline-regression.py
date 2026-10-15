@@ -25,7 +25,8 @@ NS = {'t': 'http://microsoft.com/schemas/VisualStudio/TeamTest/2010'}
 PREFIX = 'AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.'
 OUTCOMES = {'Passed', 'Failed', 'NotExecuted'}
 POLICY_PATHS = {
-    '.github/workflows/agentportal-production-deploy.yml',
+    '.github/workflows/approved-release-security-validation.yml',
+    '.github/workflows/all-intentional-direct-release-20260918.yml',
     '.github/legend-baseline-release.json',
     'scripts/legend-baseline-regression.py',
     'scripts/test-legend-baseline-regression.py',

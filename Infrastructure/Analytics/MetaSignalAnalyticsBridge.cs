@@ -172,13 +172,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         AnalyticsEvent analyticsEvent,
         CancellationToken cancellationToken, MetaSignalScoreWeights? weights = null)
     {
-        if (!TryResolveMapping(analyticsEvent, out var mapping, weights))
-            return null;
-
-        if (analyticsEvent.IsInternal ||
-            (MetaSignalEventCatalog.IsServerAuthorityEvent(mapping.MetaEventName) &&
-             !CanonicalAdvertisingEventProjection.CanProjectServer(analyticsEvent)) ||
-            !MetaSignalSingleTruthPolicy.CanBridgeToServerAuthority(mapping.MetaEventName, analyticsEvent.MetadataJson))
+        if (!TryResolveEligibleMapping(analyticsEvent, out var mapping, weights))
             return null;
 
         var eventUtc = analyticsEvent.EventUtc == default ? analyticsEvent.ReceivedUtc : analyticsEvent.EventUtc;
@@ -318,7 +312,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
             row.TotalSignalScore = mapping.TotalSignalScore
                 ?? Math.Max(0, mapping.IntentScore + mapping.EngagementScore + mapping.QualificationScore + mapping.FrictionScore);
             row.ScoreTier = mapping.ScoreTier;
-            row.MetaBrowserSent = ReadAnalyticsMetadataBoolean(analyticsEvent.MetadataJson, "BrowserEventSent") ?? false;
+            row.MetaBrowserSent = false; // A browser invocation never establishes provider acceptance.
             row.MetaServerSent = leadDispatchState?.MetaServerSent ?? false;
             row.MetaDeduplicationKey = deduplicationKey;
             row.UserAgentHash = SafeHash(Normalize(analyticsEvent.UserAgent) ?? Normalize(resolvedLead?.ClientUserAgent));
@@ -553,6 +547,19 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         MetaSignalEventCatalog.IsServerAuthorityEvent(source.EventType) &&
         !string.IsNullOrWhiteSpace(ReadAnalyticsMetadataString(source.MetadataJson, "upstreamMetaEventId")) &&
         !string.IsNullOrWhiteSpace(ReadAnalyticsMetadataString(source.MetadataJson, "metaDeduplicationKey"));
+
+    /// <summary>The execution decision also owns health-report eligibility.</summary>
+    public static bool IsEligibleSource(AnalyticsEvent source) =>
+        SourceEventTypes.Contains(source.EventType) && TryResolveEligibleMapping(source, out _);
+
+    private static bool TryResolveEligibleMapping(AnalyticsEvent source, out BridgeMapping mapping,
+        MetaSignalScoreWeights? weights = null)
+    {
+        return TryResolveMapping(source, out mapping, weights) && !source.IsInternal &&
+            (!MetaSignalEventCatalog.IsServerAuthorityEvent(mapping.MetaEventName) ||
+             CanonicalAdvertisingEventProjection.CanProjectServer(source)) &&
+            MetaSignalSingleTruthPolicy.CanBridgeToServerAuthority(mapping.MetaEventName, source.MetadataJson);
+    }
 
     private static bool TryResolveMapping(AnalyticsEvent analyticsEvent, out BridgeMapping mapping, MetaSignalScoreWeights? weights = null)
     {

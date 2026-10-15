@@ -23,7 +23,19 @@ function boot({ajax=false,attributionScope='agent:form-lifecycle-fixture',localS
  vm.runInNewContext(script,sandbox);
  const focus=()=>form.dispatch('focusin',new Input('FirstName','text'));
  const exit=(persisted=false)=>win.dispatch('pagehide',win,{persisted});
- const flush=async()=>{await new Promise(setImmediate);return [...events,...await Promise.all(beacons)]};
+ const flush=async()=>{
+  await new Promise(setImmediate);
+  // Beacon retries are transport attempts, not new canonical form events.
+  // Preserve the server's ClientEventId dedupe contract in this receiver fixture.
+  const received=new Map();
+  for(const event of [...events,...await Promise.all(beacons)]){
+   assert.ok(event.ClientEventId,'every transport attempt retains a canonical event identity');
+   const prior=received.get(event.ClientEventId);
+   if(prior) assert.deepEqual(event,prior,'a retry must preserve its original event payload');
+   else received.set(event.ClientEventId,event);
+  }
+  return [...received.values()];
+ };
  return {win,doc,form,fields,focus,exit,flush};
 }
 (async()=>{

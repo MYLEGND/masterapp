@@ -27,9 +27,11 @@ public sealed class CanonicalMarketingContextTests
             Warnings = ["Devices failed for Jane Customer jane@example.invalid private-secret"],
             PagePerformance = [new() { PageKey = "/client/Jane-Customer", Views = 9 }],
             SourcePerformance = [new() { Source = "facebook", Campaign = "Jane Customer", Sessions = 3 }],
-            ChatGptCampaigns = [new() { CampaignName = "Jane Customer", Spend = 25, Clicks = 12 }],
+            PaidCampaigns = [new() { Channel = "chatgpt_ads", CampaignName = "Jane Customer", Spend = 25, Clicks = 12 }],
             Channels = [new("meta_ads", 10, 100, 5, 2, 1, 0, 1, 50, 5, "reference_observed"),
-                new("chatgpt_ads", 25, 120, 12, 1, 0, 0, 0, 0, 0, "not_observed")],
+                new("chatgpt_ads", 25, 120, 12, 1, 0, 0, 0, 0, 0, "not_observed"),
+                new("google_ads", 18, 90, 9, 1, 1, 0, 0, 0, 0, "canonical_lineage"),
+                new("tiktok_ads", 12, 70, 7, 1, 0, 0, 0, 0, 0, "unavailable")],
             Devices = [new("Jane Customer", 5, 8, 1, 2, 1, 1)],
             MarketingHealth = new() { ClientTrackingErrors = 4, MetaHealthStatus = "Watch", Warnings = ["Jane Customer"] }
         };
@@ -38,8 +40,10 @@ public sealed class CanonicalMarketingContextTests
         foreach (var secret in new[] { "Jane", "jane@example.invalid", "private-secret" })
             Assert.DoesNotContain(secret, json, StringComparison.Ordinal);
         Assert.Equal(4, safe.MarketingHealth!.ClientTrackingErrors);
-        Assert.Equal(25m, safe.ChatGptCampaigns.Single().Spend);
-        Assert.Equal(2, safe.Channels.Count);
+        Assert.Equal(25m, safe.PaidCampaigns.Single().Spend);
+        Assert.Equal(4, safe.Channels.Count);
+        Assert.Contains(safe.Channels, x => x.Channel == "google_ads" && x.AttributionConfidence == "canonical_lineage");
+        Assert.Contains(safe.Channels, x => x.Channel == "tiktok_ads" && x.AttributionConfidence == "unavailable");
         Assert.Equal(json, JsonSerializer.Serialize(WebsiteAnalyticsAiRedactor.Redact(safe)));
         Assert.Equal(9, raw.PagePerformance.Single().Views);
         Assert.Equal("Jane Customer", raw.TopCampaign);

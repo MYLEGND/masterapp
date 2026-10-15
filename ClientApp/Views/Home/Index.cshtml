@@ -224,7 +224,7 @@
 
             function closeHub() {
                 hub.classList.remove('open');
-                document.body.style.overflow = '';
+                
                 window.setTimeout(() => {
                     if (!hub.classList.contains('open')) {
                         hub.hidden = true;
@@ -240,7 +240,7 @@
                 pointThreeEl.textContent = trigger.getAttribute('data-point-three') || '';
                 hub.hidden = false;
                 requestAnimationFrame(() => hub.classList.add('open'));
-                document.body.style.overflow = 'hidden';
+                
             }
 
             triggers.forEach((trigger) => {

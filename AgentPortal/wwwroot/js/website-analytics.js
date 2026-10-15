@@ -39,6 +39,10 @@
     }
   })();
   const landingRoutesBaseUrl = shell?.dataset.landingRoutesBaseUrl || '';
+  const founderSiteLinks = (() => {
+    try { return JSON.parse(shell?.dataset.founderSiteLinks || '{}'); }
+    catch { return {}; }
+  })();
   const state = {
     preset: initialPreset,
     from: initialFrom,
@@ -67,7 +71,8 @@
       preset: initialPreset,
       from: initialFrom,
       to: initialTo,
-      agentProfileId: null
+      agentProfileId: null,
+      siteKey: null
     },
     trafficType: {
       trafficModal: 'all',
@@ -101,6 +106,7 @@
   const isFounder = agentOptions.length > 0;
   const callerProfileId = shell?.dataset.callerProfileId || null;
   const initialScopeProfileId = shell?.dataset.initialScopeProfileId || null;
+  const initialSiteKey = asTrimmed(shell?.dataset.initialSiteKey || '').toLowerCase();
   const initialFounderAgentProfileId = (() => {
     if (!isFounder) return null;
     if (initialScopeProfileId) return initialScopeProfileId;
@@ -116,6 +122,7 @@
     // Founder scope is hydrated by the server so personal/global selection survives refreshes.
     state.agentProfileId = initialFounderAgentProfileId;
     state.scope.agentProfileId = initialFounderAgentProfileId;
+    state.scope.siteKey = initialSiteKey === 'protect' ? 'protect' : 'legend';
   } else {
     // Agent → scoped to caller
     state.agentProfileId = callerProfileId;
@@ -147,6 +154,11 @@
     metaConnect: analyticsEndpoint('/meta-connect'),
     metaConnectionStatus: analyticsEndpoint('/meta-connection-status'),
     metaDisconnect: analyticsEndpoint('/meta-disconnect'),
+    externalAdsConnect: analyticsEndpoint('/external-ads/connect'),
+    externalAdsAccounts: analyticsEndpoint('/external-ads/accounts'),
+    externalAdsSelect: analyticsEndpoint('/external-ads/select-account'),
+    externalAdsMeasurement: analyticsEndpoint('/external-ads/measurement'),
+    externalAdsDisconnect: analyticsEndpoint('/external-ads/disconnect'),
     marketingSetup: analyticsEndpoint('/marketing-setup'),
     calendarConnect: analyticsEndpoint('/calendar-connect'),
     calendarDisconnect: analyticsEndpoint('/calendar-disconnect'),
@@ -354,6 +366,8 @@
     if (!isFounder) return;
     try {
       const url = new URL(window.location.href);
+      if (state.scope.siteKey) url.searchParams.set('siteKey', state.scope.siteKey);
+      else url.searchParams.delete('siteKey');
       if (agentId) {
         url.searchParams.set('agentProfileId', agentId);
         url.searchParams.delete('team');
@@ -510,6 +524,34 @@
     });
   }
 
+  function initFounderSiteSwitch() {
+    if (!isFounder) return;
+    const buttons = Array.from(document.querySelectorAll('.wa-site-switch-btn'));
+    if (!buttons.length) return;
+
+    const apply = () => {
+      buttons.forEach(button => {
+        const active = button.dataset.siteKey === state.scope.siteKey;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    };
+
+    apply();
+    buttons.forEach(button => button.addEventListener('click', () => {
+      const siteKey = button.dataset.siteKey;
+      if (siteKey !== 'legend' && siteKey !== 'protect') return;
+      if (state.scope.siteKey === siteKey) return;
+      state.scope.siteKey = siteKey;
+      syncScopeQueryParam(state.scope.agentProfileId);
+      apply();
+      updateGrowthBaseLink();
+      loadSummary();
+      refreshOpenModal();
+      void loadMetaConnectionStatus();
+    }));
+  }
+
   function notifyScopeChange() {
     if (!isFounder) return;
 
@@ -550,6 +592,7 @@
   function rangeParams({ team = false, modal = null, trafficType = null } = {}) {
     const p = { preset: state.scope.preset, timezoneOffsetMinutes: viewerTz.offsetMinutes, qualityMode: mapQualityMode(state.qualityMode) };
     if (viewerTz.id) p.timezoneId = viewerTz.id;
+    if (isFounder && state.scope.siteKey) p.siteKey = state.scope.siteKey;
     const customRange = resolveCustomRangeUtc();
     if (customRange) {
       p.fromUtc = customRange.fromUtc;
@@ -3016,7 +3059,6 @@ function escapeHtml(value) {
     // canonical summary.
     void Promise.resolve().then(() => loadMarketingHealth()).catch(err => console.error(err));
     void Promise.resolve().then(() => loadMarketingPerformance()).catch(err => console.error(err));
-    void Promise.resolve().then(() => loadGrowthEconomics()).catch(err => console.error(err));
   }
 
   async function loadMarketingHealth() {
@@ -3918,6 +3960,8 @@ function escapeHtml(value) {
     const params = currentMetaScopeParams();
     params.returnUrl = `${window.location.pathname}${window.location.search}`;
     connectBtn.href = buildUrlWithParams(endpoints.metaConnect, params);
+    connectBtn.removeAttribute('aria-disabled');
+    connectBtn.removeAttribute('tabindex');
   }
 
   function setMetaConnectState(enabled, label, title = '') {
@@ -3933,7 +3977,9 @@ function escapeHtml(value) {
     if (enabled) {
       updateMetaConnectHref();
     } else {
-      connectBtn.href = '#';
+      connectBtn.removeAttribute('href');
+      connectBtn.setAttribute('aria-disabled', 'true');
+      connectBtn.setAttribute('tabindex', '-1');
     }
   }
 
@@ -4440,6 +4486,7 @@ function escapeHtml(value) {
     }
     showMetaCallbackBanner();
     initScopeControls();
+  initFounderSiteSwitch();
     updateGrowthBaseLink();
     // load initial summary from server-provided JSON if present
     const initial = shell?.dataset.initialSummary;
@@ -4746,6 +4793,10 @@ function escapeHtml(value) {
   }
 
   function resolveLandingRouteBaseLink() {
+    // These are Protect product routes, independent of the Founder website switch.
+    if (isFounder && (!state.scope.agentProfileId || state.scope.agentProfileId === callerProfileId)) {
+      return landingRoutesBaseUrl;
+    }
     return currentBaseLink() || landingRoutesBaseUrl || '';
   }
 
@@ -4998,6 +5049,9 @@ function escapeHtml(value) {
 
   function currentBaseLink() {
     const agentId = state.scope.agentProfileId;
+    if (isFounder && (!agentId || agentId === callerProfileId)) {
+      return founderSiteLinks[state.scope.siteKey] || '';
+    }
     if (agentId && agentOptions && agentOptions.length) {
       const match = agentOptions.find(a => String(a?.id || '') === String(agentId));
       if (match?.primaryUrl) return match.primaryUrl;
@@ -5052,11 +5106,27 @@ function escapeHtml(value) {
     const scopeLabel = document.getElementById('marketing-setup-scope-label');
     if (scopeLabel) scopeLabel.textContent = 'Global reporting · no provider owner';
     setMarketingSetupStatus('Select Founder Personal or an individual owner to manage provider connections.', 'error');
-    marketingSetupModal?.querySelectorAll('input,button[type="submit"],#marketing-setup-openai-verify,#marketing-setup-openai-connect-submit,#marketing-setup-openai-disconnect,#marketing-setup-calendar-disconnect').forEach(el => { el.disabled = true; });
+    marketingSetupModal?.querySelectorAll('input,select,button,#marketing-setup-openai-verify,#marketing-setup-openai-connect-submit,#marketing-setup-openai-disconnect,#marketing-setup-calendar-disconnect').forEach(el => { el.disabled = true; });
+    ['google', 'tiktok'].forEach(provider => {
+      const link = document.getElementById(`marketing-setup-${provider}-connect`);
+      if (link) {
+        link.removeAttribute('href');
+        link.setAttribute('aria-disabled', 'true');
+        link.setAttribute('tabindex', '-1');
+      }
+    });
     const calendarConnect = document.getElementById('marketing-setup-calendar-connect');
-    if (calendarConnect) { calendarConnect.removeAttribute('href'); calendarConnect.setAttribute('aria-disabled', 'true'); }
+    if (calendarConnect) {
+      calendarConnect.removeAttribute('href');
+      calendarConnect.setAttribute('aria-disabled', 'true');
+      calendarConnect.setAttribute('tabindex', '-1');
+    }
     const connect = document.getElementById('marketing-setup-meta-connect');
-    if (connect) { connect.removeAttribute('href'); connect.setAttribute('aria-disabled', 'true'); }
+    if (connect) {
+      connect.removeAttribute('href');
+      connect.setAttribute('aria-disabled', 'true');
+      connect.setAttribute('tabindex', '-1');
+    }
     return false;
   }
 
@@ -5084,6 +5154,43 @@ function escapeHtml(value) {
     return `${endpoints.metaConnect}?${params.toString()}`;
   }
 
+  const externalMarketingProviderControls = {
+    google: {
+      connect: 'marketing-setup-google-connect',
+      status: 'marketing-setup-google-status',
+      account: 'marketing-setup-google-account',
+      loadAccounts: 'marketing-setup-google-load-accounts',
+      disconnect: 'marketing-setup-google-disconnect',
+      picker: 'marketing-setup-google-account-picker',
+      select: 'marketing-setup-google-account-select',
+      selectAccount: 'marketing-setup-google-select-account',
+      measurement: 'marketing-setup-google-measurement',
+      measurementStatus: 'marketing-setup-google-measurement-status',
+      saveMeasurement: 'marketing-setup-google-save-measurement'
+    },
+    tiktok: {
+      connect: 'marketing-setup-tiktok-connect',
+      status: 'marketing-setup-tiktok-status',
+      account: 'marketing-setup-tiktok-account',
+      loadAccounts: 'marketing-setup-tiktok-load-accounts',
+      disconnect: 'marketing-setup-tiktok-disconnect',
+      picker: 'marketing-setup-tiktok-account-picker',
+      select: 'marketing-setup-tiktok-account-select',
+      selectAccount: 'marketing-setup-tiktok-select-account',
+      measurement: 'marketing-setup-tiktok-measurement',
+      measurementStatus: 'marketing-setup-tiktok-measurement-status',
+      saveMeasurement: 'marketing-setup-tiktok-save-measurement'
+    }
+  };
+
+  function marketingSetupExternalConnectUrl(provider, profileId) {
+    const params = new URLSearchParams();
+    params.set('provider', provider);
+    params.set('returnUrl', window.location.pathname + window.location.search);
+    if (profileId && !isBusinessAnalytics) params.set('agentProfileId', profileId);
+    return `${endpoints.externalAdsConnect}?${params.toString()}`;
+  }
+
   function marketingSetupCalendarConnectUrl(profileId) {
     const params = new URLSearchParams();
     params.set('returnUrl', window.location.pathname + window.location.search);
@@ -5107,6 +5214,8 @@ function escapeHtml(value) {
     setMarketingSetupChip('publicReady', status.publicReady, 'Ready', 'Needs attention', true);
     setMarketingSetupChip('metaCustomPixel', status.metaCustomPixel, 'Custom pixel', 'LEGEND default');
     setMarketingSetupChip('openAiReady', status.openAiReady, 'Configured', 'Needs configuration', true);
+    setMarketingSetupChip('googleReady', status.googleReady, 'Connected', 'Not connected');
+    setMarketingSetupChip('tiktokReady', status.tiktokReady, 'Connected', 'Not connected');
     setMarketingSetupChip(
       'bookingPersonalLive',
       status.bookingPersonalLive,
@@ -5151,6 +5260,8 @@ function escapeHtml(value) {
     if (calendarConnect) {
       calendarConnect.href = marketingSetupCalendarConnectUrl(profileId);
       calendarConnect.removeAttribute('aria-disabled');
+      calendarConnect.removeAttribute('tabindex');
+      calendarConnect.removeAttribute('aria-disabled');
       calendarConnect.textContent = calendarConnection.connected ? 'Reconnect Microsoft Calendar' : 'Connect Microsoft Calendar';
     }
     const calendarDisconnect = document.getElementById('marketing-setup-calendar-disconnect');
@@ -5173,8 +5284,108 @@ function escapeHtml(value) {
     const connect = document.getElementById('marketing-setup-meta-connect');
     if (connect) {
       connect.href = marketingSetupConnectUrl(profileId);
+      connect.removeAttribute('aria-disabled');
+      connect.removeAttribute('tabindex');
       connect.textContent = marketing.metaAdsConnected ? 'Reconnect Meta Ads' : 'Connect Meta Ads';
     }
+
+    function renderExternalProvider(provider, connection) {
+      const label = provider === 'google' ? 'Google Ads' : 'TikTok Ads';
+      const ids = externalMarketingProviderControls[provider];
+      if (!ids) return;
+      const statusEl = document.getElementById(ids.status);
+      const accountEl = document.getElementById(ids.account);
+      const connectEl = document.getElementById(ids.connect);
+      const loadEl = document.getElementById(ids.loadAccounts);
+      const disconnectEl = document.getElementById(ids.disconnect);
+      const picker = document.getElementById(ids.picker);
+      const measurement = document.getElementById(ids.measurement);
+      const measurementStatus = document.getElementById(ids.measurementStatus);
+      const saveMeasurement = document.getElementById(ids.saveMeasurement);
+
+      if (statusEl) {
+        statusEl.textContent = connection.ready
+          ? `${label} connected · ${connection.optimizationReady ? 'optimization ready' : 'mapping required'}`
+          : connection.connected && connection.requiresAccountSelection
+            ? `${label} connected · choose account`
+            : `${label} not connected`;
+      }
+      if (accountEl) {
+        accountEl.textContent = connection.accountName || connection.accountId ||
+          (connection.connected ? 'Authorization verified; advertiser account not selected' : 'No scoped advertiser account');
+      }
+      if (connectEl) {
+        connectEl.href = marketingSetupExternalConnectUrl(provider, profileId);
+        connectEl.removeAttribute('aria-disabled');
+        connectEl.removeAttribute('tabindex');
+        connectEl.textContent = connection.connected ? `Reconnect ${label}` : `Connect ${label}`;
+      }
+      if (loadEl) {
+        loadEl.hidden = !connection.connected || !connection.requiresAccountSelection;
+        loadEl.disabled = !connection.connected;
+      }
+      if (disconnectEl) {
+        disconnectEl.hidden = !connection.connected;
+        disconnectEl.disabled = !connection.connected;
+      }
+      if (picker && !connection.requiresAccountSelection) picker.hidden = true;
+
+      if (measurement) {
+        measurement.hidden = !connection.ready;
+        measurement.dataset.revision = connection.revision || '';
+      }
+      if (measurementStatus) {
+        measurementStatus.textContent = connection.optimizationReady
+          ? 'Optimization mapping ready'
+          : connection.ready
+            ? `Optimization mapping required · ${String(connection.measurementStatus || 'not configured').replaceAll('_', ' ')}`
+            : 'Select an advertiser account first';
+      }
+      if (saveMeasurement) {
+        saveMeasurement.disabled = !connection.ready || !connection.revision;
+      }
+
+      const configuredMappings = Array.isArray(connection.measurementMappings)
+        ? connection.measurementMappings
+        : [];
+      document.querySelectorAll(`[data-external-mapping-provider="${provider}"]`).forEach(input => {
+        const canonical = input.dataset.canonicalEvent || '';
+        const mapping = configuredMappings.find(row =>
+          String(row?.canonicalEventName || '').toLowerCase() === canonical.toLowerCase());
+        input.value = provider === 'google'
+          ? (mapping?.destinationId || '')
+          : (mapping?.providerEventName || '');
+        input.disabled = !connection.ready;
+      });
+
+      if (provider === 'tiktok') {
+        const sourceId = document.getElementById('marketing-setup-tiktok-event-source-id');
+        const sourceType = document.getElementById('marketing-setup-tiktok-event-source-type');
+        const eventsToken = document.getElementById('marketing-setup-tiktok-events-token');
+        if (eventsToken) {
+          eventsToken.value = '';
+          eventsToken.placeholder = connection.measurementHasCredential
+            ? 'Stored securely — leave blank to keep'
+            : 'Events Manager access token required';
+          eventsToken.disabled = !connection.ready;
+        }
+        if (sourceId) {
+          sourceId.value = connection.measurementEventSourceId || '';
+          sourceId.disabled = !connection.ready;
+        }
+        if (sourceType) {
+          sourceType.value = ['web', 'crm', 'offline'].includes(connection.measurementEventSourceType)
+            ? connection.measurementEventSourceType
+            : 'crm';
+          sourceType.disabled = !connection.ready;
+        }
+      }
+    }
+
+    const google = payload.google || {};
+    const tiktok = payload.tiktok || {};
+    renderExternalProvider('google', google);
+    renderExternalProvider('tiktok', tiktok);
 
     const openAi = payload.openAi || {};
     const openAiHealth = openAi.health || {};
@@ -5201,6 +5412,9 @@ function escapeHtml(value) {
     }
     renderEvidence('meta', marketing.metaAdsConnected, !!marketing.metaPixelId && marketing.metaCapiConfiguredSecurely);
     renderEvidence('openai', openAi.connected, openAi.pixelConfigured && openAi.conversionsApiConfigured && !!openAi.conversionDataSourceId);
+
+    renderEvidence('google', google.connected, google.optimizationReady === true);
+    renderEvidence('tiktok', tiktok.connected, tiktok.optimizationReady === true);
 
     const setOpenAiText = (id, value) => {
       const el = document.getElementById(id);
@@ -5254,7 +5468,8 @@ function escapeHtml(value) {
       : openAi.measurementCapabilityStatus === 'not_enabled' ? 'API provisioning not enabled'
       : openAi.measurementCapabilityStatus === 'not_authorized' ? 'API provisioning not authorized'
       : 'Not configured');
-    setOpenAiText('marketing-setup-openai-health', (openAiHealth.status || 'unknown').replaceAll('_', ' '));
+    setOpenAiText('marketing-setup-openai-health', (openAiHealth.status || 'unknown').replaceAll('_', ' ') +
+      (openAiHealth.otherDestinationReceipts > 0 ? `; ${openAiHealth.otherDestinationReceipts} receipts for previous destinations (${openAiHealth.otherDestinationUnresolved || 0} unresolved)` : ''));
     setOpenAiText('marketing-setup-openai-last-send', openAiHealth.lastSentUtc ? `Last sent ${new Date(openAiHealth.lastSentUtc).toLocaleString()}` : 'No successful delivery yet');
     setOpenAiText('marketing-setup-openai-pending', Number(openAiHealth.pending || 0).toLocaleString());
     setOpenAiText('marketing-setup-openai-retrying', Number(openAiHealth.retrying || 0).toLocaleString());
@@ -5316,7 +5531,7 @@ function escapeHtml(value) {
 
   async function loadMarketingSetup() {
     if (!requireMarketingOwner()) return false;
-    marketingSetupModal?.querySelectorAll('input,button[type="submit"],#marketing-setup-openai-verify,#marketing-setup-openai-connect-submit,#marketing-setup-openai-disconnect').forEach(el => { el.disabled = false; });
+    marketingSetupModal?.querySelectorAll('input,select,button,#marketing-setup-openai-verify,#marketing-setup-openai-connect-submit,#marketing-setup-openai-disconnect').forEach(el => { el.disabled = false; });
     document.getElementById('marketing-setup-meta-connect')?.removeAttribute('aria-disabled');
     if (!marketingSetupForm) return false;
     marketingSetupLoaded = false;
@@ -5396,6 +5611,146 @@ function escapeHtml(value) {
       marketingSetupSave.disabled = false;
     }
   }
+
+  async function loadExternalProviderAccounts(provider) {
+    if (!requireMarketingOwner()) return;
+    const ids = externalMarketingProviderControls[provider];
+    if (!ids) return;
+    const picker = document.getElementById(ids.picker);
+    const select = document.getElementById(ids.select);
+    if (!select) return;
+    const params = { provider };
+    if (!isBusinessAnalytics) params.agentProfileId = marketingSetupAgentProfileId() || '';
+    setMarketingSetupStatus(`Loading authorized ${provider === 'google' ? 'Google Ads' : 'TikTok Ads'} accounts…`);
+    try {
+      const payload = await fetchJson(`externalAdsAccounts:${provider}`, endpoints.externalAdsAccounts, params);
+      const accounts = Array.isArray(payload?.accounts) ? payload.accounts : [];
+      select.innerHTML = '';
+      accounts.forEach(account => {
+        const option = document.createElement('option');
+        option.value = account.accountId || '';
+        option.textContent = account.label || account.accountId || 'Authorized account';
+        select.appendChild(option);
+      });
+      if (picker) picker.hidden = accounts.length === 0;
+      setMarketingSetupStatus(accounts.length
+        ? 'Choose the advertiser account LEGEND should use for this scoped owner.'
+        : 'No authorized advertiser accounts were returned by the provider.',
+        accounts.length ? '' : 'error');
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to load authorized ad accounts.', 'error');
+    }
+  }
+
+  async function selectExternalProviderAccount(provider) {
+    if (!requireMarketingOwner()) return;
+    const ids = externalMarketingProviderControls[provider];
+    if (!ids) return;
+    const select = document.getElementById(ids.select);
+    const accountId = (select?.value || '').trim();
+    if (!accountId) {
+      setMarketingSetupStatus('Choose an authorized advertiser account.', 'error');
+      return;
+    }
+    const body = { provider, accountId };
+    if (!isBusinessAnalytics) body.agentProfileId = marketingSetupAgentProfileId() || null;
+    setMarketingSetupStatus('Binding the selected advertiser account to this canonical marketing owner…');
+    try {
+      const payload = await fetchPostJson(`externalAdsSelect:${provider}`, endpoints.externalAdsSelect, body);
+      renderMarketingSetup(payload?.setup || payload);
+      setMarketingSetupStatus('Advertiser account selected for this scope.', 'success');
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to select advertiser account.', 'error');
+    }
+  }
+
+  async function saveExternalProviderMeasurement(provider) {
+    if (!requireMarketingOwner()) return;
+    const ids = externalMarketingProviderControls[provider];
+    if (!ids) return;
+    const measurement = document.getElementById(ids.measurement);
+    const revision = measurement?.dataset?.revision || '';
+    if (!revision) {
+      setMarketingSetupStatus('Reload Marketing Setup before saving provider optimization mappings.', 'error');
+      return;
+    }
+
+    const mappings = Array.from(document.querySelectorAll(`[data-external-mapping-provider="${provider}"]`))
+      .map(input => {
+        const canonicalEventName = input.dataset.canonicalEvent || '';
+        const value = String(input.value || '').trim();
+        if (!canonicalEventName || !value) return null;
+        return provider === 'google'
+          ? { canonicalEventName, providerEventName: canonicalEventName, destinationId: value }
+          : { canonicalEventName, providerEventName: value, destinationId: null };
+      })
+      .filter(Boolean);
+
+    if (!mappings.length) {
+      setMarketingSetupStatus('Map at least one canonical revenue outcome before saving.', 'error');
+      return;
+    }
+
+    const body = {
+      provider,
+      eventSourceId: provider === 'tiktok'
+        ? (document.getElementById('marketing-setup-tiktok-event-source-id')?.value || '').trim() || null
+        : null,
+      eventSourceType: provider === 'tiktok'
+        ? (document.getElementById('marketing-setup-tiktok-event-source-type')?.value || 'crm')
+        : 'click',
+      mappings,
+      expectedRevision: revision,
+      measurementAccessToken: provider === 'tiktok'
+        ? (document.getElementById('marketing-setup-tiktok-events-token')?.value || '').trim() || null
+        : null
+    };
+    if (!isBusinessAnalytics) body.agentProfileId = marketingSetupAgentProfileId() || null;
+
+    setMarketingSetupStatus(`Saving exact ${provider === 'google' ? 'Google Ads' : 'TikTok Ads'} optimization mapping…`);
+    try {
+      const payload = await fetchPostJson(
+        `externalAdsMeasurement:${provider}`,
+        endpoints.externalAdsMeasurement,
+        body);
+      renderMarketingSetup(payload?.setup || payload);
+      setMarketingSetupStatus(
+        `${provider === 'google' ? 'Google Ads' : 'TikTok Ads'} optimization mapping saved.`,
+        'success');
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to save provider optimization mapping.', 'error');
+    }
+  }
+
+  async function disconnectExternalProvider(provider) {
+    if (!requireMarketingOwner()) return;
+    const body = { provider };
+    if (!isBusinessAnalytics) body.agentProfileId = marketingSetupAgentProfileId() || null;
+    setMarketingSetupStatus(`Disconnecting ${provider === 'google' ? 'Google Ads' : 'TikTok Ads'} from this scope…`);
+    try {
+      const payload = await fetchPostJson(`externalAdsDisconnect:${provider}`, endpoints.externalAdsDisconnect, body);
+      renderMarketingSetup(payload?.setup || payload);
+      setMarketingSetupStatus('Provider disconnected for this scope.', 'success');
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to disconnect provider.', 'error');
+    }
+  }
+
+  ['google', 'tiktok'].forEach(provider => {
+    const ids = externalMarketingProviderControls[provider];
+    document.getElementById(ids.loadAccounts)?.addEventListener('click', () => {
+      void loadExternalProviderAccounts(provider);
+    });
+    document.getElementById(ids.selectAccount)?.addEventListener('click', () => {
+      void selectExternalProviderAccount(provider);
+    });
+    document.getElementById(ids.disconnect)?.addEventListener('click', () => {
+      void disconnectExternalProvider(provider);
+    });
+    document.getElementById(ids.saveMeasurement)?.addEventListener('click', () => {
+      void saveExternalProviderMeasurement(provider);
+    });
+  });
 
   marketingSetupModal?.addEventListener('show.bs.modal', () => { void loadMarketingSetup(); });
   marketingSetupForm?.addEventListener('submit', saveMarketingSetup);
@@ -5765,72 +6120,92 @@ function escapeHtml(value) {
     return id ? { agentProfileId: id } : {};
   }
 
+  let marketingPerformanceRequest = 0;
+  let marketingPerformanceInFlight = null;
+
   async function loadMarketingPerformance() {
     const grid = document.getElementById('channel-performance-grid');
     if (!grid) return false;
-    try {
-      const data = await fetchJson(
-        'marketingManagerPerformance',
-        endpoints.marketingManagerPerformance,
-        marketingManagerRequestBody(),
-        15000);
-      if (!data) return false;
-      renderMarketingPerformance(data);
-      return true;
-    } catch (error) {
-      grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Unified channel performance is unavailable.')}</div>`;
-      return false;
-    }
+    const params = { ...marketingManagerRequestBody(), ...marketingManagerSiteParams() };
+    const key = JSON.stringify(params);
+    if (marketingPerformanceInFlight?.key === key) return marketingPerformanceInFlight.promise;
+    const request = ++marketingPerformanceRequest;
+    const active = { key, promise: null };
+    marketingPerformanceInFlight = active;
+    grid.textContent = 'Loading current channel performance…';
+    setText('channel-performance-note', '');
+    renderGrowthEconomics(null);
+    active.promise = (async () => {
+      try {
+        const data = await fetchJson(
+          'marketingManagerPerformance',
+          endpoints.marketingManagerPerformance,
+          params,
+          45000);
+        if (!data || request !== marketingPerformanceRequest) return false;
+        renderMarketingPerformance(data);
+        renderGrowthEconomics(data.economics);
+        return true;
+      } catch (error) {
+        if (request !== marketingPerformanceRequest) return false;
+        grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Unified channel performance is unavailable.')}</div>`;
+        renderGrowthEconomics(null);
+        return false;
+      } finally {
+        if (marketingPerformanceInFlight === active) marketingPerformanceInFlight = null;
+      }
+    })();
+    return active.promise;
   }
 
-  async function loadGrowthEconomics() {
+  function renderGrowthEconomics(data) {
     const grid = document.getElementById('growth-economics-grid');
     if (!grid) return false;
-    try {
-      const data = await fetchJson('growthEconomics', endpoints.growthEconomics, marketingManagerRequestBody(), 15000);
-      if (!data) return false;
-      setText('growth-economics-spend', marketingManagerMoney(data.totalMarketingSpend));
-      setText('growth-economics-customers', marketingManagerNumber(data.customersAcquired));
-      setText('growth-economics-cac', marketingManagerMoney(data.costPerCustomer));
-      setText('growth-economics-revenue', marketingManagerMoney(data.totalRevenue));
-      setText('growth-economics-roas', `${Number(data.blendedRoas || 0).toFixed(2)}x`);
-      setText('growth-economics-pipeline', marketingManagerMoney(data.pipelineValue));
-      grid.replaceChildren();
-      for (const row of data.channels || []) {
-        const card = document.createElement('article');
-        card.className = 'wa-growth-economics-card';
-        const title = document.createElement('div');
-        title.className = 'wa-channel-card-head';
-        const strong = document.createElement('strong');
-        strong.textContent = channelLabel(row.channel);
-        const basis = document.createElement('span');
-        basis.className = 'wa-channel-confidence';
-        basis.textContent = row.attributionBasis || 'canonical';
-        title.append(strong, basis);
-        const metrics = document.createElement('div');
-        metrics.className = 'wa-growth-economics-metrics';
-        for (const [label, value] of [
-          ['Spend', marketingManagerMoney(row.spend)],
-          ['Customers', marketingManagerNumber(row.customersAcquired)],
-          ['Cost / customer', marketingManagerMoney(row.costPerCustomer)],
-          ['Revenue', marketingManagerMoney(row.revenue)],
-          ['ROAS', `${Number(row.roas || 0).toFixed(2)}x`],
-          ['Pipeline', marketingManagerMoney(row.pipelineValue)]
-        ]) {
-          const item = document.createElement('div');
-          item.innerHTML = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
-          metrics.appendChild(item);
-        }
-        card.append(title, metrics);
-        grid.appendChild(card);
-      }
-      const note = document.getElementById('growth-economics-note');
-      if (note) note.textContent = (data.notes || []).join(' ');
-      return true;
-    } catch (error) {
-      grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Growth economics are unavailable.')}</div>`;
+    if (!data) {
+      for (const key of ['spend', 'customers', 'cac', 'revenue', 'roas', 'pipeline'])
+        setText(`growth-economics-${key}`, 'Unavailable');
+      grid.textContent = 'Canonical growth economics are unavailable.';
+      setText('growth-economics-note', 'No current evidence; prior totals are not shown.');
       return false;
     }
+    setText('growth-economics-spend', marketingManagerMoney(data.totalMarketingSpend));
+    setText('growth-economics-customers', marketingManagerNumber(data.customersAcquired));
+    setText('growth-economics-cac', marketingManagerMoney(data.costPerCustomer));
+    setText('growth-economics-revenue', marketingManagerMoney(data.totalRevenue));
+    setText('growth-economics-roas', data.blendedRoas == null ? 'Unavailable' : `${Number(data.blendedRoas).toFixed(2)}x`);
+    setText('growth-economics-pipeline', marketingManagerMoney(data.pipelineValue));
+    grid.replaceChildren();
+    for (const row of data.channels || []) {
+      const card = document.createElement('article');
+      card.className = 'wa-growth-economics-card';
+      const title = document.createElement('div');
+      title.className = 'wa-channel-card-head';
+      const strong = document.createElement('strong');
+      strong.textContent = channelLabel(row.channel);
+      const basis = document.createElement('span');
+      basis.className = 'wa-channel-confidence';
+      basis.textContent = row.attributionBasis || 'canonical';
+      title.append(strong, basis);
+      const metrics = document.createElement('div');
+      metrics.className = 'wa-growth-economics-metrics';
+      for (const [label, value] of [
+        ['Spend', marketingManagerMoney(row.spend)],
+        ['Customers', marketingManagerNumber(row.customersAcquired)],
+        ['Cost / customer', marketingManagerMoney(row.costPerCustomer)],
+        ['Revenue', marketingManagerMoney(row.revenue)],
+        ['ROAS', row.roas == null ? 'Unavailable' : `${Number(row.roas).toFixed(2)}x`],
+        ['Pipeline', marketingManagerMoney(row.pipelineValue)]
+      ]) {
+        const item = document.createElement('div');
+        item.innerHTML = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
+        metrics.appendChild(item);
+      }
+      card.append(title, metrics);
+      grid.appendChild(card);
+    }
+    const note = document.getElementById('growth-economics-note');
+    if (note) note.textContent = (data.notes || []).join(' ');
+    return true;
   }
 
   async function loadOpenAiOnboarding() {
@@ -6337,6 +6712,8 @@ function escapeHtml(value) {
     try {
       const params = advertisingScopeParams();
       params.preset = state.scope.preset || '7d';
+      params.timezoneId = viewerTz.id || null;
+      params.timezoneOffsetMinutes = Number.isFinite(viewerTz.offsetMinutes) ? viewerTz.offsetMinutes : null;
       const custom = resolveCustomRangeUtc();
       if (custom) Object.assign(params, custom);
       const url = analyticsEndpoint(`/advertising/campaign/${encodeURIComponent(campaignId)}/insights`);
@@ -6390,7 +6767,9 @@ function escapeHtml(value) {
   function marketingManagerRangePayload() {
     const body = {
       preset: state.scope.preset || '30d',
-      qualityMode: marketingManagerQualityModeValue()
+      qualityMode: marketingManagerQualityModeValue(),
+      timezoneId: viewerTz.id || null,
+      timezoneOffsetMinutes: Number.isFinite(viewerTz.offsetMinutes) ? viewerTz.offsetMinutes : null
     };
     const custom = resolveCustomRangeUtc();
     if (custom) Object.assign(body, custom);
@@ -6402,8 +6781,16 @@ function escapeHtml(value) {
     return { ...scope, ...marketingManagerRangePayload(), ...extra };
   }
 
+  function marketingManagerSiteParams() {
+    if (!isBusinessAnalytics && isFounder && (!state.scope.agentProfileId || state.scope.agentProfileId === callerProfileId) && state.scope.siteKey) {
+      return { siteKey: state.scope.siteKey };
+    }
+    return {};
+  }
+
   function marketingManagerMoney(value) {
-    const n = Number(value || 0);
+    if (value == null) return "Unavailable";
+    const n = Number(value);
     return n.toLocaleString(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 });
   }
 
@@ -6462,7 +6849,7 @@ function escapeHtml(value) {
         ['Appointments', marketingManagerNumber(row.appointments)],
         ['Customers', marketingManagerNumber(row.customers)],
         ['Revenue', marketingManagerMoney(row.revenue)],
-        ['ROAS', `${Number(row.roas || 0).toFixed(2)}x`]
+        ['ROAS', row.roas == null ? 'Unavailable' : `${Number(row.roas).toFixed(2)}x`]
       ];
       for (const [label, value] of values) {
         const item = document.createElement('div');
@@ -6540,9 +6927,10 @@ function escapeHtml(value) {
     if (button) button.disabled = true;
     marketingManagerSetStatus('Reading the current scoped business evidence and building a governed plan…');
     try {
+      const siteQuery = new URLSearchParams(marketingManagerSiteParams()).toString();
       const plan = await fetchPostJson(
         'marketingManagerPlan',
-        endpoints.marketingManagerPlan,
+        siteQuery ? `${endpoints.marketingManagerPlan}?${siteQuery}` : endpoints.marketingManagerPlan,
         marketingManagerRequestBody({ goal }),
         20000);
       renderMarketingManagerPlan(plan);
@@ -6645,7 +7033,7 @@ function escapeHtml(value) {
       bootstrap.Modal.getOrCreateInstance(advertisingModal)?.show();
     });
     document.getElementById('channel-performance-refresh')?.addEventListener('click', () => void loadMarketingPerformance());
-    document.getElementById('growth-economics-refresh')?.addEventListener('click', () => void loadGrowthEconomics());
+    document.getElementById('growth-economics-refresh')?.addEventListener('click', () => void loadMarketingPerformance());
     document.getElementById('marketing-setup-openai-feed-refresh')?.addEventListener('click', () => void loadOpenAiProductFeed());
     document.getElementById('marketing-setup-openai-feed-publish')?.addEventListener('click', () => void publishOpenAiProductFeed());
     window.addEventListener('wa:scope-changed', () => void loadMarketingPerformance());

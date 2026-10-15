@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Domain.Messaging;
 using Infrastructure.Messaging;
+using Infrastructure.Security.UploadValidation;
 
 namespace AgentPortal.Mobile;
 
@@ -8,14 +9,21 @@ internal static class MobileAvatarProjection
 {
     public static MobileAvatarDto? FromGroupImage(
         Guid conversationId,
-        MessagingGroupImage? image) =>
-        image is { Content.Length: > 0 } &&
-        image.ContentType is "image/png" or "image/jpeg" or "image/webp" or "image/heic"
-            ? Resource(
-                image.ContentType,
-                $"/api/v1/mobile/messaging/conversations/{conversationId:D}/image",
-                image.Content)
-            : null;
+        MessagingGroupImage? image)
+    {
+        if (image is not { Content.Length: > 0 })
+            return null;
+
+        var contentType = UploadValidator.CanonicalContentType(image.ContentType);
+        if (contentType is null ||
+            !UploadValidator.VisualMediaContentTypes(imagesOnly: true).Contains(contentType))
+            return null;
+
+        return Resource(
+            contentType,
+            $"/api/v1/mobile/messaging/conversations/{conversationId:D}/image",
+            image.Content);
+    }
 
     public static Task<MobileAvatarDto?> ResolveAsync(
         IMessagingProfileImageResolver profiles,

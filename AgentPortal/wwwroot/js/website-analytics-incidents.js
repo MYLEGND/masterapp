@@ -105,6 +105,17 @@
     statusEl.textContent = message;
   }
 
+  function markUnavailable(message) {
+    if (buttonCountEl) {
+      buttonCountEl.textContent = '—';
+      buttonCountEl.className = 'wa-incident-monitor-count severity-unavailable';
+      buttonCountEl.setAttribute('aria-label', 'Incident count unavailable');
+    }
+    if (activeSummaryEl) activeSummaryEl.textContent = 'Unavailable';
+    if (bannerEl) bannerEl.hidden = true;
+    setStatus(message || 'Incident monitor is unavailable. No zero-incident result has been verified.', 'error');
+  }
+
   function renderBanner(snapshot) {
     const activeIncidents = Array.isArray(snapshot?.activeIncidents) ? snapshot.activeIncidents : [];
     const activeCount = Number(snapshot?.activeIncidentCount || activeIncidents.length || 0);
@@ -116,6 +127,7 @@
     if (buttonCountEl) {
       buttonCountEl.textContent = String(activeCount);
       buttonCountEl.className = `wa-incident-monitor-count severity-${String(topIncident?.severity || 'none').toLowerCase()}`;
+      buttonCountEl.setAttribute('aria-label', `${activeCount} active analytics incidents`);
     }
 
     if (!bannerEl || !bannerCopyEl) return;
@@ -275,11 +287,15 @@
       }
 
       const payload = await response.json();
+      if (payload?.isAvailable === false) {
+        markUnavailable('Incident monitor data is unavailable. No zero-incident result has been verified.');
+        return;
+      }
       render(payload);
     } catch (error) {
       if (error?.name === 'AbortError') return;
       console.error(error);
-      setStatus(error?.message || 'Unable to refresh incident monitor.', 'error');
+      markUnavailable(error?.message || 'Unable to refresh incident monitor.');
     } finally {
       state.loading = false;
     }

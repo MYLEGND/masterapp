@@ -107,6 +107,7 @@ public static class AnalyticsEventCatalog
         Define("capi_event_attempt", "meta", AllQuotes, "meta", critical: true, allowServer: true, dashboardMetrics: ["capi_event_attempt"]),
         Define("capi_event_success", "meta", AllQuotes, "meta", critical: true, allowServer: true, dashboardMetrics: ["capi_event_success"]),
         Define("capi_event_failure", "meta", AllQuotes, "meta", critical: true, allowServer: true, dashboardMetrics: ["capi_event_failure"]),
+        Define("measurement_consent_changed", "privacy", AllQuotes, "privacy", critical: true, allowBrowser: true),
         Define(ClientTrackingErrorEventName, "diagnostic", AllQuotes, "diagnostic", critical: true, allowBrowser: true, allowServer: true, dashboardMetrics: ["tracking_error", "tracking_health"]),
 
         Define("disability_quote_step1_view", "quote", ["disability"], "discovery", critical: true, allowBrowser: true, dashboardMetrics: ["step_view"]),

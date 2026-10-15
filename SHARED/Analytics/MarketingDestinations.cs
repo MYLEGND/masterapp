@@ -8,6 +8,8 @@ public static class MarketingDestinationKeys
 {
     public const string Meta = "meta";
     public const string OpenAi = "openai";
+    public const string Google = "google";
+    public const string TikTok = "tiktok";
 
     public static string Normalize(string provider)
     {
@@ -37,14 +39,14 @@ public sealed record MarketingOutcome(
 }
 
 /// <summary>
-/// A destination's read-only decision for a canonical outcome.
-/// This contract performs no provider mutation or spend action.
+/// A destination's mapping/configuration readiness. This is never permission to send.
+/// Dispatch must independently enforce persisted canonical human evidence, consent and scoped identity.
 /// </summary>
 public sealed record MarketingDestinationDecision(
     string DestinationKey,
     bool Supported,
     bool Configured,
-    bool Eligible,
+    bool MappingReady,
     string Reason);
 
 public interface IMarketingDestination

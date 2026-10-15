@@ -4,6 +4,7 @@ using AgentPortal.Services.Tracking;
 using AgentPortal.Services;
 using Domain.Messaging;
 using Infrastructure.Messaging;
+using Infrastructure.Security.UploadValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -50,15 +51,17 @@ public sealed class AvatarController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Upload(IFormFile photo)
+    public async Task<IActionResult> Upload()
     {
         var profile = await GetCurrentProfileAsync(HttpContext.RequestAborted);
         if (profile is null)
             return Forbid();
 
-        if (photo is null || photo.Length == 0)
+        var transport = await MultipartUploadTransport.ReadAsync(Request, HttpContext.RequestAborted);
+        var photo = transport.Form?.Files.GetFile("photo");
+        if (!transport.IsValid || photo is null || photo.Length == 0)
         {
-            TempData["AvatarError"] = "Please choose an image file.";
+            TempData["AvatarError"] = transport.ErrorMessage ?? "Please choose an image file.";
             return RedirectToAction("ManageProfile", "Account");
         }
 

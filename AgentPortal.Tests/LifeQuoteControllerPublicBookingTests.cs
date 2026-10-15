@@ -24,8 +24,6 @@ using Moq;
 using Protect_Website.Controllers;
 using Protect_Website.Models;
 using ProtectWebsite.Services.Booking;
-using ProtectWebsite.Services.Communication;
-using ProtectWebsite.Services.Meta;
 using Infrastructure.Analytics;
 using ProtectWebsite.Services.Tracking;
 using Xunit;
@@ -173,6 +171,18 @@ public class LifeQuoteControllerPublicBookingTests
     public async Task SubmitLifeQuote_Ajax_WhenBookingDisabled_StillReturnsSuccess()
     {
         using var db = ControllerTestHelpers.BuildDb();
+        var founderTracking = new AgentTrackingProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "founder-booking-disabled",
+            AgentUpn = "founder@example.test",
+            Slug = "legend",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+        db.AgentTrackingProfiles.Add(founderTracking);
+        await db.SaveChangesAsync();
+
         var captureService = new Mock<IWebsiteLifeLeadCaptureService>();
         captureService
             .Setup(service => service.UpsertAsync(It.IsAny<WebsiteLifeLeadCaptureRequest>(), It.IsAny<CancellationToken>()))
@@ -221,6 +231,9 @@ public class LifeQuoteControllerPublicBookingTests
         http.Request.ContentType = "application/x-www-form-urlencoded";
         http.Request.Headers["X-Requested-With"] = "fetch";
         http.Request.Form = new FormCollection(new Dictionary<string, StringValues>());
+        http.Items["TrackingProfile"] = founderTracking;
+        http.Items["TrackingSlug"] = founderTracking.Slug;
+        http.Items["IsFounderPath"] = true;
         controller.ControllerContext = new ControllerContext { HttpContext = http };
         controller.TempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>());
 
@@ -441,7 +454,7 @@ public class LifeQuoteControllerPublicBookingTests
         IPublicBookingResolver? publicBookingResolver = null,
         IPublicBookingConfirmationService? publicBookingConfirmationService = null,
         IPublicBookingContextProtector? publicBookingContextProtector = null,
-        IProtectEmailSender? emailSender = null)
+        IWebsiteInquiryEmailSender? emailSender = null)
     {
         var resolver = new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance);
 
@@ -480,9 +493,9 @@ public class LifeQuoteControllerPublicBookingTests
             .Build();
     }
 
-    private static IProtectEmailSender BuildSuccessfulEmailSender()
+    private static IWebsiteInquiryEmailSender BuildSuccessfulEmailSender()
     {
-        var sender = new Mock<IProtectEmailSender>();
+        var sender = new Mock<IWebsiteInquiryEmailSender>();
         sender
             .Setup(service => service.TrySendAsync(
                 It.IsAny<string>(),

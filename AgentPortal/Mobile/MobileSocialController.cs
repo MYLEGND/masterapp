@@ -1,9 +1,11 @@
+using System.Globalization;
 using Domain.Messaging;
 using Domain.Social;
 using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.Messaging;
 using Infrastructure.Mobile;
+using Infrastructure.Security.UploadValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -189,15 +191,22 @@ public sealed partial class MobileSocialController : MobileApiControllerBase
     }
 
     [HttpPost("posts/media")]
-    [Consumes("multipart/form-data")]
     [RequestSizeLimit(SocialMediaUploadLimits.MaximumMultipartRequestBytes)]
     [RequestFormLimits(
         MultipartBodyLengthLimit = SocialMediaUploadLimits.MaximumMultipartRequestBytes,
         ValueLengthLimit = SocialMediaUploadLimits.MaximumFormValueLength)]
-    public async Task<IActionResult> CreateMediaPost(
-        [FromForm] MobileCreateSocialMediaPostRequest? request,
-        CancellationToken cancellationToken)
-        => await CreateMediaPostCore(request, publishImmediately: true, cancellationToken);
+    public async Task<IActionResult> CreateMediaPost(CancellationToken cancellationToken)
+    {
+        var transport = await MultipartUploadTransport.ReadAsync(Request, cancellationToken);
+        if (!transport.IsValid || transport.Form is null)
+            return Error(StatusCodes.Status400BadRequest, "mobile_media_transport_invalid",
+                transport.ErrorMessage ?? "Media must be uploaded as multipart form data.");
+
+        return await CreateMediaPostCore(
+            ReadCreateMediaPostRequest(transport.Form),
+            publishImmediately: true,
+            cancellationToken);
+    }
 
     /// <summary>
     /// Accepts a durable, non-public media draft while the member is still
@@ -205,27 +214,38 @@ public sealed partial class MobileSocialController : MobileApiControllerBase
     /// path used by direct publishing below.
     /// </summary>
     [HttpPost("posts/media/stage")]
-    [Consumes("multipart/form-data")]
     [RequestSizeLimit(SocialMediaUploadLimits.MaximumMultipartRequestBytes)]
     [RequestFormLimits(
         MultipartBodyLengthLimit = SocialMediaUploadLimits.MaximumMultipartRequestBytes,
         ValueLengthLimit = SocialMediaUploadLimits.MaximumFormValueLength)]
-    public async Task<IActionResult> StageMediaPost(
-        [FromForm] MobileCreateSocialMediaPostRequest? request,
-        CancellationToken cancellationToken)
-        => await CreateMediaPostCore(request, publishImmediately: false, cancellationToken);
+    public async Task<IActionResult> StageMediaPost(CancellationToken cancellationToken)
+    {
+        var transport = await MultipartUploadTransport.ReadAsync(Request, cancellationToken);
+        if (!transport.IsValid || transport.Form is null)
+            return Error(StatusCodes.Status400BadRequest, "mobile_media_transport_invalid",
+                transport.ErrorMessage ?? "Media must be uploaded as multipart form data.");
+
+        return await CreateMediaPostCore(
+            ReadCreateMediaPostRequest(transport.Form),
+            publishImmediately: false,
+            cancellationToken);
+    }
 
     [HttpPost("posts/{postId:guid}/publish")]
-    [Consumes("multipart/form-data")]
     [RequestSizeLimit(SocialMediaUploadLimits.MaximumPreviewImageBytes + SocialMediaUploadLimits.MultipartEnvelopeBytes)]
     [RequestFormLimits(
         MultipartBodyLengthLimit = SocialMediaUploadLimits.MaximumPreviewImageBytes + SocialMediaUploadLimits.MultipartEnvelopeBytes,
         ValueLengthLimit = SocialMediaUploadLimits.MaximumFormValueLength)]
     public async Task<IActionResult> PublishStagedMediaPost(
         Guid postId,
-        [FromForm] MobilePublishStagedSocialMediaPostRequest? request,
         CancellationToken cancellationToken)
     {
+        var transport = await MultipartUploadTransport.ReadAsync(Request, cancellationToken);
+        if (!transport.IsValid || transport.Form is null)
+            return Error(StatusCodes.Status400BadRequest, "mobile_media_transport_invalid",
+                transport.ErrorMessage ?? "Media must be uploaded as multipart form data.");
+
+        var request = ReadPublishMediaPostRequest(transport.Form);
         var resolved = await ResolveSocialActorAsync(cancellationToken);
         if (resolved.Error is not null)
             return resolved.Error;
@@ -261,6 +281,73 @@ public sealed partial class MobileSocialController : MobileApiControllerBase
                 await ToPostDtoAsync(result.Value, cancellationToken))
             : SocialFailure(result.ErrorCode, result.ErrorMessage);
     }
+
+    private static MobileCreateSocialMediaPostRequest ReadCreateMediaPostRequest(IFormCollection form) => new()
+    {
+        ContentType = FormValue(form, "contentType"),
+        Body = FormValue(form, "body"),
+        AccessibilityText = FormValue(form, "accessibilityText"),
+        Audience = FormValue(form, "audience"),
+        Location = FormValue(form, "location"),
+        CommentsEnabled = FormBool(form, "commentsEnabled"),
+        Preview = FormFile(form, "preview"),
+        MusicProviderId = FormValue(form, "musicProviderId"),
+        MusicTrackId = FormValue(form, "musicTrackId"),
+        MusicTrimStartSeconds = FormDecimal(form, "musicTrimStartSeconds"),
+        MusicTrimEndSeconds = FormDecimal(form, "musicTrimEndSeconds"),
+        MusicVolume = FormDecimal(form, "musicVolume"),
+        OriginalAudioVolume = FormDecimal(form, "originalAudioVolume"),
+        Files = FormFiles(form, "files")
+    };
+
+    private static MobilePublishStagedSocialMediaPostRequest ReadPublishMediaPostRequest(IFormCollection form) => new()
+    {
+        Body = FormValue(form, "body"),
+        Audience = FormValue(form, "audience"),
+        Location = FormValue(form, "location"),
+        CommentsEnabled = FormBool(form, "commentsEnabled"),
+        Preview = FormFile(form, "preview"),
+        MusicProviderId = FormValue(form, "musicProviderId"),
+        MusicTrackId = FormValue(form, "musicTrackId"),
+        MusicTrimStartSeconds = FormDecimal(form, "musicTrimStartSeconds"),
+        MusicTrimEndSeconds = FormDecimal(form, "musicTrimEndSeconds"),
+        MusicVolume = FormDecimal(form, "musicVolume"),
+        OriginalAudioVolume = FormDecimal(form, "originalAudioVolume")
+    };
+
+    private static string? FormValue(IFormCollection form, string key)
+    {
+        var value = form[key].FirstOrDefault()?.Trim();
+        return string.IsNullOrEmpty(value) ? null : value;
+    }
+
+    private static bool? FormBool(IFormCollection form, string key)
+    {
+        var raw = FormValue(form, key);
+        if (bool.TryParse(raw, out var value))
+            return value;
+        return raw?.Trim().ToLowerInvariant() switch
+        {
+            "1" or "on" or "yes" => true,
+            "0" or "off" or "no" => false,
+            _ => null
+        };
+    }
+
+    private static decimal? FormDecimal(IFormCollection form, string key) =>
+        decimal.TryParse(FormValue(form, key), NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : null;
+
+    private static IFormFile? FormFile(IFormCollection form, string key) =>
+        form.Files.FirstOrDefault(file =>
+            string.Equals(file.Name, key, StringComparison.OrdinalIgnoreCase) &&
+            file.Length > 0);
+
+    private static List<IFormFile> FormFiles(IFormCollection form, string key) =>
+        form.Files
+            .Where(file => string.Equals(file.Name, key, StringComparison.OrdinalIgnoreCase) && file.Length > 0)
+            .ToList();
 
     private async Task<IActionResult> CreateMediaPostCore(
         MobileCreateSocialMediaPostRequest? request,

@@ -207,7 +207,15 @@ class SocialRepository(private val client: LegendApiClient) {
     suspend fun recordProfileVisit(role: String, author: SocialAuthor, sourcePostId: String? = null) = request { client.api.recordProfileVisit(role, SocialProfileVisitRequest(author.identity.userId, author.identity.participantType, sourcePostId)).legendBody() }
     suspend fun joinPromotedGroup(role: String, id: String) = request { client.api.joinPromotedGroup(role, id).legendBody() }
 }
-class NotificationRepository(private val client: LegendApiClient) { suspend fun activity(role: String) = request { client.api.messagingActivity(role).legendBody() }; suspend fun snapshot(role: String) = request { client.api.notifications(role).legendBody() }; suspend fun markRead(role: String, id: String) = request { client.api.markNotificationRead(role, id).legendBody() }; suspend fun clearBadges(role: String) = request { client.api.clearNotificationBadges(role).legendBody() } }
+class NotificationRepository(private val client: LegendApiClient) {
+    suspend fun activity(role: String) = request { client.api.messagingActivity(role).legendBody() }
+    suspend fun founderEngineeringActions(role: String) = request { client.api.founderEngineeringActions(role).legendBody() }
+    suspend fun decideFounderEngineering(role: String, workItemId: String, decision: String) =
+        request { client.api.decideFounderEngineering(role, workItemId, FounderEngineeringDecisionRequest(decision)).legendBody() }
+    suspend fun snapshot(role: String) = request { client.api.notifications(role).legendBody() }
+    suspend fun markRead(role: String, id: String) = request { client.api.markNotificationRead(role, id).legendBody() }
+    suspend fun clearBadges(role: String) = request { client.api.clearNotificationBadges(role).legendBody() }
+}
 class DiscoveryRepository(private val client: LegendApiClient) { suspend fun search(role: String, query: String? = null, offset: Int = 0, pageSize: Int = 24, sort: String? = null) = request { client.api.discovery(role, query, offset, pageSize, sort).legendBody() }; suspend fun profile(role: String, id: String) = request { client.api.discoveryProfile(role, id).legendBody() } }
 class JourneyRepository(private val client: LegendApiClient) {
     suspend fun dashboard(role: String) = request { client.api.journeyCircles(role).legendBody() }

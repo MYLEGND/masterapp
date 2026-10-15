@@ -25,6 +25,42 @@ namespace AgentPortal.Tests;
 public sealed class WebsiteDomainImportTests
 {
     [Fact]
+    public async Task CustomDomainServesOnlyItsPublishedOwner_RegardlessOfQueryBusinessId()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var config = new ConfigurationBuilder().Build();
+        var business = new CommerceBusiness { Key = "domain-owner" };
+        var other = new CommerceBusiness { Key = "other-domain-owner" };
+        var state = new WebsiteContentState { SiteKey = WebsiteEditorSiteKeys.Business,
+            OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(business.Id) };
+        var published = new WebsiteContentVersion { StateId = state.Id,
+            CompiledPagesJson = "{\"pages\":{\"/\":{\"html\":\"owner publication\"}}}" };
+        state.PublishedVersionId = published.Id;
+        var otherState = new WebsiteContentState { SiteKey = WebsiteEditorSiteKeys.Business,
+            OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(other.Id) };
+        var otherVersion = new WebsiteContentVersion { StateId = otherState.Id,
+            CompiledPagesJson = "{\"pages\":{\"/\":{\"html\":\"other publication\"}}}" };
+        otherState.PublishedVersionId = otherVersion.Id;
+        var binding = new WebsiteDomainBinding { CommerceBusinessId = business.Id, Hostname = "owner.example.com",
+            Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow };
+        db.AddRange(business, other, state, published, otherState, otherVersion, binding);
+        await db.SaveChangesAsync();
+        var environment = new Mock<IWebHostEnvironment>();
+        environment.SetupGet(x => x.EnvironmentName).Returns("Production");
+        var middleware = new BusinessWebsiteMiddleware(_ => throw new InvalidOperationException("Must not fall through."), environment.Object, config);
+        var context = new DefaultHttpContext();
+        context.Request.Host = new HostString(binding.Hostname);
+        context.Request.Path = "/";
+        context.Request.Method = "GET";
+        context.Request.QueryString = new QueryString("?businessId=" + other.Id);
+        context.Response.Body = new MemoryStream();
+        await middleware.InvokeAsync(context, db, new WebsiteDomainService(db, Mock.Of<IHttpClientFactory>(), config));
+        context.Response.Body.Position = 0;
+        Assert.Equal("owner publication", await new StreamReader(context.Response.Body).ReadToEndAsync());
+        Assert.Contains("no-store", context.Response.Headers.CacheControl.ToString());
+    }
+
+    [Fact]
     public async Task SitemapUsesOnlyVerifiedHostsPublishedPagesIncludingUnlinkedCustomRoutes()
     {
         using var db = ControllerTestHelpers.BuildDb();

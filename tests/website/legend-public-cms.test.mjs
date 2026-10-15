@@ -4,16 +4,30 @@ import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-cms.js', import.meta.url), 'utf8');
 const publicCss = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-web.css', import.meta.url), 'utf8');
+const foundationCss = readFileSync(new URL('../../Legend-Design/legend-web-foundation.css', import.meta.url), 'utf8');
 const businessBuildSource = readFileSync(new URL('../../Legend-Website/scripts/build.mjs', import.meta.url), 'utf8');
 const publicInquirySource = readFileSync(new URL('../../Legend-Design/legend-public-inquiry.js', import.meta.url), 'utf8');
 const publicInquiryFormSource = readFileSync(new URL('../../SHARED/WebsitePlatform/public-inquiry-form.mjs', import.meta.url), 'utf8');
 const publicInquiryFormCss = readFileSync(new URL('../../SHARED/WebsitePlatform/public-inquiry-form.css', import.meta.url), 'utf8');
 const protectContactSource = readFileSync(new URL('../../Protect-Website/Views/Contact/Index.cshtml', import.meta.url), 'utf8');
+const protectLayoutSource = readFileSync(new URL('../../Protect-Website/Views/Shared/_Layout.cshtml', import.meta.url), 'utf8');
 const parfaitContactSource = readFileSync(new URL('../../ParfaitApp/Views/Contact/Index.cshtml', import.meta.url), 'utf8');
+const parfaitLayoutSource = readFileSync(new URL('../../ParfaitApp/Views/Shared/_Layout.cshtml', import.meta.url), 'utf8');
 const metaSignalSource = readFileSync(new URL('../../SHARED/WebsitePlatform/meta-signal-intelligence.js', import.meta.url), 'utf8');
 const editorContractsSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs', import.meta.url), 'utf8');
 const businessRenderSource = readFileSync(new URL('../../Legend-Website/scripts/render-business.mjs', import.meta.url), 'utf8');
 const businessMiddlewareSource = readFileSync(new URL('../../Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs', import.meta.url), 'utf8');
+const legendWebConfigSource = readFileSync(new URL('../../Legend-Website/public/web.config', import.meta.url), 'utf8');
+const agentContractSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteStudioAgentContract.cs', import.meta.url), 'utf8');
+const websitePlatformControllerSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsitePlatformController.cs', import.meta.url), 'utf8');
+const websiteSystemTemplateAuthoritySource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteSystemTemplateAuthority.cs', import.meta.url), 'utf8');
+const websiteContentSanitizerSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteContentSanitizer.cs', import.meta.url), 'utf8');
+const websiteSiteSourceSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteSiteSource.cs', import.meta.url), 'utf8');
+const websiteCreativeWorkspaceSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteCreativeWorkspace.cs', import.meta.url), 'utf8');
+const websiteMediaServiceSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteMediaService.cs', import.meta.url), 'utf8');
+const websiteImportServiceSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteImportService.cs', import.meta.url), 'utf8');
+const uploadValidationSource = readFileSync(new URL('../../Infrastructure/Security/UploadValidation/UploadValidation.cs', import.meta.url), 'utf8');
+const legendSiteToolsBridgeSource = readFileSync(new URL('../../SHARED/wwwroot/js/legend-site-tools.js', import.meta.url), 'utf8');
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
@@ -109,16 +123,379 @@ function canonicalNodeById(document,id,path='/') {
 function canonicalNodeByType(document,type,path='/') {
   return canonicalNodes(document,path).find(node=>node.type===type) || null;
 }
-async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],ctaCatalog=[],signalCatalog=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,sourceValidationPayload=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+function sourceProjectionNode(node) {
+  const copy=structuredClone(node || {});
+  delete copy.signals;
+  delete copy.fieldSignals;
+  delete copy.systemKey;
+  delete copy.systemBinding;
+  if(copy.actionKey){ delete copy.href; delete copy.target; }
+  if(node?.systemKey || node?.systemBinding || node?.type==='form' || (node?.signals || []).length) delete copy.dataBinding;
+  copy.children=(node?.children || []).map(sourceProjectionNode);
+  return copy;
+}
+
+function sourceProjectionDocument(doc) {
+  return {
+    schema:'legend-site-source/v1',
+    version:3,
+    faviconImageDataUrl:doc.faviconImageDataUrl ?? null,
+    store:structuredClone(doc.store || {}),
+    breakpoints:structuredClone(doc.breakpoints || []),
+    theme:structuredClone(doc.theme || {}),
+    shell:{
+      header:(doc.shell?.header || []).map(sourceProjectionNode),
+      footer:(doc.shell?.footer || []).map(sourceProjectionNode)
+    },
+    pages:Object.entries(doc.pages || {}).map(([path,page])=>({
+      path,title:page.title ?? null,description:page.description ?? null,
+      navigation:structuredClone(page.navigation || {}),
+      dynamicBinding:structuredClone(page.dynamicBinding || null),
+      composition:(page.composition || []).map(sourceProjectionNode)
+    })),
+    reusableComponents:Object.fromEntries(Object.entries(doc.reusableComponents || {}).map(([id,value])=>[
+      id,{...structuredClone(value),composition:(value.composition || []).map(sourceProjectionNode)}
+    ])),
+    collections:structuredClone(doc.collections || {})
+  };
+}
+
+function fixtureFindNodeLocation(document,id) {
+  const visit=(nodes,scope,pagePath=null,reusableComponentId=null,parentId=null)=>{
+    for(let index=0;index<(nodes || []).length;index++){
+      const node=nodes[index];
+      if(node.id===id) return {node,nodes,index,scope,pagePath,reusableComponentId,parentId};
+      const child=visit(node.children,scope,pagePath,reusableComponentId,node.id);
+      if(child) return child;
+    }
+    return null;
+  };
+  let found=visit(document.shell?.header || [],'shell.header'); if(found) return found;
+  found=visit(document.shell?.footer || [],'shell.footer'); if(found) return found;
+  for(const [pagePath,page] of Object.entries(document.pages || {})){
+    found=visit(page.composition || [],'page',pagePath); if(found) return found;
+  }
+  for(const [reusableComponentId,component] of Object.entries(document.reusableComponents || {})){
+    found=visit(component.composition || [],'component',null,reusableComponentId); if(found) return found;
+  }
+  return null;
+}
+
+function fixtureMutationChildren(document,operation) {
+  if(operation.parentId){
+    const parent=fixtureFindNodeLocation(document,operation.parentId);
+    if(!parent) throw new Error('fixture parent not found: '+operation.parentId);
+    parent.node.children ||= [];
+    return parent.node.children;
+  }
+  if(operation.scope==='shell.header') return document.shell.header;
+  if(operation.scope==='shell.footer') return document.shell.footer;
+  if(operation.scope==='component') return document.reusableComponents[operation.reusableComponentId].composition;
+  const path=operation.pagePath || '/';
+  return document.pages[path].composition;
+}
+
+function fixtureApplyMutations(document,operations,ctaCatalog=[]) {
+  for(const operation of operations || []){
+    switch(operation.type){
+      case 'setTheme': document.theme=structuredClone(operation.theme || {}); break;
+      case 'setBreakpoints': document.breakpoints=structuredClone(operation.breakpoints || canonicalBreakpoints()); break;
+      case 'setFavicon': document.faviconImageDataUrl=operation.faviconImageDataUrl ?? null; break;
+      case 'setStorePresentation':
+        document.store={...(document.store || {}),...structuredClone(operation.store || {})}; break;
+      case 'createPage':
+        document.pages[operation.pagePath]=structuredClone(operation.page || {navigation:{showInNavigation:true,order:0,isDeleted:false},composition:[]});
+        document.pages[operation.pagePath].composition ||= [];
+        break;
+      case 'updatePage': {
+        const page=document.pages[operation.pagePath];
+        if(operation.page){
+          page.title=operation.page.title ?? null;
+          page.description=operation.page.description ?? null;
+          page.navigation=structuredClone(operation.page.navigation || {});
+          page.dynamicBinding=structuredClone(operation.page.dynamicBinding || null);
+        }else{
+          if(Object.hasOwn(operation,'title')) page.title=operation.title;
+          if(Object.hasOwn(operation,'description')) page.description=operation.description;
+          if(operation.navigation) page.navigation=structuredClone(operation.navigation);
+        }
+        break;
+      }
+      case 'movePageRoute':
+        document.pages[operation.targetPath]=document.pages[operation.pagePath];
+        delete document.pages[operation.pagePath];
+        break;
+      case 'removePage':
+        if(document.pages[operation.pagePath]) {
+          document.pages[operation.pagePath].navigation ||= {};
+          document.pages[operation.pagePath].navigation.isDeleted=true;
+        }
+        break;
+      case 'insertNode': {
+        const children=fixtureMutationChildren(document,operation);
+        const node=structuredClone(operation.node);
+        node.signals ||= [];
+        node.fieldSignals ||= {};
+        node.children ||= [];
+        children.splice(Math.max(0,Math.min(operation.index ?? children.length,children.length)),0,node);
+        break;
+      }
+      case 'replaceNode': {
+        const found=fixtureFindNodeLocation(document,operation.nodeId);
+        if(!found) throw new Error('fixture node not found: '+operation.nodeId);
+        const protectedFields={
+          systemKey:found.node.systemKey,systemBinding:found.node.systemBinding,
+          signals:structuredClone(found.node.signals || []),
+          fieldSignals:structuredClone(found.node.fieldSignals || {})
+        };
+        const replacement={...structuredClone(found.node),...structuredClone(operation.node),id:found.node.id};
+        if(!Object.hasOwn(operation.node,'mediaUrl')) delete replacement.mediaUrl;
+        if(protectedFields.systemKey) replacement.systemKey=protectedFields.systemKey; else delete replacement.systemKey;
+        if(protectedFields.systemBinding) replacement.systemBinding=protectedFields.systemBinding; else delete replacement.systemBinding;
+        replacement.signals=protectedFields.signals;
+        replacement.fieldSignals=protectedFields.fieldSignals;
+        found.nodes[found.index]=replacement;
+        break;
+      }
+      case 'removeNode': {
+        const found=fixtureFindNodeLocation(document,operation.nodeId);
+        if(found) found.nodes.splice(found.index,1);
+        break;
+      }
+      case 'moveNode': {
+        const found=fixtureFindNodeLocation(document,operation.nodeId);
+        if(!found) break;
+        const [node]=found.nodes.splice(found.index,1);
+        const children=fixtureMutationChildren(document,operation);
+        children.splice(Math.max(0,Math.min(operation.index ?? children.length,children.length)),0,node);
+        break;
+      }
+      case 'setApprovedCapability': {
+        const found=fixtureFindNodeLocation(document,operation.nodeId);
+        if(!found) break;
+        if(operation.capabilityKey==='experience.lead_capture'){
+          found.node.experience ||= {};
+          found.node.experience.submitCapability='lead_capture';
+          break;
+        }
+        const key=String(operation.capabilityKey || '').replace(/^action\./,'');
+        const action=ctaCatalog.find(value=>value.key===key);
+        if(action){found.node.actionKey=action.key;found.node.href=action.href;found.node.target=action.openInNewTab?'_blank':'_self';}
+        break;
+      }
+      case 'insertCapability': {
+        const children=fixtureMutationChildren(document,operation);
+        let node;
+        if(operation.capabilityKey==='contact.inquiry.submit'){
+          node={...(structuredClone(operation.node || {})),id:operation.instanceKey || 'form.fixture',type:'form',tag:'form',systemKey:'canonical_inquiry',
+            text:operation.content?.submit || operation.node?.text || 'Send inquiry',
+            title:operation.content?.title || operation.node?.title || 'Send an inquiry',
+            signals:[],fieldSignals:{},children:structuredClone(operation.node?.children || [])};
+        }else if(String(operation.capabilityKey || '').startsWith('action.')){
+          const key=operation.capabilityKey.slice('action.'.length);
+          const action=ctaCatalog.find(value=>value.key===key);
+          node={id:operation.instanceKey || 'action.fixture',type:'cta',tag:'a',text:operation.content?.label || action?.defaultText || 'Continue',
+            actionKey:key,href:action?.href || '#',target:action?.openInNewTab?'_blank':'_self',signals:[],children:[]};
+        }else{
+          const systemKey=String(operation.capabilityKey || '').replace(/^runtime\./,'');
+          const found=[...Object.values(document.pages || {})].flatMap(page=>canonicalNodes({pages:{'/':page}},'/')).find(value=>value.systemKey===systemKey);
+          if(found){ fixtureApplyMutations(document,[{type:'moveNode',nodeId:found.id,...operation}],ctaCatalog); }
+          break;
+        }
+        children.splice(Math.max(0,Math.min(operation.index ?? children.length,children.length)),0,node);
+        break;
+      }
+      case 'upsertReusable':
+        document.reusableComponents[operation.reusableComponent.id]=structuredClone(operation.reusableComponent);
+        break;
+      case 'removeReusable':
+        delete document.reusableComponents[operation.reusableComponentId];
+        break;
+      case 'insertRecipe': {
+        const children=fixtureMutationChildren(document,operation);
+        children.splice(Math.max(0,Math.min(operation.index ?? children.length,children.length)),0,
+          canonicalNode(operation.instanceKey || 'recipe.fixture','section','section',{className:'legend-recipe-section',children:[]}));
+        break;
+      }
+    }
+  }
+}
+
+function fixtureMutationResponse(before,after,serverRevision) {
+  const removedPages=Object.keys(before.pages || {}).filter(path=>!Object.hasOwn(after.pages || {},path));
+  const removedComponents=Object.keys(before.reusableComponents || {}).filter(id=>!Object.hasOwn(after.reusableComponents || {},id));
+  const changedScopes=[...new Set([
+    ...Object.keys(after.pages || {}),...removedPages,'@theme','@breakpoints','@favicon','@shell/header','@shell/footer','@store-presentation',
+    ...Object.keys(after.reusableComponents || {}).map(id=>'@component/'+id),
+    ...removedComponents.map(id=>'@component/'+id)
+  ])];
+  return {
+    source:'canonical_v3_mutation',revision:'r'+serverRevision,changedScopes,fingerprints:{},
+    changes:{
+      pages:structuredClone(after.pages || {}),removedPages,
+      theme:structuredClone(after.theme || {}),breakpoints:structuredClone(after.breakpoints || []),
+      faviconChanged:true,faviconImageDataUrl:after.faviconImageDataUrl ?? null,
+      shellHeader:structuredClone(after.shell?.header || []),shellFooter:structuredClone(after.shell?.footer || []),
+      reusableComponents:structuredClone(after.reusableComponents || {}),removedComponents,
+      store:structuredClone(after.store || {})
+    },drafts:[]
+  };
+}
+
+async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,dataCatalog=null,dataCollections=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,mutationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,modelContext=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:origin+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[]; const animations=[];
   Object.defineProperty(w,'innerWidth',{value:viewportWidth,writable:true,configurable:true});
   w.matchMedia=()=>({matches:false});
   w.HTMLElement.prototype.animate=function(keyframes,options){ const record={element:this,keyframes,options,cancelled:false}; animations.push(record); return {cancel(){record.cancelled=true;}}; };
-  w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase,businessId: business?.id || '',pages};
+  w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase,businessId: business?.id || '',pages,agentSlug,pagePrefix,editorAuthorizationUrl};
+  if(modelContext) Object.defineProperty(w.document,'modelContext',{value:modelContext,configurable:true});
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
-  w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=()=>{}; w.confirm=()=>true;
-  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=typeof init.body==='string'?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/media') && init.method==='POST'){ const file=init.body?.get?.('file'); const id='33333333-3333-3333-3333-333333333333'; return {ok:!denied,status:denied?401:200,json:async()=>mediaUploadPayload || {id,name:file?.name || 'upload',url:'https://site.example/api/website-content/media/'+id,contentType:file?.type || 'image/png',sizeBytes:file?.size || 1024,createdUtc:'2026-09-28T00:00:00Z'}}; } if(parsed.pathname.endsWith('/manage/source/validate')) return {ok:!denied,status:denied?401:200,json:async()=>sourceValidationPayload || {source:'legend_site_source_validation',baseRevision:'r1',persisted:false,published:false,proposedDocument:doc,sourceMap:{}}}; if(parsed.pathname.endsWith('/manage/signals/test')) return {ok:!denied,status:denied?401:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}}; if(parsed.pathname.endsWith('/manage/signals/health')) return {ok:!denied,status:denied?401:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}}; if(parsed.pathname.endsWith('/manage/collaboration') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r1',role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}}; if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status')) return {ok:!denied,status:denied?401:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,store,revision:'r'+calls.length,document:body?.document || doc,legacyMigration:legacyMigration || undefined,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,capabilities:capabilities || undefined})}; };
+  const alerts=[]; let mutationCall=0; let serverDoc=structuredClone(doc); let serverRevision=1;
+  w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=value=>alerts.push(String(value)); w.confirm=()=>true;
+  w.fetch=async(url,init={})=> {
+    calls.push({url:String(url),...init});
+    const parsed=new URL(String(url));
+    const body=typeof init.body==='string'?JSON.parse(init.body):null;
+    const method=init.method || 'GET';
+    const reject=payload=>({ok:false,status:denied?401:400,json:async()=>payload});
+    if(denied) return {ok:false,status:401,json:async()=>({error:'unauthorized'})};
+
+    if(parsed.pathname.endsWith('/manage/agent/node') && method==='GET'){
+      const id=parsed.searchParams.get('id');
+      const found=fixtureFindNodeLocation(serverDoc,id);
+      if(!found) return {ok:false,status:404,json:async()=>({error:'website_node_not_found'})};
+      return {ok:true,status:200,json:async()=>({schema:'legend-node-source/v1',revision:'r'+serverRevision,fingerprint:'fp-'+serverRevision+'-'+id,location:{scope:found.scope,pagePath:found.pagePath,reusableComponentId:found.reusableComponentId,parentId:found.parentId,index:found.index},node:sourceProjectionNode(found.node)})};
+    }
+    if(parsed.pathname.endsWith('/manage/agent/summary') && method==='GET')
+      return {ok:true,status:200,json:async()=>({schema:'legend-creative-workspace/v1',siteKey,revision:'r'+serverRevision,pages:Object.keys(serverDoc.pages || {}).map(path=>({path})),capabilities:{capabilities:[]}})};
+    if(parsed.pathname.endsWith('/manage/agent/recipes') && method==='GET')
+      return {ok:true,status:200,json:async()=>({schema:'legend-website-recipes/v1',recipes:[],artDirections:['roadster-precision'],capabilities:{capabilities:[]}})};
+    if(parsed.pathname.endsWith('/manage/agent/contract') && method==='GET')
+      return {ok:true,status:200,json:async()=>agentContract || {schema:'legend-website-studio-agent/v1',promptTemplate:'compact'}};
+    if(parsed.pathname.endsWith('/manage/agent/design-quality') && method==='GET')
+      return {ok:true,status:200,json:async()=>({
+        schema:'legend-design-quality/v1',
+        revision:qualityPayload?.revision ?? ('r'+serverRevision),
+        structural:{checks:qualityPayload?.checks || []},
+        design:{checks:qualityPayload?.designChecks || [],conversionPaths:qualityPayload?.conversionPaths || []}
+      })};
+    if(parsed.pathname.endsWith('/manage/agent/conversion-readiness') && method==='GET')
+      return {ok:true,status:200,json:async()=>({
+        schema:'legend-conversion-readiness/v2',
+        revision:'r'+serverRevision,
+        publishedRevision:null,
+        publishedVersionId:null,
+        currentDraftIsPublished:false,
+        draft:{conversionPaths:qualityPayload?.conversionPaths || [],checks:[]},
+        destinations:{
+          meta:{ownerType:'none',browserPixelConfigured:false,serverCapiConfigured:false,testEventCodeConfigured:false},
+          openai:{browserPixelConfigured:false,accountApproved:false,serverConversionsConfigured:false}
+        },
+        measurementEvidence:null,
+        measurementEvidenceScope:'advertising_owner_30d_all_published_sources',
+        measurementEvidenceError:null,
+        published:{
+          windowDays:30,evidenceRows:0,returnedRows:0,resultLimit:80,analyticsObserved:0,
+          metaProviderAccepted:0,metaHttpAccepted:0,openAiProviderAccepted:0,openAiHttpAccepted:0,
+          acceptanceSemantics:{meta:'provider_events_received',openai:'http_2xx_transport_only'},
+          acceptance:{meta:{providerAccepted:0,httpAccepted:0},openai:{providerAccepted:0,httpAccepted:0}},
+          inFlightRows:0,problemRows:0,entries:[]
+        }
+      })};
+    if(parsed.pathname.endsWith('/manage/agent/conversion-trace') && method==='GET')
+      return {ok:true,status:200,json:async()=>({
+        schema:'legend-conversion-trace/v1',
+        source:'canonical_analytics_event_lineage',
+        revision:'r'+serverRevision,
+        publishedVersionId:null,
+        currentDraftIsPublished:false,
+        windowDays:30,
+        matchedEvents:0,
+        returnedEvents:0,
+        resultLimit:Number(parsed.searchParams.get('take') || 20),
+        privacy:{piiIncluded:false,rawClickReferencesIncluded:false,providerCredentialsIncluded:false},
+        events:[]
+      })};
+    if(parsed.pathname.endsWith('/manage/data-catalog') && method==='GET')
+      return {ok:true,status:200,json:async()=>({
+        source:'website_business_data_catalog',
+        dataCatalog:dataCatalog || [
+          {key:'business_facts',label:'Business details',isList:false,fields:['contactEmail','phone','hours','locations','services']},
+          {key:'commerce_products',label:'Products',isList:true,fields:['id','name','slug','description','priceLabel','primaryImageUrl','primaryImageAlt']}
+        ],
+        collections:dataCollections || []
+      })};
+    if(parsed.pathname.endsWith('/manage/signal-catalog') && method==='GET')
+      return {ok:true,status:200,json:async()=>signalCatalog || {events:[],matchingFields:[],runtimeEnabled:true}};
+    if(parsed.pathname.endsWith('/manage/quality'))
+      return {ok:true,status:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:serverRevision,errorCount:0,warningCount:0,checks:[]}};
+    if(parsed.pathname.endsWith('/manage/media') && method==='GET')
+      return {ok:true,status:200,json:async()=>mediaPayload || {assets:[]}};
+    if(parsed.pathname.endsWith('/manage/media/import') && method==='POST'){
+      const id='44444444-4444-4444-4444-444444444444';
+      return {ok:true,status:200,json:async()=>({
+        id,name:'imported-image',url:'https://site.example/api/website-content/media/'+id,
+        contentType:'image/webp',sizeBytes:2048,createdUtc:'2026-10-05T00:00:00Z'
+      })};
+    }
+    if(parsed.pathname.endsWith('/manage/media') && method==='POST'){
+      const file=init.body?.get?.('file'); const id='33333333-3333-3333-3333-333333333333';
+      return {ok:true,status:200,json:async()=>mediaUploadPayload || {id,name:file?.name || 'upload',url:'https://site.example/api/website-content/media/'+id,contentType:file?.type || 'image/png',sizeBytes:file?.size || 1024,createdUtc:'2026-09-28T00:00:00Z'}};
+    }
+    if(parsed.pathname.endsWith('/manage/mutations') && method==='POST'){
+      const step=Array.isArray(mutationSequence) && mutationSequence.length ? mutationSequence[Math.min(mutationCall++,mutationSequence.length-1)] : null;
+      if(step?.status && (step.status<200 || step.status>=300))
+        return {ok:false,status:step.status,json:async()=>step.payload || {error:'scope_revision_conflict',revision:'r'+serverRevision}};
+      const before=structuredClone(serverDoc);
+      fixtureApplyMutations(serverDoc,body?.operations || [],ctaCatalog);
+      serverRevision++;
+      return {ok:true,status:200,json:async()=>step?.payload || fixtureMutationResponse(before,serverDoc,serverRevision)};
+    }
+    if(parsed.pathname.endsWith('/manage/design-plan') && method==='POST'){
+      serverRevision++;
+      return {ok:true,status:200,json:async()=>fixtureMutationResponse(serverDoc,serverDoc,serverRevision)};
+    }
+    if(parsed.pathname.endsWith('/manage/source') && method==='GET'){
+      const projected=sourceProjectionDocument(serverDoc);
+      return {ok:true,status:200,json:async()=>({source:'legend_site_source',revision:'r'+serverRevision,requiresMaterialization:false,schema:'legend-site-source/v1',text:JSON.stringify(projected,null,2),sourceMap:{}})};
+    }
+    if(parsed.pathname.endsWith('/manage/signals') && method==='POST'){
+      const target=canonicalNodeById(serverDoc,body?.elementId,body?.pagePath || '/');
+      if(!target) return {ok:false,status:404,json:async()=>({error:'website_signal_target_not_found'})};
+      const signals=structuredClone(body?.signals || []); const fieldKey=body?.fieldKey ? String(body.fieldKey).toLowerCase() : null;
+      if(fieldKey){ target.fieldSignals ||= {}; if(signals.length) target.fieldSignals[fieldKey]=signals; else delete target.fieldSignals[fieldKey]; }
+      else target.signals=signals;
+      serverRevision++;
+      return {ok:true,status:200,json:async()=>({
+        source:'website_signal_configuration',
+        revision:'r'+serverRevision,
+        pagePath:body.pagePath || '/',
+        elementId:body.elementId,
+        fieldKey,
+        signals,
+        nodeSignals:structuredClone(target.signals || []),
+        fieldSignals:structuredClone(target.fieldSignals || {})
+      })};
+    }
+    if(parsed.pathname.endsWith('/manage/signals/test'))
+      return {ok:true,status:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}};
+    if(parsed.pathname.endsWith('/manage/signals/health'))
+      return {ok:true,status:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}};
+    if(parsed.pathname.endsWith('/manage/collaboration') && method==='GET')
+      return {ok:true,status:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r'+serverRevision,role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}};
+    if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status'))
+      return {ok:true,status:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}};
+    if(parsed.pathname.endsWith('/manage/publish') && method==='POST'){
+      serverRevision++;
+      return {ok:true,status:200,json:async()=>({revision:'r'+serverRevision,publishedRevision:serverRevision,document:structuredClone(serverDoc)})};
+    }
+    if(parsed.pathname.endsWith('/manage') && method==='POST' && body?.document){
+      serverDoc=structuredClone(body.document); serverRevision++;
+      return {ok:true,status:200,json:async()=>({siteKey,business,store,revision:'r'+serverRevision,document:structuredClone(serverDoc),legacyMigration:legacyMigration || undefined,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,agentContract:agentContract || undefined,capabilities:capabilities || undefined,drafts:[]})};
+    }
+    return {ok:true,status:200,json:async()=>({siteKey,business,store,revision:'r'+serverRevision,document:structuredClone(serverDoc),legacyMigration:legacyMigration || undefined,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,agentContract:agentContract || undefined,capabilities:capabilities || undefined,drafts:[]})};
+  };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
@@ -126,9 +503,82 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
   const input=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('input',{bubbles:true}));};
   const change=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}));};
   const editSelected=(value)=> {const el=w.document.querySelector('.legend-cms-selected');assert.ok(el);const edit=w.document.querySelector('#legend-cms-edit-text');if(edit&&!edit.hidden)edit.click();el.textContent=value;el.dispatchEvent(new w.Event('beforeinput',{bubbles:true,cancelable:true}));el.dispatchEvent(new w.Event('input',{bubbles:true}));};
-  const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));return JSON.parse(calls.at(-1).body).document;};
-  return {w,calls,animations,click,input,change,editSelected,save,close:()=>w.close()};
+  const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));return structuredClone(serverDoc);};
+  return {w,calls,animations,alerts,click,input,change,editSelected,save,serverDocument:()=>structuredClone(serverDoc),close:()=>w.close()};
 }
+
+test('canonical startup fills navigation and image accessibility defaults and prevents routine width overflow',()=>{
+  assert.match(websiteContentSanitizerSource,/SanitizeMediaAlt/);
+  assert.match(websiteContentSanitizerSource,/Path\.GetFileNameWithoutExtension/);
+  assert.match(websiteContentSanitizerSource,/SanitizeNavigation\(path, page\.Value\.Navigation, page\.Value\.Title\)/);
+  assert.doesNotMatch(source,/templateRepairPending/);
+  assert.match(source,/main \*\{min-width:0;box-sizing:border-box\}/);
+  assert.match(publicCss,/h1,h2,h3,p\{overflow-wrap:break-word;word-break:normal\}/);
+  assert.match(publicCss,/h1,h2,h3\{[^}]*min-inline-size:min\(8ch,100%\)/);
+  assert.match(source,/\[data-cms-editable="true"\]\{min-width:0;max-width:100%;box-sizing:border-box;overflow-wrap:anywhere\}/);
+});
+
+test('canonical startup repairs dead links while preserving desktop brand geometry and clearing unsafe mobile shell geometry',()=>{
+  assert.match(websiteContentSanitizerSource,/CanonicalizePassiveLink/);
+  assert.match(websiteContentSanitizerSource,/node\.Type = "text"/);
+  assert.match(websiteContentSanitizerSource,/node\.Tag = "span"/);
+  assert.match(websiteSystemTemplateAuthoritySource,/CanonicalizeMobileHeaderChrome/);
+  assert.match(websiteSystemTemplateAuthoritySource,/mobile\.WidthPercent = null/);
+  assert.match(websiteSystemTemplateAuthoritySource,/mobile\.OffsetXPercent = null/);
+  assert.doesNotMatch(source,/canonicalizeMobileHeaderChrome/);
+});
+
+test('existing v3 startup artifacts are deleted only when semantically empty',()=>{
+  assert.match(websiteContentSanitizerSource,/IsRetiredTemplateDecoration/);
+  assert.match(websiteContentSanitizerSource,/hero-mark/);
+  assert.match(websiteContentSanitizerSource,/halo/);
+  assert.match(websiteContentSanitizerSource,/string\.IsNullOrWhiteSpace\(node\.Text\)/);
+  assert.doesNotMatch(source,/normalizePageCompositionNodes/);
+});
+
+test('materialization never invents publishable links from unmanaged runtime buttons or placeholder anchors',()=>{
+  assert.match(source,/const unmanagedInteractiveControl\s*=\s*[\s\S]*tag === 'button' && !actionKey[\s\S]*tag === 'a' && !actionKey && !dynamicHref && \(!rawHref \|\| rawHref === '#'\)/);
+  assert.match(source,/const presentationOnlyControl = runtimePresentationControl \|\| unmanagedInteractiveControl/);
+  assert.match(source,/const projectedTag = presentationOnlyControl \? 'span' : tag/);
+  assert.match(source,/actionKey:presentationOnlyControl \? null : \(actionKey \|\| null\)/);
+  assert.match(source,/href:presentationOnlyControl \? null : \(rawHref \|\| null\)/);
+});
+
+test('Protect template-backed runtime controls remain presentation-only and cannot become free publishable links',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/quote/life']={
+    title:'Life Insurance',
+    description:'Protected runtime form',
+    navigation:{label:'Life Insurance',showInNavigation:true,order:10,isDeleted:false},
+    dynamicBinding:null,
+    systemTemplateKey:'protect_template:life_wizard',
+    composition:[
+      canonicalNode('runtime.form.quote_life','container','div',{
+        systemKey:'protect_runtime_form:quote_life',
+        children:[
+          canonicalNode('runtime.form.quote_life.next','text','span',{text:'Next'}),
+          canonicalNode('runtime.form.quote_life.review','text','span',{text:'Review'})
+        ]
+      })
+    ]
+  };
+  const html='<!doctype html><html><head></head><body data-page-key="quote-life"><main><section class="quote-page"><form id="lifeWizardForm" data-form-key="quote_life" data-ajax-submit="true"><fieldset><div><button type="button">Next</button><a href="/Quote/Life/results">Review</a></div></fieldset></form></section></main></body></html>';
+  const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Life',html});
+  try{
+    const saved=await f.save();
+    const runtime=canonicalNodes(saved,'/quote/life').find(node=>node.systemKey==='protect_runtime_form:quote_life');
+    assert.ok(runtime);
+    const descendants=[];
+    visitCanonicalNodes(runtime.children,node=>descendants.push(node));
+    for(const control of descendants.filter(node=>node.text==='Next'||node.text==='Review')){
+      assert.equal(control.type,'text');
+      assert.equal(control.tag,'span');
+      assert.equal(control.actionKey ?? null,null);
+      assert.equal(control.href ?? null,null);
+      assert.deepEqual(control.signals || [],[]);
+    }
+  }finally{f.close();}
+});
 
 test('v3 canonical composition renders natively and canvas/source share the same node',async()=>{
   const doc={version:3,store:{enabled:false,navigationLabel:'Store',cartIcon:'cart',cartIconSizePx:28},pages:{'/':{
@@ -145,13 +595,21 @@ test('v3 canonical composition renders natively and canvas/source share the same
     assert.equal(heading.dataset.cmsCompositionId,'home.hero.title');
     assert.equal(f.w.document.querySelector('main a').dataset.websiteActionKey,'legend_contact');
     f.click('main h1');
+    assert.equal(f.w.document.querySelector('[data-cms-view="content"]').hidden,false);
+    assert.equal(f.w.document.querySelector('[data-open="content"]').getAttribute('aria-pressed'),'true');
+    f.editSelected('Canonical canvas edit');
     f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    await new Promise(resolve=>setTimeout(resolve,0));
     assert.equal(f.w.document.querySelector('#legend-cms-source-scope').value,'selection');
+    assert.equal(f.w.document.querySelector('#legend-cms-site-source').readOnly,false);
     let parsed=JSON.parse(f.w.document.querySelector('#legend-cms-site-source').value);
     assert.equal(parsed.id,'home.hero.title');
+    assert.equal(parsed.text,'Canonical canvas edit');
     f.input('#legend-cms-width','55');
     parsed=JSON.parse(f.w.document.querySelector('#legend-cms-site-source').value);
     assert.equal(parsed.style.widthPercent,55);
+    await new Promise(resolve=>setTimeout(resolve,0));
     const saved=await f.save();
     assert.equal(saved.pages['/'].composition[0].children[0].style.widthPercent,55);
     assert.equal(Object.hasOwn(saved.pages['/'],'elements'),false);
@@ -160,37 +618,801 @@ test('v3 canonical composition renders natively and canvas/source share the same
   }finally{f.close();}
 });
 
-test('v3 selected source applies only validated server projection then uses normal save authority',async()=>{
+test('Master Source stays color guided while Selected Source is a normal editable code surface',async()=>{
+  const doc=canonicalDocument();
+  const heading=canonicalNodeById(doc,'home.h1.node.1');
+  heading.style={fontFamily:'Georgia',widthPercent:64,color:'#123456'};
+  const f=await domFixture({doc});
+  try{
+    f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const scope=f.w.document.querySelector('#legend-cms-source-scope');
+    const sourceInput=f.w.document.querySelector('#legend-cms-site-source');
+    const apply=f.w.document.querySelector('#legend-cms-source-apply');
+    assert.equal(scope.value,'site');
+    assert.equal(sourceInput.readOnly,true);
+    assert.equal(apply.hidden,true);
+    assert.match(f.w.document.querySelector('#legend-cms-source-status').textContent,/read only/i);
+    f.click('#legend-cms-source-apply');
+    assert.equal(websitePlatformControllerSource.includes('manage/source/validate'),false);
+    assert.equal(f.calls.some(call=>call.url.endsWith('/manage/source/validate')),false);
+
+    f.click('main h1');
+    f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(scope.value,'selection');
+    assert.equal(sourceInput.readOnly,false);
+    assert.equal(apply.hidden,false);
+    const tones=[...f.w.document.querySelectorAll('#legend-cms-source-highlight [data-tone]')].map(node=>node.dataset.tone);
+    for(const tone of ['content','style','color','size']) assert.ok(tones.includes(tone),tone);
+    for(const tone of ['content','style','color','size','layout','media','behavior','structure','protected'])
+      assert.ok(f.w.document.querySelector(`.legend-cms-source-key [data-tone="${tone}"]`));
+    assert.match(source,/\.legend-cms-source-content\{color:#78e2a7\}/);
+    assert.match(source,/\.legend-cms-source-style\{color:#7fb5ff\}/);
+    assert.match(source,/\.legend-cms-source-color\{color:#ff8fa8\}/);
+    assert.match(source,/\.legend-cms-source-size\{color:#ffb86b\}/);
+    assert.match(source,/\.legend-cms-source-structure\{color:#9bd67d\}/);
+  }finally{f.close();}
+});
+
+test('Selected Source supports modern typing, indentation, wrapping, and visible caret text',async()=>{
+  const f=await domFixture();
+  try{
+    f.click('main h1');
+    f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const input=f.w.document.querySelector('#legend-cms-site-source');
+    assert.equal(input.readOnly,false);
+    assert.equal(input.getAttribute('spellcheck'),'false');
+    assert.equal(input.getAttribute('autocapitalize'),'off');
+    assert.equal(input.getAttribute('autocomplete'),'off');
+    assert.equal(input.getAttribute('autocorrect'),'off');
+    assert.equal(input.getAttribute('wrap'),'soft');
+
+    input.value='{"style": {\n"fontWeight": 800\n}}';
+    input.setSelectionRange(12,12);
+    input.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));
+    assert.match(input.value,/\n  "fontWeight"/);
+
+    const open=input.value.indexOf('{',1)+1;
+    input.setSelectionRange(open,open);
+    input.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+    assert.ok(input.value.includes('\n  '));
+    assert.equal(f.w.document.querySelector('#legend-cms-source-highlight').hidden,false);
+  }finally{f.close();}
+});
+
+test('Selected Source CSS uses the textarea as the visible editable surface and hides the overlay only while editing',()=>{
+  assert.match(source,/\.legend-cms-site-source\{[^}]*background:#07162b!important[^}]*color:#dce6f4!important[^}]*-webkit-text-fill-color:currentColor/);
+  assert.match(source,/\.legend-cms-site-source\[readonly\]\{[^}]*color:transparent!important[^}]*-webkit-text-fill-color:transparent/);
+  assert.match(source,/:has\(\.legend-cms-site-source:not\(\[readonly\]\)\) \.legend-cms-source-highlight\{display:none\}/);
+  assert.match(source,/white-space:pre-wrap/);
+  assert.match(source,/sourceTextarea\?\.addEventListener\('keydown',handleSourceEditorKeydown\)/);
+});
+
+test('v3 Selected Source applies one-node mutations without whole-site validation or save',async()=>{
   const original={version:3,pages:{'/':{title:'Home',description:'',navigation:{label:'Home',showInNavigation:true,order:0,isDeleted:false},composition:[
     {id:'hero',type:'section',tag:'section',signals:[],style:{},breakpointStyles:{},layout:{mode:'stack',direction:'column'},breakpointLayouts:{},animations:[],children:[
       {id:'hero.title',type:'heading',tag:'h1',text:'Before',signals:[],style:{},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]}
     ]}
-  ]}},breakpoints:[],theme:{},reusableComponents:{},collections:{},store:{enabled:false}};
-  const proposed=structuredClone(original); proposed.pages['/'].composition[0].children[0].text='After';
-  const f=await domFixture({doc:original,sourceValidationPayload:{source:'legend_site_source_validation',baseRevision:'r1',persisted:false,published:false,proposedDocument:proposed,sourceMap:{}}});
+  ]}},breakpoints:canonicalBreakpoints(),theme:{},reusableComponents:{},collections:{},shell:{header:[],footer:[]},store:{enabled:false,navigationLabel:'Store',cartIcon:'cart',cartIconSizePx:28}};
+  const f=await domFixture({doc:original});
   try{
     f.click('main h1'); f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
     const sourceInput=f.w.document.querySelector('#legend-cms-site-source');
-    const selected=JSON.parse(sourceInput.value); selected.text='After';
+    const selected=JSON.parse(sourceInput.value); selected.text='After'; selected.style.fontWeight=700;
     sourceInput.value=JSON.stringify(selected,null,2);
     sourceInput.dispatchEvent(new f.w.Event('input',{bubbles:true}));
     f.click('#legend-cms-source-apply');
     await new Promise(resolve=>setTimeout(resolve,0));
     await new Promise(resolve=>setTimeout(resolve,0));
     assert.equal(f.w.document.querySelector('main h1').textContent,'After');
-    const validation=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage/source/validate'));
-    assert.ok(validation);
-    const save=f.calls.find(call=>{
-      if(call.method!=='POST' || !call.url.endsWith('/manage')) return false;
-      const persisted=JSON.parse(call.body).document;
-      return persisted?.version===3 &&
-        Array.isArray(persisted?.pages?.['/']?.composition) &&
-        !Object.hasOwn(persisted.pages['/'],'elements') &&
-        !Object.hasOwn(persisted.pages['/'],'extras') &&
-        !Object.hasOwn(persisted.pages['/'],'sectionOrder');
-    });
-    assert.ok(save);
+    assert.equal(f.w.document.querySelector('main h1').style.fontWeight,'700');
+    const nodeRead=f.calls.find(call=>call.url.includes('/manage/agent/node'));
+    assert.ok(nodeRead);
+    const mutation=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage/mutations'));
+    assert.ok(mutation);
+    const operation=JSON.parse(mutation.body).operations[0];
+    assert.equal(operation.type,'replaceNode');
+    assert.equal(operation.nodeId,'hero.title');
+    assert.equal(operation.node.text,'After');
+    assert.equal(Object.hasOwn(operation.node,'signals'),false);
+    assert.equal(Object.hasOwn(operation.node,'fieldSignals'),false);
+    assert.equal(Object.hasOwn(operation.node,'systemKey'),false);
+    assert.equal(f.calls.some(call=>call.url.endsWith('/manage/source/validate')),false);
+    assert.equal(f.calls.some(call=>call.method==='POST' && call.url.endsWith('/manage') && JSON.parse(call.body || '{}').document),false);
+    assert.equal(canonicalNodeById(f.serverDocument(),'hero.title').text,'After');
   }finally{f.close();}
+});
+
+test('Selected Source reports exact scope conflicts without whole-site revalidation loops',async()=>{
+  const original=canonicalDocument();
+  const f=await domFixture({
+    doc:original,
+    mutationSequence:[{status:409,payload:{error:'scope_revision_conflict',revision:'r2',kind:'node',targetId:'home.h1.node.1',fingerprint:'new-fingerprint'}}]
+  });
+  try{
+    f.click('main h1'); f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const sourceInput=f.w.document.querySelector('#legend-cms-site-source');
+    const selected=JSON.parse(sourceInput.value);
+    selected.style.fontWeight=700;
+    sourceInput.value=JSON.stringify(selected,null,2);
+    sourceInput.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    f.click('#legend-cms-source-apply');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const mutations=f.calls.filter(call=>call.method==='POST' && call.url.endsWith('/manage/mutations'));
+    assert.equal(mutations.length,1);
+    assert.equal(f.calls.some(call=>call.url.endsWith('/manage/source/validate')),false);
+    assert.equal(f.w.LEGEND_WEBSITE_STUDIO_PROTECTION_VIOLATION,undefined);
+    assert.match(f.w.document.querySelector('#legend-cms-source-status').textContent,/changed elsewhere|refresh/i);
+    assert.equal(JSON.parse(sourceInput.value).style.fontWeight,700);
+  }finally{f.close();}
+});
+
+test('Source authoring reads the server canonical projection and has no browser-owned site projection',()=>{
+  assert.match(source,/api\/website-content\/manage\/source/);
+  assert.match(source,/async function loadCanonicalSourceSnapshot\(/);
+  assert.doesNotMatch(source,/function siteSourceProjection\(/);
+  assert.doesNotMatch(source,/function sourceProjectionNode\(/);
+});
+
+test('managed CTA instances are authorable while system and signal authority stay locked',()=>{
+  assert.match(source,/const lockedManaged = !!key && !!byKey && \(!!model\?\.systemKey/);
+  assert.match(source,/Managed action: choose any approved catalog action for this CTA instance/);
+  assert.doesNotMatch(source,/if \(ov\.actionKey\) \{ syncEditorControls\(\); return; \}/);
+  assert.match(source,/const protectedSemantic = !!selected\.dataset\.cmsSignalOnly \|\| !!ov\.systemKey \|\| !!ov\.systemBinding/);
+});
+
+test('protected form fields expose typed presentation without exposing execution',()=>{
+  assert.match(source,/function formFieldPresentationForElement\(/);
+  assert.match(source,/function applyFormFieldPresentations\(/);
+  assert.match(source,/fieldPresentations/);
+  assert.match(editorContractsSource,/FieldPresentations/);
+  assert.match(editorContractsSource,/FieldLabels/);
+  assert.match(source,/sandbox','allow-scripts'/);
+  assert.doesNotMatch(source,/allow-forms/);
+  assert.match(source,/form-action 'none'/);
+  assert.match(source,/connect-src 'none'/);
+});
+
+test('Analytics mappings use a dedicated canonical mutation path and generic save never owns signals',()=>{
+  assert.match(source,/api\/website-content\/manage\/signals/);
+  assert.match(source,/async function persistSelectedSignals\(/);
+  assert.match(source,/fieldKey:context\.fieldKey/);
+  assert.doesNotMatch(source,/binding\.deliveryMode = value; markDirty\(\)/);
+  assert.match(websitePlatformControllerSource,/\[HttpPost\("manage\/signals"\)\]/);
+  assert.match(websitePlatformControllerSource,/WebsiteSignalBindingPolicy\.Validate\(request\.Signals\)/);
+  assert.match(editorContractsSource,/FieldSignals/);
+});
+
+test('normal Canvas and Selected Source converge on the canonical mutation authority',()=>{
+  assert.match(source,/manage\/mutations/);
+  assert.match(source,/buildCreativeMutationOperations\(persistedDocumentState,submittedState\)/);
+  assert.match(websitePlatformControllerSource,/\[HttpPost\("manage\/mutations"\)\]/);
+  assert.match(websitePlatformControllerSource,/WebsiteDocumentMutationService\.Apply\(/);
+  assert.match(websitePlatformControllerSource,/ValidateNewCompositionMediaOwnershipAsync\(/);
+  assert.match(websitePlatformControllerSource,/website_mutation_protected/);
+  assert.match(source,/materializationSavePending \|\| !persistedDocumentState/);
+});
+
+test('bulk imports are ingestion only and pass through the canonical protected authority',()=>{
+  assert.equal((websitePlatformControllerSource.match(/ReconcileImportedDocumentAsync\(actor, baseline, result\.Document/g)||[]).length,2);
+  assert.match(websitePlatformControllerSource,/private async Task<WebsiteContentDocument> ReconcileImportedDocumentAsync/);
+  assert.match(websitePlatformControllerSource,/WebsiteSiteSource\.Serialize\([\s\S]*?WebsiteContentSanitizer\.Sanitize\(imported\)\)/);
+  assert.match(websitePlatformControllerSource,/WebsiteSiteSource\.Parse\([\s\S]*?baseline,[\s\S]*?actions\)\.Document/);
+  assert.match(websitePlatformControllerSource,/WebsiteSiteSource\.ValidateCanonical\(reconciled, actions\)/);
+  assert.match(websitePlatformControllerSource,/ValidateCompositionMediaOwnershipAsync\(actor, reconciled/);
+  assert.match(websitePlatformControllerSource,/website_import_protected/);
+});
+
+test('named draft restore is a governed restore, never a canonical v3 snapshot writer',()=>{
+  assert.match(websitePlatformControllerSource,/restored = Read\(draft\.DocumentJson\)/);
+  assert.match(websitePlatformControllerSource,/if \(restored\.LegacyMigration is null\)[\s\S]*WebsiteSiteSource\.Serialize\(restored\)[\s\S]*WebsiteSiteSource\.Parse\(source, baseline, actions\)\.Document/);
+  assert.match(websitePlatformControllerSource,/WebsiteSystemTemplateAuthority\.Apply\(actor\.SiteKey, restored\)/);
+  assert.match(websitePlatformControllerSource,/WebsiteSiteSource\.ValidateCanonical\(restored, actions\)/);
+  assert.match(websitePlatformControllerSource,/ValidateCompositionMediaOwnershipAsync\(actor, restored/);
+  assert.match(websitePlatformControllerSource,/Historical pre-v3 named drafts remain eligible only for the[\s\S]*existing explicit one-way materialization boundary/);
+});
+
+test('creative mutations use one per-batch indexed mutation path',()=>{
+  assert.match(websiteCreativeWorkspaceSource,/var index = new WebsiteMutationIndex\(document\)/);
+  assert.match(websiteCreativeWorkspaceSource,/index\.Insert\(/);
+  assert.match(websiteCreativeWorkspaceSource,/index\.Replace\(/);
+  assert.match(websiteCreativeWorkspaceSource,/index\.Remove\(/);
+  assert.doesNotMatch(websiteCreativeWorkspaceSource,/WebsiteDocumentIndex\.ResolveChildren/);
+  assert.doesNotMatch(websiteCreativeWorkspaceSource,/WebsiteDocumentIndex\.Remove\(/);
+  assert.doesNotMatch(websiteCreativeWorkspaceSource,/public static List<WebsiteCompositionNode> ResolveChildren\(/);
+});
+
+
+
+test('source protection UI separates protected authority failures from exact scope conflicts',()=>{
+  assert.match(source,/payload\.error==='scope_revision_conflict'/);
+  assert.match(source,/sourceEditorBaseFingerprint/);
+  assert.match(source,/type:'replaceNode'[\s\S]*expectedFingerprint:sourceEditorBaseFingerprint/);
+  assert.match(source,/if\(payload\.canonicalProtectionViolation===true\)[\s\S]*showCanonicalProtectionViolation/);
+  assert.match(websitePlatformControllerSource,/catch \(WebsiteMutationConflictException ex\)[\s\S]*scope_revision_conflict/);
+  assert.match(websitePlatformControllerSource,/catch \(WebsiteSiteSourceProtectionException ex\)[\s\S]*canonicalProtectionViolation = true/);
+});
+
+test('canonical header defaults are server-owned and the browser has no duplicate shell writer',()=>{
+  assert.match(websiteSystemTemplateAuthoritySource,/ApplyHeaderTypographyDefaults/);
+  assert.match(websiteSystemTemplateAuthoritySource,/FontScale = 3\.5m/);
+  assert.match(websiteSystemTemplateAuthoritySource,/FontScale = 1\.6m/);
+  assert.match(websiteSystemTemplateAuthoritySource,/FontScale = 1\.35m/);
+  assert.match(websiteSystemTemplateAuthoritySource,/FontScale = 1\.15m/);
+  assert.doesNotMatch(source,/applyCanonicalHeaderTypographyDefaults/);
+  assert.doesNotMatch(source,/canonicalizeMobileHeaderChrome/);
+  assert.match(publicCss,/\.brand-wordmark strong\{[^}]*font-weight:800/);
+  assert.match(publicCss,/\.nav\{[^}]*font-weight:800/);
+});
+
+test('Protect agent-prefixed home is the canonical root during one-way v3 materialization',async()=>{
+  const f=await domFixture({
+    siteKey:'protect',
+    pathname:'/a/legend',
+    agentSlug:'legend',
+    pagePrefix:'/a/legend',
+    legacyMigration:{},
+    capabilities:{compositionV3:true}
+  });
+  try{
+    await new Promise(resolve=>setTimeout(resolve,20));
+    assert.deepEqual(f.alerts,[]);
+    const save=f.calls.find(call=>{
+      if(call.method!=='POST' || !call.url.endsWith('/api/website-content/manage')) return false;
+      const body=JSON.parse(call.body);
+      return body.document?.version===3;
+    });
+    assert.ok(save,'materialization should save canonical v3 without waiting on a hidden root frame');
+    const persisted=JSON.parse(save.body).document;
+    assert.ok(persisted.pages['/']);
+    assert.equal(Object.hasOwn(persisted.pages,'/a/legend'),false);
+  }finally{f.close();}
+});
+
+test('Protect nested agent URL resolves to the canonical page route',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/coverage']={
+    title:'Coverage',
+    description:'Canonical coverage',
+    navigation:{label:'Coverage',showInNavigation:true,order:1,isDeleted:false},
+    dynamicBinding:null,
+    composition:[canonicalNode('coverage.hero','section','section',{children:[
+      canonicalNode('coverage.title','heading','h1',{text:'Coverage canonical'})
+    ]})]
+  };
+  const f=await domFixture({
+    siteKey:'protect',
+    doc,
+    pathname:'/a/legend/coverage',
+    agentSlug:'legend',
+    pagePrefix:'/a/legend'
+  });
+  try{
+    assert.equal(f.w.document.querySelector('main h1')?.textContent,'Coverage canonical');
+    assert.deepEqual(f.alerts,[]);
+  }finally{f.close();}
+});
+
+
+test('canonical v3 route keys are not silently repaired by the browser',()=>{
+  const normalizeStart=source.indexOf('function normalizeDocument(');
+  const normalizeEnd=source.indexOf('function normalizePageRoute(',normalizeStart);
+  const normalizeSource=source.slice(normalizeStart,normalizeEnd);
+  assert.doesNotMatch(normalizeSource,/canonicalSiteRoute\(rawRoute\)/);
+  assert.doesNotMatch(normalizeSource,/agent-prefixed v3 page keys/);
+  assert.match(source,/function legacyPageForRoute\([\s\S]*?canonicalSiteRoute\(rawPath\)/);
+  assert.match(source,/async function materializeCanonicalSite\(/);
+});
+
+test('runtime chrome is rejected by server authority instead of silently deleted by the browser',()=>{
+  assert.doesNotMatch(source,/isRuntimeShellChromeNode/);
+  assert.match(websiteSiteSourceSource,/"nav-toggle"/);
+  assert.match(websiteSiteSourceSource,/cannot invent platform runtime class/);
+  assert.match(websiteSiteSourceSource,/cannot remove platform runtime class/);
+  assert.match(websiteContentSanitizerSource,/website_v3_noncanonical_persisted_document/);
+  assert.match(source,/function ensureCanonicalNavigationToggle\(/);
+});
+
+test('business header navigation projects one canonical page catalog without preview-title duplicates or silent v3 rewrites',async()=>{
+  const doc=canonicalBusinessNavigation();
+  doc.pages['/about']={
+    title:'About | Business website preview',
+    description:'',
+    navigation:{label:null,showInNavigation:true,order:10,isDeleted:false},
+    dynamicBinding:null,
+    composition:[canonicalNode('about.section','section','section',{children:[
+      canonicalNode('about.title','heading','h1',{text:'About'})
+    ]})]
+  };
+  const business={id:'11111111-1111-1111-1111-111111111111',displayName:'CAMO'};
+  const f=await domFixture({
+    siteKey:'business',
+    doc,
+    business,
+    pages:[{path:'/',label:'Home',order:0},{path:'/about',label:'About',order:10}],
+    pathname:'/business-preview/about',
+    search:'?businessId=11111111-1111-1111-1111-111111111111&legendEdit=ticket',
+    html:'<!doctype html><html><head></head><body data-page-key="about"><header class="site-header"><nav class="nav" data-public-nav><a>Stale Home</a></nav><nav class="nav" data-public-nav><a>Duplicate</a></nav></header><main></main></body></html>'
+  });
+  try{
+    const navs=f.w.document.querySelectorAll('.site-header nav.nav,[data-public-nav]');
+    assert.equal(navs.length,1);
+    const labels=[...navs[0].querySelectorAll('[data-legend-page-nav="true"]')].map(node=>node.textContent);
+    assert.deepEqual(labels,['Home','About']);
+    assert.equal(labels.some(label=>label.includes('Business website preview')),false);
+    const saved=await f.save();
+    assert.equal(saved.pages['/about'].title,'About | Business website preview');
+  }finally{f.close();}
+});
+
+test('Protect hides only canonical published-document pages before hydration',()=>{
+  assert.match(protectLayoutSource,/hidden="@\(!isStandaloneQuoteLanding \? "hidden" : null\)"/);
+  assert.match(protectLayoutSource,/data-legend-canonical-pending="@\(!isStandaloneQuoteLanding \? "true" : null\)"/);
+  assert.match(protectLayoutSource,/@if \(!isStandaloneQuoteLanding\)[\s\S]*html\[hidden\]\{display:block!important\}/);
+});
+
+test('canonical responsive hierarchy resets inherited desktop geometry on mobile but preserves explicit mobile intent',async()=>{
+  const doc=canonicalDocument();
+  const section=canonicalNodeById(doc,'home.section.1');
+  section.layout={mode:'grid',columns:4,gapPx:32,direction:'row'};
+  const heading=canonicalNodeById(doc,'home.h1.node.1');
+  heading.style={widthPercent:38,offsetXPercent:48,offsetYPx:80,heightPx:120,fontSize:70};
+  const action=canonicalNodeById(doc,'home.a.node.1');
+  action.type='cta';
+  action.style={widthPercent:18,offsetXPercent:62,heightPx:88,fontSize:34};
+  const media=canonicalNodeById(doc,'home.img.node.1');
+  media.style={widthPercent:44,offsetXPercent:48,heightPx:900};
+  const f=await domFixture({doc,viewportWidth:390});
+  try{
+    f.change('#legend-cms-breakpoint','mobile');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const h=f.w.document.querySelector('main h1');
+    const a=f.w.document.querySelector('main a');
+    const img=f.w.document.querySelector('main img');
+    const root=f.w.document.querySelector('main section');
+    assert.equal(root.style.display,'grid');
+    assert.equal(root.style.gridTemplateColumns,'repeat(1,minmax(0,1fr))');
+    assert.equal(h.style.width,'100%');
+    assert.equal(h.style.left,'0%');
+    assert.equal(h.style.top,'0px');
+    assert.equal(h.style.height,'');
+    assert.equal(h.style.fontSize,'54px');
+    assert.equal(a.style.width,'100%');
+    assert.equal(a.style.left,'0%');
+    assert.equal(a.style.height,'');
+    assert.equal(a.style.fontSize,'20px');
+    assert.equal(a.dataset.legendContentRole,'action');
+    assert.equal(img.style.width,'100%');
+    assert.equal(img.style.left,'0%');
+    assert.equal(img.style.height,'');
+    assert.equal(img.style.maxWidth,'560px');
+    assert.equal(root.dataset.legendResponsiveFlow,'true');
+  }finally{f.close();}
+});
+
+test('explicit mobile styling renders independently from desktop base geometry',async()=>{
+  const doc=canonicalDocument();
+  const action=canonicalNodeById(doc,'home.a.node.1');
+  action.type='cta';
+  action.style={widthPercent:18,offsetXPercent:62,heightPx:88,fontSize:34};
+  action.breakpointStyles.mobile={widthPercent:72,offsetXPercent:8,fontSize:18,heightPx:64};
+  const section=canonicalNodeById(doc,'home.section.1');
+  section.layout={mode:'grid',columns:4,gapPx:32};
+  section.breakpointLayouts.mobile={mode:'grid',columns:2,gapPx:14};
+  const f=await domFixture({doc,viewportWidth:390});
+  try{
+    f.change('#legend-cms-breakpoint','mobile');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const a=f.w.document.querySelector('main a');
+    const root=f.w.document.querySelector('main section');
+    assert.equal(a.style.width,'72%');
+    assert.equal(a.style.left,'8%');
+    assert.equal(a.style.top,'0px');
+    assert.equal(a.style.fontSize,'18px');
+    assert.equal(a.style.height,'64px');
+    assert.equal(root.style.gridTemplateColumns,'repeat(2,minmax(0,1fr))');
+    assert.equal(root.style.gap,'14px');
+  }finally{f.close();}
+});
+
+test('published mobile presentation preserves explicit free-canvas geometry without mutating desktop base',async()=>{
+  const doc=canonicalDocument();
+  const section=canonicalNodeById(doc,'home.section.1');
+  section.layout={mode:'free',gapPx:8};
+  section.breakpointStyles.mobile={heightPx:980,offsetYPx:-100,marginTop:-50,minHeightPx:900,maxHeightPx:1200};
+  section.breakpointLayouts.mobile={mode:'free',gapPx:16};
+  const heading=canonicalNodeById(doc,'home.h1.node.1');
+  heading.style={widthPercent:70,offsetXPercent:4,fontSize:64};
+  heading.breakpointStyles.mobile={widthPercent:36,offsetXPercent:58,offsetYPx:-180,heightPx:150,fontSize:88};
+  const action=canonicalNodeById(doc,'home.a.node.1');
+  action.type='cta';
+  action.breakpointStyles.mobile={widthPercent:24,offsetXPercent:5,offsetYPx:-260,heightPx:150,fontSize:28,borderRadius:999};
+  const media=canonicalNodeById(doc,'home.img.node.1');
+  media.breakpointStyles.mobile={widthPercent:92,offsetXPercent:12,offsetYPx:-420,heightPx:760,maxWidthPx:900};
+  const f=await domFixture({doc,viewportWidth:390});
+  try{
+    f.change('#legend-cms-breakpoint','mobile');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const root=f.w.document.querySelector('main section');
+    const h=f.w.document.querySelector('main h1');
+    const a=f.w.document.querySelector('main a');
+    const img=f.w.document.querySelector('main img');
+    assert.notEqual(root.style.display,'flex');
+    assert.equal(root.style.height,'980px');
+    assert.equal(root.style.marginTop,'-50px');
+    assert.equal(root.style.minHeight,'900px');
+    assert.equal(root.style.maxHeight,'1200px');
+    assert.equal(h.style.left,'58%');
+    assert.equal(h.style.top,'-180px');
+    assert.equal(h.style.width,'36%');
+    assert.equal(h.style.height,'150px');
+    assert.equal(h.style.fontSize,'88px');
+    assert.equal(a.style.left,'5%');
+    assert.equal(a.style.top,'-260px');
+    assert.equal(a.style.width,'24%');
+    assert.equal(a.style.height,'150px');
+    assert.equal(a.style.fontSize,'28px');
+    assert.equal(img.style.left,'12%');
+    assert.equal(img.style.top,'-420px');
+    assert.equal(img.style.width,'88%');
+    assert.equal(img.style.height,'760px');
+    assert.equal(img.style.maxWidth,'900px');
+
+    f.click('[data-editor-viewport="base"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(h.style.width,'70%');
+    assert.equal(h.style.left,'4%');
+    assert.equal(h.style.fontSize,'64px');
+  }finally{f.close();}
+});
+
+test('Desktop and Mobile viewport buttons write to separate presentation layers',async()=>{
+  const doc=canonicalDocument();
+  const heading=canonicalNodeById(doc,'home.h1.node.1');
+  heading.style={widthPercent:80,textAlign:'left',backgroundColor:'#111111'};
+  heading.breakpointStyles.mobile={widthPercent:64,textAlign:'center',backgroundColor:'#222222'};
+  const f=await domFixture({doc,viewportWidth:1024});
+  try{
+    f.click('main h1');
+    f.click('[data-editor-viewport="mobile"]');
+    f.input('#legend-cms-width','44');
+    f.input('#legend-cms-align','right');
+    f.input('[data-style-key="backgroundColor"]','#333333');
+    const mobileSaved=await f.save();
+    const mobileHeading=canonicalNodeById(mobileSaved,'home.h1.node.1');
+    assert.equal(mobileHeading.style.widthPercent,80);
+    assert.equal(mobileHeading.style.textAlign,'left');
+    assert.equal(mobileHeading.style.backgroundColor,'#111111');
+    assert.equal(mobileHeading.breakpointStyles.mobile.widthPercent,44);
+    assert.equal(mobileHeading.breakpointStyles.mobile.textAlign,'right');
+    assert.equal(mobileHeading.breakpointStyles.mobile.backgroundColor,'#333333');
+    assert.doesNotMatch(source,/data-color-hex/);
+
+    f.click('[data-editor-viewport="base"]');
+    assert.equal(f.w.document.querySelector('[data-editor-viewport="base"]').getAttribute('aria-pressed'),'true');
+    assert.equal(f.w.document.querySelector('[data-editor-viewport="mobile"]').getAttribute('aria-pressed'),'false');
+  }finally{f.close();}
+});
+
+test('looped uploaded video hides native controls while preserving source audio',async()=>{
+  const doc=canonicalDocument();
+  const section=canonicalNodeById(doc,'home.section.1');
+  section.children.push(canonicalNode('home.video.node.1','video','video',{
+    mediaUrl:'https://media.example/clip.mp4',
+    videoLoop:true
+  }));
+  const f=await domFixture({doc,search:'',viewportWidth:1024});
+  try{
+    const video=f.w.document.querySelector('main video');
+    assert.ok(video);
+    assert.equal(video.loop,true);
+    assert.equal(video.autoplay,true);
+    assert.equal(video.controls,false);
+    assert.equal(video.muted,false);
+    assert.equal(video.playsInline,true);
+    assert.equal(video.preload,'auto');
+  }finally{f.close();}
+});
+
+test('business compiler resolves published media through the canonical public API instead of the invalid placeholder origin',()=>{
+  assert.match(businessRenderSource,/apiBase:publicApiBase/);
+  assert.doesNotMatch(businessRenderSource,/apiBase:'https:\/\/website\.invalid'/);
+});
+
+test('Website Studio exposes the same iPhone video containers already recognized by the shared validator',()=>{
+  assert.match(uploadValidationSource,/AllowedExtensions[\s\S]*"\.mp4"[\s\S]*"\.m4v"[\s\S]*"\.mov"[\s\S]*"\.webm"/);
+  assert.match(uploadValidationSource,/"video\/mp4" => extension is "\.mp4" or "\.m4v" or "\.mov"/);
+  assert.match(source,/accept="video\/\*,\.mov,\.m4v,\.webm"/);
+});
+
+test('website media upload transport is parsed inside scoped authority instead of inferred IFormFile binding',()=>{
+  assert.match(uploadValidationSource,/request\.HasFormContentType/);
+  assert.match(uploadValidationSource,/request\.ReadFormAsync\(cancellationToken\)/);
+  assert.match(websitePlatformControllerSource,/form\.Files\.GetFile\("file"\)/);
+  assert.doesNotMatch(websitePlatformControllerSource,/UploadMedia\(\[FromForm\]/);
+});
+
+test('canonical page first paint reapplies responsive hierarchy after the page graph is mounted',()=>{
+  assert.match(source,/function renderCanonicalCompositionPage\(\)[\s\S]*for\(const root of roots\)[\s\S]*walkComposition\(\[root\],node=>applyCompositionNode\(findEditableElement\(node\.id\),node\)\)/);
+});
+
+test('desktop preserves authored geometry while mobile uses conversion-first semantic roles',async()=>{
+  const doc=canonicalDocument();
+  const action=canonicalNodeById(doc,'home.a.node.1');
+  action.type='cta';
+  action.style={widthPercent:38,offsetXPercent:12};
+  const desktop=await domFixture({doc,viewportWidth:1440});
+  try{
+    const a=desktop.w.document.querySelector('main a');
+    assert.equal(a.style.width,'38%');
+    assert.equal(a.style.left,'12%');
+    assert.equal(a.dataset.legendContentRole,'action');
+  }finally{desktop.close();}
+  assert.match(publicCss,/\[data-legend-content-role="action"\][\s\S]*min-inline-size:min\(100%,var\(--public-action-min\)\)/);
+  assert.match(publicCss,/@media\(max-width:650px\)[\s\S]*\[data-legend-content-role="heading"\]\{order:20\}[\s\S]*\[data-legend-content-role="action"\][\s\S]*order:40[\s\S]*\[data-legend-content-role="media"\]\{order:50\}/);
+});
+
+test('business banner and shell typography derive from shared tokens and server shell authority',()=>{
+  assert.match(foundationCss,/--web-public-banner-pad-block:10px/);
+  assert.match(foundationCss,/--web-public-banner-title-weight:800/);
+  assert.match(publicCss,/\.business-brand-banner\{[\s\S]*padding:var\(--public-banner-pad-block\) var\(--public-banner-pad-inline\)/);
+  assert.match(publicCss,/\.business-brand-banner strong\{[\s\S]*font-size:var\(--public-banner-title-size\)[\s\S]*font-weight:var\(--public-banner-title-weight\)/);
+  assert.match(websiteSystemTemplateAuthoritySource,/ApplyHeaderTypographyDefaults/);
+  assert.doesNotMatch(source,/applyCanonicalHeaderTypographyDefaults/);
+});
+
+test('mobile shell persistence is server-owned while responsive browser safety is render-only',()=>{
+  assert.match(websiteSystemTemplateAuthoritySource,/CanonicalizeMobileHeaderChrome/);
+  assert.match(websiteSystemTemplateAuthoritySource,/mobile\.WidthPercent = null/);
+  assert.match(websiteSystemTemplateAuthoritySource,/node\.BreakpointLayouts\["mobile"\]/);
+  assert.doesNotMatch(source,/function constrainDocumentGeometry/);
+  assert.doesNotMatch(source,/canonicalizeMobileHeaderChrome/);
+  assert.match(source,/function responsiveShellChromeKind\(model, el = null\)/);
+  assert.match(source,/function effectiveStyle\([\s\S]*?Math\.min\(100, Number\(style\.widthPercent\)\)/);
+  assert.match(source,/function effectiveLayout\([\s\S]*?responsiveShellChromeKind\(model,el\)/);
+});
+
+test('Website Studio and GPT contract expose one responsive authority with protected mobile shell geometry',()=>{
+  assert.match(source,/Canonical responsive hierarchy/);
+  assert.match(source,/Desktop\/Base and Mobile are independent authoring surfaces for page content/);
+  assert.match(source,/global public header, brand fit, Menu trigger, and primary navigation geometry are platform shell chrome/);
+  assert.match(agentContractSource,/Mobile is an independent first-class editing surface for page content/);
+  assert.match(agentContractSource,/A Mobile edit must write only breakpointStyles\.mobile or breakpointLayouts\.mobile/);
+  assert.match(agentContractSource,/global public header frame, brand fit, Menu trigger, and primary navigation are platform shell chrome on Mobile/);
+  assert.match(agentContractSource,/Outside that protected mobile shell geometry/);
+});
+
+test('public startup styling has one responsive authority and one palette authority',()=>{
+  assert.equal((publicCss.match(/@media\(max-width:980px\)/g)||[]).length,1);
+  assert.equal((publicCss.match(/@media\(max-width:650px\)/g)||[]).length,1);
+  assert.doesNotMatch(publicCss,/:root\[data-legend-site="business"\]/);
+  assert.match(foundationCss,/:root\[data-legend-site="business"\]\{/);
+  assert.match(publicCss,/\.card::before\{content:none\}/);
+  assert.match(publicCss,/\.card \.icon:empty,\.contact-card \.icon:empty\{display:none\}/);
+  assert.match(publicCss,/\.section\{padding:var\(--public-section-y\) var\(--public-page-pad\)\}/);
+  assert.match(publicCss,/--public-page-pad:var\(--web-public-page-pad,var\(--page-pad\)\)/);
+  assert.match(publicCss,/@media\(max-width:650px\)[\s\S]*\.section\{padding-top:52px;padding-bottom:52px\}/);
+  assert.doesNotMatch(source,/--accent:#b8955a/);
+  assert.match(source,/const defaultCodeBlock = '[\s\S]*--navy-deep:#081a3a;--gold:#d4ad45/);
+  assert.doesNotMatch(publicCss,/legend-recipe-(?:hero-split|feature-split|card-grid|stat-grid|step-grid|bento-grid)\\{[^}]*grid-template-columns:[^}]*!important/);
+
+});
+
+test('Website Studio canvas keeps public viewport typography and mobile controls stay inside the viewport',()=>{
+  assert.ok(source.includes('body.legend-cms-editing{display:block'));
+  assert.ok(source.includes('.legend-cms-preview{width:100vw'));
+  assert.equal(source.includes('grid-template-columns:minmax(0,1fr) minmax(20rem,24rem)'),false);
+  assert.equal(publicCss.includes('@container legend-public-preview'),false);
+  assert.equal(publicCss.includes('container:legend-public-preview'),false);
+  assert.ok(source.includes('.legend-cms-agent-contract pre{display:block;width:100%;max-width:100%;min-width:0;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word'));
+  assert.match(source,/\.legend-cms-panel>\*\{min-width:0;max-width:100%\}/);
+  assert.match(source,/\.legend-cms-panel\{[\s\S]*--legend-cms-sheet-compact:min\(46dvh,430px\)[\s\S]*height:var\(--legend-cms-sheet-height,var\(--legend-cms-sheet-compact\)\)[\s\S]*border-radius:0 0 14px 14px/);
+  assert.match(source,/\.legend-cms-bar\{[\s\S]*grid-template-columns:repeat\(5,minmax\(0,1fr\)\)[\s\S]*position:sticky/);
+  assert.match(source,/\.legend-cms-primary-tabs\{[\s\S]*display:flex[\s\S]*overflow-x:auto/);
+  assert.match(source,/\.legend-cms-menu\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.equal(source.includes('padding:max(72px,calc(env(safe-area-inset-top) + 60px))'),false);
+  assert.equal(source.includes('grid-template-columns:repeat(2,minmax(0,1fr));position:sticky;top:max(56px'),false);
+});
+
+test('GPT workspace consumes one canonical node grammar and teaches creative safe authoring',async()=>{
+  const prompt='SERVER CANONICAL CONTRACT: actionKey systemKey signals form_field_semantics publish_authority';
+  const f=await domFixture({agentContract:{schema:'legend-website-studio-agent/v1',promptTemplate:prompt}});
+  try{
+    f.click('[data-open="gpt"]');
+    assert.equal(f.w.document.querySelector('#legend-cms-agent-contract-script')?.textContent,prompt);
+    assert.match(agentContractSource,/Turn the user's intent into a polished, distinctive, responsive website/);
+    assert.match(agentContractSource,/Modify the existing canonical graph whenever possible/);
+    assert.match(agentContractSource,/GRAPH STRUCTURE/);
+    assert.match(agentContractSource,/CANONICAL NODE TYPE -> TAG GRAMMAR/);
+    assert.match(agentContractSource,/WebsiteCompositionSchema\.PromptGrammar/);
+    assert.match(agentContractSource,/Every node ID must be non-empty and globally unique/);
+    assert.match(agentContractSource,/Do not create duplicate desktop\/mobile copies/);
+    assert.match(agentContractSource,/VALID SOURCE SHAPE EXAMPLE/);
+    assert.match(agentContractSource,/EDITING ALGORITHM/);
+    assert.match(agentContractSource,/Never solve validation by deleting protected semantics/);
+    assert.match(agentContractSource,/FirstName, LastName, Phone, Email, Message/);
+    assert.match(agentContractSource,/Keep the real runtime form mounted/);
+    assert.match(agentContractSource,/zero-production-signal environment/);
+    assert.match(editorContractsSource,/public static class WebsiteCompositionSchema/);
+    for(const type of ['section','container','heading','text','cta','link','image','video','form','embed','spacer','reusable'])
+      assert.ok(editorContractsSource.includes(`["${type}"]`));
+  }finally{f.close();}
+});
+
+test('browser creative workspace exposes whole-site quality media and safe-repair commands without executable audit authority',()=>{
+  assert.match(source,/schema:'legend-creative-browser\/v1'/);
+  assert.match(source,/getSiteSummary:\(\)=>creativeWorkspaceRequest\('manage\/agent\/summary'\)/);
+  assert.match(source,/applyDesignPlan:creativeApplyDesignPlan/);
+  assert.match(source,/planSafeQualityRepairs:\(\)=>creativeWorkspaceRequest\('manage\/agent\/design-quality\/repairs'\)/);
+  assert.match(source,/applySafeQualityRepairs:async\(\)=>/);
+  assert.match(source,/runResponsiveQuality:runResponsiveQualityAudit/);
+  assert.match(source,/runSiteResponsiveQuality:runSiteResponsiveQualityAudit/);
+  assert.match(source,/fullBleedMedia=[\s\S]*legend-recipe-hero-cinematic-media/);
+  assert.match(source,/else if\(fullBleedMedia\)[\s\S]*delete style\.maxWidthPx[\s\S]*delete style\.maxHeightPx/);
+  assert.match(publicCss,/\.legend-recipe-hero-media:not\(\.legend-recipe-hero-cinematic-media\),\.legend-recipe-feature-media/);
+  assert.match(publicCss,/\.legend-recipe-hero-cinematic-media\{[\s\S]*position:absolute[\s\S]*height:100%[\s\S]*border:0[\s\S]*border-radius:0[\s\S]*box-shadow:none/);
+  assert.match(source,/const priorityMedia=classes\.has\('legend-recipe-hero-media'\) \|\| classes\.has\('legend-recipe-hero-cinematic-media'\)/);
+  assert.match(source,/el\.loading=priorityMedia \? 'eager' : 'lazy'/);
+  assert.match(source,/if\(priorityMedia\) el\.setAttribute\('fetchpriority','high'\)/);
+  assert.match(source,/runPreflight:runWholeSitePreflight/);
+  assert.match(source,/runQuality:runWholeSitePreflight/);
+  assert.match(source,/quality\?\.revision===checkedRevision/);
+  assert.match(source,/conversion\?\.revision===checkedRevision/);
+  assert.match(source,/responsiveRevisions\.every\(value=>value===checkedRevision\)/);
+  assert.match(source,/type:'legend-site-responsive-audit',[\s\S]*revision,[\s\S]*results/);
+  assert.match(source,/legend-cms-agent-quality'[\s\S]*runWholeSitePreflightAndRender/);
+  assert.match(source,/legend-cms-publish-quality'[\s\S]*runWholeSitePreflightAndRender/);
+  assert.match(source,/legend-cms-quality-refresh'[\s\S]*runWholeSitePreflightAndRender/);
+  assert.doesNotMatch(source,/async function refreshQualityInspector\(/);
+  assert.match(source,/inspectConversionHealth:\(\)=>creativeWorkspaceRequest\('manage\/agent\/conversion-readiness'\)/);
+  assert.match(source,/getSignalCatalog:\(\)=>creativeWorkspaceRequest\('manage\/signal-catalog'\)/);
+  assert.match(source,/setSignalMappings:updateSignalMappings/);
+  assert.match(source,/testSignalMapping:/);
+  assert.match(source,/getSignalHealth:/);
+  assert.match(source,/function applySignalConfigurationDelta\(payload\)/);
+  assert.match(websitePlatformControllerSource,/nodeSignals = savedTarget\.Signals/);
+  assert.match(websitePlatformControllerSource,/fieldSignals = savedTarget\.FieldSignals/);
+  const signalConfigurationResponse=websitePlatformControllerSource.match(/source = "website_signal_configuration",[\s\S]*?fieldSignals = savedTarget\.FieldSignals[\s\S]*?\}\);/)?.[0] || '';
+  assert.ok(signalConfigurationResponse);
+  assert.doesNotMatch(signalConfigurationResponse,/\bdocument\b/);
+  assert.match(source,/listMedia:\(query=\{\}\)=>creativeWorkspaceRequest\('manage\/media',\{query:\{\.\.\.query,designMetadata:query\.designMetadata!==false\}\}\)/);
+  assert.match(source,/uploadMedia:async file=>/);
+  assert.match(source,/importImage:url=>creativeWorkspaceRequest\('manage\/media\/import'/);
+  assert.match(source,/legendAudit/);
+  assert.match(source,/legend-site-responsive-audit/);
+  assert.match(source,/function applyBreakpointPreview\(\)[\s\S]*refreshResponsiveComposition\(\)[\s\S]*if\(editorPreview\) syncEditorControls\(\)/);
+  assert.doesNotMatch(source,/function applyBreakpointPreview\(\) \{\s*if \(!editorPreview\) return;/);
+  assert.match(websitePlatformControllerSource,/\[HttpGet\("manage\/agent\/conversion-readiness"\)\]/);
+  assert.match(websitePlatformControllerSource,/\[HttpGet\("manage\/agent\/conversion-trace"\)\]/);
+  assert.match(websitePlatformControllerSource,/legend-conversion-readiness\/v2/);
+  assert.match(websitePlatformControllerSource,/measurementEvidenceScope = "advertising_owner_30d_all_published_sources"/);
+  assert.match(websitePlatformControllerSource,/metaProviderAccepted/);
+  assert.match(websitePlatformControllerSource,/openAiHttpAccepted/);
+  assert.doesNotMatch(websitePlatformControllerSource,/openAiAccepted =/);
+  assert.match(websitePlatformControllerSource,/legend-conversion-trace\/v1/);
+  assert.match(websitePlatformControllerSource,/\[FromQuery\] long\? analyticsEventId = null/);
+  assert.match(websitePlatformControllerSource,/row\.Id == analyticsEventId\.Value/);
+  assert.match(source,/analyticsEventId:\{type:'string',pattern:'\^\[0-9\]\{1,19\}\$'\}/);
+  assert.match(source,/take:\{type:'integer',minimum:1,maximum:24\}/);
+  assert.match(websitePlatformControllerSource,/provider_events_received/);
+  assert.match(websitePlatformControllerSource,/http_2xx_transport_only/);
+  assert.match(websitePlatformControllerSource,/piiIncluded = false/);
+  assert.match(websitePlatformControllerSource,/rawCustomerIdentifiersIncluded = false/);
+  assert.match(websitePlatformControllerSource,/providerCredentialsIncluded = false/);
+  const traceStart=websitePlatformControllerSource.indexOf('[HttpGet("manage/agent/conversion-trace")]');
+  const traceEnd=websitePlatformControllerSource.indexOf('[HttpPost("manage/signals")]',traceStart);
+  const traceSource=websitePlatformControllerSource.slice(traceStart,traceEnd);
+  assert.ok(traceStart>=0 && traceEnd>traceStart);
+  assert.match(traceSource,/CanonicalMarketingIdentityResolver\.ResolveAsync/);
+  assert.match(traceSource,/identityAuthority = "CanonicalMarketingIdentityResolver"/);
+  assert.doesNotMatch(traceSource,/identity\.(Email|Phone|FirstName|LastName|DateOfBirth|City|State|PostalCode|ClientIpAddress|ClientUserAgent)/);
+  assert.match(source,/conversion_live_evidence_not_observed/);
+  assert.match(source,/conversion_first_party_events_not_received/);
+  assert.match(agentContractSource,/conversion_trace/);
+  assert.match(agentContractSource,/Never infer provider acceptance from configuration, browser invocation, or HTTP success/);
+  assert.match(websitePlatformControllerSource,/\[HttpPost\("manage\/media\/import"\)\]/);
+  assert.match(websiteImportServiceSource,/ImportImageAsync/);
+  assert.match(websiteImportServiceSource,/LegendConnectResearchNetworkPolicy\.CreatePublicReadOnlyHandler/);
+  assert.match(source,/sandbox','allow-same-origin'/);
+  assert.match(source,/script-src \\'none\\'/);
+  assert.match(source,/form-action \\'none\\'/);
+  assert.match(source,/connect-src \\'none\\'/);
+  assert.match(source,/frame\.remove\(\)/);
+  assert.doesNotMatch(source,/sandbox','allow-same-origin allow-scripts'/);
+});
+
+test('Website Studio WebMCP adapter registers and executes through the canonical local agent API',async()=>{
+  const registered=[];
+  const modelContext={
+    registerTool:async definition=>{registered.push(definition);}
+  };
+  const f=await domFixture({modelContext});
+  try{
+    assert.deepEqual(
+      registered.map(tool=>tool.name).sort(),
+      [
+        'legend_website_apply_design_plan',
+        'legend_website_apply_mutations',
+        'legend_website_import_image',
+        'legend_website_preflight',
+        'legend_website_set_signal_mappings',
+        'legend_website_workspace'
+      ].sort()
+    );
+    const workspace=registered.find(tool=>tool.name==='legend_website_workspace');
+    assert.ok(workspace);
+    const summary=await workspace.execute({operation:'summary'},{});
+    assert.equal(summary.schema,'legend-creative-workspace/v1');
+    const trace=await workspace.execute({operation:'conversion_trace',take:5,analyticsEventId:'17',eventName:'Lead'},{});
+    assert.equal(trace.schema,'legend-conversion-trace/v1');
+    assert.equal(trace.resultLimit,5);
+    assert.equal(trace.privacy.piiIncluded,false);
+    const traceCall=f.calls.find(call=>String(call.url).includes('/manage/agent/conversion-trace'));
+    assert.ok(traceCall);
+    assert.match(String(traceCall.url),/take=5/);
+    assert.match(String(traceCall.url),/analyticsEventId=17/);
+    assert.match(String(traceCall.url),/eventName=Lead/);
+    assert.equal(new URL(f.w.location.href).searchParams.has('legendEdit'),false);
+    assert.equal(f.w.history.state?.legendStudioTicket,'ticket');
+
+    const build=registered.find(tool=>tool.name==='legend_website_apply_design_plan');
+    assert.equal(build.annotations.readOnlyHint,false);
+    assert.equal(build.annotations.consequentialHint,true);
+    assert.equal(workspace.annotations.readOnlyHint,true);
+  }finally{f.close();}
+});
+
+test('Website Studio registers bounded editor-only browser tools without exposing the edit ticket',()=>{
+  const start=source.indexOf('async function installWebsiteStudioWebMcpTools()');
+  const end=source.indexOf('function installCreativeAgentWorkspaceApi()',start);
+  assert.ok(start>=0 && end>start);
+  const bridge=source.slice(start,end);
+  assert.match(bridge,/document\.modelContext/);
+  assert.match(bridge,/legend:model-context-ready/);
+  assert.doesNotMatch(bridge,/for\(let attempt=0;attempt<40/);
+  assert.match(bridge,/registerTool/);
+  assert.match(legendSiteToolsBridgeSource,/dispatchEvent\(new CustomEvent\("legend:model-context-ready"\)\)/);
+  assert.match(bridge,/pagehide[\s\S]*controller\.abort/);
+  for(const name of [
+    'legend_website_workspace',
+    'legend_website_apply_design_plan',
+    'legend_website_apply_mutations',
+    'legend_website_set_signal_mappings',
+    'legend_website_import_image',
+    'legend_website_preflight'
+  ]) assert.ok(bridge.includes(name),name);
+  assert.match(bridge,/business_data/);
+  assert.match(bridge,/conversion_trace/);
+  assert.match(bridge,/traceConversions/);
+  assert.match(bridge,/privateTests=await Promise\.all/);
+  assert.match(bridge,/readOnlyHint:tool\.readOnly/);
+  assert.match(bridge,/consequentialHint:!tool\.readOnly/);
+  assert.match(bridge,/untrustedContentHint:true/);
+  assert.doesNotMatch(bridge,/editorTicket|legendEdit|authorization|cookie|localStorage|sessionStorage/i);
+  assert.match(source,/Object\.defineProperty\(window,'LEGEND_WEBSITE_STUDIO_AGENT'[\s\S]*installWebsiteStudioWebMcpTools\(\)/);
+});
+
+test('authorized Studio conceals the edit ticket from the visible document and restores it only from history state',async()=>{
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'}});
+  try{
+    const url=new URL(f.w.location.href);
+    assert.equal(url.searchParams.has('legendEdit'),false);
+    assert.equal(f.w.history.state?.legendStudioTicket,'ticket');
+    assert.match(source,/function credentialFreeEditorUrl\(value\)/);
+    assert.match(source,/concealEditorTicketFromDocumentUrl\(\)/);
+    assert.match(source,/el\.href=credentialFreeEditorUrl\(scoped\)\.toString\(\)/);
+    assert.doesNotMatch(source,/history\[method\]\(\{legendStudioRoute:route\},'',url\.toString\(\)\)/);
+  }finally{f.close();}
+});
+
+test('LEGEND static host permits only same-origin Website Studio materialization frames',()=>{
+  assert.match(legendWebConfigSource,/X-Frame-Options" value="SAMEORIGIN"/);
+  assert.equal(/X-Frame-Options" value="DENY"/.test(legendWebConfigSource),false);
 });
 
 test('pre-v3 migration is an explicit read-only one-way materialization boundary',()=>{
@@ -254,8 +1476,8 @@ test('canonical v3 runtime inherits base style and switches breakpoint style and
 
 
 
-test('signal editor private test saves draft first but sends no production signal and shows dry-run result',async()=>{
-  const catalog={events:[{name:'ViewContent',category:'page',metaEligible:true,requiresServerOutcome:false,triggers:['viewed']}],matchingFields:[],runtimeEnabled:true};
+test('signal editor persists through canonical signal authority and private test sends no production signal',async()=>{
+  const catalog={events:[{name:'ViewContent',actionKey:'page_view',category:'page',metaEligible:true,requiresServerOutcome:false,triggers:['viewed']}],matchingFields:[],runtimeEnabled:true};
   const f=await domFixture({
     signalCatalog:catalog,
     signalTestPayload:{
@@ -269,21 +1491,31 @@ test('signal editor private test saves draft first but sends no production signa
     f.click('[data-open="signals"]');
     const add=[...f.w.document.querySelectorAll('#legend-cms-signal-controls button')].find(button=>button.textContent==='Add advanced custom mapping');
     assert.ok(add); add.click();
-    const send=f.w.document.querySelector('#legend-cms-signal-controls select');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    await new Promise(resolve=>setTimeout(resolve,0));
+
+    let send=f.w.document.querySelector('#legend-cms-signal-controls select');
+    assert.ok(send);
     send.value='analytics'; send.dispatchEvent(new f.w.Event('change',{bubbles:true}));
+    await new Promise(resolve=>setTimeout(resolve,0));
+    await new Promise(resolve=>setTimeout(resolve,0));
+
+    const signalCalls=f.calls.filter(call=>call.method==='POST' && new URL(call.url).pathname.endsWith('/manage/signals'));
+    assert.ok(signalCalls.length>=2);
+    assert.equal(f.calls.some(call=>call.method==='POST' && new URL(call.url).pathname==='/api/website-content/manage'),false);
+
     const testButton=f.w.document.querySelector('[data-signal-test]');
     assert.ok(testButton);
     testButton.click();
     await new Promise(resolve=>setTimeout(resolve,0));
     await new Promise(resolve=>setTimeout(resolve,0));
 
-    const saveCall=f.calls.find(call=>call.method==='POST' && new URL(call.url).pathname==='/api/website-content/manage');
     const testCall=f.calls.find(call=>new URL(call.url).pathname.endsWith('/manage/signals/test'));
-    assert.ok(saveCall);
     assert.ok(testCall);
     const request=JSON.parse(testCall.body);
     assert.equal(request.pagePath,'/');
     assert.equal(request.elementId,'home.h1.node.1');
+    assert.equal(request.fieldKey,null);
     assert.equal(request.bindingId,testButton.dataset.signalTest);
     assert.equal(f.calls.some(call=>new URL(call.url).pathname==='/analytics/meta-signal'),false);
     const status=f.w.document.querySelector(`[data-signal-diagnostics="${testButton.dataset.signalTest}"]`).textContent;
@@ -291,6 +1523,39 @@ test('signal editor private test saves draft first but sends no production signa
     assert.match(status,/no analytics or Meta event sent/);
     assert.match(status,/Analytics ingest: would accept/);
   } finally { f.close(); }
+});
+
+test('form-field signals persist on the owning canonical form node through fieldKey authority',async()=>{
+  const doc=canonicalDocument();
+  canonicalNodeById(doc,'home.section.1').children.push(canonicalNode('home.form','form','form',{
+    systemKey:'canonical_inquiry',
+    fieldSignals:{}
+  }));
+  const catalog={events:[{name:'ContactInputStarted',actionKey:'contact_input_started',category:'lead',metaEligible:true,requiresServerOutcome:false,triggers:['field_started']}],matchingFields:[],runtimeEnabled:true};
+  const f=await domFixture({doc,signalCatalog:catalog});
+  try{
+    const phone=f.w.document.querySelector('form[data-cms-id="home.form"] input[name="Phone"]');
+    assert.ok(phone);
+    phone.dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true}));
+    f.click('[data-open="signals"]');
+    const add=[...f.w.document.querySelectorAll('#legend-cms-signal-controls button')].find(button=>button.textContent==='Add advanced custom mapping');
+    assert.ok(add); add.click();
+    await new Promise(resolve=>setTimeout(resolve,0));
+    await new Promise(resolve=>setTimeout(resolve,0));
+
+    const call=f.calls.find(call=>call.method==='POST' && new URL(call.url).pathname.endsWith('/manage/signals'));
+    assert.ok(call);
+    const request=JSON.parse(call.body);
+    assert.equal(request.elementId,'home.form');
+    assert.equal(request.fieldKey,'phone');
+
+    const savedForm=canonicalNodeById(f.serverDocument(),'home.form');
+    assert.ok(savedForm?.fieldSignals?.phone);
+    const current=JSON.parse(call.body).signals;
+    assert.equal(current.length,1);
+    assert.equal(current[0].trigger,'field_started');
+    assert.equal(f.calls.some(entry=>entry.method==='POST' && new URL(entry.url).pathname==='/api/website-content/manage'),false);
+  }finally{f.close();}
 });
 
 test('signal editor delivery health renders existing authoritative evidence without credential material',async()=>{
@@ -380,10 +1645,23 @@ test('GPT browser workspace exposes the canonical editor without any app-side Op
     assert.ok(f.w.document.querySelector('[data-agent-action="quality-preflight"]'));
     assert.ok(f.w.document.querySelector('[data-agent-action="publish-workspace"]'));
     f.click('#legend-cms-agent-master-source');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    await new Promise(resolve=>setTimeout(resolve,0));
     assert.equal(f.w.document.querySelector('[data-cms-view="source"]').hidden,false);
     assert.equal(f.w.document.querySelector('#legend-cms-source-scope').value,'site');
     assert.equal(f.calls.some(call=>new URL(call.url).pathname.includes('/manage/ai/')),false);
   } finally { f.close(); }
+});
+
+
+test('Website Studio Content exposes canonical typography and spacing controls without a second style store',()=>{
+  for(const key of ['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','color','textTransform','textDecoration','paddingLeft','paddingRight','marginTop','marginBottom'])
+    assert.ok(source.includes(`data-style-key="${key}"`),key);
+  assert.ok(source.includes('Weight / thickness'));
+  assert.ok(source.includes('canonicalMaterializationIds'));
+  assert.ok(source.includes('createMaterializationIdentityContext'));
+  assert.ok(source.includes('claimMaterializationId'));
+  assert.ok(source.includes("pageKey + '.root.' + (++index)"));
 });
 
 test('shared Website Studio contains no app-side OpenAI proposal endpoint',()=>{
@@ -414,6 +1692,12 @@ test('writable Website Studio exposes only the v3 composition authority',()=>{
   assert.equal(source.includes('legend-cms-videoUrl'),false);
   assert.equal(source.includes('function readImage('),false);
   assert.equal(source.includes('function restoreHistory('),false);
+  assert.equal(source.includes('templateRepairPending'),false);
+  assert.equal(source.includes('synchronizeCanonicalSharedPresentation'),false);
+  assert.equal(source.includes('rebuildCanonicalSharedPresentationIndex'),false);
+  assert.equal(source.includes('constrainDocumentGeometry'),false);
+  assert.equal(source.includes('patchPageStructuralMutation'),false);
+  assert.ok(source.includes('renderPageStructuralMutationIncrementally'));
   assert.ok(source.includes('function restoreCanonicalV3History('));
   assert.ok(source.includes('function cloneCanonicalValue('));
   assert.equal((source.match(/structuredClone\(/g) || []).length,1);
@@ -429,7 +1713,7 @@ test('writable Website Studio exposes only the v3 composition authority',()=>{
   assert.equal(source.includes('node.mediaUrl=asset.url'),false);
   assert.equal(source.includes('mediaUrl:asset.url'),false);
   assert.ok(source.includes('node.mediaAssetId=asset.id'));
-  assert.match(source,/async function save\([\s\S]*?if \(legacyMigration\)[\s\S]*?return false;/);
+  assert.match(source,/async function save\([\s\S]*?if \(legacyMigration && !materializationSavePending\)[\s\S]*?return false;/);
   assert.match(source,/function buildEditor\(\) \{[\s\S]*?if \(legacyMigration\)[\s\S]*?throw new Error/);
   assert.match(source,/READ-ONLY PRE-V3 COMPATIBILITY BOUNDARY/);
 });
@@ -499,9 +1783,10 @@ test('shared business inquiry uses Protect contact identity and two-column rows'
   assert.ok(publicInquirySource.includes("fields.get('Phone')"));
   assert.ok(publicInquirySource.includes("fields.get('Email')"));
   assert.ok(source.includes("requiredContactFields: inquiryForm ? ['FirstName','LastName','Phone','Email'] : []"));
-  assert.ok(publicInquiryFormCss.includes('.public-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))'));
-  assert.match(publicInquiryFormCss, /@media\(max-width:650px\)[\s\S]*?\.public-form-grid\{grid-template-columns:1fr;gap:14px\}/);
-  assert.match(publicCss, /@container legend-public-preview \(max-width:650px\)[\s\S]*?\.public-form-grid\{grid-template-columns:1fr;gap:14px\}/);
+  assert.match(publicInquiryFormCss,/\.public-form-grid\s*\{[\s\S]*?display:grid;[\s\S]*?grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(publicInquiryFormCss, /@media\(max-width:650px\)[\s\S]*?\.public-form-grid\s*\{[\s\S]*?grid-template-columns:1fr;[\s\S]*?gap:14px/);
+  assert.doesNotMatch(publicCss, /@container legend-public-preview/);
+  assert.equal(publicCss.includes('.public-form-grid'),false);
 });
 
 test('Founder and business websites use one shared inquiry runtime with no hard-coded founder email form path',()=>{
@@ -517,6 +1802,15 @@ test('Founder and business websites use one shared inquiry runtime with no hard-
   assert.ok(publicInquiryFormSource.includes('name="Message"'));
   assert.ok(protectContactSource.includes('data-legend-public-inquiry-form'));
   assert.ok(parfaitContactSource.includes('data-legend-public-inquiry-form'));
+  assert.ok(publicInquiryFormSource.includes("window.addEventListener('legend:website-content-rendered', start)"));
+  assert.ok(publicInquiryFormSource.includes('[data-website-inquiry]:not([data-preview])'));
+  assert.ok(publicInquiryFormSource.includes('[data-website-experience-form][data-submit-capability="lead_capture"]:not([data-preview])'));
+  assert.ok(protectLayoutSource.includes('~/js/public-inquiry-form.mjs'));
+  assert.ok(protectLayoutSource.includes('~/css/public-inquiry-form.css'));
+  assert.ok(parfaitLayoutSource.includes('~/js/public-inquiry-form.mjs'));
+  assert.ok(parfaitLayoutSource.includes('~/css/public-inquiry-form.css'));
+  assert.equal(protectContactSource.includes('public-inquiry-form.mjs'),false);
+  assert.equal(parfaitContactSource.includes('public-inquiry-form.mjs'),false);
   assert.equal(protectContactSource.includes('mailto:'),false);
   assert.equal(parfaitContactSource.includes('mailto:'),false);
   assert.equal(businessBuildSource.includes('mailto:connect@mylegnd.com'),false);
@@ -538,18 +1832,23 @@ test('published business rendering activates the shared inquiry path without inj
 });
 
 test('custom code blocks use opaque data frames instead of weakening the page script policy',()=>{
-  assert.ok(source.includes("frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(source)"));
-  assert.equal(source.includes('allow-same-origin'),false);
+  assert.ok(source.includes("frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(secureEmbedSource(source))"));
+  const embedStart=source.indexOf('function buildCanonicalEmbed');
+  const embedEnd=source.indexOf('function buildCompositionNode',embedStart);
+  const embedSource=source.slice(embedStart,embedEnd);
+  assert.match(embedSource,/sandbox','allow-scripts'/);
+  assert.doesNotMatch(embedSource,/allow-same-origin/);
   assert.ok(businessMiddlewareSource.includes("frame-src 'self' data:; object-src 'none'"));
   const policy=businessMiddlewareSource.match(/default-src 'self'; script-src[^"]+/)?.[0] || '';
   assert.equal(policy.includes("script-src 'self' 'unsafe-inline'"),false);
   assert.equal(policy.includes("script-src 'self' 'unsafe-eval'"),false);
 });
 
-test('shared mobile navigation opens as compact horizontal button grids',()=>{
+test('shared public mobile navigation uses the compact dropdown contract',()=>{
   assert.ok(publicCss.includes('.nav[data-open=true]{display:grid}'));
-  assert.ok(publicCss.includes('grid-template-columns:repeat(4,minmax(0,1fr))'));
-  assert.ok(publicCss.includes('.nav{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}'));
+  assert.ok(publicCss.includes('grid-template-columns:repeat(2,minmax(0,1fr))'));
+  assert.ok(publicCss.includes('white-space:nowrap;overflow:hidden;text-overflow:ellipsis'));
+  assert.ok(publicCss.includes('box-shadow:0 18px 44px rgba(0,0,0,.34)'));
   assert.equal(publicCss.includes('.nav[data-open=true]{display:flex}'),false);
 });
 for (const siteKey of ['legend','protect','business']) {
@@ -638,16 +1937,17 @@ test('button action picker groups human CTA phrases by one backend wiring contra
     const button=f.w.document.querySelector('.legend-cms-selected');
     assert.equal(button.textContent,'Get a Free Quote');
     assert.equal(button.getAttribute('href'),'/contact');
-    assert.equal(f.w.document.querySelector('#legend-cms-action').disabled,true);
-    assert.match(f.w.document.querySelector('#legend-cms-action-wiring').textContent,/Protected wiring/);
+    assert.equal(f.w.document.querySelector('#legend-cms-action').disabled,false);
+    assert.match(f.w.document.querySelector('#legend-cms-action-wiring').textContent,/Managed action/);
 
     f.change('#legend-cms-action','custom');
-    assert.equal(button.dataset.websiteActionKey,'business_quote');
-    assert.equal(button.getAttribute('href'),'/contact');
+    assert.equal(button.dataset.websiteActionKey,undefined);
+    f.input('#legend-cms-href','https://example.com/custom');
+    assert.equal(button.getAttribute('href'),'https://example.com/custom');
   }finally{f.close();}
 });
 
-test('selecting another canvas child preserves the active side-panel tool instead of forcing Content',async()=>{
+test('first canvas selection always opens Content for the newly selected canonical node',async()=>{
   const html='<!doctype html><html><body data-page-key="home"><main><section><a href="/contact"><span>Contact</span></a><h2>Heading</h2></section></main></body></html>';
   const f=await domFixture({html});
   try{
@@ -655,17 +1955,17 @@ test('selecting another canvas child preserves the active side-panel tool instea
     const appearance=f.w.document.querySelector('[data-cms-view="appearance"]');
     const content=f.w.document.querySelector('[data-cms-view="content"]');
     assert.equal(appearance.hidden,false);
-    f.click('main h2');
-    assert.equal(appearance.hidden,false);
-    assert.equal(content.hidden,true);
-    f.click('main a span');
-    assert.equal(appearance.hidden,false);
-    assert.equal(content.hidden,true);
-    assert.equal(f.w.document.querySelector('.legend-cms-selected').tagName,'A');
 
-    const same=f.w.document.querySelector('main a span');
-    same.dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true,detail:1}));
+    f.click('main h2');
     assert.equal(content.hidden,false);
+    assert.equal(appearance.hidden,true);
+    assert.equal(f.w.document.querySelector('.legend-cms-selected').tagName,'H2');
+
+    f.click('[data-open="appearance"]');
+    f.click('main a span');
+    assert.equal(content.hidden,false);
+    assert.equal(appearance.hidden,true);
+    assert.equal(f.w.document.querySelector('.legend-cms-selected').tagName,'A');
   }finally{f.close();}
 });
 
@@ -925,26 +2225,33 @@ for(const siteKey of ['legend','protect']) {
     } finally {f.close();}
   });
 }
-test('autosave persists edits before domain connection and panel can collapse to a full-page preview', async()=>{
+test('autosave persists changed scopes through canonical mutations before domain connection', async()=>{
   const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'}});
   try {
     f.click('main h1');
     f.editSelected('Persisted before domain');
     await new Promise(resolve=>setTimeout(resolve,1000));
-    const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage'));
+    const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage/mutations'));
     assert.ok(saveCall);
-    assert.equal(canonicalNodeById(JSON.parse(saveCall.body).document,'home.h1.node.1').text,'Persisted before domain');
+    const operations=JSON.parse(saveCall.body).operations;
+    assert.ok(operations.some(operation=>operation.type==='replaceNode' && operation.nodeId==='home.h1.node.1'));
+    assert.equal(canonicalNodeById(f.serverDocument(),'home.h1.node.1').text,'Persisted before domain');
+    assert.equal(f.calls.some(call=>call.method==='POST' && call.url.endsWith('/manage') && JSON.parse(call.body || '{}').document),false);
     const toggle=f.w.document.querySelector('#legend-cms-panel-toggle');
     assert.ok(toggle);
     f.click('#legend-cms-panel-toggle');
     assert.equal(f.w.document.body.classList.contains('legend-cms-panel-hidden'),true);
-    assert.equal(toggle.textContent,'Open controls');
+    assert.equal(toggle.textContent,'');
+    assert.equal(toggle.getAttribute('aria-label'),'Open Website Studio controls');
+    assert.match(toggle.innerHTML,/<svg/);
     assert.ok(f.w.document.querySelector('.legend-cms-selected'));
     f.editSelected('Still editing full width');
     assert.equal(f.w.document.querySelector('main h1').textContent,'Still editing full width');
     f.click('#legend-cms-panel-toggle');
     assert.equal(f.w.document.body.classList.contains('legend-cms-panel-hidden'),false);
-    assert.equal(toggle.textContent,'Full-page canvas');
+    assert.equal(toggle.textContent,'');
+    assert.equal(toggle.getAttribute('aria-label'),'Hide Website Studio controls');
+    assert.match(toggle.innerHTML,/<svg/);
   } finally { f.close(); }
 });
 test('breakpoint editor writes responsive style and layout without replacing base geometry',async()=>{
@@ -1055,7 +2362,7 @@ test('direct canvas replaces designated drop controls and persists shared geomet
     const style=canonicalNodeById(saved,'home.h1.node.1').style;
     assert.equal(style.widthPercent,50);assert.equal(style.heightPx,240);assert.equal(style.offsetXPercent,25);assert.equal(style.offsetYPx,48);
   }finally{f.close();}
-  const loaded=await domFixture({doc:saved,search:''});try {
+  const loaded=await domFixture({doc:saved,search:'',viewportWidth:1440});try {
     const heading=loaded.w.document.querySelector('main h1');
     assert.equal(heading.style.width,'50%');assert.equal(heading.style.height,'240px');assert.equal(heading.style.left,'25%');assert.equal(heading.style.top,'48px');
     assert.equal(loaded.w.document.querySelector('.legend-cms-panel'),null);
@@ -1214,9 +2521,10 @@ test('mobile runtime contains canonical moved geometry without creating horizont
   const f=await domFixture({doc,search:'',viewportWidth:390});
   try{
     const heading=f.w.document.querySelector('main h1');
-    assert.equal(heading.style.width,'25%');
-    assert.equal(heading.style.maxWidth,'25%');
-    assert.equal(heading.style.left,'75%');
+    assert.equal(heading.style.width,'100%');
+    assert.equal(heading.style.maxWidth,'100%');
+    assert.equal(heading.style.left,'0%');
+    assert.equal(heading.dataset.legendContentRole,'heading');
     assert.match(source,/html,body\{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none\}/);
     assert.match(source,/main,main>section,[^}]*overflow-x:clip/);
     assert.match(source,/body\{touch-action:pan-y pinch-zoom\}/);
@@ -1229,7 +2537,7 @@ test('editor preview is horizontally locked to the rendered website at every bre
     const preview=f.w.document.querySelector('.legend-cms-preview');
     assert.ok(preview);
     assert.equal(f.w.getComputedStyle(preview).overflowX,'clip');
-    assert.equal(f.w.getComputedStyle(preview).maxWidth,'100%');
+    assert.equal(f.w.getComputedStyle(preview).maxWidth,'none');
     preview.scrollLeft=140;
     preview.dispatchEvent(new f.w.Event('scroll'));
     assert.equal(preview.scrollLeft,0);
@@ -1239,8 +2547,11 @@ test('editor preview is horizontally locked to the rendered website at every bre
     assert.equal(preview.scrollLeft,0);
     f.w.dispatchEvent(new f.w.Event('resize'));
     assert.equal(preview.scrollLeft,0);
-    assert.match(source,/\.legend-cms-preview\{width:100%;max-width:100%;[^}]*overflow-x:clip;[^}]*touch-action:pan-y pinch-zoom;[^}]*contain:inline-size/);
+    assert.match(source,/\.legend-cms-preview\{width:100vw;max-width:none;min-width:100vw;[^}]*overflow-x:clip;[^}]*touch-action:pan-y pinch-zoom/);
+    assert.match(source,/@media\(max-width:800px\)[\s\S]*?\.legend-cms-preview\{width:100%;max-width:100%;[^}]*overflow-x:hidden/);
     assert.doesNotMatch(source,/window\.innerWidth > 800/);
+    assert.doesNotMatch(source,/body\.legend-cms-editing\{[^}]*grid-template/);
+    assert.doesNotMatch(source,/body\.legend-cms-editing\.legend-cms-panel-hidden\{[^}]*grid-template/);
   }finally{f.close();}
 });
 
@@ -1259,7 +2570,7 @@ test('canonical editor geometry can move anywhere inside the section while rende
     assert.equal(f.w.document.querySelector('#legend-cms-width').value,'100');
     assert.equal(f.w.document.querySelector('#legend-cms-offset-x').value,'0');
     assert.match(source,/const availableWidth = Math\.max\(5, 100 - horizontalOffset\)/);
-    assert.match(source,/style\.offsetXPercent = Math\.max\(0, Math\.min\(95, rawOffset\)\)/);
+    assert.match(source,/const horizontalOffset = !sectionLocked[\s\S]*Math\.max\(0, Math\.min\(95, Number\(style\.offsetXPercent\)\)\)/);
   }finally{f.close();}
 });
 
@@ -1281,6 +2592,47 @@ test('business entity name remains profile-owned while canonical shell typograph
     assert.equal(f.w.document.querySelector('#legend-cms-scale').disabled,false);
     assert.equal(f.w.document.querySelector('#legend-cms-link-group').hidden,true);
     assert.match(source,/entityBound = el\.hasAttribute\?\.\('data-business-name'\)/);
+    assert.match(publicCss,/\.brand-wordmark strong\{[^}]*white-space:nowrap[^}]*text-overflow:ellipsis/);
+    assert.match(publicCss,/\.brand\{[^}]*min-width:0[^}]*max-width:min\(58vw,38rem\)/);
+    assert.match(businessBuildSource,/brand-wordmark business-brand-banner/);
+    assert.match(publicCss,/\.business-brand-banner\{[\s\S]*border:1px solid color-mix\(in srgb,var\(--gold\) 42%,transparent\)[\s\S]*background:linear-gradient\(110deg/);
+    assert.match(publicCss,/\.business-brand-banner strong\{[\s\S]*font-family:var\(--font\)[\s\S]*font-weight:var\(--public-banner-title-weight\)[\s\S]*letter-spacing:var\(--public-banner-title-tracking\)/);
+    assert.match(publicCss,/@media\(max-width:980px\)[\s\S]*\.brand\{width:auto;min-width:0;max-width:100%;overflow:hidden\}/);
+    assert.match(publicCss,/@media\(max-width:650px\)[\s\S]*\.business-brand-banner\{width:auto;min-width:0;max-width:100%/);
+    assert.match(publicCss,/\.nav-toggle\{[^}]*flex:0 0 auto[^}]*white-space:nowrap/);
+  }finally{f.close();}
+});
+
+test('disabled store control is a single compact Add Store action with no redundant explanation',async()=>{
+  const f=await domFixture();
+  try{
+    const host=f.w.document.querySelector('#legend-cms-store-controls');
+    assert.ok(host);
+    assert.equal(host.querySelectorAll('button').length,1);
+    assert.equal(host.querySelector('#legend-cms-store-toggle')?.textContent,'Add Store');
+    assert.equal(host.querySelector('small'),null);
+    assert.doesNotMatch(source,/Adds one scoped Store page/);
+    assert.match(source,/#legend-cms-store-toggle\{[^}]*justify-self:start/);
+  }finally{f.close();}
+});
+
+test('primary navigation keeps one behavior authority while its presentation is editable',async()=>{
+  const doc=canonicalBusinessNavigation(canonicalDocument());
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},doc,pages:[{path:'/',label:'Home'}]});
+  try{
+    const nav=f.w.document.querySelector('#primary-nav');
+    assert.ok(nav);
+    assert.equal(nav.dataset.cmsLocked,undefined);
+    assert.equal(nav.dataset.cmsBehaviorLocked,'true');
+    const link=nav.querySelector('[data-legend-page-nav="true"]');
+    assert.ok(link);
+    link.dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true}));
+    assert.equal(f.w.document.querySelector('.legend-cms-selected'),nav);
+    f.input('#legend-cms-scale','1.9');
+    const saved=await f.save();
+    const navNode=saved.shell.header[0].children.find(node=>node.id==='shell.primary-nav');
+    assert.equal(navNode.style.fontScale,1.9);
+    assert.equal(navNode.systemKey,'primary_navigation');
   }finally{f.close();}
 });
 
@@ -1327,8 +2679,16 @@ test('store cart icon is persisted in the canonical website document and sanitiz
   assert.match(businessRenderSource,/cartIcon:storeCartIcon/);
 });
 
-test('publish saves unsaved draft first then calls the explicit publish action',async()=>{
- const f=await domFixture();try{f.click('main h1');f.editSelected('New draft');f.click('#legend-cms-publish');await new Promise(r=>setTimeout(r,0));assert.equal(f.calls.length,3);assert.ok(f.calls[1].url.endsWith('/manage'));assert.ok(f.calls[2].url.endsWith('/manage/publish'));assert.equal(JSON.parse(f.calls[2].body).expectedRevision,'r2');}finally{f.close();}
+test('publish flushes unsaved mutations first then calls the explicit publish action',async()=>{
+ const f=await domFixture();try{
+   f.click('main h1');f.editSelected('New draft');f.click('#legend-cms-publish');
+   await new Promise(r=>setTimeout(r,0));await new Promise(r=>setTimeout(r,0));
+   const mutationIndex=f.calls.findIndex(call=>call.method==='POST' && call.url.endsWith('/manage/mutations'));
+   const publishIndex=f.calls.findIndex(call=>call.method==='POST' && call.url.endsWith('/manage/publish'));
+   assert.ok(mutationIndex>0);assert.ok(publishIndex>mutationIndex);
+   assert.equal(JSON.parse(f.calls[publishIndex].body).expectedRevision,'r2');
+   assert.equal(f.calls.some(call=>call.method==='POST' && call.url.endsWith('/manage') && JSON.parse(call.body || '{}').document),false);
+ }finally{f.close();}
 });
 test('editing current page preserves independent canonical page composition',async()=>{
  const doc=canonicalDocument();
@@ -1347,8 +2707,20 @@ test('editing current page preserves independent canonical page composition',asy
    assert.equal(canonicalNodeById(saved,'home.h1.node.1').text,'Home edit');
  }finally{f.close();}
 });
-test('undo and redo restore content and leave other page drafts intact',async()=>{
- const f=await domFixture();try{f.click('main h1');f.editSelected('First edit');f.editSelected('Second edit');f.click('#legend-cms-undo');assert.equal(f.w.document.querySelector('main h1').textContent,'First edit');f.click('#legend-cms-redo');assert.equal(f.w.document.querySelector('main h1').textContent,'Second edit');}finally{f.close();}
+test('undo and redo replay inverse canonical mutation batches without document snapshots',async()=>{
+ const f=await domFixture();try{
+   f.click('main h1');f.editSelected('First edit');await f.save();
+   f.click('main h1');f.editSelected('Second edit');
+   f.click('#legend-cms-undo');
+   await new Promise(r=>setTimeout(r,0));await new Promise(r=>setTimeout(r,0));
+   assert.equal(f.w.document.querySelector('main h1').textContent,'First edit');
+   f.click('#legend-cms-redo');
+   await new Promise(r=>setTimeout(r,0));await new Promise(r=>setTimeout(r,0));
+   assert.equal(f.w.document.querySelector('main h1').textContent,'Second edit');
+   assert.equal(source.includes('function historySnapshot'),false);
+   assert.match(source,/undoStack\.push\(\{undo,redo\}\)/);
+   assert.match(source,/creativeApplyMutationBatch\(operations\)/);
+ }finally{f.close();}
 });
 test('selected blocks expose a dedicated move control plus independent resize zones and a quiet snap grid',async()=>{
  const f=await domFixture();try {
@@ -1383,7 +2755,11 @@ test('sandboxed code block saves source and previews without same-origin access'
   const block=f.w.document.querySelector('.legend-cms-embed');
   const frame=block.querySelector('iframe');
   assert.ok(frame.src.startsWith('data:text/html;charset=utf-8,'));
-  assert.equal(decodeURIComponent(frame.src.slice(frame.src.indexOf(',')+1)),sourceInput.value);
+  const previewSource=decodeURIComponent(frame.src.slice(frame.src.indexOf(',')+1));
+  assert.ok(previewSource.includes(sourceInput.value));
+  assert.match(previewSource,/Content-Security-Policy/);
+  assert.match(previewSource,/connect-src 'none'/);
+  assert.match(previewSource,/form-action 'none'/);
   assert.equal(frame.getAttribute('sandbox').includes('allow-same-origin'),false);
   const saved=await f.save();const embed=canonicalNodes(saved).find(x=>x.type==='embed');
   assert.ok(embed);assert.equal(embed.text,sourceInput.value);assert.equal(embed.style.widthPercent,100);assert.equal(embed.style.heightPx,320);
@@ -1465,51 +2841,115 @@ test('business Pages manager stores navigation metadata in the canonical documen
   } finally { f.close(); }
 });
 
-test('business Pages manager creates a real custom page draft and saves before navigation', async()=>{
+test('business page selector switches existing canonical routes without a second manage bootstrap', async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/about']={title:'About',description:'About',navigation:{label:'About',showInNavigation:true,order:10,isDeleted:false},dynamicBinding:null,composition:[
+    canonicalNode('about.section','section','section',{children:[canonicalNode('about.h1','heading','h1',{text:'About us'})]})
+  ]};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},doc});
+  try{
+    const before=f.calls.filter(call=>(call.method||'GET')==='GET' && new URL(call.url).pathname.endsWith('/manage')).length;
+    f.change('#legend-cms-page-select','/about');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(f.w.document.querySelector('main h1')?.textContent,'About us');
+    assert.equal(f.w.document.querySelector('#legend-cms-page-select').value,'/about');
+    assert.equal(new URL(f.w.location.href).searchParams.get('cmsPage'),'/about');
+    const after=f.calls.filter(call=>(call.method||'GET')==='GET' && new URL(call.url).pathname.endsWith('/manage')).length;
+    assert.equal(after,before);
+  }finally{f.close();}
+});
+
+test('Studio bootstrap uses compact context and lazy advanced data/signal catalogs',()=>{
+  assert.match(websitePlatformControllerSource,/signalCatalog = \(object\?\)null,\s*agentContract = WebsiteStudioAgentContract\.CompactPayload/);
+  assert.match(websitePlatformControllerSource,/LoadAsync\(draft, business\.Id, cancellationToken\)/);
+  assert.match(websitePlatformControllerSource,/\[HttpGet\("manage\/agent\/contract"\)\]/);
+  assert.match(websitePlatformControllerSource,/\[HttpGet\("manage\/data-catalog"\)\]/);
+  assert.match(source,/async function ensureSignalCatalog\(\)/);
+  assert.match(source,/async function ensureBusinessDataCatalog\(\)/);
+  assert.match(source,/getFullContract:\(\)=>creativeWorkspaceRequest\('manage\/agent\/contract'\)/);
+  assert.match(source,/listBusinessData:async\(\)=>/);
+});
+
+test('business Pages manager creates a canonical page by mutation and switches in place', async()=>{
   const f=await domFixture({
     siteKey:'business',
     business:{id:'business-id',displayName:'Fixture business'},
     pages:[{path:'/',label:'Home'},{path:'/about',label:'About'}]
   });
   try {
+    const bootstrapCount=f.calls.filter(call=>!call.method && new URL(call.url).pathname.endsWith('/manage')).length;
     f.click('[data-open="page"]');
     f.input('#legend-cms-page-nav-label','Team');
     f.input('#legend-cms-page-slug','/team');
     f.click('#legend-cms-page-create');
-    await new Promise(resolve=>setTimeout(resolve,0));
-    const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage'));
+    for(let i=0;i<100 && f.w.history.state?.legendStudioRoute!=='/team';i++)
+      await new Promise(resolve=>setTimeout(resolve,0));
+    const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage/mutations'));
     assert.ok(saveCall);
-    const saved=JSON.parse(saveCall.body).document;
+    const saved=f.serverDocument();
     assert.equal(saved.pages['/team'].title,'Team');
     assert.equal(saved.pages['/team'].navigation.label,'Team');
     assert.equal(saved.pages['/team'].navigation.isDeleted,false);
     assert.ok(saved.pages['/team'].composition.some(node=>node.type==='section'));
     assert.ok(canonicalNodes(saved,'/team').some(node=>node.type==='heading'&&node.text==='Team'));
+    assert.equal(f.w.history.state?.legendStudioRoute,'/team');
+    assert.equal(f.w.document.querySelector('#legend-cms-page-select').value,'/team');
+    assert.equal(f.calls.filter(call=>!call.method && new URL(call.url).pathname.endsWith('/manage')).length,bootstrapCount);
     assert.equal(Object.hasOwn(saved.pages['/team'],'extras'),false);
   } finally { f.close(); }
 });
 
-test('business Pages manager renames the canonical page record without retaining a shadow route', async()=>{
-  const html='<!doctype html><html><head></head><body data-page-key="services"><main><section><h1>Services</h1></section></main></body></html>';
+test('business Pages manager renames the canonical page by mutation without a shadow route or rebootstrap', async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/services']={title:'Services',description:'',navigation:{label:'Services',showInNavigation:true,order:10,isDeleted:false},dynamicBinding:null,composition:[
+    canonicalNode('services.section','section','section',{children:[canonicalNode('services.h1','heading','h1',{text:'Services'})]})
+  ]};
   const f=await domFixture({
-    siteKey:'business',
+    siteKey:'business',doc,
     business:{id:'business-id',displayName:'Fixture business'},
-    pathname:'/business-preview/services/',
-    pages:[{path:'/',label:'Home'},{path:'/services',label:'Services'}],
-    html
+    search:'?legendEdit=ticket&cmsPage=/services',
+    pages:[{path:'/',label:'Home'},{path:'/services',label:'Services'}]
   });
   try {
+    const bootstrapCount=f.calls.filter(call=>!call.method && new URL(call.url).pathname.endsWith('/manage')).length;
     f.click('[data-open="page"]');
     f.input('#legend-cms-page-slug','/work');
     f.click('#legend-cms-page-rename');
-    await new Promise(resolve=>setTimeout(resolve,0));
-    const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage'));
+    await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));
+    const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage/mutations'));
     assert.ok(saveCall);
-    const saved=JSON.parse(saveCall.body).document;
+    const saved=f.serverDocument();
     assert.ok(saved.pages['/work']);
     assert.equal(saved.pages['/services'],undefined);
     assert.equal(Object.hasOwn(saved.pages['/work'],'templatePath'),false);
+    assert.equal(f.calls.filter(call=>!call.method && new URL(call.url).pathname.endsWith('/manage')).length,bootstrapCount);
   } finally { f.close(); }
+});
+
+test('business page duplication re-resolves protected inquiry capability instead of copying backend wiring', async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition[0].children.push(canonicalNode('home.form','form','form',{
+    systemKey:'canonical_inquiry',
+    title:'Talk with us',
+    text:'Send',
+    signals:[{id:'11111111111111111111111111111111',trigger:'click',eventName:'cta_click',actionKey:'cta_click',deliveryMode:'analytics'}]
+  }));
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},doc});
+  try{
+    f.click('[data-open="page"]');
+    f.input('#legend-cms-page-slug','/copy');
+    f.click('#legend-cms-page-duplicate');
+    await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));
+    const mutation=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage/mutations'));
+    assert.ok(mutation);
+    const operations=JSON.parse(mutation.body).operations;
+    assert.ok(operations.some(operation=>operation.type==='insertCapability' && operation.capabilityKey==='contact.inquiry.submit'));
+    const copied=f.serverDocument().pages['/copy'];
+    const form=canonicalNodes({pages:{'/copy':copied}},'/copy').find(node=>node.type==='form');
+    assert.ok(form);
+    assert.equal(form.systemKey,'canonical_inquiry');
+    assert.deepEqual(form.signals || [],[]);
+  }finally{f.close();}
 });
 
 test('business Pages manager cannot delete or rename the home route', async()=>{
@@ -1521,7 +2961,7 @@ test('business Pages manager cannot delete or rename the home route', async()=>{
     f.input('#legend-cms-page-slug','/new-home');
     f.click('#legend-cms-page-rename');
     await new Promise(resolve=>setTimeout(resolve,0));
-    assert.equal(f.calls.some(call=>call.method==='POST' && call.url.endsWith('/manage')),false);
+    assert.equal(f.calls.some(call=>call.method==='POST' && call.url.endsWith('/manage/mutations')),false);
   } finally { f.close(); }
 });
 
@@ -1554,6 +2994,7 @@ test('media library reuses scoped image asset by canonical MediaAssetId only', a
     const image=canonicalNodeById(saved,'home.img.node.1');
     assert.equal(image.mediaAssetId,assetId);
     assert.equal(image.mediaUrl,undefined);
+    assert.equal(image.className ?? null,null);
     assert.equal(JSON.stringify(saved).includes('imageDataUrl'),false);
     assert.equal(JSON.stringify(saved).includes('ticket='),false);
   } finally { f.close(); }
@@ -1574,10 +3015,38 @@ test('media library inserts existing video as canonical composition with MediaAs
     assert.ok(video);
     assert.equal(video.mediaAssetId,assetId);
     assert.equal(video.mediaUrl,undefined);
+    assert.equal(video.className ?? null,null);
     assert.equal(JSON.stringify(saved).includes('videoUrl'),false);
     assert.equal(JSON.stringify(saved).includes('extras'),false);
     assert.equal(JSON.stringify(saved).includes('ticket='),false);
   } finally { f.close(); }
+});
+
+
+test('media upload has one multipart transport and bypasses inferred ApiController form binding', ()=>{
+  const uploadStart=source.indexOf('async function uploadMedia(file)');
+  const uploadEnd=source.indexOf('async function uploadImageAsset',uploadStart);
+  const upload=source.slice(uploadStart,uploadEnd);
+  assert.ok(upload.includes('new FormData()'));
+  assert.ok(upload.includes("body.append('file', file, file.name || 'website-media')"));
+  assert.doesNotMatch(upload,/['"]Content-Type['"]\s*:/);
+  assert.ok(upload.includes("headers: { Accept: 'application/json' }"));
+  assert.match(websitePlatformControllerSource,/public async Task<IActionResult> UploadMedia\(CancellationToken/);
+  assert.doesNotMatch(websitePlatformControllerSource,/UploadMedia\(\[FromForm\]/);
+  assert.match(websitePlatformControllerSource,/MultipartUploadTransport\.ReadAsync\(Request, cancellationToken\)/);
+  assert.match(websitePlatformControllerSource,/GetRequiredService<WebsiteMediaService>\(\)/);
+  assert.match(uploadValidationSource,/public static class MultipartUploadTransport/);
+  assert.match(uploadValidationSource,/TryResolveVisualMediaType/);
+  assert.match(uploadValidationSource,/image\/heic/);
+  assert.match(uploadValidationSource,/image\/heif/);
+  assert.match(uploadValidationSource,/image\/avif/);
+  assert.match(source,/accept="image\/\*,\.heic,\.heif,\.avif"/);
+  assert.doesNotMatch(source,/\^image\\\/\(jpeg\|png\|webp\)\$/);
+});
+
+test('media insertion never invents reserved legend-cms runtime classes', ()=>{
+  assert.equal(source.includes("className:'legend-cms-image'"),false);
+  assert.equal(source.includes("className:isImage?'legend-cms-image':null"),false);
 });
 
 
@@ -1600,6 +3069,7 @@ test('canonical block becomes one composition reusable definition and inserted i
     assert.equal(definition.composition.length,1);
     assert.equal(definition.composition[0].text,'Reusable promise');
     assert.deepEqual(definition.composition[0].signals,[]);
+    assert.deepEqual(definition.composition[0].fieldSignals || {},{});
     const instances=canonicalNodes(saved).filter(node=>node.type==='reusable');
     assert.equal(instances.length,1);
     assert.equal(instances[0].syncSourceId,definition.id);
@@ -1667,34 +3137,20 @@ test('missing canonical reusable definition renders warning without copied fallb
   } finally { f.close(); }
 });
 
-test('quality inspector keeps saved-server checks separate from rendered canonical-canvas checks', async () => {
-  const doc=canonicalDocument();
-  const section=canonicalNodeById(doc,'home.section.1');
-  section.children=[
-    canonicalNode('quality.h1','heading','h1',{text:'Title'}),
-    canonicalNode('quality.image','image','img',{mediaUrl:'https://images.example/a.png',alt:''}),
-    canonicalNode('quality.link','link','a',{text:'Broken',href:'#'})
-  ];
-  const qualityPayload={source:'saved_draft_server',revision:7,errorCount:1,warningCount:1,checks:[
-    {code:'dynamic_collection_missing',severity:'error',message:'Saved draft dynamic collection is unavailable.'},
-    {code:'page_title_missing',severity:'warning',message:'Saved draft page title is missing.'}
-  ]};
-  const f=await domFixture({doc,qualityPayload});
-  try {
-    f.click('[data-open="quality"]');
-    await new Promise(resolve=>setTimeout(resolve,0));
-    const savedMeta=f.w.document.querySelector('#legend-cms-quality-saved-meta').textContent;
-    const liveMeta=f.w.document.querySelector('#legend-cms-quality-live-meta').textContent;
-    const savedText=f.w.document.querySelector('#legend-cms-quality-saved').textContent;
-    const liveText=f.w.document.querySelector('#legend-cms-quality-live').textContent;
-    assert.match(savedMeta,/Saved draft checks \(server\) · revision 7 · 1 errors · 1 warnings/);
-    assert.match(liveMeta,/Live page checks \(rendered canvas\)/);
-    assert.match(savedText,/Saved draft dynamic collection is unavailable/);
-    assert.doesNotMatch(savedText,/missing alternative text|no working destination/);
-    assert.match(liveText,/missing alternative text/);
-    assert.match(liveText,/no working destination/);
-    assert.ok(f.calls.some(call=>new URL(call.url).pathname.endsWith('/manage/quality')));
-  } finally { f.close(); }
+test('quality inspector keeps saved-server checks separate from rendered canonical-canvas checks',()=>{
+  assert.match(source,/function renderWholeSitePreflight\(payload\)/);
+  assert.match(source,/const structural=Array\.isArray\(payload\?\.quality\?\.structural\?\.checks\)/);
+  assert.match(source,/const design=Array\.isArray\(payload\?\.quality\?\.design\?\.checks\)/);
+  assert.match(source,/const responsiveChecks=\[\];/);
+  assert.match(source,/for\(const page of Array\.isArray\(payload\?\.responsive\)\?payload\.responsive:\[\]\)/);
+  assert.match(source,/for\(const breakpoint of Array\.isArray\(page\?\.results\)\?page\.results:\[\]\)/);
+  assert.match(source,/Whole-site preflight · revision/);
+  assert.match(source,/Rendered responsive preflight/);
+  assert.match(source,/creativeWorkspaceRequest\('manage\/agent\/design-quality'\)/);
+  assert.match(source,/creativeWorkspaceRequest\('manage\/agent\/conversion-readiness'\)/);
+  assert.match(source,/runSiteResponsiveQualityAudit\(\)/);
+  assert.match(source,/quality\?\.revision===checkedRevision/);
+  assert.match(source,/conversion\?\.revision===checkedRevision/);
 });
 
 test('layers recover a hidden canonical section without losing its descendants', async () => {
@@ -1714,7 +3170,7 @@ test('layers recover a hidden canonical section without losing its descendants',
 });
 
 
-test('duplicate canonical link has independent stable identity and history restores each canonical transaction', async () => {
+test('duplicate canonical link has independent stable identity and one unsaved canonical batch is reversible', async () => {
   const f=await domFixture();
   try {
     f.click('main a');
@@ -1731,9 +3187,59 @@ test('duplicate canonical link has independent stable identity and history resto
     assert.equal(links.find(node=>node.id===originalId).href,'https://business.example/book');
     assert.equal(links.find(node=>node.id===duplicateId).href,'https://business.example/second');
     f.click('#legend-cms-undo');
-    assert.equal(f.w.document.querySelectorAll('main a').length,2);
-    f.click('#legend-cms-undo');
+    await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));
     assert.equal(f.w.document.querySelectorAll('main a').length,1);
+    f.click('#legend-cms-redo');
+    await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(f.w.document.querySelectorAll('main a').length,2);
+  } finally { f.close(); }
+});
+
+test('public publication renders without stale-template flash and HTML is never cached',()=>{
+  assert.match(businessBuildSource,/<html lang="en" data-legend-site="\$\{siteKey\}" hidden>/);
+  assert.match(protectLayoutSource,/hidden="@\(!isStandaloneQuoteLanding \? "hidden" : null\)"/);
+  assert.match(protectLayoutSource,/data-legend-canonical-pending="@\(!isStandaloneQuoteLanding \? "true" : null\)"/);
+  assert.match(protectLayoutSource,/<noscript><style>html\[hidden\]\{display:block!important\}<\/style><\/noscript>/);
+  assert.match(source,/function unavailable\(error\) \{[\s\S]*document\.documentElement\.hidden = false;/);
+  assert.match(source,/fetch\(url, \{ cache: 'no-store' \}\)/);
+  assert.match(businessMiddlewareSource,/CacheControl = "no-store,no-cache,must-revalidate,max-age=0"/);
+  assert.match(legendWebConfigSource,/name="Do not cache published HTML"/);
+  assert.match(legendWebConfigSource,/RESPONSE_Cache_Control/);
+  assert.match(legendWebConfigSource,/no-store, no-cache, must-revalidate, max-age=0/);
+});
+
+test('canonical public design authority uses wider canvas, tighter rhythm, and crisp perimeter accents',()=>{
+  assert.match(foundationCss,/--web-public-page-pad:clamp\(24px,4\.25vw,72px\)/);
+  assert.match(foundationCss,/--web-public-section-y:clamp\(52px,6vw,88px\)/);
+  assert.match(foundationCss,/--web-public-body-weight:500/);
+  assert.match(foundationCss,/--web-public-heading-weight:800/);
+  assert.match(publicCss,/\.section\{padding:var\(--public-section-y\) var\(--public-page-pad\)\}/);
+  assert.match(publicCss,/\.card-grid\{display:grid;grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,280px\),1fr\)\)/);
+  assert.match(publicCss,/border:1px solid var\(--public-card-border\)/);
+  assert.match(publicCss,/\.card::before\{content:none\}/);
+  assert.doesNotMatch(publicCss,/height:2px;background:linear-gradient\(90deg,var\(--gold\)/);
+});
+
+test('Website Studio style controls mutate only the selected canonical node and survive save', async () => {
+  const f=await domFixture();
+  try {
+    f.click('main h1');
+    f.input('[data-style-key="fontFamily"]','Georgia');
+    f.input('[data-style-key="fontSize"]','54');
+    f.input('[data-style-key="fontWeight"]','800');
+    f.click('main h2');
+    f.input('[data-style-key="fontFamily"]','Inter');
+    f.input('[data-style-key="fontSize"]','36');
+    f.input('[data-style-key="fontWeight"]','600');
+    const saved=await f.save();
+    const first=canonicalNodeById(saved,'home.h1.node.1').style;
+    const second=canonicalNodeById(saved,'home.h2.node.1').style;
+    assert.equal(first.fontFamily,'Georgia');
+    assert.equal(first.fontSize,54);
+    assert.equal(first.fontWeight,800);
+    assert.equal(second.fontFamily,'Inter');
+    assert.equal(second.fontSize,36);
+    assert.equal(second.fontWeight,600);
   } finally { f.close(); }
 });
 
@@ -1743,10 +3249,13 @@ test('canonical visual style preserves numeric font weight and signed letter spa
     f.click('main h1');
     f.input('[data-style-key="fontWeight"]','700');
     f.input('[data-style-key="letterSpacing"]','-1.25');
+    const heading=f.w.document.querySelector('main h1');
+    assert.equal(heading.style.letterSpacing,'-1.25px');
     const saved=await f.save();
     const style=canonicalNodeById(saved,'home.h1.node.1').style;
     assert.equal(style.fontWeight,700);
     assert.equal(style.letterSpacing,-1.25);
+    assert.match(source,/['"]maxHeight['"]/);
   } finally { f.close(); }
 });
 
@@ -1925,7 +3434,7 @@ test('editor navigation uses non-link controls and opens pages only on double-cl
 });
 
 test('text scaling stays unbounded while manually resized sections remain non-scrolling canvases',()=>{
-  assert.match(source,/id="legend-cms-scale" type="number" min="0" step="any"/);
+  assert.match(source,/id="legend-cms-scale" type="number" min="0\.05" step="any"/);
   assert.doesNotMatch(source,/id="legend-cms-scale"[^>]*max=/);
   assert.match(source,/scaledElements\.set\(el, style\.fontScale\)/);
   assert.match(source,/el\.style\.minHeight = '0';[\s\S]*el\.style\.height = `\$\{style\.heightPx\}px`;[\s\S]*el\.style\.overflow = 'visible';/);
@@ -2009,7 +3518,7 @@ test('canonical sections duplicate directly in composition while shared shell re
 });
 
 test('shared public stylesheet keeps footer at viewport bottom without fixing it over content',()=>{
-  assert.match(publicCss,/body\{min-height:100dvh;display:flex;flex-direction:column;overflow-x:clip\}/);
+  assert.match(publicCss,/body\{min-height:100dvh;display:flex;flex-direction:column;overflow-x:clip;[^}]*font-family:var\(--font\);[^}]*font-weight:var\(--web-public-body-weight,500\)/);
   assert.match(publicCss,/main,\.public-main,\.layout-content\{flex:1 0 auto;min-height:0\}/);
   assert.match(publicCss,/\.site-footer\{flex:0 0 auto;margin-top:auto\}/);
   assert.doesNotMatch(publicCss,/\.site-footer\{[^}]*position:fixed/);
@@ -2096,19 +3605,29 @@ test('removing a scoped favicon restores the canonical fallback before publicati
 });
 
 
-test('managed canonical action identity survives copy styling and cannot be downgraded to custom wiring',async()=>{
-  const actions=[{key:'business_schedule',group:'Schedule',label:'Schedule',defaultText:'Book consultation',href:'https://booking.example/confirmed-flow',analyticsEventName:'cta_click',behaviorKey:'cta_click'}];
-  const f=await domFixture({ctaCatalog:actions});
+test('signal-bound managed action identity remains locked while presentation stays editable',async()=>{
+  const actions=[{key:'business_schedule',group:'Schedule',label:'Schedule',defaultText:'Book consultation',href:'https://booking.example/confirmed-flow',openInNewTab:false,analyticsEventName:'cta_click',behaviorKey:'cta_click'}];
+  const doc=canonicalDocument();
+  doc.pages['/'].composition[0].children.push(canonicalNode('home.schedule','cta','a',{
+    text:'Book consultation',
+    actionKey:'business_schedule',
+    href:'https://booking.example/confirmed-flow',
+    signals:[{id:'11111111111111111111111111111111',eventName:'cta_click',actionKey:'cta_click',trigger:'click',deliveryMode:'analytics',oncePerSession:true,matchingFields:[]}]
+  }));
+  const f=await domFixture({siteKey:'business',doc,ctaCatalog:actions,business:{id:'business-id',displayName:'Fixture business'}});
   try {
-    f.click('main h1'); f.click('[data-add="button"]');
-    f.change('#legend-cms-action','managed:business_schedule:0');
+    f.click('[data-cms-id="home.schedule"]');
     const button=f.w.document.querySelector('.legend-cms-selected');
     const elementId=button.dataset.cmsCompositionId;
+    assert.equal(f.w.document.querySelector('#legend-cms-action').disabled,true);
+    assert.match(f.w.document.querySelector('#legend-cms-action-wiring').textContent,/Protected wiring/);
+
     f.editSelected('Pay now and complete my application');
     const style=f.w.document.querySelector('[data-style-key="fontSize"]');
     style.value='29'; style.dispatchEvent(new f.w.Event('input',{bubbles:true}));
-    f.input('#legend-cms-href','https://unrelated.example');
     f.change('#legend-cms-action','custom');
+    f.input('#legend-cms-href','https://unrelated.example');
+
     const saved=await f.save();
     const cta=canonicalNodeById(saved,elementId);
     assert.equal(cta.actionKey,'business_schedule');
@@ -2116,7 +3635,304 @@ test('managed canonical action identity survives copy styling and cannot be down
     assert.equal(cta.text,'Pay now and complete my application');
     assert.equal(cta.style.fontSize,29);
     assert.equal(button.dataset.cmsCompositionId,elementId);
-    assert.equal(f.w.document.querySelector('#legend-cms-action').disabled,true);
   }finally{f.close();}
 });
 
+
+test('duplicate and reusable presentation cloning strips node and field signal mappings',()=>{
+  assert.match(source,/current\.signals=\[\];[\s\S]*current\.fieldSignals=\{\}/);
+  assert.match(source,/copy\.signals=\[\];[\s\S]*copy\.fieldSignals=\{\}/);
+  assert.match(source,/containsProtectedSystemNode[\s\S]*fieldSignals/);
+});
+
+test('signal-only nodes are protected in the editor and presentation duplication never clones hidden mappings',async()=>{
+  const doc=canonicalDocument();
+  const tracked=doc.pages['/'].composition[0].children[0];
+  tracked.signals=[{id:'signal-only-binding',eventName:'cta_click',actionKey:'cta_click',trigger:'click',deliveryMode:'analytics',oncePerSession:true,matchingFields:[]}];
+  const f=await domFixture({doc});
+  try{
+    f.click('main h1');
+    const remove=f.w.document.querySelector('#legend-cms-remove');
+    assert.equal(remove.disabled,true);
+    assert.match(remove.textContent,/Protected wiring/);
+    assert.match(source,/Array\.isArray\(current\.signals\) && current\.signals\.length\s*>\s*0/);
+    assert.match(source,/function containsProtectedSystemNode[\s\S]*Array\.isArray\(node\.signals\) && node\.signals\.length\s*>\s*0/);
+    assert.match(source,/Duplicating presentation never duplicates hidden analytics\/provider wiring[\s\S]*current\.signals=\[\]/);
+  }finally{f.close();}
+});
+
+test('server-rejected GPT source edit renders the canonical red correction in Source and GPT workspaces',async()=>{
+  const correction='CANONICAL CORRECTION REQUIRED: preserve the stable node ID and edit presentation only.';
+  const payload={
+    error:'website_mutation_protected',
+    message:"Protected component 'home.h1.node.1' cannot be removed because its canonical behavior is platform-owned.",
+    canonicalProtectionViolation:true,
+    correction
+  };
+  const contract={schema:'legend-website-studio-agent/v1',promptTemplate:'contract',protectedEditCorrection:correction};
+  const f=await domFixture({agentContract:contract,mutationSequence:[{status:400,payload}]});
+  try{
+    f.click('main h1');
+    f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const sourceInput=f.w.document.querySelector('#legend-cms-site-source');
+    assert.equal(sourceInput.readOnly,false);
+    const selected=JSON.parse(sourceInput.value);
+    selected.text='Rejected edit';
+    sourceInput.value=JSON.stringify(selected,null,2);
+    sourceInput.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    f.click('#legend-cms-source-apply');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const warnings=[...f.w.document.querySelectorAll('[data-canonical-protection-warning]')].filter(node=>!node.hidden);
+    assert.ok(warnings.length>=1);
+    assert.ok(warnings.every(node=>node.textContent.includes('CANONICAL PROTECTION BLOCKED THIS EDIT')));
+    assert.ok(warnings.every(node=>node.textContent.includes('GPT REDIRECT')));
+    assert.ok(warnings.every(node=>node.textContent.includes(correction)));
+    assert.equal(f.w.LEGEND_WEBSITE_STUDIO_PROTECTION_VIOLATION.correction,correction);
+    assert.match(source,/\.legend-cms-protection-warning\{[^}]*color:#ff8f8f!important/);
+    assert.match(websitePlatformControllerSource,/canonicalProtectionViolation = true[\s\S]*WebsiteStudioAgentContract\.ProtectedEditCorrection/);
+  }finally{f.close();}
+});
+
+test('expired Founder or Agent editor authorization exposes only the authenticated portal recovery authority',async()=>{
+  const authorization='https://portal.example.test/Account/EditProtectWebsite';
+  const f=await domFixture({siteKey:'protect',denied:true,editorAuthorizationUrl:authorization});
+  try{
+    const link=f.w.document.querySelector('[data-legend-editor-reauthorize]');
+    assert.ok(link);
+    assert.equal(link.href,authorization);
+    assert.equal(f.w.LEGEND_WEBSITE_EDITOR_REAUTHORIZE_URL,authorization);
+    assert.equal(f.w.LEGEND_WEBSITE_STUDIO_MODE,true);
+    assert.match(protectLayoutSource,/editorAuthorizationUrl:[\s\S]*Account\/EditProtectWebsite/);
+    assert.match(businessBuildSource,/editorAuthorizationUrl:[^\n]*Account\/EditLegendWebsite/);
+    assert.doesNotMatch(source,/new WebsiteEditorTicket|WebsiteEditorTicketProtector/);
+  }finally{f.close();}
+});
+
+test('GPT contract is conversion-first on desktop and mobile and obeys the canonical red-warning redirect',()=>{
+  for(const phrase of [
+    'CONVERSION-FIRST EXPERIENCE',
+    'first viewport as the highest-value impression',
+    'Prefer a clear primary action per decision moment as a default.',
+    'Mobile must feel designed, not collapsed',
+    'Never invent testimonials',
+    'BROWSER AUTHORIZATION',
+    'CANONICAL VIOLATION RESPONSE',
+    'red canonical-protection warning',
+    'ProtectedEditCorrection'
+  ]) assert.ok(agentContractSource.includes(phrase),phrase);
+  assert.ok(agentContractSource.includes('protected Signals'));
+  assert.ok(agentContractSource.includes('signal_bearing_node_identity'));
+});
+
+
+test('mobile Website Studio is a draggable compact-to-expanded top sheet with an icon-only hide control',()=>{
+  assert.match(source,/@media\(max-width:800px\)[\s\S]*--legend-cms-sheet-compact:min\(46dvh,430px\)[\s\S]*--legend-cms-sheet-expanded:min\(88dvh,calc\(100dvh - 12px\)\)/);
+  assert.match(source,/body\.legend-cms-panel-expanded \.legend-cms-panel\{--legend-cms-sheet-height:var\(--legend-cms-sheet-expanded\)\}/);
+  assert.match(source,/\.legend-cms-sheet-handle\{[\s\S]*touch-action:none[\s\S]*cursor:ns-resize/);
+  assert.match(source,/sheetHandle\?\.addEventListener\('pointerdown'/);
+  assert.match(source,/sheetHandle\?\.addEventListener\('pointermove'/);
+  assert.match(source,/setSheetExpanded\(expand\)/);
+  assert.match(source,/panelToggleIcon = hidden => hidden[\s\S]*<svg/);
+  assert.match(source,/aria-label',hidden \? 'Open Website Studio controls' : 'Hide Website Studio controls'/);
+  assert.doesNotMatch(source,/panelToggle\.textContent = 'Full-page canvas'/);
+  assert.match(source,/\.legend-cms-preview\{width:100%;max-width:100%;height:100dvh;overflow-y:auto/);
+  assert.match(source,/\.legend-cms-bar button\{[\s\S]*min-height:32px[\s\S]*font-size:11px/);
+});
+
+
+test('native experience renders declarative controls calculations and protected CTA references without embed execution',async()=>{
+  const doc=canonicalDocument();
+  canonicalNodeById(doc,'home.section.1').children.push(
+    canonicalNode('home.experience','experience','form',{
+      title:'Project estimator',
+      text:'A native interactive flow',
+      experience:{
+        kind:'calculator',
+        submitCapability:null,
+        steps:[{key:'main',title:'Project',description:'Choose details',controlKeys:['project_type','project_size','schedule']}],
+        controls:[
+          {key:'project_type',type:'choice',label:'Project type',required:true,options:[
+            {value:'installation',label:'New installation'},
+            {value:'repair',label:'Repair / upgrade'}
+          ]},
+          {key:'project_size',type:'number',label:'Project size',required:true,min:100,max:10000,defaultValue:1500},
+          {key:'schedule',type:'cta',label:'Schedule',action:{type:'cta',actionKey:'legend_contact'}}
+        ],
+        calculations:{
+          estimate:{op:'multiply',values:[{op:'ref',ref:'project_size'},{op:'value',value:2}]}
+        },
+        results:[
+          {key:'estimate',label:'Preliminary estimate',format:'currency',expression:{op:'ref',ref:'calc.estimate'}}
+        ]
+      }
+    })
+  );
+
+  const f=await domFixture({
+    doc,
+    ctaCatalog:[{key:'legend_contact',group:'Contact',label:'Contact',defaultText:'Contact',href:'/contact',analyticsEventName:'cta_click',behaviorKey:'cta_click'}]
+  });
+  try{
+    const experience=f.w.document.querySelector('form.legend-native-experience[data-website-experience-id="home.experience"]');
+    assert.ok(experience);
+    assert.equal(experience.querySelectorAll('[data-experience-control]').length,3);
+    assert.equal(experience.querySelector('[data-website-action-key="legend_contact"]')?.textContent,'Schedule');
+    const size=experience.querySelector('[data-cms-field-key="project_size"]');
+    size.value='1800';
+    size.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.match(experience.querySelector('[data-experience-result="estimate"]').textContent,/3[,\s]?600|3600/);
+    assert.equal(experience.querySelector('iframe'),null);
+    assert.equal(experience.dataset.cmsSignalOnly,undefined);
+    experience.dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true}));
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(f.w.document.querySelector('#legend-cms-duplicate')?.disabled,false);
+    assert.equal(f.w.document.querySelector('#legend-cms-remove')?.disabled,false);
+    assert.match(source,/function buildNativeExperience\(node\)/);
+    assert.match(source,/evaluateExperienceExpression/);
+    assert.match(publicInquirySource,/data-website-experience-form/);
+    assert.match(publicInquiryFormCss,/\.legend-native-experience/);
+  }finally{f.close();}
+});
+
+test('native experience authoring exposes broad declarative freedom while backend authority remains absent',()=>{
+  assert.match(editorContractsSource,/\["experience"\] = \["form"\]/);
+  assert.match(agentContractSource,/native declarative interactive experience/i);
+  assert.match(agentContractSource,/questions, options, steps, branching, calculations, results/i);
+  assert.match(agentContractSource,/Selected Source never writes Signals\/FieldSignals/i);
+  assert.doesNotMatch(source,/eval\(.*experience/i);
+  assert.doesNotMatch(source,/new Function\(/);
+});
+
+
+test('Protect native experiences reuse public CTA catalog, canonical bindings, and shared inquiry runtime',()=>{
+  assert.match(websitePlatformControllerSource,/ctaCatalog\s*=\s*new\s*\{\s*options\s*=\s*publicActions\s*\}/);
+  assert.match(source,/ctaCatalog\s*=\s*Array\.isArray\(payload\.ctaCatalog\?\.options\)/);
+  assert.match(source,/window\.__legendTrackingInitialized\s*===\s*true[\s\S]*installPublishedSignalBindings\(\)/);
+  assert.match(publicInquiryFormSource,/data-website-experience-form/);
+  assert.match(publicInquiryFormSource,/data-submit-capability="lead_capture"/);
+  assert.match(protectLayoutSource,/src="~\/js\/tracking\.js"/);
+});
+
+
+test('unapplied Selected Source blocks publication without publishing the older draft',async()=>{
+  const f=await domFixture();
+  try {
+    f.click('main h1'); f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const input=f.w.document.querySelector('#legend-cms-site-source');
+    const value=JSON.parse(input.value); value.text='Unapplied source';
+    input.value=JSON.stringify(value); input.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    f.click('#legend-cms-publish');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(f.calls.some(call=>call.url.endsWith('/manage/publish')),false);
+    assert.match(f.w.document.querySelector('#legend-cms-status').textContent,/Apply or discard/);
+  } finally {f.close();}
+});
+
+test('protected native fields remain real controls after label edits and structural rendering',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/quote/life']={title:'Life',systemTemplateKey:'protect_template:life_wizard',navigation:{isDeleted:false},composition:[
+    canonicalNode('runtime.form.quote_life','container','div',{
+      systemKey:'protect_runtime_form:quote_life',
+      fieldPresentations:{firstname:{}},
+      fieldLabels:{firstname:'Your name'}
+    })
+  ]};
+  const html='<!doctype html><html><body><main><section><form id="lifeWizardForm" data-form-key="quote_life"><label data-cms-id="life.name">Your name <input name="FirstName" required></label><button type="submit">Continue <svg aria-hidden="true"></svg></button></form></section></main></body></html>';
+  const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Life',html});
+  try {
+    const control=f.w.document.querySelector('input[name="FirstName"]');
+    let changes=0;control.addEventListener('change',()=>changes++);
+    f.click('main section');f.click('[data-add="text"]');
+    const saved=await f.save();
+    assert.equal(f.w.document.querySelector('input[name="FirstName"]'),control);
+    assert.equal(control.required,true);
+    control.dispatchEvent(new f.w.Event('change'));assert.equal(changes,1);
+    const runtime=canonicalNodes(saved,'/quote/life').find(node=>node.systemKey==='protect_runtime_form:quote_life');
+    assert.ok(runtime.fieldPresentations.firstname);
+    assert.equal(f.w.document.querySelector('main label').textContent.trim(),'Your name');
+    assert.ok(f.w.document.querySelector('button[type="submit"] svg'));
+  } finally {f.close();}
+});
+
+test('business preview navigation retains its business scope for authored pages',async()=>{
+  const doc=canonicalBusinessNavigation();
+  doc.pages['/custom-offer']={title:'Offer',navigation:{label:'Offer',order:2,showInNavigation:true},composition:[canonicalNode('offer.title','heading','h1',{text:'Offer'})]};
+  const f=await domFixture({siteKey:'business',business:{id:'11111111-1111-1111-1111-111111111111',displayName:'Scoped'},doc,pathname:'/business-preview/',search:'?businessId=11111111-1111-1111-1111-111111111111',pages:[{path:'/',label:'Home'}]});
+  try {
+    const link=f.w.document.querySelector('[data-legend-page-route="/custom-offer"]');
+    const url=new URL(link.href);
+    assert.equal(url.pathname,'/business-preview/');
+    assert.equal(url.searchParams.get('cmsPage'),'/custom-offer');
+    assert.equal(url.searchParams.get('businessId'),'11111111-1111-1111-1111-111111111111');
+    assert.equal(url.searchParams.has('legendEdit'),false);
+  } finally {f.close();}
+});
+
+
+test('custom-domain asset authority serves the canonical form stylesheet referenced by compiled pages',()=>{
+  assert.match(businessBuildSource,/href="\/public-inquiry-form\.css/);
+  assert.match(businessMiddlewareSource,/path is "\/site\.css" or "\/public-inquiry-form\.css"/);
+});
+
+
+test('template label presentation updates preserve native inputs and button icons',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/quote/life']={title:'Life',systemTemplateKey:'protect_template:life_wizard',navigation:{isDeleted:false},composition:[
+    canonicalNode('life.section','section','section',{children:[
+      canonicalNode('runtime.form.quote_life','container','div',{systemKey:'protect_runtime_form:quote_life',style:{backgroundColor:'#112233'},children:[
+        canonicalNode('life.label','text','label',{text:'Your first name'}),
+        canonicalNode('life.submit','text','span',{text:'Get started'})
+      ]})
+    ]})
+  ]};
+  const html='<!doctype html><html><body><main><section data-cms-id="life.section"><p data-cms-id="removed.copy">Stale copy</p><form id="lifeWizardForm" data-form-key="quote_life"><label data-cms-id="life.label">Old label <input name="FirstName" required></label><button data-cms-id="life.submit" type="submit">Old submit <svg aria-hidden="true"></svg></button></form></section></main></body></html>';
+  const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Life',html});
+  try {
+    assert.equal(f.w.document.querySelector('[data-cms-id="removed.copy"]'),null);
+    assert.equal(f.w.document.querySelector('main form').style.backgroundColor,'rgb(17, 34, 51)');
+    assert.equal(f.w.document.querySelector('main label').textContent,'Your first name');
+    assert.ok(f.w.document.querySelector('main label input[required]'));
+    assert.equal(f.w.document.querySelector('main button[type="submit"]').textContent,'Get started');
+    assert.ok(f.w.document.querySelector('main button[type="submit"] svg'));
+  } finally {f.close();}
+});
+
+
+test('global website chrome cleanup is owned by one server authority, never a browser autosave',()=>{
+  assert.match(websiteSystemTemplateAuthoritySource,/ApplySharedShellAuthority/);
+  assert.match(websiteSystemTemplateAuthoritySource,/IsPageLocalShellCopy/);
+  assert.match(websiteSystemTemplateAuthoritySource,/primary_navigation/);
+  assert.doesNotMatch(source,/normalizePageCompositionNodes/);
+  assert.doesNotMatch(source,/templateRepairPending/);
+});
+
+test('canonical inquiry presentations are independently authored and never browser-synchronized across pages',()=>{
+  assert.doesNotMatch(source,/synchronizeCanonicalSharedPresentation/);
+  assert.doesNotMatch(source,/sharedPresentationIndex/);
+  assert.match(source,/function formFieldPresentationForElement\(el, create = true\)/);
+  assert.match(source,/selectedFieldPresentation=selected\?\.dataset\?\.cmsSignalOnly \? formFieldPresentationForElement\(selected,false\)/);
+  assert.match(source,/formNode\.fieldPresentations\[key\] \|\|= normalizeControlPresentation\(null\)/);
+});
+
+test('LEGEND website credits are immutable through the server shell authority',()=>{
+  assert.match(websiteSystemTemplateAuthoritySource,/legend-platform-attribution/);
+  assert.match(websiteSystemTemplateAuthoritySource,/node\.Text = "Legend®"/);
+  assert.match(websiteSystemTemplateAuthoritySource,/node\.Href = "https:\/\/www\.mylegnd\.com\/"/);
+  assert.match(websiteSiteSourceSource,/"legend-platform-attribution"/);
+  assert.doesNotMatch(source,/enforceLegendAttributionNode/);
+  assert.match(publicCss,/\.legend-platform-attribution\{text-decoration:underline!important/);
+  assert.match(businessBuildSource,/Website Designed by/);
+  assert.match(businessBuildSource,/Powered by/);
+});
+
+test('public mobile navigation is one compact viewport-safe dropdown instead of a side rail',()=>{
+  assert.match(publicCss,/@media\(max-width:980px\)[\s\S]*?\.site-header\{[^}]*grid-template-columns:minmax\(0,1fr\) auto/);
+  assert.match(publicCss,/@media\(max-width:980px\)[\s\S]*?\.nav\{[^}]*top:calc\(100% \+ 6px\)[^}]*left:max\(12px,env\(safe-area-inset-left\)\)[^}]*right:max\(12px,env\(safe-area-inset-right\)\)/);
+  assert.match(publicCss,/\.nav\{[^}]*max-height:min\(68dvh,520px\)/);
+  assert.match(publicCss,/\.nav\{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(publicCss,/\.nav a,\.nav button\{[^}]*width:100%[^}]*text-align:center[^}]*justify-content:center[^}]*white-space:nowrap/);
+  assert.match(publicCss,/\.business-brand-banner strong\{[^}]*white-space:nowrap[^}]*text-overflow:ellipsis/);
+});

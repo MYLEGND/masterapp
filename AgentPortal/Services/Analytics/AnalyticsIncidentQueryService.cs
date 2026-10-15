@@ -91,7 +91,25 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
     public async Task<AnalyticsIncidentMonitorDto> GetSystemMonitorAsync(CancellationToken ct = default)
     {
         var nowUtc = DateTime.UtcNow;
-        var metrics = await BuildSystemMetricsAsync(nowUtc, ct);
+        SystemMetricsSnapshot metrics;
+        try
+        {
+            metrics = await BuildSystemMetricsAsync(nowUtc, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Incident monitor canonical metrics could not be loaded.");
+            return new AnalyticsIncidentMonitorDto
+            {
+                IsAvailable = false,
+                ErrorCode = "incident_monitor_metrics_unavailable",
+                LastUpdatedUtc = nowUtc
+            };
+        }
 
         List<AnalyticsDriftAlert> activeAlerts;
         List<AnalyticsDriftAlert> timelineAlerts;

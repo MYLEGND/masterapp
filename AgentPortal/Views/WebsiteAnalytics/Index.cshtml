@@ -13,6 +13,7 @@
         : initialScopeLabelRaw;
     var personalLink = ViewData["PersonalLink"] as string;
     var personalLinkAlt = ViewData["PersonalLinkAlt"] as string;
+    var founderSiteLinksJson = ViewData["FounderSiteLinksJson"] as string ?? "{}";
     var callerProfileId = ViewData["CallerProfileId"] as Guid?;
     var agentOptionsJson = ViewData["AgentOptionsJson"] as string ?? "[]";
     var canViewFounderTeamUi = (ViewData["CanViewFounderTeamUi"] as bool?) ?? false;
@@ -22,6 +23,7 @@
     var analyticsCanAgentPerformance = (ViewData["AnalyticsCanAgentPerformance"] as bool?) ?? true;
     var analyticsCanIncidentMonitor = (ViewData["AnalyticsCanIncidentMonitor"] as bool?) ?? true;
     var initialScopeProfileId = ViewData["InitialScopeProfileId"] as Guid?;
+    var initialSiteKey = ViewData["InitialSiteKey"] as string ?? string.Empty;
     var isFounder = agentOptionsJson != "[]";
     var landingRoutesJson = ViewData["LandingRoutesJson"] as string ?? "[]";
     var landingRoutesBaseUrl = ViewData["LandingRoutesBaseUrl"] as string ?? string.Empty;
@@ -29,7 +31,7 @@
 
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
-<div class="legend-workspace-page mb-4 fa-shell" data-analytics-base="@analyticsBase" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-can-meta-ads="@(analyticsCanMetaAds ? "true" : "false")" data-can-ai-review="@(analyticsCanAiReview ? "true" : "false")" data-can-agent-performance="@(analyticsCanAgentPerformance ? "true" : "false")" data-can-incident-monitor="@(analyticsCanIncidentMonitor ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
+<div class="legend-workspace-page mb-4 fa-shell" data-analytics-base="@analyticsBase" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-initial-site-key="@initialSiteKey" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-founder-site-links='@founderSiteLinksJson' data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-can-meta-ads="@(analyticsCanMetaAds ? "true" : "false")" data-can-ai-review="@(analyticsCanAiReview ? "true" : "false")" data-can-agent-performance="@(analyticsCanAgentPerformance ? "true" : "false")" data-can-incident-monitor="@(analyticsCanIncidentMonitor ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
 <div class="modal fade fa-modal" id="marketingSetupModal" tabindex="-1" aria-labelledby="marketingSetupModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
         <div class="modal-content wa-modal-shell">
@@ -51,6 +53,8 @@
                         <div class="marketing-setup-status" data-status-key="publicReady"><span>Public</span><strong>—</strong></div>
                         <div class="marketing-setup-status" data-status-key="metaCustomPixel"><span>Meta</span><strong>—</strong></div>
                         <div class="marketing-setup-status" data-status-key="openAiReady"><span>ChatGPT Ads</span><strong>—</strong></div>
+                        <div class="marketing-setup-status" data-status-key="googleReady"><span>Google Ads</span><strong>—</strong></div>
+                        <div class="marketing-setup-status" data-status-key="tiktokReady"><span>TikTok Ads</span><strong>—</strong></div>
                         <div class="marketing-setup-status" data-status-key="bookingPersonalLive"><span>Booking</span><strong>—</strong></div>
                         <div class="marketing-setup-status" data-status-key="calendarLinked"><span>Calendar</span><strong>—</strong></div>
                     </div>
@@ -104,7 +108,7 @@
                                 <span class="marketing-setup-secure-label">Meta CAPI</span>
                                 <strong id="marketing-setup-capi-status">Checking secure connection…</strong>
                             </div>
-                            <a class="btn btn-sm btn-outline-light" id="marketing-setup-meta-connect" href="#">Connect Meta Ads</a>
+                            <a class="btn btn-sm btn-outline-light" id="marketing-setup-meta-connect" href="" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect Meta Ads</a>
                         </div>
                     </section>
 
@@ -166,6 +170,69 @@
 
                     </section>
 
+                    <section class="marketing-setup-section marketing-setup-external-ads" id="marketing-setup-external-ads">
+                        <div class="marketing-setup-section-head">
+                            <div>
+                                <div class="marketing-setup-eyebrow">Marketing</div>
+                                <h6>Google Ads &amp; TikTok Ads</h6>
+                            </div>
+                        </div>
+                        <p class="marketing-setup-help">These providers use the same scoped MarketingConnection authority and canonical website → CRM → revenue outcomes as Meta and ChatGPT Ads. Reporting can be connected independently; conversion optimization remains fail-closed until the exact provider mapping below is saved.</p>
+                        <div class="marketing-setup-detail-grid">
+                            <div class="marketing-setup-provider-card" data-external-provider="google">
+                                <div>
+                                    <strong id="marketing-setup-google-status">Google Ads not connected</strong>
+                                    <div class="marketing-setup-help" id="marketing-setup-google-account">No scoped advertiser account</div>
+                                </div>
+                                <div class="d-flex gap-2 flex-wrap">
+                                    <a class="btn btn-sm btn-gold" id="marketing-setup-google-connect" href="" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect Google Ads</a>
+                                    <button type="button" class="btn btn-sm btn-outline-light" id="marketing-setup-google-load-accounts" hidden>Choose account</button>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" id="marketing-setup-google-disconnect" hidden>Disconnect</button>
+                                </div>
+                                <div class="marketing-setup-connect-controls w-100" id="marketing-setup-google-account-picker" hidden>
+                                    <label class="marketing-setup-field" for="marketing-setup-google-account-select"><span>Authorized Google Ads account</span><select id="marketing-setup-google-account-select" class="form-select"></select></label>
+                                    <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-google-select-account">Use selected account</button>
+                                </div>
+                                <div class="marketing-setup-connect-controls w-100" id="marketing-setup-google-measurement" hidden>
+                                    <div class="marketing-setup-help"><strong id="marketing-setup-google-measurement-status">Optimization mapping required</strong><br/>Paste only conversion actions from the selected Google Ads customer. Unmapped outcomes remain first-party truth but are not uploaded.</div>
+                                    <label class="marketing-setup-field"><span>Qualified lead conversion action</span><input class="form-control" data-external-mapping-provider="google" data-canonical-event="QualifiedLead" placeholder="customers/1234567890/conversionActions/123" /></label>
+                                    <label class="marketing-setup-field"><span>Appointment conversion action</span><input class="form-control" data-external-mapping-provider="google" data-canonical-event="AppointmentBooked" placeholder="customers/1234567890/conversionActions/123" /></label>
+                                    <label class="marketing-setup-field"><span>Application conversion action</span><input class="form-control" data-external-mapping-provider="google" data-canonical-event="ApplicationSubmitted" placeholder="customers/1234567890/conversionActions/123" /></label>
+                                    <label class="marketing-setup-field"><span>Issued conversion action</span><input class="form-control" data-external-mapping-provider="google" data-canonical-event="PolicyIssued" placeholder="customers/1234567890/conversionActions/123" /></label>
+                                    <label class="marketing-setup-field"><span>Paid/revenue conversion action</span><input class="form-control" data-external-mapping-provider="google" data-canonical-event="PolicyPaid" placeholder="customers/1234567890/conversionActions/123" /></label>
+                                    <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-google-save-measurement">Save Google optimization mapping</button>
+                                </div>
+                            </div>
+                            <div class="marketing-setup-provider-card" data-external-provider="tiktok">
+                                <div>
+                                    <strong id="marketing-setup-tiktok-status">TikTok Ads not connected</strong>
+                                    <div class="marketing-setup-help" id="marketing-setup-tiktok-account">No scoped advertiser account</div>
+                                </div>
+                                <div class="d-flex gap-2 flex-wrap">
+                                    <a class="btn btn-sm btn-gold" id="marketing-setup-tiktok-connect" href="" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect TikTok Ads</a>
+                                    <button type="button" class="btn btn-sm btn-outline-light" id="marketing-setup-tiktok-load-accounts" hidden>Choose account</button>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" id="marketing-setup-tiktok-disconnect" hidden>Disconnect</button>
+                                </div>
+                                <div class="marketing-setup-connect-controls w-100" id="marketing-setup-tiktok-account-picker" hidden>
+                                    <label class="marketing-setup-field" for="marketing-setup-tiktok-account-select"><span>Authorized TikTok advertiser</span><select id="marketing-setup-tiktok-account-select" class="form-select"></select></label>
+                                    <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-tiktok-select-account">Use selected account</button>
+                                </div>
+                                <div class="marketing-setup-connect-controls w-100" id="marketing-setup-tiktok-measurement" hidden>
+                                    <div class="marketing-setup-help"><strong id="marketing-setup-tiktok-measurement-status">Optimization mapping required</strong><br/>Use the exact TikTok Events Manager event source and event names for this advertiser. No event names are guessed.</div>
+                                    <label class="marketing-setup-field"><span>Event source type</span><select id="marketing-setup-tiktok-event-source-type" class="form-select"><option value="crm">CRM</option><option value="web">Web</option><option value="offline">Offline</option></select></label>
+                                    <label class="marketing-setup-field"><span>Event source ID</span><input id="marketing-setup-tiktok-event-source-id" class="form-control" placeholder="TikTok Event Source ID" /></label>
+                                    <label class="marketing-setup-field"><span>Events API access token</span><input type="password" id="marketing-setup-tiktok-events-token" class="form-control" autocomplete="new-password" placeholder="Events Manager access token" /></label>
+                                    <label class="marketing-setup-field"><span>Qualified lead event</span><input class="form-control" data-external-mapping-provider="tiktok" data-canonical-event="QualifiedLead" placeholder="Exact TikTok event name" /></label>
+                                    <label class="marketing-setup-field"><span>Appointment event</span><input class="form-control" data-external-mapping-provider="tiktok" data-canonical-event="AppointmentBooked" placeholder="Exact TikTok event name" /></label>
+                                    <label class="marketing-setup-field"><span>Application event</span><input class="form-control" data-external-mapping-provider="tiktok" data-canonical-event="ApplicationSubmitted" placeholder="Exact TikTok event name" /></label>
+                                    <label class="marketing-setup-field"><span>Issued event</span><input class="form-control" data-external-mapping-provider="tiktok" data-canonical-event="PolicyIssued" placeholder="Exact TikTok event name" /></label>
+                                    <label class="marketing-setup-field"><span>Paid/revenue event</span><input class="form-control" data-external-mapping-provider="tiktok" data-canonical-event="PolicyPaid" placeholder="Exact TikTok event name" /></label>
+                                    <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-tiktok-save-measurement">Save TikTok optimization mapping</button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
                     <section class="marketing-setup-section">
                         <h6>Measurement evidence</h6>
                         <p class="marketing-setup-help">Connection and configuration do not prove delivery or campaign attribution. Evidence below covers the selected owner over the last 30 days. A click reference is not proof of campaign credit.</p>
@@ -175,6 +242,8 @@
                             <tbody>
                                 <tr id="marketing-setup-meta-evidence"><th>Meta</th><td data-evidence="connected">—</td><td data-evidence="configured">—</td><td data-evidence="attempted">—</td><td data-evidence="accepted">—</td><td data-evidence="attribution">—</td></tr>
                                 <tr id="marketing-setup-openai-evidence"><th>ChatGPT Ads</th><td data-evidence="connected">—</td><td data-evidence="configured">—</td><td data-evidence="attempted">—</td><td data-evidence="accepted">—</td><td data-evidence="attribution">—</td></tr>
+                                <tr id="marketing-setup-google-evidence"><th>Google Ads</th><td data-evidence="connected">—</td><td data-evidence="configured">—</td><td data-evidence="attempted">Fail-closed</td><td data-evidence="accepted">Not enabled</td><td data-evidence="attribution">gclid / paid UTM</td></tr>
+                                <tr id="marketing-setup-tiktok-evidence"><th>TikTok Ads</th><td data-evidence="connected">—</td><td data-evidence="configured">—</td><td data-evidence="attempted">Fail-closed</td><td data-evidence="accepted">Not enabled</td><td data-evidence="attribution">ttclid / paid UTM</td></tr>
                             </tbody>
                         </table></div>
                         <p id="marketing-setup-meta-receipt-evidence">Meta receipt evidence: unavailable</p>
@@ -195,7 +264,7 @@
                                 <div class="marketing-setup-help" id="marketing-setup-calendar-auth-detail">Connect the calendar account that owns this workspace.</div>
                             </div>
                             <div class="d-flex gap-2 flex-wrap">
-                                <a class="btn btn-outline-light btn-sm" id="marketing-setup-calendar-connect" href="#">Connect Microsoft Calendar</a>
+                                <a class="btn btn-outline-light btn-sm" id="marketing-setup-calendar-connect" href="" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect Microsoft Calendar</a>
                                 <button type="button" class="btn btn-outline-danger btn-sm" id="marketing-setup-calendar-disconnect" hidden>Disconnect</button>
                             </div>
                         </div>
@@ -506,6 +575,16 @@
                         </div>
                         @if (canViewFounderTeamUi)
                         {
+                        <div class="wa-site-switch wa-header-stack" aria-label="Founder website selector">
+                            <span class="wa-scope-picker-label">Website</span>
+                            <div class="wa-site-switch-buttons" role="group" aria-label="Website analytics">
+                                <button type="button" class="btn btn-sm wa-site-switch-btn" data-site-key="legend">Legend</button>
+                                <button type="button" class="btn btn-sm wa-site-switch-btn" data-site-key="protect">Protect</button>
+                            </div>
+                        </div>
+                        }
+                        @if (canViewFounderTeamUi)
+                        {
                         <div class="wa-scope-picker wa-header-stack" aria-label="Analytics scope selector">
                             <div class="wa-scope-picker-head">
                                 <label class="wa-scope-picker-label" for="wa-scope-select">Scope</label>
@@ -628,7 +707,7 @@
             <div class="wa-quality-filter">
               <label for="traffic-quality-mode" class="wa-quality-label">Traffic Quality</label>
               <select id="traffic-quality-mode" class="wa-quality-select">
-                <option value="real_human_traffic" selected="@(initialQualityMode == "real_human_traffic" ? "selected" : null)">Real Human Traffic</option>
+                <option value="real_human_traffic" selected="@(initialQualityMode == "real_human_traffic" ? "selected" : null)">High-confidence Human Traffic</option>
                 <option value="likely_human" selected="@(initialQualityMode == "likely_human" ? "selected" : null)">Likely Human</option>
                 <option value="reviewed_needed" selected="@(initialQualityMode == "reviewed_needed" ? "selected" : null)">Reviewed Needed</option>
                 <option value="suspicious_activity" selected="@(initialQualityMode == "suspicious_activity" ? "selected" : null)">Suspicious Activity</option>
@@ -636,6 +715,7 @@
                 <option value="internal_qa" selected="@(initialQualityMode == "internal_qa" ? "selected" : null)">Internal / QA</option>
                 <option value="all_traffic" selected="@(initialQualityMode == "all_traffic" ? "selected" : null)">All Traffic</option>
               </select>
+              <div class="small text-muted mt-2">Behavior-based estimates, not verified identity. Advertising requires strong human evidence and consent.</div>
               <div id="traffic-quality-empty-state" class="small text-warning mt-2" role="status" aria-live="polite" hidden>No real human traffic detected</div>
             </div>
 
@@ -774,14 +854,14 @@
                 <div>
                     <div class="kpi-card kpi-card-secondary kpi-card-context">
                         <div class="fa-kpi-title">Top Page</div>
-                        <div class="fa-kpi-value" style="font-size:1.1rem;" id="kpi-top-page">—</div>
+                        <div class="fa-kpi-value fa-kpi-value--compact" id="kpi-top-page">—</div>
                         <div class="fa-kpi-sub">Most viewed</div>
                     </div>
                 </div>
                 <div>
                     <div class="kpi-card kpi-card-secondary kpi-card-context">
                         <div class="fa-kpi-title">Top CTA</div>
-                        <div class="fa-kpi-value" style="font-size:1.1rem;" id="kpi-top-cta">—</div>
+                        <div class="fa-kpi-value fa-kpi-value--compact" id="kpi-top-cta">—</div>
                         <div class="fa-kpi-sub">Most clicked</div>
                     </div>
                 </div>
@@ -1063,7 +1143,7 @@
     </section>
 
     <div class="modal fade fa-modal" id="mhErrorDetailModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
         <div class="modal-content wa-modal-shell">
           <div class="modal-header wa-modal-header">
             <div class="wa-modal-header-main">
@@ -1094,7 +1174,7 @@
 @if (canViewFounderTeamUi)
 {
 <div class="modal fade fa-modal" id="teamRollupModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-copy">
@@ -1222,7 +1302,7 @@
       <div class="modal-body wa-modal-body">
         <section class="wa-modal-section meta-signal-section">
           <div class="alert alert-warning small py-2 px-3 mb-0" id="metasignal-scope-note">
-            Meta Paid Signal Intelligence only evaluates paid Meta-attributed traffic. Non-paid/manual tests may appear in Quote Funnel and Conversion Center but are excluded from Meta learning readiness.
+            Loading canonical Meta learning scope…
           </div>
         </section>
 
@@ -1300,7 +1380,7 @@
           </div>
           <div class="meta-signal-secondary-grid">
             <div class="meta-signal-stat-card">
-              <div class="meta-signal-stat-label">Submitted Leads</div>
+              <div class="meta-signal-stat-label">Meta Funnel Lead Signals</div>
               <div class="meta-signal-stat-value" id="metasignal-submitted">0</div>
             </div>
             <div class="meta-signal-stat-card">
@@ -1614,7 +1694,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="behaviorModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -1847,7 +1927,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="trafficModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -1928,7 +2008,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="trafficExitedBeforeStartModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -1961,7 +2041,7 @@
 @if(isFounder)
 {
 <div class="modal fade fa-modal" id="agentPerfModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -1996,7 +2076,7 @@
 }
 
 <div class="modal fade fa-modal" id="pagePerfModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -2036,7 +2116,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="ctaPerfModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -2076,7 +2156,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="quoteModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -2244,7 +2324,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="convModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -2304,7 +2384,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="leadsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -2393,7 +2473,7 @@
 }
 
 <div class="modal fade fa-modal" id="aiReviewSnapshotModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -2430,7 +2510,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="metaCampaignsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -2501,10 +2581,6 @@
 </div>
 
 <!-- Canonical standalone analytics modals -->
-<button type="button" id="openVisitorConcentrationModal" class="visually-hidden" aria-hidden="true" tabindex="-1">
-    Open Visitor Concentration
-</button>
-
 <div id="visitorConcentrationModal" class="wa-standalone-modal" role="dialog" aria-modal="true" aria-labelledby="visitorConcentrationModalTitle" hidden>
     <div class="wa-modal-dialog" role="document">
         <div class="wa-modal-shell">
@@ -2587,13 +2663,10 @@
     @Html.AntiForgeryToken()
 </form>
 
-@* Backdrop overlay *@
-<div id="aiInsightsBackdrop" class="ai-drawer-backdrop" aria-hidden="true"></div>
-
 @* Drawer panel *@
 
 <div class="modal fade fa-modal" id="deviceIntelligenceModal" tabindex="-1" aria-labelledby="deviceIntelligenceModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
         <div class="modal-content wa-modal-shell">
             <div class="modal-header wa-modal-header">
                 <div class="wa-modal-header-main">
@@ -2643,26 +2716,27 @@
     </div>
 </div>
 
-<div id="aiInsightsDrawer" class="ai-drawer" inert aria-hidden="true" role="dialog" aria-modal="true" aria-label="AI Review · Website Analytics">
+<div id="aiInsightsDrawer" class="ai-drawer" data-legend-modal-surface inert aria-hidden="true" role="dialog" aria-modal="true" aria-label="AI Review · Website Analytics">
+    <div class="ai-drawer-panel" data-legend-modal-panel>
     <div class="ai-drawer-header">
         <div>
             <div class="ai-drawer-title">AI Review</div>
             <div class="ai-drawer-subtitle">Website Analytics · Aggregate insights only</div>
             <div class="small text-muted" id="ai-drawer-scope-label">AI reviewing: All Traffic · Last 30 Days · Global</div>
         </div>
-        <button type="button" class="ai-drawer-close" aria-label="Close AI Review panel">&times;</button>
+        <button type="button" class="ai-drawer-close" data-ai-drawer-close aria-label="Close AI Review panel">&times;</button>
     </div>
 
-    <div class="ai-drawer-body">
+    <div class="ai-drawer-body" data-legend-modal-scroll>
         @* Loading state *@
         <div class="ai-drawer-loading" aria-live="polite">
-            <div class="ai-skel-line medium" style="margin-top:4px;"></div>
+            <div class="ai-skel-line medium ai-skel-line--lead"></div>
             <div class="ai-skel-line short"></div>
-            <div class="ai-skel-block" style="margin-top:14px;"></div>
-            <div class="ai-skel-line medium" style="margin-top:16px;"></div>
+            <div class="ai-skel-block ai-skel-block--spaced"></div>
+            <div class="ai-skel-line medium ai-skel-line--spaced"></div>
             <div class="ai-skel-line short"></div>
             <div class="ai-skel-block"></div>
-            <div class="ai-skel-line medium" style="margin-top:16px;"></div>
+            <div class="ai-skel-line medium ai-skel-line--spaced"></div>
             <div class="ai-skel-block"></div>
             <div class="ai-skel-line short"></div>
         </div>
@@ -2671,8 +2745,7 @@
         <div class="ai-drawer-error" hidden aria-live="assertive">
             <div class="ai-error-icon">&#9888;</div>
             <div class="ai-error-message">Unable to load AI review.</div>
-            <button type="button" class="btn btn-sm ai-retry-btn"
-                    style="background:rgba(199,153,49,0.15);color:#c79931;border:1px solid #a68023;font-weight:700;">
+            <button type="button" class="btn btn-sm ai-retry-btn" data-ai-retry>
                 Try Again
             </button>
         </div>
@@ -2695,6 +2768,7 @@
                 <button type="submit" class="ai-followup-btn">Submit Follow-Up</button>
             </form>
         </div>
+    </div>
     </div>
 </div>
 

@@ -111,6 +111,54 @@ public sealed class AnalyticsPageRoutingTruthTests
     }
 
     [Fact]
+    public void AnalyticsIncidentAndAiReviewFailureStatesNeverClaimFalseSuccess()
+    {
+        var root = RepoRoot();
+        var ai = File.ReadAllText(Path.Combine(root, "AgentPortal", "wwwroot", "js", "website-analytics-ai.js"));
+        var incidents = File.ReadAllText(Path.Combine(root, "AgentPortal", "wwwroot", "js", "website-analytics-incidents.js"));
+        var incidentDtos = File.ReadAllText(Path.Combine(root, "AgentPortal", "Models", "Analytics", "AnalyticsIncidentDtos.cs"));
+        var incidentService = File.ReadAllText(Path.Combine(root, "AgentPortal", "Services", "Analytics", "AnalyticsIncidentQueryService.cs"));
+
+        Assert.DoesNotContain("BACKDROP_ID", ai, StringComparison.Ordinal);
+        Assert.Contains("e.target === d", ai, StringComparison.Ordinal);
+        Assert.Contains("public bool IsAvailable { get; set; } = true;", incidentDtos, StringComparison.Ordinal);
+        Assert.Contains("IsAvailable = false", incidentService, StringComparison.Ordinal);
+        Assert.Contains("incident_monitor_metrics_unavailable", incidentService, StringComparison.Ordinal);
+        Assert.Contains("payload?.isAvailable === false", incidents, StringComparison.Ordinal);
+        Assert.Contains("buttonCountEl.textContent = '—'", incidents, StringComparison.Ordinal);
+        Assert.Contains("No zero-incident result has been verified", incidents, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MarketingDeliveryEvidenceAndAiLearningTruthHaveSingleReadAuthorities()
+    {
+        var root = RepoRoot();
+        var evidence = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "MarketingMeasurementEvidenceService.cs"));
+        var eventMap = File.ReadAllText(Path.Combine(root, "Infrastructure", "WebsiteEditing", "WebsiteEventMapQuery.cs"));
+        var studio = File.ReadAllText(Path.Combine(root, "Infrastructure", "WebsiteEditing", "WebsitePlatformController.cs"));
+        var metaSignals = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "MetaSignalAnalyticsService.cs"));
+        var analyticsView = File.ReadAllText(Path.Combine(root, "AgentPortal", "Views", "WebsiteAnalytics", "Index.cshtml"));
+
+        Assert.Contains("public static class MarketingDeliveryEvidencePolicy", evidence, StringComparison.Ordinal);
+        Assert.Contains("MetaProviderAccepted", evidence, StringComparison.Ordinal);
+        Assert.Contains("HttpTransportAccepted", evidence, StringComparison.Ordinal);
+        Assert.Contains("MarketingDeliveryEvidencePolicy.MetaProviderAccepted", eventMap, StringComparison.Ordinal);
+        Assert.Contains("MarketingDeliveryEvidencePolicy.HttpTransportAccepted", eventMap, StringComparison.Ordinal);
+        Assert.Contains("MarketingDeliveryEvidencePolicy.MetaProviderAccepted", studio, StringComparison.Ordinal);
+        Assert.Contains("MarketingDeliveryEvidencePolicy", studio, StringComparison.Ordinal);
+        Assert.Contains(".HttpTransportAccepted(value)", studio, StringComparison.Ordinal);
+        Assert.DoesNotContain("metaRows.All(m => m.MetaServerSent &&", eventMap, StringComparison.Ordinal);
+        Assert.DoesNotContain("httpAccepted = value.Status == \"sent\"", studio, StringComparison.Ordinal);
+
+        Assert.Contains("Submitted Leads value is a funnel-signal count, not the canonical CRM lead total", metaSignals, StringComparison.Ordinal);
+        Assert.Contains("Use Analytics Verified Leads and canonical channel outcomes for business truth", metaSignals, StringComparison.Ordinal);
+        Assert.DoesNotContain("Meta Paid Signal Intelligence only evaluates paid Meta-attributed traffic", analyticsView, StringComparison.Ordinal);
+        Assert.Contains("Loading canonical Meta learning scope", analyticsView, StringComparison.Ordinal);
+        Assert.Contains("Meta Funnel Lead Signals", analyticsView, StringComparison.Ordinal);
+        Assert.DoesNotContain(">Submitted Leads<", analyticsView, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task BusinessMetaSignalFiltersAreActuallyApplied_NotSilentlyIgnored()
     {
         using var db = ControllerTestHelpers.BuildDb();
@@ -182,7 +230,10 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("Founder,", scope, StringComparison.Ordinal);
         Assert.Contains("ScopeContext.ForFounder(founderProfile.Id)", resolver, StringComparison.Ordinal);
         Assert.Contains("ScopeType.Founder", queryScope, StringComparison.Ordinal);
-        Assert.Contains("PersistProtectEventAsync(req, isFounderOwner, ct)", proxy, StringComparison.Ordinal);
+        Assert.Contains("PersistProtectEventAsync(req, isFounderOwner, protectScope, ct)", proxy, StringComparison.Ordinal);
+        Assert.Contains("WebsiteContentVersionId = publishedScope?.PublishedVersion?.Id", proxy, StringComparison.Ordinal);
+        Assert.Contains("WebsiteBindingId = Clean(req.WebsiteBindingId)", proxy, StringComparison.Ordinal);
+        Assert.Contains("CanonicalizePublishedBinding(req, protectScope)", proxy, StringComparison.Ordinal);
         Assert.Contains("ProtectWebsiteOwnerResolver.ResolveAsync", proxy, StringComparison.Ordinal);
         Assert.DoesNotContain("ResolveByUpnAsync", proxy, StringComparison.Ordinal);
         Assert.DoesNotContain("ForwardAsync(\"/api/analytics/ingest\"", proxy, StringComparison.Ordinal);
@@ -278,7 +329,11 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("AnyAsync(x => x.WebsiteLeadId == lead.LeadId", notificationAuthority, StringComparison.Ordinal);
         Assert.Contains("lead.NotificationAttemptUtc = accepted ? lead.NotificationAttemptUtc : DateTime.UtcNow", submission, StringComparison.Ordinal);
         Assert.Contains("WebsiteLeadSubmission.NotificationRetryCutoff", notificationAuthority, StringComparison.Ordinal);
-        Assert.Contains("AddHostedService<WebsiteLeadNotificationRecoveryWorker>()", program, StringComparison.Ordinal);
+        var portal = File.ReadAllText(Path.Combine(root, "AgentPortal", "Program.cs"));
+        var leadRegistration = File.ReadAllText(Path.Combine(root, "Infrastructure", "Leads", "WebsiteLeadServiceRegistration.cs"));
+        Assert.Contains("AddWebsiteLeadBackgroundWorkers", portal, StringComparison.Ordinal);
+        Assert.Contains("AddHostedService<WebsiteLeadNotificationRecoveryWorker>()", leadRegistration, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddHostedService<WebsiteLeadNotificationRecoveryWorker>()", program, StringComparison.Ordinal);
     }
 
     [Fact]

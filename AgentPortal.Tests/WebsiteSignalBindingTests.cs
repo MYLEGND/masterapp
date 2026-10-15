@@ -76,6 +76,64 @@ public sealed class WebsiteSignalBindingTests
     }
 
     [Fact]
+    public void ProtectedFormMappings_RequireRealFields_AndMatchingContactSemantics()
+    {
+        var inquiry = new WebsiteCompositionNode
+        {
+            Id = "contact.form",
+            Type = "form",
+            Tag = "form",
+            SystemKey = "canonical_inquiry"
+        };
+
+        Assert.True(WebsiteSignalBindingPolicy.IsKnownProtectedFormField(inquiry, "phone"));
+        Assert.True(WebsiteSignalBindingPolicy.IsKnownProtectedFormField(inquiry, "consent"));
+        Assert.False(WebsiteSignalBindingPolicy.IsKnownProtectedFormField(inquiry, "invented_field"));
+
+        var phone = WebsiteSignalBindingPolicy.Validate(
+        [
+            new()
+            {
+                Id = "11111111111111111111111111111111",
+                EventName = "PhoneFieldCompleted",
+                Trigger = "field_completed",
+                DeliveryMode = "analytics"
+            }
+        ]);
+        WebsiteSignalBindingPolicy.ValidateProtectedFormField(inquiry, "phone", phone);
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteSignalBindingPolicy.ValidateProtectedFormField(inquiry, "email", phone));
+
+        var contactStart = WebsiteSignalBindingPolicy.Validate(
+        [
+            new()
+            {
+                Id = "22222222222222222222222222222222",
+                EventName = "ContactInputStarted",
+                Trigger = "field_started",
+                DeliveryMode = "analytics"
+            }
+        ]);
+        WebsiteSignalBindingPolicy.ValidateProtectedFormField(inquiry, "email", contactStart);
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteSignalBindingPolicy.ValidateProtectedFormField(inquiry, "consent", contactStart));
+
+        var runtime = new WebsiteCompositionNode
+        {
+            Id = "runtime.form",
+            Type = "container",
+            Tag = "div",
+            SystemKey = "protect_runtime_form:quote_life",
+            FieldPresentations = new(StringComparer.Ordinal)
+            {
+                ["firstname"] = new WebsiteControlPresentation()
+            }
+        };
+        Assert.True(WebsiteSignalBindingPolicy.IsKnownProtectedFormField(runtime, "firstname"));
+        Assert.False(WebsiteSignalBindingPolicy.IsKnownProtectedFormField(runtime, "made_up"));
+    }
+
+    [Fact]
     public void EditorOptionsUseCentralEventPermissions()
     {
         foreach (var option in WebsiteSignalBindingPolicy.Options)

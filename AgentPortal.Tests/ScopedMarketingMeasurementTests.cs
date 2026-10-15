@@ -173,6 +173,7 @@ public sealed class ScopedMarketingMeasurementTests
         Assert.Equal("configured_no_delivery_evidence", health.Status);
         Assert.Equal(0, health.SentDeliveries); Assert.Equal(0, health.FailedDeliveries);
         Assert.False(health.ProviderMonitoringAvailable);
+        Assert.Equal(1, health.OtherDestinationReceipts);
     }
 
     private sealed class UnavailableHandler : HttpMessageHandler

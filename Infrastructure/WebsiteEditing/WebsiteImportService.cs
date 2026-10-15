@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Domain.Entities;
 using Infrastructure.Messaging;
 
 namespace Infrastructure.WebsiteEditing;
@@ -26,6 +27,22 @@ public sealed class WebsiteImportService(WebsiteMediaService media)
 
     private static string Text(string html) =>
         WebUtility.HtmlDecode(Regex.Replace(html, "<[^>]*>", " ", RegexOptions.Singleline, PatternTimeout)).Trim();
+
+    public async Task<WebsiteMediaAsset> ImportImageAsync(
+        string sourceUrl,
+        string ownerKey,
+        CancellationToken ct = default)
+    {
+        var normalized = LegendConnectResearchNetworkPolicy.NormalizePublicHttpUri(sourceUrl);
+        if (normalized is null)
+            throw new ArgumentException("Enter a public image address.");
+
+        using var handler = LegendConnectResearchNetworkPolicy.CreatePublicReadOnlyHandler();
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(15) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("LEGEND-Website-Media/1.0");
+        var bytes = await ReadBytesAsync(client, new Uri(normalized), 5_000_000, ct);
+        return await media.StoreImageAsync(ownerKey, normalized, bytes, ct);
+    }
 
     public async Task<WebsiteImportResult> PrepareAsync(
         string sourceUrl,

@@ -87,7 +87,7 @@ namespace ClientApp.Controllers
                 AgentUserId = actorId
             };
             _db.ProductionRecords.Add(record);
-            await _db.SaveChangesAsync();
+            await CanonicalCrmOutcomeService.SaveProductionChangesAsync(_db, HttpContext.RequestAborted);
             return Ok();
         }
 
@@ -110,7 +110,7 @@ namespace ClientApp.Controllers
             record.Status = (ProductionStatus)status;
             record.Notes = notes;
             record.UpdatedUtc = DateTime.UtcNow;
-            await _db.SaveChangesAsync();
+            await CanonicalCrmOutcomeService.SaveProductionChangesAsync(_db, HttpContext.RequestAborted);
             return Ok();
         }
 
@@ -129,7 +129,7 @@ namespace ClientApp.Controllers
                 return NotFound();
 
             _db.ProductionRecords.Remove(record);
-            await _db.SaveChangesAsync();
+            await CanonicalCrmOutcomeService.SaveProductionChangesAsync(_db, HttpContext.RequestAborted);
             return Ok();
         }
     }

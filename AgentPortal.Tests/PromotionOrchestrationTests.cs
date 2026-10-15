@@ -55,6 +55,8 @@ public sealed class PromotionOrchestrationTests
             Title = "Roofing Co",
             Description = "Local roofing service"
         };
+        document = WebsiteContentSanitizer.Sanitize(document);
+        WebsiteSystemTemplateAuthority.Apply(WebsiteEditorSiteKeys.Business, document);
         var state = new WebsiteContentState
         {
             OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(business.Id),

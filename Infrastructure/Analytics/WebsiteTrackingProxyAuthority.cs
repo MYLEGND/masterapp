@@ -74,6 +74,8 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             var typedBusinessId = store.WebsiteSiteKey is WebsiteEditorSiteKeys.Protect or WebsiteEditorSiteKeys.Legend
                 ? (Guid?)null : store.CommerceBusinessId;
             var scope = new PublicWebsiteRuntimeScope(store.WebsiteSiteKey, store.BusinessKey, typedBusinessId, version, origin.IdnHost);
+            if (CanonicalizePublishedBinding(req, scope) is IActionResult bindingError)
+                return bindingError;
             return await PersistPublicWebsiteEventAsync(req, scope, ct, store.AgentTrackingProfileId);
         }
 
@@ -85,16 +87,40 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             var scope = await scopeResolver.ResolveAsync(HttpContext, req.SiteKey, ct);
             if (scope is null || !PublicWebsiteRuntimeScopeResolver.IsPublishedPath(scope, req.Path))
                 return BadRequest(new { error = "published_website_scope_required" });
+            if (CanonicalizePublishedBinding(req, scope) is IActionResult bindingError)
+                return bindingError;
             return await PersistPublicWebsiteEventAsync(req, scope, ct);
         }
 
         EnsureClientContextFallback(req);
         var isFounderOwner = await EnsureAgentAttributionAsync(req, ct);
 
+        PublicWebsiteRuntimeScope? protectScope = null;
+        var publicScopes = HttpContext.RequestServices.GetService<PublicWebsiteRuntimeScopeResolver>();
+        if (publicScopes is not null)
+        {
+            protectScope = await publicScopes.ResolveInquiryAsync(HttpContext, req.Path, ct);
+            if (protectScope is not null &&
+                protectScope.SiteKey == WebsiteEditorSiteKeys.Protect &&
+                protectScope.AgentTrackingProfileId != req.AgentTrackingProfileId)
+                return BadRequest(new { error = "tracking_owner_conflict" });
+        }
+
+        if (PublishedWebsiteBindingResolver.ClaimsConfiguredBinding(req.MetadataJson))
+        {
+            if (protectScope?.PublishedVersion is null)
+                return BadRequest(new { error = "published_binding_scope_required" });
+            if (CanonicalizePublishedBinding(req, protectScope) is IActionResult bindingError)
+                return bindingError;
+        }
+        else if (protectScope?.PublishedVersion is not null &&
+                 CanonicalizePublishedBinding(req, protectScope) is IActionResult bindingError)
+            return bindingError;
+
         // Protect telemetry writes directly through the shared canonical database
         // authority. Do not depend on a second application/network hop merely to
         // record browser analytics.
-        return await PersistProtectEventAsync(req, isFounderOwner, ct);
+        return await PersistProtectEventAsync(req, isFounderOwner, protectScope, ct);
     }
 
     [HttpPost]
@@ -149,9 +175,88 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         return await BuildPassThroughResultAsync(response, ct);
     }
 
+    private IActionResult? CanonicalizePublishedBinding(
+        AnalyticsEventRequest request,
+        PublicWebsiteRuntimeScope scope)
+    {
+        var claimsConfiguredBinding = PublishedWebsiteBindingResolver.ClaimsConfiguredBinding(request.MetadataJson);
+        if (string.IsNullOrWhiteSpace(request.WebsiteBindingId))
+            return claimsConfiguredBinding
+                ? BadRequest(new { error = "published_binding_id_required" })
+                : null;
+
+        var resolution = PublishedWebsiteBindingResolver.Resolve(
+            scope.PublishedVersion,
+            scope.SiteKey,
+            request.Path,
+            request.WebsiteBindingId,
+            request.MetadataJson);
+
+        var looksLikeBindingId = Guid.TryParseExact(request.WebsiteBindingId, "N", out _);
+        if (resolution is null)
+            return claimsConfiguredBinding || looksLikeBindingId
+                ? BadRequest(new { error = "published_binding_invalid" })
+                : null;
+
+        var binding = resolution.Binding;
+        if (!PublishedWebsiteBindingResolver.ObservedEventMatches(request.EventType, binding))
+            return BadRequest(new { error = "published_binding_trigger_mismatch" });
+
+        request.ActionKey = resolution.SourceActionKey ?? binding.ActionKey;
+        request.WebsiteBindingId = binding.Id;
+        request.ElementKey = resolution.FieldKey is null
+            ? resolution.ElementId
+            : resolution.ElementId + ":field:" + resolution.FieldKey;
+        if (resolution.FieldKey is not null)
+            request.FieldName = resolution.FieldKey;
+        request.MetadataJson = CanonicalizePublishedBindingMetadata(request.MetadataJson, resolution);
+        return null;
+    }
+
+    private static string CanonicalizePublishedBindingMetadata(
+        string? metadataJson,
+        PublishedWebsiteBindingResolution resolution)
+    {
+        System.Text.Json.Nodes.JsonObject metadata;
+        try
+        {
+            metadata = string.IsNullOrWhiteSpace(metadataJson)
+                ? new System.Text.Json.Nodes.JsonObject()
+                : System.Text.Json.Nodes.JsonNode.Parse(metadataJson) as System.Text.Json.Nodes.JsonObject
+                    ?? new System.Text.Json.Nodes.JsonObject();
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            metadata = new System.Text.Json.Nodes.JsonObject();
+        }
+
+        var binding = resolution.Binding;
+        var elementId = resolution.FieldKey is null
+            ? resolution.ElementId
+            : resolution.ElementId + ":field:" + resolution.FieldKey;
+        metadata["configuredWebsiteSignal"] = true;
+        metadata["configuredDeliveryMode"] = binding.DeliveryMode == "meta" ? "destinations" : binding.DeliveryMode;
+        metadata["configuredSignalBindings"] = System.Text.Json.JsonSerializer.SerializeToNode(new[]
+        {
+            new
+            {
+                binding.Id,
+                binding.Trigger,
+                binding.EventName,
+                binding.ActionKey,
+                deliveryMode = binding.DeliveryMode == "meta" ? "destinations" : binding.DeliveryMode,
+                binding.OncePerSession,
+                binding.MatchingFields,
+                elementId
+            }
+        });
+        return metadata.ToJsonString();
+    }
+
     private async Task<IActionResult> PersistProtectEventAsync(
         AnalyticsEventRequest req,
         bool isFounderOwner,
+        PublicWebsiteRuntimeScope? publishedScope,
         CancellationToken cancellationToken)
     {
         if (!AnalyticsEventCatalog.TryGet(req.EventType, out var definition) || !definition.AllowBrowser)
@@ -166,6 +271,8 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             SiteKey = WebsiteEditorSiteKeys.Protect,
             AgentTrackingProfileId = req.AgentTrackingProfileId,
             AgentSlug = Clean(req.AgentSlug),
+            WebsiteContentVersionId = publishedScope?.PublishedVersion?.Id,
+            WebsiteBindingId = Clean(req.WebsiteBindingId),
             EventId = req.ClientEventId.ToString("N"),
             EventName = req.EventType.Trim(),
             EventCategory = definition.Category,
@@ -183,7 +290,7 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             DeviceType = Clean(req.DeviceType),
             Browser = Clean(req.Browser),
             OperatingSystem = Clean(req.OperatingSystem),
-            UserAgent = Clean(req.UserAgent) ?? Request.Headers.UserAgent.ToString(),
+            UserAgent = Clean(Request.Headers.UserAgent.ToString()) ?? Clean(req.UserAgent),
             IpAddress = Clean(req.IpAddress) ?? ResolveClientIp(),
             TimeZone = Clean(req.TimeZone),
             Language = Clean(req.Language),
@@ -207,6 +314,8 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             UtmId = Clean(req.UtmId),
             UtmContent = Clean(req.UtmContent),
             Fbclid = Clean(req.Fbclid),
+            Gclid = PaidAdsClickReference.NormalizeGoogle(req.Gclid),
+            Ttclid = PaidAdsClickReference.NormalizeTikTok(req.Ttclid),
             Oppref = OpenAiClickReference.Normalize(req.Oppref),
             Obref = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request, req.Obref),
             MetaCampaignId = Clean(req.MetaCampaignId),
@@ -242,9 +351,11 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         row.FieldName = Clean(req.FieldName);
         row.ElementId = Clean(req.ElementId);
         var result = await UnifiedAnalyticsWriter.PersistBrowserEventAsync(db, row, cancellationToken);
-        return result == UnifiedAnalyticsWriter.BrowserWriteResult.Conflict
-            ? Conflict(new { error = "event_id_owner_conflict" })
-            : Ok(new { status = result == UnifiedAnalyticsWriter.BrowserWriteResult.Duplicate ? "duplicate_ignored" : "ok", eventId = row.EventId });
+        if (result == UnifiedAnalyticsWriter.BrowserWriteResult.Conflict)
+            return Conflict(new { error = "event_id_owner_conflict" });
+        var marketingEligibility = await CanonicalMarketingEligibility.ResolveAsync(db, row, cancellationToken);
+        return Ok(new { status = result == UnifiedAnalyticsWriter.BrowserWriteResult.Duplicate ? "duplicate_ignored" : "ok",
+            eventId = row.EventId, marketingEligibility });
     }
 
     private async Task<IActionResult> PersistPublicWebsiteEventAsync(
@@ -280,7 +391,7 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             DeviceType = Clean(req.DeviceType),
             Browser = Clean(req.Browser),
             OperatingSystem = Clean(req.OperatingSystem),
-            UserAgent = Clean(req.UserAgent) ?? Request.Headers.UserAgent.ToString(),
+            UserAgent = Clean(Request.Headers.UserAgent.ToString()) ?? Clean(req.UserAgent),
             IpAddress = Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             TimeZone = Clean(req.TimeZone),
             Language = Clean(req.Language),
@@ -304,6 +415,8 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             UtmId = Clean(req.UtmId),
             UtmContent = Clean(req.UtmContent),
             Fbclid = Clean(req.Fbclid),
+            Gclid = PaidAdsClickReference.NormalizeGoogle(req.Gclid),
+            Ttclid = PaidAdsClickReference.NormalizeTikTok(req.Ttclid),
             Oppref = OpenAiClickReference.Normalize(req.Oppref),
             Obref = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request, req.Obref),
             MetaCampaignId = Clean(req.MetaCampaignId),
@@ -339,9 +452,11 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         row.FieldName = Clean(req.FieldName);
         row.ElementId = Clean(req.ElementId);
         var result = await UnifiedAnalyticsWriter.PersistBrowserEventAsync(db, row, cancellationToken);
-        return result == UnifiedAnalyticsWriter.BrowserWriteResult.Conflict
-            ? Conflict(new { error = "event_id_owner_conflict" })
-            : Ok(new { status = result == UnifiedAnalyticsWriter.BrowserWriteResult.Duplicate ? "duplicate_ignored" : "ok", eventId = row.EventId });
+        if (result == UnifiedAnalyticsWriter.BrowserWriteResult.Conflict)
+            return Conflict(new { error = "event_id_owner_conflict" });
+        var marketingEligibility = await CanonicalMarketingEligibility.ResolveAsync(db, row, cancellationToken);
+        return Ok(new { status = result == UnifiedAnalyticsWriter.BrowserWriteResult.Duplicate ? "duplicate_ignored" : "ok",
+            eventId = row.EventId, marketingEligibility });
     }
 
     private static string? Clean(string? value) =>
@@ -350,6 +465,8 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
     private void EnsureLeadContextFallback(LeadSubmitRequest req)
     {
         req.Host = FirstNonBlank(req.Host, Request.Host.Value);
+        req.Gclid = PaidAdsClickReference.NormalizeGoogle(req.Gclid);
+        req.Ttclid = PaidAdsClickReference.NormalizeTikTok(req.Ttclid);
         req.Oppref = OpenAiClickReference.Normalize(req.Oppref)
             ?? OpenAiClickReference.Normalize(Request.Cookies["__oppref"]);
         req.Obref = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request, req.Obref);
@@ -758,6 +875,8 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         public string? UtmTerm { get; set; }
         public string? UtmContent { get; set; }
         public string? Fbclid { get; set; }
+        public string? Gclid { get; set; }
+        public string? Ttclid { get; set; }
         public string? Oppref { get; set; }
         public string? Obref { get; set; }
         public Guid? AgentTrackingProfileId { get; set; }
@@ -827,6 +946,8 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         public string? MetaAdSetId { get; set; }
         public string? MetaAdId { get; set; }
         public string? Fbclid { get; set; }
+        public string? Gclid { get; set; }
+        public string? Ttclid { get; set; }
         public string? Oppref { get; set; }
         public string? Obref { get; set; }
         public string? Fbp { get; set; }

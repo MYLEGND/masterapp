@@ -19,9 +19,13 @@ internal static class AnalyticsScopeQueryExtensions
                 return query.Where(x => false);
 
             // Founder profile aliases are resolved by the query service using the
-            // canonical UPN authority. Keep this first-stage filter tenant-safe
-            // without prematurely excluding a historical Founder profile row.
-            return query.Where(x => x.CommerceBusinessId == null);
+            // canonical UPN authority. A requested site dimension narrows the same
+            // Founder dataset without changing owner/CRM authority.
+            query = query.Where(x => x.CommerceBusinessId == null);
+            var founderSiteMarker = BuildJsonMarker("siteKey", scope.SiteKey);
+            return founderSiteMarker is null
+                ? query
+                : query.Where(x => x.MetadataJson != null && x.MetadataJson.Contains(founderSiteMarker));
         }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
@@ -68,9 +72,13 @@ internal static class AnalyticsScopeQueryExtensions
                 return query.Where(x => false);
 
             // Founder profile aliases are resolved by the query service using the
-            // canonical UPN authority. Keep this first-stage filter tenant-safe
-            // without prematurely excluding a historical Founder profile row.
-            return query.Where(x => x.CommerceBusinessId == null);
+            // canonical UPN authority. A requested site dimension narrows the same
+            // Founder dataset without changing owner/CRM authority.
+            query = query.Where(x => x.CommerceBusinessId == null);
+            var founderSiteMarker = BuildJsonMarker("siteKey", scope.SiteKey);
+            return founderSiteMarker is null
+                ? query
+                : query.Where(x => x.MetadataJson != null && x.MetadataJson.Contains(founderSiteMarker));
         }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))

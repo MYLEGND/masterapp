@@ -46,19 +46,25 @@ public sealed class CanonicalOpenAiProjectionTests
     }
 
     [Theory]
-    [InlineData("agent", true, null)]
-    [InlineData("agent", false, null)]
-    [InlineData("founder", true, null)]
-    [InlineData("founder", false, null)]
-    [InlineData("business", true, null)]
-    [InlineData("business", false, null)]
-    [InlineData("agent", false, "linked")]
-    [InlineData("agent", false, "first_link")]
-    [InlineData("agent", false, "unverified")]
-    [InlineData("agent", false, "changed_account")]
-    [InlineData("agent", false, "changed_datasource")]
-    [InlineData("agent", false, "changed_pixel")]
-    public async Task OpenAiDispatchDoesNotRequireMetaAndRetainsResultAndRetryIdentity(string ownerType, bool accepted, string? historicalMode)
+    [InlineData("agent", true, null, true)]
+    [InlineData("agent", false, null, true)]
+    [InlineData("founder", true, null, true)]
+    [InlineData("founder", false, null, true)]
+    [InlineData("business", true, null, true)]
+    [InlineData("business", false, null, true)]
+    [InlineData("agent", false, "linked", true)]
+    [InlineData("agent", true, "linked", true)]
+    [InlineData("agent", true, "sent", true)]
+    [InlineData("agent", false, "active_claim", true)]
+    [InlineData("agent", false, "first_link", true)]
+    [InlineData("agent", false, "unverified", true)]
+    [InlineData("agent", false, "changed_account", true)]
+    [InlineData("agent", false, "changed_datasource", true)]
+    [InlineData("agent", false, "changed_pixel", true)]
+    [InlineData("agent", true, null, false)]
+    [InlineData("founder", true, null, false)]
+    [InlineData("business", true, null, false)]
+    public async Task OpenAiDispatchDoesNotRequireMetaAndRetainsResultAndRetryIdentity(string ownerType, bool accepted, string? historicalMode, bool humanEvidence)
     {
         await using var sqlite = new SqliteConnection("Data Source=:memory:");
         await sqlite.OpenAsync();
@@ -76,10 +82,11 @@ public sealed class CanonicalOpenAiProjectionTests
             AgentSlug = ownerType == "business" ? null : agent.Slug, Host = "shop.example.com", UserAgent = "Mozilla/5.0", IpAddress = "1.2.3.4", IsServerAuthority = true, IsBrowserSignal = false,
             MetaServerAuthorityEligible = true, Oppref = "oppref-first-touch"
         });
+        if (humanEvidence) { source.HumanInteractionCount = 3; source.EngagedMilliseconds = 15000; source.DwellMilliseconds = 20000; source.ScrollPercent = 50; }
         source.MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson("Purchase", null, "session", new
         {
             canonicalOutcomeEventId = "original-order-event", canonicalDeduplicationKey = "order:confirmed:1",
-            orderId = "order-1", purchaseId = "purchase-1", valueCents = 8900, currency = "USD",
+            measurementConsentAllowed = true, orderId = "order-1", purchaseId = "purchase-1", valueCents = 8900, currency = "USD",
             items = new[] { new { ProductId = "sku-1", ProductName = "Item", Quantity = 2, ValueCents = 8900 } }
         }, false, true, true, false);
         UnifiedAnalyticsWriter.Write(db, source);
@@ -93,7 +100,8 @@ public sealed class CanonicalOpenAiProjectionTests
                 OwnerKey = owner.Key, OwnerType = owner.OwnerType, AgentTrackingProfileId = owner.AgentTrackingProfileId,
                 Provider = MarketingDestinationKeys.OpenAi, Channel = "server", CanonicalSource = nameof(MetaSignalEvent),
                 AnalyticsEventId = historicalMode == "first_link" ? null : source.Id, CanonicalEventId = "historical-issued-event", CanonicalEventName = "Purchase",
-                ProviderEventName = "order_created", PixelId = historicalMode == "changed_pixel" ? "previous-pixel" : "openai-pixel", Status = "pending",
+                ProviderEventName = "order_created", PixelId = historicalMode == "changed_pixel" ? "previous-pixel" : "openai-pixel", Status = historicalMode == "sent" ? "sent" : "pending",
+                ClaimExpiresUtc = historicalMode == "active_claim" ? DateTime.UtcNow.AddMinutes(2) : null,
                 AdvertiserAccountId = historicalMode == "unverified" ? null : historicalMode == "changed_account" ? "previous-account" : "openai-account",
                 ConversionDataSourceId = historicalMode == "unverified" ? null : historicalMode == "changed_datasource" ? "previous-datasource" : "openai-datasource"
             });
@@ -123,21 +131,26 @@ public sealed class CanonicalOpenAiProjectionTests
         async Task Dispatch() => await (Task)typeof(OpenAiConversionDispatcherHostedService).GetMethod("DispatchBatchAsync", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(dispatcher, new object[] { CancellationToken.None })!;
         await Dispatch();
         var receipt = Assert.Single(await db.MarketingDestinationDeliveries.ToListAsync());
-        Assert.Equal(historicalMode is null ? nameof(AnalyticsEvent) : nameof(MetaSignalEvent), receipt.CanonicalSource);
-        if (historicalMode is not null)
+        var blockedHistory = historicalMode is "unverified" or "changed_account" or "changed_datasource" or "changed_pixel";
+        var terminalHistory = historicalMode is "sent" or "active_claim";
+        Assert.Equal(blockedHistory || terminalHistory ? nameof(MetaSignalEvent) : nameof(AnalyticsEvent), receipt.CanonicalSource);
+        if (blockedHistory || terminalHistory)
         {
-            // Historical rows are a read-only fence, never adopted/retried by the
-            // canonical AnalyticsEvent dispatcher (including uncertain pending receipts).
-            Assert.Equal("pending", receipt.Status);
+            await db.Entry(receipt).ReloadAsync();
+            Assert.Equal(blockedHistory ? "blocked_requires_destination_verification" : historicalMode == "sent" ? "sent" : "pending", receipt.Status);
             Assert.Equal("historical-issued-event", receipt.CanonicalEventId);
-            Assert.Equal(historicalMode == "first_link" ? (long?)null : source.Id, receipt.AnalyticsEventId);
-            Assert.Null(receipt.MetaSignalEventId);
-            Assert.Null(receipt.ProviderReceiptJson);
             Assert.Empty(conversions);
             await Dispatch();
             Assert.Empty(conversions);
             Assert.Single(await db.MarketingDestinationDeliveries.ToListAsync());
             Assert.Equal(originalId, Assert.Single(await db.AnalyticsEvents.ToListAsync()).EventId);
+            return;
+        }
+        if (!humanEvidence)
+        {
+            Assert.Equal("blocked_human_evidence", receipt.Status);
+            Assert.Equal(0, receipt.AttemptCount); Assert.Empty(conversions);
+            Assert.Null(receipt.ProviderReceiptJson);
             return;
         }
         Assert.Equal(source.Id, receipt.AnalyticsEventId);
@@ -147,9 +160,7 @@ public sealed class CanonicalOpenAiProjectionTests
         Assert.Equal(accepted ? "sent" : "retryable", receipt.Status);
         Assert.NotNull(receipt.ProviderReceiptJson);
         Assert.Equal(originalId, Assert.Single(await db.AnalyticsEvents.ToListAsync()).EventId);
-        if (historicalMode == "first_link")
-            Assert.Equal(Assert.Single(await db.MetaSignalEvents.ToListAsync()).Id, receipt.MetaSignalEventId);
-        else
+        if (historicalMode != "first_link")
             Assert.Empty(await db.MetaSignalEvents.ToListAsync());
         Assert.Empty(await db.MarketingConnections.ToListAsync());
         var converted = Assert.Single(conversions);

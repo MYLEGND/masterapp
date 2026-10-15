@@ -68,6 +68,8 @@ public class LeadSubmitController : ControllerBase
         public string? MetaAdSetId { get; set; }
         public string? MetaAdId { get; set; }
         public string? Fbclid { get; set; }
+        public string? Gclid { get; set; }
+        public string? Ttclid { get; set; }
         public string? Oppref { get; set; }
         public string? Obref { get; set; }
         public string? Fbp { get; set; }
@@ -201,7 +203,8 @@ public class LeadSubmitController : ControllerBase
             Status = "New",
             AgentTrackingProfileId = resolved.Found ? resolved.Profile.Id : null,
             AgentSlug = resolved.Found ? resolved.CanonicalSlug : null,
-            MetadataJson = OpenAiAttributionMetadata.WithBrowserReference(req.MetadataJson, req.Obref)
+            MetadataJson = OpenAiAttributionMetadata.WithPaidClickReferences(
+                req.MetadataJson, req.Obref, req.Gclid, req.Ttclid)
         };
 
         if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead, req.SubmissionId, HttpContext.RequestAborted, async ct =>
@@ -224,6 +227,8 @@ public class LeadSubmitController : ControllerBase
                 UtmTerm = req.UtmTerm,
                 UtmContent = req.UtmContent,
                 Fbclid = lead.Fbclid,
+                Gclid = PaidAdsClickReference.NormalizeGoogle(req.Gclid),
+                Ttclid = PaidAdsClickReference.NormalizeTikTok(req.Ttclid),
                 Oppref = lead.Oppref,
                 Obref = OpenAiBrowserReference.Normalize(req.Obref),
                 Fbp = lead.Fbp,
@@ -252,6 +257,8 @@ public class LeadSubmitController : ControllerBase
                     LeadId = lead.LeadId,
                     canonicalOutcomeEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead),
                     obref = OpenAiBrowserReference.Normalize(req.Obref),
+                    gclid = PaidAdsClickReference.NormalizeGoogle(req.Gclid),
+                    ttclid = PaidAdsClickReference.NormalizeTikTok(req.Ttclid),
                     fbp = lead.Fbp,
                     fbc = lead.Fbc,
                     CorrelationId = correlationId

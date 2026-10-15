@@ -104,6 +104,23 @@ public sealed class WebsiteVisualStyle
     public decimal? HeightPx { get; set; }
     public decimal? OffsetXPercent { get; set; }
     public decimal? OffsetYPx { get; set; }
+    public decimal? MarginTop { get; set; }
+    public decimal? MarginBottom { get; set; }
+    public decimal? MarginLeft { get; set; }
+    public decimal? MarginRight { get; set; }
+    public decimal? BorderWidth { get; set; }
+    public string? BorderColor { get; set; }
+    public string? BorderStyle { get; set; }
+    public decimal? Opacity { get; set; }
+    public string? TextTransform { get; set; }
+    public string? TextDecoration { get; set; }
+    public decimal? MinWidthPx { get; set; }
+    public decimal? MaxWidthPx { get; set; }
+    public decimal? MinHeightPx { get; set; }
+    public decimal? MaxHeightPx { get; set; }
+    public decimal? AspectRatio { get; set; }
+    public string? BackgroundGradient { get; set; }
+    public string? BoxShadow { get; set; }
 }
 
 public sealed class WebsiteDesignTheme
@@ -118,6 +135,35 @@ public sealed class WebsiteDesignTheme
     public string? FontFamily { get; set; }
     public decimal? FontSize { get; set; }
     public decimal? BorderRadius { get; set; }
+
+    // Semantic site-wide design system. These remain presentation only; nodes
+    // store deliberate exceptions rather than repeating the same values.
+    public decimal? DisplaySize { get; set; }
+    public decimal? H1Size { get; set; }
+    public decimal? H2Size { get; set; }
+    public decimal? H3Size { get; set; }
+    public decimal? BodySize { get; set; }
+    public decimal? SmallSize { get; set; }
+    public decimal? BodyLineHeight { get; set; }
+    public decimal? SectionSpace { get; set; }
+    public decimal? ContentGap { get; set; }
+    public decimal? ContentMaxWidth { get; set; }
+    public decimal? WideMaxWidth { get; set; }
+    public decimal? NarrowMaxWidth { get; set; }
+    public decimal? Gutter { get; set; }
+    public decimal? CardRadius { get; set; }
+    public decimal? ButtonRadius { get; set; }
+    public decimal? InputRadius { get; set; }
+    public string? SurfaceElevated { get; set; }
+    public string? SurfaceMuted { get; set; }
+    public string? BorderColor { get; set; }
+    public decimal? BorderWidth { get; set; }
+    public string? ShadowSoft { get; set; }
+    public string? ShadowStrong { get; set; }
+    public decimal? NavHeight { get; set; }
+    public int? MotionFastMs { get; set; }
+    public int? MotionStandardMs { get; set; }
+    public int? MotionSlowMs { get; set; }
 }
 
 
@@ -132,6 +178,43 @@ public static class WebsiteStudioContract
         new() { Key = "desktop", Label = "Desktop", MinWidth = 1200, MaxWidth = null, IsSystem = true }
     ];
 }
+
+public static class WebsiteCompositionSchema
+{
+    public static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> AllowedTagsByType =
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+        {
+            ["section"] = ["section"],
+            ["container"] = ["div", "article", "header", "footer", "nav", "ul", "ol", "fieldset"],
+            ["heading"] = ["h1", "h2", "h3", "h4", "h5", "h6"],
+            ["text"] = ["p", "span", "small", "strong", "li", "label", "blockquote"],
+            ["cta"] = ["a", "button"],
+            ["link"] = ["a", "button"],
+            ["image"] = ["img"],
+            ["video"] = ["video"],
+            ["form"] = ["form"],
+            ["experience"] = ["form"],
+            ["embed"] = ["div"],
+            ["spacer"] = ["div"],
+            ["reusable"] = ["div"]
+        };
+
+    public static bool IsAllowedType(string? type) =>
+        !string.IsNullOrWhiteSpace(type) && AllowedTagsByType.ContainsKey(type.Trim().ToLowerInvariant());
+
+    public static string? NormalizeTag(string? type, string? tag)
+    {
+        var key = (type ?? string.Empty).Trim().ToLowerInvariant();
+        if (!AllowedTagsByType.TryGetValue(key, out var allowed) || allowed.Count == 0) return null;
+        var candidate = (tag ?? string.Empty).Trim().ToLowerInvariant();
+        return allowed.Contains(candidate, StringComparer.Ordinal) ? candidate : allowed[0];
+    }
+
+    public static string PromptGrammar() =>
+        string.Join("\n", AllowedTagsByType.Select(pair =>
+            $"- {pair.Key}: {string.Join(" | ", pair.Value)}"));
+}
+
 
 public sealed class WebsiteBreakpointDefinition
 {
@@ -223,6 +306,10 @@ public sealed class WebsitePageDocument
     public WebsitePageNavigation Navigation { get; set; } = new();
     public WebsiteDynamicPageBinding? DynamicBinding { get; set; }
 
+    // Server-owned runtime template binding. It is derived from site + canonical route,
+    // never authored by GPT/Site Source. V3 still owns all allowed presentation.
+    public string? SystemTemplateKey { get; set; }
+
     // The complete editable page body. There is no parallel template/mutation store.
     public List<WebsiteCompositionNode> Composition { get; set; } = new();
 }
@@ -244,6 +331,9 @@ public sealed class WebsiteCompositionNode
     public string? Alt { get; set; }
     public Guid? MediaAssetId { get; set; }
     public string? MediaUrl { get; set; }
+    // Presentation behavior only. When enabled, the renderer loops the video,
+    // hides native playback controls, keeps inline playback, and preserves audio.
+    public bool? VideoLoop { get; set; }
     public string? SystemKey { get; set; }
     public string? SystemBinding { get; set; }
     public string? SyncSourceId { get; set; }
@@ -255,6 +345,22 @@ public sealed class WebsiteCompositionNode
     public Dictionary<string, WebsiteCompositionLayout> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
     public List<WebsiteAnimationBinding> Animations { get; set; } = new();
     public WebsiteDataBinding? DataBinding { get; set; }
+
+    // Authorable native interaction model. It owns questions, steps, branching,
+    // calculations, and presentation only; backend capabilities and event authority
+    // are resolved separately by the server.
+    public WebsiteExperienceDefinition? Experience { get; set; }
+
+    // Presentation-only records keyed by the existing server/runtime field identity.
+    // These never create, rename, reorder, validate, route, or submit a form field.
+    public Dictionary<string, WebsiteControlPresentation> FieldPresentations { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, string> FieldLabels { get; set; } = new(StringComparer.Ordinal);
+
+    // Canonical Analytics-owned mappings for protected form controls. Field keys
+    // are stable presentation/runtime identities; execution semantics still
+    // belong to the server-owned form.
+    public Dictionary<string, List<WebsiteSignalBinding>> FieldSignals { get; set; } = new(StringComparer.Ordinal);
+
     public List<WebsiteCompositionNode> Children { get; set; } = new();
 }
 

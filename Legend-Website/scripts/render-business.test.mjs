@@ -51,7 +51,8 @@ test('canonical v3 business publication renders only the composition graph and k
         composition:[
           baseNode('home.hero','section','section',{className:'hero',children:[
             baseNode('home.title','heading','h1',{text:'Canonical v3 headline'}),
-            baseNode('home.cta','cta','a',{text:'Contact us',actionKey:'business_contact',href:'/contact',target:'_self'})
+            baseNode('home.cta','cta','a',{text:'Contact us',actionKey:'business_contact',href:'/contact',target:'_self'}),
+            baseNode('home.photo','image','img',{mediaAssetId:'11111111-1111-1111-1111-111111111111',alt:'Published media'})
           ]})
         ]
       },
@@ -75,6 +76,10 @@ test('canonical v3 business publication renders only the composition graph and k
   const home=parseHTML(result.pages['/'].html).document;
   assert.equal(home.querySelector('.brand strong').textContent,business.displayName);
   assert.equal(home.querySelector('h1').textContent,'Canonical v3 headline');
+  assert.equal(
+    home.querySelector('img[data-cms-id="home.photo"]').getAttribute('src'),
+    'https://masterapp-protect.azurewebsites.net/api/website-content/media/11111111-1111-1111-1111-111111111111'
+  );
   assert.deepEqual([...home.querySelectorAll('.nav a')].map(link=>link.textContent),['Start','Contact']);
   const cta=home.querySelector('[data-website-action-key="business_contact"]');
   assert.ok(cta);
