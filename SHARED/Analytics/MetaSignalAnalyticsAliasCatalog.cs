@@ -10,6 +10,16 @@ public static class MetaSignalAnalyticsAliasCatalog
 {
     private static readonly IReadOnlyList<MetaSignalAnalyticsAliasDefinition> DefinitionsInternal =
     [
+        new("page_view", "ViewContent"),
+        new("ProductViewed", "ViewContent"),
+        new("qualified_lead", "QualifiedLead"),
+        new("appointment_booked", "AppointmentBooked"),
+        new("appointment_completed", "AppointmentCompleted"),
+        new("application_submitted", "ApplicationSubmitted"),
+        new("policy_issued", "PolicyIssued"),
+        new("policy_paid", "PolicyPaid"),
+        new("form_field_focus", "ContactInputStarted"),
+        new("form_field_error", "FieldError"),
         new("page_engaged_5s", "SessionEngaged5s"),
         new("page_engaged_10s", "SessionEngaged5s"),
         new("page_engaged_15s", "SessionEngaged15s"),
@@ -36,8 +46,9 @@ public static class MetaSignalAnalyticsAliasCatalog
     public static IReadOnlyList<MetaSignalAnalyticsAliasDefinition> Definitions => DefinitionsInternal;
 
     public static IReadOnlyCollection<string> AnalyticsEventNames =>
-        DefinitionsInternal
-            .Select(x => x.AnalyticsEventName)
+        AnalyticsEventCatalog.Definitions.Select(x => x.Name)
+            .Concat(DefinitionsInternal.Select(x => x.AnalyticsEventName))
+            .Where(name => ResolveSignalName(name) is not null)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -50,9 +61,32 @@ public static class MetaSignalAnalyticsAliasCatalog
             return true;
         }
 
+        if (AnalyticsEventCatalog.TryGet(analyticsEventName, out var canonical))
+        {
+            var target = canonical.CountsAsConfirmedLead && canonical.AllowServer ? "Lead"
+                : canonical.CountsAsLandingView ? "ViewContent"
+                : canonical.CountsAsFormStart ? "LeadFormStart"
+                : canonical.CountsAsContactStep ? "ContactStepReached"
+                : canonical.CountsAsSubmitAttempt ? "SubmitAttempt" : null;
+            if (target is not null)
+            {
+                definition = new(canonical.Name, target);
+                return true;
+            }
+        }
         definition = null!;
         return false;
     }
+
+    public static string? ResolveSignalName(string? eventName) =>
+        TryGet(eventName, out var alias) ? alias.MetaSignalEventName
+            : MetaSignalEventCatalog.TryGet(eventName, out var signal) ? signal.Name : null;
+
+    public static IReadOnlyDictionary<string, string> BrowserProjectionMap =>
+        AnalyticsEventCatalog.Definitions.Where(x => x.AllowBrowser)
+            .Select(x => (x.Name, Signal: ResolveSignalName(x.Name)))
+            .Where(x => x.Signal is not null)
+            .ToDictionary(x => x.Name, x => x.Signal!, StringComparer.OrdinalIgnoreCase);
 
     public static bool IsBridgeEligibleAnalyticsSource(
         string? analyticsEventName,

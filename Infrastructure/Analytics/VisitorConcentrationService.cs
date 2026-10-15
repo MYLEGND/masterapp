@@ -27,12 +27,13 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
     public async Task<List<VisitorConcentrationDto>> GetVisitorConcentrationAsync(
         TimeRangeRequest range,
         ScopeContext scope,
+        TrafficType trafficType,
         CancellationToken ct = default)
     {
         var payload = await GetVisitorConcentrationPayloadAsync(
             range,
             scope,
-            TrafficType.All,
+            trafficType,
             ct);
 
         return payload.Rows
@@ -184,7 +185,10 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
             metaAdId: e.MetaAdId,
             isInternal: e.IsInternal,
             environment: e.Environment,
-            host: e.Host);
+            host: e.Host,
+            oppref: e.Oppref,
+            gclid: CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "gclid"),
+            ttclid: CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "ttclid"));
 
     private static string ResolveTop(IEnumerable<string?> values, string fallback)
     {

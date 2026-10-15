@@ -42,6 +42,9 @@ public class ProductionRecord
     [MaxLength(450)]
     public string? ClientUserId { get; set; }
 
+    [MaxLength(1024)]
+    public string? Oppref { get; set; }
+
     [MaxLength(240)]
     public string? Notes { get; set; }
 

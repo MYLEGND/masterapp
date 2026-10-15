@@ -1,8 +1,14 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using AgentPortal.Models;
 using AgentPortal.Security;
 using Domain.Entities;
 using Domain.Messaging;
+using Infrastructure.Messaging;
+using Microsoft.Extensions.Configuration;
+using Shared.Auth;
 
 namespace AgentPortal.Services;
 
@@ -27,6 +33,9 @@ public sealed class FounderLegendConnectService
     private readonly IFounderSoftwareRemediationService? _softwareRemediation;
     private readonly ILegendIntelligenceEvaluationService? _intelligenceEvaluation;
     private readonly IApplicationLocalizationService? _localization;
+    private readonly IConfiguration? _configuration;
+    private readonly IHttpClientFactory? _httpClientFactory;
+    private readonly ILegendConnectModelInferenceTransport? _modelInference;
 
     public FounderLegendConnectService(
         ILegendConnectOperations operations,
@@ -36,7 +45,10 @@ public sealed class FounderLegendConnectService
         ILegendConnectRuntimePolicyAuthority? runtimePolicy = null,
         IFounderSoftwareRemediationService? softwareRemediation = null,
         ILegendIntelligenceEvaluationService? intelligenceEvaluation = null,
-        IApplicationLocalizationService? localization = null)
+        IApplicationLocalizationService? localization = null,
+        IConfiguration? configuration = null,
+        IHttpClientFactory? httpClientFactory = null,
+        ILegendConnectModelInferenceTransport? modelInference = null)
     {
         _operations = operations;
         _agentProfiles = agentProfiles;
@@ -46,6 +58,9 @@ public sealed class FounderLegendConnectService
         _softwareRemediation = softwareRemediation;
         _intelligenceEvaluation = intelligenceEvaluation;
         _localization = localization;
+        _configuration = configuration;
+        _httpClientFactory = httpClientFactory;
+        _modelInference = modelInference;
     }
 
     public async Task<object> GetApplicationCopyInventoryAsync(ClaimsPrincipal user, string language,
@@ -107,8 +122,340 @@ public sealed class FounderLegendConnectService
             Shell = shell,
             RuntimePolicy = runtimePolicy,
             SoftwareRemediation = remediation,
+            CloudflareFoundation = GetCloudflareFoundationShellSnapshot(),
             IntelligenceEvaluation = intelligenceEvaluation
         };
+    }
+
+    private FounderCloudflareFoundationShellSnapshot GetCloudflareFoundationShellSnapshot()
+    {
+        if (_configuration is null)
+            return FounderCloudflareFoundationShellSnapshot.Unconfigured("Cloudflare foundation configuration is unavailable.");
+
+        const string prefix = "LegendConnect:Foundation:";
+        var enabled = _configuration.GetValue<bool>(prefix + "Enabled");
+        var hostKind = _configuration[prefix + "HostKind"] ?? "Cloudflare";
+        var environment = _configuration[prefix + "Cloudflare:Environment"] ?? "production";
+        var endpointText = _configuration[prefix + "Endpoint"];
+        var endpointHost = Uri.TryCreate(endpointText, UriKind.Absolute, out var endpoint) &&
+            endpoint.Scheme == "https" && endpoint.AbsolutePath == "/v1/legend/respond"
+                ? endpoint.Host
+                : "Not configured";
+        var accountId = _configuration[prefix + "Cloudflare:AccountId"];
+        var keyId = _configuration[prefix + "Cloudflare:KeyId"];
+        var signingKey = _configuration[prefix + "Cloudflare:SigningKey"];
+        var maxMicrousd = Math.Max(0, _configuration.GetValue<long?>(prefix + "Cloudflare:MaxCostMicrousd") ?? 0);
+        var configured = enabled &&
+            string.Equals(hostKind, "Cloudflare", StringComparison.Ordinal) &&
+            endpointHost != "Not configured" &&
+            !string.IsNullOrWhiteSpace(accountId) &&
+            !string.IsNullOrWhiteSpace(keyId) &&
+            !string.IsNullOrWhiteSpace(signingKey);
+        var state = configured ? "CONNECTED" : enabled ? "INCOMPLETE" : "DISABLED";
+        var detail = configured
+            ? "Azure is configured to use the signed Founder Cloudflare foundation. Live status below verifies the Worker, persistent policy, model registry, budget ledger, and concurrency without running inference."
+            : "The canonical release has not completed the Azure-to-Cloudflare foundation binding.";
+
+        return new FounderCloudflareFoundationShellSnapshot(
+            configured,
+            state,
+            hostKind,
+            environment,
+            endpointHost,
+            "Cloudflare Workers AI",
+            "persistent",
+            "@cf/openai/gpt-oss-120b",
+            _configuration.GetValue<bool>(prefix + "Cloudflare:MutationsEnabled"),
+            _configuration.GetValue<bool>(prefix + "Cloudflare:QualificationEnabled"),
+            maxMicrousd / 1_000_000m,
+            "https://dash.cloudflare.com/",
+            detail);
+    }
+
+    public async Task<FounderCloudflareFoundationLiveSnapshot> GetCloudflareFoundationStatusAsync(
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await ResolveFounderActorAsync(user, cancellationToken);
+        return await SendCloudflareFoundationControlAsync(user, actor, "/v1/legend/status", null, cancellationToken);
+    }
+
+    public async Task<FounderCloudflareInferenceCanarySnapshot> RunCloudflareFoundationInferenceCanaryAsync(
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await ResolveFounderActorAsync(user, cancellationToken);
+        if (_configuration is null || _modelInference is null ||
+            !_configuration.GetValue<bool>("LegendConnect:Foundation:Enabled") ||
+            !string.Equals(_configuration["LegendConnect:Foundation:HostKind"], "Cloudflare", StringComparison.Ordinal))
+            return new(false, "UNAVAILABLE", "cloudflare_foundation_disabled", null, null, null, null, DateTime.UtcNow);
+
+        var binding = AuthenticatedRequestBinding.Resolve(user, DateTime.UtcNow);
+        var tenantId = user.GetCanonicalTenantId();
+        var accountId = _configuration["LegendConnect:Foundation:Cloudflare:AccountId"];
+        var environment = _configuration["LegendConnect:Foundation:Cloudflare:Environment"];
+        if (binding is null || string.IsNullOrWhiteSpace(tenantId) ||
+            string.IsNullOrWhiteSpace(accountId) || string.IsNullOrWhiteSpace(environment) ||
+            !FounderAuthority.Evaluate(user, FounderGuard.FounderOid,
+                isProduction: true, developmentEmailFallback: _ => false))
+            return new(false, "UNAVAILABLE", "cloudflare_control_scope_unavailable", null, null, null, null, DateTime.UtcNow);
+
+        var now = DateTime.UtcNow;
+        var expires = now.AddSeconds(60);
+        if (binding.ValidUntilUtc is { } tokenExpiry && tokenExpiry < expires) expires = tokenExpiry;
+        if (expires <= now)
+            return new(false, "UNAVAILABLE", "cloudflare_session_expired", null, null, null, null, DateTime.UtcNow);
+
+        var requestId = Guid.NewGuid().ToString("D");
+        var conversationId = Guid.NewGuid().ToString("D");
+        var authorizationVersion = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
+            string.Join("|", tenantId, actor, binding.Id, "Founder", "cloudflare-inference-canary-v1"))));
+        var model = _configuration["LegendConnect:Foundation:Model"] ?? "cloudflare:registry";
+        var result = await _modelInference.GenerateAsync(
+            model,
+            new LegendModelTaskRequest(
+                "conversation",
+                "This is a Founder-authorized live Cloudflare connectivity canary. Reply briefly with LEGEND_CLOUDFLARE_OK. Do not call tools.",
+                "Confirm that the live LEGEND Cloudflare foundation can answer.",
+                "connectivity_acknowledgement",
+                Tools: JsonSerializer.SerializeToElement(Array.Empty<object>()),
+                AllowTools: false,
+                RequireToolCall: false,
+                MaxOutputTokens: 32,
+                ProviderPolicy: LegendConnectExternalProviderPolicy.CloudflareFoundation,
+                RequestingActorId: actor,
+                CloudflareScope: new LegendCloudflareRequestScope(
+                    requestId, tenantId, actor, binding.Id, conversationId,
+                    new[] { "Founder" }, authorizationVersion, expires)),
+            cancellationToken);
+
+        string? costEvidence = null;
+        if (!string.IsNullOrWhiteSpace(result.InferenceSettings))
+        {
+            try
+            {
+                using var receipt = JsonDocument.Parse(result.InferenceSettings);
+                if (receipt.RootElement.TryGetProperty("usage", out var usage) &&
+                    usage.TryGetProperty("costEvidence", out var evidence) &&
+                    evidence.ValueKind == JsonValueKind.String)
+                    costEvidence = evidence.GetString();
+            }
+            catch (JsonException) { }
+        }
+
+        return new(
+            result.Succeeded,
+            result.Succeeded ? "PASSED" : "FAILED",
+            result.ErrorCode,
+            result.ModelVersion,
+            result.Hosting,
+            result.CostMicrounits,
+            costEvidence,
+            DateTime.UtcNow);
+    }
+
+    public async Task<FounderCloudflareFoundationLiveSnapshot> UpdateCloudflareFoundationControlAsync(
+        ClaimsPrincipal user,
+        FounderCloudflareFoundationControlInput input,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        var actor = await ResolveFounderActorAsync(user, cancellationToken);
+        object control;
+        switch ((input.Action ?? string.Empty).Trim().ToLowerInvariant())
+        {
+            case "pause":
+                control = new { action = "set_pause", paused = true };
+                break;
+            case "resume":
+                control = new { action = "set_pause", paused = false };
+                break;
+            case "set_spend_cap":
+                if (input.SpendCapUsd is null || input.SpendCapUsd < 0m)
+                    throw new ArgumentException("A non-negative LEGEND spend ceiling is required.");
+                var configuredMax = Math.Max(0, _configuration?.GetValue<long?>(
+                    "LegendConnect:Foundation:Cloudflare:MaxCostMicrousd") ?? 0);
+                var requested = decimal.Round(input.SpendCapUsd.Value * 1_000_000m, 0, MidpointRounding.AwayFromZero);
+                if (requested > configuredMax || requested > long.MaxValue)
+                    throw new ArgumentException("The requested ceiling exceeds the release-authorized maximum.");
+                control = new { action = "set_spend_cap", spendCapMicrousd = (long)requested };
+                break;
+            default:
+                throw new ArgumentException("Unsupported Cloudflare Founder control action.");
+        }
+
+        return await SendCloudflareFoundationControlAsync(user, actor, "/v1/legend/control", control, cancellationToken);
+    }
+
+    private async Task<FounderCloudflareFoundationLiveSnapshot> SendCloudflareFoundationControlAsync(
+        ClaimsPrincipal user,
+        string actor,
+        string path,
+        object? control,
+        CancellationToken cancellationToken)
+    {
+        if (_configuration is null || _httpClientFactory is null)
+            return FounderCloudflareFoundationLiveSnapshot.Unavailable("cloudflare_control_unavailable");
+
+        const string prefix = "LegendConnect:Foundation:";
+        if (!_configuration.GetValue<bool>(prefix + "Enabled") ||
+            !string.Equals(_configuration[prefix + "HostKind"], "Cloudflare", StringComparison.Ordinal))
+            return FounderCloudflareFoundationLiveSnapshot.Unavailable("cloudflare_foundation_disabled");
+
+        var binding = Shared.Auth.AuthenticatedRequestBinding.Resolve(user, DateTime.UtcNow);
+        var tenantId = user.GetCanonicalTenantId();
+        var accountId = _configuration[prefix + "Cloudflare:AccountId"];
+        var keyId = _configuration[prefix + "Cloudflare:KeyId"];
+        var signingKey = _configuration[prefix + "Cloudflare:SigningKey"];
+        var endpointText = _configuration[prefix + "Endpoint"];
+        if (binding is null || string.IsNullOrWhiteSpace(tenantId) ||
+            string.IsNullOrWhiteSpace(accountId) || string.IsNullOrWhiteSpace(keyId) ||
+            string.IsNullOrWhiteSpace(signingKey) ||
+            !Shared.Auth.FounderAuthority.Evaluate(user, FounderGuard.FounderOid,
+                isProduction: true, developmentEmailFallback: _ => false) ||
+            !Uri.TryCreate(endpointText, UriKind.Absolute, out var respondEndpoint) ||
+            respondEndpoint.Scheme != "https" || respondEndpoint.Port != 443 ||
+            respondEndpoint.IsLoopback || respondEndpoint.UserInfo.Length != 0 ||
+            respondEndpoint.Query.Length != 0 || respondEndpoint.Fragment.Length != 0 ||
+            respondEndpoint.AbsolutePath != "/v1/legend/respond")
+            return FounderCloudflareFoundationLiveSnapshot.Unavailable("cloudflare_control_scope_unavailable");
+
+        byte[] key;
+        try { key = Convert.FromBase64String(signingKey); }
+        catch (FormatException) { return FounderCloudflareFoundationLiveSnapshot.Unavailable("cloudflare_service_key_invalid"); }
+        if (key.Length is < 32 or > 128)
+        {
+            CryptographicOperations.ZeroMemory(key);
+            return FounderCloudflareFoundationLiveSnapshot.Unavailable("cloudflare_service_key_invalid");
+        }
+
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var expires = now.AddSeconds(30);
+            if (binding.ValidUntilUtc is { } validUntilUtc && validUntilUtc < expires.UtcDateTime)
+                expires = new DateTimeOffset(validUntilUtc);
+            if (expires <= now) return FounderCloudflareFoundationLiveSnapshot.Unavailable("cloudflare_session_expired");
+
+            var requestId = Guid.NewGuid().ToString("D");
+            var conversationId = Guid.NewGuid().ToString("D");
+            var authorizationVersion = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
+                string.Join("|", tenantId, actor, binding.Id, "Founder", "cloudflare-console-v1"))));
+            var issuedAt = now.ToUnixTimeMilliseconds();
+            var envelope = new Dictionary<string, object?>
+            {
+                ["version"] = "legend-cloudflare.v1",
+                ["requestId"] = requestId,
+                ["issuedAt"] = issuedAt,
+                ["expiresAt"] = expires.ToUnixTimeMilliseconds(),
+                ["scope"] = new
+                {
+                    accountId,
+                    tenantId,
+                    userId = actor,
+                    sessionId = binding.Id,
+                    conversationId,
+                    roles = new[] { "Founder" },
+                    authorizationVersion
+                },
+                ["task"] = new
+                {
+                    kind = "general",
+                    messages = new[] { new { role = "user", content = "Founder control-plane status request." } },
+                    tools = Array.Empty<object>(),
+                    requiredCapabilities = new[] { "text" }
+                },
+                ["limits"] = new
+                {
+                    deadlineUnixMs = expires.ToUnixTimeMilliseconds(),
+                    maxOutputTokens = 1,
+                    maxIterations = 1,
+                    maxModelCalls = 1,
+                    maxToolCalls = 0,
+                    maxCostMicrousd = 1
+                },
+                ["stream"] = false
+            };
+            if (control is not null) envelope["control"] = control;
+            var payload = JsonSerializer.SerializeToUtf8Bytes(envelope);
+            var nonce = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(24));
+            var target = new UriBuilder(respondEndpoint) { Path = path, Query = string.Empty, Fragment = string.Empty }.Uri;
+            using var request = new HttpRequestMessage(HttpMethod.Post, target);
+            request.Content = new ByteArrayContent(payload);
+            request.Content.Headers.ContentType = new("application/json");
+            request.Headers.Add("X-Legend-Key-Id", keyId);
+            request.Headers.Add("X-Legend-Timestamp", issuedAt.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            request.Headers.Add("X-Legend-Nonce", nonce);
+            request.Headers.Add("X-Legend-Signature", Infrastructure.Messaging.LegendCloudflareServiceSignature.Sign(
+                key, "POST", path, keyId, issuedAt, nonce, payload));
+
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(TimeSpan.FromSeconds(15));
+            using var response = await _httpClientFactory.CreateClient("LegendCloudflareFoundation")
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+            await response.Content.LoadIntoBufferAsync(131072, deadline.Token);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsByteArrayAsync(deadline.Token));
+            var root = document.RootElement;
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = root.TryGetProperty("error", out var errorValue) && errorValue.ValueKind == JsonValueKind.String
+                    ? errorValue.GetString()
+                    : "cloudflare_control_failed";
+                return FounderCloudflareFoundationLiveSnapshot.Unavailable(error ?? "cloudflare_control_failed");
+            }
+            if (!root.TryGetProperty("requestId", out var returnedId) ||
+                returnedId.GetString() != requestId ||
+                root.GetProperty("status").GetString() != "ready")
+                return FounderCloudflareFoundationLiveSnapshot.Unavailable("cloudflare_control_receipt_invalid");
+
+            var provider = root.GetProperty("provider");
+            var models = root.GetProperty("models").EnumerateArray().Select(model => new FounderCloudflareFoundationModelSnapshot(
+                model.GetProperty("id").GetString() ?? "unknown",
+                model.GetProperty("role").GetString() ?? "unknown",
+                model.GetProperty("contextTokens").GetInt64(),
+                model.GetProperty("inputUsdPerMillion").GetDecimal(),
+                model.GetProperty("outputUsdPerMillion").GetDecimal())).ToArray();
+            var budget = root.GetProperty("budget");
+            var budgetSnapshot = new FounderCloudflareFoundationBudgetSnapshot(
+                budget.GetProperty("period").GetString() ?? "unknown",
+                budget.GetProperty("releaseAuthorizedMicrousd").GetInt64(),
+                budget.GetProperty("spendCapMicrousd").GetInt64(),
+                budget.GetProperty("chargedMicrousd").GetInt64(),
+                budget.GetProperty("remainingMicrousd").GetInt64(),
+                budget.GetProperty("paused").GetBoolean(),
+                budget.GetProperty("activeConcurrency").GetInt32(),
+                budget.GetProperty("concurrencyLimit").GetInt32(),
+                budget.TryGetProperty("controlUpdatedAt", out var updatedAt) && updatedAt.ValueKind == JsonValueKind.Number
+                    ? updatedAt.GetInt64()
+                    : null);
+
+            return new FounderCloudflareFoundationLiveSnapshot(
+                true,
+                budgetSnapshot.Paused ? "PAUSED" : "READY",
+                null,
+                provider.GetProperty("name").GetString() ?? "cloudflare-workers-ai",
+                provider.GetProperty("hosting").GetString() ?? "cloudflare",
+                root.GetProperty("billing").GetString() ?? "Cloudflare Workers AI",
+                root.GetProperty("executionMode").GetString() ?? "unknown",
+                root.GetProperty("policyVersion").GetString() ?? "unknown",
+                root.GetProperty("policyPersistence").GetString() ?? "unknown",
+                root.GetProperty("primaryModelId").GetString() ?? "@cf/openai/gpt-oss-120b",
+                models,
+                budgetSnapshot,
+                DateTime.UtcNow);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return FounderCloudflareFoundationLiveSnapshot.Unavailable("cloudflare_control_timeout");
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or InvalidOperationException or KeyNotFoundException)
+        {
+            return FounderCloudflareFoundationLiveSnapshot.Unavailable("cloudflare_control_transport_failed");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(key);
+        }
     }
 
     public async Task<object> ConnectSoftwareRemediationAsync(ClaimsPrincipal user, CancellationToken cancellationToken = default)

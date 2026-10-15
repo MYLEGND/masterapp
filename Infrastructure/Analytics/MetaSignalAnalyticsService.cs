@@ -37,18 +37,9 @@ public interface IMetaSignalAnalyticsService
 
 public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
 {
-    private const string LearningScopeNoteText = "Meta Paid Signal Intelligence only evaluates paid Meta-attributed traffic. Non-paid/manual tests may appear in Quote Funnel and Conversion Center but are excluded from Meta learning readiness.";
+    private const string LearningScopeNoteText = "Meta Paid Signal Intelligence is a derived learning projection for paid Meta-attributed traffic. Its Submitted Leads value is a funnel-signal count, not the canonical CRM lead total. Use Analytics Verified Leads and canonical channel outcomes for business truth; non-paid/manual tests are excluded from Meta learning readiness.";
     private const int DispatcherGraceMinutes = 10;
-    private static readonly string[] ExplicitBridgeSourceEventTypes =
-    [
-        "qualified_lead",
-        AppointmentAnalyticsEventCatalog.Booked,
-        "application_submitted",
-        "policy_issued",
-        "policy_paid",
-        "purchase"
-    ];
-    private static readonly HashSet<string> BridgeSourceEventTypes = BuildBridgeSourceEventTypes();
+
     private static readonly HashSet<string> BrowserPixelEventNames = new(
         MetaSignalEventCatalog.BrowserPixelEventNames,
         StringComparer.OrdinalIgnoreCase);
@@ -86,20 +77,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             .ApplySiteScope(scope);
 
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope, ct);
-        if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
-        {
-            if (scopedAgentIds is { Length: > 0 })
-            {
-                baseQuery = baseQuery.Where(x =>
-                    x.AgentTrackingProfileId.HasValue &&
-                    scopedAgentIds.Contains(x.AgentTrackingProfileId.Value));
-            }
-            else
-            {
-                var agentId = scope.AgentTrackingProfileId.Value;
-                baseQuery = baseQuery.Where(x => x.AgentTrackingProfileId == agentId);
-            }
-        }
+        baseQuery = baseQuery.Where(AnalyticsQueryService.ScopePredicateMetaEvents(scope, scopedAgentIds));
 
         baseQuery = ApplyTrafficFilter(baseQuery, trafficType);
         baseQuery = await ApplyQualityFilterAsync(baseQuery, range, scope, scopedAgentIds, ct);
@@ -213,6 +191,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             .Select(x => new HealthAnalyticsEventRow
             {
                 Id = x.Id,
+                BridgeEligible = MetaSignalAnalyticsBridge.IsEligibleSource(x),
                 EventType = x.EventType,
                 SessionId = x.SessionId,
                 VisitorId = x.VisitorId,
@@ -248,7 +227,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             .CountAsync(ct);
 
         var bridgeEligibleAnalytics = analyticsRows
-            .Where(IsBridgeEligibleAnalyticsEvent)
+            .Where(x => x.BridgeEligible)
             .ToList();
         var bridgeEligibleAnalyticsIds = bridgeEligibleAnalytics
             .Select(x => x.Id)
@@ -325,14 +304,16 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                 "Events Missing MetaSignalEvents",
                 missingBridgeCount,
                 bridgeEligibleAnalyticsIds.Count,
-                missingBridgeCount == 0
+                bridgeEligibleAnalyticsIds.Count == 0
+                    ? "No bridge-eligible analytics events were evaluated in the selected range."
+                    : missingBridgeCount == 0
                     ? "Every bridge-eligible analytics event in the selected diagnostic range produced a derived signal row."
                     : $"{missingBridgeCount} of {bridgeEligibleAnalyticsIds.Count} bridge-eligible analytics events do not have a matching bridge-owned MetaSignal row."),
             BuildIssue(
                 "missing_identity",
                 "Meta Rows Missing LeadId or SessionId",
                 conversionRowsMissingLead + bridgeRowsMissingSession,
-                Math.Max(1, metaContexts.Count),
+                metaContexts.Count,
                 $"Missing lead on {conversionRowsMissingLead} conversion rows and missing session on {bridgeRowsMissingSession} bridge rows."),
             BuildIssue(
                 "browser_pending",
@@ -759,20 +740,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc <= range.ToUtc)
             .ApplySiteScope(scope);
 
-        if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
-        {
-            if (scopedAgentIds is { Length: > 0 })
-            {
-                query = query.Where(x =>
-                    x.AgentTrackingProfileId.HasValue &&
-                    scopedAgentIds.Contains(x.AgentTrackingProfileId.Value));
-            }
-            else
-            {
-                var agentId = scope.AgentTrackingProfileId.Value;
-                query = query.Where(x => x.AgentTrackingProfileId == agentId);
-            }
-        }
+        query = query.Where(AnalyticsQueryService.ScopePredicateMetaEvents(scope, scopedAgentIds));
 
         return ApplyHealthMetaQualityFilter(query, range, analyticsRows);
     }
@@ -819,6 +787,19 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         if (scope.ScopeType == ScopeType.Business)
             return query.Where(x => scope.CommerceBusinessId != null && scope.CommerceBusinessId != Guid.Empty &&
                 scope.AgentTrackingProfileId == null && x.CommerceBusinessId == scope.CommerceBusinessId && x.AgentTrackingProfileId == null);
+        if (scope.ScopeType == ScopeType.Founder)
+        {
+            if (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty || scope.CommerceBusinessId.HasValue)
+                return query.Where(x => false);
+            var founderIds = scopedAgentIds is { Length: > 0 }
+                ? scopedAgentIds
+                : new[] { scope.AgentTrackingProfileId.Value };
+            query = query.Where(x => x.CommerceBusinessId == null &&
+                ((x.AgentTrackingProfileId.HasValue && founderIds.Contains(x.AgentTrackingProfileId.Value)) ||
+                 (x.AgentTrackingProfileId == null && x.MetadataJson != null &&
+                  x.MetadataJson.Contains("\"SiteKey\":\"legend\""))));
+            return ApplyHealthLeadQualityFilter(query, range.QualityMode);
+        }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
             return query.Where(x => false);
@@ -1283,7 +1264,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             Key = key,
             Label = label,
             Count = count,
-            Status = ResolveIssueStatus(count, ratio),
+            Status = baseline <= 0 && count == 0 ? "NoData" : ResolveIssueStatus(count, ratio),
             Detail = detail
         };
     }
@@ -1302,34 +1283,6 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         if (ratio <= 0.05m) return "Watch";
         if (ratio <= 0.15m) return "Risk";
         return "Critical";
-    }
-
-    private static bool IsBridgeEligibleAnalyticsEvent(HealthAnalyticsEventRow row)
-    {
-        if (!BridgeSourceEventTypes.Contains(row.EventType))
-            return false;
-
-        return !MetaSignalAnalyticsAliasCatalog.TryGet(row.EventType, out _)
-            || MetaSignalAnalyticsAliasCatalog.IsBridgeEligibleAnalyticsSource(
-                row.EventType,
-                row.ScrollPercent,
-                row.DwellMilliseconds,
-                row.EngagedMilliseconds,
-                row.IsBounceCandidate);
-    }
-
-    private static HashSet<string> BuildBridgeSourceEventTypes()
-    {
-        var leadAndViewContentSources = AnalyticsEventCatalog.Definitions
-            .Where(x => x.CountsAsConfirmedLead || (x.EligibleForMetaSignal && x.CountsAsLandingView))
-            .Select(x => x.Name);
-
-        return new HashSet<string>(
-            leadAndViewContentSources
-                .Concat(ExplicitBridgeSourceEventTypes)
-                .Concat(MetaSignalAnalyticsAliasCatalog.AnalyticsEventNames)
-                .Concat(MetaSignalEventCatalog.Definitions.Select(x => x.Name)),
-            StringComparer.OrdinalIgnoreCase);
     }
 
     private static HealthMetaSignalContext CreateHealthMetaContext(HealthMetaSignalRow row)
@@ -1398,32 +1351,8 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
     /// Expands an agent scope to all tracking profile IDs owned by the same AgentUpn.
     /// This is the true agent boundary: same authenticated agent account, not slug guessing.
     /// </summary>
-    private async Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope, CancellationToken ct)
-    {
-        if (scope.ScopeType != ScopeType.Agent || !scope.AgentTrackingProfileId.HasValue)
-            return null;
-
-        var selectedId = scope.AgentTrackingProfileId.Value;
-
-        var upn = await _db.AgentTrackingProfiles.AsNoTracking()
-            .Where(p => p.Id == selectedId)
-            .Select(p => p.AgentUpn)
-            .FirstOrDefaultAsync(ct);
-
-        if (string.IsNullOrWhiteSpace(upn))
-            return new[] { selectedId };
-
-        var ids = await _db.AgentTrackingProfiles.AsNoTracking()
-            .Where(p => p.AgentUpn == upn)
-            .Select(p => p.Id)
-            .Distinct()
-            .ToListAsync(ct);
-
-        if (!ids.Contains(selectedId))
-            ids.Add(selectedId);
-
-        return ids.ToArray();
-    }
+    private Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope, CancellationToken ct) =>
+        AnalyticsTrackingProfileScope.ResolveAsync(_db, scope, ct);
 
     private static string? Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
@@ -1569,6 +1498,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
     private sealed class HealthAnalyticsEventRow
     {
         public long Id { get; init; }
+        public bool BridgeEligible { get; init; }
         public string EventType { get; init; } = string.Empty;
         public string? SessionId { get; init; }
         public string? VisitorId { get; init; }

@@ -8,8 +8,9 @@ namespace Shared.Security;
 /// critical, security-sensitive misconfiguration instead of surfacing it as a
 /// silent runtime fallback. Never reads, prints, or exposes secret values — it
 /// validates only presence/consistency, and messages reference setting NAMES.
-/// All checks are no-ops outside production so development convenience is kept.
-/// </summary>
+/// The same guard is shared by every server host; release transport never changes
+/// or bypasses these runtime checks. All checks remain no-ops outside production.
+////// </summary>
 public static class PlatformConfigValidation
 {
     public const string BlobUriConfigKey = "DataProtection:BlobUri";

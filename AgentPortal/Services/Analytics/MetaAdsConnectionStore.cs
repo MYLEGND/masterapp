@@ -42,12 +42,4 @@ public sealed class MetaAdsConnectionStore : IMetaAdsConnectionStore
         return await _connections.GetAdsAsync(owner, ct);
     }
 
-    public Task SaveAsync(MetaAdsConnectionRecord record, CancellationToken ct = default) =>
-        _connections.SaveAdsAsync(MarketingOwnerScope.Agent(record.AgentTrackingProfileId), record, ct);
-
-    public async Task DeleteAsync(Guid agentTrackingProfileId, CancellationToken ct = default)
-    {
-        await _connections.DisconnectAsync(MarketingOwnerScope.Agent(agentTrackingProfileId), ct);
-        await _legacyCache.RemoveAsync(CacheKey(agentTrackingProfileId), ct);
-    }
 }

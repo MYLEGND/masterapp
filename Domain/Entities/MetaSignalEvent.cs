@@ -28,6 +28,9 @@ public class MetaSignalEvent
     public string? ScoreTier { get; set; }
     public bool MetaBrowserSent { get; set; }
     public bool MetaServerSent { get; set; }
+    public string? MetaDispatchClaimToken { get; set; }
+    public DateTime? MetaDispatchClaimedUtc { get; set; }
+    public DateTime? MetaDispatchClaimExpiresUtc { get; set; }
     public string? MetaDeduplicationKey { get; set; }
     public string? UtmSource { get; set; }
     public string? UtmMedium { get; set; }

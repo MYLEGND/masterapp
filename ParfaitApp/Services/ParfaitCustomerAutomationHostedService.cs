@@ -25,7 +25,7 @@ public sealed class ParfaitCustomerAutomationHostedService : BackgroundService
                 var automations = scope.ServiceProvider.GetRequiredService<ParfaitCustomerAutomationService>();
                 var mail = scope.ServiceProvider.GetRequiredService<IGraphMailService>();
 
-                var dueDispatches = automations.GetDueDispatchCandidates();
+                var dueDispatches = automations.GetDueDispatchCandidatesForAllBusinesses();
                 foreach (var candidate in dueDispatches)
                 {
                     try
@@ -56,7 +56,7 @@ public sealed class ParfaitCustomerAutomationHostedService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Parfait customer automation hosted service failed.");
+                _logger.LogError(ex, "Commerce customer automation hosted service failed.");
             }
 
             await Task.Delay(PollInterval, stoppingToken);

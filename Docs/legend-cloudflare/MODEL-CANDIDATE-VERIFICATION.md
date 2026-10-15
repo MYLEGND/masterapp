@@ -1,5 +1,7 @@
 # Five-model candidate verification
 
+> **Implementation supersession — 2026-10-02:** The September 19 notes below are retained as historical evidence only. The current release candidate uses the exact five-model Founder set under the persistent `founder_baseline` runtime authority, schema `legend-founder-baseline.v3`, with no release-time policy expiry. Founder/account/tenant/service-key checks, per-request signed deadlines, the shared $3 lifetime model ledger, concurrency 1, and independent qualification grants remain enforced. The default general route is GPT-OSS-120B; server-owned task roles may select the other reviewed models. Do not treat older references to `founder_manual_test`, `MANUAL_TEST_MODEL`, or a 24-hour Founder baseline expiry as current runtime instructions.
+
 Checked 2026-09-19 00:21 UTC (2026-09-18 Arizona). This is public documentation
 and source inspection, with no inference calls, provisioning, configuration
 changes, or deployment. Source inspected: integration revision

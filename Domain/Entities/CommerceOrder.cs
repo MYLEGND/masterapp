@@ -41,6 +41,7 @@ public sealed class CommerceOrder
     public string Source { get; set; } = "Public Store";
     public string? UserAgent { get; set; }
     public string? RequestIp { get; set; }
+    public string? Oppref { get; set; }
 
     public int SubtotalCents { get; set; }
     public string? DiscountCode { get; set; }

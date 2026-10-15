@@ -25,6 +25,51 @@
             : String(input);
     };
 
+    async function writeClipboardText(value) {
+        if (navigator.clipboard?.writeText && window.isSecureContext) {
+            await navigator.clipboard.writeText(value);
+            return;
+        }
+
+        const textarea = document.createElement("textarea");
+        textarea.value = value;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        textarea.style.pointerEvents = "none";
+        document.body.append(textarea);
+        textarea.select();
+        const copied = document.execCommand("copy");
+        textarea.remove();
+        if (!copied) throw new Error("Clipboard copy was not accepted.");
+    }
+
+    document.addEventListener("click", event => {
+        const button = event.target.closest?.("[data-legend-copy-button]");
+        if (!button || button.disabled) return;
+
+        const value = button.dataset.legendCopyTarget || "";
+        if (!value) return;
+
+        const label = button.querySelector("[data-legend-copy-label]");
+        const originalLabel = label?.textContent || "Copy";
+        button.disabled = true;
+
+        void writeClipboardText(value)
+            .then(() => {
+                if (label) label.textContent = "Copied";
+            })
+            .catch(() => {
+                if (label) label.textContent = "Copy failed";
+            })
+            .finally(() => {
+                window.setTimeout(() => {
+                    if (label?.isConnected) label.textContent = originalLabel;
+                    if (button.isConnected) button.disabled = false;
+                }, 1400);
+            });
+    });
+
     const copyPanel = document.querySelector("[data-application-copy-panel]");
     if (copyPanel) {
         const status = copyPanel.querySelector("[data-copy-status]");
@@ -353,6 +398,220 @@
     void refreshMetrics();
     window.setInterval(refreshMetrics, 30000);
     document.addEventListener("visibilitychange", () => { if (!document.hidden) void refreshMetrics(); });
+
+    const formatUsdFromMicrousd = value => {
+        const numeric = Number(value);
+        return Number.isFinite(numeric)
+            ? new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 6 }).format(numeric / 1000000)
+            : "—";
+    };
+
+    const setCloudflareText = (selector, value) => {
+        const element = document.querySelector(selector);
+        if (element) element.textContent = value ?? "—";
+    };
+
+    function renderCloudflareStatus(snapshot) {
+        const reachable = read(snapshot, "reachable", "Reachable") === true;
+        const state = read(snapshot, "state", "State") || (reachable ? "READY" : "UNAVAILABLE");
+        const errorCode = read(snapshot, "errorCode", "ErrorCode");
+        document.querySelectorAll("[data-cf-live-state], [data-cf-summary-state]").forEach(element => {
+            element.textContent = state;
+        });
+        setCloudflareText("[data-cf-billing]", read(snapshot, "billing", "Billing") || "Cloudflare Workers AI");
+        setCloudflareText("[data-cf-primary]", read(snapshot, "primaryModel", "PrimaryModel") || "—");
+        setCloudflareText("[data-cf-execution-mode]", read(snapshot, "executionMode", "ExecutionMode") || "—");
+        setCloudflareText("[data-cf-policy-version]", read(snapshot, "policyVersion", "PolicyVersion") || "—");
+        setCloudflareText("[data-cf-policy-persistence]", read(snapshot, "policyPersistence", "PolicyPersistence") || "—");
+        setCloudflareText("[data-cf-error]", errorCode || "None");
+        const checked = read(snapshot, "checkedUtc", "CheckedUtc");
+        setCloudflareText("[data-cf-checked]", checked ? new Date(checked).toLocaleString() : new Date().toLocaleString());
+
+        const diagnostic = document.querySelector("[data-cf-diagnostic]");
+        if (diagnostic) {
+            diagnostic.textContent = reachable
+                ? "Signed Azure ↔ Cloudflare control-plane check passed. No model inference was used."
+                : "Diagnostic failed: " + (errorCode || "cloudflare_control_unavailable");
+        }
+
+        const budget = read(snapshot, "budget", "Budget");
+        if (budget) {
+            setCloudflareText("[data-cf-budget-authorized]", formatUsdFromMicrousd(read(budget, "releaseAuthorizedMicrousd", "ReleaseAuthorizedMicrousd")));
+            setCloudflareText("[data-cf-budget-cap]", formatUsdFromMicrousd(read(budget, "spendCapMicrousd", "SpendCapMicrousd")));
+            setCloudflareText("[data-cf-budget-charged]", formatUsdFromMicrousd(read(budget, "chargedMicrousd", "ChargedMicrousd")));
+            setCloudflareText("[data-cf-budget-remaining]", formatUsdFromMicrousd(read(budget, "remainingMicrousd", "RemainingMicrousd")));
+            setCloudflareText("[data-cf-concurrency]",
+                formatNumber(read(budget, "activeConcurrency", "ActiveConcurrency"), "0") + " / " +
+                formatNumber(read(budget, "concurrencyLimit", "ConcurrencyLimit"), "—"));
+            const cap = document.querySelector("[data-cf-spend-cap]");
+            const capMicrousd = Number(read(budget, "spendCapMicrousd", "SpendCapMicrousd"));
+            if (cap && Number.isFinite(capMicrousd)) cap.value = String(capMicrousd / 1000000);
+        }
+
+        const body = document.querySelector("[data-cf-models]");
+        if (body) {
+            body.replaceChildren();
+            const models = read(snapshot, "models", "Models") || [];
+            if (!models.length) {
+                const row = document.createElement("tr");
+                const cell = document.createElement("td");
+                cell.colSpan = 5;
+                cell.textContent = reachable ? "No models were returned by the Worker." : "Live model registry unavailable.";
+                row.appendChild(cell);
+                body.appendChild(row);
+            } else {
+                for (const model of models) {
+                    const row = document.createElement("tr");
+                    const values = [
+                        read(model, "role", "Role") || "—",
+                        read(model, "id", "Id") || "—",
+                        formatNumber(read(model, "contextTokens", "ContextTokens")),
+                        "$" + Number(read(model, "inputUsdPerMillion", "InputUsdPerMillion") || 0).toFixed(4),
+                        "$" + Number(read(model, "outputUsdPerMillion", "OutputUsdPerMillion") || 0).toFixed(4)
+                    ];
+                    for (const value of values) {
+                        const cell = document.createElement("td");
+                        cell.textContent = value;
+                        row.appendChild(cell);
+                    }
+                    body.appendChild(row);
+                }
+            }
+        }
+    }
+
+    let cloudflareRefreshing = false;
+    async function refreshCloudflareStatus() {
+        if (cloudflareRefreshing) return;
+        cloudflareRefreshing = true;
+        const refresh = document.querySelector("[data-cf-refresh]");
+        if (refresh) refresh.disabled = true;
+        setCloudflareText("[data-cf-diagnostic]", "Checking signed Azure ↔ Cloudflare control plane…");
+        try {
+            const response = await fetch("/founder/legend-connect/cloudflare/status", {
+                cache: "no-store",
+                credentials: "same-origin",
+                signal: AbortSignal.timeout(20000),
+                headers: { Accept: "application/json" }
+            });
+            const snapshot = await response.json().catch(() => null);
+            if (!response.ok || !snapshot) throw new Error(read(snapshot, "message", "Message") || "cloudflare_status_unavailable");
+            renderCloudflareStatus(snapshot);
+        } catch (error) {
+            renderCloudflareStatus({
+                reachable: false,
+                state: "UNAVAILABLE",
+                errorCode: error?.message || "cloudflare_status_unavailable",
+                checkedUtc: new Date().toISOString()
+            });
+        } finally {
+            cloudflareRefreshing = false;
+            if (refresh) refresh.disabled = false;
+        }
+    }
+
+    async function applyCloudflareControl(action) {
+        const form = document.querySelector("[data-cf-control-form]");
+        if (!form || cloudflareRefreshing) return;
+        const token = form.querySelector('input[name="__RequestVerificationToken"]')?.value;
+        if (!token) return;
+        const body = new URLSearchParams();
+        body.set("__RequestVerificationToken", token);
+        body.set("Action", action);
+        if (action === "set_spend_cap") {
+            const value = document.querySelector("[data-cf-spend-cap]")?.value;
+            if (value === undefined || value === "") return;
+            body.set("SpendCapUsd", value);
+        }
+        document.querySelectorAll("[data-cf-control]").forEach(button => { button.disabled = true; });
+        setCloudflareText("[data-cf-diagnostic]", "Applying Founder control…");
+        try {
+            const response = await fetch("/founder/legend-connect/cloudflare/control", {
+                method: "POST",
+                credentials: "same-origin",
+                cache: "no-store",
+                signal: AbortSignal.timeout(20000),
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                    Accept: "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                body: body.toString()
+            });
+            const snapshot = await response.json().catch(() => null);
+            if (!response.ok || !snapshot) throw new Error(read(snapshot, "message", "Message") || "cloudflare_control_failed");
+            renderCloudflareStatus(snapshot);
+        } catch (error) {
+            setCloudflareText("[data-cf-diagnostic]", "Control failed: " + (error?.message || "cloudflare_control_failed"));
+        } finally {
+            document.querySelectorAll("[data-cf-control]").forEach(button => { button.disabled = false; });
+        }
+    }
+
+    async function runCloudflareInferenceCanary() {
+        const form = document.querySelector("[data-cf-control-form]");
+        const token = form?.querySelector('input[name="__RequestVerificationToken"]')?.value;
+        const button = document.querySelector("[data-cf-canary]");
+        if (!token || !button || cloudflareRefreshing) return;
+        if (!window.confirm("Run one live Cloudflare Workers AI inference canary? This uses the active LEGEND inference budget.")) return;
+
+        button.disabled = true;
+        setCloudflareText("[data-cf-canary-state]", "Running…");
+        setCloudflareText("[data-cf-diagnostic]", "Running live inference through the canonical LEGEND transport…");
+        try {
+            const body = new URLSearchParams();
+            body.set("__RequestVerificationToken", token);
+            const response = await fetch("/founder/legend-connect/cloudflare/canary", {
+                method: "POST",
+                credentials: "same-origin",
+                cache: "no-store",
+                signal: AbortSignal.timeout(90000),
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                    Accept: "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                body: body.toString()
+            });
+            const result = await response.json().catch(() => null);
+            if (!response.ok || !result) throw new Error(read(result, "message", "Message") || "cloudflare_inference_canary_failed");
+
+            const succeeded = read(result, "succeeded", "Succeeded") === true;
+            const state = read(result, "state", "State") || (succeeded ? "PASSED" : "FAILED");
+            const errorCode = read(result, "errorCode", "ErrorCode");
+            const model = read(result, "model", "Model");
+            const cost = read(result, "costMicrousd", "CostMicrousd");
+            const evidence = read(result, "costEvidence", "CostEvidence");
+
+            setCloudflareText("[data-cf-canary-state]", state + (errorCode ? " · " + errorCode : ""));
+            setCloudflareText("[data-cf-canary-model]", model || "—");
+            setCloudflareText("[data-cf-canary-cost]",
+                cost === null || cost === undefined ? "—" :
+                    formatUsdFromMicrousd(cost) + (evidence ? " · " + evidence : ""));
+            setCloudflareText("[data-cf-diagnostic]", succeeded
+                ? "Live Cloudflare inference passed through the canonical LEGEND transport."
+                : "Live inference failed: " + (errorCode || "cloudflare_inference_canary_failed"));
+            await refreshCloudflareStatus();
+        } catch (error) {
+            setCloudflareText("[data-cf-canary-state]", "FAILED");
+            setCloudflareText("[data-cf-canary-model]", "—");
+            setCloudflareText("[data-cf-canary-cost]", "—");
+            setCloudflareText("[data-cf-diagnostic]", "Live inference canary failed: " + (error?.message || "cloudflare_inference_canary_failed"));
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    document.querySelector("[data-cf-refresh]")?.addEventListener("click", () => void refreshCloudflareStatus());
+    document.querySelector("[data-cf-canary]")?.addEventListener("click", () => void runCloudflareInferenceCanary());
+    document.querySelectorAll("[data-cf-control]").forEach(button => {
+        button.addEventListener("click", () => {
+            const action = button.dataset.cfControl;
+            if (action === "pause" && !window.confirm("Pause LEGEND Cloudflare inference? The Founder console and no-spend diagnostics will remain available.")) return;
+            void applyCloudflareControl(action);
+        });
+    });
+    document.getElementById("lcCloudflareFoundation")?.addEventListener("show.bs.modal", () => void refreshCloudflareStatus());
 
     const root =
         document.querySelector("[data-legend-connect-shell]");

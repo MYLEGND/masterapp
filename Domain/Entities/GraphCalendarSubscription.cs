@@ -5,6 +5,7 @@ public class GraphCalendarSubscription
     public Guid Id { get; set; } = Guid.NewGuid();
 
     public string AgentUserId { get; set; } = "";
+    public Guid? CommerceBusinessId { get; set; }
     public string? CalendarUserId { get; set; }
     public string? CalendarEmail { get; set; }
 

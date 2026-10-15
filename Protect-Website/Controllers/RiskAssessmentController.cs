@@ -10,7 +10,6 @@ using Microsoft.AspNetCore.Mvc;
 using Protect_Website.Models;
 using Protect_Website.Services;
 using ProtectWebsite.Services;
-using ProtectWebsite.Services.Communication;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using System.Text;
 using System.Net;
@@ -20,22 +19,22 @@ namespace Protect_Website.Controllers
     [Route("RiskAssessment")]
     public class RiskAssessmentController : Controller
     {
-        private readonly string recipientEmail;
-        private readonly IProtectEmailSender _emailSender;
+        private readonly IWebsiteInquiryEmailSender _emailSender;
 
         private readonly MasterAppDbContext _db;
         private readonly AgentTrackingResolver _resolver;
+        private readonly WebsiteIntakeRecipientResolver _intakeRecipients;
         private readonly IWebsiteLifeLeadCaptureService _capture;
         private readonly ILogger<RiskAssessmentController> _logger;
 
-        public RiskAssessmentController(IConfiguration configuration, IProtectEmailSender emailSender,
-            MasterAppDbContext db, AgentTrackingResolver resolver, IWebsiteLifeLeadCaptureService capture,
+        public RiskAssessmentController(IConfiguration configuration, IWebsiteInquiryEmailSender emailSender,
+            MasterAppDbContext db, AgentTrackingResolver resolver, WebsiteIntakeRecipientResolver intakeRecipients, IWebsiteLifeLeadCaptureService capture,
             ILogger<RiskAssessmentController> logger)
         {
-            recipientEmail = configuration["Contact:RecipientEmail"]!;
             _emailSender = emailSender;
             _db = db;
             _resolver = resolver;
+            _intakeRecipients = intakeRecipients;
             _capture = capture;
             _logger = logger;
         }
@@ -49,6 +48,7 @@ namespace Protect_Website.Controllers
 
         // POST: /RiskAssessment
         [HttpPost("")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> SubmitRiskAssessment(RiskAssessmentModel model)
         {
@@ -60,24 +60,12 @@ namespace Protect_Website.Controllers
             try
             {
                 var ct = HttpContext.RequestAborted;
-                var trackingProfile = HttpContext.Items["TrackingProfile"] as AgentTrackingProfile;
-                var requestedSlug = Request.Form["AgentSlug"].FirstOrDefault();
-                if (!string.IsNullOrWhiteSpace(requestedSlug))
-                {
-                    var resolved = await _resolver.ResolveBySlugAsync(requestedSlug, ct);
-                    if (!resolved.Found || resolved.Profile == null)
-                    {
-                        ModelState.AddModelError("", "The advisor link is no longer available.");
-                        return View("~/Views/RiskAssessment/Index.cshtml", model);
-                    }
-                    trackingProfile = resolved.Profile;
-                }
-                if (trackingProfile == null && !string.IsNullOrWhiteSpace(recipientEmail))
-                {
-                    var fallback = await _resolver.ResolveByUpnAsync(recipientEmail, ct);
-                    trackingProfile = fallback.Profile;
-                }
-                var recipient = trackingProfile?.AgentUpn ?? recipientEmail;
+                var ownership = await WebsiteLeadOwnerAuthority.ResolveAsync(
+                    HttpContext,
+                    _resolver,
+                    _intakeRecipients,
+                    ct);
+                var recipient = ownership.RecipientEmail;
                 var lead = new WebsiteLead
                 {
                     LeadId = Guid.NewGuid(), FirstName = model.FirstName.Trim(), LastName = model.LastName.Trim(),
@@ -85,13 +73,16 @@ namespace Protect_Website.Controllers
                     SourcePageKey = "risk_assessment", TermsAccepted = true,
                     MarketingEmailConsent = model.AcknowledgedDisclaimer,
                     CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.PhoneNumber),
-                    AgentTrackingProfileId = trackingProfile?.Id, AgentSlug = trackingProfile?.Slug,
+                    AgentTrackingProfileId = ownership.AgentProfileId, AgentSlug = ownership.AgentSlug,
                     SessionId = Request.Form["SessionId"].FirstOrDefault(), VisitorId = Request.Form["VisitorId"].FirstOrDefault(),
                     UtmSource = Request.Form["UtmSource"].FirstOrDefault(), UtmMedium = Request.Form["UtmMedium"].FirstOrDefault(),
                     UtmCampaign = Request.Form["UtmCampaign"].FirstOrDefault(),
+                    Oppref = OpenAiClickReference.Normalize(model.Oppref ?? Request.Form["Oppref"].FirstOrDefault()),
                     Host = Request.Host.ToString(), Environment = EnvironmentLabelResolver.Resolve(),
                     IsInternal = WebsiteLeadCaptureSafety.ShouldMarkAsInternalTest(Request.Host.Host),
-                    CreatedUtc = DateTime.UtcNow, Status = "New", MetadataJson = JsonSerializer.Serialize(model)
+                    CreatedUtc = DateTime.UtcNow, Status = "New",
+                    MetadataJson = OpenAiAttributionMetadata.WithBrowserReference(
+                        JsonSerializer.Serialize(model), UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request))
                 };
                 WebsiteLifeLeadCaptureResult captured = null!;
                 if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead, Request.Form["SubmissionId"].FirstOrDefault(), ct, async _ =>
@@ -106,15 +97,36 @@ namespace Protect_Website.Controllers
                     if (!captured.Captured && captured.Reason != "InternalTestLead")
                         throw new InvalidOperationException("The advisor handoff could not be completed.");
                 lead.Status = captured.Captured ? "New" : "InternalTestLead";
-                _db.AnalyticsEvents.Add(new AnalyticsEvent
-                {
-                    EventId = Guid.NewGuid(), EventType = "lead_persisted", PageKey = "risk_assessment",
-                    FormKey = "risk_assessment", QuoteType = "risk_assessment", SessionId = lead.SessionId,
-                    VisitorId = lead.VisitorId, AgentTrackingProfileId = lead.AgentTrackingProfileId,
-                    AgentSlug = lead.AgentSlug, EventUtc = lead.CreatedUtc, ReceivedUtc = DateTime.UtcNow,
-                    Environment = lead.Environment, Host = lead.Host, IsInternal = lead.IsInternal,
-                    MetadataJson = JsonSerializer.Serialize(new { LeadId = lead.LeadId, CrmCaptured = captured.Captured })
-                });
+                var persistedEvent = UnifiedEventMapper.ToAnalytics(
+                    UnifiedEventContextBuilder.Build(
+                        HttpContext,
+                        eventId: Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead),
+                        eventName: "website_lead_submitted",
+                        eventCategory: "lead",
+                        eventUtc: lead.CreatedUtc,
+                        sessionId: lead.SessionId,
+                        visitorId: lead.VisitorId,
+                        pageKey: "risk_assessment",
+                        formKey: "risk_assessment",
+                        oppref: lead.Oppref,
+                        agentTrackingProfileId: lead.AgentTrackingProfileId,
+                        agentSlug: lead.AgentSlug,
+                        isInternal: lead.IsInternal,
+                        environment: lead.Environment,
+                        host: lead.Host,
+                        quoteType: "risk_assessment",
+                        isBrowserSignal: false,
+                        isServerAuthority: true,
+                        metaServerAuthorityEligible: true,
+                        metadata: new
+                        {
+                            LeadId = lead.LeadId,
+                            CrmCaptured = captured.Captured,
+                            metaPipelineOrigin = "risk_assessment"
+                        },
+                        websiteContentVersionId: lead.WebsiteContentVersionId,
+                        websiteBindingId: lead.WebsiteBindingId));
+                UnifiedAnalyticsWriter.Write(_db, persistedEvent);
                 await _db.SaveChangesAsync(ct);
 
                 }))
@@ -123,7 +135,7 @@ namespace Protect_Website.Controllers
                     model = JsonSerializer.Deserialize<RiskAssessmentModel>(lead.MetadataJson!)
                         ?? throw new InvalidOperationException("The saved assessment cannot be loaded.");
                 }
-                if (!await WebsiteLeadSubmission.TryClaimNotificationAsync(_db, lead, ct))
+                if (!await WebsiteLeadNotificationAuthority.TryClaimAsync(_db, lead, ct))
                 {
                     await _db.Entry(lead).ReloadAsync(ct);
                     if (lead.NotificationSentUtc != null)
@@ -231,7 +243,7 @@ namespace Protect_Website.Controllers
                     saveToSentItems: true,
                     cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
 
-                await WebsiteLeadSubmission.CompleteNotificationAsync(_db, lead, emailSent, ct);
+                await WebsiteLeadNotificationAuthority.CompleteAsync(_db, lead, emailSent, ct);
                 if (!emailSent)
                 {
                     _logger.LogWarning("Risk assessment captured; notification failed for lead {LeadId}.", lead.LeadId);

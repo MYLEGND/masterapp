@@ -24,8 +24,6 @@
 .zoom-qp-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(7,12,23,.72);
-    backdrop-filter: blur(7px);
 }
 
 /* ── Centered dialog shell ───────────────────────────── */
@@ -530,7 +528,7 @@
     function open() {
         getOrCreatePopup();
         popup.classList.add('open');
-        document.body.style.overflow = 'hidden';
+        
         loadAndRender();
     }
 
@@ -538,7 +536,7 @@
         if (!popup) return;
         closeActionsMenu();
         popup.classList.remove('open');
-        document.body.style.overflow = '';
+        
     }
 
     // ─── Global event delegation ────────────────────────────────────────────

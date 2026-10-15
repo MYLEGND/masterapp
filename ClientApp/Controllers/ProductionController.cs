@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Shared.Auth;
 
+using Infrastructure.Analytics;
 namespace ClientApp.Controllers
 {
     [Authorize]
@@ -69,9 +70,13 @@ namespace ClientApp.Controllers
                 actorId = context.ClientUserId;
             }
 
+            var oppref = await new OpenAiAttributionLineageResolver(_db)
+                .ResolveForProductionAsync(ProductionSide.Client, null, requestedClientId, HttpContext.RequestAborted);
+
             var record = new ProductionRecord
             {
                 ClientUserId = requestedClientId,
+                Oppref = oppref,
                 Amount = amount,
                 PersonalAmount = personalAmount ?? 0,
                 Status = (ProductionStatus)status,
@@ -82,7 +87,7 @@ namespace ClientApp.Controllers
                 AgentUserId = actorId
             };
             _db.ProductionRecords.Add(record);
-            await _db.SaveChangesAsync();
+            await CanonicalCrmOutcomeService.SaveProductionChangesAsync(_db, HttpContext.RequestAborted);
             return Ok();
         }
 
@@ -105,7 +110,7 @@ namespace ClientApp.Controllers
             record.Status = (ProductionStatus)status;
             record.Notes = notes;
             record.UpdatedUtc = DateTime.UtcNow;
-            await _db.SaveChangesAsync();
+            await CanonicalCrmOutcomeService.SaveProductionChangesAsync(_db, HttpContext.RequestAborted);
             return Ok();
         }
 
@@ -124,7 +129,7 @@ namespace ClientApp.Controllers
                 return NotFound();
 
             _db.ProductionRecords.Remove(record);
-            await _db.SaveChangesAsync();
+            await CanonicalCrmOutcomeService.SaveProductionChangesAsync(_db, HttpContext.RequestAborted);
             return Ok();
         }
     }

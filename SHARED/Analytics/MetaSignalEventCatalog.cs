@@ -10,6 +10,10 @@ public sealed record MetaSignalEventDefinition(
 
 public static class MetaSignalEventCatalog
 {
+    // Provider delivery is intentionally narrower than first-party analytics. Behavioral
+    // signals remain in this catalog for LEGEND intelligence, but only the shared
+    // cross-provider page-view signal is browser-delivered. Revenue/quality outcomes
+    // are server-authoritative and flow through the shared conversion destination catalog.
     private static readonly IReadOnlyList<MetaSignalEventDefinition> DefinitionsInternal =
     [
         new("ViewContent", "page", true, false),
@@ -17,22 +21,22 @@ public static class MetaSignalEventCatalog
         new("SessionEngaged5s", "engagement", false, false),
         new("SessionEngaged15s", "engagement", false, false),
         new("MeaningfulScroll", "engagement", false, false),
-        new("LeadFormStart", "funnel", true, false),
-        new("DiscoveryComplete", "funnel", true, false),
+        new("LeadFormStart", "funnel", false, false),
+        new("DiscoveryComplete", "funnel", false, false),
         new("FunnelStepComplete", "funnel", false, false),
-        new("RecommendationViewed", "funnel", true, false),
-        new("ContactStepReached", "funnel", true, false),
+        new("RecommendationViewed", "funnel", false, false),
+        new("ContactStepReached", "funnel", false, false),
         new("ContactInputStarted", "funnel", false, false),
         new("PhoneFieldCompleted", "funnel", false, false),
         new("RequiredContactFieldsCompleted", "funnel", false, false),
         new("FieldError", "friction", false, false),
         new("SubmitAttempt", "funnel", false, false),
-        new("HighIntentLeadSignal", "threshold", true, false),
-        new("LeadReadySignal", "threshold", true, false),
+        new("HighIntentLeadSignal", "threshold", false, false),
+        new("LeadReadySignal", "threshold", false, false),
         new("Backtrack", "friction", false, false),
         new("DeadClick", "friction", false, false),
         new("RageClick", "friction", false, false),
-        new("AbandonedHighIntentLead", "abandon", true, false),
+        new("AbandonedHighIntentLead", "abandon", false, false),
         new("Lead", "conversion", false, true),
         new("QualifiedLead", "conversion", false, true),
         new("AppointmentBooked", "conversion", false, true),

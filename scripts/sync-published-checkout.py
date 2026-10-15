@@ -111,14 +111,14 @@ def native_editor_or_build_active():
 
 def assert_ready(repo, expected_head=None, process_probe=active_build_or_app, native=False,
                  expected_target=None, expected_branch=None):
-    target = native_target(repo) if native else 'refs/remotes/origin/production'
+    target = native_target(repo) if native else 'refs/remotes/origin/legend/approved-changes'
     branch = git(repo, 'symbolic-ref', '--quiet', '--short', 'HEAD')
     if expected_target is not None and target != expected_target:
         raise SyncSkipped('The configured target changed during synchronization; no source update attempted.')
     if expected_branch is not None and branch != expected_branch:
         raise SyncSkipped('The checkout branch changed during synchronization; no source update attempted.')
-    if not native and branch != 'production':
-        raise SyncSkipped('This is a working branch; automatic sync applies only to production.')
+    if not native and branch != 'legend/approved-changes':
+        raise SyncSkipped('This is a working branch; automatic sync applies only to legend/approved-changes.')
     if git(repo, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}') != target.removeprefix('refs/remotes/'):
         raise SyncSkipped('The checkout must track its intended origin ref; no source update attempted.')
     if not native and git(repo, 'status', '--porcelain=v1', '--untracked-files=all'):
@@ -136,7 +136,7 @@ def assert_ready(repo, expected_head=None, process_probe=active_build_or_app, na
 
 def sync_checkout(repo, process_probe=None, native=False):
     repo = Path(git(repo, 'rev-parse', '--show-toplevel'))
-    target = native_target(repo) if native else 'refs/remotes/origin/production'
+    target = native_target(repo) if native else 'refs/remotes/origin/legend/approved-changes'
     branch = git(repo, 'symbolic-ref', '--quiet', '--short', 'HEAD')
     process_probe = process_probe or (native_editor_or_build_active if native else active_build_or_app)
     head, git_dir = assert_ready(repo, process_probe=process_probe, native=native,
@@ -152,14 +152,14 @@ def sync_checkout(repo, process_probe=None, native=False):
                      expected_target=target, expected_branch=branch)
         published = git(repo, 'rev-parse', target)
         if head == published:
-            return ('Native testing' if native else 'Published production') + ' checkout is current (' + head[:12] + ').'
+            return ('Native testing' if native else 'Published approved') + ' checkout is current (' + head[:12] + ').'
         try:
             git(repo, 'merge-base', '--is-ancestor', head, published)
         except SyncSkipped as error:
             raise SyncSkipped('The local checkout is ahead or divergent; no merge/reset/rebase was attempted.') from error
         # Explicitly protect ignored local configuration if a published path collides with it.
         git(repo, 'merge', '--ff-only', '--no-autostash', '--no-overwrite-ignore', published)
-        return 'Updated to ' + ('native testing ' if native else 'published production ') + published[:12] + '.'
+        return 'Updated to ' + ('native testing ' if native else 'published approved ') + published[:12] + '.'
 
 
 def check_native_checkout(repo, provenance_output=None):
@@ -167,7 +167,7 @@ def check_native_checkout(repo, provenance_output=None):
 
     This never fetches, updates the index, modifies source, or rejects current
     uncommitted work. The explicit shared Git setting selects the intended test
-    branch; without it, locally known published production remains the target.
+    branch; without it, locally known published approved remains the target.
     """
     repo = Path(git(repo, 'rev-parse', '--show-toplevel')).resolve()
     output = None
@@ -184,7 +184,7 @@ def check_native_checkout(repo, provenance_output=None):
         output.unlink(missing_ok=True)
     configured = git(repo, 'config', '--get', 'legend.nativeTestingRef', missing_ok=True)
     workflow_candidate = configured is None and os.environ.get('GITHUB_ACTIONS') == 'true'
-    target = configured if configured is not None else 'refs/remotes/origin/production'
+    target = configured if configured is not None else 'refs/remotes/origin/legend/approved-changes'
     try:
         head = git(repo, 'rev-parse', '--verify', 'HEAD^{commit}')
         branch = git(repo, 'rev-parse', '--abbrev-ref', 'HEAD')
@@ -236,7 +236,7 @@ def check_native_checkout(repo, provenance_output=None):
 
 def workspace_uses_native_target(repo):
     # An explicit setting, including an invalid/empty one, must never silently
-    # fall back to production. The existing validator reports invalid settings.
+    # fall back to the approved branch. The existing validator reports invalid settings.
     return git(repo, 'config', '--get', 'legend.nativeTestingRef', missing_ok=True) is not None
 
 
@@ -246,11 +246,11 @@ def sync_status(repo, native=False, process_probe=None):
     process_probe = process_probe or (native_editor_or_build_active if native else active_build_or_app)
     try:
         head, _ = assert_ready(repo, process_probe=process_probe, native=native)
-        return {'status': 'ready', 'mode': 'configured-native' if native else 'production',
-                'head': head, 'target': native_target(repo) if native else 'refs/remotes/origin/production',
+        return {'status': 'ready', 'mode': 'configured-native' if native else 'approved',
+                'head': head, 'target': native_target(repo) if native else 'refs/remotes/origin/legend/approved-changes',
                 'remoteFreshness': 'not_checked'}
     except SyncSkipped as error:
-        return {'status': 'blocked', 'mode': 'configured-native' if native else 'production',
+        return {'status': 'blocked', 'mode': 'configured-native' if native else 'approved',
                 'reason': str(error), 'remoteFreshness': 'not_checked'}
 
 
@@ -258,7 +258,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--sync-native', action='store_true', help='Synchronize the configured native tracking checkout when editors/builds are closed; preserve conflicting work.')
-    modes.add_argument('--sync-workspace', action='store_true', help='Use the explicit native testing ref when configured; otherwise preserve production-only synchronization.')
+    modes.add_argument('--sync-workspace', action='store_true', help='Use the explicit native testing ref when configured; otherwise preserve approved-branch synchronization.')
     modes.add_argument('--check-native', action='store_true', help='Fail if this checkout lacks the configured locally known native testing revision; never fetch or mutate source.')
     parser.add_argument('--status', action='store_true', help='Report local readiness only; do not fetch, merge, or write a lock/artifact.')
     parser.add_argument('--strict', action='store_true', help='Return a failing exit status if synchronization is skipped.')

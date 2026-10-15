@@ -1215,7 +1215,8 @@ public sealed partial class LegendFounderAiModeIsolationTests
 
         Assert.True(response.Succeeded, Describe(response));
         Assert.StartsWith("The second governed read succeeded and supports this assessment.", response.Message);
-        Assert.Contains("LEGEND_GOVERNED_READ_DIAGNOSTICS", response.Message);
+        Assert.Contains("Some requested governed reads remain unavailable; their state was not verified.", response.Message);
+        Assert.DoesNotContain("LEGEND_GOVERNED_READ_DIAGNOSTICS", response.Message);
         Assert.Equal("partial_governed_inspection", response.Reason);
         Assert.Equal(3, handler.RequestCount);
         operations.Verify(operation => operation.SearchRetainedKnowledgeAsync(
@@ -2157,7 +2158,9 @@ public sealed partial class LegendFounderAiModeIsolationTests
         else
         {
             Assert.True(response.Succeeded, Describe(response));
-            Assert.Contains("LEGEND_GOVERNED_READ_DIAGNOSTICS", response.Message, StringComparison.Ordinal);
+            Assert.Contains("The completed read supports only its own scope.", response.Message, StringComparison.Ordinal);
+            Assert.Contains("Some requested governed reads remain unavailable; their state was not verified.", response.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("LEGEND_GOVERNED_READ_DIAGNOSTICS", response.Message, StringComparison.Ordinal);
             Assert.Equal("partial_governed_inspection", response.Reason);
             Assert.Equal("OpenAITeacher", response.ResponseAuthority);
             Assert.Equal(LegendConnectResearchEvidenceOrigin.UnresolvedEvidence, response.EvidenceOrigin);
@@ -2209,7 +2212,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
         var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
         var policy = nativeOnly
             ? LegendConnectExternalProviderPolicy.NativeOnly
-            : LegendConnectExternalProviderPolicy.ProviderEnabled;
+            : LegendConnectExternalProviderPolicy.IndependentAnswering;
         var request = ReadOnlyContentRequest() with
         {
             ToolName = "legend_provider_capacity",
@@ -2244,9 +2247,9 @@ public sealed partial class LegendFounderAiModeIsolationTests
         Assert.Equal("LegendAi", response.ResponseAuthority);
         Assert.Equal(0, handler.RequestCount);
         operations.Verify(operation => operation.GetProviderCapacityAsync(
-            It.IsAny<CancellationToken>(), policy), nativeOnly ? Times.Once() : Times.Never());
+            It.IsAny<CancellationToken>(), policy), Times.Once());
         operations.Verify(operation => operation.GetProviderCapacityAsync(
-            It.IsAny<CancellationToken>()), nativeOnly ? Times.Never() : Times.Once());
+            It.IsAny<CancellationToken>()), Times.Never());
     }
 
     [Fact]

@@ -12,8 +12,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Protect_Website.Controllers;
 using ProtectWebsite.Services.Booking;
-using ProtectWebsite.Services.Communication;
-using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services.Tracking;
 using Xunit;
 
@@ -29,13 +27,14 @@ public class LifeQuoteControllerRouteTests
         var controller = new LifeQuoteController(
             BuildConfig(),
             resolver,
+            new WebsiteIntakeRecipientResolver(db, BuildConfig()),
             db,
             Mock.Of<IMetaPixelResolutionService>(),
             Mock.Of<IWebsiteLifeLeadCaptureService>(),
             Mock.Of<IPublicBookingResolver>(),
             Mock.Of<IPublicBookingConfirmationService>(),
             new PublicBookingContextProtector(DataProtectionProvider.Create(new System.IO.DirectoryInfo(System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString("N"))))),
-            Mock.Of<IProtectEmailSender>(),
+            Mock.Of<IWebsiteInquiryEmailSender>(),
             NullLogger<LifeQuoteController>.Instance);
 
         var http = new DefaultHttpContext();
@@ -67,7 +66,7 @@ public class LifeQuoteControllerRouteTests
                 ["AzureAd:TenantId"] = "tenant",
                 ["AzureAd:ClientId"] = "client",
                 ["AzureAd:ClientSecret"] = "secret",
-                ["Contact:RecipientEmail"] = "team@example.test",
+                ["Founder:Upn"] = "team@example.test",
                 ["Tracking:ApiBase"] = "https://portal.example.test"
             })
             .Build();

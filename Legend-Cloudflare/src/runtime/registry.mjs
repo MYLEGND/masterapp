@@ -1,5 +1,5 @@
 // Operator-owned registry. Catalog presence does not qualify an engine for use.
-export const REGISTRY_VERSION = '2026-09-18.3';
+export const REGISTRY_VERSION = '2026-10-01.1';
 
 const candidates = [
   ['@cf/qwen/qwen3-30b-a3b-fp8', 'efficient', 32768, 0.0509, 0.335, false, 'max_tokens'],
@@ -53,34 +53,37 @@ export function resolveModelSettings(env, model) {
     source: configured ? 'operator' : 'registry_default' });
 }
 
-const MANUAL_TEST_MODEL = '@cf/openai/gpt-oss-120b';
-const MANUAL_TEST_MAX_COST_MICROUSD = 3_000_000;
+export const FOUNDER_BASELINE_MODEL_IDS = Object.freeze(candidates.map(([id]) => id));
+export const FOUNDER_BASELINE_PRIMARY_MODEL = '@cf/openai/gpt-oss-120b';
+export const FOUNDER_BASELINE_POLICY_VERSION = 'legend-founder-baseline.v3';
+const FOUNDER_BASELINE_MAX_COST_MICROUSD = 3_000_000;
 
-function readFounderManualTestConfiguration(env, now) {
+function readFounderBaselineConfiguration(env) {
   let policy; let budget;
   try {
-    policy = JSON.parse(env.LEGEND_MANUAL_TEST_POLICY_JSON);
+    policy = JSON.parse(env.LEGEND_FOUNDER_BASELINE_POLICY_JSON);
     budget = JSON.parse(env.LEGEND_BUDGET_POLICY_JSON);
-  } catch { throw new RuntimeFailure('manual_test_configuration_missing'); }
+  } catch { throw new RuntimeFailure('founder_baseline_configuration_missing'); }
   const fields = ['version', 'accountId', 'tenantId', 'founderUserId', 'serviceKeyId',
-    'requiredRole', 'environment', 'modelId', 'expiresAt', 'lifetimeCostMicrousd'];
+    'requiredRole', 'environment', 'modelIds', 'lifetimeCostMicrousd'];
   if (!policy || typeof policy !== 'object' || Array.isArray(policy)
     || Object.keys(policy).length !== fields.length || Object.keys(policy).some(key => !fields.includes(key))
-    || policy.version !== 'legend-founder-manual-test.v1' || policy.modelId !== MANUAL_TEST_MODEL
+    || policy.version !== FOUNDER_BASELINE_POLICY_VERSION
+    || !Array.isArray(policy.modelIds) || policy.modelIds.length !== FOUNDER_BASELINE_MODEL_IDS.length
+    || policy.modelIds.some((id, index) => id !== FOUNDER_BASELINE_MODEL_IDS[index])
     || !['accountId', 'tenantId', 'founderUserId', 'serviceKeyId', 'environment'].every(key => identifier(policy[key]))
     || policy.accountId !== env.LEGEND_ACCOUNT_ID || policy.environment !== env.LEGEND_DEPLOYMENT_ENVIRONMENT
     || policy.requiredRole !== 'Founder' || !positiveCost(policy.lifetimeCostMicrousd)
-    || policy.lifetimeCostMicrousd > MANUAL_TEST_MAX_COST_MICROUSD
-    || !Number.isSafeInteger(policy.expiresAt) || policy.expiresAt <= now || policy.expiresAt > now + 86400000)
-    throw new RuntimeFailure('manual_test_configuration_invalid');
+    || policy.lifetimeCostMicrousd > FOUNDER_BASELINE_MAX_COST_MICROUSD)
+    throw new RuntimeFailure('founder_baseline_configuration_invalid');
   if (budget?.period !== 'lifetime' || !positiveCost(budget.accountMicrousd)
     || budget.accountMicrousd > policy.lifetimeCostMicrousd)
-    throw new RuntimeFailure('manual_test_lifetime_budget_required');
+    throw new RuntimeFailure('founder_baseline_lifetime_budget_required');
   return policy;
 }
 
-function resolveFounderManualTestPolicy(env, envelope, context, now) {
-  const policy = readFounderManualTestConfiguration(env, now);
+function resolveFounderBaselinePolicy(env, envelope, context) {
+  const policy = readFounderBaselineConfiguration(env);
   const scope = envelope.scope;
   if (!context || !scope || context.accountId !== policy.accountId || context.tenantId !== policy.tenantId
     || context.userId !== policy.founderUserId || context.keyId !== policy.serviceKeyId
@@ -91,15 +94,15 @@ function resolveFounderManualTestPolicy(env, envelope, context, now) {
     || !context.roles.includes('Founder') || !context.roles.every(identifier)
     || new Set(context.roles).size !== context.roles.length
     || context.roles.length !== scope.roles.length || context.roles.some(role => !scope.roles.includes(role)))
-    throw new RuntimeFailure('manual_test_scope_denied');
-  if (!Number.isSafeInteger(envelope.limits?.deadlineUnixMs) || envelope.limits.deadlineUnixMs <= now
-    || envelope.limits.deadlineUnixMs > policy.expiresAt) throw new RuntimeFailure('manual_test_deadline_exceeded');
-  // This mode adds no dispatcher or tool authority. The existing signed broker
-  // still reauthorizes every tool on Azure; no model-authored approval is accepted.
+    throw new RuntimeFailure('founder_baseline_scope_denied');
+  // The production Founder baseline itself does not expire. Every signed request
+  // still has the normal short request/deadline bounds, while the Durable Object
+  // lifetime ledger remains the hard spend authority.
   if (envelope.task.tools?.length && env.LEGEND_TOOL_CALLBACK_ENABLED !== 'true')
-    throw new RuntimeFailure('manual_test_signed_tools_required');
-  return Object.freeze({ mode: 'founder_manual_test', modelId: MANUAL_TEST_MODEL,
-    accountId: policy.accountId, expiresAt: policy.expiresAt });
+    throw new RuntimeFailure('founder_baseline_signed_tools_required');
+  return Object.freeze({ mode: 'founder_baseline', modelIds: FOUNDER_BASELINE_MODEL_IDS,
+    primaryModelId: FOUNDER_BASELINE_PRIMARY_MODEL, policyVersion: FOUNDER_BASELINE_POLICY_VERSION,
+    lifetimeCostMicrousd: policy.lifetimeCostMicrousd, accountId: policy.accountId });
 }
 
 function validateQualificationConfiguration(env, policy, budget, now, permitExpired = false) {
@@ -131,7 +134,7 @@ function resolveQualificationPolicy(env, envelope, context, now, policy, budget)
 // authenticated session and account ledger. No request field selects a policy.
 function resolveColocatedQualificationPolicy(env, envelope, context, now) {
   if (env.LEGEND_QUALIFICATION_POLICIES_JSON === undefined) return null;
-  const manual = readFounderManualTestConfiguration(env, now);
+  const baseline = readFounderBaselineConfiguration(env);
   let config; let budget;
   try {
     config = JSON.parse(env.LEGEND_QUALIFICATION_POLICIES_JSON);
@@ -152,9 +155,9 @@ function resolveColocatedQualificationPolicy(env, envelope, context, now) {
     // or another candidate. The selected grant is checked strictly below.
     validateQualificationConfiguration(env, policy, budget, now, true);
     if (keys.has(policy.serviceKeyId) || models.has(policy.modelId)
-      || policy.serviceKeyId === manual.serviceKeyId || policy.tenantId === manual.tenantId
-      || policy.allowedUserIds.includes(manual.founderUserId)
-      || policy.lifetimeCostMicrousd > manual.lifetimeCostMicrousd)
+      || policy.serviceKeyId === baseline.serviceKeyId || policy.tenantId === baseline.tenantId
+      || policy.allowedUserIds.includes(baseline.founderUserId)
+      || policy.lifetimeCostMicrousd > baseline.lifetimeCostMicrousd)
       throw new RuntimeFailure('qualification_configuration_invalid');
     keys.add(policy.serviceKeyId); models.add(policy.modelId);
   }
@@ -174,8 +177,8 @@ export function resolveExecutionPolicy(env, envelope, context, now = Date.now())
   const mode = env.LEGEND_RUNTIME_MODE ?? 'production';
   // Production does not inspect or honor qualification flags in either env or request.
   if (mode === 'production') return Object.freeze({ mode });
-  if (mode === 'founder_manual_test') return resolveColocatedQualificationPolicy(env, envelope, context, now)
-    ?? resolveFounderManualTestPolicy(env, envelope, context, now);
+  if (mode === 'founder_baseline') return resolveColocatedQualificationPolicy(env, envelope, context, now)
+    ?? resolveFounderBaselinePolicy(env, envelope, context);
   if (mode !== 'qualification' || env.LEGEND_DEPLOYMENT_ENVIRONMENT !== 'qualification') throw new RuntimeFailure('runtime_mode_invalid');
   let policy; let budget;
   try {
@@ -193,9 +196,9 @@ export function estimateCostMicrousd(model, inputTokens, outputTokens) {
 
 export function routeModel({ task, accountId, inputTokens, maxOutputTokens, remainingCostMicrousd, registry = MODEL_REGISTRY, now = Date.now(), excluded = [], executionPolicy = { mode: 'production' } }) {
   const capabilities = new Set(['text', ...(task.requiredCapabilities ?? []), ...(task.tools?.length ? ['tools'] : [])]);
-  const qualified = model => executionPolicy.mode === 'founder_manual_test'
-    ? executionPolicy.accountId === accountId && executionPolicy.expiresAt > now
-      && executionPolicy.modelId === MANUAL_TEST_MODEL && model.id === MANUAL_TEST_MODEL
+  const qualified = model => executionPolicy.mode === 'founder_baseline'
+    ? executionPolicy.accountId === accountId
+      && Array.isArray(executionPolicy.modelIds) && executionPolicy.modelIds.includes(model.id)
     : executionPolicy.mode === 'qualification'
     ? executionPolicy.accountId === accountId && executionPolicy.expiresAt > now && model.id === executionPolicy.modelId
     : model.enabled === true && typeof accountId === 'string' && model.qualification?.accountId === accountId

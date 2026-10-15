@@ -1,90 +1,119 @@
-# Deployment Checklist
+# LEGEND Production Deployment
 
-## Pre-Deploy
+The protected `legend/approved-changes` lifecycle is the **sole production deployment authority** for MASTERAPP.
 
-### Database
-- [ ] Create or verify a fresh Azure SQL backup / point-in-time restore point before any publish.
-- [ ] Do **not** run ad-hoc SQL files against production unless they have been reviewed for destructive commands like `DROP TABLE`, `TRUNCATE`, or broad `DELETE`.
-- [ ] All pending EF Core migrations applied to Azure SQL:
-  ```
-  dotnet ef database update --project Infrastructure --startup-project AgentPortal \
-    --connection "<azure-sql-connection-string>"
-  ```
-  *(Remember: EF tooling uses the startup project's provider. For SQL Server migrations, generate DDL manually and apply via `sqlcmd` if the provider cannot be switched.)*
-- [ ] Verify `__EFMigrationsHistory` contains all expected migration IDs.
+Production application publication must flow through:
 
-### App Service Settings (Azure Portal → Configuration)
-| Setting | Type | Notes |
-|---|---|---|
-| `ConnectionStrings:MasterAppDb` | SQLServer | Azure SQL connection string |
-| `AzureAd:TenantId` | App setting | AAD tenant ID |
-| `AzureAd:ClientId` | App setting | App registration client ID |
-| `AzureAd:ClientSecret` | App setting | Key Vault reference preferred |
-| `AzureAd:Domain` | App setting | e.g. `mylegnd.com` |
-| `Founder__Upn` | App setting | Founder's UPN (e.g. `zac.owen@mylegnd.com`) |
-| `AzureTranslator__Endpoint` | App setting | HTTPS endpoint for the approved Azure Translator resource |
-| `AzureTranslator__Key` | App setting / Key Vault reference | Translator subscription key; never ship this to iOS |
-| `AzureTranslator__Region` | App setting | Required for multi-service/regional Translator resources |
-| `APPLICATIONINSIGHTS_CONNECTION_STRING` | App setting | App Insights connection string |
-| `SignalR__RedisConnectionString` | App setting | Redis connection string (for multi-instance) |
-| `DataProtection__BlobUri` | App setting | Azure Blob URI for Data Protection keys |
-| `DataProtection__KeyVaultKeyId` | App setting | Key Vault key URI for key encryption |
-| `OWNER_EMAIL` | App setting | Required in Production (startup guard) |
+`.github/workflows/all-intentional-direct-release-20260918.yml`
 
-### Managed Identity Requirements
-- [ ] App Service Managed Identity has **Storage Blob Data Contributor** on the DP keys storage container.
-- [ ] App Service Managed Identity has **Key Vault Crypto User** on the DP Key Vault key.
-- [ ] App Service Managed Identity has **Azure Cache for Redis Data Contributor** (if using Redis).
+No local shell script, developer workstation command, diagnostic workflow, manual Azure publication, alternate migration command, or model/tool permission may substitute for that authority.
 
-### Redis (if enabling multi-instance)
-- [ ] Azure Cache for Redis provisioned (`Basic C0` minimum).
-- [ ] `SignalR__RedisConnectionString` set on App Service.
-- [ ] Verify Redis is reachable: `curl -f https://<site>/readyz` → `Healthy` for `redis` check.
+## Canonical flow
 
----
+1. Start from the exact current `legend/approved-changes` head on an isolated branch.
+2. Merge only after the trusted lifecycle accepts the exact candidate head and every required validation gate is green or canonically reused.
+3. Derive affected applications from the single release-target authority in `scripts/validation-resume.py`.
+4. Reuse the exact validated immutable package when its content identity remains valid; otherwise build only the invalidated package components.
+5. Prepare one immutable all-target transaction before any application publication.
+6. Submit selected Azure application targets concurrently through `scripts/deploy-approved-app.py`.
+7. Treat upload acceptance and first-pass exact-live observation as non-terminal publication evidence. They must never be labeled deployment success; only durable receipt reconciliation plus exact live runtime provenance can establish that truth.
+8. Never replay an ambiguous upload. Preserve successful siblings and reconcile only the unresolved target state.
+9. Finalize durable receipts through the single bounded finalizer in `scripts/deploy-approved-app.py`.
+10. Require live runtime provenance and the canonical post-publication checks before the lifecycle can close successfully.
 
-## Deploy
+## Immutable component recovery
 
-1. Push to `main` / trigger deployment pipeline.
-2. Monitor **Deployment Center → Logs** in Azure Portal.
-3. Watch **Log Stream** for any startup exceptions.
+The package owner records each application's actual producer revision, dependency
+and execution identities, successful producing job/attempt, immutable artifact ID,
+and digest. Assembly authenticates children independently; a failed sibling or
+later attempt does not erase a completed component. Release candidate authorization
+remains separate from the producer of reused bytes. Baseline planning, transaction
+intents, publication, receipts, live verification, and rollback consume that same
+per-target material. Publication never restamps or rebuilds those bytes.
 
----
+Attempt-qualified aggregate descriptors bind the downloaded manifest and target
+map to the exact uploaded artifact. Confirmed terminal failed attempts permit lookup
+of earlier successful aggregates; unavailable evidence or tampering blocks lookup
+without authorizing a rebuild. Rollback restores verified retained component bytes
+or identical bytes from an authenticated aggregate through the package owner.
+Legacy single-producer packages retain their strict original interpretation.
 
-## Post-Deploy Health Checks
+Candidate compilation uses pinned tools, verified restore content and generated
+imports, read-only source, controlled writable output, and a network-disabled
+container. Candidate builds receive no production or evidence-service credentials.
+Static Website and Protect cross-revision component reuse remains conservatively
+invalidated where the executable dependency scope cannot yet be proven; same-candidate
+recovery remains available. The new component protocol activates only after its
+trusted approved owner is installed. Bootstrap validation is not activation proof.
 
-```bash
-# Liveness (process alive)
-curl -f https://<site>/healthz
+## Timing invariants
 
-# Readiness (DB + Redis)
-curl -f https://<site>/readyz
-```
+The release control plane owns these bounds:
 
-Both must return HTTP 200. If `/readyz` returns Unhealthy, check:
-- DB connectivity (firewall rules, connection string)
-- Redis connectivity (firewall rules, connection string)
+- application publication reconciliation: 420 seconds maximum per target, with targets running concurrently;
+- durable receipt finalization: 90 seconds per attempt, at most three attempts;
+- finalization retries only unresolved targets;
+- production release job fail-safe: 30 minutes;
+- successful publication evidence is preserved and must not be replayed merely because a sibling is unresolved.
 
----
+These values are protected by the trusted-base control-plane integrity guard. A candidate that attempts to restore legacy timing, duplicate finalization, serialized publication, alternate deployment authority, or mutable workflow-generation behavior must fail before merge.
 
-## Rollback
+## Database and configuration changes
 
-1. In Azure Portal → App Service → **Deployment slots** → swap back to previous slot, OR
-2. In **Deployment Center** → redeploy previous successful build.
-3. If migration must be rolled back: apply the `Down()` migration:
-   ```
-   dotnet ef database update <previous-migration-id> ...
-   ```
-4. If Redis state is causing issues: remove `SignalR__RedisConnectionString` from App Settings → restart → app falls back to in-memory `LeadBridgeStateService`.
-5. If Data Protection keys are unreachable (decryption failures): restore previous key XML blob from Azure Blob Storage versioning.
+Production migration and configuration work is part of the same governed release transaction. Only the canonical release child authorities may perform those writes. Developer/local database utilities are not production authorities.
 
----
+### Early readiness
 
-## Smoke Test After Deploy
+Nonpublishing control repairs use the approved impact classifier and the complete
+candidate diff. They retain exact-head integrity, security, and validation gates,
+but record production readiness as `not-required`. A release-request change,
+application/migration change, unknown impact, or unproven baseline still requires
+production readiness. The observer and rehearsal planner share this decision;
+control-only observation does not log into Azure or run the database probe.
+The observer job still uses the existing Production environment provisioning.
 
-- [ ] Sign in via Azure AD — confirm redirect and landing page.
-- [ ] Navigate to Leads → confirm list loads or shows empty state.
-- [ ] Navigate to Clients → confirm list loads or shows empty state.
-- [ ] Open browser DevTools → Network → confirm no 500 errors.
-- [ ] Check Application Insights → **Live Metrics** — requests flowing, no exception spikes.
-- [ ] Verify SignalR: open two browser tabs, update a lead call count — confirm both tabs reflect the change in real time.
+This scope correction does not retroactively authorize its own installation.
+If the installed approved owner blocks the repair, preserve its evidence and
+resolve installation through repository governance; never manufacture readiness,
+clear a lease, or apply production SQL from a workstation.
+
+The lifecycle's `readiness-observe` and `release-readiness` children run approved
+control-plane code for authorized same-repository PRs, including drafts. They
+consume the candidate probe's declarative migration contract as data; candidate
+assemblies never execute with production credentials. Production observation is
+read-only and binds schema history, physical postconditions, database identity,
+candidate inputs, policy, target scope, and observation time.
+
+The architecture workflow builds the minimal Infrastructure probe first. A
+pending migration requires the canonical migration component and an isolated
+representative rehearsal before application validation or package fan-out.
+The rehearsal fixture is a separate executable with synthetic data and a
+disposable loopback SQL database. Its completed bundle is checkpointed before
+rehearsal. Recovery tests require one mutation across lost-receipt recovery.
+The later package component promotes those same bundle bytes.
+
+`validation-resume.py` owns receipt compatibility and the bounded readiness
+wait. Skipped, failed, expired, mismatched, or incomplete proof cannot authorize
+expensive work. Successful children from earlier parent attempts remain usable.
+The initial control-plane installation records an explicit bootstrap exception
+when the approved branch predates this producer; this is not readiness success.
+Once installed, the integrity guard forbids removing readiness to reenter that
+exception. Publication still performs its current-state check before mutation.
+
+The current synthetic fixture covers `20261007134500_AddFounderAssistantRules`.
+Other pending migration shapes require a reviewed representative fixture; they
+fail closed instead of claiming untested compatibility.
+
+## Diagnostics
+
+Production diagnostic workflows are read-only observers. They may inspect runtime state, logs, metrics, provenance, and provider status, but they may not upload executables, change application files/settings, restart applications, or publish application bytes.
+
+## Failure and recovery
+
+- Fail closed when live revision, package identity, provider state, or durable evidence is ambiguous.
+- Preserve exact successful child receipts.
+- Resume only the failed or unresolved boundary when canonical evidence proves reuse is safe.
+- Do not create a second release workflow, alternate deployment script, emergency publication shortcut, or hidden model/tool bypass.
+- A control-plane repair must itself pass the trusted protected-branch integrity guard and required validation before becoming authority.
+
+The protected branch, canonical release workflow, immutable transaction evidence, and live provenance together define production truth.

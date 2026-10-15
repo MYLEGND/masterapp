@@ -46,17 +46,7 @@ public sealed partial class FounderSoftwareRemediationService
                 await ReadCommitTreeShaAsync(client, options, mergedSha!, deadline.Token) != tree)
                 throw CompletionFailure("merged_tree_differs_from_reviewed_tree");
             await VerifyCompletionCoverageAsync(client, options, snapshot.BaseSha, headSha, tree, hosts.Keys.ToArray(), deadline.Token);
-            using var runs = await ReadCompletionJsonAsync(client,
-                $"repos/{options.RepositoryIdentity}/actions/workflows/agentportal-production-deploy.yml/runs?head_sha={headSha}&per_page=20",
-                1024 * 1024, deadline.Token);
-            var runId = runs.RootElement.GetProperty("workflow_runs").EnumerateArray()
-                .Where(run => ReadString(run, "head_sha") == headSha && ReadString(run, "status") == "completed" &&
-                    ReadString(run, "conclusion") == "success" && ReadString(run, "event") == "pull_request" &&
-                    ReadString(run, "path") == ".github/workflows/agentportal-production-deploy.yml")
-                .Select(run => run.TryGetProperty("id", out var id) && id.TryGetInt64(out var number) ? number : 0)
-                .Where(number => number > 0).OrderDescending().FirstOrDefault();
-            if (runId == 0) throw CompletionFailure("protected_release_success_not_observed");
-
+            var runId = 0L;
             var observations = new List<VerifiedDeploymentHost>();
             var sourceTrees = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var host in hosts)
@@ -78,6 +68,51 @@ public sealed partial class FounderSoftwareRemediationService
                 if (sourceTree != tree) throw CompletionFailure("live_source_tree_mismatch");
                 observations.Add(new(host.Key, source!, DateTime.UtcNow));
             }
+
+            // Each immutable live source revision must be backed by the sole
+            // approved direct-release authority. Control-only release commits
+            // may differ from the reviewed PR SHA while retaining the exact tree.
+            foreach (var source in observations.Select(item => item.SourceRevision).Distinct(StringComparer.Ordinal))
+            {
+                using var artifacts = await ReadCompletionJsonAsync(client,
+                    $"repos/{options.RepositoryIdentity}/actions/artifacts?name=legend-approved-release-{source}&per_page=100",
+                    1024 * 1024, deadline.Token);
+                var candidateRunIds = artifacts.RootElement.GetProperty("artifacts").EnumerateArray()
+                    .Where(artifact => !artifact.TryGetProperty("expired", out var expired) ||
+                        expired.ValueKind != JsonValueKind.True)
+                    .Select(artifact =>
+                    {
+                        if (!artifact.TryGetProperty("workflow_run", out var workflowRun) ||
+                            !workflowRun.TryGetProperty("id", out var id) ||
+                            !id.TryGetInt64(out var number))
+                            return 0L;
+                        return number;
+                    })
+                    .Where(number => number > 0)
+                    .Distinct()
+                    .OrderDescending()
+                    .ToArray();
+
+                var receipt = 0L;
+                foreach (var candidateRunId in candidateRunIds)
+                {
+                    using var run = await ReadCompletionJsonAsync(client,
+                        $"repos/{options.RepositoryIdentity}/actions/runs/{candidateRunId}",
+                        1024 * 1024, deadline.Token);
+                    if (ReadString(run.RootElement, "head_branch") == options.BaseBranch &&
+                        ReadString(run.RootElement, "status") == "completed" &&
+                        ReadString(run.RootElement, "conclusion") == "success" &&
+                        ReadString(run.RootElement, "path") == ".github/workflows/all-intentional-direct-release-20260918.yml")
+                    {
+                        receipt = candidateRunId;
+                        break;
+                    }
+                }
+                if (receipt == 0) throw CompletionFailure("approved_release_success_not_observed");
+                runId = Math.Max(runId, receipt);
+            }
+            if (runId == 0) throw CompletionFailure("approved_release_success_not_observed");
+
             if (await RequireActiveAuthorityAsync(options, deadline.Token) is not null)
                 throw CompletionFailure("authority_changed");
             await using var transaction = _db.Database.IsRelational()
@@ -120,6 +155,84 @@ public sealed partial class FounderSoftwareRemediationService
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (FounderSoftwareRemediationException failure) { return Failure(failure.Code, failure.Message); }
         catch (Exception) { return Failure("batch_completion_unverified", "Completion could not be verified and committed. Inspect the durable state before retrying; no remote write was requested."); }
+    }
+
+    private async Task<LiveDeploymentProof> ReadLiveDeploymentProofAsync(
+        HttpClient github,
+        Options options,
+        string expectedRevision,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var expectedTree = await ReadCommitTreeShaAsync(github, options, expectedRevision, cancellationToken);
+            var hosts = CompletionHosts();
+            var observations = new List<LiveDeploymentHostProof>();
+            var sourceTrees = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            foreach (var host in hosts)
+            {
+                using var live = _httpClientFactory.CreateClient("FounderRuntimeProvenance");
+                live.DefaultRequestHeaders.Authorization = null;
+                var endpoint = new Uri(host.Value, "/api/runtime-provenance");
+                using var response = await live.GetAsync(endpoint, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                if (!response.IsSuccessStatusCode || response.RequestMessage?.RequestUri != endpoint)
+                {
+                    observations.Add(new(host.Key, null, false, "live_provenance_unavailable"));
+                    continue;
+                }
+
+                using var json = await ReadBoundedCompletionJsonAsync(response, 8192, cancellationToken);
+                if (!json.RootElement.TryGetProperty("schemaVersion", out var schema) ||
+                    !schema.TryGetInt32(out var version) || version != 1 ||
+                    ReadString(json.RootElement, "appIdentifier") != host.Key)
+                {
+                    observations.Add(new(host.Key, null, false, "live_application_identity_mismatch"));
+                    continue;
+                }
+
+                var sourceRevision = ReadString(json.RootElement, "sourceRevision");
+                if (!IsCommitSha(sourceRevision))
+                {
+                    observations.Add(new(host.Key, null, false, "live_source_revision_missing"));
+                    continue;
+                }
+
+                if (!sourceTrees.TryGetValue(sourceRevision!, out var sourceTree))
+                    sourceTrees[sourceRevision!] = sourceTree =
+                        await ReadCommitTreeShaAsync(github, options, sourceRevision!, cancellationToken);
+
+                observations.Add(new(
+                    host.Key,
+                    sourceRevision!.ToLowerInvariant(),
+                    string.Equals(sourceTree, expectedTree, StringComparison.Ordinal),
+                    string.Equals(sourceTree, expectedTree, StringComparison.Ordinal)
+                        ? "live_tree_matches_expected"
+                        : "live_source_tree_mismatch"));
+            }
+
+            var verified = observations.Count == hosts.Count && observations.Count > 0 &&
+                observations.All(item => item.TreeMatchesExpected);
+            return new(
+                verified,
+                expectedRevision.ToLowerInvariant(),
+                expectedTree,
+                observations,
+                verified ? null : "one_or_more_configured_hosts_do_not_match_expected_tree");
+        }
+        catch (FounderSoftwareRemediationException failure)
+        {
+            return new(false, expectedRevision.ToLowerInvariant(), null, Array.Empty<LiveDeploymentHostProof>(), failure.Code);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return new(false, expectedRevision.ToLowerInvariant(), null, Array.Empty<LiveDeploymentHostProof>(),
+                "live_deployment_proof_unavailable");
+        }
     }
 
     private SortedDictionary<string, Uri> CompletionHosts()
@@ -195,6 +308,19 @@ public sealed partial class FounderSoftwareRemediationService
 
     private static FounderSoftwareRemediationException CompletionFailure(string code) =>
         new(code, "The exact configured web deployment is not verified. The batch remains available for inspection; no incident was closed.");
+    private sealed record LiveDeploymentHostProof(
+        string AppIdentifier,
+        string? SourceRevision,
+        bool TreeMatchesExpected,
+        string Status);
+
+    private sealed record LiveDeploymentProof(
+        bool Verified,
+        string ExpectedRevision,
+        string? ExpectedTreeSha,
+        IReadOnlyList<LiveDeploymentHostProof> Hosts,
+        string? Error);
+
     private sealed record VerifiedDeploymentHost(string AppIdentifier, string SourceRevision, DateTime ObservedUtc);
     private static object CompletedReceipt(FounderSoftwareRepairBatch completed, bool replayed) => new
     {

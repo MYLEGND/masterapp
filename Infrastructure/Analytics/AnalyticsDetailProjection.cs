@@ -10,7 +10,7 @@ namespace Infrastructure.Analytics;
 public sealed class AnalyticsDetailProjection(IAnalyticsQueryService _analytics, IKpiDetailBreakdownService _kpiDetailBreakdownService)
 {
     public async Task<KpiDetailDto> KpiAsync(string metric, TimeRangeRequest range, ScopeContext scope,
-        TrafficType trafficType, Func<TimeRangeRequest, ScopeContext, CancellationToken, Task<List<VisitorConcentrationDto>>> loadConcentration,
+        TrafficType trafficType, Func<TimeRangeRequest, ScopeContext, TrafficType, CancellationToken, Task<List<VisitorConcentrationDto>>> loadConcentration,
         CancellationToken ct = default)
     {
         metric = metric.Trim().ToLowerInvariant();
@@ -97,7 +97,7 @@ public sealed class AnalyticsDetailProjection(IAnalyticsQueryService _analytics,
                     .Select(x => new KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
 
                 breakdown.VisitorConcentration =
-                    await loadConcentration(range, scope, ct);
+                    await loadConcentration(range, scope, trafficType, ct);
 
                 break;
 

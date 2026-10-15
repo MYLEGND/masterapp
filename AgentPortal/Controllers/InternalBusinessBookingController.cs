@@ -20,7 +20,8 @@ namespace AgentPortal.Controllers;
 public sealed class InternalBusinessBookingController(
     MasterAppDbContext db,
     BusinessBookingTicketProtector tickets,
-    CalendarController calendar) : ControllerBase
+    CalendarController calendar,
+    Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority calendarConnections) : ControllerBase
 {
     private const string TicketHeader = "X-Legend-Business-Booking-Ticket";
 
@@ -29,14 +30,15 @@ public sealed class InternalBusinessBookingController(
     {
         var access = await AuthorizeAsync(ct);
         if (access.Error is not null) return access.Error;
-        var agent = access.Agent!;
-        var hasMailbox = !string.IsNullOrWhiteSpace(agent.BookingPageIdOrMailbox);
-        var enabled = agent.BookingEnabled ?? hasMailbox;
+        var connection = await calendarConnections.GetAsync(
+            Shared.Analytics.MarketingOwnerScope.Business(access.Ticket!.CommerceBusinessId),
+            ct);
         return Ok(new
         {
-            connected = enabled && hasMailbox,
-            email = agent.CalendarEmail ?? agent.AgentUpn,
-            configurationSource = "agent_profile"
+            connected = connection.Connected,
+            email = connection.Email,
+            authorizationMethod = connection.AuthorizationMethod,
+            configurationSource = "business_calendar_connection"
         });
     }
 
@@ -135,7 +137,8 @@ public sealed class InternalBusinessBookingController(
         var claims = new List<Claim>
         {
             new("oid", agent.AgentUserId),
-            new("preferred_username", ticket.ActorDisplay)
+            new("preferred_username", ticket.ActorDisplay),
+            new("legend_business_id", ticket.CommerceBusinessId.ToString("D"))
         };
         if (!string.IsNullOrWhiteSpace(ticket.TimeZoneId))
             claims.Add(new Claim("zoneinfo", ticket.TimeZoneId));

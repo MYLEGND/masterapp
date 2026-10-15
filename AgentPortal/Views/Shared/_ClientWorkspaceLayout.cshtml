@@ -194,9 +194,9 @@
                 left: auto;
                 width: 100%;
                 max-width: 100%;
-                margin-top: .25rem;
+                margin-top: var(--app-mobile-control-gap);
                 text-align: center;
-                font-size: 1.05rem;
+                font-size: .9rem;
                 white-space: normal;
             }
 
@@ -209,9 +209,9 @@
                 width: 100%;
                 max-width: 100%;
                 text-align: center;
-                margin-top: .25rem;
+                margin-top: var(--app-mobile-control-gap);
                 white-space: normal;
-                font-size: 1.1rem;
+                font-size: .95rem;
             }
 
         }
@@ -223,7 +223,7 @@
 
 <header>
     <nav class="navbar navbar-expand-sm navbar-light legend-global-nav" data-legend-global-nav>
-        <div class="container-fluid d-flex flex-wrap align-items-start justify-content-between">
+        <div class="container-fluid legend-global-nav-shell">
 
             <a class="navbar-brand" asp-controller="Clients" asp-action="Index">
                 <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
@@ -272,7 +272,10 @@
                         </li>
 
                         <li class="nav-item dropdown">
-                            <a class="nav-link @(ActiveWorkspace("Resources") == "active" || ActiveWorkspace("Training") == "active" ? "active" : "")">Explore More</a>
+                            <a class="nav-link @(ActiveWorkspace("Resources") == "active" || ActiveWorkspace("Training") == "active" ? "active" : "")"
+                               asp-controller="ClientWorkspace"
+                               asp-action="Resources"
+                               asp-route-clientUserId="@clientUserId">Explore More</a>
                             <div class="dropdown-menu-centered">
                                 <a class="dropdown-item"
                                    asp-controller="ClientWorkspace"
@@ -430,11 +433,16 @@
 
 <div id="exploreOverlay" class="explore-overlay" aria-hidden="true"></div>
 
-<aside id="exploreDrawer" class="explore-drawer" aria-label="Explore Panel">
+<aside id="exploreDrawer" class="explore-drawer" aria-label="Explore Panel" aria-hidden="true">
     <div class="explore-card">
         <div class="explore-header">
             <div class="explore-title">EXPLORE</div>
             <div class="explore-pill">Quick Find</div>
+            <button type="button"
+                    class="explore-close"
+                    data-legend-explore-close
+                    aria-label="Close Explore"
+                    hidden></button>
         </div>
 
         <div class="explore-search">
@@ -513,49 +521,7 @@
     }
 </script>
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-    (function () {
-        const trigger = document.getElementById('exploreTrigger');
-        const drawer = document.getElementById('exploreDrawer');
-        const overlay = document.getElementById('exploreOverlay');
-        const search = document.getElementById('exploreSearch');
-        const list = document.getElementById('exploreList');
 
-        if (!trigger || !drawer || !overlay || !search || !list) return;
-
-        function openDrawer() {
-            drawer.classList.add('open');
-            overlay.classList.add('open');
-            trigger.setAttribute('aria-expanded', 'true');
-            window.setTimeout(() => search.focus(), 80);
-        }
-
-        function closeDrawer() {
-            drawer.classList.remove('open');
-            overlay.classList.remove('open');
-            trigger.setAttribute('aria-expanded', 'false');
-        }
-
-        trigger.addEventListener('click', function () {
-            if (drawer.classList.contains('open')) closeDrawer();
-            else openDrawer();
-        });
-
-        overlay.addEventListener('click', closeDrawer);
-
-        document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') closeDrawer();
-        });
-
-        search.addEventListener('input', function () {
-            const q = (search.value || '').trim().toLowerCase();
-            list.querySelectorAll('.explore-item').forEach(function (item) {
-                const txt = item.textContent.toLowerCase();
-                item.style.display = txt.includes(q) ? '' : 'none';
-            });
-        });
-    })();
-</script>
 <script src="~/_content/Shared/js/legend-modal.js" asp-append-version="true"></script>
 <script src="~/_content/Shared/js/legend-global-navigation.js" asp-append-version="true"></script>
 @await Html.PartialAsync("~/Views/Messaging/_SignalRClient.cshtml")

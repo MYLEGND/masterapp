@@ -236,6 +236,7 @@
         <input type="hidden" name="AgentSlug" value="@Context.Items["TrackingSlug"]" />
         <input type="hidden" name="SessionId" /><input type="hidden" name="VisitorId" />
         <input type="hidden" name="UtmSource" /><input type="hidden" name="UtmMedium" /><input type="hidden" name="UtmCampaign" />
+        <input type="hidden" name="Oppref" />
         <input type="hidden" name="SubmissionId" value="@(Context.Request.HasFormContentType && Guid.TryParse(Context.Request.Form["SubmissionId"], out var submissionToken) ? submissionToken : Guid.NewGuid())" />
 
     <!-- keep step on postback -->

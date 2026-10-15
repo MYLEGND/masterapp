@@ -38,8 +38,23 @@ public sealed class WebsiteEditorTicketProtector : IDisposable
             "App_Data",
             "website-editor-keys"));
 
+        var editorBlobUri =
+            configuration["WebsiteEditorDataProtection:BlobUri"] ??
+            configuration["DataProtection:BlobUri"];
+        var editorKeyVaultKeyId =
+            configuration["WebsiteEditorDataProtection:KeyVaultKeyId"] ??
+            configuration["DataProtection:KeyVaultKeyId"];
+
+        var editorConfiguration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["DataProtection:BlobUri"] = editorBlobUri,
+                ["DataProtection:KeyVaultKeyId"] = editorKeyVaultKeyId
+            })
+            .Build();
+
         services.AddPlatformDataProtection(
-            configuration,
+            editorConfiguration,
             environment,
             SharedApplicationName,
             sharedDevelopmentKeys);

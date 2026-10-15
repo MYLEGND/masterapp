@@ -772,8 +772,25 @@
     writeSession('drafts', state.drafts);
   }
 
+  function resizeMessageComposer() {
+    const field = elements.messageBody;
+    if (!field) return;
+
+    const viewportHeight = window.visualViewport?.height || window.innerHeight;
+    const mobileComposer = window.matchMedia('(max-width: 600px)').matches;
+    const maximumHeight = mobileComposer
+      ? Math.max(120, Math.min(320, Math.round(viewportHeight * 0.38)))
+      : 180;
+
+    field.style.height = 'auto';
+    const requiredHeight = field.scrollHeight;
+    field.style.height = `${Math.min(requiredHeight, maximumHeight)}px`;
+    field.style.overflowY = requiredHeight > maximumHeight ? 'auto' : 'hidden';
+  }
+
   function restoreDraft() {
     elements.messageBody.value = state.drafts[activeDraftKey()] || '';
+    resizeMessageComposer();
   }
 
   function setUnreadCount() {
@@ -2139,7 +2156,10 @@
         if (state.pendingSubmissions.get(key) === submission) state.pendingSubmissions.delete(key);
       });
       writeSession('drafts', state.drafts);
-      if (stillSelected && unchangedBody) elements.messageBody.value = '';
+      if (stillSelected && unchangedBody) {
+        elements.messageBody.value = '';
+        resizeMessageComposer();
+      }
       const selectedFiles = Array.from(elements.files.files || []);
       if (stillSelected && selectedFiles.length === submission.files.length && selectedFiles.every((file, index) => file === submission.files[index]))
         elements.files.value = '';
@@ -2510,16 +2530,23 @@
     state.searchTimer = window.setTimeout(() => searchRecipients(query, requestId), 260);
   });
   elements.messageBody.addEventListener('input', () => {
+    resizeMessageComposer();
     saveDraft();
     state.pendingSubmission = null;
   });
   elements.messageBody.addEventListener('keydown', event => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (
+      event.key === 'Enter' &&
+      !event.shiftKey &&
+      !window.matchMedia('(max-width: 600px)').matches
+    ) {
       event.preventDefault();
       elements.sendForm.requestSubmit();
     }
   });
   elements.files.addEventListener('change', renderSelectedFiles);
+  window.addEventListener('resize', resizeMessageComposer);
+  window.visualViewport?.addEventListener('resize', resizeMessageComposer);
   elements.sendForm.addEventListener('dragover', event => {
     event.preventDefault();
     elements.sendForm.classList.add('is-dragging');

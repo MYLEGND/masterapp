@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Analytics;
 using Infrastructure.WebsiteEditing;
 using Microsoft.EntityFrameworkCore;
 using Shared.Analytics;
@@ -22,8 +23,24 @@ public sealed record CommerceSignalContext(
     string? UserAgent = null,
     string? ClientIpAddress = null,
     string? Fbclid = null,
+    string? Oppref = null,
     string? Fbc = null,
-    string? Fbp = null);
+    string? Fbp = null,
+    DateTime? EventUtc = null,
+    string? WebsiteBindingId = null,
+    Guid? OrderId = null,
+    string? PurchaseId = null,
+    long? OrderValueCents = null,
+    string Currency = "USD",
+    string? UtmSource = null,
+    string? UtmMedium = null,
+    string? UtmCampaign = null,
+    string? UtmId = null,
+    string? UtmContent = null,
+    string? MetaCampaignId = null,
+    string? MetaAdSetId = null,
+    string? MetaAdId = null,
+    string? Obref = null);
 
 public sealed record CommerceSignalCustomer(
     string? FirstName,
@@ -43,7 +60,7 @@ public sealed record CommerceSignalProduct(
     int ValueCents);
 
 /// <summary>
-/// Central server-authority writer for ecommerce Meta outcomes. It does not send
+/// Canonical analytics producer for ecommerce outcomes. Signals are derived by the shared bridge; it does not send
 /// to Meta directly; the existing MetaSignalOutcomeDispatcherHostedService is
 /// the sole delivery authority.
 /// </summary>
@@ -59,10 +76,9 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
         IReadOnlyList<CommerceSignalProduct>? items = null,
         CancellationToken ct = default)
     {
-        if (!MetaSignalEventCatalog.TryGet(eventName, out var definition) ||
-            !MetaSignalEventCatalog.IsServerAuthorityEvent(eventName) ||
-            !definition.AllowServerForward)
-            throw new InvalidOperationException("Commerce events must use the canonical server-authority Meta catalog.");
+        if (!AnalyticsEventCatalog.TryGet(eventName, out var definition) || !definition.AllowServer ||
+            !MarketingConversionDestinationCatalog.TryGet(eventName, out _))
+            throw new InvalidOperationException("Commerce outcomes must use the canonical confirmed-event catalog.");
 
         var identity = Normalize(stableIdentity);
         if (identity.Length == 0) throw new ArgumentException("A stable commerce event identity is required.", nameof(stableIdentity));
@@ -71,10 +87,15 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
         if (dedupe.Length > 220) dedupe = dedupe[..220];
 
         var eventId = "commerce_" + StableToken(dedupe);
-        if (await db.MetaSignalEvents.AsNoTracking()
-            .AnyAsync(x => x.EventId == eventId || x.MetaDeduplicationKey == dedupe, ct))
-            return false;
         if (eventId.Length > 120) eventId = eventId[..120];
+
+        var analyticsClientEventId = StableGuid(dedupe);
+        var existing = await db.AnalyticsEvents.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.ClientEventId == analyticsClientEventId, ct);
+        if (existing is not null)
+        {
+            return false;
+        }
 
         var isProtectOwner = string.Equals(context.SiteKey, WebsiteEditorSiteKeys.Protect, StringComparison.OrdinalIgnoreCase);
         var isLegendOwner = string.Equals(context.SiteKey, WebsiteEditorSiteKeys.Legend, StringComparison.OrdinalIgnoreCase);
@@ -97,14 +118,18 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
             sourcePath = Uri.TryCreate(context.EventSourceUrl, UriKind.Absolute, out sourceUri) ? sourceUri.AbsolutePath : null,
             businessKey = context.BusinessKey,
             storeName = context.StoreName,
+            originalEventIdentity = identity,
             orderNumber,
-            currency = "USD",
-            valueCents = product?.ValueCents ?? items?.Sum(x => Math.Max(0, x.ValueCents)) ?? 0,
+            orderId = context.OrderId,
+            purchaseId = context.PurchaseId,
+            websiteBindingId = context.WebsiteBindingId,
+            currency = context.Currency,
+            valueCents = context.OrderValueCents ?? items?.Sum(x => (long)Math.Max(0, x.ValueCents)) ?? product?.ValueCents ?? 0,
             productId = product?.ProductId,
             productName = product?.ProductName,
             productSlug = product?.ProductSlug,
             size = product?.Size,
-            quantity = product?.Quantity ?? items?.Sum(x => Math.Max(0, x.Quantity)) ?? 0,
+            quantity = items?.Sum(x => Math.Max(0, x.Quantity)) ?? product?.Quantity ?? 0,
             items = items?.Select(x => new
             {
                 x.ProductId,
@@ -125,80 +150,94 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
                 postalCode = customer.PostalCode
             },
             fbclid = context.Fbclid,
+            oppref = OpenAiClickReference.Normalize(context.Oppref),
+            obref = OpenAiBrowserReference.Normalize(context.Obref),
             fbc = context.Fbc,
             fbp = context.Fbp,
             sourceClientIpAddress = context.ClientIpAddress,
             sourceClientUserAgent = context.UserAgent
         };
 
-        var now = DateTime.UtcNow;
-        var row = new MetaSignalEvent
+        var now = context.EventUtc ?? DateTime.UtcNow;
+        var pageKey = "commerce_" + eventName.ToLowerInvariant();
+        var unifiedContext = new UnifiedEventContext
         {
-            CreatedUtc = now,
+            SiteKey = context.SiteKey,
+            CommerceBusinessId = typedBusinessId,
+            WebsiteContentVersionId = context.WebsiteContentVersionId,
+            WebsiteBindingId = context.WebsiteBindingId,
             EventId = eventId,
             EventName = eventName,
             EventCategory = definition.Category,
+            EventUtc = now,
             SessionId = NormalizeNullable(context.SessionId),
             VisitorId = NormalizeNullable(context.VisitorId),
-            QuoteType = "ecommerce",
-            PageKey = "commerce_" + eventName.ToLowerInvariant(),
-            EffectivePageKey = "commerce_" + eventName.ToLowerInvariant(),
+            Referrer = NormalizeNullable(context.Referrer),
+            PageKey = pageKey,
+            EffectivePageKey = pageKey,
             PageVariant = "store",
             PageMode = "store",
-            TrafficType = "ecommerce",
-            FunnelStep = eventName switch
-            {
-                "AddToCart" => 5,
-                "InitiateCheckout" => 6,
-                "Purchase" => 8,
-                _ => 4
-            },
-            StepName = eventName.ToLowerInvariant(),
-            IntentScore = eventName == "Purchase" ? 500 : 250,
-            EngagementScore = eventName == "Purchase" ? 500 : 250,
-            QualificationScore = eventName == "Purchase" ? 500 : 250,
-            FrictionScore = 0,
-            TotalSignalScore = eventName == "Purchase" ? 500 : 250,
-            ScoreTier = eventName == "Purchase" ? "Purchase" : "Commerce",
-            MetaBrowserSent = false,
-            MetaServerSent = false,
-            MetaDeduplicationKey = dedupe,
-            FbclidPresent = !string.IsNullOrWhiteSpace(context.Fbclid),
-            FbcPresent = !string.IsNullOrWhiteSpace(context.Fbc),
-            FbpPresent = !string.IsNullOrWhiteSpace(context.Fbp),
-            Referrer = NormalizeNullable(context.Referrer),
+            QuoteType = "ecommerce",
             UserAgent = NormalizeNullable(context.UserAgent),
-            CommerceBusinessId = typedBusinessId,
+            IpAddress = NormalizeNullable(context.ClientIpAddress),
+            UtmSource = NormalizeNullable(context.UtmSource),
+            UtmMedium = NormalizeNullable(context.UtmMedium),
+            UtmCampaign = NormalizeNullable(context.UtmCampaign),
+            UtmId = NormalizeNullable(context.UtmId),
+            UtmContent = NormalizeNullable(context.UtmContent),
+            MetaCampaignId = NormalizeNullable(context.MetaCampaignId),
+            MetaAdSetId = NormalizeNullable(context.MetaAdSetId),
+            MetaAdId = NormalizeNullable(context.MetaAdId),
+            Fbclid = NormalizeNullable(context.Fbclid),
+            Oppref = OpenAiClickReference.Normalize(context.Oppref),
+            Obref = OpenAiBrowserReference.Normalize(context.Obref),
+            Fbc = NormalizeNullable(context.Fbc),
+            Fbp = NormalizeNullable(context.Fbp),
             AgentTrackingProfileId = typedAgentId,
-            WebsiteContentVersionId = context.WebsiteContentVersionId,
             Environment = ResolveEnvironment(context.EventSourceUrl),
             Host = Uri.TryCreate(context.EventSourceUrl, UriKind.Absolute, out var uri) ? uri.Host : null,
-            MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
-                eventName,
-                leadId: null,
-                sessionId: context.SessionId,
-                payload: payload,
-                isBrowserSignal: false,
-                isServerAuthority: true,
-                metaServerAuthorityEligible: true,
-                metaSingleTruthDispatchEligible: true,
-                metaPipelineOrigin: "CommercePurchaseBridge")
+            IsBrowserSignal = false,
+            IsServerAuthority = true,
+            MetaServerAuthorityEligible = true,
+            Metadata = payload
         };
 
-        db.MetaSignalEvents.Add(row);
-        try
-        {
-            await db.SaveChangesAsync(ct);
-            return true;
-        }
+        var analyticsRow = UnifiedEventMapper.ToAnalytics(unifiedContext);
+        analyticsRow.EventId = analyticsClientEventId;
+        analyticsRow.ClientEventId = analyticsClientEventId;
+        analyticsRow.Url = context.EventSourceUrl;
+        analyticsRow.Path = Uri.TryCreate(context.EventSourceUrl, UriKind.Absolute, out var analyticsUri)
+            ? analyticsUri.AbsolutePath : null;
+        analyticsRow.TrackingVersion = "commerce-server-authority-v1";
+        analyticsRow.SchemaVersion = 2;
+        var metadata = System.Text.Json.JsonSerializer.SerializeToNode(payload)!.AsObject();
+        metadata["canonicalOutcomeEventId"] = eventId;
+        metadata["canonicalDeduplicationKey"] = dedupe;
+        metadata["upstreamMetaEventId"] = eventId;
+        metadata["metaDeduplicationKey"] = dedupe;
+        metadata["stepNumber"] = eventName switch { "AddToCart" => 5, "InitiateCheckout" => 6, "Purchase" => 8, _ => 4 };
+        metadata["stepName"] = eventName.ToLowerInvariant();
+        metadata["scoreTier"] = eventName == "Purchase" ? "Purchase" : "Commerce";
+        var score = eventName == "Purchase" ? 500 : 250;
+        metadata["intentScore"] = score;
+        metadata["engagementScore"] = score;
+        metadata["qualificationScore"] = score;
+        metadata["frictionScore"] = 0;
+        metadata["totalSignalScore"] = score;
+        analyticsRow.MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
+            eventName, null, context.SessionId, metadata, false, true, true, false,
+            "CommercePurchaseBridge");
+        UnifiedAnalyticsWriter.Write(db, analyticsRow);
+        try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateException)
         {
-            db.Entry(row).State = EntityState.Detached;
-            if (await db.MetaSignalEvents.AsNoTracking()
-                .AnyAsync(x => x.MetaDeduplicationKey == dedupe || x.EventId == eventId, ct))
-                return false;
-            throw;
+            db.Entry(analyticsRow).State = EntityState.Detached;
+            existing = await db.AnalyticsEvents.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.ClientEventId == analyticsClientEventId, ct);
+            if (existing is null) throw;
+            return false;
         }
+        return true;
     }
 
     private static string Normalize(string? value) => (value ?? string.Empty).Trim();
@@ -213,6 +252,14 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
         return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    private static Guid StableGuid(string value)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
+        Span<byte> guidBytes = stackalloc byte[16];
+        bytes.AsSpan(0, 16).CopyTo(guidBytes);
+        return new Guid(guidBytes);
     }
 
     private static string ResolveEnvironment(string? url)

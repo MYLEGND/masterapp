@@ -69,6 +69,7 @@ builder.Services.AddMasterAppMessaging(builder.Configuration);
 builder.Services.AddMasterAppSocial(builder.Configuration, enableMediaProcessing: false);
 builder.Services.AddScoped<ICommerceBusinessProvisioningService, CommerceBusinessProvisioningService>();
 builder.Services.AddScoped<EffectiveClientContextService>();
+builder.Services.AddScoped<Shared.PortalShell.IPortalShellIdentityResolver, ClientApp.Services.ClientPortalShellIdentityResolver>();
 builder.Services.AddScoped<ClientProfileImageLegacyBackfillService>();
 builder.Services.AddHostedService<ClientProfileImageLegacyBackfillHostedService>();
 builder.Services.AddScoped<IMessagingActorContextResolver, ClientAppMessagingActorContextResolver>();

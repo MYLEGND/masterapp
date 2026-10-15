@@ -13,11 +13,17 @@ public interface IParfaitBusinessProfileService
     Task<ParfaitBusinessProfileViewModel> GetProfileAsync(CancellationToken ct = default);
     Task SaveProfileAsync(ParfaitBusinessProfileViewModel model, CancellationToken ct = default);
     Task<ParfaitMetaAnalyticsSettingsViewModel> GetMetaSettingsAsync(CancellationToken ct = default);
+    Task<ParfaitMetaAnalyticsSettingsViewModel> GetMetaSettingsAsync(Guid businessId, CancellationToken ct = default);
     Task SaveMetaSettingsAsync(ParfaitMetaAnalyticsSettingsViewModel model, CancellationToken ct = default);
+    Task SaveMetaSettingsAsync(Guid businessId, ParfaitMetaAnalyticsSettingsViewModel model, CancellationToken ct = default);
     Task<ParfaitMetaAdsConnectionStatusDto> GetMetaConnectionStatusAsync(CancellationToken ct = default);
+    Task<ParfaitMetaAdsConnectionStatusDto> GetMetaConnectionStatusAsync(Guid businessId, CancellationToken ct = default);
     Task<ParfaitMetaAdsConnectionRecord?> GetMetaConnectionRecordAsync(CancellationToken ct = default);
+    Task<ParfaitMetaAdsConnectionRecord?> GetMetaConnectionRecordAsync(Guid businessId, CancellationToken ct = default);
     Task SaveMetaConnectionAsync(ParfaitMetaAdsConnectionRecord record, CancellationToken ct = default);
+    Task SaveMetaConnectionAsync(Guid businessId, ParfaitMetaAdsConnectionRecord record, CancellationToken ct = default);
     Task DisconnectMetaAsync(CancellationToken ct = default);
+    Task DisconnectMetaAsync(Guid businessId, CancellationToken ct = default);
 }
 
 public sealed class ParfaitBusinessProfileService(
@@ -116,7 +122,13 @@ public sealed class ParfaitBusinessProfileService(
     public async Task<ParfaitMetaAnalyticsSettingsViewModel> GetMetaSettingsAsync(CancellationToken ct = default)
     {
         var (business, _) = await LoadAsync(ct);
-        var row = await GetOrCreateMarketingConnectionAsync(business.Id, ct);
+        return await GetMetaSettingsAsync(business.Id, ct);
+    }
+
+    public async Task<ParfaitMetaAnalyticsSettingsViewModel> GetMetaSettingsAsync(Guid businessId, CancellationToken ct = default)
+    {
+        await EnsureCanonicalBusinessMarketingAsync(businessId, ct);
+        var row = await GetOrCreateMarketingConnectionAsync(businessId, ct);
         var status = Status(row);
         return new()
         {
@@ -133,15 +145,27 @@ public sealed class ParfaitBusinessProfileService(
     public async Task SaveMetaSettingsAsync(ParfaitMetaAnalyticsSettingsViewModel model, CancellationToken ct = default)
     {
         var (business, _) = await LoadAsync(ct);
-        var owner = MarketingOwnerScope.Business(business.Id);
-        var row = await GetOrCreateMarketingConnectionAsync(business.Id, ct);
+        await SaveMetaSettingsAsync(business.Id, model, ct);
+    }
+
+    public async Task SaveMetaSettingsAsync(Guid businessId, ParfaitMetaAnalyticsSettingsViewModel model, CancellationToken ct = default)
+    {
+        await EnsureCanonicalBusinessMarketingAsync(businessId, ct);
+        var owner = MarketingOwnerScope.Business(businessId);
+        var row = await GetOrCreateMarketingConnectionAsync(businessId, ct);
         await connections.SaveSettingsAsync(owner, model.MetaPixelId, model.MetaTestEventCode, null, row.Revision, ct);
     }
 
     public async Task<ParfaitMetaAdsConnectionStatusDto> GetMetaConnectionStatusAsync(CancellationToken ct = default)
     {
         var (business, _) = await LoadAsync(ct);
-        return Status(await GetOrCreateMarketingConnectionAsync(business.Id, ct));
+        return await GetMetaConnectionStatusAsync(business.Id, ct);
+    }
+
+    public async Task<ParfaitMetaAdsConnectionStatusDto> GetMetaConnectionStatusAsync(Guid businessId, CancellationToken ct = default)
+    {
+        await EnsureCanonicalBusinessMarketingAsync(businessId, ct);
+        return Status(await GetOrCreateMarketingConnectionAsync(businessId, ct));
     }
 
     private static ParfaitMetaAdsConnectionStatusDto Status(MarketingConnection row) => new()
@@ -157,7 +181,13 @@ public sealed class ParfaitBusinessProfileService(
     public async Task<ParfaitMetaAdsConnectionRecord?> GetMetaConnectionRecordAsync(CancellationToken ct = default)
     {
         var (business, _) = await LoadAsync(ct);
-        var record = await connections.GetAdsAsync(MarketingOwnerScope.Business(business.Id), ct);
+        return await GetMetaConnectionRecordAsync(business.Id, ct);
+    }
+
+    public async Task<ParfaitMetaAdsConnectionRecord?> GetMetaConnectionRecordAsync(Guid businessId, CancellationToken ct = default)
+    {
+        await EnsureCanonicalBusinessMarketingAsync(businessId, ct);
+        var record = await connections.GetAdsAsync(MarketingOwnerScope.Business(businessId), ct);
         return record is null ? null : new()
         {
             AccessToken = record.AccessToken, AccessTokenExpiresUtc = record.AccessTokenExpiresUtc,
@@ -171,7 +201,13 @@ public sealed class ParfaitBusinessProfileService(
     public async Task SaveMetaConnectionAsync(ParfaitMetaAdsConnectionRecord record, CancellationToken ct = default)
     {
         var (business, _) = await LoadAsync(ct);
-        await connections.SaveAdsAsync(MarketingOwnerScope.Business(business.Id), new()
+        await SaveMetaConnectionAsync(business.Id, record, ct);
+    }
+
+    public async Task SaveMetaConnectionAsync(Guid businessId, ParfaitMetaAdsConnectionRecord record, CancellationToken ct = default)
+    {
+        await EnsureCanonicalBusinessMarketingAsync(businessId, ct);
+        await connections.SaveAdsAsync(MarketingOwnerScope.Business(businessId), new()
         {
             AccessToken = record.AccessToken, AccessTokenExpiresUtc = record.AccessTokenExpiresUtc,
             AccountId = record.AccountId, AccountName = record.AccountName,
@@ -184,7 +220,32 @@ public sealed class ParfaitBusinessProfileService(
     public async Task DisconnectMetaAsync(CancellationToken ct = default)
     {
         var (business, _) = await LoadAsync(ct);
-        await connections.DisconnectAsync(MarketingOwnerScope.Business(business.Id), ct);
+        await DisconnectMetaAsync(business.Id, ct);
+    }
+
+    public async Task DisconnectMetaAsync(Guid businessId, CancellationToken ct = default)
+    {
+        await EnsureCanonicalBusinessMarketingAsync(businessId, ct);
+        await connections.DisconnectAsync(MarketingOwnerScope.Business(businessId), ct);
+    }
+
+    private async Task EnsureCanonicalBusinessMarketingAsync(Guid businessId, CancellationToken ct)
+    {
+        if (businessId == Guid.Empty ||
+            !await db.CommerceBusinesses.AsNoTracking().AnyAsync(
+                business => business.Id == businessId && business.IsActive && business.Status == "Active",
+                ct))
+            throw new InvalidOperationException("An active commerce business is required.");
+
+        var isParfait = await db.CommerceBusinesses.AsNoTracking()
+            .AnyAsync(business => business.Id == businessId && business.Key == ParfaitBusinessScopeService.ParfaitBusinessKey, ct);
+        if (isParfait)
+        {
+            await LoadAsync(ct);
+            return;
+        }
+
+        await connections.ImportAsync(MarketingOwnerScope.Business(businessId), null, ct: ct);
     }
 
     private sealed class ParfaitBusinessProfileStore

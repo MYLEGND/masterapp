@@ -23,6 +23,12 @@ public sealed class WebsiteAnalyticsScopeResolver(
     {
         var isFounder = FounderGuard.IsFounder(httpContext.User);
 
+        // View-as-Agent must stay isolated even when a stale request asks for team scope.
+        if (_effectiveContext.IsViewingAsAgent)
+        {
+            return await ResolveEffectiveImpersonatedAgentScopeAsync(httpContext);
+        }
+
         // Effective agent (includes View-as-Agent)
         var effectiveProfile = await _effectiveContext.GetEffectiveTrackingProfileAsync();
         var effectiveProfileId = effectiveProfile?.Id;
@@ -36,29 +42,30 @@ public sealed class WebsiteAnalyticsScopeResolver(
             return ScopeContext.Global;
         }
 
-        // Founder default on Website Analytics is founder personal unless Global/team is explicitly selected.
+        // Founder default on Website Analytics is Founder Personal unless Global/team
+        // is explicitly selected. The Founder's own tracking-profile id is only a
+        // transport identifier for that canonical Founder scope; it must never
+        // downgrade the request to an ordinary Agent scope.
         if (isFounder)
         {
-            if (requestedAgentId.HasValue) return ScopeContext.ForAgent(requestedAgentId.Value);
-            if (_effectiveContext.IsViewingAsAgent)
+            var founderProfile = await GetCallerProfileAsync();
+
+            if (requestedAgentId.HasValue)
             {
-                return await ResolveEffectiveImpersonatedAgentScopeAsync(httpContext);
+                if (founderProfile != null && requestedAgentId.Value == founderProfile.Id)
+                {
+                    return ScopeContext.ForFounder(founderProfile.Id);
+                }
+
+                return ScopeContext.ForAgent(requestedAgentId.Value);
             }
 
-            var founderProfile = await GetCallerProfileAsync();
             if (founderProfile != null)
             {
-                return ScopeContext.ForAgent(founderProfile.Id);
+                return ScopeContext.ForFounder(founderProfile.Id);
             }
 
-            return ScopeContext.Global;
-        }
-
-        // If founder is impersonating an agent, analytics must scope to that agent.
-        // Never fall back to founder scope for view-as-agent requests.
-        if (_effectiveContext.IsViewingAsAgent)
-        {
-            return await ResolveEffectiveImpersonatedAgentScopeAsync(httpContext);
+            throw new InvalidOperationException("Founder analytics scope is unavailable because the tracking profile could not be resolved.");
         }
 
         // Agent (or assistant) uses effective profile

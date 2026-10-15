@@ -79,12 +79,14 @@ class LegendFirebaseMessagingService : FirebaseMessagingService() {
         val body = message.data["body"] ?: message.notification?.body.orEmpty()
         val sender = runCatching { org.json.JSONObject(message.data["sender"].orEmpty()) }.getOrNull()
         val conversationId = message.data["conversationId"].orEmpty()
+        val notificationId = message.data["notificationId"].orEmpty()
         val intent = Intent(this, MainActivity::class.java)
             .setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra(LegendNotificationNavigation.EXTRA_CONVERSATION_ID, conversationId)
+            .putExtra(LegendNotificationNavigation.EXTRA_NOTIFICATION_ID, notificationId)
         val pendingIntent = PendingIntent.getActivity(
             this,
-            conversationId.hashCode(),
+            (notificationId.ifBlank { conversationId }).hashCode(),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )

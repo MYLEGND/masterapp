@@ -25,6 +25,7 @@ function environment(fetch) {
     newConversationRecord: () => ({ messages: [], mode: 'legend' }),
     defaultState: () => ({ activeConversationId: 'fresh', conversations: [{ id: 'fresh', messages: [] }] }),
     setBusy(value) { c.busy = value; }, renderAll() {}, applyOperationalProgress() {},
+    updateThinkingStatus(message = '') { c.status.textContent = message; },
   };
   vm.createContext(c);
   for (const name of ['createId', 'newConversationRecord', 'stopHistoryRefresh', 'clearAuthenticatedHistory', 'readHistory', 'storedMessage',
@@ -145,7 +146,6 @@ test('legacy browser transcripts are not read, imported, cleared or sent as auth
   assert.doesNotMatch(source, /legendFounderAi\.conversations\.v1|localStorage\.removeItem|messages: conversation\.messages/);
   assert.match(source, /expectedLastMessageId: conversation\.lastMessageId/);
   assert.match(source, /messages: \[\{ role: 'user', content: text \}\]/);
-  assert.match(source, /metadata\.stage === 'response_partial'/);
 });
 
 

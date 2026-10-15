@@ -10,7 +10,7 @@
 }
 
 @section Styles {
-    <link rel="stylesheet" href="~/css/storefront.css" asp-append-version="true" />
+    <link rel="stylesheet" href="/store-assets/css/storefront.css" asp-append-version="true" />
 }
 
 <section class="sp-store-page sp-store-page--cart">
@@ -208,7 +208,7 @@
                 itemsHost.innerHTML = items.map(item => `
                     <article class="sp-cart-item">
                         <a class="sp-cart-media" href="${productUrl(item)}" aria-label="View ${item.name || "product"}">
-                            <img src="${item.imageUrl || "/images/favicon/parfait-logo.png"}" alt="${item.name || "Product"}" />
+                            <img src="${item.imageUrl || "/store-assets/images/favicon/parfait-logo.png"}" alt="${item.name || "Product"}" />
                         </a>
                         <div class="sp-cart-body">
                             <div class="sp-cart-top">

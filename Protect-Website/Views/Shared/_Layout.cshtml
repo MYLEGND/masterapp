@@ -41,16 +41,31 @@
     var metaPixelId = (ViewData["ResolvedMetaPixelId"]?.ToString() ?? string.Empty).Trim();
     var metaPixelOwnerType = (ViewData["MetaPixelOwnerType"]?.ToString() ?? string.Empty).Trim().ToLowerInvariant();
     var hasMetaPixel = !string.IsNullOrWhiteSpace(metaPixelId);
+    var openAiPixelId = (ViewData["ResolvedOpenAiPixelId"]?.ToString() ?? string.Empty).Trim();
+    var hasOpenAiPixel = !string.IsNullOrWhiteSpace(openAiPixelId);
+    var websiteStudioMode =
+        Context.Request.Query.ContainsKey("legendEdit") ||
+        Context.Request.Query.ContainsKey("legendMaterialize");
     var analyticsBrowserConfigJson = JsonSerializer.Serialize(new
     {
+        siteKey = Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect,
+        attributionScope = ViewData["AnalyticsAttributionScope"]?.ToString(),
+        metaTestMode = ViewData["MetaTestMode"] is true,
         allowedBrowserEvents = AnalyticsEventCatalog.BrowserAllowedEventNames,
+        signalAliases = MetaSignalAnalyticsAliasCatalog.BrowserProjectionMap,
         criticalBrowserEvents = AnalyticsEventCatalog.CriticalBrowserEventNames,
         clientTrackingErrorEvent = AnalyticsEventCatalog.ClientTrackingErrorEventName
     });
 }
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"
+      hidden="@(!isStandaloneQuoteLanding ? "hidden" : null)"
+      data-legend-canonical-pending="@(!isStandaloneQuoteLanding ? "true" : null)">
 <head>
+    @if (!isStandaloneQuoteLanding)
+    {
+        <noscript><style>html[hidden]{display:block!important}</style></noscript>
+    }
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
@@ -93,9 +108,11 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/design/legend-web-foundation.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/design/legend-public-web.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/public-inquiry-form.css" asp-append-version="true" />
 
     <link rel="icon" type="image/svg+xml" href="~/images/favicon/legend-favicon.svg" asp-append-version="true" />
     <script>
+        window.LEGEND_WEBSITE_STUDIO_MODE = @websiteStudioMode.ToString().ToLowerInvariant();
         window.AGENT_TRACKING_PROFILE_ID = "@trackingProfileId";
         window.AGENT_TRACKING_SLUG = "@trackingSlug";
         window.IS_FOUNDER_PATH = @isFounderPath.ToString().ToLowerInvariant();
@@ -106,22 +123,7 @@
         window.RESOLVED_META_PIXEL_OWNER_TYPE = "@metaPixelOwnerType";
     </script>
 
-    <!-- ================= META PIXEL ================= -->
-    @if (hasMetaPixel)
-    {
-        <script>
-        !function(f,b,e,v,n,t,s)
-        {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-        n.queue=[];t=b.createElement(e);t.async=!0;
-        t.src=v;s=b.getElementsByTagName(e)[0];
-        s.parentNode.insertBefore(t,s)}(window, document,'script',
-        'https://connect.facebook.net/en_US/fbevents.js');
-        fbq('init', '@metaPixelId');
-        </script>
-    }
-    <!-- ================= END META PIXEL ================= -->
+
 
     <script type="application/ld+json">
     {
@@ -155,7 +157,10 @@
     </script>
 
 
-    @await Html.PartialAsync("~/Views/Diagnostics/_PageHealth.cshtml")
+    @if (!websiteStudioMode)
+    {
+        @await Html.PartialAsync("~/Views/Diagnostics/_PageHealth.cshtml")
+    }
 </head>
 
 <body class="legend-public--protect @bodyClasses">
@@ -170,10 +175,10 @@
         {
             <button class="nav-toggle" type="button" data-public-nav-toggle aria-controls="primary-nav" aria-expanded="false">Menu</button>
             <nav id="primary-nav" class="nav" data-public-nav data-open="false" aria-label="Primary navigation">
-                <a asp-controller="Home" asp-action="Index" data-cta="nav_home">Home</a>
-                <a asp-controller="RiskAssessment" asp-action="Index" data-cta="nav_risk_assessment">Risk Assessment</a>
-                <a asp-controller="Quote" asp-action="Index" data-cta="nav_quote">Coverage</a>
-                <a asp-controller="Contact" asp-action="Index" data-cta="nav_contact">Contact</a>
+                <a asp-controller="Home" asp-action="Index" data-cta="nav_home" data-website-action-key="protect_home" data-website-analytics-event="cta_click">Home</a>
+                <a asp-controller="RiskAssessment" asp-action="Index" data-cta="nav_risk_assessment" data-website-action-key="protect_risk_assessment" data-website-analytics-event="risk_assessment_click">Risk Assessment</a>
+                <a asp-controller="Quote" asp-action="Index" data-cta="nav_quote" data-website-action-key="protect_quote" data-website-analytics-event="quote_click">Coverage</a>
+                <a asp-controller="Contact" asp-action="Index" data-cta="nav_contact" data-website-action-key="protect_contact" data-website-analytics-event="cta_click">Contact</a>
                 <a href="@clientLoginUrl" class="nav-cta" data-cta="nav_client_login">Client Login</a>
             </nav>
         }
@@ -233,81 +238,6 @@
     </div>
 </footer>
 
-<!-- Lead Capture Modal -->
-<div id="leadModal" class="lead-modal" aria-hidden="true">
-    <div class="lead-card" role="dialog" aria-modal="true" aria-labelledby="leadTitle" aria-describedby="leadSubtitle" tabindex="-1">
-        <button type="button" class="lead-close" id="leadClose" aria-label="Close lead capture dialog">&times;</button>
-        <h3 id="leadTitle">Tell us what you’re looking for—we’ll walk you through your options clearly.</h3>
-        <p class="sub" id="leadSubtitle">We’ll reply with clear next steps. No pressure.</p>
-        <form id="leadForm" novalidate>
-            <div class="lead-grid">
-                <div>
-                    <label>First name <span class="lead-required">*</span></label>
-                    <input type="text" name="FirstName" required />
-                </div>
-                <div>
-                    <label>Last name</label>
-                    <input type="text" name="LastName" />
-                </div>
-                <div>
-                    <label>Email <span class="lead-required">*</span></label>
-                    <input type="email" name="Email" required />
-                </div>
-                <div>
-                    <label>Phone</label>
-                    <input type="tel" name="Phone" />
-                </div>
-                <div>
-                    <label>Preferred contact</label>
-                    <select name="PreferredContactMethod">
-                        <option value="">No preference</option>
-                        <option value="email">Email</option>
-                        <option value="phone">Phone</option>
-                    </select>
-                </div>
-                <div>
-                    <label>Interest <span class="lead-required">*</span></label>
-                    <select name="InterestType" required id="leadInterest">
-                        <option value="">Choose one</option>
-                        <option value="assessment">Risk Assessment</option>
-                        <option value="quote_auto">Quote - Auto</option>
-                        <option value="quote_home">Quote - Home</option>
-                        <option value="quote_commercial">Quote - Commercial</option>
-                        <option value="quote_life">Quote - Life</option>
-                        <option value="quote_disability">Quote - Disability</option>
-                        <option value="quote_dvh">Quote - Dental, Vision & Hearing</option>
-                        <option value="general">General Question</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="mt-3">
-                <label>Notes</label>
-                <textarea name="Notes" placeholder="Share goals or questions (optional)"></textarea>
-            </div>
-
-            <div class="lead-consents">
-                <div class="lead-consent">
-                    <input id="leadAuthorization" type="checkbox" name="MarketingEmailConsent" value="true" required />
-                    <label for="leadAuthorization">
-                        <span class="lead-required">*</span>
-                        I authorize LEGEND to contact me regarding this request and agree to the
-                        <a href="@termsUrl" target="_blank" rel="noopener">Terms</a> and
-                        <a href="@privacyUrl" target="_blank" rel="noopener">Privacy Policy</a>.
-                    </label>
-                </div>
-            </div>
-
-            <div class="lead-actions">
-                <button type="submit" class="lead-btn primary" id="leadSubmit">Send</button>
-                <button type="button" class="lead-btn secondary" id="leadDismiss">Maybe later</button>
-            </div>
-            <div class="lead-error" id="leadError"></div>
-            <div class="lead-success" id="leadSuccess">Thanks — we’ve received it. We’ll reply with clear next steps.</div>
-        </form>
-    </div>
-</div>
-
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script>
@@ -316,10 +246,39 @@
         document.body.dataset.pageMode = "@ViewData["PageMode"]";
         document.body.dataset.pageCategory = "@ViewData["PageCategory"]";
         document.body.dataset.quoteType = "@ViewData["QuoteTypeForTracking"]";
-        window.LEGEND_ANALYTICS_CONFIG = @Html.Raw(analyticsBrowserConfigJson);
+        if (!window.LEGEND_WEBSITE_STUDIO_MODE) {
+            window.LEGEND_ANALYTICS_CONFIG = @Html.Raw(analyticsBrowserConfigJson);
+        }
     </script>
-    <script src="~/js/tracking.js" asp-append-version="true"></script>
-    <script src="~/js/lead-modal.js" asp-append-version="true"></script>
+    @if (!websiteStudioMode)
+    {
+        <script src="~/js/tracking.js" asp-append-version="true"></script>
+        <!-- ================= META PIXEL ================= -->
+        @if (hasMetaPixel)
+        {
+            <script>
+            if (window.__legendTrackingInitialized && window.LegendAnalytics?.measurementConsent?.isAllowed?.()) {
+            !function(f,b,e,v,n,t,s)
+            {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+            n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+            if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+            n.queue=[];t=b.createElement(e);t.async=!0;
+            t.src=v;s=b.getElementsByTagName(e)[0];
+            s.parentNode.insertBefore(t,s)}(window, document,'script',
+            'https://connect.facebook.net/en_US/fbevents.js');
+            fbq('init', '@metaPixelId');
+            }
+            </script>
+        }
+        <!-- ================= END META PIXEL ================= -->
+        @if (hasOpenAiPixel)
+        {
+            <script src="~/js/openai-measurement.js" asp-append-version="true"></script>
+            <script>
+                if (window.__legendTrackingInitialized) window.LegendOpenAiMeasurement?.configure?.({ pixelId: @Html.Raw(JsonSerializer.Serialize(openAiPixelId)) });
+            </script>
+        }
+    }
     <script>
         // Preserve agent slug across internal navigation
         (function () {
@@ -564,6 +523,7 @@
     window.LEGEND_PUBLIC_CMS_CONTEXT = {
         siteKey: "protect",
         apiBase: "",
+        editorAuthorizationUrl: @Html.Raw(JsonSerializer.Serialize($"{agentPortalBaseUrl}/Account/EditProtectWebsite")),
         agentSlug: @Html.Raw(JsonSerializer.Serialize(trackingSlug ?? string.Empty)),
         pagePrefix: @Html.Raw(JsonSerializer.Serialize(legalBasePath)),
         pages: @Html.Raw(JsonSerializer.Serialize(ProtectWebsite.Services.WebsiteEditorPageCatalog.Discover(EditorActions, EditorViews).Select(page => new { path = page.Path, label = page.Label })))
@@ -571,6 +531,7 @@
 </script>
 <script src="~/design/legend-public-web.js" asp-append-version="true" defer></script>
 <script src="~/design/legend-public-cms.js" asp-append-version="true" defer></script>
+<script type="module" src="~/js/public-inquiry-form.mjs" asp-append-version="true"></script>
 @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

@@ -31,7 +31,7 @@ public class LeadsController : Controller
     private readonly ILogger<LeadsController> _logger;
     private readonly AgentPortal.Models.AppFeatureFlags _featureFlags;
     private readonly AgentPortal.Services.ImportValidation.LeadImportValidator _leadImportValidator;
-    private readonly MetaSignalCrmOutcomeService _metaSignalOutcomes;
+    private readonly CanonicalCrmOutcomeService _canonicalOutcomes;
     private readonly ClientBillingWorkspaceService _clientBillingWorkspaceService;
     private const string CommitmentsUnavailableMessage = "Commitments are not live yet in this environment. Apply the latest migrations to enable them.";
     private static readonly string[] ProductBuckets = WorkstationLeadBuckets.ProductBuckets;
@@ -51,6 +51,7 @@ public class LeadsController : Controller
         WorkstationLeadBuckets.CommercialInsurance,
         "CallBack",
         "Contacted",
+        "Qualified",
         "Booked",
         "FollowUp",
         "NeedsDocs",
@@ -104,6 +105,7 @@ public class LeadsController : Controller
         ["donotcalllist"] = "DoNotCallList",
         ["dnc"] = "DoNotCallList",
         ["contacted"] = "Contacted",
+        ["qualified"] = "Qualified",
         ["booked"] = "Booked",
         ["followup"] = "FollowUp",
         ["needsdocs"] = "NeedsDocs",
@@ -123,6 +125,7 @@ public class LeadsController : Controller
     private static readonly IReadOnlyDictionary<string, string> OutcomeStageMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["Contacted"] = "Contacted",
+        ["Qualified"] = "Qualified",
         ["Booked"] = "Booked",
         ["FollowUp"] = "FollowUp",
         ["NeedsDocs"] = "NeedsDocs",
@@ -240,7 +243,13 @@ public class LeadsController : Controller
         public List<string>? Ids { get; set; }
     }
 
-    public LeadsController(MasterAppDbContext db, IAgentTimeZoneResolver agentTimeZoneResolver, ProductionService production, EffectiveAgentContext agentContext, IExecutionEngine execution, ICommitmentService commitments, ILogger<LeadsController> logger, Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags> featureFlags, AgentPortal.Services.ImportValidation.LeadImportValidator leadImportValidator, MetaSignalCrmOutcomeService metaSignalOutcomes, ClientBillingWorkspaceService clientBillingWorkspaceService)
+    public sealed class SetStarredRequest
+    {
+        public string LeadId { get; set; } = "";
+        public bool IsStarred { get; set; }
+    }
+
+    public LeadsController(MasterAppDbContext db, IAgentTimeZoneResolver agentTimeZoneResolver, ProductionService production, EffectiveAgentContext agentContext, IExecutionEngine execution, ICommitmentService commitments, ILogger<LeadsController> logger, Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags> featureFlags, AgentPortal.Services.ImportValidation.LeadImportValidator leadImportValidator, CanonicalCrmOutcomeService canonicalOutcomes, ClientBillingWorkspaceService clientBillingWorkspaceService)
     {
         _db = db;
         _agentTimeZoneResolver = agentTimeZoneResolver;
@@ -251,7 +260,7 @@ public class LeadsController : Controller
         _logger = logger;
         _featureFlags = featureFlags.Value;
         _leadImportValidator = leadImportValidator;
-        _metaSignalOutcomes = metaSignalOutcomes;
+        _canonicalOutcomes = canonicalOutcomes;
         _clientBillingWorkspaceService = clientBillingWorkspaceService;
     }
 
@@ -450,6 +459,7 @@ public class LeadsController : Controller
                     ContactStatus = contactStatus,
                     PipelineStage = stage,
                     PipelineOrder = lead.CrmOrder,
+                    IsStarred = crmMeta.IsStarred,
                     MeetingLocation = crmMeta.MeetingLocation,
                     ZoomJoinUrl = crmMeta.ZoomJoinUrl,
                     UsePersonalZoomLink = crmMeta.UsePersonalZoomLink,
@@ -1506,6 +1516,7 @@ public class LeadsController : Controller
                     ContactStatus = contactStatus,
                     PipelineStage = ResolveEffectivePipelineStage(l, "Contacted"),
                     PipelineOrder = l.CrmOrder,
+                    IsStarred = crmMeta.IsStarred,
                     MeetingLocation = crmMeta.MeetingLocation,
                     ZoomJoinUrl = crmMeta.ZoomJoinUrl,
                     UsePersonalZoomLink = crmMeta.UsePersonalZoomLink,
@@ -1902,6 +1913,7 @@ public class LeadsController : Controller
             meetingTime = crmMeta.MeetingTime ?? "",
             meetingDurationMinutes = crmMeta.MeetingDurationMinutes <= 0 ? 30 : crmMeta.MeetingDurationMinutes,
             pinnedBrief = crmMeta.PinnedBrief ?? "",
+            isStarred = crmMeta.IsStarred,
             docChecklist = new
             {
                 idReceived = crmMeta.DocChecklist?.IdReceived ?? false,
@@ -2307,7 +2319,7 @@ public class LeadsController : Controller
         lead.AgentUserId = agentId;
         lead.UpdatedUtc = DateTime.UtcNow;
 
-        await _db.SaveChangesAsync();
+        await CanonicalCrmOutcomeService.SaveLeadChangesAsync(_db, HttpContext.RequestAborted);
 
         return Json(new { payload = await BuildLeadPayloadAsync(lead, dialTimeZone: dialTimeZone) });
     }
@@ -2418,10 +2430,9 @@ public class LeadsController : Controller
         }
         appointment.ApplyStatus(nextStatus, nowUtc);
 
-        if (nextStatus == LeadAppointmentStatus.Completed)
-        {
-            await _metaSignalOutcomes.RecordAppointmentCompletedAsync(appointment);
-        }
+        await _canonicalOutcomes.RecordAppointmentOutcomeAsync(
+            appointment,
+            HttpContext.RequestAborted);
 
         var meta = ReadLeadMeta(lead);
         meta.Activities ??= new List<ClientCrmActivity>();
@@ -2507,7 +2518,7 @@ public class LeadsController : Controller
         lead.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
         lead.AgentUserId = agentId;
         lead.UpdatedUtc = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
+        await CanonicalCrmOutcomeService.SaveLeadChangesAsync(_db, HttpContext.RequestAborted);
 
         var nowUtc = DateTime.UtcNow;
         var dialTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
@@ -2648,8 +2659,31 @@ public class LeadsController : Controller
             lead.UpdatedUtc = now;
         }
 
-        await _db.SaveChangesAsync();
+        await CanonicalCrmOutcomeService.SaveLeadChangesAsync(_db, HttpContext.RequestAborted);
         return Json(new { ok = true, updated = leads.Count });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetStarred([FromBody] SetStarredRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request?.LeadId))
+            return BadRequest("Lead id required.");
+
+        string agentId;
+        try { agentId = GetAgentIdOrChallenge(); }
+        catch { return Challenge(); }
+
+        var lead = await LoadCanonicalLeadAsync(agentId, request.LeadId, "Set starred");
+        if (lead == null) return NotFound();
+
+        var meta = ReadLeadMeta(lead);
+        meta.IsStarred = request.IsStarred;
+        lead.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
+        lead.UpdatedUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+
+        return Json(new { ok = true, isStarred = meta.IsStarred });
     }
 
     [HttpPost]

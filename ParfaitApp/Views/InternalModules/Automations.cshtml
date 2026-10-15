@@ -2,6 +2,15 @@
 @{
     ViewData["Title"] = "Automations";
     Layout = "_InternalLayout";
+    var commerceManagerTicket = ViewData["CommerceManagerTicket"] as string;
+    var isScopedCommerceManager = !string.IsNullOrWhiteSpace(commerceManagerTicket);
+    string CommerceAction(string internalPath, string scopedPath) =>
+        isScopedCommerceManager
+            ? scopedPath + "?ticket=" + Uri.EscapeDataString(commerceManagerTicket!)
+            : internalPath;
+    var workflowAction = CommerceAction("/internal/automations/workflows", "/commerce/manage/automations/workflows");
+    var workflowDeleteAction = CommerceAction("/internal/automations/workflows/delete", "/commerce/manage/automations/workflows/delete");
+    var managerStoreName = (ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext)?.StoreName ?? "Parfait";
 
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
     static string ShortDate(DateTime? value) => value.HasValue
@@ -17,7 +26,7 @@
 <section class="pf-command-page pf-automation-page">
     <header class="pf-automation-head">
         <div>
-            <p class="pf-automation-eyebrow">Parfait Growth</p>
+            <p class="pf-automation-eyebrow">@managerStoreName Growth</p>
             <h1>Automations</h1>
             <p>Customer lifecycle, cart recovery, and post-purchase workflows in one compact command surface.</p>
         </div>
@@ -252,7 +261,7 @@
 <div class="pf-automation-modal" id="pfAutomationCreateModal" aria-hidden="true">
     <div class="pf-modal-dialog pf-modal-lg">
         <div class="pf-modal-content pf-automation-modal-shell">
-            <form method="post" action="/internal/automations/workflows" class="pf-automation-form">
+            <form method="post" action="@workflowAction" class="pf-automation-form">
                 @Html.AntiForgeryToken()
                 <div class="pf-modal-header">
                     <div>
@@ -338,7 +347,7 @@
     <div class="pf-automation-modal" id="@modalId" aria-hidden="true">
         <div class="pf-modal-dialog pf-modal-lg">
             <div class="pf-modal-content pf-automation-modal-shell">
-                <form method="post" action="/internal/automations/workflows" class="pf-automation-form">
+                <form method="post" action="@workflowAction" class="pf-automation-form">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="Id" value="@workflow.Id" />
 
@@ -444,7 +453,7 @@
                         <button type="submit" class="pf-action">Save Workflow</button>
                         <button type="submit"
                                 class="pf-secondary-action is-danger"
-                                formaction="/internal/automations/workflows/delete"
+                                formaction="@workflowDeleteAction"
                                 formmethod="post"
                                 name="id"
                                 value="@workflow.Id">

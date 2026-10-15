@@ -1,22 +1,59 @@
 @inject ParfaitApp.Services.IParfaitTeamAccessService TeamAccessService
 @{
     var title = ViewData["Title"] as string ?? "Internal";
-    var visiblePages = User.Identity?.IsAuthenticated == true
-        ? await TeamAccessService.GetVisiblePagesAsync(User, ViewContext.HttpContext.RequestAborted)
-        : Array.Empty<ParfaitApp.Models.ParfaitInternalPageDefinition>();
+    var scopedStore = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
+    var managerTicket = ViewData["CommerceManagerTicket"] as string;
+    var scopedManager = scopedStore is not null && !string.IsNullOrWhiteSpace(managerTicket);
+    var storeName = scopedStore?.StoreName ?? "Parfait";
+    var storeRoot = scopedStore?.StoreRootPath ?? "/store";
+    var theme = scopedStore?.Theme;
+    var primary = theme?.GoldStrong ?? theme?.Gold ?? scopedStore?.AccentColor;
+    var secondary = theme?.NavyDeep ?? theme?.Navy;
+    var surface = theme?.Surface;
+    var text = theme?.Text;
+    var muted = theme?.Muted;
+    var font = theme?.FontFamily;
+    var radius = theme?.BorderRadius;
+    var scopedStyle = scopedManager ? string.Join(";", new[]
+    {
+        string.IsNullOrWhiteSpace(primary) ? null : $"--pf-cocoa:{primary}",
+        string.IsNullOrWhiteSpace(primary) ? null : $"--pf-cocoa-soft:{primary}",
+        string.IsNullOrWhiteSpace(secondary) ? null : $"--pf-nav-bg:linear-gradient(145deg,{secondary} 0%,{secondary} 100%)",
+        string.IsNullOrWhiteSpace(secondary) ? null : $"--pf-nav-bg-strong:linear-gradient(145deg,{secondary} 0%,{secondary} 100%)",
+        string.IsNullOrWhiteSpace(surface) ? null : $"--pf-bg:{surface}",
+        string.IsNullOrWhiteSpace(surface) ? null : $"--pf-surface:{surface}",
+        string.IsNullOrWhiteSpace(surface) ? null : $"--pf-cream:{surface}",
+        string.IsNullOrWhiteSpace(text) ? null : $"--pf-text:{text}",
+        string.IsNullOrWhiteSpace(text) ? null : $"--pf-text-soft:{text}",
+        string.IsNullOrWhiteSpace(muted) ? null : $"--pf-text-muted:{muted}",
+        string.IsNullOrWhiteSpace(font) ? null : $"--pf-font-ui:{font}",
+        radius.HasValue ? $"--pf-radius-sm:{radius.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}px" : null,
+        radius.HasValue ? $"--pf-radius-md:{radius.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}px" : null,
+        radius.HasValue ? $"--pf-radius-lg:{radius.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}px" : null
+    }.Where(value => !string.IsNullOrWhiteSpace(value))) : "";
+
+    var visiblePages = scopedManager
+        ? Array.Empty<ParfaitApp.Models.ParfaitInternalPageDefinition>()
+        : User.Identity?.IsAuthenticated == true
+            ? await TeamAccessService.GetVisiblePagesAsync(User, ViewContext.HttpContext.RequestAborted)
+            : Array.Empty<ParfaitApp.Models.ParfaitInternalPageDefinition>();
     var navGroups = visiblePages
         .GroupBy(navPage => new { navPage.Group, navPage.GroupOrder })
         .OrderBy(group => group.Key.GroupOrder)
         .ToList();
+    string ScopedUrl(string path) => path + "?ticket=" + Uri.EscapeDataString(managerTicket ?? "");
 }
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>@title - Parfait Internal</title>
+    <title>@title - @storeName</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" type="image/png" href="~/images/favicon/parfait-logo.png" />
+    @if (!scopedManager)
+    {
+        <link rel="icon" type="image/png" href="~/images/favicon/parfait-logo.png" />
+    }
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/internal.css" asp-append-version="true" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -25,38 +62,66 @@
     @RenderSection("Styles", required: false)
 </head>
 
-<body class="pf-internal-body">
+<body class="pf-internal-body" style="@scopedStyle" data-commerce-business-key="@(scopedStore?.BusinessKey ?? "parfait")">
     <div class="pf-backdrop" data-pf-nav-close></div>
 
     <aside class="pf-sidebar" id="pfSidebar" aria-label="Internal navigation">
         <div class="pf-sidebar-head">
             <div>
-                <div class="pf-sidebar-title">PARFAIT</div>
-                <div class="pf-sidebar-sub">Internal Command</div>
+                <div class="pf-sidebar-title">@storeName.ToUpperInvariant()</div>
+                <div class="pf-sidebar-sub">@(scopedManager ? "Commerce Command" : "Internal Command")</div>
             </div>
             <button class="pf-close" type="button" aria-label="Close navigation" data-pf-nav-close>x</button>
         </div>
 
         <nav class="pf-nav">
-            @foreach (var group in navGroups)
+            @if (scopedManager)
             {
                 <div class="pf-nav-group">
-                    <div class="pf-nav-section">@group.Key.Group</div>
-                    @foreach (var navPage in group.OrderBy(item => item.Order))
-                    {
-                        <a class="pf-route-link" href="@navPage.Route">@navPage.Title</a>
-                    }
+                    <div class="pf-nav-section">Core</div>
+                    <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/dashboard")">Dashboard</a>
                 </div>
+                <div class="pf-nav-group">
+                    <div class="pf-nav-section">Operations</div>
+                    <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/products")">Products</a>
+                    <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/orders")">Orders</a>
+                </div>
+                <div class="pf-nav-group">
+                    <div class="pf-nav-section">Growth</div>
+                    <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/automations")">Automations</a>
+                    <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/analytics")">Analytics + Health</a>
+                </div>
+            }
+            else
+            {
+                @foreach (var group in navGroups)
+                {
+                    <div class="pf-nav-group">
+                        <div class="pf-nav-section">@group.Key.Group</div>
+                        @foreach (var navPage in group.OrderBy(item => item.Order))
+                        {
+                            <a class="pf-route-link" href="@navPage.Route">@navPage.Title</a>
+                        }
+                    </div>
+                }
             }
         </nav>
 
         <div class="pf-sidebar-footer">
             <div class="pf-sidebar-utility-grid">
-                <a class="pf-sidebar-utility" href="/store" target="_blank" rel="noopener">View Store</a>
-                <a class="pf-sidebar-utility" href="/" target="_blank" rel="noopener">Public Site</a>
+                @if (scopedManager)
+                {
+                    <a class="pf-sidebar-utility" href="@storeRoot" target="_blank" rel="noopener">View Store</a>
+                    <a class="pf-sidebar-utility" href="@ScopedUrl("/commerce/manage/preview")" target="commercePreview">Draft Preview</a>
+                }
+                else
+                {
+                    <a class="pf-sidebar-utility" href="/store" target="_blank" rel="noopener">View Store</a>
+                    <a class="pf-sidebar-utility" href="/" target="_blank" rel="noopener">Public Site</a>
+                }
             </div>
 
-            @if (User.Identity?.IsAuthenticated == true)
+            @if (!scopedManager && User.Identity?.IsAuthenticated == true)
             {
                 <form action="@Url.Content("~/internal/logout")" method="post" class="pf-sidebar-logout-form">
                     @Html.AntiForgeryToken()
@@ -71,15 +136,18 @@
             <div class="pf-header-inner">
                 <div class="pf-header-main">
                     <div class="pf-header-left">
-                        <a class="pf-brandmark" href="/internal">
-                            <span class="pf-brand-emblem">
-                                <img src="~/images/favicon/parfait-logo.png"
-                                     asp-append-version="true"
-                                     alt="Parfait"
-                                     class="pf-brand-logo" />
-                            </span>
+                        <a class="pf-brandmark" href="@(scopedManager ? ScopedUrl("/commerce/manage/dashboard") : "/internal")">
+                            @if (!scopedManager)
+                            {
+                                <span class="pf-brand-emblem">
+                                    <img src="~/images/favicon/parfait-logo.png"
+                                         asp-append-version="true"
+                                         alt="Parfait"
+                                         class="pf-brand-logo" />
+                                </span>
+                            }
                             <span class="pf-brandline">
-                                <span class="pf-brand">PARFAIT</span>
+                                <span class="pf-brand">@storeName.ToUpperInvariant()</span>
                             </span>
                         </a>
 
@@ -132,19 +200,15 @@
             });
 
             routeLinks.forEach(link => {
-                const href = normalizePath(link.getAttribute("href"));
-                const isInternalRoute = href.startsWith("/internal");
-                if (isInternalRoute && (currentPath === href || currentPath.startsWith(href + "/"))) {
+                const href = normalizePath(new URL(link.getAttribute("href"), window.location.origin).pathname);
+                if (currentPath === href || currentPath.startsWith(href + "/")) {
                     link.classList.add("is-active");
                 }
-
                 link.addEventListener("click", () => setOpen(false));
             });
 
             document.addEventListener("keydown", event => {
-                if (event.key === "Escape") {
-                    setOpen(false);
-                }
+                if (event.key === "Escape") setOpen(false);
             });
         })();
     </script>

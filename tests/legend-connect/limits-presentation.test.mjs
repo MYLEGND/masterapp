@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 const read=path=>readFileSync(new URL('../../'+path,import.meta.url),'utf8');
 const css=read('AgentPortal/wwwroot/css/legend-connect.css');
+const shared=read('SHARED/wwwroot/css/dashboard-home-shared.css');
 const view=read('AgentPortal/Views/LegendConnect/TranslationLimits.cshtml');
 const index=read('AgentPortal/Views/LegendConnect/Index.cshtml');
 function rule(selector){const start=css.indexOf('\n'+selector+' {')+1;assert(start>0,selector);return css.slice(start,css.indexOf('}',start)+1);}
@@ -14,10 +15,12 @@ test('body-ported dialogs retain one shared token declaration and readable contr
   assert.doesNotMatch(view,/dashboard-command-action|btn-carrier-settings|dashboard-analytics-panel/);
   assert.match(view,/class="lc-button"[^>]*aria-label="Manage @account.DisplayName"/);
 });
-test('limits alone use expanded horizontal width without changing shared viewport bounds',()=>{
+test('limits alone use expanded horizontal width through the shared modal authority',()=>{
   assert.match(index,/class="modal fade lc-section-modal lc-limits-modal" id="translationLimitsModal"/);
-  assert.match(rule('.lc-limits-modal'),/1760px/);
-  assert.match(rule('.lc-section-modal .modal-dialog'),/max-width: var\(--lc-dialog-max-width, 1380px\)/);
+  assert.match(shared,/:is\(\.lc-limits-modal, \.home-clients-hub\)\s*\{[^}]*--legend-desktop-modal-width:\s*min\(1760px,/);
+  assert.match(shared,/width:\s*var\(--legend-desktop-modal-width\);/);
+  assert.doesNotMatch(css,/\.lc-limits-modal\s*\{[^}]*width:/);
+  assert.doesNotMatch(css,/\.lc-section-modal \.modal-dialog\s*\{[^}]*max-width:/);
   assert.equal(index.split('lc-limits-modal').length-1,1);
 });
 test('account grid has a hard three-column ceiling and narrows with actual container width',()=>{

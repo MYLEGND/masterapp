@@ -1,0 +1,32 @@
+@model Shared.PortalShell.PortalShellIdentity
+
+<div class="dropdown">
+    <button class="profile-chip dropdown-toggle"
+            type="button"
+            data-bs-toggle="dropdown"
+            aria-expanded="false"
+            title="@Model.DisplayName">
+        <div class="profile-avatar">
+            <img class="profile-avatar-image"
+                 src="@Model.AvatarUrl"
+                 alt="Profile photo"
+                 loading="eager"
+                 decoding="async" />
+            <span class="profile-avatar-fallback" aria-hidden="true">@Model.Initials</span>
+        </div>
+        <div class="profile-meta">
+            <span class="profile-name">@Model.DisplayName</span>
+            <span class="profile-role-pill">@Model.RoleLabel</span>
+        </div>
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end profile-contact-menu">
+        <li><a class="dropdown-item" href="@Model.ProfileUrl">Edit profile</a></li>
+        <li><hr class="dropdown-divider" /></li>
+        <li>
+            <form action="/Account/Logout" method="post" class="d-inline">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="dropdown-item">Logout</button>
+            </form>
+        </li>
+    </ul>
+</div>

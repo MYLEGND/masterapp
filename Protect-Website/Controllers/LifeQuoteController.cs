@@ -19,13 +19,12 @@ using ProtectWebsite.Services;
 using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Infrastructure.Leads;
-using ProtectWebsite.Services.Meta;
 using Shared.Meta;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
 using ProtectWebsite.Services.Booking;
-using ProtectWebsite.Services.Communication;
 
+using Shared.Analytics;
 namespace Protect_Website.Controllers
 {
     [Route("Quote")]
@@ -41,10 +40,11 @@ namespace Protect_Website.Controllers
         private readonly string clientId;
         private readonly string clientSecret;
         private readonly string senderEmail;
-        private readonly string recipientEmail;
         private readonly string websiteName;
         private readonly string trackingApiBase;
+        private readonly string? founderUpn;
         private readonly AgentTrackingResolver _resolver;
+        private readonly WebsiteIntakeRecipientResolver _intakeRecipients;
         private readonly MasterAppDbContext _db;
         private readonly IMetaPixelResolutionService _metaPixelResolution;
         private readonly IWebsiteLifeLeadCaptureService _websiteLifeLeadCapture;
@@ -52,19 +52,20 @@ namespace Protect_Website.Controllers
         private readonly IPublicBookingConfirmationService _publicBookingConfirmationService;
         private readonly IPublicBookingContextProtector _publicBookingContextProtector;
         private readonly ILogger<LifeQuoteController> _logger;
-        private readonly IProtectEmailSender _emailSender;
+        private readonly IWebsiteInquiryEmailSender _emailSender;
 
-        public LifeQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLifeLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IProtectEmailSender emailSender, ILogger<LifeQuoteController> logger)
+        public LifeQuoteController(IConfiguration configuration, AgentTrackingResolver resolver, WebsiteIntakeRecipientResolver intakeRecipients,
+            MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLifeLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IWebsiteInquiryEmailSender emailSender, ILogger<LifeQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
             clientSecret = configuration["AzureAd:ClientSecret"]!;
             senderEmail = configuration["Contact:SenderEmail"] ?? "connect@mylegnd.com";
-            recipientEmail = configuration["Contact:RecipientEmail"]!;
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
             trackingApiBase = (configuration["Tracking:ApiBase"] ?? "https://portal.mylegnd.com").TrimEnd('/');
+            founderUpn = configuration["Founder:Upn"];
             _resolver = resolver;
+            _intakeRecipients = intakeRecipients;
             _db = db;
             _metaPixelResolution = metaPixelResolution;
             _websiteLifeLeadCapture = websiteLifeLeadCapture;
@@ -112,16 +113,22 @@ namespace Protect_Website.Controllers
 
         // ===================== POST =====================
         [HttpPost("Life")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitLifeQuote(LifeQuoteFormModel model) => SubmitInternal(model, model.OfferKey ?? "life");
         [HttpPost("Term-Life")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitTermLifeQuote(LifeQuoteFormModel model) => SubmitInternal(model, "term");
         [HttpPost("Whole-Life")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitWholeLifeQuote(LifeQuoteFormModel model) => SubmitInternal(model, "wholelife");
         [HttpPost("Final-Expense")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitFinalExpenseQuote(LifeQuoteFormModel model) => SubmitInternal(model, "finalexpense");
         [HttpPost("Mortgage-Protection")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitMortgageQuote(LifeQuoteFormModel model) => SubmitInternal(model, "mortgage");
         [HttpPost("IUL")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitIulQuote(LifeQuoteFormModel model) => SubmitInternal(model, "iul");
         [HttpPost("Life/estimate-preview")]
         public IActionResult EstimatePreview(LifeQuoteFormModel model)
@@ -281,14 +288,15 @@ if (!ModelState.IsValid)
                     MetaAdSetId   = string.IsNullOrWhiteSpace(model.MetaAdSetId) ? null : model.MetaAdSetId.Trim(),
                     MetaAdId      = string.IsNullOrWhiteSpace(model.MetaAdId) ? null : model.MetaAdId.Trim(),
                     Fbclid        = string.IsNullOrWhiteSpace(model.Fbclid)      ? null : model.Fbclid.Trim(),
+                    Oppref        = OpenAiClickReference.Normalize(model.Oppref),
                     ClientIpAddress = !string.IsNullOrWhiteSpace(Request?.Headers["CF-Connecting-IP"].ToString())
                         ? Request!.Headers["CF-Connecting-IP"].ToString()
                         : (!string.IsNullOrWhiteSpace(Request?.Headers["X-Forwarded-For"].ToString())
                             ? Request!.Headers["X-Forwarded-For"].ToString().Split(',')[0].Trim()
                             : HttpContext?.Connection?.RemoteIpAddress?.ToString()),
                     ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
-                    Fbp = Request?.Cookies.TryGetValue("_fbp", out var fbp) == true ? fbp : null,
-                    Fbc = Request?.Cookies.TryGetValue("_fbc", out var fbc) == true ? fbc : null,
+                    Fbp = UnifiedEventContextBuilder.ResolveMarketingCookie(Request, "_fbp"),
+                    Fbc = UnifiedEventContextBuilder.ResolveMarketingCookie(Request, "_fbc"),
                     SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
                     VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
                     MarketingEmailConsent = model.MarketingEmailConsent,
@@ -319,6 +327,8 @@ if (!ModelState.IsValid)
                         AgeRange       = model.AgeRange,
                         UtmId          = model.UtmId,
                         Fbclid         = model.Fbclid,
+                        Oppref         = OpenAiClickReference.Normalize(model.Oppref),
+                        Obref          = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(HttpContext?.Request),
                         UtmTerm        = model.UtmTerm,
                         UtmContent     = model.UtmContent,
                         MetaCampaignId = model.MetaCampaignId,
@@ -377,27 +387,18 @@ if (!ModelState.IsValid)
                     RecommendationSecondaryTitle   = model.RecommendationSecondaryTitle,
                 };
 
-                var submittedCtx = BuildTrackingContext(
-                    pageMode.EffectivePageKey,
+                var submittedCtx = UnifiedEventContextBuilder.BuildWebsiteLead(
+                    HttpContext,
                     lead,
                     "website_lead_submitted",
                     eventMetadata,
-                    pageMode.PageVariant,
-                    pageMode.PageMode,
-                    lead.CreatedUtc);
+                    pageKey: pageMode.EffectivePageKey,
+                    pageVariant: pageMode.PageVariant,
+                    pageMode: pageMode.PageMode,
+                    eventUtc: lead.CreatedUtc);
                 var submittedAnalyticsEvent = UnifiedEventMapper.ToAnalytics(submittedCtx);
                 UnifiedAnalyticsWriter.Write(_db, submittedAnalyticsEvent);
 
-                var persistedCtx = BuildTrackingContext(
-                    pageMode.EffectivePageKey,
-                    lead,
-                    "lead_persisted",
-                    eventMetadata,
-                    pageMode.PageVariant,
-                    pageMode.PageMode,
-                    lead.CreatedUtc);
-                var persistedAnalyticsEvent = UnifiedEventMapper.ToAnalytics(persistedCtx);
-                UnifiedAnalyticsWriter.Write(_db, persistedAnalyticsEvent);
                 await _db.SaveChangesAsync();
 
                         }))
@@ -410,7 +411,7 @@ if (!ModelState.IsValid)
                 pageMode.EffectivePageKey,
                 cfg.OfferKey,
                 HttpContext?.RequestAborted ?? CancellationToken.None);
-                    if (IsAjax()) return Ok(new { success = true, leadId = lead.LeadId.ToString("D"), alreadyCaptured = true, metaLeadEventId = "lead_" + lead.LeadId.ToString("N"), booking = replayBookingHint });
+                    if (IsAjax()) return Ok(new { success = true, leadId = lead.LeadId.ToString("D"), alreadyCaptured = true, metaLeadEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead), booking = replayBookingHint });
                     return RedirectToAction("Index", "ThankYou");
                 }
                 _logger.LogInformation(
@@ -555,7 +556,7 @@ if (!ModelState.IsValid)
                     });
             }
 
-            var metaLeadEventId = "lead_" + lead.LeadId.ToString("N");
+            var metaLeadEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead);
             await TryPersistMetaTrackingAsync(
                 lead,
                 correlationId,
@@ -574,25 +575,27 @@ if (!ModelState.IsValid)
                 });
 
             // ── 2. Send agent/founder notification email ───────────────────────────
-            string? primary = null;
-            if (isAgentContext && !string.IsNullOrWhiteSpace(leadRecipientEmail))
-                primary = leadRecipientEmail.Trim();
-            else if (!isAgentContext && !string.IsNullOrWhiteSpace(recipientEmail))
-                primary = recipientEmail.Trim();
-            else if (!string.IsNullOrWhiteSpace(recipientEmail))
-                primary = recipientEmail.Trim();
-            else if (!string.IsNullOrWhiteSpace(senderEmail))
-                primary = senderEmail.Trim();
+            // The permanent website-owner authority has already resolved the
+            // scoped account's primary email. Do not fall back to global/sender config.
+            string? primary = string.IsNullOrWhiteSpace(leadRecipientEmail)
+                ? null
+                : leadRecipientEmail.Trim();
 
             if (!string.IsNullOrWhiteSpace(primary))
             {
-                var agentEmailSent = await _emailSender.TrySendAsync(
+                var notification = await WebsiteLeadNotificationAuthority.DeliverAsync(
+                    _db,
+                    lead,
                     primary,
-                    $"[LIFE QUOTE — {offerContent.DisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
-                    BuildEmailBody(model, cfg),
-                    replyToEmail: model.Email,
-                    saveToSentItems: true,
-                    cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
+                    token => _emailSender.TrySendAsync(
+                        primary,
+                        $"[LIFE QUOTE — {offerContent.DisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
+                        BuildEmailBody(model, cfg),
+                        replyToEmail: model.Email,
+                        saveToSentItems: true,
+                        cancellationToken: token),
+                    HttpContext?.RequestAborted ?? CancellationToken.None);
+                var agentEmailSent = notification.Sent;
 
                 if (agentEmailSent)
                 {
@@ -727,25 +730,27 @@ if (!ModelState.IsValid)
                     ? "paid_landing"
                     : "site_mode";
 
-                var ctx = BuildTrackingContext(
-                    pageKey,
+                var ctx = UnifiedEventContextBuilder.BuildWebsiteLead(
+                    HttpContext,
                     lead,
                     "meta_browser_event_attempt",
                     analyticsMetadata,
-                    pageVariant,
-                    pageMode);
+                    pageKey: pageKey,
+                    pageVariant: pageVariant,
+                    pageMode: pageMode);
                 var analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
                 UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
 
                 if (string.Equals(normalizedStatus, "sent", StringComparison.OrdinalIgnoreCase))
                 {
-                    var ctxSuccess = BuildTrackingContext(
-                        pageKey,
+                    var ctxSuccess = UnifiedEventContextBuilder.BuildWebsiteLead(
+                        HttpContext,
                         lead,
                         "meta_browser_event_success",
                         analyticsMetadata,
-                        pageVariant,
-                        pageMode);
+                        pageKey: pageKey,
+                        pageVariant: pageVariant,
+                        pageMode: pageMode);
                     var analyticsEventSuccess = UnifiedEventMapper.ToAnalytics(ctxSuccess);
                     UnifiedAnalyticsWriter.Write(_db, analyticsEventSuccess);
                 }
@@ -874,32 +879,12 @@ if (!ModelState.IsValid)
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()
         {
-            var slug = ResolveExplicitAgentSlugFromRequest();
-
-            if (!string.IsNullOrWhiteSpace(slug))
-            {
-                var bySlug = await _resolver.ResolveBySlugAsync(slug, HttpContext?.RequestAborted ?? CancellationToken.None);
-                if (bySlug.Found && bySlug.Profile != null && !string.IsNullOrWhiteSpace(bySlug.Profile.AgentUpn))
-                    return (bySlug.Profile.AgentUpn.Trim(), bySlug.Profile.Id, bySlug.CanonicalSlug, false);
-            }
-
-            var isFounderPath = HttpContext?.Items["IsFounderPath"] as bool? == true;
-            if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
-                trackingProfileObj is AgentTrackingProfile trackingProfile)
-            {
-                var trackingSlug = HttpContext?.Items["TrackingSlug"] as string;
-                var trackingRecipient = !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn)
-                    ? trackingProfile.AgentUpn.Trim()
-                    : recipientEmail;
-
-                return (
-                    isFounderPath ? recipientEmail : trackingRecipient,
-                    trackingProfile.Id,
-                    string.IsNullOrWhiteSpace(trackingSlug) ? trackingProfile.Slug : trackingSlug,
-                    isFounderPath);
-            }
-
-            return (recipientEmail, null, null, isFounderPath);
+            var resolution = await WebsiteLeadOwnerAuthority.ResolveAsync(
+                HttpContext,
+                _resolver,
+                _intakeRecipients,
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+            return (resolution.RecipientEmail, resolution.AgentProfileId, resolution.AgentSlug, resolution.IsFounderPath);
         }
 
         private async Task<LeadAppointment?> UpsertRequestedPublicAppointmentAsync(
@@ -948,6 +933,7 @@ if (!ModelState.IsValid)
                     WorkstationLeadId = intakeLink.WorkstationLeadId,
                     OwnerAgentUserId = intakeLink.AgentUserId,
                     WebsiteLeadIntakeLinkId = intakeLink.Id,
+                    Oppref = OpenAiClickReference.Normalize(intakeLink.Oppref),
                     BookingSource = bookingSource,
                     RequestedBookingSource = bookingSource,
                     CreatedUtc = nowUtc,
@@ -962,6 +948,7 @@ if (!ModelState.IsValid)
                 appointment.WorkstationLeadId = intakeLink.WorkstationLeadId;
                 appointment.OwnerAgentUserId = intakeLink.AgentUserId;
                 appointment.WebsiteLeadIntakeLinkId = intakeLink.Id;
+                appointment.Oppref ??= OpenAiClickReference.Normalize(intakeLink.Oppref);
                 appointment.BookingSource = bookingSource;
                 appointment.RequestedBookingSource = bookingSource;
                 appointment.ConfirmationSource = null;
@@ -1089,36 +1076,7 @@ if (!ModelState.IsValid)
             }
         }
 
-        private static string? ExtractSlugFromPath(string? pathOrUrl)
-        {
-            if (string.IsNullOrWhiteSpace(pathOrUrl)) return null;
-
-            var value = pathOrUrl.Trim();
-            if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
-            {
-                value = uri.AbsolutePath;
-            }
-
-            var segments = value.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length >= 2 && string.Equals(segments[0], "a", StringComparison.OrdinalIgnoreCase))
-            {
-                return segments[1];
-            }
-
-            return null;
-        }
-
-        private string? ResolveExplicitAgentSlugFromRequest()
-        {
-            var formSlug = Request?.Form["AgentSlug"].ToString();
-            if (!string.IsNullOrWhiteSpace(formSlug))
-                return formSlug.Trim();
-
-            return ExtractSlugFromPath(Request?.Path.Value)
-                ?? ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
-        }
-
-        // ── Server-side product content (mirrors JS PRODUCT_CONTENT) ─────────────
+// ── Server-side product content (mirrors JS PRODUCT_CONTENT) ─────────────
         private sealed record RecContent(string Title, string Description, string[] Bullets);
 
         private static readonly IReadOnlyDictionary<string, RecContent> RecContentMap =
@@ -1722,28 +1680,7 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
             model.AgeRange = Clean(model.AgeRange) ?? (model.Age.HasValue ? model.Age.Value.ToString(CultureInfo.InvariantCulture) : null);
         }
 
-        private bool HasExplicitAgentContext()
-        {
-            if (HttpContext?.Items["TrackingProfile"] is AgentTrackingProfile)
-            {
-                return true;
-            }
-
-            var requestMethod = Request?.Method;
-            if (string.IsNullOrWhiteSpace(requestMethod) || !Microsoft.AspNetCore.Http.HttpMethods.IsPost(requestMethod))
-            {
-                return false;
-            }
-
-            string? slug = null;
-            var formSlug = Request?.Form["AgentSlug"].ToString();
-            if (!string.IsNullOrWhiteSpace(formSlug)) slug = formSlug.Trim();
-            if (string.IsNullOrWhiteSpace(slug)) slug = ExtractSlugFromPath(Request?.Path.Value);
-            if (string.IsNullOrWhiteSpace(slug)) slug = ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
-            return !string.IsNullOrWhiteSpace(slug);
-        }
-
-        private static string ResolveAgentDisplayName(AgentProfile? agentProfile, AgentTrackingProfile trackingProfile)
+private static string ResolveAgentDisplayName(AgentProfile? agentProfile, AgentTrackingProfile trackingProfile)
         {
             if (!string.IsNullOrWhiteSpace(agentProfile?.FullName))
             {
@@ -1821,46 +1758,18 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
 
         private async Task<LifeWizardAgentTrustProfile?> BuildAgentTrustProfileAsync(CancellationToken ct)
         {
-            if (!HasExplicitAgentContext())
-            {
+            var owner = await ProtectWebsiteOwnerResolver.ResolveAsync(
+                HttpContext,
+                _resolver,
+                founderUpn,
+                ct: ct);
+            if (owner is null || owner.IsFounder)
                 return null;
-            }
 
-            var trackingProfile = HttpContext?.Items["TrackingProfile"] as AgentTrackingProfile;
-            string? agentSlug = HttpContext?.Items["TrackingSlug"] as string;
-
-            if ((trackingProfile == null || string.IsNullOrWhiteSpace(agentSlug)))
-            {
-                string? requestedSlug = null;
-                var formSlug = Request?.Form["AgentSlug"].ToString();
-                if (!string.IsNullOrWhiteSpace(formSlug))
-                {
-                    requestedSlug = formSlug.Trim();
-                }
-                if (string.IsNullOrWhiteSpace(requestedSlug))
-                {
-                    requestedSlug = ExtractSlugFromPath(Request?.Path.Value);
-                }
-                if (string.IsNullOrWhiteSpace(requestedSlug))
-                {
-                    requestedSlug = ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
-                }
-
-                if (!string.IsNullOrWhiteSpace(requestedSlug))
-                {
-                    var resolved = await _resolver.ResolveBySlugAsync(requestedSlug, ct);
-                    if (resolved.Found && resolved.Profile != null)
-                    {
-                        trackingProfile = resolved.Profile;
-                        agentSlug = resolved.CanonicalSlug ?? requestedSlug;
-                    }
-                }
-            }
-
-            if (trackingProfile == null || string.IsNullOrWhiteSpace(agentSlug))
-            {
-                return null;
-            }
+            var trackingProfile = owner.Profile;
+            var agentSlug = string.IsNullOrWhiteSpace(owner.Slug)
+                ? trackingProfile.Slug
+                : owner.Slug;
 
             var agentProfile = await ResolveAgentProfileAsync(trackingProfile, ct);
 
@@ -2145,44 +2054,7 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
             };
         }
 
-        private UnifiedEventContext BuildTrackingContext(
-            string quoteKey,
-            WebsiteLead lead,
-            string eventType,
-            object metadata,
-            string pageVariant,
-            string pageMode,
-            DateTime? eventUtc = null,
-            string? quoteType = null)
-        {
-            return UnifiedEventContextBuilder.Build(
-                httpContext: HttpContext,
-                eventName: eventType,
-                eventUtc: eventUtc,
-                sessionId: lead.SessionId,
-                visitorId: lead.VisitorId,
-                pageKey: quoteKey,
-                effectivePageKey: quoteKey,
-                pageVariant: pageVariant,
-                pageMode: pageMode,
-                utmSource: lead.UtmSource,
-                utmMedium: lead.UtmMedium,
-                utmCampaign: lead.UtmCampaign,
-                utmId: lead.UtmId,
-                metaCampaignId: lead.MetaCampaignId,
-                metaAdSetId: lead.MetaAdSetId,
-                metaAdId: lead.MetaAdId,
-                fbclid: lead.Fbclid,
-                agentSlug: lead.AgentSlug,
-                agentTrackingProfileId: lead.AgentTrackingProfileId,
-                isInternal: lead.IsInternal,
-                environment: lead.Environment,
-                host: lead.Host,
-                quoteType: string.IsNullOrWhiteSpace(quoteType) ? lead.InterestType : quoteType,
-                metadata: metadata);
-        }
-
-        private async Task TryWriteLeadPipelineEventAsync(
+private async Task TryWriteLeadPipelineEventAsync(
             WebsiteLead lead,
             string quoteType,
             WizardPageMode pageMode,
@@ -2193,15 +2065,16 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
             AnalyticsEvent? analyticsEvent = null;
             try
             {
-                var ctx = BuildTrackingContext(
-                    pageMode.EffectivePageKey,
+                var ctx = UnifiedEventContextBuilder.BuildWebsiteLead(
+                    HttpContext,
                     lead,
                     eventType,
                     metadata,
-                    pageMode.PageVariant,
-                    pageMode.PageMode,
-                    DateTime.UtcNow,
-                    quoteType);
+                    pageKey: pageMode.EffectivePageKey,
+                    pageVariant: pageMode.PageVariant,
+                    pageMode: pageMode.PageMode,
+                    eventUtc: DateTime.UtcNow,
+                    quoteType: quoteType);
                 analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
                 UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
 

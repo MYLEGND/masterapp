@@ -374,6 +374,22 @@ internal object FinancialPresentationOrder {
 @Serializable data class ControlledResourceGrantRequest(@SerialName("targetUserId") val targetUserId: String, @SerialName("targetParticipantType") val targetParticipantType: String, @SerialName("isGranted") val isGranted: Boolean)
 @Serializable data class MessagingVerificationRequest(val id: String, val status: String, @SerialName("requestedUtc") val requestedUtc: String, @SerialName("resourceType") val resourceType: String)
 @Serializable data class MessagingActivityNotification(val id: String, val kind: String, val title: String, val detail: String, @SerialName("occurredUtc") val occurredUtc: String, @SerialName("controlledResourceRequestId") val controlledResourceRequestId: String? = null)
+@Serializable data class FounderEngineeringActionItem(
+    @SerialName("workItemId") val workItemId: String,
+    @SerialName("attentionKind") val attentionKind: String,
+    val title: String,
+    val summary: String,
+    @SerialName("actionStep") val actionStep: String,
+    @SerialName("requiresFounderAction") val requiresFounderAction: Boolean,
+    @SerialName("primaryAction") val primaryAction: String? = null,
+    @SerialName("primaryActionLabel") val primaryActionLabel: String? = null,
+    @SerialName("secondaryAction") val secondaryAction: String? = null,
+    @SerialName("secondaryActionLabel") val secondaryActionLabel: String? = null,
+    @SerialName("technicalSummary") val technicalSummary: String,
+    @SerialName("updatedUtc") val updatedUtc: String,
+)
+@Serializable data class FounderEngineeringDecisionRequest(val decision: String)
+@Serializable data class FounderEngineeringDecisionResponse(val ok: Boolean = false)
 @Serializable data class CommunicationLanguage(val code: String, @SerialName("displayName") val displayName: String)
 @Serializable data class MessagingRecipient(
     val identity: MobileIdentity,

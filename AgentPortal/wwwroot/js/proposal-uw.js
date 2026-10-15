@@ -624,7 +624,7 @@
     overlay.hidden = false;
     overlay.scrollTop = 0;
     if (dialog) dialog.scrollTop = 0;
-    document.body.classList.add("uw-open");
+    
     dialog?.focus();
     syncContextLabel();
     if (editingId || source?.id) {
@@ -636,7 +636,7 @@
 
   function closeModal() {
     overlay.hidden = true;
-    document.body.classList.remove("uw-open");
+    
     editingId = null;
     draftId = null;
     editingLeadId = "";

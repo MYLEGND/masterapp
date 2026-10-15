@@ -104,6 +104,36 @@ public sealed class LegendFounderAiInspectionRegressionTests
     }
 
     [Fact]
+    public void BroadFounderConfirmation_DoesNotClassifyACloudflareReadAsAReviewedAction()
+    {
+        var assemblyBytes = File.ReadAllBytes(typeof(LegendFounderAiConversationService).Assembly.Location);
+        var rejectedMessage = System.Text.Encoding.Unicode.GetBytes(
+            "Cloudflare consequential actions require the separate reviewed-action approval path. This operation was not executed.");
+
+        Assert.False(assemblyBytes.AsSpan().IndexOf(rejectedMessage) >= 0);
+        Assert.NotNull(typeof(LegendFounderAiConversationService)
+            .GetMethod("ExecuteReviewedCloudActionAsync", BindingFlags.NonPublic | BindingFlags.Instance));
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, true)]
+    public void CloudflareGovernedInspection_RequiresExecutableReadReceipt(
+        bool requiresGovernedInspection,
+        bool hasCloudTools,
+        bool expected)
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("ResolveCloudflareToolRequirement", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+        Assert.Equal(expected, Assert.IsType<bool>(
+            method!.Invoke(null, new object[] { requiresGovernedInspection, hasCloudTools })));
+    }
+
+    [Fact]
     public void ConfiguredProviderReasoning_PreservesSupportedMaximumEffort()
     {
         var method = typeof(LegendFounderAiConversationService)

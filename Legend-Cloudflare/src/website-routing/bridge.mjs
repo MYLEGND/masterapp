@@ -1,13 +1,30 @@
 const PLATFORM_ZONE = "mylegnd.com";
-const DEFAULT_ORIGIN = "https://masterapp-protect.azurewebsites.net";
+const DEFAULT_WEBSITE_ORIGIN = "https://masterapp-protect.azurewebsites.net";
+const DEFAULT_COMMERCE_ORIGIN = "https://masterapp-parfait.azurewebsites.net";
+
+const COMMERCE_PLATFORM_HOSTS = new Set([
+  "mylegnd.com",
+  "www.mylegnd.com",
+  "protect.mylegnd.com"
+]);
 
 function isPlatformHost(hostname) {
   const host = (hostname || "").toLowerCase();
   return host === PLATFORM_ZONE || host.endsWith("." + PLATFORM_ZONE);
 }
 
-function validatedOrigin(raw) {
-  const value = (raw || DEFAULT_ORIGIN).trim();
+function isCommerceTransportPath(pathname) {
+  const path = pathname || "/";
+  return path === "/store" ||
+    path.startsWith("/store/") ||
+    path.startsWith("/commerce/manage/") ||
+    path.startsWith("/store-assets/") ||
+    path.startsWith("/uploads/parfait-products/") ||
+    path.startsWith("/parfait-analytics/");
+}
+
+function validatedOrigin(raw, fallback) {
+  const value = (raw || fallback).trim();
   let url;
   try {
     url = new URL(value);
@@ -31,7 +48,10 @@ export function buildBridgeRequest(request, env) {
     return { error: new Response("Website routing is temporarily unavailable.", { status: 503 }) };
   }
 
-  const origin = validatedOrigin(env?.LEGEND_WEBSITE_ORIGIN);
+  const commerce = isCommerceTransportPath(incoming.pathname);
+  const origin = commerce
+    ? validatedOrigin(env?.LEGEND_COMMERCE_ORIGIN, DEFAULT_COMMERCE_ORIGIN)
+    : validatedOrigin(env?.LEGEND_WEBSITE_ORIGIN, DEFAULT_WEBSITE_ORIGIN);
   if (!origin) {
     return { error: new Response("Website routing is temporarily unavailable.", { status: 503 }) };
   }
@@ -46,6 +66,7 @@ export function buildBridgeRequest(request, env) {
   headers.set("X-Legend-Website-Bridge", secret);
 
   return {
+    commerce,
     request: new Request(upstream, {
       headers,
       redirect: "manual"
@@ -55,21 +76,40 @@ export function buildBridgeRequest(request, env) {
 
 export async function handleWebsiteRouting(request, env, fetchImpl = fetch) {
   const incoming = new URL(request.url);
-
-  // The wildcard route exists only so Cloudflare-for-SaaS vanity domains reach
-  // this transport. LEGEND-owned hosts retain their existing DNS/origin paths.
-  if (isPlatformHost(incoming.hostname)) {
-    return fetchImpl(request);
-  }
+  const hostname = incoming.hostname.toLowerCase();
+  const commerce = isCommerceTransportPath(incoming.pathname);
 
   if (incoming.protocol !== "https:") {
     incoming.protocol = "https:";
     return Response.redirect(incoming.toString(), 308);
   }
 
+  // Normal LEGEND-owned traffic retains its existing origins. The only first-party
+  // routes transported to the commerce authority are the explicit public storefront
+  // hosts. Portal/client are never redirected through commerce.
+  if (isPlatformHost(hostname) &&
+      !(commerce && COMMERCE_PLATFORM_HOSTS.has(hostname))) {
+    return fetchImpl(request);
+  }
+
   const bridged = buildBridgeRequest(request, env);
   if (bridged.error) return bridged.error;
-  return fetchImpl(bridged.request);
+  const response = await fetchImpl(bridged.request);
+
+  // Website Studio embeds the scoped commerce manager on the LEGEND website
+  // origin. Do not allow an upstream platform X-Frame-Options header to
+  // override the manager controller's reviewed frame-ancestors policy.
+  if (incoming.pathname.startsWith("/commerce/manage/")) {
+    const headers = new Headers(response.headers);
+    headers.delete("X-Frame-Options");
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers
+    });
+  }
+
+  return response;
 }
 
 export default {

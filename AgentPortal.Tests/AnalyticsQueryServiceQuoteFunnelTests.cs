@@ -226,7 +226,8 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "quote_entry_engaged" && metric.Count == 1);
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "form_started" && metric.Count == 1);
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "contact_step_viewed" && metric.Count == 1);
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "lead_confirmed" && metric.Count == 1);
+        Assert.DoesNotContain(dto.StageMetrics, metric => metric.StageKey == "lead_confirmed");
+        Assert.Equal(0, dto.QuoteFormSubmits);
     }
 
     [Fact]
@@ -318,12 +319,17 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         var service = BuildService(db);
         var dto = await service.GetQuoteFunnelAsync(BuildRange(now), ScopeContext.Global);
 
-        Assert.Equal((1, 1, 1), (dto.QuoteStarts, dto.QuoteFormStarts, dto.QuoteFormSubmits));
+        Assert.Equal((1, 1, 0), (dto.QuoteStarts, dto.QuoteFormStarts, dto.QuoteFormSubmits));
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "quote_entry_engaged" && metric.Count == 1);
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "form_started" && metric.Count == 1);
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "discovery_steps_completed" && metric.Count == 1);
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "contact_step_viewed" && metric.Count == 1);
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "lead_confirmed" && metric.Count == 1);
+        Assert.DoesNotContain(dto.StageMetrics, metric => metric.StageKey == "lead_confirmed");
+        db.AnalyticsEvents.Add(E("website_lead_submitted", now.AddMinutes(-9), "alias-1", formKey: "quote_life_form", quoteType: "life"));
+        await db.SaveChangesAsync();
+        var confirmed = await service.GetQuoteFunnelAsync(BuildRange(now), ScopeContext.Global);
+        Assert.Equal(1, confirmed.QuoteFormSubmits);
+        Assert.Contains(confirmed.StageMetrics, metric => metric.StageKey == "lead_confirmed" && metric.Count == 1);
     }
 
     [Fact]
