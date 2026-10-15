@@ -1,0 +1,41 @@
+# Founder approval lock for the LEGEND protected governance and release-control plane.
+#
+# This file changes no runtime, validation, publication, finalization, recovery,
+# deployment, or application behavior. It designates the Founder account as the
+# required code owner for protected governance/release surfaces when the repository
+# ruleset has "Require review from Code Owners" enabled.
+#
+# Protect this file itself so the ownership boundary cannot be weakened by an
+# ordinary change.
+.github/CODEOWNERS @MYLEGND
+
+# Canonical AI/governance contracts.
+AGENTS.md @MYLEGND
+.github/copilot-instructions.md @MYLEGND
+.github/agents/** @MYLEGND
+
+# All GitHub Actions workflows are governance-sensitive because a new or modified
+# workflow could introduce an alternate validation, mutation, merge, migration,
+# publication, or deployment authority.
+.github/workflows/** @MYLEGND
+
+# Canonical deployment/release operating contracts and lifecycle documentation.
+DEPLOYMENT.md @MYLEGND
+Docs/releases/** @MYLEGND
+
+# Canonical release/deployment/validation authorities, evidence transport, and
+# anti-drift regression tests. Patterns intentionally cover future members of
+# these authority families.
+scripts/release-* @MYLEGND
+scripts/deploy-* @MYLEGND
+scripts/validation-* @MYLEGND
+scripts/approved-release-baseline.py @MYLEGND
+scripts/wake-release-lifecycle.py @MYLEGND
+scripts/test-release-* @MYLEGND
+scripts/test-validation-resume.py @MYLEGND
+
+# Retired alternate deployment paths remain Founder-owned if anyone attempts
+# to recreate them.
+deploy-portal.sh @MYLEGND
+AgentPortal/deploy-* @MYLEGND
+.claude/settings.local.json @MYLEGND
