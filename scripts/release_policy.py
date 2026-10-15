@@ -46,6 +46,14 @@ def production_disabled(sha='HEAD'):
 # A promotion is a narrowly bound use of the existing validation-only request.
 # This is a tool boundary, not an alternative application ownership registry.
 TRUSTED_TOOL_PATHS = frozenset({
+    'AgentPortal/AgentPortal.csproj',
+    'AgentPortal.Tests/AgentPortal.Tests.csproj',
+    'scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj',
+    'AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs',
+    'tests/layout/modal-content-region.test.mjs',
+    'scripts/deploy-approved-app.py',
+    '.github/workflows/masterapp-platform-architecture-validation.yml',
+    '.github/workflows/parfait-isolated-validation.yml',
     '.github/workflows/parfait-cutover-live-readonly.yml',
     '.github/workflows/legend-fast-track-ui.yml',
     '.github/workflows/legend-release-lifecycle.yml',
@@ -127,6 +135,29 @@ def trusted_tool_promotion(before, revision, admission):
         addition = '    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />\n'
         if current.count(addition) != 1 or current.replace(addition, '') != prior:
             raise ValueError('TRUSTED_TOOL_PROMOTION_DEPENDENCY_SCOPE_UNPROVEN')
+    # Only the Founder-approved security pins may change in these project files.
+    security_patches = {
+        'AgentPortal/AgentPortal.csproj': ('MessagePack', '3.1.7', '3.1.9'),
+        'AgentPortal.Tests/AgentPortal.Tests.csproj': ('System.Security.Cryptography.Xml', '10.0.10', '10.0.13'),
+        'scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj': ('System.Security.Cryptography.Xml', '10.0.10', '10.0.13'),
+    }
+    for dependency, (package, old, new) in security_patches.items():
+        if dependency not in files:
+            continue
+        prior, current = git('show', before + ':' + dependency), git('show', revision + ':' + dependency)
+        old_ref = f'<PackageReference Include="{package}" Version="{old}" />'
+        new_ref = f'<PackageReference Include="{package}" Version="{new}" />'
+        if (prior.count(old_ref) != 1 or current.count(new_ref) != 1
+                or prior.replace(old_ref, new_ref) != current):
+            raise ValueError('TRUSTED_TOOL_PROMOTION_SECURITY_PACKAGE_SCOPE_UNPROVEN')
+    # Reuse only the independently accepted default-favicon fixture correction.
+    fixture = 'AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs'
+    if fixture in files and files[fixture]['blob'] != 'a380649c2168e7e67b391be1147ecc40b55c0024':
+        raise ValueError('TRUSTED_TOOL_PROMOTION_FIXTURE_SCOPE_UNPROVEN')
+    # Pin the accepted mobile harness correction; never admit arbitrary test changes.
+    mobile_fixture = 'tests/layout/modal-content-region.test.mjs'
+    if mobile_fixture in files and files[mobile_fixture]['blob'] != 'c21b130bda415433686f01ece3111afe52aa217a':
+        raise ValueError('TRUSTED_TOOL_PROMOTION_MOBILE_FIXTURE_SCOPE_UNPROVEN')
     request_entry = entry(revision, REQUEST)
     if request_entry['mode'] != entry(before, REQUEST)['mode']:
         raise ValueError('TRUSTED_TOOL_PROMOTION_REQUEST_MODE_CHANGED')

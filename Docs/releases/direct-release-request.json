@@ -1,16 +1,105 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization to complete PR #551 and the canonical migration-to-live release flow, apply only the currently proven pending migration through the governed transaction, and publish the canonically affected targets after exact-head validation and readiness.",
-  "purpose": "Resume the existing authorized five-target publication after release 37954422758 stopped on database activity. Preserve compatible validation, immutable application components, rollback evidence, and completed migrations. Correct only the canonical read-only activity boundary, reconcile current database history and physical schema without migration replay, and require durable target receipts and live acceptance.",
-  "requestId": "founder-pr551-migration-activity-resume-20261009",
-  "releaseMode": "approved-only",
-  "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect",
-    "masterapp-parfait",
-    "masterapp-website"
-  ],
+  "authorization": "Founder authorization 2026-10-15: prepare, publish and validate the tool-only promotion with exact security package corrections and accepted fixture dependencies. Separate Founder merge authorization remains required. No Production writes or deployment authorized.",
+  "purpose": "Install candidate-aware trusted read-only observation and nonpublishing admission tools with required CI producer and source-admission dependencies. Preserve revenue PR 626 unchanged.",
+  "requestId": "founder-trusted-tools-pr627-security-mobile-20261015",
+  "releaseMode": "validate-only",
+  "targets": [],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false
+  "preserveLiveTargets": false,
+  "trustedToolPromotion": {
+    "schemaVersion": 1,
+    "baseRevision": "dc10c7aabbba6cd5b516071c9e16d32dafeba9a6",
+    "sourceRevision": "4c2f602c5b94dddfa60508065bcedbb0781b155f",
+    "files": {
+      ".github/workflows/legend-fast-track-ui.yml": {
+        "mode": "100644",
+        "blob": "5fe80f25cde69faf64d638f95bbe34700816a691"
+      },
+      ".github/workflows/legend-release-lifecycle.yml": {
+        "mode": "100644",
+        "blob": "ff2233bcb41e998013aeaec58a525c8521a93622"
+      },
+      ".github/workflows/masterapp-platform-architecture-validation.yml": {
+        "mode": "100644",
+        "blob": "6854b3b57bface7313d7c9235c47702363aae52c"
+      },
+      ".github/workflows/parfait-cutover-live-readonly.yml": {
+        "mode": "100644",
+        "blob": "0d4842713639b5196ef3b4a85653b1ca6c486344"
+      },
+      ".github/workflows/parfait-isolated-validation.yml": {
+        "mode": "100644",
+        "blob": "1de34440baf7389dbb53aeba8331c17c392a8349"
+      },
+      "AgentPortal.Tests/AgentPortal.Tests.csproj": {
+        "mode": "100644",
+        "blob": "792d290c5144b5eb8b6f115e21559b169ae8b042"
+      },
+      "AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs": {
+        "mode": "100644",
+        "blob": "a380649c2168e7e67b391be1147ecc40b55c0024"
+      },
+      "AgentPortal/AgentPortal.csproj": {
+        "mode": "100644",
+        "blob": "e0bc67e0ad169b34a35c284167c42503ec7b7585"
+      },
+      "Infrastructure/Infrastructure.csproj": {
+        "mode": "100644",
+        "blob": "796a87b7dec3c09ae911d26e68a4c04866bcd9b6"
+      },
+      "scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj": {
+        "mode": "100644",
+        "blob": "399b89005fc2ded907effc5c8a48cc8ce23eda25"
+      },
+      "scripts/deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "db3d5407d5a9c4afabe9f96943203b22770298b2"
+      },
+      "scripts/migration-probe-package.py": {
+        "mode": "100644",
+        "blob": "56ea2111afedd603795d24f330d11b3f33dc99ef"
+      },
+      "scripts/release-lifecycle.py": {
+        "mode": "100644",
+        "blob": "471143815fe5187d05b10fc498498bd3c9615a22"
+      },
+      "scripts/release_policy.py": {
+        "mode": "100644",
+        "blob": "3fcda9d836ca3b8cb67b83e9f92de6d116ffda65"
+      },
+      "scripts/test-fast-track-release.py": {
+        "mode": "100644",
+        "blob": "49090f324562951009ad3fe9aef227136c94bf35"
+      },
+      "scripts/test-migration-probe-package.py": {
+        "mode": "100644",
+        "blob": "9dd919abb09b9e3ec1d6769f0bc13db2b7f27f4a"
+      },
+      "scripts/test-parfait-readonly-workflow.py": {
+        "mode": "100644",
+        "blob": "ed7e716eeda8926c0ea3efef19feb745fb97eb94"
+      },
+      "scripts/test-release-lifecycle.py": {
+        "mode": "100644",
+        "blob": "f4dbb5351380e50d3da34c7f9fb675e5fc2370d5"
+      },
+      "scripts/test-release-policy.py": {
+        "mode": "100644",
+        "blob": "4c623c828bc678dff17c9bf70b9dc669b796a3b2"
+      },
+      "scripts/test-validation-resume.py": {
+        "mode": "100644",
+        "blob": "1e663bdbf148061c0fec14d15a945f8afebccddf"
+      },
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "4e400ce2260e538e59de1005e9108440fd99765d"
+      },
+      "tests/layout/modal-content-region.test.mjs": {
+        "mode": "100644",
+        "blob": "c21b130bda415433686f01ece3111afe52aa217a"
+      }
+    }
+  }
 }
