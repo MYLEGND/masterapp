@@ -1110,5 +1110,109 @@ class ReleasePolicy(unittest.TestCase):
             self.assertIn('validate_only=true', output.read_text())
 
 
+class TrustedToolPromotionPolicyTests(unittest.TestCase):
+    def fixture(self, path='Infrastructure/Infrastructure.csproj', prior=None, current=None, blob=None):
+        import release_policy as owner
+        base,head,source='a'*40,'b'*40,'c'*40
+        blob=blob or 'd'*40
+        marker=dict(schemaVersion=1,baseRevision=base,sourceRevision=source,
+            files={path:dict(mode='100644',blob=blob)})
+        request=dict(trustedToolPromotion=marker,releaseMode='validate-only',targets=[],
+            cloudflareWebsiteRouting=False,preserveLiveTargets=False,requestedBy='Founder',
+            requestId='exact-reviewed-promotion',authorization='Founder exact source authorization')
+        admission=dict(executionAuthority=head,candidate=source,sourcePr=626,
+            validation={key:{} for key in ('approved-release-security-validation.yml',
+                'masterapp-platform-architecture-validation.yml','parfait-isolated-validation.yml')})
+        def git(args,**kwargs):
+            command=args[1]
+            if command=='rev-list':out=' '.join((head,base,source))
+            elif command=='diff':out='M\0'+path+'\0M\0'+owner.REQUEST+'\0'
+            elif command=='ls-tree':out='100644 blob '+blob+'\t'+args[-1]+'\0'
+            elif command=='show' and prior is not None and current is not None:
+                out=prior if args[2].startswith(base) else current
+            elif command=='show':
+                out='<Project>\n</Project>\n' if args[2].startswith(base) else '<Project>\n    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />\n</Project>\n'
+            else:raise AssertionError(args)
+            return SimpleNamespace(returncode=0,stdout=out)
+        return owner,base,head,source,request,admission,git
+
+    def invoke(self, mutate=None, git_mutate=None, fixture_kw=None):
+        owner,base,head,source,request,admission,git=self.fixture(**(fixture_kw or {}))
+        previous={'requestId':'older'}
+        if mutate:mutate(request,admission,previous)
+        def run(args,**kw):
+            result=git(args,**kw)
+            return git_mutate(args,result) if git_mutate else result
+        with patch.object(owner,'read_request',side_effect=lambda sha:request if sha==head else previous),patch.object(owner.subprocess,'run',side_effect=run):
+            return owner.trusted_tool_promotion(base,head,admission)
+
+    def test_exact_dependency_promotion_is_nonpublishing(self):
+        proof=self.invoke();self.assertFalse(proof['productionEligible']);self.assertFalse(proof['authorizesMutation'])
+
+    def test_unbound_replayed_or_app_marker_rejected(self):
+        changes=[lambda r,a,p:r.update(trustedToolPromotion=None),
+            lambda r,a,p:r['trustedToolPromotion'].update(baseRevision='f'*40),
+            lambda r,a,p:p.update(requestId=r['requestId']),
+            lambda r,a,p:a.update(executionAuthority='f'*40),
+            lambda r,a,p:r.update(targets=['website']),
+            lambda r,a,p:r['trustedToolPromotion']['files'].update({'AgentPortal/Program.cs':dict(mode='100644',blob='d'*40)})]
+        for change in changes:
+            with self.subTest(change=change),self.assertRaises(ValueError):self.invoke(change)
+
+    def test_missing_object_mode_blob_rename_delete_and_dependency_change_reject(self):
+        def mutate(kind):
+            def change(args,result):
+                if kind=='missing':return SimpleNamespace(returncode=128,stdout='')
+                if args[1]=='ls-tree' and kind in ('symlink','blob','chmod'):
+                    result.stdout=result.stdout.replace('100644', '120000' if kind=='symlink' else '100755') if kind!='blob' else result.stdout.replace('d'*40,'e'*40)
+                if args[1]=='diff' and kind in ('rename','delete'):result.stdout=result.stdout.replace('M\0','R\0' if kind=='rename' else 'D\0',1)
+                if args[1]=='show' and kind=='dependency' and args[2].startswith('b'*40):result.stdout+='<!-- unrelated -->\n'
+                return result
+            return change
+        for kind in ('missing','symlink','blob','chmod','rename','delete','dependency'):
+            with self.subTest(kind=kind),self.assertRaises(ValueError):self.invoke(git_mutate=mutate(kind))
+
+
+    def test_security_pins_are_nonpublishing_and_reject_unrelated_project_changes(self):
+        cases = (
+            ('AgentPortal/AgentPortal.csproj', 'MessagePack', '3.1.7', '3.1.9'),
+            ('AgentPortal.Tests/AgentPortal.Tests.csproj', 'System.Security.Cryptography.Xml', '10.0.10', '10.0.13'),
+            ('scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj', 'System.Security.Cryptography.Xml', '10.0.10', '10.0.13'),
+        )
+        for path, package, old, new in cases:
+            ref = f'<PackageReference Include="{package}" Version="{old}" />'
+            prior = '<Project>' + ref + '</Project>'
+            current = prior.replace(old, new)
+            with self.subTest(path=path):
+                proof = self.invoke(fixture_kw=dict(path=path, prior=prior, current=current))
+                self.assertFalse(proof['productionEligible'])
+                self.assertFalse(proof['authorizesMutation'])
+            for bad_prior, bad_current in (
+                (prior, prior),
+                (current, prior),
+                (prior, current.replace(new, '99.0.0')),
+                (prior, current.replace('/>', ' Condition="true" />')),
+                (prior, current.replace('</Project>', '<ProjectReference Include="other.csproj" /></Project>')),
+                (prior, current.replace('</Project>', ref.replace(old, new) + '</Project>')),
+                (prior, current + '<!-- unrelated change -->'),
+                (prior.replace('</Project>', ref + '</Project>'), current),
+            ):
+                with self.subTest(path=path, current=bad_current), self.assertRaisesRegex(ValueError, 'SECURITY_PACKAGE_SCOPE_UNPROVEN'):
+                    self.invoke(fixture_kw=dict(path=path, prior=bad_prior, current=bad_current))
+
+    def test_only_accepted_favicon_fixture_blob_is_admitted(self):
+        path = 'AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs'
+        proof = self.invoke(fixture_kw=dict(path=path, blob='a380649c2168e7e67b391be1147ecc40b55c0024'))
+        self.assertFalse(proof['productionEligible'])
+        with self.assertRaisesRegex(ValueError, 'FIXTURE_SCOPE_UNPROVEN'):
+            self.invoke(fixture_kw=dict(path=path))
+
+    def test_only_accepted_mobile_fixture_blob_is_admitted(self):
+        path='tests/layout/modal-content-region.test.mjs'
+        proof=self.invoke(fixture_kw=dict(path=path,blob='c21b130bda415433686f01ece3111afe52aa217a'))
+        self.assertFalse(proof['productionEligible']); self.assertFalse(proof['authorizesMutation'])
+        with self.assertRaisesRegex(ValueError,'MOBILE_FIXTURE_SCOPE_UNPROVEN'):
+            self.invoke(fixture_kw=dict(path=path))
+
 if __name__ == '__main__':
     unittest.main()

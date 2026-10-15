@@ -853,8 +853,8 @@ def fast_track_deploy(key, package_root):
         scope = _RELEASE_AUTHORITY.website_only_recovery_scope(scope)
     if TARGETS[key]['releaseName'] not in {r['azure_app'] for r in scope['matrix']['include']}:
         raise ValueError('FAST_TRACK_TARGET_OUTSIDE_SCOPE')
+    _RELEASE_AUTHORITY.fast_track_source_admission()
     if scope['commerce']:
-        _RELEASE_AUTHORITY.fast_track_source_admission()
         fast_track_migration_gate(run)
     package = package_root / 'deploy.zip'
     digest = verify_package(package, revision, TARGETS[key]['static'])

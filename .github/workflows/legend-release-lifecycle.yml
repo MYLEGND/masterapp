@@ -33,6 +33,26 @@ permissions:
   actions: read
 
 jobs:
+  lifecycle-admission:
+    name: Authenticate lifecycle event before write-capable maintenance
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      admitted: ${{ steps.event.outputs.admitted }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: legend/approved-changes
+          persist-credentials: false
+      - name: Admit only exact approved lifecycle events
+        id: event
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release-lifecycle.py event-admit
+
   readiness-observe:
     # Read-only production observation uses only approved code. Candidate
     # assemblies stay opaque; only their bounded declarative contract is read.
@@ -125,15 +145,17 @@ jobs:
           if-no-files-found: error
 
   maintain:
+    needs: lifecycle-admission
     concurrency:
       group: legend-release-lifecycle
       cancel-in-progress: false
     # Never grant this job to a fork, draft, or untrusted PR author.
     if: >-
-      github.event_name != 'pull_request_target' ||
-      (github.event.pull_request.draft == false &&
-       github.event.pull_request.head.repo.full_name == github.repository &&
-       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))
+      needs.lifecycle-admission.outputs.admitted == 'true' &&
+      (github.event_name != 'pull_request_target' ||
+       (github.event.pull_request.draft == false &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -264,6 +286,19 @@ jobs:
           path: ${{ runner.temp }}/branch-cleanup.json
           retention-days: 30
           if-no-files-found: warn
+  diagnose:
+    name: Read-only completed workflow diagnosis
+    if: always() && github.event_name == 'workflow_run'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: legend/approved-changes
+          persist-credentials: false
       # Read-only authenticated observer for *all* canonical validation
       # workflows and the direct-release workflow. Never grants write authority.
       - name: Diagnose completed validation-to-publication failures

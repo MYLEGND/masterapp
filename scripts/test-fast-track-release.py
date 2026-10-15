@@ -5,6 +5,8 @@ import importlib.util
 import os
 import json
 import tempfile
+import subprocess
+import textwrap
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -26,11 +28,68 @@ migration = load('release-migration')
 deploy = load('deploy-approved-app')
 
 
+class UniversalFastTrackAdmissionTests(unittest.TestCase):
+    def invoke(self, paths, admission_error=None, migration_error=None):
+        run = {'id': 123, 'head_sha': 'b' * 40, 'run_attempt': 1}
+        with patch.dict(os.environ, {'BEFORE': 'a' * 40}), \
+             patch.object(deploy._RELEASE_AUTHORITY, 'assert_fast_track_release_execution', return_value=run), \
+             patch.object(deploy.subprocess, 'check_output', return_value=paths), \
+             patch.object(deploy._RELEASE_AUTHORITY, 'attested_website_only_recovery_scope', return_value=None), \
+             patch.object(deploy._RELEASE_AUTHORITY, 'fast_track_source_admission', side_effect=admission_error) as admission, \
+             patch.object(deploy, 'fast_track_migration_gate', side_effect=migration_error) as schema, \
+             patch.object(deploy, 'verify_package', return_value='digest'), \
+             patch.object(deploy, 'target_azure', side_effect=RuntimeError('PROVIDER_BOUNDARY')) as azure:
+            key = 'protect' if paths.startswith('Infrastructure/') else 'website'
+            with self.assertRaisesRegex(Exception, admission_error.args[0] if admission_error else migration_error.args[0] if migration_error else 'PROVIDER_BOUNDARY'):
+                deploy.fast_track_deploy(key, Path('/synthetic-package'))
+            admission.assert_called_once_with()
+            if admission_error:
+                schema.assert_not_called(); azure.assert_not_called()
+            elif paths.startswith('Infrastructure/'):
+                schema.assert_called_once_with(run)
+                if migration_error: azure.assert_not_called()
+            else:
+                schema.assert_not_called(); azure.assert_called_once()
+
+    def test_ui_only_source_denial_precedes_any_provider_access(self):
+        self.invoke('Legend-Design/legend-web-foundation.css', ValueError('FAST_TRACK_SOURCE_DENIED'))
+
+    def test_ui_only_accepted_source_does_not_invent_sql_gate(self):
+        self.invoke('Legend-Design/legend-web-foundation.css')
+
+    def test_backend_still_requires_successful_schema_after_source(self):
+        self.invoke('Infrastructure/Commerce/Payments/MerchantCheckoutService.cs', migration_error=ValueError('FAST_TRACK_SCHEMA_RELEASE_GATE_UNPROVEN'))
+
+
+    def test_workflow_admits_all_publications_and_bounds_publisher(self):
+        workflow = Path('.github/workflows/legend-fast-track-ui.yml').read_text()
+        gates = workflow.split('  commerce-gates:', 1)[1].split('  migrations:', 1)[0]
+        self.assertIn("needs.select-targets.outputs.selected == 'true' || needs.select-targets.outputs.routing == 'true'", gates)
+        publisher = workflow.split('  deploy-ui:', 1)[1].split('  routing-cloudflare:', 1)[0]
+        condition = next(line for line in publisher.splitlines() if line.strip().startswith('if:'))
+        self.assertIn("needs.commerce-gates.result == 'success'", condition)
+        self.assertNotIn("needs.commerce-gates.result == 'skipped'", condition)
+        self.assertIn('timeout-minutes: 30', publisher)
+        self.assertIn('group: legend-approved-release', workflow)
+        self.assertEqual(420, deploy.PUBLICATION_RECONCILE_TIMEOUT_SECONDS)
+
+    def test_existing_isolated_validation_covers_every_fast_track_trigger(self):
+        import fnmatch, re
+        def paths(file):
+            text = Path('.github/workflows', file).read_text().split('    paths:', 1)[1]
+            text = text.split('  workflow_dispatch:', 1)[0].split('\npermissions:', 1)[0]
+            return re.findall(r'^      - (.+)$', text, re.M)
+        validation = paths('parfait-isolated-validation.yml')
+        for trigger in paths('legend-fast-track-ui.yml'):
+            with self.subTest(trigger=trigger):
+                self.assertTrue(any(fnmatch.fnmatchcase(trigger, covered) for covered in validation), trigger)
+
+
 class ObserverCompatibilityTests(unittest.TestCase):
     def compatible(self, changed=False, runtime=False, body=False):
         def source(ref, path):
             suffix = 'return 2' if body and ref == 'new' else 'return 1'
-            return '\n'.join('def '+name+'():\n    '+suffix for name in ['rehearse','rehearse_fast_track','isolated_sql'])
+            return '\n'.join('def '+name+'():\n    '+suffix for name in ['rehearse','rehearse_fast_track','isolated_sql','trusted_fast_track_run','fast_track_observation_source','verified_fast_track_observation','fast_track_baseline','manifest'])
         with patch.object(probe.subprocess, 'run', return_value=SimpleNamespace(returncode=int(changed))), \
              patch.object(probe.AUTHORITY, 'migration_probe_identity', side_effect=lambda r,*args: {'runtimeIdentity':r if runtime else 'same'}), \
              patch.object(probe.AUTHORITY, 'git_show_file', side_effect=source):
@@ -339,9 +398,100 @@ class FastTrackHistoryTests(unittest.TestCase):
                 authority.release_child_first_write_proven('owner/repo','migrations','b'*64,'c'*64,11,1,'fixture')
 
 
+class FastTrackArchitectureAdmissionTests(unittest.TestCase):
+    def admission(self, architecture=True, isolated_event="pull_request"):
+        candidate, revision = 'a' * 40, 'b' * 40
+        pull = dict(number=580, merged_at='2026-10-13T00:00:00Z', merge_commit_sha=revision,
+            base=dict(ref=authority.FAST_TRACK_PR_BASE),
+            head=dict(sha=candidate, ref='isolation/task', repo=dict(full_name='owner/repo')))
+        workflows = [('approved-release-security-validation.yml', 'pull_request'),
+            ('parfait-isolated-validation.yml', isolated_event)]
+        if architecture:
+            workflows.append(('masterapp-platform-architecture-validation.yml', 'pull_request'))
+        rows = [dict(id=i+1, run_attempt=1, path='.github/workflows/'+workflow, event=event,
+            head_sha=candidate, head_branch='isolation/task', head_repository=dict(full_name='owner/repo'),
+            status='completed', conclusion='success') for i,(workflow,event) in enumerate(workflows)]
+        with patch.dict(os.environ, {'GITHUB_REPOSITORY':'owner/repo','GH_TOKEN':'fixture'}), \
+             patch.object(authority, 'assert_fast_track_release_execution', return_value=dict(head_sha=revision)), \
+             patch.object(authority, 'api_get', side_effect=[[pull], dict(total_count=len(rows),workflow_runs=rows)]), \
+             patch.object(authority.subprocess, 'run', return_value=SimpleNamespace(returncode=0)), \
+             patch.object(authority, 'fast_track_validation_receipt', return_value=81):
+            return authority.fast_track_source_admission()
+
+    def test_all_three_exact_source_workflows_are_mandatory(self):
+        self.assertEqual({'approved-release-security-validation.yml', 'parfait-isolated-validation.yml',
+            'masterapp-platform-architecture-validation.yml'}, set(self.admission()['validation']))
+
+    def test_security_and_isolated_success_cannot_replace_architecture(self):
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRED_VALIDATION_UNPROVEN:masterapp-platform'):
+            self.admission(False)
+
+    def test_push_only_isolated_validation_cannot_admit_release(self):
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRED_VALIDATION_UNPROVEN:parfait-isolated'):
+            self.admission(isolated_event='push')
+
+    def test_architecture_workflow_uses_fast_track_base_without_old_release_jobs(self):
+        source = Path('.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        self.assertIn('      - Legend/fast-track-release', source.split('  workflow_dispatch:',1)[0])
+        self.assertIn('--base-branch "${{ github.base_ref', source)
+        self.assertIn('--validation-base "${{ github.base_ref', source)
+        for gate in ('renderer-tests', 'lifecycle'):
+            step = authority.WORKFLOWS['masterapp-platform-architecture-validation.yml']['gates'][gate]['step']
+            self.assertIn('      - name: ' + step + '\n', source)
+        package = source.split('  validated-release-package-plan:',1)[1].split('    runs-on:',1)[0]
+        self.assertIn("github.event_name == 'pull_request' && github.base_ref == 'legend/approved-changes'", package)
+        rehearsal = source.split('  migration-rehearsal-prepare:',1)[1].split('    runs-on:',1)[0]
+        self.assertIn("github.event_name == 'pull_request' && github.base_ref == 'legend/approved-changes'", rehearsal)
+
+    def run_architecture_step(self, step, base, renderer_status=0, preserved=False):
+        source = Path('.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        body = source.split('        id: ' + step + '\n', 1)[1].split('        run: |\n', 1)[1]
+        body = body.split('\n      - ', 1)[0]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'Legend-Website').mkdir()
+            log = root / 'calls'
+            for name, script in {
+                'python3': 'echo "python3 $*" >> "$CALL_LOG"\n'
+                    'if [ "$2" = preserved ]; then exit "$PRESERVED_STATUS"; fi\n'
+                    'if [ "$1" = - ]; then echo forbidden-live-history >> "$CALL_LOG"; exit 91; fi\n',
+                'npm': 'echo "npm $*" >> "$CALL_LOG"\n'
+                    'if [ "$2" = test:renderer ]; then exit "$RENDERER_STATUS"; fi\n',
+                'git': 'echo "git $*" >> "$CALL_LOG"\nexit 92\n',
+                'node': 'echo "node $*" >> "$CALL_LOG"\n'
+            }.items():
+                path = root / name
+                path.write_text('#!/bin/bash\n' + script)
+                path.chmod(0o700)
+            result = subprocess.run(['/bin/bash', '-e', '-c', textwrap.dedent(body)], cwd=root,
+                env=os.environ | dict(PATH=str(root) + ':' + os.environ['PATH'], CALL_LOG=str(log),
+                    RUNNER_TEMP=str(root), VALIDATION_BASE=base, RENDERER_STATUS=str(renderer_status),
+                    PRESERVED_STATUS='0' if preserved else '1'), capture_output=True, text=True)
+            return result.returncode, log.read_text() if log.exists() else ''
+
+    def test_fast_track_renderer_failure_is_not_excused_by_old_branch(self):
+        status, calls = self.run_architecture_step('gate_renderer_tests', authority.FAST_TRACK_PR_BASE, 7)
+        self.assertEqual(7, status)
+        self.assertNotIn('git ', calls)
+
+    def test_fast_track_static_safety_does_not_query_live_legacy_history(self):
+        status, calls = self.run_architecture_step('gate_lifecycle', authority.FAST_TRACK_PR_BASE)
+        self.assertEqual(0, status, calls)
+        self.assertNotIn('forbidden-live-history', calls)
+        self.assertNotIn('python3 scripts/release-migration-history-audit.py', calls)
+        self.assertIn('python3 scripts/test-release-migration-history-audit.py', calls)
+        self.assertIn('python3 scripts/test-release-retired-original-evidence.py', calls)
+        self.assertIn('python3 scripts/test-release-lifecycle.py', calls)
+
+    def test_preserved_lifecycle_gate_avoids_repeat_static_and_live_work(self):
+        status, calls = self.run_architecture_step('gate_lifecycle', authority.FAST_TRACK_PR_BASE, preserved=True)
+        self.assertEqual(0, status)
+        self.assertEqual(1, len(calls.splitlines()))
+
+
 class MergedSourceReceiptTests(unittest.TestCase):
     def setUp(self):
-        self.run=dict(id=71,run_attempt=1,pull_requests=[])
+        self.run=dict(id=71,run_attempt=1,event="pull_request",pull_requests=[])
         self.workflow='approved-release-security-validation.yml'
         self.name='validation-resume-security-71-1'
         self.artifact=dict(id=81,name=self.name,expired=False,workflow_run=dict(id=71))
@@ -355,6 +505,34 @@ class MergedSourceReceiptTests(unittest.TestCase):
         with patch.object(authority,'api_get',return_value=dict(total_count=1,artifacts=[self.artifact])), \
              patch.object(authority,'_download_run_artifact',side_effect=download):
             return authority.fast_track_validation_receipt('owner/repo',self.run,self.workflow,'a'*40,580,'fixture')
+    def test_push_producer_cannot_forge_pr_source_scope(self):
+        self.run['event'] = 'push'
+        with self.assertRaisesRegex(RuntimeError, 'PR_EVENT_REQUIRED'):
+            self.verify()
+
+    def test_development_or_malformed_source_envelope_is_not_admission(self):
+        self.receipt['developmentValidationScope'] = {'releaseAdmission':False}
+        with self.assertRaisesRegex(RuntimeError, 'SOURCE_SCOPE_UNPROVEN'):
+            self.verify()
+        del self.receipt['developmentValidationScope']
+        for scope in (None, {}, [], {'phase':'development-validation-only'}):
+            self.receipt['sourceValidationScope'] = scope
+            with self.subTest(scope=scope), self.assertRaisesRegex(RuntimeError, 'SOURCE_SCOPE_UNPROVEN'):
+                self.verify()
+
+    def test_architecture_receipt_has_its_own_exact_workflow_prefix(self):
+        self.workflow = 'masterapp-platform-architecture-validation.yml'
+        self.receipt['workflow'] = self.workflow
+        self.artifact['name'] = 'validation-resume-architecture-71-1'
+        self.assertEqual(81, self.verify())
+
+    def test_unknown_workflow_cannot_reuse_parfait_receipt(self):
+        self.workflow = 'unknown.yml'
+        self.receipt['workflow'] = self.workflow
+        self.artifact['name'] = 'validation-resume-parfait-71-1'
+        with self.assertRaisesRegex(RuntimeError, 'WORKFLOW_UNSUPPORTED'):
+            self.verify()
+
     def test_merge_cleared_pr_links_are_replaced_by_original_bound_receipt(self):
         self.assertEqual(81,self.verify())
     def test_wrong_pr_base_or_candidate_cannot_relabel_validation(self):
@@ -1004,6 +1182,131 @@ class FastTrackNoSqlInputInventoryTests(unittest.TestCase):
         self.assertFalse(scope['selected'])
         self.assertFalse(scope['commerce'])
         self.assertFalse(scope['schema'])
+
+
+
+class ReleaseAdmissionScopeRegressionTests(unittest.TestCase):
+    def test_all_seventeen_rejected_paths_preserve_real_dependencies(self):
+        shared = (
+            'Domain/Entities/ClientSubscriptionOffer.cs',
+            'Infrastructure/Billing/BillingEntitlementService.cs',
+            'Infrastructure/Billing/BillingStateMapper.cs',
+            'Infrastructure/Billing/MasterAppBillingOrchestrator.cs',
+            'Infrastructure/Businesses/CommerceBusinessProvisioningService.cs',
+            'Infrastructure/Households/HouseholdMembershipService.cs',
+            'Infrastructure/Infrastructure.csproj',
+            'Infrastructure/Leads/WebsiteLeadAppNotificationService.cs',
+            'Infrastructure/Leads/WebsiteLeadNotificationAuthority.cs',
+            'Infrastructure/Leads/WebsiteLeadSubmission.cs',
+            'SHARED/Analytics/AiSafeAnalyticsPayload.cs',
+            'SHARED/Analytics/GrowthEconomicsAndOpenAiFeedContracts.cs',
+            'SHARED/Analytics/MarketingManagerContracts.cs')
+        controls = ('LEGEND-REVENUE-LAUNCH-CHECKPOINT.md',
+            'scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj',
+            'scripts/sync-published-checkout.py','scripts/test-sync-published-checkout.py')
+        for path in shared:
+            with self.subTest(path=path):
+                scope=authority.fast_track_scope([path])
+                self.assertEqual(set(scope['impacts'][path]),{'portal','client','protect','parfait'})
+                self.assertTrue(scope['commerce'])
+                self.assertFalse(scope['routing'])
+                self.assertEqual(scope['schema'],path=='Infrastructure/Infrastructure.csproj')
+        for path in controls:
+            with self.subTest(path=path):
+                scope=authority.fast_track_scope([path])
+                self.assertEqual(scope['impacts'][path],[])
+                self.assertFalse(scope['selected'])
+                self.assertFalse(scope['commerce'])
+        combined=authority.fast_track_scope([*shared,*controls,
+            'Legend-Cloudflare/src/website-routing/index.ts',
+            'Infrastructure/Migrations/20261011064911_AddBusinessScopedMerchantPayments.cs'])
+        self.assertTrue(combined['routing']);self.assertTrue(combined['schema'])
+        self.assertEqual({r['key'] for r in combined['matrix']['include']},{'portal','client','protect','parfait'})
+
+    def test_unknown_adjacent_sources_still_fail_closed(self):
+        for path in ('Infrastructure/Billing/Unreviewed.cs','Domain/Entities/Unreviewed.cs',
+                     'SHARED/Analytics/Unreviewed.cs','scripts/unreviewed.py'):
+            with self.subTest(path=path),self.assertRaisesRegex(ValueError,'Unmapped'):
+                authority.fast_track_scope([path])
+
+    def test_scope_is_zero_write_planning(self):
+        with patch.object(authority.subprocess,'run',side_effect=AssertionError('No command in scope planning')), \
+             patch.object(authority,'api_get',side_effect=AssertionError('No remote call in scope planning')):
+            scope=authority.fast_track_scope(['Infrastructure/Infrastructure.csproj'])
+        self.assertTrue(scope['schema'])
+
+class TrustedToolPromotionAdmissionTests(unittest.TestCase):
+    def test_promotion_never_enters_recovery_or_provider(self):
+        policy=Mock();policy.tool_promotion_requested.return_value=True
+        policy.trusted_tool_promotion.return_value={'productionEligible':False}
+        with patch.object(authority,'_fast_track_policy',return_value=policy),patch.object(authority,'fast_track_source_admission',return_value={}) as proof,patch.object(authority,'fast_track_effective_baseline',side_effect=AssertionError('recovery')),patch.object(authority,'fast_track_pending_routing',side_effect=AssertionError('routing')),patch.object(authority.subprocess,'check_output',side_effect=AssertionError('git diff')):
+            result=authority.fast_track_selection('a'*40,'b'*40)
+        proof.assert_called_once_with(allow_nonpublishing=True)
+        self.assertFalse(result['productionEligible'])
+        self.assertFalse(any(result[key] for key in ('selected','commerce','schema','routing')))
+        self.assertEqual({'include':[]},result['matrix'])
+
+    def test_bad_marker_never_falls_back_to_application_release(self):
+        policy=Mock();policy.tool_promotion_requested.return_value=True
+        policy.trusted_tool_promotion.side_effect=ValueError('bad marker')
+        with patch.object(authority,'_fast_track_policy',return_value=policy),patch.object(authority,'fast_track_source_admission',return_value={}),patch.object(authority,'fast_track_effective_baseline',side_effect=AssertionError('recovery')):
+            with self.assertRaisesRegex(ValueError,'bad marker'):authority.fast_track_selection('a'*40,'b'*40)
+
+    def history(self, mutate=None, carry=False):
+        before,head='a'*40,'b'*40
+        run=dict(id=77,run_attempt=1,head_sha=head,status='completed',conclusion='success')
+        proof={'phase':'trusted-tool-promotion','baseRevision':before}
+        jobs=[dict(name=name,conclusion='success' if index==0 else 'skipped',run_id=77,run_attempt=1,head_sha=head) for index,name in enumerate(('Select exact affected applications','Admit exact validated fast-track source','Reconcile production schema before publication','Publish verified website routing','Affected App Deploy'))]
+        artifact=dict(id=99,name='fast-track-admission-77-1',expired=False,workflow_run={'id':77})
+        receipt=dict(proof,producingRun=77,producingAttempt=1)
+        if mutate:mutate(run,jobs,artifact,receipt)
+        policy=Mock();policy.tool_promotion_requested.side_effect=lambda sha:sha==head
+        policy.read_request.return_value={'trustedToolPromotion':{'baseRevision':before}}
+        policy.trusted_tool_promotion.return_value=proof
+        def api(repo,path,token):
+            if '/artifacts?' in path:return {'total_count':1,'artifacts':[artifact]}
+            if '/jobs?' in path:return {'total_count':len(jobs),'jobs':jobs}
+            if 'head_sha='+head in path:return {'total_count':1,'workflow_runs':[run]}
+            if 'head_sha='+before in path:return {'total_count':0,'workflow_runs':[]}
+            raise AssertionError(path)
+        def download(repo,runid,name,root,**kwargs):
+            self.assertEqual(99,kwargs['artifact_id']);(root/'fast-track-admission.json').write_text(json.dumps(receipt))
+        with patch.object(authority,'_fast_track_policy',return_value=policy),patch.object(authority,'is_fast_track_producer',return_value=True),patch.object(authority,'fast_track_merged_source_proof',return_value={}),patch.object(authority,'api_get',side_effect=api),patch.object(authority,'_download_run_artifact',side_effect=download),patch.object(authority,'fast_track_untriggered_repair_parent',return_value=None),patch.object(authority.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.dict(os.environ,{'GITHUB_REPOSITORY':'MYLEGND/masterapp','GH_TOKEN':'fixture'}):
+            return authority.fast_track_effective_baseline(head,'c'*40) if carry else authority.fast_track_promotion_parent('MYLEGND/masterapp',run,'fixture')
+
+    def test_successful_nonpublishing_promotion_preserves_original_recovery_baseline(self):
+        self.assertEqual('a'*40,self.history(carry=True))
+
+    def test_historical_receipt_and_job_identities_fail_closed(self):
+        mutations=[lambda r,j,a,p:a.update(id=0),lambda r,j,a,p:a.update(workflow_run={'id':78}),
+            lambda r,j,a,p:j[0].update(run_id=78),lambda r,j,a,p:j[0].update(run_attempt=2),
+            lambda r,j,a,p:j[0].update(head_sha='c'*40),lambda r,j,a,p:j.append(dict(name='unexpected')),
+            lambda r,j,a,p:j[-1].update(conclusion='success'),lambda r,j,a,p:p.update(producingAttempt=2)]
+        for mutation in mutations:
+            with self.subTest(mutation=mutation),self.assertRaises(ValueError):self.history(mutation)
+
+    def test_normal_infrastructure_keeps_application_and_schema_scope(self):
+        scope=authority.fast_track_scope(['Infrastructure/Infrastructure.csproj'])
+        self.assertTrue(scope['schema']);self.assertTrue(scope['commerce']);self.assertTrue(scope['selected'])
+        self.assertEqual(4,len(scope['matrix']['include']))
+
+    def test_following_release_selects_recovered_application_and_routing(self):
+        policy=Mock();policy.tool_promotion_requested.side_effect=lambda sha:sha=='b'*40
+        normal=authority.fast_track_scope(['Infrastructure/Infrastructure.csproj'])
+        policy.release_after_tool_promotion.return_value={'targets':[r['azure_app'] for r in normal['matrix']['include']],'cloudflareWebsiteRouting':True}
+        with patch.object(authority,'_fast_track_policy',return_value=policy),patch.object(authority,'fast_track_source_admission',return_value={}),patch.object(authority,'fast_track_effective_baseline',return_value='a'*40),patch.object(authority.subprocess,'check_output',return_value='Infrastructure/Infrastructure.csproj\n'),patch.object(authority,'attested_website_only_recovery_scope',return_value=False),patch.object(authority,'fast_track_pending_routing',return_value=True) as routing:
+            result=authority.fast_track_selection('b'*40,'c'*40)
+        routing.assert_called_once_with('a'*40)
+        self.assertTrue(result['productionEligible']);self.assertTrue(result['routing']);self.assertTrue(result['schema'])
+    def test_every_production_job_requires_positive_eligibility_and_selector_has_no_oidc(self):
+        text=Path('.github/workflows/legend-fast-track-ui.yml').read_text()
+        selector=text.split('  select-targets:',1)[1].split('  commerce-gates:',1)[0]
+        self.assertNotIn('id-token: write',selector)
+        self.assertNotIn('id-token: write',text.split('jobs:',1)[0])
+        for job in ('commerce-gates','migrations','deploy-ui','routing-cloudflare'):
+            block=text.split('  '+job+':',1)[1]
+            condition=next(line for line in block.splitlines() if line.startswith('    if:'))
+            self.assertIn("needs.select-targets.outputs.production-eligible == 'true'",condition)
 
 
 if __name__ == '__main__':unittest.main()

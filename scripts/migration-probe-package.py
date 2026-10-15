@@ -242,8 +242,24 @@ def record_rehearsal_result(result, selected_package, baseline, bundle_source, e
     print(json.dumps(result, sort_keys=True))
 
 
+def trusted_fast_track_run(repository, run_id, attempt, token, *, active=False):
+    """Production authority belongs only to the existing trusted workflow ref."""
+    run = AUTHORITY.api_get(repository, f'actions/runs/{run_id}', token)
+    if (type(run_id) is not int or run_id < 1 or type(attempt) is not int or attempt < 1
+        or run.get('id') != run_id or run.get('run_attempt') != attempt
+        or not re.fullmatch('[a-f0-9]{40}', str(run.get('head_sha', '')))
+        or run.get('path') != '.github/workflows/parfait-cutover-live-readonly.yml'
+        or run.get('head_branch') != AUTHORITY.FAST_TRACK_PR_BASE
+        or run.get('event') != 'workflow_dispatch'
+        or run.get('head_repository', {}).get('full_name') != repository
+        or (active and run.get('status') != 'in_progress')):
+        raise ValueError('FAST_TRACK_REHEARSAL_PRODUCER_UNPROVEN')
+    return run
+
+
 def fast_track_observation_source(repository, revision, run_id, current_attempt, token):
-    """Resume from the successful same-run observer without repeating Azure reads."""
+    """Resume an immutable successful trusted observation without Azure rereads."""
+    run = trusted_fast_track_run(repository, run_id, current_attempt, token)
     inventory = AUTHORITY.api_get(repository, f'actions/runs/{run_id}/artifacts?per_page=100', token)
     rows = inventory.get('artifacts')
     if not isinstance(rows, list) or inventory.get('total_count') != len(rows):
@@ -254,23 +270,44 @@ def fast_track_observation_source(repository, revision, run_id, current_attempt,
         name = row.get('name', '')
         if name.startswith(prefix):
             suffix = name[len(prefix):]
-            if not suffix.isdigit() or not 1 <= int(suffix) <= current_attempt or row.get('expired') is not False:
+            if (not suffix.isdigit() or not 1 <= int(suffix) <= current_attempt
+                or row.get('expired') is not False or type(row.get('id')) is not int or row['id'] < 1
+                or row.get('workflow_run', {}).get('id') != run_id):
                 raise ValueError('FAST_TRACK_OBSERVATION_ARTIFACT_UNPROVEN')
-            matching.append((int(suffix), name))
-    if not matching or len(set(a for a,n in matching)) != len(matching):
+            matching.append((int(suffix), row))
+    if not matching or len(set(a for a,r in matching)) != len(matching):
         raise ValueError('FAST_TRACK_OBSERVATION_ARTIFACT_UNPROVEN')
-    attempt, name = max(matching)
+    attempt, artifact = max(matching, key=lambda value: value[0])
     jobs = AUTHORITY.api_get(repository, f'actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100', token)
-    rows = jobs.get('jobs')
-    if not isinstance(rows, list) or jobs.get('total_count') != len(rows):
+    jobs = jobs if isinstance(jobs, dict) else {}
+    owners = jobs.get('jobs')
+    if not isinstance(owners, list) or jobs.get('total_count') != len(owners):
         raise ValueError('FAST_TRACK_OBSERVATION_JOB_HISTORY_INCOMPLETE')
-    owners = [job for job in rows if job.get('name') == 'Non-mutating Azure, SQL schema and public runtime inventory']
+    owners = [job for job in owners if job.get('name') == 'Non-mutating Azure, SQL schema and public runtime inventory']
     if len(owners) != 1 or owners[0].get('status') != 'completed' or owners[0].get('conclusion') != 'success':
         raise ValueError('FAST_TRACK_OBSERVATION_JOB_UNPROVEN')
-    return dict(artifact=name, attempt=attempt)
+    return dict(artifact=artifact['name'], artifactId=artifact['id'], attempt=attempt,
+                toolRevision=run['head_sha'], artifacts=rows)
+
+def verified_fast_track_observation(repository, run_id, source, observation_path):
+    """Local planning input must equal the original immutable observer artifact."""
+    import tempfile
+    if observation_path.is_symlink() or observation_path.stat().st_size > 4 * 1024 * 1024:
+        raise ValueError('FAST_TRACK_OBSERVATION_INPUT_UNPROVEN')
+    report = json.loads(observation_path.read_text())
+    with tempfile.TemporaryDirectory(prefix='legend-observation-proof-') as temporary:
+        root = Path(temporary)
+        AUTHORITY._download_run_artifact(repository, run_id, source['artifact'], root,
+                                        artifact_id=source['artifactId'])
+        original = root / 'sanitized-schema.json'
+        if original.is_symlink() or original.stat().st_size > 4 * 1024 * 1024:
+            raise ValueError('FAST_TRACK_OBSERVATION_INPUT_UNPROVEN')
+        if report != json.loads(original.read_text()):
+            raise ValueError('FAST_TRACK_OBSERVATION_INPUT_CHANGED')
+    return report
 
 
-def fast_track_baseline(report, revision, run_id):
+def fast_track_baseline(report, revision, run_id, source):
     """Bind a same-run, non-mutating observation to both affected SQL hosts."""
     if (report.get('schemaVersion') != 1 or report.get('purpose') != 'read-only-schema-plan'
         or report.get('authorizesMutation') is not False or report.get('candidate') != revision
@@ -278,6 +315,24 @@ def fast_track_baseline(report, revision, run_id):
         or report['producingAttempt'] < 1 or report.get('sharedDatabase') is not True
         or set(report.get('applications', {})) != {'masterapp-parfait', 'masterapp-protect'}):
         raise ValueError('FAST_TRACK_OBSERVATION_IDENTITY_UNPROVEN')
+    if (report.get('toolRevision') != source['toolRevision']
+        or report.get('producingAttempt') != source['attempt']
+        or not re.fullmatch('[a-f0-9]{64}', str(report.get('contractDigest', '')))
+        or type(report.get('contractArtifactId')) is not int or report['contractArtifactId'] < 1
+        or type(report.get('observerArtifactId')) is not int or report['observerArtifactId'] < 1
+        or report['contractArtifactId'] == report['observerArtifactId']):
+        raise ValueError('FAST_TRACK_OBSERVATION_TRUSTED_IDENTITY_UNPROVEN')
+    builds = []
+    for field, prefix in (('contractArtifactId', 'parfait-readonly-contract-'),
+                          ('observerArtifactId', 'parfait-readonly-schema-observer-')):
+        rows = [row for row in source['artifacts'] if row.get('id') == report[field]]
+        match = re.fullmatch(prefix + revision + r'-([1-9][0-9]*)', rows[0].get('name', '')) if len(rows) == 1 else None
+        if (not match or int(match[1]) > source['attempt'] or rows[0].get('expired') is not False
+            or rows[0].get('workflow_run', {}).get('id') != run_id):
+            raise ValueError('FAST_TRACK_OBSERVATION_INPUT_ARTIFACT_UNPROVEN')
+        builds.append(int(match[1]))
+    if len(set(builds)) != 1:
+        raise ValueError('FAST_TRACK_OBSERVATION_INPUT_ATTEMPT_MISMATCH')
     rows = list(report['applications'].values())
     keys = ('databaseIdentity', 'schemaIdentity', 'baselineIdentity', 'ready', 'pendingCount',
             'firstPendingMigrationId', 'lastAppliedMigrationId')
@@ -302,23 +357,20 @@ def rehearse_fast_track(revision, directory, observation_path, probe_directory):
     import tempfile
     if any(os.environ.get(key) for key in ('LEGEND_RELEASE_DB_CONNECTION',
         'SQLCONNSTR_MasterAppDb', 'ConnectionStrings__MasterAppDb', 'AZURE_CLIENT_ID',
-        'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID')):
+        'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID', 'AZURE_CLIENT_SECRET',
+        'ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_URL')):
         raise ValueError('FAST_TRACK_REHEARSAL_REQUIRES_CREDENTIAL_FREE_JOB')
     if (not re.fullmatch('[a-f0-9]{40}', revision)
         or subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() != revision
-        or os.environ.get('GITHUB_SHA') != revision):
+        or os.environ.get('CANDIDATE_SHA') != revision):
         raise ValueError('FAST_TRACK_REHEARSAL_CANDIDATE_CHANGED')
     repository = os.environ['GITHUB_REPOSITORY']
     token = os.environ.get('GITHUB_TOKEN') or os.environ['GH_TOKEN']
     run_id = int(os.environ['GITHUB_RUN_ID'])
     attempt = int(os.environ['GITHUB_RUN_ATTEMPT'])
-    run = AUTHORITY.api_get(repository, f'actions/runs/{run_id}', token)
-    if (run.get('id') != run_id or run.get('run_attempt') != attempt or run.get('head_sha') != revision
-        or run.get('path') != '.github/workflows/parfait-cutover-live-readonly.yml'
-        or run.get('head_branch') != 'isolation/canonical-scoped-commerce-internal-20261010'
-        or run.get('event') not in {'push', 'workflow_dispatch'} or run.get('status') != 'in_progress'
-        or run.get('head_repository', {}).get('full_name') != repository):
-        raise ValueError('FAST_TRACK_REHEARSAL_PRODUCER_UNPROVEN')
+    run = trusted_fast_track_run(repository, run_id, attempt, token, active=True)
+    if os.environ.get('GITHUB_SHA') != run['head_sha']:
+        raise ValueError('FAST_TRACK_TRUSTED_WORKFLOW_REVISION_CHANGED')
     branch = AUTHORITY.api_get(repository, 'git/ref/heads/Legend/fast-track-release', token)
     base = branch.get('object', {}).get('sha', '')
     if not re.fullmatch('[a-f0-9]{40}', base):
@@ -326,17 +378,22 @@ def rehearse_fast_track(revision, directory, observation_path, probe_directory):
     subprocess.run(['git', 'merge-base', '--is-ancestor', base, revision], check=True)
     changed = subprocess.check_output(['git', 'diff', '--name-only', base, revision], text=True).splitlines()
     scope = AUTHORITY.fast_track_scope(changed)
-    report = json.loads(observation_path.read_text())
     source = fast_track_observation_source(repository, revision, run_id, attempt, token)
+    report = verified_fast_track_observation(repository, run_id, source, observation_path)
     if report.get('producingAttempt') != source['attempt']:
         raise ValueError('FAST_TRACK_OBSERVATION_ATTEMPT_MISMATCH')
-    baseline = fast_track_baseline(report, revision, run_id)
+    baseline = fast_track_baseline(report, revision, run_id, source)
+    manifest(probe_directory, revision, revision)
+    if digest(probe_directory / 'migration-contract.json') != report['contractDigest']:
+        raise ValueError('FAST_TRACK_OBSERVER_CONTRACT_CHANGED')
     directory.mkdir(parents=True, exist_ok=False)
     if not baseline['pendingCount']:
         (directory / 'rehearsal.json').write_text(json.dumps(dict(schemaVersion=1,
             purpose='fast-track-migration-rehearsal', state='not-required', releaseAdmission=False,
             authorizesMutation=False, candidate=revision, fastTrackHead=base, baseline=baseline,
-            producingRun=run_id, producingAttempt=attempt, observationAttempt=source['attempt'])) + '\n')
+            producingRun=run_id, producingAttempt=attempt, observationAttempt=source['attempt'],
+            toolRevision=run['head_sha'], observationArtifactId=source['artifactId'],
+            contractDigest=report['contractDigest'], observerArtifactId=report['observerArtifactId'])) + '\n')
         print('FAST_TRACK_MIGRATION_REHEARSAL:NOT_REQUIRED:current_schema_complete')
         return
     if not scope['schema']:
@@ -362,6 +419,8 @@ def rehearse_fast_track(revision, directory, observation_path, probe_directory):
     result.update(schemaVersion=1, purpose='fast-track-migration-rehearsal', releaseAdmission=False,
         authorizesMutation=False, candidate=revision, fastTrackHead=base,
         producingRun=run_id, producingAttempt=attempt, observationRun=run_id, observationAttempt=source['attempt'],
+        toolRevision=run['head_sha'], observationArtifactId=source['artifactId'],
+        contractDigest=report['contractDigest'], observerArtifactId=report['observerArtifactId'],
         sqlImage=SQL_REHEARSAL_IMAGE, baseline=baseline,
         targets=[row['azure_app'] for row in scope['matrix']['include']])
     (directory / 'rehearsal.json').write_text(json.dumps(result, sort_keys=True) + '\n')
@@ -371,7 +430,8 @@ def rehearse_fast_track(revision, directory, observation_path, probe_directory):
 def fast_track_probe_compatible(source, revision):
     """Bundle identity and observer/rehearsal implementation are separate proofs."""
     import ast
-    probe_paths = ['scripts/MigrationReleaseProbe', 'Directory.Build.props', 'Directory.Packages.props', 'global.json']
+    probe_paths = ['scripts/MigrationReleaseProbe', 'Directory.Build.props', 'Directory.Packages.props', 'global.json',
+                   '.github/workflows/parfait-cutover-live-readonly.yml']
     if subprocess.run(['git', 'diff', '--quiet', source, revision, '--', *probe_paths], capture_output=True).returncode:
         return False
     if AUTHORITY.migration_probe_identity(source, source)['runtimeIdentity'] != AUTHORITY.migration_probe_identity(revision, revision)['runtimeIdentity']:
@@ -382,7 +442,12 @@ def fast_track_probe_compatible(source, revision):
         return ast.dump(selected[0], include_attributes=False) if len(selected) == 1 else None
     for path, name in (('scripts/release-migration.py', 'rehearse'),
                        ('scripts/migration-probe-package.py', 'rehearse_fast_track'),
-                       ('scripts/migration-probe-package.py', 'isolated_sql')):
+                       ('scripts/migration-probe-package.py', 'isolated_sql'),
+                       ('scripts/migration-probe-package.py', 'trusted_fast_track_run'),
+                       ('scripts/migration-probe-package.py', 'fast_track_observation_source'),
+                       ('scripts/migration-probe-package.py', 'verified_fast_track_observation'),
+                       ('scripts/migration-probe-package.py', 'fast_track_baseline'),
+                       ('scripts/migration-probe-package.py', 'manifest')):
         prior = function_contract(source, path, name)
         if prior is None or prior != function_contract(revision, path, name):
             return False
@@ -390,7 +455,7 @@ def fast_track_probe_compatible(source, revision):
 
 
 def restore_fast_track(revision, directory, probe_directory):
-    """Restore positively proven compatible bytes; never build or rehearse again."""
+    """Restore candidate bytes from immutable receipts under trusted workflow runs."""
     import tempfile
     import shutil
     repository = os.environ['GITHUB_REPOSITORY']
@@ -398,107 +463,125 @@ def restore_fast_track(revision, directory, probe_directory):
     expected = AUTHORITY.package_component_manifest(revision, 'migration')
     if not expected['reusable']:
         raise ValueError('FAST_TRACK_MIGRATION_DEPENDENCIES_UNPROVEN')
-    branch = 'isolation%2Fcanonical-scoped-commerce-internal-20261010'
+    branch = AUTHORITY.FAST_TRACK_PR_BASE.replace('/', '%2F')
     for page in range(1, 11):
         payload = AUTHORITY.api_get(repository, f'actions/runs?branch={branch}&per_page=100&page={page}', token)
         runs = payload.get('workflow_runs')
         if not isinstance(runs, list):
             raise ValueError('FAST_TRACK_REHEARSAL_HISTORY_UNAVAILABLE')
-        for run in runs:
-            source = run.get('head_sha', '')
-            if (run.get('path') != '.github/workflows/parfait-cutover-live-readonly.yml'
-                or run.get('event') not in {'push', 'workflow_dispatch'}
-                or run.get('head_repository', {}).get('full_name') != repository
-                or run.get('status') != 'completed' or run.get('conclusion') != 'success'):
+        for listed in runs:
+            if (listed.get('path') != '.github/workflows/parfait-cutover-live-readonly.yml'
+                or listed.get('head_branch') != AUTHORITY.FAST_TRACK_PR_BASE
+                or listed.get('event') != 'workflow_dispatch'
+                or listed.get('head_repository', {}).get('full_name') != repository
+                or listed.get('status') != 'completed' or listed.get('conclusion') != 'success'):
                 continue
-            if subprocess.run(['git', 'merge-base', '--is-ancestor', source, revision], capture_output=True).returncode:
-                continue
-            prior = AUTHORITY.package_component_manifest(source, 'migration')
-            if not prior['reusable'] or prior['contentIdentity'] != expected['contentIdentity']:
-                continue
-            if not fast_track_probe_compatible(source, revision):
-                continue
+            run = trusted_fast_track_run(repository, listed['id'], listed['run_attempt'], token)
+            if run.get('status') != 'completed' or run.get('conclusion') != 'success':
+                raise ValueError('FAST_TRACK_REHEARSAL_PRODUCER_CHANGED')
             inventory = AUTHORITY.api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
             rows = inventory.get('artifacts')
             if not isinstance(rows, list) or inventory.get('total_count') != len(rows):
                 raise ValueError('FAST_TRACK_REHEARSAL_ARTIFACTS_INCOMPLETE')
-            retained = []
+            retained = {}
             for artifact in rows:
-                match = re.fullmatch('parfait-fast-track-migration-' + source + r'-([1-9][0-9]*)', artifact.get('name', ''))
-                if match and artifact.get('expired') is False:
-                    original_attempt = int(match[1])
-                    if original_attempt > run['run_attempt']:
-                        raise ValueError('FAST_TRACK_REHEARSAL_ATTEMPT_UNPROVEN')
-                    retained.append((original_attempt, artifact))
-            if not retained:
-                continue
-            attempt = max(item[0] for item in retained)
-            name = f'parfait-fast-track-migration-{source}-{attempt}'
-            matches = [a for original_attempt, a in retained if original_attempt == attempt]
-            observers = [a for a in rows if a.get('name') == 'parfait-readonly-schema-observer-' + source and a.get('expired') is False]
-            if len(matches) != 1 or len(observers) != 1:
-                continue
-            jobs_payload = AUTHORITY.api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token)
-            jobs = jobs_payload.get('jobs')
-            if not isinstance(jobs, list) or jobs_payload.get('total_count') != len(jobs):
-                raise ValueError('FAST_TRACK_REHEARSAL_JOBS_INCOMPLETE')
-            owners = [j for j in jobs if j.get('name') == 'Rehearse exact migration bundle and recovery without production credentials']
-            if len(owners) != 1 or owners[0].get('conclusion') != 'success':
-                continue
-            with tempfile.TemporaryDirectory(prefix='legend-rehearsal-restore-') as temporary:
-                restored = Path(temporary)
-                AUTHORITY._download_run_artifact(repository, run['id'], name, restored, artifact_id=matches[0]['id'])
-                receipt = json.loads((restored / 'rehearsal.json').read_text())
-                if receipt.get('state') == 'not-required':
+                match = re.fullmatch(r'parfait-fast-track-migration-([a-f0-9]{40})-([1-9][0-9]*)', artifact.get('name', ''))
+                if not match or artifact.get('expired') is not False:
                     continue
-                component = json.loads((restored / 'migration.component.json').read_text())
-                bundle = restored / AUTHORITY.MIGRATION_BUNDLE_NAME
-                if (receipt.get('purpose') != 'fast-track-migration-rehearsal' or receipt.get('proven') is not True
-                    or receipt.get('isolated') is not True or receipt.get('syntheticDataOnly') is not True
-                    or receipt.get('authorizesMutation') is not False or receipt.get('releaseAdmission') is not False
-                    or receipt.get('candidate') != source or receipt.get('producingRun') != run['id']
-                    or receipt.get('producingAttempt') != attempt or receipt.get('sqlImage') != SQL_REHEARSAL_IMAGE
-                    or receipt.get('counts') != {'mutations': 1, 'intents': 1, 'successReceipts': 2}
-                    or component.get('applicationReleaseSha') != source or component.get('component') != 'migration'
-                    or digest(bundle) != receipt.get('bundleDigest') or component.get('sha256') != receipt.get('bundleDigest')):
-                    raise ValueError('FAST_TRACK_EXACT_REHEARSAL_BYTES_UNPROVEN')
-                directory.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(bundle, directory / bundle.name)
-                (directory / bundle.name).chmod(0o700)
-                shutil.copyfile(restored / 'rehearsal.json', directory / 'rehearsal.json')
-                receipt['source'] = dict(runId=run['id'], runAttempt=attempt, artifactId=matches[0]['id'],
-                    contentIdentity=expected['contentIdentity'], producerRevision=source)
-                (directory / 'source.json').write_text(json.dumps(receipt, sort_keys=True) + '\n')
-            AUTHORITY._download_run_artifact(repository, run['id'], observers[0]['name'], probe_directory, artifact_id=observers[0]['id'])
-            return receipt
+                source, attempt = match[1], int(match[2])
+                if (attempt > run['run_attempt'] or type(artifact.get('id')) is not int or artifact['id'] < 1
+                    or artifact.get('workflow_run', {}).get('id') != run['id']):
+                    raise ValueError('FAST_TRACK_REHEARSAL_ATTEMPT_UNPROVEN')
+                if (source, attempt) in retained:
+                    raise ValueError('FAST_TRACK_REHEARSAL_ARTIFACT_DUPLICATED')
+                retained[source, attempt] = artifact
+            # Candidate identity comes from the immutable artifact, never from
+            # head_sha: that SHA belongs to the trusted workflow implementation.
+            for source in dict.fromkeys(source for source, attempt in retained):
+                attempt = max(a for candidate, a in retained if candidate == source)
+                artifact = retained[source, attempt]
+                if subprocess.run(['git', 'merge-base', '--is-ancestor', source, revision], capture_output=True).returncode:
+                    continue
+                prior = AUTHORITY.package_component_manifest(source, 'migration')
+                if not prior['reusable'] or prior['contentIdentity'] != expected['contentIdentity']:
+                    continue
+                if not fast_track_probe_compatible(source, revision):
+                    continue
+                jobs_payload = AUTHORITY.api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token)
+                jobs = jobs_payload.get('jobs')
+                if not isinstance(jobs, list) or jobs_payload.get('total_count') != len(jobs):
+                    raise ValueError('FAST_TRACK_REHEARSAL_JOBS_INCOMPLETE')
+                owners = [j for j in jobs if j.get('name') == 'Rehearse exact migration bundle and recovery without production credentials']
+                if len(owners) != 1 or owners[0].get('status') != 'completed' or owners[0].get('conclusion') != 'success':
+                    raise ValueError('FAST_TRACK_REHEARSAL_JOB_UNPROVEN')
+                observation = fast_track_observation_source(repository, source, run['id'], run['run_attempt'], token)
+                with tempfile.TemporaryDirectory(prefix='legend-rehearsal-restore-') as temporary:
+                    root = Path(temporary)
+                    restored = root / 'bundle'
+                    AUTHORITY._download_run_artifact(repository, run['id'], artifact['name'], restored, artifact_id=artifact['id'])
+                    AUTHORITY._download_run_artifact(repository, run['id'], observation['artifact'], root / 'observation', artifact_id=observation['artifactId'])
+                    report = json.loads((root / 'observation/sanitized-schema.json').read_text())
+                    baseline = fast_track_baseline(report, source, run['id'], observation)
+                    receipt = json.loads((restored / 'rehearsal.json').read_text())
+                    if receipt.get('state') == 'not-required':
+                        continue
+                    component = json.loads((restored / 'migration.component.json').read_text())
+                    bundle = restored / AUTHORITY.MIGRATION_BUNDLE_NAME
+                    if (receipt.get('purpose') != 'fast-track-migration-rehearsal' or receipt.get('proven') is not True
+                        or receipt.get('isolated') is not True or receipt.get('syntheticDataOnly') is not True
+                        or receipt.get('authorizesMutation') is not False or receipt.get('releaseAdmission') is not False
+                        or receipt.get('candidate') != source or receipt.get('toolRevision') != run['head_sha']
+                        or receipt.get('producingRun') != run['id'] or receipt.get('producingAttempt') != attempt
+                        or receipt.get('observationRun') != run['id'] or receipt.get('observationAttempt') != observation['attempt']
+                        or receipt.get('observationArtifactId') != observation['artifactId']
+                        or receipt.get('observerArtifactId') != report['observerArtifactId']
+                        or receipt.get('contractDigest') != report['contractDigest'] or receipt.get('baseline') != baseline
+                        or receipt.get('sqlImage') != SQL_REHEARSAL_IMAGE
+                        or receipt.get('counts') != {'mutations': 1, 'intents': 1, 'successReceipts': 2}
+                        or component.get('applicationReleaseSha') != source or component.get('component') != 'migration'
+                        or digest(bundle) != receipt.get('bundleDigest') or component.get('sha256') != receipt.get('bundleDigest')):
+                        raise ValueError('FAST_TRACK_EXACT_REHEARSAL_BYTES_UNPROVEN')
+                    observer = next(row for row in observation['artifacts'] if row['id'] == report['observerArtifactId'])
+                    AUTHORITY._download_run_artifact(repository, run['id'], observer['name'], root / 'probe', artifact_id=observer['id'])
+                    manifest(root / 'probe', source, source)
+                    if digest(root / 'probe/migration-contract.json') != report['contractDigest']:
+                        raise ValueError('FAST_TRACK_OBSERVER_CONTRACT_CHANGED')
+                    directory.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(bundle, directory / bundle.name)
+                    (directory / bundle.name).chmod(0o700)
+                    shutil.copyfile(restored / 'rehearsal.json', directory / 'rehearsal.json')
+                    receipt['source'] = dict(runId=run['id'], runAttempt=attempt, artifactId=artifact['id'],
+                        contentIdentity=expected['contentIdentity'], producerRevision=source, toolRevision=run['head_sha'])
+                    (directory / 'source.json').write_text(json.dumps(receipt, sort_keys=True) + '\n')
+                    shutil.copytree(root / 'probe', probe_directory, dirs_exist_ok=True)
+                    return receipt
         if len(runs) < 100:
             break
     raise ValueError('FAST_TRACK_COMPATIBLE_REHEARSAL_MISSING')
-
 
 def prepare_observed_fast_track(revision, directory, observation_path, probe_directory):
     """Reuse compatible rehearsal against fresh observation; build only if absent."""
     if any(os.environ.get(key) for key in ('LEGEND_RELEASE_DB_CONNECTION',
         'SQLCONNSTR_MasterAppDb', 'ConnectionStrings__MasterAppDb', 'AZURE_CLIENT_ID',
-        'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID')):
+        'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID', 'AZURE_CLIENT_SECRET',
+        'ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_URL')):
         raise ValueError('FAST_TRACK_REHEARSAL_REQUIRES_CREDENTIAL_FREE_JOB')
     if (not re.fullmatch('[a-f0-9]{40}', revision)
         or subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() != revision
-        or os.environ.get('GITHUB_SHA') != revision):
+        or os.environ.get('CANDIDATE_SHA') != revision):
         raise ValueError('FAST_TRACK_REHEARSAL_CANDIDATE_CHANGED')
     repository = os.environ['GITHUB_REPOSITORY']
     token = os.environ.get('GITHUB_TOKEN') or os.environ['GH_TOKEN']
     run_id, attempt = int(os.environ['GITHUB_RUN_ID']), int(os.environ['GITHUB_RUN_ATTEMPT'])
-    run = AUTHORITY.api_get(repository, f'actions/runs/{run_id}', token)
-    if (run.get('id') != run_id or run.get('run_attempt') != attempt or run.get('head_sha') != revision
-        or run.get('path') != '.github/workflows/parfait-cutover-live-readonly.yml'
-        or run.get('head_branch') != 'isolation/canonical-scoped-commerce-internal-20261010'
-        or run.get('event') not in {'push', 'workflow_dispatch'} or run.get('status') != 'in_progress'
-        or run.get('head_repository', {}).get('full_name') != repository):
-        raise ValueError('FAST_TRACK_REHEARSAL_PRODUCER_UNPROVEN')
+    run = trusted_fast_track_run(repository, run_id, attempt, token, active=True)
+    if os.environ.get('GITHUB_SHA') != run['head_sha']:
+        raise ValueError('FAST_TRACK_TRUSTED_WORKFLOW_REVISION_CHANGED')
     source = fast_track_observation_source(repository, revision, run_id, attempt, token)
-    report = json.loads(observation_path.read_text())
-    baseline = fast_track_baseline(report, revision, run_id)
+    report = verified_fast_track_observation(repository, run_id, source, observation_path)
+    baseline = fast_track_baseline(report, revision, run_id, source)
+    manifest(probe_directory, revision, revision)
+    if digest(probe_directory / 'migration-contract.json') != report['contractDigest']:
+        raise ValueError('FAST_TRACK_OBSERVER_CONTRACT_CHANGED')
     if report.get('producingAttempt') != source['attempt']:
         raise ValueError('FAST_TRACK_OBSERVATION_ATTEMPT_MISMATCH')
     if baseline.get('ready') is True and baseline.get('pendingCount') == 0:

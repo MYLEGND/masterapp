@@ -414,6 +414,91 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
         self.assertIn('bypassed early readiness', m.candidate_control_plane_integrity(
             Drift(), {'head': {'sha': 'b' * 40}}, ['scripts/validation-resume.py']))
 
+    def test_validation_router_rejects_readiness_bypasses(self):
+        mutations = {
+            'wrong-base': ("base = getattr(args, 'validation_base', TRUSTED_PR_BASE)", "base = FAST_TRACK_PR_BASE"),
+            'missing-base-allowlist': ("if base not in {TRUSTED_PR_BASE, FAST_TRACK_PR_BASE}:", "if False:"),
+            'unvalidated-scope': ("scope = fast_track_source_validation_scope(args) if base == FAST_TRACK_PR_BASE else None", "scope = {}"),
+            'missing-context': ("with _validation_base_scope(base):", "if True:"),
+            'wrong-forwarded-scope': ("return _cmd_plan(args, source_scope=scope)", "return _cmd_plan(args, source_scope={})"),
+            'worker-default-bypass': ("def _cmd_plan(args, *, source_scope=None):", "def _cmd_plan(args, *, source_scope={}):"),
+            'inverted-readiness': ("    if source_scope is None:", "    if source_scope is not None:"),
+            'removed-readiness': ('        require_readiness(args.repository, args.current_sha, event=getattr(args, "event", None))', '        pass'),
+            'delayed-readiness': ("def _cmd_plan(args, *, source_scope=None):", "def _cmd_plan(args, *, source_scope=None):\n    plan = None"),
+            'direct-cli': ("plan.set_defaults(func=cmd_plan)", "plan.set_defaults(func=_cmd_plan)"),
+        }
+        original = Api().text('b' * 40, 'scripts/validation-resume.py')
+        for label, (old, new) in mutations.items():
+            with self.subTest(label=label):
+                self.assertEqual(1, original.count(old), 'Mutation must hit its exact target')
+                changed = original.replace(old, new)
+                class Drift(Api):
+                    def text(self, revision, path):
+                        return changed if path == 'scripts/validation-resume.py' else super().text(revision, path)
+                self.assertIn('bypassed early readiness', m.candidate_control_plane_integrity(
+                    Drift(), {'head': {'sha': 'b' * 40}}, ['scripts/validation-resume.py']))
+
+    def test_validation_worker_cannot_gain_another_caller(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                source = super().text(revision, path)
+                if path == 'scripts/validation-resume.py':
+                    source += "\ndef bypass(args):\n    return _cmd_plan(args, source_scope={})\n"
+                return source
+        self.assertIn('validation entrypoint', m.candidate_control_plane_integrity(
+            Drift(), {'head': {'sha': 'b' * 40}}, ['scripts/validation-resume.py']))
+
+    def test_migration_entrypoint_and_dispatcher_reject_bypasses(self):
+        mutations = [
+            ('scripts/release-migration.py', '        release_authority().assert_release_execution()', '        pass'),
+            ('scripts/release-migration.py', '        release_authority().assert_release_execution()', '        import sys\n        release_authority().assert_release_execution()'),
+            ('scripts/validation-resume.py', "if os.environ.get('GITHUB_REF') == 'refs/heads/' + FAST_TRACK_PR_BASE:", 'if True:'),
+            ('scripts/validation-resume.py', "if os.environ.get('GITHUB_REF') == 'refs/heads/' + FAST_TRACK_PR_BASE:", "if os.environ.get('GITHUB_REF') != 'refs/heads/' + FAST_TRACK_PR_BASE:"),
+            ('scripts/validation-resume.py', '    return assert_protected_release_execution()', '    return None'),
+        ]
+        for path, old, new in mutations:
+            with self.subTest(path=path, replacement=new):
+                original = Api().text('b' * 40, path)
+                self.assertEqual(1, original.count(old))
+                class Drift(Api):
+                    def text(self, revision, requested):
+                        return original.replace(old, new) if requested == path else super().text(revision, requested)
+                reason = m.candidate_control_plane_integrity(
+                    Drift(), {'head': {'sha': 'b' * 40}}, [path])
+                self.assertIn('release execution', reason)
+
+    def test_validation_cli_binding_cannot_be_an_unrelated_decoy(self):
+        original = Api().text('b' * 40, 'scripts/validation-resume.py')
+        old = '    plan.set_defaults(func=cmd_plan)'
+        self.assertEqual(1, original.count(old))
+        changed = original.replace(old, '    pass')
+        changed += "\ndef decoy():\n    plan.set_defaults(func=cmd_plan)\n"
+        class Drift(Api):
+            def text(self, revision, path):
+                return changed if path == 'scripts/validation-resume.py' else super().text(revision, path)
+        self.assertIn('validation entrypoint', m.candidate_control_plane_integrity(
+            Drift(), {'head': {'sha': 'b' * 40}}, ['scripts/validation-resume.py']))
+
+    def test_security_trigger_requires_both_release_branches_without_filters(self):
+        path = '.github/workflows/approved-release-security-validation.yml'
+        original = Api().text('b' * 40, path)
+        branches = '    branches: [legend/approved-changes, Legend/fast-track-release]'
+        self.assertEqual(1, original.count(branches))
+        mutations = [
+            original.replace(branches, '    branches: [Legend/fast-track-release]'),
+            original.replace(branches, '    branches: [legend/approved-changes]'),
+            original.replace('  pull_request:', '  pull_request_target:'),
+            original.replace(branches, branches + '\n    paths: [scripts/**]'),
+            original.replace(branches, branches + '\n    paths-ignore: [scripts/**]'),
+        ]
+        for changed in mutations:
+            with self.subTest(trigger=changed.split('concurrency:', 1)[0]):
+                class Drift(Api):
+                    def text(self, revision, requested):
+                        return changed if requested == path else super().text(revision, requested)
+                self.assertIn('Candidate security validation', m.candidate_control_plane_integrity(
+                    Drift(), {'head': {'sha': 'b' * 40}}, [path]))
+
     def test_activated_readiness_cannot_be_removed_to_reenter_bootstrap(self):
         class Drift(Api):
             def text(self, revision, path):
@@ -920,7 +1005,7 @@ class ReleaseQueueSerialization(unittest.TestCase):
             "retained": "Awaiting successful exact-head validation",
         }
 
-        result = m.pending_updates(api)
+        result = lifecycle_call('pending_updates', api)
 
         self.assertEqual("VALIDATING", result["state"])
         merge_validated.assert_called_once_with(api, owner)
@@ -946,7 +1031,7 @@ class ReleaseQueueSerialization(unittest.TestCase):
                     self.assertEqual('VALIDATING', m.integrate(api, 514)['state'])
                 with patch.object(m, 'candidate_validation', side_effect=lambda api, pr:
                                   'unrelated checks pending' if pr['number'] == 513 else None):
-                    result = m.pending_updates(api)
+                    result = lifecycle_call('pending_updates', api)
                 self.assertEqual('MERGED', result['state'])
                 self.assertEqual(514, result['mergedPr'])
                 self.assertEqual([({'merge_method': 'merge', 'sha': 'b' * 40}, 'PUT')], merged)
@@ -956,7 +1041,7 @@ class ReleaseQueueSerialization(unittest.TestCase):
                 api.refs[m.APPROVED] = 'c' * 40
                 api.context_status('c' * 40, m.RELEASE_QUEUE_CONTEXT, 'pending', 'owner-pr=505 validation-to-production')
                 with patch.object(m, 'dispatch_pending_automatic_release', return_value={'state': 'RELEASE_DISPATCHED', 'sourcePr': 505}) as recover:
-                    self.assertEqual(505, m.reconcile(api)['sourcePr'])
+                    self.assertEqual(505, lifecycle_call('reconcile', api)['sourcePr'])
                     recover.assert_called_once_with(api, 'c' * 40)
 
     @patch.object(m, "staging_only", return_value=False)
@@ -980,7 +1065,7 @@ class ReleaseQueueSerialization(unittest.TestCase):
         api.api_map["pulls/551/merge"] = lambda data, method: (
             merged.append((data, method)) or {"merged": True, "sha": "c" * 40})
         with patch.object(m, "candidate_validation", return_value=None):
-            result = m.pending_updates(api)
+            result = lifecycle_call('pending_updates', api)
         self.assertEqual("MERGED", result["state"])
         self.assertEqual([({"merge_method": "merge", "sha": "b" * 40}, "PUT")], merged)
         self.assertEqual(550, m.release_queue_lease(api)["ownerPr"])
@@ -999,7 +1084,7 @@ class ReleaseQueueSerialization(unittest.TestCase):
             self.assertEqual('VALIDATING', m.integrate(api, 514)['state'])
         self.assertIsNone(m.release_queue_lease(api)['ownerPr'])
         with patch.object(m, 'candidate_validation', return_value=None):
-            self.assertEqual('MERGED', m.pending_updates(api)['state'])
+            self.assertEqual('MERGED', lifecycle_call('pending_updates', api)['state'])
         self.assertEqual(514, m.release_queue_lease(api)['ownerPr'])
 
     @patch.object(m, "staging_only", return_value=False)
@@ -1017,7 +1102,7 @@ class ReleaseQueueSerialization(unittest.TestCase):
                      patch.object(m, 'candidate_control_plane_integrity', return_value='source failed' if condition == 'integrity' else None), \
                      patch.object(m, 'approved_head_state', return_value={'current': condition != 'stale'}), \
                      patch.object(m, 'sync_candidate_to_current_approved', side_effect=AssertionError('Unrelated head must not be mutated')):
-                    result = m.pending_updates(api)
+                    result = lifecycle_call('pending_updates', api)
                 self.assertNotEqual('MERGED', result.get('state'))
                 self.assertIsNone(m.release_queue_lease(api)['ownerPr'])
 
@@ -1066,7 +1151,7 @@ class ReleaseQueueSerialization(unittest.TestCase):
         )
         m._request_release_queue(api, product)
 
-        result = m.pending_updates(api)
+        result = lifecycle_call('pending_updates', api)
 
         self.assertEqual("RELEASE_QUEUE_PROMOTED", result["state"])
         self.assertEqual(450, result["pr"])
@@ -1235,7 +1320,7 @@ class MergedFailedQueueOwnerRecovery(unittest.TestCase):
              patch.object(m, 'candidate_validation', return_value=None), \
              patch.object(m, 'sync_candidate_to_current_approved', return_value=None), \
              patch.object(m, '_rerun_required_validations', return_value={'rerun': [], 'missing': []}):
-            result = m.pending_updates(self.api)
+            result = lifecycle_call('pending_updates', self.api)
         self.assertEqual('RELEASE_QUEUE_PROMOTED', result['state'])
         self.assertEqual(523, result['pr'])
         self.assertEqual(523, m.release_queue_lease(self.api)['ownerPr'])
@@ -1715,7 +1800,7 @@ class DurableCandidateQueue(unittest.TestCase):
         active = self.release_run(pr, status="in_progress", conclusion=None)
         active.pop("display_title")
         self.api.pages_map[self.runs_path] = [active]
-        result = m.reconcile(self.api)
+        result = lifecycle_call('reconcile', self.api)
         self.assertEqual([99], result["blockingRuns"])
         self.assertEqual([], self.api.dispatched)
 
@@ -1725,7 +1810,7 @@ class DurableCandidateQueue(unittest.TestCase):
         failed = self.release_run(first)
         self.api.pages_map[self.runs_path] = [failed]
         self.api.api_map["actions/runs/99"] = failed
-        result = m.reconcile(self.api, 99)
+        result = lifecycle_call('reconcile', self.api, 99)
         self.assertEqual(2, result["sourcePr"])
         self.assertEqual(1, len(self.api.dispatched))
         self.assertEqual("2", self.api.dispatched[0][1]["source_pr"])
@@ -1736,7 +1821,7 @@ class DurableCandidateQueue(unittest.TestCase):
         completed = self.release_run(first, conclusion="success")
         self.api.pages_map[self.runs_path] = [completed]
         with patch.object(m, "release_proven", side_effect=lambda api, revision, app: revision == "d" * 40):
-            result = m.reconcile(self.api, 99)
+            result = lifecycle_call('reconcile', self.api, 99)
         self.assertEqual(2, result["sourcePr"])
         self.assertEqual([m.DIRECT], [workflow for workflow, _ in self.api.dispatched])
 
@@ -1758,7 +1843,7 @@ class DurableCandidateQueue(unittest.TestCase):
              patch.object(m, "dispatch_pending_legacy_release", return_value=None), \
              patch.object(m, "_never_admitted", return_value=True) as never, \
              patch.object(m, "promote_next_release_queue", return_value=promoted) as promote:
-            result = m.reconcile(self.api)
+            result = lifecycle_call('reconcile', self.api)
         self.assertEqual(promoted, result)
         never.assert_called_once_with(self.api, run)
         promote.assert_called_once_with(self.api)
@@ -1781,7 +1866,7 @@ class DurableCandidateQueue(unittest.TestCase):
              patch.object(m, "_never_admitted", return_value=False), \
              patch.object(m, "release_execution_state", return_value="FAILED_NEEDS_REPAIR"), \
              patch.object(m, "promote_next_release_queue") as promote:
-            result = m.reconcile(self.api)
+            result = lifecycle_call('reconcile', self.api)
         self.assertEqual("FAILED_NEEDS_REPAIR", result["state"])
         self.assertIn("terminal proof", result["retained"])
         promote.assert_not_called()
@@ -1789,7 +1874,7 @@ class DurableCandidateQueue(unittest.TestCase):
     def test_changed_source_pr_identity_is_retained_after_queue_discovery(self):
         self.candidate(1, "b" * 40, "d" * 40, ["Protect-Website/Program.cs"])
         self.api.api_map["pulls/1"] = {"number": 1, "head": {"sha": "f" * 40}}
-        result = m.reconcile(self.api)
+        result = lifecycle_call('reconcile', self.api)
         self.assertIn("changed", result["pendingCandidates"][0]["retained"])
         self.assertEqual([], self.api.dispatched)
 
@@ -3568,7 +3653,7 @@ class ReconcileSafety(unittest.TestCase):
         api = Api()
         self.assertEqual(
             {"state": "READY", "release": "no application publication required for exact approved head"},
-            m.reconcile(api),
+            lifecycle_call('reconcile', api),
         )
         self.assertEqual([], api.dispatched)
 
@@ -3580,7 +3665,7 @@ class ReconcileSafety(unittest.TestCase):
         recovered = {'state': 'RELEASE_DISPATCHED', 'authorizationMode': 'explicit',
                      'authorizationSha': 'b' * 40}
         frontier.return_value = recovered
-        self.assertEqual(recovered, m.reconcile(api))
+        self.assertEqual(recovered, lifecycle_call('reconcile', api))
         frontier.assert_called_once_with(api, 'a' * 40)
         legacy.assert_not_called()
 
@@ -3598,7 +3683,7 @@ class ReconcileSafety(unittest.TestCase):
         api.pages_map["actions/runs?head_sha=" + "a" * 40] = []
         api.pages_map["commits/" + "a" * 40 + "/pulls"] = []
 
-        result = m.reconcile(api)
+        result = lifecycle_call('reconcile', api)
 
         self.assertEqual(recovered, result)
         recover.assert_called_once_with(api, "a" * 40)
@@ -3625,7 +3710,7 @@ class ReconcileSafety(unittest.TestCase):
         }
         recover.return_value = recovered
 
-        result = m.reconcile(api)
+        result = lifecycle_call('reconcile', api)
 
         self.assertEqual(recovered, result)
         recover.assert_called_once_with(api, "a" * 40)
@@ -3644,7 +3729,7 @@ class ReconcileSafety(unittest.TestCase):
             "head_branch": m.APPROVED,
             "updated_at": "2026-10-01T12:00:00Z",
         }]
-        result = m.reconcile(api)
+        result = lifecycle_call('reconcile', api)
         self.assertIn("retained", result)
         self.assertEqual([], api.dispatched)
 
@@ -3657,7 +3742,7 @@ class ReconcileSafety(unittest.TestCase):
             "status": "completed",
             "conclusion": "failure",
         }
-        result = m.reconcile(api, 100)
+        result = lifecycle_call('reconcile', api, 100)
         self.assertIn("retained", result)
         self.assertEqual([], api.dispatched)
 
@@ -3670,7 +3755,7 @@ class ReconcileSafety(unittest.TestCase):
             "status": "completed",
             "conclusion": "failure",
         }
-        result = m.reconcile(api, 99)
+        result = lifecycle_call('reconcile', api, 99)
         self.assertIn("retained", result)
         self.assertEqual([], api.dispatched)
 
@@ -3924,9 +4009,125 @@ class StagingSafety(unittest.TestCase):
     def test_hold_blocks_automatic_mutations(self, _):
         api = Api()
         self.assertIn("retained", m.integrate(api, 1))
-        self.assertIn("retained", m.pending_updates(api))
-        self.assertIn("disabled", m.reconcile(api)["release"])
+        self.assertIn("retained", lifecycle_call('pending_updates', api))
+        self.assertIn("disabled", lifecycle_call('reconcile', api)["release"])
         self.assertIn("retained", m.cleanup(api))
+
+
+def lifecycle_call(command, api, trigger=None):
+    # Existing maintenance fixtures explicitly represent a trusted scheduler or
+    # authenticated manual recovery, and still execute the production guard.
+    if not isinstance(api, Api):
+        return getattr(m, command)(api, trigger) if trigger is not None else getattr(m, command)(api)
+    with tempfile.TemporaryDirectory() as directory:
+        event = {'inputs': {'release_run': str(trigger)}} if trigger is not None else {}
+        name = 'workflow_dispatch' if trigger is not None else 'schedule'
+        own = dict(id=900000, run_attempt=1, path='.github/workflows/legend-release-lifecycle.yml',
+            head_sha='a'*40, head_branch=m.APPROVED, event=name,
+            head_repository={'full_name': api.repo}, status='in_progress')
+        api.api_map['actions/runs/900000'] = own
+        if trigger is not None:
+            key = 'actions/runs/' + str(trigger)
+            prior = api.api_map.get(key, {})
+            if isinstance(prior, dict):
+                api.api_map[key] = dict(id=trigger, run_attempt=1, head_sha='a'*40,
+                    head_branch=m.APPROVED, head_repository={'full_name':api.repo},
+                    event='workflow_dispatch', path='.github/workflows/'+m.DIRECT,
+                    status='completed') | prior
+        path = Path(directory)/'event.json'; path.write_text(json.dumps(event))
+        env = dict(GITHUB_ACTIONS='true',GITHUB_REPOSITORY=api.repo,GITHUB_EVENT_NAME=name,
+            GITHUB_RUN_ID='900000',GITHUB_RUN_ATTEMPT='1',GITHUB_SHA='a'*40,
+            GITHUB_REF='refs/heads/'+m.APPROVED,GITHUB_EVENT_PATH=str(path),
+            GITHUB_WORKFLOW_REF=api.repo+'/.github/workflows/legend-release-lifecycle.yml@refs/heads/'+m.APPROVED)
+        actual_admission = m.lifecycle_event_admission
+        def authenticated_admission(current_api, current_trigger=None):
+            # Execute the real boundary with explicit authenticated fixture
+            # context; downstream maintenance retains its original test context.
+            with patch.dict(os.environ,env):
+                return actual_admission(current_api,current_trigger)
+        with patch.object(m,'lifecycle_event_admission',side_effect=authenticated_admission):
+            return getattr(m,command)(api,trigger) if trigger is not None else getattr(m,command)(api)
+
+
+class LifecycleEventBoundaryTests(unittest.TestCase):
+    def invoke(self, event_name='workflow_run', base=None, change=None, command=None, env_change=None):
+        api=Api(); base=base or m.APPROVED
+        candidate='b'*40
+        pr=dict(number=626,base={'ref':base,'sha':'a'*40,'repo':{'full_name':api.repo}},
+            head={'sha':candidate,'ref':'isolation/test','repo':{'full_name':api.repo}},
+            draft=False,author_association='OWNER')
+        workflow=next(iter(m.VALIDATION_AUTHORITY.WORKFLOWS))
+        producer=dict(id=77,run_attempt=1,status='completed',event='pull_request',
+            head_sha=candidate,head_branch='isolation/test',head_repository={'full_name':api.repo},
+            path='.github/workflows/'+workflow,pull_requests=[pr])
+        own=dict(id=900000,run_attempt=1,status='in_progress',event=event_name,
+            head_sha=candidate if event_name=='pull_request_target' else 'a'*40,
+            head_branch='isolation/test' if event_name=='pull_request_target' else m.APPROVED,
+            head_repository={'full_name':api.repo},path='.github/workflows/legend-release-lifecycle.yml')
+        event={'workflow_run':json.loads(json.dumps(producer)),'pull_request':json.loads(json.dumps(pr))}
+        api.api_map.update({'actions/runs/900000':own,'actions/runs/77':producer,'pulls/626':pr})
+        api.pages_map['commits/'+candidate+'/pulls']=[pr]
+        if change: change(api,event,own,producer,pr)
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'event.json';path.write_text(json.dumps(event))
+            env=dict(GITHUB_ACTIONS='true',GITHUB_REPOSITORY=api.repo,GITHUB_EVENT_NAME=event_name,
+                GITHUB_RUN_ID='900000',GITHUB_RUN_ATTEMPT='1',GITHUB_SHA='a'*40,
+                GITHUB_REF='refs/heads/'+m.APPROVED,GITHUB_EVENT_PATH=str(path),
+                GITHUB_WORKFLOW_REF=api.repo+'/.github/workflows/legend-release-lifecycle.yml@refs/heads/'+m.APPROVED)
+            if env_change: env.update(env_change)
+            with patch.dict(os.environ,env), patch.object(m,'release_queue_lease',side_effect=AssertionError('queue read')), patch.object(api,'dispatch',side_effect=AssertionError('dispatch')):
+                return getattr(m,command)(api) if command else m.lifecycle_event_admission(api)
+
+    def test_exact_approved_validation_and_pr_target_admit(self):
+        self.assertTrue(self.invoke()['admitted'])
+        self.assertTrue(self.invoke('pull_request_target')['admitted'])
+
+    def test_fasttrack_validation_and_promotion_cannot_enter_queue(self):
+        for command in ('pending_updates','reconcile'):
+            self.assertFalse(self.invoke(base=m.VALIDATION_AUTHORITY.FAST_TRACK_PR_BASE,command=command)['eventAdmission']['admitted'])
+        def promotion(api,event,own,producer,pr):
+            producer.update(event='push',head_branch=m.VALIDATION_AUTHORITY.FAST_TRACK_PR_BASE,
+                path='.github/workflows/'+m.VALIDATION_AUTHORITY.FAST_TRACK_RELEASE_WORKFLOW,
+                pull_requests=[])
+            event['workflow_run']=json.loads(json.dumps(producer))
+        for command in ('pending_updates','reconcile'):
+            self.assertFalse(self.invoke(change=promotion,command=command)['eventAdmission']['admitted'])
+
+    def test_missing_retargeted_or_forged_producer_denied(self):
+        mutations=[lambda a,e,o,p,r:p.update(pull_requests=[]),
+            lambda a,e,o,p,r:p.update(head_sha='c'*40),
+            lambda a,e,o,p,r:o.update(run_attempt=2),
+            lambda a,e,o,p,r:o.update(head_repository={'full_name':'attacker/repo'}),
+            lambda a,e,o,p,r:e['workflow_run'].update(path='.github/workflows/forged.yml'),
+            lambda a,e,o,p,r:e['workflow_run']['pull_requests'][0]['base'].update(ref=m.VALIDATION_AUTHORITY.FAST_TRACK_PR_BASE)]
+        for mutation in mutations:
+            with self.subTest(mutation=mutation): self.assertFalse(self.invoke(change=mutation)['admitted'])
+
+    def test_pr_target_candidate_and_base_identity_required(self):
+        for mutation in (lambda a,e,o,p,r:o.update(head_sha='a'*40),
+                         lambda a,e,o,p,r:e['pull_request']['base'].update(sha='c'*40)):
+            self.assertFalse(self.invoke('pull_request_target',change=mutation)['admitted'])
+
+    def test_trusted_schedule_manual_and_release_recovery_admit(self):
+        self.assertTrue(self.invoke('schedule')['admitted'])
+        self.assertTrue(self.invoke('workflow_dispatch')['admitted'])
+        for workflow in (m.DIRECT,m.PACKAGE_VALIDATION):
+            def recovery(api,event,own,producer,pr):
+                producer.update(event='workflow_dispatch',head_branch=m.APPROVED,
+                    path='.github/workflows/'+workflow,pull_requests=[],conclusion='failure')
+                event['workflow_run']=json.loads(json.dumps(producer))
+                event['inputs']={'release_run':'77'}
+            for event_name in ('workflow_run','workflow_dispatch'):
+                with self.subTest(workflow=workflow,event=event_name):
+                    self.assertTrue(self.invoke(event_name,change=recovery)['admitted'])
+
+    def test_missing_execution_context_or_wrong_workflow_stops_before_queue(self):
+        for command in ('pending_updates','reconcile'):
+            for change in ({'GITHUB_ACTIONS':''}, {'GITHUB_RUN_ID':''},
+                           {'GITHUB_WORKFLOW_REF':'MYLEGND/masterapp/.github/workflows/forged.yml@refs/heads/'+m.APPROVED}):
+                with self.subTest(command=command,env=change):
+                    result=self.invoke(command=command,env_change=change)
+                    self.assertFalse(result['eventAdmission']['admitted'])
 
 
 if __name__ == "__main__":

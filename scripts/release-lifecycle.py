@@ -602,6 +602,7 @@ def candidate_control_plane_integrity(api, pr, names):
         validation_tree = ast.parse(source['validation'])
         lifecycle_tree = ast.parse(source['lifecycle'])
         deployment_tree = ast.parse(source['deployment'])
+        migration_tree = ast.parse(source['migration'])
         renderer_tree = ast.parse(source['workflow_renderer'])
     except (RuntimeError, SyntaxError):
         return 'Candidate release-control authority cannot be parsed from exact head'
@@ -618,7 +619,54 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate changed the sole approved direct-release workflow authority'
     if assignments.get('READINESS_SCHEMA') != 1:
         return 'Candidate removed the activated early readiness authority'
-    for name in ('cmd_plan', 'cmd_package_canary_plan', 'cmd_step5_decision'):
+    # Accept only the reviewed router and its early legacy readiness gate.
+    expected_router = ast.parse("""def cmd_plan(args):
+    base = getattr(args, 'validation_base', TRUSTED_PR_BASE)
+    if base not in {TRUSTED_PR_BASE, FAST_TRACK_PR_BASE}:
+        raise ValueError('Unsupported validation base')
+    scope = fast_track_source_validation_scope(args) if base == FAST_TRACK_PR_BASE else None
+    with _validation_base_scope(base):
+        return _cmd_plan(args, source_scope=scope)
+""").body[0]
+    expected_worker = ast.parse("""def _cmd_plan(args, *, source_scope=None):
+    if source_scope is None:
+        require_readiness(args.repository, args.current_sha, event=getattr(args, 'event', None))
+""").body[0]
+    routers = [node for node in validation_tree.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'cmd_plan']
+    workers = [node for node in validation_tree.body
+               if isinstance(node, ast.FunctionDef) and node.name == '_cmd_plan']
+    if len(routers) != 1 or ast.dump(routers[0]) != ast.dump(expected_router):
+        return 'Candidate bypassed early readiness through validation routing'
+    if (len(workers) != 1 or workers[0].decorator_list or
+        ast.dump(workers[0].args) != ast.dump(expected_worker.args) or
+        not workers[0].body or
+        ast.dump(workers[0].body[0]) != ast.dump(expected_worker.body[0])):
+        return 'Candidate bypassed early readiness before validation or package planning'
+    # The wrapper is the sole worker caller; the CLI must bind to the wrapper.
+    worker_refs = [node for node in ast.walk(validation_tree)
+                   if isinstance(node, ast.Name) and node.id == '_cmd_plan']
+    bindings = [node for node in ast.walk(validation_tree)
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and
+                isinstance(node.func.value, ast.Name) and node.func.value.id == 'plan' and
+                node.func.attr == 'set_defaults']
+    expected_binding = ast.parse('plan.set_defaults(func=cmd_plan)').body[0].value
+    if (len(worker_refs) != 1 or len(bindings) != 1 or
+        ast.dump(bindings[0]) != ast.dump(expected_binding)):
+        return 'Candidate bypassed early readiness through validation entrypoint'
+    parsers = [node for node in validation_tree.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'build_parser']
+    expected_parser = ast.parse("plan = sub.add_parser('plan')").body[0]
+    if len(parsers) != 1:
+        return 'Candidate bypassed early readiness through validation entrypoint'
+    plan_assignments = [node for node in ast.walk(parsers[0])
+                        if isinstance(node, ast.Assign) and any(
+                            isinstance(target, ast.Name) and target.id == 'plan' for target in node.targets)]
+    if (len(plan_assignments) != 1 or ast.dump(plan_assignments[0]) != ast.dump(expected_parser) or
+        plan_assignments[0] not in parsers[0].body or
+        not any(isinstance(node, ast.Expr) and node.value is bindings[0] for node in parsers[0].body)):
+        return 'Candidate bypassed early readiness through validation entrypoint'
+    for name in ('cmd_package_canary_plan', 'cmd_step5_decision'):
         function = next((node for node in validation_tree.body
                          if isinstance(node, ast.FunctionDef) and node.name == name), None)
         statement = function.body[0] if function and function.body else None
@@ -815,10 +863,35 @@ def candidate_control_plane_integrity(api, pr, names):
     )):
         return 'Candidate weakened authenticated canonical release execution guard'
 
+    expected_dispatch = ast.parse("""def assert_release_execution():
+    if os.environ.get('GITHUB_REF') == 'refs/heads/' + FAST_TRACK_PR_BASE:
+        return assert_fast_track_release_execution()
+    return assert_protected_release_execution()
+""").body[0]
+    dispatchers = [node for node in validation_tree.body
+                   if isinstance(node, ast.FunctionDef) and node.name == 'assert_release_execution']
+    if len(dispatchers) != 1:
+        return 'Candidate weakened canonical release execution dispatcher'
+    dispatcher = dispatchers[0]
+    if (dispatcher.body and isinstance(dispatcher.body[0], ast.Expr) and
+        isinstance(dispatcher.body[0].value, ast.Constant) and
+        isinstance(dispatcher.body[0].value.value, str)):
+        dispatcher.body = dispatcher.body[1:]
+    if ast.dump(dispatcher) != ast.dump(expected_dispatch):
+        return 'Candidate weakened canonical release execution dispatcher'
+    main_test = ast.parse("__name__ == '__main__'", mode='eval').body
+    entrypoints = [node for node in migration_tree.body
+                   if isinstance(node, ast.If) and ast.dump(node.test) == ast.dump(main_test)]
+    migration_gate = ast.parse('release_authority().assert_release_execution()').body[0]
+    if (len(entrypoints) != 1 or not entrypoints[0].body or
+        not isinstance(entrypoints[0].body[0], ast.Try) or
+        not entrypoints[0].body[0].body or
+        ast.dump(entrypoints[0].body[0].body[0]) != ast.dump(migration_gate)):
+        return 'Candidate migration mutation authority lost protected release execution guard'
     guarded_sources = {
         'deployment': '_RELEASE_AUTHORITY.assert_protected_release_execution()',
         'prepublication': 'release_authority().assert_protected_release_execution()',
-        'migration': 'release_authority().assert_protected_release_execution()',
+        'migration': 'release_authority().assert_release_execution()',
         'founder_cloudflare': 'release_authority().assert_protected_release_execution()',
         'auxiliary': 'release_authority().assert_protected_release_execution()',
         'router': "load('validation-resume').assert_protected_release_execution()",
@@ -1063,10 +1136,14 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate architecture validator allows package/probe work before approved-head preflight'
 
     security_trigger = source['security_workflow'].split('concurrency:', 1)[0]
-    if 'pull_request:' not in security_trigger or 'branches: [legend/approved-changes]' not in security_trigger:
-        return 'Candidate security validation no longer covers approved-branch pull requests'
     if '\n    paths:' in security_trigger or '\n    paths-ignore:' in security_trigger:
         return 'Candidate security validation can be skipped by release-control path filtering'
+    if not re.fullmatch(
+        r'name: [^\n]+\n+on:\n  pull_request:\n'
+        r'    branches: \[legend/approved-changes, Legend/fast-track-release\]\n\s*',
+        security_trigger,
+    ):
+        return 'Candidate security validation no longer covers approved and fast-track pull requests'
     return None
 
 
@@ -1501,7 +1578,120 @@ def _merged_owner_terminal_nonentry_proven(api, owner):
     return True
 
 
+def lifecycle_event_admission(api, trigger=None):
+    """Authenticate event ownership before queue access, mutation or dispatch."""
+    denied = dict(admitted=False, reason='lifecycle_event_not_admitted')
+    env = os.environ
+    event_name = env.get('GITHUB_EVENT_NAME')
+    run_id, attempt = env.get('GITHUB_RUN_ID', ''), env.get('GITHUB_RUN_ATTEMPT', '')
+    if (env.get('GITHUB_ACTIONS') != 'true' or env.get('GITHUB_REPOSITORY') != api.repo
+        or event_name not in {'workflow_run', 'pull_request_target', 'schedule', 'workflow_dispatch', 'push'}
+        or not run_id.isdigit() or int(run_id) < 1 or not attempt.isdigit() or int(attempt) < 1
+        or not SHA.fullmatch(env.get('GITHUB_SHA', ''))
+        or env.get('GITHUB_WORKFLOW_REF') != api.repo + '/.github/workflows/legend-release-lifecycle.yml@refs/heads/' + APPROVED):
+        return denied
+    path = Path(env.get('GITHUB_EVENT_PATH', ''))
+    if not path.is_file() or path.is_symlink() or path.stat().st_size > 4 * 1024 * 1024:
+        return denied
+    try:
+        event = json.loads(path.read_text())
+    except (ValueError, OSError):
+        return denied
+    if not isinstance(event, dict):
+        return denied
+    own = api.api('actions/runs/' + run_id)
+    if (own.get('id') != int(run_id) or own.get('run_attempt') != int(attempt)
+        or own.get('path') != '.github/workflows/legend-release-lifecycle.yml'
+        or own.get('event') != event_name
+        or own.get('head_repository', {}).get('full_name') != api.repo
+        or own.get('status') not in {'queued', 'in_progress'}):
+        return denied
+    def approved_pr(pr, candidate=None, branch=None):
+        return (isinstance(pr, dict) and pr.get('base', {}).get('ref') == APPROVED
+            and pr.get('base', {}).get('repo', {}).get('full_name') == api.repo
+            and pr.get('head', {}).get('repo', {}).get('full_name') == api.repo
+            and (candidate is None or pr.get('head', {}).get('sha') == candidate)
+            and (branch is None or pr.get('head', {}).get('ref') == branch))
+    if event_name == 'pull_request_target':
+        declared = event.get('pull_request', {})
+        number = declared.get('number')
+        if type(number) is not int or number < 1:
+            return denied
+        pr = api.api(f'pulls/{number}')
+        if (not approved_pr(declared) or not approved_pr(pr, declared.get('head', {}).get('sha'), declared.get('head', {}).get('ref'))
+            or own.get('head_sha') != declared.get('head', {}).get('sha')
+            or own.get('head_branch') != declared.get('head', {}).get('ref')
+            or env['GITHUB_SHA'] != declared.get('base', {}).get('sha')
+            or env.get('GITHUB_REF') != 'refs/heads/' + APPROVED
+            or pr.get('draft') is not False or pr.get('author_association') not in {'OWNER', 'MEMBER', 'COLLABORATOR'}):
+            return denied
+        return dict(admitted=True, reason='approved_pull_request_target', sourcePr=number)
+    if (own.get('head_sha') != env['GITHUB_SHA']
+        or env.get('GITHUB_REF') != 'refs/heads/' + APPROVED or own.get('head_branch') != APPROVED):
+        return denied
+    producer_id = None
+    if event_name == 'workflow_run':
+        declared = event.get('workflow_run', {})
+        producer_id = declared.get('id')
+        if type(producer_id) is not int or producer_id < 1 or (trigger is not None and trigger != producer_id):
+            return denied
+    elif event_name == 'workflow_dispatch':
+        value = event.get('inputs', {}).get('release_run', '')
+        if value:
+            if not isinstance(value, str) or not value.isdigit() or int(value) < 1:
+                return denied
+            producer_id = int(value)
+        if trigger is not None and trigger != producer_id:
+            return denied
+    elif trigger is not None:
+        return denied
+    if producer_id is None:
+        return dict(admitted=True, reason='trusted_' + event_name)
+    producer = api.api(f'actions/runs/{producer_id}')
+    if (producer.get('id') != producer_id or producer.get('status') != 'completed'
+        or producer.get('head_repository', {}).get('full_name') != api.repo
+        or not SHA.fullmatch(producer.get('head_sha', ''))):
+        return denied
+    if event_name == 'workflow_run' and any(declared.get(key) != producer.get(key)
+            for key in ('id', 'head_sha', 'head_branch', 'event', 'path', 'run_attempt')):
+        return denied
+    workflow = producer.get('path', '')
+    if not workflow.startswith('.github/workflows/'):
+        return denied
+    workflow = workflow.removeprefix('.github/workflows/')
+    if producer.get('event') == 'pull_request':
+        if workflow not in VALIDATION_AUTHORITY.WORKFLOWS:
+            return denied
+        associations = producer.get('pull_requests')
+        if (not isinstance(associations, list) or len(associations) != 1
+            or associations[0].get('base', {}).get('ref') != APPROVED
+            or associations[0].get('head', {}).get('sha') != producer['head_sha']
+            or associations[0].get('head', {}).get('ref') != producer.get('head_branch')
+            or type(associations[0].get('number')) is not int):
+            return dict(denied, reason='immutable_validation_base_unproven')
+        if event_name == 'workflow_run' and declared.get('pull_requests') != associations:
+            return denied
+        pulls = api.pages('commits/' + producer['head_sha'] + '/pulls')
+        matches = [pr for pr in pulls if pr.get('head', {}).get('sha') == producer['head_sha']
+            and pr.get('head', {}).get('ref') == producer.get('head_branch')
+            and pr.get('head', {}).get('repo', {}).get('full_name') == api.repo]
+        if (len(matches) != 1 or matches[0].get('number') != associations[0]['number']
+            or not approved_pr(matches[0], producer['head_sha'], producer.get('head_branch'))):
+            return dict(denied, reason='source_validation_not_approved_lifecycle')
+        return dict(admitted=True, reason='approved_source_validation', producerRun=producer_id)
+    if (producer.get('head_branch') != APPROVED
+        or (producer.get('event') == 'workflow_dispatch' and workflow not in {DIRECT, PACKAGE_VALIDATION})
+        or (producer.get('event') == 'push' and workflow not in VALIDATION_AUTHORITY.WORKFLOWS)
+        or producer.get('event') not in {'push', 'workflow_dispatch'}):
+        return denied
+    return dict(admitted=True, reason='trusted_release_recovery', producerRun=producer_id)
+
+
 def pending_updates(api):
+    event_admission = lifecycle_event_admission(api)
+    if not event_admission['admitted']:
+        return dict(retained='Lifecycle event excluded before queue access',
+            release='disabled for unadmitted lifecycle event', eventAdmission=event_admission)
     if staging_only():
         return {'retained': 'Validation-only staging hold; no integration, dispatch or cleanup'}
     # GitHub state may advance while a serialized lifecycle run is waiting.
@@ -2187,6 +2377,10 @@ def release_execution_state(api, run):
 
 def reconcile(api, trigger=None):
     """Wake one serialized validation-to-production queue after terminal events."""
+    event_admission = lifecycle_event_admission(api, trigger)
+    if not event_admission['admitted']:
+        return dict(retained='Lifecycle event excluded before queue access',
+            release='disabled for unadmitted lifecycle event', eventAdmission=event_admission)
     if staging_only():
         return {'release': 'disabled while validation-only staging hold is active'}
 
@@ -3716,7 +3910,7 @@ def readiness_failure_diagnostic(exc):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup', 'admit-worker', 'diagnose-run', 'readiness-admit', 'readiness-observe', 'readiness-finalize'])
+    parser.add_argument('command', choices=['event-admit', 'integrate', 'pending-updates', 'reconcile', 'cleanup', 'admit-worker', 'diagnose-run', 'readiness-admit', 'readiness-observe', 'readiness-finalize'])
     parser.add_argument('--pr', type=int)
     parser.add_argument('--run', type=int)
     parser.add_argument('--apply', action='store_true')
@@ -3724,7 +3918,12 @@ def main():
     parser.add_argument('--directory', type=Path)
     args = parser.parse_args()
     api = GitHub()
-    if args.command == 'readiness-admit':
+    if args.command == 'event-admit':
+        result = lifecycle_event_admission(api, args.run)
+        if os.environ.get('GITHUB_OUTPUT'):
+            with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+                stream.write('admitted=' + str(result['admitted']).lower() + '\n')
+    elif args.command == 'readiness-admit':
         _, approved, candidate, targets = readiness_context(api, args.pr)
         scope = VALIDATION_AUTHORITY.readiness_scope(candidate, approved)
         if os.environ.get('GITHUB_OUTPUT'):

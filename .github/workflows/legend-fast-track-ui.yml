@@ -1,6 +1,7 @@
 name: LEGEND Fast Track — Affected Web Apps
 
-# One affected-app fast track. Backend publication requires exact source checks,
+# One affected-app fast track. Every publication requires exact source checks.
+# Backend publication additionally requires
 # an authenticated rehearsal, fresh database/recovery evidence and the canonical
 # durable migration and upload journals. Routing follows verified app publication.
 # Migration admission retains terminal zero-job attempts as proven non-entry.
@@ -70,7 +71,6 @@ permissions:
   contents: read
   actions: read
   pull-requests: read
-  id-token: write
 
 # Share the publication mutex with the existing release workflow.
 # Only protects against simultaneous production uploads, not branch editing.
@@ -90,6 +90,8 @@ jobs:
       routing: ${{ steps.scope.outputs.routing }}
       schema: ${{ steps.scope.outputs.schema }}
       baseline: ${{ steps.scope.outputs.baseline }}
+      production-eligible: ${{ steps.scope.outputs.production-eligible }}
+      promotion: ${{ steps.scope.outputs.promotion }}
     steps:
       - name: Check out exact fast-track source
         uses: actions/checkout@v4
@@ -111,36 +113,41 @@ jobs:
           spec.loader.exec_module(authority)
           before=os.environ['BEFORE']
           head=os.environ['GITHUB_SHA']
-          if not re.fullmatch('[0-9a-f]{40}',head): raise SystemExit('Invalid exact fast-track commit')
-          if before=='0'*40:
-              changed=subprocess.check_output(['git','diff-tree','--root','--no-commit-id','--name-only','-r',head],text=True).splitlines()
-          elif re.fullmatch('[0-9a-f]{40}',before):
-              before=authority.fast_track_effective_baseline(before,head)
-              changed=subprocess.check_output(['git','diff','--name-only',before,head],text=True).splitlines()
-          else:
-              raise SystemExit('Invalid fast-track event baseline')
-          scope=authority.fast_track_scope(changed)
-          if authority.attested_website_only_recovery_scope(before,head,changed):
-              scope=authority.website_only_recovery_scope(scope)
-          if authority.fast_track_pending_routing(before):
-              scope.update(routing=True,commerce=True)
+          scope=authority.fast_track_selection(before,head)
+          before=scope['baseline']
+          if scope['promotion'] is not None:
+              proof=dict(scope['promotion'],producingRun=int(os.environ['GITHUB_RUN_ID']),
+                  producingAttempt=int(os.environ['GITHUB_RUN_ATTEMPT']))
+              from pathlib import Path
+              Path(os.environ['RUNNER_TEMP'],'fast-track-admission.json').write_text(json.dumps(proof,sort_keys=True)+'\n')
           with open(os.environ['GITHUB_OUTPUT'],'a') as stream:
               stream.write('baseline='+before+'\n')
+              stream.write('production-eligible='+str(scope['productionEligible']).lower()+'\n')
+              stream.write('promotion='+str(scope['promotion'] is not None).lower()+'\n')
               stream.write('selected='+str(scope['selected']).lower()+'\n')
               stream.write('matrix='+json.dumps(scope['matrix'],separators=(',',':'))+'\n')
               stream.write('commerce='+str(scope['commerce']).lower()+'\n')
               stream.write('routing='+str(scope['routing']).lower()+'\n')
               stream.write('schema='+str(scope['schema']).lower()+'\n')
               stream.write('targets='+json.dumps([r['azure_app'] for r in scope['matrix']['include']])+'\n')
-          print('LEGEND_FAST_TRACK_CHANGED_FILES='+json.dumps(changed))
+          print('LEGEND_FAST_TRACK_PRODUCTION_ELIGIBLE='+str(scope['productionEligible']).lower())
           print('LEGEND_FAST_TRACK_SELECTED='+json.dumps([x['target'] for x in scope['matrix']['include']]))
           print('LEGEND_FAST_TRACK_OWNERSHIP='+json.dumps(scope['impacts'],sort_keys=True))
           PY
 
+      - name: Preserve authenticated nonpublishing promotion proof
+        if: steps.scope.outputs.promotion == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fast-track-admission-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/fast-track-admission.json
+          retention-days: 90
+          if-no-files-found: error
+
   commerce-gates:
     name: Admit exact validated fast-track source
     needs: select-targets
-    if: ${{ needs.select-targets.outputs.commerce == 'true' }}
+    if: ${{ needs.select-targets.outputs.production-eligible == 'true' && (needs.select-targets.outputs.selected == 'true' || needs.select-targets.outputs.routing == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     outputs:
@@ -178,9 +185,14 @@ jobs:
   migrations:
     name: Reconcile production schema before publication
     needs: [select-targets, commerce-gates]
-    if: ${{ needs.select-targets.outputs.commerce == 'true' && needs.commerce-gates.result == 'success' }}
+    if: ${{ needs.select-targets.outputs.production-eligible == 'true' && (needs.select-targets.outputs.commerce == 'true' && needs.commerce-gates.result == 'success') }}
     runs-on: ubuntu-24.04
     environment: Production
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      id-token: write
     timeout-minutes: 25
     env:
       GITHUB_TOKEN: ${{ github.token }}
@@ -263,10 +275,15 @@ jobs:
   deploy-ui:
     name: Affected App Deploy — ${{ matrix.target }}
     needs: [select-targets, commerce-gates, migrations]
-    if: ${{ !cancelled() && needs.select-targets.outputs.selected == 'true' && (needs.commerce-gates.result == 'success' || needs.commerce-gates.result == 'skipped') && (needs.migrations.result == 'success' || needs.migrations.result == 'skipped') }}
+    if: ${{ needs.select-targets.outputs.production-eligible == 'true' && (!cancelled() && needs.select-targets.outputs.selected == 'true' && needs.commerce-gates.result == 'success' && (needs.migrations.result == 'success' || needs.migrations.result == 'skipped')) }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 30
     environment: Production
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      id-token: write
     env:
       GITHUB_TOKEN: ${{ github.token }}
       BEFORE: ${{ needs.select-targets.outputs.baseline }}
@@ -458,9 +475,14 @@ jobs:
   routing-cloudflare:
     name: Publish verified website routing
     needs: [select-targets, commerce-gates, migrations, deploy-ui]
-    if: ${{ !cancelled() && needs.select-targets.outputs.routing == 'true' && needs.commerce-gates.result == 'success' && needs.migrations.result == 'success' && (needs.deploy-ui.result == 'success' || (needs.select-targets.outputs.selected == 'false' && needs.deploy-ui.result == 'skipped')) }}
+    if: ${{ needs.select-targets.outputs.production-eligible == 'true' && (!cancelled() && needs.select-targets.outputs.routing == 'true' && needs.commerce-gates.result == 'success' && needs.migrations.result == 'success' && (needs.deploy-ui.result == 'success' || (needs.select-targets.outputs.selected == 'false' && needs.deploy-ui.result == 'skipped'))) }}
     runs-on: ubuntu-24.04
     environment: Production
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      id-token: write
     timeout-minutes: 18
     env:
       GITHUB_TOKEN: ${{ github.token }}
