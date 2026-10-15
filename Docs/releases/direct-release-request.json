@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorization 2026-10-15: prepare, publish and validate the tool-only promotion with exact security package corrections and accepted fixture dependency. Separate Founder merge authorization remains required. No Production writes or deployment authorized.",
+  "authorization": "Founder authorization 2026-10-15: prepare, publish and validate the tool-only promotion with exact security package corrections and accepted fixture dependencies. Separate Founder merge authorization remains required. No Production writes or deployment authorized.",
   "purpose": "Install candidate-aware trusted read-only observation and nonpublishing admission tools with required CI producer and source-admission dependencies. Preserve revenue PR 626 unchanged.",
-  "requestId": "founder-trusted-tools-pr627-security-20261015",
+  "requestId": "founder-trusted-tools-pr627-security-mobile-20261015",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -10,7 +10,7 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "dc10c7aabbba6cd5b516071c9e16d32dafeba9a6",
-    "sourceRevision": "d94700b1baa781d7caff4a8ea891dbf81b9be4a7",
+    "sourceRevision": "4c2f602c5b94dddfa60508065bcedbb0781b155f",
     "files": {
       ".github/workflows/legend-fast-track-ui.yml": {
         "mode": "100644",
@@ -66,7 +66,7 @@
       },
       "scripts/release_policy.py": {
         "mode": "100644",
-        "blob": "586e0a7066c0474d93da722b5bf09ed27ee50a1b"
+        "blob": "3fcda9d836ca3b8cb67b83e9f92de6d116ffda65"
       },
       "scripts/test-fast-track-release.py": {
         "mode": "100644",
@@ -86,7 +86,7 @@
       },
       "scripts/test-release-policy.py": {
         "mode": "100644",
-        "blob": "ccdaee1946dd8249ba92da66b98b1c9bfa53d765"
+        "blob": "4c623c828bc678dff17c9bf70b9dc669b796a3b2"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
@@ -95,6 +95,10 @@
       "scripts/validation-resume.py": {
         "mode": "100644",
         "blob": "4e400ce2260e538e59de1005e9108440fd99765d"
+      },
+      "tests/layout/modal-content-region.test.mjs": {
+        "mode": "100644",
+        "blob": "c21b130bda415433686f01ece3111afe52aa217a"
       }
     }
   }
