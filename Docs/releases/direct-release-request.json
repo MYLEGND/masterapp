@@ -3,7 +3,7 @@
   "authorization": "Explicit Founder authorization to complete PR #551 and the canonical migration-to-live release flow, apply only the currently proven pending migration through the governed transaction, and publish the canonically affected targets after exact-head validation and readiness.",
   "purpose": "Resume the existing authorized five-target publication after release 37954422758 stopped on database activity. Preserve compatible validation, immutable application components, rollback evidence, and completed migrations. Correct only the canonical read-only activity boundary, reconcile current database history and physical schema without migration replay, and require durable target receipts and live acceptance.",
   "requestId": "founder-pr551-migration-activity-resume-20261009",
-  "releaseMode": "approved-only",
+  "releaseMode": "validate-only",
   "targets": [
     "masterapp-portal",
     "masterapp-client",
