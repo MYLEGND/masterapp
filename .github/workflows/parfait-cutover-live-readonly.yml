@@ -1,23 +1,28 @@
 name: Parfait canonical cutover read-only production evidence
 
 on:
-  push:
-    branches:
-      - isolation/canonical-scoped-commerce-internal-20261010
-    paths:
-      - .github/workflows/parfait-cutover-live-readonly.yml
-      - scripts/MigrationReleaseProbe/**
-      - scripts/release-migration.py
-      - scripts/migration-probe-package.py
   workflow_dispatch:
+    inputs:
+      candidate:
+        description: Exact validated candidate SHA; never executes with Production credentials
+        required: true
+        type: string
+
+# Only the existing trusted release branch may mint Production OIDC tokens.
+# Promoting this owner remains a separate Founder-authorized operation.
+env:
+  CANDIDATE_SHA: ${{ inputs.candidate }}
 
 permissions:
   contents: read
   actions: read
-  id-token: write
 
 jobs:
   validated-observer:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/Legend/fast-track-release'
+    outputs:
+      observer-id: ${{ steps.observer.outputs.artifact-id }}
+      contract-id: ${{ steps.contract.outputs.artifact-id }}
     name: Validate exact source and build read-only schema observer
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -34,23 +39,38 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PYVALIDATE'
-          import json,os,time,urllib.request
+          import importlib.util,os,re,time
+          spec=importlib.util.spec_from_file_location('authority','scripts/validation-resume.py')
+          authority=importlib.util.module_from_spec(spec);spec.loader.exec_module(authority)
           repository=os.environ['GITHUB_REPOSITORY']
-          candidate=os.environ['GITHUB_SHA']
-          required={'.github/workflows/parfait-isolated-validation.yml':'push',
-                    '.github/workflows/approved-release-security-validation.yml':'pull_request'}
+          candidate=os.environ['CANDIDATE_SHA']
+          token=os.environ['GITHUB_TOKEN']
+          if not re.fullmatch('[a-f0-9]{40}',candidate):
+              raise SystemExit('EXACT_SOURCE_CANDIDATE_INVALID')
+          pulls=authority.api_get(repository,f'commits/{candidate}/pulls?per_page=100',token)
+          if not isinstance(pulls,list) or len(pulls)>=100:
+              raise SystemExit('EXACT_SOURCE_PR_HISTORY_INCOMPLETE')
+          candidates=[p for p in pulls if p.get('head',{}).get('sha')==candidate
+              and p.get('head',{}).get('repo',{}).get('full_name')==repository
+              and p.get('base',{}).get('repo',{}).get('full_name')==repository
+              and p.get('base',{}).get('ref')==authority.FAST_TRACK_PR_BASE]
+          if len(candidates)!=1:
+              raise SystemExit('FAST_TRACK_VALIDATION_SOURCE_UNPROVEN')
+          pull=candidates[0]
+          required=('parfait-isolated-validation.yml','approved-release-security-validation.yml',
+                    'masterapp-platform-architecture-validation.yml')
           deadline=time.monotonic()+1800
           while True:
-              request=urllib.request.Request(
-                  f'https://api.github.com/repos/{repository}/actions/runs?head_sha={candidate}&per_page=100',
-                  headers={'Authorization':'Bearer '+os.environ['GITHUB_TOKEN'],
-                           'Accept':'application/vnd.github+json'})
-              with urllib.request.urlopen(request,timeout=30) as response:
-                  runs=json.load(response)['workflow_runs']
+              payload=authority.api_get(repository,f'actions/runs?head_sha={candidate}&per_page=100',token)
+              runs=payload.get('workflow_runs')
+              if not isinstance(runs,list) or payload.get('total_count')!=len(runs):
+                  raise SystemExit('EXACT_SOURCE_HISTORY_INCOMPLETE')
               complete=True
-              for path,event in required.items():
-                  matches=[r for r in runs if r.get('path')==path and r.get('event')==event
-                      and r.get('head_sha')==candidate and r.get('head_repository',{}).get('full_name')==repository]
+              for workflow in required:
+                  matches=[r for r in runs if r.get('path')=='.github/workflows/'+workflow
+                      and r.get('event')=='pull_request' and r.get('head_sha')==candidate
+                      and r.get('head_branch')==pull['head']['ref']
+                      and r.get('head_repository',{}).get('full_name')==repository]
                   if not matches:
                       complete=False
                       continue
@@ -58,10 +78,9 @@ jobs:
                   if run['status']!='completed':
                       complete=False
                   elif run['conclusion']!='success':
-                      raise SystemExit('EXACT_SOURCE_VALIDATION_FAILED: '+path)
-                  elif event=='pull_request' and not any(
-                      pr.get('base',{}).get('ref')=='Legend/fast-track-release' for pr in run.get('pull_requests',[])):
-                      raise SystemExit('FAST_TRACK_VALIDATION_SOURCE_UNPROVEN')
+                      raise SystemExit('EXACT_SOURCE_VALIDATION_FAILED: '+workflow)
+                  else:
+                      authority.fast_track_validation_receipt(repository,run,workflow,candidate,pull['number'],token)
               if complete:
                   print('EXACT_FAST_TRACK_SOURCE_VALIDATION: PROVEN')
                   break
@@ -69,25 +88,44 @@ jobs:
                   raise SystemExit('EXACT_SOURCE_VALIDATION_NOT_READY: resume this read-only workflow after validation')
               time.sleep(15)
           PYVALIDATE
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          persist-credentials: false
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
       - name: Build canonical schema observer without production credentials
         run: |
-          dotnet publish scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj -c Release --nologo \
-            -m:1 -nr:false -p:UseSharedCompilation=false -o "$RUNNER_TEMP/parfait-schema-observer"
+          python3 scripts/migration-probe-package.py build \
+            --tool-revision "$CANDIDATE_SHA" --application-revision "$CANDIDATE_SHA" \
+            --directory "$RUNNER_TEMP/parfait-schema-observer"
+          cp "$RUNNER_TEMP/parfait-schema-observer/migration-contract.json" "$RUNNER_TEMP/migration-contract.json"
       - uses: actions/upload-artifact@v4
+        id: observer
         with:
-          name: parfait-readonly-schema-observer-${{ github.sha }}
+          name: parfait-readonly-schema-observer-${{ env.CANDIDATE_SHA }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/parfait-schema-observer
           retention-days: 3
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        id: contract
+        with:
+          name: parfait-readonly-contract-${{ env.CANDIDATE_SHA }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/migration-contract.json
+          retention-days: 30
+          if-no-files-found: error
 
   production-readback:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/Legend/fast-track-release'
     name: Non-mutating Azure, SQL schema and public runtime inventory
     needs: validated-observer
     runs-on: ubuntu-24.04
     environment: Production
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
@@ -97,10 +135,27 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+      - name: Build immutable trusted observer before Production sign-in
+        run: |
+          dotnet publish scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj -c Release --nologo \
+            -m:1 -nr:false -p:UseSharedCompilation=false -o "$RUNNER_TEMP/parfait-trusted-observer"
       - uses: actions/download-artifact@v4
         with:
-          name: parfait-readonly-schema-observer-${{ github.sha }}
-          path: ${{ runner.temp }}/parfait-schema-observer
+          artifact-ids: ${{ needs.validated-observer.outputs.contract-id }}
+          path: ${{ runner.temp }}/parfait-candidate-contract
+          merge-multiple: true
+      - name: Require candidate contract equal immutable trusted schema authority
+        run: |
+          dotnet "$RUNNER_TEMP/parfait-trusted-observer/MigrationReleaseProbe.dll" --export-contract > "$RUNNER_TEMP/trusted-contract.json"
+          python3 - <<'PYCONTRACT'
+          import json,os,pathlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          candidate=root/'parfait-candidate-contract/migration-contract.json'
+          if candidate.is_symlink() or candidate.stat().st_size>4*1024*1024:
+              raise SystemExit('TRUSTED_CANDIDATE_CONTRACT_UNPROVEN')
+          if json.loads(candidate.read_text())!=json.loads((root/'trusted-contract.json').read_text()):
+              raise SystemExit('TRUSTED_SCHEMA_CONTRACT_PROMOTION_REQUIRED')
+          PYCONTRACT
       - name: Azure production sign-in (read-only queries only)
         uses: azure/login@v2
         with:
@@ -186,9 +241,11 @@ jobs:
       - name: Reconcile canonical SQL schema without mutation or release admission
         env:
           RELEASE_RESOURCE_GROUP: masterapp-rg
+          CONTRACT_ARTIFACT_ID: ${{ needs.validated-observer.outputs.contract-id }}
+          OBSERVER_ARTIFACT_ID: ${{ needs.validated-observer.outputs.observer-id }}
         run: |
           python3 - <<'PYSCHEMA'
-          import importlib.util,json,os,pathlib,re,subprocess
+          import hashlib,importlib.util,json,os,pathlib,re,subprocess
           spec=importlib.util.spec_from_file_location('migration', 'scripts/release-migration.py')
           migration=importlib.util.module_from_spec(spec)
           spec.loader.exec_module(migration)
@@ -199,7 +256,8 @@ jobs:
               connection=None
               try:
                   connection=migration.connection_string()
-                  observed=migration.observe(root/'parfait-schema-observer/MigrationReleaseProbe.dll',connection)
+                  observed=migration.observe(root/'parfait-trusted-observer/MigrationReleaseProbe.dll',connection,
+                      contract=root/'parfait-candidate-contract/migration-contract.json')
                   fields={key:observed[key] for key in (
                       'databaseIdentity','schemaIdentity','baselineIdentity','ready','pendingCount',
                       'firstPendingMigrationId','lastAppliedMigrationId')}
@@ -213,7 +271,7 @@ jobs:
                   results[app]={'observed':False,'reason':code}
                   if connection:
                       try:
-                          inventory=subprocess.run(['dotnet',str(root/'parfait-schema-observer/MigrationReleaseProbe.dll'),'--inventory'],
+                          inventory=subprocess.run(['dotnet',str(root/'parfait-trusted-observer/MigrationReleaseProbe.dll'),'--inventory'],
                               env=os.environ|{'LEGEND_RELEASE_DB_CONNECTION':connection},capture_output=True,text=True,timeout=60,check=False)
                           if inventory.returncode==0:
                               data=json.loads(inventory.stdout)
@@ -225,7 +283,10 @@ jobs:
                       except Exception:
                           pass  # Keep the original classified failure; never turn inventory into readiness.
           report=dict(schemaVersion=1,purpose='read-only-schema-plan',authorizesMutation=False,
-              candidate=os.environ['GITHUB_SHA'],runId=os.environ['GITHUB_RUN_ID'],
+              candidate=os.environ['CANDIDATE_SHA'],toolRevision=os.environ['GITHUB_SHA'],
+              contractDigest=hashlib.sha256((root/'parfait-candidate-contract/migration-contract.json').read_bytes()).hexdigest(),
+              contractArtifactId=int(os.environ['CONTRACT_ARTIFACT_ID']),
+              observerArtifactId=int(os.environ['OBSERVER_ARTIFACT_ID']),runId=os.environ['GITHUB_RUN_ID'],
               producingAttempt=int(os.environ['GITHUB_RUN_ATTEMPT']),applications=results,
               sharedDatabase=(results['masterapp-parfait']['databaseIdentity']==results['masterapp-protect']['databaseIdentity'])
                   if all(row['observed'] for row in results.values()) else None)
@@ -256,7 +317,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: parfait-readonly-evidence-${{ github.sha }}-${{ github.run_attempt }}
+          name: parfait-readonly-evidence-${{ env.CANDIDATE_SHA }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/parfait-proof/sanitized-azure.json
             ${{ runner.temp }}/parfait-proof/sanitized-schema.json
@@ -283,7 +344,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ env.CANDIDATE_SHA }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-dotnet@v4
@@ -291,8 +352,9 @@ jobs:
           dotnet-version: 10.0.x
       - uses: actions/download-artifact@v4
         with:
-          name: parfait-readonly-schema-observer-${{ github.sha }}
+          artifact-ids: ${{ needs.validated-observer.outputs.observer-id }}
           path: ${{ runner.temp }}/parfait-schema-observer
+          merge-multiple: true
       - name: Resolve successful observation for safe rehearsal resume
         id: observation
         env:
@@ -302,22 +364,23 @@ jobs:
           import importlib.util,os
           spec=importlib.util.spec_from_file_location('probe_package','scripts/migration-probe-package.py')
           owner=importlib.util.module_from_spec(spec);spec.loader.exec_module(owner)
-          source=owner.fast_track_observation_source(os.environ['GITHUB_REPOSITORY'],os.environ['GITHUB_SHA'],
+          source=owner.fast_track_observation_source(os.environ['GITHUB_REPOSITORY'],os.environ['CANDIDATE_SHA'],
               int(os.environ['GITHUB_RUN_ID']),int(os.environ['GITHUB_RUN_ATTEMPT']),os.environ['GITHUB_TOKEN'])
           with open(os.environ['GITHUB_OUTPUT'],'a') as output:
-              output.write('artifact='+source['artifact']+'\n')
+              output.write('artifact-id='+str(source['artifactId'])+'\n')
           PYSOURCE
       - uses: actions/download-artifact@v4
         with:
-          name: ${{ steps.observation.outputs.artifact }}
+          artifact-ids: ${{ steps.observation.outputs.artifact-id }}
           path: ${{ runner.temp }}/parfait-proof
+          merge-multiple: true
       - name: Prepare and rehearse exact migration bytes against the observed baseline
         id: rehearsal
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           python3 scripts/migration-probe-package.py fast-track-prepare \
-            --tool-revision "$GITHUB_SHA" --application-revision "$GITHUB_SHA" \
+            --tool-revision "$CANDIDATE_SHA" --application-revision "$CANDIDATE_SHA" \
             --observation "$RUNNER_TEMP/parfait-proof/sanitized-schema.json" \
             --probe-directory "$RUNNER_TEMP/parfait-schema-observer" \
             --directory "$RUNNER_TEMP/parfait-fast-track-migration"
@@ -325,7 +388,7 @@ jobs:
         if: ${{ steps.rehearsal.outputs.reused != 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: parfait-fast-track-migration-${{ github.sha }}-${{ github.run_attempt }}
+          name: parfait-fast-track-migration-${{ env.CANDIDATE_SHA }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/parfait-fast-track-migration
           retention-days: 30
           if-no-files-found: error
