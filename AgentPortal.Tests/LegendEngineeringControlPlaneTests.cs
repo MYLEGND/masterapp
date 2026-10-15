@@ -53,6 +53,102 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         Assert.Equal(100, LegendEngineeringPolicies.WeightedPriority(100, 100, 100, 100, 100, 100));
     }
 
+    [Fact]
+    public async Task IncidentIntakeFailure_DoesNotStarveIndependentReleaseReconciliation()
+    {
+        var releaseCalls = 0;
+        await LegendEngineeringHostedService.RunIndependentIncidentAndReleasePassAsync(
+            _ => throw new InvalidOperationException("sensitive incident payload"),
+            _ =>
+            {
+                releaseCalls++;
+                return Task.FromResult<object>(new { ok = true });
+            },
+            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+            CancellationToken.None);
+
+        Assert.Equal(1, releaseCalls);
+    }
+
+    [Fact]
+    public async Task ReleaseReconciliationFailure_RemainsFailClosed()
+    {
+        var releaseCalls = 0;
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            LegendEngineeringHostedService.RunIndependentIncidentAndReleasePassAsync(
+                _ => Task.FromResult<object>(new { ok = true }),
+                _ =>
+                {
+                    releaseCalls++;
+                    throw new InvalidOperationException("release state unproven");
+                },
+                Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+                CancellationToken.None));
+        Assert.Equal(1, releaseCalls);
+    }
+
+    [Fact]
+    public async Task CancelledPass_DoesNotRunReconciliationAfterIncidentCancellation()
+    {
+        using var cancelled = new CancellationTokenSource();
+        var releaseCalls = 0;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            LegendEngineeringHostedService.RunIndependentIncidentAndReleasePassAsync(
+                _ =>
+                {
+                    cancelled.Cancel();
+                    throw new OperationCanceledException(cancelled.Token);
+                },
+                _ =>
+                {
+                    releaseCalls++;
+                    return Task.FromResult<object>(new { ok = true });
+                },
+                Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+                cancelled.Token));
+        Assert.Equal(0, releaseCalls);
+    }
+
+    [Fact]
+    public async Task NotificationFailure_DoesNotSuppressLaterIndependentNotificationOrAgentWork()
+    {
+        var continued = 0;
+        await LegendEngineeringHostedService.RunNonAuthoritativeObservationAsync(
+            _ => throw new HttpRequestException("private provider detail"),
+            "founder_notifications",
+            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+            CancellationToken.None);
+        await LegendEngineeringHostedService.RunNonAuthoritativeObservationAsync(
+            _ =>
+            {
+                continued++;
+                return Task.CompletedTask;
+            },
+            "founder_digest",
+            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+            CancellationToken.None);
+        Assert.Equal(1, continued);
+    }
+
+    [Fact]
+    public async Task NotificationCancellation_IsNeverSwallowed()
+    {
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        var calls = 0;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            LegendEngineeringHostedService.RunNonAuthoritativeObservationAsync(
+                _ =>
+                {
+                    calls++;
+                    return Task.CompletedTask;
+                },
+                "founder_notifications",
+                Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+                cancelled.Token));
+        Assert.Equal(0, calls);
+    }
+
     [Theory]
     [InlineData("legend/approved-changes", true)]
     [InlineData(" production ", false)]
