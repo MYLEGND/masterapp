@@ -299,7 +299,6 @@ jobs:
       BEFORE: ${{ needs.select-targets.outputs.baseline }}
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix: ${{ fromJSON(needs.select-targets.outputs.matrix) }}
     steps:
       - name: Check out current fast-track UI code
