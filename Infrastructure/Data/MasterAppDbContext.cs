@@ -1,5 +1,9 @@
 using System;
 using System.Text.Json;
+using System.Linq.Expressions;
+using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Domain.Billing;
 using Domain.Entities;
 using Domain.Entities.FinancialIntelligence;
@@ -240,6 +244,27 @@ public class MasterAppDbContext : DbContext
             .HasName("ISJSON").IsBuiltIn();
         modelBuilder.HasDbFunction(typeof(MasterAppDbContext).GetMethod(nameof(JsonValue))!)
             .HasName("JSON_VALUE").IsBuiltIn();
+        if (Database.IsSqlServer())
+        {
+            // Historical databases can retain TEXT metadata columns. JSON functions
+            // require character inputs; cast at the boundary without truncating data.
+            var mappings = this.GetService<IRelationalTypeMappingSource>();
+            var jsonInputMapping = mappings.FindMapping("nvarchar(max)")
+                ?? throw new InvalidOperationException("SQL Server nvarchar(max) mapping unavailable.");
+            var jsonOutputMapping = mappings.FindMapping("nvarchar(4000)")
+                ?? throw new InvalidOperationException("SQL Server nvarchar(4000) mapping unavailable.");
+            SqlExpression JsonInput(SqlExpression input) =>
+                new SqlUnaryExpression(ExpressionType.Convert, input, typeof(string), jsonInputMapping);
+            modelBuilder.HasDbFunction(typeof(MasterAppDbContext).GetMethod(nameof(IsJson))!)
+                .HasTranslation(args => new SqlFunctionExpression(
+                    "ISJSON", new[] { JsonInput(args[0]) }, nullable: true,
+                    argumentsPropagateNullability: new[] { true }, typeof(int), null));
+            modelBuilder.HasDbFunction(typeof(MasterAppDbContext).GetMethod(nameof(JsonValue))!)
+                .HasTranslation(args => new SqlFunctionExpression(
+                    "JSON_VALUE", new[] { JsonInput(args[0]), args[1] }, nullable: true,
+                    argumentsPropagateNullability: new[] { true, true }, typeof(string),
+                    jsonOutputMapping));
+        }
         modelBuilder.ApplyConfiguration(new MarketingConnectionConfiguration());
         modelBuilder.Entity<FounderAiActionAuthorization>(entity =>
         {
