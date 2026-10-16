@@ -162,7 +162,19 @@ def observe(probe, connection, *, contract=None, activity=False, schema_only_act
         marker = lines[0] if lines else ''
         # Exact, bounded migration identifiers only: never relay arbitrary
         # provider text, SQL, connection details or unvalidated extra lines.
-        if len(lines) == 2 and marker == 'LEGEND_SCHEMA_PROBE:UNKNOWN_APPLIED_MIGRATION':
+        if len(lines) == 2 and marker in {
+                'LEGEND_SCHEMA_PROBE:SQL_READ_DEADLINE',
+                'LEGEND_SCHEMA_PROBE:SQL_QUERY_TIMEOUT'}:
+            timing = re.fullmatch(
+                r'LEGEND_SCHEMA_TIMING:(?:setup|contract|history|history-validation|'
+                r'catalog-engineering|catalog-feeds|catalog-founder|catalog-contract|identity|'
+                r'activity-connection|activity-permission|activity-migration-lock|'
+                r'activity-schema-locks|activity-transactions):[0-9]{1,6}:[0-9]{1,6}',
+                lines[1])
+            if not timing:
+                raise RuntimeError('Read-only schema proof unavailable; nontransient or unclassified failure')
+            print(lines[1], flush=True)
+        elif len(lines) == 2 and marker == 'LEGEND_SCHEMA_PROBE:UNKNOWN_APPLIED_MIGRATION':
             safe = re.fullmatch(
                 r'LEGEND_SCHEMA_HISTORY:[1-9][0-9]{0,3}:'
                 r'(?:[0-9]{8,14}_[A-Za-z0-9_]{1,128}|NONCANONICAL)'

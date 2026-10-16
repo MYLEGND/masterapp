@@ -131,6 +131,42 @@ class ProbeObservationTests(TestCase):
 
 
 
+    def test_timeout_phase_diagnostics_remain_terminal(self):
+        for code in ('SQL_READ_DEADLINE', 'SQL_QUERY_TIMEOUT'):
+            for phase in ('contract', 'history', 'catalog-contract', 'activity-schema-locks'):
+                with self.subTest(code=code, phase=phase):
+                    line = 'LEGEND_SCHEMA_TIMING:' + phase + ':45001:12000'
+                    bad = subprocess.CompletedProcess([], 1, '', 'LEGEND_SCHEMA_PROBE:' + code + '\n' + line)
+                    with mock.patch.object(m.subprocess, 'run', return_value=bad) as run, \
+                         mock.patch.object(m.time, 'sleep') as sleep, mock.patch('builtins.print') as notice:
+                        with self.assertRaisesRegex(RuntimeError, m.PROBE_TERMINAL_REASONS[code]):
+                            m.observe('probe', 'conn')
+                    run.assert_called_once()
+                    sleep.assert_not_called()
+                    notice.assert_called_once_with(line, flush=True)
+
+    def test_invalid_timing_cannot_leak_or_enable_retry(self):
+        good = 'LEGEND_SCHEMA_TIMING:history:45000:1000'
+        cases = [
+            ('SQL_READ_DEADLINE', good + '\nextra'),
+            ('SQL_READ_DEADLINE', 'LEGEND_SCHEMA_TIMING:Password=private:1:1'),
+            ('SQL_READ_DEADLINE', 'LEGEND_SCHEMA_TIMING:history:1000000:1'),
+            ('SQL_READ_DEADLINE', 'LEGEND_SCHEMA_TIMING:history:-1:1'),
+            ('SQL_READ_DEADLINE', 'LEGEND_SCHEMA_TIMING:history:١:1'),
+            ('SQL_READ_DEADLINE', 'LEGEND_SCHEMA_TIMING:history:1:private'),
+            ('TRANSIENT_SQL_READ', good), ('SQL_AUTH', good), ('UNCLASSIFIED', good),
+        ]
+        for code, diagnostic in cases:
+            with self.subTest(code=code, diagnostic=diagnostic):
+                bad = subprocess.CompletedProcess([], 1, '', 'LEGEND_SCHEMA_PROBE:' + code + '\n' + diagnostic)
+                with mock.patch.object(m.subprocess, 'run', return_value=bad) as run, \
+                     mock.patch.object(m.time, 'sleep') as sleep, mock.patch('builtins.print') as notice:
+                    with self.assertRaisesRegex(RuntimeError, 'unclassified failure'):
+                        m.observe('probe', 'conn')
+                run.assert_called_once()
+                sleep.assert_not_called()
+                notice.assert_not_called()
+
 class MigrationAssemblyHistoryContractTests(TestCase):
     def test_frozen_historical_sources_remain_unchanged_and_canonical(self):
         root = Path(__file__).resolve().parents[1]

@@ -714,6 +714,8 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddRuntimeDiagnostics(builder.Configuration, builder.Environment);
 
+AgentPortal.Services.Telemetry.RoutineSqlLogging.AddRoutineSqlLogReduction(builder.Services, builder.Configuration);
+
 var app = builder.Build();
 await app.Services
     .GetRequiredService<MigrationHealthHostedService>()
