@@ -122,11 +122,108 @@ class CanonicalWorkflowNoSqlGateTests(unittest.TestCase):
         workflow=(ROOT/'.github/workflows/legend-fast-track-ui.yml').read_text()
         self.assertIn('schema: ${{ steps.scope.outputs.schema }}',workflow)
         self.assertIn("stream.write('schema='+str(scope['schema']).lower()",workflow)
-        self.assertIn("if: ${{ needs.select-targets.outputs.schema == 'true' }}",workflow)
-        self.assertIn("if: ${{ needs.select-targets.outputs.schema == 'false' }}",workflow)
+        self.assertIn("if: ${{ steps.migration-plan.outputs.mode == 'rehearsal-required' }}",workflow)
+        self.assertIn("if: ${{ steps.migration-plan.outputs.mode == 'no-sql' }}",workflow)
         self.assertIn('run: python3 scripts/release-migration.py --no-sql',workflow)
         self.assertIn('run: python3 scripts/release-migration.py\n',workflow)
         self.assertIn('FAST_TRACK_RELEASE_BASELINE: ${{ needs.select-targets.outputs.baseline }}',workflow)
+
+class CurrentStateMigrationPlanTests(unittest.TestCase):
+    def setUp(self):
+        from datetime import datetime, timezone
+        import time
+        self.now=int(time.time())
+        self.before=dict(databaseIdentity='a'*64,schemaIdentity='b'*64,
+            baselineIdentity='c'*64,ready=True,pendingCount=0)
+        self.recovery=dict(databaseIdentity='a'*64,restoreWindowVerified=True,
+            restoreExecuted=False,authorizesMutation=False,
+            observedUtc=datetime.fromtimestamp(self.now,timezone.utc).isoformat())
+
+    def plan(self, before=None, recovery=None, now=None):
+        from unittest.mock import patch
+        with patch.object(m,'production_readiness',side_effect=lambda value:dict(value,kind='current-schema-no-write')):
+            return m.fast_track_migration_plan(before or self.before,recovery or self.recovery,
+                now=lambda:self.now if now is None else now)
+
+    def test_historical_source_schema_change_uses_current_ready_state(self):
+        from unittest.mock import patch
+        import os
+        with patch.dict(os.environ,FAST_TRACK_SCHEMA_CHANGED='true'):
+            self.assertEqual('no-sql',self.plan())
+
+    def test_real_readiness_authority_requires_complete_historical_proof(self):
+        import os
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        owner=SimpleNamespace(FAST_TRACK_PR_BASE='Legend/fast-track-release',
+            selected_release_target_keys=lambda targets:None)
+        observed=dict(self.before,historicalExecution='proven-nonentry',
+            historicalEvidenceIdentity='e'*64,mutationActivity='settled')
+        with patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',
+                RELEASE_CANDIDATE_SHA='a'*40,RELEASE_SHA='b'*40,
+                SELECTED_TARGETS='["Website"]',GITHUB_TOKEN='fixture')),              patch.object(m,'release_authority',return_value=owner):
+            self.assertEqual('no-sql',m.fast_track_migration_plan(observed,self.recovery,now=lambda:self.now))
+            for change in (dict(historicalEvidenceIdentity='invalid'),
+                           dict(historicalExecution='invalid'),dict(mutationActivity='unknown')):
+                with self.subTest(change=change),self.assertRaises(RuntimeError):
+                    m.fast_track_migration_plan(dict(observed,**change),self.recovery,now=lambda:self.now)
+
+    def test_pending_requires_existing_exact_rehearsal_without_readiness_shortcut(self):
+        from unittest.mock import patch
+        with patch.object(m,'production_readiness',side_effect=AssertionError('must not accept pending')):
+            self.assertEqual('rehearsal-required',m.fast_track_migration_plan(
+                dict(self.before,ready=False,pendingCount=1),self.recovery,now=lambda:self.now))
+
+    def test_inconsistent_pending_or_physical_identity_fails_closed(self):
+        for value in (dict(self.before,pendingCount=1),dict(self.before,ready=False),
+                      dict(self.before,pendingCount=True),dict(self.before,schemaIdentity='invalid')):
+            with self.subTest(value=value),self.assertRaises(RuntimeError):
+                self.plan(before=value)
+
+    def test_stale_or_future_recovery_cannot_select_no_sql(self):
+        for now in (self.now+901,self.now-1):
+            with self.subTest(now=now),self.assertRaises(RuntimeError):
+                self.plan(now=now)
+
+    def test_recovery_database_identity_and_no_write_proof_must_match(self):
+        for change in (dict(databaseIdentity='d'*64),dict(restoreWindowVerified=False),
+                       dict(restoreExecuted=True),dict(authorizesMutation=True)):
+            with self.subTest(change=change),self.assertRaises(RuntimeError):
+                self.plan(recovery=dict(self.recovery,**change))
+
+    def test_scoped_retained_observation_rejects_stale_or_mismatched_candidate(self):
+        import tempfile
+        env={key:'fixture' for key in ('GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','RELEASE_SHA',
+             'APPLICATION_RELEASE_SHA','DATABASE_AUTHORITY','RELEASE_RESOURCE_GROUP')}
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'observation.json'
+            m.retain_preflight_observation(path,self.before,environment=env,now=lambda:self.now)
+            self.assertEqual(self.before,m.load_preflight_observation(path,environment=env,now=lambda:self.now))
+            with self.assertRaises(RuntimeError):
+                m.load_preflight_observation(path,environment=env,now=lambda:self.now+901)
+            with self.assertRaises(RuntimeError):
+                m.load_preflight_observation(path,environment=dict(env,APPLICATION_RELEASE_SHA='other'),now=lambda:self.now)
+
+    def test_reobservation_drift_cannot_journal_or_publish(self):
+        from unittest.mock import Mock,patch
+        planned=dict(self.before,recoveryEvidence=self.recovery)
+        for key in ('databaseIdentity','schemaIdentity','baselineIdentity'):
+            journal=Mock()
+            publisher=Mock()
+            with self.subTest(key=key),patch.object(m,'production_readiness',side_effect=lambda value:dict(value,kind='current-schema-no-write')):
+                with self.assertRaises(RuntimeError):
+                    m.reconcile_current_schema_no_sql('probe','connection',
+                        observer=lambda *args:dict(self.before,**{key:'d'*64}),
+                        planned=planned,journal_factory=journal,publisher=publisher)
+                journal.assert_not_called()
+                publisher.assert_not_called()
+
+    def test_workflow_observes_and_proves_recovery_before_rehearsal(self):
+        workflow=(ROOT/'.github/workflows/legend-fast-track-ui.yml').read_text()
+        self.assertLess(workflow.index('owner.production_recovery('),workflow.index('owner.production_observation_no_sql('))
+        self.assertLess(workflow.index('owner.fast_track_migration_plan('),workflow.index('owner.restore_fast_track('))
+        self.assertIn('owner.retain_preflight_observation(',workflow)
+
 
 if __name__ == '__main__':
     unittest.main()
