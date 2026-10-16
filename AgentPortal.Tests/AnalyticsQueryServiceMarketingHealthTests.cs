@@ -431,7 +431,15 @@ public class AnalyticsQueryServiceMarketingHealthTests
         };
         foreach (var (name, sql) in queries)
         {
-            Assert.Matches(@"JSON_VALUE\(\s*CASE\s+WHEN ISJSON\(", sql);
+            Assert.Matches(@"(?is)JSON_VALUE\(\s*CAST\(\s*CASE\b.*?\bEND\s+AS\s+nvarchar\(max\)\s*\)\s*,", sql);
+            Assert.Matches(@"(?is)ISJSON\(\s*CAST\(\s*\[[^\]]+\]\.\[MetadataJson\]\s+AS\s+nvarchar\(max\)\s*\)\s*\)", sql);
+            foreach (var function in new[] { "ISJSON", "JSON_VALUE" })
+            {
+                var calls = System.Text.RegularExpressions.Regex.Matches(sql, function + @"\(").Count;
+                var casts = System.Text.RegularExpressions.Regex.Matches(sql, function + @"\(\s*CAST\(").Count;
+                Assert.True(calls > 0);
+                Assert.Equal(calls, casts);
+            }
             Assert.Contains("= 1 THEN", sql);
             Assert.Contains("ELSE N'{}'", sql);
             Assert.DoesNotContain("CHARINDEX", sql);
@@ -445,6 +453,17 @@ public class AnalyticsQueryServiceMarketingHealthTests
             }
             Console.WriteLine($"SQL translation only: {name}\n{sql}");
         }
+    }
+
+    [Fact]
+    public void SqlServerJsonScalarComparisonPreservesUnicodeLiteral()
+    {
+        using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlServer("Server=(local);Database=translation_only;Integrated Security=true;TrustServerCertificate=true").Options);
+        var sql = db.AnalyticsEvents.Where(row => MasterAppDbContext.JsonValue(
+            MasterAppDbContext.IsJson(row.MetadataJson) == 1 ? row.MetadataJson : "{}", "$.siteKey") == "legénd東京").ToQueryString();
+        Assert.True(sql.Contains("N'legénd東京'", StringComparison.Ordinal), sql);
+        Assert.Contains("nvarchar(max)", sql);
     }
 
     private static IQueryable<T> SiteScoped<T>(IQueryable<T> query, ScopeContext scope)
