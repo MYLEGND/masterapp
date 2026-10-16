@@ -54,6 +54,9 @@ on:
       - Domain/Entities/Commerce*.cs
       - Infrastructure/Data/Configurations/CommercePaymentModel.cs
       - Infrastructure/Data/MasterAppDbContext.cs
+      - Infrastructure/Diagnostics/RoutineSqlPolling.cs
+      - Infrastructure/Notifications/ApplePushDeliveryHostedService.cs
+      - Infrastructure/Notifications/FirebasePushDeliveryHostedService.cs
       - Infrastructure/Migrations/**
       - Infrastructure/Businesses/BusinessWorkspaceAccess.cs
       - Legend-Cloudflare/src/website-routing/**

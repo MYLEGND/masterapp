@@ -165,6 +165,24 @@ class HistoricManualProxyReadbackTests(unittest.TestCase):
 
 
 
+class RoutineSqlPollingImpactTests(unittest.TestCase):
+    def test_exact_shared_polling_sources_require_managed_apps_and_backend_admission(self):
+        paths = ['Infrastructure/Diagnostics/RoutineSqlPolling.cs',
+                 'Infrastructure/Notifications/ApplePushDeliveryHostedService.cs',
+                 'Infrastructure/Notifications/FirebasePushDeliveryHostedService.cs']
+        for path in paths:
+            with self.subTest(path=path):
+                scope = authority.fast_track_scope([path])
+                self.assertEqual({r['key'] for r in scope['matrix']['include']},
+                                 {'portal', 'client', 'protect', 'parfait'})
+                self.assertTrue(scope['commerce'])
+                self.assertFalse(scope['schema'])
+                self.assertFalse(scope['routing'])
+        for path in ['Infrastructure/Diagnostics/Unknown.cs', 'Infrastructure/Notifications/Unknown.cs']:
+            with self.subTest(path=path), self.assertRaisesRegex(ValueError, 'Unmapped'):
+                authority.fast_track_scope([path])
+
+
 class FoundationCssImpactTests(unittest.TestCase):
     def test_shared_foundation_targets_only_actual_public_and_authenticated_consumers(self):
         scope=authority.fast_track_scope(['Legend-Design/legend-web-foundation.css'])
