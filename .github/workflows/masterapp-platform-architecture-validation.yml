@@ -440,7 +440,7 @@ jobs:
           founder_diagnostics_regressions() {
             dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
               --results-directory "$root/founder-tests" \
-              --filter "FullyQualifiedName~LegendSiteToolBridgeTests|FullyQualifiedName~FounderRepositoryInspectionTests|FullyQualifiedName~LegendFounderToolAuthorizationTests|FullyQualifiedName~FounderSoftwareRepairBatchTests|FullyQualifiedName~FounderSoftwareRepairCompletionTests|FullyQualifiedName~FounderRemediationRevocationTests|FullyQualifiedName~LegendEngineeringControlPlaneTests|FullyQualifiedName~RuntimeDiagnostics|FullyQualifiedName~PageHealthContractTests|FullyQualifiedName~WebDiagnosticPrivacyTests"
+              --filter "FullyQualifiedName~LegendSiteToolBridgeTests|FullyQualifiedName~FounderRepositoryInspectionTests|FullyQualifiedName~LegendFounderToolAuthorizationTests|FullyQualifiedName~FounderSoftwareRepairBatchTests|FullyQualifiedName~FounderSoftwareRepairCompletionTests|FullyQualifiedName~FounderRemediationRevocationTests|FullyQualifiedName~LegendEngineeringControlPlaneTests|FullyQualifiedName~RuntimeDiagnostics|FullyQualifiedName~PageHealthContractTests|FullyQualifiedName~WebDiagnosticPrivacyTests|FullyQualifiedName~RoutineSql"
           }
           domain_release() {
             dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror

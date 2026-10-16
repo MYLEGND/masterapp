@@ -33,6 +33,9 @@ on:
       - AgentPortal.Tests/**
       - Domain/Models/Commerce/**
       - Infrastructure/Data/MasterAppDbContext.cs
+      - Infrastructure/Diagnostics/RoutineSqlPolling.cs
+      - Infrastructure/Notifications/ApplePushDeliveryHostedService.cs
+      - Infrastructure/Notifications/FirebasePushDeliveryHostedService.cs
       - Infrastructure/Migrations/**
       - scripts/MigrationReleaseProbe/**
       - scripts/migration-probe-package.py

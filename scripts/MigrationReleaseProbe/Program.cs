@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Data.SqlClient;
 using System.Security.Cryptography;
 using System.Text;
@@ -7,6 +8,16 @@ using Microsoft.EntityFrameworkCore;
 
 // This executable ships beside the validated EF bundle. The same Infrastructure
 // assembly owns both schema identities. No application rows or SQL are exposed.
+// Fixed phase labels and bounded timings only; never provider text or SQL.
+// Diagnostic evidence cannot authorize readiness or retries.
+var observationClock = Stopwatch.StartNew();
+var phaseClock = Stopwatch.StartNew();
+var observationPhase = "setup";
+void Phase(string name) { observationPhase = name; phaseClock.Restart(); }
+void TimeoutDiagnostic()
+{
+    Console.Error.WriteLine($"LEGEND_SCHEMA_TIMING:{observationPhase}:{Math.Min(observationClock.ElapsedMilliseconds, 999999)}:{Math.Min(phaseClock.ElapsedMilliseconds, 999999)}");
+}
 try
 {
     var inspectActivity = args.Count(arg => arg == "--activity") == 1;
@@ -27,6 +38,7 @@ try
     await using var db = new MasterAppDbContext(options);
     if (export) { Console.WriteLine(CandidateContract.Export(db)); return; }
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+    Phase("contract");
     var contract = contractPath is null ? CandidateContract.Current(db) : CandidateContract.Read(contractPath);
     // Defense in depth: production metadata must equal this approved assembly's
     // definitions. A new migration shape needs a reviewed extraction rule;
@@ -36,6 +48,7 @@ try
     var known = contract.Migrations.Select(m => m.Id).ToArray();
     async Task VerifySettledActivity(bool schemaOnly = false)
     {
+        Phase("activity-connection");
         await db.Database.OpenConnectionAsync(timeout.Token);
         // Only approved, fixed metadata queries. Never expose session identities,
         // SQL text, application rows or credentials. A restricted DMV view must
@@ -49,6 +62,7 @@ try
                 OR COALESCE(HAS_PERMS_BY_NAME(NULL,NULL,'VIEW SERVER PERFORMANCE STATE'),0) = 1
                 THEN 1 ELSE 0 END END
             """;
+        Phase("activity-permission");
         if (Convert.ToInt32(await activityCommand.ExecuteScalarAsync(timeout.Token)) != 1)
             throw new ProbeObservationFailure("MUTATION_ACTIVITY_UNPROVEN");
         // Observe availability only; do not acquire a production lock. EF's
@@ -56,6 +70,7 @@ try
         // is sleeping. It is additional exclusion proof, never a replacement
         // for unknown/user activity checks below.
         activityCommand.CommandText = "SELECT APPLOCK_TEST('public','__EFMigrationsLock','Exclusive','Session')";
+        Phase("activity-migration-lock");
         var migrationLock = await activityCommand.ExecuteScalarAsync(timeout.Token);
         if (migrationLock is null || migrationLock is DBNull)
             throw new ProbeObservationFailure("MUTATION_ACTIVITY_UNPROVEN");
@@ -75,6 +90,7 @@ try
                   AND l.request_mode = 'Sch-M'
                   AND l.request_status IN ('GRANT','WAIT','CONVERT')
                 """;
+            Phase("activity-schema-locks");
             if (Convert.ToInt64(await activityCommand.ExecuteScalarAsync(timeout.Token)) != 0)
                 throw new ProbeObservationFailure("MUTATION_ACTIVITY_ACTIVE");
             return;
@@ -97,10 +113,12 @@ try
                   AND d.database_transaction_state NOT IN (10,11)
                   AND (a.transaction_type <> 3 OR a.transaction_id IS NULL))
             """;
+        Phase("activity-transactions");
         if (Convert.ToInt64(await activityCommand.ExecuteScalarAsync(timeout.Token)) != 0)
             throw new ProbeObservationFailure("MUTATION_ACTIVITY_ACTIVE");
     }
     if (inspectActivity) await VerifySettledActivity();
+    Phase("history");
     var applied = (await db.Database.GetAppliedMigrationsAsync(timeout.Token))
         .Order(StringComparer.Ordinal).ToArray();
     if (known.Length == 0)
@@ -108,6 +126,7 @@ try
 
     // Observation only: a complete, bounded inventory is not a release receipt
     // and never runs EF migration commands or reads application row contents.
+    Phase("history-validation");
     if (args.SequenceEqual(new[] { "--inventory" }))
     {
         var idPattern = new System.Text.RegularExpressions.Regex(
@@ -222,6 +241,7 @@ try
     // current applied history is necessary but not sufficient: physically
     // attest the named schema objects before admitting any NEW SQL write.
     // Only sys.* catalog metadata is read; no application rows/DDL/EF Migrate.
+    Phase("catalog-engineering");
     if (appliedRegistered.Contains("20261001070000_AddLegendEngineeringControlPlane",
                                   StringComparer.Ordinal))
     {
@@ -255,6 +275,7 @@ try
         if (Convert.ToInt32(await engineering.ExecuteScalarAsync(timeout.Token)) != 2)
             throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
     }
+    Phase("catalog-feeds");
     if (appliedRegistered.Contains("20260927090000_AddOpenAiProductFeedProjections",
                                   StringComparer.Ordinal))
     {
@@ -290,6 +311,7 @@ try
     // The EF history alone cannot prove whether a column was partially added.
     // Require the table and its catalog metadata to agree with the known
     // pending/applied state before ANY migration bundle can be authorized.
+    Phase("catalog-founder");
     const string founderMigration = "20261007134500_AddFounderAssistantRules";
     if (known.Contains(founderMigration, StringComparer.Ordinal))
     {
@@ -345,7 +367,9 @@ try
             throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
     }
 
+    Phase("catalog-contract");
     if (contract is not null) await CandidateContract.Verify(db, contract, appliedRegistered, timeout.Token);
+    Phase("identity");
     await db.Database.OpenConnectionAsync(timeout.Token);
     await using var identityCommand = db.Database.GetDbConnection().CreateCommand();
     identityCommand.CommandTimeout = 30;
@@ -390,11 +414,13 @@ catch (SqlException ex) when (ex.Number is 18456 or 4060)
 catch (SqlException ex) when (ex.Number == -2)
 {
     Console.Error.WriteLine("LEGEND_SCHEMA_PROBE:SQL_QUERY_TIMEOUT");
+    TimeoutDiagnostic();
     Environment.ExitCode = 1;
 }
 catch (OperationCanceledException)
 {
     Console.Error.WriteLine("LEGEND_SCHEMA_PROBE:SQL_READ_DEADLINE");
+    TimeoutDiagnostic();
     Environment.ExitCode = 1;
 }
 catch (ProbeObservationFailure ex)
