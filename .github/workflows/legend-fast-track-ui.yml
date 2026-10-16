@@ -219,22 +219,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Build current read-only schema observer for source-only release
-        if: ${{ needs.select-targets.outputs.schema == 'false' }}
+      - name: Build current read-only schema observer for actual migration admission
         run: |
           dotnet publish scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj -c Release --nologo \
             -m:1 -nr:false -p:UseSharedCompilation=false -o /tmp/fast-track-probe
-      - name: Restore authenticated compatible rehearsal without rebuilding
-        if: ${{ needs.select-targets.outputs.schema == 'true' }}
-        run: |
-          python3 - <<'PY'
-          import importlib.util,os,pathlib
-          spec=importlib.util.spec_from_file_location('probe','scripts/migration-probe-package.py')
-          owner=importlib.util.module_from_spec(spec);spec.loader.exec_module(owner)
-          proof=owner.restore_fast_track(os.environ['GITHUB_SHA'],pathlib.Path(os.environ['FAST_TRACK_MIGRATION_DIRECTORY']),
-              pathlib.Path(os.environ['MIGRATION_PROBE_DLL']).parent)
-          print('FAST_TRACK_REHEARSAL_RESTORED:producer='+proof['candidate'])
-          PY
       - name: Install canonical durable evidence transport
         run: npm ci --prefix scripts/release-artifacts --ignore-scripts --no-audit --no-fund
       - name: Prepare canonical durable evidence transport
@@ -246,6 +234,7 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Verify current database recovery window before retention readers
+        id: migration-plan
         run: |
           python3 - <<'PY'
           import importlib.util,json,os,pathlib
@@ -255,6 +244,16 @@ jobs:
           proof=owner.production_recovery(observed['databaseIdentity'])
           pathlib.Path(os.environ['RUNNER_TEMP'],'database-recovery.json').write_text(json.dumps(proof))
           print('FAST_TRACK_DATABASE_RESTORE_WINDOW:VERIFIED:restore-not-executed')
+          observed=owner.production_observation_no_sql(pathlib.Path(os.environ['MIGRATION_PROBE_DLL']),owner.connection_string())
+          mode=owner.fast_track_migration_plan(observed,proof)
+          if mode == 'no-sql':
+              retained=pathlib.Path(os.environ['RUNNER_TEMP'],'migration-readiness-observation.json')
+              owner.retain_preflight_observation(retained,dict(observed,recoveryEvidence=proof))
+              with open(os.environ['GITHUB_ENV'],'a') as stream:
+                  stream.write('MIGRATION_READINESS_OBSERVATION='+str(retained)+'\n')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as stream:
+              stream.write('mode='+mode+'\n')
+          print('FAST_TRACK_MIGRATION_PLAN:'+mode)
           PY
       - name: Preserve recovery evidence before SQL or retention publication
         uses: actions/upload-artifact@v4
@@ -263,13 +262,24 @@ jobs:
           path: ${{ runner.temp }}/database-recovery.json
           retention-days: 30
           if-no-files-found: error
+      - name: Restore authenticated compatible rehearsal without rebuilding
+        if: ${{ steps.migration-plan.outputs.mode == 'rehearsal-required' }}
+        run: |
+          python3 - <<'PY'
+          import importlib.util,os,pathlib
+          spec=importlib.util.spec_from_file_location('probe','scripts/migration-probe-package.py')
+          owner=importlib.util.module_from_spec(spec);spec.loader.exec_module(owner)
+          proof=owner.restore_fast_track(os.environ['GITHUB_SHA'],pathlib.Path(os.environ['FAST_TRACK_MIGRATION_DIRECTORY']),
+              pathlib.Path(os.environ['MIGRATION_PROBE_DLL']).parent)
+          print('FAST_TRACK_REHEARSAL_RESTORED:producer='+proof['candidate'])
+          PY
       - name: Check migration admission without entering a write step
         run: python3 scripts/release-migration.py --preflight
       - name: Apply or reconcile the exact rehearsed migration bundle
-        if: ${{ needs.select-targets.outputs.schema == 'true' }}
+        if: ${{ steps.migration-plan.outputs.mode == 'rehearsal-required' }}
         run: python3 scripts/release-migration.py
       - name: Reconcile fresh already-ready schema without SQL bundle or mutation
-        if: ${{ needs.select-targets.outputs.schema == 'false' }}
+        if: ${{ steps.migration-plan.outputs.mode == 'no-sql' }}
         run: python3 scripts/release-migration.py --no-sql
 
   deploy-ui:

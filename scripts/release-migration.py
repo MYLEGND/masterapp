@@ -458,19 +458,57 @@ def retain_current_observation(receipt, bundle_digest, *, publisher=None):
         'legend-migration-observation-' + identity, record, timeout=120)
 
 
+def fast_track_migration_plan(observation, recovery, *, now=time.time):
+    """Select by current physical/history state, never inherited source impact.
+
+    Inputs come from this authenticated release job. Retained inputs must first
+    pass load_preflight_observation; this function grants no mutation authority.
+    """
+    for key in ('databaseIdentity', 'schemaIdentity', 'baselineIdentity'):
+        if not re.fullmatch('[a-f0-9]{64}', str(observation.get(key, ''))):
+            raise RuntimeError('Migration stage unresolved: readiness-identity')
+    pending = observation.get('pendingCount')
+    if (type(pending) is not int or pending < 0
+        or type(observation.get('ready')) is not bool
+        or observation['ready'] != (pending == 0)):
+        raise RuntimeError('Migration stage unresolved: readiness-drift')
+    from datetime import datetime
+    try:
+        observed = datetime.fromisoformat(recovery['observedUtc'].replace('Z', '+00:00')).timestamp()
+    except (KeyError, TypeError, ValueError, AttributeError):
+        raise RuntimeError('Migration stage unresolved: readiness-missing') from None
+    if (recovery.get('databaseIdentity') != observation['databaseIdentity']
+        or recovery.get('restoreWindowVerified') is not True
+        or recovery.get('restoreExecuted') is not False
+        or recovery.get('authorizesMutation') is not False
+        or not 0 <= now() - observed <= 900):
+        raise RuntimeError('Migration stage unresolved: readiness-identity')
+    if pending:
+        return 'rehearsal-required'
+    receipt = production_readiness(observation)
+    if receipt.get('kind') != 'current-schema-no-write' or receipt.get('pendingCount') != 0:
+        raise RuntimeError('Migration stage unresolved: readiness-missing')
+    bind_readiness(observation, hashlib.sha256(b'legend:schema-ready-no-sql:v1').hexdigest(), receipt)
+    return 'no-sql'
+
+
 def reconcile_current_schema_no_sql(probe, connection, *, observer=None, readiness=None,
-                                    journal_factory=None, publisher=None):
+                                    journal_factory=None, publisher=None, planned=None):
     """Journal fresh, complete physical/history observation without requiring SQL bundle bytes.
 
     This path cannot execute SQL and cannot accept pending or unsettled schema.
-    The caller authenticates the exact fast-track source and schema-invariant
-    diff. Regular migration candidates retain the original rehearsed-bundle path.
+    The caller authenticates the exact fast-track source and current plan.
+    Pending migrations retain the original rehearsed-bundle path.
     """
     observer = observer or production_observation_no_sql
     readiness = readiness or production_readiness
     before = migration_stage('schema-observation', observer, probe, connection)
     if before.get('ready') is not True or type(before.get('pendingCount')) is not int or before['pendingCount'] != 0:
         raise RuntimeError('Migration stage unresolved: readiness-drift')
+    if planned is not None:
+        if fast_track_migration_plan(planned, planned.get('recoveryEvidence', {})) != 'no-sql':
+            raise RuntimeError('Migration stage unresolved: readiness-drift')
+        bind_readiness(before, hashlib.sha256(b'legend:schema-ready-no-sql:v1').hexdigest(), planned)
     receipt = migration_stage('readiness-missing', readiness, before)
     if receipt.get('kind') != 'current-schema-no-write' or receipt.get('pendingCount') != 0:
         raise RuntimeError('Migration stage unresolved: readiness-missing')
@@ -711,7 +749,7 @@ if __name__ == '__main__':
             authority = release_authority()
             baseline = os.environ.get('FAST_TRACK_RELEASE_BASELINE', '')
             revision = os.environ.get('GITHUB_SHA', '')
-            if (os.environ.get('FAST_TRACK_SCHEMA_CHANGED') != 'false'
+            if (os.environ.get('FAST_TRACK_SCHEMA_CHANGED') not in ('true', 'false')
                 or os.environ.get('GITHUB_REF') != 'refs/heads/' + authority.FAST_TRACK_PR_BASE
                 or not re.fullmatch('[a-f0-9]{40}', baseline)
                 or not re.fullmatch('[a-f0-9]{40}', revision)
@@ -720,8 +758,14 @@ if __name__ == '__main__':
                 raise RuntimeError('Migration stage unresolved: preparation')
             changed = subprocess.check_output(
                 ['git', 'diff', '--name-only', baseline, revision], text=True).splitlines()
-            if authority.fast_track_scope(changed)['schema']:
+            if str(authority.fast_track_scope(changed)['schema']).lower() != os.environ['FAST_TRACK_SCHEMA_CHANGED']:
                 raise RuntimeError('Migration stage unresolved: preparation')
+            retained = os.environ.get('MIGRATION_READINESS_OBSERVATION')
+            if not retained:
+                raise RuntimeError('Migration stage unresolved: preparation')
+            planned = load_preflight_observation(Path(retained))
+            if fast_track_migration_plan(planned, planned.get('recoveryEvidence', {})) != 'no-sql':
+                raise RuntimeError('Migration stage unresolved: readiness-drift')
         bundle = Path('/tmp/diagnostics-packages') / os.environ['MIGRATION_BUNDLE']
         probe = Path(os.environ.get('MIGRATION_PROBE_DLL', '/tmp/migration-probe/MigrationReleaseProbe.dll'))
         if not probe.is_file() or (not (is_preflight or no_sql) and not bundle.is_file()):
@@ -736,7 +780,7 @@ if __name__ == '__main__':
             result = preflight(bundle if bundle.is_file() else None, probe,
                                None if observation is not None else connection_string(), observation=observation)
         elif no_sql:
-            result = reconcile_current_schema_no_sql(probe, connection_string())
+            result = reconcile_current_schema_no_sql(probe, connection_string(), planned=planned)
             print('Schema ready; validated no-SQL migration child ' + result + '.')
         else:
             result = reconcile(bundle, probe, connection_string(),
