@@ -559,9 +559,8 @@
         });
         if (dismissed()) return;
         if (!exchange.ok) throw new Error('Your website permissions could not be verified. Please sign in again.');
-        const exchangedSession = await exchange.json();
-        if (dismissed()) return;
-        session = exchangedSession;
+        session = await exchange.json();
+        if (dismissed()) { session = null; return; }
       } else {
         session = bootstrap;
       }
