@@ -99,4 +99,5 @@ public sealed class RoutineSqlTelemetryOptions
 {
     // Missing configuration retains all telemetry. Production's appsettings owns opt-in.
     public bool SuppressRoutineEfCommandLogs { get; set; }
+    public bool SampleRoutineSqlDependencies { get; set; }
 }

@@ -332,7 +332,7 @@ internal sealed class FirebasePushDeliveryHostedService : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
         var engine = scope.ServiceProvider.GetRequiredService<INotificationEngine>();
         var now = DateTime.UtcNow;
-        var candidates = await (
+        var candidateQuery = (
                 from delivery in db.MobilePushDeliveries
                 join notification in db.MobileActivityNotifications on delivery.NotificationId equals notification.Id
                 join device in db.MobilePushDevices on delivery.MobilePushDeviceId equals device.Id
@@ -356,8 +356,14 @@ internal sealed class FirebasePushDeliveryHostedService : BackgroundService
                     device.Id,
                     device.DeviceToken, device.SupportsCommunicationNotifications))
             .Take(50)
-            .AsNoTracking()
-            .ToListAsync(cancellationToken);
+            .AsNoTracking();
+        var candidates = await Infrastructure.Diagnostics.RoutineSqlPolling.ReadMobilePushOutboxAsync(
+            () =>
+            {
+                using var command = candidateQuery.CreateDbCommand();
+                return command.CommandText;
+            },
+            () => candidateQuery.ToListAsync(cancellationToken));
 
         foreach (var candidate in candidates)
         {

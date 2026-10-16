@@ -270,7 +270,11 @@ builder.Services.AddSingleton<IEmailSender>(sp =>
 });
 // Application Insights telemetry — only registered when connection string is present
 if (!string.IsNullOrWhiteSpace(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
+{
     builder.Services.AddApplicationInsightsTelemetry();
+    AgentPortal.Services.Telemetry.RoutineSqlDependencyRouting.Register(
+        builder.Services, ResolveMasterDb(builder.Configuration)!);
+}
 
 var signalRBuilder = builder.Services.AddSignalR(o =>
 {
