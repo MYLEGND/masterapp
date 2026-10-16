@@ -204,3 +204,102 @@ This file defines how agents inspect, debug, implement, validate, and release wo
   - Retired.
 - Support completion claims with exact commits, run identities, durable receipts, and live verification results.
 - Never imply that the whole assignment is complete when only one stage has passed.
+
+## Mandatory engineering session continuity
+
+At the start and finish of every authorized engineering assignment, use the session
+modes of `scripts/sync-published-checkout.py` (Python 3.9+ and native Git on macOS/Linux).
+This extends the existing Git utility; it grants no source, acceptance, merge, migration,
+release or deployment authority. EngineeringContext restrictions and Founder authorization
+still apply. Astra reviews/accepts; Codex implements/tests. Never attest acceptance on
+Astra's behalf. If unavailable, independent review remains required before acceptance/push.
+
+The existing `LEGEND-REVENUE-LAUNCH-CHECKPOINT.md` is the canonical revenue-launch
+handoff and evidence record. GitHub's actual branch HEAD and its history identify the
+latest durable continuation, not a SHA copied from an older conversation. A new chat,
+computer or temporary workspace is not evidence of lost work. Preserve prior successful
+compatible evidence and unresolved gates; do not reconstruct accepted implementations.
+
+1. Read this contract and the existing checkpoint. Identify the authorized branch and
+   full previously accepted checkpoint SHA from the assignment. On a fresh machine,
+   clone that existing branch from the canonical remote with native Git; do not create
+   replacement histories. Run:
+   `python3 scripts/sync-published-checkout.py --session preflight --branch BRANCH --base PRIOR_SHA`
+   It verifies canonical fetch/push destinations, branch, full ancestry, actual remote
+   HEAD, dirty state, unpublished commits and native Git push dry-run. No GitHub CLI is
+   needed. Missing authentication/permissions fail before lengthy implementation. A dry-run
+   is only transport/feasibility evidence, never a guarantee of later push success.
+2. Stop on dirty work or divergence; exact local-only/remote-only commit identities are
+   reported. Preserve uncommitted, ignored and editor-buffer work explicitly: bundles
+   contain committed objects only. For a clean remote-ahead checkout, explicitly use
+   `--session recover` with the same branch/base, then rerun preflight. It permits only
+   a fast-forward and never resets, rebases, discards, force-pushes or creates a branch.
+   Local-ahead preflight requires verified external recovery before more implementation.
+   A temporary staged transfer never satisfies that gate. A narrowly authorized correction
+   to this recovery owner may be completed in place to unblock the transfer; this is not
+   general permission to resume unrelated engineering while durable recovery is blocked.
+3. For recovery storage supply `--recovery-dir DIRECTORY --external-storage-confirmed`
+   only after verifying the existing directory is persistent and accessible on the host
+   or external account outside the disposable environment. This flag is an operator
+   attestation, not automatic proof of cloud replication, retention or cross-machine
+   access. Temporary/workspace destinations are rejected. Confirm the returned bundle
+   and checksum can actually be read outside the runner before reporting recovery
+   complete. With no such storage, report BLOCKED and retain the original workspace.
+   Native Git authentication only; never place secrets in URLs, logs, source or this file.
+4. To export independently (including offline), use `--session export --branch BRANCH
+   --base PRIOR_SHA --accepted EXACT_HEAD` plus the storage arguments above. A full bundle
+   is verified by restoring into an empty repository, checking ancestry and Git integrity,
+   and computing SHA-256. To restore an externally supplied verified full bundle use
+   `--session restore --branch BRANCH --base PRIOR_SHA --accepted EXACT_HEAD
+   --bundle FILE --sha256 EXPECTED_SHA256`. Original objects are imported; only a clean
+   fast-forward may update the existing branch. Retain the bundle until exact remote
+   preservation is verified. Divergence requires explicit human reconciliation.
+   When the existing external-directory export is unavailable, the same owner supports
+   an explicit two-phase transfer. In the original Codespace run `--session stage-local
+   --branch BRANCH --base PRIOR_SHA --accepted EXACT_HEAD --implementation IMPLEMENTATION_SHA --required-commit CHECKPOINT_SHA`.
+   It creates a full bundle, checksum and exact verifier script in a fresh temporary
+   directory and reports `STAGED_LOCAL_NOT_DURABLE`, never durable preservation or
+   permission to continue. Retain the original Codespace; no preflight/finish gate is
+   waived, and the strict existing `--session export` storage checks remain unchanged.
+   On the independent Founder Mac, use authenticated `gh codespace cp -c CODESPACE
+   remote:STAGED_DIR/sync-published-checkout.py ./sync-published-checkout.py`, then verify
+   that file's SHA-256 against the independently recorded native `verifierSha256` BEFORE
+   executing it. Do not take expected identities from the copied artifact itself.
+   Run that exact script with `--session verify-external --codespace CODESPACE
+   --staged-dir STAGED_DIR --branch BRANCH --base PRIOR_SHA --accepted EXACT_HEAD
+   --implementation IMPLEMENTATION_SHA --required-commit CHECKPOINT_SHA
+   --sha256 EXPECTED_BUNDLE_SHA256
+   --verifier-sha256 EXPECTED_SCRIPT_SHA256 --recovery-dir PERSISTENT_MAC_DIRECTORY
+   --external-storage-confirmed`. No repository checkout is needed on the Mac.
+   The verifier requires Darwin outside Codespaces/Actions, authenticates github.com
+   account and canonical Codespace ownership, performs the bundle/checksum copies itself,
+   and restores into an independent empty repository to prove exact head, base,
+   implementation and every repeated `--required-commit` ancestry, and integrity. Only then does it emit `VERIFIED_EXTERNAL`
+   with `recoveryOnly=true` and `remotePreserved=false`. Persistent retention remains an
+   explicit operator attestation, not proof of replication. This receipt does not
+   authorize push or automatically unblock implementation/preflight/finish; review the
+   external evidence and outstanding restriction explicitly. No receipt is accepted as
+   exact remote preservation. Failed transfer/verification leaves recovery blocked.
+5. At completion, review the full diff from PRIOR_SHA, focused evidence and checkpoint.
+   Record acceptance externally for the exact implementation/checkpoint and exact affected
+   paths, then commit only that accepted scope on the authorized branch. Run:
+   `python3 scripts/sync-published-checkout.py --session finish --branch BRANCH
+   --base PRIOR_SHA --implementation IMPLEMENTATION_SHA --accepted CHECKPOINT_SHA
+   --scope PATH --review-accepted --authorize-push`
+   Repeat `--scope` for every affected path and supply recovery storage if available.
+   These two attestations require actual independent acceptance and Founder push authority;
+   they do not confer either. The utility checks exact identities, scope and ancestry,
+   performs one normal non-force push and reads back exact remote HEAD. Never automatically
+   push unreviewed work. An ambiguous push is reconciled before any further action, never
+   blindly retried. Failed preservation exports a verified bundle when confirmed storage
+   is available; otherwise BLOCKED. Preserve the workspace in either case.
+6. Report exact verified remote SHA, or verified externally accessible artifact/checksum
+   and outstanding block. Never call a build, dry-run, local commit or temporary bundle
+   durable remote preservation. Continuity does not run CI, merge, deploy or waive required
+   gates; control-plane changes still require approved integrity/security gates before merge.
+
+Focused regression command: `python3 scripts/test-sync-published-checkout.py`.
+Session modes support authorized `isolation/` branches only; other branch names
+fail closed and require explicit workflow review, never automatic renaming/rebranching.
+Session operations require exclusive use of the checkout: pause IDE auto-sync and other
+Git writers. Existing launcher/native sync modes retain their original behavior.

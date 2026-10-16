@@ -163,7 +163,7 @@
           signal: controller.signal
         });
         const result = await response.json().catch(() => null);
-        if (!response.ok || !result?.accepted) throw new Error('inquiry_failed');
+        if (!response.ok || result?.accepted !== true) throw new Error('inquiry_failed');
 
         sent = true;
         showState('sent', '✓ Inquiry sent', 'Your inquiry has been received.');

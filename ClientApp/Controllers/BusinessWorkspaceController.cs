@@ -13,9 +13,9 @@ public sealed class BusinessWorkspaceController(BusinessWorkspaceService workspa
     protected override async Task<IActionResult> CreateWebsiteSessionAsync(Guid businessId, CancellationToken ct)
     {
         var context = await contextService.ResolveAsync(User, Request.Cookies, allowRelink: false);
-        if (context is null) return Forbid();
-        var handoff = await continuations.CreateWebsiteEditorHandoffAsync(context.Profile.Id, businessId,
-            User.GetCanonicalUserId(), (context.IsAgentView ? context.AgentEmail : context.Profile.Email) ?? "", ct);
+        if (context is null || (context.ManagedBusinessId.HasValue && context.ManagedBusinessId != businessId)) return Forbid();
+        var handoff = await continuations.CreateWebsiteEditorHandoffAsync(context.BusinessActorProfileId, businessId,
+            User.GetCanonicalUserId(), context.BusinessActorEmail ?? "", ct);
         var apiBase = (configuration["WebsiteContentApiBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/');
         return Json(new { handoffUrl = $"{apiBase}/api/website-content/handoff", state = handoff.OpaqueState, expiresUtc = handoff.ExpiresUtc });
     }
@@ -23,7 +23,7 @@ public sealed class BusinessWorkspaceController(BusinessWorkspaceService workspa
     protected override async Task<CommerceBusiness?> ResolveBusinessAsync(Guid id, string capability, CancellationToken ct)
     {
         var context = await contextService.ResolveAsync(User, Request.Cookies, allowRelink: false);
-        return context is null ? null : await BusinessWorkspaceAccess.ResolveAsync(db, id, context.Profile.Id,
-            User.GetCanonicalUserId(), context.IsAgentView ? context.AgentEmail : context.Profile.Email, capability, ct);
+        return context is null || (context.ManagedBusinessId.HasValue && context.ManagedBusinessId != id) ? null : await BusinessWorkspaceAccess.ResolveAsync(db, id, context.BusinessActorProfileId,
+            User.GetCanonicalUserId(), context.BusinessActorEmail, capability, ct);
     }
 }

@@ -18,6 +18,41 @@ namespace AgentPortal.Tests;
 public sealed class MobileCrmManagementTests
 {
     [Theory]
+    [InlineData("BusinessClient", "", true)]
+    [InlineData("BusinessClient", null, true)]
+    [InlineData("Client", "", false)]
+    [InlineData("Lead", "", false)]
+    public async Task ContactNameRequirementUsesPersistedRecordClassification(string kind, string? name, bool allowed)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = new ClientProfile { ClientUserId = Guid.NewGuid().ToString(), FirstName = "Before",
+            Email = "entity@example.test", NormalizedEmail = "entity@example.test", UpdatedUtc = DateTime.UtcNow,
+            CrmNotes = "{\"recordType\":\"" + kind + "\"}" };
+        db.Add(profile); db.Add(new AgentClient { AgentUserId = "agent-a", ClientUserId = profile.ClientUserId });
+        await db.SaveChangesAsync();
+        var controller = ControllerTestHelpers.BuildClientsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser("agent-a"));
+        using var services = new ServiceCollection().AddLogging().AddControllers().Services.BuildServiceProvider();
+        controller.ObjectValidator = services.GetRequiredService<IObjectModelValidator>();
+        var result = await controller.SaveContact(profile.ClientUserId, new CrmContactUpdate {
+            FirstName = name, LastName = "", Email = profile.Email, UpdatedUtc = profile.UpdatedUtc });
+        if (allowed) { Assert.IsType<JsonResult>(result); Assert.Equal("", profile.FirstName); }
+        else { Assert.IsType<BadRequestObjectResult>(result); Assert.Equal("Before", profile.FirstName); }
+        Assert.Equal("entity@example.test", profile.Email);
+    }
+
+    [Fact]
+    public async Task BusinessContactStillRejectsOverlongName()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var controller = ControllerTestHelpers.BuildClientsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser("agent-a"));
+        using var services = new ServiceCollection().AddLogging().AddControllers().Services.BuildServiceProvider();
+        controller.ObjectValidator = services.GetRequiredService<IObjectModelValidator>();
+        Assert.IsType<BadRequestObjectResult>(await controller.SaveContact("unresolved", new CrmContactUpdate {
+            FirstName = new string('x', 101), UpdatedUtc = DateTime.UtcNow }));
+        Assert.False(controller.ModelState.IsValid);
+    }
+
+    [Theory]
     [InlineData("")]
     [InlineData("   ")]
     [InlineData(null)]

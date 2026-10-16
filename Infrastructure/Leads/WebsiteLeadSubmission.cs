@@ -109,13 +109,41 @@ public static class WebsiteLeadSubmission
 
     public static async Task CompleteNotificationAsync(MasterAppDbContext db, WebsiteLead lead, bool accepted, CancellationToken ct = default)
     {
-        lead.NotificationSentUtc = accepted ? DateTime.UtcNow : null;
-        // Preserve the failed attempt timestamp so the same canonical lease
-        // drives background retry eligibility. Clearing it here made failed
-        // rows invisible to the recovery worker's durable backoff query.
-        lead.NotificationAttemptUtc = accepted ? lead.NotificationAttemptUtc : DateTime.UtcNow;
-        if (!accepted) lead.Status = "NotificationFailed";
-        else if (lead.Status == "NotificationFailed") lead.Status = "New";
+        var claimAttempt = lead.NotificationAttemptUtc;
+        var completedUtc = DateTime.UtcNow;
+        if (db.Database.IsRelational())
+        {
+            if (claimAttempt.HasValue)
+            {
+                var claim = db.WebsiteLeads.Where(x => x.Id == lead.Id && x.NotificationSentUtc == null &&
+                    x.NotificationAttemptUtc == claimAttempt);
+                if (accepted)
+                    await claim.ExecuteUpdateAsync(update => update
+                        .SetProperty(x => x.NotificationSentUtc, completedUtc)
+                        .SetProperty(x => x.Status, x => x.Status == "NotificationFailed" ? "New" : x.Status), ct);
+                else
+                    await claim.ExecuteUpdateAsync(update => update
+                        .SetProperty(x => x.NotificationAttemptUtc, completedUtc)
+                        .SetProperty(x => x.Status, x => x.Status == "New" ? "NotificationFailed" : x.Status), ct);
+            }
+            // Completion can lose to a reclaimed lease. Discard stale tracked values in either case.
+            await db.Entry(lead).ReloadAsync(ct);
+            return;
+        }
+
+        var current = await db.WebsiteLeads.AsNoTracking().Where(x => x.Id == lead.Id)
+            .Select(x => new { x.NotificationAttemptUtc, x.NotificationSentUtc, x.Status }).SingleOrDefaultAsync(ct);
+        if (!claimAttempt.HasValue || current is null || current.NotificationSentUtc.HasValue ||
+            current.NotificationAttemptUtc != claimAttempt)
+        {
+            await db.Entry(lead).ReloadAsync(ct);
+            return;
+        }
+        lead.NotificationSentUtc = accepted ? completedUtc : null;
+        // Keep the failed claim timestamp for the canonical retry delay.
+        lead.NotificationAttemptUtc = accepted ? current.NotificationAttemptUtc : completedUtc;
+        lead.Status = !accepted && current.Status == "New" ? "NotificationFailed" :
+            accepted && current.Status == "NotificationFailed" ? "New" : current.Status;
         await db.SaveChangesAsync(ct);
     }
 }

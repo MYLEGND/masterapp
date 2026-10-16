@@ -122,6 +122,7 @@
      data-client-user-id="@Model.ClientUserId"
     data-is-business-client="@(Model.IsBusinessClient ? "true" : "false")"
     data-is-agent-view="@(Model.IsAgentView ? "true" : "false")"
+    data-is-read-only="@(Model.IsReadOnly ? "true" : "false")"
      data-default-state='@defaultStateJson'>
 
     <section class="snapshot-hero">
@@ -185,7 +186,7 @@
 
                 <div class="snapshot-journey-meta">
                     <span class="snapshot-pill" id="snapshotJourneyStepPill">Step 1 of 1</span>
-                    <span class="snapshot-pill" id="snapshotJourneyTipPill">@(Model.IsAgentView ? "Agent review mode: client inputs are read-only." : "Tip: complete each step before moving on.")</span>
+                    <span class="snapshot-pill" id="snapshotJourneyTipPill">@(Model.IsReadOnly ? "Managed review mode: account inputs are read-only." : "Tip: complete each step before moving on.")</span>
                 </div>
 
                 <div class="snapshot-journey-actions">
@@ -1312,7 +1313,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const clientProfileId = root.dataset.clientProfileId || "";
     const clientUserId = root.dataset.clientUserId || "";
     const isBusinessClient = (root.dataset.isBusinessClient || "").toLowerCase() === "true";
-    const isAgentView = (root.dataset.isAgentView || "").toLowerCase() === "true";
+    const isReadOnly = (root.dataset.isReadOnly || "").toLowerCase() === "true";
     const defaults = JSON.parse(root.dataset.defaultState || "{}");
 
     const stageButtons = Array.from(root.querySelectorAll('[data-field="householdStage"]'));
@@ -1452,7 +1453,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function applyRoleMode() {
-        if (!isAgentView) return;
+        if (!isReadOnly) return;
 
         guidedMode = false;
 
@@ -1477,7 +1478,7 @@ document.addEventListener("DOMContentLoaded", () => {
             button.setAttribute("aria-disabled", "true");
         });
 
-        saveStatus.textContent = "Agent review mode (read-only): client-owned inputs";
+        saveStatus.textContent = "Managed review mode (read-only): client-owned inputs";
     }
 
     function normalizeState(raw) {
@@ -1827,8 +1828,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function queueSave(message) {
-        if (isAgentView) {
-            saveStatus.textContent = "Agent review mode (read-only): no edits are saved here.";
+        if (isReadOnly) {
+            saveStatus.textContent = "Managed review mode (read-only): no edits are saved here.";
             return;
         }
         window.clearTimeout(saveTimer);
@@ -1837,7 +1838,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function saveState() {
-        if (isAgentView) return;
+        if (isReadOnly) return;
         state = collectState();
         renderSummary(state);
         saveStatus.textContent = "Saving shared snapshot…";
@@ -1888,8 +1889,8 @@ document.addEventListener("DOMContentLoaded", () => {
             state = normalizeState(loaded);
             hasLoadedFromServer = !!payload?.found;
             syncInputs(state);
-            if (isAgentView) {
-                saveStatus.textContent = "Agent review mode (read-only): viewing client-submitted snapshot";
+            if (isReadOnly) {
+                saveStatus.textContent = "Managed review mode (read-only): viewing client-submitted snapshot";
                 return;
             }
             saveStatus.textContent = payload?.found
@@ -1899,8 +1900,8 @@ document.addEventListener("DOMContentLoaded", () => {
             console.error(error);
             state = normalizeState(defaults);
             syncInputs(state);
-            if (isAgentView) {
-                saveStatus.textContent = "Agent review mode (read-only): default snapshot shown";
+            if (isReadOnly) {
+                saveStatus.textContent = "Managed review mode (read-only): default snapshot shown";
                 return;
             }
             saveStatus.textContent = "Using default snapshot — save will retry automatically";

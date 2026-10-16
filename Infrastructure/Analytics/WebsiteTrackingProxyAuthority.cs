@@ -56,6 +56,10 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         if (string.IsNullOrWhiteSpace(req.EventType))
             return BadRequest(new { error = "event_type_required" });
 
+        req.SiteKey = string.IsNullOrWhiteSpace(req.SiteKey) ? null : req.SiteKey.Trim().ToLowerInvariant();
+        if (req.SiteKey is not (null or WebsiteEditorSiteKeys.Legend or WebsiteEditorSiteKeys.Protect or WebsiteEditorSiteKeys.Business or "commerce"))
+            return BadRequest(new { error = "invalid_site_key" });
+
         if (req.MetaSignal is not null &&
             (!Guid.TryParse(req.MetaSignal.EventId, out var signalId) || signalId != req.ClientEventId ||
              !string.Equals(req.MetaSignal.EventName, req.EventType, StringComparison.OrdinalIgnoreCase) ||
@@ -97,9 +101,14 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
 
         PublicWebsiteRuntimeScope? protectScope = null;
         var publicScopes = HttpContext.RequestServices.GetService<PublicWebsiteRuntimeScopeResolver>();
+        var hasOrigin = Request.Headers.ContainsKey("Origin");
+        if (hasOrigin && publicScopes is null)
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "website_runtime_scope_unavailable" });
         if (publicScopes is not null)
         {
             protectScope = await publicScopes.ResolveInquiryAsync(HttpContext, req.Path, ct);
+            if (hasOrigin && (protectScope is null || protectScope.SiteKey != WebsiteEditorSiteKeys.Protect))
+                return BadRequest(new { error = "published_website_scope_required" });
             if (protectScope is not null &&
                 protectScope.SiteKey == WebsiteEditorSiteKeys.Protect &&
                 protectScope.AgentTrackingProfileId != req.AgentTrackingProfileId)

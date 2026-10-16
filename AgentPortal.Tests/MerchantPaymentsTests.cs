@@ -257,13 +257,79 @@ public sealed class MerchantPaymentsTests
         Assert.False(PaymentWebhookSignatures.VerifyStripe(body+" ",stripe,key,now));
         Assert.False(PaymentWebhookSignatures.VerifyStripe(body,stripe,key,now.AddMinutes(6)));
     }
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(true, null)]
+    [InlineData(false, true)]
+    [InlineData(null, null)]
+    public async Task SquarePaymentEligibilityDoesNotRequireAutomaticTransfers(bool? payments, bool? transfers)
+    {
+        using var f = new Fixture(provider: "Square");
+        var owner = f.SeedOwner(f.Business, "owner-one");
+        var row = await f.Db.CommerceMerchantConnections.SingleAsync();
+        row.LocationId = "verified-location";
+        (await f.Db.CommerceMerchantConnectionRevisions.SingleAsync()).LocationId = row.LocationId;
+        await f.Db.SaveChangesAsync();
+        f.Gateway.ReadinessOverride = new(payments, null, ["USD"], ["card"], [row.LocationId], AutomaticTransfersEnabled: transfers);
+        if (payments == true)
+        {
+            await f.Connections.SetDefaultAsync(f.Business, owner, "owner-one", null, row.Id, row.Revision, default);
+            var payment = await f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return");
+            Assert.Equal("Captured", payment.State); // Synthetic payment evidence, not a bank payout.
+            Assert.Equal(1, f.Gateway.Creates);
+        }
+        else
+        {
+            await Assert.ThrowsAsync<MerchantPaymentException>(() => f.Connections.SetDefaultAsync(f.Business, owner, "owner-one", null, row.Id, row.Revision, default));
+            await Assert.ThrowsAsync<MerchantPaymentException>(() => f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return"));
+            Assert.Equal(0, f.Gateway.Creates);
+        }
+    }
+
+    [Theory]
+    [InlineData("{\"PaymentsEnabled\":true,\"SettlementsEnabled\":true,\"Currencies\":[\"USD\"],\"PaymentMethods\":[\"card\"],\"Locations\":[\"location\"]}", true)]
+    [InlineData("{}", null)]
+    [InlineData("null", null)]
+    [InlineData("not json", null)]
+    [InlineData("{\"PaymentsEnabled\":\"yes\"}", null)]
+    [InlineData("{\"PaymentsEnabled\":true,\"Currencies\":null}", null)]
+    public async Task CachedSquareReadinessCannotFabricateSettlements(string json, bool? expectedPayments)
+    {
+        using var f = new Fixture(provider: "Square");
+        var owner = f.SeedOwner(f.Business, "owner-one");
+        (await f.Db.CommerceMerchantConnections.SingleAsync()).ReadinessJson = json;
+        await f.Db.SaveChangesAsync();
+        var readiness = (await f.Connections.ListAsync(f.Business, owner, "owner-one", null, "Production", default)).Connections.Single().Readiness;
+        Assert.Equal(expectedPayments, readiness.PaymentsEnabled);
+        Assert.Null(readiness.SettlementsEnabled);
+        Assert.Null(readiness.AutomaticTransfersEnabled);
+        Assert.NotNull(readiness.Currencies); Assert.NotNull(readiness.Locations);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CachedExplicitAutomaticTransferCapabilityIsRetainedWithoutSettlementClaim(bool transfers)
+    {
+        using var f = new Fixture(provider: "Square");
+        var owner = f.SeedOwner(f.Business, "owner-one");
+        (await f.Db.CommerceMerchantConnections.SingleAsync()).ReadinessJson = JsonSerializer.Serialize(
+            new MerchantReadiness(true, true, ["USD"], ["card"], ["location"], AutomaticTransfersEnabled: transfers));
+        await f.Db.SaveChangesAsync();
+        var readiness = (await f.Connections.ListAsync(f.Business, owner, "owner-one", null, "Production", default)).Connections.Single().Readiness;
+        Assert.Equal(transfers, readiness.AutomaticTransfersEnabled);
+        Assert.Null(readiness.SettlementsEnabled);
+    }
+
     private sealed class Fixture:IDisposable
     {
-        public readonly DbContextOptions<MasterAppDbContext> Options; public readonly IDataProtectionProvider Protection=new EphemeralDataProtectionProvider(); public readonly MasterAppDbContext Db; public readonly FakeGateway Gateway=new(),OtherGateway=new("Other"); public readonly Guid Business=Guid.NewGuid(),Order=Guid.NewGuid();
+        public readonly DbContextOptions<MasterAppDbContext> Options; public readonly IDataProtectionProvider Protection=new EphemeralDataProtectionProvider(); public readonly MasterAppDbContext Db; public readonly FakeGateway Gateway,OtherGateway=new("Other"); public readonly Guid Business=Guid.NewGuid(),Order=Guid.NewGuid();
         public readonly MerchantConnectionService Connections; public readonly MerchantCheckoutService Checkout;
         private readonly SqliteConnection? sqlite;
-        public Fixture(bool relational=false)
+        public Fixture(bool relational=false, string provider="Fake")
         {
+            Gateway = new(provider);
             if(relational)
             {
                 sqlite=new SqliteConnection("Data Source=:memory:;Foreign Keys=False");sqlite.Open();
@@ -272,12 +338,12 @@ public sealed class MerchantPaymentsTests
             else Options=new DbContextOptionsBuilder<MasterAppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).ConfigureWarnings(x=>x.Ignore(InMemoryEventId.TransactionIgnoredWarning)).Options;
             Db=new(Options);if(relational)Db.Database.EnsureCreated();
             var protection=Protection; var id=Guid.NewGuid(); var revision=Guid.NewGuid();
-            var protectedCredential=protection.CreateProtector("Legend.Merchant.Credential.v1",id.ToString("N"),Business.ToString("N"),"Fake","Production").Protect(JsonSerializer.Serialize(new MerchantCredential("test-only")));
+            var protectedCredential=protection.CreateProtector("Legend.Merchant.Credential.v1",id.ToString("N"),Business.ToString("N"),provider,"Production").Protect(JsonSerializer.Serialize(new MerchantCredential("test-only")));
             Db.CommerceOrders.Add(new() {Id=Order,CommerceBusinessId=Business,TotalCents=1000,OrderNumber="TEST"});
-            Db.CommerceMerchantConnections.Add(new() {Id=id,CommerceBusinessId=Business,Provider="Fake",Environment="Production",AccountId="merchant-original",Revision=1,State="Active",ProtectedCredential=protectedCredential});
-            Db.CommerceMerchantConnectionRevisions.Add(new() {Id=revision,ConnectionId=id,CommerceBusinessId=Business,Provider="Fake",Environment="Production",AccountId="merchant-original",Revision=1});
+            Db.CommerceMerchantConnections.Add(new() {Id=id,CommerceBusinessId=Business,Provider=provider,Environment="Production",AccountId="merchant-original",Revision=1,State="Active",ProtectedCredential=protectedCredential});
+            Db.CommerceMerchantConnectionRevisions.Add(new() {Id=revision,ConnectionId=id,CommerceBusinessId=Business,Provider=provider,Environment="Production",AccountId="merchant-original",Revision=1});
             Db.CommerceMerchantConfigurations.Add(new() {CommerceBusinessId=Business,Environment="Production",DefaultConnectionId=id}); Db.SaveChanges();
-            Connections=new(Db,protection,new IMerchantPaymentGateway[]{Gateway,OtherGateway},new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?>{{"MerchantPayments:Fake:Production:CallbackUrl","https://example.test/commerce/manage/payments/callback"}}).Build()); Checkout=new(Db,Connections,new IMerchantPaymentGateway[]{Gateway,OtherGateway},new ConfigurationBuilder().Build());
+            Connections=new(Db,protection,new IMerchantPaymentGateway[]{Gateway,OtherGateway},new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?>{{"MerchantPayments:"+provider+":Production:CallbackUrl","https://example.test/commerce/manage/payments/callback"}}).Build()); Checkout=new(Db,Connections,new IMerchantPaymentGateway[]{Gateway,OtherGateway},new ConfigurationBuilder().Build());
         }
         public Guid SeedOwner(Guid business,string actor)
         {
@@ -301,11 +367,12 @@ public sealed class MerchantPaymentsTests
     {
         public string Name=provider; public string Provider=>Name; public string[] Locations=Array.Empty<string>(); public MerchantCapabilities Capabilities=>MerchantCapabilities.Checkout|MerchantCapabilities.Refund|MerchantCapabilities.Reconcile|MerchantCapabilities.Capture;
         public int Creates,Reads,Refunds,Captures; public bool Available=true,Ready=true,Approved,Pending,SynchronizeReads; private readonly TaskCompletionSource<bool> readsReady=new(TaskCreationOptions.RunContinuationsAsynchronously); public bool ThrowCreate,ThrowRefund; public string? Mismatch,LastAccount;
+        public MerchantReadiness? ReadinessOverride;
         public string? AuthorizationState,AuthorizationCallback; public string ConnectionAccount="merchant-new";public int AuthorizationCompletions;
         public bool IsAvailable(string environment)=>Available;
         public Task<MerchantAuthorization> BeginConnectionAsync(MerchantConnectionRequest r,CancellationToken ct){AuthorizationState=r.State;AuthorizationCallback=r.CallbackUrl;return Task.FromResult(new MerchantAuthorization("https://provider.example.test/authorize",ConnectionAccount));}
         public Task<MerchantConnectionResult> CompleteConnectionAsync(string e,string c,string u,string? a,CancellationToken ct){AuthorizationCompletions++;return Task.FromResult(new MerchantConnectionResult(ConnectionAccount,new MerchantCredential("test-only"),new[]{"checkout"}));}
-        public Task<MerchantReadiness> GetReadinessAsync(MerchantAccount a,CancellationToken ct)=>Task.FromResult(new MerchantReadiness(Ready,Ready,new[]{"USD"},new[]{"card"},Locations));
+        public Task<MerchantReadiness> GetReadinessAsync(MerchantAccount a,CancellationToken ct)=>Task.FromResult(ReadinessOverride ?? new MerchantReadiness(Ready,Ready,new[]{"USD"},new[]{"card"},Locations));
         public Task<MerchantCredential> RefreshAsync(MerchantAccount a,CancellationToken ct)=>Task.FromResult(a.Credential);
         public Task RevokeAsync(MerchantAccount a,CancellationToken ct)=>Task.CompletedTask;
         private MerchantPaymentEvidence Evidence(MerchantAccount a)=>new(Mismatch=="account"?"wrong":a.AccountId,Mismatch=="environment"?"Sandbox":a.Environment,"checkout_test","payment_test",Approved?"Approved":Pending?"Pending":"Captured",Mismatch=="amount"?999:1000,"USD");

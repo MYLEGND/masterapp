@@ -110,6 +110,11 @@ public sealed class SubscriptionActivationService
         if (invitation.ClientProfile is null || invitation.ClientSubscriptionOffer is null)
             return new SubscriptionActivationContextResult(SubscriptionActivationAvailability.Unavailable, "The activation details could not be loaded.");
 
+        if (!invitation.ClientSubscriptionOffer.IsEligibleForActivation(nowUtc))
+            return new SubscriptionActivationContextResult(SubscriptionActivationAvailability.Unavailable,
+                "This subscription offer is not available for activation.", invitation, invitation.ClientProfile,
+                invitation.ClientSubscriptionOffer, latestSubscription);
+
         if (invitation.Status is SubscriptionActivationInvitationStatus.Pending or SubscriptionActivationInvitationStatus.Sent)
         {
             invitation.Status = SubscriptionActivationInvitationStatus.Viewed;

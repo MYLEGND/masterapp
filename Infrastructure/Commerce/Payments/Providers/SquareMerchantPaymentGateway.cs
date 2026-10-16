@@ -45,10 +45,36 @@ public sealed class SquareMerchantPaymentGateway(IHttpClientFactory clients, ICo
         var merchant = await Api(account.Environment,HttpMethod.Get,"/v2/merchants/"+Escape(account.AccountId),account.Credential.AccessToken,null,ct);
         Require(S(P(merchant,"merchant"),"id") == account.AccountId,"MERCHANT_IDENTITY_MISMATCH");
         var locations = await Api(account.Environment,HttpMethod.Get,"/v2/locations",account.Credential.AccessToken,null,ct);
-        var eligible = P(locations,"locations").EnumerateArray().Where(x => S(x,"merchant_id") == account.AccountId && S(x,"status") == "ACTIVE" && x.TryGetProperty("capabilities",out var caps) && caps.EnumerateArray().Any(c => c.GetString() == "CREDIT_CARD_PROCESSING")).ToArray();
-        var selected = eligible.FirstOrDefault(x => S(x,"id") == account.LocationId);
-        var ready = selected.ValueKind != JsonValueKind.Undefined && S(P(merchant,"merchant"),"status") == "ACTIVE";
-        return new(ready,ready,ready?[S(selected,"currency")]:eligible.Select(x=>S(x,"currency")).Distinct().ToArray(),["card"],eligible.Select(x=>S(x,"id")).ToArray(),ready ? null : "Select an active card-processing location.");
+        var list = P(locations, "locations");
+        if (list.ValueKind != JsonValueKind.Array)
+            return new(null, null, [], [], [], "Square location readiness could not be verified. Refresh readiness.");
+        bool? Capability(JsonElement location, string name)
+        {
+            var caps = P(location, "capabilities");
+            return caps.ValueKind == JsonValueKind.Array && caps.EnumerateArray().All(c => c.ValueKind == JsonValueKind.String)
+                ? caps.EnumerateArray().Any(c => c.GetString() == name) : null;
+        }
+        var owned = list.EnumerateArray().Where(x => S(x, "merchant_id") == account.AccountId).ToArray();
+        var selectedLocations = list.EnumerateArray().Where(x => S(x, "id") == account.LocationId && !string.IsNullOrEmpty(account.LocationId)).ToArray();
+        Require(selectedLocations.Length <= 1, "PROVIDER_INVALID_RESPONSE");
+        var selected = selectedLocations.FirstOrDefault();
+        if (selected.ValueKind != JsonValueKind.Undefined)
+            Require(S(selected, "merchant_id") == account.AccountId, "MERCHANT_IDENTITY_MISMATCH");
+        var eligible = owned.Where(x => S(x, "status") == "ACTIVE" && Capability(x, "CREDIT_CARD_PROCESSING") == true &&
+            !string.IsNullOrWhiteSpace(S(x, "id")) && !string.IsNullOrWhiteSpace(S(x, "currency"))).ToArray();
+        bool? payments = null;
+        var merchantStatus = S(P(merchant, "merchant"), "status");
+        var locationStatus = S(selected, "status");
+        if (string.IsNullOrEmpty(account.LocationId) || merchantStatus == "INACTIVE" || locationStatus == "INACTIVE")
+            payments = false;
+        else if (merchantStatus == "ACTIVE" && locationStatus == "ACTIVE" && !string.IsNullOrWhiteSpace(S(selected, "currency")))
+            payments = Capability(selected, "CREDIT_CARD_PROCESSING");
+        var transfers = selected.ValueKind == JsonValueKind.Undefined ? null : Capability(selected, "AUTOMATIC_TRANSFERS");
+        return new(payments, null,
+            payments == true ? [S(selected, "currency")] : eligible.Select(x => S(x, "currency")).Distinct().ToArray(),
+            payments == true ? ["card"] : [], eligible.Select(x => S(x, "id")).ToArray(),
+            payments == true ? null : payments == false ? "Select an active card-processing location." : "Square payment readiness could not be verified. Refresh readiness.",
+            transfers);
     }
     public async Task RevokeAsync(MerchantAccount account,CancellationToken ct) => await SendAsync(HttpMethod.Post,Base(account.Environment)+"/oauth2/revoke","",Json(new {client_id=Setting(Provider,account.Environment,"ApplicationId"),access_token=account.Credential.AccessToken,revoke_only_access_token=false}),ct,("Authorization","Client "+Setting(Provider,account.Environment,"ApplicationSecret")));
     public async Task<MerchantPaymentEvidence> CreateCheckoutAsync(MerchantAccount account, MerchantCheckoutRequest request,CancellationToken ct)

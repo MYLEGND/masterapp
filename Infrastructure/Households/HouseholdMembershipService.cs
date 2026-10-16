@@ -3,6 +3,7 @@ using System.Text;
 using Domain.Billing;
 using Domain.Entities;
 using Domain.Enums;
+using Infrastructure.Billing;
 using Infrastructure.Data;
 using Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -258,6 +259,21 @@ public sealed class HouseholdMembershipService : IHouseholdMembershipService
                 null);
         }
 
+        var existingHousehold = await _db.HouseholdAccounts
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.SubscriptionOwnerClientProfileId == clientProfileId, cancellationToken);
+        if (existingHousehold is not null && existingHousehold.Status != HouseholdAccountStatus.Active)
+        {
+            // Legacy hydration must not reopen an explicitly inactive household
+            // merely because its primary membership has not been created.
+            return new HouseholdAccessResolution(
+                false,
+                existingHousehold.Id,
+                existingHousehold.SubscriptionOwnerClientProfileId,
+                HouseholdMemberRole.PrimaryOwner,
+                $"HOUSEHOLD_{existingHousehold.Status.ToString().ToUpperInvariant()}");
+        }
+
         // Existing activated subscriptions predate the household aggregate. This
         // narrow, idempotent hydration writes the new authority from the one
         // existing paid subscription; it is not a legacy entitlement fallback.
@@ -294,13 +310,9 @@ public sealed class HouseholdMembershipService : IHouseholdMembershipService
         if (string.IsNullOrWhiteSpace(partnerEmail))
             throw new InvalidOperationException("A partner email is required.");
 
-        var ownerHasActiveEntitlement = await _db.ClientSubscriptions
-            .AsNoTracking()
-            .AnyAsync(
-                x => x.ClientProfileId == command.PrimaryClientProfileId &&
-                     (x.Status == ClientSubscriptionStatus.Active ||
-                      x.Status == ClientSubscriptionStatus.GracePeriod),
-                cancellationToken);
+        var ownerHasActiveEntitlement = await HasUsableOwnerSubscriptionAsync(
+            command.PrimaryClientProfileId,
+            cancellationToken);
         if (!ownerHasActiveEntitlement)
         {
             throw new InvalidOperationException(
@@ -750,17 +762,11 @@ public sealed class HouseholdMembershipService : IHouseholdMembershipService
             .ThenByDescending(x => x.CreatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (subscription is null)
-            return false;
-
-        if (subscription.CancelAtPeriodEnd &&
-            subscription.CurrentPeriodEndUtc.HasValue &&
-            subscription.CurrentPeriodEndUtc.Value <= DateTime.UtcNow)
-        {
-            return false;
-        }
-
-        return subscription.Status is ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod;
+        var evaluation = BillingStateMapper.EvaluateSubscription(
+            subscription,
+            BillingEntitlementKeys.ClientAppFullAccess,
+            DateTime.UtcNow);
+        return evaluation.Status is ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod;
     }
 
     private static string NormalizeEmail(string? value) => (value ?? string.Empty).Trim().ToLowerInvariant();

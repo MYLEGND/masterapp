@@ -3410,13 +3410,13 @@ namespace AgentPortal.Controllers;
             subscriptionFreeTrialDays = selection.FreeTrialDays;
         }
 
-        if (isPortalClient && string.IsNullOrWhiteSpace(firstName))
+        if (recordType == "Client" && string.IsNullOrWhiteSpace(firstName))
         {
             ModelState.AddModelError(nameof(CreateClientViewModel.FirstName), "First name is required.");
             return View(model);
         }
 
-        if (isPortalClient && string.IsNullOrWhiteSpace(lastName))
+        if (recordType == "Client" && string.IsNullOrWhiteSpace(lastName))
         {
             ModelState.AddModelError(nameof(CreateClientViewModel.LastName), "Last name is required.");
             return View(model);
@@ -5999,6 +5999,8 @@ namespace AgentPortal.Controllers;
         if (!TryValidateModel(request)) return BadRequest(ModelState);
         var profile = await GetOwnedClientProfileAsync(agentOid, clientUserId);
         if (profile is null) return NotFound();
+        if (ClientRecordClassification.Resolve(profile.ClientUserId, profile.CrmNotes) != ClientRecordClassification.BusinessClient &&
+            string.IsNullOrWhiteSpace(request.FirstName)) return BadRequest("First name is required.");
         var closed = await Infrastructure.Mobile.CrmArchiveScope.ClosedClientKeysAsync(_db, HttpContext.RequestAborted);
         if (Infrastructure.Mobile.CrmArchiveScope.ArchivedStatus(profile.CrmStatus) || closed.Contains(profile.Id.ToString()) || closed.Contains(profile.ClientUserId)) return Conflict("Archived accounts cannot be edited.");
         if (profile.UpdatedUtc != request.UpdatedUtc) return Conflict("This record changed. Reload before saving your edits.");
@@ -6010,8 +6012,8 @@ namespace AgentPortal.Controllers;
             return Conflict("Email already exists on another client.");
         var previousEmail = profile.NormalizedEmail ?? profile.Email;
         await using var tx = await _db.Database.BeginTransactionAsync(HttpContext.RequestAborted);
-        profile.FirstName = request.FirstName.Trim();
-        profile.LastName = request.LastName.Trim();
+        profile.FirstName = (request.FirstName ?? "").Trim();
+        profile.LastName = (request.LastName ?? "").Trim();
         profile.Email = email ?? "";
         profile.NormalizedEmail = email;
         profile.Phone = request.Phone?.Trim() ?? "";

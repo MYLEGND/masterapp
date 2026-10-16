@@ -156,7 +156,7 @@ public sealed class AiPaidCampaignRow
     public decimal Spend { get; set; }
     public long Impressions { get; set; }
     public long Clicks { get; set; }
-    public long ProviderConversions { get; set; }
+    public long? ProviderConversions { get; set; }
     public long? CanonicalLeads { get; set; }
     public long? CanonicalQualifiedLeads { get; set; }
     public long? CanonicalAppointments { get; set; }
@@ -245,10 +245,10 @@ public sealed class SignalOutcomeCalibrationAiRow
     public decimal ApplicationRate { get; set; }
     public decimal IssuedRate { get; set; }
     public decimal PaidRate { get; set; }
-    public decimal ObservedRevenue { get; set; }
-    public decimal ExpectedRevenuePerObservedVisitor { get; set; }
+    public decimal? ObservedRevenue { get; set; }
+    public decimal? ExpectedRevenuePerObservedVisitor { get; set; }
 }
 
-public sealed record AiChannelRow(string Channel, decimal? Spend, long Impressions, long Clicks,
-    long Leads, long QualifiedLeads, long Appointments, long Customers, decimal Revenue, decimal? Roas, string AttributionConfidence);
+public sealed record AiChannelRow(string Channel, decimal? Spend, long? Impressions, long? Clicks,
+    long Leads, long QualifiedLeads, long Appointments, long Customers, decimal? Revenue, decimal? Roas, string AttributionConfidence);
 public sealed record AiDeviceRow(string Label, int Sessions, int Events, int CtaClicks, int FormStarts, int SubmitAttempts, int ConfirmedLeads);

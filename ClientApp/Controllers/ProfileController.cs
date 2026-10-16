@@ -18,7 +18,6 @@ using Shared.Auth;
 namespace ClientApp.Controllers;
 
 [Authorize]
-[BypassClientSubscriptionRequirement]
 public class ProfileController : Controller
 {
     private readonly MasterAppDbContext _db;
@@ -221,15 +220,13 @@ public class ProfileController : Controller
         Guid businessId,
         CancellationToken cancellationToken)
     {
-
+        if (context.ManagedBusinessId.HasValue && context.ManagedBusinessId != businessId) return null;
         if (!await WebsiteBusinessAccess.CanManageAsActorAsync(
                 _db,
                 businessId,
-                context.Profile.Id,
+                context.BusinessActorProfileId,
                 User.GetCanonicalUserId(),
-                context.IsAgentView
-                    ? context.AgentEmail
-                    : context.Profile.NormalizedEmail ?? context.Profile.Email,
+                context.BusinessActorEmail,
                 cancellationToken))
             return null;
 
@@ -249,6 +246,7 @@ public class ProfileController : Controller
         string? warning = null)
     {
         ViewBag.ViewMode = context.IsAgentView ? "agent" : "client";
+        ViewBag.IsBusinessOwnerView = context.IsBusinessOwnerView;
         ViewBag.ViewingClientName = context.AccountDisplayName;
         ViewBag.ProfileSaveNotice = notice ?? TempData["BusinessWebsiteNotice"]?.ToString();
         ViewBag.ProfileSaveWarning = warning ?? TempData["BusinessWebsiteWarning"]?.ToString();
@@ -257,8 +255,25 @@ public class ProfileController : Controller
             context.Profile,
             HttpContext.RequestAborted);
 
+        var managedAccounts = new Dictionary<Guid, string>();
+        if (!context.IsAgentView && !context.IsBusinessOwnerView)
+        {
+            var accountIds = await _db.CommerceBusinessMembers.AsNoTracking()
+                .Where(m => m.RoleKey == "account" && m.Status == "Active" && m.ClientProfileId.HasValue &&
+                    _db.CommerceBusinessMembers.Any(o => o.CommerceBusinessId == m.CommerceBusinessId &&
+                        o.ClientProfileId == context.Profile.Id && o.RoleKey == "owner" && o.Status == "Active"))
+                .Select(m => m.ClientProfileId!.Value).Distinct().ToListAsync(HttpContext.RequestAborted);
+            foreach (var id in accountIds)
+                if (await BusinessWorkspaceAccess.ResolveAccountOwnerAsync(_db, id, User.GetCanonicalUserId(), HttpContext.RequestAborted) != null)
+                {
+                    var labels = await BusinessIdentityProjection.LoadLabelsAsync(_db, new[] { id }, HttpContext.RequestAborted);
+                    managedAccounts[id] = labels.GetValueOrDefault(id) ?? "Business account";
+                }
+        }
+        ViewBag.ManagedBusinessAccounts = managedAccounts;
+
         ViewBag.EditableBusinessIds = await _db.CommerceBusinessMembers.AsNoTracking()
-            .Where(member => member.ClientProfileId == context.Profile.Id && member.Status == "Active" &&
+            .Where(member => member.ClientProfileId == context.BusinessActorProfileId && member.Status == "Active" &&
                 (member.RoleKey == "owner" || member.RoleKey == "account") && member.CanManageTeam)
             .Select(member => member.CommerceBusinessId).ToArrayAsync(HttpContext.RequestAborted);
 
@@ -276,7 +291,7 @@ public class ProfileController : Controller
                 ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod;
             ViewBag.SubscriptionNotice = TempData["SubscriptionNotice"]?.ToString();
 
-            var userId = User.GetCanonicalUserId();
+            var userId = context.IsBusinessOwnerView ? context.LifecycleSubjectUserId : User.GetCanonicalUserId();
             if (!string.IsNullOrWhiteSpace(userId))
             {
                 var lifecycle = await _accountLifecycle.GetAsync(
@@ -294,6 +309,7 @@ public class ProfileController : Controller
     }
 
     [HttpGet("/profile")]
+    [BypassClientSubscriptionRequirement]
     public async Task<IActionResult> MyProfile()
     {
         var context = await _clientContext.ResolveAsync(User, Request.Cookies);
@@ -306,6 +322,7 @@ public class ProfileController : Controller
 
     [HttpPost("/profile")]
     [ValidateAntiForgeryToken]
+    [BypassClientSubscriptionRequirement]
     public async Task<IActionResult> Save(EditClientViewModel model)
     {
         var context = await _clientContext.ResolveAsync(User, Request.Cookies);
@@ -315,10 +332,16 @@ public class ProfileController : Controller
         if (!string.Equals(Norm(model.ClientUserId), context.ClientUserId, StringComparison.Ordinal))
             return Forbid();
 
+        // Classification comes from the resolved persisted subject, never posted form data.
+        if (IsBusinessClient(context.Profile))
+        {
+            ModelState.Remove(nameof(EditClientViewModel.FirstName));
+            ModelState.Remove(nameof(EditClientViewModel.LastName));
+        }
         if (!ModelState.IsValid)
             return await ProfileViewAsync(model, context);
 
-        if (!context.IsAgentView && !ClientAccountManagementModes.IsValid(model.AccountManagementMode))
+        if (!context.IsManagedView && !ClientAccountManagementModes.IsValid(model.AccountManagementMode))
         {
             ModelState.AddModelError(
                 nameof(EditClientViewModel.AccountManagementMode),
@@ -353,7 +376,7 @@ public class ProfileController : Controller
         profile.NormalizedEmail = email;
         profile.Phone = (model.Phone ?? string.Empty).Trim();
         profile.MaritalStatus = (model.MaritalStatus ?? string.Empty).Trim();
-        if (!context.IsAgentView)
+        if (!context.IsManagedView)
             profile.AccountManagementMode = ClientAccountManagementModes.Normalize(model.AccountManagementMode);
         profile.UpdatedUtc = DateTime.UtcNow;
 
@@ -428,10 +451,11 @@ public class ProfileController : Controller
 
     [HttpPost("/profile/account-access")]
     [ValidateAntiForgeryToken]
+    [BypassClientSubscriptionRequirement]
     public async Task<IActionResult> AccountAccess(string operation, string? confirmation)
     {
         var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
-        if (context is null || context.IsAgentView)
+        if (context is null || context.IsManagedView)
             return Forbid();
 
         var userId = User.GetCanonicalUserId();
@@ -493,36 +517,38 @@ public class ProfileController : Controller
         if (string.IsNullOrWhiteSpace(email))
             return Forbid();
 
-        var existing = await WebsiteBusinessAccess.QueryManagedBusinesses(_db, context.Profile.Id)
-            .AnyAsync(HttpContext.RequestAborted);
-
-        if (existing)
+        try
         {
-            TempData["BusinessWebsiteNotice"] = "Your business website scope is already active.";
-            return RedirectToAction(nameof(MyProfile));
+            await _businessProvisioning.CreateAsync(
+                new CommerceBusinessProvisioningRequest(
+                    DisplayName: businessName,
+                    LegalName: legalName,
+                    BusinessType: "BusinessClient",
+                    OwnerEmail: email,
+                    OwnerDisplayName: businessName,
+                    OwnerRoleKey: "account",
+                    CanManageStorefront: true,
+                    CanManageCatalog: false,
+                    CanManageOrders: false,
+                    CanManageAnalytics: true,
+                    CanManageTeam: true,
+                    Storefront: new CommerceBusinessStorefrontProvisioning(
+                        businessName,
+                        $"{businessName} business website.",
+                        "Draft"),
+                    OwnerClientProfileId: context.Profile.Id),
+                HttpContext.RequestAborted);
+
+            TempData["BusinessWebsiteNotice"] = "Your business website scope is ready to preview and edit.";
         }
-
-        await _businessProvisioning.CreateAsync(
-            new CommerceBusinessProvisioningRequest(
-                DisplayName: businessName,
-                LegalName: legalName,
-                BusinessType: "BusinessClient",
-                OwnerEmail: email,
-                OwnerDisplayName: businessName,
-                OwnerRoleKey: "account",
-                CanManageStorefront: true,
-                CanManageCatalog: false,
-                CanManageOrders: false,
-                CanManageAnalytics: true,
-                CanManageTeam: true,
-                Storefront: new CommerceBusinessStorefrontProvisioning(
-                    businessName,
-                    $"{businessName} business website.",
-                    "Draft"),
-                OwnerClientProfileId: context.Profile.Id),
-            HttpContext.RequestAborted);
-
-        TempData["BusinessWebsiteNotice"] = "Business website scope created. You can now preview and edit it.";
+        catch (DbUpdateConcurrencyException)
+        {
+            TempData["BusinessWebsiteWarning"] = "Business setup changed in another session. Reload and try again.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["BusinessWebsiteWarning"] = ex.Message;
+        }
         return RedirectToAction(nameof(MyProfile));
     }
 
@@ -536,7 +562,7 @@ public class ProfileController : Controller
         try
         {
             if (!ModelState.IsValid) throw new InvalidOperationException("Enter a valid entity name.");
-            await _businessProvisioning.UpdateEntityNameAsync(businessId, context.Profile.Id, entityName,
+            await _businessProvisioning.UpdateEntityNameAsync(businessId, context.BusinessActorProfileId, entityName,
                 HttpContext.RequestAborted, context.IsAgentView ? User.GetCanonicalUserId() : null);
             TempData["BusinessWebsiteNotice"] = "Entity name saved. Publish your website to update its published pages.";
         }
@@ -553,7 +579,7 @@ public class ProfileController : Controller
         if (context == null || await AuthorizedBusinessAsync(context, businessId, HttpContext.RequestAborted) is not { } business)
             return Forbid();
         if (!await _db.CommerceBusinessMembers.AnyAsync(x => x.CommerceBusinessId == businessId &&
-            x.ClientProfileId == context.Profile.Id && x.Status == "Active" && x.CanManageTeam &&
+            x.ClientProfileId == context.BusinessActorProfileId && x.Status == "Active" && x.CanManageTeam &&
             (x.RoleKey == "owner" || x.RoleKey == "account")))
             return Forbid();
 
@@ -565,10 +591,21 @@ public class ProfileController : Controller
 
         ViewBag.BusinessId = businessId;
         ViewBag.EntityName = business.DisplayName;
-        ViewBag.BusinessProfileEmail = business.OwnerEmail;
-        ViewBag.OwnerNames = await _db.ClientProfiles.AsNoTracking()
-            .Where(x => ownerProfileIds.Contains(x.Id))
-            .ToDictionaryAsync(x => x.Id, x => new[] { x.FirstName ?? string.Empty, x.LastName ?? string.Empty }, HttpContext.RequestAborted);
+        var accountMembers = await _db.CommerceBusinessMembers.AsNoTracking()
+            .Where(x => x.CommerceBusinessId == businessId && x.RoleKey == "account")
+            .ToListAsync(HttpContext.RequestAborted);
+        var accountProfile = accountMembers.Count == 1 && accountMembers[0].Status == "Active" && accountMembers[0].ClientProfileId.HasValue
+            ? await _db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == accountMembers[0].ClientProfileId, HttpContext.RequestAborted)
+            : null;
+        ViewBag.BusinessProfileEmail = accountProfile != null &&
+            ClientRecordClassification.Resolve(accountProfile.ClientUserId, accountProfile.CrmNotes) == ClientRecordClassification.BusinessClient
+                ? accountProfile.Email : accountMembers.Count == 0 ? business.OwnerEmail : string.Empty;
+        var ownerProfiles = await _db.ClientProfiles.AsNoTracking()
+            .Where(x => ownerProfileIds.Contains(x.Id)).ToListAsync(HttpContext.RequestAborted);
+        ViewBag.OwnerAccounts = ownerProfiles
+            .Where(x => !string.IsNullOrWhiteSpace(x.ClientUserId) &&
+                ClientRecordClassification.Resolve(x.ClientUserId, x.CrmNotes) == ClientRecordClassification.Client)
+            .ToDictionary(x => x.Id, x => new BusinessOwnerAccount(x.Id, x.Email, x.FirstName ?? string.Empty, x.LastName ?? string.Empty));
         return View("BusinessOwners", owners);
     }
 
@@ -579,7 +616,7 @@ public class ProfileController : Controller
         if (context == null || await AuthorizedBusinessAsync(context, businessId, HttpContext.RequestAborted) == null)
             return Forbid();
         if (!await _db.CommerceBusinessMembers.AnyAsync(x => x.CommerceBusinessId == businessId &&
-            x.ClientProfileId == context.Profile.Id && x.Status == "Active" && x.CanManageTeam &&
+            x.ClientProfileId == context.BusinessActorProfileId && x.Status == "Active" && x.CanManageTeam &&
             (x.RoleKey == "owner" || x.RoleKey == "account")))
             return Forbid();
 
@@ -600,7 +637,7 @@ public class ProfileController : Controller
         try
         {
             if (!ModelState.IsValid) throw new InvalidOperationException("Check owner account IDs, emails and percentages.");
-            await _businessProvisioning.UpdateOwnershipAsync(businessId, context.Profile.Id, entityName, owners, HttpContext.RequestAborted, context.IsAgentView ? User.GetCanonicalUserId() : null);
+            await _businessProvisioning.UpdateOwnershipAsync(businessId, context.BusinessActorProfileId, entityName, owners, HttpContext.RequestAborted, context.IsAgentView ? User.GetCanonicalUserId() : null);
             TempData["BusinessWebsiteNotice"] = "Entity name and linked owners saved.";
         }
         catch (UnauthorizedAccessException) { return Forbid(); }
@@ -620,12 +657,10 @@ public class ProfileController : Controller
         if (business is null) return Forbid();
 
         var actorUserId = User.GetCanonicalUserId();
-        var actorEmail = context.IsAgentView
-            ? context.AgentEmail
-            : context.Profile.NormalizedEmail ?? context.Profile.Email;
+        var actorEmail = context.BusinessActorEmail;
 
         var handoff = await _continuations.CreateWebsiteEditorHandoffAsync(
-            context.Profile.Id,
+            context.BusinessActorProfileId,
             business.Id,
             actorUserId,
             actorEmail ?? string.Empty,
@@ -641,6 +676,7 @@ public class ProfileController : Controller
     }
 
     [HttpGet("/profile/{clientUserId}")]
+    [BypassClientSubscriptionRequirement]
     public async Task<IActionResult> ClientProfile(string clientUserId)
     {
         var clientId = Norm(clientUserId);

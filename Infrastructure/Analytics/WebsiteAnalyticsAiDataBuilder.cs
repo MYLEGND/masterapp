@@ -386,11 +386,10 @@ public sealed class WebsiteAnalyticsAiDataBuilder
             var applications = identities.Count(identity => HasOutcome(identity, "ApplicationSubmitted"));
             var issued = identities.Count(identity => HasOutcome(identity, "PolicyIssued"));
             var paid = identities.Count(identity => HasOutcome(identity, "PolicyPaid", "Purchase"));
-            var revenue = matched
+            var revenue = CanonicalMarketingOutcomeProjection.RecordedRevenue(matched
                 .Where(x => CanonicalMarketingOutcomeProjection.IsCustomer(x.row.EventType))
                 .GroupBy(x => (x.identity, Customer: CanonicalMarketingOutcomeProjection.CustomerIdentity(x.row)))
-                .Select(g => g.OrderByDescending(x => x.row.EventUtc).ThenByDescending(x => x.row.Id).First().row)
-                .Sum(row => CanonicalMarketingOutcomeProjection.ReadMoney(row.MetadataJson));
+                .Select(g => g.OrderByDescending(x => x.row.EventUtc).ThenByDescending(x => x.row.Id).First().row));
             decimal Rate(int count) => identities.Length == 0 ? 0m : Math.Round(count * 100m / identities.Length, 2);
 
             return new SignalOutcomeCalibrationAiRow
@@ -410,7 +409,7 @@ public sealed class WebsiteAnalyticsAiDataBuilder
                 ObservedRevenue = revenue,
                 ExpectedRevenuePerObservedVisitor = identities.Length == 0
                     ? 0m
-                    : Math.Round(revenue / identities.Length, 2)
+                    : revenue.HasValue ? Math.Round(revenue.Value / identities.Length, 2) : null
             };
         }
 

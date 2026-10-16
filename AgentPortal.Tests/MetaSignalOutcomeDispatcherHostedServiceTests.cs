@@ -1,5 +1,8 @@
 using Infrastructure.Analytics;
 using System;
+using Microsoft.Data.Sqlite;
+using System.Net;
+using System.Net.Http;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
@@ -27,7 +30,8 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
     public async Task DispatchBatchAsync_SendsOnlyDispatchEligibleServerAuthorityRows(bool businessScope)
     {
         var businessId = businessScope ? Guid.NewGuid() : (Guid?)null;
-        var databaseName = Guid.NewGuid().ToString();
+        await using var relational = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        await relational.OpenAsync();
         var capi = new Mock<IMetaConversionsApiService>(MockBehavior.Strict);
         var pixelResolution = new Mock<IMetaPixelResolutionService>(MockBehavior.Strict);
 
@@ -57,14 +61,15 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
             pixelResolution.Setup(x => x.ResolveForOwnerAsync(MarketingOwnerScope.Founder, It.IsAny<CancellationToken>())).ReturnsAsync(resolvedPixel);
 
         await using var provider = new ServiceCollection().AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
-            .AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(databaseName))
-            .AddSingleton(capi.Object)
+            .AddDbContext<MasterAppDbContext>(options => options.UseSqlite(relational))
+            .AddScoped<IMetaConversionsApiService>(sp => new ContractCheckingCapi(sp.GetRequiredService<MasterAppDbContext>(), capi.Object))
             .AddSingleton(pixelResolution.Object)
             .BuildServiceProvider();
 
         await using (var scope = provider.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            await db.Database.EnsureCreatedAsync();
             if (businessId.HasValue) db.CommerceBusinesses.Add(new CommerceBusiness { Id = businessId.Value, Key = "business" });
             db.MetaSignalEvents.Add(new MetaSignalEvent
             {
@@ -183,16 +188,18 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
                 PixelOwnerType = MetaPixelOwnerTypes.Business
             });
 
-        var database = Guid.NewGuid().ToString();
+        await using var relational = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        await relational.OpenAsync();
         await using var provider = new ServiceCollection().AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
-            .AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(database))
-            .AddSingleton(capi.Object)
+            .AddDbContext<MasterAppDbContext>(options => options.UseSqlite(relational))
+            .AddScoped<IMetaConversionsApiService>(sp => new ContractCheckingCapi(sp.GetRequiredService<MasterAppDbContext>(), capi.Object))
             .AddSingleton(pixel.Object)
             .BuildServiceProvider();
 
         await using (var scope = provider.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            await db.Database.EnsureCreatedAsync();
             db.CommerceBusinesses.Add(new CommerceBusiness { Id = businessId, Key = "business" });
             db.WebsiteLeads.Add(new WebsiteLead
             {
@@ -289,16 +296,18 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
                 PixelOwnerType = MetaPixelOwnerTypes.Agent
             });
 
-        var database = Guid.NewGuid().ToString();
+        await using var relational = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        await relational.OpenAsync();
         await using var provider = new ServiceCollection().AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
-            .AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(database))
-            .AddSingleton(capi.Object)
+            .AddDbContext<MasterAppDbContext>(options => options.UseSqlite(relational))
+            .AddScoped<IMetaConversionsApiService>(sp => new ContractCheckingCapi(sp.GetRequiredService<MasterAppDbContext>(), capi.Object))
             .AddSingleton(pixel.Object)
             .BuildServiceProvider();
 
         await using (var scope = provider.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            await db.Database.EnsureCreatedAsync();
             db.AgentTrackingProfiles.Add(new AgentTrackingProfile { Id = agentId, AgentUserId = "agent-one", AgentUpn = "agent@example.com", Slug = "agent-one", Status = "Active", CreatedUtc = DateTime.UtcNow, UpdatedUtc = DateTime.UtcNow });
             db.WebsiteLeads.Add(new WebsiteLead
             {
@@ -359,13 +368,15 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
     {
         var capi = new Mock<IMetaConversionsApiService>(MockBehavior.Strict);
         var pixel = new Mock<IMetaPixelResolutionService>(MockBehavior.Strict);
-        var database = Guid.NewGuid().ToString();
+        await using var relational = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        await relational.OpenAsync();
         await using var scopedProvider = new ServiceCollection().AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
-            .AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(database))
-            .AddSingleton(capi.Object).AddSingleton(pixel.Object).BuildServiceProvider();
+            .AddDbContext<MasterAppDbContext>(options => options.UseSqlite(relational))
+            .AddScoped<IMetaConversionsApiService>(sp => new ContractCheckingCapi(sp.GetRequiredService<MasterAppDbContext>(), capi.Object)).AddSingleton(pixel.Object).BuildServiceProvider();
         await using (var scope = scopedProvider.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            await db.Database.EnsureCreatedAsync();
             db.MetaSignalEvents.Add(new MetaSignalEvent { EventId = "conflicting-owner", EventName = "Lead",
                 CommerceBusinessId = Guid.NewGuid(), AgentTrackingProfileId = Guid.NewGuid(),
                 TrafficType = "PaidAds", MetadataJson = BuildBridgeOwnedServerMetadata(true) });
@@ -396,13 +407,15 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
         var pixel = new Mock<IMetaPixelResolutionService>();
         pixel.Setup(x => x.ResolveForOwnerAsync(MarketingOwnerScope.Founder, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ResolvedMetaPixelContext { PixelId = "test", AccessToken = "test", PixelOwnerType = MetaPixelOwnerTypes.Agency });
-        var database = Guid.NewGuid().ToString();
+        await using var relational = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        await relational.OpenAsync();
         await using var provider = new ServiceCollection().AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
-            .AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(database))
-            .AddSingleton(capi.Object).AddSingleton(pixel.Object).BuildServiceProvider();
+            .AddDbContext<MasterAppDbContext>(options => options.UseSqlite(relational))
+            .AddScoped<IMetaConversionsApiService>(sp => new ContractCheckingCapi(sp.GetRequiredService<MasterAppDbContext>(), capi.Object)).AddSingleton(pixel.Object).BuildServiceProvider();
         await using (var scope = provider.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            await db.Database.EnsureCreatedAsync();
             for (var i = 0; i < 27; i++)
                 db.MetaSignalEvents.Add(new MetaSignalEvent
                 {
@@ -424,6 +437,7 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
         await using (var scope = provider.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            await db.Database.EnsureCreatedAsync();
             Assert.Equal(26, await db.MetaSignalEvents.CountAsync(x => x.MetadataJson!.Contains("skipped_traffic_or_producer")));
             var row = await db.MetaSignalEvents.SingleAsync(x => x.EventId == "retry-test-26");
             var metadata = System.Text.Json.Nodes.JsonNode.Parse(row.MetadataJson!)!;
@@ -435,6 +449,26 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
         Assert.Equal(new[] { "retry-key-26", "retry-key-26" }, ids);
         await InvokeDispatchBatchAsync(service);
         Assert.Equal(2, ids.Count);
+    }
+
+    // Preserve request-shape expectations while the actual CAPI and authority own receipts.
+    private sealed class ContractCheckingCapi(MasterAppDbContext db, IMetaConversionsApiService expected) : IMetaConversionsApiService
+    {
+        public Task<MetaConversionsApiResult> SendLeadAsync(MetaLeadConversionRequest request, CancellationToken ct = default) => throw new NotSupportedException();
+        public async Task<MetaConversionsApiResult> SendEventAsync(MetaConversionsApiEventRequest request, CancellationToken ct = default)
+        {
+            var response = await expected.SendEventAsync(request, ct);
+            using var http = new HttpClient(new ReceiptHandler(response));
+            var service = new MetaConversionsApiService(http, Options.Create(new MetaOptions()),
+                new MetaSendAuthority(db, NullLogger<MetaSendAuthority>.Instance), NullLogger<MetaConversionsApiService>.Instance);
+            return await service.SendEventAsync(request, ct);
+        }
+    }
+    private sealed class ReceiptHandler(MetaConversionsApiResult result) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            Task.FromResult(new HttpResponseMessage((HttpStatusCode)(result.HttpStatusCode ?? (result.Sent ? 200 : 503))) {
+                Content = new StringContent(JsonSerializer.Serialize(new { events_received = result.Sent ? 1 : 0 })) });
     }
 
     private static async Task SeedCanonicalSourceAsync(MasterAppDbContext db, MetaSignalEvent projection)

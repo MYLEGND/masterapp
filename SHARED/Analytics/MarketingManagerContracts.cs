@@ -91,7 +91,7 @@ public sealed record ProviderDeliveryMetricRow(
     decimal Spend,
     long Impressions,
     long Clicks,
-    long Conversions,
+    long? Conversions,
     JsonElement Raw);
 
 public sealed record CanonicalOutcomeTotals(
@@ -99,18 +99,18 @@ public sealed record CanonicalOutcomeTotals(
     long QualifiedLeads,
     long Appointments,
     long Customers,
-    decimal Revenue);
+    decimal? Revenue);
 
 public sealed record ChannelPerformanceRow(
     string Channel,
     decimal? Spend,
-    long Impressions,
-    long Clicks,
+    long? Impressions,
+    long? Clicks,
     long Leads,
     long QualifiedLeads,
     long Appointments,
     long Customers,
-    decimal Revenue,
+    decimal? Revenue,
     decimal? Roas,
     string AttributionConfidence,
     string AttributionBasis);

@@ -3,6 +3,8 @@ using System.Text.RegularExpressions;
 using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
+using Microsoft.Data.Sqlite;
 
 namespace Infrastructure.Businesses;
 
@@ -90,7 +92,15 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
         var primaryDomain = Optional(request.PrimaryDomain, 255);
         var ownerDisplayName = Optional(request.OwnerDisplayName, 160) ?? ownerEmail;
         var roleKey = Required(request.OwnerRoleKey, 80, "Owner role");
-        var key = string.IsNullOrWhiteSpace(request.Key)
+        var isAccount = roleKey.Equals("account", StringComparison.OrdinalIgnoreCase);
+        if (isAccount)
+        {
+            var existing = await ResolveAccountBusinessAsync(request, ownerEmail, cancellationToken);
+            if (existing is not null) return existing;
+        }
+        var key = isAccount
+            ? $"account-{request.OwnerClientProfileId!.Value:N}"
+            : string.IsNullOrWhiteSpace(request.Key)
             ? await GenerateUniqueKeyAsync(displayName, cancellationToken)
             : NormalizeExplicitKey(request.Key);
 
@@ -184,9 +194,50 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
             });
         }
 
-        await _db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (isAccount && IsBusinessKeyConflict(ex))
+        {
+            throw new DbUpdateConcurrencyException("Business setup changed in another session. Reload and try again.", ex);
+        }
         return business;
     }
+
+    private async Task<CommerceBusiness?> ResolveAccountBusinessAsync(
+        CommerceBusinessProvisioningRequest request, string ownerEmail, CancellationToken ct)
+    {
+        var profile = request.OwnerClientProfileId.HasValue
+            ? await _db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.OwnerClientProfileId.Value, ct)
+            : null;
+        if (profile is null || string.IsNullOrWhiteSpace(profile.ClientUserId) ||
+            ClientRecordClassification.Resolve(profile.ClientUserId, profile.CrmNotes) != ClientRecordClassification.BusinessClient ||
+            !string.Equals(Email(profile.NormalizedEmail ?? profile.Email), ownerEmail, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("A persisted business account with a matching email is required.");
+
+        // Provisioning existence includes unavailable associations; visibility is not creation authority.
+        var associations = await _db.CommerceBusinessMembers.AsNoTracking()
+            .Where(x => x.ClientProfileId == profile.Id).ToListAsync(ct);
+        if (associations.Count == 0) return null;
+        if (associations.Count != 1)
+            throw new InvalidOperationException("Business account associations must be reconciled before setup.");
+        var member = associations[0];
+        var business = await _db.CommerceBusinesses.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == member.CommerceBusinessId, ct);
+        if (business is null || !business.IsActive || !business.Status.Equals("Active", StringComparison.OrdinalIgnoreCase) ||
+            !member.Status.Equals("Active", StringComparison.OrdinalIgnoreCase) ||
+            !member.CanManageStorefront || !member.CanManageTeam ||
+            !(member.RoleKey.Equals("account", StringComparison.OrdinalIgnoreCase) || member.RoleKey.Equals("owner", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("The existing business account association is unavailable for setup.");
+        return business;
+    }
+
+    private static bool IsBusinessKeyConflict(DbUpdateException exception) =>
+        exception.InnerException is SqlException sql && sql.Number is 2601 or 2627 &&
+            sql.Message.Contains("IX_CommerceBusinesses_Key", StringComparison.OrdinalIgnoreCase) ||
+        exception.InnerException is SqliteException sqlite && sqlite.SqliteExtendedErrorCode == 2067 &&
+            sqlite.Message.Contains("CommerceBusinesses.Key", StringComparison.OrdinalIgnoreCase);
 
     public async Task UpdateEntityNameAsync(Guid businessId, Guid actorClientProfileId, string entityName,
         CancellationToken cancellationToken = default, string? actorAgentUserId = null)
@@ -318,7 +369,7 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
         var candidates = await _db.ClientProfiles.Where(x => x.Email.ToLower() == normalizedEmail &&
             (!clientProfileId.HasValue || x.Id == clientProfileId.Value)).Take(2).ToListAsync(ct);
         if (candidates.Count != 1 || string.IsNullOrWhiteSpace(candidates[0].ClientUserId) ||
-            ClientRecordClassification.Resolve(candidates[0].ClientUserId, candidates[0].CrmNotes) == ClientRecordClassification.Lead)
+            ClientRecordClassification.Resolve(candidates[0].ClientUserId, candidates[0].CrmNotes) != ClientRecordClassification.Client)
             return null;
 
         var profile = candidates[0];

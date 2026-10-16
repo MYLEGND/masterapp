@@ -30,7 +30,10 @@ public sealed class UnifiedMarketingPerformanceService(
         ArgumentNullException.ThrowIfNull(analyticsScope);
         ArgumentNullException.ThrowIfNull(range);
 
-        var notes = new List<string>();
+        var notes = new List<string>
+        {
+            "Recorded revenue reflects canonical CRM/commerce outcome values and existing CRM corrections. Missing values or unsupported non-USD values make revenue totals unavailable; no currency conversion is inferred. Commerce refunds, cancellations, current net revenue, and provider correction acceptance remain unverified."
+        };
         var delivery = new List<ProviderDeliveryMetricRow>();
         var openAiDeliveryAvailable = false;
 
@@ -85,14 +88,14 @@ public sealed class UnifiedMarketingPerformanceService(
         channels.Add(new ChannelPerformanceRow(
             MarketingChannels.ChatGptAds,
             openAiSpend,
-            delivery.Sum(x => x.Impressions),
-            delivery.Sum(x => x.Clicks),
+            openAiDeliveryAvailable ? delivery.Sum(x => x.Impressions) : null,
+            openAiDeliveryAvailable ? delivery.Sum(x => x.Clicks) : null,
             outcomes.Leads,
             outcomes.QualifiedLeads,
             outcomes.Appointments,
             outcomes.Customers,
             outcomes.Revenue,
-            openAiSpend > 0 ? Math.Round(outcomes.Revenue / openAiSpend.Value, 2) : null,
+            openAiSpend > 0 && outcomes.Revenue.HasValue ? Math.Round(outcomes.Revenue.Value / openAiSpend.Value, 2) : null,
             openAiEvents.Length > 0 ? "reference_observed" : "not_observed",
             "Canonical oppref lineage; campaign credit requires separate provider evidence"));
 
@@ -113,7 +116,7 @@ public sealed class UnifiedMarketingPerformanceService(
                 metaOutcomes.Appointments,
                 metaOutcomes.Customers,
                 metaOutcomes.Revenue,
-                spend > 0 ? Math.Round(metaOutcomes.Revenue / spend, 2) : null,
+                spend > 0 && metaOutcomes.Revenue.HasValue ? Math.Round(metaOutcomes.Revenue.Value / spend, 2) : null,
                 "canonical_lineage",
                 "Canonical Meta campaign attribution + CRM outcomes"));
         }
@@ -121,7 +124,7 @@ public sealed class UnifiedMarketingPerformanceService(
             ex is OperationCanceledException && !ct.IsCancellationRequested)
         {
             notes.Add("Meta Ads comparison is unavailable for this scope: " + ex.Message);
-            channels.Add(new ChannelPerformanceRow(MarketingChannels.MetaAds, null, 0, 0, metaOutcomes.Leads, metaOutcomes.QualifiedLeads,
+            channels.Add(new ChannelPerformanceRow(MarketingChannels.MetaAds, null, null, null, metaOutcomes.Leads, metaOutcomes.QualifiedLeads,
                 metaOutcomes.Appointments, metaOutcomes.Customers, metaOutcomes.Revenue, null,
                 "unavailable", "Provider reporting unavailable; delivery and economics are unknown"));
         }
@@ -198,7 +201,7 @@ public sealed class UnifiedMarketingPerformanceService(
                 outcomes.Appointments,
                 outcomes.Customers,
                 outcomes.Revenue,
-                spend > 0 ? Math.Round(outcomes.Revenue / spend, 2) : null,
+                spend > 0 && outcomes.Revenue.HasValue ? Math.Round(outcomes.Revenue.Value / spend, 2) : null,
                 canonicalOutcomeRows > 0 ? "canonical_lineage" : "not_observed",
                 "Provider delivery metrics joined to canonical first-party downstream outcomes; provider conversion totals are not treated as CRM truth"));
         }
@@ -209,8 +212,8 @@ public sealed class UnifiedMarketingPerformanceService(
             channels.Add(new ChannelPerformanceRow(
                 channel,
                 null,
-                0,
-                0,
+                null,
+                null,
                 outcomes.Leads,
                 outcomes.QualifiedLeads,
                 outcomes.Appointments,
@@ -230,17 +233,20 @@ public sealed class UnifiedMarketingPerformanceService(
             ? rows
             : default;
 
-        if (data.ValueKind != JsonValueKind.Array)
-            return [];
+        if (data.ValueKind != JsonValueKind.Array ||
+            payload.TryGetProperty("has_more", out var hasMore) && hasMore.ValueKind != JsonValueKind.False)
+            throw new InvalidOperationException("Provider insights are incomplete or invalid.");
 
         var result = new List<ProviderDeliveryMetricRow>();
         foreach (var row in data.EnumerateArray())
         {
-            if (row.ValueKind != JsonValueKind.Object) continue;
+            if (row.ValueKind != JsonValueKind.Object)
+                throw new InvalidOperationException("Provider insights contain an invalid row.");
 
             var campaignId = Text(row, "campaign_id") ?? Text(row, "id");
             var id = campaignId ?? Text(row, "entity_id");
-            if (string.IsNullOrWhiteSpace(id)) continue;
+            if (string.IsNullOrWhiteSpace(id))
+                throw new InvalidOperationException("Provider insights are missing campaign identity.");
 
             result.Add(new ProviderDeliveryMetricRow(
                 MarketingChannels.ChatGptAds,
@@ -252,8 +258,8 @@ public sealed class UnifiedMarketingPerformanceService(
                 Text(row, "ad_group_id"),
                 Text(row, "ad_id"),
                 Decimal(row, "spend", "spend_amount", "cost"),
-                Long(row, "impressions"),
-                Long(row, "clicks"),
+                Long(row, "impressions") ?? throw new InvalidOperationException("Provider insights are missing impressions."),
+                Long(row, "clicks") ?? throw new InvalidOperationException("Provider insights are missing clicks."),
                 Long(row, "conversions"),
                 row.Clone()));
         }
@@ -294,7 +300,7 @@ public sealed class UnifiedMarketingPerformanceService(
             ? value.GetString()
             : null;
 
-    private static long Long(JsonElement row, params string[] names)
+    private static long? Long(JsonElement row, params string[] names)
     {
         foreach (var name in names)
         {
@@ -303,7 +309,7 @@ public sealed class UnifiedMarketingPerformanceService(
             if (value.ValueKind == JsonValueKind.String &&
                 long.TryParse(value.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out number)) return number;
         }
-        return 0;
+        return null;
     }
 
     private static decimal Decimal(JsonElement row, params string[] names)
@@ -315,6 +321,6 @@ public sealed class UnifiedMarketingPerformanceService(
             if (value.ValueKind == JsonValueKind.String &&
                 decimal.TryParse(value.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out number)) return number;
         }
-        return 0;
+        throw new InvalidOperationException("Provider insights are missing valid spend.");
     }
 }

@@ -25,7 +25,7 @@ public sealed class ProtectionSnapshotController : Controller
             return Forbid();
 
         var profile = context.Profile;
-        var displayName = $"{profile.FirstName} {profile.LastName}".Trim();
+        var displayName = context.AccountDisplayName;
         if (string.IsNullOrWhiteSpace(displayName))
             displayName = "Client";
 
@@ -37,6 +37,7 @@ public sealed class ProtectionSnapshotController : Controller
             MaritalStatus = profile.MaritalStatus ?? string.Empty,
             Age = CalculateAge(profile.DOB),
             IsAgentView = context.IsAgentView,
+            IsReadOnly = context.IsManagedView,
             IsBusinessClient = IsBusinessClient(profile.CrmNotes),
             DefaultState = BuildDefaultState(profile.DOB, profile.MaritalStatus)
         });

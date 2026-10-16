@@ -16,6 +16,15 @@ public sealed class EffectiveClientContext
     public required string ClientUserId { get; init; }
     public required ClientProfile Profile { get; init; }
     public required bool IsAgentView { get; init; }
+    public Guid? OwnerActorProfileId { get; init; }
+    public Guid? ManagedBusinessId { get; init; }
+    public string? OwnerActorEmail { get; init; }
+    public bool IsBusinessOwnerView => OwnerActorProfileId.HasValue;
+    public bool IsManagedView => IsAgentView || IsBusinessOwnerView;
+    public string LifecycleSubjectUserId => string.IsNullOrWhiteSpace(Profile.ExternalIdentityObjectId)
+        ? ClientUserId : Profile.ExternalIdentityObjectId;
+    public Guid BusinessActorProfileId => OwnerActorProfileId ?? ClientProfileId;
+    public string? BusinessActorEmail => IsAgentView ? AgentEmail : OwnerActorEmail ?? Profile.Email;
 
     /// <summary>Shared financial scope; null only before household activation.</summary>
     public Guid? HouseholdAccountId { get; init; }
@@ -124,7 +133,8 @@ public sealed class EffectiveClientContextService
         Guid? agentProfileId = null,
         string? agentNpn = null,
         string? agentEmail = null,
-        string? agentPhone = null)
+        string? agentPhone = null,
+        global::Infrastructure.Businesses.OwnedBusinessAccountAccess? ownerAccess = null)
     {
         return new EffectiveClientContext
         {
@@ -132,6 +142,9 @@ public sealed class EffectiveClientContextService
             ClientUserId = Norm(profile.ClientUserId),
             Profile = profile,
             IsAgentView = isAgentView,
+            OwnerActorProfileId = ownerAccess?.Actor.Id,
+            OwnerActorEmail = ownerAccess?.Actor.Email,
+            ManagedBusinessId = ownerAccess?.BusinessId,
             AgentDisplayName = agentDisplayName,
             AgentProfileId = agentProfileId,
             AgentNpn = agentNpn,
@@ -167,6 +180,9 @@ public sealed class EffectiveClientContextService
             ClientUserId = context.ClientUserId,
             Profile = context.Profile,
             IsAgentView = context.IsAgentView,
+            OwnerActorProfileId = context.OwnerActorProfileId,
+            OwnerActorEmail = context.OwnerActorEmail,
+            ManagedBusinessId = context.ManagedBusinessId,
             HouseholdAccountId = householdAccountId,
             FinancialScopeOwnerClientProfileId = financialScopeOwnerClientProfileId,
             EntityName = entityName,
@@ -373,12 +389,13 @@ public sealed class EffectiveClientContextService
         bool allowRelink)
     {
         ClientProfile? profile = null;
+        global::Infrastructure.Businesses.OwnedBusinessAccountAccess? ownerAccess = null;
         AgentClient? agentLink = null;
         AgentProfile? agentProfile = null;
 
-        if (cookies.TryGetValue("selfClientProfileId", out var rawProfileId) &&
-            Guid.TryParse(rawProfileId, out var pinnedClientProfileId))
+        if (cookies.TryGetValue("selfClientProfileId", out var rawProfileId))
         {
+            if (!Guid.TryParse(rawProfileId, out var pinnedClientProfileId)) return null;
             var pinnedProfile = await _db.ClientProfiles
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.Id == pinnedClientProfileId);
@@ -399,12 +416,18 @@ public sealed class EffectiveClientContextService
                     candidates.Contains(pinnedClientUserId) ||
                     candidates.Contains(Norm(pinnedProfile.ExternalIdentityObjectId));
 
-                if (matchesPinnedProfile)
-                    return await AttachHouseholdScopeAsync(ToContext(pinnedProfile, isAgentView: false));
+                if (!matchesPinnedProfile)
+                {
+                    ownerAccess = await global::Infrastructure.Businesses.BusinessWorkspaceAccess.ResolveAccountOwnerAsync(
+                        _db, pinnedClientProfileId, canonicalUserId);
+                    if (ownerAccess == null) return null;
+                }
+                profile = await _db.ClientProfiles.SingleAsync(x => x.Id == pinnedClientProfileId);
             }
+            else return null;
         }
 
-        if (!string.IsNullOrWhiteSpace(canonicalUserId))
+        if (profile == null && !string.IsNullOrWhiteSpace(canonicalUserId))
         {
             profile = await _db.ClientProfiles
                 .FirstOrDefaultAsync(x =>
@@ -545,6 +568,7 @@ public sealed class EffectiveClientContextService
             agentProfileId: agentProfile?.Id,
             agentNpn: agentNpn,
             agentEmail: agentEmail,
-            agentPhone: agentPhone));
+            agentPhone: agentPhone,
+            ownerAccess: ownerAccess));
     }
 }

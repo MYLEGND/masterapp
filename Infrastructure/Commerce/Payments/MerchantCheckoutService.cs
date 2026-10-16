@@ -32,7 +32,7 @@ public sealed class MerchantCheckoutService(MasterAppDbContext db, MerchantConne
         var gateway = Gateway(revision.Provider, environment);
         var account = await connections.LoadAccountAsync(revision, ct);
         var readiness = await gateway.GetReadinessAsync(account, ct);
-        if (!readiness.PaymentsEnabled || !readiness.SettlementsEnabled || !readiness.Currencies.Contains("USD", StringComparer.OrdinalIgnoreCase) ||
+        if (!readiness.CanAcceptPayments(revision.Provider) || !readiness.Currencies.Contains("USD", StringComparer.OrdinalIgnoreCase) ||
             (revision.Provider == "Square" && (string.IsNullOrWhiteSpace(revision.LocationId) || !readiness.Locations.Contains(revision.LocationId))))
             throw new MerchantPaymentException("MERCHANT_NOT_READY");
         var attempt = new CommercePaymentAttempt

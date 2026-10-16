@@ -67,8 +67,16 @@
             <dl>
                 <dt>Authorized merchant account</dt><dd>@connection.AccountId</dd>
                 <dt>Connection</dt><dd>@connection.State</dd>
-                <dt>Payments</dt><dd>@(connection.Readiness.PaymentsEnabled ? "Provider ready" : "Not ready")</dd>
-                <dt>Settlements</dt><dd>@(connection.Readiness.SettlementsEnabled ? "Provider ready" : "Not ready")</dd>
+                <dt>Payments</dt><dd>@(connection.Readiness.PaymentsEnabled == true ? "Provider ready" : connection.Readiness.PaymentsEnabled == false ? "Not ready" : "Not verified")</dd>
+                @if (connection.Provider == "Square")
+                {
+                    <dt>Automatic transfers</dt><dd>@(connection.Readiness.AutomaticTransfersEnabled == true ? "Supported" : connection.Readiness.AutomaticTransfersEnabled == false ? "Not enabled" : "Not verified")</dd>
+                    <dt>Settlement / payout status</dt><dd>Not verified</dd>
+                }
+                else
+                {
+                    <dt>Settlement capability</dt><dd>@(connection.Readiness.SettlementsEnabled == true ? "Provider enabled" : connection.Readiness.SettlementsEnabled == false ? "Not enabled" : "Not verified")</dd>
+                }
                 <dt>Currencies</dt><dd>@(connection.Readiness.Currencies.Length > 0 ? string.Join(", ", connection.Readiness.Currencies) : "Not verified")</dd>
                 <dt>Payment methods</dt><dd>@(connection.Readiness.PaymentMethods.Length > 0 ? string.Join(", ", connection.Readiness.PaymentMethods) : "Not verified")</dd>
                 <dt>Location</dt><dd>@(connection.LocationId ?? "Not selected / not required")</dd>
@@ -76,7 +84,7 @@
             @if (!string.IsNullOrWhiteSpace(connection.Readiness.RequiredAction))
             { <p role="status">@connection.Readiness.RequiredAction</p> }
             @if (connection.State != "Disconnected" &&
-                 (connection.State == "PendingConfirmation" || !connection.Readiness.PaymentsEnabled || !connection.Readiness.SettlementsEnabled))
+                 (connection.State == "PendingConfirmation" || !connection.Readiness.CanAcceptPayments(connection.Provider)))
             {
                 <form method="post" action="@ActionUrl("/resume")" target="_blank" rel="noopener">
                     @Html.AntiForgeryToken()
@@ -117,7 +125,7 @@
                 <input type="hidden" name="environment" value="@Model.Environment" />
                 <button type="submit" class="pf-action">Refresh readiness</button>
             </form>
-            @if (connection.State == "Active" && connection.Readiness.PaymentsEnabled && connection.Readiness.SettlementsEnabled && Model.DefaultConnectionId != connection.Id)
+            @if (connection.State == "Active" && connection.Readiness.CanAcceptPayments(connection.Provider) && Model.DefaultConnectionId != connection.Id)
             {
                 <form method="post" action="@ActionUrl("/default")" class="mt-3">
                     @Html.AntiForgeryToken()

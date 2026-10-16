@@ -10,7 +10,7 @@ function boot({scope='agent:a',query='',snapshot={},now=Date.now()}={}) {
   for(const [key,value] of Object.entries(snapshot))w.localStorage.setItem(key,value);
   w.Date.now=()=>now;
   w.LEGEND_ANALYTICS_CONFIG={attributionScope:scope,allowedBrowserEvents:['page_view','cta_click','Backtrack'],criticalBrowserEvents:[]};
-  w.fetch=async(_url,options)=>{events.push(JSON.parse(options.body));return {ok:true,status:200};};
+  w.fetch=async(_url,options)=>{const body=JSON.parse(options.body);events.push(body);return {ok:true,status:200,json:async()=>({status:'ok',eventId:body.ClientEventId})};};
   w.eval(source);
   return {dom,w,events,snapshot:()=>Object.fromEntries(Object.entries(w.localStorage)),advance(ms){now+=ms;}};
 }

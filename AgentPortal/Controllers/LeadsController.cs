@@ -2479,6 +2479,7 @@ public class LeadsController : Controller
     internal async Task<IActionResult> SaveContactForAgentAsync(string agentId, string clientUserId, CrmContactUpdate request)
     {
         if (!TryValidateModel(request)) return BadRequest(ModelState);
+        if (string.IsNullOrWhiteSpace(request.FirstName)) return BadRequest("First name is required.");
         var lead = await LoadCanonicalLeadAsync(agentId, clientUserId, "SaveContact");
         if (lead is null) return NotFound();
         var closed = await Infrastructure.Mobile.CrmArchiveScope.ClosedClientKeysAsync(_db, HttpContext.RequestAborted);

@@ -159,7 +159,8 @@ public class SupportController : Controller
             (!string.IsNullOrWhiteSpace(profile.ClientUserId) &&
              userIdCandidates.Contains(profile.ClientUserId));
 
-        if (!matchesClient)
+        if (!matchesClient && await global::Infrastructure.Businesses.BusinessWorkspaceAccess.ResolveAccountOwnerAsync(
+                _db, clientProfileId, User.GetCanonicalUserId(), HttpContext.RequestAborted) == null)
             return Forbid();
 
         Response.Cookies.Append(

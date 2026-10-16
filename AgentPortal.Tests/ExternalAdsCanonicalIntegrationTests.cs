@@ -242,7 +242,7 @@ public sealed class ExternalAdsCanonicalIntegrationTests
             if (uri.Host == "googleads.googleapis.com" && uri.AbsolutePath.EndsWith(":uploadClickConversions", StringComparison.Ordinal))
             {
                 uploadBody = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
-                return Json("""{"results":[{"gclid":"gclid-canonical-1"}]}""");
+                return Json("""{"results":[{"gclid":"gclid-canonical-1","conversionAction":"customers/1111111111/conversionActions/77","conversionDateTime":"2026-10-06 04:15:00+00:00"}]}""");
             }
             throw new InvalidOperationException("Unexpected provider request: " + uri);
         });

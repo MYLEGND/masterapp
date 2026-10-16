@@ -171,6 +171,10 @@
     }
     if (primaryEmailLabel) primaryEmailLabel.textContent = isBusiness ? 'Business Profile Email' : 'Email';
     businessProfileEmailHelp?.classList.toggle('is-hidden', !isBusiness);
+    for (const [id, label] of [['FirstName', 'First name'], ['LastName', 'Last name']]) {
+      const element = document.querySelector(`label[for="${id}"]`);
+      if (element) element.textContent = isBusiness ? `Business contact ${label.toLowerCase()} (optional)` : label;
+    }
     const requiresSignificantOther = isClient && needsSO(status ? status.value : "");
     const useCustomAmount = isClient && subscriptionPriceType?.value === "Custom";
     const useAnchorDay = isClient && subscriptionAnchorMode?.value === "SpecificDayOfMonth";
@@ -179,7 +183,7 @@
     if (submitBtn) submitBtn.textContent = submitLabel(selected);
 
     requiredForClient.forEach((element) => {
-      setRequiredState(element, isClient);
+      setRequiredState(element, isClient && (!isBusiness || !["FirstName", "LastName"].includes(element.id)));
     });
 
     if (subscriptionCard) {

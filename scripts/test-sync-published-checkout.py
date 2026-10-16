@@ -424,5 +424,426 @@ class RunningProcessDetectionTests(unittest.TestCase):
                 self.assertEqual(sync.native_editor_or_build_active(), expected)
 
 
+class SessionContinuityTests(unittest.TestCase):
+    git = PublishedCheckoutSyncTests.git
+    identity = PublishedCheckoutSyncTests.identity
+    commit = PublishedCheckoutSyncTests.commit
+
+    def setUp(self):
+        PublishedCheckoutSyncTests.setUp(self)
+        self.branch = 'isolation/fixture'
+        self.git(self.local, 'switch', '-c', self.branch)
+        self.git(self.local, 'push', 'origin', self.branch)
+        self.base = self.git(self.local, 'rev-parse', 'HEAD')
+        allowed = patch.object(sync, 'CANONICAL_REMOTES', {str(self.remote)})
+        allowed.start()
+        self.addCleanup(allowed.stop)
+
+    def run_session(self, mode='preflight', *extra):
+        return sync.session_main(['--session', mode, '--repo', str(self.local),
+                                  '--branch', self.branch, '--base', self.base, *extra])
+
+    def advance_remote(self):
+        self.git(self.publisher, 'fetch', 'origin', self.branch)
+        self.git(self.publisher, 'switch', '-c', self.branch, 'FETCH_HEAD')
+        self.commit(self.publisher, 'remote.txt', 'remote work')
+        self.git(self.publisher, 'push', 'origin', self.branch)
+        return self.git(self.publisher, 'rev-parse', 'HEAD')
+
+    def finish_args(self):
+        head = self.git(self.local, 'rev-parse', 'HEAD')
+        return ['--accepted', head, '--implementation', head, '--scope', 'local.txt',
+                '--review-accepted', '--authorize-push']
+
+    def test_fresh_and_missing_github_cli(self):
+        # No gh invocation exists; guard every subprocess invocation explicitly.
+        original = sync.subprocess.run
+        def no_gh(command, **kwargs):
+            self.assertNotEqual(command[0], 'gh')
+            return original(command, **kwargs)
+        with patch.object(sync.subprocess, 'run', side_effect=no_gh):
+            self.assertEqual(self.run_session(), 0)
+
+    def test_unpublished_work_requires_durable_preservation(self):
+        self.commit(self.local, 'local.txt', 'keep')
+        head = self.git(self.local, 'rev-parse', 'HEAD')
+        self.assertEqual(self.run_session(), 1)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), head)
+        self.assertEqual(sync.remote_head(self.local, self.branch), self.base)
+
+    def test_uncommitted_work_preserved(self):
+        (self.local / 'local.txt').write_text('keep')
+        self.assertEqual(self.run_session(), 1)
+        self.assertEqual((self.local / 'local.txt').read_text(), 'keep')
+
+    def test_missing_authentication_is_sanitized(self):
+        original = sync.git
+        def denied(repo, *args, **kwargs):
+            if args[0] == 'ls-remote':
+                raise sync.SyncSkipped('Git ls-remote failed; check native authentication.')
+            return original(repo, *args, **kwargs)
+        with patch.object(sync, 'git', side_effect=denied):
+            self.assertEqual(self.run_session(), 1)
+
+    def test_remote_advanced_explicit_fast_forward(self):
+        remote = self.advance_remote()
+        self.assertEqual(self.run_session(), 1)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), self.base)
+        with patch.object(sync, 'active_build_or_app', return_value=False):
+            self.assertEqual(self.run_session('recover'), 0)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), remote)
+
+    def test_divergence_reports_exact_sides_without_mutation(self):
+        self.commit(self.local, 'local.txt', 'local')
+        local = self.git(self.local, 'rev-parse', 'HEAD')
+        remote = self.advance_remote()
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(self.run_session('recover'), 1)
+        self.assertIn(local, output.getvalue())
+        self.assertIn(remote, output.getvalue())
+        self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), local)
+
+    def test_accepted_push_and_exact_readback(self):
+        self.commit(self.local, 'local.txt', 'accepted')
+        self.assertEqual(self.run_session('finish', *self.finish_args()), 0)
+        self.assertEqual(sync.remote_head(self.local, self.branch), self.git(self.local, 'rev-parse', 'HEAD'))
+
+    def test_unaccepted_and_wrong_scope_do_not_push(self):
+        self.commit(self.local, 'local.txt', 'unaccepted')
+        self.assertEqual(self.run_session('finish'), 1)
+        self.assertEqual(self.run_session('finish', *self.finish_args(), '--scope', 'wrong.txt'), 1)
+        self.assertEqual(sync.remote_head(self.local, self.branch), self.base)
+
+    def test_failed_push_exports_once_without_retry(self):
+        self.commit(self.local, 'local.txt', 'accepted')
+        hook = self.remote / 'hooks' / 'pre-receive'
+        hook.write_text('#!/bin/sh\nexit 1\n')
+        hook.chmod(0o755)
+        with patch.object(sync, 'export_session') as export:
+            self.assertEqual(self.run_session('finish', *self.finish_args()), 1)
+            export.assert_called_once()
+        self.assertEqual(sync.remote_head(self.local, self.branch), self.base)
+
+    def test_interrupted_push_reconciles_remote_without_retry(self):
+        self.commit(self.local, 'local.txt', 'accepted')
+        original = sync.git
+        pushes = []
+        def interrupted(repo, *args, **kwargs):
+            result = original(repo, *args, **kwargs)
+            if args[0] == 'push':
+                pushes.append(args)
+                raise sync.SyncSkipped('Transport interrupted after receive.')
+            return result
+        with patch.object(sync, 'git', side_effect=interrupted):
+            self.assertEqual(self.run_session('finish', *self.finish_args()), 0)
+        self.assertEqual(len(pushes), 1)
+
+    def test_missing_and_invalid_bundle(self):
+        for path in (self.root / 'missing.bundle', self.root / 'bad.bundle'):
+            if path.name == 'bad.bundle':
+                path.write_text('invalid')
+            self.assertEqual(self.run_session('restore', '--bundle', str(path), '--sha256', '0' * 64,
+                                             '--accepted', self.base), 1)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), self.base)
+
+    def test_verified_full_bundle_restore(self):
+        self.git(self.publisher, 'switch', '-c', self.branch)
+        self.commit(self.publisher, 'recovered.txt', 'original')
+        head = self.git(self.publisher, 'rev-parse', 'HEAD')
+        bundle = self.root / 'good.bundle'
+        self.git(self.publisher, 'bundle', 'create', str(bundle), 'refs/heads/' + self.branch)
+        with patch.object(sync, 'active_build_or_app', return_value=False):
+            self.assertEqual(self.run_session('restore', '--bundle', str(bundle), '--sha256',
+                                             sync.bundle_digest(bundle), '--accepted', head), 0)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), head)
+        self.assertTrue(sync.ancestor(self.local, self.base, head))
+
+    def test_temporary_storage_is_not_durable(self):
+        with self.assertRaisesRegex(sync.SyncSkipped, 'temporary'):
+            sync.export_session(self.local, self.branch, self.base, self.base, self.root, True)
+
+    def test_wrong_remote_and_branch_block(self):
+        with patch.object(sync, 'CANONICAL_REMOTES', set()):
+            self.assertEqual(self.run_session(), 1)
+        self.git(self.local, 'switch', 'legend/approved-changes')
+        self.assertEqual(self.run_session(), 1)
+
+
+    def test_recovery_branch_switch_race_is_blocked(self):
+        self.advance_remote()
+        def switch_branch():
+            self.git(self.local, 'switch', 'legend/approved-changes')
+            return False
+        with patch.object(sync, 'active_build_or_app', side_effect=switch_branch):
+            self.assertEqual(self.run_session('recover'), 1)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'legend/approved-changes'), self.base)
+        self.assertEqual(self.git(self.local, 'rev-parse', self.branch), self.base)
+
+    def test_real_failed_push_bundle_export_and_empty_restore(self):
+        self.commit(self.local, 'local.txt', 'accepted')
+        head = self.git(self.local, 'rev-parse', 'HEAD')
+        hook = self.remote / 'hooks' / 'pre-receive'
+        hook.write_text('#!/bin/sh\nexit 1\n')
+        hook.chmod(0o755)
+        # Fixture-only storage outside system temp and the disposable Git checkout.
+        with tempfile.TemporaryDirectory(prefix='.continuity-test-storage-', dir=Path(__file__).resolve().parent) as storage:
+            self.assertEqual(self.run_session('finish', *self.finish_args(), '--recovery-dir', storage,
+                                             '--external-storage-confirmed'), 1)
+            bundles = list(Path(storage).glob('*/LEGEND.bundle'))
+            self.assertEqual(len(bundles), 1)
+            bundle = bundles[0]
+            digest = sync.bundle_digest(bundle)
+            self.assertEqual(bundle.with_suffix('.bundle.sha256').read_text(), digest + '  LEGEND.bundle\n')
+            sync.verify_bundle(self.local, bundle, digest, self.branch, head, self.base)
+            second = sync.export_session(self.local, self.branch, head, self.base, storage, True)
+            self.assertNotEqual(bundle, second)
+            self.assertEqual(sync.bundle_digest(bundle), digest)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), head)
+        self.assertEqual(sync.remote_head(self.local, self.branch), self.base)
+
+    def test_offline_completion_preserves_accepted_bundle(self):
+        self.commit(self.local, 'local.txt', 'accepted')
+        original = sync.git
+        def offline(repo, *args, **kwargs):
+            if args[0] == 'ls-remote':
+                raise sync.SyncSkipped('Native Git transport unavailable.')
+            return original(repo, *args, **kwargs)
+        with tempfile.TemporaryDirectory(prefix='.continuity-test-storage-', dir=Path(__file__).resolve().parent) as storage:
+            with patch.object(sync, 'git', side_effect=offline):
+                self.assertEqual(self.run_session('finish', *self.finish_args(), '--recovery-dir', storage,
+                                                 '--external-storage-confirmed'), 1)
+            self.assertEqual(len(list(Path(storage).glob('*/LEGEND.bundle'))), 1)
+
+    def test_incremental_and_wrong_ref_bundles_rejected(self):
+        self.commit(self.local, 'local.txt', 'accepted')
+        head = self.git(self.local, 'rev-parse', 'HEAD')
+        partial = self.root / 'partial.bundle'
+        self.git(self.local, 'bundle', 'create', str(partial), 'refs/heads/' + self.branch, '^' + self.base)
+        with self.assertRaises(sync.SyncSkipped):
+            sync.verify_bundle(self.local, partial, sync.bundle_digest(partial), self.branch, head, self.base)
+        wrong = self.root / 'wrong.bundle'
+        self.git(self.local, 'bundle', 'create', str(wrong), 'refs/heads/legend/approved-changes')
+        with self.assertRaises(sync.SyncSkipped):
+            sync.verify_bundle(self.local, wrong, sync.bundle_digest(wrong), self.branch, head, self.base)
+
+    def test_dirty_restore_preserves_work(self):
+        bundle = self.root / 'restore.bundle'
+        self.git(self.local, 'bundle', 'create', str(bundle), 'refs/heads/' + self.branch)
+        (self.local / 'dirty.txt').write_text('preserve')
+        with patch.object(sync, 'active_build_or_app', return_value=False):
+            self.assertEqual(self.run_session('restore', '--bundle', str(bundle), '--sha256',
+                                             sync.bundle_digest(bundle), '--accepted', self.base), 1)
+        self.assertEqual((self.local / 'dirty.txt').read_text(), 'preserve')
+
+
+    def test_remote_movement_before_push_stops_and_exports(self):
+        self.commit(self.local, 'local.txt', 'accepted')
+        original = sync.remote_head
+        reads = []
+        def moved(repo, branch):
+            reads.append(branch)
+            if len(reads) == 3:
+                return 'f' * 40
+            return original(repo, branch)
+        with patch.object(sync, 'remote_head', side_effect=moved), patch.object(sync, 'export_session') as export:
+            self.assertEqual(self.run_session('finish', *self.finish_args()), 1)
+            export.assert_called_once()
+        self.assertEqual(sync.remote_head(self.local, self.branch), self.base)
+
+    def test_restore_branch_switch_race_is_blocked(self):
+        self.git(self.publisher, 'switch', '-c', self.branch)
+        self.commit(self.publisher, 'recovered.txt', 'original')
+        head = self.git(self.publisher, 'rev-parse', 'HEAD')
+        bundle = self.root / 'race.bundle'
+        self.git(self.publisher, 'bundle', 'create', str(bundle), 'refs/heads/' + self.branch)
+        def switch_branch():
+            self.git(self.local, 'switch', 'legend/approved-changes')
+            return False
+        with patch.object(sync, 'active_build_or_app', side_effect=switch_branch):
+            self.assertEqual(self.run_session('restore', '--bundle', str(bundle), '--sha256',
+                                             sync.bundle_digest(bundle), '--accepted', head), 1)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'legend/approved-changes'), self.base)
+        self.assertEqual(self.git(self.local, 'rev-parse', self.branch), self.base)
+
+
+    def test_push_cannot_publish_implicit_tags_or_submodule_refs(self):
+        self.commit(self.local, 'local.txt', 'accepted')
+        self.git(self.local, 'tag', '-a', 'unreviewed-tag', '-m', 'fixture tag')
+        self.git(self.local, 'config', 'push.followTags', 'true')
+        self.git(self.local, 'config', 'push.recurseSubmodules', 'on-demand')
+        original = sync.git
+        pushes = []
+        def scoped(repo, *args, **kwargs):
+            if args[0] == 'push':
+                pushes.append(args)
+            return original(repo, *args, **kwargs)
+        with patch.object(sync, 'git', side_effect=scoped):
+            self.assertEqual(self.run_session('finish', *self.finish_args()), 0)
+        self.assertEqual(self.git(self.local, 'ls-remote', 'origin', 'refs/tags/*'), '')
+        self.assertEqual(len(pushes), 1)
+        self.assertIn('--no-follow-tags', pushes[0])
+        self.assertIn('--recurse-submodules=no', pushes[0])
+
+
+class TwoPhaseRecoveryTests(unittest.TestCase):
+    git = PublishedCheckoutSyncTests.git
+    identity = PublishedCheckoutSyncTests.identity
+    commit = PublishedCheckoutSyncTests.commit
+    run_session = SessionContinuityTests.run_session
+
+    def setUp(self):
+        SessionContinuityTests.setUp(self)
+        self.commit(self.local, 'implementation.txt', 'accepted implementation')
+        self.implementation = self.git(self.local, 'rev-parse', 'HEAD')
+        self.commit(self.local, 'checkpoint.txt', 'accepted checkpoint')
+        self.head = self.git(self.local, 'rev-parse', 'HEAD')
+        self.codespace = 'bookish-fiesta-97pj77j5vpwj3pjv6'
+        self.stage_args = ['--accepted',self.head,'--implementation',self.implementation,
+                           '--required-commit',self.head]
+
+    def stage(self):
+        import shutil
+        output=io.StringIO()
+        with patch.dict(sync.os.environ, {'CODESPACES':'true','CODESPACE_NAME':self.codespace}),redirect_stdout(output):
+            self.assertEqual(0,self.run_session('stage-local',*self.stage_args))
+        result=json.loads(output.getvalue())
+        self.addCleanup(shutil.rmtree,result['stagedDirectory'])
+        return result
+
+    def external(self, staged, change=None, transport=None):
+        import shutil
+        storage=tempfile.TemporaryDirectory(prefix='.external-recovery-test-',dir=Path.home())
+        self.addCleanup(storage.cleanup)
+        self.external_storage=Path(storage.name)
+        args=['--session','verify-external','--branch',self.branch,'--base',self.base,
+            '--accepted',self.head,'--implementation',self.implementation,'--required-commit',self.head,
+            '--codespace',self.codespace,'--staged-dir',staged['stagedDirectory'],
+            '--sha256',staged['sha256'],'--verifier-sha256',staged['verifierSha256'],
+            '--recovery-dir',storage.name,'--external-storage-confirmed']
+        if change:change(args)
+        calls=[]
+        def gh(*command):
+            calls.append(command)
+            if transport:
+                intercepted=transport(command)
+                if intercepted is not None:return intercepted
+            if command==('auth','status','--hostname','github.com'):return ''
+            if command==('api','--hostname','github.com','user'):return json.dumps({'login':'Founder'})
+            if command==('api','--hostname','github.com','user/codespaces/'+self.codespace):
+                return json.dumps({'name':self.codespace,'state':'Available','repository':{'full_name':'MYLEGND/masterapp'},'owner':{'login':'Founder'}})
+            self.assertEqual(('codespace','cp','-c',self.codespace),command[:4])
+            self.assertTrue(command[4].startswith('remote:'+staged['stagedDirectory']+'/'))
+            shutil.copyfile(command[4].removeprefix('remote:'),command[5])
+            return ''
+        output=io.StringIO()
+        with patch.object(sync.sys,'platform','darwin'),patch.dict(sync.os.environ,{},clear=True),patch.object(sync,'external_gh',side_effect=gh),redirect_stdout(output):
+            code=sync.session_main(args)
+        return code,output.getvalue(),calls
+
+    def test_real_stage_is_never_durable_or_preflight_admission(self):
+        result=self.stage()
+        self.assertEqual('STAGED_LOCAL_NOT_DURABLE',result['state'])
+        self.assertFalse(result['durable']);self.assertFalse(result['continuationAllowed']);self.assertFalse(result['remotePreserved'])
+        self.assertEqual(self.head,self.git(self.local,'rev-parse','HEAD'))
+        self.assertEqual(self.base,self.git(self.remote,'rev-parse','refs/heads/'+self.branch))
+        self.assertEqual(1,self.run_session())
+        with patch.object(sync,'remote_head',side_effect=sync.SyncSkipped('offline')):
+            self.assertEqual(1,self.run_session('finish','--accepted',self.head,'--implementation',self.implementation,
+                '--scope','implementation.txt','--scope','checkpoint.txt','--review-accepted','--authorize-push'))
+
+    def test_stage_rejects_dirty_stale_and_nonancestor_identities(self):
+        with patch.dict(sync.os.environ,{'CODESPACES':'true','CODESPACE_NAME':self.codespace}):
+            (self.local/'dirty.txt').write_text('uncommitted')
+            self.assertEqual(1,self.run_session('stage-local',*self.stage_args))
+            (self.local/'dirty.txt').unlink()
+            args=list(self.stage_args);args[1]=self.base
+            self.assertEqual(1,self.run_session('stage-local',*args))
+            tree=self.git(self.local,'rev-parse','HEAD^{tree}')
+            orphan=self.git(self.local,'commit-tree',tree,'-m','unrelated')
+            args=list(self.stage_args);args[-1]=orphan
+            self.assertEqual(1,self.run_session('stage-local',*args))
+            shallow=Path(self.git(self.local,'rev-parse','--absolute-git-dir'))/'shallow'
+            shallow.write_text(self.head+'\n')
+            self.assertEqual(1,self.run_session('stage-local',*self.stage_args))
+            shallow.unlink()
+
+    def test_mixed_staging_privilege_flags_are_rejected(self):
+        for extra in ('--authorize-push','--external-storage-confirmed','--review-accepted'):
+            with self.subTest(flag=extra),self.assertRaises(SystemExit):
+                self.run_session('stage-local',*self.stage_args,extra)
+
+    def test_real_independent_transfer_and_empty_restore_prove_all_commits(self):
+        staged=self.stage();code,output,calls=self.external(staged)
+        self.assertEqual(0,code)
+        receipt=json.loads(output)
+        self.assertEqual('VERIFIED_EXTERNAL',receipt['state'])
+        self.assertTrue(receipt['emptyRepositoryRestore']);self.assertTrue(receipt['ancestryVerified'])
+        self.assertTrue(receipt['recoveryOnly']);self.assertFalse(receipt['remotePreserved'])
+        self.assertEqual([self.head],receipt['requiredCommits'])
+        self.assertEqual(2,len([c for c in calls if c[:2]==('codespace','cp')]))
+        self.assertEqual(staged['sha256'],sync.bundle_digest(receipt['recoveryBundle']))
+        self.assertEqual(self.base,self.git(self.remote,'rev-parse','refs/heads/'+self.branch))
+
+    def test_external_wrong_digest_head_checkpoint_and_script_reject(self):
+        staged=self.stage()
+        for flag,value in (('--sha256','f'*64),('--accepted',self.base),('--required-commit','e'*40),('--verifier-sha256','f'*64)):
+            def change(args):args[args.index(flag)+1]=value
+            with self.subTest(flag=flag):
+                code,output,_=self.external(staged,change)
+                self.assertEqual(1,code);self.assertNotIn('VERIFIED_EXTERNAL',output)
+
+    def test_authenticated_transfer_failure_or_wrong_origin_emits_no_success(self):
+        staged=self.stage()
+        def failure(command):
+            if command[:2]==('codespace','cp'):raise sync.SyncSkipped('fixture transfer failed')
+        def foreign(command):
+            if command[:3]==('api','--hostname','github.com') and command[-1].startswith('user/codespaces/'):
+                return json.dumps({'name':self.codespace,'state':'Available','repository':{'full_name':'other/repo'},'owner':{'login':'Founder'}})
+        def malformed(command):
+            if command[:3]==('api','--hostname','github.com') and command[-1].startswith('user/codespaces/'):
+                return json.dumps({'name':self.codespace,'state':'Available','repository':[], 'owner':None})
+        for transport in (failure,foreign,malformed):
+            code,output,_=self.external(staged,transport=transport)
+            self.assertEqual(1,code);self.assertNotIn('VERIFIED_EXTERNAL',output)
+
+    def test_partial_and_wrong_ref_bundles_cannot_be_external_receipts(self):
+        staged=self.stage();bundle=Path(staged['recoveryBundle'])
+        for ref,exclude in (('refs/heads/'+self.branch,['^'+self.base]),('refs/heads/legend/approved-changes',[])):
+            bundle.unlink()
+            self.git(self.local,'bundle','create',str(bundle),ref,*exclude)
+            staged['sha256']=sync.bundle_digest(bundle)
+            bundle.with_suffix('.bundle.sha256').write_text(staged['sha256']+'  LEGEND.bundle\n')
+            code,output,_=self.external(staged)
+            self.assertEqual(1,code);self.assertNotIn('VERIFIED_EXTERNAL',output)
+
+    def test_external_untrusted_path_temp_destination_or_execution_host_reject(self):
+        staged=self.stage()
+        for flag,value in (('--staged-dir','/tmp/../unsafe'),('--codespace','bad;command'),('--recovery-dir',str(self.root))):
+            def change(args):args[args.index(flag)+1]=value
+            code,output,calls=self.external(staged,change)
+            self.assertEqual(1,code);self.assertEqual([],calls);self.assertNotIn('VERIFIED_EXTERNAL',output)
+        from types import SimpleNamespace
+        for platform,env in (('linux',{}),('darwin',{'CODESPACES':'true'}),('darwin',{'GITHUB_ACTIONS':'true'})):
+            with patch.object(sync.sys,'platform',platform),patch.dict(sync.os.environ,env,clear=True),self.assertRaises(sync.SyncSkipped):
+                sync.verify_external_session(SimpleNamespace())
+
+
+    def test_failed_receipt_persistence_never_leaves_success_marker(self):
+        staged=self.stage()
+        original_fsync=sync.os.fsync
+        def fsync(descriptor):
+            # Fail after the atomic receipt rename to exercise cleanup of the
+            # success marker, not merely an earlier artifact write.
+            if hasattr(self,'external_storage') and list(self.external_storage.glob('*/external-verification.json')):
+                raise OSError('fixture receipt directory sync failure')
+            return original_fsync(descriptor)
+        with patch.object(sync.os,'fsync',side_effect=fsync):
+            code,output,_=self.external(staged)
+        self.assertEqual(1,code);self.assertNotIn('VERIFIED_EXTERNAL',output)
+        self.assertEqual([],list(self.external_storage.glob('*/external-verification.json')))
+        self.assertEqual([],list(self.external_storage.glob('*/.external-verification.pending')))
+
+
 if __name__ == '__main__':
     unittest.main()
