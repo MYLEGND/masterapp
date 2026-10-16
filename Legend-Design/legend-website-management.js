@@ -43,11 +43,24 @@
     const dialog = el('dialog', null, { class: 'legend-website-manager', 'aria-label': `${trigger.dataset.title} management` });
     const header = el('header', null), heading = el('div', null);
     heading.append(el('span', 'Website workspace', { class: 'legend-website-eyebrow' }), el('h2', trigger.dataset.title));
-    header.append(heading, button('Close', () => dialog.close()));
+    const startupController = new AbortController();
+    let session, state, busy = false, startupPending = true, closed = false;
+    const dismissStartup = () => {
+      // Mark inactive before dialog 'close' is delivered asynchronously.
+      if (startupPending) { closed = true; startupController.abort(); }
+    };
+    const closeButton = button('Close', () => { dismissStartup(); dialog.close(); });
+    header.append(heading, closeButton);
     const body = el('div', null, { class: 'wm-body' }), status = el('p', 'Loading your website…', { role: 'status', 'aria-live': 'polite' });
     const panel = el('div', null); body.append(status, panel); dialog.append(header, body); document.body.append(dialog);
-    dialog.addEventListener('close', () => { dialog.remove(); if (parentInstance) parentInstance.show(); else trigger.focus(); }); dialog.showModal();
-    let session, state, busy = false;
+    dialog.addEventListener('cancel', dismissStartup); // Escape precedes queued close.
+    dialog.addEventListener('close', () => {
+      closed = true;
+      if (startupPending) startupController.abort();
+      dialog.remove(); if (parentInstance) parentInstance.show(); else trigger.focus();
+    });
+    dialog.showModal();
+    const dismissed = () => closed || !dialog.open;
     const editorHref = () => {
       // The management session has already been authorized against the canonical
       // website API. Reuse that exact ticket for editor entry instead of minting
@@ -59,9 +72,9 @@
       if (session?.ticket) url.searchParams.set('legendEdit', session.ticket);
       return url.href;
     };
-    const request = async (path, payload) => {
+    const request = async (path, payload, signal) => {
       const url = new URL(`/api/website-content/manage${path}`, session.apiBase);
-      const options = { cache: 'no-store', credentials: 'omit', headers: {} };
+      const options = { cache: 'no-store', credentials: 'omit', headers: {}, ...(signal ? { signal } : {}) };
       if (payload) { options.method = 'POST'; options.headers['Content-Type'] = 'application/json'; options.body = JSON.stringify({ ...payload, ticket: session.ticket, expectedRevision: state?.revision }); }
       else url.searchParams.set('ticket', session.ticket);
       let response;
@@ -76,11 +89,15 @@
       }
       return response.status === 204 ? null : response.json();
     };
-    const run = async action => {
+    const run = async (action, { startup = false } = {}) => {
       if (busy) return; busy = true; status.textContent = 'Working…';
-      dialog.querySelectorAll('button').forEach(n => n.disabled = true);
-      try { await action(); } catch (error) { status.textContent = error.message; }
-      finally { busy = false; dialog.querySelectorAll('button').forEach(n => n.disabled = false); }
+      dialog.querySelectorAll('button').forEach(n => { if (!startup || n !== closeButton) n.disabled = true; });
+      try { await action(); } catch (error) { if (!dismissed()) status.textContent = error.message; }
+      finally {
+        busy = false;
+        if (startup) startupPending = false;
+        if (!dismissed()) dialog.querySelectorAll('button').forEach(n => n.disabled = false);
+      }
     };
     const reload = async () => { state = await request(''); };
     const section = title => {
@@ -525,23 +542,33 @@
       panel.append(grid);
     };
     await run(async () => {
-      const response = await fetch(trigger.dataset.session, { credentials: 'same-origin', cache: 'no-store' });
+      const response = await fetch(trigger.dataset.session, { credentials: 'same-origin', cache: 'no-store', signal: startupController.signal });
+      if (dismissed()) return;
       if (!response.ok) throw new Error('Your website permissions could not be verified. Please sign in again.');
       const bootstrap = await response.json();
+      if (dismissed()) return;
       if (bootstrap?.handoffUrl && bootstrap?.state) {
+        // Reopening always obtains a new one-time authorization continuation.
         const exchange = await fetch(bootstrap.handoffUrl, {
           method: 'POST',
           cache: 'no-store',
           credentials: 'omit',
+          signal: startupController.signal,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ state: bootstrap.state })
         });
+        if (dismissed()) return;
         if (!exchange.ok) throw new Error('Your website permissions could not be verified. Please sign in again.');
-        session = await exchange.json();
+        const exchangedSession = await exchange.json();
+        if (dismissed()) return;
+        session = exchangedSession;
       } else {
         session = bootstrap;
       }
-      await reload(); overview();
-    });
+      const initialState = await request('', null, startupController.signal);
+      if (dismissed()) return;
+      state = initialState;
+      overview();
+    }, { startup: true });
   }));
 })();
