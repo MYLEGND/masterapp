@@ -1,6 +1,65 @@
 # LEGEND revenue-launch checkpoint
 
-## Current continuation — Founder-authorized combined release on PR #632
+## Current continuation — routing completion after PR #632 application deployment
+
+The Founder explicitly authorized the combined release and necessary recovery on 2026-10-17. PR #632 merged at 16:51:37 UTC: reviewed source 6fc347d7fc014de1974d8306acd9ad09ebb1d1d6, protected release ba4a4bdd9941f314f0aab769d638504a53b0ec8d. Their source trees are identical. Continue the same native branch, isolation/res-001-workspace-dismissal, in permanent Codespace bookish-fiesta-97pj77j5vpwj3pjv6, /workspaces/masterapp. Because PR #632 is merged, the necessary correction requires a follow-up PR from that same branch to Legend/fast-track-release. Root remains the sole native writer, with independent acceptance before canonical finish/push.
+
+### Completed deployments and remaining routing
+
+All five application services are deployed at ba4a4bdd9941f314f0aab769d638504a53b0ec8d through [Fast Track run 39051241911](https://github.com/MYLEGND/masterapp/actions/runs/39051241911). Preserve the original packages, operation intents, provider uploads, and successful readbacks:
+
+| Application | Original Azure operation | Success artifact | Verified attempt |
+| --- | --- | --- | --- |
+| Website | Existing canonical Website publication | 12108092387 | 1 |
+| Client | 3a7d68e1fc9642eea1c8d0ece57b6b95 | 12108078803 | 2 |
+| Protect | c509e70dc5ee4aa89087348ecab68075 | 12108346146 | 2 |
+| Portal | e67fc5f1f7d24977a8afb25c9c88ce2f | 12108443037 | 3 |
+| Parfait | 45f9bd7975184e39b9d82dc463de020e | 12108406972 | 3 |
+
+Attempts 2 and 3 reconciled the original uploads without resubmitting application ZIPs. Database readiness reported no pending SQL and retained the verified restore window. No SQL, restore, or new backup mutation was performed. The five application deployments must not be replayed to finish routing.
+
+Routing job 117456952709 in attempt 3 stopped at 17:25:20 UTC with “Release child may have written; missing intent cannot authorize replay.” This occurred in the first-write guard, before a current routing intent, Worker publication, or DNS mutation. No fourth unchanged rerun was submitted. Public routing remains incomplete until corrected canonical admission and live readback succeed.
+
+### Canonical history correction and evidence boundaries
+
+The blocking consumer is [run 38276359453](https://github.com/MYLEGND/masterapp/actions/runs/38276359453), head 1f08cd5a2518a4d206ecf4bccdad4024b7cba26e. Its first routing attempt printed the authenticated renderer success, FAST_TRACK_ROUTER:preserved, and the DNS-only marker before a DNS PATCH received HTTP 403. This was a preserved Worker followed by denied DNS mutation, not whole-step nonentry.
+
+The original publication belongs to [run 38267965933](https://github.com/MYLEGND/masterapp/actions/runs/38267965933), attempt 1, head 4910a01a7929ce263f497873f4165e04f35ea81d. Intent 11756326244 and success 11756161723 both predate the consuming step. They retain physical identity 0f1737430cdeaf2c580a9fc5f5f1da478020610ad33359da412fc92736d71b49, material/partition 59b9b9b70c0eab6f71d50ce2402d10e07c4684373b5221dbcb2a883da238d7cc, and successful Worker version 3f7f4a86-436a-4c03-ba0e-c6857ec9bec3.
+
+The complete prior Fast Track inventory contained 36 runs / 49 attempts and two original routing pairs. Recomputing historical physical identity with each record's own original material identifies exactly one matching group. The older pair has a distinct bridge generation. The additional canonical direct-release universe contained 225 trusted producers / 241 attempts / 608 artifacts. All 23 child archives were non-routing; both entered legacy routing publishers pass the existing completed-generation proof. No expired, partial, or competing routing candidate was found. These observations do not replace fresh canonical reads during release.
+
+The correction extends only the existing validation owner, its Fast Track tests, and this checkpoint:
+
+- Authenticate preserved execution through reviewed workflow/router/journal/reader/DNS/provider source, exact checkout, and bounded step markers.
+- Inventory original child records from both trusted producer workflows. Exclude future-created receipts and the executing attempt, while retaining eligible prior attempts. Reuse the existing archive reader and generation validator.
+- Determine uniqueness with original materials, including partial and competing groups before selection. Require both original phases to equal their canonical history records.
+- Feed the original intent through the same physical-generation and partition checks as ordinary intents. Keep duplicate-generation and unresolved-partition denials. Do not mint receipts or attribute original records to the consumer.
+- Recognize the later historical source-admission failure and the current pre-intent failure with full workflow/router pins, reviewed validation-body hashes, and exact AST statement locations. The journal first-write path also requires its full journal pin; the earlier head-change path never enters the journal. Unrelated registry growth must not invalidate a known prewrite trace.
+- Retain existing selection, publication, physical identities, receipt schemas, DNS ownership, migration controls, and fresh provider readback. The remaining intended selection is routing/readiness with all five completed applications retained.
+
+Final native validation passed on the corrected source ecb31a3ce2f42681d0dfe14fbfc30dc7de18513e21bcbf88f243a5919262039a and test file e7dea4e15e04dc9573fc15c8f0efcc68f15bba12cd384230708199df41d99578: the complete Fast Track suite (118 tests) and existing release-child suite (109 tests). Logs are SHA256 94563e89ee0341332d0f80b1689e66c1c2be697afecd7ab3ebcb9a0722fbdb16 and a65383ffffc52ffe4a89aa9524168c0833468b1112ff3bfb4abab2668ebae25d respectively. The earlier 23-case focused run overlaps the full Fast Track suite. After that initial run, actual historical-log verification found and corrected the exact CloudflareError marker prefix; both final suites were rerun on the corrected bytes. Cases cover source/trace disagreement, current and historical admission failures, five-application scope carry, original pair recovery, duplicate-generation denial, different-material/direct-producer and same-phase competition, changed canonical records, missing/expired/success-only/future receipts, wrong original identity, and DNS separation.
+
+Independent original-evidence execution also passed on the final source: both complete producer universes yielded four authentic routing records; the actual canonical reader validated both phases and returned original intent 11756326244 unchanged. Six real generation validations passed. The compatibility record is SHA256 4bf794d27d72825dad1cb3256ba674420bacb899faaec7543a71e2faa4142c31. This used cached, archive-verified evidence, not a new provider observation or release authorization. Final acceptance, fresh preservation, required candidate CI, and production admission remain separately recorded gates.
+
+### Live Analytics evidence and unresolved behavior
+
+The Founder Analytics page served the exact ba4a Portal revision. At 1363 × 936, content fit without horizontal overflow. Growth Economics and Channel Outcomes opened bounded dialogs with seven cards in two rows. Manual refresh preserved the open dialog, cards, and scroll position; close/Escape restored focus and removed the backdrop. During a 47.86-second idle observation, displayed card/status text and scroll position stayed unchanged. This is UI evidence, not a network-capture assertion.
+
+Today reached “Reports updated.” A manual seven-day request reached the existing timeout state; its cause remains unproven. Stale Today totals were not relabelled as seven-day results, and manual retry remained available. Source diagnosis also identified dropped cancellation in Summary/Marketing Health and duplicate selected-event loading inside Health; neither finding establishes the live timeout's root cause.
+
+Google Ads still requires authorized OAuth client setup and secure configuration. The authorized Google Cloud credentials page for project legend-60636 returned “Site Unavailable / Unable to access this site” in the cloud browser and after one reload; client creation remains blocked in that browser. This does not establish a Google service outage or a user-account denial. TikTok remains paused and nonblocking. Meta reported invalidated credentials (190/460); existing OpenAI setup metadata is distinct from successful delivery, which remains blocked. No credential/reconnect/access mutation occurred during these checks.
+
+The Website origin served the problematic long asset path with HTTP 200 in 1.266 seconds. Public apex/www asset verification is pending routing. The published company renderer passed its routing precheck, but the original Studio compiler incident's cause remains unresolved. Actual customer publishing, inquiry delivery, notification-worker activity, and the cash journey are not yet claimed verified.
+
+### Native continuity and unrelated work
+
+Native preflight passed at 17:42:07 UTC with clean, equal local/remote 6fc347d7fc014de1974d8306acd9ad09ebb1d1d6, no divergence, and a normal-push dry run. Protected ba4a was freshly fetched; tree equality was verified. No rebase, reset, force push, or additional source branch was created.
+
+Before switching from AUTH4, fresh external restoration verification passed at 17:41:21 UTC for continuity-v1/4d93e316-b5b2-45d4-b912-d788fccb0da5/recovery.zip, 353,204,062 bytes, SHA256 24bee763d406cb2464fceb331ba16c2fe41fd232bcfcb1159ef11a944774b306. Exactly three unstaged files on isolation/pr630-probe-timing-20261016, head 56fb2cbfed2b5c24a4b230c0643c088af922e418, were pinned in stash 18a0a62d209b1e87115c9f7253db5959bd2192be. Earlier pins remain retained. Restore with apply, not pop, then verify original hashes, 0666 modes, clean index, and unstaged state after durable task finish.
+
+Fresh cloud preservation, independent acceptance, native finish/push, required candidate CI, actual remaining release selection, and live routing completion receipts are still required for this correction. The canonical continuity owner remains in use; temporary staging is not claimed as durable recovery.
+
+## Prior preparation — Founder-authorized combined release on PR #632
 
 The Founder's explicit 2026-10-17 instruction, "what are we waiting for partner deploy them", authorizes the combined PR #632 merge, deployment, verification and necessary recovery through the existing release authority. It supersedes the earlier discretionary release holds retained below as history. TikTok setup remains deferred and nonblocking. Required candidate checks, protected-branch admission, migration-first readiness, the existing release mutex and selective recovery remain mandatory; no bypass or parallel release path is introduced.
 
