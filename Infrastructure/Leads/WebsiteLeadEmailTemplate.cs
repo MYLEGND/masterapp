@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using Domain.Entities;
 
 namespace Infrastructure.Leads;
@@ -58,12 +59,31 @@ public static class WebsiteLeadEmailTemplate
     public static string Build(string title, WebsiteLead lead) =>
         Build(title, lead.FirstName, lead.LastName, lead.Email, lead.Phone, lead.Notes, lead.SourcePageKey);
 
-    public static string SubjectFor(WebsiteLead lead) =>
-        string.Equals(lead.InterestType, "ProtectionInquiry", StringComparison.OrdinalIgnoreCase)
-            ? "New LEGEND Legacy Protection inquiry"
-            : string.Equals(lead.InterestType, "BusinessInquiry", StringComparison.OrdinalIgnoreCase)
-                ? "New website inquiry"
-                : "New LEGEND® website inquiry";
+    public static string SubjectFor(WebsiteLead lead)
+    {
+        if (string.Equals(lead.InterestType, "ProtectionInquiry", StringComparison.OrdinalIgnoreCase))
+            return "New LEGEND Legacy Protection inquiry";
+        if (!string.Equals(lead.InterestType, "BusinessInquiry", StringComparison.OrdinalIgnoreCase))
+            return "New LEGEND® website inquiry";
+
+        if (!string.IsNullOrWhiteSpace(lead.MetadataJson))
+        {
+            try
+            {
+                using var metadata = JsonDocument.Parse(lead.MetadataJson);
+                if (metadata.RootElement.ValueKind == JsonValueKind.Object &&
+                    metadata.RootElement.TryGetProperty("IsCommerceApp", out var commerceApp) &&
+                    commerceApp.ValueKind == JsonValueKind.True)
+                    return "New Parfait website inquiry";
+            }
+            catch (JsonException)
+            {
+                // Historical inquiry metadata must not block owner notification.
+            }
+        }
+
+        return "New website inquiry";
+    }
 
     private static void Row(StringBuilder rows, string label, string? value)
     {

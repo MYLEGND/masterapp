@@ -263,17 +263,25 @@ public class WebsiteAnalyticsInitialQualityModeTests
         calendar.Setup(service => service.GetAsync(owner, It.IsAny<CancellationToken>())).ReturnsAsync(
             new Infrastructure.Bookings.MicrosoftCalendarConnectionSnapshot(
                 owner, false, false, Guid.Empty, null, null, null, null, [], null, null, null, null));
+        var providerConfiguration = new ConfigurationBuilder().Build();
+        var externalClients = new Mock<System.Net.Http.IHttpClientFactory>(MockBehavior.Strict);
         controller.HttpContext.RequestServices = new ServiceCollection().AddSingleton(store).AddSingleton(pixels.Object)
             .AddSingleton(openAi.Object).AddSingleton(health.Object).AddSingleton(calendar.Object)
+            .AddSingleton(new Infrastructure.Analytics.MarketingExternalAdsOAuthService(
+                externalClients.Object, providerConfiguration, new EphemeralDataProtectionProvider(), store,
+                NullLogger<Infrastructure.Analytics.MarketingExternalAdsOAuthService>.Instance))
             .AddSingleton<Infrastructure.Analytics.MarketingProviderSetupProjection>()
             .AddSingleton(Mock.Of<Infrastructure.Analytics.IOpenAiAdsDirectConnectionService>())
-            .AddSingleton(new Infrastructure.Analytics.MarketingMeasurementEvidenceService(db, new ConfigurationBuilder().Build(), store, openAi.Object)).BuildServiceProvider();
+            .AddSingleton(new Infrastructure.Analytics.MarketingMeasurementEvidenceService(db, providerConfiguration, store, openAi.Object)).BuildServiceProvider();
         var result = Assert.IsType<JsonResult>(await controller.MarketingSetup(profile.Id));
         var json = JsonSerializer.SerializeToElement(result.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.True(json.GetProperty("marketing").GetProperty("metaAdsConnected").GetBoolean());
         Assert.False(json.GetProperty("marketing").GetProperty("metaCapiConfiguredSecurely").GetBoolean());
         Assert.False(json.GetProperty("evidence").GetProperty("receivingEvents").GetBoolean());
         Assert.Equal(0, json.GetProperty("evidence").GetProperty("meta").GetProperty("accepted").GetInt32());
+        Assert.False(json.GetProperty("google").GetProperty("connectionSetup").GetProperty("canConnect").GetBoolean());
+        Assert.False(json.GetProperty("tiktok").GetProperty("connectionSetup").GetProperty("canConnect").GetBoolean());
+        externalClients.VerifyNoOtherCalls();
         pixels.Verify(service => service.ResolveForOwnerAsync(owner, It.IsAny<CancellationToken>()), Times.Once);
     }
 

@@ -75,7 +75,6 @@ public sealed class MarketingExternalAdsReportingService(
             Content = JsonContent.Create(new { query })
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", access.AccessToken);
-        request.Headers.TryAddWithoutValidation("developer-token", Required("GoogleAds:DeveloperToken"));
         var loginCustomer = Digits(configuration["GoogleAds:LoginCustomerId"]);
         if (!string.IsNullOrWhiteSpace(loginCustomer))
             request.Headers.TryAddWithoutValidation("login-customer-id", loginCustomer);
@@ -222,7 +221,6 @@ public sealed class MarketingExternalAdsReportingService(
             Content = JsonContent.Create(new { query = "SELECT customer.time_zone FROM customer LIMIT 1" })
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        request.Headers.TryAddWithoutValidation("developer-token", Required("GoogleAds:DeveloperToken"));
         var loginCustomer = Digits(configuration["GoogleAds:LoginCustomerId"]);
         if (!string.IsNullOrWhiteSpace(loginCustomer))
             request.Headers.TryAddWithoutValidation("login-customer-id", loginCustomer);
@@ -330,9 +328,6 @@ public sealed class MarketingExternalAdsReportingService(
             throw new InvalidOperationException($"Provider account timezone '{value}' is invalid.", ex);
         }
     }
-
-    private string Required(string key) =>
-        Clean(configuration[key]) ?? throw new InvalidOperationException($"{key} is required.");
 
     private static string? Digits(string? value)
     {

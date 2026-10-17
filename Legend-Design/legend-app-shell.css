@@ -207,7 +207,6 @@ footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient
 
 
 @media(min-width:769px){
- body.legend-app{overflow-x:clip}
 
  /*
   * Canonical authenticated desktop geometry. Every AgentPortal/ClientApp page

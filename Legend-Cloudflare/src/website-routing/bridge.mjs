@@ -112,7 +112,7 @@ function companyDocumentPath(url) {
 function isCompanyDocument(url) {
   const path=companyDocumentPath(url);
   return (url.hostname === 'mylegnd.com' || url.hostname === 'www.mylegnd.com') &&
-    /^\/(?:[a-z0-9_-]+\/?)*$/.test(path) &&
+    /^\/(?:[a-z0-9_-]+\/)*[a-z0-9_-]*$/.test(path) &&
     !/^\/(?:api|business-preview|commerce|store|store-assets|uploads|parfait-analytics)(?:\/|$)/.test(path) &&
     !url.searchParams.has('legendEdit');
 }

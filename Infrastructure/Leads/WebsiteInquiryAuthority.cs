@@ -23,7 +23,6 @@ public class WebsiteInquiryAuthority : ControllerBase
     private readonly PublicWebsiteRuntimeScopeResolver _publicScopes;
     private readonly IWebsiteLifeLeadCaptureService _capture;
     private readonly WebsiteIntakeRecipientResolver _recipients;
-    private readonly IWebsiteInquiryEmailSender _emailSender;
 
     public WebsiteInquiryAuthority(
         MasterAppDbContext db,
@@ -31,8 +30,7 @@ public class WebsiteInquiryAuthority : ControllerBase
         IConfiguration configuration,
         PublicWebsiteRuntimeScopeResolver publicScopes,
         IWebsiteLifeLeadCaptureService capture,
-        WebsiteIntakeRecipientResolver recipients,
-        IWebsiteInquiryEmailSender emailSender)
+        WebsiteIntakeRecipientResolver recipients)
     {
         _db = db;
         _tickets = tickets;
@@ -40,7 +38,6 @@ public class WebsiteInquiryAuthority : ControllerBase
         _publicScopes = publicScopes;
         _capture = capture;
         _recipients = recipients;
-        _emailSender = emailSender;
     }
 
     public sealed record PublicRequest(
@@ -217,6 +214,7 @@ public class WebsiteInquiryAuthority : ControllerBase
         lead.MetadataJson = System.Text.Json.JsonSerializer.Serialize(new
         {
             SiteKey = scope.SiteKey,
+            IsCommerceApp = scope.IsCommerceApp,
             SourceActionKey = lead.SourceCtaKey,
             UtmTerm = Optional(request.UtmTerm, 160),
             UtmContent = Optional(request.UtmContent, 160),
@@ -313,8 +311,7 @@ public class WebsiteInquiryAuthority : ControllerBase
             return await SubmissionResult(existing, firstName, lastName, phone, email, message, path, cancellationToken);
         }
 
-        var notificationSent = await TryNotifyBusinessAsync(inquiry.Id, cancellationToken);
-        return Ok(new { accepted = true, notificationSent });
+        return Ok(new { accepted = true, notificationSent = inquiry.NotificationSentUtc.HasValue });
     }
 
     private async Task<IActionResult> SubmitScopedLeadAsync(
@@ -384,8 +381,7 @@ public class WebsiteInquiryAuthority : ControllerBase
             lead = existing;
         }
 
-        var notificationSent = await TryNotifyScopedLeadAsync(scope, lead, descriptor.Subject, cancellationToken);
-        return Ok(new { accepted = true, notificationSent });
+        return Ok(new { accepted = true, notificationSent = lead.NotificationSentUtc.HasValue });
     }
 
     private void WriteLeadAnalytics(
@@ -505,47 +501,6 @@ public class WebsiteInquiryAuthority : ControllerBase
         }
     }
 
-    private async Task<bool> TryNotifyScopedLeadAsync(
-        PublicWebsiteRuntimeScope scope,
-        WebsiteLead lead,
-        string subject,
-        CancellationToken cancellationToken)
-    {
-        if (lead.NotificationSentUtc.HasValue)
-            return true;
-
-        var owner = ResolveScopeOwner(scope);
-        if (owner is null)
-            return false;
-
-        var trackedLead = await _db.WebsiteLeads.SingleAsync(x => x.LeadId == lead.LeadId, cancellationToken);
-        var recipient = await _recipients.ResolveAsync(owner, cancellationToken);
-        if (string.IsNullOrWhiteSpace(recipient))
-        {
-            trackedLead.Status = "NotificationFailed";
-            trackedLead.NotificationSentUtc = null;
-            trackedLead.NotificationAttemptUtc = DateTime.UtcNow;
-            await _db.SaveChangesAsync(cancellationToken);
-            return false;
-        }
-
-        var html = WebsiteLeadEmailTemplate.Build(subject, trackedLead);
-
-        var result = await WebsiteLeadNotificationAuthority.DeliverAsync(
-            _db,
-            trackedLead,
-            recipient,
-            ct => _emailSender.TrySendAsync(
-                recipient,
-                subject,
-                html,
-                replyToEmail: trackedLead.Email,
-                cancellationToken: ct),
-            cancellationToken);
-
-        return result.Sent;
-    }
-
     private static MarketingOwnerScope? ResolveScopeOwner(PublicWebsiteRuntimeScope scope)
     {
         if (scope.CommerceBusinessId is Guid businessId && businessId != Guid.Empty)
@@ -571,13 +526,13 @@ public class WebsiteInquiryAuthority : ControllerBase
     private static InquiryDescriptor InquiryDescriptorFor(PublicWebsiteRuntimeScope scope)
     {
         if (scope.IsCommerceApp)
-            return new("parfait_inquiry", "parfait", "New Parfait website inquiry");
+            return new("parfait_inquiry", "parfait");
         if (scope.SiteKey == WebsiteEditorSiteKeys.Protect)
-            return new("protect_inquiry", "protect", "New LEGEND Legacy Protection inquiry");
-        return new("legend_inquiry", "legend", "New LEGEND® website inquiry");
+            return new("protect_inquiry", "protect");
+        return new("legend_inquiry", "legend");
     }
 
-    private sealed record InquiryDescriptor(string ProductType, string OfferKey, string Subject);
+    private sealed record InquiryDescriptor(string ProductType, string OfferKey);
 
 
 
@@ -615,26 +570,7 @@ public class WebsiteInquiryAuthority : ControllerBase
                 return Conflict(new { error = "submission_id_already_used" });
         }
 
-        var notificationSent = await TryNotifyBusinessAsync(row.Id, cancellationToken);
-        return Ok(new { accepted = true, notificationSent });
-    }
-
-    private async Task<bool> TryNotifyBusinessAsync(Guid inquiryId, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var service = new BusinessInquiryNotificationService(_db, _recipients, _emailSender);
-            return await service.DeliverOneAsync(inquiryId, cancellationToken);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return false;
-        }
-        catch (Exception) when (!cancellationToken.IsCancellationRequested)
-        {
-            // The persisted CommerceWebsiteInquiry remains the durable retry queue.
-            return false;
-        }
+        return Ok(new { accepted = true, notificationSent = row.NotificationSentUtc.HasValue });
     }
 
     [HttpGet("manage")]

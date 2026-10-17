@@ -166,7 +166,6 @@ internal sealed partial class LegendFounderToolAuthority
             Result("google_ads",
                 ("oauth_client_id", Any("GoogleAds:ClientId")),
                 ("oauth_client_secret", Any("GoogleAds:ClientSecret")),
-                ("developer_token", Any("GoogleAds:DeveloperToken")),
                 ("redirect_uri", Any("GoogleAds:RedirectUri"))),
             Result("tiktok_ads",
                 ("application_id", Any("TikTokAds:AppId")),

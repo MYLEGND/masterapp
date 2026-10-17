@@ -46,10 +46,17 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("metaTestEventCode = marketing.TestEventCode", controller, StringComparison.Ordinal);
         Assert.DoesNotContain("replacementCapiToken", controller, StringComparison.OrdinalIgnoreCase);
 
-        var titleIndex = view.IndexOf("Marketing Links", StringComparison.Ordinal);
-        var setupIndex = view.IndexOf("Marketing Setup", titleIndex, StringComparison.Ordinal);
-        Assert.True(titleIndex >= 0 && setupIndex > titleIndex);
-        Assert.Contains("data-bs-target=\"#marketingSetupModal\"", view, StringComparison.Ordinal);
+        foreach (var id in new[] { "marketing-setup-open", "marketingSetupModal", "marketing-setup-form" })
+            Assert.Equal(1, view.Split($"id=\"{id}\"", StringSplitOptions.None).Length - 1);
+        var setupIndex = view.IndexOf("id=\"marketing-setup-open\"", StringComparison.Ordinal);
+        Assert.True(setupIndex >= 0);
+        var setupEndIndex = view.IndexOf("</button>", setupIndex, StringComparison.Ordinal);
+        Assert.True(setupEndIndex > setupIndex);
+        var setupTrigger = view[setupIndex..setupEndIndex];
+        Assert.Contains("Marketing Setup", setupTrigger, StringComparison.Ordinal);
+        Assert.Contains("data-bs-toggle=\"modal\"", setupTrigger, StringComparison.Ordinal);
+        Assert.Contains("data-bs-target=\"#marketingSetupModal\"", setupTrigger, StringComparison.Ordinal);
+        Assert.Contains("aria-controls=\"marketingSetupModal\"", setupTrigger, StringComparison.Ordinal);
         Assert.Contains("modal-dialog-centered", view, StringComparison.Ordinal);
         Assert.Contains("Meta CAPI credentials are never entered here", view, StringComparison.Ordinal);
         Assert.Contains("id=\"marketing-setup-test-code\"", view, StringComparison.Ordinal);
@@ -60,13 +67,12 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("marketingSetupConnectUrl", js, StringComparison.Ordinal);
         var fetchHelperIndex = js.IndexOf("async function fetchJson", StringComparison.Ordinal);
         var marketingSetupIndex = js.IndexOf("// Centralized marketing + booking configuration.", StringComparison.Ordinal);
+        Assert.True(fetchHelperIndex >= 0 && marketingSetupIndex > fetchHelperIndex);
         var firstModuleCloseAfterSetup = js.IndexOf("})();", marketingSetupIndex, StringComparison.Ordinal);
         var deviceModuleIndex = js.IndexOf("async function loadDeviceIntelligence", marketingSetupIndex, StringComparison.Ordinal);
-        Assert.True(fetchHelperIndex >= 0 && marketingSetupIndex > fetchHelperIndex);
         Assert.True(firstModuleCloseAfterSetup > marketingSetupIndex);
         Assert.True(deviceModuleIndex > marketingSetupIndex && deviceModuleIndex < firstModuleCloseAfterSetup);
         Assert.Contains("let marketingSetupLoaded = false;", js, StringComparison.Ordinal);
-        Assert.Contains("marketingSetupSave.disabled = !marketingSetupLoaded", js, StringComparison.Ordinal);
         Assert.Contains("marketing.metaTestEventCode", js, StringComparison.Ordinal);
         Assert.Contains("metaTestEventCode: testEventCode || null", js, StringComparison.Ordinal);
         Assert.DoesNotContain("Reload Marketing Setup before saving.", js, StringComparison.Ordinal);
@@ -108,7 +114,7 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("status.openAiReady", js, StringComparison.Ordinal);
         Assert.Contains("openAi.health", js, StringComparison.Ordinal);
         Assert.Contains("attributionObserved", js, StringComparison.Ordinal);
-        Assert.Contains("fetchPostJson('openAiDisconnect'", js, StringComparison.Ordinal);
+        Assert.Contains("postMarketingSetup('openAiDisconnect'", js, StringComparison.Ordinal);
         Assert.Contains(".marketing-setup-openai", css, StringComparison.Ordinal);
         Assert.Contains(".marketing-setup-lineage-grid", css, StringComparison.Ordinal);
 
@@ -132,7 +138,8 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains(".is-good", css, StringComparison.Ordinal);
         Assert.Contains("[HttpPost(\"openai-refresh\")]", controller, StringComparison.Ordinal);
         Assert.Contains("openAiRefresh: analyticsEndpoint('/openai-refresh')", js, StringComparison.Ordinal);
-        Assert.Contains("pixelProvisioning = response?.pixelProvisioning", js, StringComparison.Ordinal);
+        Assert.Contains("const payload = admitMarketingSetupMutation(response, operation);", js, StringComparison.Ordinal);
+        Assert.Contains("pixelProvisioning = response.pixelProvisioning || null", js, StringComparison.Ordinal);
         Assert.Contains("MarketingCommandReceiptAsync(tracking.Id, cancellationToken, refresh.PixelProvisioning)", controller, StringComparison.Ordinal);
         Assert.Contains("providerStatusFresh", controller, StringComparison.Ordinal);
         Assert.Contains("accountStatus = openAiProvider?.Status", controller, StringComparison.Ordinal);

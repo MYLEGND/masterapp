@@ -109,8 +109,6 @@ public sealed class ExternalAdsConversionApiService(
             })
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", access.AccessToken);
-        request.Headers.TryAddWithoutValidation("developer-token",
-            Required("GoogleAds:DeveloperToken"));
         var loginCustomer = Digits(configuration["GoogleAds:LoginCustomerId"]);
         if (!string.IsNullOrWhiteSpace(loginCustomer))
             request.Headers.TryAddWithoutValidation("login-customer-id", loginCustomer);
@@ -250,9 +248,6 @@ public sealed class ExternalAdsConversionApiService(
                 $"{provider}_network_error", Clamp(ex.Message));
         }
     }
-
-    private string Required(string key) =>
-        Clean(configuration[key]) ?? throw new InvalidOperationException($"{key} is required.");
 
     private static string? SourceUrl(AnalyticsEvent row)
     {

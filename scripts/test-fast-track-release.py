@@ -1204,16 +1204,19 @@ class FastTrackNoSqlInputInventoryTests(unittest.TestCase):
 
 
 class ReleaseAdmissionScopeRegressionTests(unittest.TestCase):
-    def test_all_seventeen_rejected_paths_preserve_real_dependencies(self):
+    def test_known_shared_sources_and_controls_preserve_real_dependencies(self):
         shared = (
             'Domain/Entities/ClientSubscriptionOffer.cs',
             'Infrastructure/Billing/BillingEntitlementService.cs',
             'Infrastructure/Billing/BillingStateMapper.cs',
             'Infrastructure/Billing/MasterAppBillingOrchestrator.cs',
+            'Infrastructure/Businesses/BusinessWorkspaceControllerBase.cs',
             'Infrastructure/Businesses/CommerceBusinessProvisioningService.cs',
             'Infrastructure/Households/HouseholdMembershipService.cs',
             'Infrastructure/Infrastructure.csproj',
+            'Infrastructure/Leads/WebsiteInquiryAuthority.cs',
             'Infrastructure/Leads/WebsiteLeadAppNotificationService.cs',
+            'Infrastructure/Leads/WebsiteLeadEmailTemplate.cs',
             'Infrastructure/Leads/WebsiteLeadNotificationAuthority.cs',
             'Infrastructure/Leads/WebsiteLeadSubmission.cs',
             'SHARED/Analytics/AiSafeAnalyticsPayload.cs',
@@ -1226,6 +1229,9 @@ class ReleaseAdmissionScopeRegressionTests(unittest.TestCase):
             with self.subTest(path=path):
                 scope=authority.fast_track_scope([path])
                 self.assertEqual(set(scope['impacts'][path]),{'portal','client','protect','parfait'})
+                self.assertEqual({row['key'] for row in scope['matrix']['include']},
+                                 {'portal','client','protect','parfait'})
+                self.assertTrue(scope['selected'])
                 self.assertTrue(scope['commerce'])
                 self.assertFalse(scope['routing'])
                 self.assertEqual(scope['schema'],path=='Infrastructure/Infrastructure.csproj')
@@ -1243,6 +1249,7 @@ class ReleaseAdmissionScopeRegressionTests(unittest.TestCase):
 
     def test_unknown_adjacent_sources_still_fail_closed(self):
         for path in ('Infrastructure/Billing/Unreviewed.cs','Domain/Entities/Unreviewed.cs',
+                     'Infrastructure/Businesses/Unreviewed.cs','Infrastructure/Leads/Unreviewed.cs',
                      'SHARED/Analytics/Unreviewed.cs','scripts/unreviewed.py'):
             with self.subTest(path=path),self.assertRaisesRegex(ValueError,'Unmapped'):
                 authority.fast_track_scope([path])

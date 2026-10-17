@@ -137,21 +137,23 @@ test('legacy design shell no longer owns a competing mobile Explore drawer',()=>
   assert.doesNotMatch(mobile,/\.explore-close/);
 });
 
-test('every authenticated mobile page consumes the full width and retains an overflow escape hatch',()=>{
+test('every authenticated page reflows within its container and tables retain local scrolling',()=>{
   const shell=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
   const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
 
   const mobileShell=shell.slice(shell.indexOf('@media(max-width:768px)'));
   assert.doesNotMatch(mobileShell,/body\.legend-app\{[^}]*overflow-x:clip/);
-  assert.match(shell,/@media\(min-width:769px\)\{[\s\S]*body\.legend-app\{overflow-x:clip\}/);
+  assert.doesNotMatch(shell,/body\.legend-app\{[^}]*overflow-x:clip/);
   assert.match(shell,/@media\(max-width:768px\)\{[\s\S]*body\.legend-app\{[\s\S]*overflow-x:visible/);
 
-  const contractStart=css.indexOf('Canonical authenticated mobile width contract');
+  const contractStart=css.indexOf('Canonical authenticated container width contract');
   const contractEnd=css.indexOf('Shared native-style mobile sheet',contractStart);
   assert(contractStart>=0 && contractEnd>contractStart);
   const contract=css.slice(contractStart,contractEnd);
 
-  assert.match(contract,/body\.legend-app \.legend-app-content > main \{[\s\S]*width: 100%[\s\S]*max-width: 100%[\s\S]*min-width: 0[\s\S]*overflow-x: auto/);
+  assert.match(contract,/body\.legend-app \.legend-app-content > main \{[\s\S]*width: 100%[\s\S]*max-width: 100%[\s\S]*min-width: 0/);
+  assert(contract.indexOf('body.legend-app .legend-app-content > main {') < contract.indexOf('@media (max-width: 768px)'), 'the width owner must apply in split views, not only phone media queries');
+  assert.match(contract,/\.subscription-activation-shell/);
   assert.match(contract,/> main > :not\(script\):not\(style\):not\(link\):not\(\.modal\):not\(\[data-legend-modal-surface\]\) \{[\s\S]*width: 100%[\s\S]*margin-inline: 0/);
   assert.match(contract,/\.dashboard-page-shell,[\s\S]*\.home-container,[\s\S]*\.legend-workspace-page,[\s\S]*\.finance-shell,[\s\S]*width: 100%/);
   assert.match(contract,/\.table-responsive\) \{[\s\S]*overflow-x: auto/);

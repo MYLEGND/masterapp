@@ -30,7 +30,7 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
   const projections=new Map((Array.isArray(input.collections)?input.collections:[])
     .filter(value=>value?.id).map(value=>[value.id,value]));
   const normalizeRoute=route=>(String(route||'').replace(/\/$/,'')||'/');
-  const staticRoute=/^\/(?:[a-z0-9_-]+\/?)*$/;
+  const staticRoute=/^\/(?:[a-z0-9_-]+\/)*[a-z0-9_-]*$/;
   const dynamicPattern=/^\/(?:[a-z0-9_-]+\/)*\{item\}\/?$/;
   const templateByRoute=new Map((company?Object.values(legendPages):businessPages).map(page=>[page.key==='home'?'/':'/'+page.key,page]));
   const descriptors=new Map();

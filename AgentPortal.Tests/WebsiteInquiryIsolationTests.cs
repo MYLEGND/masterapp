@@ -133,7 +133,7 @@ public sealed class WebsiteInquiryIsolationTests
     }
 
     [Fact]
-    public async Task BusinessInquiryImmediatelyUsesCurrentScopedRecipient_AndCanonicalV3LeadRemainsServerAuthorityEligible()
+    public async Task BusinessInquiryAcknowledgesBeforeDelivery_AndCanonicalV3LeadRemainsServerAuthorityEligible()
     {
         using var f = new Fixture();
         await f.SeedPublishedAsync();
@@ -189,9 +189,14 @@ public sealed class WebsiteInquiryIsolationTests
             f.Request() with { SourceFormElementId = "contact-form" },
             CancellationToken.None));
         var resultJson = System.Text.Json.JsonSerializer.Serialize(result.Value);
-        Assert.Contains("\"notificationSent\":true", resultJson, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"notificationSent\":false", resultJson, StringComparison.OrdinalIgnoreCase);
 
         var inquiry = Assert.Single(await f.Db.Set<CommerceWebsiteInquiry>().ToListAsync());
+        Assert.Equal("Pending", inquiry.NotificationStatus);
+        Assert.Null(inquiry.NotificationSentUtc);
+        Assert.Equal(0, inquiry.NotificationAttempts);
+        f.EmailSender.VerifyNoOtherCalls();
+        await f.DeliverPendingNotificationsAsync();
         Assert.Equal("Sent", inquiry.NotificationStatus);
         Assert.NotNull(inquiry.NotificationSentUtc);
 
@@ -259,6 +264,8 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Contains("\"siteKey\":\"legend\"", analytics.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"reportingOwner\":\"founder\"", analytics.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
 
+        f.EmailSender.VerifyNoOtherCalls();
+        await f.DeliverPendingNotificationsAsync();
         f.EmailSender.Verify(sender => sender.TrySendAsync(
             "founder@example.org",
             It.Is<string>(subject => subject.Contains("LEGEND", StringComparison.OrdinalIgnoreCase)),
@@ -340,6 +347,8 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Contains("\"siteKey\":\"protect\"", analytics.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"reportingOwner\":\"founder\"", analytics.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
 
+        f.EmailSender.VerifyNoOtherCalls();
+        await f.DeliverPendingNotificationsAsync();
         f.EmailSender.Verify(sender => sender.TrySendAsync(
             "founder@example.org",
             It.Is<string>(subject => subject.Contains("Protection", StringComparison.OrdinalIgnoreCase)),
@@ -408,6 +417,8 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Equal(tracking.Id, analytics.AgentTrackingProfileId);
         Assert.Null(analytics.CommerceBusinessId);
 
+        f.EmailSender.VerifyNoOtherCalls();
+        await f.DeliverPendingNotificationsAsync();
         f.EmailSender.Verify(sender => sender.TrySendAsync(
             "primary.advisor@example.org",
             It.Is<string>(subject => subject.Contains("Protection", StringComparison.OrdinalIgnoreCase)),
@@ -474,6 +485,7 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Equal(businessId, lead.CommerceBusinessId);
         Assert.Null(lead.AgentTrackingProfileId);
         Assert.Equal("BusinessInquiry", lead.InterestType);
+        Assert.Contains("\"IsCommerceApp\":true", lead.MetadataJson ?? "", StringComparison.Ordinal);
 
         var crm = Assert.Single(await f.Db.WorkstationLeadProfiles.ToListAsync());
         Assert.Equal(businessId, crm.CommerceBusinessId);
@@ -484,6 +496,8 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Equal(businessId, analytics.CommerceBusinessId);
         Assert.Null(analytics.AgentTrackingProfileId);
 
+        f.EmailSender.VerifyNoOtherCalls();
+        await f.DeliverPendingNotificationsAsync();
         f.EmailSender.Verify(sender => sender.TrySendAsync(
             "parfait-primary@example.org",
             It.Is<string>(subject => subject.Contains("Parfait", StringComparison.OrdinalIgnoreCase)),
@@ -832,6 +846,8 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Equal("custom@example.org", lead.Email);
         Assert.Contains("\"ExperienceId\":\"contact.project-estimator\"", lead.MetadataJson ?? "", StringComparison.Ordinal);
 
+        f.EmailSender.VerifyNoOtherCalls();
+        await f.DeliverPendingNotificationsAsync();
         f.EmailSender.Verify(sender => sender.TrySendAsync(
             "owner@example.org",
             It.IsAny<string>(),
@@ -1083,24 +1099,116 @@ public sealed class WebsiteInquiryIsolationTests
     public async Task BusinessSenderFailureLeavesDurableCrmAndDueRetryUsesCurrentRecipient(bool throws)
     {
         using var f = new Fixture(); await f.SeedPublishedAsync();
-        var business = await f.Db.CommerceBusinesses.SingleAsync(x => x.Id == f.BusinessId); business.OwnerEmail = "old-owner@example.org";
+        var business = await f.Db.CommerceBusinesses.SingleAsync(x => x.Id == f.BusinessId);
+        business.OwnerEmail = "old-owner@example.org";
         await f.Db.SaveChangesAsync();
         var send = f.EmailSender.Setup(x => x.TrySendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()));
         if (throws) send.ThrowsAsync(new InvalidOperationException("Fixture transport failure")); else send.ReturnsAsync(false);
-        var request = f.Request(); Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, default));
+        var request = f.Request();
+        Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, default));
         var inquiry = Assert.Single(await f.Db.Set<CommerceWebsiteInquiry>().ToListAsync());
+        Assert.Equal("Pending", inquiry.NotificationStatus); Assert.Equal(0, inquiry.NotificationAttempts);
+        f.EmailSender.VerifyNoOtherCalls();
+        await f.DeliverPendingNotificationsAsync();
         Assert.Equal("RetryPending", inquiry.NotificationStatus); Assert.Null(inquiry.NotificationSentUtc); Assert.Equal(1, inquiry.NotificationAttempts);
         Assert.Single(await f.Db.WebsiteLeads.ToListAsync()); Assert.Single(await f.Db.WorkstationLeadProfiles.ToListAsync());
         Assert.Single(await f.Db.WebsiteLeadIntakeLinks.ToListAsync()); Assert.Single(await f.Db.AnalyticsEvents.Where(x => x.EventType == "website_lead_submitted").ToListAsync());
-        Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, default)); Assert.Equal(1, inquiry.NotificationAttempts);
+        Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, default));
+        await f.DeliverPendingNotificationsAsync();
+        Assert.Equal(1, inquiry.NotificationAttempts);
         business.OwnerEmail = "current-owner@example.org"; inquiry.NotificationNextAttemptUtc = DateTime.UtcNow.AddMinutes(-1);
         await f.Db.SaveChangesAsync(); send.ReturnsAsync(true);
         Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, default));
+        Assert.Equal(1, inquiry.NotificationAttempts);
+        await f.DeliverPendingNotificationsAsync();
         Assert.Equal("Sent", inquiry.NotificationStatus); Assert.Equal(2, inquiry.NotificationAttempts);
         Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, default));
+        await f.DeliverPendingNotificationsAsync();
         f.EmailSender.Verify(x => x.TrySendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
         f.EmailSender.Verify(x => x.TrySendAsync("current-owner@example.org", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), request.Email, It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Once);
         Assert.Single(await f.Db.WebsiteLeads.ToListAsync()); Assert.Single(await f.Db.AnalyticsEvents.Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DurableReceiptAndReplayDoNotWaitForEmail_AndWorkerUsesCurrentOwnerAfterRequestEnds(bool businessInquiry)
+    {
+        using var f = new Fixture(businessInquiry ? "https://business.example" : "https://www.mylegnd.com");
+        if (businessInquiry)
+        {
+            await f.SeedPublishedAsync();
+            (await f.Db.CommerceBusinesses.SingleAsync()).OwnerEmail = "initial-owner@example.org";
+            await f.Db.SaveChangesAsync();
+        }
+        else
+        {
+            await f.SeedLegendPublishedAsync();
+        }
+
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        f.EmailSender.Setup(x => x.TrySendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .Returns(async (string to, string subject, string html, string? text, string? reply, bool save, CancellationToken ct) =>
+            {
+                entered.TrySetResult();
+                return await release.Task.WaitAsync(ct);
+            });
+
+        static void AssertReceipt(IActionResult result, bool sent)
+        {
+            var accepted = Assert.IsType<OkObjectResult>(result);
+            using var json = JsonDocument.Parse(JsonSerializer.Serialize(accepted.Value));
+            Assert.True(json.RootElement.GetProperty("accepted").GetBoolean());
+            Assert.Equal(sent, json.RootElement.GetProperty("notificationSent").GetBoolean());
+        }
+
+        var request = f.Request() with { SourceActionKey = businessInquiry ? "business_contact" : "legend_contact" };
+        using var requestLifetime = new CancellationTokenSource();
+        var submitted = f.Controller.Submit(request, requestLifetime.Token);
+        Task? delivery = null;
+        try
+        {
+            AssertReceipt(await submitted.WaitAsync(TimeSpan.FromSeconds(10)), false);
+            AssertReceipt(await f.Controller.Submit(request, CancellationToken.None), false);
+            f.EmailSender.VerifyNoOtherCalls();
+            var lead = Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
+            Assert.Null(lead.NotificationAttemptUtc);
+            Assert.Null(lead.NotificationSentUtc);
+            Assert.Single(await f.Db.WorkstationLeadProfiles.ToListAsync());
+            Assert.Single(await f.Db.WebsiteLeadIntakeLinks.ToListAsync());
+            Assert.Single(await f.Db.AnalyticsEvents.Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+            Assert.Equal(businessInquiry ? 1 : 0, await f.Db.Set<CommerceWebsiteInquiry>().CountAsync());
+
+            if (businessInquiry)
+                (await f.Db.CommerceBusinesses.SingleAsync()).OwnerEmail = "current-owner@example.org";
+            else
+                (await f.Db.AgentProfiles.SingleAsync()).NormalizedEmail = "current-owner@example.org";
+            await f.Db.SaveChangesAsync();
+            requestLifetime.Cancel();
+
+            delivery = f.DeliverPendingNotificationsAsync();
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.False(delivery.IsCompleted);
+            release.TrySetResult(true);
+            await delivery.WaitAsync(TimeSpan.FromSeconds(10));
+            AssertReceipt(await f.Controller.Submit(request, CancellationToken.None), true);
+            await f.DeliverPendingNotificationsAsync();
+            f.EmailSender.Verify(x => x.TrySendAsync(
+                "current-owner@example.org",
+                businessInquiry ? "New website inquiry" : "New LEGEND® website inquiry",
+                It.IsAny<string>(), It.IsAny<string?>(), request.Email,
+                !businessInquiry, It.IsAny<CancellationToken>()), Times.Once);
+            f.EmailSender.VerifyNoOtherCalls();
+            Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
+            Assert.Single(await f.Db.AnalyticsEvents.Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+        }
+        finally
+        {
+            release.TrySetResult(true);
+            await submitted.WaitAsync(TimeSpan.FromSeconds(10));
+            if (delivery is not null) await delivery.WaitAsync(TimeSpan.FromSeconds(10));
+        }
     }
 
     [Fact]
@@ -1147,6 +1255,7 @@ public sealed class WebsiteInquiryIsolationTests
         public Guid VersionId { get; } = Guid.NewGuid();
         public WebsiteInquiriesController Controller { get; }
         public Mock<IWebsiteInquiryEmailSender> EmailSender { get; } = new();
+        private readonly WebsiteIntakeRecipientResolver _recipients;
         private readonly WebsiteEditorTicketProtector _tickets = new(new EphemeralDataProtectionProvider());
         public Fixture(string origin = "https://business.example")
         {
@@ -1156,7 +1265,7 @@ public sealed class WebsiteInquiryIsolationTests
             }).Build();
             var domains = new WebsiteDomainService(Db, Mock.Of<IHttpClientFactory>(), config);
             var scopes = new PublicWebsiteRuntimeScopeResolver(Db, domains, config);
-            var recipients = new WebsiteIntakeRecipientResolver(Db, config);
+            _recipients = new WebsiteIntakeRecipientResolver(Db, config);
             EmailSender.Setup(sender => sender.TrySendAsync(
                     It.IsAny<string>(),
                     It.IsAny<string>(),
@@ -1172,11 +1281,25 @@ public sealed class WebsiteInquiryIsolationTests
                 config,
                 scopes,
                 new WebsiteLifeLeadCaptureService(Db, Microsoft.Extensions.Logging.Abstractions.NullLogger<WebsiteLifeLeadCaptureService>.Instance),
-                recipients,
-                EmailSender.Object)
+                _recipients)
                 { ControllerContext = new() { HttpContext = new DefaultHttpContext() } };
             Controller.Request.Headers.Origin = origin;
         }
+        public async Task DeliverPendingNotificationsAsync(CancellationToken cancellationToken = default)
+        {
+            await new BusinessInquiryNotificationService(Db, _recipients, EmailSender.Object)
+                .DeliverPendingAsync(cancellationToken);
+            using var provider = new ServiceCollection()
+                .AddSingleton(Db)
+                .AddSingleton(_recipients)
+                .AddSingleton(EmailSender.Object)
+                .BuildServiceProvider();
+            using var worker = new WebsiteLeadNotificationRecoveryWorker(
+                provider.GetRequiredService<IServiceScopeFactory>(),
+                NullLogger<WebsiteLeadNotificationRecoveryWorker>.Instance);
+            await worker.RecoverPendingAsync(cancellationToken);
+        }
+
         public WebsiteInquiriesController.PublicRequest Request() => new(
             Guid.NewGuid(), "Visitor", "Example", "(602) 555-0199", "visitor@example.org", "Please contact me.", "/contact", true,
             SourceActionKey: "business_contact", SessionId: "business-session", VisitorId: "business-visitor",

@@ -5,8 +5,6 @@
   if (!modalEl) return;
 
   const endpoint = '/website-analytics/incident-monitor';
-  const pollMs = 90000;
-  const staleMs = 60000;
 
   const statusEl = document.getElementById('incident-monitor-status');
   const scopeEl = document.getElementById('incident-monitor-scope-label');
@@ -33,8 +31,7 @@
 
   const state = {
     controller: null,
-    loading: false,
-    lastLoadedAt: 0,
+    inFlight: null,
     snapshot: null
   };
 
@@ -247,7 +244,6 @@
 
   function render(snapshot) {
     state.snapshot = snapshot;
-    state.lastLoadedAt = Date.now();
 
     if (scopeEl) scopeEl.textContent = snapshot?.scopeLabel || 'System-wide';
     if (rangeEl) rangeEl.textContent = snapshot?.rangeLabel || 'Last 24 Hours';
@@ -270,43 +266,40 @@
     setStatus(`System snapshot refreshed ${lastUpdated}.`, 'success');
   }
 
-  async function fetchSnapshot(force = false) {
-    if (state.loading) return;
-    if (!force && state.snapshot && (Date.now() - state.lastLoadedAt) < staleMs) {
-      return;
-    }
-
-    state.loading = true;
+  function fetchSnapshot() {
+    if (state.inFlight) return state.inFlight;
     const controller = abortInFlight();
+    const deadline = window.setTimeout(() => controller.abort(), 45000);
     setStatus('Refreshing incident response snapshot…');
-
-    try {
-      const response = await fetch(endpoint, { signal: controller.signal });
-      if (!response.ok) {
-        throw new Error(`Incident monitor request failed (${response.status})`);
+    const request = (async () => {
+      try {
+        const response = await fetch(endpoint, { signal: controller.signal });
+        if (!response.ok) throw new Error(`Incident monitor request failed (HTTP ${response.status}).`);
+        const payload = await response.json();
+        if (state.controller !== controller) return false;
+        if (payload?.isAvailable === false) {
+          markUnavailable('Incident monitor data is unavailable. No zero-incident result has been verified.');
+          return false;
+        }
+        render(payload);
+        return true;
+      } catch (error) {
+        if (state.controller !== controller) return false;
+        markUnavailable('Unable to refresh incident monitor. Please refresh to retry.');
+        return false;
+      } finally {
+        window.clearTimeout(deadline);
+        if (state.controller === controller) state.inFlight = null;
       }
-
-      const payload = await response.json();
-      if (payload?.isAvailable === false) {
-        markUnavailable('Incident monitor data is unavailable. No zero-incident result has been verified.');
-        return;
-      }
-      render(payload);
-    } catch (error) {
-      if (error?.name === 'AbortError') return;
-      console.error(error);
-      markUnavailable(error?.message || 'Unable to refresh incident monitor.');
-    } finally {
-      state.loading = false;
-    }
+    })();
+    state.inFlight = request;
+    return request;
   }
 
+  // System-wide incidents join the same explicit page refresh. Opening the
+  // detail uses the captured snapshot; no timer or focus event replaces it.
+  window.websiteAnalyticsIncidentMonitor = Object.freeze({ refresh: fetchSnapshot });
   modalEl.addEventListener('show.bs.modal', () => {
-    void fetchSnapshot(true);
+    if (!state.snapshot) void fetchSnapshot();
   });
-
-  void fetchSnapshot(false);
-  window.setInterval(() => {
-    void fetchSnapshot(false);
-  }, pollMs);
 })();

@@ -24,7 +24,7 @@
   let BUSINESS_ID = context.businessId || '';
   const params = new URLSearchParams(location.search);
   const requestedPage = SITE_KEY === 'business' && (params.has('legendEdit') || location.pathname.startsWith('/business-preview')) ? params.get('cmsPage') : null;
-  const customPage = requestedPage && /^\/(?:[a-z0-9_-]+\/?)*$/.test(requestedPage) ? requestedPage.replace(/\/$/, '') || '/' : null;
+  const customPage = requestedPage && /^\/(?:[a-z0-9_-]+\/)*[a-z0-9_-]*$/.test(requestedPage) ? requestedPage.replace(/\/$/, '') || '/' : null;
   let activeEditorRoute = customPage;
   let pageKey = (customPage ? customPage.slice(1).replace(/\//g, '-') || 'home' : null) || renderInput?.pageKey || document.body?.dataset?.pageKey
     || location.pathname.replace(/^\/+|\/+$/g, '').replace(/[^a-z0-9]+/gi, '-')?.toLowerCase()
@@ -301,7 +301,7 @@
     let route=value.trim().toLowerCase();
     if (!route.startsWith('/')) route='/'+route;
     route=route.replace(/\/+$/,'') || '/';
-    if (!/^\/(?:[a-z0-9_-]+\/?)*$/.test(route) || route.length>160 || route.includes('..')) return null;
+    if (!/^\/(?:[a-z0-9_-]+\/)*[a-z0-9_-]*$/.test(route) || route.length>160 || route.includes('..')) return null;
     return route;
   }
 
@@ -6188,6 +6188,19 @@
     }
     return false;
   }
+  function isPreCommitPublicationRejection(error,request) {
+    if(!request) return false;
+    const payload=error?.payload;
+    const rejection=payload?.publicationRejection;
+    const expectedStatus=['website_preflight_failed','button_destination_required'].includes(payload?.error)
+      ? 400
+      : ['website_materialization_required','revision_conflict'].includes(payload?.error) ? 409 : null;
+    return expectedStatus!==null && error?.status===expectedStatus &&
+      rejection?.disposition==='rejected_before_commit' &&
+      rejection.requestId===request.requestId &&
+      Number.isSafeInteger(rejection.expectedRevision) &&
+      rejection.expectedRevision===request.expectedRevision;
+  }
   async function save(publish = false, namedDraft = null, resumePending = false) {
     if (saving) return false;
     clearTimeout(autoSaveTimer);
@@ -6225,6 +6238,8 @@
     saving=true;
     let saved=false;
     let captureHistory=false;
+    let freshPublicationRequest=null;
+    let rejectedBeforeCommit=false;
     try {
       if(publish) {
         restorePublication();
@@ -6246,7 +6261,10 @@
           }
         }
         if (!payload) {
-          if (!pendingPublication) rememberPublication({requestId:crypto.randomUUID(), expectedRevision:submittedRevision});
+          if (!pendingPublication) {
+            freshPublicationRequest={requestId:crypto.randomUUID(),expectedRevision:submittedRevision};
+            rememberPublication({...freshPublicationRequest});
+          }
           payload=await publicationRequest(API_BASE+'/api/website-content/manage/publish',{
             method:'POST', headers:{'Content-Type':'application/json'},
             body:JSON.stringify({ticket:editorTicket,...pendingPublication})
@@ -6345,15 +6363,22 @@
       if((error?.status===401 || error?.status===403) &&
           showEditorAuthorizationRecovery('Website Studio authorization expired before this change could be saved.')) return false;
       const payload=error?.payload || {};
+      rejectedBeforeCommit=!!(publish && freshPublicationRequest &&
+        pendingPublication?.requestId===freshPublicationRequest.requestId &&
+        pendingPublication?.expectedRevision===freshPublicationRequest.expectedRevision &&
+        isPreCommitPublicationRejection(error,freshPublicationRequest));
+      if(rejectedBeforeCommit) rememberPublication(null);
       if(payload.canonicalProtectionViolation===true)
         showCanonicalProtectionViolation(payload.message || error.message,payload.correction);
-      if(status) status.textContent=publish && pendingPublication && !error?.status
+      if(status) status.textContent=rejectedBeforeCommit
+        ? 'Publication rejected before saving. '+(payload.message || error?.message || 'Correct the reported issue and publish again.')
+        : publish && pendingPublication && !error?.status
         ? 'Publication could not be confirmed for request '+pendingPublication.requestId+'. Use Retry confirmation below; the request ID is preserved.'
         : payload.message || error?.message || 'Save failed';
     } finally {
       saving=false;
       syncPublicationRecoveryUi();
-      if(saved && dirty){
+      if((saved || rejectedBeforeCommit) && dirty){
         scheduleDraftSave();
       }
     }

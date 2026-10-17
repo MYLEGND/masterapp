@@ -12,7 +12,6 @@ public sealed class WebsiteInquiriesController : WebsiteInquiryAuthority
 {
     public WebsiteInquiriesController(MasterAppDbContext db, WebsiteEditorTicketProtector tickets,
         IConfiguration configuration, PublicWebsiteRuntimeScopeResolver publicScopes,
-        IWebsiteLifeLeadCaptureService capture, WebsiteIntakeRecipientResolver recipients,
-        IWebsiteInquiryEmailSender emailSender)
-        : base(db, tickets, configuration, publicScopes, capture, recipients, emailSender) { }
+        IWebsiteLifeLeadCaptureService capture, WebsiteIntakeRecipientResolver recipients)
+        : base(db, tickets, configuration, publicScopes, capture, recipients) { }
 }

@@ -183,9 +183,10 @@
                                 <div>
                                     <strong id="marketing-setup-google-status">Google Ads not connected</strong>
                                     <div class="marketing-setup-help" id="marketing-setup-google-account">No scoped advertiser account</div>
+                                    <div class="marketing-setup-help" id="marketing-setup-google-connection-setup" role="status" hidden></div>
                                 </div>
                                 <div class="d-flex gap-2 flex-wrap">
-                                    <a class="btn btn-sm btn-gold" id="marketing-setup-google-connect" href="" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect Google Ads</a>
+                                    <a class="btn btn-sm btn-gold" id="marketing-setup-google-connect" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect Google Ads</a>
                                     <button type="button" class="btn btn-sm btn-outline-light" id="marketing-setup-google-load-accounts" hidden>Choose account</button>
                                     <button type="button" class="btn btn-sm btn-outline-danger" id="marketing-setup-google-disconnect" hidden>Disconnect</button>
                                 </div>
@@ -207,9 +208,10 @@
                                 <div>
                                     <strong id="marketing-setup-tiktok-status">TikTok Ads not connected</strong>
                                     <div class="marketing-setup-help" id="marketing-setup-tiktok-account">No scoped advertiser account</div>
+                                    <div class="marketing-setup-help" id="marketing-setup-tiktok-connection-setup" role="status" hidden></div>
                                 </div>
                                 <div class="d-flex gap-2 flex-wrap">
-                                    <a class="btn btn-sm btn-gold" id="marketing-setup-tiktok-connect" href="" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect TikTok Ads</a>
+                                    <a class="btn btn-sm btn-gold" id="marketing-setup-tiktok-connect" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect TikTok Ads</a>
                                     <button type="button" class="btn btn-sm btn-outline-light" id="marketing-setup-tiktok-load-accounts" hidden>Choose account</button>
                                     <button type="button" class="btn btn-sm btn-outline-danger" id="marketing-setup-tiktok-disconnect" hidden>Disconnect</button>
                                 </div>
@@ -294,6 +296,7 @@
 
                     <div class="marketing-setup-save-row">
                         <div id="marketing-setup-status" role="status" aria-live="polite"></div>
+                        <button type="button" class="btn btn-outline-light" id="marketing-setup-retry" hidden>Retry connection setup</button>
                         <button type="submit" class="btn btn-gold" id="marketing-setup-save">Save Marketing Setup</button>
                     </div>
                 </form>
@@ -457,22 +460,20 @@
     </div>
 </div>
 
-<div id="wa-methodology-note" class="wa-methodology-note visually-hidden" aria-hidden="true">
-    Metrics are session-aware and filtered by selected range, scope, timezone, and traffic type where supported.
-</div>
 <button type="button" id="fa-copy-link" class="visually-hidden" aria-hidden="true" tabindex="-1">
     Copy Analytics Link
 </button>
 
 
     <div class="wa-command-surface mb-3">
-        <div class="hero-link p-4 p-md-5">
-            <div class="hero-link-top">
-                <div class="hero-link-intro">
-                    <div class="hero-link-kicker">Shared Command Area</div>
-                    <div class="hero-link-title-row">
-                        <h3 class="hero-link-title">Marketing Links</h3>
-                        <div class="hero-link-command-actions" role="group" aria-label="Marketing command shortcuts">
+        <div class="hero-link wa-command-dashboard">
+            <div class="wa-page-header">
+                <div class="wa-header-copy">
+                    <h2 class="wa-header-title">Website Analytics</h2>
+                    <p class="wa-header-sub"><span id="fa-range-label">@initialLabel</span></p>
+                </div>
+                <div class="hero-link-command-actions" role="group" aria-label="Marketing command shortcuts">
+                            <button type="button" class="btn btn-gold" id="analytics-refresh" data-analytics-refresh>Refresh</button>
                             <a class="btn event-map-trigger" href="@Url.Action("EventMap", "WebsiteAnalytics", new { agentProfileId = Context.Request.Query["agentProfileId"].ToString(), team = Context.Request.Query["team"].ToString() })">Event Map</a>
                             <button type="button"
                                     class="btn marketing-setup-trigger"
@@ -488,7 +489,7 @@
                                     data-bs-toggle="modal"
                                     data-bs-target="#advertisingCommandModal"
                                     aria-controls="advertisingCommandModal">
-                                Advertising Command Center
+                                Ads
                             </button>
                             <button type="button"
                                     class="btn marketing-manager-trigger"
@@ -498,73 +499,8 @@
                                     aria-controls="marketingManagerModal">
                                 Marketing Manager
                             </button>
-                        </div>
-                     </div>
-                    <div class="hero-link-subtitle text-silver">Open the website and jump into behavior review fast. Meta Ads controls now live inside Core Metrics for quicker access.</div>
                 </div>
             </div>
-
-            <div class="hero-link-grid">
-                <div class="hero-link-panel hero-link-panel-website">
-                    <div class="hero-link-panel-head">
-                        <div>
-                            <div class="hero-link-label">Website Link</div>
-                            <div class="hero-link-panel-title">Primary site link</div>
-                        </div>
-                        <div class="hero-link-badge">Live Link</div>
-                    </div>
-                    <div class="hero-link-url fw-semibold" id="growth-base-link">@personalLink</div>
-                    <div class="hero-link-note">Open or copy the live site, then launch the paid landing registry to review control pages and active test variants in a wider workspace.</div>
-                    <div class="hero-link-meta-actions hero-link-actions-inline" role="group" aria-label="Website link actions">
-                        <a class="btn btn-gold" id="growth-open-base" href="@personalLink" target="_blank" rel="noopener">Open Website</a>
-                        <button class="btn btn-outline-light" id="growth-copy-base" data-link="@personalLink">Copy Link</button>
-                        <button type="button" class="btn btn-outline-light hero-link-meta-btn product-links-toggle" id="product-links-toggle" data-bs-toggle="modal" data-bs-target="#landingRoutesModal" aria-controls="landingRoutesModal">
-                            Explore Paid Landing Routes
-                        </button>
-                    </div>
-                </div>
-
-                <div class="hero-link-panel hero-link-panel-intel">
-                    <div class="hero-link-panel-head">
-                        <div>
-                            <div class="hero-link-label">Behavior Intelligence</div>
-                            <div class="hero-link-panel-title">Behavior + AI review</div>
-                        </div>
-                        <div class="hero-link-badge">AI Review</div>
-                    </div>
-                    <div class="text-silver hero-link-help">Launch behavior analysis fast or copy an AI review snapshot.</div>
-                    <div class="hero-link-meta-actions">
-                        <button type="button"
-                                class="btn btn-gold hero-link-meta-btn"
-                                data-bs-toggle="modal"
-                                data-bs-target="#behaviorModal">
-                            Open Behavior Intelligence
-                        </button>
-                        <button type="button"
-                                class="btn btn-outline-light hero-link-meta-btn"
-                                data-ai-drawer-trigger>
-                            Open AI Review
-                        </button>
-                        <button type="button"
-                                class="btn btn-outline-light hero-link-meta-btn"
-                                id="ai-review-snapshot-btn"
-                                data-bs-toggle="modal"
-                                data-bs-target="#aiReviewSnapshotModal">
-                            Copy Review Snapshot
-                        </button>
-                    </div>
-                </div>
-
-            </div>
-        </div>
-
-        <div class="wa-command-dashboard">
-            <div class="wa-page-header">
-                <div class="wa-header-copy">
-                    <div class="wa-header-kicker">Legend&#8482; &middot; Performance Intelligence</div>
-                    <h2 class="wa-header-title">Website Analytics</h2>
-                    <p class="wa-header-sub">Your performance overview &middot; <strong><span id="fa-range-label">@initialLabel</span></strong></p>
-                </div>
                 <div class="wa-header-right">
                     <div class="wa-header-rail-main">
                         <div class="wa-header-stack">
@@ -614,16 +550,7 @@
                         </button>
                         }
                     </div>
-                    </div>
                 </div>
-
-                @if (canViewFounderTeamUi)
-                {
-                <div id="wa-critical-incident-banner" class="wa-incident-banner" hidden>
-                    <div class="wa-incident-banner-kicker">Critical Analytics Incident</div>
-                    <div class="wa-incident-banner-copy" id="wa-critical-incident-banner-copy">System-wide analytics guardrails need attention.</div>
-                </div>
-                }
 
             <div class="control-bar">
                 <div class="control-bar-group control-bar-presets">
@@ -639,22 +566,143 @@
                 <div class="control-bar-group control-bar-custom">
                     <div class="control-bar-label">Custom Window</div>
                     <div class="date-group d-flex align-items-center gap-2 flex-fill">
-                        <input type="date" id="range-from" class="form-control form-control-sm flex-fill" value="@initialRangeFrom" />
-                        <input type="date" id="range-to" class="form-control form-control-sm flex-fill" value="@initialRangeTo" />
-                        <button class="btn btn-sm btn-range flex-shrink-0" id="apply-custom-range">Apply Range</button>
+                        <input type="date" aria-label="Range start" id="range-from" class="form-control form-control-sm" value="@initialRangeFrom" />
+                        <input type="date" aria-label="Range end" id="range-to" class="form-control form-control-sm" value="@initialRangeTo" />
+                        <button class="btn btn-sm btn-range flex-shrink-0" id="apply-custom-range">Apply</button>
                     </div>
                 </div>
                 <div class="control-bar-group control-bar-status">
-                    <div class="control-bar-label">Status</div>
-                    <div id="fa-range-error" class="control-bar-status-text"></div>
+                    <div id="fa-range-error" class="control-bar-status-text" role="alert"></div>
+                    <div id="analytics-refresh-status" class="control-bar-status-text" role="status" aria-live="polite">Ready to refresh</div>
                 </div>
             </div>
+
+            <div class="hero-link-grid">
+                <div class="hero-link-panel hero-link-panel-website">
+                    <div class="hero-link-panel-head">
+                        <div>
+                            <div class="hero-link-label">Website Link</div>
+                        </div>
+                    </div>
+                    <div class="hero-link-url fw-semibold" id="growth-base-link">@personalLink</div>
+                    <div class="hero-link-meta-actions hero-link-actions-inline" role="group" aria-label="Website link actions">
+                        <a class="btn btn-gold" id="growth-open-base" href="@personalLink" target="_blank" rel="noopener">Open Website</a>
+                        <button class="btn btn-outline-light" id="growth-copy-base" data-link="@personalLink">Copy Link</button>
+                        <button type="button" class="btn btn-outline-light hero-link-meta-btn product-links-toggle" id="product-links-toggle" data-bs-toggle="modal" data-bs-target="#landingRoutesModal" aria-controls="landingRoutesModal">
+                            Landing Routes
+                        </button>
+                    </div>
+                </div>
+
+                <div class="hero-link-panel hero-link-panel-intel">
+                    <div class="hero-link-panel-head">
+                        <div>
+                            <div class="hero-link-label">Behavior Intelligence</div>
+                        </div>
+                    </div>
+                    <div class="hero-link-meta-actions">
+                        <button type="button"
+                                class="btn btn-gold hero-link-meta-btn"
+                                data-bs-toggle="modal"
+                                data-bs-target="#behaviorModal">
+                            Behavior Intelligence
+                        </button>
+                        <button type="button"
+                                class="btn btn-outline-light hero-link-meta-btn"
+                                data-ai-drawer-trigger>
+                            AI Review
+                        </button>
+                        <button type="button"
+                                class="btn btn-outline-light hero-link-meta-btn"
+                                id="ai-review-snapshot-btn"
+                                data-bs-toggle="modal"
+                                data-bs-target="#aiReviewSnapshotModal">
+                            Review Snapshot
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+                @if (canViewFounderTeamUi)
+                {
+                <div id="wa-critical-incident-banner" class="wa-incident-banner" hidden>
+                    <div class="wa-incident-banner-kicker">Critical Analytics Incident</div>
+                    <div class="wa-incident-banner-copy" id="wa-critical-incident-banner-copy">System-wide analytics guardrails need attention.</div>
+                </div>
+                }
+
+
         </div>
     </div>
 
     <form id="meta-disconnect-form" method="post" class="d-none">
       @Html.AntiForgeryToken()
     </form>
+
+    <div class="modal fade fa-modal" id="growthEconomicsModal" tabindex="-1" aria-labelledby="growthEconomicsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+            <div class="modal-content wa-modal-shell">
+                <div class="modal-header wa-modal-header">
+                    <div class="wa-modal-header-main">
+                        <div class="wa-modal-header-copy">
+                            <h5 class="modal-title mb-0" id="growthEconomicsModalLabel">Growth Economics</h5>
+                            <div class="wa-modal-subtitle" data-analytics-view-label></div>
+                        </div>
+                        <div class="wa-modal-header-actions">
+                            <button type="button" class="btn btn-sm btn-outline-light" id="growth-economics-refresh" data-analytics-refresh>Refresh</button>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body wa-modal-body">
+                    <div class="wa-report-status" data-marketing-performance-status role="status" aria-live="polite"></div>
+                    <section id="growth-economics-command" aria-label="Growth Economics">
+            <div class="wa-growth-economics-summary">
+                <div><span>Total marketing spend</span><strong id="growth-economics-spend">—</strong></div>
+                <div><span>Customers acquired</span><strong id="growth-economics-customers">—</strong></div>
+                <div><span>Cost / customer</span><strong id="growth-economics-cac">—</strong></div>
+                <div><span>Recorded revenue</span><strong id="growth-economics-revenue">—</strong></div>
+                <div><span>Blended ROAS</span><strong id="growth-economics-roas">—</strong></div>
+                <div><span>Pipeline value</span><strong id="growth-economics-pipeline">—</strong></div>
+            </div>
+            <div class="wa-growth-economics-grid" id="growth-economics-grid"></div>
+            <div class="wa-channel-note" id="growth-economics-note"></div>
+
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade fa-modal" id="channelOutcomesModal" tabindex="-1" aria-labelledby="channelOutcomesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+            <div class="modal-content wa-modal-shell">
+                <div class="modal-header wa-modal-header">
+                    <div class="wa-modal-header-main">
+                        <div class="wa-modal-header-copy">
+                            <h5 class="modal-title mb-0" id="channelOutcomesModalLabel">Channel Outcomes</h5>
+                            <div class="wa-modal-subtitle" data-analytics-view-label></div>
+                        </div>
+                        <div class="wa-modal-header-actions">
+                            <button type="button" class="btn btn-sm btn-outline-light" id="channel-performance-refresh" data-analytics-refresh>Refresh</button>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body wa-modal-body">
+                    <div class="wa-report-status" data-marketing-performance-status role="status" aria-live="polite"></div>
+                    <section id="channel-performance-command" aria-label="Channel Outcomes">
+            <div class="wa-channel-grid" id="channel-performance-grid">
+                <div class="wa-channel-loading">Loading unified channel performance…</div>
+            </div>
+            <div class="wa-channel-note" id="channel-performance-note"></div>
+
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="modal fade fa-modal" id="landingRoutesModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
@@ -698,10 +746,8 @@
     <section class="wa-command-surface wa-kpi-command-surface mb-3" aria-labelledby="wa-kpi-title">
         <div class="wa-kpi-stage-intro">
             <div>
-                <div class="wa-kpi-stage-kicker">Performance Command Deck</div>
                 <h3 class="wa-kpi-stage-title" id="wa-kpi-title">Core Metrics</h3>
 
-                <p class="wa-kpi-stage-sub">Your fastest read on traffic, conversion, and what deserves a closer look next.</p>
             </div>
             <div class="wa-kpi-stage-meta" aria-label="Meta Ads command access">
             <div class="wa-quality-filter">
@@ -715,7 +761,7 @@
                 <option value="internal_qa" selected="@(initialQualityMode == "internal_qa" ? "selected" : null)">Internal / QA</option>
                 <option value="all_traffic" selected="@(initialQualityMode == "all_traffic" ? "selected" : null)">All Traffic</option>
               </select>
-              <div class="small text-muted mt-2">Behavior-based estimates, not verified identity. Advertising requires strong human evidence and consent.</div>
+              <div class="small fa-muted mt-2">Behavior-based estimates, not verified identity. Advertising requires strong human evidence and consent.</div>
               <div id="traffic-quality-empty-state" class="small text-warning mt-2" role="status" aria-live="polite" hidden>No real human traffic detected</div>
             </div>
 
@@ -754,44 +800,22 @@
             </div>
         </div>
 
-        <div class="wa-growth-economics" id="growth-economics-command">
-            <div class="wa-channel-command-head">
-                <div>
-                    <div class="wa-kpi-band-label">Growth Economics</div>
-                    <div class="wa-kpi-band-copy">Blended spend, acquisition cost, revenue, ROAS, and pipeline value</div>
-                </div>
-                <button type="button" class="btn btn-sm btn-outline-light" id="growth-economics-refresh">Refresh</button>
-            </div>
-            <div class="wa-growth-economics-summary">
-                <div><span>Total marketing spend</span><strong id="growth-economics-spend">—</strong></div>
-                <div><span>Customers acquired</span><strong id="growth-economics-customers">—</strong></div>
-                <div><span>Cost / customer</span><strong id="growth-economics-cac">—</strong></div>
-                <div><span>Recorded revenue</span><strong id="growth-economics-revenue">—</strong></div>
-                <div><span>Blended ROAS</span><strong id="growth-economics-roas">—</strong></div>
-                <div><span>Pipeline value</span><strong id="growth-economics-pipeline">—</strong></div>
-            </div>
-            <div class="wa-growth-economics-grid" id="growth-economics-grid"></div>
-            <div class="wa-channel-note" id="growth-economics-note"></div>
-        </div>
-
-        <div class="wa-channel-command" id="channel-performance-command" aria-live="polite">
-            <div class="wa-channel-command-head">
-                <div>
-                    <div class="wa-kpi-band-label">Channel Outcomes</div>
-                    <div class="wa-kpi-band-copy">Spend through revenue, joined to canonical downstream outcomes</div>
-                </div>
-                <button type="button" class="btn btn-sm btn-outline-light" id="channel-performance-refresh">Refresh</button>
-            </div>
-            <div class="wa-channel-grid" id="channel-performance-grid">
-                <div class="wa-channel-loading">Loading unified channel performance…</div>
-            </div>
-            <div class="wa-channel-note" id="channel-performance-note"></div>
+        <div class="wa-report-summaries" aria-label="Marketing reports">
+            <button type="button" class="wa-report-summary" id="growth-economics-open" data-bs-toggle="modal" data-bs-target="#growthEconomicsModal" aria-controls="growthEconomicsModal">
+                <span class="wa-report-summary-title">Growth Economics <span aria-hidden="true">↗</span></span>
+                <span class="wa-report-summary-value" id="growth-economics-overview">Loading economics…</span>
+                <span class="wa-report-summary-detail">Spend, acquisition, revenue and pipeline</span>
+            </button>
+            <button type="button" class="wa-report-summary" id="channel-performance-open" data-bs-toggle="modal" data-bs-target="#channelOutcomesModal" aria-controls="channelOutcomesModal">
+                <span class="wa-report-summary-title">Channel Outcomes <span aria-hidden="true">↗</span></span>
+                <span class="wa-report-summary-value" id="channel-performance-overview">Loading channels…</span>
+                <span class="wa-report-summary-detail">Performance and attribution by channel</span>
+            </button>
         </div>
 
         <div class="wa-kpi-band wa-kpi-band-primary">
             <div class="wa-kpi-band-head">
                 <div class="wa-kpi-band-label">Traffic Pulse</div>
-                <div class="wa-kpi-band-copy">High-signal top-line readouts</div>
             </div>
             <div class="fa-kpi-grid fa-kpi-grid-primary">
                 <div>
@@ -832,7 +856,6 @@
         <div class="wa-kpi-band wa-kpi-band-secondary">
             <div class="wa-kpi-band-head">
                 <div class="wa-kpi-band-label">Conversion + Context</div>
-                <div class="wa-kpi-band-copy">Supporting reads for quality and intent</div>
             </div>
             <div class="fa-kpi-grid fa-kpi-grid-secondary">
                 <div>
@@ -873,20 +896,16 @@
     <section class="wa-command-surface wa-workbench-surface mb-4" aria-labelledby="wa-workbench-title">
         <div class="wa-workbench-intro">
             <div>
-                <div class="wa-workbench-kicker">Action Workbench</div>
                 <h3 class="wa-workbench-title" id="wa-workbench-title">Analysis Modules</h3>
-                <p class="wa-workbench-sub">Open the right intelligence layer fast, from top-priority diagnostics to supporting drill-ins.</p>
             </div>
             <div class="wa-workbench-actions">
                 <button type="button" class="btn btn-sm fa-export-btn wa-workbench-copy-btn" id="copy-all-analysis-modules">Copy All Modules</button>
-                <div class="wa-workbench-chip">Open any module to launch its deep dive</div>
             </div>
         </div>
 
         <div class="wa-module-band wa-module-band-primary">
             <div class="wa-module-band-head">
                 <div class="wa-module-band-label">Priority Modules</div>
-                <div class="wa-module-band-copy">Core diagnosis and conversion reads</div>
             </div>
 
             <div class="fa-modules fa-modules-priority">
@@ -945,7 +964,6 @@
         <div class="wa-module-band wa-module-band-secondary">
             <div class="wa-module-band-head">
                 <div class="wa-module-band-label">Supporting Drill-Ins</div>
-                <div class="wa-module-band-copy">Traffic, leads, destinations, and CTA reviews</div>
             </div>
 
             <div class="fa-modules fa-modules-support @(isFounder ? "fa-modules-support-founder" : string.Empty)">
@@ -1010,18 +1028,10 @@
             <div class="wa-health-copy">
                 <div class="wa-health-kicker-row">
                     <div class="wa-kpi-band-label" id="marketing-health-title">Marketing Health Center</div>
-                    <div class="wa-health-live-pill">Operator Diagnostic Surface</div>
                 </div>
-                <div class="wa-health-heading">Tracking integrity, attribution clarity, and lead-pipeline reliability</div>
-                <div class="wa-health-subcopy">A live production readout for browser telemetry, funnel continuity, lead capture handoff, and source confidence.</div>
                 <div class="wa-health-meta">
                     <span class="wa-health-pill">Range <strong id="mh-range-label">—</strong></span>
                     <span class="wa-health-pill">No Owner Failures <strong id="mh-no-owner">0</strong></span>
-                </div>
-                <div class="wa-health-focus-strip">
-                    <span class="wa-health-focus-pill">Browser Tracking</span>
-                    <span class="wa-health-focus-pill">Lead Handoff</span>
-                    <span class="wa-health-focus-pill">Attribution Confidence</span>
                 </div>
             </div>
             <div class="wa-health-summary">
@@ -1091,7 +1101,7 @@
                             <span class="wa-incident-monitor-count" id="wa-incident-monitor-count">0</span>
                         </button>
                         }
-                        <div class="wa-health-panel-badge">Live</div>
+                        <div class="wa-health-panel-badge">Snapshot</div>
                     </div>
                 </div>
                 <ul id="mh-warning-list" class="wa-health-warning-list">
@@ -2777,15 +2787,16 @@
     @await Html.PartialAsync("_AnalyticsIncidentModal")
 }
 
-<script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-<script src="~/js/website-analytics.js" asp-append-version="true"></script>
-<script src="~/js/website-analytics-kpi-modal.js" asp-append-version="true"></script>
-<script src="~/js/website-analytics-ai.js" asp-append-version="true"></script>
-@if (canViewFounderTeamUi)
-{
-<script src="~/js/website-analytics-incidents.js" asp-append-version="true"></script>
+@section Scripts {
+    <script>
+        window.AGENT_OPTIONS = @Html.Raw(agentOptionsJson);
+        window.CALLER_PROFILE_ID = "@callerProfileId";
+    </script>
+    <script src="~/js/website-analytics.js" asp-append-version="true"></script>
+    <script src="~/js/website-analytics-kpi-modal.js" asp-append-version="true"></script>
+    <script src="~/js/website-analytics-ai.js" asp-append-version="true"></script>
+    @if (canViewFounderTeamUi)
+    {
+        <script src="~/js/website-analytics-incidents.js" asp-append-version="true"></script>
+    }
 }
-<script>
-    window.AGENT_OPTIONS = @Html.Raw(agentOptionsJson);
-    window.CALLER_PROFILE_ID = "@callerProfileId";
-</script>
