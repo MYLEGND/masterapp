@@ -704,9 +704,9 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
                 metaCapiManagedAutomatically = true
             },
             google = Infrastructure.Analytics.MarketingProviderSetupProjection.External(
-                setup.Google, setup.GoogleMeasurement),
+                setup.Google, setup.GoogleMeasurement, setup.GoogleConnectionSetup),
             tiktok = Infrastructure.Analytics.MarketingProviderSetupProjection.External(
-                setup.TikTok, setup.TikTokMeasurement),
+                setup.TikTok, setup.TikTokMeasurement, setup.TikTokConnectionSetup),
             openAi = new
             {
                 revision = openAiConnection.Revision,
@@ -800,7 +800,8 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
-            return Redirect($"{target}{(target.Contains('?') ? '&' : '?')}provider=external&status=error&message={Uri.EscapeDataString(ex.Message)}");
+            return Redirect(Infrastructure.Analytics.MarketingExternalAdsOAuthService.BuildReturnUrl(
+                target, provider, "error"));
         }
     }
 
@@ -813,21 +814,23 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         [FromQuery(Name = "error_description")] string? errorDescription = null,
         CancellationToken cancellationToken = default)
     {
-        var fallback = "/";
+        var target = "/";
+        var provider = "external";
         try
         {
             var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingExternalAdsOAuthService>();
             var inspected = oauth.InspectState(state ?? string.Empty);
             var businessId = inspected.Owner.CommerceBusinessId
                 ?? throw new InvalidOperationException("External Ads OAuth state is not business-scoped.");
-            fallback = $"/business/{businessId:D}/analytics";
+            target = $"/business/{businessId:D}/analytics";
             if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
-            var target = Url.IsLocalUrl(inspected.ReturnUrl) ? inspected.ReturnUrl : fallback;
+            provider = inspected.Provider;
+            target = Url.IsLocalUrl(inspected.ReturnUrl) ? inspected.ReturnUrl : target;
 
             if (!string.IsNullOrWhiteSpace(error))
             {
-                var message = string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription;
-                return Redirect($"{target}{(target.Contains('?') ? '&' : '?')}provider={Uri.EscapeDataString(inspected.Provider)}&status=error&message={Uri.EscapeDataString(message)}");
+                return Redirect(Infrastructure.Analytics.MarketingExternalAdsOAuthService.BuildReturnUrl(
+                    target, provider, "error", "authorization_declined"));
             }
 
             var result = await oauth.CompleteCallbackAsync(
@@ -838,11 +841,18 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
             if (result.Owner != inspected.Owner)
                 throw new InvalidOperationException("External Ads OAuth owner scope changed during authorization.");
 
-            return Redirect($"{target}{(target.Contains('?') ? '&' : '?')}provider={Uri.EscapeDataString(result.Provider)}&status=connected");
+            return Redirect(Infrastructure.Analytics.MarketingExternalAdsOAuthService.BuildReturnUrl(
+                target, result.Provider, "connected"));
         }
-        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return Redirect($"{fallback}{(fallback.Contains('?') ? '&' : '?')}provider=external&status=error&message={Uri.EscapeDataString(ex.Message)}");
+            return Redirect(Infrastructure.Analytics.MarketingExternalAdsOAuthService.BuildReturnUrl(
+                target, provider, "error"));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or HttpRequestException or JsonException)
+        {
+            return Redirect(Infrastructure.Analytics.MarketingExternalAdsOAuthService.BuildReturnUrl(
+                target, provider, "error"));
         }
     }
 

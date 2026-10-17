@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,7 +27,8 @@ public sealed class LegendPublishedPageTests
 {
     private sealed class Fixture : IDisposable
     {
-        public MasterAppDbContext Db { get; } = new(new DbContextOptionsBuilder<MasterAppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        private readonly SqliteConnection connection = new("Data Source=:memory:");
+        public MasterAppDbContext Db { get; }
         private readonly WebsiteEditorTicketProtector tickets = new(new EphemeralDataProtectionProvider());
         private readonly ServiceProvider services;
         public WebsitePlatformController Controller { get; }
@@ -34,6 +36,9 @@ public sealed class LegendPublishedPageTests
 
         public Fixture(bool compilerAvailable = true)
         {
+            connection.Open();
+            Db = new(new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).Options);
+            Db.Database.EnsureCreated();
             var compilerRoot = System.IO.Path.GetFullPath(System.IO.Path.Combine(SourceDirectory(), "..", "Legend-Website"));
             var config = new ConfigurationBuilder().AddInMemoryCollection(new System.Collections.Generic.Dictionary<string, string?>
             {
@@ -72,7 +77,7 @@ public sealed class LegendPublishedPageTests
 
         private static string SourceDirectory([System.Runtime.CompilerServices.CallerFilePath] string file = "") => System.IO.Path.GetDirectoryName(file)!;
 
-        public void Dispose() { services.Dispose(); tickets.Dispose(); Db.Dispose(); }
+        public void Dispose() { services.Dispose(); tickets.Dispose(); Db.Dispose(); connection.Dispose(); }
     }
 
     [Fact]
@@ -80,7 +85,16 @@ public sealed class LegendPublishedPageTests
     {
         using var f = new Fixture();
         await f.Publish("First publication");
+        var published = await f.Db.Set<WebsiteContentVersion>().AsNoTracking()
+            .SingleAsync(version => version.Id == f.State.PublishedVersionId);
+        Assert.Null(published.CompiledPagesJson);
         var first = Assert.IsType<ContentResult>(await f.Controller.LegendPage());
+        var materialized = await f.Db.Set<WebsiteContentVersion>().AsNoTracking()
+            .SingleAsync(version => version.Id == published.Id);
+        Assert.False(string.IsNullOrWhiteSpace(materialized.CompiledPagesJson));
+        Assert.Equal(published.DocumentJson, materialized.DocumentJson);
+        Assert.Equal(published.Id, await f.Db.Set<WebsiteContentState>().AsNoTracking()
+            .Where(state => state.Id == f.State.Id).Select(state => state.PublishedVersionId).SingleAsync());
         Assert.Contains("First publication", first.Content);
         Assert.Equal(f.State.PublishedVersionId.ToString(), f.Controller.Response.Headers["X-Legend-Publication-Id"].ToString());
         Assert.DoesNotContain("Unpublished draft", first.Content);

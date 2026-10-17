@@ -246,9 +246,9 @@ namespace AgentPortal.Controllers;
                 metaCapiManagedAutomatically = true
             },
             google = Infrastructure.Analytics.MarketingProviderSetupProjection.External(
-                setup.Google, setup.GoogleMeasurement),
+                setup.Google, setup.GoogleMeasurement, setup.GoogleConnectionSetup),
             tiktok = Infrastructure.Analytics.MarketingProviderSetupProjection.External(
-                setup.TikTok, setup.TikTokMeasurement),
+                setup.TikTok, setup.TikTokMeasurement, setup.TikTokConnectionSetup),
             openAi = new
             {
                 revision = openAiConnection.Revision,
@@ -352,8 +352,8 @@ namespace AgentPortal.Controllers;
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
-            var key = Uri.EscapeDataString((provider ?? "provider").Trim().ToLowerInvariant());
-            return Redirect($"{target}?provider={key}&status=error&message={Uri.EscapeDataString(ex.Message)}");
+            return Redirect(Infrastructure.Analytics.MarketingExternalAdsOAuthService.BuildReturnUrl(
+                target, provider, "error"));
         }
     }
 
@@ -367,16 +367,18 @@ namespace AgentPortal.Controllers;
         CancellationToken cancellationToken = default)
     {
         var target = "/WebsiteAnalytics/Index";
+        var provider = "external";
         try
         {
             var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingExternalAdsOAuthService>();
             var inspected = oauth.InspectState(state ?? string.Empty);
             if (!await IsAuthorizedExternalAdsOwnerAsync(inspected.Owner, cancellationToken)) return Forbid();
+            provider = inspected.Provider;
             target = Url.IsLocalUrl(inspected.ReturnUrl) ? inspected.ReturnUrl : target;
             if (!string.IsNullOrWhiteSpace(error))
             {
-                var message = string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription;
-                return Redirect($"{target}?provider={Uri.EscapeDataString(inspected.Provider)}&status=error&message={Uri.EscapeDataString(message)}");
+                return Redirect(Infrastructure.Analytics.MarketingExternalAdsOAuthService.BuildReturnUrl(
+                    target, provider, "error", "authorization_declined"));
             }
 
             var result = await oauth.CompleteCallbackAsync(
@@ -388,12 +390,18 @@ namespace AgentPortal.Controllers;
                 !await IsAuthorizedExternalAdsOwnerAsync(result.Owner, cancellationToken))
                 return Forbid();
 
-            var separator = target.Contains('?') ? '&' : '?';
-            return Redirect($"{target}{separator}provider={Uri.EscapeDataString(result.Provider)}&status=connected");
+            return Redirect(Infrastructure.Analytics.MarketingExternalAdsOAuthService.BuildReturnUrl(
+                target, result.Provider, "connected"));
         }
-        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return Redirect($"{target}{(target.Contains('?') ? '&' : '?')}provider=external&status=error&message={Uri.EscapeDataString(ex.Message)}");
+            return Redirect(Infrastructure.Analytics.MarketingExternalAdsOAuthService.BuildReturnUrl(
+                target, provider, "error"));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or HttpRequestException or System.Text.Json.JsonException)
+        {
+            return Redirect(Infrastructure.Analytics.MarketingExternalAdsOAuthService.BuildReturnUrl(
+                target, provider, "error"));
         }
     }
 

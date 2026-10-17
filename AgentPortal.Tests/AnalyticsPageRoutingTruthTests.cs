@@ -49,8 +49,7 @@ public sealed class AnalyticsPageRoutingTruthTests
             Assert.Contains($"\"{route.TrimStart('/')}\"", businessService, StringComparison.Ordinal);
         }
 
-        Assert.Contains("window.websiteAnalyticsBridge?.endpoint", ui, StringComparison.Ordinal);
-        Assert.Contains("endpoint(\"/DeviceIntelligence\")", ui, StringComparison.Ordinal);
+        Assert.Contains("fetchJson('deviceIntelligence', analyticsEndpoint('/DeviceIntelligence'), params)", ui, StringComparison.Ordinal);
         Assert.Contains("\"DeviceIntelligence\"", businessService, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"DeviceIntelligence\")]", controller, StringComparison.Ordinal);
 
@@ -77,20 +76,27 @@ public sealed class AnalyticsPageRoutingTruthTests
     }
 
     [Fact]
-    public void AnalyticsPageContinuouslyRefreshesSummaryAndOpenDetailWithoutManualReload()
+    public void AnalyticsPageRefreshesOnlyOnExplicitActionAndPreservesRequestOwnership()
     {
         var root = RepoRoot();
         var ui = File.ReadAllText(Path.Combine(root, "AgentPortal", "wwwroot", "js", "website-analytics.js"));
+        var view = File.ReadAllText(Path.Combine(root, "AgentPortal", "Views", "WebsiteAnalytics", "Index.cshtml"));
+        var incidents = File.ReadAllText(Path.Combine(root, "AgentPortal", "wwwroot", "js", "website-analytics-incidents.js"));
 
-        Assert.Contains("pollMs: 15000", ui, StringComparison.Ordinal);
-        Assert.Contains("async function refreshLiveAnalytics()", ui, StringComparison.Ordinal);
-        Assert.Contains("summaryRefreshInFlight", ui, StringComparison.Ordinal);
-        Assert.Contains("await loadSummary();", ui, StringComparison.Ordinal);
-        Assert.Contains("if (state.openModal) refreshOpenModal();", ui, StringComparison.Ordinal);
-        Assert.Contains("setInterval(refreshLiveAnalytics, state.pollMs)", ui, StringComparison.Ordinal);
-        Assert.Contains("visibilitychange", ui, StringComparison.Ordinal);
-        Assert.Contains("window.addEventListener('focus', refreshLiveAnalytics)", ui, StringComparison.Ordinal);
-        Assert.DoesNotContain("pollMs: 1500,", ui, StringComparison.Ordinal);
+        Assert.Contains("data-analytics-refresh", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"analytics-refresh-status\"", view, StringComparison.Ordinal);
+        Assert.Contains("function refreshAnalytics()", ui, StringComparison.Ordinal);
+        Assert.Contains("analyticsRefreshInFlight !== active", ui, StringComparison.Ordinal);
+        Assert.Contains("scopeVersion !== analyticsScopeVersion", ui, StringComparison.Ordinal);
+        Assert.Contains("if (!detail.isCurrent()) return false", ui, StringComparison.Ordinal);
+        Assert.Contains("analyticsDetailRequests", ui, StringComparison.Ordinal);
+        Assert.Contains("timeoutMs = 45000", ui, StringComparison.Ordinal);
+        Assert.DoesNotContain("setInterval(", ui, StringComparison.Ordinal);
+        Assert.DoesNotContain("setInterval(", incidents, StringComparison.Ordinal);
+        Assert.DoesNotContain("refreshLiveAnalytics", ui, StringComparison.Ordinal);
+        Assert.DoesNotContain("window.addEventListener('focus'", ui, StringComparison.Ordinal);
+        Assert.DoesNotContain("visibilitychange", ui, StringComparison.Ordinal);
+        Assert.DoesNotContain("await res.text()", ui, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -239,7 +245,9 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.DoesNotContain("ForwardAsync(\"/api/analytics/ingest\"", proxy, StringComparison.Ordinal);
         Assert.Contains("siteKey = Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect", layout, StringComparison.Ordinal);
         Assert.Contains("endpoint(path)", analyticsJs, StringComparison.Ordinal);
-        Assert.Contains("window.websiteAnalyticsBridge?.endpoint", analyticsJs, StringComparison.Ordinal);
+        Assert.Contains("return analyticsEndpoint(path);", analyticsJs, StringComparison.Ordinal);
+        Assert.Contains("getRangeParams(options)", analyticsJs, StringComparison.Ordinal);
+        Assert.Contains("return rangeParams(options || {});", analyticsJs, StringComparison.Ordinal);
     }
 
     [Fact]

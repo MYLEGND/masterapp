@@ -9,6 +9,12 @@ using Shared.Analytics;
 
 namespace Infrastructure.Analytics;
 
+public sealed record MarketingExternalAdsConnectionReadiness(
+    bool CanConnect,
+    string Status,
+    string? Message,
+    IReadOnlyList<string> MissingRequirements);
+
 public sealed record MarketingExternalOAuthInspection(
     MarketingOwnerScope Owner,
     string Provider,
@@ -33,6 +39,69 @@ public sealed class MarketingExternalAdsOAuthService(
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly IDataProtector _state = dataProtectionProvider.CreateProtector("Marketing.ExternalAds.OAuthState.v1");
 
+    public MarketingExternalAdsConnectionReadiness GetConnectionReadiness(
+        MarketingOwnerScope owner,
+        string provider)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        var key = RequireProvider(provider);
+        var requirements = key == MarketingDestinationKeys.Google
+            ? new[] {
+                (Key: "GoogleAds:ClientId", Label: "OAuth client ID"),
+                (Key: "GoogleAds:ClientSecret", Label: "OAuth client secret"),
+                (Key: "GoogleAds:DeveloperToken", Label: "developer token") }
+            : new[] {
+                (Key: "TikTokAds:AppId", Label: "app ID"),
+                (Key: "TikTokAds:AppSecret", Label: "app secret") };
+        var missing = requirements
+            .Where(item => Clean(configuration[item.Key]) is null)
+            .Select(item => item.Label)
+            .ToList();
+        if (key == MarketingDestinationKeys.Google)
+        {
+            try { _ = GoogleApiVersion(); }
+            catch (InvalidOperationException) { missing.Add("valid Google Ads API version"); }
+        }
+        else
+        {
+            try { _ = TikTokAuthorizationUri(owner); }
+            catch (InvalidOperationException) { missing.Add("HTTPS advertiser authorization URL from TikTok My Apps"); }
+            try { _ = TikTokTokenEndpoint(); }
+            catch (InvalidOperationException) { missing.Add("valid HTTPS TikTok token endpoint"); }
+        }
+
+        var label = key == MarketingDestinationKeys.Google ? "Google Ads" : "TikTok Ads";
+        return missing.Count == 0
+            ? new(true, "ready_to_connect", null, [])
+            : new(false, "configuration_required",
+                $"{label} needs workspace setup: {string.Join(", ", missing)}.", missing);
+    }
+
+    // Connection transport parameters never become part of a later return target.
+    // Only stable reason codes are returned; provider messages, codes and state
+    // remain out of the browser's analytics URL.
+    public static string BuildReturnUrl(
+        string? returnUrl,
+        string? provider,
+        string status,
+        string? reason = null)
+    {
+        var key = MarketingDestinationKeys.Normalize(provider ?? string.Empty);
+        if (key is not (MarketingDestinationKeys.Google or MarketingDestinationKeys.TikTok))
+            key = "external";
+        var connected = string.Equals(status, "connected", StringComparison.Ordinal);
+        var safeReason = reason is "configuration_required" or "authorization_declined"
+            ? reason
+            : "connection_failed";
+        var parameters = new Dictionary<string, string?>
+        {
+            ["provider"] = key,
+            ["status"] = connected ? "connected" : "error"
+        };
+        if (!connected) parameters["reason"] = safeReason;
+        return QueryHelpers.AddQueryString(SafeReturnUrl(returnUrl), parameters);
+    }
+
     public string BuildConnectUrl(
         MarketingOwnerScope owner,
         string provider,
@@ -41,6 +110,9 @@ public sealed class MarketingExternalAdsOAuthService(
     {
         ArgumentNullException.ThrowIfNull(owner);
         var key = RequireProvider(provider);
+        var readiness = GetConnectionReadiness(owner, key);
+        if (!readiness.CanConnect)
+            throw new InvalidOperationException(readiness.Message);
         var redirectUri = ResolveRedirectUri(key, explicitRedirectUri);
         var safeReturnUrl = SafeReturnUrl(returnUrl);
         var state = ProtectState(new(
@@ -235,13 +307,7 @@ public sealed class MarketingExternalAdsOAuthService(
         MarketingOwnerScope owner,
         string stateToken)
     {
-        var key = owner.CommerceBusinessId.HasValue
-            ? "TikTokAds:BusinessAdvertiserAuthorizationUrl"
-            : "TikTokAds:AdvertiserAuthorizationUrl";
-        var configured = Clean(configuration[key]);
-        if (!Uri.TryCreate(configured, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
-            throw new InvalidOperationException($"{key} must be the HTTPS advertiser authorization URL generated in TikTok My Apps.");
-        return QueryHelpers.AddQueryString(uri.ToString(), "state", stateToken);
+        return QueryHelpers.AddQueryString(TikTokAuthorizationUri(owner).ToString(), "state", stateToken);
     }
 
     private async Task<GoogleTokenExchange> ExchangeGoogleAsync(
@@ -308,9 +374,7 @@ public sealed class MarketingExternalAdsOAuthService(
         string accessToken,
         CancellationToken ct)
     {
-        var version = Clean(configuration["GoogleAds:ApiVersion"]) ?? "v25";
-        if (!System.Text.RegularExpressions.Regex.IsMatch(version, @"^v\d{1,3}$"))
-            throw new InvalidOperationException("GoogleAds:ApiVersion is invalid.");
+        var version = GoogleApiVersion();
 
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
@@ -343,10 +407,7 @@ public sealed class MarketingExternalAdsOAuthService(
         string code,
         CancellationToken ct)
     {
-        var endpoint = Clean(configuration["TikTokAds:TokenEndpoint"])
-            ?? "https://business-api.tiktok.com/open_api/v1.3/oauth2/access_token/";
-        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
-            throw new InvalidOperationException("TikTok Ads token endpoint is invalid.");
+        var uri = TikTokTokenEndpoint();
 
         using var response = await clients.CreateClient("MarketingExternalAds").PostAsJsonAsync(
             uri,
@@ -490,14 +551,55 @@ public sealed class MarketingExternalAdsOAuthService(
         return uri.ToString();
     }
 
+    private string GoogleApiVersion()
+    {
+        var version = Clean(configuration["GoogleAds:ApiVersion"]) ?? "v25";
+        if (!System.Text.RegularExpressions.Regex.IsMatch(version, @"^v\d{1,3}$"))
+            throw new InvalidOperationException("GoogleAds:ApiVersion is invalid.");
+        return version;
+    }
+
+    private Uri TikTokAuthorizationUri(MarketingOwnerScope owner)
+    {
+        var key = owner.CommerceBusinessId.HasValue
+            ? "TikTokAds:BusinessAdvertiserAuthorizationUrl"
+            : "TikTokAds:AdvertiserAuthorizationUrl";
+        var configured = Clean(configuration[key]);
+        if (!Uri.TryCreate(configured, UriKind.Absolute, out var uri) ||
+            uri.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(uri.UserInfo))
+            throw new InvalidOperationException($"{key} must be the HTTPS advertiser authorization URL generated in TikTok My Apps.");
+        return uri;
+    }
+
+    private Uri TikTokTokenEndpoint()
+    {
+        var endpoint = Clean(configuration["TikTokAds:TokenEndpoint"])
+            ?? "https://business-api.tiktok.com/open_api/v1.3/oauth2/access_token/";
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) ||
+            uri.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(uri.UserInfo))
+            throw new InvalidOperationException("TikTok Ads token endpoint is invalid.");
+        return uri;
+    }
+
     private static string SafeReturnUrl(string? value)
     {
         var target = Clean(value) ?? "/WebsiteAnalytics/Index";
         if (!target.StartsWith("/", StringComparison.Ordinal) ||
             target.StartsWith("//", StringComparison.Ordinal) ||
-            target.Contains('\r') || target.Contains('\n'))
+            target.Contains('\\') || target.Any(char.IsControl))
             return "/WebsiteAnalytics/Index";
-        return target;
+        var fragmentIndex = target.IndexOf('#');
+        var fragment = fragmentIndex < 0 ? string.Empty : target[fragmentIndex..];
+        var pathAndQuery = fragmentIndex < 0 ? target : target[..fragmentIndex];
+        var queryIndex = pathAndQuery.IndexOf('?');
+        if (queryIndex < 0) return target;
+        var path = pathAndQuery[..queryIndex];
+        var parameters = QueryHelpers.ParseQuery(pathAndQuery[(queryIndex + 1)..]);
+        foreach (var key in new[] {
+            "provider", "status", "reason", "message", "code", "auth_code",
+            "state", "error", "error_description", "access_token", "refresh_token", "id_token" })
+            parameters.Remove(key);
+        return QueryHelpers.AddQueryString(path, parameters) + fragment;
     }
 
     private static string RequiredJsonString(JsonElement root, string name, string label) =>

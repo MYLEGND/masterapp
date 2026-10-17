@@ -92,9 +92,11 @@ public sealed class MarketingManagerCentralizationTests
         Assert.Contains("Back to Website Analytics", eventMap, StringComparison.Ordinal);
 
         Assert.Contains(".hero-link-command-actions", css, StringComparison.Ordinal);
-        Assert.Contains("grid-template-columns: max-content minmax(0, 1fr);", css, StringComparison.Ordinal);
+        Assert.Contains("flex: 1 0 min(100%, 17rem);", css, StringComparison.Ordinal);
+        Assert.Contains("flex: 2 1 34rem;", css, StringComparison.Ordinal);
+        Assert.Contains("flex-wrap: wrap;", css, StringComparison.Ordinal);
         Assert.Contains("overflow: visible;", css, StringComparison.Ordinal);
-        Assert.Contains(".event-map-trigger", css, StringComparison.Ordinal);
+        Assert.Contains("background: var(--legend-app-control);", css, StringComparison.Ordinal);
         Assert.Contains(".legend-workspace-page.wa-event-map-page", css, StringComparison.Ordinal);
         Assert.Contains(".wa-event-map-table", css, StringComparison.Ordinal);
         Assert.Contains("color: #8dffc5;", css, StringComparison.Ordinal);
@@ -137,9 +139,14 @@ public sealed class MarketingManagerCentralizationTests
 
         Assert.Contains("/* Canonical Website Analytics modal system.", css, StringComparison.Ordinal);
         Assert.Contains(".wa-standalone-modal", css, StringComparison.Ordinal);
-        Assert.Contains("grid-template-columns: 1fr;\n        align-items: stretch;", css, StringComparison.Ordinal);
-        Assert.Contains(".wa-growth-economics-grid {\n    grid-template-columns: 1fr;\n    overflow: visible;", css, StringComparison.Ordinal);
-        Assert.Contains(".wa-growth-economics-card {\n    min-width: 0;", css, StringComparison.Ordinal);
+        Assert.Contains("repeat(auto-fit, minmax(min(100%, 16rem), 1fr))", css, StringComparison.Ordinal);
+        Assert.Contains("repeat(auto-fit, minmax(min(100%, 10rem), 1fr))", css, StringComparison.Ordinal);
+        Assert.DoesNotContain("repeat(5, minmax(180px,1fr))", css, StringComparison.Ordinal);
+        Assert.DoesNotContain("repeat(6, minmax(130px,1fr))", css, StringComparison.Ordinal);
+        Assert.Contains("@section Scripts", view, StringComparison.Ordinal);
+        Assert.DoesNotContain("bootstrap.bundle.min.js", view, StringComparison.Ordinal);
+        foreach (var id in new[] { "growthEconomicsModal", "channelOutcomesModal", "growth-economics-grid", "channel-performance-grid" })
+            Assert.Equal(1, view.Split("id=\"" + id + "\"", StringSplitOptions.None).Length - 1);
 
         Assert.Contains("/* Canonical Core Metrics card system. */", css, StringComparison.Ordinal);
         Assert.Equal(
@@ -149,8 +156,7 @@ public sealed class MarketingManagerCentralizationTests
             0,
             css.Split("\n.fa-kpi-grid .kpi-card {", StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("grid-template-columns: repeat(5, minmax(190px, 1fr));", css, StringComparison.Ordinal);
-        Assert.Contains("grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));", css, StringComparison.Ordinal);
-        Assert.Contains(".wa-channel-grid {\n    grid-template-columns: 1fr;", css, StringComparison.Ordinal);
+        Assert.Contains(".wa-report-summary", css, StringComparison.Ordinal);
         Assert.Contains(".wa-channel-loading {\n    min-width: 0;", css, StringComparison.Ordinal);
         Assert.DoesNotContain(".wa-channel-card {\n  min-width: 190px;", css, StringComparison.Ordinal);
         Assert.DoesNotContain("min-height: 176px;", css, StringComparison.Ordinal);
@@ -212,21 +218,17 @@ public sealed class MarketingManagerCentralizationTests
         var root = Root();
         var js = Read(root, "AgentPortal", "wwwroot", "js", "website-analytics.js");
 
-        var summaryStart = js.IndexOf("async function loadSummary()", StringComparison.Ordinal);
-        var summaryEnd = js.IndexOf("async function loadMarketingHealth()", summaryStart, StringComparison.Ordinal);
-        Assert.True(summaryStart >= 0 && summaryEnd > summaryStart, "Canonical summary loader is required.");
-
-        var summary = js[summaryStart..summaryEnd];
-        var catchStart = summary.IndexOf("} catch (err) {", StringComparison.Ordinal);
-        var supportStart = summary.IndexOf("void Promise.resolve().then(() => loadMarketingHealth())", StringComparison.Ordinal);
-
-        Assert.True(catchStart >= 0, "Summary fetch/render failure boundary is required.");
-        Assert.True(supportStart > catchStart, "Supporting module refreshes must execute outside the canonical summary try/catch.");
-        Assert.Contains("console.error(err);\n      return;", summary, StringComparison.Ordinal);
-        Assert.DoesNotContain("renderSummaryUnavailable", summary[supportStart..], StringComparison.Ordinal);
-        Assert.Contains("loadMarketingPerformance()", summary[supportStart..], StringComparison.Ordinal);
-        Assert.DoesNotContain("loadGrowthEconomics()", summary[supportStart..], StringComparison.Ordinal);
+        var refreshStart = js.IndexOf("function refreshAnalytics()", StringComparison.Ordinal);
+        var refreshEnd = js.IndexOf("function initAnalyticsRefreshControls()", refreshStart, StringComparison.Ordinal);
+        Assert.True(refreshStart >= 0 && refreshEnd > refreshStart, "One canonical refresh owner is required.");
+        var refresh = js[refreshStart..refreshEnd];
+        Assert.Contains("const reads = [loadSummary(), loadMarketingHealth(), loadMarketingPerformance()]", refresh, StringComparison.Ordinal);
+        Assert.Contains("Promise.allSettled(reads)", refresh, StringComparison.Ordinal);
+        Assert.DoesNotContain("renderSummaryUnavailable", refresh, StringComparison.Ordinal);
+        Assert.DoesNotContain("loadGrowthEconomics()", js, StringComparison.Ordinal);
         Assert.Contains("renderGrowthEconomics(data.economics)", js, StringComparison.Ordinal);
+        Assert.Contains("marketingPerformanceRenderedKey !== key", js, StringComparison.Ordinal);
+
     }
 
     [Fact]
@@ -272,14 +274,29 @@ public sealed class MarketingManagerCentralizationTests
         {
             "marketing-manager-build",
             "marketing-manager-refresh",
-            "marketing-manager-open-advertising",
-            "channel-performance-refresh",
-            "growth-economics-refresh"
+            "marketing-manager-open-advertising"
         })
         {
             Assert.Contains($"id=\"{id}\"", view, StringComparison.Ordinal);
             Assert.Contains($"getElementById('{id}')?.addEventListener", js, StringComparison.Ordinal);
         }
+
+        foreach (var id in new[] { "channel-performance-refresh", "growth-economics-refresh" })
+        {
+            Assert.Matches($@"<button\b[^>]*\bid=""{id}""[^>]*\bdata-analytics-refresh(?:\s|>)", view);
+            Assert.DoesNotContain($"getElementById('{id}')?.addEventListener", js, StringComparison.Ordinal);
+        }
+
+        var refreshControlsStart = js.IndexOf("function initAnalyticsRefreshControls()", StringComparison.Ordinal);
+        Assert.True(refreshControlsStart >= 0, "One shared manual refresh initializer is required.");
+        var refreshControlsEnd = js.IndexOf("function initModules()", refreshControlsStart, StringComparison.Ordinal);
+        Assert.True(refreshControlsEnd > refreshControlsStart);
+        var refreshControls = js[refreshControlsStart..refreshControlsEnd];
+        Assert.Contains("querySelectorAll('[data-analytics-refresh]')", refreshControls, StringComparison.Ordinal);
+        Assert.Contains("button.addEventListener('click'", refreshControls, StringComparison.Ordinal);
+        Assert.Contains("void refreshAnalytics()", refreshControls, StringComparison.Ordinal);
+        Assert.Contains("initAnalyticsRefreshControls();", js, StringComparison.Ordinal);
+        Assert.Equal(1, js.Split("function initAnalyticsRefreshControls()", StringSplitOptions.None).Length - 1);
 
         Assert.Contains("fetchPostJson(\n        'marketingManagerPlan'", js, StringComparison.Ordinal);
         Assert.Contains("endpoints.marketingManagerPlan", js, StringComparison.Ordinal);
@@ -298,7 +315,7 @@ public sealed class MarketingManagerCentralizationTests
         var js = Read(root, "AgentPortal", "wwwroot", "js", "website-analytics.js");
         var manager = Read(root, "Infrastructure", "Analytics", "MarketingManagerService.cs");
 
-        Assert.Contains("async function fetchJson(key, url, params = {}, timeoutMs = 0)", js, StringComparison.Ordinal);
+        Assert.Contains("async function fetchJson(key, url, params = {}, timeoutMs = 45000)", js, StringComparison.Ordinal);
         Assert.Contains("async function fetchPostJson(key, url, body = null, timeoutMs = 0)", js, StringComparison.Ordinal);
         Assert.Contains("const params = { ...marketingManagerRequestBody(), ...marketingManagerSiteParams() };", js, StringComparison.Ordinal);
         Assert.Contains("params,\n          45000)", js, StringComparison.Ordinal);
