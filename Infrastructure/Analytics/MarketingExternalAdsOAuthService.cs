@@ -48,8 +48,7 @@ public sealed class MarketingExternalAdsOAuthService(
         var requirements = key == MarketingDestinationKeys.Google
             ? new[] {
                 (Key: "GoogleAds:ClientId", Label: "OAuth client ID"),
-                (Key: "GoogleAds:ClientSecret", Label: "OAuth client secret"),
-                (Key: "GoogleAds:DeveloperToken", Label: "developer token") }
+                (Key: "GoogleAds:ClientSecret", Label: "OAuth client secret") }
             : new[] {
                 (Key: "TikTokAds:AppId", Label: "app ID"),
                 (Key: "TikTokAds:AppSecret", Label: "app secret") };
@@ -380,7 +379,6 @@ public sealed class MarketingExternalAdsOAuthService(
             HttpMethod.Get,
             $"https://googleads.googleapis.com/{version}/customers:listAccessibleCustomers");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        request.Headers.TryAddWithoutValidation("developer-token", Required("GoogleAds:DeveloperToken"));
 
         using var response = await clients.CreateClient("MarketingExternalAds").SendAsync(request, ct);
         var json = await response.Content.ReadAsStringAsync(ct);

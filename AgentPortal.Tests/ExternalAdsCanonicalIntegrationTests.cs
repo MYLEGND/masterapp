@@ -66,25 +66,30 @@ public sealed class ExternalAdsCanonicalIntegrationTests
         Assert.Equal(TrafficType.PaidAds, TrafficAttribution.Classify(null, null, null, null, ttclid: "tiktok-click-1"));
     }
 
-    [Fact]
-    public async Task ExternalAdsOAuthPersistsEncryptedScopedCredentialsAndRequiresAccountSelectionWhenAmbiguous()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExternalAdsOAuthPersistsEncryptedScopedCredentialsAndRequiresAccountSelectionWhenAmbiguous(
+        bool hasRetainedDeveloperToken)
     {
         using var db = ControllerTestHelpers.BuildDb();
         using var protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
         var store = new MarketingConnectionStore(db, protector);
         var owner = MarketingOwnerScope.Business(Guid.NewGuid());
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new System.Collections.Generic.Dictionary<string, string?>
+        var settings = new System.Collections.Generic.Dictionary<string, string?>
         {
             ["GoogleAds:ClientId"] = "google-client",
             ["GoogleAds:ClientSecret"] = "google-secret",
-            ["GoogleAds:DeveloperToken"] = "developer-token",
             ["GoogleAds:RedirectUri"] = "https://portal.example.test/business/external-ads/callback",
             ["TikTokAds:AppId"] = "tiktok-app",
             ["TikTokAds:AppSecret"] = "tiktok-secret",
             ["TikTokAds:AdvertiserAuthorizationUrl"] = "https://ads.tiktok.com/marketing_api/auth?app_id=tiktok-app",
             ["TikTokAds:BusinessAdvertiserAuthorizationUrl"] = "https://ads.tiktok.com/marketing_api/auth?app_id=tiktok-app&business=1",
             ["TikTokAds:RedirectUri"] = "https://portal.example.test/business/external-ads/callback"
-        }).Build();
+        };
+        if (hasRetainedDeveloperToken)
+            settings["GoogleAds:DeveloperToken"] = "retired-developer-token";
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
 
         var handler = new StubHandler(request =>
         {
@@ -95,7 +100,7 @@ public sealed class ExternalAdsCanonicalIntegrationTests
             {
                 Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
                 Assert.Equal("google-access", request.Headers.Authorization?.Parameter);
-                Assert.Contains("developer-token", request.Headers.Select(x => x.Key), StringComparer.OrdinalIgnoreCase);
+                Assert.False(request.Headers.Contains("developer-token"));
                 return Json("""{"resourceNames":["customers/1111111111","customers/2222222222"]}""");
             }
             if (uri.Host == "business-api.tiktok.com")
@@ -115,7 +120,11 @@ public sealed class ExternalAdsCanonicalIntegrationTests
             MarketingDestinationKeys.Google,
             "/business/example/analytics",
             "https://portal.example.test/business/external-ads/callback");
-        var googleState = QueryHelpers.ParseQuery(new Uri(googleConnect).Query)["state"].ToString();
+        var googleQuery = QueryHelpers.ParseQuery(new Uri(googleConnect).Query);
+        Assert.Equal("https://www.googleapis.com/auth/adwords", googleQuery["scope"].ToString());
+        Assert.Equal("offline", googleQuery["access_type"].ToString());
+        Assert.Equal("consent", googleQuery["prompt"].ToString());
+        var googleState = googleQuery["state"].ToString();
         var google = await service.CompleteCallbackAsync(
             MarketingDestinationKeys.Google, "google-code", googleState);
         Assert.True(google.Connection.Connected);
@@ -143,6 +152,134 @@ public sealed class ExternalAdsCanonicalIntegrationTests
         var rows = await db.MarketingConnections.AsNoTracking().ToListAsync();
         Assert.DoesNotContain("google-refresh", rows.Single(x => x.Provider == MarketingDestinationKeys.Google).AdsAccessTokenCiphertext!);
         Assert.DoesNotContain("tiktok-access", rows.Single(x => x.Provider == MarketingDestinationKeys.TikTok).AdsAccessTokenCiphertext!);
+    }
+
+    [Theory]
+    [InlineData(401)]
+    [InlineData(403)]
+    public async Task GoogleOAuthDiscoveryDenialDoesNotPersistAConnectionWithoutDeveloperToken(int status)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        using var protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
+        var store = new MarketingConnectionStore(db, protector);
+        var owner = MarketingOwnerScope.Founder;
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+            new System.Collections.Generic.Dictionary<string, string?>
+            {
+                ["GoogleAds:ClientId"] = "google-client",
+                ["GoogleAds:ClientSecret"] = "google-secret"
+            }).Build();
+        var requests = 0;
+        var handler = new StubHandler(request =>
+        {
+            requests++;
+            var uri = request.RequestUri ?? throw new InvalidOperationException("Request URI missing.");
+            if (uri.Host == "oauth2.googleapis.com")
+                return Json("""{"access_token":"google-access","refresh_token":"google-refresh","expires_in":3600}""");
+            Assert.Equal("googleads.googleapis.com", uri.Host);
+            Assert.Equal("/v25/customers:listAccessibleCustomers", uri.AbsolutePath);
+            Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
+            Assert.Equal("google-access", request.Headers.Authorization?.Parameter);
+            Assert.False(request.Headers.Contains("developer-token"));
+            return new HttpResponseMessage((HttpStatusCode)status)
+            {
+                Content = new StringContent("""{"error":{"status":"PERMISSION_DENIED","message":"Synthetic API access denial"}}""")
+            };
+        });
+        using var http = new HttpClient(handler);
+        var service = new MarketingExternalAdsOAuthService(
+            new SingleClientFactory(http), configuration,
+            new EphemeralDataProtectionProvider(), store,
+            NullLogger<MarketingExternalAdsOAuthService>.Instance);
+
+        Assert.True(service.GetConnectionReadiness(owner, MarketingDestinationKeys.Google).CanConnect);
+        var connect = service.BuildConnectUrl(owner, MarketingDestinationKeys.Google,
+            "/WebsiteAnalytics/Index", "https://portal.example.test/WebsiteAnalytics/external-ads/callback");
+        var state = QueryHelpers.ParseQuery(new Uri(connect).Query)["state"].ToString();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CompleteCallbackAsync(MarketingDestinationKeys.Google, "google-code", state));
+
+        Assert.Equal(2, requests);
+        Assert.False((await store.GetProviderConnectionAsync(owner, MarketingDestinationKeys.Google)).Connected);
+        Assert.Empty(await db.MarketingConnections.AsNoTracking().ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GoogleReportingUsesOAuthWithoutDeveloperTokenAndPreservesSelectedAccount(
+        bool hasRetainedDeveloperToken)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        using var protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
+        var store = new MarketingConnectionStore(db, protector);
+        var owner = MarketingOwnerScope.Business(Guid.NewGuid());
+        await store.SaveProviderCredentialAsync(owner, MarketingDestinationKeys.Google, "google-refresh",
+            MarketingProviderAuthorizationMethods.GoogleOAuthRefreshToken, "{}", null,
+            "1111111111", "Scoped account");
+        var initial = await store.GetProviderConnectionAsync(owner, MarketingDestinationKeys.Google);
+        var settings = new System.Collections.Generic.Dictionary<string, string?>
+        {
+            ["GoogleAds:ClientId"] = "google-client",
+            ["GoogleAds:ClientSecret"] = "google-secret",
+            ["GoogleAds:LoginCustomerId"] = "999-999-9999"
+        };
+        if (hasRetainedDeveloperToken)
+            settings["GoogleAds:DeveloperToken"] = "retired-developer-token";
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+        var queries = new System.Collections.Generic.List<string>();
+        var requests = 0;
+        var handler = new StubHandler(request =>
+        {
+            requests++;
+            var uri = request.RequestUri ?? throw new InvalidOperationException("Request URI missing.");
+            if (uri.Host == "oauth2.googleapis.com")
+            {
+                var form = QueryHelpers.ParseQuery("?" +
+                    request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+                Assert.Equal("refresh_token", form["grant_type"].ToString());
+                Assert.Equal("google-refresh", form["refresh_token"].ToString());
+                return Json("""{"access_token":"google-access","expires_in":3600}""");
+            }
+            Assert.Equal("googleads.googleapis.com", uri.Host);
+            Assert.Equal("/v25/customers/1111111111/googleAds:searchStream", uri.AbsolutePath);
+            Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
+            Assert.Equal("google-access", request.Headers.Authorization?.Parameter);
+            Assert.False(request.Headers.Contains("developer-token"));
+            Assert.Equal("9999999999", Assert.Single(request.Headers.GetValues("login-customer-id")));
+            using var body = JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+            var query = body.RootElement.GetProperty("query").GetString()!;
+            queries.Add(query);
+            if (query == "SELECT customer.time_zone FROM customer LIMIT 1")
+                return Json("""[{"results":[{"customer":{"timeZone":"America/Phoenix"}}]}]""");
+            Assert.Contains("FROM campaign", query, StringComparison.Ordinal);
+            Assert.Contains("BETWEEN '2026-10-05' AND '2026-10-06'", query, StringComparison.Ordinal);
+            return Json("""[{"results":[{"campaign":{"id":"42","name":"Scoped campaign","status":"ENABLED"},"metrics":{"costMicros":"12500000","impressions":"30","clicks":"4","conversions":"2"}}]}]""");
+        });
+        using var http = new HttpClient(handler);
+        var factory = new SingleClientFactory(http);
+        var oauth = new MarketingExternalAdsOAuthService(factory, configuration,
+            new EphemeralDataProtectionProvider(), store,
+            NullLogger<MarketingExternalAdsOAuthService>.Instance);
+        var reporting = new MarketingExternalAdsReportingService(store, oauth, factory, configuration);
+        var range = TimeRangeRequest.FromPreset("custom",
+            new DateTime(2026, 10, 6, 0, 30, 0, DateTimeKind.Utc),
+            new DateTime(2026, 10, 6, 8, 30, 0, DateTimeKind.Utc));
+
+        var report = await reporting.GetCampaignsAsync(owner, MarketingDestinationKeys.Google, range);
+
+        Assert.Single(report.Rows);
+        Assert.Equal("America/Phoenix", report.AccountTimeZone);
+        Assert.Equal(new DateTime(2026, 10, 5), report.ProviderFromDate);
+        Assert.Equal(new DateTime(2026, 10, 6), report.ProviderToDate);
+        Assert.Equal(2, queries.Count);
+        Assert.Equal(3, requests);
+        Assert.Equal(initial.Revision,
+            (await store.GetProviderConnectionAsync(owner, MarketingDestinationKeys.Google)).Revision);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => reporting.GetCampaignsAsync(
+            MarketingOwnerScope.Business(Guid.NewGuid()), MarketingDestinationKeys.Google, range));
+        Assert.Equal(3, requests);
     }
 
     [Fact]
@@ -209,8 +346,11 @@ public sealed class ExternalAdsCanonicalIntegrationTests
         Assert.Equal("measurement_mapping_required", invalidated.Status);
     }
 
-    [Fact]
-    public async Task GoogleConversionTransportUsesCanonicalGclidValueTimeAndStableOrderId()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GoogleConversionTransportUsesCanonicalGclidValueTimeAndStableOrderId(
+        bool hasRetainedDeveloperToken)
     {
         using var db = ControllerTestHelpers.BuildDb();
         using var protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
@@ -243,19 +383,23 @@ public sealed class ExternalAdsCanonicalIntegrationTests
                 return Json("""{"access_token":"google-access","expires_in":3600}""");
             if (uri.Host == "googleads.googleapis.com" && uri.AbsolutePath.EndsWith(":uploadClickConversions", StringComparison.Ordinal))
             {
+                Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
+                Assert.Equal("google-access", request.Headers.Authorization?.Parameter);
+                Assert.False(request.Headers.Contains("developer-token"));
                 uploadBody = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
                 return Json("""{"results":[{"gclid":"gclid-canonical-1","conversionAction":"customers/1111111111/conversionActions/77","conversionDateTime":"2026-10-06 04:15:00+00:00"}]}""");
             }
             throw new InvalidOperationException("Unexpected provider request: " + uri);
         });
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
-            new System.Collections.Generic.Dictionary<string, string?>
-            {
-                ["GoogleAds:ClientId"] = "google-client",
-                ["GoogleAds:ClientSecret"] = "google-secret",
-                ["GoogleAds:DeveloperToken"] = "developer-token",
-                ["GoogleAds:ApiVersion"] = "v25"
-            }).Build();
+        var settings = new System.Collections.Generic.Dictionary<string, string?>
+        {
+            ["GoogleAds:ClientId"] = "google-client",
+            ["GoogleAds:ClientSecret"] = "google-secret",
+            ["GoogleAds:ApiVersion"] = "v25"
+        };
+        if (hasRetainedDeveloperToken)
+            settings["GoogleAds:DeveloperToken"] = "retired-developer-token";
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
         var oauth = new MarketingExternalAdsOAuthService(
             new SingleClientFactory(new HttpClient(handler)),
             configuration,
@@ -410,7 +554,6 @@ public sealed class ExternalAdsCanonicalIntegrationTests
     [Theory]
     [InlineData("google", "GoogleAds:ClientId", "OAuth client ID")]
     [InlineData("google", "GoogleAds:ClientSecret", "OAuth client secret")]
-    [InlineData("google", "GoogleAds:DeveloperToken", "developer token")]
     [InlineData("tiktok", "TikTokAds:AppId", "app ID")]
     [InlineData("tiktok", "TikTokAds:AppSecret", "app secret")]
     public async Task ExternalAdsReadinessRejectsEveryMissingProviderPrerequisiteBeforeConsent(
@@ -644,7 +787,6 @@ public sealed class ExternalAdsCanonicalIntegrationTests
     {
         ["GoogleAds:ClientId"] = "fixture-google-client",
         ["GoogleAds:ClientSecret"] = "fixture-secret-google",
-        ["GoogleAds:DeveloperToken"] = "fixture-secret-developer",
         ["TikTokAds:AppId"] = "fixture-tiktok-app",
         ["TikTokAds:AppSecret"] = "fixture-secret-tiktok",
         ["TikTokAds:AdvertiserAuthorizationUrl"] = "https://ads.tiktok.com/marketing_api/auth?app_id=fixture-tiktok-app",

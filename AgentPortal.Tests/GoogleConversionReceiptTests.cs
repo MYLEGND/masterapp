@@ -62,11 +62,15 @@ public sealed class GoogleConversionReceiptTests
         {
             if (request.RequestUri!.Host == "oauth2.googleapis.com")
                 return new(HttpStatusCode.OK) { Content = new StringContent("{\"access_token\":\"synthetic-access\",\"expires_in\":3600}") };
+            Assert.Equal("googleads.googleapis.com", request.RequestUri!.Host);
+            Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
+            Assert.Equal("synthetic-access", request.Headers.Authorization?.Parameter);
+            Assert.False(request.Headers.Contains("developer-token"));
             bodies.Add(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
             return new((HttpStatusCode)status) { Content = new StringContent(responseBody) };
         }));
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
-            ["GoogleAds:ClientId"] = "synthetic-client", ["GoogleAds:ClientSecret"] = "synthetic-secret", ["GoogleAds:DeveloperToken"] = "synthetic-token" }).Build();
+            ["GoogleAds:ClientId"] = "synthetic-client", ["GoogleAds:ClientSecret"] = "synthetic-secret" }).Build();
         var factory = new Mock<IHttpClientFactory>(); factory.Setup(x => x.CreateClient(It.IsAny<string>())).Returns(http);
         var oauth = new MarketingExternalAdsOAuthService(factory.Object, config, new EphemeralDataProtectionProvider(), store, NullLogger<MarketingExternalAdsOAuthService>.Instance);
         var transport = new ExternalAdsConversionApiService(http, oauth, store, config);

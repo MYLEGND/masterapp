@@ -3105,6 +3105,7 @@ WORKFLOWS = {
                     "AgentPortal.Tests/*Analytics*Tests.cs",
                     "AgentPortal.Tests/Marketing*Tests.cs",
                     "AgentPortal.Tests/ExternalAdsCanonicalIntegrationTests.cs",
+                    "AgentPortal.Tests/GoogleConversionReceiptTests.cs",
                     "AgentPortal.Tests/OpenAi*Tests.cs",
                     "AgentPortal.Tests/Tracking*Tests.cs",
                     "AgentPortal.Tests/QuoteProductInstrumentationContractTests.cs",
