@@ -16,6 +16,10 @@ async function fixture({ device = true, founder = false, siteKey = 'legend', sel
     <button class="wa-site-switch-btn" data-site-key="legend"></button><button class="wa-site-switch-btn" data-site-key="protect"></button>
     <div id="product-links-list"></div><span id="landing-routes-base-url"></span>
     <span id="fa-range-label"></span><span id="wa-scope-label"></span>
+    <span id="mod-traffic-meta"></span><span id="mod-page-meta"></span><span id="mod-cta-meta"></span>
+    <span id="kpi-intent-warning"></span><span id="kpi-session-warning"></span>
+    <div id="traffic-quality-empty-state" hidden></div><span id="ai-drawer-scope-label"></span>
+    <span id="mh-range-label"></span>
     <select id="wa-scope-select"><option value="">Global</option><option value="founder-profile">Founder Personal</option><option value="agent-profile">Agent</option></select>
     <button class="btn-range" data-range="7d"></button><button class="btn-range" data-range="30d"></button>
     <div id="kpi-pageviews"></div><div id="kpi-session"></div><span id="mh-score"></span><span id="mh-verdict"></span>
@@ -753,6 +757,85 @@ test('manual refresh preserves the same snapshot and scroll; scope changes rejec
     refresh.click();
     await settle();
     assert.equal(f.window.document.getElementById('growth-economics-spend').textContent, 'Unavailable');
+  } finally { f.window.close(); }
+});
+
+
+for (const transition of ['range', 'site', 'owner']) {
+  test(`unavailable ${transition} changes clear prior hints, warnings, and health labels while same-scope refresh retains them`, async () => {
+    const summaryPending = [], healthPending = [];
+    let summaryCalls = 0, healthCalls = 0;
+    const response = data => new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } });
+    const previous = { isAvailable: true, rangeLabel: 'Today', scopeLabel: 'Founder Personal',
+      pageViews: 7, sessions: 2, topSource: 'prior-source', topPage: 'prior-page', topCta: 'prior-cta',
+      intentLowSample: true, sessionLowSample: true };
+    const f = await fixture({ founder: true,
+      summaryHandler: () => ++summaryCalls === 1 ? response(previous)
+        : new Promise((resolve, reject) => summaryPending.push({ resolve, reject })),
+      healthHandler: () => ++healthCalls === 1 ? response({ rangeLabel: 'Today', metaHealthStatus: 'Healthy' })
+        : new Promise((resolve, reject) => healthPending.push({ resolve, reject }))
+    });
+    try {
+      const d = f.window.document, text = id => d.getElementById(id).textContent;
+      assert.match(text('mod-traffic-meta'), /prior-source/);
+      assert.match(text('kpi-intent-warning'), /Low sample/);
+      assert.equal(text('mh-range-label'), 'Today');
+      d.getElementById('analytics-refresh').click();
+      assert.match(text('mod-page-meta'), /prior-page/, 'same-scope pending refresh retains current evidence');
+      assert.match(text('kpi-session-warning'), /Low sample/);
+      if (transition === 'range') d.querySelector('[data-range="7d"]').click();
+      if (transition === 'site') d.querySelector('[data-site-key="protect"]').click();
+      if (transition === 'owner') {
+        const owner = d.getElementById('wa-scope-select');
+        owner.value = 'agent-profile';
+        owner.dispatchEvent(new f.window.Event('change'));
+      }
+      await settle();
+      const assertUnavailable = () => {
+        for (const id of ['mod-traffic-meta', 'mod-page-meta', 'mod-cta-meta'])
+          assert.doesNotMatch(text(id), /prior-/);
+        assert.equal(text('kpi-intent-warning'), '');
+        assert.equal(text('kpi-session-warning'), '');
+        assert.equal(text('mh-verdict'), 'Unavailable');
+        assert.equal(d.getElementById('mh-verdict').className, 'wa-health-verdict unavailable');
+        if (transition === 'range') {
+          assert.notEqual(text('mh-range-label'), 'Today');
+          assert.doesNotMatch(text('ai-drawer-scope-label'), /Today/);
+        }
+      };
+      assertUnavailable();
+      assert.equal(summaryPending.length, 2);
+      assert.equal(healthPending.length, 2);
+      summaryPending[0].resolve(response(previous));
+      healthPending[0].resolve(response({ rangeLabel: 'Today', metaHealthStatus: 'Healthy' }));
+      await settle();
+      assertUnavailable();
+      summaryPending[1].reject(new Error('Selected summary unavailable'));
+      healthPending[1].reject(new Error('Selected health unavailable'));
+      await settle();
+      assertUnavailable();
+      assert.equal(text('kpi-pageviews'), '—');
+      assert.equal(d.getElementById('analytics-refresh').disabled, false);
+    } finally { f.window.close(); }
+  });
+}
+
+test('a selected-range failure clears a previous no-traffic claim instead of treating unknown data as zero', async () => {
+  let calls = 0;
+  const f = await fixture({ founder: true, summaryHandler: async () => ++calls === 1
+    ? new Response(JSON.stringify({ isAvailable: true, rangeLabel: 'Today', pageViews: 0, sessions: 0 }))
+    : new Response('', { status: 503 }) });
+  try {
+    const d = f.window.document, empty = d.getElementById('traffic-quality-empty-state');
+    assert.equal(empty.hidden, false);
+    assert.match(empty.textContent, /No real human traffic/);
+    d.querySelector('[data-range="7d"]').click();
+    assert.equal(empty.hidden, true);
+    assert.equal(empty.textContent, '');
+    await settle();
+    assert.equal(empty.hidden, true);
+    assert.equal(empty.textContent, '');
+    assert.equal(d.getElementById('kpi-pageviews').textContent, '—');
   } finally { f.window.close(); }
 });
 

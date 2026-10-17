@@ -757,6 +757,15 @@
       'kpi-top-cta'
     ].forEach(id => setText(id, '—'));
     setText('kpi-intent-sub', 'Unavailable');
+    setWarning('kpi-intent-warning', false);
+    setWarning('kpi-session-warning', false);
+    ['traffic', 'page', 'cta'].forEach(key => setText(`mod-${key}-meta`, resolveAnalysisModuleDescriptor(key)));
+    const emptyState = document.getElementById('traffic-quality-empty-state');
+    if (emptyState) {
+      emptyState.hidden = true;
+      emptyState.textContent = '';
+    }
+    setText('ai-drawer-scope-label', `AI reviewing: All Traffic · ${data?.rangeLabel || state.scope.preset || 'Current Range'} · ${state.scope.scopeLabel}`);
     ['kpi-pv-delta', 'kpi-vis-delta', 'kpi-ses-delta', 'kpi-leads-delta'].forEach(id => setText(id, '—'));
     ['kpi-pv-spark', 'kpi-vis-spark', 'kpi-ses-spark', 'kpi-leads-spark'].forEach(id => {
       const el = document.getElementById(id);
@@ -3123,6 +3132,9 @@ function escapeHtml(value) {
     if (warningsEl) warningsEl.innerHTML = `<li>${escapeHtml(message)}</li>`;
     setTableMessage('mh-errors-body', 8, message, 'text-danger');
     setText('mh-verdict', 'Unavailable');
+    setText('mh-range-label', state.cache.summary?.rangeLabel || state.scope.preset || 'Current Range');
+    const verdictEl = document.getElementById('mh-verdict');
+    if (verdictEl) verdictEl.className = 'wa-health-verdict unavailable';
     ['mh-score', 'mh-client-errors', 'mh-inferred-starts', 'mh-lead-persisted',
       'mh-workstation-success', 'mh-workstation-failures', 'mh-unknown-attribution', 'mh-no-owner']
       .forEach(id => setText(id, '—'));

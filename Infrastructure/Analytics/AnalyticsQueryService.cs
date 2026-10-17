@@ -18,7 +18,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<List<AnalyticsEvent>> LoadAttributedEventsAsync(TimeRangeRequest range, ScopeContext scope,
         TrafficType trafficType = TrafficType.All, CancellationToken ct = default)
     {
-        var ids = await ResolveScopedAgentIdsAsync(scope);
+        var ids = await ResolveScopedAgentIdsAsync(scope, ct);
         var events = await LoadFilteredEventsAsync(range, scope, ids, ct);
         return FilterAttributedRowsByTraffic(BuildAttributedEventRows(events), trafficType).Select(x => x.Event).ToList();
     }
@@ -42,7 +42,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<List<MetaSignalEvent>> LoadScopedMetaEventsAsync(TimeRangeRequest range, ScopeContext scope,
         IReadOnlyCollection<AnalyticsEvent> events, CancellationToken ct = default)
     {
-        var ids = await ResolveScopedAgentIdsAsync(scope);
+        var ids = await ResolveScopedAgentIdsAsync(scope, ct);
         var query = _db.MetaSignalEvents.AsNoTracking().ApplySiteScope(scope)
             .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc <= range.ToUtc);
         query = query.Where(ScopePredicateMetaEvents(scope, ids));
@@ -117,7 +117,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         var rawEvents = await BaseEventsWithoutQualityFilter(range, scope, scopedAgentIds).ToListAsync(cancellationToken);
         return TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, range.QualityMode,
-            await LoadClassificationEvidenceAsync(rawEvents, [], range.QualityMode, scope, scopedAgentIds, cancellationToken));
+            (await LoadClassificationEvidenceAsync(rawEvents, [], range.QualityMode, scope, scopedAgentIds, cancellationToken)).All);
     }
 
     private async Task<List<AnalyticsEvent>> LoadFilteredEventsInRangeAsync(
@@ -129,7 +129,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         var rawEvents = await EventsInRangeWithoutQualityFilter(from, to, scope, scopedAgentIds).ToListAsync();
         return TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, qualityMode,
-            await LoadClassificationEvidenceAsync(rawEvents, [], qualityMode, scope, scopedAgentIds));
+            (await LoadClassificationEvidenceAsync(rawEvents, [], qualityMode, scope, scopedAgentIds)).All);
     }
 
     public IQueryable<AnalyticsEvent> ScopedEvents(
@@ -165,20 +165,24 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 .Where(l => l.CreatedUtc >= from && l.CreatedUtc <= to)
                 .Where(ScopePredicateLeads(scope, scopedAgentIds)));
 
-    private async Task<(List<AnalyticsEvent> Events, List<WebsiteLead> Leads)> LoadCanonicalDatasetAsync(
+    private async Task<(List<AnalyticsEvent> Events, List<WebsiteLead> Leads, List<AnalyticsEvent> EventSessionEvents)> LoadCanonicalDatasetAsync(
         TimeRangeRequest range,
         ScopeContext scope,
         Guid[]? scopedAgentIds = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool includeEventSessionView = false)
     {
         var rawEvents = await BaseEventsWithoutQualityFilter(range, scope, scopedAgentIds)
             .ToListAsync(cancellationToken);
         var rawLeads = await BaseLeadsWithoutQualityFilter(range, scope, scopedAgentIds)
             .ToListAsync(cancellationToken);
-        var evidence = await LoadClassificationEvidenceAsync(rawEvents, rawLeads, range.QualityMode, scope, scopedAgentIds, cancellationToken);
-        var events = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, range.QualityMode, evidence);
-        var leads = TrafficQualityBucketFilters.ApplyLeadBucketMembershipInMemory(rawLeads, evidence, range.QualityMode);
-        return (events, leads);
+        var evidence = await LoadClassificationEvidenceAsync(rawEvents, rawLeads, range.QualityMode, scope, scopedAgentIds, cancellationToken, includeEventSessionView);
+        var events = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, range.QualityMode, evidence.All);
+        var leads = TrafficQualityBucketFilters.ApplyLeadBucketMembershipInMemory(rawLeads, evidence.All, range.QualityMode);
+        var eventSessionEvents = includeEventSessionView
+            ? TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, range.QualityMode, evidence.EventSessions)
+            : new List<AnalyticsEvent>();
+        return (events, leads, eventSessionEvents);
     }
 
     private async Task<(List<AnalyticsEvent> Events, List<WebsiteLead> Leads)> LoadCanonicalDatasetInRangeAsync(
@@ -194,24 +198,45 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var rawLeads = await LeadsInRangeWithoutQualityFilter(from, to, scope, scopedAgentIds)
             .ToListAsync(cancellationToken);
         var evidence = await LoadClassificationEvidenceAsync(rawEvents, rawLeads, qualityMode, scope, scopedAgentIds, cancellationToken);
-        var events = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, qualityMode, evidence);
-        var leads = TrafficQualityBucketFilters.ApplyLeadBucketMembershipInMemory(rawLeads, evidence, qualityMode);
+        var events = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, qualityMode, evidence.All);
+        var leads = TrafficQualityBucketFilters.ApplyLeadBucketMembershipInMemory(rawLeads, evidence.All, qualityMode);
         return (events, leads);
     }
 
-    private async Task<List<AnalyticsEvent>> LoadClassificationEvidenceAsync(List<AnalyticsEvent> events, List<WebsiteLead> leads,
-        TrafficQualityMode mode, ScopeContext scope, Guid[]? scopedAgentIds, CancellationToken ct = default)
+    private sealed record ClassificationEvidence(List<AnalyticsEvent> All, List<AnalyticsEvent> EventSessions);
+
+    private async Task<ClassificationEvidence> LoadClassificationEvidenceAsync(List<AnalyticsEvent> events, List<WebsiteLead> leads,
+        TrafficQualityMode mode, ScopeContext scope, Guid[]? scopedAgentIds, CancellationToken ct = default,
+        bool includeEventSessionView = false)
     {
-        if (mode == TrafficQualityMode.AllTraffic) return events;
-        // CRM outcomes retain the acquisition session even when it predates the reporting window.
-        // Load only behavioral fields; owner/host/visitor matching remains in the shared classifier.
-        var sessions = events.Select(e => e.SessionId).Concat(leads.Select(l => l.SessionId))
+        if (mode == TrafficQualityMode.AllTraffic) return new(events, events);
+        // CRM outcomes retain acquisition sessions even when they predate the reporting window.
+        // Meta diagnostics use only event-session evidence. Preserve both domains: pipe-containing
+        // identities may collide in the existing classifier, and SQL session matching uses DB collation.
+        var eventSessions = events.Select(e => e.SessionId)
             .Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToArray();
-        if (sessions.Length == 0) return events;
+        var sessions = eventSessions.Concat(leads.Select(l => l.SessionId))
+            .Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToArray();
+        if (sessions.Length == 0) return new(events, events);
         var query = _db.AnalyticsEvents.AsNoTracking().Where(ScopePredicateEvents(scope, scopedAgentIds))
             .Where(e => sessions.Contains(e.SessionId) && e.EventUtc <= DateTime.UtcNow);
-        var evidence = await UnifiedEventMapper.ProjectBehaviorEvidence(query).ToListAsync(ct);
-        return evidence.Concat(events).ToList();
+        var behavior = UnifiedEventMapper.ProjectBehaviorEvidence(query);
+        if (!includeEventSessionView)
+        {
+            var evidence = await behavior.ToListAsync(ct);
+            var all = evidence.Concat(events).ToList();
+            return new(all, all);
+        }
+
+        // Project membership before materialization so case/accent matching remains database-owned.
+        var rows = await behavior.Select(e => new
+        {
+            Event = e,
+            ForEventSession = eventSessions.Length > 0 && eventSessions.Contains(e.SessionId)
+        }).ToListAsync(ct);
+        return new(
+            rows.Select(r => r.Event).Concat(events).ToList(),
+            rows.Where(r => r.ForEventSession).Select(r => r.Event).Concat(events).ToList());
     }
 
     private IQueryable<AnalyticsEvent> ApplyQualityFilterEvents(IQueryable<AnalyticsEvent> query, TrafficQualityMode mode)
@@ -342,8 +367,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     /// Expands an agent scope to all tracking profile IDs sharing the same UPN.
     /// This prevents analytics drop-offs when duplicate profile rows exist for one user.
     /// </summary>
-    private Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope) =>
-        AnalyticsTrackingProfileScope.ResolveAsync(_db, scope);
+    private Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope, CancellationToken ct = default) =>
+        AnalyticsTrackingProfileScope.ResolveAsync(_db, scope, ct);
 
     private static string? NormalizeEnv(string? env)
     {
@@ -2001,10 +2026,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     private static decimal ClampPercent(decimal value) => Math.Min(100m, Math.Max(0m, value));
 
-    public async Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
+    public async Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, CancellationToken ct = default)
     {
-        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var dataset = await LoadCanonicalDatasetAsync(range, scope, scopedAgentIds);
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope, ct);
+        var dataset = await LoadCanonicalDatasetAsync(range, scope, scopedAgentIds, ct);
         var allEvents = dataset.Events;
         var allLeads = dataset.Leads;
 
@@ -2027,7 +2052,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var prevFrom = range.FromUtc - span;
         var prevTo   = range.ToUtc - span;
         var previousDataset = await LoadCanonicalDatasetInRangeAsync(
-            prevFrom, prevTo, scope, range.QualityMode, scopedAgentIds);
+            prevFrom, prevTo, scope, range.QualityMode, scopedAgentIds, ct);
         var prevAllEvents = previousDataset.Events;
         var prevAllLeads = previousDataset.Leads;
 
@@ -2565,12 +2590,23 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         };
     }
 
-    public async Task<MarketingHealthDto> GetMarketingHealthAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
+    public async Task<MarketingHealthDto> GetMarketingHealthAsync(TimeRangeRequest range, ScopeContext scope,
+        TrafficType trafficType = TrafficType.All, CancellationToken ct = default) =>
+        (await GetMarketingHealthSnapshotAsync(range, scope, trafficType, ct)).Health;
+
+    public async Task<MarketingHealthReadSnapshot> GetMarketingHealthSnapshotAsync(TimeRangeRequest range, ScopeContext scope,
+        TrafficType trafficType = TrafficType.All, CancellationToken ct = default)
     {
-        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var dataset = await LoadCanonicalDatasetAsync(range, scope, scopedAgentIds);
-        var allEvents = dataset.Events;
-        var allLeads = dataset.Leads;
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope, ct);
+        var dataset = await LoadCanonicalDatasetAsync(range, scope, scopedAgentIds, ct, includeEventSessionView: true);
+        return new MarketingHealthReadSnapshot(
+            BuildMarketingHealth(range, trafficType, dataset.Events, dataset.Leads),
+            range, scope, scopedAgentIds, dataset.EventSessionEvents);
+    }
+
+    private static MarketingHealthDto BuildMarketingHealth(TimeRangeRequest range, TrafficType trafficType,
+        List<AnalyticsEvent> allEvents, List<WebsiteLead> allLeads)
+    {
         var attributedRows = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType);
         var events = attributedRows.Select(r => r.Event).ToList();
         var leads = trafficType == TrafficType.All
