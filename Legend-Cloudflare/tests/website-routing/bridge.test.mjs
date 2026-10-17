@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { spawnSync } from 'node:child_process';
 import { buildBridgeRequest, handleWebsiteRouting } from '../../src/website-routing/bridge.mjs';
 
 const secret = '0123456789abcdef0123456789abcdef';
@@ -245,6 +246,34 @@ test('Studio, static assets, business previews and other applications retain the
     await handleWebsiteRouting(request,env,async value=>{seen=value;return new Response('ok');});
     assert.equal(seen.url,request.url);
   }
+});
+
+test('long measurement asset URLs retain their origin within a bounded process',()=>{
+  const bridgeUrl=new URL('../../src/website-routing/bridge.mjs',import.meta.url).href;
+  const probe=`
+    import assert from 'node:assert/strict';
+    const {handleWebsiteRouting}=await import(${JSON.stringify(bridgeUrl)});
+    const version='a'.repeat(64);
+    for(const hostname of ['mylegnd.com','www.mylegnd.com']) {
+      for(const path of ['/legend-public-openai-measurement.js','/legend-public-meta-signal-intelligence.js']) {
+        const request=new Request('https://'+hostname+path+'?v='+version);
+        const calls=[];
+        const response=await handleWebsiteRouting(request,{},async forwarded=>{
+          calls.push(forwarded.url);
+          return new Response('asset',{headers:{'Content-Type':'application/javascript'}});
+        });
+        assert.deepEqual(calls,[request.url]);
+        assert.equal(response.status,200);
+        assert.equal(await response.text(),'asset');
+      }
+    }
+  `;
+  // A parent deadline can stop a synchronous route-matcher regression.
+  const result=spawnSync(process.execPath,['--input-type=module','--eval',probe],{
+    encoding:'utf8',timeout:2000,maxBuffer:64*1024
+  });
+  assert.ifError(result.error);
+  assert.equal(result.status,0,result.stderr);
 });
 
 test('company renderer failure cannot fall back to stale static HTML',async()=>{

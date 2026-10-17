@@ -108,6 +108,41 @@ public sealed class WebsitePublishingAuthorityTests
         fixture.Db.ChangeTracker.Clear();
     }
 
+    [Theory]
+    [InlineData("/legend-public-openai-measurement.js")]
+    [InlineData("/legend-public-meta-signal-intelligence.js")]
+    [InlineData("/team//history")]
+    [InlineData("/TEAM/history")]
+    public async Task PublicLegendHtmlNeverServesInvalidPathsEvenIfPresentInPublication(string path)
+    {
+        using var fixture = new Fixture();
+        var state = new Domain.Entities.WebsiteContentState
+        {
+            OwnerKey = WebsiteEditorSiteKeys.GlobalOwnerKey,
+            SiteKey = WebsiteEditorSiteKeys.Legend
+        };
+        var version = new Domain.Entities.WebsiteContentVersion
+        {
+            StateId = state.Id, Revision = 1, DocumentJson = "{}",
+            CompiledPagesJson = JsonSerializer.Serialize(new
+            {
+                pages = new System.Collections.Generic.Dictionary<string, object>
+                {
+                    [path] = new { html = "<!doctype html><main>Invalid route must remain private</main>" }
+                }
+            })
+        };
+        state.PublishedVersionId = version.Id;
+        fixture.Db.AddRange(state, version);
+        await fixture.Db.SaveChangesAsync();
+        var controller = fixture.Controller;
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
+        };
+        Assert.IsType<NotFoundResult>(await controller.LegendPage(path));
+    }
+
     [Fact]
     public async Task PublicLegendHtmlReadsOnlyActivePrecompiledPublication()
     {
@@ -121,7 +156,8 @@ public sealed class WebsitePublishingAuthorityTests
         {
             pages = new System.Collections.Generic.Dictionary<string, object>
             {
-                ["/"] = new { html = "<!doctype html><main><h1>" + text + "</h1></main><a href='__LEGEND_CANONICAL_URL__'>Home</a>" }
+                ["/"] = new { html = "<!doctype html><main><h1>" + text + "</h1></main><a href='__LEGEND_CANONICAL_URL__'>Home</a>" },
+                ["/team/history"] = new { html = "<!doctype html><main><h1>Nested " + text + "</h1></main>" }
             }
         });
         var first = new Domain.Entities.WebsiteContentVersion
@@ -158,6 +194,8 @@ public sealed class WebsitePublishingAuthorityTests
         Assert.DoesNotContain("<h1>First</h1>", currentPage.Content, StringComparison.Ordinal);
         Assert.Equal(second.Id.ToString("D"),
             controller.Response.Headers["X-Legend-Publication-Id"].ToString());
+        var nestedPage = Assert.IsType<ContentResult>(await controller.LegendPage("/team/history/"));
+        Assert.Contains("<h1>Nested Second</h1>", nestedPage.Content, StringComparison.Ordinal);
         Assert.IsType<NotFoundResult>(await controller.LegendPage("/absent"));
     }
 
@@ -217,6 +255,7 @@ public sealed class WebsitePublishingAuthorityTests
         var count = await f.Db.Set<Domain.Entities.WebsiteContentVersion>().CountAsync();
         var retry = Body(await f.Controller.Publish(new(token, 1, requestId)));
         Assert.True(retry.GetProperty("alreadyPublished").GetBoolean());
+        Assert.False(retry.TryGetProperty("publicationRejection", out _));
         Assert.Equal(count, await f.Db.Set<Domain.Entities.WebsiteContentVersion>().CountAsync());
         var status = Body(await f.Controller.PublicationStatus(token, requestId));
         Assert.True(status.GetProperty("found").GetBoolean());
@@ -225,6 +264,27 @@ public sealed class WebsitePublishingAuthorityTests
         Assert.IsType<UnauthorizedResult>(await f.Controller.PublicationStatus("invalid", requestId));
         var published = Body(await f.Controller.Public("legend"));
         Assert.Equal(requestId, published.GetProperty("publication").GetProperty("versionId").GetGuid());
+    }
+
+    [Fact]
+    public async Task PublicationRevisionPrecheckReturnsRequestBoundRejectionWithoutCommitting()
+    {
+        using var f = new Fixture();
+        var token = f.Token;
+        await SeedCanonicalDraftAsync(f, token, WebsiteEditorSiteKeys.Legend, Document("Saved draft"), revision: 4);
+        var requestId = Guid.NewGuid();
+        var rejected = Assert.IsType<ConflictObjectResult>(await f.Controller.Publish(new(token, 3, requestId)));
+        var payload = JsonSerializer.SerializeToElement(rejected.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal("revision_conflict", payload.GetProperty("error").GetString());
+        var receipt = payload.GetProperty("publicationRejection");
+        Assert.Equal("rejected_before_commit", receipt.GetProperty("disposition").GetString());
+        Assert.Equal(requestId, receipt.GetProperty("requestId").GetGuid());
+        Assert.Equal(3, receipt.GetProperty("expectedRevision").GetInt64());
+        Assert.Empty(await f.Db.Set<Domain.Entities.WebsiteContentVersion>().ToListAsync());
+        var state = Assert.Single(await f.Db.Set<Domain.Entities.WebsiteContentState>().AsNoTracking().ToListAsync());
+        Assert.Equal(4, state.Revision);
+        Assert.Null(state.PublishedVersionId);
+        Assert.False(Body(await f.Controller.PublicationStatus(token, requestId)).GetProperty("found").GetBoolean());
     }
 
     [Fact]
@@ -716,7 +776,15 @@ public sealed class WebsitePublishingAuthorityTests
             Href = "#"
         });
         await SeedCanonicalDraftAsync(f, token, WebsiteEditorSiteKeys.Legend, dead, revision: 1);
-        Assert.IsType<BadRequestObjectResult>(await f.Controller.Publish(new(token, 1)));
+        var rejectedRequestId = Guid.NewGuid();
+        var rejected = Assert.IsType<BadRequestObjectResult>(await f.Controller.Publish(new(token, 1, rejectedRequestId)));
+        var error = JsonSerializer.SerializeToElement(rejected.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var rejection = error.GetProperty("publicationRejection");
+        Assert.Equal("rejected_before_commit", rejection.GetProperty("disposition").GetString());
+        Assert.Equal(rejectedRequestId, rejection.GetProperty("requestId").GetGuid());
+        Assert.Equal(1, rejection.GetProperty("expectedRevision").GetInt64());
+        Assert.Empty(await f.Db.Set<Domain.Entities.WebsiteContentVersion>().ToListAsync());
+        Assert.False(Body(await f.Controller.PublicationStatus(token, rejectedRequestId)).GetProperty("found").GetBoolean());
 
         Assert.IsType<OkObjectResult>(await f.Controller.ApplyMutations(
             new WebsitePlatformController.WebsiteMutationRequest(token, 1, [
@@ -737,7 +805,11 @@ public sealed class WebsitePublishingAuthorityTests
                     }
                 }
             ])));
-        Assert.IsType<OkObjectResult>(await f.Controller.Publish(new(token, 2)));
+        var correctedRequestId = Guid.NewGuid();
+        var corrected = Body(await f.Controller.Publish(new(token, 2, correctedRequestId)));
+        Assert.Equal(correctedRequestId, corrected.GetProperty("versionId").GetGuid());
+        Assert.False(Body(await f.Controller.PublicationStatus(token, rejectedRequestId)).GetProperty("found").GetBoolean());
+        Assert.Single(await f.Db.Set<Domain.Entities.WebsiteContentVersion>().ToListAsync());
 
         var published = Page(Body(await f.Controller.Public("legend")));
         var button = published.GetProperty("composition").EnumerateArray()

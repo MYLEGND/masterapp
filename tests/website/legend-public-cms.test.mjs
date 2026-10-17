@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { Script } from 'node:vm';
 
 const source = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-cms.js', import.meta.url), 'utf8');
 const publicCss = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-web.css', import.meta.url), 'utf8');
@@ -343,7 +344,7 @@ function fixtureMutationResponse(before,after,serverRevision,integerRevisions=fa
   };
 }
 
-async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,dataCatalog=null,dataCollections=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,mutationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,modelContext=null,integerRevisions=false,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,dataCatalog=null,dataCollections=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,mutationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,modelContext=null,integerRevisions=false,pendingPublication=null,viewportWidth=1024,scriptTimeoutMs=null,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:origin+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[]; const animations=[];
   Object.defineProperty(w,'innerWidth',{value:viewportWidth,writable:true,configurable:true});
@@ -503,10 +504,17 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
     }
     return {ok:true,status:200,json:async()=>({siteKey,business,store,revision:revisionValue(),document:structuredClone(serverDoc),legacyMigration:legacyMigration || undefined,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,agentContract:agentContract || undefined,capabilities:capabilities || undefined,drafts:[]})};
   };
-  w.eval(source);
+  if(pendingPublication) w.sessionStorage.setItem(
+    'legend-publication:'+siteKey+':'+(business?.id || '')+':'+agentSlug,JSON.stringify(pendingPublication));
+  if(scriptTimeoutMs) {
+    try { new Script(source).runInContext(dom.getInternalVMContext(),{timeout:scriptTimeoutMs}); }
+    catch(error) { w.close(); throw error; }
+  } else w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
-  const click=selector=>w.document.querySelector(selector).dispatchEvent(new w.MouseEvent('click',{bubbles:true,cancelable:true}));
+  const click=selector=>scriptTimeoutMs
+    ? new Script(`document.querySelector(${JSON.stringify(selector)}).dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}))`).runInContext(dom.getInternalVMContext(),{timeout:scriptTimeoutMs})
+    : w.document.querySelector(selector).dispatchEvent(new w.MouseEvent('click',{bubbles:true,cancelable:true}));
   const input=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('input',{bubbles:true}));};
   const change=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}));};
   const editSelected=(value)=> {const el=w.document.querySelector('.legend-cms-selected');assert.ok(el);const edit=w.document.querySelector('#legend-cms-edit-text');if(edit&&!edit.hidden)edit.click();el.textContent=value;el.dispatchEvent(new w.Event('beforeinput',{bubbles:true,cancelable:true}));el.dispatchEvent(new w.Event('input',{bubbles:true}));};
@@ -2923,6 +2931,51 @@ test('Studio bootstrap uses compact context and lazy advanced data/signal catalo
   assert.match(source,/listBusinessData:async\(\)=>/);
 });
 
+test('Studio bootstrap rejects asset filenames and preserves strict nested page selection within a script deadline',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/team/history']={title:'History',description:'',navigation:{label:'History',showInNavigation:true,order:1,isDeleted:false},dynamicBinding:null,composition:[
+    canonicalNode('history.heading','heading','h1',{text:'Team history'})
+  ]};
+  for(const [route,expected] of [
+    ['/legend-public-openai-measurement.js','/'],
+    ['/TEAM/HISTORY','/'],
+    ['/team//history','/'],
+    ['/team/history/','/team/history']
+  ]) {
+    const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},doc,
+      search:'?legendEdit=ticket&cmsPage='+encodeURIComponent(route),scriptTimeoutMs:2000});
+    try {
+      assert.equal(f.w.document.querySelector('#legend-cms-page-select').value,expected);
+      assert.equal(f.calls.filter(call=>!call.method && new URL(call.url).pathname.endsWith('/manage')).length,1);
+      assert.equal(f.calls.some(call=>call.method==='POST'),false);
+    } finally { f.close(); }
+  }
+});
+
+test('Pages manager rejects long filenames before mutation and retains nested route normalization',async()=>{
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},scriptTimeoutMs:2000});
+  try {
+    const home=structuredClone(f.serverDocument().pages['/']);
+    f.click('[data-open="page"]');
+    f.w.document.querySelector('#legend-cms-page-nav-label').value='History';
+    f.input('#legend-cms-page-slug','/legend-public-openai-measurement.js');
+    f.click('#legend-cms-page-create');
+    assert.equal(f.alerts.at(-1),'Enter a unique website route such as /team or /services/commercial.');
+    assert.equal(f.calls.some(call=>call.method==='POST' && call.url.endsWith('/manage/mutations')),false);
+    assert.equal(f.w.document.querySelector('#legend-cms-page-select').value,'/');
+    assert.deepEqual(f.serverDocument().pages['/'],home);
+
+    f.input('#legend-cms-page-slug',' TEAM/HISTORY/// ');
+    f.click('#legend-cms-page-create');
+    for(let i=0;i<100 && f.w.history.state?.legendStudioRoute!=='/team/history';i++)
+      await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(f.w.history.state?.legendStudioRoute,'/team/history');
+    assert.equal(f.serverDocument().pages['/team/history'].title,'History');
+    assert.deepEqual(f.serverDocument().pages['/'],home);
+    assert.equal(f.calls.filter(call=>call.method==='POST' && call.url.endsWith('/manage/mutations')).length,1);
+  } finally { f.close(); }
+});
+
 test('business Pages manager creates a canonical page by mutation and switches in place', async()=>{
   const f=await domFixture({
     siteKey:'business',
@@ -4290,7 +4343,6 @@ test('publish allows bounded immutable compilation before client cancellation wh
   assert.match(source,/const method=String\(options\.method \|\| 'GET'\)\.toUpperCase\(\)/);
   assert.match(source,/const deadlineMs=method==='POST' \? 70000 : 20000/);
   assert.match(source,/url\.searchParams\.set\('requestId', pendingPublication\.requestId\)/);
-  assert.match(source,/if \(!pendingPublication\) rememberPublication\(\{requestId:crypto\.randomUUID\(\), expectedRevision:submittedRevision\}\)/);
 });
 
 test('Website Studio exposes original-request publication recovery with read-only confirmation',()=>{
@@ -4529,6 +4581,163 @@ for(const status of [409,500]) {
       assert.deepEqual(f.publishedDocument(),published);
       assert.equal(f.calls.filter(call=>call.url.endsWith('/manage/publish')).length,1);
       const event=new f.w.Event('beforeunload',{cancelable:true}); f.w.dispatchEvent(event); assert.equal(event.defaultPrevented,true);
+    } finally {f.close();}
+  });
+}
+
+function fixturePreCommitRejection(request,{status=400,error='website_preflight_failed',change=null}={}) {
+  const payload={error,message:'Fixture validation rejected publication',publicationRejection:{
+    disposition:'rejected_before_commit',requestId:request.requestId,expectedRevision:request.expectedRevision
+  }};
+  if(change) change(payload);
+  return {ok:false,status,json:async()=>payload};
+}
+
+test('fresh publication rejection preserves newer edits, restarts an expired draft timer, and permits a new request',async()=>{
+  const f=await domFixture({integerRevisions:true});
+  try {
+    const original=f.w.fetch; let reject; let rejectedRequest; let latestRequestId; let posts=0;
+    f.w.fetch=async(url,options={})=>{
+      if(String(url).endsWith('/manage/publish')) {
+        const request=JSON.parse(options.body); posts++; latestRequestId=request.requestId;
+        if(posts===1) {
+          rejectedRequest=request;
+          return new Promise(resolve=>{reject=()=>resolve(fixturePreCommitRejection(request));});
+        }
+      }
+      if(options.method==='HEAD') return {ok:true,headers:{get:()=>latestRequestId}};
+      return original(url,options);
+    };
+    f.click('#legend-cms-publish'); await new Promise(resolve=>setTimeout(resolve,0)); assert.ok(reject);
+    f.click('main h1'); f.editSelected('Newer draft after rejected publication');
+    await new Promise(resolve=>setTimeout(resolve,1000));
+    assert.equal(f.calls.filter(call=>call.url.endsWith('/manage/mutations')).length,0);
+    reject(); await new Promise(resolve=>setTimeout(resolve,20));
+    assert.equal(f.w.document.querySelector('#legend-cms-publication-recovery').hidden,true);
+    assert.equal(f.w.sessionStorage.getItem('legend-publication:legend::'),null);
+    assert.equal(f.w.document.querySelector('main h1').textContent,'Newer draft after rejected publication');
+    await new Promise(resolve=>setTimeout(resolve,1000));
+    assert.equal(canonicalNodeById(f.serverDocument(),'home.h1.node.1').text,'Newer draft after rejected publication');
+    assert.equal(f.publishedDocument(),null); assert.equal(posts,1);
+    const mutation=f.calls.find(call=>call.url.endsWith('/manage/mutations'));
+    assert.equal(JSON.parse(mutation.body).expectedRevision,rejectedRequest.expectedRevision);
+    f.click('#legend-cms-publish'); await new Promise(resolve=>setTimeout(resolve,20));
+    assert.equal(posts,2); assert.notEqual(latestRequestId,rejectedRequest.requestId);
+    assert.equal(canonicalNodeById(f.publishedDocument(),'home.h1.node.1').text,'Newer draft after rejected publication');
+  } finally {f.close();}
+});
+
+test('fresh publication rejection preserves unapplied Selected Source and its unload protection',async()=>{
+  const f=await domFixture({integerRevisions:true});
+  try {
+    const original=f.w.fetch; let reject; let posts=0;
+    f.w.fetch=async(url,options={})=>{
+      if(String(url).endsWith('/manage/publish')) {
+        const request=JSON.parse(options.body); posts++;
+        return new Promise(resolve=>{reject=()=>resolve(fixturePreCommitRejection(request));});
+      }
+      return original(url,options);
+    };
+    f.click('#legend-cms-publish'); await new Promise(resolve=>setTimeout(resolve,0)); assert.ok(reject);
+    f.click('main h1'); f.click('[data-open="source"]'); await new Promise(resolve=>setTimeout(resolve,0));
+    const input=f.w.document.querySelector('#legend-cms-site-source');
+    const value=JSON.parse(input.value); value.text='Unapplied source after rejected publication';
+    input.value=JSON.stringify(value); input.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    const buffer=input.value;
+    reject(); await new Promise(resolve=>setTimeout(resolve,20));
+    assert.equal(f.w.sessionStorage.getItem('legend-publication:legend::'),null);
+    assert.equal(input.value,buffer);
+    const event=new f.w.Event('beforeunload',{cancelable:true}); f.w.dispatchEvent(event);
+    assert.equal(event.defaultPrevented,true);
+    f.click('#legend-cms-publish'); await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(posts,1); assert.equal(f.publishedDocument(),null); assert.equal(input.value,buffer);
+  } finally {f.close();}
+});
+
+for(const scenario of [
+  {name:'fresh validation rejection',release:true},
+  {name:'fresh CTA rejection',error:'button_destination_required',release:true},
+  {name:'fresh materialization rejection',status:409,error:'website_materialization_required',release:true},
+  {name:'fresh revision precheck rejection',status:409,error:'revision_conflict',release:true},
+  {name:'missing receipt',change:payload=>{delete payload.publicationRejection;}},
+  {name:'mismatched request',change:payload=>{payload.publicationRejection.requestId='11111111-2222-4333-8444-555555555555';}},
+  {name:'mismatched revision',change:payload=>{payload.publicationRejection.expectedRevision++;}},
+  {name:'noninteger revision',change:payload=>{payload.publicationRejection.expectedRevision=String(payload.publicationRejection.expectedRevision);}},
+  {name:'unsafe revision',change:payload=>{payload.publicationRejection.expectedRevision=Number.MAX_SAFE_INTEGER+1;}},
+  {name:'unknown disposition',change:payload=>{payload.publicationRejection.disposition='pending';}},
+  {name:'unknown error code',error:'unknown_rejection'},
+  {name:'wrong error status pair',status:409},
+  {name:'ambiguous status with a receipt',status:500}
+]) {
+  test('publication rejection contract: '+scenario.name,async()=>{
+    const f=await domFixture({integerRevisions:true});
+    try {
+      const original=f.w.fetch; let request; let posts=0;
+      f.w.fetch=async(url,options={})=>{
+        if(String(url).endsWith('/manage/publish')) {
+          request=JSON.parse(options.body); posts++;
+          return fixturePreCommitRejection(request,scenario);
+        }
+        return original(url,options);
+      };
+      f.click('#legend-cms-publish'); await new Promise(resolve=>setTimeout(resolve,0));
+      f.click('main h1'); f.editSelected('Draft after publication rejection');
+      await f.save();
+      const stored=f.w.sessionStorage.getItem('legend-publication:legend::');
+      const mutations=f.calls.filter(call=>call.url.endsWith('/manage/mutations'));
+      if(scenario.release) {
+        assert.equal(stored,null);
+        assert.equal(f.w.document.querySelector('#legend-cms-publication-recovery').hidden,true);
+        assert.equal(canonicalNodeById(f.serverDocument(),'home.h1.node.1').text,'Draft after publication rejection');
+        assert.equal(mutations.length,1);
+        assert.equal(JSON.parse(mutations[0].body).expectedRevision,request.expectedRevision);
+      } else {
+        assert.equal(JSON.parse(stored).requestId,request.requestId);
+        assert.equal(f.w.document.querySelector('#legend-cms-publication-recovery').hidden,false);
+        assert.equal(canonicalNodeById(f.serverDocument(),'home.h1.node.1').text,'Template title');
+        assert.equal(mutations.length,0);
+      }
+      assert.equal(f.w.document.querySelector('main h1').textContent,'Draft after publication rejection');
+      assert.equal(f.publishedDocument(),null); assert.equal(posts,1);
+    } finally {f.close();}
+  });
+}
+
+for(const restored of [false,true]) {
+  test('matching rejection on '+(restored?'restored':'resumed')+' publication preserves its original ambiguous request',async()=>{
+    const preserved={requestId:'11111111-2222-4333-8444-555555555555',expectedRevision:1};
+    const f=await domFixture({integerRevisions:true,pendingPublication:restored?preserved:null});
+    try {
+      const original=f.w.fetch; let request=restored?preserved:null; let refuse; let posts=0;
+      f.w.fetch=async(url,options={})=>{
+        if(String(url).endsWith('/manage/publish')) {
+          const attempt=JSON.parse(options.body); posts++;
+          if(!restored && posts===1) {
+            request=attempt; throw new Error('Earlier publication outcome unavailable');
+          }
+          assert.equal(attempt.requestId,request.requestId);
+          return new Promise(resolve=>{refuse=()=>resolve(fixturePreCommitRejection(attempt));});
+        }
+        if(String(url).includes('/manage/publication-status')) {
+          assert.equal(new URL(url).searchParams.get('requestId'),request.requestId);
+          return {ok:true,json:async()=>({found:false,revision:1})};
+        }
+        return original(url,options);
+      };
+      if(!restored) {f.click('#legend-cms-publish'); await new Promise(resolve=>setTimeout(resolve,0));}
+      f.click('#legend-cms-publication-check'); await new Promise(resolve=>setTimeout(resolve,0));
+      const resume=f.w.document.querySelector('#legend-cms-publication-resume'); assert.equal(resume.disabled,false);
+      resume.click(); await new Promise(resolve=>setTimeout(resolve,0)); assert.ok(refuse);
+      f.click('main h1'); f.editSelected('Draft during original request rejection');
+      refuse(); await new Promise(resolve=>setTimeout(resolve,20));
+      await f.save();
+      const stored=JSON.parse(f.w.sessionStorage.getItem('legend-publication:legend::'));
+      assert.equal(stored.requestId,request.requestId); assert.equal(stored.expectedRevision,request.expectedRevision);
+      assert.equal(f.w.document.querySelector('#legend-cms-publication-recovery').hidden,false);
+      assert.equal(f.w.document.querySelector('main h1').textContent,'Draft during original request rejection');
+      assert.equal(f.calls.filter(call=>call.url.endsWith('/manage/mutations')).length,0);
+      assert.equal(canonicalNodeById(f.serverDocument(),'home.h1.node.1').text,'Template title');
+      assert.equal(f.publishedDocument(),null); assert.equal(posts,restored?1:2);
     } finally {f.close();}
   });
 }

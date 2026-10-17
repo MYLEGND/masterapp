@@ -1,4 +1,7 @@
 using System;
+using System.IO;
+using System.Linq;
+using System.Threading;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Domain.Entities;
@@ -13,6 +16,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
 
@@ -109,6 +113,71 @@ public sealed class LegendPublishedPageTests
         var result = Assert.IsType<ObjectResult>(await f.Controller.LegendPage());
         Assert.Equal(503, result.StatusCode);
         Assert.Equal("no-store", f.Controller.Response.Headers.CacheControl);
+    }
+
+    [Theory]
+    [InlineData("valid", "render", "render_timeout")]
+    [InlineData("raw", "unknown", "unclassified_process_failure")]
+    [InlineData("extra", "unknown", "unclassified_process_failure")]
+    [InlineData("unknown_category", "unknown", "unclassified_process_failure")]
+    [InlineData("duplicate", "unknown", "unclassified_process_failure")]
+    [InlineData("prefixed", "unknown", "unclassified_process_failure")]
+    [InlineData("invalid_elapsed", "unknown", "unclassified_process_failure")]
+    [InlineData("oversized", "unknown", "unclassified_process_failure")]
+    public async Task CompilerFailureLogsOnlyFixedDiagnostics(string kind, string expectedPhase, string expectedCategory)
+    {
+        const string canary = "private-draft-fixture@example.test";
+        var metadata = new System.Collections.Generic.Dictionary<string, object?>
+        {
+            ["schema"] = "legend-website-compiler-diagnostic/v1",
+            ["phase"] = "render", ["category"] = "render_timeout", ["elapsedMs"] = 12
+        };
+        if (kind == "extra") metadata["message"] = canary;
+        if (kind == "unknown_category") metadata["category"] = canary;
+        if (kind == "invalid_elapsed") metadata["elapsedMs"] = canary;
+        var envelope = JsonSerializer.Serialize(metadata);
+        var stderr = kind switch
+        {
+            "raw" => "Error: " + canary,
+            "duplicate" => envelope[..^1] + ",\"category\":" + JsonSerializer.Serialize(canary) + "}",
+            "prefixed" => canary + "\n" + envelope,
+            "oversized" => new string(' ', 1025) + envelope,
+            _ => envelope
+        };
+        var root = Path.Combine(Path.GetTempPath(), "legend-compiler-log-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "scripts"));
+        Directory.CreateDirectory(Path.Combine(root, "node_modules", "linkedom"));
+        try
+        {
+            // Controlled process-boundary fixture; it does not compile a website.
+            await File.WriteAllTextAsync(Path.Combine(root, "scripts", "render-business-cli.mjs"),
+                "for await (const chunk of process.stdin) {} process.stderr.write(" +
+                JsonSerializer.Serialize(stderr) + "); process.exitCode=23;");
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+                new System.Collections.Generic.Dictionary<string, string?> { ["WebsitePublishing:CompilerRoot"] = root }).Build();
+            var environment = Mock.Of<IWebHostEnvironment>(e => e.ContentRootPath == root);
+            var logger = new Mock<ILogger<WebsitePageCompiler>>();
+            var compiler = new WebsitePageCompiler(environment, configuration, logger.Object);
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                compiler.CompileLegendAsync("{}", CancellationToken.None));
+            Assert.Equal("website_compilation_failed", error.Message);
+            Assert.Null(error.InnerException);
+            var invocation = Assert.Single(logger.Invocations.Where(value => value.Method.Name == "Log"));
+            var fields = Assert.IsAssignableFrom<System.Collections.Generic.IEnumerable<
+                System.Collections.Generic.KeyValuePair<string, object?>>>(invocation.Arguments[2])
+                .ToDictionary(value => value.Key, value => value.Value);
+            Assert.Equal(expectedPhase, fields["Phase"]);
+            Assert.Equal(expectedCategory, fields["Category"]);
+            Assert.Equal(23, Assert.IsType<int>(fields["ExitCode"]));
+            Assert.True(Assert.IsType<long>(fields["ElapsedMs"]) >= 0);
+            if (kind == "valid") Assert.Equal(12L, Assert.IsType<long>(fields["ChildElapsedMs"]));
+            else Assert.Null(fields["ChildElapsedMs"]);
+            Assert.Null(invocation.Arguments[3]);
+            Assert.DoesNotContain(canary, invocation.Arguments[2].ToString()!);
+            Assert.DoesNotContain(root, invocation.Arguments[2].ToString()!);
+            Assert.DoesNotContain(canary, error.ToString());
+        }
+        finally { Directory.Delete(root, recursive: true); }
     }
 
     [Fact]

@@ -186,7 +186,7 @@ public class WebsitePlatformController : ControllerBase
     public async Task<IActionResult> LegendPage([FromQuery] string path = "/", CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(path) || path.Length > 160 ||
-            !System.Text.RegularExpressions.Regex.IsMatch(path, @"^/(?:[a-z0-9_-]+/?)*$"))
+            !System.Text.RegularExpressions.Regex.IsMatch(path, @"^/(?:[a-z0-9_-]+/)*[a-z0-9_-]*$"))
             return NotFound();
         var route = path.TrimEnd('/');
         if (route.Length == 0) route = "/";
@@ -2291,9 +2291,16 @@ public class WebsitePlatformController : ControllerBase
                 return Ok(new { revision = state.Revision, publishedRevision = prior.Revision, versionId = prior.Id,
                     alreadyPublished = true, isCurrent = state.PublishedVersionId == prior.Id });
         }
-        if (request.ExpectedRevision != state.Revision) return Conflict(new { error = "revision_conflict" });
+        if (request.ExpectedRevision != state.Revision)
+            return Conflict(new { error = "revision_conflict",
+                publicationRejection = PublicationRejectionReceipt(request.RequestId, request.ExpectedRevision) });
         return await PublishDocumentAsync(actor, state, Read(state.DraftJson), state.ImportReportJson, cancellationToken, request.RequestId);
     }
+
+    private static object? PublicationRejectionReceipt(Guid? requestId, long expectedRevision) =>
+        requestId is { } id && id != Guid.Empty
+            ? new { disposition = "rejected_before_commit", requestId = id, expectedRevision }
+            : null;
 
     private async Task<IActionResult> PublishDocumentAsync(
         WebsiteEditorTicket actor, WebsiteContentState state, WebsiteContentDocument document,
@@ -2308,7 +2315,9 @@ public class WebsitePlatformController : ControllerBase
             facts = await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
         }
         if (document.LegacyMigration is not null)
-            return Conflict(new { error = "website_materialization_required", message = "This website must be materialized into the canonical v3 composition graph before publishing." });
+            return Conflict(new { error = "website_materialization_required",
+                message = "This website must be materialized into the canonical v3 composition graph before publishing.",
+                publicationRejection = PublicationRejectionReceipt(requestId, state.Revision) });
 
         var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
         try
@@ -2318,10 +2327,13 @@ public class WebsitePlatformController : ControllerBase
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(new { error = "website_preflight_failed", message = ex.Message });
+            return BadRequest(new { error = "website_preflight_failed", message = ex.Message,
+                publicationRejection = PublicationRejectionReceipt(requestId, state.Revision) });
         }
         var ctaError = WebsiteCallToActionCatalog.PrepareForPublish(document, ctaOptions);
-        if (ctaError is not null) return BadRequest(new { error = "button_destination_required", message = ctaError });
+        if (ctaError is not null)
+            return BadRequest(new { error = "button_destination_required", message = ctaError,
+                publicationRejection = PublicationRejectionReceipt(requestId, state.Revision) });
         state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
         var version = new WebsiteContentVersion { Id = requestId ?? Guid.NewGuid(), StateId = state.Id, Revision = state.Revision + 1,
             DocumentJson = state.DraftJson, ImportReportJson = importReportJson, ActorUserId = actor.ActorUserId! };

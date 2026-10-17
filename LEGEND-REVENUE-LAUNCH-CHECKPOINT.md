@@ -1,4 +1,53 @@
 # LEGEND revenue-launch checkpoint
+
+## Current continuation — revenue blockers on PR #632 (release held)
+
+Founder instruction on 2026-10-16 (America/Phoenix): audit and correct the canonical loading, scoped-publication, and public-inquiry blockers; combine the current fixes in one commit on the existing unpublished PR #632; hold release while further issues are resolved. No merge, deployment, publication retry, production lead submission, or production mutation is authorized by this checkpoint.
+
+The sole native writer for this bounded continuation is the Founder-authorized root engineering session in the permanent Codespace `bookish-fiesta-97pj77j5vpwj3pjv6`, checkout `/workspaces/masterapp`. Additional agents supplied unapplied proposals and independent review; they did not write the canonical checkout. The existing branch is `isolation/res-001-workspace-dismissal`; its previously accepted head `788824edf12c293a3858a8917a65eae0c2685640` remains the parent of the combined candidate. PR #632 targets `Legend/fast-track-release`, last verified at `a98befb96ad654bba34514d02d7ddb7dd991da89`. The commit containing this current checkpoint and GitHub's exact branch readback identify the continuation; historical branch labels below retain their original evidence context.
+
+### Measured findings and canonical corrections
+
+- **Loading:** five equivalent optional-separator route expressions in the Cloudflare bridge, Node renderer, shared CMS (initial selection and normalization), and public Legend controller allowed catastrophic rejection-time backtracking. The live `/legend-public-openai-measurement.js` request returned HTTP 503 / Cloudflare 1102 after 36.435575 seconds (2026-10-17 01:13:17 UTC); the direct static origin returned the exact canonical 5,698-byte asset. The old local matcher exceeded a two-second parent cutoff; the equivalent mandatory-separator matcher completed the same filename test in 0.044923 ms. Twenty warm samples per corrected router/hostname/asset combination, with a stubbed origin, had medians of 0.074880–0.204050 ms. These local results exclude production network/provider time. There is no post-release live timing claim.
+- **Inquiries:** the request committed the lead, CRM linkage and canonical event, then awaited a provider path that could exceed the browser's 30-second deadline. The canonical authority now acknowledges the committed receipt without waiting for email. Both competing HTTP notification helpers and their transport dependency are removed; existing durable notification workers retain delivery, leases, ownership resolution and retries. Server-derived commerce-app metadata preserves the Parfait subject through the one existing email template, with safe historical metadata fallbacks.
+- **Publication recovery:** only explicit pre-commit validation/revision rejections carry an exact request/revision-bound receipt. Studio may clear only a fresh UUID created by that invocation after the matching receipt. Ambiguous, restored and resumed requests remain preserved. Newer canvas edits and unapplied Selected Source remain protected, and an expired draft timer is rearmed after a proved rejection.
+- **Compiler failure:** incident `7c8f3f0b-6d86-4b77-afa5-b864b37128f6` showed a nonzero Node compiler exit, while C# discarded stderr. A structural copy of the current five-route draft compiled locally (3.293 s first run; 0.927 s in the later profile). The exact production child failure remains unresolved. CLI/C# now retain only a bounded, fixed-schema phase/category/exit/timing diagnostic; raw stderr, customer content, paths, exception messages and stacks are not logged. No speculative timeout or packaging change is included.
+
+### Scoped validation and review
+
+Existing regression owners cover the actual router and renderer in killable child processes, both CMS route match sites under VM deadlines, invalid published route keys and nested immutable-page reads, durable inquiry acknowledgement/replay before a blocked provider, current-owner delivery after request cancellation, retry/backoff, historical metadata, compiler diagnostic redaction, and fresh/resumed/restored publication recovery with preserved edits.
+
+Independent nonimplementer `/root/loading_trace` reviewed every path in the applied 17-file diff (91,242 bytes; SHA-256 `868daccff384f0317ad75bb274d8d6ba7cf683be18a2879084f5579061327184`) and accepted the source without a blocking issue or unrelated scope drift. The 16 code/test files remain unchanged after that review; this checkpoint records the final validation outcomes. `/root/inquiry_trace` separately reviewed the bounded loading regressions and confirmed that the existing public form accepts `accepted=true, notificationSent=false` immediately and that the existing email workers have nonoverlapping persisted-lead ownership.
+
+Native checks on that unchanged candidate:
+
+| Check | Result |
+| --- | --- |
+| `node scripts/build.mjs` in `Legend-Website` | PASS, 0.821 s; generated CMS asset equals the canonical shared source byte for byte. |
+| Bridge and renderer test files | PASS, 36 tests / 0 failures, 2.487 s; includes real CLI diagnostic failure cases and bounded long-filename route rejection. |
+| CMS and profile-management test files | PASS, 250 tests / 0 failures, 130.401 s; includes the original accepted PR #632 dismissal behavior. |
+| Public inquiry client test file | PASS, 11 tests / 0 failures; includes received-state completion while email is pending, ambiguous/error retry identity, and double-click deduplication. |
+| First .NET restore/test attempt | Restore succeeded; Infrastructure `csc` exited 143 / MSB6006 after 349.486 s, before tests. No source compiler diagnostic. Not a harness timeout. |
+| Existing serialized Release build | Infrastructure `csc` again exited 143 / MSB6006 after 278.274 s, before tests. No source compiler diagnostic. Not a harness timeout. |
+
+The initial CMS invocation could not start because `jsdom` was missing. The existing CI command `npm ci --ignore-scripts --no-audit --no-fund` in `tests/website` installed the locked dependencies; no package or lockfile changed. The serialized .NET attempt used `dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false`, with the existing processor-count/server-disable settings from release packaging. No additional unchanged build retry or tests against stale dependency binaries were used.
+
+All 297 executed JavaScript tests passed. Local .NET validation is incomplete; PR checks must validate the committed current server source. The earlier 788824e CI results remain evidence for their original candidate and are not relabeled as this candidate's server validation. Independent source acceptance permits preservation on the held draft branch; it is not a GitHub branch-protection approval, passing .NET result, merge approval, or release admission.
+
+### Preserved AUTH4 and recovery lineage
+
+Before branch admission, the exact three unrelated saved AUTH4 paths were externally exported, downloaded and reconstructed successfully, then parked in pinned native stash `524cb852a136634daca94213b11203de64fa2e10`. Its parent is `56fb2cbfed2b5c24a4b230c0643c088af922e418` on `isolation/pr630-probe-timing-20261016`; its index was clean and its scope/bytes/modes were verified. Retain this stash. After the revenue commit is safely preserved, restore it only to that original branch/head and verify the original three hashes:
+
+- `LEGEND-REVENUE-LAUNCH-CHECKPOINT.md`: `73678ad03d1ceedfe92d00dd31526b7ffee9153e5735c0bca078d5b98e112c40`
+- `scripts/sync-published-checkout.py`: `c313a60fbbf4b55f9836b62750b3fcee8890d8c7a2b7dc56af3ffc5b8eda85fc`
+- `scripts/test-sync-published-checkout.py`: `71c69a5b83ec8d74f9e06cb528fc0c9852d7c4e48c76248c6fb4fbae5f60a61e`
+
+The approved recovery destination remains Azure `masterappstorage1221/legend-engineering-recovery`. AUTH4 pre-switch object `continuity-v1/b59e9fed-a916-46d6-ab77-f8fabef54b18/recovery.zip`, 353204062 bytes, SHA-256 `d6efcf5414a657050200c5f3450030fff076c4293fef4af63d1fd1a1ca79eca8`, completed fresh disposable restoration on 2026-10-17 01:48:05 UTC. The first nine-file revenue candidate was likewise verified at `continuity-v1/6899529a-aabe-4535-9230-177368a911a0/recovery.zip`, 353195386 bytes, SHA-256 `2323593ebbe392daf7eb5e722b864eac8f10a1a9d348db6e5bf42879af312a4d`, created 01:59:56 UTC. The complete 17-file reviewed candidate was then externally read back and freshly reconstructed at `continuity-v1/23bb9eff-1453-45f3-b54b-b61aa805c53f/recovery.zip`, 353226292 bytes, SHA-256 `546f28ceb0df874aa8ffb62e1ae35aaa15e899f21a564d4a169ea37fe5d80cca`, created 2026-10-17 02:15:45 UTC. That snapshot precedes this checkpoint-only result update. These receipts prove authenticated external readback and same-host fresh reconstruction; none claims new independent-host verification, automatic continuation, or capture of historical unsaved editor memory.
+
+### Outstanding release hold
+
+Commit only this independently reviewed combined scope, run the existing finish owner for normal non-force PR-branch preservation, and verify exact remote HEAD. Preserve the local compiler limitation above and inspect the current commit's PR validation; no historical green check waives that work. Keep PR #632 unpublished and unmerged. Before any later Founder-authorized release, resolve the outstanding compiler cause and verify live publishing, public inquiry persistence/delivery, worker health, and post-fix loading against the exact deployed revisions. Preserve the current ambiguous Studio publication request until its outcome is reconciled. Further issues remain under the Founder's explicit release hold.
+
 Updated: 2026-10-14 (America/Phoenix). PR 626 crypto dependency repair locally validated; Astra accepted the exact four-project implementation. Canonical native preservation and current-candidate governed checks remain outstanding; exact final identities/results belong in Git history and the session handoff.
 
 ## Authority and continuation

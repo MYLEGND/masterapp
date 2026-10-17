@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Text;
 using System.Security.Cryptography;
@@ -10,7 +11,8 @@ using Infrastructure.WebsiteEditing;
 namespace Infrastructure.WebsitePublishing;
 
 /// <summary>Compiles immutable public pages through the same JavaScript renderer used by the editor.</summary>
-public sealed class WebsitePageCompiler(IWebHostEnvironment environment, IConfiguration configuration)
+public sealed class WebsitePageCompiler(IWebHostEnvironment environment, IConfiguration configuration,
+    ILogger<WebsitePageCompiler>? logger = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly Encoding ProcessUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
@@ -84,6 +86,7 @@ public sealed class WebsitePageCompiler(IWebHostEnvironment environment, IConfig
         using var process = new Process { StartInfo = info };
         using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         bounded.CancelAfter(TimeSpan.FromSeconds(30));
+        var elapsed = Stopwatch.StartNew();
         try
         {
             if (!process.Start()) throw new InvalidOperationException("website_compiler_not_available");
@@ -93,8 +96,16 @@ public sealed class WebsitePageCompiler(IWebHostEnvironment environment, IConfig
             process.StandardInput.Close();
             await process.WaitForExitAsync(bounded.Token);
             var output = await outputTask;
-            _ = await errorTask; // Do not expose customer content or stack traces in the publish response.
-            if (process.ExitCode != 0) throw new InvalidOperationException("website_compilation_failed");
+            var stderr = await errorTask;
+            if (process.ExitCode != 0)
+            {
+                var diagnostic = DecodeFailureDiagnostic(stderr);
+                logger?.LogWarning(
+                    "Website compilation failed: phase={Phase}, category={Category}, exitCode={ExitCode}, elapsedMs={ElapsedMs}, childElapsedMs={ChildElapsedMs}",
+                    diagnostic.Phase, diagnostic.Category, process.ExitCode,
+                    elapsed.ElapsedMilliseconds, diagnostic.ElapsedMs);
+                throw new InvalidOperationException("website_compilation_failed");
+            }
             using var compiled = JsonDocument.Parse(output);
             if (!compiled.RootElement.TryGetProperty("pages", out var pages) || pages.ValueKind != JsonValueKind.Object || !pages.EnumerateObject().Any())
                 throw new InvalidOperationException("website_compilation_empty");
@@ -105,6 +116,33 @@ public sealed class WebsitePageCompiler(IWebHostEnvironment environment, IConfig
             try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
             throw;
         }
+    }
+
+    private static (string Phase, string Category, long? ElapsedMs) DecodeFailureDiagnostic(string stderr)
+    {
+        var fallback = (Phase: "unknown", Category: "unclassified_process_failure", ElapsedMs: (long?)null);
+        if (stderr.Length > 1024) return fallback;
+        try
+        {
+            using var parsed = JsonDocument.Parse(stderr);
+            var root = parsed.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || root.EnumerateObject().Count() != 4 ||
+                !root.TryGetProperty("schema", out var schema) || schema.ValueKind != JsonValueKind.String ||
+                schema.GetString() != "legend-website-compiler-diagnostic/v1" ||
+                !root.TryGetProperty("phase", out var phaseValue) || phaseValue.ValueKind != JsonValueKind.String ||
+                !root.TryGetProperty("category", out var categoryValue) || categoryValue.ValueKind != JsonValueKind.String ||
+                !root.TryGetProperty("elapsedMs", out var durationValue) || durationValue.ValueKind != JsonValueKind.Number ||
+                !durationValue.TryGetInt64(out var duration) || duration < 0)
+                return fallback;
+            var phase = phaseValue.GetString();
+            var category = categoryValue.GetString();
+            if (phase is not ("module_load" or "input_read" or "input_parse" or "render" or "output") ||
+                category is not ("module_missing" or "file_missing" or "file_access_denied" or "render_timeout" or
+                    "input_limit" or "invalid_input" or "compiler_error"))
+                return fallback;
+            return (phase!, category!, duration);
+        }
+        catch (JsonException) { return fallback; }
     }
 
     private static async Task<string> ReadBoundedAsync(StreamReader reader, int maximum, CancellationToken cancellationToken)
