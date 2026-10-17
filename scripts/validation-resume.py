@@ -250,110 +250,158 @@ def attested_fast_track_migration_prewrite(repository, run, jobs, token):
         return False
 
 
-def attested_fast_track_router_prewrite(repository, run, jobs, token):
-    """Prove an authenticated renderer/admission failure preceded durable intent and publication."""
+def _fast_track_router_attempt_evidence(repository, run, jobs, token):
+    """Authenticate the reviewed router owner and its complete step-local evidence."""
     import datetime
     if (not is_fast_track_producer(repository, run) or run.get('status') != 'completed'
         or run.get('conclusion') != 'failure'):
-        return False
+        return None
     owners = [j for j in jobs if j.get('name') == FAST_TRACK_CHILD_STEPS['routing-cloudflare'][0]]
     if len(owners) != 1:
-        return False
+        return None
     job = owners[0]
     steps = [x for x in job.get('steps', []) if x.get('name') == FAST_TRACK_CHILD_STEPS['routing-cloudflare'][1]]
     if (job.get('status') != 'completed' or job.get('conclusion') != 'failure'
         or len(steps) != 1 or steps[0].get('status') != 'completed'
         or steps[0].get('conclusion') != 'failure'):
-        return False
-    # Exact source calls company_render_ready before constructing its journal.
+        return None
     sources = {
         '.github/workflows/legend-fast-track-ui.yml': {
             'c69d65590746af9a8bea9e55b9e7c58547edd02182821353309e92f5cb27f09d',
             '74e9f65f99818f768f603bedc197b4360cd4c0f66a22dec2bd20319d7120f35c',
-            'ae295e382e3c3dd2b8ff646853e851c752fabc33183ade4b6110bdc1f65561b1'},
-        'scripts/release-router.py': {'9457386b4e9fc8f71e5c95cf3c0849439191faf877f71e52a2ccc198b07fbe62'}}
+            'ae295e382e3c3dd2b8ff646853e851c752fabc33183ade4b6110bdc1f65561b1',
+            '89f03c2792d71f00b3d9061eed01a32eb7841bb421d8c557a12ac287a79ce24d',
+            'dae82274dface75d1023178b802f4c90c6170aa77a59b251210e829990ed0515'},
+        'scripts/release-router.py': {
+            '9457386b4e9fc8f71e5c95cf3c0849439191faf877f71e52a2ccc198b07fbe62',
+            '696528f86ba40a8a5edf5814e61908b0bd305ed74c4eb9b05d7981e38dd209a3'}}
+    digests = {}
+    for path, allowed in sources.items():
+        digest = hashlib.sha256(_release_history_source(repository, run['head_sha'], path, token).encode()).hexdigest()
+        if digest not in allowed:
+            return None
+        digests[path] = digest
+    inventory = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+    artifacts = inventory.get('artifacts')
+    if (not isinstance(artifacts, list) or type(inventory.get('total_count')) is not int
+        or inventory['total_count'] != len(artifacts)
+        or any(not isinstance(a, dict) or type(a.get('id')) is not int
+               or a['id'] < 1 or not isinstance(a.get('name'), str) for a in artifacts)
+        or len({a['id'] for a in artifacts}) != len(artifacts)
+        or any(a['name'].startswith(('legend-release-child-intent-', 'legend-release-child-success-'))
+               for a in artifacts)):
+        return None
+    start = datetime.datetime.fromisoformat(steps[0]['started_at'].replace('Z', '+00:00'))
+    end = datetime.datetime.fromisoformat(steps[0]['completed_at'].replace('Z', '+00:00'))
+    if start.tzinfo is None or end.tzinfo is None or end < start:
+        return None
+    log = _release_job_log(repository, job['id'], token)
+    clean = '\n'.join(re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line) for line in log.splitlines())
+    heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', clean))
+    if heads != {run['head_sha']}:
+        return None
+    timed, bounded = [], []
+    for line in log.splitlines():
+        date, sep, message = line.partition(' ')
+        if sep and re.fullmatch(r'\d{4}-\d{2}-\d{2}T[0-9:.]+Z', date):
+            stamp = datetime.datetime.fromisoformat(date.replace('Z', '+00:00'))
+            timed.append((stamp, message))
+            if start <= stamp <= end + datetime.timedelta(seconds=2):
+                bounded.append(message)
+    return dict(start=start, end=end, timed=timed, bounded=bounded, digests=digests)
+
+
+def attested_fast_track_router_prewrite(repository, run, jobs, token):
+    """Prove an authenticated renderer/admission failure preceded durable intent and publication."""
+    import ast
+    import datetime
     try:
-        for path, digest in sources.items():
-            if hashlib.sha256(_release_history_source(repository, run['head_sha'], path, token).encode()).hexdigest() not in digest:
-                return False
-        inventory = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
-        artifacts = inventory.get('artifacts')
-        if (not isinstance(artifacts, list) or type(inventory.get('total_count')) is not int
-            or inventory['total_count'] != len(artifacts)
-            or any(not isinstance(a, dict) or type(a.get('id')) is not int
-                   or a['id'] < 1 or not isinstance(a.get('name'), str) for a in artifacts)
-            or len({a['id'] for a in artifacts}) != len(artifacts)
-            or any(a['name'].startswith(('legend-release-child-intent-', 'legend-release-child-success-'))
-                   for a in artifacts)):
-            return False
-        start = datetime.datetime.fromisoformat(steps[0]['started_at'].replace('Z', '+00:00'))
-        end = datetime.datetime.fromisoformat(steps[0]['completed_at'].replace('Z', '+00:00'))
-        if start.tzinfo is None or end.tzinfo is None or end < start:
-            return False
-        log = _release_job_log(repository, job['id'], token)
-        clean = '\n'.join(re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line) for line in log.splitlines())
-        heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', clean))
-        if heads != {run['head_sha']}:
+        evidence = _fast_track_router_attempt_evidence(repository, run, jobs, token)
+        if evidence is None:
             return False
         renderer_markers = {
             'urllib.error.HTTPError: HTTP Error 500: Internal Server Error',
             'urllib.error.HTTPError: HTTP Error 503: Service Unavailable',
             'TimeoutError: The read operation timed out'}
-        admission_markers = {
-            'RuntimeError: Release child may have written; missing intent cannot authorize replay',
-            'RuntimeError: Release child execution detail unavailable'}
-        markers = renderer_markers | admission_markers
-        stamps = []
-        for line in log.splitlines():
-            date, sep, message = line.partition(' ')
-            if sep and message in markers:
-                stamps.append((datetime.datetime.fromisoformat(date.replace('Z', '+00:00')), message))
-        bounded = []
-        for line in log.splitlines():
-            date, sep, message = line.partition(' ')
-            if sep and re.fullmatch(r'\d{4}-\d{2}-\d{2}T[0-9:.]+Z', date):
-                stamp = datetime.datetime.fromisoformat(date.replace('Z', '+00:00'))
-                if start <= stamp <= end + datetime.timedelta(seconds=2):
-                    bounded.append(message)
-        traces = '\n'.join(bounded).split('Traceback (most recent call last):\n')[1:]
-        if (len(stamps) != 1 or not start <= stamps[0][0] <= end + datetime.timedelta(seconds=2)
-            or len(traces) != 1):
+        admission_statements = {
+            'RuntimeError: Release child may have written; missing intent cannot authorize replay':
+                "raise rejection('Release child may have written; missing intent cannot authorize replay', run['id'], attempt)",
+            'RuntimeError: Release child execution detail unavailable':
+                'raise rejection("Release child execution detail unavailable", run_id, attempt)'}
+        head_changed = 'RuntimeError: FAST_TRACK_RELEASE_HEAD_CHANGED'
+        markers = renderer_markers | set(admission_statements) | {head_changed}
+        stamps = [(stamp, message) for stamp, message in evidence['timed'] if message in markers]
+        bounded = '\n'.join(evidence['bounded'])
+        traces = bounded.split('Traceback (most recent call last):\n')[1:]
+        if (len(stamps) != 1 or not evidence['start'] <= stamps[0][0] <= evidence['end'] + datetime.timedelta(seconds=2)
+            or len(traces) != 1 or 'FAST_TRACK_ROUTER:' in bounded
+            or 'FAST_TRACK_DNS_PROXY_RECONCILIATION:' in bounded):
             return False
         marker = stamps[0][1]
         trace, separator, _ = traces[0].partition(marker)
         if not separator or traces[0].count(marker) != 1:
             return False
         frames = re.findall(r'^  File "(?:[^"\n]*/)?([^/"\n]+)", line (\d+), in (\S+)\n', trace, re.M)
+        modern = evidence['digests']['scripts/release-router.py'] == '696528f86ba40a8a5edf5814e61908b0bd305ed74c4eb9b05d7981e38dd209a3'
+        entry, renderer, reconcile = ('158', '102', '115') if modern else ('122', '98', '111')
         if marker in renderer_markers:
-            return (frames[:3] == [('release-router.py', '122', '<module>'),
-                    ('release-router.py', '98', 'fast_track'), ('release-router.py', '68', 'company_render_ready')]
+            return (frames[:3] == [('release-router.py', entry, '<module>'),
+                    ('release-router.py', renderer, 'fast_track'), ('release-router.py', '68', 'company_render_ready')]
                 and '    company_render_ready(authority)\n' in trace
                 and not any(file in {'release-operation-evidence.py', 'validation-resume.py'}
                             or function in {'publish', 'reconcile_tagged_router', 'before_mutation'}
                             for file, _, function in frames))
-        # This exception comes from the first-write guard BEFORE intent publication.
-        # Authenticate both owners too: the router source alone cannot prove that order.
+        history_source = _release_history_source(repository, run['head_sha'], 'scripts/validation-resume.py', token)
+        tree = ast.parse(history_source)
+
+        def reviewed_function(name, digests):
+            nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == name]
+            if (len(nodes) != 1 or hashlib.sha256(ast.get_source_segment(history_source, nodes[0]).encode()).hexdigest()
+                not in digests):
+                return None
+            return nodes[0]
+
+        def statement_line(owner, statement):
+            nodes = [n for n in ast.walk(owner) if isinstance(n, (ast.Raise, ast.Call))
+                     and ast.get_source_segment(history_source, n) == statement]
+            return str(nodes[0].lineno) if len(nodes) == 1 else None
+
+        # Body hashes bind the audited execution boundary; AST locates only its
+        # exact statements. Unrelated registry growth cannot invalidate a trace.
+        if marker == head_changed:
+            admission = reviewed_function('fast_track_source_admission', {
+                'b942d143fd1df58b61a82ea1a294cc4bf26a74a22ba1ddfb6b5c41cb5837027d',
+                '091a73b73b5c2d5b33b6ff41883c3468609893ad2ea18d11661b30b557c5e714'})
+            execution = reviewed_function('assert_fast_track_release_execution', {
+                '148a6578588727d821fb148315f19d737b86e9262b7b2f80ca08a9ff6d461055',
+                'bba7a39610940effe5f06d54feea5aba3d3c269ad90fcc4b7dadc9c4ce24bb3b'})
+            if not modern or admission is None or execution is None:
+                return False
+            call = statement_line(admission, 'assert_fast_track_release_execution()')
+            denial = statement_line(execution, "raise RuntimeError('FAST_TRACK_RELEASE_HEAD_CHANGED')")
+            return (call is not None and denial is not None
+                and frames == [('release-router.py', entry, '<module>'), ('release-router.py', '82', 'fast_track'),
+                    ('validation-resume.py', call, 'fast_track_source_admission'),
+                    ('validation-resume.py', denial, 'assert_fast_track_release_execution')]
+                and "    authority.fast_track_source_admission()\n" in trace
+                and "    raise RuntimeError('FAST_TRACK_RELEASE_HEAD_CHANGED')\n" in trace)
         journal_source = _release_history_source(repository, run['head_sha'], 'scripts/release-operation-evidence.py', token)
         if hashlib.sha256(journal_source.encode()).hexdigest() != '05192d3b67903f7091d5131960572a6d8f7c9bcea82ec0fb833ca27a71f4493b':
             return False
-        history_source = _release_history_source(repository, run['head_sha'], 'scripts/validation-resume.py', token)
-        denials = {
-            ('98cb5e3bcd89925cf5628ff9c7a938da07f8da468930099e9135c0797463ab51',
-             'RuntimeError: Release child may have written; missing intent cannot authorize replay'):
-                ('1819', "    raise rejection('Release child may have written; missing intent cannot authorize replay', run['id'], attempt)\n"),
-            ('61066f98d8bfccd68ae288e93a385bb3e87c16ca4b0eef7b4559988e2d572bb9',
-             'RuntimeError: Release child execution detail unavailable'):
-                ('1920', '    raise rejection("Release child execution detail unavailable", run_id, attempt)\n')}
-        denial = denials.get((hashlib.sha256(history_source.encode()).hexdigest(), marker))
-        if denial is None:
+        guard = reviewed_function('release_child_first_write_proven', {
+            'ffc6a6edca0acea2f81e245a31f28d3a1eebd79ae5907af762f453c3108c2601',
+            '5c031a86872fa30715f7b4306584e4795b32f4620e8bc5acd6bbbc6556471f1f',
+            '0ce0b9d586728d569399335a80076bea5011ffa5d265f6150c7c85d0d892f2de'})
+        if guard is None:
             return False
-        return (frames == [('release-router.py', '122', '<module>'),
-                ('release-router.py', '111', 'fast_track'), ('release-router.py', '40', 'reconcile_tagged_router'),
+        denial = statement_line(guard, admission_statements[marker])
+        return (denial is not None and frames == [('release-router.py', entry, '<module>'),
+                ('release-router.py', reconcile, 'fast_track'), ('release-router.py', '40', 'reconcile_tagged_router'),
                 ('release-operation-evidence.py', '262', 'before_mutation'),
-                ('validation-resume.py', denial[0], 'release_child_first_write_proven')]
+                ('validation-resume.py', denial, 'release_child_first_write_proven')]
             and "    journal.before_mutation({'providerVersion': version or 'absent'})\n" in trace
-            and denial[1] in trace)
-    except (KeyError, TypeError, ValueError, RuntimeError, OSError, UnicodeError, subprocess.SubprocessError):
+            and '    ' + admission_statements[marker] + '\n' in trace)
+    except (KeyError, TypeError, ValueError, RuntimeError, OSError, UnicodeError, SyntaxError, subprocess.SubprocessError):
         return False
 
 
@@ -1862,6 +1910,144 @@ def _reconciled_older_migration_generation(repository, run, job, step, attempt, 
         return False
 
 
+def _release_child_original_records(repository, child, token, before, current_run, current_attempt):
+    """Inventory original child records from both trusted producer workflows.
+
+    The record's own material identifies its physical operation. The current
+    caller's material is deliberately absent from this read-only catalog.
+    """
+    import datetime
+    def stamp(value):
+        if not isinstance(value, str):
+            raise RuntimeError('Release child original receipt time unproven')
+        parsed = datetime.datetime.fromisoformat(value.replace('Z', '+00:00'))
+        if parsed.tzinfo is None:
+            raise RuntimeError('Release child original receipt time unproven')
+        return parsed
+    producers = fast_track_execution_history(repository, token)
+    branch = urllib.parse.quote(TRUSTED_PR_BASE, safe='')
+    seen, expected, ids = 0, None, set()
+    for page in range(1, 11):
+        payload = api_get(repository, f'actions/runs?branch={branch}&event=workflow_dispatch&per_page=100&page={page}', token)
+        rows, total = payload.get('workflow_runs'), payload.get('total_count')
+        if (not isinstance(rows, list) or type(total) is not int or total < 0
+            or (expected is not None and total != expected)):
+            raise RuntimeError('Release child original producer inventory incomplete')
+        expected = total
+        for run in rows:
+            if not isinstance(run, dict) or type(run.get('id')) is not int or run['id'] in ids:
+                raise RuntimeError('Release child original producer inventory incomplete')
+            ids.add(run['id'])
+            if run.get('path', '').split('@')[0] == '.github/workflows/' + DIRECT_RELEASE_WORKFLOW:
+                _trusted_child_producer(repository, run)
+                producers.append(run)
+        seen += len(rows)
+        if len(rows) < 100:
+            break
+    if seen != expected:
+        raise RuntimeError('Release child original producer inventory incomplete')
+    records = []
+    for run in producers:
+        _trusted_child_producer(repository, run)
+        if stamp(run['created_at']) >= before:
+            continue
+        if run.get('status') != 'completed' and run['id'] != current_run:
+            raise RuntimeError('Release child original producer still active')
+        payload = _release_history_api(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+        artifacts = payload.get('artifacts')
+        if (not isinstance(artifacts, list) or type(payload.get('total_count')) is not int
+            or payload['total_count'] != len(artifacts)
+            or any(not isinstance(a, dict) or type(a.get('id')) is not int or a['id'] < 1
+                   or not isinstance(a.get('name'), str) for a in artifacts)
+            or len({a['id'] for a in artifacts}) != len(artifacts)):
+            raise RuntimeError('Release child original generation inventory incomplete')
+        for artifact in artifacts:
+            phase = re.fullmatch(r'legend-release-child-(intent|success)-[a-f0-9]{64}', artifact['name'])
+            if phase is None or stamp(artifact['created_at']) >= before:
+                continue
+            # An expired generic child archive can conceal this resource.
+            if artifact.get('expired') is not False or artifact.get('workflow_run', {}).get('id') != run['id']:
+                raise RuntimeError('Release child original receipt unavailable')
+            record = _release_history_json(repository, run['id'], artifact, 'operation.json')
+            if not isinstance(record, dict):
+                raise RuntimeError('Release child original receipt malformed')
+            if record.get('child') != child:
+                continue
+            _validate_child_generation(repository, run, artifact, record, child, token, phase[1])
+            if run['id'] == current_run and record['producingAttempt'] == current_attempt:
+                continue
+            if (record.get('partitionIdentity') != record['materialIdentity']
+                or not isinstance(record.get('observation'), dict)
+                or set(record['observation']) != {'providerVersion'}
+                or not re.fullmatch(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}|absent',
+                                    str(record['observation']['providerVersion']))
+                or (phase[1] == 'success' and record['observation']['providerVersion'] == 'absent')):
+                raise RuntimeError('Release child original router observation unproven')
+            records.append((run, artifact, record))
+    return records
+
+
+def attested_fast_track_preserved_router_intent(repository, run, jobs, token, current_run, current_attempt):
+    """Recover the ORIGINAL intent of a positively preserved historical Worker.
+
+    DNS reconciliation after the preserved marker is a separate mutation
+    boundary. This does not classify the historical step as prewrite, mint a
+    receipt, establish current provider state, or authorize an upload.
+    """
+    try:
+        evidence = _fast_track_router_attempt_evidence(repository, run, jobs, token)
+        if evidence is None:
+            return None
+        # These complete owners bind the historical preserved branch, its
+        # original receipt reader, and the later DNS-only failure.
+        sources = {
+            'scripts/release-router.py': '696528f86ba40a8a5edf5814e61908b0bd305ed74c4eb9b05d7981e38dd209a3',
+            'scripts/release-operation-evidence.py': '05192d3b67903f7091d5131960572a6d8f7c9bcea82ec0fb833ca27a71f4493b',
+            'scripts/validation-resume.py': '54354287a62a79df3c242ced290ec0be7596a4aa9e5b637bbb00225dd4ae0f2d',
+            'scripts/cloudflare-routing-authority.py': '5822f8fdbe690ed4b637a6b9b2c1f3a5bc831b0aee8b22d559ee8b4067377d73',
+            'scripts/deploy-founder-cloudflare.py': 'ad2a258bc22cf2e3c981838efd02931fa8e8fe9b45bddc73c9fe54e20b3e92f1'}
+        for path, digest in sources.items():
+            if hashlib.sha256(_release_history_source(repository, run['head_sha'], path, token).encode()).hexdigest() != digest:
+                return None
+        markers = [
+            'FAST_TRACK_COMPANY_RENDERER:VERIFIED_BEFORE_ROUTING',
+            'FAST_TRACK_ROUTER:preserved',
+            'FAST_TRACK_DNS_PROXY_RECONCILIATION:apex_and_www_only',
+            'cloudflare-routing-authority.CloudflareError: Website DNS proxy requires DNS Edit authority or recovery: mylegnd.com']
+        bounded = evidence['bounded']
+        if (any(bounded.count(marker) != 1 for marker in markers)
+            or [bounded.index(marker) for marker in markers] != sorted(bounded.index(marker) for marker in markers)
+            or any(line.startswith('FAST_TRACK_ROUTER:') and line != markers[1] for line in bounded)
+            or any(sum(message == marker for _, message in evidence['timed']) != 1 for marker in markers)):
+            return None
+        records = _release_child_original_records(repository, 'routing-cloudflare', token,
+            evidence['start'], current_run, current_attempt)
+        groups = {}
+        for producer, artifact, record in records:
+            # Select with each ORIGINAL material, never a recomputed current
+            # provider material or the existence of a convenient complete pair.
+            if direct_child_operation_identity('routing-cloudflare', run['head_sha'],
+                    record['materialIdentity']) != record['dependencyIdentity']:
+                continue
+            key = (record['dependencyIdentity'], record['materialIdentity'], record['partitionIdentity'])
+            groups.setdefault(key, {'intent': [], 'success': []})[record['phase']].append(record)
+        if len(groups) != 1:
+            raise RuntimeError('Historical preserved router generation is not unique')
+        (generation, material, partition), phases = next(iter(groups.items()))
+        original = {}
+        for phase in ('intent', 'success'):
+            rows = phases[phase]
+            if not rows or any(row != rows[0] for row in rows[1:]):
+                raise RuntimeError('Historical preserved router original pair incomplete or competing')
+            record = release_child_history(repository, 'routing-cloudflare', generation, token, phase)
+            if record != rows[0] or record.get('materialIdentity') != material or record.get('partitionIdentity') != partition:
+                raise RuntimeError('Historical preserved router canonical receipt changed')
+            original[phase] = record
+        return original['intent']
+    except (KeyError, TypeError, ValueError, OSError, UnicodeError, subprocess.SubprocessError) as error:
+        raise RuntimeError('Historical preserved router evidence unavailable') from error
+
+
 def release_child_first_write_proven(repository, child, dependency_identity, material_identity,
                                      current_run, current_attempt, token, *, partition_identity=None,
                                      first_pending_migration_id=None, last_applied_migration_id=None,
@@ -1894,6 +2080,19 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
             or type(current_run) is not int or current_run < 1
             or type(current_attempt) is not int or current_attempt < 1):
         raise ValueError("Invalid release child mutation identity")
+    def require_distinct_intent(record, run_id, attempt):
+        generation = record['dependencyIdentity']
+        if generation == dependency_identity:
+            raise rejection('Release child physical operation already entered; reconcile without replay', run_id, attempt)
+        partition = record.get('partitionIdentity')
+        if not re.fullmatch('[a-f0-9]{64}', str(partition)):
+            raise rejection('Release child historical partition unproven; no replay authorized', run_id, attempt)
+        if partition == partition_identity:
+            completed = release_child_history(repository, child, generation, token, 'success')
+            if (completed is None or completed.get('materialIdentity') != record.get('materialIdentity')
+                or completed.get('partitionIdentity') != partition):
+                raise rejection('Release child prior partition operation unresolved; no replay authorized', run_id, attempt)
+
     for run, attempt, job, step in fast_track_child_attempts(repository, child, token,
             current_run=current_run, current_attempt=current_attempt):
         payload = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
@@ -1916,16 +2115,13 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
             if match[1] != 'intent':
                 continue
             intents.append(record)
-            if generation == dependency_identity:
-                raise rejection('Release child physical operation already entered; reconcile without replay', run['id'], attempt)
-            partition = record.get('partitionIdentity')
-            if not re.fullmatch('[a-f0-9]{64}', str(partition)):
-                raise rejection('Release child historical partition unproven; no replay authorized', run['id'], attempt)
-            if partition == partition_identity:
-                completed = release_child_history(repository, child, generation, token, 'success')
-                if (completed is None or completed.get('materialIdentity') != record.get('materialIdentity')
-                    or completed.get('partitionIdentity') != partition):
-                    raise rejection('Release child prior partition operation unresolved; no replay authorized', run['id'], attempt)
+        if not intents and child == 'routing-cloudflare':
+            original = attested_fast_track_preserved_router_intent(
+                repository, run, [job], token, current_run, current_attempt)
+            if original is not None:
+                intents.append(original)
+        for record in intents:
+            require_distinct_intent(record, run['id'], attempt)
         if not intents and not (child == 'migrations' and len(observations) == 1 and step.get('conclusion') == 'success'):
             raise rejection('Release child may have written; missing intent cannot authorize replay', run['id'], attempt)
     # The workflow-specific inventory returns 403 to the trusted release token.
@@ -2061,14 +2257,7 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                     generation = _validate_child_generation(repository, run, artifact, record, child, token)
                     if record["producingAttempt"] == attempt:
                         generations.append(generation)
-                        partition = record.get("partitionIdentity")
-                        if not isinstance(partition, str) or not re.fullmatch(r"[a-f0-9]{64}", partition):
-                            raise rejection("Release child historical partition unproven; no replay authorized", run_id, attempt)
-                        if partition == partition_identity and generation != dependency_identity:
-                            completed = release_child_history(repository, child, generation, token, "success")
-                            if (completed is None or completed.get("partitionIdentity") != partition
-                                    or completed.get("materialIdentity") != record.get("materialIdentity")):
-                                raise rejection("Release child prior partition operation unresolved; no replay authorized", run_id, attempt)
+                        require_distinct_intent(record, run_id, attempt)
                 if not generations:
                     if child == 'migrations' and steps[0].get('conclusion') == 'success':
                         observed = []
@@ -2091,8 +2280,6 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                            and steps[0].get('conclusion') == 'failure'
                         else "Release child may have written; missing intent cannot authorize replay",
                         run_id, attempt)
-                if dependency_identity in generations:
-                    raise rejection("Release child physical operation already entered; reconcile without replay", run_id, attempt)
         if len(runs) < 100:
             if payload.get("total_count", seen) > seen:
                 raise rejection("Release child history truncated; no mutation authorized")
