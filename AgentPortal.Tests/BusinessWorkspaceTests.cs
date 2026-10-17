@@ -548,7 +548,7 @@ public sealed class BusinessWorkspaceTests
         var summary = new SummaryKpiDto();
         analytics.Setup(x => x.GetSummaryAsync(range,
             It.Is<ScopeContext>(scope => scope.ScopeType == ScopeType.Business && scope.CommerceBusinessId == businessId && scope.AgentTrackingProfileId == null),
-            TrafficType.All)).ReturnsAsync(summary);
+            TrafficType.All, It.IsAny<System.Threading.CancellationToken>())).ReturnsAsync(summary);
         var service = new BusinessWorkspaceService(db, analytics.Object);
         Assert.Same(summary, await service.AnalyticsDataAsync(businessId, "summary", range, TrafficType.All));
         Assert.Null(await service.AnalyticsDataAsync(businessId, "unregistered-agent-action", range, TrafficType.All));

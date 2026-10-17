@@ -91,7 +91,7 @@ namespace AgentPortal.Controllers;
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var initialQualityMode = ResolveInitialQualityMode(qualityMode);
         range = CloneRangeWithQualityMode(range, initialQualityMode);
-        var summary = await LoadSummarySafelyAsync(range, scope);
+        var summary = await LoadSummarySafelyAsync(range, scope, ct: HttpContext.RequestAborted);
         summary.ScopeLabel = await ResolveScopeLabelAsync(scope, team);
         ViewData["InitialRangePreset"] = range.Preset;
         ViewData["InitialRangeLabel"] = range.Label;
@@ -848,12 +848,14 @@ namespace AgentPortal.Controllers;
     private async Task<SummaryKpiDto> LoadSummarySafelyAsync(
         TimeRangeRequest range,
         ScopeContext scope,
-        TrafficType trafficType = TrafficType.All)
+        TrafficType trafficType = TrafficType.All,
+        CancellationToken ct = default)
     {
         try
         {
-            return await _analytics.GetSummaryAsync(range, scope, trafficType);
+            return await _analytics.GetSummaryAsync(range, scope, trafficType, ct);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex) when (IsAnalyticsTimeout(ex))
         {
             _logger.LogWarning(
@@ -936,7 +938,7 @@ namespace AgentPortal.Controllers;
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await LoadSummarySafelyAsync(range, scope, trafficType);
+        var result = await LoadSummarySafelyAsync(range, scope, trafficType, HttpContext.RequestAborted);
         result.ScopeLabel = await ResolveScopeLabelAsync(scope, team);
         return Json(result);
     }
@@ -2227,7 +2229,7 @@ namespace AgentPortal.Controllers;
 
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var total = await _analytics.GetSummaryAsync(range, scope, TrafficType.All);
+        var total = await _analytics.GetSummaryAsync(range, scope, TrafficType.All, HttpContext.RequestAborted);
         var buckets = new List<object>();
 
         foreach (var trafficType in new[]
@@ -2239,7 +2241,7 @@ namespace AgentPortal.Controllers;
             TrafficType.Unknown
         })
         {
-            var summary = await _analytics.GetSummaryAsync(range, scope, trafficType);
+            var summary = await _analytics.GetSummaryAsync(range, scope, trafficType, HttpContext.RequestAborted);
             buckets.Add(new
             {
                 Bucket = trafficType.ToString(),

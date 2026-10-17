@@ -3291,6 +3291,7 @@ WORKFLOWS = {
             "meta-regressions": {
                 "step": "Run Meta authority regressions",
                 "paths": (
+                    "AgentPortal.Tests/LaunchAuditProjectionTests.cs",
                     "AgentPortal.Tests/Meta*Tests.cs",
                     "AgentPortal.Tests/*Analytics*Tests.cs",
                     "AgentPortal.Tests/Marketing*Tests.cs",

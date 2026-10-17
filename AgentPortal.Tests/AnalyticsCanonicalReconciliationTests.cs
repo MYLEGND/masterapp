@@ -2,6 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Threading;
+using System.Data.Common;
+using System.Text.Json;
+using Infrastructure.Data;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Logging.Abstractions;
 using Domain.Entities;
 using Infrastructure.Analytics;
 using Microsoft.Extensions.Configuration;
@@ -357,6 +365,287 @@ public sealed class AnalyticsCanonicalReconciliationTests
         range = new TimeRangeRequest { FromUtc = range.FromUtc, ToUtc = range.ToUtc, QualityMode = TrafficQualityMode.ReviewedNeeded };
         Assert.Equal(1, (await analytics.GetSummaryAsync(range, ScopeContext.ForBusiness(businessId))).VerifiedLeads);
         Assert.Equal(1, (await analytics.GetConversionsAsync(range, ScopeContext.ForBusiness(businessId))).TotalConversions);
+    }
+
+
+    [Theory]
+    [InlineData(TrafficQualityMode.RealHumanTraffic, 0, 1)]
+    [InlineData(TrafficQualityMode.LikelyBotsAutomation, 1, 0)]
+    [InlineData(TrafficQualityMode.AllTraffic, 1, 1)]
+    public async Task SharedHealthPreservesBothPipeContainingEvidenceDomains(
+        TrafficQualityMode mode, int healthAttempts, int metaEvents)
+    {
+        await using var fixture = await HealthReadsFixture.CreateAsync(mode);
+        var analytics = fixture.Analytics;
+        var meta = new MetaSignalAnalyticsService(fixture.Db, analytics);
+        var baselineHealth = await analytics.GetMarketingHealthAsync(fixture.Range, fixture.Scope);
+        var baselineMeta = await meta.GetHealthDashboardAsync(fixture.Range, fixture.Scope);
+        fixture.Reads.Begin();
+
+        var snapshot = await analytics.GetMarketingHealthSnapshotAsync(fixture.Range, fixture.Scope);
+        var sharedMeta = await meta.GetHealthDashboardAsync(snapshot);
+
+        Assert.Equal(healthAttempts, snapshot.Health.WorkstationCaptureAttempts);
+        Assert.Equal(metaEvents, sharedMeta.PipelineHealth.AnalyticsEventsLast24Hours);
+        Assert.Equal(metaEvents, sharedMeta.PipelineHealth.MetaSignalEventsLast24Hours);
+        Assert.Equal(1, sharedMeta.PipelineHealth.WebsiteLeadsLast24Hours);
+        Assert.Equal(JsonSerializer.Serialize(baselineHealth), JsonSerializer.Serialize(snapshot.Health));
+        Assert.Equal(StableMeta(baselineMeta), StableMeta(sharedMeta));
+        AssertHealthReadCounts(fixture.Reads, mode == TrafficQualityMode.AllTraffic ? 4 : 5);
+        using var serialized = JsonDocument.Parse(JsonSerializer.Serialize(snapshot));
+        Assert.Equal(new[] { "Health" }, serialized.RootElement.EnumerateObject().Select(p => p.Name));
+    }
+
+    [Theory]
+    [InlineData(false, 1)]
+    [InlineData(true, 0)]
+    public async Task SharedHealthProjectsEventSessionMembershipWithDatabaseCollation(bool noCase, int metaEvents)
+    {
+        await using var fixture = await HealthReadsFixture.CreateAsync(
+            TrafficQualityMode.RealHumanTraffic, noCase: noCase, collationVariant: true);
+        var meta = new MetaSignalAnalyticsService(fixture.Db, fixture.Analytics);
+        var baseline = await meta.GetHealthDashboardAsync(fixture.Range, fixture.Scope);
+        fixture.Reads.Begin();
+        var snapshot = await fixture.Analytics.GetMarketingHealthSnapshotAsync(fixture.Range, fixture.Scope);
+        var shared = await meta.GetHealthDashboardAsync(snapshot);
+
+        Assert.Equal(0, snapshot.Health.WorkstationCaptureAttempts);
+        Assert.Equal(metaEvents, shared.PipelineHealth.AnalyticsEventsLast24Hours);
+        Assert.Equal(metaEvents, shared.PipelineHealth.MetaSignalEventsLast24Hours);
+        Assert.Equal(1, shared.PipelineHealth.WebsiteLeadsLast24Hours);
+        Assert.Equal(StableMeta(baseline), StableMeta(shared));
+        AssertHealthReadCounts(fixture.Reads, 5);
+        var sql = Assert.Single(fixture.Reads.Commands.Where(s => s.Contains("ForEventSession", StringComparison.Ordinal)));
+        var projection = sql[..sql.IndexOf("FROM ", StringComparison.OrdinalIgnoreCase)];
+        Assert.Contains(" IN ", projection, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("SessionId", projection, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SharedHealthRetainsAliasOwnerAndAllSourceMetaSemantics()
+    {
+        await using var fixture = await HealthReadsFixture.CreateAsync(
+            TrafficQualityMode.RealHumanTraffic, agentScope: true);
+        var meta = new MetaSignalAnalyticsService(fixture.Db, fixture.Analytics);
+        var baseline = await meta.GetHealthDashboardAsync(fixture.Range, fixture.Scope);
+        fixture.Reads.Begin();
+        var snapshot = await fixture.Analytics.GetMarketingHealthSnapshotAsync(
+            fixture.Range, fixture.Scope, TrafficType.PaidAds);
+        var shared = await meta.GetHealthDashboardAsync(snapshot);
+
+        Assert.Equal(0, snapshot.Health.WorkstationCaptureAttempts);
+        Assert.Equal(1, shared.PipelineHealth.AnalyticsEventsLast24Hours);
+        Assert.Equal(1, shared.PipelineHealth.MetaSignalEventsLast24Hours);
+        Assert.Equal(0, shared.PipelineHealth.WebsiteLeadsLast24Hours);
+        Assert.Equal(StableMeta(baseline), StableMeta(shared));
+        Assert.Equal(7, fixture.Reads.Commands.Count);
+        Assert.Equal(2, fixture.Reads.Commands.Count(s => s.Contains("FROM \"AgentTrackingProfiles\"", StringComparison.Ordinal)));
+        Assert.Same(fixture.Scope, snapshot.Scope);
+        Assert.Same(fixture.Range, snapshot.Range);
+        Assert.Equal(2, snapshot.ScopedAgentIds!.Length);
+    }
+
+    public static IEnumerable<object[]> CanceledAnalyticsReadStages()
+    {
+        foreach (var (operation, count) in new[] { ("summary", 6), ("health", 3), ("projection", 5), ("attributed", 2) })
+        {
+            for (var stage = 1; stage <= count; stage++)
+                yield return new object[] { operation, false, stage };
+            // The same datasets follow the alias resolver. Exercise both actual alias reads.
+            yield return new object[] { operation, true, 1 };
+            yield return new object[] { operation, true, 2 };
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(CanceledAnalyticsReadStages))]
+    public async Task CallerCancellationStopsAtTheActualReadWithoutLaterQueries(string operation, bool agentScope, int stage)
+    {
+        await using var fixture = await HealthReadsFixture.CreateAsync(
+            TrafficQualityMode.RealHumanTraffic, agentScope: agentScope);
+        using var cancellation = new CancellationTokenSource();
+        fixture.Reads.Begin(cancellation, stage);
+        var meta = new MetaSignalAnalyticsService(fixture.Db, fixture.Analytics);
+        Task action = operation switch
+        {
+            "summary" => fixture.Analytics.GetSummaryAsync(fixture.Range, fixture.Scope, TrafficType.All, cancellation.Token),
+            "health" => fixture.Analytics.GetMarketingHealthAsync(fixture.Range, fixture.Scope, TrafficType.All, cancellation.Token),
+            "projection" => MarketingHealthProjection.LoadAsync(fixture.Analytics, meta, fixture.Range, fixture.Scope,
+                TrafficType.All, NullLogger.Instance, cancellation.Token),
+            _ => fixture.Analytics.LoadAttributedEventsAsync(fixture.Range, fixture.Scope, TrafficType.All, cancellation.Token)
+        };
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => action);
+        Assert.Equal(stage, fixture.Reads.Commands.Count);
+        Assert.All(fixture.Reads.Tokens, token => Assert.Equal(cancellation.Token, token));
+    }
+
+    private static string StableMeta(MetaSignalHealthDashboardDto value)
+    {
+        var json = JsonSerializer.SerializeToNode(value)!;
+        json[nameof(MetaSignalHealthDashboardDto.LastUpdatedUtc)] = null;
+        return json.ToJsonString();
+    }
+
+    private static void AssertHealthReadCounts(AnalyticsReadRecorder reads, int expected)
+    {
+        Assert.Equal(expected, reads.Commands.Count);
+        Assert.Equal(expected == 4 ? 1 : 2, reads.Commands.Count(s => s.Contains("FROM \"AnalyticsEvents\"", StringComparison.Ordinal)));
+        Assert.Equal(2, reads.Commands.Count(s => s.Contains("FROM \"WebsiteLeads\"", StringComparison.Ordinal)));
+        Assert.Equal(1, reads.Commands.Count(s => s.Contains("FROM \"MetaSignalEvents\"", StringComparison.Ordinal)));
+    }
+
+    private sealed class AnalyticsReadRecorder : DbCommandInterceptor
+    {
+        public List<string> Commands { get; } = new();
+        public List<CancellationToken> Tokens { get; } = new();
+        private bool _record;
+        private CancellationTokenSource? _cancel;
+        private int _cancelAt;
+
+        public void Begin(CancellationTokenSource? cancel = null, int cancelAt = 0)
+        {
+            Commands.Clear();
+            Tokens.Clear();
+            _cancel = cancel;
+            _cancelAt = cancelAt;
+            _record = true;
+        }
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (_record)
+            {
+                Commands.Add(command.CommandText);
+                Tokens.Add(cancellationToken);
+                if (Commands.Count == _cancelAt) _cancel!.Cancel();
+                // Test the token received by the database command, not merely the caller's CTS.
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
+    }
+
+    private sealed class NoCaseAnalyticsDb : MasterAppDbContext
+    {
+        public NoCaseAnalyticsDb(DbContextOptions<MasterAppDbContext> options) : base(options) { }
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+            modelBuilder.Entity<AnalyticsEvent>().Property(e => e.SessionId).UseCollation("NOCASE");
+        }
+    }
+
+    private sealed class HealthReadsFixture : IAsyncDisposable
+    {
+        private readonly SqliteConnection _connection;
+        public MasterAppDbContext Db { get; }
+        public AnalyticsReadRecorder Reads { get; }
+        public AnalyticsQueryService Analytics { get; }
+        public TimeRangeRequest Range { get; }
+        public ScopeContext Scope { get; }
+
+        private HealthReadsFixture(SqliteConnection connection, MasterAppDbContext db, AnalyticsReadRecorder reads,
+            TimeRangeRequest range, ScopeContext scope)
+        {
+            _connection = connection;
+            Db = db;
+            Reads = reads;
+            Range = range;
+            Scope = scope;
+            Analytics = new AnalyticsQueryService(db, new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?> { ["Analytics:EnvironmentFilter"] = "production" }).Build());
+        }
+
+        public static async Task<HealthReadsFixture> CreateAsync(TrafficQualityMode mode,
+            bool noCase = false, bool collationVariant = false, bool agentScope = false)
+        {
+            var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
+            var reads = new AnalyticsReadRecorder();
+            var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+                .UseSqlite(connection).AddInterceptors(reads).Options;
+            MasterAppDbContext db = noCase ? new NoCaseAnalyticsDb(options) : new MasterAppDbContext(options);
+            await db.Database.EnsureCreatedAsync();
+            var business = Guid.NewGuid();
+            var foreign = Guid.NewGuid();
+            db.CommerceBusinesses.AddRange(
+                new CommerceBusiness { Id = business, Key = "health-owner", DisplayName = "Health owner" },
+                new CommerceBusiness { Id = foreign, Key = "foreign-owner", DisplayName = "Foreign owner" });
+            var profile = Guid.NewGuid();
+            var alias = Guid.NewGuid();
+            if (agentScope)
+                db.AgentTrackingProfiles.AddRange(
+                    new AgentTrackingProfile { Id = profile, AgentUpn = "health-owner@example.test", AgentUserId = "health-owner", Slug = "health-owner" },
+                    new AgentTrackingProfile { Id = alias, AgentUpn = "health-owner@example.test", AgentUserId = "health-alias", Slug = "health-alias" });
+            var now = DateTime.UtcNow;
+            var range = new TimeRangeRequest
+            {
+                FromUtc = now.AddHours(-1), ToUtc = now.AddMinutes(-15), QualityMode = mode,
+                Label = "collision-fixture", Preset = "custom", ViewerTimeZone = TimeZoneInfo.Utc
+            };
+            var leadSession = collationVariant ? "checkout|Lead" : "checkout|lead";
+            var eventVisitor = collationVariant ? "Lead|visitor" : "lead|visitor";
+            var current = Event(business, now.AddMinutes(-30), "workstation_capture_attempt", "checkout", eventVisitor, "/", strongHuman: true);
+            var historical = Event(business, now.AddHours(-2), "page_engaged_15s", leadSession, "visitor", "/");
+            historical.WebDriver = true;
+            var previous = Event(business, now.AddMinutes(-80), "page_view", "previous-session", "previous-visitor", "/", strongHuman: true);
+            var development = Event(business, now.AddMinutes(-35), "page_view", "development-session", "development-visitor", "/", strongHuman: true);
+            development.Environment = "development";
+            var ownedEvents = new List<AnalyticsEvent> { current, historical, previous, development };
+            if (collationVariant)
+                ownedEvents.Add(Event(business, now.AddMinutes(-35), "page_view", "CHECKOUT|LEAD", "sentinel", "/"));
+            if (agentScope)
+                foreach (var row in ownedEvents)
+                {
+                    row.CommerceBusinessId = null;
+                    row.AgentTrackingProfileId = row == historical ? alias : profile;
+                }
+            db.AnalyticsEvents.AddRange(ownedEvents);
+            var foreignEvidence = Event(foreign, now.AddMinutes(-31), "page_engaged_15s", "checkout", eventVisitor, "/");
+            foreignEvidence.WebDriver = true;
+            db.AnalyticsEvents.Add(foreignEvidence);
+            WebsiteLead Lead(Guid owner, DateTime utc, string session, string visitor) => new()
+            {
+                LeadId = Guid.NewGuid(), CommerceBusinessId = owner, FirstName = "Health fixture",
+                Email = "health-fixture@example.test", SessionId = session, VisitorId = visitor,
+                CreatedUtc = utc, Environment = "production", Host = "business.example.org",
+                TermsAccepted = false, MarketingEmailConsent = false, CallTextConsent = false
+            };
+            var currentLead = Lead(business, now.AddMinutes(-25), leadSession, "visitor");
+            var previousLead = Lead(business, now.AddMinutes(-70), "previous-session", "previous-visitor");
+            if (agentScope)
+                foreach (var lead in new[] { currentLead, previousLead })
+                {
+                    lead.CommerceBusinessId = null;
+                    lead.AgentTrackingProfileId = alias;
+                }
+            db.WebsiteLeads.AddRange(currentLead, previousLead, Lead(foreign, now.AddMinutes(-25), leadSession, "visitor"));
+            MetaSignalEvent Signal(Guid owner) => new()
+            {
+                EventId = Guid.NewGuid().ToString("N"), EventName = "PageView", EventCategory = "engagement",
+                CreatedUtc = now.AddMinutes(-29), CommerceBusinessId = owner, SessionId = "checkout",
+                VisitorId = eventVisitor, Environment = "production", Host = "business.example.org"
+            };
+            var currentSignal = Signal(business);
+            if (agentScope)
+            {
+                currentSignal.CommerceBusinessId = null;
+                currentSignal.AgentTrackingProfileId = profile;
+            }
+            db.MetaSignalEvents.AddRange(currentSignal, Signal(foreign));
+            await db.SaveChangesAsync();
+            db.ChangeTracker.Clear();
+            return new HealthReadsFixture(connection, db, reads, range,
+                agentScope ? ScopeContext.ForAgent(profile) : ScopeContext.ForBusiness(business));
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await Db.DisposeAsync();
+            await _connection.DisposeAsync();
+        }
     }
 
     private static AnalyticsEvent Event(

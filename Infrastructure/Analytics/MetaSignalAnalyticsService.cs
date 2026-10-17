@@ -33,6 +33,10 @@ public interface IMetaSignalAnalyticsService
         TimeRangeRequest range,
         ScopeContext scope,
         CancellationToken ct = default);
+
+    Task<MetaSignalHealthDashboardDto> GetHealthDashboardAsync(
+        MarketingHealthReadSnapshot snapshot,
+        CancellationToken ct = default);
 }
 
 public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
@@ -187,8 +191,20 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         CancellationToken ct = default)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope, ct);
-        var analyticsRows = (await _analytics.LoadFilteredEventsAsync(range, scope, scopedAgentIds, ct))
-            .Select(x => new HealthAnalyticsEventRow
+        var events = await _analytics.LoadFilteredEventsAsync(range, scope, scopedAgentIds, ct);
+        return await BuildHealthDashboardAsync(range, scope, scopedAgentIds, events, ct);
+    }
+
+    public Task<MetaSignalHealthDashboardDto> GetHealthDashboardAsync(
+        MarketingHealthReadSnapshot snapshot,
+        CancellationToken ct = default) =>
+        BuildHealthDashboardAsync(snapshot.Range, snapshot.Scope, snapshot.ScopedAgentIds, snapshot.Events, ct);
+
+    private async Task<MetaSignalHealthDashboardDto> BuildHealthDashboardAsync(
+        TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds,
+        IReadOnlyList<AnalyticsEvent> events, CancellationToken ct)
+    {
+        var analyticsRows = events.Select(x => new HealthAnalyticsEventRow
             {
                 Id = x.Id,
                 BridgeEligible = MetaSignalAnalyticsBridge.IsEligibleSource(x),

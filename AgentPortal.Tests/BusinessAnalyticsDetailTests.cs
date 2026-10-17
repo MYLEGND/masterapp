@@ -26,14 +26,14 @@ public sealed class BusinessAnalyticsDetailTests
             It.Is<ScopeContext>(s => s.ScopeType == ScopeType.Business && s.CommerceBusinessId == business && s.AgentTrackingProfileId == null), TrafficType.All))
             .ReturnsAsync(new TrafficOverviewDto());
         analytics.Setup(x => x.GetSummaryAsync(It.IsAny<TimeRangeRequest>(),
-            It.Is<ScopeContext>(s => s.ScopeType == ScopeType.Business && s.CommerceBusinessId == business), TrafficType.All))
+            It.Is<ScopeContext>(s => s.ScopeType == ScopeType.Business && s.CommerceBusinessId == business), TrafficType.All, It.IsAny<System.Threading.CancellationToken>()))
             .ReturnsAsync(new SummaryKpiDto { Sessions = 7 });
         var service = new BusinessWorkspaceService(db, analytics.Object);
         var result = Assert.IsType<AgentPortal.Models.Analytics.KpiDetailDto>(await service.AnalyticsDataAsync(business,
             "kpi-detail", new TimeRangeRequest { FromUtc = DateTime.UtcNow.AddDays(-7), ToUtc = DateTime.UtcNow }, TrafficType.All, metric: "sessions"));
         Assert.Equal(7, result.Totals.Total);
         Assert.Equal(7, result.Totals.PreviousTotal);
-        analytics.Verify(x => x.GetSummaryAsync(It.IsAny<TimeRangeRequest>(), It.IsAny<ScopeContext>(), TrafficType.All), Times.Exactly(2));
+        analytics.Verify(x => x.GetSummaryAsync(It.IsAny<TimeRangeRequest>(), It.IsAny<ScopeContext>(), TrafficType.All, It.IsAny<System.Threading.CancellationToken>()), Times.Exactly(2));
         await Assert.ThrowsAsync<ArgumentException>(() => service.AnalyticsDataAsync(business, "kpi-detail", new(), TrafficType.All, metric: "unknown"));
     }
 
@@ -106,9 +106,9 @@ public sealed class BusinessAnalyticsDetailTests
         var analytics = new Mock<IAnalyticsQueryService>(MockBehavior.Strict);
         analytics.Setup(x => x.GetSummaryAsync(It.IsAny<TimeRangeRequest>(),
             It.Is<ScopeContext>(scope => scope.ScopeType == ScopeType.Business && scope.CommerceBusinessId == business.Id),
-            TrafficType.All)).ReturnsAsync(new SummaryKpiDto());
+            TrafficType.All, It.IsAny<System.Threading.CancellationToken>())).ReturnsAsync(new SummaryKpiDto());
         analytics.Setup(x => x.GetMarketingHealthAsync(It.IsAny<TimeRangeRequest>(),
-            It.Is<ScopeContext>(scope => scope.ScopeType == ScopeType.Business && scope.CommerceBusinessId == business.Id)))
+            It.Is<ScopeContext>(scope => scope.ScopeType == ScopeType.Business && scope.CommerceBusinessId == business.Id), TrafficType.All, It.IsAny<System.Threading.CancellationToken>()))
             .ReturnsAsync(new MarketingHealthDto());
 
         var service = new BusinessWorkspaceService(db, analytics.Object);

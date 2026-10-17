@@ -1,7 +1,28 @@
+using Domain.Entities;
 using Shared.Analytics;
 using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Analytics;
+
+/// <summary>Request-local read state; only the public health DTO is exposed to consumers.</summary>
+public sealed class MarketingHealthReadSnapshot
+{
+    internal MarketingHealthReadSnapshot(MarketingHealthDto health, TimeRangeRequest range, ScopeContext scope,
+        Guid[]? scopedAgentIds, List<AnalyticsEvent> events)
+    {
+        Health = health;
+        Range = range;
+        Scope = scope;
+        ScopedAgentIds = scopedAgentIds?.ToArray();
+        Events = events.AsReadOnly();
+    }
+
+    public MarketingHealthDto Health { get; }
+    internal TimeRangeRequest Range { get; }
+    internal ScopeContext Scope { get; }
+    internal Guid[]? ScopedAgentIds { get; }
+    internal IReadOnlyList<AnalyticsEvent> Events { get; }
+}
 
 /// <summary>One health projection for dashboard and AI consumers; no independent health state.</summary>
 public static class MarketingHealthProjection
@@ -10,10 +31,11 @@ public static class MarketingHealthProjection
         IMetaSignalAnalyticsService metaSignals, TimeRangeRequest range, ScopeContext scope,
         TrafficType trafficType, ILogger logger, CancellationToken ct = default)
     {
-        var result = await analytics.GetMarketingHealthAsync(range, scope, trafficType);
+        var snapshot = await analytics.GetMarketingHealthSnapshotAsync(range, scope, trafficType, ct);
+        var result = snapshot.Health;
         try
         {
-            var meta = await metaSignals.GetHealthDashboardAsync(range, scope, ct);
+            var meta = await metaSignals.GetHealthDashboardAsync(snapshot, ct);
             var issues = meta.FailureDetection.Where(x => x.Count > 0).ToList();
             result.MetaHealthStatus = issues.Any(x => x.Status == "Critical") ? "Critical" :
                 issues.Count > 0 ? "Watch" : meta.PipelineHealth.MetaServerSentCount > 0 ? "Healthy" : "Unverified";
