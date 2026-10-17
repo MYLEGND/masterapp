@@ -1,6 +1,44 @@
 # LEGEND revenue-launch checkpoint
 
-## Current continuation — routing completion after PR #632 application deployment
+## Current continuation — Analytics and revenue verification after completed release
+
+The Founder renewed the existing implementation, protected merge, selective deployment, provider setup, and live-verification authority on 2026-10-17. TikTok remains paused and nonblocking. The outgoing writer is paused. This continuation has one implementation owner: root, using the already-authorized native fallback because the permanent Codespace has no Codex executable. Independent collaborators review source, continuity, and acceptance without writing the checkout.
+
+### Completed release — preserve these receipts
+
+PR #632 merged application source at ba4a4bdd9941f314f0aab769d638504a53b0ec8d; all five applications completed deployment in [run 39051241911](https://github.com/MYLEGND/masterapp/actions/runs/39051241911). PR #634 reviewed 0059b88e4ee09bdfb6544308f8c8c5cdff745d44 and merged at 6f7264ced864fe3a8814f249fa43bbfb4e6372a7. [Routing run 39058973801](https://github.com/MYLEGND/masterapp/actions/runs/39058973801), attempt 1, completed SUCCESS at 2026-10-17 18:48:36 UTC with empty application selection and skipped application/SQL execution. Worker version b8dd642a-7dc7-402c-8f8d-1e965fba3bc2, both DNS readbacks, and both public first-paint checks passed.
+
+The authoritative [PR #634 release/live receipt](https://github.com/MYLEGND/masterapp/pull/634#issuecomment-6239152227) records HTTP 200 and identical measurement-script bytes at apex, www, and Website origin, individually observed at approximately 0.71, 0.72, and 0.59 seconds. These are historical observations, not a performance guarantee or fresh measurements by this continuation. The routing-pending statements below are superseded history. Do not replay either completed release.
+
+### Current production evidence and bounded correction
+
+The supported extension browser reached the existing signed-in Founder Analytics session and the permanent Codespace. After refreshing the released page, Today loaded. Two seven-day attempts, including a warmed retry, still reached the existing manual-retry timeout. The headline values became unavailable, but prior Today top-source/page/CTA hints, low-sample decoration, and the Marketing Health range label remained visible. That ancillary reset omission is a demonstrated stale-scope defect; the earlier headline-only observation did not establish complete stale-content protection.
+
+Application Insights records Health request e0441dc7ccd8654d17ef05b9d2cf9331 and performance request 47789b8a2da15ea51eec11f02f3d451b at 20:30:49 UTC, completing HTTP 499 after approximately 51.77 and 44.78 seconds. Their historical session-evidence SELECTs took 18.4306 seconds at 20:31:20.163 UTC and 10.6967 seconds at 20:31:23.973 UTC. These are successful SQL dependency completions inside abandoned HTTP requests; they do not prove a SQL command timeout. Each browser request has its own existing 45-second deadline.
+
+Independent Azure management-plane review confirmed MasterAppDb on masterapp-sql-prod-1221, Basic tier, in MasterApp-Data-RG. CPU averaged 65.6591% and peaked at 100% during 20:30–20:41 UTC, but averaged 54.5000% and peaked at 75% during 20:31–20:32 UTC. This does not establish saturation as the cause of the two slow reads. SQL Query editor rejected the current browser IP; no allowlist, permission, pricing, Query Store, or SQL change was made. Actual physical indexes, execution plan, and waits remain unverified.
+
+Source confirms dropped cancellation before alias/current/previous dataset reads in Summary and base Health, and repeated selected-event/evidence reads in the combined Health/Meta projection. The planned bounded correction extends those existing owners and the existing unavailable-state reset. Shared evidence must retain Health's lead-plus-event-session domain and standalone Meta's event-session domain, projecting membership in SQL to preserve database collation. Meta row and lead-query semantics, pipe-containing identities, owner/site/environment boundaries, historical evidence, and truthful unavailable states remain unchanged. No implementation or new test result is claimed by this checkpoint update. Seven-day success remains a separate live acceptance requirement.
+
+### Provider and customer-operation boundaries
+
+Google Cloud now opens the existing LEGEND / legend-60636 project under the existing account. No OAuth client is listed, and Google Ads API enablement is pending. Its Enable action explicitly accepts Google APIs and Google Ads API terms, requiring the supported action-time legal confirmation. No new client, secret, Azure configuration write, stored connection, customer selection, or reporting success has occurred. Preserve Meta/OpenAI configuration and their existing provider limitations.
+
+The live Founder diagnostic still shows original compiler incident 7c8f3f0b-6d86-4b77-afa5-b864b37128f6: two occurrences, last received 2026-10-17 00:39:30Z, old assembly a98befb96ad654bba34514d02d7ddb7dd991da89, correlation fba7b4eb977d6f2c80c5b1be876d4494. No new application-context publishing success is established. The original publication request UUID must be reconciled separately from that incident/correlation; no blind publish or draft replacement is authorized by a diagnostic observation. Inquiry ownership, actual notification delivery, worker activity, and revenue readiness remain under verification.
+
+### Native preservation and next exact synchronization
+
+The actual permanent checkout is /workspaces/masterapp in bookish-fiesta-97pj77j5vpwj3pjv6, branch isolation/res-001-workspace-dismissal. Fresh initial native preflight passed at equal clean local/remote 0059b88e4ee09bdfb6544308f8c8c5cdff745d44. Protected 6f7264ced864fe3a8814f249fa43bbfb4e6372a7 was verified tree-identical and incorporated through a clean fast-forward. The task remote remained at 0059b88e; no application source changed.
+
+The approved cloud helper was recovered from 18a0a62d209b1e87115c9f7253db5959bd2192be:scripts/sync-published-checkout.py and verified SHA256 c313a60fbbf4b55f9836b62750b3fcee8890d8c7a2b7dc56af3ffc5b8eda85fc before writing or executing its temporary copy. Its supported cloud-export operation, with --repo /workspaces/masterapp, completed upload/readback/fresh disposable restoration using the existing recovery-only identity and destination masterappstorage1221 / legend-engineering-recovery.
+
+The actual clean 6f7264 head is covered by continuity-v1/ffcb9eaa-79ed-47c6-b9a9-db2c48182b1e/recovery.zip, created 2026-10-17T20:44:58.554481+00:00, 353177136 bytes, SHA256 83d0050d19c2184450b640e4e2ea2da082fc8c700d5e1e55ea36b5e8e1fe4d40, ETag 0x8DF2C8FA4223CA7. Status is FRESH_DISPOSABLE_RESTORATION_VERIFIED; base 0059b88e, head 6f7264, clean index/worktree, zero extra files, six LFS objects and two hydrated files. Independent reviewer release_continuity_review accepted this receipt for Founder-authorized manual continuation. Independent-host verification, unsaved-memory capture, and automatic continuation remain false.
+
+The committed preflight's local-ahead path still requires a persistent filesystem directory and does not consume that separate cloud receipt; its repeated inspection reported that exact limitation. No temporary directory is being represented as external storage. This necessary checkpoint reconciliation will receive its own fresh preservation and exact independent acceptance, then use the existing acceptance-gated normal finish/push for its actual changed path. Remote readback and a new equal-head preflight must be recorded before application implementation. No continuity source or admission rule is changed.
+
+AUTH4 remains stashed on its original branch/head, with all six recovery pins retained. Its archive continuity-v1/4d93e316-b5b2-45d4-b912-d788fccb0da5/recovery.zip and SHA256 24bee763d406cb2464fceb331ba16c2fe41fd232bcfcb1159ef11a944774b306 remain specific to its original state. At final task handback, apply rather than pop the original stash on isolation/pr630-probe-timing-20261016 / 56fb2cbfed2b5c24a4b230c0643c088af922e418, and verify all three original hashes, clean index, unstaged state, and 0666 modes. No AUTH4 changes enter this release.
+
+## Prior continuation — routing completion after PR #632 application deployment
 
 The Founder explicitly authorized the combined release and necessary recovery on 2026-10-17. PR #632 merged at 16:51:37 UTC: reviewed source 6fc347d7fc014de1974d8306acd9ad09ebb1d1d6, protected release ba4a4bdd9941f314f0aab769d638504a53b0ec8d. Their source trees are identical. Continue the same native branch, isolation/res-001-workspace-dismissal, in permanent Codespace bookish-fiesta-97pj77j5vpwj3pjv6, /workspaces/masterapp. Because PR #632 is merged, the necessary correction requires a follow-up PR from that same branch to Legend/fast-track-release. Root remains the sole native writer, with independent acceptance before canonical finish/push.
 
