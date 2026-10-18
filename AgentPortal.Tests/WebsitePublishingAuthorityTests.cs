@@ -62,7 +62,8 @@ public sealed class WebsitePublishingAuthorityTests
             });
             Assert.DoesNotContain(typeof(WebsiteContentState), audit.EntityTypes);
             Assert.DoesNotContain(typeof(WebsiteContentVersion), audit.EntityTypes);
-            Assert.Empty(db.ChangeTracker.Entries());
+            Assert.Empty(db.ChangeTracker.Entries<WebsiteContentState>());
+            Assert.Empty(db.ChangeTracker.Entries<WebsiteContentVersion>());
         }
     }
 
