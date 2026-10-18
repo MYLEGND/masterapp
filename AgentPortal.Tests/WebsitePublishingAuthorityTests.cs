@@ -3,6 +3,8 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Infrastructure.Data;
+using Domain.Entities;
+using Shared.Analytics;
 using Infrastructure.WebsiteEditing;
 using Infrastructure.WebsiteEditing.Controllers;
 using Microsoft.AspNetCore.DataProtection;
@@ -23,6 +25,44 @@ public sealed class WebsitePublishingAuthorityTests
         {
             EntityTypes.Add(entity.GetType());
             return entity;
+        }
+    }
+
+    [Fact]
+    public async Task ReportingEntryPointsProjectPublishedInputsWithoutMaterializingPrivatePayloadEntities()
+    {
+        var audit = new MaterializationAudit();
+        using var db = ControllerTestHelpers.BuildDb(audit);
+        var profile = new AgentTrackingProfile { AgentUserId = "projection-agent", AgentUpn = "projection@example.test", Slug = "projection" };
+        var state = new WebsiteContentState
+        {
+            OwnerKey = profile.AgentUserId, SiteKey = WebsiteEditorSiteKeys.Protect,
+            DraftJson = "private draft must not be read", NamedDraftsJson = "private named drafts must not be read"
+        };
+        var version = new WebsiteContentVersion
+        {
+            StateId = state.Id, Revision = 17, DocumentJson = "{}", CompiledPagesJson = "compiled payload must not be read"
+        };
+        state.PublishedVersionId = version.Id;
+        db.AddRange(profile, state, version);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var query = new WebsiteEventMapQuery(db, new ConfigurationBuilder().Build());
+        var ticket = new WebsiteEditorTicket(state.SiteKey, profile.AgentUserId, profile.Slug, false, DateTime.UtcNow.AddMinutes(5));
+        foreach (var viaTicket in new[] { false, true })
+        {
+            audit.EntityTypes.Clear();
+            var rows = viaTicket ? await query.ReadTicketAsync(ticket) : await query.ReadAsync(ScopeContext.ForAgent(profile.Id));
+            Assert.NotEmpty(rows);
+            Assert.All(rows, row =>
+            {
+                Assert.Equal(MarketingOwnerScope.Agent(profile.Id).Key, row.Owner);
+                Assert.Equal(version.Id, row.PublishedVersion);
+                Assert.Equal(17, row.PublishedRevision);
+            });
+            Assert.DoesNotContain(typeof(WebsiteContentState), audit.EntityTypes);
+            Assert.DoesNotContain(typeof(WebsiteContentVersion), audit.EntityTypes);
+            Assert.Empty(db.ChangeTracker.Entries());
         }
     }
 
