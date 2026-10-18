@@ -2266,8 +2266,10 @@ public class WebsitePlatformController : ControllerBase
         var actor = await AuthorizeAsync(ticket, cancellationToken);
         if (actor is null) return Unauthorized();
         var state = await _db.Set<WebsiteContentState>().AsNoTracking()
-            .SingleOrDefaultAsync(s => s.OwnerKey == actor.OwnerUserId && s.SiteKey == actor.SiteKey &&
-                s.CommerceBusinessId == actor.CommerceBusinessId, cancellationToken);
+            .Where(s => s.OwnerKey == actor.OwnerUserId && s.SiteKey == actor.SiteKey &&
+                s.CommerceBusinessId == actor.CommerceBusinessId)
+            .Select(s => new { s.Id, s.Revision, s.PublishedVersionId })
+            .SingleOrDefaultAsync(cancellationToken);
         var version = state is null ? null : await _db.Set<WebsiteContentVersion>().AsNoTracking()
             .Where(v => v.StateId == state.Id && v.Id == requestId)
             .Select(v => new { versionId = v.Id, publishedRevision = v.Revision }).SingleOrDefaultAsync(cancellationToken);
@@ -3708,7 +3710,15 @@ public class WebsitePlatformController : ControllerBase
 
     private async Task<WebsiteContentState> StateAsync(WebsiteEditorTicket actor, CancellationToken cancellationToken)
     {
-        var state = await _db.Set<WebsiteContentState>().SingleOrDefaultAsync(s => s.OwnerKey == actor.OwnerUserId && s.SiteKey == actor.SiteKey, cancellationToken);
+        // SqlClient async materialization can replay large text packets; named draft
+        // snapshots make this one editor-only row multi-megabyte. Keep this read
+        // synchronous (EF's documented large-LOB workaround), not the writes or
+        // other queries. The existing command timeout remains unchanged;
+        // cancellation is observed before and after the blocking read.
+        cancellationToken.ThrowIfCancellationRequested();
+        var state = _db.Set<WebsiteContentState>()
+            .SingleOrDefault(s => s.OwnerKey == actor.OwnerUserId && s.SiteKey == actor.SiteKey);
+        cancellationToken.ThrowIfCancellationRequested();
         if (state is not null) return state;
         // Legacy content remains the initial published snapshot, never a second write authority.
         var legacy = await _db.AgentFinanceToolStates.AsNoTracking().SingleOrDefaultAsync(s => s.AgentUserId == actor.OwnerUserId && s.ToolId == ToolId(actor.SiteKey), cancellationToken);
@@ -3738,11 +3748,19 @@ public class WebsitePlatformController : ControllerBase
     private async Task<(WebsiteContentDocument? Document, Guid? VersionId, long? Revision)> LoadPublicationAsync(
         string ownerUserId, string siteKey, CancellationToken cancellationToken)
     {
-        var state = await _db.Set<WebsiteContentState>().AsNoTracking().SingleOrDefaultAsync(s => s.OwnerKey == ownerUserId && s.SiteKey == siteKey, cancellationToken);
+        // Public requests need only the publication pointer, never the mutable
+        // draft or named-draft snapshots (which can be many megabytes).
+        var state = await _db.Set<WebsiteContentState>().AsNoTracking()
+            .Where(s => s.OwnerKey == ownerUserId && s.SiteKey == siteKey)
+            .Select(s => new { s.Id, s.PublishedVersionId })
+            .SingleOrDefaultAsync(cancellationToken);
         if (state is not null)
         {
             if (!state.PublishedVersionId.HasValue) return (null, null, null);
-            var version = await _db.Set<WebsiteContentVersion>().AsNoTracking().SingleAsync(v => v.Id == state.PublishedVersionId && v.StateId == state.Id, cancellationToken);
+            var version = await _db.Set<WebsiteContentVersion>().AsNoTracking()
+                .Where(v => v.Id == state.PublishedVersionId && v.StateId == state.Id)
+                .Select(v => new { v.Id, v.Revision, v.DocumentJson, v.SnapshotRetiredUtc })
+                .SingleAsync(cancellationToken);
             if (version.SnapshotRetiredUtc.HasValue) throw new InvalidOperationException("Active publication snapshot is unavailable.");
             return (Read(version.DocumentJson), version.Id, version.Revision);
         }
@@ -3875,9 +3893,11 @@ public class WebsitePlatformController : ControllerBase
     {
         if (document.Store?.Enabled != true) return null;
 
-        var state = await _db.Set<WebsiteContentState>().AsNoTracking()
-            .SingleOrDefaultAsync(x => x.OwnerKey == ownerKey && x.SiteKey == siteKey, cancellationToken);
-        if (state?.CommerceBusinessId is not Guid commerceBusinessId || commerceBusinessId == Guid.Empty)
+        var businessId = await _db.Set<WebsiteContentState>().AsNoTracking()
+            .Where(x => x.OwnerKey == ownerKey && x.SiteKey == siteKey)
+            .Select(x => x.CommerceBusinessId)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (businessId is not Guid commerceBusinessId || commerceBusinessId == Guid.Empty)
             return null;
 
         var business = await _db.CommerceBusinesses.AsNoTracking().SingleOrDefaultAsync(
