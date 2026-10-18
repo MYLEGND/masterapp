@@ -4741,3 +4741,51 @@ for(const restored of [false,true]) {
     } finally {f.close();}
   });
 }
+
+// jsdom supplies controlled geometry; live-browser preflight verifies CSS layout.
+test('responsive audit finishes without animation frames and retains breakpoint checks', {timeout:5000}, async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition[0].children[0].breakpointStyles={desktop:{fontSize:48},mobile:{fontSize:24}};
+  const f=await domFixture({doc});
+  try {
+    f.change('#legend-cms-breakpoint','desktop');
+    const originalStyle=f.w.document.querySelector('main h1').style.cssText;
+    assert.match(originalStyle,/48px/);
+    let rafCalls=0;
+    f.w.requestAnimationFrame=()=>{rafCalls++;return 1;};
+    const create=f.w.document.createElement.bind(f.w.document);
+    const frames=[];
+    f.w.document.createElement=function(tag,...args){
+      const frame=create(tag,...args);
+      if(tag!=='iframe') return frame;
+      frames.push(frame);
+      Object.defineProperty(frame,'srcdoc',{set(markup){
+        const child=frame.contentDocument;
+        child.documentElement.innerHTML=markup;
+        frame.contentWindow.requestAnimationFrame=()=>{rafCalls++;return 1;};
+        Object.defineProperty(child,'fonts',{value:{ready:Promise.resolve()}});
+        const width=parseFloat(frame.style.width);
+        const heading=child.querySelector('main h1');
+        assert.ok(heading);
+        heading.dataset.cmsEditable='true';
+        Object.defineProperty(heading,'clientWidth',{value:width});
+        Object.defineProperty(heading,'scrollWidth',{value:width+(width<768?100:0)});
+        const link=child.querySelector('main a');
+        link.getClientRects=()=>[{width:20,height:20}];
+        link.getBoundingClientRect=()=>({width:20,height:20,x:0,y:0,top:0,left:0,right:20,bottom:20});
+        queueMicrotask(()=>frame.dispatchEvent(new f.w.Event('load')));
+      }});
+      return frame;
+    };
+    const results=await f.w.LEGEND_WEBSITE_STUDIO_AGENT.runResponsiveQuality();
+    assert.deepEqual(Array.from(results,x=>x.key),['mobile','tablet','desktop']);
+    assert.ok(results[0].checks.some(x=>x.code==='live_horizontal_overflow'));
+    assert.ok(results.slice(1).every(x=>!x.checks.some(c=>c.code==='live_horizontal_overflow')));
+    assert.ok(results.every(x=>x.checks.some(c=>c.code==='live_touch_target_small')));
+    assert.equal(rafCalls,0);
+    assert.equal(frames.length,3);
+    assert.ok(frames.every(frame=>!frame.isConnected));
+    assert.equal(f.w.document.querySelector('#legend-cms-breakpoint').value,'desktop');
+    assert.equal(f.w.document.querySelector('main h1').style.cssText,originalStyle);
+  } finally {f.close();}
+});

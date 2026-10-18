@@ -47,7 +47,7 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
         if (!string.IsNullOrWhiteSpace(scope.SiteKey)) states = states.Where(s => s.SiteKey == scope.SiteKey);
         var range = new TimeRangeRequest { FromUtc = DateTime.UtcNow.AddDays(-30), ToUtc = DateTime.UtcNow, QualityMode = TrafficQualityMode.AllTraffic };
         var events = await new AnalyticsQueryService(db, configuration).LoadAttributedEventsAsync(range, scope, ct: ct);
-        return await ReadStatesAsync(await states.ToListAsync(ct), events, ct);
+        return await ReadStatesAsync(await PublishedStateIdentity(states).ToListAsync(ct), events, ct);
     }
 
     public async Task<IReadOnlyList<Entry>> ReadTicketAsync(WebsiteEditorTicket actor, CancellationToken ct = default)
@@ -55,19 +55,29 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
         // AuthorizeAsync has validated this ticket; exact state ownership is the publication boundary.
         var owner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, actor, ct);
         if (owner is null) return [];
-        var states = await db.Set<WebsiteContentState>().AsNoTracking().Where(s =>
+        var states = await PublishedStateIdentity(db.Set<WebsiteContentState>().AsNoTracking().Where(s =>
             s.OwnerKey == actor.OwnerUserId && s.SiteKey == actor.SiteKey &&
-            (actor.SiteKey != WebsiteEditorSiteKeys.Business || s.CommerceBusinessId == actor.CommerceBusinessId)).ToListAsync(ct);
+            (actor.SiteKey != WebsiteEditorSiteKeys.Business || s.CommerceBusinessId == actor.CommerceBusinessId))).ToListAsync(ct);
         var versions = states.Where(s => s.PublishedVersionId.HasValue).Select(s => s.PublishedVersionId!.Value).ToArray();
         var events = await new AnalyticsQueryService(db, configuration).LoadOwnerEventsAsync(DateTime.UtcNow.AddDays(-30), owner, ct);
         var ownedEvents = events.Where(e => e.WebsiteContentVersionId.HasValue && versions.Contains(e.WebsiteContentVersionId.Value)).ToList();
         return await ReadStatesAsync(states, ownedEvents, ct);
     }
 
+    // Detached identity adapters for the canonical owner resolver, never attached or saved.
+    // DraftJson and NamedDraftsJson are private editing payloads, not reporting inputs.
+    private static IQueryable<WebsiteContentState> PublishedStateIdentity(IQueryable<WebsiteContentState> states) =>
+        states.Select(s => new WebsiteContentState
+        {
+            Id = s.Id, OwnerKey = s.OwnerKey, SiteKey = s.SiteKey,
+            CommerceBusinessId = s.CommerceBusinessId, PublishedVersionId = s.PublishedVersionId
+        });
+
     private async Task<IReadOnlyList<Entry>> ReadStatesAsync(List<WebsiteContentState> states, List<AnalyticsEvent> events, CancellationToken ct)
     {
         var versionIds = states.Where(s => s.PublishedVersionId.HasValue).Select(s => s.PublishedVersionId!.Value).ToArray();
-        var versions = await db.Set<WebsiteContentVersion>().AsNoTracking().Where(v => versionIds.Contains(v.Id)).ToListAsync(ct);
+        var versions = await db.Set<WebsiteContentVersion>().AsNoTracking().Where(v => versionIds.Contains(v.Id))
+            .Select(v => new { v.Id, v.StateId, v.Revision, v.DocumentJson }).ToListAsync(ct);
         var sourceIds = events.Select(e => e.Id).ToArray();
         var receipts = await db.Set<MarketingDestinationDelivery>().AsNoTracking().Where(r => r.Channel == "server" && r.CanonicalSource == nameof(AnalyticsEvent) &&
                 r.AnalyticsEventId.HasValue && sourceIds.Contains(r.AnalyticsEventId.Value)).ToListAsync(ct);
