@@ -2566,6 +2566,7 @@ def fast_track_scope(paths):
         'Infrastructure/Households/HouseholdMembershipService.cs',
         'Infrastructure/Infrastructure.csproj',
         'Infrastructure/Diagnostics/RoutineSqlPolling.cs',
+        'Infrastructure/Messaging/LegendCallSignalDeliveryHostedService.cs',
         'Infrastructure/Notifications/ApplePushDeliveryHostedService.cs',
         'Infrastructure/Notifications/FirebasePushDeliveryHostedService.cs',
         'Infrastructure/Leads/WebsiteInquiryAuthority.cs',

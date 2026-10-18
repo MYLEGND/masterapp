@@ -34,6 +34,7 @@ on:
       - Domain/Models/Commerce/**
       - Infrastructure/Data/MasterAppDbContext.cs
       - Infrastructure/Diagnostics/RoutineSqlPolling.cs
+      - Infrastructure/Messaging/LegendCallSignalDeliveryHostedService.cs
       - Infrastructure/Notifications/ApplePushDeliveryHostedService.cs
       - Infrastructure/Notifications/FirebasePushDeliveryHostedService.cs
       - Infrastructure/Migrations/**

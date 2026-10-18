@@ -6,13 +6,21 @@ using System.Diagnostics;
 
 namespace Infrastructure.Diagnostics;
 
-/// <summary>Marks only the two read-only mobile push outbox discovery queries.</summary>
+/// <summary>Marks explicitly scoped read-only outbox discovery queries.</summary>
 public static class RoutineSqlPolling
 {
     private const string Key = "Legend.RoutineSqlPolling.Scope";
     private static readonly AsyncLocal<PollScope?> Current = new();
 
-    public static async Task<T> ReadMobilePushOutboxAsync<T>(Func<string> captureQuery, Func<Task<T>> read)
+    public static Task<T> ReadMobilePushOutboxAsync<T>(Func<string> captureQuery, Func<Task<T>> read)
+        => ReadAsync(captureQuery, read, _ => true);
+
+    // Nonempty discoveries carry real call activity and retain full telemetry.
+    public static Task<T[]> ReadEmptyCallSignalOutboxAsync<T>(Func<string> captureQuery, Func<Task<T[]>> read)
+        => ReadAsync(captureQuery, read, result => result is { Length: 0 });
+
+    private static async Task<T> ReadAsync<T>(Func<string> captureQuery, Func<Task<T>> read,
+        Func<T, bool> eligibleResult)
     {
         var previous = Current.Value;
         string? expectedQuery;
@@ -24,7 +32,8 @@ public static class RoutineSqlPolling
         try
         {
             var result = await read().ConfigureAwait(false);
-            succeeded = true;
+            try { succeeded = eligibleResult(result); }
+            catch { succeeded = false; } // Classification must not affect the actual read.
             return result;
         }
         finally

@@ -244,4 +244,88 @@ public class RoutineSqlDependencyRoutingTests
         Assert.Empty(f.Sampled.Items);
     }
 
+
+    [Fact]
+    public async Task Empty_call_discoveries_are_sampled_but_actual_signals_and_followup_work_are_retained()
+    {
+        using var f = new Fixture();
+        const string query = "SELECT [s].[Id] FROM [LegendCallSignals] AS [s]";
+        for (var i = 0; i < 500; i++)
+        {
+            var empty = await RoutineSqlPolling.ReadEmptyCallSignalOutboxAsync<int>(() => query, () =>
+            {
+                f.Emit(query: query);
+                return Task.FromResult(Array.Empty<int>());
+            });
+            Assert.Empty(empty);
+        }
+        var signals = new[] { 42 };
+        var returned = await RoutineSqlPolling.ReadEmptyCallSignalOutboxAsync(() => query, () =>
+        {
+            f.Emit(query: query);
+            return Task.FromResult(signals);
+        });
+        Assert.Same(signals, returned);
+        f.Emit(query: query);
+        f.Flush();
+        Assert.Single(f.Full.Items);
+        Assert.Single(f.Original.Items);
+        Assert.InRange(f.Sampled.Items.Count, 1, 150);
+        Assert.Equal(502, f.Metrics.Count);
+        Assert.Equal(f.Sampled.Items.Count + 2,
+            f.Sampled.Items.Concat(f.Full.Items).Concat(f.Original.Items).Select(a => a.Id).Distinct().Count());
+    }
+
+    [Theory]
+    [InlineData("failure")]
+    [InlineData("cancel")]
+    [InlineData("retry")]
+    [InlineData("capture")]
+    [InlineData("mismatch")]
+    [InlineData("slow")]
+    [InlineData("error")]
+    [InlineData("wrong-server")]
+    [InlineData("parent")]
+    [InlineData("disabled")]
+    [InlineData("rollback")]
+    public async Task Empty_call_discovery_keeps_protected_and_uncertain_evidence(string kind)
+    {
+        using var f = new Fixture();
+        const string query = "SELECT [s].[Id] FROM [LegendCallSignals] AS [s]";
+        if (kind == "disabled") f.Options.CurrentValue.SampleRoutineSqlDependencies = false;
+        using var parent = kind == "parent" ? new Activity("payment-or-audit").Start() : null;
+        Task<int[]> Read()
+        {
+            f.Emit(a =>
+            {
+                if (kind == "slow") a.SetEndTime(a.StartTimeUtc.AddSeconds(2));
+                if (kind == "error") a.SetStatus(ActivityStatusCode.Error);
+                if (kind == "wrong-server") a.SetTag("server.address", "other.invalid");
+            }, kind == "mismatch" ? "SELECT 1" : query);
+            if (kind == "retry") f.Emit(query: query);
+            if (kind == "rollback") f.Options.CurrentValue.SampleRoutineSqlDependencies = false;
+            if (kind == "failure") return Task.FromException<int[]>(new InvalidOperationException());
+            if (kind == "cancel") return Task.FromException<int[]>(new OperationCanceledException());
+            return Task.FromResult(Array.Empty<int>());
+        }
+        Task<int[]> Run() => RoutineSqlPolling.ReadEmptyCallSignalOutboxAsync(
+            () => kind == "capture" ? throw new InvalidOperationException() : query, Read);
+        if (kind is "failure" or "cancel") await Assert.ThrowsAnyAsync<Exception>(Run);
+        else Assert.Empty(await Run());
+        f.Flush();
+        Assert.Empty(f.Sampled.Items);
+        var expected = kind == "retry" ? 2 : 1;
+        Assert.Equal(expected, f.Metrics.Count);
+        if (kind is "parent" or "disabled")
+        {
+            Assert.Equal(expected, f.Original.Items.Count);
+            Assert.Empty(f.Full.Items);
+        }
+        else
+        {
+            Assert.Equal(expected, f.Full.Items.Count);
+            Assert.Empty(f.Original.Items);
+        }
+    }
+
 }
