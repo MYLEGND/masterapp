@@ -1,12 +1,80 @@
 # LEGEND revenue-launch checkpoint
 
-## Current continuation — deployed Analytics, profile-read follow-up and Google authorization
+## Current checkpoint — PAUSED at Founder request, 2026-10-18
+
+The Founder explicitly stopped this continuation to address more urgent issues and requested a safe checkpoint for later resumption. Application implementation, live diagnosis, provider setup, publishing retries and deployment are paused. Only this canonical record, its independent review, normal preservation and exact AUTH4 restoration belong to the closing work. This section supersedes older pending-work directions below; standing authorization remains recorded but is not an instruction to restart paused work.
+
+Root Astra is the sole native writer in the existing Codespace bookish-fiesta-97pj77j5vpwj3pjv6 /workspaces/masterapp. Native Codex is unavailable; the authorized native fallback and independent read-only reviewers were used. No competing writer, additional Codespace or checkout, source-editing API workaround, new recovery identity or preservation pipeline was created. TikTok stays paused; Meta/OpenAI are preserved. Parfait cutover, optional expansion and automatic-preservation implementation remain separate workstreams.
+
+### Completed implementation, validation and deployment
+
+PR #635 completed cancellation propagation and the request-local Health/Meta shared read in the existing owners, preserving Health's historical lead/event evidence and Meta's SQL-projected event-session evidence, database collation, pipe-containing identities, separate row/lead queries and existing classifier semantics. Its completed shared-application release and original-operation reconciliation are recorded below; do not replay them.
+
+The profile-read follow-up is now completed as [PR #636](https://github.com/MYLEGND/masterapp/pull/636), candidate b0e2527a7e08dc7a56e1369edfdbe280fd070ade, protected merge 836b7ec462a0582492914d8de042f9b6d42e3be7. Merge parents are a44b6571402828f86dce28d7a55378ebb6e40544 and b0; its tree 61d2714983d84cc6718f457f1e72d637e2ebfc4e matches the accepted candidate. AgentRegistryService now projects the existing 22 required scalar fields without profile-image materialization, preserves pretracked edits/state, cleans up only its private entry, and propagates request cancellation. The five accepted paths, fixture correction and exact source details are retained in the prior preparation below.
+
+All three required exact-PR checks passed on attempt 1: [Security 39102232886](https://github.com/MYLEGND/masterapp/actions/runs/39102232886), [Architecture 39102232735](https://github.com/MYLEGND/masterapp/actions/runs/39102232735) and [Isolated 39102232952](https://github.com/MYLEGND/masterapp/actions/runs/39102232952). Fresh contracts compiled and executed the explicit IdentityHardeningTests selection: 808 passed, 0 failed, 0 skipped across the selected contracts suite. This is not a separate 27/27 identity subtotal. The earlier local compiler exit 143 was incomplete native validation, not a source failure or passing test run. The isolated cacheable publish child remains marked unproven while its terminal step and asset parity passed; the unchanged canonical source-admission contract accepted the successful exact source-validation scope. No all-leaf-success claim or additional gate is introduced.
+
+[Fast Track 39103073417](https://github.com/MYLEGND/masterapp/actions/runs/39103073417), attempt 1, completed SUCCESS at 2026-10-18 06:21:15 UTC. Canonical selection deployed AgentPortal only; Website, Client, Protect and Parfait were excluded, with SQL and routing skipped. The one immutable upload was reconciled without resubmission. Azure deployment ff14f6ff62fa40b79379b44db245737e reached status 4; operation ae1368c6330f8573046761f60a4489616d8c08bdf811f6e0ca4b5cfcfd865316. Portal package artifact 12127082288 has application-package SHA256 14be50200135e0202d8569faa77e8177497fbfdbe90f9648d3d9a1feea709df3. Success artifact 12127697248 ZIP SHA256 is 74a5adb255efc1af2ba0994b5bffcdb12521135ba5730042134dd449f8e08931.
+
+The canonical reconciler required two settled observations of exact running assembly revision 836 from /api/runtime-provenance before success. That endpoint derives revision from the loaded entry assembly; these are the deployment owner's retained observations, not a separately retained fresh browser JSON response. Deployment is complete; remaining functional failures are recorded separately. Preserve all completed #632/#634/#635/#636 releases.
+
+### Seven-day Analytics remains unresolved
+
+After the completed Portal release, Personal / Protect / Today loaded Summary and Health with 2 views, 1 visitor, 1 session and 1 lead. Personal / Legend / Seven Days was selected at 06:24:56 UTC; Summary and Health timed out at about 06:25:42.955/.969. One same-scope manual refresh at 06:26:18 also timed out. Old Today content cleared to dashed/unavailable state under seven days. No further report retry was made.
+
+The bounded post-release Application Insights sample retained these two failed requests:
+
+| Measurement | Summary | Marketing performance |
+| --- | --- | --- |
+| Operation | d3b6069307ac821486b47618f94eb51e | 23ccb9230545c4b402ba1306d57b1311 |
+| Request result / duration | HTTP 499 / 44,776.5148 ms | HTTP 499 / 44,705.8234 ms |
+| Historical evidence dependency | 29.843862 s | 11.9229239 s |
+| Selected events dependency | 177.2421 ms | 329.2739 ms |
+| Three identity reads, summed duration | 436.5892 ms | 1,851.7758 ms |
+
+The second operation is GET WebsiteAnalytics/marketing-manager/performance, not marketing-health. Health's separate UI timeout was observed; its request was not retained in this sample. The performance initial attributed-data query does not require Health's event-session-membership projection, so its absence is expected and does not establish a sharing regression. Dependency timings are sampled observations, not an additive decomposition or proof that capacity is the sole cause.
+
+The slow query preserves owner scope and historical classification evidence for 100 selected sessions. Selected event reads were comparatively quick. Earlier physical inspection already established the existing enabled SessionId behavior index and owner/time indexes; query 141327 / plan 96478 used a clustered scan with owner/JSON residual and session membership, and contained an unexamined conversion-warning detail. Do not repeat that index inventory or invent an index fix. If this work is resumed, the next bounded diagnostic is current Query Store plan evidence for the post-release historical query and the conversion-warning type/column, without customer rows or parameter values. Compare current execution with the older plan before proposing a correction. Preserve both evidence domains, owner/site/environment boundaries, cancellation and reporting semantics; no cross-request cache, historical truncation or timeout increase.
+
+Fresh SQL Query Editor sign-in was blocked because browser IP 109.104.115.73 was not allowlisted on masterapp-sql-prod-1221. No new firewall rule was added; the earlier temporary rule had been removed. Any necessary future action-time access confirmation belongs to resumption, not this pause. Narrow production viewport acceptance remains unproven; the attempted override did not produce the requested actual narrow viewport. Prior source previews are not relabeled as production acceptance.
+
+### Google connection established; reporting restricted
+
+The existing LEGEND / legend-60636 project, OAuth client, Google Ads API and canonical Azure configuration were reused. The Founder completed secure credential replacement and Google authorization; secrets were not recorded. A separate canonical accounts read returned 4457920203, 7834167299 and 9851075058. The exact callback redirect/status query was not retained; callback completion is inferred from return to Analytics and downstream canonical evidence. One Use selected account action for intended customer 4457920203 returned "Advertiser account selected for this scope."
+
+The canonical owner-bound encrypted credential was subsequently read again during Channel Outcomes refresh, which reached the account timezone query and received HTTP 403. Campaign reporting did not complete; the application discarded the detailed provider enum, so no exact Google error enum is claimed. Fresh Cloud readback established current Google Ads API access level Test, limited to test accounts, with Explorer offered for production accounts. Explorer was not requested or granted. OAuth External/Testing also retains its seven-day offline-authorization limitation. No duplicate project/client, speculative provider reset, invented conversion mapping or obsolete developer-token requirement was introduced. See the [current operational receipt](https://github.com/MYLEGND/masterapp/pull/636#issuecomment-6246500598) and its official provider reference. Provider changes now remain paused.
+
+### Publishing and customer-operation boundaries
+
+The last Founder website manager read showed Draft 1348 / Published 1338. At the bounded read, the original Studio tab retained pending publication request aa031370-5543-4d5c-bc7a-6c44b437c7e5 and Confirmation pending. One canonical Protect publication-status navigation was blocked by the browser client with ERR_BLOCKED_BY_CLIENT; no status JSON was obtained. No Publish, retry, save, source-mode change, Source refresh or canvas edit occurred. The confirmation controls can schedule a draft save when pending canvas changes exist, so they are not unconditionally read-only probes. Preserve the recorded publication UUID and reconcile this exact request before any replay, without overwriting newer draft/canvas/source buffers.
+
+Historical compiler incident 7c8f3f0b-6d86-4b77-afa5-b864b37128f6 remains two occurrences, last received 2026-10-17 00:39:30 UTC from old assembly a98. Its relationship to the pending request is unproven. The synthetic Kudu render did not establish customer publishing success; no new compiler repair is claimed.
+
+The earlier identified L01/P01 QA inquiries produced actual recipient email arrivals and visible CRM assignment as recorded below. The latest read-only CRM Quick View still showed the Website QA Test protection inquiry, Source WebsiteIntake and last touch 2026-10-17. A canonical raw lead-owner read was blocked by the browser client; raw agentUserId/intake owner parity remains unverified. No new inquiry, contact message or save was submitted. Named worker execution, in-app/device notification delivery and full conversion/revenue acceptance remain open; QA activity is not customer revenue.
+
+### Exact preservation and resumption boundary
+
+This documentation-only checkpoint is based on task b0; protected runtime remains 836. Fresh native reattachment around 06:58 UTC verified the same permanent Codespace, task remote b0, protected remote 836, and original AUTH4 worktree state. Independent release review checked all 20 workflow trigger definitions: a sole checkpoint-path normal push to isolation/res-001-workspace-dismissal matches no repository push workflow. No new PR, merge, CI dispatch or deployment is part of this pause. Before any future application candidate/CI, refresh both branches and incorporate the current protected base through a clean fast-forward when applicable; satisfy canonical external-recovery requirements for any resulting local-ahead state.
+
+Existing b0 recovery object continuity-v1/3730b964-0d9d-4ffc-bf5e-3cef11a70ba2/recovery.zip has SHA256 b0113c101b62ecdc1eee587efe6c124e4491dce9f9ff4f60cf88067e72950086 and fresh disposable restoration verified. It proves b0 only. Preserve the new reviewed documentation commit separately using the existing recovery-only certificate and canonical helper in masterappstorage1221 / legend-engineering-recovery, followed by canonical acceptance-gated normal finish. The exact new checkpoint HEAD, verified archive identity, remote readback and final AUTH4 restoration receipt belong in the existing [PR #636 continuation receipt](https://github.com/MYLEGND/masterapp/pull/636#issuecomment-6246500598); they are not claimed complete by this prepared source text.
+
+AUTH4 must finish restored on isolation/pr630-probe-timing-20261016 at 56fb2cbfed2b5c24a4b230c0643c088af922e418, by applying rather than popping retained stash 18a0a62d209b1e87115c9f7253db5959bd2192be. Exactly these original three unstaged files must retain mode 0666, with clean index and all six original recovery pins:
+
+| AUTH4 path | Original SHA256 |
+| --- | --- |
+| LEGEND-REVENUE-LAUNCH-CHECKPOINT.md | 73678ad03d1ceedfe92d00dd31526b7ffee9153e5735c0bca078d5b98e112c40 |
+| scripts/sync-published-checkout.py | c313a60fbbf4b55f9836b62750b3fcee8890d8c7a2b7dc56af3ffc5b8eda85fc |
+| scripts/test-sync-published-checkout.py | 71c69a5b83ec8d74f9e06cb528fc0c9852d7c4e48c76248c6fb4fbae5f60a61e |
+
+Retain the original AUTH4 recovery object continuity-v1/4d93e316-b5b2-45d4-b912-d788fccb0da5/recovery.zip, SHA256 24bee763d406cb2464fceb331ba16c2fe41fd232bcfcb1159ef11a944774b306. Never apply AUTH4 onto the Analytics branch. Native source preservation does not capture unsaved browser/editor memory. During final pause inventory, the original Studio and Google Cloud tabs were no longer present; their live in-memory state is not claimed recovered. The existing Codespace and Analytics surfaces remain available. The pending publication UUID is preserved here; do not recreate, refresh or retry Studio over unverified newer work. All implementation and provider collaborators are paused. Resume from this checkpoint and the exact final PR receipt only when the Founder returns to this work.
+
+## Prior continuation — deployed Analytics, profile-read follow-up and Google authorization
 
 The Founder renewed the existing implementation, protected merge, selective deployment, provider setup, and live-verification authority on 2026-10-17. TikTok remains paused and nonblocking. The outgoing writer is paused. Root is the sole implementation owner in the permanent Codespace, using the already-authorized native fallback because no Codex executable is available there. Independent Analytics and release/continuity collaborators review without writing the checkout.
 
 On 2026-10-18 the Founder explicitly approved the prepared Google Web-client/Portal-configuration/offline-connection work and one temporary SQL Query Editor IP rule for bounded diagnostics. The temporary SQL access was removed and verified. The Founder subsequently completed the secure Google credential replacement and Azure save; the live Portal is ready to connect, while Google requires the account's device passkey before authorization can continue. The deployed application release remains a44b6571402828f86dce28d7a55378ebb6e40544. The bounded profile-read follow-up below is implemented and statically reviewed, with candidate CI and selective deployment still pending.
 
-### Current profile-read follow-up candidate — 2026-10-18
+### Profile-read follow-up candidate at preparation — 2026-10-18
 
 Continue from task HEAD 5d38b0341d0e614a8ce915cca682faa2ac2334b5, with deployed/protected a44b6571402828f86dce28d7a55378ebb6e40544 already in its ancestry. Fresh native readback at 03:02:07.406982 UTC found no newer work: the exact original AUTH4 state was restored, both remote heads were unchanged, the index was clean and all six pins were intact. Guarded byte, binary-diff, branch, mode and pin checks proved those three worktree copies equal to retained stash 18a0a62d before clearing only the already-preserved copies. The existing task branch was selected at 03:06:14.304097 UTC. Canonical preflight passed with clean equal local/remote 5d38 and no local-only or remote-only commits. Root remains the sole native source writer; Codex is unavailable in that Codespace, and independent reviewers remain read-only.
 
