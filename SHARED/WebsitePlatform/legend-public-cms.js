@@ -7336,10 +7336,11 @@
       frame.srcdoc=responsiveAuditMarkup();
       await loaded;
       await frame.contentDocument?.fonts?.ready?.catch?.(()=>{});
-      await new Promise(resolve=>(frame.contentWindow?.requestAnimationFrame || requestAnimationFrame)(()=>resolve()));
-      await new Promise(resolve=>(frame.contentWindow?.requestAnimationFrame || requestAnimationFrame)(()=>resolve()));
       const doc=frame.contentDocument;
       if(!doc) return {key:breakpoint?.key || 'base',label:breakpoint?.label || 'Base',width,checks:[{code:'responsive_audit_unavailable',severity:'warning',message:'Responsive audit frame was unavailable.'}]};
+      // Hidden audit frames may never receive animation callbacks. Layout reads
+      // flush ready styles without requiring the browser to paint this frame.
+      doc.documentElement.getBoundingClientRect();
       return {
         key:breakpoint?.key || 'base',
         label:breakpoint?.label || 'Base',
@@ -7361,7 +7362,7 @@
       for(const breakpoint of targets){
         editorBreakpointKey=breakpoint.key;
         applyBreakpointPreview();
-        await new Promise(resolve=>requestAnimationFrame(()=>resolve()));
+        document.documentElement.getBoundingClientRect();
         results.push(await auditRenderedBreakpoint(breakpoint));
       }
       return results;
