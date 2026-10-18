@@ -30,9 +30,16 @@ internal sealed class LegendCallSignalDeliveryHostedService(IServiceScopeFactory
                     var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
                     var now = DateTime.UtcNow;
                     var delivered = _delivered.Keys.ToArray();
-                    var pending = await db.LegendCallSignals.AsNoTracking()
+                    var pendingQuery = db.LegendCallSignals.AsNoTracking()
                         .Where(s => s.ExpiresUtc > now && groups.Contains(s.RecipientGroup) && !delivered.Contains(s.Id))
-                        .OrderBy(s => s.Id).Take(2048).ToArrayAsync(stoppingToken);
+                        .OrderBy(s => s.Id).Take(2048);
+                    var pending = await Infrastructure.Diagnostics.RoutineSqlPolling.ReadEmptyCallSignalOutboxAsync(
+                        () =>
+                        {
+                            using var command = pendingQuery.CreateDbCommand();
+                            return command.CommandText;
+                        },
+                        () => pendingQuery.ToArrayAsync(stoppingToken));
                     foreach (var signal in pending)
                     {
                         if (_delivered.ContainsKey(signal.Id)) continue;

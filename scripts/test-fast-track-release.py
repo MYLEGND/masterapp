@@ -168,6 +168,7 @@ class HistoricManualProxyReadbackTests(unittest.TestCase):
 class RoutineSqlPollingImpactTests(unittest.TestCase):
     def test_exact_shared_polling_sources_require_managed_apps_and_backend_admission(self):
         paths = ['Infrastructure/Diagnostics/RoutineSqlPolling.cs',
+                 'Infrastructure/Messaging/LegendCallSignalDeliveryHostedService.cs',
                  'Infrastructure/Notifications/ApplePushDeliveryHostedService.cs',
                  'Infrastructure/Notifications/FirebasePushDeliveryHostedService.cs']
         for path in paths:
@@ -178,7 +179,8 @@ class RoutineSqlPollingImpactTests(unittest.TestCase):
                 self.assertTrue(scope['commerce'])
                 self.assertFalse(scope['schema'])
                 self.assertFalse(scope['routing'])
-        for path in ['Infrastructure/Diagnostics/Unknown.cs', 'Infrastructure/Notifications/Unknown.cs']:
+        for path in ['Infrastructure/Diagnostics/Unknown.cs', 'Infrastructure/Notifications/Unknown.cs',
+                     'Infrastructure/Messaging/Unknown.cs']:
             with self.subTest(path=path), self.assertRaisesRegex(ValueError, 'Unmapped'):
                 authority.fast_track_scope([path])
 
