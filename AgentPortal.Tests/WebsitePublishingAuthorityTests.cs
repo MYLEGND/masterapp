@@ -67,6 +67,52 @@ public sealed class WebsitePublishingAuthorityTests
         }
     }
 
+    [Fact]
+    public async Task HistoricalVersionOwnerResolutionProjectsIdentityWithoutPrivatePayloads()
+    {
+        var audit = new MaterializationAudit();
+        using var db = ControllerTestHelpers.BuildDb(audit);
+        var config = new ConfigurationBuilder().Build();
+        var cases = new[]
+        {
+            (Site: WebsiteEditorSiteKeys.Legend, Owner: WebsiteEditorSiteKeys.GlobalOwnerKey, IsFounder: true),
+            (Site: WebsiteEditorSiteKeys.Legend, Owner: "foreign-owner", IsFounder: false),
+            (Site: WebsiteEditorSiteKeys.Protect, Owner: WebsiteEditorSiteKeys.GlobalOwnerKey, IsFounder: false),
+            (Site: WebsiteEditorSiteKeys.Business, Owner: WebsiteEditorSiteKeys.BusinessOwnerKey(Guid.NewGuid()), IsFounder: false)
+        };
+        foreach (var item in cases)
+        {
+            var state = new WebsiteContentState
+            {
+                SiteKey = item.Site, OwnerKey = item.Owner,
+                DraftJson = "private draft must not be materialized",
+                NamedDraftsJson = "private named drafts must not be materialized"
+            };
+            var version = new WebsiteContentVersion
+            {
+                StateId = state.Id, Revision = 1,
+                DocumentJson = "published content is not an identity input",
+                CompiledPagesJson = "compiled content is not an identity input"
+            };
+            // Historical version ownership remains valid without a current publication.
+            Assert.Null(state.PublishedVersionId);
+            db.AddRange(state, version);
+            await db.SaveChangesAsync();
+            db.ChangeTracker.Clear();
+            audit.EntityTypes.Clear();
+            var owner = await Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ResolveOwnerAsync(
+                db, config, new AnalyticsEvent { Id = 42, WebsiteContentVersionId = version.Id, MetadataJson = "{}" });
+            if (item.IsFounder) Assert.Equal(MarketingOwnerScope.Founder, owner);
+            else Assert.Null(owner);
+            Assert.DoesNotContain(typeof(WebsiteContentState), audit.EntityTypes);
+            Assert.DoesNotContain(typeof(WebsiteContentVersion), audit.EntityTypes);
+            Assert.Empty(db.ChangeTracker.Entries<WebsiteContentState>());
+            Assert.Empty(db.ChangeTracker.Entries<WebsiteContentVersion>());
+        }
+        Assert.Null(await Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ResolveOwnerAsync(
+            db, config, new AnalyticsEvent { Id = 42, WebsiteContentVersionId = Guid.NewGuid(), MetadataJson = "{}" }));
+    }
+
     private sealed class Fixture : IDisposable
     {
         public MaterializationAudit Audit { get; } = new();
