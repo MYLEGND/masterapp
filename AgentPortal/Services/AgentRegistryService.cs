@@ -1,9 +1,11 @@
 using System;
+using System.Linq.Expressions;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace AgentPortal.Services;
 
@@ -100,21 +102,41 @@ public class AgentRegistryService
         var emailNorm = NormalizeEmail(email);
         var displayName = BuildDisplayName(user);
         var oidLower = oid.ToLowerInvariant();
+        EntityEntry<Domain.Entities.AgentProfile>? ownedEntry = null;
 
         try
         {
-            var existing = await _db.AgentProfiles.FirstOrDefaultAsync(
-                a => a.AgentUserId == oid || (a.AgentUserId != null && a.AgentUserId.ToLower() == oidLower),
-                ct);
+            // Keep database membership/collation and the tracking query's identity
+            // semantics without transferring profile images on every authenticated request.
+            var profilesById = new Dictionary<Guid, RegistryProfile>();
+            RegistryProfile ResolveProfile(RegistryProfile row)
+            {
+                if (profilesById.TryGetValue(row.Id, out var resolved)) return resolved;
 
-            List<Domain.Entities.AgentProfile> emailMatches = new();
+                // Entries includes pending deletions; Local would change query semantics.
+                var tracked = _db.ChangeTracker.Entries<Domain.Entities.AgentProfile>()
+                    .FirstOrDefault(entry => entry.Entity.Id == row.Id);
+                resolved = tracked == null ? row : ReadTrackedProfile(tracked.Entity);
+                profilesById.Add(row.Id, resolved);
+                return resolved;
+            }
+
+            var oidMatch = await _db.AgentProfiles
+                .Where(a => a.AgentUserId == oid || (a.AgentUserId != null && a.AgentUserId.ToLower() == oidLower))
+                .Select(ProfileProjection)
+                .FirstOrDefaultAsync(ct);
+            var existing = oidMatch == null ? null : ResolveProfile(oidMatch);
+
+            List<RegistryProfile> emailMatches = new();
             if (emailNorm != null)
             {
-                emailMatches = await _db.AgentProfiles
+                var rows = await _db.AgentProfiles
                     .Where(a => a.NormalizedEmail == emailNorm || (a.NormalizedEmail == null && a.AgentUpn != null && a.AgentUpn.ToLower() == emailNorm))
                     .OrderBy(a => a.CreatedUtc)
                     .ThenBy(a => a.Id)
+                    .Select(ProfileProjection)
                     .ToListAsync(ct);
+                emailMatches = rows.Select(ResolveProfile).ToList();
             }
 
             if (existing == null && emailMatches.Count > 0)
@@ -140,6 +162,7 @@ public class AgentRegistryService
             }
             else
             {
+                var before = existing with { };
                 var changed = false;
 
                 if (emailMatches.Count > 1)
@@ -184,6 +207,22 @@ public class AgentRegistryService
                 {
                     existing.CreatedUtc = DateTime.UtcNow;
                 }
+
+                var entry = _db.ChangeTracker.Entries<Domain.Entities.AgentProfile>()
+                    .FirstOrDefault(candidate => candidate.Entity.Id == existing.Id);
+                if (entry == null)
+                {
+                    // Only the projected columns participate in this update. In particular,
+                    // do not overwrite images or lifecycle fields that this read omitted.
+                    entry = _db.Entry(new Domain.Entities.AgentProfile());
+                    entry.CurrentValues.SetValues(before);
+                    entry.State = EntityState.Unchanged;
+                    ownedEntry = entry;
+                }
+
+                // Reuse a caller's tracked instance without resetting its original values,
+                // state, or unrelated pending edits (including an uploaded profile image).
+                entry.CurrentValues.SetValues(existing);
             }
 
             try
@@ -200,6 +239,10 @@ public class AgentRegistryService
             {
                 await _tracking.EnsureProfileAsync(oid, email, displayName, ct);
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "AgentRegistry: failed to ensure tracking profile for oid {Oid}", oid);
@@ -211,9 +254,15 @@ public class AgentRegistryService
             _logger.LogError(ex, "AgentRegistry: failed to upsert AgentProfile for oid {Oid}", oid);
             throw;
         }
+        finally
+        {
+            // EnsureProfileAsync can save on this same context. Keep our entry until it
+            // finishes, then allow later full profile reads to load the actual image.
+            if (ownedEntry != null) ownedEntry.State = EntityState.Detached;
+        }
     }
 
-    private static Domain.Entities.AgentProfile PickPreferredProfile(IEnumerable<Domain.Entities.AgentProfile> matches)
+    private static RegistryProfile PickPreferredProfile(IEnumerable<RegistryProfile> matches)
     {
         return matches
             .OrderByDescending(GetProfileCompletenessScore)
@@ -222,7 +271,7 @@ public class AgentRegistryService
             .First();
     }
 
-    private static int GetProfileCompletenessScore(Domain.Entities.AgentProfile profile)
+    private static int GetProfileCompletenessScore(RegistryProfile profile)
     {
         var score = 0;
         if (!string.IsNullOrWhiteSpace(profile.NormalizedEmail)) score += 2;
@@ -245,7 +294,7 @@ public class AgentRegistryService
         return score;
     }
 
-    private static bool CopyMissingProfileData(Domain.Entities.AgentProfile target, Domain.Entities.AgentProfile source)
+    private static bool CopyMissingProfileData(RegistryProfile target, RegistryProfile source)
     {
         var changed = false;
 
@@ -341,5 +390,63 @@ public class AgentRegistryService
         }
 
         return changed;
+    }
+
+    // One expression defines both SQL projections and snapshots of existing tracked
+    // values. No entity or image is materialized by the two registry queries.
+    private static readonly Expression<Func<Domain.Entities.AgentProfile, RegistryProfile>> ProfileProjection =
+        profile => new RegistryProfile
+        {
+            Id = profile.Id,
+            AgentUserId = profile.AgentUserId,
+            AgentUpn = profile.AgentUpn,
+            NormalizedEmail = profile.NormalizedEmail,
+            FullName = profile.FullName,
+            Title = profile.Title,
+            Npn = profile.Npn,
+            Phone = profile.Phone,
+            ShortBio = profile.ShortBio,
+            MetaPixelId = profile.MetaPixelId,
+            MetaCapiAccessToken = profile.MetaCapiAccessToken,
+            MetaTestEventCode = profile.MetaTestEventCode,
+            BookingEnabled = profile.BookingEnabled,
+            MicrosoftBookingsEmbedUrl = profile.MicrosoftBookingsEmbedUrl,
+            FallbackBookingUrl = profile.FallbackBookingUrl,
+            BookingPageIdOrMailbox = profile.BookingPageIdOrMailbox,
+            CalendarUserId = profile.CalendarUserId,
+            CalendarEmail = profile.CalendarEmail,
+            PreferModalOnMobile = profile.PreferModalOnMobile,
+            DisplayOrder = profile.DisplayOrder,
+            CreatedUtc = profile.CreatedUtc,
+            UpdatedUtc = profile.UpdatedUtc,
+        };
+
+    private static readonly Func<Domain.Entities.AgentProfile, RegistryProfile> ReadTrackedProfile =
+        ProfileProjection.Compile();
+
+    private sealed record RegistryProfile
+    {
+        public Guid Id { get; set; }
+        public string AgentUserId { get; set; } = string.Empty;
+        public string AgentUpn { get; set; } = string.Empty;
+        public string? NormalizedEmail { get; set; }
+        public string? FullName { get; set; }
+        public string? Title { get; set; }
+        public string? Npn { get; set; }
+        public string? Phone { get; set; }
+        public string? ShortBio { get; set; }
+        public string? MetaPixelId { get; set; }
+        public string? MetaCapiAccessToken { get; set; }
+        public string? MetaTestEventCode { get; set; }
+        public bool? BookingEnabled { get; set; }
+        public string? MicrosoftBookingsEmbedUrl { get; set; }
+        public string? FallbackBookingUrl { get; set; }
+        public string? BookingPageIdOrMailbox { get; set; }
+        public string? CalendarUserId { get; set; }
+        public string? CalendarEmail { get; set; }
+        public bool? PreferModalOnMobile { get; set; }
+        public int? DisplayOrder { get; set; }
+        public DateTime CreatedUtc { get; set; }
+        public DateTime UpdatedUtc { get; set; }
     }
 }

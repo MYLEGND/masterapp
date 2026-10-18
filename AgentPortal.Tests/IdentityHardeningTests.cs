@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data.Common;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading;
@@ -16,7 +17,9 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -150,6 +153,333 @@ public class IdentityHardeningTests
             TempData = tempData
         };
         return controller;
+    }
+
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AgentRegistryService_RelationalRefreshOmitsImageAndPreservesUnselectedColumns(bool oidMatch)
+    {
+        var original = RegistryProfile(oidMatch ? "AGENT-OID" : "legacy-oid", "OWNER@EXAMPLE.TEST");
+        original.NormalizedEmail = null;
+        var foreign = RegistryProfile("foreign-oid", "foreign@example.test");
+        foreign.ProfileImageContent = new byte[] { 91, 92 };
+        await using var fixture = await RegistryFixture.CreateAsync(original, foreign);
+        await using var db = fixture.OpenContext();
+        var foreignBefore = await db.AgentProfiles.AsNoTracking().SingleAsync(p => p.Id == foreign.Id);
+        fixture.Commands.Begin();
+
+        Assert.True(await BuildRegistry(db).UpsertAgentProfileAsync(
+            BuildUserWithEmail("agent-oid", "owner@example.test")));
+
+        var commands = fixture.Commands.Text.ToArray();
+        fixture.Commands.Stop();
+        var reads = commands.Where(sql => sql.StartsWith("SELECT", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(2, reads.Length);
+        Assert.All(reads, sql => Assert.All(RegistryUnselectedColumns,
+            column => Assert.DoesNotContain(column, sql, StringComparison.Ordinal)));
+        var update = Assert.Single(commands.Where(sql => sql.StartsWith("UPDATE", StringComparison.Ordinal)));
+        Assert.All(RegistryUnselectedColumns, column => Assert.DoesNotContain(column, update, StringComparison.Ordinal));
+        Assert.Contains("UpdatedUtc", update, StringComparison.Ordinal);
+        Assert.Empty(db.ChangeTracker.Entries<AgentProfile>());
+
+        // Find on this same context must load the actual image, not an incomplete
+        // update stub left in EF's identity map.
+        var saved = await db.AgentProfiles.FindAsync(original.Id);
+        Assert.NotNull(saved);
+        Assert.Equal(original.AgentUserId, saved!.AgentUserId);
+        Assert.Equal("owner@example.test", saved.NormalizedEmail);
+        Assert.Equal(original.FullName, saved.FullName);
+        AssertRegistryUnselectedValues(original, saved);
+        var foreignAfter = await db.AgentProfiles.AsNoTracking().SingleAsync(p => p.Id == foreign.Id);
+        Assert.Equal(System.Text.Json.JsonSerializer.Serialize(foreignBefore),
+            System.Text.Json.JsonSerializer.Serialize(foreignAfter));
+        Assert.Equal(2, await db.AgentProfiles.CountAsync());
+    }
+
+    [Fact]
+    public async Task AgentRegistryService_PreservesPretrackedImageNameAndOtherPendingWork()
+    {
+        var original = RegistryProfile("agent-oid", "owner@example.test");
+        var foreign = RegistryProfile("foreign-oid", "foreign@example.test");
+        await using var fixture = await RegistryFixture.CreateAsync(original, foreign);
+        await using var db = fixture.OpenContext();
+        var tracked = await db.AgentProfiles.SingleAsync(p => p.Id == original.Id);
+        tracked.FullName = "Pending agent-managed name";
+        tracked.ProfileImageContent = new byte[] { 7, 8, 9 };
+        tracked.ProfileImageContentType = "image/webp";
+        var other = await db.AgentProfiles.SingleAsync(p => p.Id == foreign.Id);
+        other.Title = "Pending unrelated edit";
+        var unsaved = RegistryProfile("unsaved-oid", "owner@example.test");
+        unsaved.Title = "Do not backfill from an unsaved row";
+        unsaved.NormalizedEmail = null;
+        db.AgentProfiles.Add(unsaved);
+        fixture.Commands.Begin();
+
+        await BuildRegistry(db).UpsertAgentProfileAsync(BuildUserWithEmail("agent-oid", "owner@example.test"));
+
+        fixture.Commands.Stop();
+        Assert.Same(tracked, await db.AgentProfiles.FindAsync(original.Id));
+        Assert.Equal(EntityState.Unchanged, db.Entry(tracked).State);
+        Assert.Null(tracked.Title);
+        await using var verify = fixture.OpenContext();
+        var saved = await verify.AgentProfiles.FindAsync(original.Id);
+        Assert.Equal("Pending agent-managed name", saved!.FullName);
+        Assert.Equal(new byte[] { 7, 8, 9 }, saved.ProfileImageContent);
+        Assert.Equal("image/webp", saved.ProfileImageContentType);
+        Assert.Equal("Pending unrelated edit", (await verify.AgentProfiles.FindAsync(foreign.Id))!.Title);
+        Assert.Equal(3, await verify.AgentProfiles.CountAsync());
+    }
+
+    [Fact]
+    public async Task AgentRegistryService_PreservesPendingDeletionAndDoesNotChooseSiblingInstead()
+    {
+        var original = RegistryProfile("agent-oid", "owner@example.test");
+        var sibling = RegistryProfile("legacy-oid", "owner@example.test");
+        sibling.Title = "More complete sibling";
+        sibling.NormalizedEmail = null;
+        await using var fixture = await RegistryFixture.CreateAsync(original, sibling);
+        await using var db = fixture.OpenContext();
+        var tracked = await db.AgentProfiles.SingleAsync(p => p.Id == original.Id);
+        db.AgentProfiles.Remove(tracked);
+        var siblingBefore = await db.AgentProfiles.AsNoTracking().SingleAsync(p => p.Id == sibling.Id);
+        fixture.Commands.Begin();
+
+        await BuildRegistry(db).UpsertAgentProfileAsync(BuildUserWithEmail("agent-oid", "owner@example.test"));
+
+        fixture.Commands.Stop();
+        Assert.Equal(EntityState.Detached, db.Entry(tracked).State);
+        Assert.Null(await db.AgentProfiles.FindAsync(original.Id));
+        Assert.DoesNotContain(fixture.Commands.Text, sql => sql.StartsWith("INSERT", StringComparison.Ordinal));
+        var only = await db.AgentProfiles.AsNoTracking().SingleAsync();
+        Assert.Equal(System.Text.Json.JsonSerializer.Serialize(siblingBefore),
+            System.Text.Json.JsonSerializer.Serialize(only));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AgentRegistryService_PreservesOidPriorityLegacyTieBreakAndDuplicateBackfill(bool oidMatch)
+    {
+        var current = RegistryProfile("current-oid", "owner@example.test");
+        current.Id = Guid.Parse("00000000-0000-0000-0000-000000000003");
+        current.Title = "Agent-managed title";
+        current.Phone = "Agent-managed phone";
+        var preferred = RegistryProfile("legacy-a", "owner@example.test");
+        preferred.Id = Guid.Parse("00000000-0000-0000-0000-000000000001");
+        preferred.CreatedUtc = RegistryFixtureTime.AddDays(-1);
+        preferred.Title = "Legacy title";
+        preferred.Phone = "Legacy phone";
+        preferred.BookingEnabled = false;
+        preferred.MicrosoftBookingsEmbedUrl = "https://calendar.example.test/preferred";
+        preferred.MetaPixelId = "fixture-pixel-a";
+        preferred.MetaCapiAccessToken = "fixture-credential-a";
+        preferred.CalendarEmail = "calendar@example.test";
+        preferred.PreferModalOnMobile = false;
+        preferred.DisplayOrder = 3;
+        var tied = RegistryProfile("legacy-b", "owner@example.test");
+        tied.Id = Guid.Parse("00000000-0000-0000-0000-000000000002");
+        tied.CreatedUtc = preferred.CreatedUtc;
+        tied.Title = "Tied title";
+        tied.Phone = "Tied phone";
+        tied.BookingEnabled = true;
+        tied.MicrosoftBookingsEmbedUrl = "https://calendar.example.test/tied";
+        tied.MetaPixelId = "fixture-pixel-b";
+        tied.MetaCapiAccessToken = "fixture-credential-b";
+        tied.CalendarEmail = "tied@example.test";
+        tied.PreferModalOnMobile = true;
+        tied.DisplayOrder = 4;
+        tied.ProfileImageContent = new byte[] { 43 };
+        // Legacy email matches retain null normalized values until the selected
+        // identity is reconciled; the database's unique index remains enforced.
+        current.NormalizedEmail = null;
+        preferred.NormalizedEmail = null;
+        tied.NormalizedEmail = null;
+        var foreign = RegistryProfile("foreign-oid", "foreign@example.test");
+        await using var fixture = await RegistryFixture.CreateAsync(current, preferred, tied, foreign);
+        await using var db = fixture.OpenContext();
+        var before = await db.AgentProfiles.AsNoTracking().ToDictionaryAsync(p => p.Id);
+
+        await BuildRegistry(db).UpsertAgentProfileAsync(
+            BuildUserWithEmail(oidMatch ? "current-oid" : "new-oid", "owner@example.test"));
+
+        var selected = oidMatch ? current : preferred;
+        var after = await db.AgentProfiles.AsNoTracking().ToDictionaryAsync(p => p.Id);
+        Assert.Equal(4, after.Count);
+        var saved = after[selected.Id];
+        Assert.Equal(selected.AgentUserId, saved.AgentUserId);
+        Assert.Equal(selected.Title, saved.Title);
+        Assert.Equal(selected.Phone, saved.Phone);
+        Assert.False(saved.BookingEnabled);
+        Assert.False(saved.PreferModalOnMobile);
+        Assert.Equal(preferred.MicrosoftBookingsEmbedUrl, saved.MicrosoftBookingsEmbedUrl);
+        Assert.Equal(preferred.MetaPixelId, saved.MetaPixelId);
+        Assert.Equal(preferred.MetaCapiAccessToken, saved.MetaCapiAccessToken);
+        Assert.Equal(preferred.CalendarEmail, saved.CalendarEmail);
+        Assert.Equal(preferred.DisplayOrder, saved.DisplayOrder);
+        AssertRegistryUnselectedValues(selected, saved);
+        foreach (var row in before.Values.Where(p => p.Id != selected.Id))
+            Assert.Equal(System.Text.Json.JsonSerializer.Serialize(row),
+                System.Text.Json.JsonSerializer.Serialize(after[row.Id]));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public async Task AgentRegistryService_CancelsEachReadSaveAndTrackingStageWithoutLeavingStub(int stage)
+    {
+        var original = RegistryProfile("agent-oid", "owner@example.test");
+        await using var fixture = await RegistryFixture.CreateAsync(original);
+        await using var db = fixture.OpenContext();
+        using var cancel = new CancellationTokenSource();
+        var tracking = new Mock<IAgentTrackingService>(MockBehavior.Strict);
+        tracking.Setup(service => service.EnsureProfileAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns((string oid, string email, string name, CancellationToken token) =>
+            {
+                Assert.Equal(cancel.Token, token);
+                if (stage == 4) cancel.Cancel();
+                token.ThrowIfCancellationRequested();
+                return Task.FromResult(new AgentTrackingProfile { AgentUserId = oid, AgentUpn = email, DisplayName = name });
+            });
+        var service = new AgentRegistryService(db, NullLogger<AgentRegistryService>.Instance, tracking.Object);
+        fixture.Commands.Begin(cancel, stage == 4 ? 0 : stage);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            service.UpsertAgentProfileAsync(BuildUserWithEmail("agent-oid", "owner@example.test"), cancel.Token));
+
+        fixture.Commands.Stop();
+        Assert.Equal(Math.Min(stage, 3), fixture.Commands.Text.Count);
+        Assert.All(fixture.Commands.Tokens, token => Assert.Equal(cancel.Token, token));
+        tracking.Verify(s => s.EnsureProfileAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            stage == 4 ? Times.Once() : Times.Never());
+        Assert.Empty(db.ChangeTracker.Entries<AgentProfile>());
+        var saved = await db.AgentProfiles.FindAsync(original.Id);
+        AssertRegistryUnselectedValues(original, saved!);
+        if (stage <= 3)
+        {
+            // The interceptor cancels before dispatching the controlled write.
+            Assert.Equal(original.UpdatedUtc, saved!.UpdatedUtc);
+        }
+        else
+        {
+            // Tracking cancellation happens after the profile save; it does not
+            // establish rollback and must still propagate to the request owner.
+            Assert.NotEqual(original.UpdatedUtc, saved!.UpdatedUtc);
+        }
+    }
+
+    private static readonly DateTime RegistryFixtureTime = new(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+    private static readonly string[] RegistryUnselectedColumns =
+    {
+        "ProfileImageContent", "ProfileImageContentType", "IsVerified",
+        "IsActive", "DeactivatedUtc", "DeactivationReason"
+    };
+
+    private static AgentProfile RegistryProfile(string oid, string email) => new()
+    {
+        AgentUserId = oid,
+        AgentUpn = email,
+        NormalizedEmail = email.ToLowerInvariant(),
+        FullName = "Agent-managed name",
+        ProfileImageContent = Enumerable.Repeat((byte)17, 64 * 1024).ToArray(),
+        ProfileImageContentType = "image/png",
+        IsVerified = true,
+        IsActive = false,
+        DeactivatedUtc = RegistryFixtureTime,
+        DeactivationReason = "Fixture lifecycle state",
+        CreatedUtc = RegistryFixtureTime,
+        UpdatedUtc = RegistryFixtureTime
+    };
+
+    private static void AssertRegistryUnselectedValues(AgentProfile expected, AgentProfile actual)
+    {
+        Assert.Equal(expected.ProfileImageContent, actual.ProfileImageContent);
+        Assert.Equal(expected.ProfileImageContentType, actual.ProfileImageContentType);
+        Assert.Equal(expected.IsVerified, actual.IsVerified);
+        Assert.Equal(expected.IsActive, actual.IsActive);
+        Assert.Equal(expected.DeactivatedUtc, actual.DeactivatedUtc);
+        Assert.Equal(expected.DeactivationReason, actual.DeactivationReason);
+    }
+
+    private sealed class RegistryCommands : DbCommandInterceptor
+    {
+        public List<string> Text { get; } = new();
+        public List<CancellationToken> Tokens { get; } = new();
+        private bool _record;
+        private CancellationTokenSource? _cancel;
+        private int _cancelAt;
+
+        public void Begin(CancellationTokenSource? cancel = null, int cancelAt = 0)
+        {
+            Text.Clear();
+            Tokens.Clear();
+            _cancel = cancel;
+            _cancelAt = cancelAt;
+            _record = true;
+        }
+
+        public void Stop() => _record = false;
+
+        private void Record(DbCommand command, CancellationToken token)
+        {
+            if (!_record) return;
+            Text.Add(command.CommandText);
+            Tokens.Add(token);
+            if (Text.Count == _cancelAt) _cancel!.Cancel();
+            token.ThrowIfCancellationRequested();
+        }
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            Record(command, cancellationToken);
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
+
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            Record(command, cancellationToken);
+            return base.NonQueryExecutingAsync(command, eventData, result, cancellationToken);
+        }
+    }
+
+    private sealed class RegistryFixture : IAsyncDisposable
+    {
+        private readonly SqliteConnection _connection;
+        private readonly DbContextOptions<MasterAppDbContext> _options;
+        public RegistryCommands Commands { get; }
+
+        private RegistryFixture(SqliteConnection connection, RegistryCommands commands)
+        {
+            _connection = connection;
+            Commands = commands;
+            _options = new DbContextOptionsBuilder<MasterAppDbContext>()
+                .UseSqlite(connection).AddInterceptors(commands).Options;
+        }
+
+        public MasterAppDbContext OpenContext() => new(_options);
+
+        public static async Task<RegistryFixture> CreateAsync(params AgentProfile[] profiles)
+        {
+            var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
+            var fixture = new RegistryFixture(connection, new RegistryCommands());
+            await using var seed = fixture.OpenContext();
+            await seed.Database.EnsureCreatedAsync();
+            seed.AgentProfiles.AddRange(profiles);
+            await seed.SaveChangesAsync();
+            return fixture;
+        }
+
+        public ValueTask DisposeAsync() => _connection.DisposeAsync();
     }
 
     // -----------------------------------------------------------------------
