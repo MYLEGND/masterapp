@@ -15,10 +15,24 @@ namespace AgentPortal.Tests;
 
 public sealed class WebsitePublishingAuthorityTests
 {
+    private sealed class MaterializationAudit : Microsoft.EntityFrameworkCore.Diagnostics.IMaterializationInterceptor
+    {
+        public System.Collections.Generic.List<Type> EntityTypes { get; } = new();
+        public object InitializedInstance(
+            Microsoft.EntityFrameworkCore.Diagnostics.MaterializationInterceptionData data, object entity)
+        {
+            EntityTypes.Add(entity.GetType());
+            return entity;
+        }
+    }
+
     private sealed class Fixture : IDisposable
     {
-        public MasterAppDbContext Db { get; } = new(new DbContextOptionsBuilder<MasterAppDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        public MaterializationAudit Audit { get; } = new();
+        public MasterAppDbContext Db { get; }
+
+        public Fixture() => Db = new(new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).AddInterceptors(Audit).Options);
         public WebsiteEditorTicketProtector Tickets { get; } = new(new EphemeralDataProtectionProvider());
         public IConfiguration Config { get; } = new ConfigurationBuilder()
             .AddInMemoryCollection(new[]
@@ -106,6 +120,41 @@ public sealed class WebsitePublishingAuthorityTests
         state.UpdatedUtc = DateTime.UtcNow;
         await fixture.Db.SaveChangesAsync();
         fixture.Db.ChangeTracker.Clear();
+    }
+
+    [Fact]
+    public async Task PublicReadsAndPublicationReconciliationDoNotMaterializeSnapshotEntities()
+    {
+        using var fixture = new Fixture();
+        var state = new Domain.Entities.WebsiteContentState
+        {
+            OwnerKey = WebsiteEditorSiteKeys.GlobalOwnerKey,
+            SiteKey = WebsiteEditorSiteKeys.Legend,
+            Revision = 8,
+            DraftJson = JsonSerializer.Serialize(Document("Private draft"), new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+            NamedDraftsJson = "[]"
+        };
+        var published = Document("Published");
+        published.Store.Enabled = true;
+        var version = new Domain.Entities.WebsiteContentVersion
+        {
+            StateId = state.Id, Revision = 7,
+            DocumentJson = JsonSerializer.Serialize(published, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+            CompiledPagesJson = "{}"
+        };
+        state.PublishedVersionId = version.Id;
+        fixture.Db.AddRange(state, version);
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+        fixture.Audit.EntityTypes.Clear();
+
+        Assert.Equal("Published", TitleText(Body(await fixture.Controller.Public(WebsiteEditorSiteKeys.Legend))));
+        var status = Body(await fixture.Controller.PublicationStatus(fixture.Token, version.Id));
+        Assert.True(status.GetProperty("found").GetBoolean());
+        Assert.True(status.GetProperty("isCurrent").GetBoolean());
+        Assert.Equal(8, status.GetProperty("revision").GetInt64());
+        Assert.DoesNotContain(typeof(Domain.Entities.WebsiteContentState), fixture.Audit.EntityTypes);
+        Assert.DoesNotContain(typeof(Domain.Entities.WebsiteContentVersion), fixture.Audit.EntityTypes);
     }
 
     [Theory]
