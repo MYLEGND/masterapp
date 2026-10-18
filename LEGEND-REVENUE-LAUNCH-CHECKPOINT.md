@@ -13,6 +13,10 @@ Founder resumed urgent Studio/loading/publication repair and authorized completi
 - Before handback, restore original AUTH4 branch/head and all three original files/modes with clean index; retain stash and six recovery pins. Record actual accepted source/checkpoint identities, fresh external archive/readback/restore, remote readback and release receipts in this existing record/PR continuation.
 
 
+### CI fixture correction on PR #637
+
+Candidate 534daed479fb1fab31e6f2f3f1d1a975894586b4 was independently accepted, canonically pushed and externally restored (archive continuity-v1/fac21d11-3fa0-4223-b69f-ec1d22a5086b/recovery.zip, SHA256 d011d64014d82baef5a03616cba632caae0e6765e243e202af819068d98cb532). Required Security 39138800270 and Isolated 39138800272 passed. Architecture 39138800284 compiled all affected hosts but its 252-test website group failed two existing tests with EF ManyServiceProvidersCreatedWarning: the new per-fixture audit interceptor fragmented the internal provider cache. The correction enables that interceptor only for the one materialization regression; it does not suppress warnings, alter runtime code or weaken CI. The full website group is being rerun before renewed independent acceptance and canonical preservation. No merge or source deployment occurred on the failed candidate.
+
 ## Prior checkpoint — PAUSED at Founder request, 2026-10-18
 
 The Founder explicitly stopped this continuation to address more urgent issues and requested a safe checkpoint for later resumption. Application implementation, live diagnosis, provider setup, publishing retries and deployment are paused. Only this canonical record, its independent review, normal preservation and exact AUTH4 restoration belong to the closing work. This section supersedes older pending-work directions below; standing authorization remains recorded but is not an instruction to restart paused work.

@@ -31,8 +31,13 @@ public sealed class WebsitePublishingAuthorityTests
         public MaterializationAudit Audit { get; } = new();
         public MasterAppDbContext Db { get; }
 
-        public Fixture() => Db = new(new DbContextOptionsBuilder<MasterAppDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString()).AddInterceptors(Audit).Options);
+        public Fixture(bool auditMaterialization = false)
+        {
+            var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString());
+            if (auditMaterialization) options.AddInterceptors(Audit);
+            Db = new(options.Options);
+        }
         public WebsiteEditorTicketProtector Tickets { get; } = new(new EphemeralDataProtectionProvider());
         public IConfiguration Config { get; } = new ConfigurationBuilder()
             .AddInMemoryCollection(new[]
@@ -125,7 +130,7 @@ public sealed class WebsitePublishingAuthorityTests
     [Fact]
     public async Task PublicReadsAndPublicationReconciliationDoNotMaterializeSnapshotEntities()
     {
-        using var fixture = new Fixture();
+        using var fixture = new Fixture(auditMaterialization: true);
         var state = new Domain.Entities.WebsiteContentState
         {
             OwnerKey = WebsiteEditorSiteKeys.GlobalOwnerKey,
