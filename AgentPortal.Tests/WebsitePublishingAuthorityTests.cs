@@ -408,9 +408,9 @@ public sealed class WebsitePublishingAuthorityTests
     }
 
     [Theory]
-    [InlineData(3, true)]
-    [InlineData(4, false)]
-    [InlineData(5, false)]
+    [InlineData(3L, true)]
+    [InlineData(4L, false)]
+    [InlineData(5L, false)]
     [InlineData(null, false)]
     public async Task PublicationStatus_ProvesOnlyOlderAbsentRequestsTerminal(long? expectedRevision, bool terminal)
     {
