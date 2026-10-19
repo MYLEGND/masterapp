@@ -5173,3 +5173,20 @@ test('Studio step chooser exposes conditional native experience steps without sa
     assert.equal(f.w.document.querySelector('[data-experience-step="second"]').hidden,true);
   }finally{f.close();}
 });
+
+test('nested materialization shares one allocator across repeated template identities',async()=>{
+  const f=await domFixture({
+    siteKey:'protect',legacyMigration:{},capabilities:{compositionV3:true},
+    html:'<!doctype html><html><body data-page-key="home"><main><section><div><h2 data-cms-id="repeated.heading">First</h2></div><div><h2 data-cms-id="repeated.heading">Second</h2></div></section></main></body></html>'
+  });
+  try{
+    await new Promise(resolve=>setTimeout(resolve,20));
+    assert.deepEqual(f.alerts,[]);
+    const saved=f.calls.find(call=>call.method==='POST' && new URL(call.url).pathname==='/api/website-content/manage');
+    assert.ok(saved);
+    const nodes=canonicalNodes(JSON.parse(saved.body).document);
+    assert.equal(new Set(nodes.map(node=>node.id)).size,nodes.length);
+    assert.ok(nodes.some(node=>node.text==='First'));
+    assert.ok(nodes.some(node=>node.text==='Second'));
+  }finally{f.close();}
+});

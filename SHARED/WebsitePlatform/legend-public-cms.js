@@ -1893,7 +1893,7 @@
     if (['section','container','cta','link'].includes(type) && childElements.length) {
       let childIndex = 0;
       for (const child of childElements) {
-        const childNode = materializeCompositionNode(child, id + '.child.' + (++childIndex));
+        const childNode = materializeCompositionNode(child, id + '.child.' + (++childIndex), identity);
         if (childNode) node.children.push(childNode);
       }
       const directText = [...el.childNodes]
@@ -9140,7 +9140,9 @@
       if (!response.ok) {
         if ((response.status===401 || response.status===403) &&
             showEditorAuthorizationRecovery('This Website Studio authorization is missing or expired.')) return;
-        throw new Error('This edit session has expired.');
+        throw new Error(response.status===401 || response.status===403
+          ? 'This edit session has expired. Open Website Studio again from your profile.'
+          : 'Website Studio could not load the saved website (HTTP ' + response.status + '). Your saved content has not been changed.');
       }
       const payload = await response.json();
       if (payload.siteKey && payload.siteKey !== SITE_KEY) {

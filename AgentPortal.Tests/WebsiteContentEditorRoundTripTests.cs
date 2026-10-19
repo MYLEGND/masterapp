@@ -1573,6 +1573,37 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Null(style.PaddingBottom);
     }
 
+    [Fact]
+    public async Task Materialization_DuplicateIdentity_PreservesLegacyDraftAndRevision()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Protect);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var state = new WebsiteContentState
+        {
+            OwnerKey = fixture.OwnerKey,
+            SiteKey = fixture.SiteKey,
+            DraftJson = "{}",
+            Revision = 7
+        };
+        fixture.Db.Set<WebsiteContentState>().Add(state);
+        await fixture.Db.SaveChangesAsync();
+        var document = CanonicalDocument();
+        document.Pages["/"].Composition.Add(new WebsiteCompositionNode
+        {
+            Id = ElementId, Type = "heading", Tag = "h2", Text = "Second heading"
+        });
+
+        var result = Assert.IsType<BadRequestObjectResult>(await fixture.CreateController().Save(
+            new WebsitePlatformController.SaveRequest(ticket, document, 7, null, null)));
+        var payload = JsonSerializer.SerializeToElement(result.Value, JsonOptions);
+        Assert.Equal("website_materialization_duplicate_identity", payload.GetProperty("error").GetString());
+        fixture.Db.ChangeTracker.Clear();
+        var saved = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        Assert.Equal("{}", saved.DraftJson);
+        Assert.Equal(7, saved.Revision);
+        Assert.Null(saved.PublishedVersionId);
+    }
+
     private sealed class Fixture : IDisposable
     {
         public const string AgentSlug = "editor-test-agent";

@@ -100,7 +100,7 @@ public static class WebsiteContentSanitizer
             throw new InvalidOperationException("website_v3_noncanonical_persisted_document");
     }
 
-    private static void EnsureUniqueCanonicalNodeIds(WebsiteContentDocument document)
+    internal static void EnsureUniqueCanonicalNodeIds(WebsiteContentDocument document)
     {
         var ids = new HashSet<string>(StringComparer.Ordinal);
 

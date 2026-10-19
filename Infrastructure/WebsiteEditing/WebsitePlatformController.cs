@@ -1879,6 +1879,7 @@ public class WebsitePlatformController : ControllerBase
 
             WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
             WebsiteSystemTemplateAuthority.RestoreRuntimeForms(actor.SiteKey, document, document);
+            WebsiteContentSanitizer.EnsureUniqueCanonicalNodeIds(document);
             await ValidateCompositionMediaOwnershipAsync(actor, document, cancellationToken);
         }
         catch (WebsiteSiteSourceProtectionException ex)
@@ -1889,6 +1890,14 @@ public class WebsitePlatformController : ControllerBase
                 message = ex.Message,
                 canonicalProtectionViolation = true,
                 correction = WebsiteStudioAgentContract.ProtectedEditCorrection
+            });
+        }
+        catch (InvalidOperationException ex) when (ex.Message.StartsWith("website_duplicate_node_identity:", StringComparison.Ordinal))
+        {
+            return BadRequest(new
+            {
+                error = "website_materialization_duplicate_identity",
+                message = "The prepared website contains duplicate content identities. The existing draft was preserved."
             });
         }
         catch (ArgumentException ex)
