@@ -845,5 +845,128 @@ class TwoPhaseRecoveryTests(unittest.TestCase):
         self.assertEqual([],list(self.external_storage.glob('*/.external-verification.pending')))
 
 
+class CloudRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix='legend-cloud-test-')
+        self.addCleanup(self.temp.cleanup)
+        self.repo = Path(self.temp.name) / 'fixture'
+        self.repo.mkdir()
+        self.branch = 'isolation/cloud-synthetic'
+        self.g('init', '-b', self.branch)
+        self.g('config', 'user.name', 'Synthetic recovery fixture')
+        self.g('config', 'user.email', 'fixture@example.invalid')
+        self.g('remote', 'add', 'origin', 'https://github.com/MYLEGND/masterapp.git')
+        for name, body in {'text.txt':'base\n', 'delete.txt':'delete\n', 'mode.sh':'echo fixture\n', '.gitignore':'saved-buffer.txt\n'}.items():
+            (self.repo/name).write_text(body)
+        self.g('add', '.')
+        self.g('commit', '-m', 'synthetic base')
+        self.base = self.g('rev-parse', 'HEAD')
+        self.blobs = {}
+        owner = self
+        class BlobFixture:
+            def transfer(self, name, path, upload=False):
+                if upload:
+                    if name in owner.blobs:
+                        raise OSError('immutable conflict')
+                    owner.blobs[name] = Path(path).read_bytes()
+                    return 'synthetic-etag'
+                Path(path).write_bytes(owner.blobs[name])
+        self.client = BlobFixture
+        from types import SimpleNamespace
+        self.args = SimpleNamespace(branch=self.branch, base=self.base, capture_path=[])
+
+    def g(self, *args):
+        r = subprocess.run(['git','-C',str(self.repo),*args],capture_output=True,text=True)
+        self.assertEqual(0,r.returncode,r.stderr)
+        return r.stdout.strip()
+
+    def mixed(self, role):
+        (self.repo/'text.txt').write_text(role+' staged\n')
+        (self.repo/'binary.bin').write_bytes(bytes(range(256)))
+        self.g('add','text.txt','binary.bin')
+        (self.repo/'text.txt').write_text(role+' unstaged\n')
+        (self.repo/'delete.txt').unlink()
+        (self.repo/'mode.sh').chmod(0o755)
+        (self.repo/'untracked.txt').write_text(role+' unfinished\n')
+        (self.repo/'saved-buffer.txt').write_text(role+' exported editor buffer\n')
+        self.args.capture_path=['untracked.txt','saved-buffer.txt']
+
+    def export(self, client=None):
+        out=io.StringIO()
+        with patch.object(sync,'RecoveryBlobClient',client or self.client), patch.dict(sync.os.environ,{'CODESPACE_NAME':'bookish-fiesta-97pj77j5vpwj3pjv6'}), redirect_stdout(out):
+            sync.cloud_export_session(self.repo,self.args)
+        return json.loads(out.getvalue())
+
+    def direction(self, role):
+        self.mixed(role)
+        before=sync.cloud_state(self.repo,self.args.capture_path)
+        receipt=self.export()
+        self.assertFalse(receipt['independentHostVerified'])
+        archive=Path(self.temp.name)/'external-only.zip'
+        archive.write_bytes(self.blobs[receipt['object']])
+        result=sync.cloud_restore_archive(archive,receipt['sha256'],self.branch,self.base,self.base)
+        self.assertEqual('FRESH_DISPOSABLE_RESTORATION_VERIFIED',result['status'])
+        self.assertEqual(2,result['untrackedOrIgnoredFiles'])
+        self.assertTrue(result['staged'] and result['unstaged'])
+        self.assertEqual(before,sync.cloud_state(self.repo,self.args.capture_path))
+
+    def test_astra_to_reserve_saved_state(self): self.direction('Astra to Reserve')
+    def test_reserve_to_astra_saved_state(self): self.direction('Reserve to Astra')
+
+    def test_corrupt_and_wrong_base_rejected(self):
+        receipt=self.export()
+        archive=Path(self.temp.name)/'download.zip'
+        archive.write_bytes(self.blobs[receipt['object']])
+        with self.assertRaises(sync.SyncSkipped): sync.cloud_restore_archive(archive,'0'*64,self.branch,self.base,self.base)
+        with self.assertRaises(sync.SyncSkipped): sync.cloud_restore_archive(archive,receipt['sha256'],self.branch,'0'*40,self.base)
+        archive.write_bytes(archive.read_bytes()+b'corrupt')
+        with self.assertRaises(sync.SyncSkipped): sync.cloud_restore_archive(archive,receipt['sha256'],self.branch,self.base,self.base)
+
+    def test_unclassified_or_secret_saved_files_rejected(self):
+        (self.repo/'untracked.txt').write_text('unfinished')
+        with self.assertRaises(sync.SyncSkipped): self.export()
+        self.args.capture_path=['untracked.txt']
+        (self.repo/'untracked.txt').write_text('-----BEGIN ' + 'PRIVATE KEY-----')
+        with self.assertRaises(sync.SyncSkipped): self.export()
+        self.assertEqual({},self.blobs)
+
+    def test_unsafe_paths_rejected(self):
+        for path in ['../escape','/absolute','.git/config','.env','key.pem','a/../b']:
+            with self.assertRaises(sync.SyncSkipped): sync.cloud_safe_path(path)
+
+    def test_failed_authentication_retains_originals(self):
+        self.mixed('credential failure')
+        before=sync.cloud_state(self.repo,self.args.capture_path)
+        def denied(): raise sync.SyncSkipped('synthetic credential failure')
+        with self.assertRaises(sync.SyncSkipped): self.export(denied)
+        self.assertEqual({},self.blobs)
+        self.assertEqual(before,sync.cloud_state(self.repo,self.args.capture_path))
+
+    def test_network_quota_and_interruption_never_publish_receipt(self):
+        self.mixed('interruption')
+        for error in [OSError('network'), OSError('quota'), KeyboardInterrupt()]:
+            parent=self.client
+            class Interrupted(parent):
+                def transfer(inner,name,path,upload=False):
+                    if name.endswith('recovery.zip') and not upload: raise error
+                    return super().transfer(name,path,upload)
+            with self.assertRaises(type(error)): self.export(Interrupted)
+            self.assertFalse(any(x.endswith('/receipt.json') for x in self.blobs))
+        receipt=self.export()
+        self.assertIn(receipt['object'],self.blobs)
+
+    def test_changed_during_capture_rejected_before_upload(self):
+        original=sync.cloud_state
+        calls=0
+        def changing(repo,include):
+            nonlocal calls
+            calls+=1
+            if calls==2: (self.repo/'text.txt').write_text('concurrent edit')
+            return original(repo,include)
+        with patch.object(sync,'cloud_state',changing),self.assertRaises(sync.SyncSkipped): self.export()
+        self.assertEqual({},self.blobs)
+
+
+
 if __name__ == '__main__':
     unittest.main()
