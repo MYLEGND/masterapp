@@ -1672,6 +1672,51 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Throws<InvalidOperationException>(() => WebsiteContentSanitizer.ReadPersisted(original, JsonOptions));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DuplicateDraftRecovery_RefusesNativeStructuralCollisionsWithoutWriting(bool duplicateAncestor)
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Protect);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var form = new WebsiteCompositionNode
+        {
+            Id = "native.form", Type = "container", Tag = "div",
+            SystemKey = "protect_runtime_form:quote_auto_form",
+            Children =
+            [
+                new WebsiteCompositionNode { Id = "native.wrapper", Type = "container", Tag = "div" },
+                new WebsiteCompositionNode { Id = "native.wrapper", Type = "container", Tag = "div" }
+            ]
+        };
+        var document = CanonicalDocument();
+        document.Pages["/"].Composition = duplicateAncestor
+            ? [new WebsiteCompositionNode { Id = "native.form", Type = "container", Tag = "div", Children = [form] }]
+            : [form];
+        var original = JsonSerializer.Serialize(WebsiteContentSanitizer.Sanitize(document), JsonOptions);
+        var publication = Guid.NewGuid();
+        var state = new WebsiteContentState
+        {
+            OwnerKey = fixture.OwnerKey, SiteKey = fixture.SiteKey,
+            DraftJson = original, Revision = 9, PublishedVersionId = publication
+        };
+        fixture.Db.Set<WebsiteContentState>().Add(state);
+        await fixture.Db.SaveChangesAsync();
+        var snapshots = state.NamedDraftsJson;
+        Assert.Throws<ArgumentException>(() => WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions));
+        var controller = fixture.CreateController();
+        Assert.IsType<ConflictObjectResult>(await controller.PlanDraftRecovery(ticket));
+        var sourceFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(original))).ToLowerInvariant();
+        Assert.IsType<ConflictObjectResult>(await controller.RecoverDuplicateDraft(
+            new WebsitePlatformController.RecoverDuplicateDraftRequest(ticket, 9, Guid.NewGuid(), sourceFingerprint, "untrusted")));
+        fixture.Db.ChangeTracker.Clear();
+        var saved = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        Assert.Equal(original, saved.DraftJson);
+        Assert.Equal(9, saved.Revision);
+        Assert.Equal(publication, saved.PublishedVersionId);
+        Assert.Equal(snapshots, saved.NamedDraftsJson);
+    }
+
     [Fact]
     public async Task ProtectedFormFieldWrappers_CanReorderWithoutChangingRuntimeIdentity()
     {

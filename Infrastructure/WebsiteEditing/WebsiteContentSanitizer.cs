@@ -121,8 +121,11 @@ public static class WebsiteContentSanitizer
             document.Version != WebsiteStudioContract.CurrentDocumentVersion ||
             document.Shell is null || document.Pages is null || document.ReusableComponents is null)
             throw new ArgumentException("Only canonical v3 identity collisions can be recovered.");
-        var entries = new List<(string Path, WebsiteCompositionNode Node)>();
-        void Visit(IEnumerable<WebsiteCompositionNode> nodes, string path)
+        var entries = new List<(string Path, WebsiteCompositionNode Node, bool IdentitySensitive)>();
+        static bool ContainsRuntimeForm(WebsiteCompositionNode node) =>
+            (node.SystemKey?.StartsWith("protect_runtime_form:", StringComparison.Ordinal) ?? false) ||
+            (node.Children ?? []).Any(ContainsRuntimeForm);
+        void Visit(IEnumerable<WebsiteCompositionNode> nodes, string path, bool identitySensitive = false)
         {
             var index = 0;
             foreach (var node in nodes ?? [])
@@ -130,8 +133,9 @@ public static class WebsiteContentSanitizer
                 if (node is null || string.IsNullOrWhiteSpace(node.Id))
                     throw new ArgumentException("Invalid content identity requires independent review.");
                 var location = path + "/" + index++;
-                entries.Add((location, node));
-                Visit(node.Children, location + "/children");
+                var sensitive = identitySensitive || ContainsRuntimeForm(node);
+                entries.Add((location, node, sensitive));
+                Visit(node.Children, location + "/children", sensitive);
             }
         }
         Visit(document.Shell.Header, "shell/header");
@@ -152,7 +156,7 @@ public static class WebsiteContentSanitizer
         var changes = new List<DuplicateIdentityChange>();
         foreach (var group in entries.GroupBy(entry => entry.Node.Id, StringComparer.Ordinal).Where(group => group.Count() > 1))
         {
-            var protectedEntries = group.Where(entry => Protected(entry.Node)).ToList();
+            var protectedEntries = group.Where(entry => entry.IdentitySensitive || Protected(entry.Node)).ToList();
             if (protectedEntries.Count > 1)
                 throw new ArgumentException("Multiple protected components share an identity; independent recovery review is required.");
             var keep = protectedEntries.Count == 1 ? protectedEntries[0] : group.First();

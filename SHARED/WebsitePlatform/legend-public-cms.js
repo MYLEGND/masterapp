@@ -370,10 +370,8 @@
         mounted.set(node.id,el);
       }
     });
-    const ids=new Set();
-    walkComposition(page.composition || [],node=>ids.add(node.id));
     document.querySelectorAll('main [data-cms-id]').forEach(el=>{
-      if(ids.has(el.dataset.cmsId) || el.closest('form[data-form-key]') || el.querySelector('form[data-form-key]')) return;
+      if(mounted.get(el.dataset.cmsId) === el || el.closest('form[data-form-key]') || el.querySelector('form[data-form-key]')) return;
       // Omitted free presentation stays omitted on reload. Native form controls
       // are executable template state and never deleted by this reconciliation.
       el.remove();
@@ -8744,14 +8742,19 @@
 
   // Editor-only visibility. This never changes the saved document, form values,
   // runtime step state, validation, consent, or submission/event authority.
+  const formStepSelector = '.wizard-step[data-step],.form-step[data-step],.step-wrap[data-step],.lq-micro-step[data-micro-step],.lq-step-panel,[data-experience-step]';
   function protectedFieldOrderContext() {
     const form = selected?.closest?.('form[data-form-key][data-cms-composition-id]');
     if (SITE_KEY !== 'protect' || !form || !selected) return null;
     for (let element = selected.parentElement; element && element !== form; element = element.parentElement) {
+      if (element.matches(formStepSelector)) return null;
       const entry = compositionEntry(element.dataset.cmsCompositionId);
       if (!entry?.parent || entry.node.type !== 'container' ||
           !element.querySelector('input:not([type="hidden"]),select,textarea')) continue;
-      const siblings = entry.parent.children || [];
+      const parent = entry.parent;
+      if (parent.systemKey || parent.systemBinding || parent.type === 'form' ||
+          parent.signals?.length || Object.keys(parent.fieldSignals || {}).length) return null;
+      const siblings = parent.children || [];
       const index = siblings.findIndex(node => node.id === entry.node.id);
       if (index < 0 || siblings.length < 2) continue;
       // Native conditional/repeating groups retain their owning parent. Move
@@ -8798,7 +8801,7 @@
 
   function formPreviewEntries() {
     if (!editorMode) return [];
-    const selector = '.wizard-step[data-step],.form-step[data-step],.step-wrap[data-step],.lq-micro-step[data-micro-step],.lq-step-panel,[data-experience-step]';
+    const selector = formStepSelector;
     const entries = [];
     for (const form of document.querySelectorAll('main form[data-form-key]')) {
       const candidates = [...form.querySelectorAll(selector)];

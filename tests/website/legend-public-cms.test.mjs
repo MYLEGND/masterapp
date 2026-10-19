@@ -5216,11 +5216,13 @@ test('protected field ordering moves canonical wrappers and retains native contr
       })]
     })]
   };
-  const html='<!doctype html><html><body data-page-key="quote-auto"><main><form id="autoQuoteForm" action="/Quote/Auto" method="post" data-form-key="quote_auto_form"><div data-cms-id="auto.fields"><div data-cms-id="auto.first"><label data-cms-id="auto.first.label" for="first">First name</label><input id="first" name="FirstName" required></div><div data-cms-id="auto.last"><label data-cms-id="auto.last.label" for="last">Last name</label><input id="last" name="LastName" required></div></div></form></main></body></html>';
+  const html='<!doctype html><html><body data-page-key="quote-auto"><main><h2 data-cms-id="auto.saved.runtime">Stale duplicate</h2><form id="autoQuoteForm" action="/Quote/Auto" method="post" data-form-key="quote_auto_form"><div data-cms-id="auto.fields"><div data-cms-id="auto.first"><label data-cms-id="auto.first.label" for="first">First name</label><input id="first" name="FirstName" required></div><div data-cms-id="auto.last"><label data-cms-id="auto.last.label" for="last">Last name</label><input id="last" name="LastName" required></div></div></form></main></body></html>';
   const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Auto',html});
   try{
     const first=f.w.document.getElementById('first');
     const last=f.w.document.getElementById('last');
+    assert.equal(f.w.document.querySelectorAll('[data-cms-id="auto.saved.runtime"]').length,1);
+    assert.equal(f.w.document.querySelector('[data-cms-id="auto.saved.runtime"]').tagName,'FORM');
     f.click('#last');
     assert.equal(f.w.document.querySelector('#legend-cms-field-order').hidden,false);
     f.click('[data-field-order-before]');
@@ -5236,5 +5238,27 @@ test('protected field ordering moves canonical wrappers and retains native contr
     assert.deepEqual(form.children[0].children.map(node=>node.id),['auto.last','auto.first']);
     assert.deepEqual(form.fieldLabels,{firstname:'First name',lastname:'Last name'});
     assert.equal(f.w.document.querySelector('form').getAttribute('action'),'/Quote/Auto');
+  }finally{f.close();}
+});
+
+test('protected field ordering never promotes a one-field wrapper to a native wizard step',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/quote/auto']={
+    title:'Auto',systemTemplateKey:'protect_template:auto_quote',
+    composition:[canonicalNode('runtime.form.quote_auto_form','container','div',{
+      systemKey:'protect_runtime_form:quote_auto_form',
+      children:[canonicalNode('auto.steps','container','div',{children:[
+        canonicalNode('auto.step.first','container','div',{children:[canonicalNode('auto.only','container','div')]}),
+        canonicalNode('auto.step.second','container','div')
+      ]})]
+    })]
+  };
+  const html='<!doctype html><html><body data-page-key="quote-auto"><main><form data-form-key="quote_auto_form"><div data-cms-id="auto.steps"><div data-cms-id="auto.step.first" class="wizard-step" data-step="1"><div data-cms-id="auto.only"><input id="only" name="FirstName" required></div></div><div data-cms-id="auto.step.second" class="wizard-step" data-step="2"><input name="LastName"></div></div></form></main></body></html>';
+  const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Auto',html});
+  try{
+    const before=f.serverDocument();
+    f.click('#only');
+    assert.equal(f.w.document.querySelector('#legend-cms-field-order').hidden,true);
+    assert.deepEqual(await f.save(),before);
   }finally{f.close();}
 });
