@@ -2346,17 +2346,33 @@ public class WebsitePlatformController : ControllerBase
         var actor = await AuthorizeAsync(ticket, cancellationToken);
         if (actor is null) return Unauthorized();
         if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
-        var state = await StateAsync(actor, cancellationToken);
+        var state = await _db.Set<WebsiteContentState>().AsNoTracking()
+            .Where(value => value.OwnerKey == actor.OwnerUserId && value.SiteKey == actor.SiteKey &&
+                (actor.SiteKey != WebsiteEditorSiteKeys.Business || value.CommerceBusinessId == actor.CommerceBusinessId))
+            .Select(value => new { value.DraftJson, value.Revision })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (state is null) return NotFound();
+        var sourceFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(state.DraftJson))).ToLowerInvariant();
         try
         {
             var plan = WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(state.DraftJson, JsonOptions);
             return Ok(new { revision = state.Revision, plan.SourceFingerprint, plan.RepairedFingerprint,
                 changes = plan.Changes, preservesPublishedVersion = true, preservesOriginalDraft = true });
         }
+        catch (WebsiteContentSanitizer.RecoveryReviewException ex)
+        {
+            return Conflict(new { error = "website_draft_recovery_requires_review",
+                message = "This saved website needs an independent recovery review. All content was preserved.",
+                revision = state.Revision, sourceFingerprint, reasonCode = ex.ReasonCode,
+                collisionCount = ex.CollisionCount, collisions = ex.Collisions, truncated = ex.Truncated });
+        }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or JsonException)
         {
             return Conflict(new { error = "website_draft_recovery_requires_review",
-                message = "This saved website needs an independent recovery review. All content was preserved." });
+                message = "This saved website needs an independent recovery review. All content was preserved.",
+                revision = state.Revision, sourceFingerprint,
+                reasonCode = ex is JsonException ? "malformed_document" : "unsupported_document" });
         }
     }
 

@@ -1666,7 +1666,7 @@ public sealed class WebsiteContentEditorRoundTripTests
             SystemKey = "protect_runtime_form:quote_home_form"
         });
         var original = JsonSerializer.Serialize(WebsiteContentSanitizer.Sanitize(document), JsonOptions);
-        Assert.Throws<ArgumentException>(() => WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions));
+        Assert.Throws<WebsiteContentSanitizer.RecoveryReviewException>(() => WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions));
         Assert.Equal(ElementId, document.Pages["/"].Composition[0].Id);
         Assert.Equal(ElementId, document.Pages["/"].Composition[1].Id);
         Assert.Throws<InvalidOperationException>(() => WebsiteContentSanitizer.ReadPersisted(original, JsonOptions));
@@ -1708,9 +1708,15 @@ public sealed class WebsiteContentEditorRoundTripTests
         fixture.Db.Set<WebsiteContentState>().Add(state);
         await fixture.Db.SaveChangesAsync();
         var snapshots = state.NamedDraftsJson;
-        Assert.Throws<ArgumentException>(() => WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions));
+        Assert.Throws<WebsiteContentSanitizer.RecoveryReviewException>(() => WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions));
         var controller = fixture.CreateController();
-        Assert.IsType<ConflictObjectResult>(await controller.PlanDraftRecovery(ticket));
+        var refusal = Assert.IsType<ConflictObjectResult>(await controller.PlanDraftRecovery(ticket));
+        var diagnostic = JsonSerializer.SerializeToElement(refusal.Value, JsonOptions);
+        Assert.Equal("protected_identity_ambiguity", diagnostic.GetProperty("reasonCode").GetString());
+        Assert.Equal(9, diagnostic.GetProperty("revision").GetInt64());
+        Assert.Equal(1, diagnostic.GetProperty("collisionCount").GetInt32());
+        Assert.DoesNotContain("native.wrapper", diagnostic.ToString());
+        Assert.DoesNotContain("Free heading", diagnostic.ToString());
         var sourceFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(original))).ToLowerInvariant();
         Assert.IsType<ConflictObjectResult>(await controller.RecoverDuplicateDraft(
             new WebsitePlatformController.RecoverDuplicateDraftRequest(ticket, 9, Guid.NewGuid(), sourceFingerprint, "untrusted")));
@@ -1771,6 +1777,54 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Equal(new[] { "auto.last", "auto.first" }, form.Children[0].Children.Select(node => node.Id));
         Assert.Equal("First name", form.FieldLabels["firstname"]);
         Assert.Equal("Last name", form.FieldLabels["lastname"]);
+    }
+
+
+    [Fact]
+    public async Task RecoveryPlan_MissingState_DoesNotInitializeOrReadAnotherOwner()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Protect);
+        fixture.Db.Set<WebsiteContentState>().Add(new WebsiteContentState
+        {
+            OwnerKey = "another-owner", SiteKey = fixture.SiteKey, DraftJson = "private", Revision = 8
+        });
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+        var controller = fixture.CreateController();
+        Assert.IsType<UnauthorizedResult>(await controller.PlanDraftRecovery("invalid"));
+        Assert.IsType<NotFoundResult>(await controller.PlanDraftRecovery(fixture.Ticket(DateTime.UtcNow.AddMinutes(10))));
+        Assert.Empty(fixture.Db.ChangeTracker.Entries());
+        var saved = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+        Assert.Equal("private", saved.DraftJson);
+        Assert.Equal(8, saved.Revision);
+    }
+
+    [Fact]
+    public void RecoveryPlan_DiagnosticsAreBoundedAndDoNotExposeAuthoredContent()
+    {
+        var document = CanonicalDocument();
+        document.Pages.Clear();
+        document.Pages["/private-customer-url"] = new WebsitePageDocument
+        {
+            Composition = Enumerable.Range(0, 25).SelectMany(group => Enumerable.Range(0, 12)
+                .Select(index => new WebsiteCompositionNode
+                {
+                    Id = "private-id-" + group, Type = "container", Tag = "div",
+                    SystemKey = "protect_runtime_form:quote_auto_form",
+                    Text = "private-customer-body"
+                })).ToList()
+        };
+        var original = JsonSerializer.Serialize(document, JsonOptions);
+        var refusal = Assert.Throws<WebsiteContentSanitizer.RecoveryReviewException>(
+            () => WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions));
+        Assert.Equal(25, refusal.CollisionCount);
+        Assert.Equal(20, refusal.Collisions.Count);
+        Assert.True(refusal.Truncated);
+        Assert.All(refusal.Collisions, group => { Assert.Equal(12, group.NodeCount); Assert.Equal(10, group.Nodes.Count); });
+        var evidence = JsonSerializer.Serialize(refusal.Collisions, JsonOptions);
+        Assert.DoesNotContain("private-", evidence);
+        Assert.Contains("pages/0/0", evidence);
+        Assert.Equal(original, JsonSerializer.Serialize(document, JsonOptions));
     }
 
     private sealed class Fixture : IDisposable
