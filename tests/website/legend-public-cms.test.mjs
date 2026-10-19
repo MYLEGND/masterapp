@@ -5173,6 +5173,13 @@ test('Studio step chooser exposes conditional native experience steps without sa
     assert.deepEqual(f.serverDocument(),before);
     f.change('#legend-cms-form-navigator select','-1');
     assert.equal(f.w.document.querySelector('[data-experience-step="second"]').hidden,true);
+    f.change('#legend-cms-form-navigator select','1');
+    f.click('[data-native-step-before]');
+    const saved=await f.save();
+    const experience=canonicalNodeById(saved,'custom.form').experience;
+    assert.deepEqual(experience.steps.map(step=>step.key),['second','first']);
+    assert.deepEqual(experience.steps[0].controlKeys,['detail']);
+    assert.deepEqual(experience.steps[0].visibleWhen,{op:'value',value:false});
   }finally{f.close();}
 });
 
@@ -5190,5 +5197,44 @@ test('nested materialization shares one allocator across repeated template ident
     assert.equal(new Set(nodes.map(node=>node.id)).size,nodes.length);
     assert.ok(nodes.some(node=>node.text==='First'));
     assert.ok(nodes.some(node=>node.text==='Second'));
+  }finally{f.close();}
+});
+
+test('protected field ordering moves canonical wrappers and retains native controls on save',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/quote/auto']={
+    title:'Auto',navigation:{label:'Auto',showInNavigation:true,order:1},
+    systemTemplateKey:'protect_template:auto_quote',
+    composition:[canonicalNode('auto.saved.runtime','container','div',{
+      systemKey:'protect_runtime_form:quote_auto_form',
+      fieldLabels:{firstname:'First name',lastname:'Last name'},
+      children:[canonicalNode('auto.fields','container','div',{
+        children:[
+          canonicalNode('auto.first','container','div',{children:[canonicalNode('auto.first.label','text','label',{text:'First name'})]}),
+          canonicalNode('auto.last','container','div',{children:[canonicalNode('auto.last.label','text','label',{text:'Last name'})]})
+        ]
+      })]
+    })]
+  };
+  const html='<!doctype html><html><body data-page-key="quote-auto"><main><form id="autoQuoteForm" action="/Quote/Auto" method="post" data-form-key="quote_auto_form"><div data-cms-id="auto.fields"><div data-cms-id="auto.first"><label data-cms-id="auto.first.label" for="first">First name</label><input id="first" name="FirstName" required></div><div data-cms-id="auto.last"><label data-cms-id="auto.last.label" for="last">Last name</label><input id="last" name="LastName" required></div></div></form></main></body></html>';
+  const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Auto',html});
+  try{
+    const first=f.w.document.getElementById('first');
+    const last=f.w.document.getElementById('last');
+    f.click('#last');
+    assert.equal(f.w.document.querySelector('#legend-cms-field-order').hidden,false);
+    f.click('[data-field-order-before]');
+    assert.equal(f.w.document.querySelector('[data-cms-id="auto.fields"]').firstElementChild.dataset.cmsId,'auto.last');
+    assert.equal(f.w.document.getElementById('first'),first);
+    assert.equal(f.w.document.getElementById('last'),last);
+    assert.equal(last.name,'LastName');
+    assert.equal(last.required,true);
+    assert.equal(last.labels[0].getAttribute('for'),'last');
+    const saved=await f.save();
+    const form=canonicalNodeById(saved,'auto.saved.runtime','/quote/auto');
+    assert.equal(form.systemKey,'protect_runtime_form:quote_auto_form');
+    assert.deepEqual(form.children[0].children.map(node=>node.id),['auto.last','auto.first']);
+    assert.deepEqual(form.fieldLabels,{firstname:'First name',lastname:'Last name'});
+    assert.equal(f.w.document.querySelector('form').getAttribute('action'),'/Quote/Auto');
   }finally{f.close();}
 });

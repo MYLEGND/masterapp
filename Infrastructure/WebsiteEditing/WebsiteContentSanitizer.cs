@@ -101,6 +101,83 @@ public static class WebsiteContentSanitizer
             throw new InvalidOperationException("website_v3_noncanonical_persisted_document");
     }
 
+    public sealed record DuplicateIdentityChange(string Path, string PreviousId, string ReplacementId);
+    public sealed record DuplicateIdentityRecovery(
+        string SourceFingerprint, string RepairedFingerprint, string DocumentJson,
+        IReadOnlyList<DuplicateIdentityChange> Changes);
+
+    // Explicit recovery planning only. Ordinary reads remain fail-closed. The
+    // caller must preserve the original bytes and compare revision/fingerprints
+    // before applying this plan. Protected identities are never renamed.
+    public static DuplicateIdentityRecovery PlanDuplicateIdentityRecovery(
+        string json, System.Text.Json.JsonSerializerOptions options)
+    {
+        var root = System.Text.Json.Nodes.JsonNode.Parse(json);
+        if (ContainsLegacyAuthority(root))
+            throw new ArgumentException("Legacy authority cannot be recovered as canonical content.");
+        var document = System.Text.Json.JsonSerializer.Deserialize<WebsiteContentDocument>(json, options)
+            ?? throw new ArgumentException("The saved website could not be read.");
+        if (root?["version"]?.ToString() != WebsiteStudioContract.CurrentDocumentVersion.ToString() ||
+            document.Version != WebsiteStudioContract.CurrentDocumentVersion ||
+            document.Shell is null || document.Pages is null || document.ReusableComponents is null)
+            throw new ArgumentException("Only canonical v3 identity collisions can be recovered.");
+        var entries = new List<(string Path, WebsiteCompositionNode Node)>();
+        void Visit(IEnumerable<WebsiteCompositionNode> nodes, string path)
+        {
+            var index = 0;
+            foreach (var node in nodes ?? [])
+            {
+                if (node is null || string.IsNullOrWhiteSpace(node.Id))
+                    throw new ArgumentException("Invalid content identity requires independent review.");
+                var location = path + "/" + index++;
+                entries.Add((location, node));
+                Visit(node.Children, location + "/children");
+            }
+        }
+        Visit(document.Shell.Header, "shell/header");
+        Visit(document.Shell.Footer, "shell/footer");
+        foreach (var page in document.Pages.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            Visit(page.Value.Composition, "pages/" + page.Key);
+        foreach (var component in document.ReusableComponents.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            Visit(component.Value.Composition, "components/" + component.Key);
+
+        static bool Protected(WebsiteCompositionNode node) =>
+            WebsiteSiteSource.HasProtectedSemantics(node) ||
+            !string.IsNullOrWhiteSpace(node.ActionKey) ||
+            node.DataBinding is not null || node.Experience is not null;
+        static string Fingerprint(string value) => Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+
+        var used = entries.Select(entry => entry.Node.Id).ToHashSet(StringComparer.Ordinal);
+        var changes = new List<DuplicateIdentityChange>();
+        foreach (var group in entries.GroupBy(entry => entry.Node.Id, StringComparer.Ordinal).Where(group => group.Count() > 1))
+        {
+            var protectedEntries = group.Where(entry => Protected(entry.Node)).ToList();
+            if (protectedEntries.Count > 1)
+                throw new ArgumentException("Multiple protected components share an identity; independent recovery review is required.");
+            var keep = protectedEntries.Count == 1 ? protectedEntries[0] : group.First();
+            foreach (var entry in group)
+            {
+                if (ReferenceEquals(entry.Node, keep.Node)) continue;
+                var oldId = entry.Node.Id;
+                var prefix = oldId[..Math.Min(oldId.Length, 100)];
+                var suffix = 0;
+                string nextId;
+                do { nextId = prefix + ".recovered." + Fingerprint(entry.Path + ":" + suffix++)[..16]; }
+                while (!used.Add(nextId));
+                entry.Node.Id = nextId;
+                changes.Add(new(entry.Path, oldId, nextId));
+            }
+        }
+        if (changes.Count == 0)
+            throw new ArgumentException("No duplicate content identities require recovery.");
+        var repaired = System.Text.Json.JsonSerializer.Serialize(document, options);
+        // Reject any unrelated corruption or normalization rather than folding
+        // an unreviewed content change into identity recovery.
+        _ = ReadPersisted(repaired, options);
+        return new(Fingerprint(json), Fingerprint(repaired), repaired, changes);
+    }
+
     internal static void EnsureUniqueCanonicalNodeIds(WebsiteContentDocument document)
     {
         var ids = new HashSet<string>(StringComparer.Ordinal);

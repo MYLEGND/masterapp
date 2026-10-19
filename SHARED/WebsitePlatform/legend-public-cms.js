@@ -359,8 +359,16 @@
     const page=pageState();
     const mounted=new Map();
     walkComposition(page.composition || [],node=>{
-      const el=findEditableElement(node.id);
-      if(el) mounted.set(node.id,el);
+      const runtimeKey=String(node.systemKey || '');
+      const el=runtimeKey.startsWith('protect_runtime_form:')
+        ? document.querySelector('form[data-cms-system-form="'+CSS.escape(runtimeKey)+'"]')
+        : findEditableElement(node.id);
+      if(el){
+        // The server-owned form key mounts the existing native form. Its saved
+        // canonical node ID remains stable even after historical materialization.
+        if(runtimeKey.startsWith('protect_runtime_form:')) el.dataset.cmsId=node.id;
+        mounted.set(node.id,el);
+      }
     });
     const ids=new Set();
     walkComposition(page.composition || [],node=>ids.add(node.id));
@@ -5494,6 +5502,7 @@
   }
 
   function syncEditorControls() {
+    refreshProtectedFieldOrderControls();
     const title = document.getElementById('legend-cms-selected-label');
     const inlineHelp = document.getElementById('legend-cms-inline-help');
     const imageGroup = document.getElementById('legend-cms-image-group');
@@ -8735,6 +8744,47 @@
 
   // Editor-only visibility. This never changes the saved document, form values,
   // runtime step state, validation, consent, or submission/event authority.
+  function protectedFieldOrderContext() {
+    const form = selected?.closest?.('form[data-form-key][data-cms-composition-id]');
+    if (SITE_KEY !== 'protect' || !form || !selected) return null;
+    for (let element = selected.parentElement; element && element !== form; element = element.parentElement) {
+      const entry = compositionEntry(element.dataset.cmsCompositionId);
+      if (!entry?.parent || entry.node.type !== 'container' ||
+          !element.querySelector('input:not([type="hidden"]),select,textarea')) continue;
+      const siblings = entry.parent.children || [];
+      const index = siblings.findIndex(node => node.id === entry.node.id);
+      if (index < 0 || siblings.length < 2) continue;
+      // Native conditional/repeating groups retain their owning parent. Move
+      // the whole field wrapper, including label, validation and native input.
+      return { element, entry, siblings, index };
+    }
+    return null;
+  }
+
+  function refreshProtectedFieldOrderControls() {
+    const context = protectedFieldOrderContext();
+    const host = document.getElementById('legend-cms-field-order');
+    if (!host) return;
+    host.hidden = !context;
+    host.querySelector('[data-field-order-before]').disabled = !context || context.index === 0;
+    host.querySelector('[data-field-order-after]').disabled = !context || context.index === context.siblings.length - 1;
+  }
+
+  function moveProtectedField(delta) {
+    const context = protectedFieldOrderContext();
+    if (!context) return;
+    const target = context.index + delta;
+    if (target < 0 || target >= context.siblings.length) return;
+    const control = selected;
+    checkpoint();
+    const [node] = context.siblings.splice(context.index, 1);
+    context.siblings.splice(target, 0, node);
+    applyDocument(documentState);
+    setSelected(control);
+    markDirty();
+    refreshProtectedFieldOrderControls();
+  }
+
   const formPreviewVisibility = new Map();
   let formPreviewIndex = -1;
   function restoreFormStepPreview() {
@@ -8795,6 +8845,30 @@
     updateDirectCanvasUi();
   }
 
+  function nativeStepOrderContext() {
+    const entry = formPreviewEntries()[formPreviewIndex];
+    const node = compositionNode(entry?.form?.dataset.websiteExperienceId);
+    const steps = node?.experience?.steps;
+    const key = entry?.step?.dataset.experienceStep;
+    const index = Array.isArray(steps) ? steps.findIndex(step => step.key === key) : -1;
+    return index < 0 ? null : { node, steps, index, key };
+  }
+
+  function moveNativeFormStep(delta) {
+    const context = nativeStepOrderContext();
+    if (!context) return;
+    const target = context.index + delta;
+    if (target < 0 || target >= context.steps.length) return;
+    checkpoint();
+    const [step] = context.steps.splice(context.index, 1);
+    context.steps.splice(target, 0, step);
+    applyDocument(documentState);
+    const index = formPreviewEntries().findIndex(entry =>
+      entry.form.dataset.websiteExperienceId === context.node.id && entry.step.dataset.experienceStep === context.key);
+    previewFormStep(index);
+    markDirty();
+  }
+
   function refreshFormStepNavigator() {
     const host = document.getElementById('legend-cms-form-navigator');
     if (!host) return;
@@ -8814,6 +8888,11 @@
     select.value = String(formPreviewIndex);
     host.querySelector('[data-form-preview-back]').disabled = formPreviewIndex <= 0;
     host.querySelector('[data-form-preview-next]').disabled = formPreviewIndex >= entries.length - 1;
+    const stepOrder = host.querySelector('[data-native-step-order]');
+    const stepContext = nativeStepOrderContext();
+    stepOrder.hidden = !stepContext;
+    stepOrder.querySelector('[data-native-step-before]').disabled = !stepContext || stepContext.index === 0;
+    stepOrder.querySelector('[data-native-step-after]').disabled = !stepContext || stepContext.index === stepContext.steps.length - 1;
     host.querySelector('[role="status"]').textContent = formPreviewIndex < 0
       ? entries.length + ' form steps available to edit.'
       : 'Editing step ' + (formPreviewIndex + 1) + ' of ' + entries.length + '. Preview only; no answers or submission.';
@@ -8825,6 +8904,20 @@
     host.setAttribute('aria-label', 'Form step editor');
     host.innerHTML = '<label class="legend-cms-group">Form step<select aria-label="Form step to edit"></select></label><div class="legend-cms-row"><button type="button" data-form-preview-back>Previous form step</button><button type="button" data-form-preview-next>Next form step</button></div><small role="status" aria-live="polite"></small>';
     panel.querySelector('.legend-cms-navigation').appendChild(host);
+    const order = document.createElement('div');
+    order.id = 'legend-cms-field-order';
+    order.hidden = true;
+    order.innerHTML = '<p>Selected field order within its group</p><div class="legend-cms-row"><button type="button" data-field-order-before>Move field earlier</button><button type="button" data-field-order-after>Move field later</button></div>';
+    host.appendChild(order);
+    const stepOrder = document.createElement('div');
+    stepOrder.dataset.nativeStepOrder = '';
+    stepOrder.hidden = true;
+    stepOrder.innerHTML = '<p>Form step order</p><div class="legend-cms-row"><button type="button" data-native-step-before>Move step earlier</button><button type="button" data-native-step-after>Move step later</button></div>';
+    host.appendChild(stepOrder);
+    stepOrder.querySelector('[data-native-step-before]').addEventListener('click', () => moveNativeFormStep(-1));
+    stepOrder.querySelector('[data-native-step-after]').addEventListener('click', () => moveNativeFormStep(1));
+    order.querySelector('[data-field-order-before]').addEventListener('click', () => moveProtectedField(-1));
+    order.querySelector('[data-field-order-after]').addEventListener('click', () => moveProtectedField(1));
     host.querySelector('select').addEventListener('change', event => previewFormStep(Number(event.target.value)));
     host.querySelector('[data-form-preview-back]').addEventListener('click', () => previewFormStep(formPreviewIndex - 1));
     host.querySelector('[data-form-preview-next]').addEventListener('click', () => previewFormStep(formPreviewIndex + 1));
@@ -9133,6 +9226,55 @@
     });
   }
 
+  function showSavedDraftRecovery() {
+    const panel = document.createElement('section');
+    panel.setAttribute('role', 'region');
+    panel.setAttribute('aria-label', 'Saved website recovery');
+    const title = document.createElement('h2');
+    title.textContent = 'Recover your saved website';
+    const status = document.createElement('p');
+    status.setAttribute('role', 'status');
+    status.textContent = 'Some content shares an internal identity. Review the recovery before editing. Your published website is unchanged.';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Review recovery';
+    panel.append(title, status, button);
+    document.body.prepend(panel);
+    revealPublishedWebsite();
+    let plan = null;
+    const recoveryId = crypto.randomUUID();
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try {
+        const url = new URL(API_BASE + '/api/website-content/manage/draft-recovery');
+        if (!plan) {
+          url.searchParams.set('ticket', editorTicket);
+          const response = await fetch(url, { cache: 'no-store' });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.message || 'This website requires an independent recovery review. All content was preserved.');
+          plan = payload;
+          status.textContent = 'Recovery will separate ' + plan.changes.length + ' duplicated content identities. Protected fields and events stay unchanged. A saved copy of the original draft will be retained; your published website will not change.';
+          button.textContent = 'Recover saved website';
+        } else {
+          const response = await fetch(url, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ticket: editorTicket, expectedRevision: plan.revision,
+              recoveryId, sourceFingerprint: plan.sourceFingerprint, repairedFingerprint: plan.repairedFingerprint })
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.message || 'Recovery was not confirmed. Reopen Website Studio to check the current saved state.');
+          panel.remove();
+          await loadEditor();
+          return;
+        }
+      } catch (error) {
+        status.textContent = error.message || 'Recovery was not confirmed. Reopen Website Studio to check the current saved state.';
+        // Do not replay a mutation after an ambiguous response.
+        button.hidden = true;
+      } finally { button.disabled = false; }
+    });
+  }
+
   async function loadEditor() {
     try {
       const url = new URL(`${API_BASE}/api/website-content/manage`);
@@ -9140,6 +9282,13 @@
       if(auditMode) url.searchParams.set('audit','true');
       const response = await fetch(url, { cache: 'no-store' });
       if (!response.ok) {
+        if (response.status===409) {
+          const failure = await response.json().catch(() => null);
+          if (failure?.error === 'website_draft_duplicate_identity') {
+            showSavedDraftRecovery();
+            return;
+          }
+        }
         if ((response.status===401 || response.status===403) &&
             showEditorAuthorizationRecovery('This Website Studio authorization is missing or expired.')) return;
         throw new Error(response.status===401 || response.status===403
