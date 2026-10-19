@@ -92,7 +92,10 @@ public sealed record ProviderDeliveryMetricRow(
     long Impressions,
     long Clicks,
     long? Conversions,
-    JsonElement Raw);
+    JsonElement Raw)
+{
+    public string? AccountId { get; init; }
+}
 
 public sealed record CanonicalOutcomeTotals(
     long Leads,

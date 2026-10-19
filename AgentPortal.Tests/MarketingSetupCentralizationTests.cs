@@ -132,7 +132,9 @@ public sealed class MarketingSetupCentralizationTests
         Assert.DoesNotContain(".marketing-setup-modal-dialog", css, StringComparison.Ordinal);
         Assert.DoesNotContain(".fa-modal .modal-content", css, StringComparison.Ordinal);
         Assert.Contains(".marketing-setup-form-grid", css, StringComparison.Ordinal);
-        Assert.Contains("grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);", css, StringComparison.Ordinal);
+        Assert.Contains("grid-template-columns: minmax(0, 1fr);", css, StringComparison.Ordinal);
+        Assert.DoesNotContain("marketing-setup-save-row", view, StringComparison.Ordinal);
+        Assert.Contains("form=\"marketing-setup-form\"", view, StringComparison.Ordinal);
         Assert.Contains(".is-critical", css, StringComparison.Ordinal);
         Assert.Contains(".is-warn", css, StringComparison.Ordinal);
         Assert.Contains(".is-good", css, StringComparison.Ordinal);

@@ -118,7 +118,7 @@ public sealed class MarketingExternalAdsReportingService(
                     row.Clone()));
             }
         }
-        return new ExternalAdsCampaignReport(output, accountTimeZone, from, to);
+        return new ExternalAdsCampaignReport(output.Select(row => row with { AccountId = connection.AccountId }).ToArray(), accountTimeZone, from, to);
     }
 
     private async Task<ExternalAdsCampaignReport> GetTikTokCampaignsAsync(
@@ -205,7 +205,7 @@ public sealed class MarketingExternalAdsReportingService(
                 : page;
             if (totalPages <= page) break;
         }
-        return new ExternalAdsCampaignReport(output, accountTimeZone, from, to);
+        return new ExternalAdsCampaignReport(output.Select(row => row with { AccountId = connection.AccountId }).ToArray(), accountTimeZone, from, to);
     }
 
     private async Task<string> GetGoogleAccountTimeZoneAsync(

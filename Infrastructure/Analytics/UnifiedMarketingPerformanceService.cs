@@ -53,7 +53,7 @@ public sealed class UnifiedMarketingPerformanceService(
                         TimeGranularity: "none",
                         Fields: ["campaign.spend", "campaign.impressions", "campaign.clicks", "campaign.id", "campaign.name", "campaign.status"]),
                     providerDeadline.Token);
-                delivery.AddRange(ParseOpenAiRows(provider.Payload));
+                delivery.AddRange(ParseOpenAiRows(provider.Payload).Select(row => row with { AccountId = connection.AccountId }));
                 openAiDeliveryAvailable = true;
                 if (provider.EffectiveFromUtc is { } effectiveFrom && provider.EffectiveToUtc is { } effectiveTo &&
                     (effectiveFrom != range.FromUtc.ToUniversalTime() || effectiveTo != range.ToUtc.ToUniversalTime()))
@@ -105,6 +105,11 @@ public sealed class UnifiedMarketingPerformanceService(
             providerDeadline.CancelAfter(TimeSpan.FromSeconds(5));
             var meta = await metaAds.GetCampaignsAsync(range, analyticsScope, providerDeadline.Token);
             var rows = meta.Rows ?? [];
+            foreach (var row in rows)
+                delivery.Add(new ProviderDeliveryMetricRow(
+                    MarketingChannels.MetaAds, "campaign", row.CampaignId, row.CampaignName,
+                    row.Status, row.CampaignId, null, null, row.Spend, row.Impressions,
+                    row.Clicks, row.Leads, JsonSerializer.SerializeToElement(row)) { AccountId = meta.AccountId });
             var spend = rows.Sum(x => x.Spend);
             channels.Add(new ChannelPerformanceRow(
                 MarketingChannels.MetaAds,

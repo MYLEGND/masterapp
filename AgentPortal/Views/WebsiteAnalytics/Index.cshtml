@@ -35,11 +35,16 @@
 <div class="modal fade fa-modal" id="marketingSetupModal" tabindex="-1" aria-labelledby="marketingSetupModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
         <div class="modal-content wa-modal-shell">
-            <div class="modal-header wa-modal-header">
+            <div class="modal-header wa-modal-header marketing-setup-header">
                 <div>
                     <div class="wa-modal-kicker">Centralized Marketing Authority</div>
                     <h5 class="modal-title mb-0" id="marketingSetupModalLabel">Marketing Setup</h5>
                     <div class="wa-modal-subtitle" id="marketing-setup-scope-label">Loading scoped setup…</div>
+                </div>
+                <div class="marketing-setup-header-actions">
+                    <div id="marketing-setup-status" role="status" aria-live="polite"></div>
+                    <button type="button" class="btn btn-outline-light" id="marketing-setup-retry" hidden>Retry setup</button>
+                    <button type="submit" form="marketing-setup-form" class="btn btn-gold" id="marketing-setup-save">Save Marketing Setup</button>
                 </div>
                 <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -68,6 +73,7 @@
                             <div class="marketing-setup-connection" id="marketing-setup-meta-account">Meta Ads status: —</div>
                         </div>
                         <p class="marketing-setup-help">Leave the Pixel ID blank to keep using the default LEGEND tracking setup. Meta CAPI credentials are never entered here; they are stored securely and managed automatically when the scoped Meta Ads account is connected.</p>
+                        <div class="marketing-setup-field-grid">
                         <label class="marketing-setup-field" for="marketing-setup-pixel">
                             <span>Meta Pixel ID</span>
                             <input id="marketing-setup-pixel" type="text" inputmode="numeric" maxlength="32" autocomplete="off" placeholder="Optional custom Pixel ID" />
@@ -77,6 +83,26 @@
                             <input id="marketing-setup-test-code" type="text" maxlength="100" autocomplete="off" placeholder="TEST12345 from Meta Events Manager" />
                             <small>Use the code shown in Meta Events Manager &gt; Test Events. Test traffic stays on the same scoped Pixel/CAPI destination and does not create a second sender.</small>
                         </label>
+                        </div>
+                        <div class="marketing-setup-secure-row">
+                            <div>
+                                <span class="marketing-setup-secure-label">Meta CAPI</span>
+                                <strong id="marketing-setup-capi-status">Checking secure connection…</strong>
+                            </div>
+                            <a class="btn btn-sm btn-outline-light" id="marketing-setup-meta-connect" href="" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect Meta Ads</a>
+                        </div>
+                    </section>
+
+                    <section class="marketing-setup-section marketing-setup-openai" id="marketing-setup-openai">
+                        <div class="marketing-setup-section-head">
+                            <div>
+                                <div class="marketing-setup-eyebrow">Marketing</div>
+                                <h6>ChatGPT Ads destination</h6>
+                            </div>
+                            <div class="marketing-setup-connection" id="marketing-setup-openai-account">ChatGPT Ads status: —</div>
+                        </div>
+                        <p class="marketing-setup-help">Connect the scoped ChatGPT Ads account here. Your Advertiser API key is sent once to the server for OpenAI verification, encrypted in the existing marketing authority, and never returned to the browser.</p>
+
                         <div class="marketing-setup-readiness" id="marketing-setup-openai-readiness">
                             <div class="marketing-setup-section-head">
                                 <div>
@@ -102,25 +128,6 @@
                                 <button type="button" class="btn btn-sm btn-outline-light" id="marketing-setup-openai-feed-refresh">Refresh feed status</button>
                             </div>
                         </div>
-
-                        <div class="marketing-setup-secure-row">
-                            <div>
-                                <span class="marketing-setup-secure-label">Meta CAPI</span>
-                                <strong id="marketing-setup-capi-status">Checking secure connection…</strong>
-                            </div>
-                            <a class="btn btn-sm btn-outline-light" id="marketing-setup-meta-connect" href="" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect Meta Ads</a>
-                        </div>
-                    </section>
-
-                    <section class="marketing-setup-section marketing-setup-openai" id="marketing-setup-openai">
-                        <div class="marketing-setup-section-head">
-                            <div>
-                                <div class="marketing-setup-eyebrow">Marketing</div>
-                                <h6>ChatGPT Ads destination</h6>
-                            </div>
-                            <div class="marketing-setup-connection" id="marketing-setup-openai-account">ChatGPT Ads status: —</div>
-                        </div>
-                        <p class="marketing-setup-help">Connect the scoped ChatGPT Ads account here. Your Advertiser API key is sent once to the server for OpenAI verification, encrypted in the existing marketing authority, and never returned to the browser.</p>
 
                         <div class="marketing-setup-connect-panel" id="marketing-setup-openai-connect-panel" hidden>
                             <div class="marketing-setup-connect-copy">
@@ -294,11 +301,7 @@
                         </div>
                     </section>
 
-                    <div class="marketing-setup-save-row">
-                        <div id="marketing-setup-status" role="status" aria-live="polite"></div>
-                        <button type="button" class="btn btn-outline-light" id="marketing-setup-retry" hidden>Retry connection setup</button>
-                        <button type="submit" class="btn btn-gold" id="marketing-setup-save">Save Marketing Setup</button>
-                    </div>
+
                 </form>
             </div>
         </div>
@@ -483,6 +486,13 @@
                                     aria-controls="marketingSetupModal">
                                 Marketing Setup
                             </button>
+                        <button type="button"
+                                class="btn btn-outline-light"
+                                id="paid-media-open"
+                                data-bs-toggle="modal"
+                                data-bs-target="#metaCampaignsModal">
+                            Paid Media
+                        </button>
                             <button type="button"
                                     class="btn advertising-command-trigger"
                                     id="advertising-command-open"
@@ -777,13 +787,7 @@
                            rel="noopener">
                             Ads Manager
                         </a>
-                        <button type="button"
-                                class="btn btn-outline-light hero-link-meta-btn wa-kpi-meta-btn"
-                                id="meta-campaigns-open"
-                                data-bs-toggle="modal"
-                                data-bs-target="#metaCampaignsModal">
-                            Campaigns
-                        </button>
+
                         <a class="btn btn-outline-light hero-link-meta-btn wa-kpi-meta-btn"
                            id="meta-connect-btn"
                            href="@(analyticsBase + "/meta-connect?returnUrl=" + Uri.EscapeDataString(Context.Request.Path))">
@@ -2519,72 +2523,30 @@
   </div>
 </div>
 
-<div class="modal fade fa-modal" id="metaCampaignsModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade fa-modal" id="metaCampaignsModal" tabindex="-1" aria-labelledby="paidMediaModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
-        <div class="wa-modal-header-main">
-          <div class="wa-modal-header-copy">
-            <div class="wa-modal-kicker">Paid Media</div>
-            <div class="d-flex align-items-center gap-2 flex-wrap">
-                <h5 class="modal-title mb-0">Meta Ads Campaigns</h5>
-                <span class="fa-chip d-none" id="meta-campaigns-account-chip">Not connected</span>
-            </div>
-            <div class="wa-modal-subtitle">Compare Meta-reported campaign performance against server-confirmed website leads and look for attribution gaps worth investigating.</div>
-          </div>
-          <div class="wa-modal-header-actions">
-            <div class="wa-modal-range-chip">
-              <span class="wa-modal-range-label">Range</span>
-              <span class="wa-modal-range-value" id="meta-campaigns-range-label"></span>
-            </div>
-          </div>
+        <div class="wa-modal-header-copy">
+          <div class="wa-modal-kicker">Paid Media</div>
+          <h5 class="modal-title mb-0" id="paidMediaModalLabel">Ad campaigns</h5>
+          <div class="wa-modal-subtitle" data-analytics-view-label></div>
         </div>
         <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body wa-modal-body">
+        <div class="wa-modal-note">Provider delivery and conversions are shown separately from server-confirmed website leads. Spend retains provider-reported units. Currency is not supplied by this report; do not compare or sum amounts across accounts. Campaign credit requires verified attribution.</div>
+        <div role="status" aria-live="polite" data-marketing-performance-status></div>
+        <div class="paid-media-providers" id="paid-media-providers" aria-label="Advertising platforms"></div>
         <section class="wa-modal-section">
-        <div class="wa-modal-meta-strip mb-3">
-            <div class="wa-modal-meta-item"><span class="wa-modal-meta-label">Account</span><span class="wa-modal-meta-value fa-meta-strong" id="meta-campaigns-account">—</span></div>
-            <div class="wa-modal-meta-item"><span class="wa-modal-meta-label">Last Sync</span><span class="wa-modal-meta-value" id="meta-campaigns-synced">—</span></div>
-        </div>
-        <div class="alert alert-warning small py-2 px-3 mb-3" id="meta-campaigns-note">
-            Meta Leads = reported by Meta Ads API. Website Leads = server-confirmed leads captured on your site. These may differ due to attribution windows, browser restrictions, CAPI config, or reporting delay. Campaign date ranges are aligned to the Meta account timezone when available.
-        </div>
-        <div class="fa-muted small mb-3" id="meta-campaigns-utm-note">
-            Recommended Meta URL parameters: <code>utm_id={{campaign.id}}</code> <code>utm_campaign={{campaign.name}}</code> <code>utm_content={{ad.name}}</code> <code>utm_term={{adset.id}}</code> <code>meta_campaign_id={{campaign.id}}</code> <code>meta_adset_id={{adset.id}}</code> <code>meta_ad_id={{ad.id}}</code>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-sm align-middle meta-campaigns-table">
-                <thead>
-                    <tr>
-                        <th>Campaign</th>
-                        <th>Status</th>
-                        <th>Objective</th>
-                        <th class="text-end">Spend</th>
-                        <th class="text-end">Impr.</th>
-                        <th class="text-end">Reach</th>
-                        <th class="text-end">Link Clicks / LPVs</th>
-                        <th class="text-end">CTR</th>
-                        <th class="text-end">CPC</th>
-                        <th class="text-end">CPM</th>
-                        <th class="text-end">Meta Leads</th>
-                        <th class="text-end">Website Leads</th>
-                        <th class="text-end">Website Lead Gap</th>
-                        <th class="text-end">Qualified</th>
-                        <th class="text-end">Appointments</th>
-                        <th class="text-end">Applications</th>
-                        <th class="text-end">Issued</th>
-                        <th class="text-end">Paid</th>
-                        <th class="text-end">Paid Premium</th>
-                        <th class="text-end">Premium ROAS</th>
-                    </tr>
-                </thead>
-                <tbody id="meta-campaigns-body">
-                    <tr><td colspan="20" class="fa-loading">Loading campaigns…</td></tr>
-                </tbody>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead><tr><th>Platform</th><th>Account</th><th>Campaign</th><th>Status</th><th class="text-end">Spend</th><th class="text-end">Impressions</th><th class="text-end">Clicks</th><th class="text-end">Provider conversions</th></tr></thead>
+              <tbody id="paid-media-campaigns-body"><tr><td colspan="8">Loading campaigns…</td></tr></tbody>
             </table>
-        </div>
+          </div>
         </section>
+        <div class="wa-modal-note" id="paid-media-note"></div>
       </div>
     </div>
   </div>

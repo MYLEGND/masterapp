@@ -26,6 +26,7 @@ async function fixture({ device = true, founder = false, siteKey = 'legend', sel
     <button id="analytics-refresh" data-analytics-refresh>Refresh</button><span id="analytics-refresh-status"></span>
     <button id="channel-performance-refresh" data-analytics-refresh>Refresh</button>
     <span id="growth-economics-overview"></span><span id="channel-performance-overview"></span>
+    <div id="metaCampaignsModal"><div class="modal-body"><div id="paid-media-providers"></div><table><tbody id="paid-media-campaigns-body"></tbody></table><div id="paid-media-note"></div></div></div>
     <div id="channelOutcomesModal"><div class="modal-body"><div id="channel-performance-grid"></div></div></div>
     <div id="growthEconomicsModal"><div class="modal-body"><div id="growth-economics-grid"></div><div id="growth-economics-spend"></div></div></div>
     <div id="behaviorModal"><div class="modal-body"><span id="bhvr-total-sessions"></span></div></div>
@@ -93,13 +94,16 @@ async function fixture({ device = true, founder = false, siteKey = 'legend', sel
 }
 
 
-async function providerFixture({ url = 'https://portal.example.test/WebsiteAnalytics/Index?agentProfileId=founder-profile&siteKey=legend', setupHandler = null, postHandler = null, googleSetup = null, connected = false } = {}) {
+async function providerFixture({ url = 'https://portal.example.test/WebsiteAnalytics/Index?agentProfileId=founder-profile&siteKey=legend', setupHandler = null, postHandler = null, googleSetup = null, connected = false, accounts = [] } = {}) {
   const dom = new JSDOM(`<!doctype html>
     <div class="fa-shell" data-analytics-base="/WebsiteAnalytics" data-caller-profile-id="founder-profile"
       data-initial-scope-profile-id="founder-profile" data-initial-scope-label="Founder Personal"
       data-initial-site-key="legend" data-agent-options='[{"id":"founder-profile","name":"Founder"},{"id":"agent-profile","name":"Agent"}]'></div>
     <select id="wa-scope-select"></select>
     <div id="marketingSetupModal"><div id="marketing-setup-scope-label">Loading scoped setup…</div>
+      <div id="marketing-setup-status" role="status"></div>
+      <button type="button" id="marketing-setup-retry" hidden>Retry</button>
+      <button type="submit" form="marketing-setup-form" id="marketing-setup-save">Save</button>
       <form id="marketing-setup-form">
         <section class="marketing-setup-section">
           <input id="marketing-setup-revision"><input id="marketing-setup-profile-revision">
@@ -115,9 +119,7 @@ async function providerFixture({ url = 'https://portal.example.test/WebsiteAnaly
           </div>
           <button type="button" id="marketing-setup-openai-disconnect">Disconnect ChatGPT Ads</button>
         </section>
-        <div id="marketing-setup-status"></div>
-        <button type="button" id="marketing-setup-retry" hidden>Retry</button>
-        <button id="marketing-setup-save">Save</button>
+
         ${['google', 'tiktok'].map(provider => `
           <section class="marketing-setup-section">
             <div id="marketing-setup-${provider}-status"></div>
@@ -174,7 +176,7 @@ async function providerFixture({ url = 'https://portal.example.test/WebsiteAnaly
   const snapshot = (owner = 'founder-profile', overrides = {}) => ({
     agentProfileId: owner, agentName: `Owner ${owner}`,
     marketing: { revision: '11111111-1111-1111-1111-111111111111' }, booking: {}, status: {},
-    google: { connected, ready: connected, revision: 'google-revision',
+    google: { connected, ready: connected, accountId: connected ? 'previous-account' : null, revision: 'google-revision',
       accountName: `Google ${owner}`, connectionSetup: googleSetup || ready },
     tiktok: { connected: false, connectionSetup: ready },
     calendar: { connected, revision: 'calendar-revision' },
@@ -186,6 +188,7 @@ async function providerFixture({ url = 'https://portal.example.test/WebsiteAnaly
     requests.push(request);
     const parsed = new URL(input, window.location.href);
     if (options.method === 'POST' && postHandler) return postHandler(request, { snapshot, json });
+    if (parsed.pathname.endsWith('/external-ads/accounts')) return json({ accounts });
     if (parsed.pathname.endsWith('/marketing-setup')) {
       return setupHandler ? setupHandler(request, { snapshot, json })
         : json(snapshot(parsed.searchParams.get('agentProfileId') || 'founder-profile'));
@@ -1106,5 +1109,74 @@ test('a failed current summary is not retried implicitly when conversions finish
     assert.equal(f.window.document.getElementById('conv-session').textContent, '—');
     assert.equal(f.window.document.getElementById('analytics-refresh').disabled, false);
     assert.equal(modal.querySelector('[data-analytics-detail-status] [data-analytics-refresh]').disabled, false);
+  } finally { await f.dispose(); }
+});
+
+
+test('connected Google account remains switchable and preserves the current picker selection', async () => {
+  const f = await providerFixture({ connected: true, accounts: [
+    { accountId: 'other-account', label: 'Other' }, { accountId: 'previous-account', label: 'Current' }
+  ], postHandler: (request, { snapshot, json }) => {
+    const body = JSON.parse(request.body);
+    assert.equal(body.provider, 'google');
+    assert.equal(body.accountId, 'other-account');
+    assert.equal(body.agentProfileId, 'founder-profile');
+    return json({ ok: true, setup: snapshot('founder-profile', { google: { connected: true, ready: true, accountId: 'other-account' } }) });
+  } });
+  try {
+    f.open(); await f.flush();
+    const doc = f.window.document;
+    const switcher = doc.getElementById('marketing-setup-google-load-accounts');
+    assert.equal(switcher.hidden, false);
+    assert.equal(switcher.textContent, 'Change account');
+    switcher.click(); await f.flush();
+    const picker = doc.getElementById('marketing-setup-google-account-picker');
+    const select = doc.getElementById('marketing-setup-google-account-select');
+    assert.equal(picker.hidden, false);
+    assert.equal(select.value, 'previous-account');
+    select.value = 'other-account';
+    doc.getElementById('marketing-setup-google-select-account').click(); await f.flush();
+    assert.equal(picker.dataset.accountId, 'other-account');
+    assert.equal(switcher.hidden, false);
+    assert.equal(f.requests.filter(x => x.method === 'POST').length, 1);
+  } finally { f.dispose(); }
+});
+
+test('header Save submits the canonical setup form and honors busy state', async () => {
+  let finish;
+  const f = await providerFixture({ postHandler: (request, { snapshot, json }) =>
+    new Promise(resolve => { finish = () => resolve(json({ ok: true, setup: snapshot() })); }) });
+  try {
+    f.open(); await f.flush();
+    const save = f.window.document.getElementById('marketing-setup-save');
+    assert.equal(save.form.id, 'marketing-setup-form');
+    assert.equal(save.closest('form'), null);
+    save.click(); await f.flush();
+    assert.equal(save.disabled, true);
+    assert.equal(f.requests.filter(x => x.method === 'POST').length, 1);
+    finish(); await f.flush();
+    assert.equal(save.disabled, false);
+  } finally { f.dispose(); }
+});
+
+test('Paid Media uses one shared read and preserves provider, account, unknown and zero values', async () => {
+  const providers = ['meta_ads', 'chatgpt_ads', 'google_ads', 'tiktok_ads'];
+  const f = await fixture({ performanceHandler: async () => new Response(JSON.stringify({
+    generatedUtc: '2026-10-19T05:00:00Z',
+    channels: providers.map(channel => ({ channel, spend: 0, leads: 0 })),
+    providerDelivery: [...providers.map(provider => ({ provider, level: 'campaign', accountId: provider + '-account', providerId: 'same-id', name: '<script>unsafe</script>', spend: 0, impressions: 0, clicks: 0, conversions: null })),
+      { provider: 'google_ads', level: 'ad', providerId: 'ad-only', name: 'Not a campaign' }],
+    dataQualityNotes: []
+  }), { headers: { 'content-type': 'application/json' } }) });
+  try {
+    const doc = f.window.document;
+    assert.equal(doc.querySelectorAll('#paid-media-campaigns-body tr').length, 4);
+    assert.match(doc.getElementById('paid-media-campaigns-body').textContent, /google_ads-account/);
+    assert.match(doc.getElementById('paid-media-campaigns-body').textContent, /Unavailable/);
+    assert.equal(doc.querySelector('#paid-media-campaigns-body script'), null);
+    assert.match(doc.getElementById('paid-media-providers').textContent, /LinkedIn AdsComing later/);
+    doc.getElementById('metaCampaignsModal').dispatchEvent(new f.window.Event('show.bs.modal'));
+    assert.equal(f.calls.filter(x => x.includes('/marketing-manager/performance')).length, 1);
+    assert.equal(f.calls.filter(x => x.includes('/meta-campaigns')).length, 0);
   } finally { await f.dispose(); }
 });
