@@ -21,10 +21,22 @@ public sealed class WebsitePublishWorker(IServiceScopeFactory scopes, ILogger<We
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            try { await RunDueAsync(stoppingToken); await RetireSnapshotsAsync(stoppingToken); }
+            try { await RunMaintenanceAsync(stoppingToken); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (Exception exception) { logger.LogError(exception, "Scheduled website publish scan failed."); }
         }
+    }
+
+    public async Task RunMaintenanceAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        try { await RunDueAsync(cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception) { logger.LogError(exception, "Scheduled website publish scan failed."); }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        try { await RetireSnapshotsAsync(cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception) { logger.LogError(exception, "Website snapshot retirement scan failed."); }
     }
 
     public async Task RetireSnapshotsAsync(CancellationToken cancellationToken)

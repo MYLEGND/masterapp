@@ -5243,7 +5243,8 @@
 
   function scheduleDraftSave() {
     clearTimeout(autoSaveTimer);
-    autoSaveTimer=setTimeout(()=>{if(dirty&&!saving) void save(false);},900);
+    if(publicationReviewRequired || publicationRecoveryProblem) return;
+    autoSaveTimer=setTimeout(()=>{if(dirty&&!saving&&!publicationReviewRequired&&!publicationRecoveryProblem) void save(false);},900);
   }
 
   function markDirty() {
@@ -6042,19 +6043,40 @@
   let pendingPublicationKey = null;
   let pendingPublication = null;
   let publicationRecoveryMode = 'unchecked';
+  let publicationReviewRequired = null;
+  let publicationRecoveryProblem = '';
+  let pendingPublicationRaw = null;
   function syncPublicationRecoveryUi() {
     const panel=document.getElementById('legend-cms-publication-recovery');
     const check=document.getElementById('legend-cms-publication-check');
     const resume=document.getElementById('legend-cms-publication-resume');
+    const review=document.getElementById('legend-cms-publication-review');
+    const title=document.getElementById('legend-cms-publication-title');
     const detail=document.getElementById('legend-cms-publication-detail');
     const pending=!!pendingPublication;
+    const needsReview=!!publicationReviewRequired;
     const canPublish=managementPayload?.capabilities?.canPublish !== false;
     for(const id of ['legend-cms-publish','legend-cms-publish-now']) {
       const button=document.getElementById(id);
-      if(button && canPublish) button.textContent=pending?'Check publication':'Publish';
+      if(button && canPublish) button.textContent=pending?'Check publication':needsReview?'Review current draft':'Publish';
     }
     if(!panel) return;
-    panel.hidden=!pending;
+    if(publicationRecoveryProblem){
+      panel.hidden=false;
+      if(title) title.textContent='Publication recovery unavailable';
+      if(detail) detail.textContent=publicationRecoveryProblem;
+      if(check) check.hidden=true;
+      if(resume) resume.hidden=true;
+      if(review) review.hidden=true;
+      return;
+    }
+    panel.hidden=!pending && !needsReview;
+    if(title) title.textContent=needsReview?'Review the current saved draft':'Publication confirmation pending';
+    if(check) check.hidden=!pending;
+    if(resume) resume.hidden=!pending || publicationRecoveryMode!=='not_found';
+    if(review){ review.hidden=!needsReview; review.disabled=saving; }
+    if(needsReview && detail) detail.textContent='Original request '+publicationReviewRequired.requestId+
+      ' is reconciled. Preserve local edits as a new draft, then review the current saved website before a new publication.';
     if(!pending) return;
     if(detail) detail.textContent='Original request '+pendingPublication.requestId+
       ' · '+(publicationRecoveryMode==='not_found'
@@ -6074,28 +6096,64 @@
         revision!==pendingPublication.expectedRevision;
     }
   }
+  function publicationRecord(value) {
+    if(!value || typeof value!=='object' || Array.isArray(value) ||
+       !isPublicationUuid(value.requestId) || !Number.isSafeInteger(value.expectedRevision) ||
+       value.expectedRevision<0 || value.expectedRevision>=Number.MAX_SAFE_INTEGER ||
+       (value.phase!==undefined && value.phase!=='review_required') ||
+       (Object.hasOwn(value,'preservation') &&
+        (value.phase!=='review_required' || !validPreservation(value.preservation))))
+      throw new Error('The existing publication record could not be read safely. Its bytes and any local edits remain protected.');
+    return {requestId:value.requestId.toLowerCase(),expectedRevision:value.expectedRevision,
+      ...(value.phase==='review_required'?{phase:'review_required'}:{}),
+      ...(Object.hasOwn(value,'preservation')?{preservation:value.preservation}:{})};
+  }
+  function publicationJournalProblem(message) {
+    publicationRecoveryProblem=message;
+    clearTimeout(autoSaveTimer);
+    const status=document.getElementById('legend-cms-status');
+    if(status) status.textContent=message;
+    syncPublicationRecoveryUi();
+  }
   function restorePublication() {
     // Management resolves the business/agent scope after initial bootstrap.
     const key = 'legend-publication:' + SITE_KEY + ':' + BUSINESS_ID + ':' + AGENT_SLUG;
-    if (key === pendingPublicationKey) return;
-    pendingPublicationKey = key;
-    pendingPublication = null;
+    if(key!==pendingPublicationKey){
+      pendingPublication=null; publicationReviewRequired=null; pendingPublicationRaw=null;
+    }
+    pendingPublicationKey=key;
     try {
-      const stored = JSON.parse(sessionStorage.getItem(key) || 'null');
-      if(stored && typeof stored.requestId==='string' &&
-          /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(stored.requestId) &&
-          Number.isSafeInteger(stored.expectedRevision))
-        pendingPublication={requestId:stored.requestId,expectedRevision:stored.expectedRevision};
-    } catch {}
+      const raw=sessionStorage.getItem(key);
+      const request=raw===null?null:publicationRecord(JSON.parse(raw));
+      pendingPublicationRaw=raw;
+      publicationReviewRequired=request?.phase==='review_required'?request:null;
+      pendingPublication=publicationReviewRequired?null:request;
+      publicationRecoveryProblem='';
+    }catch{
+      publicationJournalProblem('Publication recovery could not read the existing request. Keep this editor open; no new publication will be submitted until the original record can be reconciled.');
+    }
   }
   function rememberPublication(value) {
-    pendingPublication = value;
-    publicationRecoveryMode='unchecked';
+    let next;
     try {
-      if (value) sessionStorage.setItem(pendingPublicationKey, JSON.stringify(value));
-      else sessionStorage.removeItem(pendingPublicationKey);
-    } catch {}
-    syncPublicationRecoveryUi();
+      if(publicationRecoveryProblem) throw new Error('unreadable record');
+      if(sessionStorage.getItem(pendingPublicationKey)!==pendingPublicationRaw)
+        throw new Error('record changed');
+      const request=value===null?null:publicationRecord(value);
+      next=request===null?null:JSON.stringify(request);
+      if(next===null) sessionStorage.removeItem(pendingPublicationKey);
+      else sessionStorage.setItem(pendingPublicationKey,next);
+      if(sessionStorage.getItem(pendingPublicationKey)!==next) throw new Error('readback');
+      pendingPublicationRaw=next;
+      publicationReviewRequired=request?.phase==='review_required'?request:null;
+      pendingPublication=publicationReviewRequired?null:request;
+      publicationRecoveryMode='unchecked';
+      syncPublicationRecoveryUi();
+    }catch{
+      const message='The browser could not retain publication recovery. The original record and local edits remain protected; no new request will be submitted.';
+      publicationJournalProblem(message);
+      throw new Error(message);
+    }
   }
   async function publicationRequest(url, options = {}) {
     const controller = new AbortController();
@@ -6125,11 +6183,44 @@
     finally { clearTimeout(timeout); }
   }
 
+  function validatePublicationStatus(outcome,request) {
+    if(!outcome || typeof outcome!=='object' || Array.isArray(outcome) ||
+       publicationScope(outcome)!==publicationScope(managementPayload) ||
+       typeof outcome.found!=='boolean' || typeof outcome.isCurrent!=='boolean' ||
+       !Number.isSafeInteger(outcome.revision) || outcome.revision<0 ||
+       outcome.requestId!==request.requestId || outcome.expectedRevision!==request.expectedRevision)
+      throw new Error('The server returned an invalid publication receipt. The original request remains protected.');
+    if(outcome.found) {
+      if(outcome.publication?.versionId!==request.requestId ||
+         !Number.isSafeInteger(outcome.publication?.publishedRevision) ||
+         outcome.publication.publishedRevision!==request.expectedRevision+1 ||
+         outcome.revision<outcome.publication.publishedRevision)
+        throw new Error('The server returned an invalid publication receipt. The original request remains protected.');
+    } else if(outcome.publication!==null || outcome.isCurrent!==false ||
+              outcome.revision<request.expectedRevision) {
+      throw new Error('The server returned an invalid publication receipt. The original request remains protected.');
+    }
+    return outcome;
+  }
+  function isTerminalPublicationRejection(outcome,request) {
+    const receipt=outcome?.publicationRejection;
+    return outcome?.found===false && outcome.revision>request.expectedRevision &&
+      receipt?.disposition==='rejected_before_commit' &&
+      receipt.requestId===request.requestId &&
+      receipt.expectedRevision===request.expectedRevision &&
+      Number.isSafeInteger(receipt.currentRevision) &&
+      receipt.currentRevision===outcome.revision;
+  }
+  function requireCurrentDraftReview(request) {
+    clearTimeout(autoSaveTimer);
+    rememberPublication({...request,phase:'review_required'});
+  }
+
   let saving = false;
   async function retryPublicationConfirmation() {
     if(saving) return false;
     restorePublication();
-    if(!pendingPublication) return false;
+    if(publicationRecoveryProblem || !pendingPublication) return false;
     const request={...pendingPublication};
     const status=document.getElementById('legend-cms-status');
     let confirmedCurrent=false;
@@ -6141,8 +6232,9 @@
       const url=new URL(API_BASE+'/api/website-content/manage/publication-status');
       url.searchParams.set('ticket',editorTicket);
       url.searchParams.set('requestId',request.requestId);
+      url.searchParams.set('expectedRevision',String(request.expectedRevision));
       // Deliberately GET-only: confirmation must never issue a fresh publish.
-      const outcome=await publicationRequest(url);
+      const outcome=validatePublicationStatus(await publicationRequest(url),request);
       if(!pendingPublication || pendingPublication.requestId!==request.requestId)
         throw new Error('The pending publication changed while checking its status.');
       if(outcome.found){
@@ -6151,11 +6243,12 @@
            !Number.isSafeInteger(published?.publishedRevision) ||
            !Number.isSafeInteger(outcome.revision))
           throw new Error('The server returned an invalid publication receipt.');
-        rememberPublication(null);
         if(outcome.isCurrent!==true || outcome.revision!==published.publishedRevision){
-          if(status) status.textContent='Original publication confirmed, but a newer revision is active. Review the current website before publishing again.';
+          requireCurrentDraftReview(request);
+          if(status) status.textContent='Original publication confirmed. Review the current saved draft before publishing again; local edits remain available.';
           return true;
         }
+        rememberPublication(null);
         revision=outcome.revision;
         confirmedCurrent=true;
         if(status) status.textContent='Original publication confirmed; checking the public page…';
@@ -6169,9 +6262,13 @@
       if(outcome.revision===request.expectedRevision){
         publicationRecoveryMode='not_found';
         if(status) status.textContent='The original request has not been committed. Choose Resume original publication to use the SAME request ID.';
+      }else if(isTerminalPublicationRejection(outcome,request)){
+        requireCurrentDraftReview(request);
+        if(status) status.textContent='The original request did not commit. Review the current saved draft before publishing again; local edits remain available.';
+        return true;
       }else{
         publicationRecoveryMode='conflict';
-        if(status) status.textContent='The website draft revision changed. The original request remains protected; review the current website before publishing.';
+        if(status) status.textContent='The draft revision changed, but the original request has no conclusive outcome. Retry confirmation; local edits remain available.';
       }
     }catch(error){
       publicationRecoveryMode='error';
@@ -6187,6 +6284,208 @@
       if(confirmedCurrent && dirty) scheduleDraftSave();
     }
     return false;
+  }
+  function isPublicationUuid(value) {
+    return typeof value==='string' && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value) &&
+      value!=='00000000-0000-0000-0000-000000000000';
+  }
+  function publicationScope(value) {
+    if(!isPublicationUuid(value?.publicationScopeId))
+      throw new Error('The website identity could not be verified. Your local edits remain available.');
+    return value.publicationScopeId.toLowerCase();
+  }
+  function validateReviewManagement(payload,minimumRevision=0) {
+    if(payload?.siteKey!==SITE_KEY || publicationScope(payload)!==publicationScope(managementPayload) ||
+       !Number.isSafeInteger(payload.revision) || payload.revision<minimumRevision ||
+       !payload.document || typeof payload.document!=='object' || Array.isArray(payload.document) ||
+       payload.document.version!==3 || !payload.document.pages ||
+       typeof payload.document.pages!=='object' || Array.isArray(payload.document.pages) || payload.legacyMigration)
+      throw new Error('The current saved draft could not be verified for this website.');
+    return payload;
+  }
+  function validPreservation(value) {
+    return value && isPublicationUuid(value.draftId) && isPublicationUuid(value.publicationScopeId) &&
+      typeof value.draftName==='string' && value.draftName.trim().length>0 && value.draftName.length<=100 &&
+      typeof value.documentHash==='string' && /^[a-f0-9]{64}$/.test(value.documentHash);
+  }
+  async function localDraftHash(text) {
+    if(!crypto?.subtle?.digest || typeof TextEncoder!=='function')
+      throw new Error('This browser could not verify a saved copy. Your local edits remain available.');
+    const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(bytes),value=>value.toString(16).padStart(2,'0')).join('');
+  }
+  function rememberPreservation(request,preservation) {
+    if(publicationReviewRequired?.requestId!==request.requestId ||
+       publicationReviewRequired?.expectedRevision!==request.expectedRevision)
+      throw new Error('Publication recovery changed while preserving local edits. The Canvas remains available.');
+    // The existing journal compares the previous bytes and verifies the new readback before returning.
+    rememberPublication({...request,phase:'review_required',preservation});
+  }
+  async function readPreservedDraft(intent) {
+    if(!validPreservation(intent) || intent.publicationScopeId.toLowerCase()!==publicationScope(managementPayload))
+      throw new Error('The saved-copy identity could not be verified for this website.');
+    const url=new URL(API_BASE+'/api/website-content/manage/drafts/preservation');
+    url.searchParams.set('ticket',editorTicket);
+    url.searchParams.set('publicationScopeId',intent.publicationScopeId);
+    url.searchParams.set('draftId',intent.draftId);
+    const payload=await publicationRequest(url);
+    if(publicationScope(payload)!==intent.publicationScopeId.toLowerCase() ||
+       publicationScope(managementPayload)!==intent.publicationScopeId.toLowerCase() ||
+       typeof payload.found!=='boolean' || !Number.isSafeInteger(payload.revision) || payload.revision<0)
+      throw new Error('The saved copy has not been confirmed.');
+    if(!payload.found){
+      if(payload.draft!==null) throw new Error('The saved-copy response was invalid.');
+      return payload;
+    }
+    if(payload.draft?.id?.toLowerCase()!==intent.draftId.toLowerCase() ||
+       payload.draft.name!==intent.draftName || typeof payload.draft.documentJson!=='string' ||
+       await localDraftHash(payload.draft.documentJson)!==intent.documentHash)
+      throw new Error('The saved copy did not match the protected local edits.');
+    return payload;
+  }
+  async function preserveLocalPublicationDraft(namedDraft) {
+    const status=document.getElementById('legend-cms-status');
+    if(!publicationReviewRequired || saving) return false;
+    if(namedDraft?.draftId){
+      if(status) status.textContent='Choose Create a new draft to preserve local edits without replacing an existing draft.';
+      return false;
+    }
+    if(sourceEditorDirty){
+      if(status) status.textContent='Selected Source changes remain unapplied. Apply or export them before preserving the Canvas draft.';
+      showPanel('source');
+      return false;
+    }
+    const request={...publicationReviewRequired};
+    const submitted=JSON.stringify(normalizeDocument(cloneCanonicalValue(documentState)));
+    const name=String(namedDraft?.draftName || '').trim();
+    if(!name || name.length>100) return false;
+    clearTimeout(autoSaveTimer);
+    saving=true; syncPublicationRecoveryUi();
+    try {
+      const hash=await localDraftHash(submitted);
+      let intent=request.preservation;
+      if(intent){
+        const previous=await readPreservedDraft(intent);
+        if(intent.documentHash!==hash || intent.draftName!==name){
+          if(!previous.found)
+            throw new Error('The earlier saved-copy request is still unconfirmed. Keep these edits and check that copy before creating another.');
+          intent=null; // The older exact copy is durable and remains in the draft list.
+        }else if(previous.found){
+          namedDrafts=[...namedDrafts.filter(value=>value.id!==intent.draftId),
+            {id:previous.draft.id,name:previous.draft.name,updatedUtc:previous.draft.updatedUtc}];
+          if(status) status.textContent='Local edits are preserved as "'+name+'". The current saved website and Canvas are unchanged. Choose Review current draft when ready.';
+          return true;
+        }
+      }
+      const currentUrl=new URL(API_BASE+'/api/website-content/manage');
+      currentUrl.searchParams.set('ticket',editorTicket);
+      const current=validateReviewManagement(await publicationRequest(currentUrl));
+      if(!intent){
+        if(typeof crypto.randomUUID!=='function') throw new Error('The browser could not create a saved-copy identity.');
+        intent={draftId:crypto.randomUUID(),draftName:name,documentHash:hash,publicationScopeId:publicationScope(current)};
+        if(!validPreservation(intent)) throw new Error('The saved-copy identity was invalid.');
+      }
+      rememberPreservation(request,intent); // Durable identity is required before the append.
+      let error;
+      try {
+        await publicationRequest(API_BASE+'/api/website-content/manage/drafts/preserve',{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({ticket:editorTicket,publicationScopeId:intent.publicationScopeId,
+            expectedRevision:current.revision,draftId:intent.draftId,draftName:intent.draftName,documentJson:submitted})
+        });
+      } catch(failure) {error=failure;}
+      const readback=await readPreservedDraft(intent);
+      if(!readback.found) throw error || new Error('The saved copy is not confirmed. Retry this same draft name; its identity is protected.');
+      namedDrafts=[...namedDrafts.filter(value=>value.id!==intent.draftId),
+        {id:readback.draft.id,name:readback.draft.name,updatedUtc:readback.draft.updatedUtc}];
+      // Do not adopt the metadata revision, active document, or clear dirty here.
+      const changed=JSON.stringify(normalizeDocument(cloneCanonicalValue(documentState)))!==submitted || sourceEditorDirty;
+      if(status) status.textContent='Local edits preserved as "'+name+'". '+(changed
+        ? 'Newer local edits still need preservation.'
+        : 'The current saved website and Canvas are unchanged. Choose Review current draft when ready.');
+      return true;
+    } catch(error) {
+      if(error?.status===401 || error?.status===403)
+        showEditorAuthorizationRecovery('Website Studio authorization expired while preserving local edits.');
+      if(status) status.textContent=error?.message || 'The local draft copy could not be confirmed.';
+      return false;
+    } finally {saving=false;syncPublicationRecoveryUi();}
+  }
+  async function reviewCurrentPublicationDraft() {
+    if(saving) return false;
+    restorePublication();
+    if(publicationRecoveryProblem || !publicationReviewRequired) return false;
+    clearTimeout(autoSaveTimer);
+    const status=document.getElementById('legend-cms-status');
+    if(sourceEditorDirty){
+      if(status) status.textContent='Apply or export your Selected Source changes before reviewing the current saved draft. Your source remains available.';
+      showPanel('source');
+      return false;
+    }
+    if(dirty && !publicationReviewRequired.preservation){
+      if(status) status.textContent='Preserve your local edits as a new draft before loading the current saved website.';
+      chooseDraft();
+      return false;
+    }
+    const request={...publicationReviewRequired};
+    const originalRevision=revision;
+    const originallyDirty=dirty;
+    const originalDocument=JSON.stringify(normalizeDocument(cloneCanonicalValue(documentState)));
+    saving=true;
+    syncPublicationRecoveryUi();
+    try {
+      if(request.preservation){
+        const preserved=await readPreservedDraft(request.preservation);
+        if(!preserved.found) throw new Error('The local draft copy has not been confirmed. Its request remains protected; nothing was replaced.');
+        if(originallyDirty && await localDraftHash(originalDocument)!==request.preservation.documentHash)
+          throw new Error('Preserve your latest local edits as a new draft first. The Canvas remains unchanged.');
+      }
+      // Reconcile again after an interruption before releasing the review gate.
+      const statusUrl=new URL(API_BASE+'/api/website-content/manage/publication-status');
+      statusUrl.searchParams.set('ticket',editorTicket);
+      statusUrl.searchParams.set('requestId',request.requestId);
+      statusUrl.searchParams.set('expectedRevision',String(request.expectedRevision));
+      const outcome=validatePublicationStatus(await publicationRequest(statusUrl),request);
+      if(!outcome.found && !isTerminalPublicationRejection(outcome,request))
+        throw new Error('The original request still needs a conclusive publication receipt.');
+      const url=new URL(API_BASE+'/api/website-content/manage');
+      url.searchParams.set('ticket',editorTicket);
+      const payload=validateReviewManagement(await publicationRequest(url),outcome.revision);
+      if(sessionStorage.getItem(pendingPublicationKey)!==pendingPublicationRaw ||
+         publicationReviewRequired?.requestId!==request.requestId ||
+         publicationReviewRequired?.expectedRevision!==request.expectedRevision ||
+         dirty!==originallyDirty || sourceEditorDirty || revision!==originalRevision ||
+         JSON.stringify(normalizeDocument(cloneCanonicalValue(documentState)))!==originalDocument)
+        throw new Error('New local edits arrived during review. Preserve them as a new draft first; nothing was replaced.');
+      managementPayload=payload;
+      storeContext=payload.store || null;
+      ctaCatalog=Array.isArray(payload.ctaCatalog?.options)?payload.ctaCatalog.options:[];
+      namedDrafts=payload.drafts || [];
+      revision=payload.revision;
+      bindBusiness(payload);
+      setSelected(null);
+      applyDocument(payload.document);
+      persistedDocumentState=cloneCanonicalValue(documentState);
+      dirty=false;
+      canonicalSourceDocument=null;
+      canonicalSourceRevision=null;
+      sourceEditorBaseNode=null;
+      sourceEditorBaseFingerprint=null;
+      // Inverse batches belong to the former document and cannot target this one.
+      undoStack.length=0; redoStack.length=0; historyCheckpointPending=false;
+      refreshHistoryControls();
+      rememberPublication(null);
+      if(status) status.textContent='Current saved draft loaded for review. Your preserved copy remains in Drafts. Choose Publish when ready.';
+      return true;
+    }catch(error){
+      if(error?.status===401 || error?.status===403)
+        showEditorAuthorizationRecovery('Website Studio authorization expired while reviewing the saved draft.');
+      if(status) status.textContent=error?.message || 'The current saved draft could not be reviewed.';
+      return false;
+    }finally{
+      saving=false;
+      syncPublicationRecoveryUi();
+    }
   }
   function isPreCommitPublicationRejection(error,request) {
     if(!request) return false;
@@ -6206,6 +6505,12 @@
     clearTimeout(autoSaveTimer);
     const status=document.getElementById('legend-cms-status');
     restorePublication();
+    if(publicationRecoveryProblem){
+      if(status) status.textContent=publicationRecoveryProblem;
+      syncPublicationRecoveryUi();
+      return false;
+    }
+    if(publish && publicationReviewRequired) return reviewCurrentPublicationDraft();
     if(publish && pendingPublication && !resumePending) return retryPublicationConfirmation();
     if(publish && pendingPublication && resumePending &&
        (publicationRecoveryMode!=='not_found' || dirty || sourceEditorDirty ||
@@ -6218,6 +6523,14 @@
       if(status) status.textContent='First confirm the outstanding publication. Unsaved canvas edits remain locally available.';
       syncPublicationRecoveryUi();
       return false;
+    }
+
+    if(!publish && publicationReviewRequired){
+      if(!namedDraft){
+        if(status) status.textContent='Preserve local edits as a new draft, then review the current saved website.';
+        return false;
+      }
+      return preserveLocalPublicationDraft(namedDraft);
     }
 
     if (publish && sourceEditorDirty) {
@@ -6251,11 +6564,21 @@
         if (pendingPublication) {
           const url = new URL(API_BASE+'/api/website-content/manage/publication-status');
           url.searchParams.set('ticket', editorTicket);
-          url.searchParams.set('requestId', pendingPublication.requestId);
-          const outcome = await publicationRequest(url);
+          const confirming={...pendingPublication};
+          url.searchParams.set('requestId', confirming.requestId);
+          url.searchParams.set('expectedRevision', String(confirming.expectedRevision));
+          const outcome = validatePublicationStatus(await publicationRequest(url),confirming);
+          if(sessionStorage.getItem(pendingPublicationKey)!==pendingPublicationRaw ||
+             pendingPublication?.requestId!==confirming.requestId ||
+             pendingPublication?.expectedRevision!==confirming.expectedRevision)
+            throw new Error('Publication recovery changed during confirmation. Check the original request again before resuming.');
           if (outcome.found) {
             payload = {...outcome.publication, revision:outcome.revision, alreadyPublished:true, isCurrent:outcome.isCurrent};
           } else if (outcome.revision !== pendingPublication.expectedRevision) {
+            if(isTerminalPublicationRejection(outcome,pendingPublication)){
+              requireCurrentDraftReview(pendingPublication);
+              throw new Error('The original request did not commit. Review the current saved draft before publishing again.');
+            }
             publicationRecoveryMode='conflict';
             throw new Error('The website changed while publication was being confirmed. The original request is preserved; review current website revisions.');
           }
@@ -6270,14 +6593,17 @@
             body:JSON.stringify({ticket:editorTicket,...pendingPublication})
           });
         }
-        if (payload.versionId !== pendingPublication?.requestId || !Number.isSafeInteger(payload.publishedRevision))
+        if (payload.versionId !== pendingPublication?.requestId ||
+            !Number.isSafeInteger(payload.publishedRevision) || payload.publishedRevision!==pendingPublication?.expectedRevision+1 ||
+            !Number.isSafeInteger(payload.revision) || payload.revision<payload.publishedRevision)
           throw new Error('The publication response did not confirm the requested version.');
-        rememberPublication(null);
         if (payload.alreadyPublished && (payload.isCurrent !== true || payload.revision !== payload.publishedRevision)) {
-          if(status) status.textContent='Publication confirmed, but newer changes exist. Reload Website Studio to review the current version.';
+          requireCurrentDraftReview(pendingPublication);
+          if(status) status.textContent='Publication confirmed, but newer changes exist. Review the current saved draft before publishing again.';
           return false;
         }
-        revision=payload.revision ?? revision;
+        rememberPublication(null);
+        revision=payload.revision;
         const serverState=normalizeDocument(payload.document || submittedState);
         const changedDuringPublish=JSON.stringify(normalizeDocument(cloneCanonicalValue(documentState)))!==submitted;
         persistedDocumentState=cloneCanonicalValue(serverState);
@@ -6367,7 +6693,10 @@
         pendingPublication?.requestId===freshPublicationRequest.requestId &&
         pendingPublication?.expectedRevision===freshPublicationRequest.expectedRevision &&
         isPreCommitPublicationRejection(error,freshPublicationRequest));
-      if(rejectedBeforeCommit) rememberPublication(null);
+      if(rejectedBeforeCommit) {
+        if(payload.error==='revision_conflict') requireCurrentDraftReview(freshPublicationRequest);
+        else rememberPublication(null);
+      }
       if(payload.canonicalProtectionViolation===true)
         showCanonicalProtectionViolation(payload.message || error.message,payload.correction);
       if(status) status.textContent=rejectedBeforeCommit
@@ -6395,7 +6724,7 @@
     const label = document.createElement('label'); label.textContent = 'Save to';
     const select = document.createElement('select');
     const fresh = document.createElement('option'); fresh.value = ''; fresh.textContent = 'Create a new draft'; select.appendChild(fresh);
-    namedDrafts.forEach(draft => { const option = document.createElement('option'); option.value = draft.id; option.textContent = draft.name; select.appendChild(option); });
+    if(!publicationReviewRequired) namedDrafts.forEach(draft => { const option = document.createElement('option'); option.value = draft.id; option.textContent = draft.name; select.appendChild(option); });
     label.appendChild(select);
     const nameLabel = document.createElement('label'); nameLabel.textContent = 'Draft name';
     const name = document.createElement('input'); name.id = 'legend-cms-draft-name'; name.type = 'text'; name.maxLength = 100; name.required = true; nameLabel.appendChild(name);
@@ -6411,7 +6740,7 @@
       if (saved) dialog.close(); else feedback.textContent = document.getElementById('legend-cms-status')?.textContent || 'Draft could not be saved.';
     });
     dialog.appendChild(title); dialog.appendChild(label); dialog.appendChild(nameLabel); dialog.appendChild(feedback); dialog.appendChild(submit); dialog.appendChild(cancel);
-    dialog.addEventListener('close', () => { dialog.remove(); if (dirty) autoSaveTimer = setTimeout(() => save(false), 900); });
+    dialog.addEventListener('close', () => { dialog.remove(); if (dirty) scheduleDraftSave(); });
     document.body.appendChild(dialog); dialog.showModal(); name.focus();
   }
   const undoStack = [], redoStack = [];
@@ -7839,7 +8168,7 @@
     cancelButton.addEventListener('click', () => dialog.close());
     actions.append(saveButton, cancelButton);
     dialog.append(title, help, textarea, status, actions);
-    dialog.addEventListener('close', () => { dialog.remove(); if (dirty) autoSaveTimer = setTimeout(() => save(false), 900); });
+    dialog.addEventListener('close', () => { dialog.remove(); if (dirty) scheduleDraftSave(); });
     document.body.appendChild(dialog);
     dialog.showModal();
     textarea.focus();
@@ -8572,11 +8901,12 @@
       <button id="legend-cms-save">Save draft</button><button class="primary" id="legend-cms-publish">Publish</button>
       <span id="legend-cms-status" role="status" aria-live="polite">Draft editor</span>
       <div id="legend-cms-publication-recovery" class="legend-cms-publication-recovery" role="group" aria-label="Pending publication recovery" hidden>
-        <strong>Publication confirmation pending</strong>
+        <strong id="legend-cms-publication-title">Publication confirmation pending</strong>
         <p id="legend-cms-publication-detail"></p>
         <div class="legend-cms-publication-actions">
           <button id="legend-cms-publication-check" type="button">Retry confirmation</button>
           <button id="legend-cms-publication-resume" type="button" hidden>Resume original publication</button>
+          <button id="legend-cms-publication-review" type="button" hidden>Review current saved draft</button>
         </div>
       </div>
       <input id="legend-cms-image-upload" type="file" accept="image/*,.heic,.heif,.avif" hidden>
@@ -8672,6 +9002,7 @@
     document.getElementById('legend-cms-publish')?.addEventListener('click', () => void save(true));
     document.getElementById('legend-cms-publication-check')?.addEventListener('click', () => void retryPublicationConfirmation());
     document.getElementById('legend-cms-publication-resume')?.addEventListener('click', () => void save(true,null,true));
+    document.getElementById('legend-cms-publication-review')?.addEventListener('click', () => void reviewCurrentPublicationDraft());
     document.getElementById('legend-cms-image-upload')?.addEventListener('change', async e => { await addImage(e.target.files?.[0]); e.target.value=''; });
     document.getElementById('legend-cms-up')?.addEventListener('click', () => moveSelectedSection(-1));
     document.getElementById('legend-cms-down')?.addEventListener('click', () => moveSelectedSection(1));

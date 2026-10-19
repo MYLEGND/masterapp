@@ -564,8 +564,259 @@ def validate_completion(repo, args):
     return head
 
 
+def cloud_git_bytes(repo, *args):
+    result = subprocess.run(['git', '-C', str(repo), *args], capture_output=True,
+                            timeout=120, env={**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_OPTIONAL_LOCKS': '0'})
+    if result.returncode:
+        raise SyncSkipped('Recovery Git operation failed; original files retained.')
+    return result.stdout
+
+
+def cloud_safe_path(value):
+    from pathlib import PurePosixPath
+    p = PurePosixPath(value)
+    if not value or p.is_absolute() or '..' in p.parts or '.git' in p.parts or str(p) != value or '\\' in value:
+        raise SyncSkipped('Unsafe recovery path; no files restored.')
+    if any(part.lower() in {'.env', '.azure', '.ssh', '.config', '.npmrc', '.pypirc'} for part in p.parts) or p.suffix.lower() in {'.key', '.pfx', '.p12', '.pem'}:
+        raise SyncSkipped('Credential-like path requires a separate secure preservation process.')
+    return p
+
+
+def cloud_state(repo, include):
+    import base64
+    if b'160000 ' in cloud_git_bytes(repo, 'ls-files', '--stage'):
+        raise SyncSkipped('Submodule content needs explicit separate preservation; cloud capture refused.')
+    head = git(repo, 'rev-parse', 'HEAD')
+    index = cloud_git_bytes(repo, 'diff', '--cached', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', '--no-renames', head)
+    work = cloud_git_bytes(repo, 'diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', '--no-renames')
+    untracked = set(filter(None, cloud_git_bytes(repo, 'ls-files', '--others', '--exclude-standard', '-z').decode('utf-8').split('\0')))
+    permitted = set(include or [])
+    if untracked - permitted:
+        raise SyncSkipped('Unclassified untracked files: supply each reviewed --capture-path; nothing uploaded.')
+    extra = {}
+    root = Path(repo).resolve()
+    for name in sorted(permitted):
+        relative = cloud_safe_path(name)
+        path = root / relative
+        if path.is_symlink() or not path.is_file() or root not in path.resolve().parents:
+            raise SyncSkipped('Capture path must be an existing regular file inside the checkout.')
+        data = path.read_bytes()
+        if len(data) > 16 * 1024 * 1024:
+            raise SyncSkipped('Explicit capture file exceeds reviewed 16 MiB limit.')
+        extra[name] = dict(data=base64.b64encode(data).decode(), executable=bool(path.stat().st_mode & 0o111))
+    for data in [index, work] + [base64.b64decode(x['data']) for x in extra.values()]:
+        if re.search(rb'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|AccountKey=[A-Za-z0-9+/]{20}|gh[pousr]_[A-Za-z0-9]{30}', data):
+            raise SyncSkipped('Potential secret in pending capture; no cloud upload. Preserve securely and review.')
+    return dict(head=head, index=base64.b64encode(index).decode(), work=base64.b64encode(work).decode(), extra=extra)
+
+
+def cloud_restore_archive(path, digest, branch, base, head):
+    import base64
+    import zipfile
+    if bundle_digest(path) != digest:
+        raise SyncSkipped('Cloud archive SHA-256 mismatch; restoration refused.')
+    with tempfile.TemporaryDirectory(prefix='legend-cloud-restore-') as directory:
+        root = Path(directory)
+        with zipfile.ZipFile(path) as archive:
+            names = archive.namelist()
+            if len(names) != len(set(names)) or any(x not in {'LEGEND.bundle','state.json'} and not re.fullmatch(r'lfs/[0-9a-f]{64}',x) for x in names):
+                raise SyncSkipped('Unexpected recovery archive members.')
+            if any(x.file_size > 512 * 1024 * 1024 for x in archive.infolist()):
+                raise SyncSkipped('Recovery archive exceeds verification limits.')
+            manifest = json.loads(archive.read('state.json'))
+            if (manifest.get('schema'), manifest.get('branch'), manifest.get('base'), manifest.get('state', {}).get('head')) != (1, branch, base, head):
+                raise SyncSkipped('Recovery identities do not match independently supplied identities.')
+            bundle = root / 'LEGEND.bundle'
+            with archive.open('LEGEND.bundle') as source, bundle.open('wb') as target:
+                import shutil
+                shutil.copyfileobj(source, target)
+        repo = root / 'fixture'
+        repo.mkdir()
+        git(repo, 'init')
+        for name, value in [('filter.lfs.process',''),('filter.lfs.smudge',''),('filter.lfs.clean',''),('filter.lfs.required','false')]:
+            git(repo,'config','--local',name,value)
+        verify_bundle(repo, bundle, manifest['bundleSha256'], branch, head, base)
+        git(repo, 'fetch', '--no-tags', str(bundle), 'refs/heads/' + branch)
+        git(repo, '-c', 'core.hooksPath=/dev/null', 'checkout', '--detach', head)
+        state = manifest['state']
+        for key, options in [('index', ['--index']), ('work', [])]:
+            patch = base64.b64decode(state[key], validate=True)
+            if patch:
+                patchfile = root / (key + '.patch')
+                patchfile.write_bytes(patch)
+                git(repo, 'apply', '--binary', *options, str(patchfile))
+        for name, entry in state['extra'].items():
+            relative = cloud_safe_path(name)
+            target = repo / relative
+            # Never follow a symlink restored from committed objects or a patch.
+            if any(x.is_symlink() for x in [target, *target.parents]) or target.exists():
+                raise SyncSkipped('Recovery extra file collides with restored content.')
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(base64.b64decode(entry['data'], validate=True))
+            target.chmod(0o700 if entry['executable'] else 0o600)
+        restored = cloud_state(repo, list(state['extra']))
+        if restored != state:
+            raise SyncSkipped('Restored index/worktree/untracked state differs from captured bytes.')
+        lfs = manifest.get('lfs', {})
+        if sorted(x for x in names if x.startswith('lfs/')) != sorted('lfs/'+oid for oid in lfs):
+            raise SyncSkipped('LFS inventory mismatch.')
+        with zipfile.ZipFile(path) as archive:
+            for oid, size in lfs.items():
+                target=repo/'.git/lfs/objects'/oid[:2]/oid[2:4]/oid
+                target.parent.mkdir(parents=True,exist_ok=True)
+                with archive.open('lfs/'+oid) as source,target.open('xb') as out:
+                    shutil.copyfileobj(source,out)
+                if target.stat().st_size != size or bundle_digest(target) != oid:
+                    raise SyncSkipped('LFS object integrity failure.')
+        hydrated=0
+        for raw in cloud_git_bytes(repo,'ls-files','-z').split(b'\0'):
+            if not raw: continue
+            target=repo/raw.decode('utf-8')
+            if target.is_symlink() or not target.is_file() or target.stat().st_size>1024: continue
+            data=target.read_bytes()
+            if not data.startswith(b'version https://git-lfs.github.com/spec/v1\n'): continue
+            match=re.search(rb'oid sha256:([0-9a-f]{64})\nsize ([0-9]+)',data)
+            if not match: raise SyncSkipped('Invalid LFS pointer.')
+            oid=match[1].decode()
+            if oid not in lfs or lfs[oid] != int(match[2]): raise SyncSkipped('Missing LFS payload.')
+            shutil.copyfile(repo/'.git/lfs/objects'/oid[:2]/oid[2:4]/oid,target)
+            if bundle_digest(target)!=oid: raise SyncSkipped('LFS hydration mismatch.')
+            hydrated+=1
+        git(repo, 'fsck', '--strict', '--no-reflogs', '--no-dangling', head)
+        return dict(head=head, branch=branch, base=base, sha256=digest,
+                    status='FRESH_DISPOSABLE_RESTORATION_VERIFIED', untrackedOrIgnoredFiles=len(state['extra']),
+                    staged=bool(state['index']), unstaged=bool(state['work']), lfsObjects=len(lfs), lfsFilesHydrated=hydrated,
+                    unsavedMemoryCaptured=False, automaticContinuationAllowed=False)
+
+
+class RecoveryBlobClient:
+    """Certificate-only fixed-destination transport; never uses account keys or redirects."""
+    def __init__(self):
+        import base64
+        import time
+        import uuid
+        import urllib.request
+        import urllib.parse
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                raise SyncSkipped('Recovery redirect refused.')
+        self.open = urllib.request.build_opener(NoRedirect()).open
+        self.base = 'https://masterappstorage1221.blob.core.windows.net/legend-engineering-recovery/'
+        endpoint = 'https://login.microsoftonline.com/3fd90b17-12b1-4572-8cab-b0ceee317a30/oauth2/v2.0/token'
+        client = '1028dcad-214f-4226-9ac3-37cff0f43b39'
+        pem = os.environ.pop('LEGEND_RECOVERY_CERTIFICATE_PEM', None)
+        if pem is None:
+            folder = Path.home() / '.config/legend-recovery'
+            key = folder / 'recovery-20261016.key'
+            cert = folder / 'recovery-20261016.crt'
+            if key.is_symlink() or key.stat().st_mode & 0o077 or folder.stat().st_mode & 0o077:
+                raise SyncSkipped('Recovery private key requires protected owner-only storage.')
+            pem = key.read_text() + cert.read_text()
+        b64 = lambda data: base64.urlsafe_b64encode(data).rstrip(b'=').decode()
+        with tempfile.TemporaryDirectory(prefix='legend-recovery-credential-') as d:
+            key = Path(d) / 'credential.pem'
+            descriptor = os.open(key, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, 'w') as f:
+                f.write(pem)
+            der = subprocess.run(['openssl', 'x509', '-in', str(key), '-outform', 'DER'], capture_output=True, check=True).stdout
+            if hashlib.sha256(der).hexdigest() != '7c8be1b8df201142ca1e5e0aea6ba2eddc614fa86d36b2f4dc32f5b01d49630e':
+                raise SyncSkipped('Unreviewed recovery certificate; explicit rotation review required.')
+            now = int(time.time())
+            header = dict(alg='RS256', typ='JWT', x5t=b64(hashlib.sha1(der).digest()))
+            claims = dict(aud=endpoint, iss=client, sub=client, jti=str(uuid.uuid4()), nbf=now-30, exp=now+300)
+            unsigned = '.'.join(b64(json.dumps(x, separators=(',', ':')).encode()) for x in (header, claims))
+            signature = subprocess.run(['openssl', 'dgst', '-sha256', '-sign', str(key)], input=unsigned.encode(), capture_output=True, check=True).stdout
+        form = urllib.parse.urlencode(dict(client_id=client, scope='https://storage.azure.com/.default', grant_type='client_credentials', client_assertion_type='urn:ietf:params:oauth:client-assertion-type:jwt-bearer', client_assertion=unsigned+'.'+b64(signature))).encode()
+        with self.open(urllib.request.Request(endpoint, data=form), timeout=30) as response:
+            self.token = json.load(response)['access_token']
+
+    def transfer(self, name, path, upload=False):
+        import urllib.request
+        import urllib.parse
+        import shutil
+        headers = {'Authorization': 'Bearer '+self.token, 'x-ms-version': '2023-11-03'}
+        url = self.base + urllib.parse.quote(name, safe='/')
+        if upload:
+            headers.update({'If-None-Match': '*', 'x-ms-blob-type': 'BlockBlob', 'Content-Length': str(Path(path).stat().st_size)})
+            with Path(path).open('rb') as data:
+                with self.open(urllib.request.Request(url, data=data, headers=headers, method='PUT'), timeout=300) as response:
+                    return response.headers['ETag']
+        with self.open(urllib.request.Request(url, headers=headers), timeout=120) as response, Path(path).open('xb') as target:
+            shutil.copyfileobj(response, target)
+
+
+def cloud_export_session(repo, args):
+    import uuid
+    import zipfile
+    from datetime import datetime, timezone
+    if os.environ.get('CODESPACE_NAME') != 'bookish-fiesta-97pj77j5vpwj3pjv6':
+        raise SyncSkipped('Live cloud capture is restricted to the canonical Codespace.')
+    session_identity(repo, args.branch)
+    exact_commit(repo, args.base)
+    state = cloud_state(repo, args.capture_path)
+    if not ancestor(repo, args.base, state['head']):
+        raise SyncSkipped('Accepted base is not an ancestor of captured HEAD.')
+    with tempfile.TemporaryDirectory(prefix='legend-cloud-capture-') as directory:
+        root = Path(directory)
+        bundle = root / 'LEGEND.bundle'
+        lfs={}
+        lfsroot=Path(git(repo,'rev-parse','--absolute-git-dir'))/'lfs/objects'
+        attributes=Path(repo)/'.gitattributes'
+        if attributes.exists() and b'filter=lfs' in attributes.read_bytes():
+            inventory=json.loads(cloud_git_bytes(repo,'lfs','ls-files','--all','--json'))['files']
+            for entry in inventory:
+                oid=entry['oid']
+                obj=lfsroot/oid[:2]/oid[2:4]/oid
+                if not obj.is_file() or obj.stat().st_size!=entry['size'] or bundle_digest(obj)!=oid:
+                    raise SyncSkipped('Missing or corrupt historical LFS object; retain workspace.')
+            for obj in lfsroot.glob('*/*/*'):
+                if obj.is_file() and re.fullmatch(r'[0-9a-f]{64}',obj.name):
+                    if bundle_digest(obj)!=obj.name: raise SyncSkipped('LFS cache integrity failure.')
+                    lfs[obj.name]=obj.stat().st_size
+        git(repo, 'bundle', 'create', str(bundle), 'refs/heads/'+args.branch)
+        manifest = dict(schema=1, branch=args.branch, base=args.base, state=state, lfs=lfs, bundleSha256=bundle_digest(bundle),
+                        created=datetime.now(timezone.utc).isoformat(), coverage='Committed ancestry, index/worktree patches and explicitly reviewed files only; no inaccessible editor memory; ignored files excluded unless listed.')
+        if cloud_state(repo, args.capture_path) != state:
+            raise SyncSkipped('Files changed during capture; no cloud upload, retain original workspace.')
+        archive = root / 'recovery.zip'
+        with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=1) as output:
+            output.write(bundle, 'LEGEND.bundle', compress_type=zipfile.ZIP_STORED)
+            for oid in lfs: output.write(lfsroot/oid[:2]/oid[2:4]/oid,'lfs/'+oid)
+            output.writestr('state.json', json.dumps(manifest, sort_keys=True))
+        if archive.stat().st_size > 1024 * 1024 * 1024:
+            raise SyncSkipped('Recovery payload exceeds reviewed single-upload limit.')
+        digest = bundle_digest(archive)
+        cloud_restore_archive(archive, digest, args.branch, args.base, state['head'])
+        client = RecoveryBlobClient()
+        prefix = 'continuity-v1/' + str(uuid.uuid4())
+        name = prefix + '/recovery.zip'
+        # Ambiguous PUT never retries or advances a success receipt. Originals remain.
+        etag = client.transfer(name, archive, upload=True)
+        downloaded = root / 'readback.zip'
+        client.transfer(name, downloaded)
+        result = cloud_restore_archive(downloaded, digest, args.branch, args.base, state['head'])
+        result.update(archiveBytes=archive.stat().st_size, object=name, etag=etag, independentHostVerified=False, created=manifest['created'])
+        verifier = Path(__file__).resolve()
+        result['verifierSha256'] = bundle_digest(verifier)
+        client.transfer(prefix+'/sync-published-checkout.py', verifier, upload=True)
+        receipt = root / 'receipt.json'
+        receipt.write_text(json.dumps(result, sort_keys=True, indent=2)+'\n')
+        client.transfer(prefix+'/receipt.json', receipt, upload=True)
+        receipt_readback = root / 'receipt-readback.json'
+        client.transfer(prefix+'/receipt.json', receipt_readback)
+        if receipt.read_bytes() != receipt_readback.read_bytes():
+            raise SyncSkipped('Cloud receipt readback mismatch; no verified receipt advanced.')
+        if cloud_state(repo, args.capture_path) != state:
+            raise SyncSkipped('Snapshot preserved but current files advanced; repeat capture before handoff.')
+        print(json.dumps(result, sort_keys=True))
+
+
+
 def session_command(repo, args):
     branch, base = args.branch, args.base
+    if args.session == 'cloud-export':
+        cloud_export_session(repo, args)
+        return
     session_identity(repo, branch)
     if args.session == 'stage-local':
         stage_local_session(repo, args)
@@ -641,7 +892,7 @@ def session_command(repo, args):
 
 def session_main(argv):
     parser = argparse.ArgumentParser(description='Explicit engineering continuity through native Git; no deployment or acceptance authority.')
-    parser.add_argument('--session', required=True, choices=('preflight', 'recover', 'restore', 'export', 'finish', 'stage-local', 'verify-external'))
+    parser.add_argument('--session', required=True, choices=('preflight', 'recover', 'restore', 'export', 'finish', 'stage-local', 'verify-external', 'cloud-export', 'verify-cloud'))
     parser.add_argument('--repo', type=Path, default=Path(__file__).resolve().parent.parent)
     parser.add_argument('--branch', required=True)
     parser.add_argument('--base', required=True, help='Previously accepted durable checkpoint SHA')
@@ -658,6 +909,7 @@ def session_main(argv):
     parser.add_argument('--codespace', help='Exact authenticated source Codespace name')
     parser.add_argument('--staged-dir', help='Exact source staging directory reported by stage-local')
     parser.add_argument('--verifier-sha256', help='Independently recorded canonical script SHA-256')
+    parser.add_argument('--capture-path', action='append', default=[], help='Exact reviewed untracked/ignored saved file; never credentials')
     args = parser.parse_args(argv)
     if args.session in {'stage-local', 'verify-external'} and (args.authorize_push or args.review_accepted or args.scope or args.bundle is not None):
         parser.error('Transfer modes cannot accept push/review/scope/restore flags')
@@ -666,6 +918,9 @@ def session_main(argv):
     if args.session == 'verify-external' and any(arg == '--repo' or arg.startswith('--repo=') for arg in argv):
         parser.error('External verification does not use a repository checkout')
     try:
+        if args.session == 'verify-cloud':
+            print(json.dumps(cloud_restore_archive(args.bundle, args.sha256, args.branch, args.base, args.accepted), sort_keys=True))
+            return 0
         if args.session == 'verify-external':
             verify_external_session(args)
             return 0
