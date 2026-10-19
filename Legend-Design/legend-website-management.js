@@ -45,6 +45,7 @@
     heading.append(el('span', 'Website workspace', { class: 'legend-website-eyebrow' }), el('h2', trigger.dataset.title));
     const startupController = new AbortController();
     let session, state, busy = false, startupPending = true, closed = false;
+    let publicationStorageKey, pendingPublication = null, publicationProblem = '', publicationResumeProof = null;
     const dismissStartup = () => {
       // Mark inactive before dialog 'close' is delivered asynchronously.
       if (startupPending) { closed = true; startupController.abort(); }
@@ -75,17 +76,18 @@
     const request = async (path, payload, signal) => {
       const url = new URL(`/api/website-content/manage${path}`, session.apiBase);
       const options = { cache: 'no-store', credentials: 'omit', headers: {}, ...(signal ? { signal } : {}) };
-      if (payload) { options.method = 'POST'; options.headers['Content-Type'] = 'application/json'; options.body = JSON.stringify({ ...payload, ticket: session.ticket, expectedRevision: state?.revision }); }
+      if (payload) { options.method = 'POST'; options.headers['Content-Type'] = 'application/json'; options.body = JSON.stringify({ ...payload, ticket: session.ticket, expectedRevision: payload.expectedRevision ?? state?.revision }); }
       else url.searchParams.set('ticket', session.ticket);
       let response;
       try {
         response = await fetch(url, options);
       } catch {
-        throw new Error('LEGEND could not reach the website service. Your saved website and DNS instructions were not changed. Reopen the workspace or try Verify status again.');
+        throw new Error('LEGEND could not reach the website service. The last action has not been confirmed. Reopen the workspace or try Verify status again.');
       }
       if (!response.ok) {
         let detail; try { detail = await response.json(); } catch { /* Server may return no JSON. */ }
-        throw new Error(detail?.message || detail?.error || (response.status === 409 ? 'This website changed in another session. Close and reopen management before trying again.' : `The action could not complete (${response.status}).`));
+        const error = new Error(detail?.message || detail?.error || (response.status === 409 ? 'This website changed in another session. Close and reopen management before trying again.' : `The action could not complete (${response.status}).`));
+        error.status = response.status; error.details = detail; throw error;
       }
       return response.status === 204 ? null : response.json();
     };
@@ -100,6 +102,145 @@
       }
     };
     const reload = async () => { state = await request(''); };
+    const publicationId = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+      && value !== '00000000-0000-0000-0000-000000000000';
+    const publicationKey = value => {
+      if (!publicationId(value?.publicationScopeId)) throw new Error('Publication recovery could not identify this website. Reopen the workspace before publishing.');
+      return 'legend-website-publication-v1:' + new URL(session.apiBase).origin + ':' + value.publicationScopeId.toLowerCase();
+    };
+    const readPublication = () => {
+      if (!publicationStorageKey || publicationKey(state) !== publicationStorageKey) throw new Error('The website scope changed. Reopen the workspace before publishing.');
+      let raw;
+      try { raw = sessionStorage.getItem(publicationStorageKey); }
+      catch { throw new Error('This browser could not read publication recovery. Reopen the workspace before publishing.'); }
+      if (raw === null) return null;
+      let value; try { value = JSON.parse(raw); } catch { /* Preserve unreadable recovery data. */ }
+      if (value?.schemaVersion !== 1 || !publicationId(value.requestId)
+        || !Number.isSafeInteger(value.expectedRevision) || value.expectedRevision < 0
+        || !['pending', 'review'].includes(value.phase)
+        || (value.phase === 'review' && !['published', 'rejected'].includes(value.outcome))
+        || (value.outcome === 'published' && (!Number.isSafeInteger(value.publishedRevision)
+          || value.publishedRevision !== value.expectedRevision + 1 || typeof value.isCurrent !== 'boolean')))
+        throw new Error('The saved publication status could not be read safely. Reopen the workspace before publishing.');
+      return value;
+    };
+    const rememberPublication = (value, previousRequestId = null) => {
+      const previous = readPublication();
+      if ((previous?.requestId ?? null) !== previousRequestId) throw new Error('Publication status changed in another workspace. Check its status before publishing.');
+      const raw = JSON.stringify(value);
+      try {
+        sessionStorage.setItem(publicationStorageKey, raw);
+        if (sessionStorage.getItem(publicationStorageKey) !== raw) throw new Error('readback');
+      } catch { throw new Error('This browser could not retain publication recovery. Check publication status before publishing again.'); }
+      pendingPublication = value; publicationProblem = '';
+    };
+    const publicationRejection = (value, pending) => value?.disposition === 'rejected_before_commit'
+      && typeof value.requestId === 'string' && value.requestId.toLowerCase() === pending.requestId.toLowerCase()
+      && value.expectedRevision === pending.expectedRevision;
+    const publicationNotice = () => {
+      if (publicationProblem) return publicationProblem;
+      if (pendingPublication?.phase === 'pending') return 'Publication is awaiting confirmation. Check its status before publishing again.';
+      if (pendingPublication?.outcome === 'rejected') return 'The previous request was rejected before publication. Review the current saved draft before trying again.';
+      if (pendingPublication?.outcome === 'published') return pendingPublication.isCurrent === false
+        ? 'This publication was recorded in version history. Review the current saved draft before publishing again.'
+        : 'Publication recorded. View the website to check your changes.';
+      return '';
+    };
+    const showPublication = () => { if (!dismissed()) overview(); };
+    const settlePublication = (pending, outcome, extra = {}) =>
+      rememberPublication({ ...pending, phase: 'review', outcome, ...extra }, pending.requestId);
+    const reconcilePublication = async signal => {
+      publicationResumeProof = null;
+      const pending = readPublication(); pendingPublication = pending;
+      if (pending?.phase !== 'pending') { showPublication(); return; }
+      let result;
+      try {
+        const query = new URLSearchParams({ requestId: pending.requestId, expectedRevision: String(pending.expectedRevision) });
+        result = await request('/publication-status?' + query, null, signal);
+      } catch {
+        showPublication(); return; // Unavailable status never releases the original request.
+      }
+      if (dismissed()) return;
+      if (!publicationId(result?.publicationScopeId) || publicationKey(result) !== publicationStorageKey
+        || typeof result?.requestId !== 'string' || result.requestId.toLowerCase() !== pending.requestId.toLowerCase()
+        || result.expectedRevision !== pending.expectedRevision) { showPublication(); return; }
+      const publication = result.publication;
+      if (result.found === true && typeof publication?.versionId === 'string'
+        && publication.versionId.toLowerCase() === pending.requestId.toLowerCase()
+        && Number.isSafeInteger(publication.publishedRevision)
+        && publication.publishedRevision === pending.expectedRevision + 1
+        && Number.isSafeInteger(result.revision) && result.revision >= publication.publishedRevision
+        && typeof result.isCurrent === 'boolean') {
+        settlePublication(pending, 'published', { publishedRevision: publication.publishedRevision, isCurrent: result.isCurrent });
+      } else if (result.found === false && result.publication === null && result.isCurrent === false
+        && Number.isSafeInteger(result.revision) && result.revision > pending.expectedRevision
+        && publicationRejection(result.publicationRejection, pending)
+        && result.publicationRejection.currentRevision === result.revision) {
+        settlePublication(pending, 'rejected');
+      } else if (result.found === false && result.publication === null && result.isCurrent === false
+        && result.revision === pending.expectedRevision) {
+        publicationResumeProof = { requestId: pending.requestId, expectedRevision: pending.expectedRevision, publicationScopeId: result.publicationScopeId };
+      }
+      if (pendingPublication?.phase === 'review' && state.revision !== result.revision) {
+        try {
+          const current = await request('', null, signal);
+          if (dismissed()) return;
+          if (publicationKey(current) !== publicationStorageKey) throw new Error('scope');
+          state = current;
+        } catch {
+          publicationProblem = publicationNotice() + ' Reopen the workspace to refresh the current draft.';
+        }
+      }
+      showPublication();
+    };
+    const sendPublication = async pending => {
+      publicationResumeProof = null;
+      try {
+        await request('/publish', { requestId: pending.requestId, expectedRevision: pending.expectedRevision });
+      } catch (error) {
+        if ([400, 409].includes(error.status) && publicationRejection(error.details?.publicationRejection, pending)) {
+          settlePublication(pending, 'rejected');
+          showPublication();
+          if (!dismissed()) status.textContent = error.message + ' Review the current saved draft before trying again.';
+          return;
+        }
+      }
+      if (!dismissed()) await reconcilePublication(); // A POST receipt alone is not a live-site check.
+    };
+    const resumeOriginalPublication = () => run(async () => {
+      await reconcilePublication();
+      const proof = publicationResumeProof;
+      const matchesProof = value => value?.phase === 'pending' && proof
+        && publicationKey(proof) === publicationStorageKey
+        && value.requestId === proof.requestId && value.expectedRevision === proof.expectedRevision;
+      if (dismissed() || !matchesProof(readPublication())) return;
+      if (!window.confirm('Resume the original publication request for the same saved draft?')) return;
+      const pending = readPublication();
+      if (!matchesProof(pending)) return;
+      rememberPublication(pending, pending.requestId); // Verify the exact proved identity before another POST.
+      await sendPublication(pending);
+    });
+    const publishSavedDraft = () => run(async () => {
+      const previous = readPublication(); pendingPublication = previous;
+      if (previous?.phase === 'pending') { await reconcilePublication(); return; }
+      if (previous?.phase === 'review') {
+        const current = await request('');
+        if (dismissed()) return;
+        if (publicationKey(current) !== publicationStorageKey) throw new Error('The website scope changed. Reopen the workspace before publishing.');
+        state = current;
+      }
+      if (state.capabilities?.canPublish !== true) throw new Error('Your current website permissions do not allow publication.');
+      if (!Number.isSafeInteger(state?.revision) || state.revision < 0 || state.revision >= Number.MAX_SAFE_INTEGER)
+        throw new Error('The saved draft revision could not be verified. Reopen the workspace before publishing.');
+      if (!window.confirm(previous?.phase === 'review'
+        ? 'Confirm that you have reviewed the current saved draft and want to publish it as a new website version.'
+        : 'Publish the current saved draft as a new website version?')) { overview(); return; }
+      if (typeof window.crypto?.randomUUID !== 'function') throw new Error('This browser could not create publication recovery. No publication was sent.');
+      const pending = { schemaVersion: 1, requestId: window.crypto.randomUUID(), expectedRevision: state.revision, phase: 'pending' };
+      if (!publicationId(pending.requestId)) throw new Error('Publication recovery could not be created. No publication was sent.');
+      rememberPublication(pending, previous?.requestId ?? null);
+      await sendPublication(pending);
+    });
     const section = title => {
       const back=button('Overview', overview); back.classList.add('wm-back'); back.prepend(icon('history'));
       panel.replaceChildren(back, el('h3', title));
@@ -135,12 +276,13 @@
     };
     const history = () => {
       section('Version history');
+      panel.append(el('p', 'Showing the '+(state.history?.length ?? 0)+' most recent saved publications (limit '+(state.usage?.publishedVersionLimit ?? 50)+'). Revision numbers continue increasing as the website changes.'));
       const list=el('div',null,{class:'wm-list'});
       if (!state.history?.length) list.append(el('p','Your first publication will appear here.'));
       for (const version of state.history || []) {
         const row=el('div',null,{class:'wm-list-row'});
         const meta=el('div',null,{class:'wm-list-meta'});
-        meta.append(el('strong',`Version ${version.revision}`),
+        meta.append(el('strong',`Publication revision ${version.revision}`),
           el('small',version.createdUtc ? new Date(version.createdUtc).toLocaleString() : ''));
         const actions=el('div',null,{class:'wm-list-actions'});
         if(state.capabilities?.canPublish===true) actions.append(button('Restore',()=>confirmAction(
@@ -343,7 +485,8 @@
       section('Website usage');
       const value = state.usage;
       if (!value) { panel.append(el('p', 'Usage information is not available yet. Reopen management after saving your website.')); return; }
-      for (const [label, count] of [['Media storage', `${(Number(value.mediaBytes ?? 0) / 1024 / 1024).toFixed(2)} MB`], ['Media files', value.mediaCount ?? 0], ['Published versions', value.publishedVersions ?? 0], ['Imported pages', value.importedPages ?? 0]]) {
+      if (value.publishedVersionOverflow > 0) panel.append(el('p', value.publishedVersionOverflow+' older saved publications are awaiting cleanup.'));
+      for (const [label, count] of [['Media storage', `${(Number(value.mediaBytes ?? 0) / 1024 / 1024).toFixed(2)} MB`], ['Media files', value.mediaCount ?? 0], ['Saved published versions', `${value.publishedVersions ?? 0} / ${value.publishedVersionLimit ?? 50}`], ['Imported pages', value.importedPages ?? 0]]) {
         const row = el('div', null, { class: 'wm-row' }); row.append(el('span', label), el('strong', String(count))); panel.append(row);
       }
     };
@@ -507,7 +650,7 @@
     };
     const overview = () => {
       panel.replaceChildren();
-      status.textContent = `Draft ${state.revision ?? 0} · Published ${state.publishedRevision ?? '—'}`;
+      status.textContent = publicationNotice() || `Draft ${state.revision ?? 0} · Published ${state.publishedRevision ?? '—'}`;
       const links=el('div',null,{class:'wm-hero-actions'});
       const edit=el('a','Open editor',{href:editorHref(),class:'wm-primary'}); edit.prepend(icon('editor'));
       const live=el('a','View website',{href:trigger.dataset.live,target:'_blank',rel:'noopener'}); live.prepend(icon('export'));
@@ -520,11 +663,13 @@
         node.prepend(icon(iconName)); grid.append(node);
       };
       tile('Drafts','drafts',drafts);
-      if(state.capabilities?.canPublish===true) tile('Publish','publish',()=>confirmAction(
-        'Publish',
-        'Publish the current saved draft as a new live website version?',
-        async()=>{await request('/publish',{});await reload();overview();status.textContent='Website published.';}
-      ));
+      if(state.capabilities?.canPublish===true) {
+        tile(pendingPublication?.phase === 'pending' ? 'Check publish status' : 'Publish','publish',publishSavedDraft);
+        if (pendingPublication?.phase === 'pending' && publicationResumeProof
+          && pendingPublication.requestId === publicationResumeProof.requestId
+          && pendingPublication.expectedRevision === publicationResumeProof.expectedRevision)
+          tile('Resume original request', 'publish', resumeOriginalPublication);
+      }
       if(state.capabilities?.canSchedule===true) tile('Schedule','schedule',schedule);
       tile('History','history',history);
       tile('Readiness','readiness',readiness);
@@ -567,7 +712,10 @@
       const initialState = await request('', null, startupController.signal);
       if (dismissed()) return;
       state = initialState;
+      try { publicationStorageKey = publicationKey(state); pendingPublication = readPublication(); }
+      catch (error) { publicationProblem = error.message; }
       overview();
+      if (pendingPublication?.phase === 'pending') await reconcilePublication(startupController.signal);
     }, { startup: true });
   }));
 })();

@@ -419,9 +419,18 @@ public class WebsitePlatformController : ControllerBase
             });
         }
 
+        var publicationUsage = await _db.Set<WebsiteContentVersion>().AsNoTracking()
+            .Where(v => v.StateId == state.Id)
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                IdentityCount = group.Count(),
+                RetainedPayloadCount = group.Count(v => v.SnapshotRetiredUtc == null)
+            })
+            .SingleOrDefaultAsync(cancellationToken);
         var history = await _db.Set<WebsiteContentVersion>().AsNoTracking()
             .Where(v => v.StateId == state.Id && v.SnapshotRetiredUtc == null)
-            .OrderByDescending(v => v.Revision)
+            .OrderByDescending(v => v.Revision).ThenByDescending(v => v.Id)
             .Take(Infrastructure.WebsitePublishing.WebsiteSnapshotRetention.Limit)
             .Select(v => new { versionId = v.Id, v.Revision, v.CreatedUtc })
             .ToListAsync(cancellationToken);
@@ -449,6 +458,7 @@ public class WebsitePlatformController : ControllerBase
             legacyMigration = draft.LegacyMigration,
             revision = state.Revision,
             publishedRevision = history.FirstOrDefault(v => v.versionId == state.PublishedVersionId)?.Revision,
+            publicationScopeId = state.Id,
             facts,
             editorBaseUrl = actor.SiteKey == WebsiteEditorSiteKeys.Business
                 ? (_configuration["LegendWebsiteBaseUrl"] ?? "https://www.mylegnd.com").TrimEnd('/')
@@ -461,7 +471,11 @@ public class WebsitePlatformController : ControllerBase
             {
                 mediaBytes = mediaUsage?.MediaBytes ?? 0,
                 mediaCount = mediaUsage?.MediaCount ?? 0,
-                publishedVersions = history.Count,
+                publishedVersions = publicationUsage?.RetainedPayloadCount ?? 0,
+                publicationIdentityCount = publicationUsage?.IdentityCount ?? 0,
+                retiredPublishedVersions = (publicationUsage?.IdentityCount ?? 0) - (publicationUsage?.RetainedPayloadCount ?? 0),
+                publishedVersionOverflow = Math.Max(0, (publicationUsage?.RetainedPayloadCount ?? 0) -
+                    Infrastructure.WebsitePublishing.WebsiteSnapshotRetention.Limit),
                 publishedVersionLimit = Infrastructure.WebsitePublishing.WebsiteSnapshotRetention.Limit
             },
             importReport = string.IsNullOrEmpty(state.ImportReportJson)
@@ -2007,6 +2021,9 @@ public class WebsitePlatformController : ControllerBase
             if (string.IsNullOrWhiteSpace(named) || named.Length > 100)
                 return BadRequest(new { message = "Enter a draft name of 1–100 characters." });
             var drafts = ReadDrafts(state);
+            if (!NamedDraftEntriesAreComplete(state, drafts))
+                return Conflict(new { error = "website_draft_list_requires_review",
+                    message = "The saved draft list contains entries that need review. All existing drafts were preserved." });
             var draft = request.DraftId.HasValue ? drafts.SingleOrDefault(value => value.Id == request.DraftId) : null;
             if (request.DraftId.HasValue && draft is null) return NotFound();
             if (draft is null && drafts.Count >= 20)
@@ -2112,13 +2129,16 @@ public class WebsitePlatformController : ControllerBase
             using var parsed = JsonDocument.Parse(state.NamedDraftsJson);
             if (parsed.RootElement.ValueKind != JsonValueKind.Array) return [];
             var result = new List<WebsiteNamedDraft>();
+            var identities = new HashSet<Guid>();
+            var ordinal = -1;
 
-            foreach (var item in parsed.RootElement.EnumerateArray().Take(20))
+            foreach (var item in parsed.RootElement.EnumerateArray())
             {
+                ordinal++;
                 if (item.ValueKind != JsonValueKind.Object) continue;
-                Guid id = Guid.NewGuid();
+                Guid id = Guid.Empty;
                 string name = "Website draft";
-                var updatedUtc = DateTime.UtcNow;
+                var updatedUtc = state.UpdatedUtc;
                 string? documentJson = null;
 
                 foreach (var property in item.EnumerateObject())
@@ -2126,9 +2146,11 @@ public class WebsitePlatformController : ControllerBase
                     if (property.Name.Equals("id", StringComparison.OrdinalIgnoreCase) &&
                         Guid.TryParse(property.Value.ToString(), out var parsedId))
                         id = parsedId;
-                    else if (property.Name.Equals("name", StringComparison.OrdinalIgnoreCase))
+                    else if (property.Name.Equals("name", StringComparison.OrdinalIgnoreCase) &&
+                             property.Value.ValueKind == JsonValueKind.String)
                         name = property.Value.GetString() ?? name;
                     else if (property.Name.Equals("updatedUtc", StringComparison.OrdinalIgnoreCase) &&
+                             property.Value.ValueKind == JsonValueKind.String &&
                              property.Value.TryGetDateTime(out var parsedUtc))
                         updatedUtc = parsedUtc;
                     else if (property.Name.Equals("documentJson", StringComparison.OrdinalIgnoreCase) &&
@@ -2140,6 +2162,18 @@ public class WebsitePlatformController : ControllerBase
                 }
 
                 if (string.IsNullOrWhiteSpace(documentJson)) continue;
+                // Missing, malformed, empty, or repeated historical IDs must identify
+                // the same saved entry on every read. Read paths never rewrite the row.
+                if (id == Guid.Empty || !identities.Add(id))
+                {
+                    var attempt = 0;
+                    do
+                    {
+                        var identity = $"legend-named-draft/v1:{state.Id:N}:{ordinal}:{attempt++}";
+                        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(identity));
+                        id = new Guid(bytes.AsSpan(0, 16));
+                    } while (id == Guid.Empty || !identities.Add(id));
+                }
                 result.Add(new WebsiteNamedDraft
                 {
                     Id = id,
@@ -2154,6 +2188,136 @@ public class WebsitePlatformController : ControllerBase
         {
             return [];
         }
+    }
+
+    private static bool NamedDraftEntriesAreComplete(WebsiteContentState state, IReadOnlyCollection<WebsiteNamedDraft> drafts)
+    {
+        if (string.IsNullOrWhiteSpace(state.NamedDraftsJson)) return drafts.Count == 0;
+        try
+        {
+            using var parsed = JsonDocument.Parse(state.NamedDraftsJson);
+            return parsed.RootElement.ValueKind == JsonValueKind.Array &&
+                parsed.RootElement.GetArrayLength() == drafts.Count;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    public sealed record PreserveNamedDraftRequest(
+        string Ticket, Guid PublicationScopeId, long ExpectedRevision,
+        Guid DraftId, string DraftName, string DocumentJson);
+
+    [HttpGet("manage/drafts/preservation")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> NamedDraftPreservation(
+        [FromQuery] string ticket, [FromQuery] Guid publicationScopeId,
+        [FromQuery] Guid draftId, CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        if (publicationScopeId == Guid.Empty || draftId == Guid.Empty) return BadRequest();
+        // Read only the existing owner row. Never initialize a website during readback.
+        // Keep the existing synchronous large-LOB read workaround.
+        cancellationToken.ThrowIfCancellationRequested();
+        var stored = _db.Set<WebsiteContentState>().AsNoTracking()
+            .Where(state => state.Id == publicationScopeId &&
+                state.OwnerKey == actor.OwnerUserId && state.SiteKey == actor.SiteKey &&
+                (actor.SiteKey != WebsiteEditorSiteKeys.Business ||
+                 state.CommerceBusinessId == actor.CommerceBusinessId))
+            .Select(state => new { state.Id, state.Revision, state.NamedDraftsJson, state.UpdatedUtc })
+            .SingleOrDefault();
+        cancellationToken.ThrowIfCancellationRequested();
+        if (stored is null) return NotFound();
+        var draft = ReadDrafts(new WebsiteContentState
+        {
+            Id = stored.Id, NamedDraftsJson = stored.NamedDraftsJson, UpdatedUtc = stored.UpdatedUtc
+        }).SingleOrDefault(value => value.Id == draftId);
+        return Ok(new
+        {
+            publicationScopeId = stored.Id, revision = stored.Revision, found = draft is not null,
+            draft = draft is null ? null : new { draft.Id, draft.Name, draft.DocumentJson, draft.UpdatedUtc }
+        });
+    }
+
+    [HttpPost("manage/drafts/preserve")]
+    [RequestSizeLimit(4_500_000)]
+    public async Task<IActionResult> PreserveNamedDraft(
+        [FromBody] PreserveNamedDraftRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request is null || request.PublicationScopeId == Guid.Empty || request.DraftId == Guid.Empty ||
+            request.ExpectedRevision < 0 || request.ExpectedRevision == long.MaxValue ||
+            string.IsNullOrWhiteSpace(request.DocumentJson))
+            return BadRequest(new { error = "website_draft_preservation_invalid" });
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        cancellationToken.ThrowIfCancellationRequested();
+        var state = _db.Set<WebsiteContentState>()
+            .SingleOrDefault(value => value.Id == request.PublicationScopeId &&
+                value.OwnerKey == actor.OwnerUserId && value.SiteKey == actor.SiteKey &&
+                (actor.SiteKey != WebsiteEditorSiteKeys.Business ||
+                 value.CommerceBusinessId == actor.CommerceBusinessId));
+        cancellationToken.ThrowIfCancellationRequested();
+        if (state is null) return NotFound();
+        var name = request.DraftName?.Trim();
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 100)
+            return BadRequest(new { message = "Enter a draft name of 1–100 characters." });
+        var drafts = ReadDrafts(state);
+        var existing = drafts.SingleOrDefault(value => value.Id == request.DraftId);
+        if (existing is not null)
+        {
+            // A lost response may be retried only as this exact immutable new copy.
+            if (!string.Equals(existing.Name, name, StringComparison.Ordinal) ||
+                !string.Equals(existing.DocumentJson, request.DocumentJson, StringComparison.Ordinal))
+                return Conflict(new { error = "website_draft_identity_conflict",
+                    message = "This draft identity already contains different saved work. Read it back before creating another copy." });
+            return Ok(new { publicationScopeId = state.Id, revision = state.Revision,
+                draftId = existing.Id, alreadySaved = true });
+        }
+        if (state.Revision != request.ExpectedRevision)
+            return Conflict(new { error = "revision_conflict", revision = state.Revision });
+        if (drafts.Any(value => string.Equals(value.Name, name, StringComparison.OrdinalIgnoreCase)))
+            return Conflict(new { message = "That name already exists. Choose a new draft name to preserve this copy." });
+
+        System.Text.Json.Nodes.JsonArray storedDrafts;
+        try
+        {
+            storedDrafts = string.IsNullOrWhiteSpace(state.NamedDraftsJson)
+                ? new System.Text.Json.Nodes.JsonArray()
+                : System.Text.Json.Nodes.JsonNode.Parse(state.NamedDraftsJson) as System.Text.Json.Nodes.JsonArray
+                    ?? throw new ArgumentException("The saved draft list could not be read safely.");
+            if (storedDrafts.Count >= 20)
+                return BadRequest(new { message = "You can keep up to 20 drafts. Existing drafts were preserved; free a draft slot before creating another." });
+            using var parsed = JsonDocument.Parse(request.DocumentJson);
+            if (parsed.RootElement.ValueKind != JsonValueKind.Object ||
+                !parsed.RootElement.TryGetProperty("version", out var version) ||
+                !version.TryGetInt32(out var number) || number != WebsiteStudioContract.CurrentDocumentVersion ||
+                !parsed.RootElement.TryGetProperty("pages", out var pages) || pages.ValueKind != JsonValueKind.Object)
+                throw new ArgumentException("The local draft must use the canonical v3 document schema.");
+            // Reject unstable or legacy data instead of silently changing the preserved copy.
+            var document = Read(request.DocumentJson);
+            await ValidateCompositionMediaOwnershipAsync(actor, document, cancellationToken);
+        }
+        catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException)
+        {
+            return BadRequest(new { error = "website_draft_preservation_invalid", message = ex.Message });
+        }
+
+        var draft = new WebsiteNamedDraft
+        {
+            Id = request.DraftId, Name = name, DocumentJson = request.DocumentJson, UpdatedUtc = DateTime.UtcNow
+        };
+        // Append to the existing JSON array; retain every previous entry and its fields.
+        // This is a private named copy. Only the existing governed LoadDraft can make it active.
+        storedDrafts.Add(JsonSerializer.SerializeToNode(draft, JsonOptions));
+        state.NamedDraftsJson = storedDrafts.ToJsonString(JsonOptions);
+        var previousRevision = state.Revision;
+        state.Revision++;
+        if (state.ScheduledRevision == previousRevision)
+            state.ScheduledRevision = state.Revision; // The scheduled active document did not change.
+        state.UpdatedUtc = DateTime.UtcNow;
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
+        return Ok(new { publicationScopeId = state.Id, revision = state.Revision,
+            draftId = draft.Id, alreadySaved = false });
     }
 
     public sealed record DraftRequest(string Ticket, long ExpectedRevision, Guid DraftId);
@@ -2171,6 +2335,9 @@ public class WebsitePlatformController : ControllerBase
         var state = await StateAsync(actor, cancellationToken);
         if (state.Revision != request.ExpectedRevision) return Conflict(new { error = "revision_conflict" });
         var drafts = ReadDrafts(state);
+        if (!NamedDraftEntriesAreComplete(state, drafts))
+            return Conflict(new { error = "website_draft_list_requires_review",
+                message = "The saved draft list contains entries that need review. All existing drafts were preserved." });
         var draft = drafts.SingleOrDefault(d => d.Id == request.DraftId);
         if (draft is null) return NotFound();
         if (delete) drafts.Remove(draft);
@@ -2261,20 +2428,37 @@ public class WebsitePlatformController : ControllerBase
     [HttpGet("manage/publication-status")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> PublicationStatus([FromQuery] string ticket, [FromQuery] Guid requestId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, [FromQuery] long? expectedRevision = null)
     {
         var actor = await AuthorizeAsync(ticket, cancellationToken);
         if (actor is null) return Unauthorized();
+        if (requestId == Guid.Empty || expectedRevision is < 0)
+            return BadRequest(new { error = "invalid_publication_request" });
+
+        // Commerce is an additional tenant boundary for business websites. Founder
+        // and Protect tickets own the website even after it acquires a store.
         var state = await _db.Set<WebsiteContentState>().AsNoTracking()
             .Where(s => s.OwnerKey == actor.OwnerUserId && s.SiteKey == actor.SiteKey &&
-                s.CommerceBusinessId == actor.CommerceBusinessId)
+                (actor.SiteKey != WebsiteEditorSiteKeys.Business ||
+                    s.CommerceBusinessId == actor.CommerceBusinessId))
             .Select(s => new { s.Id, s.Revision, s.PublishedVersionId })
             .SingleOrDefaultAsync(cancellationToken);
+
+        // Preserve this order: after observing a newer state revision, an older
+        // publisher cannot commit under the revision concurrency token. The
+        // subsequent immutable identity lookup determines whether it already did.
         var version = state is null ? null : await _db.Set<WebsiteContentVersion>().AsNoTracking()
             .Where(v => v.StateId == state.Id && v.Id == requestId)
             .Select(v => new { versionId = v.Id, publishedRevision = v.Revision }).SingleOrDefaultAsync(cancellationToken);
-        return Ok(new { found = version is not null, publication = version, revision = state?.Revision,
-            isCurrent = version is not null && state?.PublishedVersionId == version.versionId });
+        var rejection = state is not null && version is null &&
+                expectedRevision.HasValue && state.Revision > expectedRevision.Value
+            ? new { disposition = "rejected_before_commit", requestId,
+                expectedRevision = expectedRevision.Value, currentRevision = state.Revision }
+            : null;
+        return Ok(new { requestId, expectedRevision, publicationScopeId = state?.Id,
+            found = version is not null, publication = version, revision = state?.Revision,
+            isCurrent = version is not null && state?.PublishedVersionId == version.versionId,
+            publicationRejection = rejection });
     }
 
     [HttpPost("manage/publish")]

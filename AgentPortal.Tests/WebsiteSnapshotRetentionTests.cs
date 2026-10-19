@@ -9,11 +9,54 @@ using Microsoft.Data.Sqlite;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AgentPortal.Tests;
 
 public sealed class WebsiteSnapshotRetentionTests
 {
+    [Fact]
+    public async Task ScheduleScanFailureDoesNotSkipRetirementAndCancellationStopsBothScans()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        using var services = new ServiceCollection()
+            .AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(databaseName))
+            .BuildServiceProvider();
+        using (var seed = services.CreateScope())
+        {
+            var db = seed.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            var state = new WebsiteContentState { OwnerKey = "retention-owner", SiteKey = "legend", Revision = 51 };
+            var versions = Enumerable.Range(1, 51).Select(index => new WebsiteContentVersion
+            {
+                StateId = state.Id, Revision = index, DocumentJson = "{\"saved\":true}"
+            }).ToArray();
+            state.PublishedVersionId = versions[^1].Id;
+            db.Add(state); db.AddRange(versions); await db.SaveChangesAsync();
+        }
+        var scopeCalls = 0;
+        var factory = new Moq.Mock<IServiceScopeFactory>();
+        factory.Setup(value => value.CreateScope()).Returns(() =>
+        {
+            if (++scopeCalls == 1) throw new InvalidOperationException("Synthetic schedule scan failure");
+            return services.CreateScope();
+        });
+        using var worker = new WebsitePublishWorker(factory.Object,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<WebsitePublishWorker>.Instance);
+        await worker.RunMaintenanceAsync(System.Threading.CancellationToken.None);
+        using (var read = services.CreateScope())
+        {
+            var db = read.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            Assert.Equal(50, await db.Set<WebsiteContentVersion>().CountAsync(value => value.SnapshotRetiredUtc == null));
+            Assert.Equal(51, await db.Set<WebsiteContentVersion>().CountAsync());
+            Assert.Equal("{}", (await db.Set<WebsiteContentVersion>().SingleAsync(value => value.Revision == 1)).DocumentJson);
+        }
+        using var cancelled = new System.Threading.CancellationTokenSource();
+        cancelled.Cancel();
+        var callsBefore = scopeCalls;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => worker.RunMaintenanceAsync(cancelled.Token));
+        Assert.Equal(callsBefore, scopeCalls);
+    }
+
     [Fact]
     public void SqlServerMigrationGeneratesOnlyAdditiveSchemaChange()
     {

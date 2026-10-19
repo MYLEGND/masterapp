@@ -407,6 +407,54 @@ public sealed class WebsitePublishingAuthorityTests
         Assert.Equal(requestId, published.GetProperty("publication").GetProperty("versionId").GetGuid());
     }
 
+    [Theory]
+    [InlineData(3, true)]
+    [InlineData(4, false)]
+    [InlineData(5, false)]
+    [InlineData(null, false)]
+    public async Task PublicationStatus_ProvesOnlyOlderAbsentRequestsTerminal(long? expectedRevision, bool terminal)
+    {
+        using var f = new Fixture(auditMaterialization: true);
+        await SeedCanonicalDraftAsync(f, f.Token, WebsiteEditorSiteKeys.Legend, Document("Saved draft"), revision: 4);
+        f.Db.ChangeTracker.Clear();
+        f.Audit.EntityTypes.Clear();
+        var requestId = Guid.NewGuid();
+        var status = Body(await f.Controller.PublicationStatus(f.Token, requestId, expectedRevision: expectedRevision));
+        Assert.False(status.GetProperty("found").GetBoolean());
+        Assert.False(status.GetProperty("isCurrent").GetBoolean());
+        Assert.Equal(4, status.GetProperty("revision").GetInt64());
+        Assert.Equal(requestId, status.GetProperty("requestId").GetGuid());
+        var receipt = status.GetProperty("publicationRejection");
+        if (terminal)
+        {
+            Assert.Equal("rejected_before_commit", receipt.GetProperty("disposition").GetString());
+            Assert.Equal(requestId, receipt.GetProperty("requestId").GetGuid());
+            Assert.Equal(expectedRevision, receipt.GetProperty("expectedRevision").GetInt64());
+            Assert.Equal(4, receipt.GetProperty("currentRevision").GetInt64());
+        }
+        else Assert.Equal(JsonValueKind.Null, receipt.ValueKind);
+        Assert.DoesNotContain(typeof(WebsiteContentState), f.Audit.EntityTypes);
+        Assert.DoesNotContain(typeof(WebsiteContentVersion), f.Audit.EntityTypes);
+        Assert.Empty(f.Db.ChangeTracker.Entries<WebsiteContentState>());
+        Assert.Empty(f.Db.ChangeTracker.Entries<WebsiteContentVersion>());
+        Assert.Empty(await f.Db.Set<WebsiteContentVersion>().AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task PublicationStatus_MissingStateNeverInitializesOrRejectsAnOriginalRequest()
+    {
+        using var f = new Fixture();
+        var status = Body(await f.Controller.PublicationStatus(f.Token, Guid.NewGuid(), expectedRevision: 0));
+        Assert.False(status.GetProperty("found").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, status.GetProperty("revision").ValueKind);
+        Assert.Equal(JsonValueKind.Null, status.GetProperty("publicationScopeId").ValueKind);
+        Assert.Equal(JsonValueKind.Null, status.GetProperty("publicationRejection").ValueKind);
+        Assert.Empty(await f.Db.Set<WebsiteContentState>().ToListAsync());
+        Assert.Empty(await f.Db.Set<WebsiteContentVersion>().ToListAsync());
+        Assert.IsType<BadRequestObjectResult>(
+            await f.Controller.PublicationStatus(f.Token, Guid.Empty, expectedRevision: 0));
+    }
+
     [Fact]
     public async Task PublicationRevisionPrecheckReturnsRequestBoundRejectionWithoutCommitting()
     {

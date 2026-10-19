@@ -128,6 +128,60 @@ public sealed class WebsiteContentEditorRoundTripTests
     [InlineData(WebsiteEditorSiteKeys.Legend)]
     [InlineData(WebsiteEditorSiteKeys.Protect)]
     [InlineData(WebsiteEditorSiteKeys.Business)]
+    public async Task PublicationStatus_ReconcilesStoreBoundWebsiteWithoutChangingState(string siteKey)
+    {
+        using var fixture = new Fixture(siteKey);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        await SeedCanonicalDraftAsync(fixture, ticket, CanonicalDocument("Current saved draft"), revision: 8);
+        var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        var storeId = fixture.BusinessId ?? Guid.NewGuid();
+        state.CommerceBusinessId = storeId;
+        var version = new WebsiteContentVersion
+        {
+            StateId = state.Id, Revision = 7, DocumentJson = "{}"
+        };
+        state.PublishedVersionId = version.Id;
+        fixture.Db.Add(version);
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+
+        var status = JsonSerializer.SerializeToElement(Assert.IsType<OkObjectResult>(
+            await fixture.CreateController().PublicationStatus(ticket, version.Id, expectedRevision: 6)).Value, JsonOptions);
+        Assert.True(status.GetProperty("found").GetBoolean());
+        Assert.True(status.GetProperty("isCurrent").GetBoolean());
+        Assert.Equal(8, status.GetProperty("revision").GetInt64());
+        Assert.Equal(state.Id, status.GetProperty("publicationScopeId").GetGuid());
+        Assert.Equal(version.Id, status.GetProperty("requestId").GetGuid());
+        Assert.Equal(6, status.GetProperty("expectedRevision").GetInt64());
+        Assert.Equal(version.Id, status.GetProperty("publication").GetProperty("versionId").GetGuid());
+        Assert.Equal(JsonValueKind.Null, status.GetProperty("publicationRejection").ValueKind);
+        Assert.Empty(fixture.Db.ChangeTracker.Entries<WebsiteContentState>());
+        Assert.Empty(fixture.Db.ChangeTracker.Entries<WebsiteContentVersion>());
+        Assert.Single(await fixture.Db.Set<WebsiteContentVersion>().AsNoTracking().ToListAsync());
+        var after = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+        Assert.Equal(storeId, after.CommerceBusinessId);
+        Assert.Equal(8, after.Revision);
+        Assert.Equal(version.Id, after.PublishedVersionId);
+
+        if (siteKey == WebsiteEditorSiteKeys.Business)
+        {
+            var tracked = await fixture.Db.Set<WebsiteContentState>().SingleAsync();
+            tracked.CommerceBusinessId = Guid.NewGuid();
+            await fixture.Db.SaveChangesAsync();
+            fixture.Db.ChangeTracker.Clear();
+            var wrongTenant = JsonSerializer.SerializeToElement(Assert.IsType<OkObjectResult>(
+                await fixture.CreateController().PublicationStatus(ticket, version.Id, expectedRevision: 6)).Value, JsonOptions);
+            Assert.False(wrongTenant.GetProperty("found").GetBoolean());
+            Assert.Equal(JsonValueKind.Null, wrongTenant.GetProperty("revision").ValueKind);
+            Assert.Equal(JsonValueKind.Null, wrongTenant.GetProperty("publicationScopeId").ValueKind);
+            Assert.Equal(JsonValueKind.Null, wrongTenant.GetProperty("publicationRejection").ValueKind);
+        }
+    }
+
+    [Theory]
+    [InlineData(WebsiteEditorSiteKeys.Legend)]
+    [InlineData(WebsiteEditorSiteKeys.Protect)]
+    [InlineData(WebsiteEditorSiteKeys.Business)]
     public async Task RouteKeyedEditorPage_PreservesContentAndMetadataAcrossSaveAndReload(string siteKey)
     {
         using var fixture = new Fixture(siteKey);
@@ -1036,6 +1090,401 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.IsType<UnauthorizedResult>(await fixture.CreateController().DraftQuality(
             "invalid-ticket",
             CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData(WebsiteEditorSiteKeys.Legend)]
+    [InlineData(WebsiteEditorSiteKeys.Protect)]
+    [InlineData(WebsiteEditorSiteKeys.Business)]
+    public async Task LocalDraftPreservation_UsesFreshRevisionWithoutReplacingActiveOrPublishedWork(string siteKey)
+    {
+        using var fixture = new Fixture(siteKey);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var remote = await SeedCanonicalDraftAsync(fixture, ticket, CanonicalDocument("Remote saved work"), revision: 8);
+        var local = JsonSerializer.Deserialize<WebsiteContentDocument>(JsonSerializer.Serialize(remote, JsonOptions), JsonOptions)!;
+        Node(local).Text = "Local unsaved work";
+        var localJson = JsonSerializer.Serialize(local, JsonOptions);
+        var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        var activeJson = state.DraftJson;
+        var olderDraftId = Guid.NewGuid();
+        state.NamedDraftsJson = JsonSerializer.Serialize(new[] { new
+        {
+            id = olderDraftId, name = "Original saved draft", documentJson = activeJson,
+            updatedUtc = DateTime.UtcNow, retainedMetadata = "keep"
+        } }, JsonOptions);
+        var published = new WebsiteContentVersion { StateId = state.Id, Revision = 7, DocumentJson = activeJson };
+        fixture.Db.Add(published); state.PublishedVersionId = published.Id;
+        var scheduledUtc = DateTime.UtcNow.AddHours(2);
+        state.ScheduledPublishUtc = scheduledUtc; state.ScheduledRevision = 8; state.ScheduledActorJson = "retained actor";
+        await fixture.Db.SaveChangesAsync(); fixture.Db.ChangeTracker.Clear();
+        var scopeId = state.Id;
+        var originalRequest = Guid.NewGuid();
+        var status = JsonSerializer.SerializeToElement(Assert.IsType<OkObjectResult>(
+            await fixture.CreateController().PublicationStatus(ticket, originalRequest, expectedRevision: 4)).Value, JsonOptions);
+        Assert.Equal("rejected_before_commit", status.GetProperty("publicationRejection").GetProperty("disposition").GetString());
+
+        var request = new WebsitePlatformController.PreserveNamedDraftRequest(
+            ticket, scopeId, 8, Guid.NewGuid(), "Recovered local edits", localJson);
+        Assert.IsType<ConflictObjectResult>(await fixture.CreateController().PreserveNamedDraft(request with { ExpectedRevision = 4 }));
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().PreserveNamedDraft(request));
+        fixture.Db.ChangeTracker.Clear();
+        var readback = JsonSerializer.SerializeToElement(Assert.IsType<OkObjectResult>(
+            await fixture.CreateController().NamedDraftPreservation(ticket, scopeId, request.DraftId)).Value, JsonOptions);
+        Assert.True(readback.GetProperty("found").GetBoolean());
+        Assert.Equal(scopeId, readback.GetProperty("publicationScopeId").GetGuid());
+        Assert.Equal(localJson, readback.GetProperty("draft").GetProperty("documentJson").GetString());
+        Assert.Empty(fixture.Db.ChangeTracker.Entries<WebsiteContentState>());
+        state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+        Assert.Equal(activeJson, state.DraftJson);
+        Assert.Equal(published.Id, state.PublishedVersionId);
+        Assert.Equal(scheduledUtc, state.ScheduledPublishUtc);
+        Assert.Equal("retained actor", state.ScheduledActorJson);
+        Assert.Equal(9, state.Revision); Assert.Equal(9, state.ScheduledRevision);
+        using (var named = JsonDocument.Parse(state.NamedDraftsJson))
+        {
+            Assert.Equal(2, named.RootElement.GetArrayLength());
+            Assert.Equal(olderDraftId, named.RootElement[0].GetProperty("id").GetGuid());
+            Assert.Equal(activeJson, named.RootElement[0].GetProperty("documentJson").GetString());
+            Assert.Equal("keep", named.RootElement[0].GetProperty("retainedMetadata").GetString());
+        }
+        var retry = JsonSerializer.SerializeToElement(Assert.IsType<OkObjectResult>(
+            await fixture.CreateController().PreserveNamedDraft(request)).Value, JsonOptions);
+        Assert.True(retry.GetProperty("alreadySaved").GetBoolean());
+        Assert.Equal(9, retry.GetProperty("revision").GetInt64());
+        Assert.IsType<ConflictObjectResult>(await fixture.CreateController().PreserveNamedDraft(
+            request with { ExpectedRevision = 9, DocumentJson = activeJson }));
+        Assert.IsType<NotFoundResult>(await fixture.CreateController().PreserveNamedDraft(
+            request with { PublicationScopeId = Guid.NewGuid() }));
+        Assert.IsType<NotFoundResult>(await fixture.CreateController().NamedDraftPreservation(
+            ticket, Guid.NewGuid(), request.DraftId));
+        fixture.Db.ChangeTracker.Clear();
+        var unchanged = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+        Assert.Equal(state.NamedDraftsJson, unchanged.NamedDraftsJson);
+        Assert.Equal(activeJson, unchanged.DraftJson);
+        Assert.Equal(9, unchanged.Revision);
+    }
+
+    [Theory]
+    [InlineData(WebsiteEditorSiteKeys.Legend)]
+    [InlineData(WebsiteEditorSiteKeys.Protect)]
+    [InlineData(WebsiteEditorSiteKeys.Business)]
+    public async Task HistoricalNamedDraftIds_AreStableUniqueAndUsableForExistingDraftSave(string siteKey)
+    {
+        using var fixture = new Fixture(siteKey);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        await SeedCanonicalDraftAsync(fixture, ticket, CanonicalDocument("Existing content"), revision: 8);
+        var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        var duplicate = Guid.NewGuid();
+        var rows = new object[]
+        {
+            new { id = "invalid", name = "Malformed ID", documentJson = state.DraftJson },
+            new { name = "Missing ID", documentJson = state.DraftJson },
+            new { id = Guid.Empty, name = "Empty ID", documentJson = state.DraftJson, updatedUtc = 1 },
+            new { id = duplicate, name = "First ID", documentJson = state.DraftJson },
+            new { id = duplicate, name = "Repeated ID", documentJson = state.DraftJson }
+        };
+        state.NamedDraftsJson = JsonSerializer.Serialize(rows, JsonOptions);
+        var originalJson = state.NamedDraftsJson;
+        await fixture.Db.SaveChangesAsync(); fixture.Db.ChangeTracker.Clear();
+        async Task<Guid[]> Ids()
+        {
+            var value = JsonSerializer.SerializeToElement(Assert.IsType<OkObjectResult>(
+                await fixture.CreateController().Manage(ticket)).Value, JsonOptions);
+            return value.GetProperty("drafts").EnumerateArray().Select(draft => draft.GetProperty("id").GetGuid()).ToArray();
+        }
+        var first = await Ids();
+        Assert.Equal(first, await Ids());
+        Assert.Equal(5, first.Distinct().Count()); Assert.DoesNotContain(Guid.Empty, first);
+        Assert.Equal(duplicate, first[3]);
+        Assert.Equal(originalJson, (await fixture.Db.Set<WebsiteContentState>().SingleAsync()).NamedDraftsJson);
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(ticket, 8, [], first[0], "Malformed ID")));
+        fixture.Db.ChangeTracker.Clear();
+        Assert.Equal(first, await Ids());
+        Assert.Equal(5, JsonDocument.Parse((await fixture.Db.Set<WebsiteContentState>().SingleAsync()).NamedDraftsJson).RootElement.GetArrayLength());
+    }
+
+    [Theory]
+    [InlineData(WebsiteEditorSiteKeys.Legend)]
+    [InlineData(WebsiteEditorSiteKeys.Protect)]
+    [InlineData(WebsiteEditorSiteKeys.Business)]
+    public async Task HistoricalNamedDraftIds_DeletePersistsAndPreservesOtherDrafts(string siteKey)
+    {
+        using var fixture = new Fixture(siteKey);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        await SeedCanonicalDraftAsync(fixture, ticket, CanonicalDocument("Existing content"), revision: 8);
+        var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        var duplicate = Guid.NewGuid();
+        var rows = new object[]
+        {
+            new { id = "invalid", name = "Malformed ID", documentJson = state.DraftJson },
+            new { name = "Missing ID", documentJson = state.DraftJson },
+            new { id = Guid.Empty, name = "Empty ID", documentJson = state.DraftJson, updatedUtc = 1 },
+            new { id = duplicate, name = "First ID", documentJson = state.DraftJson },
+            new { id = duplicate, name = "Repeated ID", documentJson = state.DraftJson }
+        };
+        state.NamedDraftsJson = JsonSerializer.Serialize(rows, JsonOptions);
+        var originalJson = state.NamedDraftsJson;
+        await fixture.Db.SaveChangesAsync(); fixture.Db.ChangeTracker.Clear();
+        async Task<Guid[]> Ids()
+        {
+            var value = JsonSerializer.SerializeToElement(Assert.IsType<OkObjectResult>(
+                await fixture.CreateController().Manage(ticket)).Value, JsonOptions);
+            return value.GetProperty("drafts").EnumerateArray().Select(draft => draft.GetProperty("id").GetGuid()).ToArray();
+        }
+        var first = await Ids();
+        Assert.Equal(first, await Ids());
+        Assert.Equal(5, first.Distinct().Count()); Assert.DoesNotContain(Guid.Empty, first);
+        Assert.Equal(duplicate, first[3]);
+        Assert.Equal(originalJson, (await fixture.Db.Set<WebsiteContentState>().SingleAsync()).NamedDraftsJson);
+        var workingDraft = (await fixture.Db.Set<WebsiteContentState>().SingleAsync()).DraftJson;
+        Assert.IsType<ConflictObjectResult>(await fixture.CreateController().DeleteDraft(
+            new WebsitePlatformController.DraftRequest(ticket, 7, first[0])));
+        Assert.Equal(first, await Ids());
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().DeleteDraft(
+            new WebsitePlatformController.DraftRequest(ticket, 8, first[0])));
+        fixture.Db.ChangeTracker.Clear();
+        Assert.Equal(first.Skip(1).ToArray(), await Ids());
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().DeleteDraft(
+            new WebsitePlatformController.DraftRequest(ticket, 9, first[1])));
+        fixture.Db.ChangeTracker.Clear();
+        Assert.Equal(first.Skip(2).ToArray(), await Ids());
+        Assert.Equal(workingDraft, (await fixture.Db.Set<WebsiteContentState>().SingleAsync()).DraftJson);
+    }
+
+    [Theory]
+    [InlineData(WebsiteEditorSiteKeys.Legend)]
+    [InlineData(WebsiteEditorSiteKeys.Protect)]
+    [InlineData(WebsiteEditorSiteKeys.Business)]
+    public async Task OversizedNamedDraftList_DeletePreservesAllRemainingEntries(string siteKey)
+    {
+        using var fixture = new Fixture(siteKey);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        await SeedCanonicalDraftAsync(fixture, ticket, CanonicalDocument("Existing content"), revision: 8);
+        var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        var rows = Enumerable.Range(1, 21).Select(index => new WebsiteNamedDraft
+        {
+            Id = Guid.NewGuid(), Name = "Saved " + index, DocumentJson = state.DraftJson
+        }).ToArray();
+        var publishedId = Guid.NewGuid();
+        state.PublishedVersionId = publishedId;
+        state.NamedDraftsJson = JsonSerializer.Serialize(rows, JsonOptions);
+        var originalJson = state.NamedDraftsJson;
+        await fixture.Db.SaveChangesAsync(); fixture.Db.ChangeTracker.Clear();
+        async Task<Guid[]> Ids()
+        {
+            var value = JsonSerializer.SerializeToElement(Assert.IsType<OkObjectResult>(
+                await fixture.CreateController().Manage(ticket)).Value, JsonOptions);
+            return value.GetProperty("drafts").EnumerateArray().Select(draft => draft.GetProperty("id").GetGuid()).ToArray();
+        }
+        var first = await Ids();
+        Assert.Equal(first, await Ids());
+        Assert.Equal(21, first.Distinct().Count()); Assert.DoesNotContain(Guid.Empty, first);
+        Assert.Equal(originalJson, (await fixture.Db.Set<WebsiteContentState>().SingleAsync()).NamedDraftsJson);
+        var workingDraft = (await fixture.Db.Set<WebsiteContentState>().SingleAsync()).DraftJson;
+        Assert.IsType<ConflictObjectResult>(await fixture.CreateController().DeleteDraft(
+            new WebsitePlatformController.DraftRequest(ticket, 7, first[0])));
+        Assert.Equal(first, await Ids());
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().DeleteDraft(
+            new WebsitePlatformController.DraftRequest(ticket, 8, first[0])));
+        fixture.Db.ChangeTracker.Clear();
+        Assert.Equal(first.Skip(1).ToArray(), await Ids());
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().DeleteDraft(
+            new WebsitePlatformController.DraftRequest(ticket, 9, first[1])));
+        fixture.Db.ChangeTracker.Clear();
+        Assert.Equal(first.Skip(2).ToArray(), await Ids());
+        Assert.Equal(workingDraft, (await fixture.Db.Set<WebsiteContentState>().SingleAsync()).DraftJson);
+        Assert.Equal(publishedId, (await fixture.Db.Set<WebsiteContentState>().SingleAsync()).PublishedVersionId);
+    }
+
+    [Fact]
+    public async Task NamedDraftPreservation_RejectsCapacityMalformedSnapshotsAndForeignMediaWithoutEvictingWork()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var document = await SeedCanonicalDraftAsync(fixture, ticket, CanonicalDocument(), revision: 8);
+        var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        var request = new WebsitePlatformController.PreserveNamedDraftRequest(
+            ticket, state.Id, 8, Guid.NewGuid(), "Preserved copy", state.DraftJson);
+        Assert.IsType<BadRequestObjectResult>(await fixture.CreateController().PreserveNamedDraft(
+            request with { DocumentJson = "{\"version\":3,\"pages\":[]}" }));
+        document.FaviconImageDataUrl = "https://site.example/api/website-content/media/" + Guid.NewGuid();
+        Assert.IsType<BadRequestObjectResult>(await fixture.CreateController().PreserveNamedDraft(
+            request with { DocumentJson = JsonSerializer.Serialize(document, JsonOptions) }));
+        state.NamedDraftsJson = JsonSerializer.Serialize(Enumerable.Range(1, 21).Select(index => new WebsiteNamedDraft
+        {
+            Name = "Saved " + index, DocumentJson = state.DraftJson
+        }), JsonOptions);
+        await fixture.Db.SaveChangesAsync();
+        var original = state.NamedDraftsJson;
+        Assert.IsType<BadRequestObjectResult>(await fixture.CreateController().PreserveNamedDraft(request));
+        var existingId = JsonDocument.Parse(original).RootElement[0].GetProperty("id").GetGuid();
+        Assert.Equal(original, state.NamedDraftsJson);
+        Assert.Equal(8, state.Revision);
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(ticket, 8, [], existingId, "Saved 1")));
+        Assert.Equal(21, JsonDocument.Parse(state.NamedDraftsJson).RootElement.GetArrayLength());
+        Assert.Equal(9, state.Revision);
+    }
+
+    [Fact]
+    public async Task PublicationUsage_ReportsActualRetainedPayloadsBeforeAndAfterCanonicalRetirement()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        await SeedCanonicalDraftAsync(fixture, ticket, CanonicalDocument(), revision: 65);
+        var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        var versions = Enumerable.Range(1, 65).Select(index => new WebsiteContentVersion
+        {
+            StateId = state.Id, Revision = index, DocumentJson = state.DraftJson
+        }).ToArray();
+        state.PublishedVersionId = versions[^1].Id;
+        var other = new WebsiteContentState { OwnerKey = "other-owner", SiteKey = WebsiteEditorSiteKeys.Protect };
+        var foreign = new WebsiteContentVersion { StateId = other.Id, DocumentJson = "retained other website" };
+        fixture.Db.AddRange(versions); fixture.Db.AddRange(other, foreign);
+        await fixture.Db.SaveChangesAsync();
+        async Task<JsonElement> Usage()
+        {
+            var payload = JsonSerializer.SerializeToElement(Assert.IsType<OkObjectResult>(
+                await fixture.CreateController().Manage(ticket)).Value, JsonOptions);
+            Assert.Equal(50, payload.GetProperty("history").GetArrayLength());
+            return payload.GetProperty("usage");
+        }
+        var before = await Usage();
+        Assert.Equal(65, before.GetProperty("publishedVersions").GetInt32());
+        Assert.Equal(15, before.GetProperty("publishedVersionOverflow").GetInt32());
+        Assert.Equal(65, before.GetProperty("publicationIdentityCount").GetInt32());
+        Assert.Equal(15, await WebsiteSnapshotRetention.StageAsync(fixture.Db, state));
+        await fixture.Db.SaveChangesAsync();
+        var after = await Usage();
+        Assert.Equal(50, after.GetProperty("publishedVersions").GetInt32());
+        Assert.Equal(0, after.GetProperty("publishedVersionOverflow").GetInt32());
+        Assert.Equal(65, after.GetProperty("publicationIdentityCount").GetInt32());
+        Assert.Equal(15, after.GetProperty("retiredPublishedVersions").GetInt32());
+        Assert.Equal("retained other website", foreign.DocumentJson);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \t\r\n")]
+    public async Task NamedDraftPreservation_EmptyLegacyListsAllowFirstSaveWithoutDroppingWork(string? legacyList)
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        await SeedCanonicalDraftAsync(fixture, ticket, CanonicalDocument(), revision: 8);
+        var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        // Inject the historical representation into the tracked owner. Each successful
+        // write replaces it with a complete valid list before EF validates persistence.
+        state.NamedDraftsJson = legacyList!;
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(ticket, 8, [], null, "First draft")));
+        Assert.NotEqual(Guid.Empty, JsonDocument.Parse(state.NamedDraftsJson).RootElement[0].GetProperty("id").GetGuid());
+        Assert.Equal(1, JsonDocument.Parse(state.NamedDraftsJson).RootElement.GetArrayLength());
+
+        state.NamedDraftsJson = legacyList!;
+        var activeJson = state.DraftJson;
+        var preservedId = Guid.NewGuid();
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().PreserveNamedDraft(
+            new(ticket, state.Id, state.Revision, preservedId, "First private copy", activeJson)));
+        Assert.Equal(activeJson, state.DraftJson);
+        Assert.Equal(preservedId, JsonDocument.Parse(state.NamedDraftsJson).RootElement[0].GetProperty("id").GetGuid());
+        Assert.Equal(1, JsonDocument.Parse(state.NamedDraftsJson).RootElement.GetArrayLength());
+    }
+
+    [Theory]
+    [InlineData("{broken")]
+    [InlineData("{\"unexpected\":[]}")]
+    public async Task NamedDraftPreservation_InvalidNonemptyListsStayUnchanged(string legacyList)
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        await SeedCanonicalDraftAsync(fixture, ticket, CanonicalDocument(), revision: 8);
+        var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        state.NamedDraftsJson = legacyList;
+        var activeJson = state.DraftJson;
+        Assert.IsType<ConflictObjectResult>(await fixture.CreateController().ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(ticket, 8, [], Guid.NewGuid(), "New draft")));
+        Assert.IsType<BadRequestObjectResult>(await fixture.CreateController().PreserveNamedDraft(
+            new(ticket, state.Id, 8, Guid.NewGuid(), "Private copy", activeJson)));
+        Assert.Equal(legacyList, state.NamedDraftsJson);
+        Assert.Equal(activeJson, state.DraftJson);
+        Assert.Equal(8, state.Revision);
+    }
+
+    [Fact]
+    public async Task NamedDraftPreservation_MissingScopeNeverInitializesWebsiteState()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var scopeId = Guid.NewGuid();
+        var draftId = Guid.NewGuid();
+        Assert.IsType<NotFoundResult>(await fixture.CreateController().PreserveNamedDraft(
+            new(ticket, scopeId, 0, draftId, "Local copy", JsonSerializer.Serialize(CanonicalDocument(), JsonOptions))));
+        Assert.IsType<NotFoundResult>(await fixture.CreateController().NamedDraftPreservation(ticket, scopeId, draftId));
+        Assert.Empty(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        Assert.Empty(await fixture.Db.Set<WebsiteContentVersion>().ToListAsync());
+    }
+
+    [Fact]
+    public async Task LocalDraftPreservation_RealCmsNormalizerReadbackLoadsThroughExistingGovernedAuthority()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var local = await SeedCanonicalDraftAsync(fixture, ticket, CanonicalDocument("Remote saved heading"), revision: 8);
+        Node(local).Text = "Unsaved browser heading";
+        Node(local).Style.WidthPercent = 72.5m;
+        var active = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        var activeJson = active.DraftJson;
+        var publication = new WebsiteContentVersion { StateId = active.Id, Revision = 7, DocumentJson = activeJson };
+        fixture.Db.Add(publication); active.PublishedVersionId = publication.Id;
+        await fixture.Db.SaveChangesAsync();
+        var browserJson = await NormalizeWithShippedCmsAsync(JsonSerializer.Serialize(local, JsonOptions));
+        Assert.Equal("Unsaved browser heading", Node(JsonSerializer.Deserialize<WebsiteContentDocument>(browserJson, JsonOptions)!).Text);
+        var request = new WebsitePlatformController.PreserveNamedDraftRequest(
+            ticket, active.Id, 8, Guid.NewGuid(), "Browser recovery copy", browserJson);
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().PreserveNamedDraft(request));
+        fixture.Db.ChangeTracker.Clear();
+        var readback = JsonSerializer.SerializeToElement(Assert.IsType<OkObjectResult>(
+            await fixture.CreateController().NamedDraftPreservation(ticket, request.PublicationScopeId, request.DraftId)).Value, JsonOptions);
+        Assert.Equal(browserJson, readback.GetProperty("draft").GetProperty("documentJson").GetString());
+        var saved = await fixture.Db.Set<WebsiteContentState>().AsNoTracking().SingleAsync();
+        Assert.Equal(activeJson, saved.DraftJson);
+        Assert.Equal(publication.Id, saved.PublishedVersionId);
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().LoadDraft(new(ticket, saved.Revision, request.DraftId)));
+        fixture.Db.ChangeTracker.Clear();
+        var loaded = ReadDocument(await fixture.CreateController().Manage(ticket));
+        Assert.Equal("Unsaved browser heading", Node(loaded).Text);
+        Assert.Equal(72.5m, Node(loaded).Style.WidthPercent);
+        Assert.Equal(publication.Id, (await fixture.Db.Set<WebsiteContentState>().SingleAsync()).PublishedVersionId);
+    }
+
+    private static async Task<string> NormalizeWithShippedCmsAsync(
+        string documentJson, [CallerFilePath] string sourcePath = "")
+    {
+        var repositoryRoot = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(sourcePath)!, ".."));
+        using var process = new System.Diagnostics.Process
+        {
+            StartInfo = new System.Diagnostics.ProcessStartInfo("node")
+            {
+                WorkingDirectory = repositoryRoot,
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                ArgumentList = { Path.Combine(repositoryRoot, "tests", "website", "fixtures", "cms-normalized-draft.mjs") }
+            }
+        };
+        Assert.True(process.Start());
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEndAsync();
+        await process.StandardInput.WriteAsync(documentJson);
+        process.StandardInput.Close();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        try { await process.WaitForExitAsync(timeout.Token); }
+        catch (OperationCanceledException) { process.Kill(entireProcessTree: true); throw; }
+        Assert.True(process.ExitCode == 0, await error);
+        return await output;
     }
 
     private static async Task<WebsiteContentDocument> SeedCanonicalDraftAsync(
