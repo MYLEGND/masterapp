@@ -1673,9 +1673,10 @@ public sealed class WebsiteContentEditorRoundTripTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task DuplicateDraftRecovery_RefusesNativeStructuralCollisionsWithoutWriting(bool duplicateAncestor)
+    [InlineData("wrappers")]
+    [InlineData("ancestor")]
+    [InlineData("free-heading")]
+    public async Task DuplicateDraftRecovery_RefusesNativeStructuralCollisionsWithoutWriting(string collision)
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Protect);
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
@@ -1690,9 +1691,13 @@ public sealed class WebsiteContentEditorRoundTripTests
             ]
         };
         var document = CanonicalDocument();
-        document.Pages["/"].Composition = duplicateAncestor
-            ? [new WebsiteCompositionNode { Id = "native.form", Type = "container", Tag = "div", Children = [form] }]
-            : [form];
+        if (collision != "wrappers") form.Children.RemoveAt(1);
+        document.Pages["/"].Composition = collision switch
+        {
+            "ancestor" => [new WebsiteCompositionNode { Id = "native.form", Type = "container", Tag = "div", Children = [form] }],
+            "free-heading" => [new WebsiteCompositionNode { Id = "native.wrapper", Type = "heading", Tag = "h2", Text = "Free heading" }, form],
+            _ => [form]
+        };
         var original = JsonSerializer.Serialize(WebsiteContentSanitizer.Sanitize(document), JsonOptions);
         var publication = Guid.NewGuid();
         var state = new WebsiteContentState

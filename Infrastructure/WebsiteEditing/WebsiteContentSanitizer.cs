@@ -157,8 +157,9 @@ public static class WebsiteContentSanitizer
         foreach (var group in entries.GroupBy(entry => entry.Node.Id, StringComparer.Ordinal).Where(group => group.Count() > 1))
         {
             var protectedEntries = group.Where(entry => entry.IdentitySensitive || Protected(entry.Node)).ToList();
-            if (protectedEntries.Count > 1)
-                throw new ArgumentException("Multiple protected components share an identity; independent recovery review is required.");
+            if (protectedEntries.Count > 1 || protectedEntries.Any(entry => entry.IdentitySensitive &&
+                !(entry.Node.SystemKey?.StartsWith("protect_runtime_form:", StringComparison.Ordinal) ?? false)))
+                throw new ArgumentException("Native structural or multiple protected identity collisions require independent recovery review.");
             var keep = protectedEntries.Count == 1 ? protectedEntries[0] : group.First();
             foreach (var entry in group)
             {
