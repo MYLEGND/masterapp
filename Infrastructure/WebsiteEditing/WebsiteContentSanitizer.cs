@@ -85,6 +85,7 @@ public static class WebsiteContentSanitizer
     private const int MaxImageDataUrlLength = 3500000;
     private const int MaxCompositionNodesPerPage = 1200;
     private const int MaxCompositionDepth = 16;
+    private const int MaxFormPresentationFields = 512;
 
     private static void EnsurePersistedCanonicalIsStable(
         WebsiteContentDocument persisted,
@@ -967,7 +968,7 @@ public static class WebsiteContentSanitizer
         HashSet<string> breakpointKeys)
     {
         var result = new Dictionary<string, WebsiteControlPresentation>(StringComparer.Ordinal);
-        foreach (var pair in (source ?? new Dictionary<string, WebsiteControlPresentation>()).Take(64))
+        foreach (var pair in (source ?? new Dictionary<string, WebsiteControlPresentation>()).Take(MaxFormPresentationFields))
         {
             var key = SanitizeId(pair.Key).ToLowerInvariant();
             if (key.Length == 0 || pair.Value is null) continue;
@@ -979,7 +980,7 @@ public static class WebsiteContentSanitizer
     private static Dictionary<string, string> SanitizeFieldLabels(IDictionary<string, string>? source)
     {
         var result = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var pair in (source ?? new Dictionary<string, string>()).Take(64))
+        foreach (var pair in (source ?? new Dictionary<string, string>()).Take(MaxFormPresentationFields))
         {
             var key = SanitizeId(pair.Key).ToLowerInvariant();
             var value = ClampText(pair.Value);

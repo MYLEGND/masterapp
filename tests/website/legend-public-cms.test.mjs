@@ -5142,6 +5142,8 @@ test('Studio form step navigation reveals protected later steps without entering
     assert.equal(form.getAttribute('action'),'/Quote/Auto');
     assert.deepEqual(f.serverDocument(),original);
     assert.equal(f.calls.slice(before).some(call=>call.method==='POST'),false);
+    f.change('#legend-cms-breakpoint','mobile');
+    assert.equal(f.w.document.querySelector('[data-cms-id="auto.step.second"]').hidden,false);
     f.change('#legend-cms-form-navigator select','-1');
     assert.equal(f.w.document.querySelector('[data-cms-id="auto.step.second"]').hidden,true);
     assert.equal(f.w.document.querySelector('[data-cms-id="auto.step.first"]').hidden,false);

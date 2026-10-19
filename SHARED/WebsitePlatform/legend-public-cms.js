@@ -3951,6 +3951,7 @@
   }
 
   function refreshResponsiveComposition() {
+    restoreFormStepPreview();
     if(legacyMigration){
       const page=legacyMigrationPageState();
       for(const [id,model] of Object.entries(legacyMigration.elements || {}))
@@ -3972,6 +3973,7 @@
       refreshReusableInstances();
     }
     refreshScaledElements();
+    if (editorMode && document.getElementById('legend-cms-form-navigator')) previewFormStep(formPreviewIndex);
     updateDirectCanvasUi();
   }
 
@@ -5608,7 +5610,7 @@
     const layoutJustify = document.getElementById('legend-cms-layout-justify'); if (layoutJustify) layoutJustify.value = editLayout?.justifyContent || '';
     const layoutWrap = document.getElementById('legend-cms-layout-wrap'); if (layoutWrap) layoutWrap.value = editLayout?.wrap || '';
     if (hidden) {
-      hidden.checked = ov.hidden === true || selected.hidden;
+      hidden.checked = ov.hidden === true || (formPreviewVisibility.get(selected)?.hidden ?? selected.hidden);
       hidden.disabled = !!selected.dataset.cmsSignalOnly || !!ov.systemKey || !!ov.systemBinding || protectedMappings || canonicalForm;
     }
     if (targetInput) targetInput.disabled = !!ov.actionKey;
