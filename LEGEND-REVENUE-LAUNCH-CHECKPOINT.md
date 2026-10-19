@@ -1500,3 +1500,14 @@ Independent technical review covers this bounded manual recovery implementation 
 PR #640 release run `39165185386`, attempt 3, completed successfully on 2026-10-19 at exact source `b256135b84a63f97eb51d4facc53577e03087ecb`. ClientApp and Parfait reconciled their original operations and passed the canonical exact-runtime checks; AgentPortal and Protect evidence was reused. No original package was rebuilt or uploaded again. See the [PR #640 continuation receipt](https://github.com/MYLEGND/masterapp/pull/640#issuecomment-6258131202). These checks do not establish Website Studio functional acceptance.
 
 Next implementation boundary: pass the existing native source preflight after reviewed preservation, then complete shared Studio existing-draft saving and request-bound publication recovery, verify newest-50 publication payload retention, and extend this same continuity owner with tested automatic preservation and interruption recovery. Preserve current drafts and newer edits. All new source still requires independent non-implementer acceptance, exact-head `architecture-validation`, `approved-release-security`, `build-and-focused-tests`, protected merge, and the sole canonical release path. No added spending or hosting upgrade is authorized.
+
+
+## 2026-10-19 — Studio saving, publication recovery and draft deletion
+
+Continued Founder-authorized repair in the same permanent Codespace and existing isolation/pr630-probe-timing-20261016 branch at bfd28406877c651a9b9cac438a31f2bd97de76cc. Prior uncommitted source cloud archive d2b366845f0377052c935a3b9d96d89579f32617445f7cc5165382dab36268ed was restored and verified. Native preflight reports local-ahead/uncommitted; it was not labeled PASS.
+
+Implemented stable legacy draft IDs, safe existing-draft saving, durable local-edit preservation, original-request publication recovery, actual retained publication counts, independent maintenance cleanup, and deletion of valid oversized legacy draft lists without losing surviving drafts. Creation limit remains 20. Malformed unreadable lists remain protected. Added delete/readback regressions across Legend, Protect and business scopes; normalizer fixture included.
+
+Fresh native CMS/management suite: 284/284 PASS. Native server compiler exited 143 before tests; no server PASS claimed. Independent non-implementer source review approved submission to required CI for native diff SHA256 78d8ccc8a8ad24d3471da9702d8f444d7469ed7b09fb2ebf1b0b84e1eb4c428d and fixture SHA256 2a7cdcb7d6c4114216af1715b63cf97b8da4f432776ff8c23abec00ac678cae2.
+
+Pending: required current-head architecture-validation, approved-release-security, build-and-focused-tests; protected merge and canonical selective release; live save/publish/delete readback and newest-50 payload count verification. Prior PR640 successful uploads remain preserved. Continuity automation extension remains unfinished; no automatic-continuation claim. No production change in this checkpoint.
