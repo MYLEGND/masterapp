@@ -9254,7 +9254,20 @@
           url.searchParams.set('ticket', editorTicket);
           const response = await fetch(url, { cache: 'no-store' });
           const payload = await response.json();
-          if (!response.ok) throw new Error(payload.message || 'This website requires an independent recovery review. All content was preserved.');
+          if (!response.ok) {
+            if (payload.error === 'website_draft_recovery_requires_review' && payload.reasonCode) {
+              const details = document.createElement('details');
+              const summary = document.createElement('summary');
+              summary.textContent = 'Recovery review details';
+              const evidence = document.createElement('pre');
+              evidence.textContent = JSON.stringify({ reason: payload.reasonCode, revision: payload.revision,
+                sourceFingerprint: payload.sourceFingerprint, collisionCount: payload.collisionCount,
+                collisions: payload.collisions, truncated: payload.truncated }, null, 2);
+              details.append(summary, evidence);
+              panel.append(details);
+            }
+            throw new Error(payload.message || 'This website requires an independent recovery review. All content was preserved.');
+          }
           plan = payload;
           status.textContent = 'Recovery will separate ' + plan.changes.length + ' duplicated content identities. Protected fields and events stay unchanged. A saved copy of the original draft will be retained; your published website will not change.';
           button.textContent = 'Recover saved website';

@@ -106,6 +106,18 @@ public static class WebsiteContentSanitizer
         string SourceFingerprint, string RepairedFingerprint, string DocumentJson,
         IReadOnlyList<DuplicateIdentityChange> Changes);
 
+    public sealed record RecoveryCollisionNode(string Path, string Type, string Sensitivity);
+    public sealed record RecoveryCollision(string IdentityFingerprint, int NodeCount,
+        IReadOnlyList<RecoveryCollisionNode> Nodes);
+    public sealed class RecoveryReviewException(string reasonCode, int collisionCount,
+        IReadOnlyList<RecoveryCollision> collisions) : ArgumentException("Saved draft requires independent review.")
+    {
+        public string ReasonCode { get; } = reasonCode;
+        public int CollisionCount { get; } = collisionCount;
+        public IReadOnlyList<RecoveryCollision> Collisions { get; } = collisions;
+        public bool Truncated => CollisionCount > Collisions.Count || Collisions.Any(x => x.NodeCount > x.Nodes.Count);
+    }
+
     // Explicit recovery planning only. Ordinary reads remain fail-closed. The
     // caller must preserve the original bytes and compare revision/fingerprints
     // before applying this plan. Protected identities are never renamed.
@@ -121,29 +133,32 @@ public static class WebsiteContentSanitizer
             document.Version != WebsiteStudioContract.CurrentDocumentVersion ||
             document.Shell is null || document.Pages is null || document.ReusableComponents is null)
             throw new ArgumentException("Only canonical v3 identity collisions can be recovered.");
-        var entries = new List<(string Path, WebsiteCompositionNode Node, bool IdentitySensitive)>();
+        var entries = new List<(string Path, string DiagnosticPath, WebsiteCompositionNode Node, bool IdentitySensitive)>();
         static bool ContainsRuntimeForm(WebsiteCompositionNode node) =>
             (node.SystemKey?.StartsWith("protect_runtime_form:", StringComparison.Ordinal) ?? false) ||
             (node.Children ?? []).Any(ContainsRuntimeForm);
-        void Visit(IEnumerable<WebsiteCompositionNode> nodes, string path, bool identitySensitive = false)
+        void Visit(IEnumerable<WebsiteCompositionNode> nodes, string path, string diagnosticPath, bool identitySensitive = false)
         {
             var index = 0;
             foreach (var node in nodes ?? [])
             {
                 if (node is null || string.IsNullOrWhiteSpace(node.Id))
                     throw new ArgumentException("Invalid content identity requires independent review.");
-                var location = path + "/" + index++;
+                var location = path + "/" + index;
+                var diagnosticLocation = diagnosticPath + "/" + index++;
                 var sensitive = identitySensitive || ContainsRuntimeForm(node);
-                entries.Add((location, node, sensitive));
-                Visit(node.Children, location + "/children", sensitive);
+                entries.Add((location, diagnosticLocation, node, sensitive));
+                Visit(node.Children, location + "/children", diagnosticLocation + "/children", sensitive);
             }
         }
-        Visit(document.Shell.Header, "shell/header");
-        Visit(document.Shell.Footer, "shell/footer");
+        Visit(document.Shell.Header, "shell/header", "shell/header");
+        Visit(document.Shell.Footer, "shell/footer", "shell/footer");
+        var pageIndex = 0;
         foreach (var page in document.Pages.OrderBy(pair => pair.Key, StringComparer.Ordinal))
-            Visit(page.Value.Composition, "pages/" + page.Key);
+            Visit(page.Value.Composition, "pages/" + page.Key, "pages/" + pageIndex++);
+        var componentIndex = 0;
         foreach (var component in document.ReusableComponents.OrderBy(pair => pair.Key, StringComparer.Ordinal))
-            Visit(component.Value.Composition, "components/" + component.Key);
+            Visit(component.Value.Composition, "components/" + component.Key, "components/" + componentIndex++);
 
         static bool Protected(WebsiteCompositionNode node) =>
             WebsiteSiteSource.HasProtectedSemantics(node) ||
@@ -152,14 +167,29 @@ public static class WebsiteContentSanitizer
         static string Fingerprint(string value) => Convert.ToHexString(
             System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
-        var used = entries.Select(entry => entry.Node.Id).ToHashSet(StringComparer.Ordinal);
-        var changes = new List<DuplicateIdentityChange>();
-        foreach (var group in entries.GroupBy(entry => entry.Node.Id, StringComparer.Ordinal).Where(group => group.Count() > 1))
+        var collisions = entries.GroupBy(entry => entry.Node.Id, StringComparer.Ordinal)
+            .Where(group => group.Count() > 1).ToList();
+        // Diagnostics contain only ordinal paths, hashed identities and fixed
+        // classifications. Authored IDs, page URLs and customer content stay private.
+        var evidence = collisions.Take(20).Select(group => new RecoveryCollision(
+            Fingerprint(group.Key), group.Count(), group.Take(10).Select(entry => new RecoveryCollisionNode(
+                entry.DiagnosticPath,
+                entry.Node.Type is "container" or "heading" or "text" or "form" or "input" or "button" ? entry.Node.Type : "other",
+                entry.IdentitySensitive ? "native-structure" : Protected(entry.Node) ? "protected" : "presentation"
+            )).ToArray())).ToArray();
+        foreach (var group in collisions)
         {
             var protectedEntries = group.Where(entry => entry.IdentitySensitive || Protected(entry.Node)).ToList();
             if (protectedEntries.Count > 1 || protectedEntries.Any(entry => entry.IdentitySensitive &&
                 !(entry.Node.SystemKey?.StartsWith("protect_runtime_form:", StringComparison.Ordinal) ?? false)))
-                throw new ArgumentException("Native structural or multiple protected identity collisions require independent recovery review.");
+                throw new RecoveryReviewException("protected_identity_ambiguity", collisions.Count, evidence);
+        }
+
+        var used = entries.Select(entry => entry.Node.Id).ToHashSet(StringComparer.Ordinal);
+        var changes = new List<DuplicateIdentityChange>();
+        foreach (var group in collisions)
+        {
+            var protectedEntries = group.Where(entry => entry.IdentitySensitive || Protected(entry.Node)).ToList();
             var keep = protectedEntries.Count == 1 ? protectedEntries[0] : group.First();
             foreach (var entry in group)
             {
@@ -179,7 +209,11 @@ public static class WebsiteContentSanitizer
         var repaired = System.Text.Json.JsonSerializer.Serialize(document, options);
         // Reject any unrelated corruption or normalization rather than folding
         // an unreviewed content change into identity recovery.
-        _ = ReadPersisted(repaired, options);
+        try { _ = ReadPersisted(repaired, options); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Text.Json.JsonException)
+        {
+            throw new RecoveryReviewException("noncanonical_document", collisions.Count, evidence);
+        }
         return new(Fingerprint(json), Fingerprint(repaired), repaired, changes);
     }
 
