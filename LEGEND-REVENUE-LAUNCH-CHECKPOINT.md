@@ -1,3 +1,17 @@
+## Website Analytics cleanup — 2026-10-19 UTC / October 18 Phoenix
+
+- Founder confirms scoped draft deletion now works. Stop deletion diagnosis; current task is Website Analytics only. Prior Studio PR #641 merged at 49d637311d8312ad2bc806f780c4580ffef33c2b; Fast Track run 39198347961 attempt 3 succeeded. Preserve Studio image/content work owned by the next project.
+- Native workspace: /workspaces/masterapp in bookish-fiesta-97pj77j5vpwj3pjv6. Authorized branch: isolation/pr630-probe-timing-20261016. Release target: Legend/fast-track-release. No second writer, checkout, force push, or gate bypass.
+- Analytics implementation: ace3a279cba42f3223d0c5ae81c7a863f7ddd9b0 plus test assertion quoting correction f9ac10acb4a3df146a3db00b32a8b5ff787681b7.
+- Canonical CSS owners compact modal spacing, buttons, fields and readiness tiles. Marketing Setup status, retry, Save and Close share the fixed header; Save submits the existing form via its form attribute. Removed floating save-row owner rather than appending overrides.
+- Connected Google/TikTok accounts retain Change account. The picker preselects the current account. Selection invalidates cached reporting and rejects stale in-flight results using the existing request/scope generations.
+- Paid Media is a provider-independent shortcut and shared campaign table for Meta, ChatGPT, Google and TikTok, with explicit account IDs and provider availability. LinkedIn is visibly coming later. No new duplicate report endpoint/read. Provider conversions remain distinct from canonical website leads; absent currency is explicitly disclosed and spend is not summed across accounts.
+- Validation: native browser-runtime/analytics tests 70/70; focused .NET analytics/centralization/isolation/availability/scope tests 49/49 (GITHUB_WORKSPACE=/workspaces/masterapp). Fresh runtime projects compiled. git diff --check passed. Independent runtime review accepted; final checkpoint acceptance recorded in session.
+- Browser preview uses actual native markup/CSS and modal shell attributes: desktop header stays fixed on body scroll; header Save submits; at 320px Save and Close remain visible without overlap. This is preview evidence, not production verification.
+- Release state at checkpoint: local implementation validated; push, new PR, protected merge, selective deployment and live production readback still pending. Do not describe this analytics change as deployed until those receipts exist.
+- Carryforward provider limitation: prior Google Ads account list included 4457920203, 7834167299 and 9851075058. OAuth was stored, but reporting returned 403 with Google Ads API test access; production access approval and External Testing authorization lifetime remain separate operational work. UI switching does not establish provider reporting access. TikTok onboarding is paused. Existing seven-day analytics latency is outside this targeted cleanup.
+- Next project handoff: first read this section and the final PR/workflow receipts, verify the exact deployed SHA, then work only in the authorized native checkout. Do not reopen Studio draft deletion or alter customer website content to validate analytics.
+
 # LEGEND revenue-launch checkpoint
 
 ## Active Website Studio repair — 2026-10-18
