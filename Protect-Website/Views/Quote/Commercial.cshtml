@@ -137,7 +137,7 @@
 
                 <div class="row g-4">
                     <div class="col-md-4">
-                        <label class="fw-bold">Risk State<span class="required-star">*</span></label>
+                        <label asp-for="State" class="fw-bold">Risk State<span class="required-star">*</span></label>
                         <select asp-for="State" class="form-select">
                             <option value="">Select Risk State</option>
                             @foreach (var state in states)
@@ -161,7 +161,7 @@
             <div class="section-card">
                 <div class="section-title">Business Operations</div>
 
-                <label class="fw-bold">
+                <label asp-for="BusinessDescription" class="fw-bold">
                     Please describe your business operations<span class="required-star">*</span>
                 </label>
                 <small class="text-muted d-block mb-3">
@@ -176,19 +176,19 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Business Name<span class="required-star">*</span></label>
+                        <label asp-for="BusinessName" class="fw-bold">Business Name<span class="required-star">*</span></label>
                         <input asp-for="BusinessName" class="form-control" placeholder="Legal business name" />
                         <span asp-validation-for="BusinessName" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Years in Business</label>
+                        <label asp-for="YearsInBusiness" class="fw-bold">Years in Business</label>
                         <input asp-for="YearsInBusiness" class="form-control" placeholder="Optional" />
                         <span asp-validation-for="YearsInBusiness" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Years of Experience</label>
+                        <label asp-for="YearsOfExperience" class="fw-bold">Years of Experience</label>
                         <input asp-for="YearsOfExperience" class="form-control" placeholder="Optional" />
                         <span asp-validation-for="YearsOfExperience" class="text-danger"></span>
                     </div>
@@ -196,19 +196,19 @@
 
                 <div class="row g-4 mt-2">
                     <div class="col-md-4">
-                        <label class="fw-bold">Gross Sales<span class="required-star">*</span></label>
+                        <label asp-for="GrossSales" class="fw-bold">Gross Sales<span class="required-star">*</span></label>
                         <input asp-for="GrossSales" class="form-control" placeholder="Annual gross sales" inputmode="decimal" />
                         <span asp-validation-for="GrossSales" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Total Payroll<span class="required-star">*</span></label>
+                        <label asp-for="TotalPayroll" class="fw-bold">Total Payroll<span class="required-star">*</span></label>
                         <input asp-for="TotalPayroll" class="form-control" placeholder="Annual payroll" inputmode="decimal" />
                         <span asp-validation-for="TotalPayroll" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold"># of Employees<span class="required-star">*</span></label>
+                        <label asp-for="NumberOfEmployees" class="fw-bold"># of Employees<span class="required-star">*</span></label>
                         <input asp-for="NumberOfEmployees" class="form-control" placeholder="Total employees" />
                         <span asp-validation-for="NumberOfEmployees" class="text-danger"></span>
                     </div>
@@ -228,19 +228,19 @@
 
                 <div class="row g-4">
                     <div class="col-md-4">
-                        <label class="fw-bold">First Name<span class="required-star">*</span></label>
+                        <label asp-for="InsuredFirstName" class="fw-bold">First Name<span class="required-star">*</span></label>
                         <input asp-for="InsuredFirstName" class="form-control" />
                         <span asp-validation-for="InsuredFirstName" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Last Name<span class="required-star">*</span></label>
+                        <label asp-for="InsuredLastName" class="fw-bold">Last Name<span class="required-star">*</span></label>
                         <input asp-for="InsuredLastName" class="form-control" />
                         <span asp-validation-for="InsuredLastName" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Business Phone<span class="required-star">*</span></label>
+                        <label asp-for="BusinessPhone" class="fw-bold">Business Phone<span class="required-star">*</span></label>
                         <input asp-for="BusinessPhone" class="form-control" />
                         <span asp-validation-for="BusinessPhone" class="text-danger"></span>
                     </div>
@@ -248,13 +248,13 @@
 
                 <div class="row g-4 mt-2">
                     <div class="col-md-4">
-                        <label class="fw-bold">Business Email<span class="required-star">*</span></label>
+                        <label asp-for="BusinessEmail" class="fw-bold">Business Email<span class="required-star">*</span></label>
                         <input asp-for="BusinessEmail" class="form-control" />
                         <span asp-validation-for="BusinessEmail" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-8">
-                        <label class="fw-bold">Website or Facebook URL</label>
+                        <label asp-for="BusinessWebsiteOrFacebook" class="fw-bold">Website or Facebook URL</label>
                         <input asp-for="BusinessWebsiteOrFacebook" class="form-control" placeholder="Optional" />
                         <span asp-validation-for="BusinessWebsiteOrFacebook" class="text-danger"></span>
                     </div>
@@ -274,19 +274,19 @@
 
                 <div class="row g-4">
                     <div class="col-md-4">
-                        <label class="fw-bold">Street Address<span class="required-star">*</span></label>
+                        <label asp-for="StreetAddress" class="fw-bold">Street Address<span class="required-star">*</span></label>
                         <input asp-for="StreetAddress" class="form-control" />
                         <span asp-validation-for="StreetAddress" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Address Line 2</label>
+                        <label asp-for="AddressLine2" class="fw-bold">Address Line 2</label>
                         <input asp-for="AddressLine2" class="form-control" placeholder="Optional" />
                         <span asp-validation-for="AddressLine2" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">City<span class="required-star">*</span></label>
+                        <label asp-for="City" class="fw-bold">City<span class="required-star">*</span></label>
                         <input asp-for="City" class="form-control" />
                         <span asp-validation-for="City" class="text-danger"></span>
                     </div>
@@ -294,7 +294,7 @@
 
                 <div class="row g-4 mt-2">
                     <div class="col-md-4">
-                        <label class="fw-bold">ZIP Code<span class="required-star">*</span></label>
+                        <label asp-for="ZipCode" class="fw-bold">ZIP Code<span class="required-star">*</span></label>
                         <input asp-for="ZipCode" class="form-control" />
                         <span asp-validation-for="ZipCode" class="text-danger"></span>
                     </div>
@@ -314,7 +314,7 @@
 
                 <div class="row g-4">
                     <div class="col-md-4">
-                        <label class="fw-bold">Effective Date<span class="required-star">*</span></label>
+                        <label asp-for="EffectiveDate" class="fw-bold">Effective Date<span class="required-star">*</span></label>
                         <input asp-for="EffectiveDate" type="date" class="form-control" />
                         <span asp-validation-for="EffectiveDate" class="text-danger"></span>
                     </div>
@@ -362,7 +362,7 @@
 
                 <div class="row g-4">
                     <div class="col-md-4">
-                        <label class="fw-bold">Contact Method<span class="required-star">*</span></label>
+                        <label asp-for="PreferredContactMethod" class="fw-bold">Contact Method<span class="required-star">*</span></label>
                         <select asp-for="PreferredContactMethod" class="form-select">
                             <option value="">Select</option>
                             @foreach (var method in contactMethodOptions)
@@ -374,7 +374,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Best Time<span class="required-star">*</span></label>
+                        <label asp-for="BestTimeToContact" class="fw-bold">Best Time<span class="required-star">*</span></label>
                         <select asp-for="BestTimeToContact" class="form-select">
                             <option value="">Select</option>
                             @foreach (var time in bestTimeOptions)
@@ -400,7 +400,7 @@
 
                 <div class="row g-4">
                     <div class="col-md-4">
-                        <label class="fw-bold">Entity Type</label>
+                        <label asp-for="EntityType" class="fw-bold">Entity Type</label>
                         <select asp-for="EntityType" class="form-select">
                             <option value="">Select Entity Type</option>
                             <option value="Limited Liability Company">Limited Liability Company</option>
@@ -415,13 +415,13 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Federal Tax ID</label>
+                        <label asp-for="FederalTaxId" class="fw-bold">Federal Tax ID</label>
                         <input asp-for="FederalTaxId" class="form-control" placeholder="EIN" />
                         <span asp-validation-for="FederalTaxId" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Has Active Property Liability Policy</label>
+                        <label asp-for="HasActivePropertyLiabilityPolicy" class="fw-bold">Has Active Property Liability Policy</label>
                         <select asp-for="HasActivePropertyLiabilityPolicy" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -433,19 +433,19 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Prior Coverage End Date</label>
+                        <label asp-for="PriorCoverageEndDate" class="fw-bold">Prior Coverage End Date</label>
                         <input asp-for="PriorCoverageEndDate" type="date" class="form-control" />
                         <span asp-validation-for="PriorCoverageEndDate" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Officers / Members / Partners</label>
+                        <label asp-for="OfficersMembersPartners" class="fw-bold">Officers / Members / Partners</label>
                         <input asp-for="OfficersMembersPartners" class="form-control" placeholder="Names / Titles" />
                         <span asp-validation-for="OfficersMembersPartners" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Current Renewal Date</label>
+                        <label asp-for="CurrentRenewalDate" class="fw-bold">Current Renewal Date</label>
                         <input asp-for="CurrentRenewalDate" type="date" class="form-control" />
                         <span asp-validation-for="CurrentRenewalDate" class="text-danger"></span>
                     </div>
@@ -453,7 +453,7 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Owns Other Businesses</label>
+                        <label asp-for="OwnsOtherBusinesses" class="fw-bold">Owns Other Businesses</label>
                         <select asp-for="OwnsOtherBusinesses" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -463,13 +463,13 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Other Business Types</label>
+                        <label asp-for="OtherBusinessTypes" class="fw-bold">Other Business Types</label>
                         <input asp-for="OtherBusinessTypes" class="form-control" placeholder="Describe other businesses" />
                         <span asp-validation-for="OtherBusinessTypes" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Has High Public Profile</label>
+                        <label asp-for="HasHighPublicProfile" class="fw-bold">Has High Public Profile</label>
                         <select asp-for="HasHighPublicProfile" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -481,7 +481,7 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Is Social Media Influencer</label>
+                        <label asp-for="IsSocialMediaInfluencer" class="fw-bold">Is Social Media Influencer</label>
                         <select asp-for="IsSocialMediaInfluencer" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -505,7 +505,7 @@
 
                 <div class="row g-4">
                     <div class="col-md-4">
-                        <label class="fw-bold">Liability Occurrence Limit</label>
+                        <label asp-for="LiabilityOccurrenceLimit" class="fw-bold">Liability Occurrence Limit</label>
                         <select asp-for="LiabilityOccurrenceLimit" class="form-select">
                             <option value="">Select</option>
                             <option value="300000">$300,000</option>
@@ -516,7 +516,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Medical Expense Limit</label>
+                        <label asp-for="MedicalExpenseLimit" class="fw-bold">Medical Expense Limit</label>
                         <select asp-for="MedicalExpenseLimit" class="form-select">
                             <option value="">Select</option>
                             <option value="5000">$5,000</option>
@@ -526,7 +526,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Property Damage Deductible</label>
+                        <label asp-for="PropertyDamageDeductible" class="fw-bold">Property Damage Deductible</label>
                         <select asp-for="PropertyDamageDeductible" class="form-select">
                             <option value="">Select</option>
                             <option value="250">$250</option>
@@ -540,7 +540,7 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Property Damage Deductible Type</label>
+                        <label asp-for="PropertyDamageDeductibleType" class="fw-bold">Property Damage Deductible Type</label>
                         <select asp-for="PropertyDamageDeductibleType" class="form-select">
                             <option value="">Select</option>
                             <option value="Per Claim">Per Claim</option>
@@ -550,7 +550,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Bodily Injury Deductible</label>
+                        <label asp-for="BodilyInjuryDeductible" class="fw-bold">Bodily Injury Deductible</label>
                         <select asp-for="BodilyInjuryDeductible" class="form-select">
                             <option value="">Select</option>
                             <option value="500">$500</option>
@@ -562,7 +562,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Full Time Employees</label>
+                        <label asp-for="FullTimeEmployees" class="fw-bold">Full Time Employees</label>
                         <input asp-for="FullTimeEmployees" type="number" class="form-control" placeholder="Enter # of employees" />
                         <span asp-validation-for="FullTimeEmployees" class="text-danger"></span>
                     </div>
@@ -570,13 +570,13 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Part Time Employees</label>
+                        <label asp-for="PartTimeEmployees" class="fw-bold">Part Time Employees</label>
                         <input asp-for="PartTimeEmployees" type="number" class="form-control" placeholder="Enter # of employees" />
                         <span asp-validation-for="PartTimeEmployees" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Hired / Non-Owned Auto Requested</label>
+                        <label asp-for="HiredNonOwnedAutoRequested" class="fw-bold">Hired / Non-Owned Auto Requested</label>
                         <select asp-for="HiredNonOwnedAutoRequested" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -586,7 +586,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Delivery Percentage</label>
+                        <label asp-for="DeliveryPercentage" class="fw-bold">Delivery Percentage</label>
                         <input asp-for="DeliveryPercentage" type="number" class="form-control" placeholder="Enter %" />
                         <span asp-validation-for="DeliveryPercentage" class="text-danger"></span>
                     </div>
@@ -594,7 +594,7 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Has Driver Monitoring Program</label>
+                        <label asp-for="HasDriverMonitoringProgram" class="fw-bold">Has Driver Monitoring Program</label>
                         <select asp-for="HasDriverMonitoringProgram" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -604,7 +604,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Drivers Have 3+ Years Experience</label>
+                        <label asp-for="DriversHaveThreeYearsExperience" class="fw-bold">Drivers Have 3+ Years Experience</label>
                         <select asp-for="DriversHaveThreeYearsExperience" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -628,7 +628,7 @@
 
                 <div class="row g-4">
                     <div class="col-md-4">
-                        <label class="fw-bold">Damage to Premises Limit</label>
+                        <label asp-for="DamageToPremisesLimit" class="fw-bold">Damage to Premises Limit</label>
                         <select asp-for="DamageToPremisesLimit" class="form-select">
                             <option value="">Select</option>
                             <option value="50000">$50,000</option>
@@ -642,7 +642,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Data Compromise Requested</label>
+                        <label asp-for="DataCompromiseRequested" class="fw-bold">Data Compromise Requested</label>
                         <select asp-for="DataCompromiseRequested" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -652,7 +652,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Data Compromise Limit</label>
+                        <label asp-for="DataCompromiseLimit" class="fw-bold">Data Compromise Limit</label>
                         <select asp-for="DataCompromiseLimit" class="form-select">
                             <option value="">Select</option>
                             <option value="50000">$50,000</option>
@@ -665,7 +665,7 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Had Data Breach Last 12 Months</label>
+                        <label asp-for="HadDataBreachLast12Months" class="fw-bold">Had Data Breach Last 12 Months</label>
                         <select asp-for="HadDataBreachLast12Months" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -675,13 +675,13 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Electronic Data Limit</label>
+                        <label asp-for="ElectronicDataLimit" class="fw-bold">Electronic Data Limit</label>
                         <input asp-for="ElectronicDataLimit" class="form-control" placeholder="Enter amount" />
                         <span asp-validation-for="ElectronicDataLimit" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Employee Dishonesty Limit</label>
+                        <label asp-for="EmployeeDishonestyLimit" class="fw-bold">Employee Dishonesty Limit</label>
                         <select asp-for="EmployeeDishonestyLimit" class="form-select">
                             <option value="">Select</option>
                             <option value="10000">$10,000</option>
@@ -695,7 +695,7 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Forgery / Alteration Limit</label>
+                        <label asp-for="ForgeryAlterationLimit" class="fw-bold">Forgery / Alteration Limit</label>
                         <select asp-for="ForgeryAlterationLimit" class="form-select">
                             <option value="">Select</option>
                             <option value="10000">$10,000</option>
@@ -707,13 +707,13 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Computer Interruption Limit</label>
+                        <label asp-for="ComputerInterruptionLimit" class="fw-bold">Computer Interruption Limit</label>
                         <input asp-for="ComputerInterruptionLimit" class="form-control" placeholder="Enter amount" />
                         <span asp-validation-for="ComputerInterruptionLimit" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Off Premises Personal Property Limit</label>
+                        <label asp-for="OffPremisesPersonalPropertyLimit" class="fw-bold">Off Premises Personal Property Limit</label>
                         <select asp-for="OffPremisesPersonalPropertyLimit" class="form-select">
                             <option value="">Select</option>
                             <option value="25000">$25,000</option>
@@ -729,7 +729,7 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Terrorism Coverage Requested</label>
+                        <label asp-for="TerrorismCoverageRequested" class="fw-bold">Terrorism Coverage Requested</label>
                         <select asp-for="TerrorismCoverageRequested" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -739,7 +739,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Misc Professional Liability Requested</label>
+                        <label asp-for="MiscProfessionalLiabilityRequested" class="fw-bold">Misc Professional Liability Requested</label>
                         <select asp-for="MiscProfessionalLiabilityRequested" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -749,7 +749,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Misc Professional Liability Limit</label>
+                        <label asp-for="MiscProfessionalLiabilityLimit" class="fw-bold">Misc Professional Liability Limit</label>
                         <select asp-for="MiscProfessionalLiabilityLimit" class="form-select">
                             <option value="">Select</option>
                             <option value="100000">$100,000</option>
@@ -763,13 +763,13 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Misc Professional Retro Date</label>
+                        <label asp-for="MiscProfessionalRetroDate" class="fw-bold">Misc Professional Retro Date</label>
                         <input asp-for="MiscProfessionalRetroDate" type="date" class="form-control" />
                         <span asp-validation-for="MiscProfessionalRetroDate" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Misc Professional Claims Last 5 Years</label>
+                        <label asp-for="MiscProfessionalClaimsLast5Years" class="fw-bold">Misc Professional Claims Last 5 Years</label>
                         <select asp-for="MiscProfessionalClaimsLast5Years" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -779,7 +779,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Cyber Suite Requested</label>
+                        <label asp-for="CyberSuiteRequested" class="fw-bold">Cyber Suite Requested</label>
                         <select asp-for="CyberSuiteRequested" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -791,7 +791,7 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Cyber Suite Limit</label>
+                        <label asp-for="CyberSuiteLimit" class="fw-bold">Cyber Suite Limit</label>
                         <select asp-for="CyberSuiteLimit" class="form-select">
                             <option value="">Select</option>
                             <option value="50000">$50,000</option>
@@ -816,7 +816,7 @@
 
                 <div class="row g-4">
                     <div class="col-md-4">
-                        <label class="fw-bold">Background Checks Performed</label>
+                        <label asp-for="BackgroundChecksPerformed" class="fw-bold">Background Checks Performed</label>
                         <select asp-for="BackgroundChecksPerformed" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -826,7 +826,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Document Retention Policy</label>
+                        <label asp-for="DocumentRetentionPolicy" class="fw-bold">Document Retention Policy</label>
                         <select asp-for="DocumentRetentionPolicy" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -836,7 +836,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Cyber Security Measures In Place</label>
+                        <label asp-for="CyberSecurityMeasuresInPlace" class="fw-bold">Cyber Security Measures In Place</label>
                         <select asp-for="CyberSecurityMeasuresInPlace" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -848,7 +848,7 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Records Stored Securely</label>
+                        <label asp-for="RecordsStoredSecurely" class="fw-bold">Records Stored Securely</label>
                         <select asp-for="RecordsStoredSecurely" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -858,7 +858,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Blanket Additional Insured Requested</label>
+                        <label asp-for="BlanketAdditionalInsuredRequested" class="fw-bold">Blanket Additional Insured Requested</label>
                         <select asp-for="BlanketAdditionalInsuredRequested" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -868,7 +868,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Waiver of Subrogation Requested</label>
+                        <label asp-for="WaiverOfSubrogationRequested" class="fw-bold">Waiver of Subrogation Requested</label>
                         <select asp-for="WaiverOfSubrogationRequested" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -880,7 +880,7 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Employee Benefits Liability Requested</label>
+                        <label asp-for="EmployeeBenefitsLiabilityRequested" class="fw-bold">Employee Benefits Liability Requested</label>
                         <select asp-for="EmployeeBenefitsLiabilityRequested" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -890,13 +890,13 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Employee Benefits Limit</label>
+                        <label asp-for="EmployeeBenefitsLimit" class="fw-bold">Employee Benefits Limit</label>
                         <input asp-for="EmployeeBenefitsLimit" class="form-control" placeholder="Enter amount" />
                         <span asp-validation-for="EmployeeBenefitsLimit" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Employee Benefits Retro Date</label>
+                        <label asp-for="EmployeeBenefitsRetroDate" class="fw-bold">Employee Benefits Retro Date</label>
                         <input asp-for="EmployeeBenefitsRetroDate" type="date" class="form-control" />
                         <span asp-validation-for="EmployeeBenefitsRetroDate" class="text-danger"></span>
                     </div>
@@ -904,7 +904,7 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">EPLI Requested</label>
+                        <label asp-for="EPLIRequested" class="fw-bold">EPLI Requested</label>
                         <select asp-for="EPLIRequested" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -914,13 +914,13 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">EPLI Limit</label>
+                        <label asp-for="EPLILimit" class="fw-bold">EPLI Limit</label>
                         <input asp-for="EPLILimit" class="form-control" placeholder="Enter amount" />
                         <span asp-validation-for="EPLILimit" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">EPLI Deductible</label>
+                        <label asp-for="EPLIDeductible" class="fw-bold">EPLI Deductible</label>
                         <input asp-for="EPLIDeductible" class="form-control" placeholder="Enter amount" />
                         <span asp-validation-for="EPLIDeductible" class="text-danger"></span>
                     </div>
@@ -928,7 +928,7 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">EPLI Retro Date</label>
+                        <label asp-for="EPLIRetroDate" class="fw-bold">EPLI Retro Date</label>
                         <input asp-for="EPLIRetroDate" type="date" class="form-control" />
                         <span asp-validation-for="EPLIRetroDate" class="text-danger"></span>
                     </div>
@@ -948,7 +948,7 @@
 
                 <div class="row g-4">
                     <div class="col-md-4">
-                        <label class="fw-bold">Policy Cancelled Last 3 Years</label>
+                        <label asp-for="PolicyCancelledLast3Years" class="fw-bold">Policy Cancelled Last 3 Years</label>
                         <select asp-for="PolicyCancelledLast3Years" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -958,7 +958,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Losses Last 4 Years</label>
+                        <label asp-for="LossesLast4Years" class="fw-bold">Losses Last 4 Years</label>
                         <select asp-for="LossesLast4Years" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -968,7 +968,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Loss History Details</label>
+                        <label asp-for="LossHistoryDetails" class="fw-bold">Loss History Details</label>
                         <textarea asp-for="LossHistoryDetails" class="form-control" rows="3" placeholder="Provide details about prior claims or incidents"></textarea>
                         <span asp-validation-for="LossHistoryDetails" class="text-danger"></span>
                     </div>
@@ -976,7 +976,7 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Past Fraud Convictions</label>
+                        <label asp-for="PastFraudConvictions" class="fw-bold">Past Fraud Convictions</label>
                         <select asp-for="PastFraudConvictions" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -986,7 +986,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Past Financial Issues</label>
+                        <label asp-for="PastFinancialIssues" class="fw-bold">Past Financial Issues</label>
                         <select asp-for="PastFinancialIssues" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -996,7 +996,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Past Abuse Claims</label>
+                        <label asp-for="PastAbuseClaims" class="fw-bold">Past Abuse Claims</label>
                         <select asp-for="PastAbuseClaims" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -1020,7 +1020,7 @@
 
                 <div class="row g-4">
                     <div class="col-md-4">
-                        <label class="fw-bold">Building Near Fire Station</label>
+                        <label asp-for="BuildingNearFireStation" class="fw-bold">Building Near Fire Station</label>
                         <select asp-for="BuildingNearFireStation" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -1030,7 +1030,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Building Near Fire Hydrant</label>
+                        <label asp-for="BuildingNearFireHydrant" class="fw-bold">Building Near Fire Hydrant</label>
                         <select asp-for="BuildingNearFireHydrant" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -1040,7 +1040,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Years in Business at Location</label>
+                        <label asp-for="YearsInBusinessAtLocation" class="fw-bold">Years in Business at Location</label>
                         <input asp-for="YearsInBusinessAtLocation" type="number" class="form-control" placeholder="Years at this location" />
                         <span asp-validation-for="YearsInBusinessAtLocation" class="text-danger"></span>
                     </div>
@@ -1048,7 +1048,7 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Occupancy</label>
+                        <label asp-for="Occupancy" class="fw-bold">Occupancy</label>
                         <select asp-for="Occupancy" class="form-select">
                             <option value="">Select</option>
                             <option value="NO">Non-owner Occupied Building/lessors risk (NO)</option>
@@ -1060,7 +1060,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Building Type</label>
+                        <label asp-for="BuildingType" class="fw-bold">Building Type</label>
                         <select asp-for="BuildingType" class="form-select">
                             <option value="">Select</option>
                             <option value="Enclosed Mall">Located in enclosed mall</option>
@@ -1071,7 +1071,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Sole Occupant</label>
+                        <label asp-for="SoleOccupant" class="fw-bold">Sole Occupant</label>
                         <select asp-for="SoleOccupant" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -1083,7 +1083,7 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Building Industry</label>
+                        <label asp-for="BuildingIndustry" class="fw-bold">Building Industry</label>
                         <select asp-for="BuildingIndustry" class="form-select">
                             <option value="">Select</option>
                             <option value="Apartments & Condo Association">Apartments & Condo Association</option>
@@ -1099,7 +1099,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Restaurant Occupied Part</label>
+                        <label asp-for="RestaurantOccupiedPart" class="fw-bold">Restaurant Occupied Part</label>
                         <select asp-for="RestaurantOccupiedPart" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -1109,7 +1109,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Construction Type</label>
+                        <label asp-for="ConstructionType" class="fw-bold">Construction Type</label>
                         <select asp-for="ConstructionType" class="form-select">
                             <option value="">Select</option>
                             <option value="Fire Resistive">Fire Resistive</option>
@@ -1125,19 +1125,19 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Year Built</label>
+                        <label asp-for="YearBuilt" class="fw-bold">Year Built</label>
                         <input asp-for="YearBuilt" type="number" class="form-control" placeholder="YYYY" />
                         <span asp-validation-for="YearBuilt" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Total Building SF</label>
+                        <label asp-for="TotalBuildingSF" class="fw-bold">Total Building SF</label>
                         <input asp-for="TotalBuildingSF" type="number" class="form-control" placeholder="Total square feet" />
                         <span asp-validation-for="TotalBuildingSF" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Occupied SF</label>
+                        <label asp-for="OccupiedSF" class="fw-bold">Occupied SF</label>
                         <input asp-for="OccupiedSF" type="number" class="form-control" placeholder="Occupied square feet" />
                         <span asp-validation-for="OccupiedSF" class="text-danger"></span>
                     </div>
@@ -1145,7 +1145,7 @@
 
                 <div class="row g-4 mt-3">
                     <div class="col-md-4">
-                        <label class="fw-bold">Automatic Sprinkler System</label>
+                        <label asp-for="AutomaticSprinklerSystem" class="fw-bold">Automatic Sprinkler System</label>
                         <select asp-for="AutomaticSprinklerSystem" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -1155,7 +1155,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Burglar Alarm</label>
+                        <label asp-for="BurglarAlarm" class="fw-bold">Burglar Alarm</label>
                         <select asp-for="BurglarAlarm" class="form-select">
                             <option value="">Select</option>
                             <option value="Central Station">Central Station</option>
@@ -1166,7 +1166,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Fire Alarm</label>
+                        <label asp-for="FireAlarm" class="fw-bold">Fire Alarm</label>
                         <select asp-for="FireAlarm" class="form-select">
                             <option value="">Select</option>
                             <option value="Central Station">Central Station</option>
@@ -1191,7 +1191,7 @@
 
                 <div class="row g-4">
                     <div class="col-md-4">
-                        <label class="fw-bold">Building Coverage Needed</label>
+                        <label asp-for="BuildingCoverageNeeded" class="fw-bold">Building Coverage Needed</label>
                         <select asp-for="BuildingCoverageNeeded" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -1201,13 +1201,13 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Building Occupancy Percent</label>
+                        <label asp-for="BuildingOccupancyPercent" class="fw-bold">Building Occupancy Percent</label>
                         <input asp-for="BuildingOccupancyPercent" type="number" class="form-control" placeholder="%" />
                         <span asp-validation-for="BuildingOccupancyPercent" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Structural Renovations</label>
+                        <label asp-for="StructuralRenovations" class="fw-bold">Structural Renovations</label>
                         <select asp-for="StructuralRenovations" class="form-select">
                             <option value="">Select</option>
                             <option value="true">Yes</option>
@@ -1231,13 +1231,13 @@
 
                 <div class="row g-4">
                     <div class="col-md-4">
-                        <label class="fw-bold">Building Coverage Limit</label>
+                        <label asp-for="BuildingCoverageLimit" class="fw-bold">Building Coverage Limit</label>
                         <input asp-for="BuildingCoverageLimit" type="number" class="form-control" placeholder="Coverage Limit Amount" />
                         <span asp-validation-for="BuildingCoverageLimit" class="text-danger"></span>
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Valuation Type</label>
+                        <label asp-for="ValuationType" class="fw-bold">Valuation Type</label>
                         <select asp-for="ValuationType" class="form-select">
                             <option value="">Select</option>
                             <option value="Replacement Cost">Replacement Cost</option>
@@ -1248,7 +1248,7 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="fw-bold">Inflation Guard Percent</label>
+                        <label asp-for="InflationGuardPercent" class="fw-bold">Inflation Guard Percent</label>
                         <select asp-for="InflationGuardPercent" class="form-select">
                             <option value="">Select</option>
                             <option value="2">2%</option>

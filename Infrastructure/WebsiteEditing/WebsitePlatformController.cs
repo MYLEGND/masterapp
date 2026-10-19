@@ -377,7 +377,13 @@ public class WebsitePlatformController : ControllerBase
         var facts = business is null
             ? null
             : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
-        var draft = Read(state.DraftJson);
+        WebsiteContentDocument draft;
+        try { draft = Read(state.DraftJson); }
+        catch (InvalidOperationException ex) when (ex.Message.StartsWith("website_duplicate_node_identity:", StringComparison.Ordinal))
+        {
+            return Conflict(new { error = "website_draft_duplicate_identity",
+                message = "The saved website needs identity recovery before editing. Your content and publication were preserved." });
+        }
         WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, draft);
         IReadOnlyDictionary<string, WebsiteCollectionProjection> collectionData =
             business is null || (draft.Collections?.Count ?? 0) == 0
@@ -1878,6 +1884,7 @@ public class WebsitePlatformController : ControllerBase
                 });
 
             WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+            WebsiteContentSanitizer.EnsureUniqueCanonicalNodeIds(document);
             WebsiteSystemTemplateAuthority.RestoreRuntimeForms(actor.SiteKey, document, document);
             await ValidateCompositionMediaOwnershipAsync(actor, document, cancellationToken);
         }
@@ -1889,6 +1896,14 @@ public class WebsitePlatformController : ControllerBase
                 message = ex.Message,
                 canonicalProtectionViolation = true,
                 correction = WebsiteStudioAgentContract.ProtectedEditCorrection
+            });
+        }
+        catch (InvalidOperationException ex) when (ex.Message.StartsWith("website_duplicate_node_identity:", StringComparison.Ordinal))
+        {
+            return BadRequest(new
+            {
+                error = "website_materialization_duplicate_identity",
+                message = "The prepared website contains duplicate content identities. The existing draft was preserved."
             });
         }
         catch (ArgumentException ex)
@@ -2318,6 +2333,103 @@ public class WebsitePlatformController : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
         return Ok(new { publicationScopeId = state.Id, revision = state.Revision,
             draftId = draft.Id, alreadySaved = false });
+    }
+
+    public sealed record RecoverDuplicateDraftRequest(
+        string Ticket, long ExpectedRevision, Guid RecoveryId,
+        string SourceFingerprint, string RepairedFingerprint);
+
+    [HttpGet("manage/draft-recovery")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> PlanDraftRecovery([FromQuery] string ticket, CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
+        var state = await StateAsync(actor, cancellationToken);
+        try
+        {
+            var plan = WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(state.DraftJson, JsonOptions);
+            return Ok(new { revision = state.Revision, plan.SourceFingerprint, plan.RepairedFingerprint,
+                changes = plan.Changes, preservesPublishedVersion = true, preservesOriginalDraft = true });
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or JsonException)
+        {
+            return Conflict(new { error = "website_draft_recovery_requires_review",
+                message = "This saved website needs an independent recovery review. All content was preserved." });
+        }
+    }
+
+    [HttpPost("manage/draft-recovery")]
+    public async Task<IActionResult> RecoverDuplicateDraft(
+        [FromBody] RecoverDuplicateDraftRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request is null || request.RecoveryId == Guid.Empty || request.ExpectedRevision < 0 ||
+            request.ExpectedRevision == long.MaxValue)
+            return BadRequest();
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
+        var state = await StateAsync(actor, cancellationToken);
+        var drafts = ReadDrafts(state);
+        static string Fingerprint(string value) => Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+        var existing = drafts.SingleOrDefault(draft => draft.Id == request.RecoveryId);
+        if (existing is not null)
+        {
+            if (state.Revision == request.ExpectedRevision + 1 &&
+                Fingerprint(existing.DocumentJson) == request.SourceFingerprint &&
+                Fingerprint(state.DraftJson) == request.RepairedFingerprint)
+                return Ok(new { revision = state.Revision, recoveryId = existing.Id, alreadyRecovered = true });
+            return Conflict(new { error = "website_recovery_identity_conflict" });
+        }
+        if (state.Revision != request.ExpectedRevision ||
+            Fingerprint(state.DraftJson) != request.SourceFingerprint)
+            return Conflict(new { error = "revision_conflict", revision = state.Revision });
+        if (!NamedDraftEntriesAreComplete(state, drafts) || drafts.Count >= 20)
+            return Conflict(new { error = "website_recovery_snapshot_unavailable",
+                message = "Recovery requires one available saved-draft slot. All existing drafts were preserved." });
+
+        WebsiteContentSanitizer.DuplicateIdentityRecovery plan;
+        System.Text.Json.Nodes.JsonArray storedDrafts;
+        try
+        {
+            plan = WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(state.DraftJson, JsonOptions);
+            if (plan.RepairedFingerprint != request.RepairedFingerprint)
+                return Conflict(new { error = "website_recovery_plan_changed" });
+            storedDrafts = string.IsNullOrWhiteSpace(state.NamedDraftsJson)
+                ? new System.Text.Json.Nodes.JsonArray()
+                : System.Text.Json.Nodes.JsonNode.Parse(state.NamedDraftsJson) as System.Text.Json.Nodes.JsonArray
+                    ?? throw new ArgumentException("Invalid saved draft list.");
+            if (storedDrafts.Count >= 20)
+                return Conflict(new { error = "website_recovery_snapshot_unavailable" });
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or JsonException)
+        {
+            return Conflict(new { error = "website_draft_recovery_requires_review" });
+        }
+
+        // Preserve exact original bytes in the existing snapshot authority in
+        // the same concurrency-guarded write. No publication is changed.
+        var backup = new WebsiteNamedDraft
+        {
+            Id = request.RecoveryId,
+            Name = "Before identity recovery " + request.RecoveryId.ToString("N"),
+            DocumentJson = state.DraftJson,
+            UpdatedUtc = DateTime.UtcNow
+        };
+        storedDrafts.Add(JsonSerializer.SerializeToNode(backup, JsonOptions));
+        state.NamedDraftsJson = storedDrafts.ToJsonString(JsonOptions);
+        state.DraftJson = plan.DocumentJson;
+        state.Revision++;
+        state.UpdatedUtc = DateTime.UtcNow;
+        state.ScheduledPublishUtc = null;
+        state.ScheduledRevision = null;
+        state.ScheduledActorJson = null;
+        state.ScheduleError = null;
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
+        return Ok(new { revision = state.Revision, recoveryId = backup.Id, alreadyRecovered = false });
     }
 
     public sealed record DraftRequest(string Ticket, long ExpectedRevision, Guid DraftId);

@@ -359,13 +359,19 @@
     const page=pageState();
     const mounted=new Map();
     walkComposition(page.composition || [],node=>{
-      const el=findEditableElement(node.id);
-      if(el) mounted.set(node.id,el);
+      const runtimeKey=String(node.systemKey || '');
+      const el=runtimeKey.startsWith('protect_runtime_form:')
+        ? document.querySelector('form[data-cms-system-form="'+CSS.escape(runtimeKey)+'"]')
+        : findEditableElement(node.id);
+      if(el){
+        // The server-owned form key mounts the existing native form. Its saved
+        // canonical node ID remains stable even after historical materialization.
+        if(runtimeKey.startsWith('protect_runtime_form:')) el.dataset.cmsId=node.id;
+        mounted.set(node.id,el);
+      }
     });
-    const ids=new Set();
-    walkComposition(page.composition || [],node=>ids.add(node.id));
     document.querySelectorAll('main [data-cms-id]').forEach(el=>{
-      if(ids.has(el.dataset.cmsId) || el.closest('form[data-form-key]') || el.querySelector('form[data-form-key]')) return;
+      if(mounted.get(el.dataset.cmsId) === el || el.closest('form[data-form-key]') || el.querySelector('form[data-form-key]')) return;
       // Omitted free presentation stays omitted on reload. Native form controls
       // are executable template state and never deleted by this reconciliation.
       el.remove();
@@ -1893,7 +1899,7 @@
     if (['section','container','cta','link'].includes(type) && childElements.length) {
       let childIndex = 0;
       for (const child of childElements) {
-        const childNode = materializeCompositionNode(child, id + '.child.' + (++childIndex));
+        const childNode = materializeCompositionNode(child, id + '.child.' + (++childIndex), identity);
         if (childNode) node.children.push(childNode);
       }
       const directText = [...el.childNodes]
@@ -3914,6 +3920,7 @@
   }
 
   function applyDocument(doc) {
+    restoreFormStepPreview();
     documentState=normalizeDocument(doc);
     applyTheme(documentState.theme);
     applyFavicon(documentState.faviconImageDataUrl);
@@ -3941,6 +3948,7 @@
     applyBusinessPageNavigation();
     applyStoreNavigation();
     ensureCanonicalPublicInquiry();
+    if (editorMode && document.getElementById('legend-cms-form-navigator')) previewFormStep(formPreviewIndex);
     try {
       window.dispatchEvent(new CustomEvent('legend:website-content-rendered', {
         detail:{siteKey:SITE_KEY,page:currentPageRoute(),editor:editorMode,materialize:materializeMode}
@@ -3949,6 +3957,7 @@
   }
 
   function refreshResponsiveComposition() {
+    restoreFormStepPreview();
     if(legacyMigration){
       const page=legacyMigrationPageState();
       for(const [id,model] of Object.entries(legacyMigration.elements || {}))
@@ -3970,6 +3979,7 @@
       refreshReusableInstances();
     }
     refreshScaledElements();
+    if (editorMode && document.getElementById('legend-cms-form-navigator')) previewFormStep(formPreviewIndex);
     updateDirectCanvasUi();
   }
 
@@ -5490,6 +5500,7 @@
   }
 
   function syncEditorControls() {
+    refreshProtectedFieldOrderControls();
     const title = document.getElementById('legend-cms-selected-label');
     const inlineHelp = document.getElementById('legend-cms-inline-help');
     const imageGroup = document.getElementById('legend-cms-image-group');
@@ -5606,7 +5617,7 @@
     const layoutJustify = document.getElementById('legend-cms-layout-justify'); if (layoutJustify) layoutJustify.value = editLayout?.justifyContent || '';
     const layoutWrap = document.getElementById('legend-cms-layout-wrap'); if (layoutWrap) layoutWrap.value = editLayout?.wrap || '';
     if (hidden) {
-      hidden.checked = ov.hidden === true || selected.hidden;
+      hidden.checked = ov.hidden === true || (formPreviewVisibility.get(selected)?.hidden ?? selected.hidden);
       hidden.disabled = !!selected.dataset.cmsSignalOnly || !!ov.systemKey || !!ov.systemBinding || protectedMappings || canonicalForm;
     }
     if (targetInput) targetInput.disabled = !!ov.actionKey;
@@ -8728,6 +8739,194 @@
     document.head.appendChild(style);
   }
 
+
+  // Editor-only visibility. This never changes the saved document, form values,
+  // runtime step state, validation, consent, or submission/event authority.
+  const formStepSelector = '.wizard-step[data-step],.form-step[data-step],.step-wrap[data-step],.lq-micro-step[data-micro-step],.lq-step-panel,[data-experience-step]';
+  function protectedFieldOrderContext() {
+    const form = selected?.closest?.('form[data-form-key][data-cms-composition-id]');
+    if (SITE_KEY !== 'protect' || !form || !selected) return null;
+    for (let element = selected.parentElement; element && element !== form; element = element.parentElement) {
+      if (element.matches(formStepSelector)) return null;
+      const entry = compositionEntry(element.dataset.cmsCompositionId);
+      if (!entry?.parent || entry.node.type !== 'container' ||
+          !element.querySelector('input:not([type="hidden"]),select,textarea')) continue;
+      const parent = entry.parent;
+      if (parent.systemKey || parent.systemBinding || parent.type === 'form' ||
+          parent.signals?.length || Object.keys(parent.fieldSignals || {}).length) return null;
+      const siblings = parent.children || [];
+      const index = siblings.findIndex(node => node.id === entry.node.id);
+      if (index < 0 || siblings.length < 2) continue;
+      // Native conditional/repeating groups retain their owning parent. Move
+      // the whole field wrapper, including label, validation and native input.
+      return { element, entry, siblings, index };
+    }
+    return null;
+  }
+
+  function refreshProtectedFieldOrderControls() {
+    const context = protectedFieldOrderContext();
+    const host = document.getElementById('legend-cms-field-order');
+    if (!host) return;
+    host.hidden = !context;
+    host.querySelector('[data-field-order-before]').disabled = !context || context.index === 0;
+    host.querySelector('[data-field-order-after]').disabled = !context || context.index === context.siblings.length - 1;
+  }
+
+  function moveProtectedField(delta) {
+    const context = protectedFieldOrderContext();
+    if (!context) return;
+    const target = context.index + delta;
+    if (target < 0 || target >= context.siblings.length) return;
+    const control = selected;
+    checkpoint();
+    const [node] = context.siblings.splice(context.index, 1);
+    context.siblings.splice(target, 0, node);
+    applyDocument(documentState);
+    setSelected(control);
+    markDirty();
+    refreshProtectedFieldOrderControls();
+  }
+
+  const formPreviewVisibility = new Map();
+  let formPreviewIndex = -1;
+  function restoreFormStepPreview() {
+    for (const [element, state] of formPreviewVisibility) {
+      element.hidden = state.hidden;
+      element.style.display = state.display;
+      element.classList.toggle('active', state.active);
+    }
+    formPreviewVisibility.clear();
+  }
+
+  function formPreviewEntries() {
+    if (!editorMode) return [];
+    const selector = formStepSelector;
+    const entries = [];
+    for (const form of document.querySelectorAll('main form[data-form-key]')) {
+      const candidates = [...form.querySelectorAll(selector)];
+      const steps = candidates.filter(step => !step.querySelector(selector) &&
+        step.querySelector('input:not([type="hidden"]),select,textarea,button,[data-experience-control]'));
+      for (const step of steps.length ? steps : [form]) {
+        const heading = step.querySelector('legend,h1,h2,h3,h4,h5,.section-title,.lq-step-question,.lq-step-title');
+        const label = (heading?.textContent || step.getAttribute('aria-label') || 'Form').trim().replace(/\s+/g, ' ').slice(0, 120);
+        entries.push({ form, step, label });
+      }
+    }
+    return entries;
+  }
+
+  function previewFormStep(index) {
+    if (!editorMode) return;
+    restoreFormStepPreview();
+    const entries = formPreviewEntries();
+    if (!Number.isInteger(index) || index < 0 || index >= entries.length) {
+      formPreviewIndex = -1;
+      refreshFormStepNavigator();
+      return;
+    }
+    formPreviewIndex = index;
+    const selectedStep = entries[index];
+    const remember = element => {
+      if (!formPreviewVisibility.has(element))
+        formPreviewVisibility.set(element, { hidden: element.hidden, display: element.style.display, active: element.classList.contains('active') });
+    };
+    for (const entry of entries) {
+      if (entry.form !== selectedStep.form || entry.step === selectedStep.step) continue;
+      remember(entry.step);
+      entry.step.hidden = true;
+      entry.step.style.display = 'none';
+    }
+    for (let element = selectedStep.step; element && element.tagName !== 'MAIN'; element = element.parentElement) {
+      remember(element);
+      element.hidden = false;
+      element.classList.add('active');
+      if (getComputedStyle(element).display === 'none') element.style.display = 'block';
+    }
+    refreshFormStepNavigator();
+    selectedStep.step.scrollIntoView?.({ block: 'nearest' });
+    updateDirectCanvasUi();
+  }
+
+  function nativeStepOrderContext() {
+    const entry = formPreviewEntries()[formPreviewIndex];
+    const node = compositionNode(entry?.form?.dataset.websiteExperienceId);
+    const steps = node?.experience?.steps;
+    const key = entry?.step?.dataset.experienceStep;
+    const index = Array.isArray(steps) ? steps.findIndex(step => step.key === key) : -1;
+    return index < 0 ? null : { node, steps, index, key };
+  }
+
+  function moveNativeFormStep(delta) {
+    const context = nativeStepOrderContext();
+    if (!context) return;
+    const target = context.index + delta;
+    if (target < 0 || target >= context.steps.length) return;
+    checkpoint();
+    const [step] = context.steps.splice(context.index, 1);
+    context.steps.splice(target, 0, step);
+    applyDocument(documentState);
+    const index = formPreviewEntries().findIndex(entry =>
+      entry.form.dataset.websiteExperienceId === context.node.id && entry.step.dataset.experienceStep === context.key);
+    previewFormStep(index);
+    markDirty();
+  }
+
+  function refreshFormStepNavigator() {
+    const host = document.getElementById('legend-cms-form-navigator');
+    if (!host) return;
+    const entries = formPreviewEntries();
+    host.hidden = entries.length === 0;
+    const select = host.querySelector('select');
+    select.replaceChildren();
+    const normal = document.createElement('option');
+    normal.value = '-1'; normal.textContent = 'Normal form preview'; select.appendChild(normal);
+    entries.forEach((entry, index) => {
+      const option = document.createElement('option');
+      option.value = String(index);
+      option.textContent = (index + 1) + '. ' + entry.label;
+      select.appendChild(option);
+    });
+    if (formPreviewIndex >= entries.length) formPreviewIndex = -1;
+    select.value = String(formPreviewIndex);
+    host.querySelector('[data-form-preview-back]').disabled = formPreviewIndex <= 0;
+    host.querySelector('[data-form-preview-next]').disabled = formPreviewIndex >= entries.length - 1;
+    const stepOrder = host.querySelector('[data-native-step-order]');
+    const stepContext = nativeStepOrderContext();
+    stepOrder.hidden = !stepContext;
+    stepOrder.querySelector('[data-native-step-before]').disabled = !stepContext || stepContext.index === 0;
+    stepOrder.querySelector('[data-native-step-after]').disabled = !stepContext || stepContext.index === stepContext.steps.length - 1;
+    host.querySelector('[role="status"]').textContent = formPreviewIndex < 0
+      ? entries.length + ' form steps available to edit.'
+      : 'Editing step ' + (formPreviewIndex + 1) + ' of ' + entries.length + '. Preview only; no answers or submission.';
+  }
+
+  function installFormStepNavigator(panel) {
+    const host = document.createElement('section');
+    host.id = 'legend-cms-form-navigator';
+    host.setAttribute('aria-label', 'Form step editor');
+    host.innerHTML = '<label class="legend-cms-group">Form step<select aria-label="Form step to edit"></select></label><div class="legend-cms-row"><button type="button" data-form-preview-back>Previous form step</button><button type="button" data-form-preview-next>Next form step</button></div><small role="status" aria-live="polite"></small>';
+    panel.querySelector('.legend-cms-navigation').appendChild(host);
+    const order = document.createElement('div');
+    order.id = 'legend-cms-field-order';
+    order.hidden = true;
+    order.innerHTML = '<p>Selected field order within its group</p><div class="legend-cms-row"><button type="button" data-field-order-before>Move field earlier</button><button type="button" data-field-order-after>Move field later</button></div>';
+    host.appendChild(order);
+    const stepOrder = document.createElement('div');
+    stepOrder.dataset.nativeStepOrder = '';
+    stepOrder.hidden = true;
+    stepOrder.innerHTML = '<p>Form step order</p><div class="legend-cms-row"><button type="button" data-native-step-before>Move step earlier</button><button type="button" data-native-step-after>Move step later</button></div>';
+    host.appendChild(stepOrder);
+    stepOrder.querySelector('[data-native-step-before]').addEventListener('click', () => moveNativeFormStep(-1));
+    stepOrder.querySelector('[data-native-step-after]').addEventListener('click', () => moveNativeFormStep(1));
+    order.querySelector('[data-field-order-before]').addEventListener('click', () => moveProtectedField(-1));
+    order.querySelector('[data-field-order-after]').addEventListener('click', () => moveProtectedField(1));
+    host.querySelector('select').addEventListener('change', event => previewFormStep(Number(event.target.value)));
+    host.querySelector('[data-form-preview-back]').addEventListener('click', () => previewFormStep(formPreviewIndex - 1));
+    host.querySelector('[data-form-preview-next]').addEventListener('click', () => previewFormStep(formPreviewIndex + 1));
+    refreshFormStepNavigator();
+  }
+
   function buildEditor() {
     if (legacyMigration)
       throw new Error('Website Studio cannot open writable controls until canonical materialization completes.');
@@ -8917,6 +9116,7 @@
     `;
     panel.insertBefore(bar, panel.firstChild);
     enhanceEditor(panel, preview);
+    installFormStepNavigator(panel);
     refreshScaledElements();
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { refreshScaledElements(); updateDirectCanvasUi(); }).observe(preview);
     syncEditorControls();
@@ -9029,6 +9229,55 @@
     });
   }
 
+  function showSavedDraftRecovery() {
+    const panel = document.createElement('section');
+    panel.setAttribute('role', 'region');
+    panel.setAttribute('aria-label', 'Saved website recovery');
+    const title = document.createElement('h2');
+    title.textContent = 'Recover your saved website';
+    const status = document.createElement('p');
+    status.setAttribute('role', 'status');
+    status.textContent = 'Some content shares an internal identity. Review the recovery before editing. Your published website is unchanged.';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Review recovery';
+    panel.append(title, status, button);
+    document.body.prepend(panel);
+    revealPublishedWebsite();
+    let plan = null;
+    const recoveryId = crypto.randomUUID();
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try {
+        const url = new URL(API_BASE + '/api/website-content/manage/draft-recovery');
+        if (!plan) {
+          url.searchParams.set('ticket', editorTicket);
+          const response = await fetch(url, { cache: 'no-store' });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.message || 'This website requires an independent recovery review. All content was preserved.');
+          plan = payload;
+          status.textContent = 'Recovery will separate ' + plan.changes.length + ' duplicated content identities. Protected fields and events stay unchanged. A saved copy of the original draft will be retained; your published website will not change.';
+          button.textContent = 'Recover saved website';
+        } else {
+          const response = await fetch(url, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ticket: editorTicket, expectedRevision: plan.revision,
+              recoveryId, sourceFingerprint: plan.sourceFingerprint, repairedFingerprint: plan.repairedFingerprint })
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.message || 'Recovery was not confirmed. Reopen Website Studio to check the current saved state.');
+          panel.remove();
+          await loadEditor();
+          return;
+        }
+      } catch (error) {
+        status.textContent = error.message || 'Recovery was not confirmed. Reopen Website Studio to check the current saved state.';
+        // Do not replay a mutation after an ambiguous response.
+        button.hidden = true;
+      } finally { button.disabled = false; }
+    });
+  }
+
   async function loadEditor() {
     try {
       const url = new URL(`${API_BASE}/api/website-content/manage`);
@@ -9036,9 +9285,18 @@
       if(auditMode) url.searchParams.set('audit','true');
       const response = await fetch(url, { cache: 'no-store' });
       if (!response.ok) {
+        if (response.status===409) {
+          const failure = await response.json().catch(() => null);
+          if (failure?.error === 'website_draft_duplicate_identity') {
+            showSavedDraftRecovery();
+            return;
+          }
+        }
         if ((response.status===401 || response.status===403) &&
             showEditorAuthorizationRecovery('This Website Studio authorization is missing or expired.')) return;
-        throw new Error('This edit session has expired.');
+        throw new Error(response.status===401 || response.status===403
+          ? 'This edit session has expired. Open Website Studio again from your profile.'
+          : 'Website Studio could not load the saved website (HTTP ' + response.status + '). Your saved content has not been changed.');
       }
       const payload = await response.json();
       if (payload.siteKey && payload.siteKey !== SITE_KEY) {

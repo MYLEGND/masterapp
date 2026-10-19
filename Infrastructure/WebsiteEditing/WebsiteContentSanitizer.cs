@@ -85,6 +85,7 @@ public static class WebsiteContentSanitizer
     private const int MaxImageDataUrlLength = 3500000;
     private const int MaxCompositionNodesPerPage = 1200;
     private const int MaxCompositionDepth = 16;
+    private const int MaxFormPresentationFields = 512;
 
     private static void EnsurePersistedCanonicalIsStable(
         WebsiteContentDocument persisted,
@@ -100,7 +101,89 @@ public static class WebsiteContentSanitizer
             throw new InvalidOperationException("website_v3_noncanonical_persisted_document");
     }
 
-    private static void EnsureUniqueCanonicalNodeIds(WebsiteContentDocument document)
+    public sealed record DuplicateIdentityChange(string Path, string PreviousId, string ReplacementId);
+    public sealed record DuplicateIdentityRecovery(
+        string SourceFingerprint, string RepairedFingerprint, string DocumentJson,
+        IReadOnlyList<DuplicateIdentityChange> Changes);
+
+    // Explicit recovery planning only. Ordinary reads remain fail-closed. The
+    // caller must preserve the original bytes and compare revision/fingerprints
+    // before applying this plan. Protected identities are never renamed.
+    public static DuplicateIdentityRecovery PlanDuplicateIdentityRecovery(
+        string json, System.Text.Json.JsonSerializerOptions options)
+    {
+        var root = System.Text.Json.Nodes.JsonNode.Parse(json);
+        if (ContainsLegacyAuthority(root))
+            throw new ArgumentException("Legacy authority cannot be recovered as canonical content.");
+        var document = System.Text.Json.JsonSerializer.Deserialize<WebsiteContentDocument>(json, options)
+            ?? throw new ArgumentException("The saved website could not be read.");
+        if (root?["version"]?.ToString() != WebsiteStudioContract.CurrentDocumentVersion.ToString() ||
+            document.Version != WebsiteStudioContract.CurrentDocumentVersion ||
+            document.Shell is null || document.Pages is null || document.ReusableComponents is null)
+            throw new ArgumentException("Only canonical v3 identity collisions can be recovered.");
+        var entries = new List<(string Path, WebsiteCompositionNode Node, bool IdentitySensitive)>();
+        static bool ContainsRuntimeForm(WebsiteCompositionNode node) =>
+            (node.SystemKey?.StartsWith("protect_runtime_form:", StringComparison.Ordinal) ?? false) ||
+            (node.Children ?? []).Any(ContainsRuntimeForm);
+        void Visit(IEnumerable<WebsiteCompositionNode> nodes, string path, bool identitySensitive = false)
+        {
+            var index = 0;
+            foreach (var node in nodes ?? [])
+            {
+                if (node is null || string.IsNullOrWhiteSpace(node.Id))
+                    throw new ArgumentException("Invalid content identity requires independent review.");
+                var location = path + "/" + index++;
+                var sensitive = identitySensitive || ContainsRuntimeForm(node);
+                entries.Add((location, node, sensitive));
+                Visit(node.Children, location + "/children", sensitive);
+            }
+        }
+        Visit(document.Shell.Header, "shell/header");
+        Visit(document.Shell.Footer, "shell/footer");
+        foreach (var page in document.Pages.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            Visit(page.Value.Composition, "pages/" + page.Key);
+        foreach (var component in document.ReusableComponents.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            Visit(component.Value.Composition, "components/" + component.Key);
+
+        static bool Protected(WebsiteCompositionNode node) =>
+            WebsiteSiteSource.HasProtectedSemantics(node) ||
+            !string.IsNullOrWhiteSpace(node.ActionKey) ||
+            node.DataBinding is not null || node.Experience is not null;
+        static string Fingerprint(string value) => Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+
+        var used = entries.Select(entry => entry.Node.Id).ToHashSet(StringComparer.Ordinal);
+        var changes = new List<DuplicateIdentityChange>();
+        foreach (var group in entries.GroupBy(entry => entry.Node.Id, StringComparer.Ordinal).Where(group => group.Count() > 1))
+        {
+            var protectedEntries = group.Where(entry => entry.IdentitySensitive || Protected(entry.Node)).ToList();
+            if (protectedEntries.Count > 1 || protectedEntries.Any(entry => entry.IdentitySensitive &&
+                !(entry.Node.SystemKey?.StartsWith("protect_runtime_form:", StringComparison.Ordinal) ?? false)))
+                throw new ArgumentException("Native structural or multiple protected identity collisions require independent recovery review.");
+            var keep = protectedEntries.Count == 1 ? protectedEntries[0] : group.First();
+            foreach (var entry in group)
+            {
+                if (ReferenceEquals(entry.Node, keep.Node)) continue;
+                var oldId = entry.Node.Id;
+                var prefix = oldId[..Math.Min(oldId.Length, 100)];
+                var suffix = 0;
+                string nextId;
+                do { nextId = prefix + ".recovered." + Fingerprint(entry.Path + ":" + suffix++)[..16]; }
+                while (!used.Add(nextId));
+                entry.Node.Id = nextId;
+                changes.Add(new(entry.Path, oldId, nextId));
+            }
+        }
+        if (changes.Count == 0)
+            throw new ArgumentException("No duplicate content identities require recovery.");
+        var repaired = System.Text.Json.JsonSerializer.Serialize(document, options);
+        // Reject any unrelated corruption or normalization rather than folding
+        // an unreviewed content change into identity recovery.
+        _ = ReadPersisted(repaired, options);
+        return new(Fingerprint(json), Fingerprint(repaired), repaired, changes);
+    }
+
+    internal static void EnsureUniqueCanonicalNodeIds(WebsiteContentDocument document)
     {
         var ids = new HashSet<string>(StringComparer.Ordinal);
 
@@ -967,7 +1050,7 @@ public static class WebsiteContentSanitizer
         HashSet<string> breakpointKeys)
     {
         var result = new Dictionary<string, WebsiteControlPresentation>(StringComparer.Ordinal);
-        foreach (var pair in (source ?? new Dictionary<string, WebsiteControlPresentation>()).Take(64))
+        foreach (var pair in (source ?? new Dictionary<string, WebsiteControlPresentation>()).Take(MaxFormPresentationFields))
         {
             var key = SanitizeId(pair.Key).ToLowerInvariant();
             if (key.Length == 0 || pair.Value is null) continue;
@@ -979,7 +1062,7 @@ public static class WebsiteContentSanitizer
     private static Dictionary<string, string> SanitizeFieldLabels(IDictionary<string, string>? source)
     {
         var result = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var pair in (source ?? new Dictionary<string, string>()).Take(64))
+        foreach (var pair in (source ?? new Dictionary<string, string>()).Take(MaxFormPresentationFields))
         {
             var key = SanitizeId(pair.Key).ToLowerInvariant();
             var value = ClampText(pair.Value);

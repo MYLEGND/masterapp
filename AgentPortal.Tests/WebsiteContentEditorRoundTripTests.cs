@@ -1573,6 +1573,206 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Null(style.PaddingBottom);
     }
 
+    [Fact]
+    public async Task Materialization_DuplicateIdentity_PreservesLegacyDraftAndRevision()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Protect);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var state = new WebsiteContentState
+        {
+            OwnerKey = fixture.OwnerKey,
+            SiteKey = fixture.SiteKey,
+            DraftJson = "{}",
+            Revision = 7
+        };
+        fixture.Db.Set<WebsiteContentState>().Add(state);
+        await fixture.Db.SaveChangesAsync();
+        var document = CanonicalDocument();
+        document.Pages["/"].Composition.Add(new WebsiteCompositionNode
+        {
+            Id = ElementId, Type = "heading", Tag = "h2", Text = "Second heading"
+        });
+
+        var result = Assert.IsType<BadRequestObjectResult>(await fixture.CreateController().Save(
+            new WebsitePlatformController.SaveRequest(ticket, document, 7, null, null)));
+        var payload = JsonSerializer.SerializeToElement(result.Value, JsonOptions);
+        Assert.Equal("website_materialization_duplicate_identity", payload.GetProperty("error").GetString());
+        fixture.Db.ChangeTracker.Clear();
+        var saved = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        Assert.Equal("{}", saved.DraftJson);
+        Assert.Equal(7, saved.Revision);
+        Assert.Null(saved.PublishedVersionId);
+    }
+
+    [Fact]
+    public async Task DuplicateDraftRecovery_PreservesOriginalAndPublication_AndReplaysWithoutAnotherWrite()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Protect);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var document = CanonicalDocument();
+        document.Pages["/"].Composition.Add(new WebsiteCompositionNode
+        {
+            Id = ElementId, Type = "container", Tag = "div",
+            SystemKey = "protect_runtime_form:quote_home_form"
+        });
+        var original = JsonSerializer.Serialize(WebsiteContentSanitizer.Sanitize(document), JsonOptions);
+        var publication = Guid.NewGuid();
+        var state = new WebsiteContentState
+        {
+            OwnerKey = fixture.OwnerKey, SiteKey = fixture.SiteKey,
+            DraftJson = original, Revision = 9, PublishedVersionId = publication,
+            ScheduledPublishUtc = DateTime.UtcNow.AddHours(1), ScheduledRevision = 9
+        };
+        fixture.Db.Set<WebsiteContentState>().Add(state);
+        await fixture.Db.SaveChangesAsync();
+        var controller = fixture.CreateController();
+        Assert.IsType<UnauthorizedResult>(await controller.PlanDraftRecovery("invalid"));
+        var response = Assert.IsType<OkObjectResult>(await controller.PlanDraftRecovery(ticket));
+        var plan = JsonSerializer.SerializeToElement(response.Value, JsonOptions);
+        Assert.Equal(9, state.Revision);
+        Assert.Equal(original, state.DraftJson);
+        var request = new WebsitePlatformController.RecoverDuplicateDraftRequest(
+            ticket, 9, Guid.NewGuid(),
+            plan.GetProperty("sourceFingerprint").GetString()!,
+            plan.GetProperty("repairedFingerprint").GetString()!);
+        Assert.IsType<ConflictObjectResult>(await controller.RecoverDuplicateDraft(request with { ExpectedRevision = 8 }));
+        Assert.IsType<ConflictObjectResult>(await controller.RecoverDuplicateDraft(request with { RepairedFingerprint = "wrong" }));
+        Assert.Equal(original, state.DraftJson);
+        Assert.IsType<OkObjectResult>(await controller.RecoverDuplicateDraft(request));
+        fixture.Db.ChangeTracker.Clear();
+        var saved = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        Assert.Equal(10, saved.Revision);
+        Assert.Equal(publication, saved.PublishedVersionId);
+        Assert.Null(saved.ScheduledPublishUtc);
+        var backup = Assert.Single(JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(saved.NamedDraftsJson, JsonOptions)!);
+        Assert.Equal(request.RecoveryId, backup.Id);
+        Assert.Equal(original, backup.DocumentJson);
+        var repaired = WebsiteContentSanitizer.ReadPersisted(saved.DraftJson, JsonOptions);
+        Assert.Equal(ElementId, repaired.Pages["/"].Composition.Single(node => node.SystemKey is not null).Id);
+        Assert.NotEqual(ElementId, repaired.Pages["/"].Composition.Single(node => node.Type == "heading").Id);
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().RecoverDuplicateDraft(request));
+        Assert.Equal(10, saved.Revision);
+        Assert.Single(JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(saved.NamedDraftsJson, JsonOptions)!);
+    }
+
+    [Fact]
+    public void DuplicateDraftRecovery_RefusesAmbiguousProtectedIdentities()
+    {
+        var document = CanonicalDocument();
+        document.Pages["/"].Composition[0].SystemBinding = "business_name";
+        document.Pages["/"].Composition.Add(new WebsiteCompositionNode
+        {
+            Id = ElementId, Type = "container", Tag = "div",
+            SystemKey = "protect_runtime_form:quote_home_form"
+        });
+        var original = JsonSerializer.Serialize(WebsiteContentSanitizer.Sanitize(document), JsonOptions);
+        Assert.Throws<ArgumentException>(() => WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions));
+        Assert.Equal(ElementId, document.Pages["/"].Composition[0].Id);
+        Assert.Equal(ElementId, document.Pages["/"].Composition[1].Id);
+        Assert.Throws<InvalidOperationException>(() => WebsiteContentSanitizer.ReadPersisted(original, JsonOptions));
+    }
+
+    [Theory]
+    [InlineData("wrappers")]
+    [InlineData("ancestor")]
+    [InlineData("free-heading")]
+    public async Task DuplicateDraftRecovery_RefusesNativeStructuralCollisionsWithoutWriting(string collision)
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Protect);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var form = new WebsiteCompositionNode
+        {
+            Id = "native.form", Type = "container", Tag = "div",
+            SystemKey = "protect_runtime_form:quote_auto_form",
+            Children =
+            [
+                new WebsiteCompositionNode { Id = "native.wrapper", Type = "container", Tag = "div" },
+                new WebsiteCompositionNode { Id = "native.wrapper", Type = "container", Tag = "div" }
+            ]
+        };
+        var document = CanonicalDocument();
+        if (collision != "wrappers") form.Children.RemoveAt(1);
+        document.Pages["/"].Composition = collision switch
+        {
+            "ancestor" => [new WebsiteCompositionNode { Id = "native.form", Type = "container", Tag = "div", Children = [form] }],
+            "free-heading" => [new WebsiteCompositionNode { Id = "native.wrapper", Type = "heading", Tag = "h2", Text = "Free heading" }, form],
+            _ => [form]
+        };
+        var original = JsonSerializer.Serialize(WebsiteContentSanitizer.Sanitize(document), JsonOptions);
+        var publication = Guid.NewGuid();
+        var state = new WebsiteContentState
+        {
+            OwnerKey = fixture.OwnerKey, SiteKey = fixture.SiteKey,
+            DraftJson = original, Revision = 9, PublishedVersionId = publication
+        };
+        fixture.Db.Set<WebsiteContentState>().Add(state);
+        await fixture.Db.SaveChangesAsync();
+        var snapshots = state.NamedDraftsJson;
+        Assert.Throws<ArgumentException>(() => WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions));
+        var controller = fixture.CreateController();
+        Assert.IsType<ConflictObjectResult>(await controller.PlanDraftRecovery(ticket));
+        var sourceFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(original))).ToLowerInvariant();
+        Assert.IsType<ConflictObjectResult>(await controller.RecoverDuplicateDraft(
+            new WebsitePlatformController.RecoverDuplicateDraftRequest(ticket, 9, Guid.NewGuid(), sourceFingerprint, "untrusted")));
+        fixture.Db.ChangeTracker.Clear();
+        var saved = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        Assert.Equal(original, saved.DraftJson);
+        Assert.Equal(9, saved.Revision);
+        Assert.Equal(publication, saved.PublishedVersionId);
+        Assert.Equal(snapshots, saved.NamedDraftsJson);
+    }
+
+    [Fact]
+    public async Task ProtectedFormFieldWrappers_CanReorderWithoutChangingRuntimeIdentity()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Protect);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var document = new WebsiteContentDocument
+        {
+            Pages = new(StringComparer.Ordinal)
+            {
+                ["/quote/auto"] = new WebsitePageDocument
+                {
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "auto.form", Type = "container", Tag = "div",
+                            SystemKey = "protect_runtime_form:quote_auto_form",
+                            FieldLabels = new() { ["firstname"] = "First name", ["lastname"] = "Last name" },
+                            Children =
+                            [
+                                new WebsiteCompositionNode
+                                {
+                                    Id = "auto.fields", Type = "container", Tag = "div",
+                                    Children =
+                                    [
+                                        new WebsiteCompositionNode { Id = "auto.first", Type = "container", Tag = "div" },
+                                        new WebsiteCompositionNode { Id = "auto.last", Type = "container", Tag = "div" }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        };
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 3);
+        var result = await ApplyMutationsAndReadAsync(fixture, ticket, 3,
+        [
+            new WebsiteMutationOperation
+            {
+                Type = "moveNode", NodeId = "auto.last", ParentId = "auto.fields",
+                Scope = "page", PagePath = "/quote/auto", Index = 0
+            }
+        ]);
+        var form = Assert.Single(result.Pages["/quote/auto"].Composition);
+        Assert.Equal("protect_runtime_form:quote_auto_form", form.SystemKey);
+        Assert.Equal(new[] { "auto.last", "auto.first" }, form.Children[0].Children.Select(node => node.Id));
+        Assert.Equal("First name", form.FieldLabels["firstname"]);
+        Assert.Equal("Last name", form.FieldLabels["lastname"]);
+    }
+
     private sealed class Fixture : IDisposable
     {
         public const string AgentSlug = "editor-test-agent";

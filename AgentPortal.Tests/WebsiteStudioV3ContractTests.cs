@@ -629,4 +629,42 @@ public sealed class WebsiteStudioV3ContractTests
         Assert.Equal("website_duplicate_node_identity:quote_dvh.root.1", error.Message);
     }
 
+    [Fact]
+    public void LongProtectedForm_PreservesAllFieldPresentationAndLabelsAcrossCanonicalRead()
+    {
+        var form = new WebsiteCompositionNode
+        {
+            Id = "runtime.form.quote_home_form",
+            Type = "container",
+            Tag = "div",
+            SystemKey = "protect_runtime_form:quote_home_form"
+        };
+        for (var index = 0; index < 150; index++)
+        {
+            var key = "field." + index;
+            form.FieldLabels[key] = "Question " + index;
+            form.FieldPresentations[key] = new WebsiteControlPresentation
+            {
+                Style = new WebsiteVisualStyle { FontSize = 18 }
+            };
+        }
+        var source = new WebsiteContentDocument
+        {
+            Pages = new(StringComparer.Ordinal)
+            {
+                ["/quote/home"] = new WebsitePageDocument { Composition = [form] }
+            }
+        };
+        var clean = WebsiteContentSanitizer.Sanitize(source);
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var restored = WebsiteContentSanitizer.ReadPersisted(JsonSerializer.Serialize(clean, options), options);
+        var result = Assert.Single(restored.Pages["/quote/home"].Composition);
+        Assert.Equal(150, result.FieldLabels.Count);
+        Assert.Equal(150, result.FieldPresentations.Count);
+        Assert.Equal("Question 149", result.FieldLabels["field.149"]);
+        Assert.Equal(18m, result.FieldPresentations["field.149"].Style.FontSize);
+        Assert.Equal(form.SystemKey, result.SystemKey);
+        Assert.Empty(result.FieldSignals);
+    }
+
 }

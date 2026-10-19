@@ -5109,3 +5109,156 @@ test('responsive audit finishes without animation frames and retains breakpoint 
     assert.equal(f.w.document.querySelector('main h1').style.cssText,originalStyle);
   } finally {f.close();}
 });
+
+
+test('Studio form step navigation reveals protected later steps without entering answers or changing the saved form',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/quote/auto']={
+    title:'Auto',navigation:{label:'Auto',showInNavigation:true,order:1},
+    systemTemplateKey:'protect_template:auto_quote',
+    composition:[canonicalNode('runtime.form.quote_auto_form','container','div',{
+      systemKey:'protect_runtime_form:quote_auto_form',
+      children:[
+        canonicalNode('auto.step.first','container','div',{className:'wizard-step active'}),
+        canonicalNode('auto.step.second','container','div',{className:'wizard-step',hidden:true})
+      ]
+    })]
+  };
+  const html='<!doctype html><html><head><style>.wizard-step{display:none}.wizard-step.active{display:block}</style></head><body data-page-key="quote-auto"><main><form id="autoQuoteForm" action="/Quote/Auto" method="post" data-form-key="quote_auto_form"><div data-cms-id="auto.step.first" class="wizard-step active" data-step="1"><label for="applicant">Applicant</label><input id="applicant" name="FirstName" required></div><div data-cms-id="auto.step.second" class="wizard-step" data-step="2" hidden><label for="vehicle">Vehicle</label><input id="vehicle" name="Vehicles[0].VIN" required><button type="submit">Submit</button></div></form></main></body></html>';
+  const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Auto',html});
+  try{
+    const form=f.w.document.getElementById('autoQuoteForm');
+    const input=f.w.document.getElementById('vehicle');
+    const original=f.serverDocument();
+    const before=f.calls.length;
+    f.click('[data-form-preview-next]');
+    f.click('[data-form-preview-next]');
+    assert.equal(f.w.document.querySelector('[data-cms-id="auto.step.first"]').hidden,true);
+    assert.equal(f.w.document.querySelector('[data-cms-id="auto.step.second"]').hidden,false);
+    assert.equal(f.w.document.getElementById('vehicle'),input);
+    assert.equal(input.value,'');
+    assert.equal(input.name,'Vehicles[0].VIN');
+    assert.equal(input.required,true);
+    assert.equal(form.getAttribute('action'),'/Quote/Auto');
+    assert.deepEqual(f.serverDocument(),original);
+    assert.equal(f.calls.slice(before).some(call=>call.method==='POST'),false);
+    f.change('#legend-cms-breakpoint','mobile');
+    assert.equal(f.w.document.querySelector('[data-cms-id="auto.step.second"]').hidden,false);
+    f.change('#legend-cms-form-navigator select','-1');
+    assert.equal(f.w.document.querySelector('[data-cms-id="auto.step.second"]').hidden,true);
+    assert.equal(f.w.document.querySelector('[data-cms-id="auto.step.first"]').hidden,false);
+    assert.deepEqual(await f.save(),original);
+  }finally{f.close();}
+});
+
+test('Studio step chooser exposes conditional native experience steps without satisfying live form rules',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition=[canonicalNode('custom.form','experience','form',{
+    title:'Business intake',
+    experience:{
+      kind:'form',submitCapability:null,
+      controls:[{key:'name',type:'text',label:'Name',required:true},{key:'detail',type:'text',label:'Detail'}],
+      steps:[{key:'first',title:'Start',controlKeys:['name']},{key:'second',title:'Details',controlKeys:['detail'],visibleWhen:{op:'value',value:false}}],
+      calculations:{},results:[]
+    }
+  })];
+  const f=await domFixture({doc});
+  try{
+    const before=f.serverDocument();
+    const options=f.w.document.querySelectorAll('#legend-cms-form-navigator option');
+    assert.equal(options.length,3);
+    f.change('#legend-cms-form-navigator select','1');
+    assert.equal(f.w.document.querySelector('[data-experience-step="second"]').hidden,false);
+    assert.equal(f.w.document.querySelector('[data-cms-field-key="name"]').value,'');
+    assert.deepEqual(f.serverDocument(),before);
+    f.change('#legend-cms-form-navigator select','-1');
+    assert.equal(f.w.document.querySelector('[data-experience-step="second"]').hidden,true);
+    f.change('#legend-cms-form-navigator select','1');
+    f.click('[data-native-step-before]');
+    const saved=await f.save();
+    const experience=canonicalNodeById(saved,'custom.form').experience;
+    assert.deepEqual(experience.steps.map(step=>step.key),['second','first']);
+    assert.deepEqual(experience.steps[0].controlKeys,['detail']);
+    assert.deepEqual(experience.steps[0].visibleWhen,{op:'value',value:false});
+  }finally{f.close();}
+});
+
+test('nested materialization shares one allocator across repeated template identities',async()=>{
+  const f=await domFixture({
+    siteKey:'protect',legacyMigration:{},capabilities:{compositionV3:true},
+    html:'<!doctype html><html><body data-page-key="home"><main><section><div><h2 data-cms-id="repeated.heading">First</h2></div><div><h2 data-cms-id="repeated.heading">Second</h2></div></section></main></body></html>'
+  });
+  try{
+    await new Promise(resolve=>setTimeout(resolve,20));
+    assert.deepEqual(f.alerts,[]);
+    const saved=f.calls.find(call=>call.method==='POST' && new URL(call.url).pathname==='/api/website-content/manage');
+    assert.ok(saved);
+    const nodes=canonicalNodes(JSON.parse(saved.body).document);
+    assert.equal(new Set(nodes.map(node=>node.id)).size,nodes.length);
+    assert.ok(nodes.some(node=>node.text==='First'));
+    assert.ok(nodes.some(node=>node.text==='Second'));
+  }finally{f.close();}
+});
+
+test('protected field ordering moves canonical wrappers and retains native controls on save',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/quote/auto']={
+    title:'Auto',navigation:{label:'Auto',showInNavigation:true,order:1},
+    systemTemplateKey:'protect_template:auto_quote',
+    composition:[canonicalNode('auto.saved.runtime','container','div',{
+      systemKey:'protect_runtime_form:quote_auto_form',
+      fieldLabels:{firstname:'First name',lastname:'Last name'},
+      children:[canonicalNode('auto.fields','container','div',{
+        children:[
+          canonicalNode('auto.first','container','div',{children:[canonicalNode('auto.first.label','text','label',{text:'First name'})]}),
+          canonicalNode('auto.last','container','div',{children:[canonicalNode('auto.last.label','text','label',{text:'Last name'})]})
+        ]
+      })]
+    })]
+  };
+  const html='<!doctype html><html><body data-page-key="quote-auto"><main><h2 data-cms-id="auto.saved.runtime">Stale duplicate</h2><form id="autoQuoteForm" action="/Quote/Auto" method="post" data-form-key="quote_auto_form"><div data-cms-id="auto.fields"><div data-cms-id="auto.first"><label data-cms-id="auto.first.label" for="first">First name</label><input id="first" name="FirstName" required></div><div data-cms-id="auto.last"><label data-cms-id="auto.last.label" for="last">Last name</label><input id="last" name="LastName" required></div></div></form></main></body></html>';
+  const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Auto',html});
+  try{
+    const first=f.w.document.getElementById('first');
+    const last=f.w.document.getElementById('last');
+    assert.equal(f.w.document.querySelectorAll('[data-cms-id="auto.saved.runtime"]').length,1);
+    assert.equal(f.w.document.querySelector('[data-cms-id="auto.saved.runtime"]').tagName,'FORM');
+    f.click('#last');
+    assert.equal(f.w.document.querySelector('#legend-cms-field-order').hidden,false);
+    f.click('[data-field-order-before]');
+    assert.equal(f.w.document.querySelector('[data-cms-id="auto.fields"]').firstElementChild.dataset.cmsId,'auto.last');
+    assert.equal(f.w.document.getElementById('first'),first);
+    assert.equal(f.w.document.getElementById('last'),last);
+    assert.equal(last.name,'LastName');
+    assert.equal(last.required,true);
+    assert.equal(last.labels[0].getAttribute('for'),'last');
+    const saved=await f.save();
+    const form=canonicalNodeById(saved,'auto.saved.runtime','/quote/auto');
+    assert.equal(form.systemKey,'protect_runtime_form:quote_auto_form');
+    assert.deepEqual(form.children[0].children.map(node=>node.id),['auto.last','auto.first']);
+    assert.deepEqual(form.fieldLabels,{firstname:'First name',lastname:'Last name'});
+    assert.equal(f.w.document.querySelector('form').getAttribute('action'),'/Quote/Auto');
+  }finally{f.close();}
+});
+
+test('protected field ordering never promotes a one-field wrapper to a native wizard step',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/quote/auto']={
+    title:'Auto',systemTemplateKey:'protect_template:auto_quote',
+    composition:[canonicalNode('runtime.form.quote_auto_form','container','div',{
+      systemKey:'protect_runtime_form:quote_auto_form',
+      children:[canonicalNode('auto.steps','container','div',{children:[
+        canonicalNode('auto.step.first','container','div',{children:[canonicalNode('auto.only','container','div')]}),
+        canonicalNode('auto.step.second','container','div')
+      ]})]
+    })]
+  };
+  const html='<!doctype html><html><body data-page-key="quote-auto"><main><form data-form-key="quote_auto_form"><div data-cms-id="auto.steps"><div data-cms-id="auto.step.first" class="wizard-step" data-step="1"><div data-cms-id="auto.only"><input id="only" name="FirstName" required></div></div><div data-cms-id="auto.step.second" class="wizard-step" data-step="2"><input name="LastName"></div></div></form></main></body></html>';
+  const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Auto',html});
+  try{
+    const before=f.serverDocument();
+    f.click('#only');
+    assert.equal(f.w.document.querySelector('#legend-cms-field-order').hidden,true);
+    assert.deepEqual(await f.save(),before);
+  }finally{f.close();}
+});
