@@ -261,17 +261,17 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>First Name<span class="text-danger">*</span></label>
+                    <label asp-for="FirstName">First Name<span class="text-danger">*</span></label>
                     <input asp-for="FirstName" class="form-control" required />
                     <span asp-validation-for="FirstName" class="text-danger"></span>
                 </div>
                 <div class="col-md-4">
-                    <label>Last Name<span class="text-danger">*</span></label>
+                    <label asp-for="LastName">Last Name<span class="text-danger">*</span></label>
                     <input asp-for="LastName" class="form-control" required />
                     <span asp-validation-for="LastName" class="text-danger"></span>
                 </div>
                 <div class="col-md-4">
-                    <label>Email<span class="text-danger">*</span></label>
+                    <label asp-for="Email">Email<span class="text-danger">*</span></label>
                     <input asp-for="Email" class="form-control" required />
                     <span asp-validation-for="Email" class="text-danger"></span>
                 </div>
@@ -279,15 +279,15 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Phone Number</label>
+                    <label asp-for="PhoneNumber">Phone Number</label>
                     <input asp-for="PhoneNumber" class="form-control" />
                 </div>
                 <div class="col-md-4">
-                    <label>Age</label>
+                    <label for="age-input">Age</label>
                     <input asp-for="Age" type="number" class="form-control" id="age-input" />
                 </div>
                 <div class="col-md-4">
-                    <label>Marital Status</label>
+                    <label asp-for="MaritalStatus">Marital Status</label>
                     <select asp-for="MaritalStatus" class="form-select">
                         <option value="">--Select--</option>
                         <option>Single</option>
@@ -302,11 +302,11 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Household Size</label>
+                    <label asp-for="HouseholdSize">Household Size</label>
                     <input asp-for="HouseholdSize" type="number" class="form-control" />
                 </div>
                 <div class="col-md-4">
-                    <label>State</label>
+                    <label asp-for="State">State</label>
                     <select asp-for="State" class="form-control">
                         <option value="">--Select a state--</option>
                         <option>AZ</option>
@@ -324,7 +324,7 @@
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <label>Occupation</label>
+                    <label asp-for="Occupation">Occupation</label>
                     <input asp-for="Occupation" class="form-control" />
                 </div>
             </div>
@@ -346,15 +346,15 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Annual Income</label>
+                    <label for="income-input">Annual Income</label>
                     <input asp-for="AnnualIncome" type="number" class="form-control" id="income-input"/>
                 </div>
                 <div class="col-md-4">
-                    <label>Retirement Age Target</label>
+                    <label for="retirement-age-input">Retirement Age Target</label>
                     <input asp-for="RetirementAgeTarget" type="number" class="form-control" id="retirement-age-input"/>
                 </div>
                 <div class="col-md-4">
-                    <label>Working Years Left</label>
+                    <label for="working-years-left">Working Years Left</label>
                     <input asp-for="WorkingYearsLeft" type="number" class="form-control" id="working-years-left" readonly />
                     <div class="mini-hint">Auto-calculated from Age and Retirement Age.</div>
                 </div>
@@ -362,7 +362,7 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Self Employed?</label>
+                    <label asp-for="SelfEmployed">Self Employed?</label>
                     <select asp-for="SelfEmployed" class="form-select">
                         <option value="">--Select--</option>
                         <option>Yes</option>
@@ -370,7 +370,7 @@
                     </select>
                 </div>
                 <div class="col-md-6">
-                    <label>Employer Benefits?</label>
+                    <label asp-for="EmployerBenefits">Employer Benefits?</label>
                     <select asp-for="EmployerBenefits" class="form-select">
                         <option value="">--Select--</option>
                         <option>Yes</option>
@@ -616,7 +616,7 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label>Trust?</label>
+                    <label asp-for="HasTrust">Trust?</label>
                     <select asp-for="HasTrust" class="form-select">
                         <option value="">--Select--</option>
                         <option>Yes</option>
@@ -624,7 +624,7 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label>Power of Attorney?</label>
+                    <label asp-for="HasPOA">Power of Attorney?</label>
                     <select asp-for="HasPOA" class="form-select">
                         <option value="">--Select--</option>
                         <option>Yes</option>
@@ -632,7 +632,7 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label>Health Directive / Living Will?</label>
+                    <label asp-for="HasHealthDirective">Health Directive / Living Will?</label>
                     <select asp-for="HasHealthDirective" class="form-select">
                         <option value="">--Select--</option>
                         <option>Yes</option>
@@ -662,7 +662,7 @@
 
                 <div class="row">
                     <div class="col-md-4">
-                        <label>Do you have life insurance?<span class="text-danger">*</span></label>
+                        <label asp-for="HasLifeInsurance">Do you have life insurance?<span class="text-danger">*</span></label>
                         <select asp-for="HasLifeInsurance" class="form-select insurance-toggle" required>
                             <option value="">--Select--</option>
                             <option>Yes</option>
@@ -696,7 +696,7 @@
                         <input asp-for="PrimaryBeneficiaries" class="form-control" />
                     </div>
                     <div class="col-md-6">
-                        <label>Secondary Beneficiaries</label>
+                        <label asp-for="SecondaryBeneficiaries">Secondary Beneficiaries</label>
                         <input asp-for="SecondaryBeneficiaries" class="form-control" />
                     </div>
                 </div>
@@ -708,7 +708,7 @@
 
                 <div class="row">
                     <div class="col-md-4">
-                        <label>Do you have disability insurance?<span class="text-danger">*</span></label>
+                        <label asp-for="HasDI">Do you have disability insurance?<span class="text-danger">*</span></label>
                         <select asp-for="HasDI" class="form-select insurance-toggle" required>
                             <option value="">--Select--</option>
                             <option>Yes</option>
@@ -734,7 +734,7 @@
 
                 <div class="row">
                     <div class="col-md-4">
-                        <label>Benefit Period</label>
+                        <label asp-for="DIBenefitPeriod">Benefit Period</label>
                         <input asp-for="DIBenefitPeriod" class="form-control" />
                     </div>
                 </div>
@@ -745,15 +745,15 @@
                 <h5>Health Coverage</h5>
                 <div class="row">
                     <div class="col-md-4">
-                        <label>Coverage Type</label>
+                        <label asp-for="HealthCoverageType">Coverage Type</label>
                         <input asp-for="HealthCoverageType" class="form-control" />
                     </div>
                     <div class="col-md-4">
-                        <label>Deductible</label>
+                        <label asp-for="HealthDeductible">Deductible</label>
                         <input asp-for="HealthDeductible" type="number" class="form-control" />
                     </div>
                     <div class="col-md-4">
-                        <label>Out-of-Pocket Max</label>
+                        <label asp-for="HealthOutOfPocketMax">Out-of-Pocket Max</label>
                         <input asp-for="HealthOutOfPocketMax" type="number" class="form-control" />
                     </div>
                 </div>
@@ -765,7 +765,7 @@
 
                 <div class="row">
                     <div class="col-md-4">
-                        <label>Home Insurance?</label>
+                        <label asp-for="HasHomeInsurance">Home Insurance?</label>
                         <select asp-for="HasHomeInsurance" class="form-select insurance-toggle">
                             <option value="">--Select--</option>
                             <option>Yes</option>

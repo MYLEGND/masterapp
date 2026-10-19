@@ -5109,3 +5109,67 @@ test('responsive audit finishes without animation frames and retains breakpoint 
     assert.equal(f.w.document.querySelector('main h1').style.cssText,originalStyle);
   } finally {f.close();}
 });
+
+
+test('Studio form step navigation reveals protected later steps without entering answers or changing the saved form',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/quote/auto']={
+    title:'Auto',navigation:{label:'Auto',showInNavigation:true,order:1},
+    systemTemplateKey:'protect_template:auto_quote',
+    composition:[canonicalNode('runtime.form.quote_auto_form','container','div',{
+      systemKey:'protect_runtime_form:quote_auto_form',
+      children:[
+        canonicalNode('auto.step.first','container','div',{className:'wizard-step active'}),
+        canonicalNode('auto.step.second','container','div',{className:'wizard-step',hidden:true})
+      ]
+    })]
+  };
+  const html='<!doctype html><html><head><style>.wizard-step{display:none}.wizard-step.active{display:block}</style></head><body data-page-key="quote-auto"><main><form id="autoQuoteForm" action="/Quote/Auto" method="post" data-form-key="quote_auto_form"><div data-cms-id="auto.step.first" class="wizard-step active" data-step="1"><label for="applicant">Applicant</label><input id="applicant" name="FirstName" required></div><div data-cms-id="auto.step.second" class="wizard-step" data-step="2" hidden><label for="vehicle">Vehicle</label><input id="vehicle" name="Vehicles[0].VIN" required><button type="submit">Submit</button></div></form></main></body></html>';
+  const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Auto',html});
+  try{
+    const form=f.w.document.getElementById('autoQuoteForm');
+    const input=f.w.document.getElementById('vehicle');
+    const original=f.serverDocument();
+    const before=f.calls.length;
+    f.click('[data-form-preview-next]');
+    f.click('[data-form-preview-next]');
+    assert.equal(f.w.document.querySelector('[data-cms-id="auto.step.first"]').hidden,true);
+    assert.equal(f.w.document.querySelector('[data-cms-id="auto.step.second"]').hidden,false);
+    assert.equal(f.w.document.getElementById('vehicle'),input);
+    assert.equal(input.value,'');
+    assert.equal(input.name,'Vehicles[0].VIN');
+    assert.equal(input.required,true);
+    assert.equal(form.getAttribute('action'),'/Quote/Auto');
+    assert.deepEqual(f.serverDocument(),original);
+    assert.equal(f.calls.slice(before).some(call=>call.method==='POST'),false);
+    f.change('#legend-cms-form-navigator select','-1');
+    assert.equal(f.w.document.querySelector('[data-cms-id="auto.step.second"]').hidden,true);
+    assert.equal(f.w.document.querySelector('[data-cms-id="auto.step.first"]').hidden,false);
+    assert.deepEqual(await f.save(),original);
+  }finally{f.close();}
+});
+
+test('Studio step chooser exposes conditional native experience steps without satisfying live form rules',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition=[canonicalNode('custom.form','experience','form',{
+    title:'Business intake',
+    experience:{
+      kind:'form',submitCapability:null,
+      controls:[{key:'name',type:'text',label:'Name',required:true},{key:'detail',type:'text',label:'Detail'}],
+      steps:[{key:'first',title:'Start',controlKeys:['name']},{key:'second',title:'Details',controlKeys:['detail'],visibleWhen:{op:'value',value:false}}],
+      calculations:{},results:[]
+    }
+  })];
+  const f=await domFixture({doc});
+  try{
+    const before=f.serverDocument();
+    const options=f.w.document.querySelectorAll('#legend-cms-form-navigator option');
+    assert.equal(options.length,3);
+    f.change('#legend-cms-form-navigator select','1');
+    assert.equal(f.w.document.querySelector('[data-experience-step="second"]').hidden,false);
+    assert.equal(f.w.document.querySelector('[data-cms-field-key="name"]').value,'');
+    assert.deepEqual(f.serverDocument(),before);
+    f.change('#legend-cms-form-navigator select','-1');
+    assert.equal(f.w.document.querySelector('[data-experience-step="second"]').hidden,true);
+  }finally{f.close();}
+});

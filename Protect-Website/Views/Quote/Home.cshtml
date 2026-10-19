@@ -127,17 +127,17 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>First Name<span class="text-danger">*</span></label>
+                    <label for="Applicant_FirstName">First Name<span class="text-danger">*</span></label>
                     <input asp-for="FirstName" class="form-control" required data-original-required="1" id="Applicant_FirstName" />
                     <span asp-validation-for="FirstName" class="text-danger"></span>
                 </div>
                 <div class="col-md-4">
-                    <label>Last Name<span class="text-danger">*</span></label>
+                    <label for="Applicant_LastName">Last Name<span class="text-danger">*</span></label>
                     <input asp-for="LastName" class="form-control" required data-original-required="1" id="Applicant_LastName" />
                     <span asp-validation-for="LastName" class="text-danger"></span>
                 </div>
                 <div class="col-md-4">
-                    <label>Nickname</label>
+                    <label for="Applicant_Nickname">Nickname</label>
                     <input asp-for="Nickname" class="form-control" id="Applicant_Nickname" />
                     <span asp-validation-for="Nickname" class="text-danger"></span>
                 </div>
@@ -145,7 +145,7 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Address State<span class="text-danger">*</span></label>
+                    <label for="Applicant_AddressState">Address State<span class="text-danger">*</span></label>
                     <select asp-for="AddressState" class="form-select" required data-original-required="1" id="Applicant_AddressState">
                         <option value="">--Select--</option>
                         <option>AZ</option><option>CA</option><option>IA</option><option>KS</option><option>LA</option><option>MD</option><option>MS</option><option>OH</option><option>SC</option><option>SD</option><option>TX</option><option>WA</option>
@@ -153,12 +153,12 @@
                     <span asp-validation-for="AddressState" class="text-danger"></span>
                 </div>
                 <div class="col-md-4">
-                    <label>Postal Code<span class="text-danger">*</span></label>
+                    <label for="Applicant_PostalCode">Postal Code<span class="text-danger">*</span></label>
                     <input asp-for="PostalCode" class="form-control" required data-original-required="1" id="Applicant_PostalCode" />
                     <span asp-validation-for="PostalCode" class="text-danger"></span>
                 </div>
                 <div class="col-md-4">
-                    <label>Gender<span class="text-danger">*</span></label>
+                    <label for="Applicant_Gender">Gender<span class="text-danger">*</span></label>
                     <select asp-for="Gender" class="form-select" required data-original-required="1" id="Applicant_Gender">
                         <option value="">--Select--</option>
                         <option>Female</option>
@@ -171,12 +171,12 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>DOB<span class="text-danger">*</span></label>
+                    <label for="Applicant_DOB">DOB<span class="text-danger">*</span></label>
                     <input asp-for="DOB" type="date" class="form-control" required data-original-required="1" id="Applicant_DOB" />
                     <span asp-validation-for="DOB" class="text-danger"></span>
                 </div>
                 <div class="col-md-4">
-                    <label>Marital Status<span class="text-danger">*</span></label>
+                    <label for="Applicant_MaritalStatus">Marital Status<span class="text-danger">*</span></label>
                     <select asp-for="MaritalStatus" class="form-select" required data-original-required="1" id="Applicant_MaritalStatus">
                         <option value="">--Select--</option>
                         <option>Single</option>
@@ -189,7 +189,7 @@
                     <span asp-validation-for="MaritalStatus" class="text-danger"></span>
                 </div>
                 <div class="col-md-4">
-                    <label>Driver’s License #<span class="text-danger">*</span></label>
+                    <label for="Applicant_DriversLicenseNumber">Driver’s License #<span class="text-danger">*</span></label>
                     <input asp-for="DriversLicenseNumber" class="form-control" required data-original-required="1" id="Applicant_DriversLicenseNumber" />
                     <span asp-validation-for="DriversLicenseNumber" class="text-danger"></span>
                 </div>
@@ -197,7 +197,7 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>DL Status<span class="text-danger">*</span></label>
+                    <label for="Applicant_DLStatus">DL Status<span class="text-danger">*</span></label>
                     <select asp-for="DLStatus" class="form-select" required data-original-required="1" id="Applicant_DLStatus">
                         <option value="">--Select--</option>
                         <option>Valid</option>
@@ -212,7 +212,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>DL State<span class="text-danger">*</span></label>
+                    <label for="Applicant_DLState">DL State<span class="text-danger">*</span></label>
                     <select asp-for="DLState" class="form-select" required data-original-required="1" id="Applicant_DLState">
                         <option value="">--Select--</option>
                         <option>AZ</option><option>CA</option><option>IA</option><option>KS</option><option>LA</option><option>MD</option><option>MS</option><option>OH</option><option>SC</option><option>SD</option><option>TX</option><option>WA</option>
@@ -221,7 +221,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Education</label>
+                    <label for="Applicant_Education">Education</label>
                     <select asp-for="Education" class="form-select" id="Applicant_Education">
                         <option value="">--Select--</option>
                         <option>No High School Diploma</option>
@@ -240,7 +240,7 @@
 
             <div class="row">
                 <div class="col-md-12">
-                    <label>Industry<span class="text-danger">*</span></label>
+                    <label for="Applicant_Industry">Industry<span class="text-danger">*</span></label>
                     <select asp-for="Industry" class="form-select" required data-original-required="1" id="Applicant_Industry">
                         <option value="">--Select--</option>
                         <option>Homemaker/House Person</option>
@@ -287,17 +287,17 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Address<span class="text-danger">*</span></label>
+                    <label for="PrimaryAddress">Address<span class="text-danger">*</span></label>
                     <input asp-for="PrimaryAddress" class="form-control" required data-original-required="1" id="PrimaryAddress" />
                     <span asp-validation-for="PrimaryAddress" class="text-danger"></span>
                 </div>
                 <div class="col-md-2">
-                    <label>Unit</label>
+                    <label for="PrimaryUnit">Unit</label>
                     <input asp-for="PrimaryUnit" class="form-control" id="PrimaryUnit" />
                     <span asp-validation-for="PrimaryUnit" class="text-danger"></span>
                 </div>
                 <div class="col-md-4">
-                    <label>Address Line 2</label>
+                    <label for="PrimaryAddressLine2">Address Line 2</label>
                     <input asp-for="PrimaryAddressLine2" class="form-control" id="PrimaryAddressLine2" />
                     <span asp-validation-for="PrimaryAddressLine2" class="text-danger"></span>
                 </div>
@@ -305,12 +305,12 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>City<span class="text-danger">*</span></label>
+                    <label for="PrimaryCity">City<span class="text-danger">*</span></label>
                     <input asp-for="PrimaryCity" class="form-control" required data-original-required="1" id="PrimaryCity" />
                     <span asp-validation-for="PrimaryCity" class="text-danger"></span>
                 </div>
                 <div class="col-md-4">
-                    <label>State<span class="text-danger">*</span></label>
+                    <label for="PrimaryState">State<span class="text-danger">*</span></label>
                     <select asp-for="PrimaryState" class="form-select" required data-original-required="1" id="PrimaryState">
                         <option value="">--Select--</option>
                         <option>AZ</option><option>CA</option><option>IA</option><option>KS</option><option>LA</option><option>MD</option><option>MS</option><option>OH</option><option>SC</option><option>SD</option><option>TX</option><option>WA</option>
@@ -318,7 +318,7 @@
                     <span asp-validation-for="PrimaryState" class="text-danger"></span>
                 </div>
                 <div class="col-md-4">
-                    <label>Country<span class="text-danger">*</span></label>
+                    <label for="PrimaryCountry">Country<span class="text-danger">*</span></label>
                     <select asp-for="PrimaryCountry" class="form-select" required data-original-required="1" id="PrimaryCountry">
                         <option value="">--Select--</option>
                         <option>United States</option>
@@ -332,12 +332,12 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Postal Code<span class="text-danger">*</span></label>
+                    <label for="PrimaryPostalCode">Postal Code<span class="text-danger">*</span></label>
                     <input asp-for="PrimaryPostalCode" class="form-control" required data-original-required="1" id="PrimaryPostalCode" />
                     <span asp-validation-for="PrimaryPostalCode" class="text-danger"></span>
                 </div>
                 <div class="col-md-4">
-                    <label>Years At Address<span class="text-danger">*</span></label>
+                    <label for="PrimaryYearsAtAddress">Years At Address<span class="text-danger">*</span></label>
                     <input asp-for="PrimaryYearsAtAddress" class="form-control" required data-original-required="1" id="PrimaryYearsAtAddress" />
                     <span asp-validation-for="PrimaryYearsAtAddress" class="text-danger"></span>
                 </div>
@@ -354,17 +354,17 @@
 
                 <div class="row">
                     <div class="col-md-6">
-                        <label>Address<span class="text-danger">*</span></label>
+                        <label for="PreviousAddress">Address<span class="text-danger">*</span></label>
                         <input asp-for="PreviousAddress" class="form-control" id="PreviousAddress" />
                         <span asp-validation-for="PreviousAddress" class="text-danger"></span>
                     </div>
                     <div class="col-md-2">
-                        <label>Unit</label>
+                        <label for="PreviousUnit">Unit</label>
                         <input asp-for="PreviousUnit" class="form-control" id="PreviousUnit" />
                         <span asp-validation-for="PreviousUnit" class="text-danger"></span>
                     </div>
                     <div class="col-md-4">
-                        <label>Address Line 2</label>
+                        <label for="PreviousAddressLine2">Address Line 2</label>
                         <input asp-for="PreviousAddressLine2" class="form-control" id="PreviousAddressLine2" />
                         <span asp-validation-for="PreviousAddressLine2" class="text-danger"></span>
                     </div>
@@ -372,12 +372,12 @@
 
                 <div class="row">
                     <div class="col-md-4">
-                        <label>City<span class="text-danger">*</span></label>
+                        <label for="PreviousCity">City<span class="text-danger">*</span></label>
                         <input asp-for="PreviousCity" class="form-control" id="PreviousCity" />
                         <span asp-validation-for="PreviousCity" class="text-danger"></span>
                     </div>
                     <div class="col-md-4">
-                        <label>State<span class="text-danger">*</span></label>
+                        <label for="PreviousState">State<span class="text-danger">*</span></label>
                         <select asp-for="PreviousState" class="form-select" id="PreviousState">
                             <option value="">--Select--</option>
                             <option>AZ</option><option>CA</option><option>IA</option><option>KS</option><option>LA</option><option>MD</option><option>MS</option><option>OH</option><option>SC</option><option>SD</option><option>TX</option><option>WA</option>
@@ -385,7 +385,7 @@
                         <span asp-validation-for="PreviousState" class="text-danger"></span>
                     </div>
                     <div class="col-md-4">
-                        <label>Country<span class="text-danger">*</span></label>
+                        <label for="PreviousCountry">Country<span class="text-danger">*</span></label>
                         <select asp-for="PreviousCountry" class="form-select" id="PreviousCountry">
                             <option value="">--Select--</option>
                             <option>United States</option>
@@ -399,12 +399,12 @@
 
                 <div class="row">
                     <div class="col-md-4">
-                        <label>Postal Code<span class="text-danger">*</span></label>
+                        <label for="PreviousPostalCode">Postal Code<span class="text-danger">*</span></label>
                         <input asp-for="PreviousPostalCode" class="form-control" id="PreviousPostalCode" />
                         <span asp-validation-for="PreviousPostalCode" class="text-danger"></span>
                     </div>
                     <div class="col-md-4">
-                        <label>Years At Address<span class="text-danger">*</span></label>
+                        <label for="PreviousYearsAtAddress">Years At Address<span class="text-danger">*</span></label>
                         <input asp-for="PreviousYearsAtAddress" class="form-control" id="PreviousYearsAtAddress" />
                         <span asp-validation-for="PreviousYearsAtAddress" class="text-danger"></span>
                     </div>
@@ -417,7 +417,7 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Phone Type<span class="text-danger">*</span></label>
+                    <label for="PhoneType">Phone Type<span class="text-danger">*</span></label>
                     <select asp-for="PhoneType" class="form-select" required data-original-required="1" id="PhoneType">
                         <option value="">--Select--</option>
                         <option>Home</option>
@@ -428,7 +428,7 @@
                     <span asp-validation-for="PhoneType" class="text-danger"></span>
                 </div>
                 <div class="col-md-8">
-                    <label>Phone Number<span class="text-danger">*</span></label>
+                    <label for="PhoneNumber">Phone Number<span class="text-danger">*</span></label>
                     <input asp-for="PhoneNumber" class="form-control" required data-original-required="1" id="PhoneNumber" />
                     <span asp-validation-for="PhoneNumber" class="text-danger"></span>
                 </div>
@@ -436,7 +436,7 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Email Type<span class="text-danger">*</span></label>
+                    <label for="EmailType">Email Type<span class="text-danger">*</span></label>
                     <select asp-for="EmailType" class="form-select" required data-original-required="1" id="EmailType">
                         <option value="">--Select--</option>
                         <option>Primary</option>
@@ -445,7 +445,7 @@
                     <span asp-validation-for="EmailType" class="text-danger"></span>
                 </div>
                 <div class="col-md-8">
-                    <label>Email Address<span class="text-danger">*</span></label>
+                    <label for="EmailAddress">Email Address<span class="text-danger">*</span></label>
                     <input asp-for="EmailAddress" type="email" class="form-control" required data-original-required="1" id="EmailAddress" />
                     <span asp-validation-for="EmailAddress" class="text-danger"></span>
                 </div>
@@ -453,7 +453,7 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Preferred Contact Method<span class="text-danger">*</span></label>
+                    <label for="PreferredContactMethod">Preferred Contact Method<span class="text-danger">*</span></label>
                     <select asp-for="PreferredContactMethod" class="form-select" required data-original-required="1" id="PreferredContactMethod">
                         <option value="">--Select--</option>
                         <option>Phone</option>
@@ -463,7 +463,7 @@
                     <span asp-validation-for="PreferredContactMethod" class="text-danger"></span>
                 </div>
                 <div class="col-md-6">
-                    <label>Best Time to Contact<span class="text-danger">*</span></label>
+                    <label for="BestTimeToContact">Best Time to Contact<span class="text-danger">*</span></label>
                     <select asp-for="BestTimeToContact" class="form-select" required data-original-required="1" id="BestTimeToContact">
                         <option value="">--Select--</option>
                         <option>Morning</option>
@@ -490,7 +490,7 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Policy / Form Type<span class="text-danger">*</span></label>
+                    <label for="PolicyFormType">Policy / Form Type<span class="text-danger">*</span></label>
                     <select asp-for="PolicyFormType" class="form-select" required data-original-required="1" id="PolicyFormType">
                         <option value="">--Select--</option>
                         <option>HO3 - Dwelling</option>
@@ -502,13 +502,13 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Prior Carrier<span class="text-danger">*</span></label>
+                    <label for="PriorCarrier">Prior Carrier<span class="text-danger">*</span></label>
                     <input asp-for="PriorCarrier" class="form-control" required data-original-required="1" id="PriorCarrier" />
                     <span asp-validation-for="PriorCarrier" class="text-danger"></span>
                 </div>
 
                 <div class="col-md-4">
-                    <label>Expiration Date (Current Policy)<span class="text-danger">*</span></label>
+                    <label for="CurrentPolicyExpirationDate">Expiration Date (Current Policy)<span class="text-danger">*</span></label>
                     <input asp-for="CurrentPolicyExpirationDate" type="date" class="form-control" required data-original-required="1" id="CurrentPolicyExpirationDate" />
                     <span asp-validation-for="CurrentPolicyExpirationDate" class="text-danger"></span>
                 </div>
@@ -516,13 +516,13 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Prior Policy Premium</label>
+                    <label for="PriorPolicyPremium">Prior Policy Premium</label>
                     <input asp-for="PriorPolicyPremium" class="form-control" id="PriorPolicyPremium" />
                     <span asp-validation-for="PriorPolicyPremium" class="text-danger"></span>
                 </div>
 
                 <div class="col-md-4">
-                    <label>Years with Prior Carrier<span class="text-danger">*</span></label>
+                    <label for="YearsWithPriorCarrier">Years with Prior Carrier<span class="text-danger">*</span></label>
                     <select asp-for="YearsWithPriorCarrier" class="form-select" required data-original-required="1" id="YearsWithPriorCarrier">
                         <option value="">--Select--</option>
                         <option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option><option>15</option><option>More than 15</option>
@@ -531,7 +531,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Months<span class="text-danger">*</span></label>
+                    <label for="MonthsWithPriorCarrier">Months<span class="text-danger">*</span></label>
                     <select asp-for="MonthsWithPriorCarrier" class="form-select" required data-original-required="1" id="MonthsWithPriorCarrier">
                         <option value="">--Select--</option>
                         <option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option>
@@ -542,7 +542,7 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Years with Continuous Coverage<span class="text-danger">*</span></label>
+                    <label for="YearsContinuousCoverage">Years with Continuous Coverage<span class="text-danger">*</span></label>
                     <select asp-for="YearsContinuousCoverage" class="form-select" required data-original-required="1" id="YearsContinuousCoverage">
                         <option value="">--Select--</option>
                         <option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option><option>15</option><option>More than 15</option>
@@ -551,7 +551,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Months<span class="text-danger">*</span></label>
+                    <label for="MonthsContinuousCoverage">Months<span class="text-danger">*</span></label>
                     <select asp-for="MonthsContinuousCoverage" class="form-select" required data-original-required="1" id="MonthsContinuousCoverage">
                         <option value="">--Select--</option>
                         <option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option>
@@ -560,7 +560,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Credit Check & Underwriting Reports Authorized<span class="text-danger">*</span></label>
+                    <label for="CreditCheckAuthorized">Credit Check & Underwriting Reports Authorized<span class="text-danger">*</span></label>
                     <select asp-for="CreditCheckAuthorized" class="form-select" required data-original-required="1" id="CreditCheckAuthorized">
                         <option value="">--Select--</option>
                         <option>Yes</option>
@@ -572,7 +572,7 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Quote as Package<span class="text-danger">*</span></label>
+                    <label for="QuoteAsPackage">Quote as Package<span class="text-danger">*</span></label>
                     <select asp-for="QuoteAsPackage" class="form-select" required data-original-required="1" id="QuoteAsPackage">
                         <option value="">--Select--</option>
                         <option>Yes</option>
@@ -582,7 +582,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Effective Date (New Policy)<span class="text-danger">*</span></label>
+                    <label for="NewPolicyEffectiveDate">Effective Date (New Policy)<span class="text-danger">*</span></label>
                     <input asp-for="NewPolicyEffectiveDate" type="date" class="form-control" required data-original-required="1" id="NewPolicyEffectiveDate" />
                     <span asp-validation-for="NewPolicyEffectiveDate" class="text-danger"></span>
                 </div>
@@ -594,7 +594,7 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Has property insurance been cancelled, declined, or non-renewed in the last 5 years?<span class="text-danger">*</span></label>
+                    <label asp-for="CancelledDeclinedNonRenewedLast5Years">Has property insurance been cancelled, declined, or non-renewed in the last 5 years?<span class="text-danger">*</span></label>
                     <select asp-for="CancelledDeclinedNonRenewedLast5Years" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>Yes</option>
@@ -604,7 +604,7 @@
                 </div>
 
                 <div class="col-md-6">
-                    <label>Is the home under construction?<span class="text-danger">*</span></label>
+                    <label asp-for="HomeUnderConstruction">Is the home under construction?<span class="text-danger">*</span></label>
                     <select asp-for="HomeUnderConstruction" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>Yes</option>
@@ -616,7 +616,7 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Is there a business or daycare on the premises?<span class="text-danger">*</span></label>
+                    <label asp-for="BusinessOrDaycareOnPremises">Is there a business or daycare on the premises?<span class="text-danger">*</span></label>
                     <select asp-for="BusinessOrDaycareOnPremises" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>Yes</option>
@@ -626,7 +626,7 @@
                 </div>
 
                 <div class="col-md-6">
-                    <label># of Employees</label>
+                    <label asp-for="NumberOfEmployees"># of Employees</label>
                     <input asp-for="NumberOfEmployees" class="form-control" />
                     <span asp-validation-for="NumberOfEmployees" class="text-danger"></span>
                 </div>
@@ -634,7 +634,7 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Is there a swimming pool on the premises?<span class="text-danger">*</span></label>
+                    <label asp-for="SwimmingPoolOnPremises">Is there a swimming pool on the premises?<span class="text-danger">*</span></label>
                     <select asp-for="SwimmingPoolOnPremises" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>Yes</option>
@@ -644,7 +644,7 @@
                 </div>
 
                 <div class="col-md-6">
-                    <label>Are dogs on the premises?<span class="text-danger">*</span></label>
+                    <label asp-for="DogsOnPremises">Are dogs on the premises?<span class="text-danger">*</span></label>
                     <select asp-for="DogsOnPremises" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>Yes</option>
@@ -660,7 +660,7 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Paperless<span class="text-danger">*</span></label>
+                    <label asp-for="Paperless">Paperless<span class="text-danger">*</span></label>
                     <select asp-for="Paperless" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>Yes</option>
@@ -670,7 +670,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Number of Animals on the Premises?<span class="text-danger">*</span></label>
+                    <label asp-for="NumberOfAnimalsOnPremises">Number of Animals on the Premises?<span class="text-danger">*</span></label>
                     <select asp-for="NumberOfAnimalsOnPremises" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>None</option>
@@ -682,7 +682,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Has there been any lapse in coverage in the past 12 months?<span class="text-danger">*</span></label>
+                    <label asp-for="LapseInCoveragePast12Months">Has there been any lapse in coverage in the past 12 months?<span class="text-danger">*</span></label>
                     <select asp-for="LapseInCoveragePast12Months" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>Yes</option>
@@ -694,7 +694,7 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Auto years with prior carrier or years with current agent<span class="text-danger">*</span></label>
+                    <label asp-for="AutoYearsWithPriorCarrierOrAgent">Auto years with prior carrier or years with current agent<span class="text-danger">*</span></label>
                     <select asp-for="AutoYearsWithPriorCarrierOrAgent" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>5 Years or more</option>
@@ -723,7 +723,7 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Dwelling Usage<span class="text-danger">*</span></label>
+                    <label asp-for="DwellingUsage">Dwelling Usage<span class="text-danger">*</span></label>
                     <select asp-for="DwellingUsage" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>Primary</option>
@@ -736,7 +736,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Occupancy Type<span class="text-danger">*</span></label>
+                    <label asp-for="OccupancyType">Occupancy Type<span class="text-danger">*</span></label>
                     <select asp-for="OccupancyType" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>Owner Occupied</option>
@@ -748,7 +748,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Dwelling Type<span class="text-danger">*</span></label>
+                    <label asp-for="DwellingType">Dwelling Type<span class="text-danger">*</span></label>
                     <select asp-for="DwellingType" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>One Family</option>
@@ -762,7 +762,7 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Number of Occupants<span class="text-danger">*</span></label>
+                    <label asp-for="NumberOfOccupants">Number of Occupants<span class="text-danger">*</span></label>
                     <select asp-for="NumberOfOccupants" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9 or more</option>
@@ -771,7 +771,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Number of Stories<span class="text-danger">*</span></label>
+                    <label asp-for="NumberOfStories">Number of Stories<span class="text-danger">*</span></label>
                     <select asp-for="NumberOfStories" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>1</option>
@@ -788,7 +788,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Square Footage<span class="text-danger">*</span></label>
+                    <label asp-for="SquareFootage">Square Footage<span class="text-danger">*</span></label>
                     <input asp-for="SquareFootage" class="form-control" required data-original-required="1" />
                     <span asp-validation-for="SquareFootage" class="text-danger"></span>
                 </div>
@@ -796,13 +796,13 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Year Built<span class="text-danger">*</span></label>
+                    <label asp-for="YearBuilt">Year Built<span class="text-danger">*</span></label>
                     <input asp-for="YearBuilt" class="form-control" required data-original-required="1" />
                     <span asp-validation-for="YearBuilt" class="text-danger"></span>
                 </div>
 
                 <div class="col-md-8">
-                    <label>Construction Style<span class="text-danger">*</span></label>
+                    <label asp-for="ConstructionStyle">Construction Style<span class="text-danger">*</span></label>
                     <select asp-for="ConstructionStyle" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>Apartment</option><option>Backsplit</option><option>Bi-Level</option><option>Bi-Level/Row Center</option><option>Bi-Level/Row End</option>
@@ -822,7 +822,7 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Roof Type (Main Material)<span class="text-danger">*</span></label>
+                    <label asp-for="RoofTypeMainMaterial">Roof Type (Main Material)<span class="text-danger">*</span></label>
                     <select asp-for="RoofTypeMainMaterial" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>Architectural Shingles</option><option>Asbestos</option><option>Asphalt Shingles</option><option>Composition</option>
@@ -837,7 +837,7 @@
                 </div>
 
                 <div class="col-md-6">
-                    <label>Foundation Type<span class="text-danger">*</span></label>
+                    <label asp-for="FoundationType">Foundation Type<span class="text-danger">*</span></label>
                     <select asp-for="FoundationType" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>Basement -Finished</option>
@@ -861,7 +861,7 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Roof Design<span class="text-danger">*</span></label>
+                    <label asp-for="RoofDesign">Roof Design<span class="text-danger">*</span></label>
                     <select asp-for="RoofDesign" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>Dormer</option><option>Flat</option><option>Gable</option><option>Gambrel</option><option>Hip</option><option>Mansard</option>
@@ -871,7 +871,7 @@
                 </div>
 
                 <div class="col-md-6">
-                    <label>Exterior Walls<span class="text-danger">*</span></label>
+                    <label asp-for="ExteriorWalls">Exterior Walls<span class="text-danger">*</span></label>
                     <select asp-for="ExteriorWalls" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>Adobe</option>
@@ -923,7 +923,7 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Number of Full Baths<span class="text-danger">*</span></label>
+                    <label asp-for="FullBaths">Number of Full Baths<span class="text-danger">*</span></label>
                     <select asp-for="FullBaths" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10+</option>
@@ -932,7 +932,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Number of Half Baths</label>
+                    <label asp-for="HalfBaths">Number of Half Baths</label>
                     <select asp-for="HalfBaths" class="form-select">
                         <option value="">--Select--</option>
                         <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10+</option>
@@ -941,7 +941,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label># of Wood Burning Stoves</label>
+                    <label asp-for="WoodBurningStoves"># of Wood Burning Stoves</label>
                     <select asp-for="WoodBurningStoves" class="form-select">
                         <option value="">--Select--</option>
                         @for (int i = 1; i <= 20; i++) { <option>@i</option> }
@@ -952,7 +952,7 @@
 
             <div class="row">
                 <div class="col-md-3">
-                    <label>Burglar Alarm</label>
+                    <label asp-for="BurglarAlarm">Burglar Alarm</label>
                     <select asp-for="BurglarAlarm" class="form-select">
                         <option value="">--Select--</option>
                         <option>Central</option><option>Direct</option><option>Local</option>
@@ -961,7 +961,7 @@
                 </div>
 
                 <div class="col-md-3">
-                    <label>Fire Detection</label>
+                    <label asp-for="FireDetection">Fire Detection</label>
                     <select asp-for="FireDetection" class="form-select">
                         <option value="">--Select--</option>
                         <option>Central</option><option>Direct</option><option>Local</option>
@@ -970,7 +970,7 @@
                 </div>
 
                 <div class="col-md-3">
-                    <label>Sprinkler System</label>
+                    <label asp-for="SprinklerSystem">Sprinkler System</label>
                     <select asp-for="SprinklerSystem" class="form-select">
                         <option value="">--Select--</option>
                         <option>Partial</option><option>Full</option>
@@ -979,7 +979,7 @@
                 </div>
 
                 <div class="col-md-3">
-                    <label>Smoke Detector</label>
+                    <label asp-for="SmokeDetector">Smoke Detector</label>
                     <select asp-for="SmokeDetector" class="form-select">
                         <option value="">--Select--</option>
                         <option>Central</option><option>Direct</option><option>Local</option>
@@ -994,19 +994,19 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Purchase Price</label>
+                    <label asp-for="PurchasePrice">Purchase Price</label>
                     <input asp-for="PurchasePrice" class="form-control" />
                     <span asp-validation-for="PurchasePrice" class="text-danger"></span>
                 </div>
 
                 <div class="col-md-4">
-                    <label>Purchase Date<span class="text-danger">*</span></label>
+                    <label asp-for="PurchaseDate">Purchase Date<span class="text-danger">*</span></label>
                     <input asp-for="PurchaseDate" type="date" class="form-control" required data-original-required="1" />
                     <span asp-validation-for="PurchaseDate" class="text-danger"></span>
                 </div>
 
                 <div class="col-md-4">
-                    <label>Distance From Fire Station (miles)<span class="text-danger">*</span></label>
+                    <label asp-for="DistanceFromFireStationMiles">Distance From Fire Station (miles)<span class="text-danger">*</span></label>
                     <input asp-for="DistanceFromFireStationMiles" class="form-control" required data-original-required="1" />
                     <span asp-validation-for="DistanceFromFireStationMiles" class="text-danger"></span>
                 </div>
@@ -1014,7 +1014,7 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Feet From Hydrant<span class="text-danger">*</span></label>
+                    <label asp-for="FeetFromHydrant">Feet From Hydrant<span class="text-danger">*</span></label>
                     <select asp-for="FeetFromHydrant" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>1-500</option>
@@ -1038,7 +1038,7 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Heating Update<span class="text-danger">*</span></label>
+                    <label asp-for="HeatingUpdate">Heating Update<span class="text-danger">*</span></label>
                     <select asp-for="HeatingUpdate" class="form-select houseUpdate" required data-original-required="1" data-year-target="HeatingYearUpdated">
                         <option value="">--Select--</option>
                         <option>Not Updated</option>
@@ -1048,7 +1048,7 @@
                     <span asp-validation-for="HeatingUpdate" class="text-danger"></span>
                 </div>
                 <div class="col-md-6" id="HeatingYearUpdatedWrap" style="display:none;">
-                    <label>Year Updated</label>
+                    <label for="HeatingYearUpdated">Year Updated</label>
                     <input asp-for="HeatingYearUpdated" class="form-control" id="HeatingYearUpdated" />
                     <span asp-validation-for="HeatingYearUpdated" class="text-danger"></span>
                 </div>
@@ -1056,7 +1056,7 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Electrical Update<span class="text-danger">*</span></label>
+                    <label asp-for="ElectricalUpdate">Electrical Update<span class="text-danger">*</span></label>
                     <select asp-for="ElectricalUpdate" class="form-select houseUpdate" required data-original-required="1" data-year-target="ElectricalYearUpdated">
                         <option value="">--Select--</option>
                         <option>Not Updated</option>
@@ -1066,7 +1066,7 @@
                     <span asp-validation-for="ElectricalUpdate" class="text-danger"></span>
                 </div>
                 <div class="col-md-6" id="ElectricalYearUpdatedWrap" style="display:none;">
-                    <label>Year Updated</label>
+                    <label for="ElectricalYearUpdated">Year Updated</label>
                     <input asp-for="ElectricalYearUpdated" class="form-control" id="ElectricalYearUpdated" />
                     <span asp-validation-for="ElectricalYearUpdated" class="text-danger"></span>
                 </div>
@@ -1074,7 +1074,7 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Plumbing Update<span class="text-danger">*</span></label>
+                    <label asp-for="PlumbingUpdate">Plumbing Update<span class="text-danger">*</span></label>
                     <select asp-for="PlumbingUpdate" class="form-select houseUpdate" required data-original-required="1" data-year-target="PlumbingYearUpdated">
                         <option value="">--Select--</option>
                         <option>Not Updated</option>
@@ -1084,7 +1084,7 @@
                     <span asp-validation-for="PlumbingUpdate" class="text-danger"></span>
                 </div>
                 <div class="col-md-6" id="PlumbingYearUpdatedWrap" style="display:none;">
-                    <label>Year Updated</label>
+                    <label for="PlumbingYearUpdated">Year Updated</label>
                     <input asp-for="PlumbingYearUpdated" class="form-control" id="PlumbingYearUpdated" />
                     <span asp-validation-for="PlumbingYearUpdated" class="text-danger"></span>
                 </div>
@@ -1092,7 +1092,7 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Roofing Update<span class="text-danger">*</span></label>
+                    <label asp-for="RoofingUpdate">Roofing Update<span class="text-danger">*</span></label>
                     <select asp-for="RoofingUpdate" class="form-select houseUpdate" required data-original-required="1" data-year-target="RoofingYearUpdated">
                         <option value="">--Select--</option>
                         <option>Not Updated</option>
@@ -1102,7 +1102,7 @@
                     <span asp-validation-for="RoofingUpdate" class="text-danger"></span>
                 </div>
                 <div class="col-md-6" id="RoofingYearUpdatedWrap" style="display:none;">
-                    <label>Year Updated</label>
+                    <label for="RoofingYearUpdated">Year Updated</label>
                     <input asp-for="RoofingYearUpdated" class="form-control" id="RoofingYearUpdated" />
                     <span asp-validation-for="RoofingYearUpdated" class="text-danger"></span>
                 </div>
@@ -1124,12 +1124,12 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Dwelling<span class="text-danger">*</span></label>
+                    <label asp-for="DwellingCoverage">Dwelling<span class="text-danger">*</span></label>
                     <input asp-for="DwellingCoverage" class="form-control" required data-original-required="1" />
                     <span asp-validation-for="DwellingCoverage" class="text-danger"></span>
                 </div>
                 <div class="col-md-6">
-                    <label>Est. Replacement Cost<span class="text-danger">*</span></label>
+                    <label asp-for="EstReplacementCost">Est. Replacement Cost<span class="text-danger">*</span></label>
                     <input asp-for="EstReplacementCost" class="form-control" required data-original-required="1" />
                     <span asp-validation-for="EstReplacementCost" class="text-danger"></span>
                 </div>
@@ -1137,12 +1137,12 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Personal Property (default)</label>
+                    <label asp-for="PersonalProperty">Personal Property (default)</label>
                     <input asp-for="PersonalProperty" class="form-control" />
                     <span asp-validation-for="PersonalProperty" class="text-danger"></span>
                 </div>
                 <div class="col-md-6">
-                    <label>Loss of Use (default)</label>
+                    <label asp-for="LossOfUse">Loss of Use (default)</label>
                     <input asp-for="LossOfUse" class="form-control" />
                     <span asp-validation-for="LossOfUse" class="text-danger"></span>
                 </div>
@@ -1150,7 +1150,7 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Personal Liability<span class="text-danger">*</span></label>
+                    <label asp-for="PersonalLiability">Personal Liability<span class="text-danger">*</span></label>
                     <select asp-for="PersonalLiability" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>25000</option><option>50000</option><option>100000</option><option>200000</option><option>300000</option><option>400000</option><option>500000</option><option>1000000</option>
@@ -1159,7 +1159,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Medical Payments<span class="text-danger">*</span></label>
+                    <label asp-for="MedicalPayments">Medical Payments<span class="text-danger">*</span></label>
                     <select asp-for="MedicalPayments" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>1000</option><option>2000</option><option>3000</option><option>4000</option><option>5000</option>
@@ -1168,7 +1168,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>All Perils Deductibles<span class="text-danger">*</span></label>
+                    <label asp-for="AllPerilsDeductible">All Perils Deductibles<span class="text-danger">*</span></label>
                     <select asp-for="AllPerilsDeductible" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
                         <option>1/2%</option><option>1%</option><option>100</option><option>250</option><option>500</option><option>750</option>
@@ -1180,7 +1180,7 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Theft Deductible</label>
+                    <label asp-for="TheftDeductible">Theft Deductible</label>
                     <select asp-for="TheftDeductible" class="form-select">
                         <option value="">--Select--</option>
                         <option>500</option>
@@ -1190,7 +1190,7 @@
                 </div>
 
                 <div class="col-md-6">
-                    <label>Wind Deductible</label>
+                    <label asp-for="WindDeductible">Wind Deductible</label>
                     <select asp-for="WindDeductible" class="form-select">
                         <option value="">--Select--</option>
                         <option>100</option><option>250</option><option>500</option><option>1000</option><option>1500</option>
@@ -1206,21 +1206,21 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>First mortgagee</label>
+                    <label asp-for="FirstMortgagee">First mortgagee</label>
                     <select asp-for="FirstMortgagee" class="form-select">
                         <option value="">--Select--</option><option>Yes</option><option>No</option>
                     </select>
                 </div>
 
                 <div class="col-md-4">
-                    <label>Second mortgagee</label>
+                    <label asp-for="SecondMortgagee">Second mortgagee</label>
                     <select asp-for="SecondMortgagee" class="form-select">
                         <option value="">--Select--</option><option>Yes</option><option>No</option>
                     </select>
                 </div>
 
                 <div class="col-md-4">
-                    <label>Third mortgagee</label>
+                    <label asp-for="ThirdMortgagee">Third mortgagee</label>
                     <select asp-for="ThirdMortgagee" class="form-select">
                         <option value="">--Select--</option><option>Yes</option><option>No</option>
                     </select>
@@ -1229,21 +1229,21 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Cosigner</label>
+                    <label asp-for="Cosigner">Cosigner</label>
                     <select asp-for="Cosigner" class="form-select">
                         <option value="">--Select--</option><option>Yes</option><option>No</option>
                     </select>
                 </div>
 
                 <div class="col-md-4">
-                    <label>Equity line of credit</label>
+                    <label asp-for="EquityLineOfCredit">Equity line of credit</label>
                     <select asp-for="EquityLineOfCredit" class="form-select">
                         <option value="">--Select--</option><option>Yes</option><option>No</option>
                     </select>
                 </div>
 
                 <div class="col-md-4">
-                    <label># of other interests</label>
+                    <label asp-for="NumberOfOtherInterests"># of other interests</label>
                     <input asp-for="NumberOfOtherInterests" class="form-control" />
                 </div>
             </div>
@@ -1264,12 +1264,12 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Building Additions or Alterations</label>
+                    <label asp-for="BuildingAdditionsOrAlterations">Building Additions or Alterations</label>
                     <input asp-for="BuildingAdditionsOrAlterations" class="form-control" />
                 </div>
 
                 <div class="col-md-6">
-                    <label>Increased Replacement Cost Dwelling Percentage</label>
+                    <label asp-for="IncreasedReplacementCostDwellingPercentage">Increased Replacement Cost Dwelling Percentage</label>
                     <select asp-for="IncreasedReplacementCostDwellingPercentage" class="form-select">
                         <option value="">--Select--</option>
                         <option>125</option><option>150</option><option>200</option>
@@ -1279,7 +1279,7 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Loss Assessment</label>
+                    <label asp-for="LossAssessment">Loss Assessment</label>
                     <select asp-for="LossAssessment" class="form-select">
                         <option value="">--Select--</option>
                         <option>5000</option><option>10000</option><option>25000</option><option>50000</option><option>75000</option><option>100000</option>
@@ -1287,7 +1287,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Ordinance or Law</label>
+                    <label asp-for="OrdinanceOrLaw">Ordinance or Law</label>
                     <select asp-for="OrdinanceOrLaw" class="form-select">
                         <option value="">--Select--</option>
                         <option>10</option><option>25</option><option>50</option><option>75</option><option>100</option>
@@ -1295,7 +1295,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Increased Coverage on Credit Card</label>
+                    <label asp-for="IncreasedCoverageOnCreditCard">Increased Coverage on Credit Card</label>
                     <select asp-for="IncreasedCoverageOnCreditCard" class="form-select">
                         <option value="">--Select--</option>
                         <option>1000</option><option>2500</option><option>5000</option><option>7500</option><option>10000</option>
@@ -1305,7 +1305,7 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label>Increased Limit on Jewelry, Watches and Furs</label>
+                    <label asp-for="IncreasedLimitJewelryWatchesFurs">Increased Limit on Jewelry, Watches and Furs</label>
                     <select asp-for="IncreasedLimitJewelryWatchesFurs" class="form-select">
                         <option value="">--Select--</option>
                         <option>2500</option><option>3000</option><option>4000</option><option>5000</option>
@@ -1313,7 +1313,7 @@
                 </div>
 
                 <div class="col-md-6">
-                    <label>Water Backup</label>
+                    <label asp-for="WaterBackup">Water Backup</label>
                     <select asp-for="WaterBackup" class="form-select">
                         <option value="">--Select--</option>
                         <option>1000</option><option>2000</option><option>3000</option><option>4000</option><option>5000</option><option>6000</option><option>7000</option><option>8000</option><option>9000</option><option>10000</option><option>15000</option><option>20000</option><option>25000</option><option>50000</option>
@@ -1323,7 +1323,7 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Increased Mold Property Damage</label>
+                    <label asp-for="IncreasedMoldPropertyDamage">Increased Mold Property Damage</label>
                     <select asp-for="IncreasedMoldPropertyDamage" class="form-select">
                         <option value="">--Select--</option>
                         <option>25000</option><option>50000</option><option>75000</option><option>100000</option>
@@ -1331,14 +1331,14 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Personal Injury</label>
+                    <label asp-for="PersonalInjury">Personal Injury</label>
                     <select asp-for="PersonalInjury" class="form-select">
                         <option value="">--Select--</option><option>Yes</option><option>No</option>
                     </select>
                 </div>
 
                 <div class="col-md-4">
-                    <label>Special Personal Property</label>
+                    <label asp-for="SpecialPersonalProperty">Special Personal Property</label>
                     <select asp-for="SpecialPersonalProperty" class="form-select">
                         <option value="">--Select--</option><option>Yes</option><option>No</option>
                     </select>
@@ -1347,7 +1347,7 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Sinkhole Collapse</label>
+                    <label asp-for="SinkholeCollapse">Sinkhole Collapse</label>
                     <select asp-for="SinkholeCollapse" class="form-select">
                         <option value="">--Select--</option><option>Yes</option><option>No</option>
                     </select>
@@ -1360,7 +1360,7 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <label>Earthquake Zone</label>
+                    <label asp-for="EarthquakeZone">Earthquake Zone</label>
                     <select asp-for="EarthquakeZone" class="form-select">
                         <option value="">--Select--</option>
                         <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option>
@@ -1368,7 +1368,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Deductible</label>
+                    <label asp-for="EarthquakeDeductible">Deductible</label>
                     <select asp-for="EarthquakeDeductible" class="form-select">
                         <option value="">--Select--</option>
                         <option>5%</option><option>10%</option><option>15%</option><option>20%</option><option>25%</option>
@@ -1376,7 +1376,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label>Percent Veneer</label>
+                    <label asp-for="PercentVeneer">Percent Veneer</label>
                     <input asp-for="PercentVeneer" class="form-control" />
                 </div>
             </div>

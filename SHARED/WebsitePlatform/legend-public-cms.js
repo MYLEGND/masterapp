@@ -3914,6 +3914,7 @@
   }
 
   function applyDocument(doc) {
+    restoreFormStepPreview();
     documentState=normalizeDocument(doc);
     applyTheme(documentState.theme);
     applyFavicon(documentState.faviconImageDataUrl);
@@ -3941,6 +3942,7 @@
     applyBusinessPageNavigation();
     applyStoreNavigation();
     ensureCanonicalPublicInquiry();
+    if (editorMode && document.getElementById('legend-cms-form-navigator')) previewFormStep(formPreviewIndex);
     try {
       window.dispatchEvent(new CustomEvent('legend:website-content-rendered', {
         detail:{siteKey:SITE_KEY,page:currentPageRoute(),editor:editorMode,materialize:materializeMode}
@@ -8728,6 +8730,105 @@
     document.head.appendChild(style);
   }
 
+
+  // Editor-only visibility. This never changes the saved document, form values,
+  // runtime step state, validation, consent, or submission/event authority.
+  const formPreviewVisibility = new Map();
+  let formPreviewIndex = -1;
+  function restoreFormStepPreview() {
+    for (const [element, state] of formPreviewVisibility) {
+      element.hidden = state.hidden;
+      element.style.display = state.display;
+      element.classList.toggle('active', state.active);
+    }
+    formPreviewVisibility.clear();
+  }
+
+  function formPreviewEntries() {
+    if (!editorMode) return [];
+    const selector = '.wizard-step[data-step],.form-step[data-step],.step-wrap[data-step],.lq-micro-step[data-micro-step],.lq-step-panel,[data-experience-step]';
+    const entries = [];
+    for (const form of document.querySelectorAll('main form[data-form-key]')) {
+      const candidates = [...form.querySelectorAll(selector)];
+      const steps = candidates.filter(step => !step.querySelector(selector) &&
+        step.querySelector('input:not([type="hidden"]),select,textarea,button,[data-experience-control]'));
+      for (const step of steps.length ? steps : [form]) {
+        const heading = step.querySelector('legend,h1,h2,h3,h4,h5,.section-title,.lq-step-question,.lq-step-title');
+        const label = (heading?.textContent || step.getAttribute('aria-label') || 'Form').trim().replace(/\s+/g, ' ').slice(0, 120);
+        entries.push({ form, step, label });
+      }
+    }
+    return entries;
+  }
+
+  function previewFormStep(index) {
+    if (!editorMode) return;
+    restoreFormStepPreview();
+    const entries = formPreviewEntries();
+    if (!Number.isInteger(index) || index < 0 || index >= entries.length) {
+      formPreviewIndex = -1;
+      refreshFormStepNavigator();
+      return;
+    }
+    formPreviewIndex = index;
+    const selectedStep = entries[index];
+    const remember = element => {
+      if (!formPreviewVisibility.has(element))
+        formPreviewVisibility.set(element, { hidden: element.hidden, display: element.style.display, active: element.classList.contains('active') });
+    };
+    for (const entry of entries) {
+      if (entry.form !== selectedStep.form || entry.step === selectedStep.step) continue;
+      remember(entry.step);
+      entry.step.hidden = true;
+      entry.step.style.display = 'none';
+    }
+    for (let element = selectedStep.step; element && element.tagName !== 'MAIN'; element = element.parentElement) {
+      remember(element);
+      element.hidden = false;
+      element.classList.add('active');
+      if (getComputedStyle(element).display === 'none') element.style.display = 'block';
+    }
+    refreshFormStepNavigator();
+    selectedStep.step.scrollIntoView?.({ block: 'nearest' });
+    updateDirectCanvasUi();
+  }
+
+  function refreshFormStepNavigator() {
+    const host = document.getElementById('legend-cms-form-navigator');
+    if (!host) return;
+    const entries = formPreviewEntries();
+    host.hidden = entries.length === 0;
+    const select = host.querySelector('select');
+    select.replaceChildren();
+    const normal = document.createElement('option');
+    normal.value = '-1'; normal.textContent = 'Normal form preview'; select.appendChild(normal);
+    entries.forEach((entry, index) => {
+      const option = document.createElement('option');
+      option.value = String(index);
+      option.textContent = (index + 1) + '. ' + entry.label;
+      select.appendChild(option);
+    });
+    if (formPreviewIndex >= entries.length) formPreviewIndex = -1;
+    select.value = String(formPreviewIndex);
+    host.querySelector('[data-form-preview-back]').disabled = formPreviewIndex <= 0;
+    host.querySelector('[data-form-preview-next]').disabled = formPreviewIndex >= entries.length - 1;
+    host.querySelector('[role="status"]').textContent = formPreviewIndex < 0
+      ? entries.length + ' form steps available to edit.'
+      : 'Editing step ' + (formPreviewIndex + 1) + ' of ' + entries.length + '. Preview only; no answers or submission.';
+  }
+
+  function installFormStepNavigator(panel) {
+    const host = document.createElement('section');
+    host.id = 'legend-cms-form-navigator';
+    host.setAttribute('aria-label', 'Form step editor');
+    host.innerHTML = '<label class="legend-cms-group">Form step<select aria-label="Form step to edit"></select></label><div class="legend-cms-row"><button type="button" data-form-preview-back>Previous form step</button><button type="button" data-form-preview-next>Next form step</button></div><small role="status" aria-live="polite"></small>';
+    panel.querySelector('.legend-cms-navigation').appendChild(host);
+    host.querySelector('select').addEventListener('change', event => previewFormStep(Number(event.target.value)));
+    host.querySelector('[data-form-preview-back]').addEventListener('click', () => previewFormStep(formPreviewIndex - 1));
+    host.querySelector('[data-form-preview-next]').addEventListener('click', () => previewFormStep(formPreviewIndex + 1));
+    refreshFormStepNavigator();
+  }
+
   function buildEditor() {
     if (legacyMigration)
       throw new Error('Website Studio cannot open writable controls until canonical materialization completes.');
@@ -8917,6 +9018,7 @@
     `;
     panel.insertBefore(bar, panel.firstChild);
     enhanceEditor(panel, preview);
+    installFormStepNavigator(panel);
     refreshScaledElements();
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { refreshScaledElements(); updateDirectCanvasUi(); }).observe(preview);
     syncEditorControls();
