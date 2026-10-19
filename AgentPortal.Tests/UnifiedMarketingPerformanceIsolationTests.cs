@@ -15,7 +15,7 @@ namespace AgentPortal.Tests;
 public sealed class UnifiedMarketingPerformanceIsolationTests
 {
     [Fact]
-    public async Task ReportingUsesCanonicalFieldsAndDisclosesCompletedHourWindow()
+    public async Task ReportingIncludesEveryPaidProviderWithoutMixingChannelTotals()
     {
         var owner = MarketingOwnerScope.Founder;
         var scope = ScopeContext.ForAgent(Guid.NewGuid());
@@ -40,14 +40,31 @@ public sealed class UnifiedMarketingPerformanceIsolationTests
             .ReturnsAsync(new List<AnalyticsEvent>());
         var meta = new Mock<IMetaAdsService>();
         meta.Setup(x => x.GetCampaignsAsync(range, scope, It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("Meta unavailable"));
+            .ReturnsAsync(new MetaCampaignsDto { AccountId = "meta-account", Rows = [
+                new() { CampaignId = "meta-1", CampaignName = "Meta one", Spend = 20m, Impressions = 200, Clicks = 8, Leads = 2 },
+                new() { CampaignId = "meta-2", CampaignName = "Meta two", Spend = 3m, Impressions = 30, Clicks = 1, Leads = 0 }
+            ] });
         var external = new Mock<IMarketingExternalAdsReportingService>();
         external.Setup(x => x.GetCampaignsAsync(owner, It.IsAny<string>(), range, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ExternalAdsCampaignReport(
-                Array.Empty<ProviderDeliveryMetricRow>(), "UTC", range.FromUtc.Date, range.ToUtc.Date));
+            .ReturnsAsync((MarketingOwnerScope _, string provider, TimeRangeRequest _, CancellationToken _) =>
+                new ExternalAdsCampaignReport([
+                    new ProviderDeliveryMetricRow(provider == MarketingDestinationKeys.Google ? MarketingChannels.GoogleAds : MarketingChannels.TikTokAds,
+                        "campaign", provider + "-1", provider, "active", provider + "-1", null, null, 7m, 40, 2, null,
+                        System.Text.Json.JsonSerializer.SerializeToElement(new { })) { AccountId = provider + "-account" }
+                ], "UTC", range.FromUtc.Date, range.ToUtc.Date));
         var result = await new UnifiedMarketingPerformanceService(openai.Object, connections.Object, analytics.Object, meta.Object, external.Object)
             .GetAsync(owner, scope, range);
         Assert.Contains(result.DataQualityNotes, x => x.Contains("completed account-local hours", StringComparison.Ordinal));
+        Assert.Equal(5, result.ProviderDelivery.Count);
+        Assert.Equal(2, result.ProviderDelivery.Count(x => x.Provider == MarketingChannels.MetaAds));
+        Assert.All(result.ProviderDelivery, row => Assert.False(string.IsNullOrWhiteSpace(row.AccountId)));
+        Assert.Equal(12.5m, result.Channels.Single(x => x.Channel == MarketingChannels.ChatGptAds).Spend);
+        Assert.Equal(23m, result.Channels.Single(x => x.Channel == MarketingChannels.MetaAds).Spend);
+        Assert.Single(result.ProviderDelivery.Where(x => x.Provider == MarketingChannels.GoogleAds));
+        Assert.Single(result.ProviderDelivery.Where(x => x.Provider == MarketingChannels.TikTokAds));
+        Assert.Null(Assert.Single(result.ChatGptAdsDelivery).Conversions);
+        external.Verify(x => x.GetCampaignsAsync(owner, MarketingDestinationKeys.Google, range, It.IsAny<CancellationToken>()), Times.Once);
+        external.Verify(x => x.GetCampaignsAsync(owner, MarketingDestinationKeys.TikTok, range, It.IsAny<CancellationToken>()), Times.Once);
         analytics.Verify(x => x.LoadAttributedEventsAsync(range, scope, TrafficType.All, It.IsAny<CancellationToken>()), Times.Once);
     }
 

@@ -4025,52 +4025,6 @@ function escapeHtml(value) {
     return 'meta-bad';
   }
 
-  function renderMetaCampaigns(data) {
-    state.cache.metaCampaigns = data;
-    setText('meta-campaigns-range-label', data.rangeLabel || '');
-    setText('meta-campaigns-account', data.accountName || data.accountId || '—');
-    setText('meta-campaigns-synced', data.syncedUtc ? formatDisplayDate(data.syncedUtc) : '—');
-    setMetaAccountChip(data.accountName || data.accountId || 'Connected');
-    const note = document.getElementById('meta-campaigns-note');
-    if (note) {
-      note.textContent = data.comparisonNote
-        || 'Meta Leads = reported by Meta Ads API. Website Leads = server-confirmed leads captured on your site. These may differ due to attribution windows, browser restrictions, CAPI config, or reporting delay.';
-    }
-
-    renderTable('meta-campaigns-body', data.rows || [], [
-      {
-        render: r => `${pill(r.campaignName || '—', `${metaCampaignNameClass(r)} meta-campaign-name-pill`)}<div class="fa-muted small mt-1">${r.campaignId || ''}</div>`
-      },
-      { render: r => pill(r.status || '—', metaStatusClass(r.status)) },
-      { render: r => pill(r.objective || '—', metaObjectiveClass(r.objective)) },
-      { render: r => pill(formatMoney(r.spend), metaSpendClass(r)), align: 'text-end' },
-      { render: r => pill(formatInt(r.impressions), metaImpressionsClass(r.impressions)), align: 'text-end' },
-      { render: r => pill(formatInt(r.reach), metaReachClass(r.reach)), align: 'text-end' },
-      { render: r => pill(formatInt(r.clicks), metaClicksClass(r.clicks)), align: 'text-end' },
-      { render: r => pill(formatPct(r.ctr), metaCtrClass(r.ctr)), align: 'text-end' },
-      { render: r => pill(formatMoney(r.cpc), metaCpcClass(r.cpc)), align: 'text-end' },
-      { render: r => pill(formatMoney(r.cpm), metaCpmClass(r.cpm)), align: 'text-end' },
-      { render: r => pill(formatInt(r.leads), metaLeadsClass(r.leads)), align: 'text-end' },
-      { render: r => pill(formatInt(r.websiteLeads), metaLeadsClass(r.websiteLeads)), align: 'text-end' },
-      { render: r => pill(formatInt(r.websiteLeadGap), metaLeadGapClass(r.websiteLeadGap)), align: 'text-end' },
-      { render: r => pill(formatInt(r.qualifiedLeads), metaLeadsClass(r.qualifiedLeads)), align: 'text-end' },
-      { render: r => pill(formatInt(r.appointments), metaLeadsClass(r.appointments)), align: 'text-end' },
-      { render: r => pill(formatInt(r.applications), metaLeadsClass(r.applications)), align: 'text-end' },
-      { render: r => pill(formatInt(r.policiesIssued), metaLeadsClass(r.policiesIssued)), align: 'text-end' },
-      { render: r => pill(formatInt(r.policiesPaid), metaLeadsClass(r.policiesPaid)), align: 'text-end' },
-      { render: r => pill(formatMoney(r.paidPremium), r.paidPremium > 0 ? 'bg-success-subtle text-success-emphasis' : 'bg-secondary-subtle text-secondary-emphasis'), align: 'text-end' },
-      { render: r => pill(`${Number(r.premiumRoas || 0).toFixed(2)}x`, r.premiumRoas > 0 ? 'bg-success-subtle text-success-emphasis' : 'bg-secondary-subtle text-secondary-emphasis'), align: 'text-end' }
-    ]);
-  }
-
-  function setMetaCampaignsEnabled(enabled) {
-    const btn = document.getElementById('meta-campaigns-open');
-    if (!btn) return;
-    btn.disabled = !enabled;
-    btn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
-    btn.title = enabled ? 'View Meta campaigns' : 'Connect Meta Ads to view campaigns';
-  }
-
   function currentMetaScopeParams() {
     if (isFounder && isGlobalScope()) {
       return { team: true };
@@ -4121,25 +4075,13 @@ function escapeHtml(value) {
     chip.style.opacity = connected ? '1' : '.75';
   }
 
-  async function loadMetaCampaigns() {
-    const detail = beginAnalyticsDetail('metaCampaignsModal');
-    if (!capabilities.metaAds) return;
-    try {
-      const data = await fetchJson('metacampaigns', endpoints.metaCampaigns, rangeParams());
-      if (!detail.isCurrent() || !data) return false;
-      renderMetaCampaigns(data);
-      detail.complete(true);
+  async function loadPaidMedia() {
+    updateAnalyticsViewLabels();
+    if (state.cache.marketingPerformance) {
+      renderPaidMedia(state.cache.marketingPerformance);
       return true;
-    } catch (err) {
-      if (!detail.isCurrent()) return false;
-      detail.complete(false);
-      const body = document.getElementById('meta-campaigns-body');
-      const message = (err && err.message) ? err.message : 'Unable to load Meta campaigns.';
-      if (body) {
-        body.innerHTML = `<tr><td colspan="20" class="text-danger">${message}</td></tr>`;
-      }
-      console.error(err);
     }
+    return loadMarketingPerformance();
   }
 
   function formatShortDate(iso) {
@@ -4170,7 +4112,7 @@ function escapeHtml(value) {
         statusEl.textContent = (data && data.message) ? data.message : 'Select an agent scope to view Meta Ads status.';
         setMetaConnectState(false, 'Select Agent Scope', statusEl.textContent);
         if (disconnectBtn) disconnectBtn.style.display = 'none';
-        setMetaCampaignsEnabled(false);
+
         setMetaAccountChip('Agent scope required', false);
         return;
       }
@@ -4180,7 +4122,7 @@ function escapeHtml(value) {
         statusEl.textContent = data.message || 'Meta Ads not connected for this agent.';
         setMetaConnectState(true, 'Connect Meta Ads', 'Connect Meta Ads for the selected agent');
         if (disconnectBtn) disconnectBtn.style.display = 'none';
-        setMetaCampaignsEnabled(false);
+
         setMetaAccountChip('Not connected', false);
         return;
       }
@@ -4192,7 +4134,7 @@ function escapeHtml(value) {
       statusEl.textContent = `Connected: ${acct}${user}${exp}`;
       setMetaConnectState(true, 'Reconnect Meta Ads', 'Reconnect Meta Ads for the selected agent');
       if (disconnectBtn) disconnectBtn.style.display = '';
-      setMetaCampaignsEnabled(true);
+
       setMetaAccountChip(acct || 'Connected', true);
       const openAdsLink = document.getElementById('openMetaAdsManagerLink');
       if (openAdsLink && data && data.accountId) {
@@ -4212,7 +4154,7 @@ function escapeHtml(value) {
       statusEl.textContent = 'Unable to read Meta Ads connection status.';
       if (disconnectBtn) disconnectBtn.style.display = 'none';
       setMetaConnectState(false, 'Status Unavailable', statusEl.textContent);
-      setMetaCampaignsEnabled(false);
+
       setMetaAccountChip('Status unavailable', false);
       console.error(err);
     }
@@ -4223,8 +4165,8 @@ function escapeHtml(value) {
     try {
       await fetchPostJson('meta-disconnect', buildUrlWithParams(endpoints.metaDisconnect, currentMetaScopeParams()));
       await loadMetaConnectionStatus();
-      const body = document.getElementById('meta-campaigns-body');
-      if (body) body.innerHTML = '<tr><td colspan="20" class="fa-empty">Disconnected. Reconnect Meta Ads to load campaigns.</td></tr>';
+      invalidatePaidMedia();
+      await loadMarketingPerformance();
     } catch (err) {
       const statusEl = document.getElementById('meta-connection-status');
       if (statusEl) {
@@ -4469,7 +4411,7 @@ function escapeHtml(value) {
       case 'metaSignalModal': return loadMetaSignal();
       case 'metaSignalHealthModal': return loadMetaSignalHealth();
       case 'agentPerfModal': return loadAgentPerf();
-      case 'metaCampaignsModal': return loadMetaCampaigns();
+      case 'metaCampaignsModal': return loadPaidMedia();
       case 'behaviorModal': return loadBehavior();
       case 'aiReviewSnapshotModal': return loadAiReviewSnapshot();
       case 'teamRollupModal': return loadTeamRollup();
@@ -4699,7 +4641,7 @@ function escapeHtml(value) {
     attachModal('leadsModal', () => { updateTrafficTypeHeader('leadsModal'); loadLeads(); });
     attachModal('metaSignalModal', () => { updateTrafficTypeHeader('metaSignalModal'); loadMetaSignal(); });
     attachModal('metaSignalHealthModal', loadMetaSignalHealth);
-    attachModal('metaCampaignsModal', loadMetaCampaigns);
+    attachModal('metaCampaignsModal', loadPaidMedia);
     attachModal('behaviorModal', loadBehavior);
     attachModal('aiReviewSnapshotModal', loadAiReviewSnapshot);
     if (isFounder) {
@@ -5723,14 +5665,15 @@ function escapeHtml(value) {
         setupStatus.hidden = setup.canConnect === true;
       }
       if (loadEl) {
-        loadEl.hidden = !connection.connected || !connection.requiresAccountSelection;
+        loadEl.hidden = !connection.connected;
+        loadEl.textContent = connection.accountId ? 'Change account' : 'Choose account';
         loadEl.disabled = !connection.connected;
       }
       if (disconnectEl) {
         disconnectEl.hidden = !connection.connected;
         disconnectEl.disabled = !connection.connected;
       }
-      if (picker && !connection.requiresAccountSelection) picker.hidden = true;
+      if (picker) { picker.hidden = true; picker.dataset.accountId = connection.accountId || ''; }
 
       if (measurement) {
         measurement.hidden = !connection.ready;
@@ -6000,11 +5943,13 @@ function escapeHtml(value) {
         isBusinessAnalytics ? { provider } : { provider, agentProfileId: owner.profileId || '' }, 45000),
       payload => {
         const accounts = Array.isArray(payload.accounts) ? payload.accounts : [];
+        const selectedId = document.getElementById(ids.picker)?.dataset.accountId || '';
         select.innerHTML = '';
         accounts.forEach(account => {
           const option = document.createElement('option');
           option.value = account.accountId || '';
           option.textContent = account.label || account.accountId || 'Authorized account';
+          option.selected = option.value === selectedId;
           select.appendChild(option);
         });
         const picker = document.getElementById(ids.picker);
@@ -6024,9 +5969,14 @@ function escapeHtml(value) {
       if (!accountId) throw new Error('Choose an authorized advertiser account.');
       const body = { provider, accountId };
       if (!isBusinessAnalytics) body.agentProfileId = owner.profileId || null;
+      invalidatePaidMedia();
       return postMarketingSetup(`externalAdsSelect:${provider}`, endpoints.externalAdsSelect, body, owner);
     }, (response, operation) => {
-      if (admitMarketingSetupMutation(response, operation)) setMarketingSetupStatus('Advertiser account selected for this scope.', 'success');
+      if (admitMarketingSetupMutation(response, operation)) {
+        setMarketingSetupStatus('Advertiser account selected for this scope.', 'success');
+        invalidatePaidMedia();
+        void loadMarketingPerformance();
+      }
     });
   }
 
@@ -6443,6 +6393,7 @@ function escapeHtml(value) {
   function renderMarketingPerformanceUnavailable(message, pending = false) {
     state.cache.marketingPerformance = null;
     marketingPerformanceRenderedKey = null;
+    renderPaidMedia(null, message);
     setText('channel-performance-grid', message);
     setText('channel-performance-note', '');
     renderGrowthEconomics(null);
@@ -6480,6 +6431,7 @@ function escapeHtml(value) {
           45000);
         if (!data || request !== marketingPerformanceRequest || scopeVersion !== analyticsScopeVersion) return false;
         renderMarketingPerformance(data);
+        renderPaidMedia(data);
         renderGrowthEconomics(data.economics);
         renderPerformanceSummaries(data);
         state.cache.marketingPerformance = data;
@@ -7189,6 +7141,57 @@ function escapeHtml(value) {
   }
 
 
+
+  function invalidatePaidMedia() {
+    marketingPerformanceRequest += 1;
+    marketingPerformanceInFlight = null;
+    renderMarketingPerformanceUnavailable('Refreshing selected ad account…', true);
+  }
+
+  function renderPaidMedia(snapshot, message = 'No campaign reporting available.') {
+    const providers = document.getElementById('paid-media-providers');
+    const body = document.getElementById('paid-media-campaigns-body');
+    if (!providers || !body) return;
+    providers.replaceChildren();
+    body.replaceChildren();
+    const channels = snapshot?.channels || [];
+    const rows = (snapshot?.providerDelivery || []).filter(row => row.level === 'campaign');
+    for (const provider of ['meta_ads', 'chatgpt_ads', 'google_ads', 'tiktok_ads', 'linkedin_ads']) {
+      const channel = channels.find(row => row.channel === provider);
+      const card = document.createElement('article');
+      const title = document.createElement('strong');
+      title.textContent = provider === 'linkedin_ads' ? 'LinkedIn Ads' : channelLabel(provider);
+      const status = document.createElement('span');
+      status.textContent = provider === 'linkedin_ads' ? 'Coming later'
+        : !snapshot ? message
+        : channel?.spend == null ? 'Reporting unavailable · check connection'
+        : `${rows.filter(row => row.provider === provider).length} campaigns · ${marketingManagerNumber(channel.leads)} website leads`;
+      card.append(title, status);
+      providers.appendChild(card);
+    }
+    for (const row of rows) {
+      const tr = document.createElement('tr');
+      const values = [channelLabel(row.provider), row.accountId || 'Not supplied', `${row.name || row.providerId} · ${row.campaignId || row.providerId}`,
+        row.status || 'Unknown', marketingManagerNumber(row.spend), marketingManagerNumber(row.impressions),
+        marketingManagerNumber(row.clicks), marketingManagerNumber(row.conversions)];
+      values.forEach((value, index) => {
+        const td = document.createElement('td');
+        td.textContent = value;
+        if (index >= 4) td.className = 'text-end';
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    }
+    if (!rows.length) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 8;
+      td.textContent = snapshot ? 'No campaigns returned for this scope and range. Review platform status above.' : message;
+      tr.appendChild(td);
+      body.appendChild(tr);
+    }
+    setText('paid-media-note', (snapshot ? `Updated ${formatDisplayDate(snapshot.generatedUtc)}. ` : '') + (snapshot?.dataQualityNotes || []).join(' '));
+  }
 
   function renderMarketingPerformance(snapshot) {
     const grid = document.getElementById('channel-performance-grid');
