@@ -141,7 +141,10 @@ public sealed class LegendFounderToolAuthorizationTests
                 ["FounderSoftwareRemediation:GitHubInstallationId"] = "654321",
                 ["FounderSoftwareRemediation:GitHubAppPrivateKeySecretUri"] = "https://private.vault.azure.net/secrets/github-app",
                 ["MetaAds:AppId"] = "meta-app-id-private",
-                ["MetaAds:AppSecret"] = "meta-secret-private"
+                ["MetaAds:AppSecret"] = "meta-secret-private",
+                ["GoogleAds:ClientId"] = "google-client-id-private",
+                ["GoogleAds:ClientSecret"] = "google-secret-private",
+                ["GoogleAds:RedirectUri"] = "https://portal.example.test/WebsiteAnalytics/external-ads/callback"
             }).Build();
             var services = new ServiceCollection()
                 .AddSingleton<IConfiguration>(configuration)
@@ -166,6 +169,13 @@ public sealed class LegendFounderToolAuthorizationTests
             Assert.DoesNotContain("meta-app-id-private", raw, StringComparison.Ordinal);
             Assert.DoesNotContain("private.vault.azure.net", raw, StringComparison.Ordinal);
             Assert.DoesNotContain("123456", raw, StringComparison.Ordinal);
+            Assert.DoesNotContain("google-client-id-private", raw, StringComparison.Ordinal);
+            Assert.DoesNotContain("google-secret-private", raw, StringComparison.Ordinal);
+            var google = receipt.RootElement.GetProperty("results").EnumerateArray()
+                .Single(item => item.GetProperty("capability").GetString() == "google_ads");
+            Assert.True(google.GetProperty("configured").GetBoolean());
+            Assert.Equal(3, google.GetProperty("requiredInputs").GetInt32());
+            Assert.Empty(google.GetProperty("missingRoles").EnumerateArray());
 
             var denied = await authority.ExecuteAsync(
                 ControllerTestHelpers.BuildUser(founderId),

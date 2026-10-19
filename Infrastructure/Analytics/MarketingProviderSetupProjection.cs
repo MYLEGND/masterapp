@@ -10,6 +10,8 @@ public sealed record MarketingProviderSetupSnapshot(
     MarketingMetaSetupSnapshot Meta,
     MarketingProviderConnectionSnapshot Google,
     MarketingProviderConnectionSnapshot TikTok,
+    MarketingExternalAdsConnectionReadiness GoogleConnectionSetup,
+    MarketingExternalAdsConnectionReadiness TikTokConnectionSetup,
     MarketingProviderMeasurementConfiguration GoogleMeasurement,
     MarketingProviderMeasurementConfiguration TikTokMeasurement,
     OpenAiAdsConnectionSnapshot Connection, OpenAiAdsProviderAccountSnapshot? Account,
@@ -20,7 +22,8 @@ public sealed record MarketingProviderSetupSnapshot(
 public sealed class MarketingProviderSetupProjection(MarketingConnectionStore connections,
     IMetaPixelResolutionService pixels, IOpenAiAdsAccountConnectionAuthority openAi,
     IOpenAiAdsDirectConnectionService direct, IOpenAiMeasurementHealthService health,
-    MarketingMeasurementEvidenceService evidence)
+    MarketingMeasurementEvidenceService evidence,
+    MarketingExternalAdsOAuthService externalAds)
 {
     public async Task<MarketingProviderSetupSnapshot> ReadAsync(MarketingOwnerScope owner, CancellationToken ct = default)
     {
@@ -48,10 +51,14 @@ public sealed class MarketingProviderSetupProjection(MarketingConnectionStore co
         catch (Exception) { openAiError = "OpenAI connection status unavailable."; }
         if (connection.Connected)
         {
+            // Setup must remain available when optional live provider inspection
+            // is slow. The durable connection remains the source of truth.
+            using var inspection = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            inspection.CancelAfter(TimeSpan.FromSeconds(10));
             try
             {
-                account = await direct.InspectAsync(owner, ct);
-                capability = await direct.InspectMeasurementAsync(owner, ct);
+                account = await direct.InspectAsync(owner, inspection.Token);
+                capability = await direct.InspectMeasurementAsync(owner, inspection.Token);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception) { openAiError = "Provider status unavailable; stored connection shown."; }
@@ -64,7 +71,10 @@ public sealed class MarketingProviderSetupProjection(MarketingConnectionStore co
         try { observed = await evidence.GetAsync(owner, ct); }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception) { evidenceError = "Measurement evidence unavailable."; }
-        return new(meta, google, tiktok, googleMeasurement, tiktokMeasurement,
+        return new(meta, google, tiktok,
+            externalAds.GetConnectionReadiness(owner, MarketingDestinationKeys.Google),
+            externalAds.GetConnectionReadiness(owner, MarketingDestinationKeys.TikTok),
+            googleMeasurement, tiktokMeasurement,
             connection, account, capability, measurement, observed, openAiError, evidenceError);
     }
 
@@ -77,8 +87,8 @@ public sealed class MarketingProviderSetupProjection(MarketingConnectionStore co
             ownerKey = owner.Key,
             meta = new { setup.Meta.Available, setup.Meta.Connected, setup.Meta.AccountId, setup.Meta.AccountName,
                 setup.Meta.PixelId, setup.Meta.CapiConfigured, testModeConfigured = !string.IsNullOrWhiteSpace(setup.Meta.TestEventCode), setup.Meta.Error },
-            google = External(setup.Google, setup.GoogleMeasurement),
-            tiktok = External(setup.TikTok, setup.TikTokMeasurement),
+            google = External(setup.Google, setup.GoogleMeasurement, setup.GoogleConnectionSetup),
+            tiktok = External(setup.TikTok, setup.TikTokMeasurement, setup.TikTokConnectionSetup),
             openAi = new { connection.Exists, connection.Connected, connection.Revision, connection.AccountId, connection.AccountName,
                 connection.PixelId, connection.ConversionDataSourceId, connection.PixelConfigured,
                 connection.ConversionsApiConfigured, connection.LastVerifiedUtc,
@@ -127,8 +137,10 @@ public sealed class MarketingProviderSetupProjection(MarketingConnectionStore co
 
     public static object External(
         MarketingProviderConnectionSnapshot connection,
-        MarketingProviderMeasurementConfiguration measurement) => new
+        MarketingProviderMeasurementConfiguration measurement,
+        MarketingExternalAdsConnectionReadiness connectionSetup) => new
     {
+        connectionSetup,
         connection.Provider,
         connection.Exists,
         connection.Connected,

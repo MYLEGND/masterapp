@@ -28,9 +28,9 @@ public class LaunchAuditProjectionTests
         var scope = new ScopeContext();
         var query = new Mock<IAnalyticsQueryService>();
         var meta = new Mock<IMetaSignalAnalyticsService>();
-        query.Setup(x => x.GetMarketingHealthAsync(range, scope, TrafficType.All))
-            .ReturnsAsync(new MarketingHealthDto());
-        meta.Setup(x => x.GetHealthDashboardAsync(range, scope, It.IsAny<CancellationToken>()))
+        query.Setup(x => x.GetMarketingHealthSnapshotAsync(range, scope, TrafficType.All, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MarketingHealthReadSnapshot(new MarketingHealthDto(), range, scope, null, new()));
+        meta.Setup(x => x.GetHealthDashboardAsync(It.IsAny<MarketingHealthReadSnapshot>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MetaSignalHealthDashboardDto { FailureDetection = new()
             { new() { Status = status, Count = 2, Label = "Dispatch", Detail = "No acceptance evidence" } } });
         var result = await MarketingHealthProjection.LoadAsync(query.Object, meta.Object,
@@ -46,8 +46,9 @@ public class LaunchAuditProjectionTests
     {
         var query = new Mock<IAnalyticsQueryService>();
         var meta = new Mock<IMetaSignalAnalyticsService>();
-        query.Setup(x => x.GetMarketingHealthAsync(It.IsAny<TimeRangeRequest>(), It.IsAny<ScopeContext>(), TrafficType.All)).ReturnsAsync(new MarketingHealthDto());
-        meta.Setup(x => x.GetHealthDashboardAsync(It.IsAny<TimeRangeRequest>(), It.IsAny<ScopeContext>(), It.IsAny<CancellationToken>()))
+        query.Setup(x => x.GetMarketingHealthSnapshotAsync(It.IsAny<TimeRangeRequest>(), It.IsAny<ScopeContext>(), TrafficType.All, It.IsAny<CancellationToken>())).ReturnsAsync((TimeRangeRequest range, ScopeContext scope, TrafficType _, CancellationToken ct) =>
+                new MarketingHealthReadSnapshot(new MarketingHealthDto(), range, scope, null, new()));
+        meta.Setup(x => x.GetHealthDashboardAsync(It.IsAny<MarketingHealthReadSnapshot>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MetaSignalHealthDashboardDto { PipelineHealth = new() { MetaServerSentCount = accepted } });
         var result = await MarketingHealthProjection.LoadAsync(query.Object, meta.Object, new TimeRangeRequest(), new ScopeContext(), TrafficType.All, NullLogger.Instance);
         Assert.Equal(expected, result.MetaHealthStatus);
@@ -58,9 +59,10 @@ public class LaunchAuditProjectionTests
     {
         var query = new Mock<IAnalyticsQueryService>();
         var meta = new Mock<IMetaSignalAnalyticsService>();
-        query.Setup(x => x.GetMarketingHealthAsync(It.IsAny<TimeRangeRequest>(), It.IsAny<ScopeContext>(), TrafficType.All))
-            .ReturnsAsync(new MarketingHealthDto());
-        meta.Setup(x => x.GetHealthDashboardAsync(It.IsAny<TimeRangeRequest>(), It.IsAny<ScopeContext>(), It.IsAny<CancellationToken>()))
+        query.Setup(x => x.GetMarketingHealthSnapshotAsync(It.IsAny<TimeRangeRequest>(), It.IsAny<ScopeContext>(), TrafficType.All, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TimeRangeRequest range, ScopeContext scope, TrafficType _, CancellationToken ct) =>
+                new MarketingHealthReadSnapshot(new MarketingHealthDto(), range, scope, null, new()));
+        meta.Setup(x => x.GetHealthDashboardAsync(It.IsAny<MarketingHealthReadSnapshot>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("unavailable"));
         var result = await MarketingHealthProjection.LoadAsync(query.Object, meta.Object,
             new TimeRangeRequest(), new ScopeContext(), TrafficType.All, NullLogger.Instance);

@@ -91,7 +91,7 @@ namespace AgentPortal.Controllers;
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var initialQualityMode = ResolveInitialQualityMode(qualityMode);
         range = CloneRangeWithQualityMode(range, initialQualityMode);
-        var summary = await LoadSummarySafelyAsync(range, scope);
+        var summary = await LoadSummarySafelyAsync(range, scope, ct: HttpContext.RequestAborted);
         summary.ScopeLabel = await ResolveScopeLabelAsync(scope, team);
         ViewData["InitialRangePreset"] = range.Preset;
         ViewData["InitialRangeLabel"] = range.Label;
@@ -246,9 +246,9 @@ namespace AgentPortal.Controllers;
                 metaCapiManagedAutomatically = true
             },
             google = Infrastructure.Analytics.MarketingProviderSetupProjection.External(
-                setup.Google, setup.GoogleMeasurement),
+                setup.Google, setup.GoogleMeasurement, setup.GoogleConnectionSetup),
             tiktok = Infrastructure.Analytics.MarketingProviderSetupProjection.External(
-                setup.TikTok, setup.TikTokMeasurement),
+                setup.TikTok, setup.TikTokMeasurement, setup.TikTokConnectionSetup),
             openAi = new
             {
                 revision = openAiConnection.Revision,
@@ -352,8 +352,8 @@ namespace AgentPortal.Controllers;
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
-            var key = Uri.EscapeDataString((provider ?? "provider").Trim().ToLowerInvariant());
-            return Redirect($"{target}?provider={key}&status=error&message={Uri.EscapeDataString(ex.Message)}");
+            return Redirect(Infrastructure.Analytics.MarketingExternalAdsOAuthService.BuildReturnUrl(
+                target, provider, "error"));
         }
     }
 
@@ -367,16 +367,18 @@ namespace AgentPortal.Controllers;
         CancellationToken cancellationToken = default)
     {
         var target = "/WebsiteAnalytics/Index";
+        var provider = "external";
         try
         {
             var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingExternalAdsOAuthService>();
             var inspected = oauth.InspectState(state ?? string.Empty);
             if (!await IsAuthorizedExternalAdsOwnerAsync(inspected.Owner, cancellationToken)) return Forbid();
+            provider = inspected.Provider;
             target = Url.IsLocalUrl(inspected.ReturnUrl) ? inspected.ReturnUrl : target;
             if (!string.IsNullOrWhiteSpace(error))
             {
-                var message = string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription;
-                return Redirect($"{target}?provider={Uri.EscapeDataString(inspected.Provider)}&status=error&message={Uri.EscapeDataString(message)}");
+                return Redirect(Infrastructure.Analytics.MarketingExternalAdsOAuthService.BuildReturnUrl(
+                    target, provider, "error", "authorization_declined"));
             }
 
             var result = await oauth.CompleteCallbackAsync(
@@ -388,12 +390,18 @@ namespace AgentPortal.Controllers;
                 !await IsAuthorizedExternalAdsOwnerAsync(result.Owner, cancellationToken))
                 return Forbid();
 
-            var separator = target.Contains('?') ? '&' : '?';
-            return Redirect($"{target}{separator}provider={Uri.EscapeDataString(result.Provider)}&status=connected");
+            return Redirect(Infrastructure.Analytics.MarketingExternalAdsOAuthService.BuildReturnUrl(
+                target, result.Provider, "connected"));
         }
-        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return Redirect($"{target}{(target.Contains('?') ? '&' : '?')}provider=external&status=error&message={Uri.EscapeDataString(ex.Message)}");
+            return Redirect(Infrastructure.Analytics.MarketingExternalAdsOAuthService.BuildReturnUrl(
+                target, provider, "error"));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or HttpRequestException or System.Text.Json.JsonException)
+        {
+            return Redirect(Infrastructure.Analytics.MarketingExternalAdsOAuthService.BuildReturnUrl(
+                target, provider, "error"));
         }
     }
 
@@ -840,12 +848,14 @@ namespace AgentPortal.Controllers;
     private async Task<SummaryKpiDto> LoadSummarySafelyAsync(
         TimeRangeRequest range,
         ScopeContext scope,
-        TrafficType trafficType = TrafficType.All)
+        TrafficType trafficType = TrafficType.All,
+        CancellationToken ct = default)
     {
         try
         {
-            return await _analytics.GetSummaryAsync(range, scope, trafficType);
+            return await _analytics.GetSummaryAsync(range, scope, trafficType, ct);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex) when (IsAnalyticsTimeout(ex))
         {
             _logger.LogWarning(
@@ -928,7 +938,7 @@ namespace AgentPortal.Controllers;
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await LoadSummarySafelyAsync(range, scope, trafficType);
+        var result = await LoadSummarySafelyAsync(range, scope, trafficType, HttpContext.RequestAborted);
         result.ScopeLabel = await ResolveScopeLabelAsync(scope, team);
         return Json(result);
     }
@@ -2219,7 +2229,7 @@ namespace AgentPortal.Controllers;
 
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var total = await _analytics.GetSummaryAsync(range, scope, TrafficType.All);
+        var total = await _analytics.GetSummaryAsync(range, scope, TrafficType.All, HttpContext.RequestAborted);
         var buckets = new List<object>();
 
         foreach (var trafficType in new[]
@@ -2231,7 +2241,7 @@ namespace AgentPortal.Controllers;
             TrafficType.Unknown
         })
         {
-            var summary = await _analytics.GetSummaryAsync(range, scope, trafficType);
+            var summary = await _analytics.GetSummaryAsync(range, scope, trafficType, HttpContext.RequestAborted);
             buckets.Add(new
             {
                 Bucket = trafficType.ToString(),

@@ -3,6 +3,8 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Infrastructure.Data;
+using Domain.Entities;
+using Shared.Analytics;
 using Infrastructure.WebsiteEditing;
 using Infrastructure.WebsiteEditing.Controllers;
 using Microsoft.AspNetCore.DataProtection;
@@ -15,10 +17,114 @@ namespace AgentPortal.Tests;
 
 public sealed class WebsitePublishingAuthorityTests
 {
+    private sealed class MaterializationAudit : Microsoft.EntityFrameworkCore.Diagnostics.IMaterializationInterceptor
+    {
+        public System.Collections.Generic.List<Type> EntityTypes { get; } = new();
+        public object InitializedInstance(
+            Microsoft.EntityFrameworkCore.Diagnostics.MaterializationInterceptionData data, object entity)
+        {
+            EntityTypes.Add(entity.GetType());
+            return entity;
+        }
+    }
+
+    [Fact]
+    public async Task ReportingEntryPointsProjectPublishedInputsWithoutMaterializingPrivatePayloadEntities()
+    {
+        var audit = new MaterializationAudit();
+        using var db = ControllerTestHelpers.BuildDb(audit);
+        var profile = new AgentTrackingProfile { AgentUserId = "projection-agent", AgentUpn = "projection@example.test", Slug = "projection" };
+        var state = new WebsiteContentState
+        {
+            OwnerKey = profile.AgentUserId, SiteKey = WebsiteEditorSiteKeys.Protect,
+            DraftJson = "private draft must not be read", NamedDraftsJson = "private named drafts must not be read"
+        };
+        var version = new WebsiteContentVersion
+        {
+            StateId = state.Id, Revision = 17, DocumentJson = "{}", CompiledPagesJson = "compiled payload must not be read"
+        };
+        state.PublishedVersionId = version.Id;
+        db.AddRange(profile, state, version);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var query = new WebsiteEventMapQuery(db, new ConfigurationBuilder().Build());
+        var ticket = new WebsiteEditorTicket(state.SiteKey, profile.AgentUserId, profile.Slug, false, DateTime.UtcNow.AddMinutes(5));
+        foreach (var viaTicket in new[] { false, true })
+        {
+            audit.EntityTypes.Clear();
+            var rows = viaTicket ? await query.ReadTicketAsync(ticket) : await query.ReadAsync(ScopeContext.ForAgent(profile.Id));
+            Assert.NotEmpty(rows);
+            Assert.All(rows, row =>
+            {
+                Assert.Equal(MarketingOwnerScope.Agent(profile.Id).Key, row.Owner);
+                Assert.Equal(version.Id, row.PublishedVersion);
+                Assert.Equal(17, row.PublishedRevision);
+            });
+            Assert.DoesNotContain(typeof(WebsiteContentState), audit.EntityTypes);
+            Assert.DoesNotContain(typeof(WebsiteContentVersion), audit.EntityTypes);
+            Assert.Empty(db.ChangeTracker.Entries<WebsiteContentState>());
+            Assert.Empty(db.ChangeTracker.Entries<WebsiteContentVersion>());
+        }
+    }
+
+    [Fact]
+    public async Task HistoricalVersionOwnerResolutionProjectsIdentityWithoutPrivatePayloads()
+    {
+        var audit = new MaterializationAudit();
+        using var db = ControllerTestHelpers.BuildDb(audit);
+        var config = new ConfigurationBuilder().Build();
+        var cases = new[]
+        {
+            (Site: WebsiteEditorSiteKeys.Legend, Owner: WebsiteEditorSiteKeys.GlobalOwnerKey, IsFounder: true),
+            (Site: WebsiteEditorSiteKeys.Legend, Owner: "foreign-owner", IsFounder: false),
+            (Site: WebsiteEditorSiteKeys.Protect, Owner: WebsiteEditorSiteKeys.GlobalOwnerKey, IsFounder: false),
+            (Site: WebsiteEditorSiteKeys.Business, Owner: WebsiteEditorSiteKeys.BusinessOwnerKey(Guid.NewGuid()), IsFounder: false)
+        };
+        foreach (var item in cases)
+        {
+            var state = new WebsiteContentState
+            {
+                SiteKey = item.Site, OwnerKey = item.Owner,
+                DraftJson = "private draft must not be materialized",
+                NamedDraftsJson = "private named drafts must not be materialized"
+            };
+            var version = new WebsiteContentVersion
+            {
+                StateId = state.Id, Revision = 1,
+                DocumentJson = "published content is not an identity input",
+                CompiledPagesJson = "compiled content is not an identity input"
+            };
+            // Historical version ownership remains valid without a current publication.
+            Assert.Null(state.PublishedVersionId);
+            db.AddRange(state, version);
+            await db.SaveChangesAsync();
+            db.ChangeTracker.Clear();
+            audit.EntityTypes.Clear();
+            var owner = await Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ResolveOwnerAsync(
+                db, config, new AnalyticsEvent { Id = 42, WebsiteContentVersionId = version.Id, MetadataJson = "{}" });
+            if (item.IsFounder) Assert.Equal(MarketingOwnerScope.Founder, owner);
+            else Assert.Null(owner);
+            Assert.DoesNotContain(typeof(WebsiteContentState), audit.EntityTypes);
+            Assert.DoesNotContain(typeof(WebsiteContentVersion), audit.EntityTypes);
+            Assert.Empty(db.ChangeTracker.Entries<WebsiteContentState>());
+            Assert.Empty(db.ChangeTracker.Entries<WebsiteContentVersion>());
+        }
+        Assert.Null(await Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ResolveOwnerAsync(
+            db, config, new AnalyticsEvent { Id = 42, WebsiteContentVersionId = Guid.NewGuid(), MetadataJson = "{}" }));
+    }
+
     private sealed class Fixture : IDisposable
     {
-        public MasterAppDbContext Db { get; } = new(new DbContextOptionsBuilder<MasterAppDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        public MaterializationAudit Audit { get; } = new();
+        public MasterAppDbContext Db { get; }
+
+        public Fixture(bool auditMaterialization = false)
+        {
+            var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString());
+            if (auditMaterialization) options.AddInterceptors(Audit);
+            Db = new(options.Options);
+        }
         public WebsiteEditorTicketProtector Tickets { get; } = new(new EphemeralDataProtectionProvider());
         public IConfiguration Config { get; } = new ConfigurationBuilder()
             .AddInMemoryCollection(new[]
@@ -109,6 +215,76 @@ public sealed class WebsitePublishingAuthorityTests
     }
 
     [Fact]
+    public async Task PublicReadsAndPublicationReconciliationDoNotMaterializeSnapshotEntities()
+    {
+        using var fixture = new Fixture(auditMaterialization: true);
+        var state = new Domain.Entities.WebsiteContentState
+        {
+            OwnerKey = WebsiteEditorSiteKeys.GlobalOwnerKey,
+            SiteKey = WebsiteEditorSiteKeys.Legend,
+            Revision = 8,
+            DraftJson = JsonSerializer.Serialize(Document("Private draft"), new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+            NamedDraftsJson = "[]"
+        };
+        var published = Document("Published");
+        published.Store.Enabled = true;
+        var version = new Domain.Entities.WebsiteContentVersion
+        {
+            StateId = state.Id, Revision = 7,
+            DocumentJson = JsonSerializer.Serialize(published, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+            CompiledPagesJson = "{}"
+        };
+        state.PublishedVersionId = version.Id;
+        fixture.Db.AddRange(state, version);
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+        fixture.Audit.EntityTypes.Clear();
+
+        Assert.Equal("Published", TitleText(Body(await fixture.Controller.Public(WebsiteEditorSiteKeys.Legend))));
+        var status = Body(await fixture.Controller.PublicationStatus(fixture.Token, version.Id));
+        Assert.True(status.GetProperty("found").GetBoolean());
+        Assert.True(status.GetProperty("isCurrent").GetBoolean());
+        Assert.Equal(8, status.GetProperty("revision").GetInt64());
+        Assert.DoesNotContain(typeof(Domain.Entities.WebsiteContentState), fixture.Audit.EntityTypes);
+        Assert.DoesNotContain(typeof(Domain.Entities.WebsiteContentVersion), fixture.Audit.EntityTypes);
+    }
+
+    [Theory]
+    [InlineData("/legend-public-openai-measurement.js")]
+    [InlineData("/legend-public-meta-signal-intelligence.js")]
+    [InlineData("/team//history")]
+    [InlineData("/TEAM/history")]
+    public async Task PublicLegendHtmlNeverServesInvalidPathsEvenIfPresentInPublication(string path)
+    {
+        using var fixture = new Fixture();
+        var state = new Domain.Entities.WebsiteContentState
+        {
+            OwnerKey = WebsiteEditorSiteKeys.GlobalOwnerKey,
+            SiteKey = WebsiteEditorSiteKeys.Legend
+        };
+        var version = new Domain.Entities.WebsiteContentVersion
+        {
+            StateId = state.Id, Revision = 1, DocumentJson = "{}",
+            CompiledPagesJson = JsonSerializer.Serialize(new
+            {
+                pages = new System.Collections.Generic.Dictionary<string, object>
+                {
+                    [path] = new { html = "<!doctype html><main>Invalid route must remain private</main>" }
+                }
+            })
+        };
+        state.PublishedVersionId = version.Id;
+        fixture.Db.AddRange(state, version);
+        await fixture.Db.SaveChangesAsync();
+        var controller = fixture.Controller;
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
+        };
+        Assert.IsType<NotFoundResult>(await controller.LegendPage(path));
+    }
+
+    [Fact]
     public async Task PublicLegendHtmlReadsOnlyActivePrecompiledPublication()
     {
         using var fixture = new Fixture();
@@ -121,7 +297,8 @@ public sealed class WebsitePublishingAuthorityTests
         {
             pages = new System.Collections.Generic.Dictionary<string, object>
             {
-                ["/"] = new { html = "<!doctype html><main><h1>" + text + "</h1></main><a href='__LEGEND_CANONICAL_URL__'>Home</a>" }
+                ["/"] = new { html = "<!doctype html><main><h1>" + text + "</h1></main><a href='__LEGEND_CANONICAL_URL__'>Home</a>" },
+                ["/team/history"] = new { html = "<!doctype html><main><h1>Nested " + text + "</h1></main>" }
             }
         });
         var first = new Domain.Entities.WebsiteContentVersion
@@ -158,6 +335,8 @@ public sealed class WebsitePublishingAuthorityTests
         Assert.DoesNotContain("<h1>First</h1>", currentPage.Content, StringComparison.Ordinal);
         Assert.Equal(second.Id.ToString("D"),
             controller.Response.Headers["X-Legend-Publication-Id"].ToString());
+        var nestedPage = Assert.IsType<ContentResult>(await controller.LegendPage("/team/history/"));
+        Assert.Contains("<h1>Nested Second</h1>", nestedPage.Content, StringComparison.Ordinal);
         Assert.IsType<NotFoundResult>(await controller.LegendPage("/absent"));
     }
 
@@ -217,6 +396,7 @@ public sealed class WebsitePublishingAuthorityTests
         var count = await f.Db.Set<Domain.Entities.WebsiteContentVersion>().CountAsync();
         var retry = Body(await f.Controller.Publish(new(token, 1, requestId)));
         Assert.True(retry.GetProperty("alreadyPublished").GetBoolean());
+        Assert.False(retry.TryGetProperty("publicationRejection", out _));
         Assert.Equal(count, await f.Db.Set<Domain.Entities.WebsiteContentVersion>().CountAsync());
         var status = Body(await f.Controller.PublicationStatus(token, requestId));
         Assert.True(status.GetProperty("found").GetBoolean());
@@ -225,6 +405,27 @@ public sealed class WebsitePublishingAuthorityTests
         Assert.IsType<UnauthorizedResult>(await f.Controller.PublicationStatus("invalid", requestId));
         var published = Body(await f.Controller.Public("legend"));
         Assert.Equal(requestId, published.GetProperty("publication").GetProperty("versionId").GetGuid());
+    }
+
+    [Fact]
+    public async Task PublicationRevisionPrecheckReturnsRequestBoundRejectionWithoutCommitting()
+    {
+        using var f = new Fixture();
+        var token = f.Token;
+        await SeedCanonicalDraftAsync(f, token, WebsiteEditorSiteKeys.Legend, Document("Saved draft"), revision: 4);
+        var requestId = Guid.NewGuid();
+        var rejected = Assert.IsType<ConflictObjectResult>(await f.Controller.Publish(new(token, 3, requestId)));
+        var payload = JsonSerializer.SerializeToElement(rejected.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal("revision_conflict", payload.GetProperty("error").GetString());
+        var receipt = payload.GetProperty("publicationRejection");
+        Assert.Equal("rejected_before_commit", receipt.GetProperty("disposition").GetString());
+        Assert.Equal(requestId, receipt.GetProperty("requestId").GetGuid());
+        Assert.Equal(3, receipt.GetProperty("expectedRevision").GetInt64());
+        Assert.Empty(await f.Db.Set<Domain.Entities.WebsiteContentVersion>().ToListAsync());
+        var state = Assert.Single(await f.Db.Set<Domain.Entities.WebsiteContentState>().AsNoTracking().ToListAsync());
+        Assert.Equal(4, state.Revision);
+        Assert.Null(state.PublishedVersionId);
+        Assert.False(Body(await f.Controller.PublicationStatus(token, requestId)).GetProperty("found").GetBoolean());
     }
 
     [Fact]
@@ -716,7 +917,15 @@ public sealed class WebsitePublishingAuthorityTests
             Href = "#"
         });
         await SeedCanonicalDraftAsync(f, token, WebsiteEditorSiteKeys.Legend, dead, revision: 1);
-        Assert.IsType<BadRequestObjectResult>(await f.Controller.Publish(new(token, 1)));
+        var rejectedRequestId = Guid.NewGuid();
+        var rejected = Assert.IsType<BadRequestObjectResult>(await f.Controller.Publish(new(token, 1, rejectedRequestId)));
+        var error = JsonSerializer.SerializeToElement(rejected.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var rejection = error.GetProperty("publicationRejection");
+        Assert.Equal("rejected_before_commit", rejection.GetProperty("disposition").GetString());
+        Assert.Equal(rejectedRequestId, rejection.GetProperty("requestId").GetGuid());
+        Assert.Equal(1, rejection.GetProperty("expectedRevision").GetInt64());
+        Assert.Empty(await f.Db.Set<Domain.Entities.WebsiteContentVersion>().ToListAsync());
+        Assert.False(Body(await f.Controller.PublicationStatus(token, rejectedRequestId)).GetProperty("found").GetBoolean());
 
         Assert.IsType<OkObjectResult>(await f.Controller.ApplyMutations(
             new WebsitePlatformController.WebsiteMutationRequest(token, 1, [
@@ -737,7 +946,11 @@ public sealed class WebsitePublishingAuthorityTests
                     }
                 }
             ])));
-        Assert.IsType<OkObjectResult>(await f.Controller.Publish(new(token, 2)));
+        var correctedRequestId = Guid.NewGuid();
+        var corrected = Body(await f.Controller.Publish(new(token, 2, correctedRequestId)));
+        Assert.Equal(correctedRequestId, corrected.GetProperty("versionId").GetGuid());
+        Assert.False(Body(await f.Controller.PublicationStatus(token, rejectedRequestId)).GetProperty("found").GetBoolean());
+        Assert.Single(await f.Db.Set<Domain.Entities.WebsiteContentVersion>().ToListAsync());
 
         var published = Page(Body(await f.Controller.Public("legend")));
         var button = published.GetProperty("composition").EnumerateArray()

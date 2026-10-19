@@ -12,12 +12,13 @@ public interface IAnalyticsQueryService
         IReadOnlyCollection<AnalyticsEvent> events, System.Threading.CancellationToken ct = default);
     Task<List<AnalyticsEvent>> LoadFilteredEventsAsync(TimeRangeRequest range, ScopeContext scope,
         Guid[]? scopedAgentIds = null, System.Threading.CancellationToken cancellationToken = default);
-    Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
+    Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, System.Threading.CancellationToken ct = default);
     Task<TrafficOverviewDto> GetTrafficAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
     Task<PagePerformanceDto> GetPagePerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
     Task<CtaPerformanceDto> GetCtaPerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
     Task<QuoteFunnelDto> GetQuoteFunnelAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
-    Task<MarketingHealthDto> GetMarketingHealthAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
+    Task<MarketingHealthDto> GetMarketingHealthAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, System.Threading.CancellationToken ct = default);
+    Task<MarketingHealthReadSnapshot> GetMarketingHealthSnapshotAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, System.Threading.CancellationToken ct = default);
     Task<ConversionCenterDto> GetConversionsAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, int recentTake = 100);
     Task<LeadSnapshotDto> GetLeadsAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, int take = 200);
     Task<AgentPerformanceDto> GetAgentPerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, AnalyticsQueryOptions? options = null);

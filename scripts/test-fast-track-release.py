@@ -168,6 +168,7 @@ class HistoricManualProxyReadbackTests(unittest.TestCase):
 class RoutineSqlPollingImpactTests(unittest.TestCase):
     def test_exact_shared_polling_sources_require_managed_apps_and_backend_admission(self):
         paths = ['Infrastructure/Diagnostics/RoutineSqlPolling.cs',
+                 'Infrastructure/Messaging/LegendCallSignalDeliveryHostedService.cs',
                  'Infrastructure/Notifications/ApplePushDeliveryHostedService.cs',
                  'Infrastructure/Notifications/FirebasePushDeliveryHostedService.cs']
         for path in paths:
@@ -178,7 +179,8 @@ class RoutineSqlPollingImpactTests(unittest.TestCase):
                 self.assertTrue(scope['commerce'])
                 self.assertFalse(scope['schema'])
                 self.assertFalse(scope['routing'])
-        for path in ['Infrastructure/Diagnostics/Unknown.cs', 'Infrastructure/Notifications/Unknown.cs']:
+        for path in ['Infrastructure/Diagnostics/Unknown.cs', 'Infrastructure/Notifications/Unknown.cs',
+                     'Infrastructure/Messaging/Unknown.cs']:
             with self.subTest(path=path), self.assertRaisesRegex(ValueError, 'Unmapped'):
                 authority.fast_track_scope([path])
 
@@ -1125,6 +1127,211 @@ class RouterPrewriteRecoveryTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'mutation-activity'):
                 migration.production_readiness(dict(before,mutationActivity='active'))
 
+    def modern_admission_failure(self):
+        self.admission_failure()
+        head='ba4a4bdd9941f314f0aab769d638504a53b0ec8d'
+        self.log=self.log.replace(self.run['head_sha'],head).replace('line 122,','line 158,').replace(
+            'line 111,','line 115,').replace('line 1819,','line 1930,')
+        self.run['head_sha']=head
+    def test_current_admission_body_survives_unrelated_source_line_movement(self):
+        self.modern_admission_failure()
+        self.assertTrue(self.prove())
+        source=authority._release_history_source
+        shifted=self.log.replace('line 1930,','line 1932,')
+        with patch.object(authority,'_release_history_source',side_effect=lambda repo,head,path,token:
+                '# unrelated registry note\n\n'+source(repo,head,path,token)
+                if path=='scripts/validation-resume.py' else source(repo,head,path,token)):
+            self.assertFalse(self.prove())  # Original line cannot be relabelled.
+            self.log=shifted; self.assertTrue(self.prove())
+        self.log=self.log.replace('line 1932,','line 1930,')
+        with patch.object(authority,'_release_history_source',side_effect=lambda repo,head,path,token:
+                source(repo,head,path,token).replace(
+                    '    gate = DIRECT_RELEASE_CHILDREN[child]\n    partition_identity',
+                    '    gate = dict(DIRECT_RELEASE_CHILDREN[child])\n    partition_identity')
+                if path=='scripts/validation-resume.py' else source(repo,head,path,token)):
+            self.assertFalse(self.prove())
+    def test_original_source_admission_head_change_precedes_provider_entry(self):
+        head='1f08cd5a2518a4d206ecf4bccdad4024b7cba26e'
+        self.run['head_sha']=head
+        prefix=self.log.split('2026-10-11T18:00:30Z Traceback')[0].replace(self.head,head)
+        lines=['Traceback (most recent call last):',
+            '  File "release-router.py", line 158, in <module>', '    fast_track()',
+            '  File "release-router.py", line 82, in fast_track', '    authority.fast_track_source_admission()',
+            '  File "validation-resume.py", line 4023, in fast_track_source_admission',
+            '    run = assert_fast_track_release_execution()',
+            '  File "validation-resume.py", line 3691, in assert_fast_track_release_execution',
+            "    raise RuntimeError('FAST_TRACK_RELEASE_HEAD_CHANGED')",
+            'RuntimeError: FAST_TRACK_RELEASE_HEAD_CHANGED']
+        self.log=prefix+''.join('2026-10-11T18:00:30Z '+line+'\n' for line in lines)
+        self.assertTrue(self.prove())
+        original=self.log
+        for changed in (original.replace('line 82,','line 83,'),original.replace('line 3691,','line 3692,'),
+                original.replace('18:00:30Z   File "validation','17:59:30Z   File "validation'),
+                original.replace('FAST_TRACK_RELEASE_HEAD_CHANGED','FAST_TRACK_UNKNOWN')):
+            self.log=changed;self.assertFalse(self.prove())
+    def test_five_completed_apps_use_actual_current_prewrite_proof(self):
+        self.modern_admission_failure();self.run['run_attempt']=3
+        apps=[dict(name='Affected App Deploy — '+name,status='completed',conclusion='success')
+              for name in ('AgentPortal','ClientApp','Protect','Parfait','Website')]
+        apps += [dict(name=name,status='completed',conclusion='success') for name in
+                 ('Admit exact validated fast-track source','Reconcile production schema before publication')]
+        earlier=dict(self.job,conclusion='skipped')
+        def get(repo,path,token):
+            if '/artifacts?' in path:return dict(total_count=0,artifacts=[])
+            rows=[self.job] if '/attempts/3/' in path else [earlier]
+            return dict(total_count=len(rows),jobs=rows)
+        with patch.object(authority,'api_get',side_effect=get),patch.object(authority,'_release_job_log',return_value=self.log):
+            self.assertTrue(authority.fast_track_completed_apps_pending_routing('owner/repo',self.run,apps+[self.job],'fixture'))
+            earlier['conclusion']='failure'
+            earlier['steps']=[dict(self.job['steps'][0],started_at='2026-10-10T18:00:00Z',
+                                   completed_at='2026-10-10T18:01:00Z')]
+            self.assertFalse(authority.fast_track_completed_apps_pending_routing('owner/repo',self.run,apps+[self.job],'fixture'))
+
+
+class PreservedRouterGenerationTests(unittest.TestCase):
+    def setUp(self):
+        import copy
+        self.copy=copy.deepcopy
+        self.material='b'*64
+        self.original='4910a01a7929ce263f497873f4165e04f35ea81d'
+        self.historical='1f08cd5a2518a4d206ecf4bccdad4024b7cba26e'
+        self.current='ba4a4bdd9941f314f0aab769d638504a53b0ec8d'
+        self.producer=self.producer_run(10,self.original,'2026-10-12T15:00:00Z')
+        self.consumer=self.producer_run(20,self.historical,'2026-10-12T16:00:00Z')
+        self.active=self.producer_run(30,self.current,'2026-10-17T17:00:00Z');self.active['status']='in_progress'
+        self.producers=[self.active,self.consumer,self.producer]
+        self.direct=[]
+        self.artifacts={10:[],20:[],30:[]};self.records={}
+        self.add_pair(self.producer,self.material)
+        step=dict(name=authority.FAST_TRACK_CHILD_STEPS['routing-cloudflare'][1],status='completed',conclusion='failure',
+                  started_at='2026-10-12T16:23:25Z',completed_at='2026-10-12T16:23:48Z')
+        self.job=dict(id=90,name=authority.FAST_TRACK_CHILD_STEPS['routing-cloudflare'][0],
+                      status='completed',conclusion='failure',steps=[step])
+        self.log=('2026-10-12T16:23:00Z [command]/usr/bin/git log -1 --format=%H\n'
+                  +'2026-10-12T16:23:01Z '+self.historical+'\n')
+        lines=['FAST_TRACK_COMPANY_RENDERER:VERIFIED_BEFORE_ROUTING','FAST_TRACK_ROUTER:preserved',
+               'FAST_TRACK_DNS_PROXY_RECONCILIATION:apex_and_www_only',
+               'cloudflare-routing-authority.CloudflareError: Website DNS proxy requires DNS Edit authority or recovery: mylegnd.com']
+        self.log+=''.join('2026-10-12T16:23:47Z '+line+'\n' for line in lines)
+        self.incomplete=False
+    def producer_run(self,number,head,created):
+        return dict(id=number,head_sha=head,head_branch=authority.FAST_TRACK_PR_BASE,event='push',
+            path='.github/workflows/'+authority.FAST_TRACK_RELEASE_WORKFLOW,head_repository=dict(full_name='owner/repo'),
+            status='completed',conclusion='failure',run_attempt=1,created_at=created)
+    def add_pair(self,producer,material):
+        generation=authority.direct_child_operation_identity('routing-cloudflare',producer['head_sha'],material)
+        for phase,version in [('intent','aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'),
+                              ('success','bbbbbbbb-cccc-dddd-eeee-ffffffffffff')]:
+            record=dict(schemaVersion=1,child='routing-cloudflare',dependencyIdentity=generation,
+                materialIdentity=material,partitionIdentity=material,applicationRevision=producer['head_sha'],
+                executionAuthority=producer['head_sha'],producingRun=producer['id'],producingAttempt=1,phase=phase,
+                evidenceIdentity=authority.direct_child_identity('routing-cloudflare',producer['head_sha'],material,
+                    workflow=(authority.FAST_TRACK_RELEASE_WORKFLOW if producer['event']=='push'
+                              else authority.DIRECT_RELEASE_WORKFLOW)),observation=dict(providerVersion=version))
+            artifact=dict(id=100+len(self.records),name='legend-release-child-'+phase+'-'+generation,expired=False,
+                          created_at='2026-10-12T15:18:10Z',workflow_run=dict(id=producer['id']))
+            self.artifacts.setdefault(producer['id'],[]).append(artifact);self.records[artifact['id']]=record
+    def api(self,repo,path,token):
+        if 'event=push&' in path:return dict(total_count=len(self.producers),workflow_runs=self.producers)
+        if 'event=workflow_dispatch&' in path:return dict(total_count=len(self.direct),workflow_runs=self.direct)
+        if path.startswith('actions/artifacts?name='):
+            name=__import__('urllib.parse',fromlist=['unquote']).unquote(path.split('name=',1)[1].split('&')[0])
+            rows=[a for values in self.artifacts.values() for a in values if a['name']==name]
+            return dict(total_count=len(rows),artifacts=rows)
+        import re
+        match=re.fullmatch(r'actions/runs/(\d+)(/artifacts\?per_page=100)?',path)
+        if match:
+            number=int(match[1])
+            if match[2]:
+                rows=self.artifacts[number]
+                return dict(total_count=len(rows)+(1 if self.incomplete else 0),artifacts=rows)
+            return next(row for row in self.producers+self.direct if row['id']==number)
+        if path.startswith('compare/'):return dict(status='identical')
+        raise AssertionError('Unexpected fixture read: '+path)
+    def download(self,repo,run_id,name,directory,*,artifact_id=None):
+        rows=[a for a in self.artifacts[run_id] if a['name']==name and (artifact_id is None or a['id']==artifact_id)]
+        if len(rows)!=1:raise AssertionError('Nonunique fixture archive')
+        (directory/'operation.json').write_text(__import__('json').dumps(self.records[rows[0]['id']]))
+    def check(self,material=None,revision=None):
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(authority,'api_get',side_effect=self.api))
+            stack.enter_context(patch.object(authority,'_release_job_log',return_value=self.log))
+            stack.enter_context(patch.object(authority,'_download_run_artifact',side_effect=self.download))
+            stack.enter_context(patch.dict(authority._RELEASE_HISTORY_API,{},clear=True))
+            stack.enter_context(patch.dict(authority._RELEASE_HISTORY_RECEIPTS,{},clear=True))
+            stack.enter_context(patch.object(authority,'fast_track_child_attempts',
+                return_value=[(self.consumer,1,self.job,self.job['steps'][0])]))
+            material=material or self.material;revision=revision or self.current
+            return authority.release_child_first_write_proven('owner/repo','routing-cloudflare',
+                authority.direct_child_operation_identity('routing-cloudflare',revision,material),
+                material,30,1,'fixture',partition_identity=material)
+    def test_original_pair_allows_only_a_distinct_physical_generation(self):
+        self.assertTrue(self.check())
+        with self.assertRaisesRegex(RuntimeError,'physical operation already entered'):
+            self.check(revision=self.historical)
+    def test_missing_expired_future_or_success_only_original_pair_cannot_authorize(self):
+        original=self.copy(self.artifacts)
+        for change in ('missing','expired','future','success-only'):
+            with self.subTest(change=change):
+                self.artifacts=self.copy(original)
+                if change=='missing':self.artifacts[10]=[]
+                elif change=='expired':self.artifacts[10][0]['expired']=True
+                elif change=='future':self.artifacts[10][1]['created_at']='2026-10-12T16:23:49Z'
+                else:self.artifacts[10]=self.artifacts[10][1:]
+                with self.assertRaises(RuntimeError):self.check()
+        self.artifacts=original;self.incomplete=True
+        with self.assertRaisesRegex(RuntimeError,'inventory incomplete'):self.check()
+    def test_other_original_material_is_not_discarded_to_select_current_material(self):
+        other=self.producer_run(11,self.original,'2026-10-12T15:00:00Z');self.producers.append(other)
+        self.add_pair(other,'c'*64)
+        with self.assertRaisesRegex(RuntimeError,'not unique'):self.check()
+        self.artifacts[11]=self.artifacts[11][1:]  # A competing partial group still counts.
+        with self.assertRaisesRegex(RuntimeError,'not unique'):self.check()
+    def test_direct_release_original_candidate_participates_in_uniqueness(self):
+        other=self.producer_run(11,self.original,'2026-10-12T15:00:00Z')
+        other.update(head_branch=authority.TRUSTED_PR_BASE,event='workflow_dispatch',
+            path='.github/workflows/'+authority.DIRECT_RELEASE_WORKFLOW,
+            display_title='LEGEND release pr=1 candidate='+self.original+' authority='+self.original)
+        self.direct.append(other);self.add_pair(other,'c'*64)
+        with self.assertRaisesRegex(RuntimeError,'not unique'):self.check()
+    def test_canonical_record_changed_after_catalog_read_is_rejected(self):
+        history=authority.release_child_history
+        def changed(*args,**kwargs):
+            record=history(*args,**kwargs)
+            return dict(record,observation=dict(providerVersion='cccccccc-dddd-eeee-ffff-aaaaaaaaaaaa')) if args[4]=='success' else record
+        with patch.object(authority,'release_child_history',side_effect=changed):
+            with self.assertRaisesRegex(RuntimeError,'canonical receipt changed'):self.check()
+    def test_conflicting_originals_in_the_same_phase_are_rejected(self):
+        other=self.producer_run(11,self.original,'2026-10-12T15:00:00Z');self.producers.append(other)
+        self.add_pair(other,self.material);self.artifacts[11]=self.artifacts[11][:1]
+        with self.assertRaisesRegex(RuntimeError,'incomplete or competing'):self.check()
+    def test_wrong_producer_phase_partition_or_observation_is_rejected(self):
+        original=self.copy(self.records)
+        for key,value in [('producingRun',20),('phase','success'),('partitionIdentity','c'*64),
+                          ('observation',dict(providerVersion='invalid'))]:
+            with self.subTest(key=key):
+                self.records=self.copy(original);self.records[100][key]=value
+                with self.assertRaises(RuntimeError):self.check()
+        self.records=original;self.records[101]['materialIdentity']='c'*64
+        with self.assertRaises(RuntimeError):self.check()
+    def test_unproven_preserved_execution_never_infers_absence(self):
+        original=self.log
+        for changed in (original.replace('FAST_TRACK_ROUTER:preserved','FAST_TRACK_ROUTER:verified'),
+                original+original.splitlines(True)[3],original.replace('16:23:47Z FAST_TRACK_ROUTER','16:22:47Z FAST_TRACK_ROUTER'),
+                original.replace(self.historical,'a'*40)):
+            with self.subTest(log=changed):
+                self.log=changed
+                with self.assertRaisesRegex(RuntimeError,'missing intent'):self.check()
+        self.log=original
+        source=authority._release_history_source
+        with patch.object(authority,'_release_history_source',side_effect=lambda repo,head,path,token:
+                source(repo,head,path,token)+'\n# changed owner\n' if path=='scripts/release-router.py' else source(repo,head,path,token)):
+            with self.assertRaisesRegex(RuntimeError,'missing intent'):self.check()
+    def test_dns_denial_is_not_a_whole_step_prewrite_proof(self):
+        with patch.object(authority,'api_get',side_effect=self.api),patch.object(authority,'_release_job_log',return_value=self.log):
+            self.assertFalse(authority.attested_fast_track_router_prewrite('owner/repo',self.consumer,[self.job],'fixture'))
+
 class LegacyRouterHistoryTests(unittest.TestCase):
     def source(self, revision):
         return authority.git_show_file(revision,'.github/workflows/'+authority.DIRECT_RELEASE_WORKFLOW)
@@ -1204,16 +1411,19 @@ class FastTrackNoSqlInputInventoryTests(unittest.TestCase):
 
 
 class ReleaseAdmissionScopeRegressionTests(unittest.TestCase):
-    def test_all_seventeen_rejected_paths_preserve_real_dependencies(self):
+    def test_known_shared_sources_and_controls_preserve_real_dependencies(self):
         shared = (
             'Domain/Entities/ClientSubscriptionOffer.cs',
             'Infrastructure/Billing/BillingEntitlementService.cs',
             'Infrastructure/Billing/BillingStateMapper.cs',
             'Infrastructure/Billing/MasterAppBillingOrchestrator.cs',
+            'Infrastructure/Businesses/BusinessWorkspaceControllerBase.cs',
             'Infrastructure/Businesses/CommerceBusinessProvisioningService.cs',
             'Infrastructure/Households/HouseholdMembershipService.cs',
             'Infrastructure/Infrastructure.csproj',
+            'Infrastructure/Leads/WebsiteInquiryAuthority.cs',
             'Infrastructure/Leads/WebsiteLeadAppNotificationService.cs',
+            'Infrastructure/Leads/WebsiteLeadEmailTemplate.cs',
             'Infrastructure/Leads/WebsiteLeadNotificationAuthority.cs',
             'Infrastructure/Leads/WebsiteLeadSubmission.cs',
             'SHARED/Analytics/AiSafeAnalyticsPayload.cs',
@@ -1226,6 +1436,9 @@ class ReleaseAdmissionScopeRegressionTests(unittest.TestCase):
             with self.subTest(path=path):
                 scope=authority.fast_track_scope([path])
                 self.assertEqual(set(scope['impacts'][path]),{'portal','client','protect','parfait'})
+                self.assertEqual({row['key'] for row in scope['matrix']['include']},
+                                 {'portal','client','protect','parfait'})
+                self.assertTrue(scope['selected'])
                 self.assertTrue(scope['commerce'])
                 self.assertFalse(scope['routing'])
                 self.assertEqual(scope['schema'],path=='Infrastructure/Infrastructure.csproj')
@@ -1243,6 +1456,7 @@ class ReleaseAdmissionScopeRegressionTests(unittest.TestCase):
 
     def test_unknown_adjacent_sources_still_fail_closed(self):
         for path in ('Infrastructure/Billing/Unreviewed.cs','Domain/Entities/Unreviewed.cs',
+                     'Infrastructure/Businesses/Unreviewed.cs','Infrastructure/Leads/Unreviewed.cs',
                      'SHARED/Analytics/Unreviewed.cs','scripts/unreviewed.py'):
             with self.subTest(path=path),self.assertRaisesRegex(ValueError,'Unmapped'):
                 authority.fast_track_scope([path])

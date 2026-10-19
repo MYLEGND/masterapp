@@ -260,95 +260,113 @@ html[data-legend-modal-region] body .modal .modal-body {
 }
 
 /*
- * Canonical authenticated mobile width contract.
+ * Canonical authenticated container width contract.
  *
- * Every rendered page gets the full available phone width. Page-specific CSS
+ * Every rendered page gets the full available workspace width, including split views. Page-specific CSS
  * may still define its own internal composition, but it cannot make the root
- * content region narrower than the viewport or make overflow unreachable.
- * Truly wide content remains accessible through a local horizontal scroll
- * fallback instead of being clipped off-screen.
+ * content region narrower than its parent or make overflow unreachable.
+ * Tables retain local horizontal scrolling; page and action groups reflow downwards.
  */
+body.legend-app .legend-app-content {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
+body.legend-app .legend-app-content > main {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
+body.legend-app .legend-app-content > main > :not(script):not(style):not(link) {
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+}
+
+body.legend-app .legend-app-content > main > :not(script):not(style):not(link):not(.modal):not([data-legend-modal-surface]) {
+    width: 100%;
+    margin-inline: 0;
+}
+
+body.legend-app .legend-app-content :is(
+    .dashboard-page-shell,
+    .home-container,
+    .legend-workspace-page,
+    .client-create-page,
+    .resources-page,
+    .training-page,
+    .snapshot-page,
+    .finance-shell,
+    .factfinder-page-shell,
+    .legend-connect-page,
+    .subscription-activation-shell
+) {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    margin-inline: 0;
+}
+
+body.legend-app .legend-app-content :is(
+    .dashboard-command-center-panel,
+    .dashboard-analytics-panel,
+    .dashboard-page-shell .category-container,
+    .dashboard-surface-panel
+) {
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+body.legend-app .legend-app-content :where(.row) > * {
+    min-width: 0;
+    max-width: 100%;
+}
+
+body.legend-app .legend-app-content :where(img, video, iframe, canvas) {
+    max-width: 100%;
+}
+
+body.legend-app .legend-app-content :where(.table-responsive) {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+
+body.legend-app .legend-app-content :is(
+    .dashboard-command-actions,
+    .dashboard-hero-actions,
+    .home-command-actions,
+    .home-hero-actions,
+    .client-create-actions,
+    .preview-actions,
+    .activation-actions,
+    .activation-notice-actions,
+    .pipeline-head-actions,
+    .drawer-top-actions,
+    .queue-record-actions,
+    .hero-link-meta-actions,
+    .uw-actions,
+    .side-actions
+) {
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
+    gap: var(--legend-desktop-gap, .85rem);
+}
+
 @media (max-width: 768px) {
-    body.legend-app .legend-app-content {
-        box-sizing: border-box;
-        width: 100%;
-        max-width: 100%;
-        min-width: 0;
-    }
-
-    body.legend-app .legend-app-content > main {
-        box-sizing: border-box;
-        width: 100%;
-        max-width: 100%;
-        min-width: 0;
-        overflow-x: auto;
-        overflow-y: visible;
-        overscroll-behavior-x: contain;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    body.legend-app .legend-app-content > main > :not(script):not(style):not(link) {
-        box-sizing: border-box;
-        max-width: 100%;
-        min-width: 0;
-    }
-
-    body.legend-app .legend-app-content > main > :not(script):not(style):not(link):not(.modal):not([data-legend-modal-surface]) {
-        width: 100%;
-        margin-inline: 0;
-    }
-
-    body.legend-app .legend-app-content :is(
-        .dashboard-page-shell,
-        .home-container,
-        .legend-workspace-page,
-        .client-create-page,
-        .resources-page,
-        .training-page,
-        .snapshot-page,
-        .finance-shell,
-        .factfinder-page-shell,
-        .legend-connect-page
-    ) {
-        box-sizing: border-box;
-        width: 100%;
-        max-width: 100%;
-        min-width: 0;
-        margin-inline: 0;
-    }
-
-    body.legend-app .legend-app-content :is(
-        .dashboard-command-center-panel,
-        .dashboard-analytics-panel,
-        .dashboard-page-shell .category-container,
-        .dashboard-surface-panel
-    ) {
-        max-width: 100%;
-        min-width: 0;
-        overflow-x: auto;
-        overscroll-behavior-x: contain;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    body.legend-app .legend-app-content :where(.row) > * {
-        min-width: 0;
-        max-width: 100%;
-    }
-
-    body.legend-app .legend-app-content :where(img, video, iframe, canvas) {
-        max-width: 100%;
-    }
-
-    body.legend-app .legend-app-content :where(.table-responsive) {
-        width: 100%;
-        max-width: 100%;
-        min-width: 0;
-        overflow-x: auto;
-        overscroll-behavior-x: contain;
-        -webkit-overflow-scrolling: touch;
-    }
-
-
     /*
      * Canonical authenticated mobile content density.
      * Use the phone's horizontal space before adding vertical scroll. This is
@@ -971,7 +989,6 @@ html[data-legend-modal-region] body .modal .modal-body {
         .queue-workspace-page .queue-record-actions,
         .queue-workspace-page .queue-record-footer,
         .legend-connect-focus-footer,
-        .hero-link-meta-actions:not(.wa-kpi-meta-actions),
         .wa-modal-toolbar
     ) {
         width: 100%;
@@ -983,8 +1000,7 @@ html[data-legend-modal-region] body .modal .modal-body {
         .queue-workspace-page .queue-record-actions,
         .queue-workspace-page .queue-record-footer
     ) .btn,
-    body.legend-app .legend-connect-focus-footer .dashboard-command-action,
-    body.legend-app .hero-link-meta-actions:not(.wa-kpi-meta-actions) .btn {
+    body.legend-app .legend-connect-focus-footer .dashboard-command-action {
         width: 100%;
     }
 
@@ -9213,49 +9229,7 @@ header .legend-global-nav .container-fluid {
         border-radius: var(--legend-app-radius-compact);
     }
 
-    body.legend-app .legend-app-content > main > :not(script):not(style):not(link) {
-        box-sizing: border-box;
-        max-width: 100%;
-        min-width: 0;
-    }
 
-    body.legend-app .legend-app-content :is(
-        .dashboard-page-shell,
-        .home-container,
-        .legend-workspace-page,
-        .client-create-page,
-        .resources-page,
-        .training-page,
-        .snapshot-page,
-        .finance-shell,
-        .factfinder-page-shell,
-        .legend-connect-page,
-        .subscription-activation-shell
-    ) {
-        width: 100%;
-        max-width: none;
-        min-width: 0;
-        margin-inline: 0;
-    }
-
-    body.legend-app .legend-app-content :is(
-        .dashboard-command-actions,
-        .dashboard-hero-actions,
-        .home-command-actions,
-        .home-hero-actions,
-        .client-create-actions,
-        .preview-actions,
-        .activation-actions,
-        .activation-notice-actions,
-        .pipeline-head-actions,
-        .drawer-top-actions,
-        .queue-record-actions,
-        .hero-link-meta-actions,
-        .uw-actions,
-        .side-actions
-    ) {
-        gap: var(--legend-desktop-gap, .85rem);
-    }
 
     body.legend-app .legend-app-content :is(
         button,

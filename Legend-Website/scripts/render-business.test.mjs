@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {execFileSync} from 'node:child_process';
-import {readFileSync} from 'node:fs';
+import {execFileSync,spawnSync} from 'node:child_process';
+import {readFileSync,copyFileSync,mkdtempSync,writeFileSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseHTML} from 'linkedom';
 import {compileBusiness} from './render-business.mjs';
@@ -34,6 +36,44 @@ test('publication compiler process consumes stdin and returns compiled pages',()
   });
   const result=JSON.parse(stdout);
   assert.deepEqual(Object.keys(result.pages),['/','/about','/contact','/services']);
+});
+
+test('publication compiler failures expose only fixed diagnostics',()=>{
+  const canary='private-draft-fixture@example.test';
+  const scriptPath=fileURLToPath(new URL('./render-business-cli.mjs',import.meta.url));
+  const scenarios=[
+    {name:'missing module',module:null,input:'{}',phase:'module_load',category:'module_missing'},
+    {name:'invalid JSON',module:'export function compileWebsite() {}',
+      input:'{"private":"'+canary+'",',phase:'input_parse',category:'invalid_input'},
+    {name:'VM timeout',
+      module:"import vm from 'node:vm'; export function compileWebsite() { new vm.Script('while(true){}').runInNewContext({}, {timeout:1}); }",
+      input:'{}',phase:'render',category:'render_timeout'},
+    {name:'unknown renderer error',
+      module:'export function compileWebsite() { throw new Error('+JSON.stringify(canary)+'); }',
+      input:'{}',phase:'render',category:'compiler_error'}
+  ];
+  for(const scenario of scenarios) {
+    const root=mkdtempSync(join(tmpdir(),'legend-compiler-diagnostic-'));
+    try {
+      const runner=join(root,'render-business-cli.mjs');
+      copyFileSync(scriptPath,runner);
+      if(scenario.module!==null) writeFileSync(join(root,'render-business.mjs'),scenario.module);
+      const result=spawnSync(process.execPath,[runner],{
+        cwd:root,input:scenario.input,encoding:'utf8',timeout:2000,maxBuffer:16_384
+      });
+      assert.ifError(result.error);
+      assert.equal(result.status,1,scenario.name);
+      assert.equal(result.stdout,'',scenario.name);
+      const diagnostic=JSON.parse(result.stderr);
+      assert.deepEqual(Object.keys(diagnostic).sort(),['category','elapsedMs','phase','schema']);
+      assert.equal(diagnostic.schema,'legend-website-compiler-diagnostic/v1');
+      assert.equal(diagnostic.phase,scenario.phase);
+      assert.equal(diagnostic.category,scenario.category);
+      assert.ok(Number.isSafeInteger(diagnostic.elapsedMs) && diagnostic.elapsedMs>=0);
+      assert.equal(result.stderr.includes(canary),false);
+      assert.equal(result.stderr.includes(root),false);
+    } finally {rmSync(root,{recursive:true,force:true});}
+  }
 });
 
 test('canonical v3 business publication renders only the composition graph and keeps platform semantics',async()=>{
@@ -289,6 +329,24 @@ test('dynamic route compilation fails closed on unavailable collection invalid k
   await assert.rejects(()=>compileBusiness({business,document:collision,collections:[{
     id:'products',source:'commerce_products',isList:true,items:[{key:'red',fields:{slug:'red',name:'Red'}}]
   }]}),/Dynamic website route conflicts/);
+});
+
+test('publication rejects long asset filenames as page routes within a bounded process',()=>{
+  const compilerUrl=new URL('./render-business.mjs',import.meta.url).href;
+  const probe=`
+    import assert from 'node:assert/strict';
+    const {compileBusiness}=await import(${JSON.stringify(compilerUrl)});
+    const business=${JSON.stringify(business)};
+    for(const route of ['/legend-public-openai-measurement.js','/legend-public-meta-signal-intelligence.js']) {
+      await assert.rejects(
+        compileBusiness({business,document:{version:3,pages:{[route]:{composition:[]}}}}),
+        /Invalid website page route/
+      );
+    }
+  `;
+  assert.doesNotThrow(()=>execFileSync(process.execPath,['--input-type=module','--eval',probe],{
+    encoding:'utf8',timeout:2000,maxBuffer:64*1024
+  }));
 });
 
 test('untrusted business facts remain text and unsafe page routes reject publication',async()=>{

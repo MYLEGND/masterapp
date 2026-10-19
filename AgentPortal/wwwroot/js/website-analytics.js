@@ -47,7 +47,6 @@
     preset: initialPreset,
     from: initialFrom,
     to: initialTo,
-    pollMs: 15000,
     qualityMode: initialQualityMode,
     dashboardTrafficType: 'all',
     controllers: {},
@@ -55,6 +54,7 @@
     cache: {
       summary: null,
       marketingHealth: null,
+      marketingPerformance: null,
       conversions: null,
       leads: null,
       agentPerf: null,
@@ -131,8 +131,15 @@
   state.scope.scopeLabel = shell?.dataset.initialScopeLabel || (isFounder ? 'Global' : 'Agent Scope');
 
   let summaryRequestId = 0;
-  let summaryRefreshInFlight = false;
-  let openModalRefreshTimer = null;
+  const analyticsReadControllers = new Map();
+  const analyticsDetailRequests = new Map();
+  let analyticsScopeVersion = 0;
+  let analyticsScopeKey = null;
+  let analyticsRefreshInFlight = null;
+  let summaryInFlight = null;
+  let marketingPerformanceRequest = 0;
+  let marketingPerformanceInFlight = null;
+  let marketingPerformanceRenderedKey = null;
 
   const analyticsBase = shell?.dataset.analyticsBase || '/WebsiteAnalytics';
   const isBusinessAnalytics = /^\/business\/[0-9a-f-]+\/analytics\/?$/i.test(analyticsBase);
@@ -228,8 +235,25 @@
     return fetcher();
   }
 
-  async function fetchJson(key, url, params = {}, timeoutMs = 0) {
+  function analyticsRequestFailure(status, payload) {
+    if (status === 401) return 'Sign in again to load this view.';
+    if (status === 403) return 'You do not have access to this view.';
+    const candidate = typeof payload?.message === 'string' ? payload.message
+      : typeof payload?.error === 'string' ? payload.error : '';
+    // Only bounded JSON error contracts are user-facing. HTML error pages can
+    // contain forms, tokens and customer data and must never enter logs or UI.
+    const message = candidate.replace(/\s+/g, ' ').trim();
+    return message && message.length <= 240 && !/[<>]/.test(message)
+      ? message : `Unable to load this view (HTTP ${status}).`;
+  }
+
+  async function fetchJson(key, url, params = {}, timeoutMs = 45000) {
     const ctrl = abort(key);
+    // Reporting scope applies to the canonical range contract. Setup and
+    // connection reads have their own owner generation and survive date/site changes.
+    const scopeVersion = params.preset ? analyticsScopeVersion : null;
+    if (scopeVersion !== null) analyticsReadControllers.set(key, ctrl);
+    const isCurrent = () => (scopeVersion === null || scopeVersion === analyticsScopeVersion) && state.controllers[key] === ctrl;
     const qs = new URLSearchParams(params).toString();
     let timedOut = false;
     const timeoutHandle = timeoutMs > 0
@@ -241,31 +265,32 @@
 
     try {
       const res = await fetchOnce(String(`${url}?${qs}`), () => fetch(`${url}?${qs}`, { signal: ctrl.signal }));
+      if (!isCurrent()) return null;
       if (!res.ok) {
-        let detail = '';
-        try {
-          const contentType = res.headers.get('content-type') || '';
-          if (contentType.includes('application/json')) {
-            const payload = await res.json();
-            detail = payload?.message || payload?.error || '';
-          } else {
-            detail = (await res.text()) || '';
-          }
-        } catch {
-          detail = '';
+        let payload = null;
+        if ((res.headers.get('content-type') || '').includes('application/json')) {
+          try { payload = await res.json(); } catch { /* Use the safe HTTP status. */ }
         }
-        const msg = detail ? `${key} fetch failed: ${detail}` : `${key} fetch failed`;
-        throw new Error(msg);
+        if (!isCurrent()) return null;
+        throw new Error(analyticsRequestFailure(res.status, payload));
       }
-      return await res.json();
+      let data;
+      try { data = await res.json(); }
+      catch (error) {
+        if (error?.name === 'AbortError') throw error;
+        throw new Error('Received an invalid analytics response. Please refresh to retry.');
+      }
+      return isCurrent() ? data : null;
     } catch (err) {
+      if (!isCurrent()) return null;
       if (err.name === 'AbortError') {
-        if (timedOut) throw new Error(`${key} request timed out`);
+        if (timedOut) throw new Error('This view took too long to load. Please refresh to retry.');
         return null;
       }
       throw err;
     } finally {
       if (timeoutHandle !== null) window.clearTimeout(timeoutHandle);
+      if (analyticsReadControllers.get(key) === ctrl) analyticsReadControllers.delete(key);
     }
   }
 
@@ -516,11 +541,10 @@
       state.scope.scopeLabel = resolveScopeLabel(state.scope.agentProfileId);
       syncScopeQueryParam(state.scope.agentProfileId);
       updateFounderScopeUi();
-      notifyScopeChange();
       updateGrowthBaseLink();
+      void refreshAnalytics();
+      notifyScopeChange();
       void loadMetaConnectionStatus();
-      loadSummary();
-      refreshOpenModal();
     });
   }
 
@@ -546,8 +570,8 @@
       syncScopeQueryParam(state.scope.agentProfileId);
       apply();
       updateGrowthBaseLink();
-      loadSummary();
-      refreshOpenModal();
+      void refreshAnalytics();
+      notifyScopeChange();
       void loadMetaConnectionStatus();
     }));
   }
@@ -645,18 +669,10 @@
   }
 
   function setSummaryRefreshStatus(message, isError) {
-    const note = document.getElementById('wa-methodology-note');
-    if (!note) return;
-    if (!note.dataset.baseText) note.dataset.baseText = note.textContent || '';
-    if (!note.dataset.baseClass) note.dataset.baseClass = note.className || '';
-    if (!message) {
-      note.textContent = note.dataset.baseText;
-      note.className = note.dataset.baseClass;
-      return;
-    }
-
-    note.className = `alert ${isError ? 'alert-danger' : 'alert-warning'} small py-2 px-3 mb-3`;
-    note.textContent = `${note.dataset.baseText} ${message}`.trim();
+    const status = document.getElementById('analytics-refresh-status');
+    if (!status) return;
+    status.textContent = message || '';
+    status.dataset.tone = isError ? 'error' : 'neutral';
   }
 
   function setLeadDeleteFeedback(message, tone = 'success') {
@@ -727,7 +743,7 @@
     return 'Selected lead';
   }
 
-  function renderSummaryUnavailable(data, message = null) {
+  function renderSummaryUnavailable(data, message = null, pending = false) {
     state.cache.summary = null;
     state.scope.scopeLabel = data?.scopeLabel || state.scope.scopeLabel || 'Global';
     [
@@ -741,16 +757,25 @@
       'kpi-top-cta'
     ].forEach(id => setText(id, '—'));
     setText('kpi-intent-sub', 'Unavailable');
+    setWarning('kpi-intent-warning', false);
+    setWarning('kpi-session-warning', false);
+    ['traffic', 'page', 'cta'].forEach(key => setText(`mod-${key}-meta`, resolveAnalysisModuleDescriptor(key)));
+    const emptyState = document.getElementById('traffic-quality-empty-state');
+    if (emptyState) {
+      emptyState.hidden = true;
+      emptyState.textContent = '';
+    }
+    setText('ai-drawer-scope-label', `AI reviewing: All Traffic · ${data?.rangeLabel || state.scope.preset || 'Current Range'} · ${state.scope.scopeLabel}`);
     ['kpi-pv-delta', 'kpi-vis-delta', 'kpi-ses-delta', 'kpi-leads-delta'].forEach(id => setText(id, '—'));
     ['kpi-pv-spark', 'kpi-vis-spark', 'kpi-ses-spark', 'kpi-leads-spark'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = '';
     });
     const env = document.getElementById('fa-env-label');
-    if (env) env.textContent = 'Analytics unavailable';
+    if (env) env.textContent = pending ? 'Loading' : 'Analytics unavailable';
     const label = document.getElementById('fa-range-label');
     if (label) label.textContent = data?.rangeLabel || state.scope.preset || 'Current Range';
-    setSummaryRefreshStatus(message || data?.unavailableReason || 'Summary data is unavailable.', true);
+    setSummaryRefreshStatus(message || data?.unavailableReason || 'Summary data is unavailable.', !pending);
     updateFounderScopeUi();
   }
 
@@ -1876,20 +1901,7 @@
         const option = select.options[select.selectedIndex];
         label.textContent = option ? option.textContent : 'Real Human Traffic';
       }
-      loadSummary();
-      loadTraffic();
-      loadPagePerf();
-      loadCtaPerf();
-      loadQuote();
-      loadBehavior();
-      loadConv();
-      loadLeads();
-      loadMetaSignal();
-      loadMetaSignalHealth();
-      loadDeviceIntelligence();
-      loadAgentPerf();
-      loadTeamRollup();
-      refreshOpenModal();
+      void refreshAnalytics();
       window.dispatchEvent(new CustomEvent('wa:quality-mode-changed', {
         detail: { qualityMode: state.qualityMode }
       }));
@@ -2041,7 +2053,7 @@
         removeLeadFromLocalCache(leadId);
         bootstrap.Modal.getInstance(confirmModalEl)?.hide();
         setLeadDeleteFeedback('Lead deleted from analytics.');
-        await Promise.allSettled([loadSummary(), loadLeads()]);
+        await refreshAnalytics();
       } catch (err) {
         const message = (err && err.message) ? err.message : 'Unable to delete lead.';
         setLeadDeleteFeedback(message, 'error');
@@ -2922,6 +2934,7 @@ function escapeHtml(value) {
   }
 
   async function loadAiReviewSnapshot() {
+    const detail = beginAnalyticsDetail('aiReviewSnapshotModal');
     if (!capabilities.aiReview) return;
     const textEl = document.getElementById('ai-snapshot-text');
     const copyBtn = document.getElementById('ai-snapshot-copy');
@@ -2937,9 +2950,13 @@ function escapeHtml(value) {
 
     try {
       const data = await fetchJson('ai-review-snapshot', endpoints.aiReviewSnapshot, rangeParams({ modal: 'aiReviewSnapshotModal' }));
-      if (!data) return;
+      if (!detail.isCurrent() || !data) return false;
       renderAiReviewSnapshot(data);
+      detail.complete(true);
+      return true;
     } catch (err) {
+      if (!detail.isCurrent()) return false;
+      detail.complete(false);
       if (textEl) textEl.value = '';
       if (renderEl) renderEl.innerHTML = '<div class="fa-empty">Unable to render snapshot.</div>';
       setAiSnapshotStatus((err && err.message) ? err.message : 'Unable to generate snapshot.', 'error');
@@ -3034,65 +3051,121 @@ function escapeHtml(value) {
     });
   }
 
+  function setAnalyticsDetailStatus(modalId, message, stale = false, busy = false) {
+    const modal = document.getElementById(modalId);
+    const body = modal?.querySelector('.modal-body');
+    if (!body) return;
+    let status = modal.querySelector('[data-analytics-detail-status]');
+    if (!status) {
+      status = document.createElement('div');
+      status.className = 'wa-report-status wa-detail-status';
+      status.dataset.analyticsDetailStatus = '';
+      status.setAttribute('role', 'status');
+      status.setAttribute('aria-live', 'polite');
+      const message = document.createElement('span');
+      message.dataset.analyticsDetailMessage = '';
+      const refresh = document.createElement('button');
+      refresh.type = 'button';
+      refresh.className = 'btn btn-sm btn-outline-light ms-2';
+      refresh.dataset.analyticsRefresh = '';
+      refresh.textContent = 'Refresh';
+      refresh.disabled = Boolean(analyticsRefreshInFlight);
+      refresh.addEventListener('click', () => { void refreshAnalytics(); });
+      status.append(message, refresh);
+      body.before(status);
+    }
+    status.querySelector('[data-analytics-detail-message]').textContent = message;
+    status.hidden = !message;
+    body.inert = stale;
+    body.classList.toggle('wa-detail-stale', stale);
+    body.setAttribute('aria-busy', busy ? 'true' : 'false');
+  }
+
+  function beginAnalyticsDetail(modalId) {
+    const previous = analyticsDetailRequests.get(modalId);
+    const active = { scopeVersion: analyticsScopeVersion, loadedScope: previous?.loadedScope };
+    analyticsDetailRequests.set(modalId, active);
+    const current = () => analyticsScopeVersion === active.scopeVersion && analyticsDetailRequests.get(modalId) === active;
+    const stale = active.loadedScope != null && active.loadedScope !== analyticsScopeVersion;
+    setAnalyticsDetailStatus(modalId, stale ? 'Previous view. Loading selected view…' : 'Refreshing report…', stale, true);
+    return {
+      isCurrent: current,
+      complete(success) {
+        if (!current()) return;
+        if (success) active.loadedScope = analyticsScopeVersion;
+        setAnalyticsDetailStatus(modalId, success ? '' : 'Selected view unavailable. Refresh to retry.', !success, false);
+      }
+    };
+  }
+
   // Fetch wrappers ---------------------------------------------------
   async function loadSummary() {
+    const params = rangeParams({ trafficType: state.dashboardTrafficType });
+    const key = JSON.stringify(params);
+    const scopeVersion = analyticsScopeVersion;
+    if (summaryInFlight?.key === key && summaryInFlight.scopeVersion === scopeVersion) return summaryInFlight.promise;
     const requestId = ++summaryRequestId;
+    const active = { key, scopeVersion, promise: null };
+    summaryInFlight = active;
+    active.promise = (async () => {
+      try {
+        const data = await fetchJson('summary', endpoints.summary, params);
+        if (!data || requestId !== summaryRequestId || scopeVersion !== analyticsScopeVersion) return false;
+        renderSummary(data);
+        return data.isAvailable !== false;
+      } catch (err) {
+        if (requestId !== summaryRequestId || scopeVersion !== analyticsScopeVersion) return false;
+        const message = err?.message || 'Unable to refresh the current summary.';
+        renderSummaryUnavailable({ rangeLabel: state.cache.summary?.rangeLabel || '' }, message);
+        console.error(err);
+        return false;
+      } finally {
+        if (summaryInFlight === active) summaryInFlight = null;
+      }
+    })();
+    return active.promise;
+  }
 
-    try {
-      const data = await fetchJson('summary', endpoints.summary, rangeParams({ trafficType: state.dashboardTrafficType }));
-      if (!data) return;
-      if (requestId !== summaryRequestId) return;
-
-      setSummaryRefreshStatus('', false);
-      renderSummary(data);
-    } catch (err) {
-      if (requestId !== summaryRequestId) return;
-
-      const message = (err && err.message) ? err.message : 'Unable to refresh the current summary.';
-      renderSummaryUnavailable({ rangeLabel: state.cache.summary?.rangeLabel || '' }, `Live summary unavailable: ${message}`);
-      console.error(err);
-      return;
-    }
-
-    // Supporting modules use the same range/scope, but they are independent
-    // projections. Their failure must never erase a successfully rendered
-    // canonical summary.
-    void Promise.resolve().then(() => loadMarketingHealth()).catch(err => console.error(err));
-    void Promise.resolve().then(() => loadMarketingPerformance()).catch(err => console.error(err));
+  function renderMarketingHealthUnavailable(message) {
+    state.cache.marketingHealth = null;
+    const warningsEl = document.getElementById('mh-warning-list');
+    if (warningsEl) warningsEl.innerHTML = `<li>${escapeHtml(message)}</li>`;
+    setTableMessage('mh-errors-body', 8, message, 'text-danger');
+    setText('mh-verdict', 'Unavailable');
+    setText('mh-range-label', state.cache.summary?.rangeLabel || state.scope.preset || 'Current Range');
+    const verdictEl = document.getElementById('mh-verdict');
+    if (verdictEl) verdictEl.className = 'wa-health-verdict unavailable';
+    ['mh-score', 'mh-client-errors', 'mh-inferred-starts', 'mh-lead-persisted',
+      'mh-workstation-success', 'mh-workstation-failures', 'mh-unknown-attribution', 'mh-no-owner']
+      .forEach(id => setText(id, '—'));
   }
 
   async function loadMarketingHealth() {
+    const scopeVersion = analyticsScopeVersion;
     try {
       const data = await fetchJson('marketing-health', endpoints.marketingHealth, rangeParams({ trafficType: state.dashboardTrafficType }));
-      if (!data) return;
+      if (!data) return false;
       renderMarketingHealth(data);
+      return true;
     } catch (err) {
-      const warningsEl = document.getElementById('mh-warning-list');
-      if (warningsEl) {
-        warningsEl.innerHTML = `<li>${escapeHtml((err && err.message) ? err.message : 'Unable to load marketing health.')}</li>`;
-      }
-      setTableMessage('mh-errors-body', 8, (err && err.message) ? err.message : 'Unable to load marketing health.', 'text-danger');
-      setText('mh-verdict', 'Unavailable');
-      [
-        'mh-score',
-        'mh-client-errors',
-        'mh-inferred-starts',
-        'mh-lead-persisted',
-        'mh-workstation-success',
-        'mh-workstation-failures',
-        'mh-unknown-attribution',
-        'mh-no-owner'
-      ].forEach(id => setText(id, '—'));
+      if (scopeVersion !== analyticsScopeVersion) return false;
+      renderMarketingHealthUnavailable(err?.message || 'Unable to load marketing health.');
       console.error(err);
+      return false;
     }
   }
   async function loadTraffic() {
+    const detail = beginAnalyticsDetail('trafficModal');
     try {
       const data = await fetchJson('traffic', endpoints.traffic, rangeParams({ modal: 'trafficModal' }));
-      if (!data) return;
+      if (!detail.isCurrent() || !data) return false;
       renderTraffic(data);
       state.cache.traffic = data;
+      detail.complete(true);
+      return true;
     } catch (err) {
+      if (!detail.isCurrent()) return false;
+      detail.complete(false);
       const message = (err && err.message) ? err.message : 'Unable to load Traffic Overview.';
       setText('traffic-range-label', 'Unavailable');
       setTableMessage('traffic-top-pages-body', 2, message, 'text-danger');
@@ -3107,11 +3180,16 @@ function escapeHtml(value) {
     }
   }
   async function loadPagePerf() {
+    const detail = beginAnalyticsDetail('pagePerfModal');
     try {
       const data = await fetchJson('pageperf', endpoints.pagePerf, rangeParams({ modal: 'pagePerfModal' }));
-      if (!data) return;
+      if (!detail.isCurrent() || !data) return false;
       renderPagePerf(data);
+      detail.complete(true);
+      return true;
     } catch (err) {
+      if (!detail.isCurrent()) return false;
+      detail.complete(false);
       const message = (err && err.message) ? err.message : 'Unable to load page performance.';
       setText('pageperf-range-label', 'Unavailable');
       setTableMessage('pageperf-body', 5, message, 'text-danger');
@@ -3119,11 +3197,16 @@ function escapeHtml(value) {
     }
   }
   async function loadCtaPerf() {
+    const detail = beginAnalyticsDetail('ctaPerfModal');
     try {
       const data = await fetchJson('ctaperf', endpoints.ctaPerf, rangeParams({ modal: 'ctaPerfModal' }));
-      if (!data) return;
+      if (!detail.isCurrent() || !data) return false;
       renderCtaPerf(data);
+      detail.complete(true);
+      return true;
     } catch (err) {
+      if (!detail.isCurrent()) return false;
+      detail.complete(false);
       const message = (err && err.message) ? err.message : 'Unable to load CTA performance.';
       setText('ctaperf-range-label', 'Unavailable');
       setTableMessage('ctaperf-body', 7, message, 'text-danger');
@@ -3131,11 +3214,15 @@ function escapeHtml(value) {
     }
   }
   async function loadQuote() {
+    const detail = beginAnalyticsDetail('quoteModal');
     try {
       const results = await Promise.allSettled([
         fetchJson('quote', endpoints.quote, rangeParams({ modal: 'quoteModal' })),
         fetchJson('quote-abandon', endpoints.quoteFunnelAbandonment, rangeParams({ modal: 'quoteModal' }))
       ]);
+      if (!detail.isCurrent()) return false;
+      if (results.some(result => result.status !== 'fulfilled' || !result.value || result.value.isAvailable === false))
+        throw new Error('This report is unavailable. Refresh to retry.');
       const data = results[0].status === 'fulfilled' ? results[0].value : null;
       const abandon = results[1].status === 'fulfilled' ? results[1].value : null;
       if (data) renderQuote(data);
@@ -3143,7 +3230,11 @@ function escapeHtml(value) {
         renderAbandonment(abandon);
         renderFunnelContactFriction(abandon, data);
       }
+      detail.complete(true);
+      return true;
     } catch (err) {
+      if (!detail.isCurrent()) return false;
+      detail.complete(false);
       const message = (err && err.message) ? err.message : 'Unable to load quote funnel.';
       setText('quote-range-label', 'Unavailable');
       setTableMessage('quote-type-body', 2, message, 'text-danger');
@@ -3157,6 +3248,7 @@ function escapeHtml(value) {
     }
   }
   async function loadBehavior() {
+    const detail = beginAnalyticsDetail('behaviorModal');
     try {
       setText('bhvr-range-label', 'Loading…');
       const params = rangeParams({ modal: 'behaviorModal' });
@@ -3167,13 +3259,20 @@ function escapeHtml(value) {
         fetchJson('bhvr-journey', endpoints.behaviorJourney, params),
         fetchJson('bhvr-source',  endpoints.behaviorSources, params)
       ]);
+      if (!detail.isCurrent()) return false;
+      if (results.some(result => result.status !== 'fulfilled' || !result.value || result.value.isAvailable === false))
+        throw new Error('This report is unavailable. Refresh to retry.');
       const summary = results[0].status === 'fulfilled' ? results[0].value : {};
       const time = results[1].status === 'fulfilled' ? results[1].value : {};
       const exit = results[2].status === 'fulfilled' ? results[2].value : {};
       const journey = results[3].status === 'fulfilled' ? results[3].value : {};
       const sources = results[4].status === 'fulfilled' ? results[4].value : {};
       renderBehavior(summary, time, exit, journey, sources);
+      detail.complete(true);
+      return true;
     } catch (err) {
+      if (!detail.isCurrent()) return false;
+      detail.complete(false);
       const message = (err && err.message) ? err.message : 'Unable to load Behavior Intelligence.';
       setText('bhvr-range-label', 'Unavailable');
       setText('bhvr-total-sessions', '—');
@@ -3199,13 +3298,17 @@ function escapeHtml(value) {
     }
   }
   async function loadConv() {
+    const detail = beginAnalyticsDetail('convModal');
     try {
       const params = rangeParams({ modal: 'convModal' });
       const t = state.trafficType.convModal || 'all';
       let convData, summaryData;
       if (t === 'all') {
-        convData = await fetchJson('conv', endpoints.conversions, params);
-        summaryData = state.cache.summary;
+        const summaryRead = summaryInFlight || !state.cache.summary ? loadSummary() : Promise.resolve(true);
+        const results = await Promise.all([fetchJson('conv', endpoints.conversions, params), summaryRead]);
+        if (!detail.isCurrent()) return false;
+        convData = results[0];
+        summaryData = results[1] ? state.cache.summary : null;
       } else {
         const results = await Promise.allSettled([
           fetchJson('conv', endpoints.conversions, params),
@@ -3214,24 +3317,36 @@ function escapeHtml(value) {
         convData = results[0].status === 'fulfilled' ? results[0].value : null;
         summaryData = results[1].status === 'fulfilled' ? results[1].value : null;
       }
-      if (!convData) return;
+      if (!detail.isCurrent()) return false;
+      if (!convData || convData.isAvailable === false || !summaryData || summaryData.isAvailable === false)
+        throw new Error('Conversion totals or their summary are unavailable. Refresh to retry.');
       renderConversions(convData, summaryData);
+      detail.complete(true);
+      return true;
     } catch (err) {
+      if (!detail.isCurrent()) return false;
+      detail.complete(false);
       const message = (err && err.message) ? err.message : 'Unable to load Conversion Center.';
       setText('conv-range-label', 'Unavailable');
       setText('conv-total', '—');
-      setText('conv-session-rate', '—');
-      setText('conv-intent-rate', '—');
+      setText('conv-session', '—');
+      setText('conv-intent', '—');
+      setText('conv-intent-sub', 'Summary unavailable');
       setTableMessage('conv-body', 6, message, 'text-danger');
       console.error(err);
     }
   }
   async function loadLeads() {
+    const detail = beginAnalyticsDetail('leadsModal');
     try {
       const data = await fetchJson('leads', endpoints.leads, rangeParams({ modal: 'leadsModal' }));
-      if (!data) return;
+      if (!detail.isCurrent() || !data) return false;
       renderLeads(data);
+      detail.complete(true);
+      return true;
     } catch (err) {
+      if (!detail.isCurrent()) return false;
+      detail.complete(false);
       const message = (err && err.message) ? err.message : 'Unable to load leads.';
       setText('leads-range-label', 'Unavailable');
       setText('leads-total', '—');
@@ -3485,6 +3600,7 @@ function escapeHtml(value) {
   }
 
   async function loadMetaSignal() {
+    const detail = beginAnalyticsDetail('metaSignalModal');
     try {
       const params = {
         ...rangeParams({ modal: 'metaSignalModal' }),
@@ -3494,9 +3610,13 @@ function escapeHtml(value) {
         ...(state.metaSignalFilters.scoreTier ? { scoreTier: state.metaSignalFilters.scoreTier } : {})
       };
       const data = await fetchJson('metaSignal', endpoints.metaSignal, params);
-      if (!data) return;
+      if (!detail.isCurrent() || !data) return false;
       renderMetaSignal(data);
+      detail.complete(true);
+      return true;
     } catch (err) {
+      if (!detail.isCurrent()) return false;
+      detail.complete(false);
       const message = (err && err.message) ? err.message : 'Unable to load Meta Signal Intelligence.';
       setText('metasignal-range-label', 'Unavailable');
       setText('metasignal-scope-note', message);
@@ -3693,11 +3813,16 @@ function escapeHtml(value) {
   }
 
   async function loadMetaSignalHealth() {
+    const detail = beginAnalyticsDetail('metaSignalHealthModal');
     try {
       const data = await fetchJson('metaSignalHealth', endpoints.metaSignalHealth, rangeParams());
-      if (!data) return;
+      if (!detail.isCurrent() || !data) return false;
       renderMetaSignalHealth(data);
+      detail.complete(true);
+      return true;
     } catch (err) {
+      if (!detail.isCurrent()) return false;
+      detail.complete(false);
       const message = (err && err.message) ? err.message : 'Unable to load Meta Signal Health Dashboard.';
       setText('metasignal-health-updated', message);
       const pipelineGrid = document.getElementById('metasignal-health-pipeline-grid');
@@ -3722,6 +3847,7 @@ function escapeHtml(value) {
   }
 
   async function loadAgentPerf() {
+    const detail = beginAnalyticsDetail('agentPerfModal');
     if (!capabilities.agentPerformance) {
       renderAgentPerfDisabledState();
       return;
@@ -3733,9 +3859,13 @@ function escapeHtml(value) {
 
     try {
       const data = await fetchJson('agentperf', endpoints.agentPerf, rangeParams());
-      if (!data) return;
+      if (!detail.isCurrent() || !data) return false;
       renderAgentPerf(data);
+      detail.complete(true);
+      return true;
     } catch (err) {
+      if (!detail.isCurrent()) return false;
+      detail.complete(false);
       const message = (err && err.message) ? err.message : 'Unable to load Agent Performance.';
       setText('agentperf-range-label', 'Unavailable');
       setTableMessage('agentperf-body', 8, message, 'text-danger');
@@ -3992,12 +4122,17 @@ function escapeHtml(value) {
   }
 
   async function loadMetaCampaigns() {
+    const detail = beginAnalyticsDetail('metaCampaignsModal');
     if (!capabilities.metaAds) return;
     try {
       const data = await fetchJson('metacampaigns', endpoints.metaCampaigns, rangeParams());
-      if (!data) return;
+      if (!detail.isCurrent() || !data) return false;
       renderMetaCampaigns(data);
+      detail.complete(true);
+      return true;
     } catch (err) {
+      if (!detail.isCurrent()) return false;
+      detail.complete(false);
       const body = document.getElementById('meta-campaigns-body');
       const message = (err && err.message) ? err.message : 'Unable to load Meta campaigns.';
       if (body) {
@@ -4101,6 +4236,7 @@ function escapeHtml(value) {
   }
 
   function showMetaCallbackBanner() {
+    showExternalProviderCallback();
     let url;
     try {
       url = new URL(window.location.href);
@@ -4139,6 +4275,7 @@ function escapeHtml(value) {
   }
 
   async function loadTeamRollup() {
+    const detail = beginAnalyticsDetail('teamRollupModal');
     try {
       const params = rangeParams({ team: true });
 
@@ -4149,6 +4286,9 @@ function escapeHtml(value) {
         fetchJson('team-conv', endpoints.conversions, params),
         fetchJson('team-agentperf', endpoints.agentPerf, params)
       ]);
+      if (!detail.isCurrent()) return false;
+      if (results.some(result => result.status !== 'fulfilled' || !result.value || result.value.isAvailable === false))
+        throw new Error('This report is unavailable. Refresh to retry.');
 
       const summary = results[0].status === 'fulfilled' ? results[0].value : null;
       const traffic = results[1].status === 'fulfilled' ? results[1].value : null;
@@ -4156,7 +4296,7 @@ function escapeHtml(value) {
       const conv = results[3].status === 'fulfilled' ? results[3].value : null;
       const agentPerf = results[4].status === 'fulfilled' ? results[4].value : null;
 
-      if (!summary) return;
+      if (!detail.isCurrent() || !summary) return false;
 
       // Top KPI row
       setText('team-kpi-pageviews', summary.pageViews);
@@ -4206,7 +4346,11 @@ function escapeHtml(value) {
       } else {
         renderTable('team-agent-rows', [], [{ key: 'agentName' }]);
       }
+      detail.complete(true);
+      return true;
     } catch (err) {
+      if (!detail.isCurrent()) return false;
+      detail.complete(false);
       console.error('Team rollup failed', err);
     }
   }
@@ -4224,7 +4368,7 @@ function escapeHtml(value) {
       loader();
     });
     el.addEventListener('hidden.bs.modal', () => {
-      state.openModal = null;
+      if (state.openModal === id) state.openModal = null;
       try {
         const current = window.sessionStorage.getItem(OPEN_MODAL_STORAGE_KEY);
         if (current === id) {
@@ -4266,8 +4410,7 @@ function escapeHtml(value) {
           state.scope.to = null;
           syncRangeInputsFromState();
           syncRangeQueryParams();
-          loadSummary();
-          scheduleOpenModalRefresh();
+          void refreshAnalytics();
         }
       });
     });
@@ -4299,8 +4442,7 @@ function escapeHtml(value) {
         document.querySelectorAll('.btn-range[data-range]').forEach(b => b.classList.remove('active'));
         syncRangeInputsFromState();
         syncRangeQueryParams();
-        loadSummary();
-        scheduleOpenModalRefresh();
+        void refreshAnalytics();
       });
     }
   }
@@ -4316,56 +4458,100 @@ function escapeHtml(value) {
     return { date, iso };
   }
 
-  function scheduleOpenModalRefresh(delayMs = 300) {
-    if (openModalRefreshTimer) {
-      window.clearTimeout(openModalRefreshTimer);
-    }
-
-    openModalRefreshTimer = window.setTimeout(() => {
-      openModalRefreshTimer = null;
-      refreshOpenModal();
-    }, delayMs);
-  }
-
   function refreshOpenModal() {
     switch (state.openModal) {
-      case 'trafficModal': loadTraffic(); break;
-      case 'pagePerfModal': loadPagePerf(); break;
-      case 'ctaPerfModal': loadCtaPerf(); break;
-      case 'quoteModal': loadQuote(); break;
-      case 'convModal': loadConv(); break;
-      case 'leadsModal': loadLeads(); break;
-      case 'metaSignalModal': loadMetaSignal(); break;
-      case 'metaSignalHealthModal': loadMetaSignalHealth(); break;
-      case 'agentPerfModal': loadAgentPerf(); break;
-      case 'metaCampaignsModal': loadMetaCampaigns(); break;
-      case 'behaviorModal': loadBehavior(); break;
-      case 'aiReviewSnapshotModal': loadAiReviewSnapshot(); break;
-      default: loadSummary(); break;
+      case 'trafficModal': return loadTraffic();
+      case 'pagePerfModal': return loadPagePerf();
+      case 'ctaPerfModal': return loadCtaPerf();
+      case 'quoteModal': return loadQuote();
+      case 'convModal': return loadConv();
+      case 'leadsModal': return loadLeads();
+      case 'metaSignalModal': return loadMetaSignal();
+      case 'metaSignalHealthModal': return loadMetaSignalHealth();
+      case 'agentPerfModal': return loadAgentPerf();
+      case 'metaCampaignsModal': return loadMetaCampaigns();
+      case 'behaviorModal': return loadBehavior();
+      case 'aiReviewSnapshotModal': return loadAiReviewSnapshot();
+      case 'teamRollupModal': return loadTeamRollup();
+      case 'deviceIntelligenceModal': return window.websiteAnalyticsDeviceIntelligence.loadCurrentView();
+      // Economics and channel dialogs consume the page's one performance read.
+      default: return null;
     }
   }
 
-  async function refreshLiveAnalytics() {
-    // Polling must never pile up canonical summary queries. User-driven refreshes
-    // can still replace stale requests through the existing AbortController path.
-    if (!summaryRefreshInFlight) {
-      summaryRefreshInFlight = true;
-      try {
-        await loadSummary();
-      } finally {
-        summaryRefreshInFlight = false;
-      }
-    }
-    if (state.openModal) refreshOpenModal();
+  function updateAnalyticsViewLabels() {
+    const range = document.getElementById('fa-range-label')?.textContent || state.scope.preset;
+    const site = isFounder && state.scope.siteKey ? `${state.scope.siteKey} · ` : '';
+    const label = `${site}${state.scope.scopeLabel || 'Current scope'} · ${range}`;
+    document.querySelectorAll('[data-analytics-view-label]').forEach(el => { el.textContent = label; });
   }
 
-  function initPolling() {
-    setInterval(refreshLiveAnalytics, state.pollMs);
+  function prepareAnalyticsScope() {
+    const key = JSON.stringify(rangeParams({ trafficType: state.dashboardTrafficType }));
+    if (key === analyticsScopeKey) return key;
+    const changed = analyticsScopeKey !== null;
+    analyticsScopeKey = key;
+    analyticsScopeVersion += 1;
+    // A read may be cancelled when the selected view changes. Mutations keep
+    // their request identity and are never cancelled by reporting controls.
+    analyticsReadControllers.forEach(controller => controller.abort());
+    if (changed) {
+      Object.keys(state.cache).forEach(name => { state.cache[name] = null; });
+      analyticsDetailRequests.forEach((value, modalId) => {
+        setAnalyticsDetailStatus(modalId, 'Previous view. Open this report to load the selected view.', true, false);
+      });
+      renderSummaryUnavailable({ rangeLabel: state.scope.preset }, 'Loading selected view…', true);
+      renderMarketingHealthUnavailable('Loading selected view…');
+      renderMarketingPerformanceUnavailable('Loading selected view…', true);
+    }
+    updateAnalyticsViewLabels();
+    return key;
+  }
 
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) refreshLiveAnalytics();
+  function setAnalyticsRefreshBusy(busy) {
+    document.querySelectorAll('[data-analytics-refresh]').forEach(button => {
+      button.disabled = busy;
+      button.setAttribute('aria-busy', busy ? 'true' : 'false');
     });
-    window.addEventListener('focus', refreshLiveAnalytics);
+  }
+
+  function refreshAnalytics() {
+    const key = prepareAnalyticsScope();
+    if (analyticsRefreshInFlight?.key === key && analyticsRefreshInFlight.scopeVersion === analyticsScopeVersion) return analyticsRefreshInFlight.promise;
+    const scopeVersion = analyticsScopeVersion;
+    const active = { key, scopeVersion, promise: null };
+    analyticsRefreshInFlight = active;
+    setAnalyticsRefreshBusy(true);
+    setSummaryRefreshStatus('Refreshing analytics…', false);
+    active.promise = (async () => {
+      // Independent projections settle separately. A failed report cannot erase
+      // another successful report or prevent the visible detail from loading.
+      const reads = [loadSummary(), loadMarketingHealth(), loadMarketingPerformance()];
+      const detail = refreshOpenModal();
+      if (detail) reads.push(detail);
+      const incidents = window.websiteAnalyticsIncidentMonitor?.refresh();
+      if (incidents) reads.push(incidents);
+      const results = await Promise.allSettled(reads);
+      if (scopeVersion !== analyticsScopeVersion || analyticsRefreshInFlight !== active) return false;
+      updateAnalyticsViewLabels();
+      const complete = results.slice(0, 3).every(result => result.status === 'fulfilled' && result.value === true);
+      if (results[0].status === 'fulfilled' && results[0].value) {
+        const time = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        setSummaryRefreshStatus(complete ? `Reports updated ${time}` : `Reports updated ${time} · Some reports are unavailable.`, !complete);
+      }
+      return complete;
+    })().finally(() => {
+      if (analyticsRefreshInFlight !== active) return;
+      analyticsRefreshInFlight = null;
+      setAnalyticsRefreshBusy(false);
+    });
+    return active.promise;
+  }
+
+  function initAnalyticsRefreshControls() {
+    document.querySelectorAll('[data-analytics-refresh]').forEach(button => {
+      button.addEventListener('click', () => { void refreshAnalytics(); });
+    });
   }
 
   function initModules() {
@@ -4388,7 +4574,7 @@ function escapeHtml(value) {
       const openModal = () => {
         const modalEl = document.getElementById(modalId);
         if (!modalEl) return;
-        const bsModal = new bootstrap.Modal(modalEl);
+        const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
         bsModal.show();
       };
       card.addEventListener('click', openModal);
@@ -4484,21 +4670,15 @@ function escapeHtml(value) {
     if (tzTextEl) {
       tzTextEl.textContent = viewerTz.id || 'Local Timezone';
     }
-    showMetaCallbackBanner();
     initScopeControls();
-  initFounderSiteSwitch();
+    initFounderSiteSwitch();
+    showMetaCallbackBanner();
     updateGrowthBaseLink();
     // load initial summary from server-provided JSON if present
     const initial = shell?.dataset.initialSummary;
     const parsed = initial ? parseInitialSummary(initial) : null;
     if (parsed) {
       renderSummary(parsed);
-    }
-    // Always fetch to ensure fresh data and to cover cases where initial hydration was absent/invalid
-    try {
-      await loadSummary();
-    } catch (err) {
-      console.error('Initial load failed', err);
     }
     initRangeControls();
     initModules();
@@ -4525,18 +4705,10 @@ function escapeHtml(value) {
     if (isFounder) {
       attachModal('agentPerfModal', loadAgentPerf);
     }
-    restoreOpenModalFromSession();
-
-    const teamBtn = document.getElementById('team-rollup-btn');
-    const teamModal = document.getElementById('teamRollupModal');
-    if (teamBtn && teamModal) {
-      teamBtn.addEventListener('click', () => {
-        loadTeamRollup();
-      });
-      teamModal.addEventListener('show.bs.modal', () => {
-        loadTeamRollup();
-      });
-    }
+    attachModal('growthEconomicsModal', updateAnalyticsViewLabels);
+    attachModal('channelOutcomesModal', updateAnalyticsViewLabels);
+    attachModal('teamRollupModal', loadTeamRollup);
+    attachModal('deviceIntelligenceModal', () => { void window.websiteAnalyticsDeviceIntelligence.loadCurrentView(); });
 
     const aiSnapshotRefresh = document.getElementById('ai-snapshot-refresh');
     if (aiSnapshotRefresh) {
@@ -4704,9 +4876,8 @@ function escapeHtml(value) {
     if (metaDisconnectBtn) {
       metaDisconnectBtn.addEventListener('click', handleMetaDisconnect);
     }
-    await loadMetaConnectionStatus();
-
-    initPolling();
+    void loadMetaConnectionStatus();
+    initAnalyticsRefreshControls();
 
     // ── KPI modal state bridge ───────────────────────────────────────────────
     // Expose current page state so website-analytics-kpi-modal.js can read
@@ -4725,6 +4896,9 @@ function escapeHtml(value) {
       rangeParams(options) { return rangeParams(options || {}); }
     };
     syncWebsiteAnalyticsBridge();
+    // First mount loads once. There is no timer, focus or visibility reload.
+    await refreshAnalytics();
+    restoreOpenModalFromSession();
   }
 
   function renderAgentPerf(data) {
@@ -5092,42 +5266,256 @@ function escapeHtml(value) {
   const marketingSetupForm = document.getElementById('marketing-setup-form');
   const marketingSetupStatus = document.getElementById('marketing-setup-status');
   const marketingSetupSave = document.getElementById('marketing-setup-save');
+  const marketingSetupRetry = document.getElementById('marketing-setup-retry');
   let marketingSetupLoaded = false;
+  let marketingSetupRequestVersion = 0;
+  let marketingSetupOwnerGeneration = 0;
+  let marketingSetupCallback = null;
+  let marketingSetupAdmittedOwner = null;
+  let marketingSetupOperation = null;
+  const marketingSetupPendingOwners = new Map();
+
+  function marketingSetupOwnerContext() {
+    return { profileId: marketingSetupAgentProfileId(), generation: marketingSetupOwnerGeneration };
+  }
+
+  function isCurrentMarketingSetupOwner(context) {
+    return context.generation === marketingSetupOwnerGeneration &&
+      context.profileId === marketingSetupAgentProfileId();
+  }
+
+  function showExternalProviderCallback() {
+    let url;
+    try { url = new URL(window.location.href); }
+    catch { return; }
+    const provider = url.searchParams.get('provider');
+    const status = url.searchParams.get('status');
+    if (!['google', 'tiktok', 'external'].includes(provider) ||
+        !['connected', 'error'].includes(status)) return;
+    const reason = url.searchParams.get('reason');
+    marketingSetupCallback = {
+      provider, status,
+      reason: reason === 'authorization_declined' ? reason : 'connection_failed',
+      owner: marketingSetupOwnerContext()
+    };
+    // Legacy URLs may include raw provider messages. Discard them without
+    // rendering; current redirects carry only safe result and reason codes.
+    ['provider', 'status', 'reason', 'message', 'code', 'auth_code', 'state',
+      'error', 'error_description', 'access_token', 'refresh_token', 'id_token']
+      .forEach(key => url.searchParams.delete(key));
+    window.history.replaceState({}, '', url.toString());
+    if (marketingSetupModal && window.bootstrap?.Modal) {
+      try { window.sessionStorage.setItem(OPEN_MODAL_STORAGE_KEY, 'marketingSetupModal'); }
+      catch { /* Storage is optional; the callback still opens visibly. */ }
+      window.bootstrap.Modal.getOrCreateInstance(marketingSetupModal).show();
+    }
+  }
+
+  function renderExternalProviderCallback(payload) {
+    const callback = marketingSetupCallback;
+    if (!callback || !isCurrentMarketingSetupOwner(callback.owner)) return false;
+    const label = callback.provider === 'google' ? 'Google Ads'
+      : callback.provider === 'tiktok' ? 'TikTok Ads' : 'The advertising provider';
+    const connection = payload?.[callback.provider];
+    if (callback.status === 'connected' && connection?.connected === true) {
+      setMarketingSetupStatus(connection.requiresAccountSelection
+        ? `${label} authorization saved. Choose an authorized ad account.`
+        : `${label} connection verified and saved.`, 'success');
+    } else {
+      const message = connection?.connectionSetup?.message ||
+        (callback.reason === 'authorization_declined'
+          ? `${label} authorization was not completed. You can try connecting again.`
+          : `${label} could not be connected. Review the setup status and try again.`);
+      setMarketingSetupStatus(message, 'error');
+    }
+    return true;
+  }
 
   function marketingSetupAgentProfileId() {
     if (isFounder && isGlobalScope()) return '';
     return state.scope.agentProfileId || callerProfileId || '';
   }
 
+  function hasAdmittedMarketingSetupOwner() {
+    return marketingSetupLoaded && marketingSetupAdmittedOwner &&
+      isCurrentMarketingSetupOwner(marketingSetupAdmittedOwner) &&
+      !marketingSetupPendingOwners.has(marketingSetupAdmittedOwner.profileId);
+  }
+
+  function marketingSetupControls() {
+    return Array.from(marketingSetupModal?.querySelectorAll('input,select,textarea,button,a') || [])
+      .filter(element => element !== marketingSetupRetry && !element.hasAttribute('data-bs-dismiss'));
+  }
+
+  function disableMarketingSetupControls() {
+    marketingSetupControls().forEach(element => {
+      if (element.tagName === 'A') {
+        element.removeAttribute('href');
+        element.setAttribute('aria-disabled', 'true');
+        element.setAttribute('tabindex', '-1');
+      } else element.disabled = true;
+    });
+  }
+
+  function restoreMarketingSetupControls(controls) {
+    controls?.forEach(({ element, disabled, attributes }) => {
+      if (element.tagName !== 'A') element.disabled = disabled;
+      else Object.entries(attributes).forEach(([name, value]) => {
+        if (value === null) element.removeAttribute(name);
+        else element.setAttribute(name, value);
+      });
+    });
+  }
+
+  function revokeMarketingSetupOwner() {
+    marketingSetupRequestVersion += 1;
+    marketingSetupOperation = null;
+    marketingSetupAdmittedOwner = null;
+    marketingSetupLoaded = false;
+    disableMarketingSetupControls();
+    marketingSetupModal?.removeAttribute('aria-busy');
+    marketingSetupModal?.querySelectorAll('.marketing-setup-section,.marketing-setup-status-grid')
+      .forEach(element => { element.hidden = true; });
+    ['marketing-setup-openai-api-key', 'marketing-setup-tiktok-events-token',
+      'marketing-setup-revision', 'marketing-setup-profile-revision'].forEach(id => {
+      const input = document.getElementById(id);
+      if (input) input.value = '';
+    });
+    if (marketingSetupRetry) { marketingSetupRetry.hidden = true; marketingSetupRetry.disabled = false; }
+  }
+
   function requireMarketingOwner() {
     if (!(isFounder && isGlobalScope())) return true;
-    marketingSetupLoaded = false;
-    marketingSetupModal?.querySelectorAll('.marketing-setup-section,.marketing-setup-status-grid').forEach(el => { el.hidden = true; });
+    revokeMarketingSetupOwner();
     const scopeLabel = document.getElementById('marketing-setup-scope-label');
     if (scopeLabel) scopeLabel.textContent = 'Global reporting · no provider owner';
     setMarketingSetupStatus('Select Founder Personal or an individual owner to manage provider connections.', 'error');
-    marketingSetupModal?.querySelectorAll('input,select,button,#marketing-setup-openai-verify,#marketing-setup-openai-connect-submit,#marketing-setup-openai-disconnect,#marketing-setup-calendar-disconnect').forEach(el => { el.disabled = true; });
-    ['google', 'tiktok'].forEach(provider => {
-      const link = document.getElementById(`marketing-setup-${provider}-connect`);
-      if (link) {
-        link.removeAttribute('href');
-        link.setAttribute('aria-disabled', 'true');
-        link.setAttribute('tabindex', '-1');
+    return false;
+  }
+
+  function beginMarketingSetupOperation(kind) {
+    if (!requireMarketingOwner() || marketingSetupOperation) return null;
+    if (kind === 'action' && marketingSetupPendingOwners.has(marketingSetupAgentProfileId())) {
+      setMarketingSetupStatus('An earlier change for this owner is still finishing. Reload its status after it finishes.', 'error');
+      return null;
+    }
+    if (kind === 'action' && !hasAdmittedMarketingSetupOwner()) {
+      setMarketingSetupStatus('Load the selected owner’s setup before making changes.', 'error');
+      if (marketingSetupRetry) marketingSetupRetry.hidden = false;
+      return null;
+    }
+    const operation = {
+      kind,
+      owner: marketingSetupOwnerContext(),
+      version: ++marketingSetupRequestVersion,
+      controls: marketingSetupControls().map(element => ({
+        element, disabled: element.disabled,
+        attributes: Object.fromEntries(['href', 'aria-disabled', 'tabindex']
+          .map(name => [name, element.getAttribute(name)]))
+      }))
+    };
+    marketingSetupOperation = operation;
+    disableMarketingSetupControls();
+    marketingSetupModal?.setAttribute('aria-busy', 'true');
+    if (marketingSetupRetry) { marketingSetupRetry.hidden = true; marketingSetupRetry.disabled = true; }
+    return operation;
+  }
+
+  function isCurrentMarketingSetupOperation(operation) {
+    return operation === marketingSetupOperation &&
+      operation.version === marketingSetupRequestVersion &&
+      isCurrentMarketingSetupOwner(operation.owner);
+  }
+
+  function finishMarketingSetupOperation(operation) {
+    if (!isCurrentMarketingSetupOperation(operation)) return;
+    if (hasAdmittedMarketingSetupOwner()) restoreMarketingSetupControls(operation.controls);
+    else disableMarketingSetupControls();
+    marketingSetupOperation = null;
+    marketingSetupModal?.removeAttribute('aria-busy');
+    if (marketingSetupRetry) marketingSetupRetry.disabled = false;
+    if (marketingSetupSave) marketingSetupSave.disabled = !hasAdmittedMarketingSetupOwner();
+  }
+
+  function admitMarketingSetup(payload, operation) {
+    if (!isCurrentMarketingSetupOperation(operation)) return false;
+    if (!payload?.marketing?.revision ||
+        (payload.agentProfileId && operation.owner.profileId &&
+          payload.agentProfileId !== operation.owner.profileId)) {
+      throw new Error('Connection setup did not return the selected owner’s current revision.');
+    }
+    restoreMarketingSetupControls(operation.controls);
+    marketingSetupModal?.querySelectorAll('.marketing-setup-section,.marketing-setup-status-grid')
+      .forEach(element => { element.hidden = false; });
+    marketingSetupModal?.querySelectorAll('input,select,textarea,button')
+      .forEach(element => { element.disabled = false; });
+    renderMarketingSetup(payload);
+    marketingSetupAdmittedOwner = operation.owner;
+    marketingSetupLoaded = true;
+    operation.controls = null;
+    if (marketingSetupPendingOwners.has(operation.owner.profileId)) disableMarketingSetupControls();
+    return true;
+  }
+
+  function admitMarketingSetupMutation(response, operation) {
+    if (response?.ok && !response.setup) {
+      marketingSetupAdmittedOwner = null;
+      marketingSetupLoaded = false;
+      operation.controls = null;
+      disableMarketingSetupControls();
+      if (marketingSetupRetry) marketingSetupRetry.hidden = false;
+      setMarketingSetupStatus('Connection change saved. Reload setup to verify its current status.');
+      return null;
+    }
+    const payload = response?.setup || response;
+    return admitMarketingSetup(payload, operation) ? payload : null;
+  }
+
+  async function runMarketingSetupAction(message, failureMessage, send, render) {
+    const operation = beginMarketingSetupOperation('action');
+    if (!operation) return;
+    marketingSetupCallback = null;
+    setMarketingSetupStatus(message);
+    try {
+      const response = await send(operation.owner);
+      if (!isCurrentMarketingSetupOperation(operation)) return;
+      if (!response) throw new Error('Reload setup to verify the result before trying another change.');
+      render(response, operation);
+    } catch (error) {
+      if (!isCurrentMarketingSetupOperation(operation)) return;
+      if (operation.submitted) {
+        marketingSetupAdmittedOwner = null;
+        marketingSetupLoaded = false;
+        operation.controls = null;
+        disableMarketingSetupControls();
+        if (marketingSetupRetry) marketingSetupRetry.hidden = false;
+        setMarketingSetupStatus(`${failureMessage} Reload setup to verify its current status before trying again.`, 'error');
+      } else setMarketingSetupStatus(error?.message || failureMessage, 'error');
+    } finally {
+      finishMarketingSetupOperation(operation);
+    }
+  }
+
+  function postMarketingSetup(key, url, body, owner) {
+    // A new owner must never cancel a mutation already sent for a prior owner.
+    // Retain the submitted owner until it settles, including an A → B → A switch.
+    const pending = { owner };
+    marketingSetupPendingOwners.set(owner.profileId, pending);
+    marketingSetupOperation.submitted = true;
+    const scopedKey = `${key}:setup-owner-${owner.generation}`;
+    const request = fetchPostJson(scopedKey, url, body);
+    const controller = state.controllers[scopedKey];
+    return request.finally(() => {
+      if (state.controllers[scopedKey] === controller) delete state.controllers[scopedKey];
+      if (marketingSetupPendingOwners.get(owner.profileId) === pending) {
+        marketingSetupPendingOwners.delete(owner.profileId);
+      }
+      if (marketingSetupAgentProfileId() === owner.profileId && !isCurrentMarketingSetupOwner(owner)) {
+        revokeMarketingSetupOwner();
+        setMarketingSetupStatus('The earlier request for this owner has ended. Reload setup to verify its current status.');
+        if (marketingSetupRetry) marketingSetupRetry.hidden = false;
       }
     });
-    const calendarConnect = document.getElementById('marketing-setup-calendar-connect');
-    if (calendarConnect) {
-      calendarConnect.removeAttribute('href');
-      calendarConnect.setAttribute('aria-disabled', 'true');
-      calendarConnect.setAttribute('tabindex', '-1');
-    }
-    const connect = document.getElementById('marketing-setup-meta-connect');
-    if (connect) {
-      connect.removeAttribute('href');
-      connect.setAttribute('aria-disabled', 'true');
-      connect.setAttribute('tabindex', '-1');
-    }
-    return false;
   }
 
   function setMarketingSetupStatus(message, kind = '') {
@@ -5186,7 +5574,7 @@ function escapeHtml(value) {
   function marketingSetupExternalConnectUrl(provider, profileId) {
     const params = new URLSearchParams();
     params.set('provider', provider);
-    params.set('returnUrl', window.location.pathname + window.location.search);
+    params.set('returnUrl', window.location.pathname + window.location.search + window.location.hash);
     if (profileId && !isBusinessAnalytics) params.set('agentProfileId', profileId);
     return `${endpoints.externalAdsConnect}?${params.toString()}`;
   }
@@ -5261,7 +5649,6 @@ function escapeHtml(value) {
       calendarConnect.href = marketingSetupCalendarConnectUrl(profileId);
       calendarConnect.removeAttribute('aria-disabled');
       calendarConnect.removeAttribute('tabindex');
-      calendarConnect.removeAttribute('aria-disabled');
       calendarConnect.textContent = calendarConnection.connected ? 'Reconnect Microsoft Calendar' : 'Connect Microsoft Calendar';
     }
     const calendarDisconnect = document.getElementById('marketing-setup-calendar-disconnect');
@@ -5302,23 +5689,38 @@ function escapeHtml(value) {
       const measurement = document.getElementById(ids.measurement);
       const measurementStatus = document.getElementById(ids.measurementStatus);
       const saveMeasurement = document.getElementById(ids.saveMeasurement);
+      const setup = connection.connectionSetup || {};
+      const setupStatus = document.getElementById(`marketing-setup-${provider}-connection-setup`);
 
       if (statusEl) {
-        statusEl.textContent = connection.ready
-          ? `${label} connected · ${connection.optimizationReady ? 'optimization ready' : 'mapping required'}`
-          : connection.connected && connection.requiresAccountSelection
-            ? `${label} connected · choose account`
-            : `${label} not connected`;
+        statusEl.textContent = connection.status === 'status_unavailable'
+          ? `${label} status unavailable`
+          : connection.ready
+            ? `${label} connected · ${connection.optimizationReady ? 'optimization ready' : 'mapping required'}`
+            : connection.connected && connection.requiresAccountSelection
+              ? `${label} connected · choose account`
+              : `${label} not connected`;
       }
       if (accountEl) {
         accountEl.textContent = connection.accountName || connection.accountId ||
           (connection.connected ? 'Authorization verified; advertiser account not selected' : 'No scoped advertiser account');
       }
       if (connectEl) {
-        connectEl.href = marketingSetupExternalConnectUrl(provider, profileId);
-        connectEl.removeAttribute('aria-disabled');
-        connectEl.removeAttribute('tabindex');
+        if (setup.canConnect === true) {
+          connectEl.href = marketingSetupExternalConnectUrl(provider, profileId);
+          connectEl.removeAttribute('aria-disabled');
+          connectEl.removeAttribute('tabindex');
+        } else {
+          connectEl.removeAttribute('href');
+          connectEl.setAttribute('aria-disabled', 'true');
+          connectEl.setAttribute('tabindex', '-1');
+        }
         connectEl.textContent = connection.connected ? `Reconnect ${label}` : `Connect ${label}`;
+      }
+      if (setupStatus) {
+        setupStatus.textContent = setup.canConnect === true ? ''
+          : setup.message || 'Connection setup is unavailable. Reload the setup status.';
+        setupStatus.hidden = setup.canConnect === true;
       }
       if (loadEl) {
         loadEl.hidden = !connection.connected || !connection.requiresAccountSelection;
@@ -5531,258 +5933,189 @@ function escapeHtml(value) {
   }
 
   async function loadMarketingSetup() {
-    if (!requireMarketingOwner()) return false;
-    marketingSetupModal?.querySelectorAll('input,select,button,#marketing-setup-openai-verify,#marketing-setup-openai-connect-submit,#marketing-setup-openai-disconnect').forEach(el => { el.disabled = false; });
-    document.getElementById('marketing-setup-meta-connect')?.removeAttribute('aria-disabled');
     if (!marketingSetupForm) return false;
-    marketingSetupLoaded = false;
-    setMarketingSetupStatus('Loading centralized setup…');
-    if (marketingSetupSave) marketingSetupSave.disabled = true;
+    const hadSetup = hasAdmittedMarketingSetupOwner();
+    const operation = beginMarketingSetupOperation('read');
+    if (!operation) return false;
+    setMarketingSetupStatus(hadSetup ? 'Refreshing connection setup…' : 'Loading connection setup…');
     try {
-      const profileId = marketingSetupAgentProfileId();
       const payload = await fetchJson(
         'marketingSetup',
         endpoints.marketingSetup,
-        profileId ? { agentProfileId: profileId } : {});
-      if (!payload || !requireMarketingOwner() || profileId !== marketingSetupAgentProfileId()) return false;
-      marketingSetupModal?.querySelectorAll('.marketing-setup-section,.marketing-setup-status-grid').forEach(el => { el.hidden = false; });
-      renderMarketingSetup(payload);
-      const revision = document.getElementById('marketing-setup-revision')?.value || '';
-      if (!revision) throw new Error('Canonical marketing settings did not return a revision.');
-      marketingSetupLoaded = true;
-      setMarketingSetupStatus('Loaded from the canonical marketing and booking authorities.');
+        operation.owner.profileId ? { agentProfileId: operation.owner.profileId } : {},
+        45000);
+      if (!isCurrentMarketingSetupOperation(operation)) return false;
+      if (!admitMarketingSetup(payload, operation)) return false;
+      if (marketingSetupPendingOwners.has(operation.owner.profileId)) {
+        setMarketingSetupStatus('An earlier change for this owner is still finishing. Reload its status after it finishes.');
+      } else if (!renderExternalProviderCallback(payload)) setMarketingSetupStatus('Connection setup loaded.');
       return true;
     } catch (error) {
-      setMarketingSetupStatus(error?.message || 'Unable to load Marketing Setup.', 'error');
+      if (!isCurrentMarketingSetupOperation(operation)) return false;
+      setMarketingSetupStatus(hadSetup
+        ? 'Connection setup could not be refreshed. Your current entries are preserved. Retry to load the latest status.'
+        : 'Connection setup could not be loaded for the selected owner. Retry to load its current status.', 'error');
+      if (marketingSetupRetry) marketingSetupRetry.hidden = false;
       return false;
     } finally {
-      if (marketingSetupSave) marketingSetupSave.disabled = !marketingSetupLoaded;
+      finishMarketingSetupOperation(operation);
     }
   }
 
   async function saveMarketingSetup(event) {
     event?.preventDefault?.();
-    if (!requireMarketingOwner()) return;
     if (!marketingSetupForm || !marketingSetupSave) return;
-
-    let revision = document.getElementById('marketing-setup-revision')?.value || '';
-    if (!marketingSetupLoaded || !revision) {
-      const loaded = await loadMarketingSetup();
-      revision = document.getElementById('marketing-setup-revision')?.value || '';
-      if (!loaded || !revision) {
-        setMarketingSetupStatus('Unable to load the canonical Marketing Setup. Nothing was saved.', 'error');
-        return;
-      }
-    }
-
-    const pixel = (document.getElementById('marketing-setup-pixel')?.value || '').trim();
-    if (pixel && !/^\d{1,32}$/.test(pixel)) {
-      setMarketingSetupStatus('Meta Pixel ID must contain only digits.', 'error');
-      return;
-    }
-
-    const testEventCode = (document.getElementById('marketing-setup-test-code')?.value || '').trim();
-    if (testEventCode.length > 100) {
-      setMarketingSetupStatus('Meta Test Event Code is too long.', 'error');
-      return;
-    }
-
-    const body = {
-      agentProfileId: marketingSetupAgentProfileId() || null,
-      marketingRevision: revision,
-      profileRevision: document.getElementById('marketing-setup-profile-revision')?.value || null,
-      metaPixelId: pixel || null,
-      metaTestEventCode: testEventCode || null,
-      bookingEnabled: document.getElementById('marketing-setup-booking-enabled')?.checked === true,
-      microsoftBookingsEmbedUrl: (document.getElementById('marketing-setup-embed')?.value || '').trim() || null,
-      fallbackBookingUrl: (document.getElementById('marketing-setup-fallback')?.value || '').trim() || null,
-      bookingPageIdOrMailbox: (document.getElementById('marketing-setup-mailbox')?.value || '').trim() || null,
-      calendarEmail: (document.getElementById('marketing-setup-calendar')?.value || '').trim() || null
-    };
-
-    marketingSetupSave.disabled = true;
-    setMarketingSetupStatus('Saving centralized setup…');
-    try {
-      const payload = await fetchPostJson('marketingSetupSave', endpoints.marketingSetup, body);
-      renderMarketingSetup(payload);
-      setMarketingSetupStatus('Marketing Setup saved.', 'success');
-    } catch (error) {
-      setMarketingSetupStatus(error?.message || 'Unable to save Marketing Setup.', 'error');
-    } finally {
-      marketingSetupSave.disabled = false;
-    }
+    return runMarketingSetupAction('Saving centralized setup…', 'Unable to save Marketing Setup.', owner => {
+      const revision = document.getElementById('marketing-setup-revision')?.value || '';
+      if (!revision) throw new Error('Reload Marketing Setup before saving changes.');
+      const pixel = (document.getElementById('marketing-setup-pixel')?.value || '').trim();
+      if (pixel && !/^\d{1,32}$/.test(pixel)) throw new Error('Meta Pixel ID must contain only digits.');
+      const testEventCode = (document.getElementById('marketing-setup-test-code')?.value || '').trim();
+      if (testEventCode.length > 100) throw new Error('Meta Test Event Code is too long.');
+      return postMarketingSetup('marketingSetupSave', endpoints.marketingSetup, {
+        agentProfileId: owner.profileId || null,
+        marketingRevision: revision,
+        profileRevision: document.getElementById('marketing-setup-profile-revision')?.value || null,
+        metaPixelId: pixel || null,
+        metaTestEventCode: testEventCode || null,
+        bookingEnabled: document.getElementById('marketing-setup-booking-enabled')?.checked === true,
+        microsoftBookingsEmbedUrl: (document.getElementById('marketing-setup-embed')?.value || '').trim() || null,
+        fallbackBookingUrl: (document.getElementById('marketing-setup-fallback')?.value || '').trim() || null,
+        bookingPageIdOrMailbox: (document.getElementById('marketing-setup-mailbox')?.value || '').trim() || null,
+        calendarEmail: (document.getElementById('marketing-setup-calendar')?.value || '').trim() || null
+      }, owner);
+    }, (response, operation) => {
+      if (admitMarketingSetupMutation(response, operation)) setMarketingSetupStatus('Marketing Setup saved.', 'success');
+    });
   }
 
   async function loadExternalProviderAccounts(provider) {
-    if (!requireMarketingOwner()) return;
     const ids = externalMarketingProviderControls[provider];
-    if (!ids) return;
-    const picker = document.getElementById(ids.picker);
-    const select = document.getElementById(ids.select);
+    const select = ids && document.getElementById(ids.select);
     if (!select) return;
-    const params = { provider };
-    if (!isBusinessAnalytics) params.agentProfileId = marketingSetupAgentProfileId() || '';
-    setMarketingSetupStatus(`Loading authorized ${provider === 'google' ? 'Google Ads' : 'TikTok Ads'} accounts…`);
-    try {
-      const payload = await fetchJson(`externalAdsAccounts:${provider}`, endpoints.externalAdsAccounts, params);
-      const accounts = Array.isArray(payload?.accounts) ? payload.accounts : [];
-      select.innerHTML = '';
-      accounts.forEach(account => {
-        const option = document.createElement('option');
-        option.value = account.accountId || '';
-        option.textContent = account.label || account.accountId || 'Authorized account';
-        select.appendChild(option);
+    return runMarketingSetupAction(
+      `Loading authorized ${provider === 'google' ? 'Google Ads' : 'TikTok Ads'} accounts…`,
+      'Unable to load authorized ad accounts.',
+      owner => fetchJson(`externalAdsAccounts:${provider}`, endpoints.externalAdsAccounts,
+        isBusinessAnalytics ? { provider } : { provider, agentProfileId: owner.profileId || '' }, 45000),
+      payload => {
+        const accounts = Array.isArray(payload.accounts) ? payload.accounts : [];
+        select.innerHTML = '';
+        accounts.forEach(account => {
+          const option = document.createElement('option');
+          option.value = account.accountId || '';
+          option.textContent = account.label || account.accountId || 'Authorized account';
+          select.appendChild(option);
+        });
+        const picker = document.getElementById(ids.picker);
+        if (picker) picker.hidden = accounts.length === 0;
+        setMarketingSetupStatus(accounts.length
+          ? 'Choose the advertiser account LEGEND should use for this scoped owner.'
+          : 'No authorized advertiser accounts were returned by the provider.',
+          accounts.length ? '' : 'error');
       });
-      if (picker) picker.hidden = accounts.length === 0;
-      setMarketingSetupStatus(accounts.length
-        ? 'Choose the advertiser account LEGEND should use for this scoped owner.'
-        : 'No authorized advertiser accounts were returned by the provider.',
-        accounts.length ? '' : 'error');
-    } catch (error) {
-      setMarketingSetupStatus(error?.message || 'Unable to load authorized ad accounts.', 'error');
-    }
   }
 
   async function selectExternalProviderAccount(provider) {
-    if (!requireMarketingOwner()) return;
     const ids = externalMarketingProviderControls[provider];
     if (!ids) return;
-    const select = document.getElementById(ids.select);
-    const accountId = (select?.value || '').trim();
-    if (!accountId) {
-      setMarketingSetupStatus('Choose an authorized advertiser account.', 'error');
-      return;
-    }
-    const body = { provider, accountId };
-    if (!isBusinessAnalytics) body.agentProfileId = marketingSetupAgentProfileId() || null;
-    setMarketingSetupStatus('Binding the selected advertiser account to this canonical marketing owner…');
-    try {
-      const payload = await fetchPostJson(`externalAdsSelect:${provider}`, endpoints.externalAdsSelect, body);
-      renderMarketingSetup(payload?.setup || payload);
-      setMarketingSetupStatus('Advertiser account selected for this scope.', 'success');
-    } catch (error) {
-      setMarketingSetupStatus(error?.message || 'Unable to select advertiser account.', 'error');
-    }
+    return runMarketingSetupAction('Selecting advertiser account…', 'Unable to select advertiser account.', owner => {
+      const accountId = (document.getElementById(ids.select)?.value || '').trim();
+      if (!accountId) throw new Error('Choose an authorized advertiser account.');
+      const body = { provider, accountId };
+      if (!isBusinessAnalytics) body.agentProfileId = owner.profileId || null;
+      return postMarketingSetup(`externalAdsSelect:${provider}`, endpoints.externalAdsSelect, body, owner);
+    }, (response, operation) => {
+      if (admitMarketingSetupMutation(response, operation)) setMarketingSetupStatus('Advertiser account selected for this scope.', 'success');
+    });
   }
 
   async function saveExternalProviderMeasurement(provider) {
-    if (!requireMarketingOwner()) return;
     const ids = externalMarketingProviderControls[provider];
     if (!ids) return;
-    const measurement = document.getElementById(ids.measurement);
-    const revision = measurement?.dataset?.revision || '';
-    if (!revision) {
-      setMarketingSetupStatus('Reload Marketing Setup before saving provider optimization mappings.', 'error');
-      return;
-    }
-
-    const mappings = Array.from(document.querySelectorAll(`[data-external-mapping-provider="${provider}"]`))
-      .map(input => {
-        const canonicalEventName = input.dataset.canonicalEvent || '';
-        const value = String(input.value || '').trim();
-        if (!canonicalEventName || !value) return null;
-        return provider === 'google'
-          ? { canonicalEventName, providerEventName: canonicalEventName, destinationId: value }
-          : { canonicalEventName, providerEventName: value, destinationId: null };
-      })
-      .filter(Boolean);
-
-    if (!mappings.length) {
-      setMarketingSetupStatus('Map at least one canonical revenue outcome before saving.', 'error');
-      return;
-    }
-
-    const body = {
-      provider,
-      eventSourceId: provider === 'tiktok'
-        ? (document.getElementById('marketing-setup-tiktok-event-source-id')?.value || '').trim() || null
-        : null,
-      eventSourceType: provider === 'tiktok'
-        ? (document.getElementById('marketing-setup-tiktok-event-source-type')?.value || 'crm')
-        : 'click',
-      mappings,
-      expectedRevision: revision,
-      measurementAccessToken: provider === 'tiktok'
-        ? (document.getElementById('marketing-setup-tiktok-events-token')?.value || '').trim() || null
-        : null
-    };
-    if (!isBusinessAnalytics) body.agentProfileId = marketingSetupAgentProfileId() || null;
-
-    setMarketingSetupStatus(`Saving exact ${provider === 'google' ? 'Google Ads' : 'TikTok Ads'} optimization mapping…`);
-    try {
-      const payload = await fetchPostJson(
-        `externalAdsMeasurement:${provider}`,
-        endpoints.externalAdsMeasurement,
-        body);
-      renderMarketingSetup(payload?.setup || payload);
-      setMarketingSetupStatus(
-        `${provider === 'google' ? 'Google Ads' : 'TikTok Ads'} optimization mapping saved.`,
-        'success');
-    } catch (error) {
-      setMarketingSetupStatus(error?.message || 'Unable to save provider optimization mapping.', 'error');
-    }
+    return runMarketingSetupAction(
+      `Saving ${provider === 'google' ? 'Google Ads' : 'TikTok Ads'} optimization mapping…`,
+      'Unable to save provider optimization mapping.', owner => {
+        const revision = document.getElementById(ids.measurement)?.dataset?.revision || '';
+        if (!revision) throw new Error('Reload Marketing Setup before saving provider optimization mappings.');
+        const mappings = Array.from(document.querySelectorAll(`[data-external-mapping-provider="${provider}"]`))
+          .map(input => {
+            const canonicalEventName = input.dataset.canonicalEvent || '';
+            const value = String(input.value || '').trim();
+            if (!canonicalEventName || !value) return null;
+            return provider === 'google'
+              ? { canonicalEventName, providerEventName: canonicalEventName, destinationId: value }
+              : { canonicalEventName, providerEventName: value, destinationId: null };
+          }).filter(Boolean);
+        if (!mappings.length) throw new Error('Map at least one canonical revenue outcome before saving.');
+        const body = {
+          provider,
+          eventSourceId: provider === 'tiktok'
+            ? (document.getElementById('marketing-setup-tiktok-event-source-id')?.value || '').trim() || null : null,
+          eventSourceType: provider === 'tiktok'
+            ? (document.getElementById('marketing-setup-tiktok-event-source-type')?.value || 'crm') : 'click',
+          mappings,
+          expectedRevision: revision,
+          measurementAccessToken: provider === 'tiktok'
+            ? (document.getElementById('marketing-setup-tiktok-events-token')?.value || '').trim() || null : null
+        };
+        if (!isBusinessAnalytics) body.agentProfileId = owner.profileId || null;
+        return postMarketingSetup(`externalAdsMeasurement:${provider}`, endpoints.externalAdsMeasurement, body, owner);
+      }, (response, operation) => {
+        if (admitMarketingSetupMutation(response, operation)) setMarketingSetupStatus(
+          `${provider === 'google' ? 'Google Ads' : 'TikTok Ads'} optimization mapping saved.`, 'success');
+      });
   }
 
   async function disconnectExternalProvider(provider) {
-    if (!requireMarketingOwner()) return;
-    const body = { provider };
-    if (!isBusinessAnalytics) body.agentProfileId = marketingSetupAgentProfileId() || null;
-    setMarketingSetupStatus(`Disconnecting ${provider === 'google' ? 'Google Ads' : 'TikTok Ads'} from this scope…`);
-    try {
-      const payload = await fetchPostJson(`externalAdsDisconnect:${provider}`, endpoints.externalAdsDisconnect, body);
-      renderMarketingSetup(payload?.setup || payload);
-      setMarketingSetupStatus('Provider disconnected for this scope.', 'success');
-    } catch (error) {
-      setMarketingSetupStatus(error?.message || 'Unable to disconnect provider.', 'error');
-    }
+    return runMarketingSetupAction(
+      `Disconnecting ${provider === 'google' ? 'Google Ads' : 'TikTok Ads'} from this scope…`,
+      'Unable to disconnect provider.', owner => {
+        const body = { provider };
+        if (!isBusinessAnalytics) body.agentProfileId = owner.profileId || null;
+        return postMarketingSetup(`externalAdsDisconnect:${provider}`, endpoints.externalAdsDisconnect, body, owner);
+      }, (response, operation) => {
+        if (admitMarketingSetupMutation(response, operation)) setMarketingSetupStatus('Provider disconnected for this scope.', 'success');
+      });
   }
 
   ['google', 'tiktok'].forEach(provider => {
     const ids = externalMarketingProviderControls[provider];
-    document.getElementById(ids.loadAccounts)?.addEventListener('click', () => {
-      void loadExternalProviderAccounts(provider);
-    });
-    document.getElementById(ids.selectAccount)?.addEventListener('click', () => {
-      void selectExternalProviderAccount(provider);
-    });
-    document.getElementById(ids.disconnect)?.addEventListener('click', () => {
-      void disconnectExternalProvider(provider);
-    });
-    document.getElementById(ids.saveMeasurement)?.addEventListener('click', () => {
-      void saveExternalProviderMeasurement(provider);
-    });
+    document.getElementById(ids.loadAccounts)?.addEventListener('click', () => { void loadExternalProviderAccounts(provider); });
+    document.getElementById(ids.selectAccount)?.addEventListener('click', () => { void selectExternalProviderAccount(provider); });
+    document.getElementById(ids.disconnect)?.addEventListener('click', () => { void disconnectExternalProvider(provider); });
+    document.getElementById(ids.saveMeasurement)?.addEventListener('click', () => { void saveExternalProviderMeasurement(provider); });
   });
 
-  marketingSetupModal?.addEventListener('show.bs.modal', () => { void loadMarketingSetup(); });
+  marketingSetupModal?.addEventListener('click', event => {
+    const link = event.target.closest?.('a');
+    if (link && (marketingSetupOperation || !hasAdmittedMarketingSetupOwner() ||
+        link.getAttribute('aria-disabled') === 'true' || !link.getAttribute('href'))) event.preventDefault();
+  });
+  disableMarketingSetupControls();
+  marketingSetupModal?.addEventListener('show.bs.modal', () => {
+    if (!marketingSetupLoaded) void loadMarketingSetup();
+  });
+  marketingSetupRetry?.addEventListener('click', () => { void loadMarketingSetup(); });
   marketingSetupForm?.addEventListener('submit', saveMarketingSetup);
 
   document.getElementById('marketing-setup-calendar-disconnect')?.addEventListener('click', async event => {
-    if (!requireMarketingOwner()) return;
     const button = event.currentTarget;
-    const revision = button?.dataset?.revision || '';
-    if (!revision) {
-      setMarketingSetupStatus('Reload Marketing Setup before disconnecting Microsoft Calendar.', 'error');
-      return;
-    }
-
-    button.disabled = true;
-    setMarketingSetupStatus('Disconnecting Microsoft Calendar…');
-    try {
+    return runMarketingSetupAction('Disconnecting Microsoft Calendar…', 'Unable to disconnect Microsoft Calendar.', owner => {
+      const revision = button?.dataset?.revision || '';
+      if (!revision) throw new Error('Reload Marketing Setup before disconnecting Microsoft Calendar.');
       const body = isBusinessAnalytics
         ? { connectionRevision: revision }
-        : { agentProfileId: marketingSetupAgentProfileId() || null, connectionRevision: revision };
-      const payload = await fetchPostJson('calendarDisconnect', endpoints.calendarDisconnect, body);
-      renderMarketingSetup(payload);
-      setMarketingSetupStatus('Microsoft Calendar disconnected. Manual scheduler fields were preserved.', 'success');
-    } catch (error) {
-      setMarketingSetupStatus(error?.message || 'Unable to disconnect Microsoft Calendar.', 'error');
-    } finally {
-      button.disabled = false;
-    }
+        : { agentProfileId: owner.profileId || null, connectionRevision: revision };
+      return postMarketingSetup('calendarDisconnect', endpoints.calendarDisconnect, body, owner);
+    }, (response, operation) => {
+      if (admitMarketingSetupMutation(response, operation)) setMarketingSetupStatus(
+        'Microsoft Calendar disconnected. Manual scheduler fields were preserved.', 'success');
+    });
   });
 
   document.getElementById('marketing-setup-openai-verify')?.addEventListener('click', async event => {
-    if (!requireMarketingOwner()) return;
+    if (!requireMarketingOwner() || !hasAdmittedMarketingSetupOwner() || marketingSetupOperation) return;
     const button = event.currentTarget;
     if (button?.dataset?.connected !== 'true') {
       const panel = document.getElementById('marketing-setup-openai-connect-panel');
@@ -5790,46 +6123,35 @@ function escapeHtml(value) {
       document.getElementById('marketing-setup-openai-api-key')?.focus();
       return;
     }
-
-    const revision = document.getElementById('marketing-setup-openai-disconnect')?.dataset?.revision || '';
-    if (!revision) {
-      setMarketingSetupStatus('Reload Marketing Setup before refreshing ChatGPT Ads.', 'error');
-      return;
-    }
-
-    button.disabled = true;
-    setMarketingSetupStatus('Refreshing ChatGPT Ads account and measurement setup…');
-    try {
-      const response = await fetchPostJson('openAiRefresh', endpoints.openAiRefresh, {
-        agentProfileId: marketingSetupAgentProfileId() || null,
-        connectionRevision: revision
+    return runMarketingSetupAction(
+      'Refreshing ChatGPT Ads account and measurement setup…', 'Unable to refresh ChatGPT Ads.', owner => {
+        const revision = document.getElementById('marketing-setup-openai-disconnect')?.dataset?.revision || '';
+        if (!revision) throw new Error('Reload Marketing Setup before refreshing ChatGPT Ads.');
+        return postMarketingSetup('openAiRefresh', endpoints.openAiRefresh, {
+          agentProfileId: owner.profileId || null, connectionRevision: revision
+        }, owner);
+      }, (response, operation) => {
+        const payload = admitMarketingSetupMutation(response, operation);
+        if (!payload) return;
+        const pixelProvisioning = response.pixelProvisioning || null;
+        const refreshedOpenAi = payload.openAi || {};
+        if (refreshedOpenAi.pixelConfigured && refreshedOpenAi.conversionsApiConfigured) {
+          setMarketingSetupStatus('ChatGPT Ads account and measurement setup refreshed.', 'success');
+        } else if (pixelProvisioning?.status === 'not_enabled') {
+          setMarketingSetupStatus(pixelProvisioning.detail || 'ChatGPT Ads account refreshed. OpenAI has not enabled Ads API Pixel provisioning for this advertiser account yet.');
+        } else if (pixelProvisioning?.status === 'not_authorized') {
+          setMarketingSetupStatus(pixelProvisioning.detail || 'ChatGPT Ads account refreshed. This Advertiser API key cannot provision the OpenAI Pixel for this account.');
+        } else if (pixelProvisioning?.status === 'provider_unavailable') {
+          setMarketingSetupStatus(pixelProvisioning.detail || 'ChatGPT Ads account refreshed. OpenAI Pixel provisioning is temporarily unavailable.');
+        } else if (pixelProvisioning?.status === 'provider_error') {
+          const code = pixelProvisioning.httpStatusCode ? ` (HTTP ${pixelProvisioning.httpStatusCode})` : '';
+          setMarketingSetupStatus(`${pixelProvisioning.detail || 'OpenAI rejected Pixel provisioning.'}${code}`, 'error');
+        } else if (refreshedOpenAi.measurementCapabilityStatus === 'not_enabled') {
+          setMarketingSetupStatus('ChatGPT Ads account refreshed. OpenAI has not enabled Ads API conversion provisioning for this advertiser account yet.');
+        } else {
+          setMarketingSetupStatus(refreshedOpenAi.measurementCapabilityDetail || 'ChatGPT Ads account refreshed; measurement setup is still incomplete.');
+        }
       });
-      if (response?.ok && !response.setup) { setMarketingSetupStatus('Connection change saved. Status refresh unavailable; reload later.'); return; }
-      const payload = response?.setup || response;
-      const pixelProvisioning = response?.pixelProvisioning || null;
-      renderMarketingSetup(payload);
-      const refreshedOpenAi = payload?.openAi || {};
-      if (refreshedOpenAi.pixelConfigured && refreshedOpenAi.conversionsApiConfigured) {
-        setMarketingSetupStatus('ChatGPT Ads account and measurement setup refreshed.', 'success');
-      } else if (pixelProvisioning?.status === 'not_enabled') {
-        setMarketingSetupStatus(pixelProvisioning.detail || 'ChatGPT Ads account refreshed. OpenAI has not enabled Ads API Pixel provisioning for this advertiser account yet.');
-      } else if (pixelProvisioning?.status === 'not_authorized') {
-        setMarketingSetupStatus(pixelProvisioning.detail || 'ChatGPT Ads account refreshed. This Advertiser API key cannot provision the OpenAI Pixel for this account.');
-      } else if (pixelProvisioning?.status === 'provider_unavailable') {
-        setMarketingSetupStatus(pixelProvisioning.detail || 'ChatGPT Ads account refreshed. OpenAI Pixel provisioning is temporarily unavailable.');
-      } else if (pixelProvisioning?.status === 'provider_error') {
-        const code = pixelProvisioning.httpStatusCode ? ` (HTTP ${pixelProvisioning.httpStatusCode})` : '';
-        setMarketingSetupStatus(`${pixelProvisioning.detail || 'OpenAI rejected Pixel provisioning.'}${code}`, 'error');
-      } else if (refreshedOpenAi.measurementCapabilityStatus === 'not_enabled') {
-        setMarketingSetupStatus('ChatGPT Ads account refreshed. OpenAI has not enabled Ads API conversion provisioning for this advertiser account yet.');
-      } else {
-        setMarketingSetupStatus(refreshedOpenAi.measurementCapabilityDetail || 'ChatGPT Ads account refreshed; measurement setup is still incomplete.');
-      }
-    } catch (error) {
-      setMarketingSetupStatus(error?.message || 'Unable to refresh ChatGPT Ads.', 'error');
-    } finally {
-      button.disabled = false;
-    }
   });
   document.getElementById('marketing-setup-openai-connect-cancel')?.addEventListener('click', () => {
     const key = document.getElementById('marketing-setup-openai-api-key');
@@ -5838,78 +6160,52 @@ function escapeHtml(value) {
     if (panel) panel.hidden = true;
   });
   document.getElementById('marketing-setup-openai-connect-submit')?.addEventListener('click', async event => {
-    if (!requireMarketingOwner()) return;
     const button = event.currentTarget;
     const keyInput = document.getElementById('marketing-setup-openai-api-key');
-    const advertiserApiKey = (keyInput?.value || '').trim();
-    if (!advertiserApiKey) {
-      setMarketingSetupStatus('Enter the Advertiser API key from OpenAI Ads Manager Settings.', 'error');
-      return;
-    }
-    button.disabled = true;
-    setMarketingSetupStatus('Verifying ChatGPT Ads directly with OpenAI…');
-    try {
-      const payload = await fetchPostJson('openAiConnect', endpoints.openAiConnect, {
-        agentProfileId: marketingSetupAgentProfileId() || null,
-        advertiserApiKey,
-        expectedRevision: button.dataset.revision || null
-      });
-      if (keyInput) keyInput.value = '';
+    return runMarketingSetupAction('Verifying ChatGPT Ads directly with OpenAI…', 'Unable to verify ChatGPT Ads.', owner => {
+      const advertiserApiKey = (keyInput?.value || '').trim();
+      if (!advertiserApiKey) throw new Error('Enter the Advertiser API key from OpenAI Ads Manager Settings.');
+      // The request owns this value now; do not retain credentials in a disabled form.
+      keyInput.value = '';
+      return postMarketingSetup('openAiConnect', endpoints.openAiConnect, {
+        agentProfileId: owner.profileId || null,
+        advertiserApiKey, expectedRevision: button.dataset.revision || null
+      }, owner);
+    }, (response, operation) => {
       const panel = document.getElementById('marketing-setup-openai-connect-panel');
       if (panel) panel.hidden = true;
-      if (payload?.ok && !payload.setup) { setMarketingSetupStatus('Connection change saved. Status refresh unavailable; reload later.'); return; }
-      renderMarketingSetup(payload?.setup || payload);
-      setMarketingSetupStatus('ChatGPT Ads verified and connected to this scope.', 'success');
-    } catch (error) {
-      setMarketingSetupStatus(error?.message || 'Unable to verify ChatGPT Ads.', 'error');
-    } finally {
-      if (keyInput) keyInput.value = '';
-      button.disabled = false;
-    }
+      if (admitMarketingSetupMutation(response, operation)) setMarketingSetupStatus('ChatGPT Ads verified and connected to this scope.', 'success');
+    });
   });
   document.getElementById('marketing-setup-openai-disconnect')?.addEventListener('click', async event => {
-    if (!requireMarketingOwner()) return;
     const button = event.currentTarget;
-    const revision = button?.dataset?.revision || '';
-    if (!revision) return;
-    button.disabled = true;
-    setMarketingSetupStatus('Disconnecting ChatGPT Ads from this scope…');
-    try {
-      const payload = await fetchPostJson('openAiDisconnect', endpoints.openAiDisconnect, {
-        agentProfileId: marketingSetupAgentProfileId() || null,
-        connectionRevision: revision
-      });
-      if (payload?.ok && !payload.setup) { setMarketingSetupStatus('Connection change saved. Status refresh unavailable; reload later.'); return; }
-      renderMarketingSetup(payload?.setup || payload);
-      setMarketingSetupStatus('ChatGPT Ads disconnected for this scope.', 'success');
-    } catch (error) {
-      setMarketingSetupStatus(error?.message || 'Unable to disconnect ChatGPT Ads.', 'error');
-    } finally {
-      if (button) button.disabled = false;
-    }
+    return runMarketingSetupAction('Disconnecting ChatGPT Ads from this scope…', 'Unable to disconnect ChatGPT Ads.', owner => {
+      const revision = button?.dataset?.revision || '';
+      if (!revision) throw new Error('Reload Marketing Setup before disconnecting ChatGPT Ads.');
+      return postMarketingSetup('openAiDisconnect', endpoints.openAiDisconnect, {
+        agentProfileId: owner.profileId || null, connectionRevision: revision
+      }, owner);
+    }, (response, operation) => {
+      if (admitMarketingSetupMutation(response, operation)) setMarketingSetupStatus('ChatGPT Ads disconnected for this scope.', 'success');
+    });
   });
-  document.getElementById('wa-scope-select')?.addEventListener('change', () => {
-    marketingSetupLoaded = false;
-    if (marketingSetupSave) marketingSetupSave.disabled = true;
+  let marketingSetupLastOwner = marketingSetupAgentProfileId();
+  window.addEventListener('wa:scope-changed', () => {
+    const nextOwner = marketingSetupAgentProfileId();
+    if (nextOwner === marketingSetupLastOwner) return;
+    marketingSetupLastOwner = nextOwner;
+    marketingSetupOwnerGeneration += 1;
+    marketingSetupCallback = null;
+    revokeMarketingSetupOwner();
+    const scopeLabel = document.getElementById('marketing-setup-scope-label');
+    if (scopeLabel) scopeLabel.textContent = 'Selected owner · setup not loaded';
     if (marketingSetupModal?.classList.contains('show')) void loadMarketingSetup();
   });
 
 
-  const analyticsRequestCache = window.__websiteAnalyticsRequestCache || new Map();
-  window.__websiteAnalyticsRequestCache = analyticsRequestCache;
-
-  async function fetchCachedDeviceRequest(key, fetcher) {
-    if (analyticsRequestCache.has(key)) {
-      return analyticsRequestCache.get(key);
-    }
-
-    const promise = fetcher().finally(() => {
-      setTimeout(() => analyticsRequestCache.delete(key), 3000);
-    });
-
-    analyticsRequestCache.set(key, promise);
-    return promise;
-  }
+  let deviceRequest = 0;
+  let deviceInFlight = null;
+  let deviceRenderedKey = null;
 
   const modalId = 'deviceIntelligenceModal';
   const moduleBtn = document.getElementById('mod-device-intelligence');
@@ -6025,20 +6321,20 @@ function escapeHtml(value) {
   }
 
   async function loadDeviceIntelligence() {
+    const params = Object.fromEntries(currentRangeParams());
+    const key = JSON.stringify(params);
+    const scopeVersion = analyticsScopeVersion;
+    if (deviceInFlight?.key === key && deviceInFlight.scopeVersion === scopeVersion) return deviceInFlight.promise;
+    const detail = beginAnalyticsDetail('deviceIntelligenceModal');
+    const request = ++deviceRequest;
+    const active = { key, scopeVersion, promise: null };
+    deviceInFlight = active;
     const content = document.getElementById('deviceIntelligenceContent');
-    if (content) content.innerHTML = '<div class="wa-loading">Loading device intelligence...</div>';
-
-    const endpoint = window.websiteAnalyticsBridge?.endpoint;
-    if (typeof endpoint !== 'function') {
-      throw new Error('Analytics endpoint authority is unavailable.');
-    }
-    const deviceUrl = `${endpoint("/DeviceIntelligence")}?${currentRangeParams().toString()}`;
-    const data = await fetchCachedDeviceRequest(deviceUrl, async () => {
-      const res = await fetch(deviceUrl, { headers: { 'Accept': 'application/json' } });
-      if (!res.ok) throw new Error('Unable to load Device Intelligence.');
-      return res.json();
-    });
-
+    if (deviceRenderedKey !== key && content) content.innerHTML = '<div class="wa-loading">Loading device intelligence...</div>';
+    active.promise = (async () => {
+      try {
+        const data = await fetchJson('deviceIntelligence', analyticsEndpoint('/DeviceIntelligence'), params);
+        if (!data || request !== deviceRequest || scopeVersion !== analyticsScopeVersion) return false;
     const setText = (id, value) => {
       const el = document.getElementById(id);
       if (el) el.textContent = value ?? '—';
@@ -6072,27 +6368,30 @@ function escapeHtml(value) {
         table('Language', data.languages, 'language')
       ].join('');
     }
+        deviceRenderedKey = key;
+        detail.complete(true);
+        return true;
+      } catch (error) {
+        if (request !== deviceRequest || scopeVersion !== analyticsScopeVersion) return false;
+        deviceRenderedKey = null;
+        detail.complete(false);
+        renderDeviceLoadError(error);
+        return false;
+      } finally {
+        if (deviceInFlight === active) deviceInFlight = null;
+      }
+    })();
+    return active.promise;
   }
 
   window.websiteAnalyticsDeviceIntelligence = {
-    async loadCurrentView() {
-      try {
-        await loadDeviceIntelligence();
-        return true;
-      } catch (err) {
-        renderDeviceLoadError(err);
-        return false;
-      }
-    },
-    getTrafficLabel() {
-      return deviceTrafficLabel();
-    }
+    loadCurrentView: loadDeviceIntelligence,
+    getTrafficLabel: deviceTrafficLabel
   };
 
   moduleBtn?.addEventListener('click', () => {
     if (!modalEl || !window.bootstrap) return;
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
-    window.websiteAnalyticsDeviceIntelligence.loadCurrentView();
   });
 
   moduleBtn?.addEventListener('keydown', e => {
@@ -6114,6 +6413,8 @@ function escapeHtml(value) {
   const advertisingModal = document.getElementById('advertisingCommandModal');
   let advertisingSnapshot = null;
   let advertisingSelectedCreative = null;
+  let advertisingLoadRequest = 0;
+  let advertisingLoadedOwnerKey = null;
 
   function advertisingScopeParams() {
     if (isBusinessAnalytics) return {};
@@ -6121,21 +6422,55 @@ function escapeHtml(value) {
     return id ? { agentProfileId: id } : {};
   }
 
-  let marketingPerformanceRequest = 0;
-  let marketingPerformanceInFlight = null;
+  function setMarketingPerformanceStatus(message, error = false) {
+    document.querySelectorAll('[data-marketing-performance-status]').forEach(el => {
+      el.textContent = message;
+      el.dataset.tone = error ? 'error' : 'neutral';
+    });
+  }
+
+  function renderPerformanceSummaries(snapshot) {
+    const economics = snapshot?.economics;
+    setText('growth-economics-overview', economics
+      ? `${marketingManagerMoney(economics.totalMarketingSpend)} spend · ${marketingManagerMoney(economics.totalRevenue)} recorded revenue`
+      : 'Unavailable');
+    const channels = Array.isArray(snapshot?.channels) ? snapshot.channels : null;
+    setText('channel-performance-overview', channels
+      ? `${marketingManagerNumber(channels.length)} channels · ${snapshot.dataQualityNotes?.length ? 'Data quality notes available' : 'View outcomes'}`
+      : 'Unavailable');
+  }
+
+  function renderMarketingPerformanceUnavailable(message, pending = false) {
+    state.cache.marketingPerformance = null;
+    marketingPerformanceRenderedKey = null;
+    setText('channel-performance-grid', message);
+    setText('channel-performance-note', '');
+    renderGrowthEconomics(null);
+    renderPerformanceSummaries(null);
+    if (pending) {
+      setText('growth-economics-grid', message);
+      setText('growth-economics-note', '');
+      setText('growth-economics-overview', 'Loading…');
+      setText('channel-performance-overview', 'Loading…');
+    }
+    setMarketingPerformanceStatus(message, !pending);
+  }
 
   async function loadMarketingPerformance() {
     const grid = document.getElementById('channel-performance-grid');
     if (!grid) return false;
     const params = { ...marketingManagerRequestBody(), ...marketingManagerSiteParams() };
     const key = JSON.stringify(params);
-    if (marketingPerformanceInFlight?.key === key) return marketingPerformanceInFlight.promise;
+    const scopeVersion = analyticsScopeVersion;
+    if (marketingPerformanceInFlight?.key === key && marketingPerformanceInFlight.scopeVersion === scopeVersion)
+      return marketingPerformanceInFlight.promise;
     const request = ++marketingPerformanceRequest;
-    const active = { key, promise: null };
+    const active = { key, scopeVersion, promise: null };
     marketingPerformanceInFlight = active;
-    grid.textContent = 'Loading current channel performance…';
-    setText('channel-performance-note', '');
-    renderGrowthEconomics(null);
+    // A refresh of the same snapshot keeps the cards and scroll position until
+    // the next complete result is available. A changed scope has no valid totals.
+    if (marketingPerformanceRenderedKey !== key) renderMarketingPerformanceUnavailable('Loading current performance…', true);
+    setMarketingPerformanceStatus('Refreshing performance…');
     active.promise = (async () => {
       try {
         const data = await fetchJson(
@@ -6143,14 +6478,17 @@ function escapeHtml(value) {
           endpoints.marketingManagerPerformance,
           params,
           45000);
-        if (!data || request !== marketingPerformanceRequest) return false;
+        if (!data || request !== marketingPerformanceRequest || scopeVersion !== analyticsScopeVersion) return false;
         renderMarketingPerformance(data);
         renderGrowthEconomics(data.economics);
+        renderPerformanceSummaries(data);
+        state.cache.marketingPerformance = data;
+        marketingPerformanceRenderedKey = key;
+        setMarketingPerformanceStatus('');
         return true;
       } catch (error) {
-        if (request !== marketingPerformanceRequest) return false;
-        grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Unified channel performance is unavailable.')}</div>`;
-        renderGrowthEconomics(null);
+        if (request !== marketingPerformanceRequest || scopeVersion !== analyticsScopeVersion) return false;
+        renderMarketingPerformanceUnavailable(error.message || 'Current performance is unavailable.');
         return false;
       } finally {
         if (marketingPerformanceInFlight === active) marketingPerformanceInFlight = null;
@@ -6339,13 +6677,49 @@ function escapeHtml(value) {
     return span;
   }
 
+  function clearAdvertisingCommandData(message) {
+    advertisingSnapshot = null;
+    advertisingSelectedCreative = null;
+    advertisingLoadedOwnerKey = null;
+    advertisingText('advertising-command-connection', 'Unavailable');
+    for (const id of ['advertising-command-campaign-count', 'advertising-command-approval-count', 'advertising-command-audit-count'])
+      advertisingText(id, '—');
+    advertisingText('advertising-command-campaigns', message);
+    advertisingText('advertising-command-proposals', message);
+    for (const id of ['advertising-command-promotion', 'advertising-command-insights', 'advertising-promote-preview-panel']) {
+      const element = document.getElementById(id);
+      if (element) element.hidden = true;
+    }
+    const promote = document.getElementById('advertising-command-promote');
+    if (promote) promote.disabled = true;
+  }
+
   async function loadAdvertisingCommandCenter() {
+    const params = advertisingScopeParams();
+    const ownerKey = JSON.stringify(params);
+    const request = ++advertisingLoadRequest;
+    const isCurrent = () => request === advertisingLoadRequest && ownerKey === JSON.stringify(advertisingScopeParams());
+    const refresh = document.getElementById('advertising-command-refresh');
+    if (refresh) refresh.disabled = true;
+    if (advertisingLoadedOwnerKey !== ownerKey) clearAdvertisingCommandData('Loading current advertising data…');
     advertisingSetStatus('Loading scoped advertising authority…');
-    const snapshot = await fetchJson('advertisingCommandCenter', endpoints.advertising, advertisingScopeParams());
-    if (!snapshot) return;
-    advertisingSnapshot = snapshot;
-    renderAdvertisingCommandCenter(snapshot);
-    advertisingSetStatus('Scoped advertising authority is current.', 'success');
+    try {
+      const snapshot = await fetchJson('advertisingCommandCenter', endpoints.advertising, params);
+      if (!isCurrent()) return false;
+      if (!snapshot || snapshot.isAvailable === false) throw new Error('Advertising data is unavailable. Use Refresh to retry.');
+      advertisingSnapshot = snapshot;
+      advertisingLoadedOwnerKey = ownerKey;
+      renderAdvertisingCommandCenter(snapshot);
+      advertisingSetStatus('Scoped advertising authority is current.', 'success');
+      return true;
+    } catch (error) {
+      if (!isCurrent()) return false;
+      clearAdvertisingCommandData('Advertising data unavailable. Use Refresh to retry.');
+      advertisingSetStatus(error?.message || 'Advertising data unavailable. Use Refresh to retry.', 'error');
+      return false;
+    } finally {
+      if (request === advertisingLoadRequest && refresh) refresh.disabled = false;
+    }
   }
 
   function renderAdvertisingCommandCenter(snapshot) {
@@ -6805,6 +7179,8 @@ function escapeHtml(value) {
     return {
       chatgpt_ads: 'ChatGPT Ads',
       meta_ads: 'Meta Ads',
+      google_ads: 'Google Ads',
+      tiktok_ads: 'TikTok Ads',
       organic: 'Organic',
       direct: 'Direct',
       referral: 'Referral',
@@ -7034,11 +7410,8 @@ function escapeHtml(value) {
       bootstrap.Modal.getOrCreateInstance(marketingManagerModal)?.hide();
       bootstrap.Modal.getOrCreateInstance(advertisingModal)?.show();
     });
-    document.getElementById('channel-performance-refresh')?.addEventListener('click', () => void loadMarketingPerformance());
-    document.getElementById('growth-economics-refresh')?.addEventListener('click', () => void loadMarketingPerformance());
     document.getElementById('marketing-setup-openai-feed-refresh')?.addEventListener('click', () => void loadOpenAiProductFeed());
     document.getElementById('marketing-setup-openai-feed-publish')?.addEventListener('click', () => void publishOpenAiProductFeed());
-    window.addEventListener('wa:scope-changed', () => void loadMarketingPerformance());
   }
 
   function initAdvertisingCommandCenter() {

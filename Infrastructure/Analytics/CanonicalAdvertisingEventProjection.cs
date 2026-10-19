@@ -154,7 +154,7 @@ public static class CanonicalAdvertisingEventProjection
         if (websiteContentVersionId is not Guid version) return null;
         var website = await (from v in db.Set<WebsiteContentVersion>().AsNoTracking()
                              join state in db.Set<WebsiteContentState>().AsNoTracking() on v.StateId equals state.Id
-                             where v.Id == version select state).SingleOrDefaultAsync(ct);
+                             where v.Id == version select new { state.SiteKey, state.OwnerKey }).SingleOrDefaultAsync(ct);
         return website is not null &&
             website.SiteKey == WebsiteEditorSiteKeys.Legend && website.OwnerKey == WebsiteEditorSiteKeys.GlobalOwnerKey
             ? MarketingOwnerScope.Founder : null;

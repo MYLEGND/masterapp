@@ -6,9 +6,10 @@
                     <div class="wa-modal-header-copy">
                         <div class="wa-modal-kicker">Founder Incident Response</div>
                         <h5 class="modal-title mb-0" id="analyticsIncidentModalLabel">Incident Monitor</h5>
-                        <div class="wa-modal-subtitle">System-wide analytics drift control center. Active incidents and the supporting health snapshot refresh lazily inside AgentPortal only.</div>
+                        <div class="wa-modal-subtitle">System-wide incidents and the supporting health snapshot.</div>
                     </div>
                     <div class="wa-modal-header-actions">
+                        <button type="button" class="btn btn-sm btn-outline-light" data-analytics-refresh>Refresh</button>
                         <div class="wa-modal-range-chip">
                             <span class="wa-modal-range-label">Scope</span>
                             <span class="wa-modal-range-value" id="incident-monitor-scope-label">System-wide</span>
@@ -30,7 +31,7 @@
                             <div class="wa-health-panel-kicker">Active Incidents</div>
                             <div class="wa-health-warnings-title">Current Drift Alerts</div>
                         </div>
-                        <div class="wa-health-panel-badge" id="incident-monitor-active-summary">0 Active</div>
+                        <div class="wa-health-panel-badge" id="incident-monitor-active-summary">Loading</div>
                     </div>
                     <div class="table-responsive wa-incident-table-wrap">
                         <table class="table wa-incident-table">

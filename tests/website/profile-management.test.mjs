@@ -6,7 +6,12 @@ import { JSDOM } from 'jsdom';
 const source = readFileSync(new URL('../../Legend-Design/legend-website-management.js', import.meta.url), 'utf8');
 const managementCss = readFileSync(new URL('../../Legend-Design/legend-website-management.css', import.meta.url), 'utf8');
 const flush = () => new Promise(resolve => setTimeout(resolve, 40));
-async function fixture({ caps = {}, failPublish = false, scope = 'business' } = {}) {
+const deferred = () => {
+  let release;
+  const promise = new Promise(resolve => { release = resolve; });
+  return { promise, release };
+};
+async function fixture({ caps = {}, failPublish = false, scope = 'business', handoff = false, deferPath = null, deferReply = null } = {}) {
   const dom = new JSDOM(`<button data-website-manage data-session="/profile/session" data-edit="/profile/edit" data-live="https://business.test" data-title="Business A" data-scope="${scope}">Manage</button>`, { url: 'https://client.mylegnd.com/profile', runScripts: 'outside-only' });
   const { window } = dom, calls = [];
   window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
@@ -15,11 +20,19 @@ async function fixture({ caps = {}, failPublish = false, scope = 'business' } = 
   window.URL.createObjectURL = () => 'blob:export'; window.URL.revokeObjectURL = () => {};
   window.HTMLAnchorElement.prototype.click = function () {};
   const state = { revision: 7, publishedRevision: 6, document: { version: 1, elements: {} }, capabilities: { canPublish: true, canImport: true, canManageDomains: true, canSchedule: true, canPromote: true, ...caps }, history: [{ versionId: 'version-a', revision: 6, createdUtc: '2026-09-01T10:00:00Z' }], readiness: { checks: [] } };
+  let deferredUsed = false, continuationCount = 0;
   window.fetch = async (url, options = {}) => {
     const parsed = new URL(url, window.location.href), body = options.body ? JSON.parse(options.body) : null;
     calls.push({ path: parsed.pathname, url: parsed, options, body });
+    if (!deferredUsed && deferReply && parsed.pathname === deferPath) {
+      deferredUsed = true;
+      await deferReply.promise; // Ignore AbortSignal to prove stale-reply rejection.
+    }
     let value = state;
-    if (parsed.pathname === '/profile/session') value = { ticket: 'signed-scope-a', apiBase: 'https://protect.mylegnd.com' };
+    if (parsed.pathname === '/profile/session') value = handoff
+      ? { handoffUrl: 'https://protect.mylegnd.com/api/website-content/handoff', state: 'opaque-state-' + (++continuationCount) }
+      : { ticket: 'signed-scope-a', apiBase: 'https://protect.mylegnd.com' };
+    if (parsed.pathname === '/api/website-content/handoff') value = { ticket: 'signed-' + body.state, apiBase: 'https://protect.mylegnd.com' };
     if (parsed.pathname.endsWith('/publish') && failPublish) return { ok: false, status: 409, json: async () => ({ message: 'Draft changed elsewhere' }) };
     if (parsed.pathname.endsWith('/export')) value = { format: 'legend-website-v1', draft: { version: 1, elements: { a: { text: 'Owned content' } } } };
     if (parsed.pathname.endsWith('/import')) value = { report: { sourceUrl: body.sourceUrl, addedComponents: 2, preservedComponents: 4, warnings: ['Booking requires integration'], pages: [{ title: 'Services', url: 'https://old.test/services', forms: ['booking'], warnings: ['Review links'] }] } };
@@ -198,4 +211,90 @@ test('website workspace responsive CSS keeps mobile actions compact and draft ro
   assert.match(managementCss,/\.wm-list-actions\{display:flex;gap:6px;flex:0 0 auto\}/);
   assert.equal(managementCss.includes('min-height:68px'),false);
   assert.equal(managementCss.includes('min-height:58px'),false);
+});
+
+test('Close marks pending startup dismissed before queued close event', async () => {
+  const pending = deferred();
+  const f = await fixture({ deferPath: '/profile/session', deferReply: pending });
+  const dialog = f.document.querySelector('dialog');
+  const call = f.calls.find(x => x.path === '/profile/session');
+  assert.equal(dialog.querySelector('button').disabled, false);
+  dialog.close = function () { this.open = false; }; // Defer the native close event.
+  dialog.querySelector('button').click();
+  assert.equal(call.options.signal.aborted, true);
+  pending.release(); await flush();
+  assert.equal(f.calls.some(x => x.path === '/api/website-content/manage'), false);
+  assert.equal(dialog.querySelector('.wm-hero-actions'), null);
+  dialog.dispatchEvent(new f.window.Event('close'));
+  assert.equal(f.document.querySelector('dialog'), null);
+  f.dom.window.close();
+});
+
+test('late management response cannot render after dismissal; new open obtains session', async () => {
+  const pending = deferred();
+  const f = await fixture({ deferPath: '/api/website-content/manage', deferReply: pending });
+  const dialog = f.document.querySelector('dialog');
+  const call = f.calls.find(x => x.path === '/api/website-content/manage');
+  assert.equal(dialog.querySelector('button').disabled, false);
+  dialog.querySelector('button').click();
+  assert.equal(call.options.signal.aborted, true);
+  pending.release(); await flush();
+  assert.equal(dialog.querySelector('.wm-hero-actions'), null);
+  assert.equal(f.document.querySelector('dialog'), null);
+  f.document.querySelector('[data-website-manage]').click(); await flush();
+  assert.ok(f.document.querySelector('dialog .wm-hero-actions'));
+  assert.equal(f.calls.filter(x => x.path === '/profile/session').length, 2);
+  assert.equal(f.calls.filter(x => x.path === '/api/website-content/manage').length, 2);
+  f.dom.window.close();
+});
+
+test('one-time handoff dismissal ignores stale response; reopening uses fresh continuation', async () => {
+  const pending = deferred();
+  const f = await fixture({ handoff: true, deferPath: '/api/website-content/handoff', deferReply: pending });
+  const first = f.calls.find(x => x.path === '/api/website-content/handoff');
+  assert.ok(first);
+  assert.equal(first.options.method, 'POST');
+  assert.equal(first.body.state, 'opaque-state-1');
+  f.document.querySelector('dialog button').click();
+  assert.equal(first.options.signal.aborted, true);
+  pending.release(); await flush();
+  assert.equal(f.calls.filter(x => x.path === '/api/website-content/manage').length, 0);
+  f.document.querySelector('[data-website-manage]').click(); await flush();
+  const handoffs = f.calls.filter(x => x.path === '/api/website-content/handoff');
+  assert.equal(handoffs.length, 2);
+  assert.equal(handoffs[1].body.state, 'opaque-state-2');
+  const reads = f.calls.filter(x => x.path === '/api/website-content/manage');
+  assert.equal(reads.length, 1);
+  assert.equal(reads[0].url.searchParams.get('ticket'), 'signed-opaque-state-2');
+  assert.ok(f.document.querySelector('dialog .wm-hero-actions'));
+  f.dom.window.close();
+});
+
+test('Escape cancel rejects pending startup before close event is delivered', async () => {
+  const pending = deferred();
+  const f = await fixture({ deferPath: '/profile/session', deferReply: pending });
+  const dialog = f.document.querySelector('dialog');
+  const request = f.calls.find(x => x.path === '/profile/session');
+  dialog.dispatchEvent(new f.window.Event('cancel', { cancelable: true }));
+  assert.equal(request.options.signal.aborted, true);
+  pending.release(); await flush();
+  assert.equal(f.calls.some(x => x.path === '/api/website-content/manage'), false);
+  dialog.close();
+  assert.equal(f.document.querySelector('dialog'), null);
+  f.dom.window.close();
+});
+
+test('publish continues to use existing busy and unabortable POST semantics', async () => {
+  const pending = deferred();
+  const f = await fixture({ deferPath: '/api/website-content/manage/publish', deferReply: pending });
+  const button = [...f.document.querySelectorAll('button')].find(x => x.textContent === 'Publish');
+  assert.ok(button); button.click(); await flush();
+  const post = f.calls.find(x => x.path === '/api/website-content/manage/publish');
+  assert.ok(post);
+  assert.equal(post.options.method, 'POST');
+  assert.equal(post.options.signal, undefined);
+  assert.equal(f.document.querySelector('dialog button').disabled, true);
+  pending.release(); await flush();
+  assert.equal(f.document.querySelector('dialog button').disabled, false);
+  f.dom.window.close();
 });

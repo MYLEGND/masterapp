@@ -81,6 +81,38 @@ public class WebsiteLeadNotificationRecoveryTests
     }
 
     [Theory]
+    [InlineData("{\"IsCommerceApp\":true}", "New Parfait website inquiry")]
+    [InlineData("{\"IsCommerceApp\":false}", "New website inquiry")]
+    [InlineData(null, "New website inquiry")]
+    [InlineData("{", "New website inquiry")]
+    [InlineData("[]", "New website inquiry")]
+    [InlineData("{\"IsCommerceApp\":\"true\"}", "New website inquiry")]
+    public async Task BusinessRecoveryPreservesCanonicalSubjectAndOwnerWithHistoricalMetadata(string? metadata, string expectedSubject)
+    {
+        using var db = BuildDb();
+        var business = new CommerceBusiness
+        {
+            Key = "recovery-subject",
+            OwnerEmail = "current-owner@example.test",
+            IsActive = true,
+            Status = "Active"
+        };
+        db.CommerceBusinesses.Add(business);
+        var lead = Lead("BusinessInquiry");
+        lead.CommerceBusinessId = business.Id;
+        lead.MetadataJson = metadata;
+        db.WebsiteLeads.Add(lead);
+        await db.SaveChangesAsync();
+        var sender = Sender();
+        await RunPassAsync(db, sender);
+        Assert.NotNull(lead.NotificationSentUtc);
+        sender.Verify(x => x.TrySendAsync(
+            "current-owner@example.test", expectedSubject,
+            It.Is<string>(html => html.Contains(expectedSubject, StringComparison.Ordinal)),
+            null, lead.Email, true, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public async Task ExpiredAttemptIsStatusIndependentButFreshLeaseIsPreserved(bool expired)
