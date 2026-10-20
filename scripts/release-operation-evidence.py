@@ -131,19 +131,36 @@ class OperationJournal:
             if ('providerRequestCorrelation' in self.intent and
                     self.intent['providerRequestCorrelation'] != self._provider_request_correlation()):
                 raise ValueError('Deployment request correlation does not bind its operation')
+            if 'submissionContract' in self.intent:
+                if (self.intent['submissionContract'] != self._windows_submission_contract() or
+                        'providerRequestCorrelation' in self.intent):
+                    raise ValueError('Windows submission contract does not bind its operation')
             self._ids(self.intent.get('baselineDeploymentIds'))
             self.baseline = self.intent['baseline']
+        self.submission_observation = None
+        if self.intent is not None and 'submissionContract' in self.intent:
+            self.submission_observation = self.authority.release_operation_history(
+                self.repository, self.operation_id, application_revision, target,
+                self.run, self.attempt, self.token, phase='submitted')
+            if self.submission_observation is not None:
+                self._validate_submission_observation(self.submission_observation)
 
     def _provider_request_correlation(self):
         # Metadata only: Azure does not promise idempotency for deployment tags.
         return dict(kind='azure_onedeploy_deployment_tag_v1', value=self.operation_id)
 
+    def _windows_submission_contract(self):
+        # Local intent identity only. Windows OneDeploy does not accept a caller
+        # deployment tag. A missing reply never permits another submission.
+        return dict(kind='azure_onedeploy_windows_intent_v1', value=self.operation_id)
+
     def submission_correlation(self):
         # Restored intents remain reconciliation-only, including legacy records
         # which never sent a tag. Never manufacture historical request evidence.
-        expected = self._provider_request_correlation()
+        windows = self.intent is not None and 'submissionContract' in self.intent
+        expected = self._windows_submission_contract() if windows else self._provider_request_correlation()
         if (not self._new_intent_readback or self.intent is None or
-                self.intent.get('providerRequestCorrelation') != expected):
+                self.intent.get('submissionContract' if windows else 'providerRequestCorrelation') != expected):
             raise RuntimeError('New durable deployment request correlation required before submit')
         return dict(expected)
 
@@ -169,7 +186,9 @@ class OperationJournal:
             raise ValueError("Invalid Azure deployment identities")
         return sorted(set(values))
 
-    def before_submit(self, baseline_ids, *, allow_recovered_baseline=False):
+    def before_submit(self, baseline_ids, *, allow_recovered_baseline=False, submission_kind='azure_onedeploy_deployment_tag_v1'):
+        if submission_kind not in {'azure_onedeploy_deployment_tag_v1', 'azure_onedeploy_windows_intent_v1'}:
+            raise ValueError('Unknown deployment submission contract')
         if self.history_error is not None and not allow_recovered_baseline:
             raise self.history_error
         if self.intent is not None:
@@ -179,6 +198,9 @@ class OperationJournal:
                       producingRun=self.run, producingAttempt=self.attempt,
                       baselineDeploymentIds=self._ids(baseline_ids), phase='intent',
                       providerRequestCorrelation=self._provider_request_correlation())
+        if submission_kind == 'azure_onedeploy_windows_intent_v1':
+            del record['providerRequestCorrelation']
+            record['submissionContract'] = self._windows_submission_contract()
         if self.authorization is not None:
             record.update(self.authorization, schemaVersion=2)
         self.publisher('legend-release-operation-intent-' + self.operation_id, record)
@@ -188,6 +210,29 @@ class OperationJournal:
             self.history_error = None
         return True
 
+    def _validate_submission_observation(self, record):
+        keys = set(self.intent) - {'phase', 'producingRun', 'producingAttempt'}
+        if (record.get('phase') != 'submitted' or
+                any(record.get(key) != self.intent.get(key) for key in keys) or
+                not isinstance(record.get('deploymentId'), str) or
+                self._ids([record['deploymentId']]) != [record['deploymentId']] or
+                record['deploymentId'] in self.intent['baselineDeploymentIds']):
+            raise RuntimeError('Provider submission observation does not bind the original intent')
+
+    def record_submission_observation(self, deployment_id):
+        if self.intent is None or self.intent.get('submissionContract') != self._windows_submission_contract():
+            raise RuntimeError('Windows write-ahead intent required before provider observation')
+        record = dict(self.intent, phase='submitted', producingRun=self.run,
+                      producingAttempt=self.attempt, deploymentId=deployment_id)
+        self._validate_submission_observation(record)
+        if self.submission_observation is not None:
+            if self.submission_observation['deploymentId'] != deployment_id:
+                raise RuntimeError('Conflicting provider submission observations')
+            return self.submission_observation
+        result = self.publisher('legend-release-operation-submitted-' + self.operation_id, record)
+        self.submission_observation = record
+        return result
+
     def record_success(self, deployment_ids):
         if self.intent is None:
             raise RuntimeError('Exact deployment intent required before artifact success')
@@ -195,6 +240,9 @@ class OperationJournal:
         baseline_ids = set(self._ids(self.intent.get('baselineDeploymentIds')))
         if len(observed) != 1 or set(observed).intersection(baseline_ids):
             raise RuntimeError('Unique successful post-intent deployment required')
+        if (self.submission_observation is not None and
+                observed != [self.submission_observation['deploymentId']]):
+            raise RuntimeError('Successful deployment differs from retained provider observation')
         existing = self.authority.release_operation_history(
             self.repository, self.operation_id, self.identity['applicationRevision'],
             self.identity['target'], self.run, self.attempt, self.token, phase='success')
@@ -203,7 +251,7 @@ class OperationJournal:
                     existing.get('baseline') != self.baseline or existing.get('phase') != 'success' or
                     any(existing.get(key) != self.intent.get(key) for key in
                         ('schemaVersion', 'packageProducerRun', 'candidateRevision', 'componentSource',
-                         'providerRequestCorrelation'))):
+                         'providerRequestCorrelation', 'submissionContract'))):
                 raise RuntimeError("Prior deployment success receipt identity mismatch")
             retained = set(self._ids(existing.get('deploymentIds')))
             if (self._ids(existing.get('baselineDeploymentIds')) != sorted(baseline_ids) or

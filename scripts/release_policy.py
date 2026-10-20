@@ -55,6 +55,8 @@ TRUSTED_TOOL_PATHS = frozenset({
     'scripts/release-operation-evidence.py',
     'scripts/test-deploy-approved-app.py',
     'scripts/test-release-operation-evidence.py',
+    'scripts/release-artifacts/transport.cjs',
+    'scripts/release-artifacts/test-transport.cjs',
     '.github/workflows/masterapp-platform-architecture-validation.yml',
     '.github/workflows/parfait-isolated-validation.yml',
     '.github/workflows/parfait-cutover-live-readonly.yml',

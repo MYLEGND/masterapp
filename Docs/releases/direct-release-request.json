@@ -1,28 +1,52 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue the Founder-authorized isolated website and scoped receptionist work. Promote only the reviewed canonical release-request trigger coverage and focused regression through the existing nonpublishing trusted-tool process. This step authorizes no production deployment, schema mutation, routing, provider mutation or voice activation.",
-  "purpose": "Ensure every valid control-only promotion schedules the canonical selector because its existing request path changes. Repair trigger coverage only; do not fabricate a receipt for prior untriggered M5.",
-  "requestId": "founder-promotion-trigger-repair-20261020-5eeb7406a196",
+  "authorization": "Continue the Founder-authorized scoped receptionist production release recovery. Promote only the independently reviewed canonical Windows OneDeploy, immutable submission evidence, strict artifact transport and focused policy/test changes through the existing nonpublishing trusted-tool process. This step authorizes no production deployment, schema mutation, routing, provider mutation or voice activation.",
+  "purpose": "Make canonical Windows deployment compatible with server-generated provider identity while preserving uncertain-upload gates and durable authenticated observations.",
+  "requestId": "founder-windows-onedeploy-recovery-20261020-f1942bf218f3",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "13796f348ff0b2775a22ce910b4c0aa71ca05364",
-    "sourceRevision": "5eeb7406a1966f7f90064ea0a528af9e179e5915",
+    "baseRevision": "6ddf83d94a24b5f06c127a366031a9a1f3fba5c6",
+    "sourceRevision": "f1942bf218f34662afcde0e8a0b6a807245539ac",
     "files": {
-      ".github/workflows/legend-fast-track-ui.yml": {
+      "scripts/deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "78009605c81ca53af673af9e14618a569030763e"
+        "blob": "7df101bb1d0dff2353c3202f7302b0b8867bbe61"
       },
-      ".github/workflows/parfait-isolated-validation.yml": {
+      "scripts/release-operation-evidence.py": {
         "mode": "100644",
-        "blob": "d4f8001989a24b5f9f0c9536419e7a72e22666bd"
+        "blob": "95db40706f8579620f9376467bce90aa95dab8a9"
       },
-      "scripts/test-fast-track-release.py": {
+      "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "2b9593b8d0fcd1b359aa60d5dfb8d85b797c163b"
+        "blob": "a9ac1ce3245536355ac383e97dd306f2897b4b7a"
+      },
+      "scripts/test-deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "80c43579cb3c839b5a7ddff4ccd422d7958c747f"
+      },
+      "scripts/test-release-operation-evidence.py": {
+        "mode": "100755",
+        "blob": "8303e0ceb1e063df15b1f2a5498f74353ec25f50"
+      },
+      "scripts/release-artifacts/transport.cjs": {
+        "mode": "100644",
+        "blob": "31f19d132d3e8f7ba4d9fee712a8b4a385057f6b"
+      },
+      "scripts/release-artifacts/test-transport.cjs": {
+        "mode": "100644",
+        "blob": "6f2ace7b6546e4fc06cf1cf12dfc523f12e921ac"
+      },
+      "scripts/release_policy.py": {
+        "mode": "100644",
+        "blob": "095cbf301b18618493f4233d7841e92fe02a33f8"
+      },
+      "scripts/test-release-policy.py": {
+        "mode": "100644",
+        "blob": "e06ee38236b3cbecdbbb15cc0f9c079f1673284c"
       }
     }
   }

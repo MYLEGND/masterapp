@@ -119,6 +119,8 @@ class Azure:
         self.app, self.package, self.url, self.revision = app, package, url, revision
         self.static = static
         self._submission_correlation_supported = False
+        self._submission_kind = None
+        self.submission_reference = None
 
     def deployments(self):
         # Uses the existing OIDC session; no publishing credentials or new authority.
@@ -165,8 +167,9 @@ class Azure:
         return json.loads(result.stdout)
 
     def prepare_submission(self):
-        """Confirm supported correlation before the write-ahead intent exists."""
+        """Select the supported OneDeploy contract before durable write intent."""
         self._submission_correlation_supported = False
+        self._submission_kind = None
         if self.app not in {target['releaseName'] for target in TARGETS.values()}:
             raise DeploymentSubmissionNotEntered('Canonical deployment target required for correlation')
         try:
@@ -183,21 +186,27 @@ class Azure:
                 raise ValueError('unavailable deployment host metadata')
             host = json.loads(host_result.stdout)
             kind = host.get('kind') if isinstance(host, dict) else None
-            # CLI 2.91.0 ignores deploymentTag for non-web/function/logic apps.
+            # CLI 2.91.0 sends deploymentTag only for Linux web apps. Windows
+            # uses the same OneDeploy ZIP API but returns a server status ID.
             linux_webapp = (isinstance(kind, str) and {'app', 'linux'} <= set(kind.split(',')) and
                             not any(marker in kind for marker in ('functionapp', 'workflowapp')))
+            windows_webapp = (isinstance(kind, str) and set(kind.split(',')) <= {'app'} and
+                              'app' in kind.split(',') and host.get('reserved') is False)
             if (not isinstance(host, dict) or host.get('name') != self.app or
-                    host.get('reserved') is not True or not linux_webapp):
+                    not ((host.get('reserved') is True and linux_webapp) or windows_webapp)):
                 raise ValueError('unsupported deployment host')
+            self._submission_kind = ('azure_onedeploy_deployment_tag_v1' if linux_webapp
+                                     else 'azure_onedeploy_windows_intent_v1')
         except (OSError, ValueError, subprocess.TimeoutExpired):
             # Neither provider output nor CLI error details belong in the log.
-            raise DeploymentSubmissionNotEntered('Supported Linux deployment correlation could not be confirmed; no intent or upload created') from None
+            raise DeploymentSubmissionNotEntered('Supported OneDeploy host contract could not be confirmed; no intent or upload created') from None
         self._submission_correlation_supported = True
+        return self._submission_kind
 
     def submit(self, correlation=None):
         if (not self._submission_correlation_supported or not isinstance(correlation, dict) or
                 set(correlation) != {'kind', 'value'} or
-                correlation.get('kind') != 'azure_onedeploy_deployment_tag_v1' or
+                correlation.get('kind') != self._submission_kind or
                 not isinstance(correlation.get('value'), str) or
                 not re.fullmatch('[a-f0-9]{64}', correlation['value'])):
             raise DeploymentSubmissionNotEntered('Verified durable deployment correlation required before upload')
@@ -217,9 +226,14 @@ class Azure:
                    '--restart', 'true', '--async', 'false' if tracked else 'true',
                    '--track-status', 'true' if tracked else 'false',
                    '--enable-kudu-warmup', 'true' if tracked else 'false',
-                   '--deploymentTag', correlation['value'],
                    '--timeout', '120000',
                    '--enriched-errors', 'true', '--only-show-errors', '-o', 'json']
+        # Windows ignores deploymentTag. Its local write-ahead identity is not
+        # represented as caller metadata accepted by Azure. Both platforms keep
+        # one submission and exact unique post-intent provider reconciliation.
+        if self._submission_kind == 'azure_onedeploy_deployment_tag_v1':
+            command.extend(['--deploymentTag', correlation['value']])
+        self.submission_reference = None
         try:
             # Allow the tracked provider operation to return without forcing a
             # local timeout before Azure has completed its deployment. A
@@ -228,8 +242,7 @@ class Azure:
                                     timeout=300 if tracked else 180)
             if result.returncode:
                 print('::warning::Upload response was unsuccessful; reconciling Azure without resubmission.', flush=True)
-                print(result.stderr[-4000:], flush=True)
-            if result.returncode == 0 and tracked:
+            if result.returncode == 0:
                 # Preserve only a validated, sanitized provider operation ID in
                 # the immutable Actions log. Never emit raw CLI output, bearer
                 # tokens, publishing credentials, or speculative success.
@@ -237,7 +250,8 @@ class Azure:
                     payload = json.loads(result.stdout)
                     reference = (payload.get('deploymentId') or payload.get('id')
                                  if isinstance(payload, dict) else None)
-                    if isinstance(reference, str) and re.fullmatch(r'[a-zA-Z0-9_.:/-]{4,180}', reference):
+                    if isinstance(reference, str) and re.fullmatch(r'[a-zA-Z0-9_.:-]{1,256}', reference):
+                        self.submission_reference = reference
                         print('AZURE_TRACKED_DEPLOYMENT_REFERENCE:' + self.app + ':' + reference, flush=True)
                 except (ValueError, TypeError, AttributeError):
                     pass
@@ -499,16 +513,19 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=PUBLICAT
                 correlation = None
                 if journal is not None:
                     try:
-                        azure.prepare_submission()
+                        submission_kind = azure.prepare_submission()
                         allow_recovered_baseline = (
                             getattr(journal, 'history_error', None) is not None and
                             baseline is not None and
                             observed == baseline and
                             not active
                         )
+                        submission_options = ({'submission_kind': submission_kind}
+                                              if submission_kind == 'azure_onedeploy_windows_intent_v1' else {})
                         allowed = journal.before_submit(
                             baseline_ids,
                             allow_recovered_baseline=allow_recovered_baseline,
+                            **submission_options,
                         )
                         if allowed:
                             correlation = journal.submission_correlation()
@@ -519,6 +536,13 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=PUBLICAT
                 submitted = True  # Set before I/O: ambiguous responses never replay.
                 print('Submitting the verified immutable ZIP once.', flush=True)
                 azure.submit(correlation)
+                reference = getattr(azure, 'submission_reference', None)
+                if (journal is not None and reference is not None and
+                        correlation.get('kind') == 'azure_onedeploy_windows_intent_v1'):
+                    # This is a returned status observation, not idempotency or
+                    # success. Lost receipt readback leaves the original intent
+                    # intact and the next invocation reconciliation-only.
+                    journal.record_submission_observation(reference)
         sleep(interval)
     raise DeploymentReconciliationRequired('Deployment remains unverified at the deadline. Azure was not cancelled or restarted; inspect status before resuming.')
 
