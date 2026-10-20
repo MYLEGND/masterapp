@@ -1,20 +1,36 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue the Founder-authorized canonical Forms and reusable tenant-scoped receptionist work. This reviewed step promotes the exact source identity of the canonical provider mapping correction through the existing validation-only trusted-tool process. Production app deployment, schema mutation, routing, provider changes and voice activation remain subject to their existing separate gates.",
-  "purpose": "Promote the independently reviewed provider-aware receptionist runtime identity while preserving all existing source, migration, deployment and provider safeguards.",
-  "requestId": "founder-receptionist-provider-identity-20261020-620c971d6bec",
+  "authorization": "Continue the Founder-authorized isolated website and scoped receptionist work. Promote only the independently reviewed sanitized SQL diagnostics, corrected physical rehearsal fixture and exact SQL Server boolean-default comparison through the existing nonpublishing trusted-tool process. This step authorizes no production deployment, schema mutation, routing, provider mutation or voice activation.",
+  "purpose": "Promote the five exact reviewed controls validated with real C# contracts and disposable SQL so the trusted observer can evaluate the preserved feature without changing its runtime or migration.",
+  "requestId": "founder-sql-fixture-controls-20261020-327fefddb033",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "77d31bbc9b907ad9399f1844a1a64e5cd2ef8a48",
-    "sourceRevision": "620c971d6bec0e07736939dac59dcdf729ab1fce",
+    "baseRevision": "179609bcb4fe424c041b601ccf189a0253a6177f",
+    "sourceRevision": "327fefddb033929011359066da4e7f757d23693b",
     "files": {
-      "scripts/validation-resume.py": {
+      "scripts/MigrationReleaseProbe/CandidateContract.cs": {
         "mode": "100644",
-        "blob": "43ba83eb4feab0744c7961c0762c2945219e4aab"
+        "blob": "7de395d89288bde4122a236f53e34875ea5b9a25"
+      },
+      "scripts/MigrationReleaseProbe/Rehearsal/CandidateContractTests.cs": {
+        "mode": "100644",
+        "blob": "a80926bfc9bc18583355855a8171547b3b227963"
+      },
+      "scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.cs": {
+        "mode": "100644",
+        "blob": "7f5aa2a09a57744ad482b553043db666e559855a"
+      },
+      "scripts/migration-probe-package.py": {
+        "mode": "100644",
+        "blob": "7ad84d6964e4b3935ce1024f0845bd88beab0329"
+      },
+      "scripts/test-migration-probe-package.py": {
+        "mode": "100644",
+        "blob": "f9532ed143564938b40112e7268d133182038ef4"
       }
     }
   }

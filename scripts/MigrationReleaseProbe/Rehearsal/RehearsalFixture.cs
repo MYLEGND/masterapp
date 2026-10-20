@@ -25,6 +25,48 @@ internal static class RehearsalFixture
 
     internal static async Task Run(string operation)
     {
+        try { await RunCore(operation); }
+        catch (Exception error)
+        {
+            // Preserve the original exception and failure gate. Emit only a fixed
+            // stage and classification; never SQL text, credentials or raw messages.
+            var stage = operation is "initialize" or "precondition" or "migrate" or "verify" or "adversarial"
+                ? operation : "dispatch";
+            var reason = error.GetBaseException() switch
+            {
+                SqlException sql => "SQL:" + sql.Number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ProbeObservationFailure probe when probe.Message is "INPUT_UNAVAILABLE" or
+                    "MIGRATION_COMPATIBILITY_UNPROVEN" or "PHYSICAL_SCHEMA_DRIFT" or
+                    "MERCHANT_CHECKOUT_DUPLICATE_IDENTITY_REQUIRES_REVIEW" => probe.Message,
+                OperationCanceledException => "TIMEOUT",
+                InvalidOperationException => "INVALID_OPERATION",
+                _ => "UNCLASSIFIED"
+            };
+            var types = new List<string>();
+            for (Exception? current = error; current is not null && types.Count < 4; current = current.InnerException)
+            {
+                var name = current.GetType().FullName;
+                types.Add(name is not null && System.Text.RegularExpressions.Regex.IsMatch(
+                    name, @"\A[A-Za-z_][A-Za-z0-9_.+]{0,159}\z") ? name : "UnknownExceptionType");
+            }
+            var location = "UNKNOWN";
+            foreach (var frame in new System.Diagnostics.StackTrace(error, true).GetFrames())
+            {
+                var file = Path.GetFileName(frame.GetFileName());
+                var line = frame.GetFileLineNumber();
+                if (file is not ("RehearsalFixture.cs" or "CandidateContract.cs" or "CandidateContract.Structures.cs") ||
+                    line is < 1 or > 99999) continue;
+                location = file + ":" + line.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                break;
+            }
+            Console.Error.WriteLine("LEGEND_ISOLATED_FIXTURE:UNPROVEN:" + stage + ":" + reason +
+                ":TYPES:" + string.Join(">", types) + ":LOCATION:" + location);
+            throw;
+        }
+    }
+
+    private static async Task RunCore(string operation)
+    {
         var connection = Environment.GetEnvironmentVariable("LEGEND_ISOLATED_SQL");
         var sql = new SqlConnectionStringBuilder(connection);
         if (!System.Text.RegularExpressions.Regex.IsMatch(sql.DataSource, @"^127\.0\.0\.1,[1-9][0-9]{3,4}$") ||
@@ -335,8 +377,8 @@ internal static class RehearsalFixture
                 VALUES(@accountA,0,NEWID(),'USD','owner',NEWID(),'synthetic-owner-a','UTC'),
                       (@accountB,0,NEWID(),'USD','owner',NEWID(),'synthetic-owner-b','UTC');
             INSERT dbo.ReceptionistConfigurationVersions(Id,ConfigurationJson,ConfigurationSha256,CreatedByActorId,CreatedUtc,MarketingConnectionId,Version)
-                VALUES(@configA,'{}',REPLICATE('a',64),'synthetic-actor','20260101',@connectionA,1),
-                      (@configB,'{}',REPLICATE('b',64),'synthetic-actor','20260101',@connectionB,1);
+                VALUES(@configA,'{{}}',REPLICATE('a',64),'synthetic-actor','20260101',@connectionA,1),
+                      (@configB,'{{}}',REPLICATE('b',64),'synthetic-actor','20260101',@connectionB,1);
             INSERT dbo.ReceptionistBudgetPeriods(Id,BudgetAccountId,CashCommitted,CashLimit,ConsumptionCommitted,ConsumptionLimit,EndUtc,MonthKey,
                 OpeningCashCeiling,OpeningCashCommitted,OpeningConsumptionCeiling,OpeningConsumptionCommitted,OpeningReceipt,OpeningReconciled,
                 OpeningVoiceSeconds,ReconciledThroughUtc,Revision,StartUtc,VoiceSecondsCommitted)

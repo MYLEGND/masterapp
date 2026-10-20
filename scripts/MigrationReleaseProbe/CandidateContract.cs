@@ -111,17 +111,26 @@ internal static partial class CandidateContract
                 throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
             if (column.Default.ValueKind != JsonValueKind.Null)
             {
-                var defaultValue = column.Default.ValueKind switch {
-                    JsonValueKind.String => "'" + column.Default.GetString()!.Replace("'", "''") + "'",
-                    JsonValueKind.True => "1", JsonValueKind.False => "0",
-                    JsonValueKind.Number => column.Default.GetRawText(), _ => throw new InvalidOperationException() };
                 var definition = reader.IsDBNull(4) ? "" : reader.GetString(4);
-                while (definition.StartsWith('(') && definition.EndsWith(')')) definition = definition[1..^1];
-                if (definition.StartsWith("N'")) definition = definition[1..];
-                if (definition != defaultValue) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+                if (!DefaultMatches(column, definition)) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
             }
         }
         if (!tableFound || (applied && found.Count != columns.Length))
             throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+    }
+    internal static bool DefaultMatches(Column column, string definition)
+    {
+        var defaultValue = column.Default.ValueKind switch {
+            JsonValueKind.String => "'" + column.Default.GetString()!.Replace("'", "''") + "'",
+            JsonValueKind.True => "1", JsonValueKind.False => "0",
+            JsonValueKind.Number => column.Default.GetRawText(), _ => throw new InvalidOperationException() };
+        while (definition.StartsWith('(') && definition.EndsWith(')')) definition = definition[1..^1];
+        if (definition.StartsWith("N'")) definition = definition[1..];
+        // SQL Server stores EF's CAST(0/1 AS bit) as this exact literal conversion.
+        // Do not normalize other expressions, types, styles or default kinds.
+        if (column.Type == "bit" && (column.Default.ValueKind is JsonValueKind.True or JsonValueKind.False) &&
+            definition == "CONVERT([bit],(" + defaultValue + "))")
+            definition = defaultValue;
+        return definition == defaultValue;
     }
 }
