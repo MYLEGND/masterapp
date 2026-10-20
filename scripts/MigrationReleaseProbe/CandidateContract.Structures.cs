@@ -1,4 +1,5 @@
 using System.Data.Common;
+using Microsoft.Data.SqlClient;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -158,51 +159,98 @@ internal static partial class CandidateContract
         return true;
     }
 
-    private static DbCommand Query(MasterAppDbContext db, string sql, params (string, object)[] parameters)
+    internal sealed class CatalogBatch
     {
-        var command = db.Database.GetDbConnection().CreateCommand();
-        command.CommandText = sql;
-        command.CommandTimeout = 30;
-        command.Transaction = db.Database.CurrentTransaction?.GetDbTransaction();
-        foreach (var (name, value) in parameters)
-        { var p = command.CreateParameter(); p.ParameterName = name; p.Value = value; command.Parameters.Add(p); }
-        return command;
+        internal const int MaximumCommands = 32;
+        internal sealed record Command(string Sql, (string Name, object Value)[] Parameters,
+            Func<DbDataReader, Task> Validate);
+        internal readonly List<Command> Commands = [];
+        internal void Add(string sql, Func<DbDataReader, Task> validate, params (string, object)[] parameters) =>
+            Commands.Add(new(sql, parameters, validate));
+
+        internal async Task Execute(MasterAppDbContext db, CancellationToken cancellation)
+        {
+            foreach (var commands in Commands.Chunk(MaximumCommands))
+            {
+                await using var batch = new SqlBatch((SqlConnection)db.Database.GetDbConnection(),
+                    (SqlTransaction?)db.Database.CurrentTransaction?.GetDbTransaction()) { Timeout = 30 };
+                foreach (var item in commands)
+                {
+                    var command = new SqlBatchCommand(item.Sql);
+                    foreach (var (name, value) in item.Parameters)
+                        command.Parameters.Add(new SqlParameter(name, value));
+                    batch.BatchCommands.Add(command);
+                }
+                await using var reader = await batch.ExecuteReaderAsync(cancellation);
+                await VerifyResults(reader, commands.Select(c => c.Validate).ToArray(), cancellation);
+            }
+        }
+
+        internal static async Task VerifyResults(DbDataReader reader,
+            IReadOnlyList<Func<DbDataReader, Task>> validators, CancellationToken cancellation)
+        {
+            if (validators.Count is < 1 or > MaximumCommands || reader.FieldCount == 0)
+                throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            for (var index = 0; index < validators.Count; index++)
+            {
+                if (index > 0 && !await reader.NextResultAsync(cancellation))
+                    throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+                await validators[index](reader);
+                if (await reader.ReadAsync(cancellation))
+                    throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            }
+            if (await reader.NextResultAsync(cancellation))
+                throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        }
     }
-    private static async Task VerifyStructures(MasterAppDbContext db, Entry m, bool applied, CancellationToken cancellation)
+
+    private static async Task<object> Scalar(DbDataReader reader, CancellationToken cancellation)
+    {
+        if (reader.FieldCount != 1 || !await reader.ReadAsync(cancellation))
+            throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        var result = reader.GetValue(0);
+        if (await reader.ReadAsync(cancellation)) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        return result;
+    }
+    private static void PlanStructures(CatalogBatch batch, Entry m, bool applied, CancellationToken cancellation)
     {
         if (!ValidStructures(m)) throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
         if (!applied && m.Guards.Contains(CheckoutGuard))
         {
-            await using var guard = Query(db, """
+            batch.Add("""
                 SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.CommerceOrders WHERE CheckoutAttemptId IS NOT NULL
                 GROUP BY CommerceBusinessId, CheckoutAttemptId HAVING COUNT_BIG(*) > 1) THEN 1 ELSE 0 END
-                """);
-            if (Convert.ToInt32(await guard.ExecuteScalarAsync(cancellation)) != 0)
-                throw new ProbeObservationFailure("MERCHANT_CHECKOUT_DUPLICATE_IDENTITY_REQUIRES_REVIEW");
+                """, async reader =>
+            {
+                if (Convert.ToInt32(await Scalar(reader, cancellation)) != 0)
+                    throw new ProbeObservationFailure("MERCHANT_CHECKOUT_DUPLICATE_IDENTITY_REQUIRES_REVIEW");
+            });
         }
         foreach (var t in m.Tables)
         {
-            await using var existence = Query(db, "SELECT COUNT(*) FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=@schema AND t.name=@table",
-                ("@schema", t.Schema), ("@table", t.Name));
-            if (Convert.ToInt32(await existence.ExecuteScalarAsync(cancellation)) != (applied ? 1 : 0))
-                throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            batch.Add("SELECT COUNT(*) FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=@schema AND t.name=@table",
+                async reader =>
+                {
+                    if (Convert.ToInt32(await Scalar(reader, cancellation)) != (applied ? 1 : 0))
+                        throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+                }, ("@schema", t.Schema), ("@table", t.Name));
             if (!applied) continue;
-            await VerifyIndex(db, new Index(t.Schema, t.Name, t.PrimaryKey.Name, t.PrimaryKey.Columns, true, null), true, true, false, cancellation);
+            PlanIndex(batch, new Index(t.Schema, t.Name, t.PrimaryKey.Name, t.PrimaryKey.Columns, true, null), true, true, false, cancellation);
             foreach (var key in t.UniqueKeys)
-                await VerifyIndex(db, new Index(t.Schema, t.Name, key.Name, key.Columns, true, null), true, false, true, cancellation);
+                PlanIndex(batch, new Index(t.Schema, t.Name, key.Name, key.Columns, true, null), true, false, true, cancellation);
             foreach (var f in t.ForeignKeys)
-                await VerifyForeignKey(db, new TableForeignKey(t.Schema, t.Name, f), true, cancellation);
-            await VerifyChecks(db, t, cancellation);
+                PlanForeignKey(batch, new TableForeignKey(t.Schema, t.Name, f), true, cancellation);
+            PlanChecks(batch, t, cancellation);
         }
-        foreach (var f in m.ForeignKeys) await VerifyForeignKey(db, f, applied, cancellation);
+        foreach (var f in m.ForeignKeys) PlanForeignKey(batch, f, applied, cancellation);
         foreach (var i in m.Indexes.Where(i => applied || !m.Tables.Any(t => t.Schema == i.Schema && t.Name == i.Table)))
-            await VerifyIndex(db, i, applied, false, false, cancellation);
+            PlanIndex(batch, i, applied, false, false, cancellation);
     }
 
-    private static async Task VerifyForeignKey(MasterAppDbContext db, TableForeignKey owner, bool applied, CancellationToken cancellation)
+    private static void PlanForeignKey(CatalogBatch batch, TableForeignKey owner, bool applied, CancellationToken cancellation)
     {
         var f = owner.Constraint;
-        await using var command = Query(db, """
+        batch.Add("""
             SELECT pc.name, rs.name, rt.name, rc.name, fk.delete_referential_action, fk.update_referential_action,
                    fk.is_disabled, fk.is_not_trusted, fk.is_not_for_replication
             FROM sys.foreign_keys fk JOIN sys.tables pt ON pt.object_id=fk.parent_object_id
@@ -212,66 +260,69 @@ internal static partial class CandidateContract
             JOIN sys.tables rt ON rt.object_id=fk.referenced_object_id JOIN sys.schemas rs ON rs.schema_id=rt.schema_id
             JOIN sys.columns rc ON rc.object_id=rt.object_id AND rc.column_id=fc.referenced_column_id
             WHERE ps.name=@schema AND pt.name=@table AND fk.name=@name ORDER BY fc.constraint_column_id
-            """, ("@schema", owner.Schema), ("@table", owner.Table), ("@name", f.Name));
-        await using var reader = await command.ExecuteReaderAsync(cancellation);
-        var n = 0;
-        while (await reader.ReadAsync(cancellation))
+            """, async reader =>
         {
-            if (!applied || n >= f.Columns.Length || reader.GetString(0) != f.Columns[n] || reader.GetString(1) != f.PrincipalSchema ||
-                reader.GetString(2) != f.PrincipalTable || reader.GetString(3) != f.PrincipalColumns[n] ||
-                Convert.ToInt32(reader.GetValue(4)) != 0 || Convert.ToInt32(reader.GetValue(5)) != 0 ||
-                reader.GetBoolean(6) || reader.GetBoolean(7) || reader.GetBoolean(8))
-                throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
-            n++;
-        }
-        if (applied && n != f.Columns.Length) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            var n = 0;
+            while (await reader.ReadAsync(cancellation))
+            {
+                if (!applied || n >= f.Columns.Length || reader.GetString(0) != f.Columns[n] || reader.GetString(1) != f.PrincipalSchema ||
+                    reader.GetString(2) != f.PrincipalTable || reader.GetString(3) != f.PrincipalColumns[n] ||
+                    Convert.ToInt32(reader.GetValue(4)) != 0 || Convert.ToInt32(reader.GetValue(5)) != 0 ||
+                    reader.GetBoolean(6) || reader.GetBoolean(7) || reader.GetBoolean(8))
+                    throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+                n++;
+            }
+            if (applied && n != f.Columns.Length) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        }, ("@schema", owner.Schema), ("@table", owner.Table), ("@name", f.Name));
     }
 
-    private static async Task VerifyChecks(MasterAppDbContext db, Table table, CancellationToken cancellation)
+    private static void PlanChecks(CatalogBatch batch, Table table, CancellationToken cancellation)
     {
-        await using var command = Query(db, """
+        batch.Add("""
             SELECT cc.name, cc.definition, cc.is_disabled, cc.is_not_trusted, cc.is_not_for_replication
             FROM sys.check_constraints cc JOIN sys.tables t ON t.object_id=cc.parent_object_id
             JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=@schema AND t.name=@table
-            """, ("@schema", table.Schema), ("@table", table.Name));
-        await using var reader = await command.ExecuteReaderAsync(cancellation);
-        var expected = table.Checks.ToDictionary(c => c.Name, StringComparer.Ordinal);
-        var found = new HashSet<string>(StringComparer.Ordinal);
-        while (await reader.ReadAsync(cancellation))
+            """, async reader =>
         {
-            if (!expected.TryGetValue(reader.GetString(0), out var check) || !found.Add(check.Name) ||
-                reader.GetBoolean(2) || reader.GetBoolean(3) || reader.GetBoolean(4) ||
-                CheckCanonical(reader.GetString(1), table.Columns) is not { } actual ||
-                actual != CheckCanonical(check.Sql, table.Columns))
-                throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
-        }
-        if (found.Count != expected.Count) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            var expected = table.Checks.ToDictionary(c => c.Name, StringComparer.Ordinal);
+            var found = new HashSet<string>(StringComparer.Ordinal);
+            while (await reader.ReadAsync(cancellation))
+            {
+                if (!expected.TryGetValue(reader.GetString(0), out var check) || !found.Add(check.Name) ||
+                    reader.GetBoolean(2) || reader.GetBoolean(3) || reader.GetBoolean(4) ||
+                    CheckCanonical(reader.GetString(1), table.Columns) is not { } actual ||
+                    actual != CheckCanonical(check.Sql, table.Columns))
+                    throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            }
+            if (found.Count != expected.Count) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        }, ("@schema", table.Schema), ("@table", table.Name));
     }
 
-    private static async Task VerifyIndex(MasterAppDbContext db, Index i, bool applied, bool primary, bool constraint, CancellationToken cancellation)
+    private static void PlanIndex(CatalogBatch batch, Index i, bool applied, bool primary, bool constraint, CancellationToken cancellation)
     {
-        await using var command = Query(db, """
+        batch.Add("""
             SELECT c.name, ix.is_unique, ix.is_primary_key, ix.filter_definition, ix.is_disabled,
                    ic.is_descending_key, ic.is_included_column, ix.is_hypothetical, ix.is_unique_constraint
             FROM sys.indexes ix JOIN sys.tables t ON t.object_id=ix.object_id JOIN sys.schemas s ON s.schema_id=t.schema_id
             JOIN sys.index_columns ic ON ic.object_id=ix.object_id AND ic.index_id=ix.index_id
             JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id
             WHERE s.name=@schema AND t.name=@table AND ix.name=@name ORDER BY ic.key_ordinal, ic.index_column_id
-            """, ("@schema", i.Schema), ("@table", i.Table), ("@name", i.Name));
-        await using var reader = await command.ExecuteReaderAsync(cancellation);
-        var n = 0;
-        while (await reader.ReadAsync(cancellation))
+            """, async reader =>
         {
-            var filter = reader.IsDBNull(3) ? null : reader.GetString(3);
-            // SQL Server encloses stored filter predicates in parentheses.
-            if (filter is not null && filter.StartsWith('(') && filter.EndsWith(')')) filter = filter[1..^1];
-            if (!applied || n >= i.Columns.Length || reader.GetString(0) != i.Columns[n] ||
-                reader.GetBoolean(1) != i.Unique || reader.GetBoolean(2) != primary || filter != i.Filter ||
-                reader.GetBoolean(4) || reader.GetBoolean(5) || reader.GetBoolean(6) || reader.GetBoolean(7) ||
-                reader.GetBoolean(8) != constraint) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
-            n++;
-        }
-        if (applied && n != i.Columns.Length) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            var n = 0;
+            while (await reader.ReadAsync(cancellation))
+            {
+                var filter = reader.IsDBNull(3) ? null : reader.GetString(3);
+                // SQL Server encloses stored filter predicates in parentheses.
+                if (filter is not null && filter.StartsWith('(') && filter.EndsWith(')')) filter = filter[1..^1];
+                if (!applied || n >= i.Columns.Length || reader.GetString(0) != i.Columns[n] ||
+                    reader.GetBoolean(1) != i.Unique || reader.GetBoolean(2) != primary || filter != i.Filter ||
+                    reader.GetBoolean(4) || reader.GetBoolean(5) || reader.GetBoolean(6) || reader.GetBoolean(7) ||
+                    reader.GetBoolean(8) != constraint) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+                n++;
+            }
+            if (applied && n != i.Columns.Length) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        }, ("@schema", i.Schema), ("@table", i.Table), ("@name", i.Name));
     }
 
     // SQL Server rewrites IN/BETWEEN/CAST and parentheses in stored definitions.

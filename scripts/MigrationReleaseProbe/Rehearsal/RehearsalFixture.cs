@@ -163,6 +163,7 @@ internal static class RehearsalFixture
         else if (operation == "precondition")
         {
             if (!payments && !receptionist) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+            await VerifyCatalogBatchProtocol(db, timeout.Token);
             var applied = (await db.Database.GetAppliedMigrationsAsync(timeout.Token)).ToArray();
             await CandidateContract.Verify(db, contract, applied, timeout.Token);
             if (payments)
@@ -301,6 +302,53 @@ internal static class RehearsalFixture
         foreach (var name in new[] { "ReceptionistActiveConfigurationId", "ReceptionistAdmissionEnabled",
             "ReceptionistControlRevision", "ReceptionistIngressKey", "ReceptionistProviderProjectKey" }) json.Remove(name);
         return json;
+    }
+
+    private static async Task VerifyCatalogBatchProtocol(MasterAppDbContext db, CancellationToken cancellation)
+    {
+        await db.Database.OpenConnectionAsync(cancellation);
+        var planned = new CandidateContract.CatalogBatch();
+        var observed = new List<int>();
+        // Same parameter name in33commands proves command-local parameter scope,
+        // ordering and the32/33 boundary against real SQL, on the current transaction.
+        await using (var transaction = await db.Database.BeginTransactionAsync(cancellation))
+        {
+            for (var value = 0; value < 33; value++)
+            {
+                var expected = value;
+                planned.Add("SELECT @value", async reader =>
+                {
+                    if (reader.FieldCount != 1 || !await reader.ReadAsync(cancellation) ||
+                        reader.GetInt32(0) != expected || await reader.ReadAsync(cancellation))
+                        throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+                    observed.Add(expected);
+                }, ("@value", value));
+            }
+            await planned.Execute(db, cancellation);
+            if (!observed.SequenceEqual(Enumerable.Range(0, 33)))
+                throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            await transaction.RollbackAsync(cancellation);
+        }
+        foreach (var (sql, count) in new[] {
+            ("SELECT 1", 2), ("SELECT 1; SELECT 2", 1),
+            ("SELECT 1, 2", 1), ("SELECT 1 WHERE 1=0", 1),
+            ("SELECT 1 UNION ALL SELECT 2", 1) })
+        {
+            await using var batch = new SqlBatch((SqlConnection)db.Database.GetDbConnection()) { Timeout = 30 };
+            batch.BatchCommands.Add(new SqlBatchCommand(sql));
+            await using var reader = await batch.ExecuteReaderAsync(cancellation);
+            Func<System.Data.Common.DbDataReader, Task> validate = async result =>
+            {
+                if (result.FieldCount != 1 || !await result.ReadAsync(cancellation) ||
+                    result.GetInt32(0) != 1 || await result.ReadAsync(cancellation))
+                    throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            };
+            var rejected = false;
+            try { await CandidateContract.CatalogBatch.VerifyResults(reader,
+                Enumerable.Repeat(validate, count).ToArray(), cancellation); }
+            catch (ProbeObservationFailure error) when (error.Message == "PHYSICAL_SCHEMA_DRIFT") { rejected = true; }
+            if (!rejected) throw new InvalidOperationException("Malformed catalog result stream was accepted");
+        }
     }
 
     private static string[] ReceptionistDrift(CandidateContract.Entry entry)
