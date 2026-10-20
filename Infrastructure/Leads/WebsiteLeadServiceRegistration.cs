@@ -10,6 +10,12 @@ namespace Infrastructure.Leads;
 /// </summary>
 public static class WebsiteLeadServiceRegistration
 {
+    public static IServiceCollection AddConfirmedInquiryPersistence(this IServiceCollection services)
+    {
+        services.TryAddScoped<ReceptionistInquiryAuthority>();
+        return services;
+    }
+
     public static IServiceCollection AddWebsiteLeadNotificationTransport(this IServiceCollection services)
     {
         services.TryAddScoped<IWebsiteInquiryEmailSender, GraphWebsiteInquiryEmailSender>();

@@ -49,6 +49,9 @@ public static class WebsiteLeadNotificationAuthority
         if (string.IsNullOrWhiteSpace(recipient))
             throw new InvalidOperationException("A scoped lead notification recipient is required.");
 
+        if (!ReceptionistInquiryAuthority.OwnerNotificationsEnabled(lead))
+            return new WebsiteLeadNotificationResult(false, false, false, recipient);
+
         if (lead.NotificationSentUtc.HasValue)
             return new WebsiteLeadNotificationResult(false, true, true, recipient);
 
@@ -139,6 +142,7 @@ public sealed class WebsiteLeadNotificationRecoveryWorker(
                 var lead = await db.WebsiteLeads.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
                 if (lead is null || lead.IsDeleted || lead.NotificationSentUtc.HasValue ||
                     WebsiteLeadCaptureSafety.ShouldSkipWorkstationCapture(lead) ||
+                    !ReceptionistInquiryAuthority.OwnerNotificationsEnabled(lead) ||
                     lead.CommerceBusinessId == Guid.Empty || lead.AgentTrackingProfileId == Guid.Empty ||
                     (lead.CommerceBusinessId.HasValue && lead.AgentTrackingProfileId.HasValue))
                     continue;
@@ -187,7 +191,8 @@ public sealed class WebsiteLeadNotificationRecoveryWorker(
             x.Id <= maxId && x.NotificationSentUtc == null &&
             ((x.NotificationAttemptUtc != null && x.NotificationAttemptUtc <= retryCutoff) ||
              (x.NotificationAttemptUtc == null && (x.InterestType == "LegendInquiry" ||
-                 x.InterestType == "ProtectionInquiry" || x.InterestType == "BusinessInquiry"))) &&
+                 x.InterestType == "ProtectionInquiry" || x.InterestType == "BusinessInquiry" ||
+                 x.InterestType == ReceptionistInquiryAuthority.InterestType))) &&
             !db.Set<CommerceWebsiteInquiry>().Any(inquiry => inquiry.WebsiteLeadId == x.LeadId));
         if (afterId.HasValue) query = query.Where(x => x.Id > afterId.Value);
         return query.OrderBy(x => x.Id).Take(25);

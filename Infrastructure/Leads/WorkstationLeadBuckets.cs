@@ -17,6 +17,7 @@ public static class WorkstationLeadBuckets
     public const string HealthInsurance = "HealthInsurance";
     public const string CommercialInsurance = "CommercialInsurance";
     public const string DisabilityInsurance = "DisabilityInsurance";
+    public const string ServiceInquiry = "ServiceInquiry";
 
     public static readonly string[] ProductBuckets =
     {
@@ -30,7 +31,8 @@ public static class WorkstationLeadBuckets
         HomeInsurance,
         HealthInsurance,
         CommercialInsurance,
-        DisabilityInsurance
+        DisabilityInsurance,
+        ServiceInquiry
     };
 
     public static readonly string[] LifeWorkstationQueueBuckets =
@@ -52,6 +54,7 @@ public static class WorkstationLeadBuckets
 
     private static readonly IReadOnlyDictionary<string, string> BucketAliasMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
+        ["serviceinquiry"] = ServiceInquiry,
         ["mortgageprotection"] = MortgageProtection,
         ["mortgageprotectionleads"] = MortgageProtection,
         ["mortgageprotectionrebuttals"] = MortgageProtection,

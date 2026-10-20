@@ -22,7 +22,7 @@ namespace AgentPortal.Controllers;
 [Authorize]
 [Route("WebsiteAnalytics")]
 [Route("website-analytics")]
-    public class WebsiteAnalyticsController : Controller
+    public partial class WebsiteAnalyticsController : Controller
     {
         private readonly IAnalyticsQueryService _analytics;
         private readonly IMetaAdsService _metaAds;
@@ -2275,3 +2275,4 @@ namespace AgentPortal.Controllers;
         public bool IsDeleted { get; set; }
     }
 }
+

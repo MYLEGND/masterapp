@@ -48,7 +48,8 @@ public sealed class WebsiteLeadAppNotificationService(
                 ct.ThrowIfCancellationRequested();
                 if (projected >= 100) return;
                 var notificationId = NotificationId(snapshot.LeadId);
-                if (committed.Contains(notificationId) || WebsiteLeadCaptureSafety.ShouldSkipWorkstationCapture(snapshot))
+                if (committed.Contains(notificationId) || WebsiteLeadCaptureSafety.ShouldSkipWorkstationCapture(snapshot) ||
+                    !ReceptionistInquiryAuthority.OwnerNotificationsEnabled(snapshot))
                     continue;
 
                 var actor = await ResolveRecipientAsync(snapshot, ct);
@@ -60,7 +61,9 @@ public sealed class WebsiteLeadAppNotificationService(
 
                 var title = WebsiteLeadEmailTemplate.SubjectFor(snapshot);
                 var name = $"{snapshot.FirstName} {snapshot.LastName}".Trim();
-                var detail = string.IsNullOrWhiteSpace(name)
+                var detail = snapshot.InterestType == ReceptionistInquiryAuthority.InterestType
+                    ? "A confirmed voice inquiry is ready in CRM."
+                    : string.IsNullOrWhiteSpace(name)
                     ? "A new website lead is ready in CRM."
                     : $"New website lead from {name}. Open CRM to follow up.";
 
