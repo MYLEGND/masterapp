@@ -14,6 +14,7 @@ import time
 # Fixed, redacted classifications from the read-only .NET probe.
 # These markers cannot authorize a migration or an automatic retry.
 PROBE_TERMINAL_REASONS = {
+    'UNCLASSIFIED': 'Schema probe unclassified exception; readiness unproven',
     'MUTATION_ACTIVITY_UNPROVEN': 'Database mutation activity visibility unproven',
     'MUTATION_ACTIVITY_ACTIVE': 'Database mutation activity remains active',
     'SQL_QUERY_TIMEOUT': 'Schema metadata query exceeded its bounded SQL timeout',
@@ -185,6 +186,19 @@ def observe(probe, connection, *, contract=None, activity=False, schema_only_act
                 print(lines[1], flush=True)
             else:
                 raise RuntimeError('Read-only schema proof unavailable; nontransient or unclassified failure')
+        elif len(lines) == 2 and marker in {
+                'LEGEND_SCHEMA_PROBE:UNCLASSIFIED',
+                'LEGEND_SCHEMA_PROBE:RUNTIME_INVALID_OPERATION'}:
+            diagnostic = re.fullmatch(
+                r'LEGEND_SCHEMA_FAILURE:(?:setup|contract|history|history-validation|'
+                r'catalog-engineering|catalog-feeds|catalog-founder|catalog-contract|identity|'
+                r'activity-connection|activity-permission|activity-migration-lock|'
+                r'activity-schema-locks|activity-transactions):TYPES:'
+                r'[A-Za-z_][A-Za-z0-9_.+`]{0,159}(?:,[A-Za-z_][A-Za-z0-9_.+`]{0,159}){0,3}'
+                r':SQL:(?:NONE|-?[0-9]{1,10})', lines[1])
+            if not diagnostic:
+                raise RuntimeError('Read-only schema proof unavailable; nontransient or unclassified failure')
+            print(lines[1], flush=True)
         elif len(lines) != 1:
             raise RuntimeError('Read-only schema proof unavailable; nontransient or unclassified failure')
         if marker == 'LEGEND_SCHEMA_PROBE:TRANSIENT_SQL_READ' and attempt < 2:

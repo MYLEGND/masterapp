@@ -1180,6 +1180,21 @@ class TrustedToolPromotionPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'BLOB_UNPROVEN'):
             self.invoke(fixture_kw=dict(path='scripts/MigrationReleaseProbe/Program.cs'),git_mutate=changed)
 
+    def test_exact_schema_wrapper_owners_are_nonpublishing_without_neighbor_expansion(self):
+        for path in ('scripts/release-migration.py', 'scripts/test-release-migration-probe-retry.py'):
+            with self.subTest(path=path):
+                proof=self.invoke(fixture_kw=dict(path=path))
+                self.assertFalse(proof['productionEligible']);self.assertFalse(proof['authorizesMutation'])
+        for path in ('scripts/release-migration-extra.py', 'scripts/test-release-migration-probe-retry-extra.py',
+                     'Infrastructure/Migrations/20261020160000_AddReceptionistCoordination.cs'):
+            with self.subTest(path=path),self.assertRaisesRegex(ValueError,'SCOPE_UNPROVEN'):
+                self.invoke(fixture_kw=dict(path=path))
+        for key,value in (('releaseMode','approved-only'), ('targets',['masterapp-protect']),
+                          ('cloudflareWebsiteRouting',True), ('preserveLiveTargets',True)):
+            with self.subTest(key=key),self.assertRaises(ValueError):
+                self.invoke(fixture_kw=dict(path='scripts/release-migration.py'),
+                            mutate=lambda request,admission,previous:request.update({key:value}))
+
     def test_exact_forward_correlation_owners_are_nonpublishing_without_neighbor_expansion(self):
         for path in ('scripts/deploy-approved-app.py', 'scripts/release-operation-evidence.py',
                      'scripts/test-deploy-approved-app.py', 'scripts/test-release-operation-evidence.py'):
