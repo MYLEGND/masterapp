@@ -1,36 +1,44 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue the Founder-authorized isolated website and scoped receptionist work. Promote only the independently reviewed sanitized SQL diagnostics, corrected physical rehearsal fixture and exact SQL Server boolean-default comparison through the existing nonpublishing trusted-tool process. This step authorizes no production deployment, schema mutation, routing, provider mutation or voice activation.",
-  "purpose": "Promote the five exact reviewed controls validated with real C# contracts and disposable SQL so the trusted observer can evaluate the preserved feature without changing its runtime or migration.",
-  "requestId": "founder-sql-fixture-controls-20261020-327fefddb033",
+  "authorization": "Continue the Founder-authorized isolated website and scoped receptionist work. Promote only the independently reviewed bounded schema-observer diagnostics, exact error classification, focused tests and two existing control-path admissions through the nonpublishing trusted-tool process. This step authorizes no production deployment, schema mutation, routing, provider mutation or voice activation.",
+  "purpose": "Make actual read-only schema failure evidence precise without changing SQL, history compatibility, readiness, retry rules or the preserved feature runtime.",
+  "requestId": "founder-schema-observer-diagnostics-20261020-81c02280613f",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "179609bcb4fe424c041b601ccf189a0253a6177f",
-    "sourceRevision": "327fefddb033929011359066da4e7f757d23693b",
+    "baseRevision": "990929cc8a458f39948ba38d21442f951ba2023a",
+    "sourceRevision": "81c02280613fb2a55d17741bce02355c2a253fb4",
     "files": {
-      "scripts/MigrationReleaseProbe/CandidateContract.cs": {
+      "scripts/MigrationReleaseProbe/Program.cs": {
         "mode": "100644",
-        "blob": "7de395d89288bde4122a236f53e34875ea5b9a25"
+        "blob": "ee771499d51fdadc65fd0bdd020c319272cd5f27"
       },
-      "scripts/MigrationReleaseProbe/Rehearsal/CandidateContractTests.cs": {
+      "scripts/release-migration.py": {
         "mode": "100644",
-        "blob": "a80926bfc9bc18583355855a8171547b3b227963"
+        "blob": "27ab61878183951f0b4bda885637a9ef50c517ea"
       },
-      "scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.cs": {
+      ".github/workflows/parfait-cutover-live-readonly.yml": {
         "mode": "100644",
-        "blob": "7f5aa2a09a57744ad482b553043db666e559855a"
+        "blob": "fd37660ab05551023382184b5066ee0eb00112e5"
       },
-      "scripts/migration-probe-package.py": {
+      "scripts/test-release-migration-probe-retry.py": {
         "mode": "100644",
-        "blob": "7ad84d6964e4b3935ce1024f0845bd88beab0329"
+        "blob": "3453d65877d1168480028083ae3c70f4ac637c21"
       },
-      "scripts/test-migration-probe-package.py": {
+      "scripts/test-parfait-readonly-workflow.py": {
         "mode": "100644",
-        "blob": "f9532ed143564938b40112e7268d133182038ef4"
+        "blob": "67891f19788105f53d8e30776eb88600095b3bcc"
+      },
+      "scripts/release_policy.py": {
+        "mode": "100644",
+        "blob": "2fbfabb93e444b4328ece83e7874b31882c81dfa"
+      },
+      "scripts/test-release-policy.py": {
+        "mode": "100644",
+        "blob": "23a7db8b885433ce8490f0ed996376338ac528a4"
       }
     }
   }

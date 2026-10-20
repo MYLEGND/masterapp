@@ -18,6 +18,20 @@ void TimeoutDiagnostic()
 {
     Console.Error.WriteLine($"LEGEND_SCHEMA_TIMING:{observationPhase}:{Math.Min(observationClock.ElapsedMilliseconds, 999999)}:{Math.Min(phaseClock.ElapsedMilliseconds, 999999)}");
 }
+void FailureDiagnostic(Exception error)
+{
+    // Actual type metadata and SQL number only; no message, stack, path or provider values.
+    var types = new List<string>();
+    int? sqlNumber = null;
+    for (Exception? current = error; current is not null && types.Count < 4; current = current.InnerException)
+    {
+        var name = current.GetType().FullName ?? "UNKNOWN";
+        types.Add(name.Length <= 160 && System.Text.RegularExpressions.Regex.IsMatch(name,
+            @"^[A-Za-z_][A-Za-z0-9_.+`]*$") ? name : "UNKNOWN");
+        if (current is SqlException sql) sqlNumber ??= sql.Number;
+    }
+    Console.Error.WriteLine($"LEGEND_SCHEMA_FAILURE:{observationPhase}:TYPES:{string.Join(",", types)}:SQL:{sqlNumber?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "NONE"}");
+}
 try
 {
     var inspectActivity = args.Count(arg => arg == "--activity") == 1;
@@ -448,16 +462,18 @@ catch (ProbeObservationFailure ex)
             ":" + string.Join(",", ex.SafeMigrationIds));
     Environment.ExitCode = 1;
 }
-catch (InvalidOperationException)
+catch (InvalidOperationException error)
 {
     // Provider/model failures are not evidence of migration history drift.
     Console.Error.WriteLine("LEGEND_SCHEMA_PROBE:RUNTIME_INVALID_OPERATION");
+    FailureDiagnostic(error);
     Environment.ExitCode = 1;
 }
-catch
+catch (Exception error)
 {
     // Never emit SQL/provider exception messages or connection details.
     Console.Error.WriteLine("LEGEND_SCHEMA_PROBE:UNCLASSIFIED");
+    FailureDiagnostic(error);
     Environment.ExitCode = 1;
 }
 
