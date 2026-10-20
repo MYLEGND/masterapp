@@ -8615,17 +8615,22 @@ def _historical_publication_failed_before_first_write(repository, release_job, a
         ast.get_source_segment(historical_deploy, historical_reconcile).encode()).hexdigest() in {
         'ab0084204d7623f5968fe18fb7b9f844a346e4c7d20a028c9dc350e7264d3502',
         # Approved pre-diagnostic subtype generation; same pre-submit boundary.
-        '00dd0d2f2145617c3aa22dc5f44e0d4eef948303c8f691d7a887fb42e0eb2473'})
+        '00dd0d2f2145617c3aa22dc5f44e0d4eef948303c8f691d7a887fb42e0eb2473',
+        # Reviewed pre-correlation generation: only the failed-intent exception
+        # subtype changed; provider status still precedes intent and upload.
+        'f86ffe74930ffdb5c7b6a9797569be4c653a75e861d3ffd05ef8b7900de26260'})
     historical_journal = next((node for node in ast.parse(historical_evidence).body
                                if isinstance(node, ast.ClassDef) and node.name == 'OperationJournal'), None)
     historical_intent = next((node for node in historical_journal.body
                               if isinstance(node, ast.FunctionDef) and node.name == 'before_submit'), None) if historical_journal else None
     # Schema-2 adds provenance fields to the same intent-before-write protocol.
-    # Retain the exact approved schema-1 method for negative execution evidence;
+    # Retain the exact approved schema-1 and pre-correlation schema-2 methods
+    # for negative execution evidence;
     # this never reconstructs a successful operation or permits ambiguous replay.
     prior_intent = historical_intent is not None and hashlib.sha256(
-        ast.get_source_segment(historical_evidence, historical_intent).encode()).hexdigest() == \
-        '9fd5781cd54c10c9a5fb74af4bb005f172480583c9da0396387309888e953e26'
+        ast.get_source_segment(historical_evidence, historical_intent).encode()).hexdigest() in {
+        '9fd5781cd54c10c9a5fb74af4bb005f172480583c9da0396387309888e953e26',
+        '3fa03ccdb9d20f8df43434e0059888415dd6d11b4d11d3d55872bd6b032c6691'}
     if ((function_dump(historical_deploy, 'reconcile') != function_dump(current_deploy, 'reconcile')
          and not prior_reconcile) or
             (method_dump(historical_evidence, 'OperationJournal', 'before_submit') !=

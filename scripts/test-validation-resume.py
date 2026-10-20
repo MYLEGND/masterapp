@@ -4819,21 +4819,49 @@ class HistoricalParallelVerifierTests(unittest.TestCase):
 
     def test_pre_diagnostic_nonentry_still_requires_exact_target_witness(self):
         import subprocess
-        revision = '4fe015cdbf81b5253d64558bf056cb5fcc80fa87'
-        def source(repo, checkout, path, token):
-            return subprocess.check_output(['git', 'show', revision + ':' + path], text=True)
         start = 'masterapp-protect: approved revision ' + 'b' * 40 + ', ZIP sha256 ' + 'c' * 64
         witness = ('DeploymentStatusUnavailable: Azure deployment status remained unavailable for 3 consecutive reads '
                    '(before any upload). No deployment or rollback write was replayed; resume by reconciling the exact revision.')
         ending = '\n##[error]Process completed with exit code 1.'
-        for log, expected in [(start + '\n' + witness + ending, True),
-                              (start + '\nDeploymentReconciliationRequired: unknown' + ending, False),
-                              (start + '\nSubmitting the verified immutable ZIP once.\n' + witness + ending, False),
-                              (witness + ending, False)]:
-            with patch.object(m, '_release_history_source', side_effect=source), \
-                 patch.object(m, '_release_job_log', return_value=log):
-                self.assertEqual(expected, m._historical_publication_failed_before_first_write(
-                    'owner/repo', {'id': 71, 'status': 'completed'}, 'b' * 40, 'protect', revision, 'token'))
+        for revision in ('4fe015cdbf81b5253d64558bf056cb5fcc80fa87',
+                         'ee32e1c5f9e08d17369855c250dc99d8c3e16ce0'):
+            def source(repo, checkout, path, token):
+                return subprocess.check_output(['git', 'show', revision + ':' + path], text=True)
+            for log, expected in [(start + '\n' + witness + ending, True),
+                                  (start + '\nDeploymentReconciliationRequired: unknown' + ending, False),
+                                  (start + '\nSubmitting the verified immutable ZIP once.\n' + witness + ending, False),
+                                  (witness + ending, False)]:
+                with self.subTest(revision=revision, log=log), \
+                     patch.object(m, '_release_history_source', side_effect=source), \
+                     patch.object(m, '_release_job_log', return_value=log):
+                    self.assertEqual(expected, m._historical_publication_failed_before_first_write(
+                        'owner/repo', {'id': 71, 'status': 'completed'}, 'b' * 40, 'protect', revision, 'token'))
+
+    def test_historical_nonentry_rejects_changed_intent_or_upload_order_before_logs(self):
+        import subprocess
+        deploy_path = 'scripts/deploy-approved-app.py'
+        evidence_path = 'scripts/release-operation-evidence.py'
+        publish = "        self.publisher('legend-release-operation-intent-' + self.operation_id, record)\n"
+        intent = '        self.intent = record\n'
+        guard = 'if self.history_error is not None and not allow_recovered_baseline:'
+        for revision in ('4fe015cdbf81b5253d64558bf056cb5fcc80fa87',
+                         'ee32e1c5f9e08d17369855c250dc99d8c3e16ce0'):
+            sources = {path: subprocess.check_output(['git', 'show', revision + ':' + path], text=True)
+                       for path in (deploy_path, evidence_path)}
+            changes = (
+                (evidence_path, publish + intent, intent + publish),
+                (evidence_path, guard, 'if False:'),
+                (deploy_path, '    submitted = False\n', '    azure.submit()\n    submitted = False\n'),
+            )
+            for path, before, after in changes:
+                self.assertEqual(1, sources[path].count(before))
+                altered = dict(sources, **{path: sources[path].replace(before, after, 1)})
+                with self.subTest(revision=revision, changed=path, before=before), \
+                     patch.object(m, '_release_history_source', side_effect=lambda repo, checkout, path, token: altered[path]), \
+                     patch.object(m, '_release_job_log') as logs:
+                    self.assertFalse(m._historical_publication_failed_before_first_write(
+                        'owner/repo', {'id': 71, 'status': 'completed'}, 'b' * 40, 'protect', revision, 'token'))
+                    logs.assert_not_called()
 
     def test_pre_diagnostic_component_workers_preserve_successful_receipt_compatibility(self):
         import subprocess
