@@ -87,15 +87,7 @@ internal static partial class CandidateContract
             throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
         var expected = columns.ToDictionary(c => c.Name, StringComparer.Ordinal);
         var found = new HashSet<string>(StringComparer.Ordinal);
-        batch.Add("""
-            SELECT c.name, ty.name, c.max_length, c.is_nullable, dc.definition, c.scale, c.is_computed, c.is_identity,
-                   c.precision, c.collation_name
-            FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id
-            LEFT JOIN sys.columns c ON c.object_id=t.object_id
-            LEFT JOIN sys.types ty ON ty.user_type_id=c.user_type_id
-            LEFT JOIN sys.default_constraints dc ON dc.object_id=c.default_object_id
-            WHERE s.name=@schema AND t.name=@table
-            """, async reader =>
+        batch.AddCatalog(CatalogKind.Columns, async reader =>
         {
             var tableFound = false;
             while (await reader.ReadAsync(cancellation))

@@ -4901,6 +4901,89 @@ def fast_track_attempts_proven_prewrite(repository, run, revision, token):
     return True
 
 
+def fast_track_unpublished_apps_with_migration_intent(repository, run, revision, token):
+    """Carry app selection only; an entered SQL operation remains unresolved.
+
+    Every original publication owner must positively be skipped. The migration
+    intent stays immutable and is still enforced by fresh production observation
+    and first-write admission. This predicate grants no SQL replay authority.
+    """
+    if (not is_fast_track_producer(repository, run) or run.get('status') != 'completed'
+        or run.get('conclusion') != 'failure' or type(run.get('run_attempt')) is not int
+        or not 1 <= run['run_attempt'] <= 100):
+        return False
+    path = '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW
+    source = _release_history_source(repository, run['head_sha'], path, token)
+    if source != git_show_file(revision, path):
+        return False
+    names = {'Select exact affected applications', 'Admit exact validated fast-track source',
+             'Reconcile production schema before publication',
+             'Affected App Deploy — ${{ matrix.target }}', 'Publish verified website routing'}
+    mutation = 'Apply or reconcile the exact rehearsed migration bundle'
+    no_sql = 'Reconcile fresh already-ready schema without SQL bundle or mutation'
+    if not {mutation, no_sql} <= set(named_step_blocks(source)):
+        return False
+    entered = set()
+    for attempt in range(1, run['run_attempt'] + 1):
+        payload = api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token)
+        jobs = payload.get('jobs')
+        if (not isinstance(jobs, list) or payload.get('total_count') != len(jobs)
+            or len(jobs) != len(names) or any(not isinstance(j, dict) for j in jobs)):
+            return False
+        indexed = {j.get('name'): j for j in jobs}
+        if (set(indexed) != names or any(j.get('status') != 'completed'
+            or j.get('run_id') != run['id'] or j.get('head_sha') != run['head_sha']
+            or type(j.get('run_attempt')) is not int or j['run_attempt'] != attempt for j in jobs)):
+            return False
+        if any(indexed[n].get('conclusion') != 'success' for n in
+            ('Select exact affected applications', 'Admit exact validated fast-track source')):
+            return False
+        if any(indexed[n].get('conclusion') != 'skipped' for n in
+            ('Affected App Deploy — ${{ matrix.target }}', 'Publish verified website routing')):
+            return False
+        owner = indexed['Reconcile production schema before publication']
+        steps = owner.get('steps')
+        if owner.get('conclusion') not in {'failure', 'cancelled'} or not isinstance(steps, list):
+            return False
+        selected = {}
+        for name in (mutation, no_sql):
+            matches = [s for s in steps if isinstance(s, dict) and s.get('name') == name]
+            if len(matches) != 1 or matches[0].get('status') != 'completed':
+                return False
+            selected[name] = matches[0]
+        if selected[no_sql].get('conclusion') != 'skipped':
+            return False
+        if selected[mutation].get('conclusion') == 'skipped':
+            continue
+        if selected[mutation].get('conclusion') not in {'failure', 'cancelled'}:
+            return False
+        entered.add(attempt)
+    if not entered:
+        return False
+    inventory = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+    artifacts = inventory.get('artifacts')
+    if not isinstance(artifacts, list) or inventory.get('total_count') != len(artifacts):
+        return False
+    accounted = set()
+    for artifact in artifacts:
+        if not re.fullmatch(r'legend-release-child-intent-[a-f0-9]{64}', artifact.get('name', '')):
+            continue
+        if artifact.get('expired') is not False:
+            return False
+        record = _release_history_json(repository, run['id'], artifact, 'operation.json', verify_digest=True)
+        if (record.get('child') != 'migrations' or record.get('producingAttempt') not in entered
+            or record['producingAttempt'] in accounted):
+            return False
+        _validate_child_generation(repository, run, artifact, record, 'migrations', token, 'intent')
+        if (record.get('producingRun') != run['id'] or record.get('phase') != 'intent'
+            or record.get('executionAuthority') != run['head_sha']
+            or record.get('applicationRevision') != run['head_sha']
+            or not re.fullmatch('[a-f0-9]{64}', str(record.get('partitionIdentity', '')))):
+            return False
+        accounted.add(record['producingAttempt'])
+    return accounted == entered
+
+
 def fast_track_effective_baseline(before, revision):
     """Carry unpublished app scope; this never authorizes SQL or publication replay."""
     repository = os.environ['GITHUB_REPOSITORY']
@@ -4972,7 +5055,9 @@ def fast_track_effective_baseline(before, revision):
                     (selection_stopped or admission_stopped or recovery_stopped or brand_preupload)) or preflight_noentry or all_attempts_prewrite
         completed_sql = (not prewrite and len(admissions) == 1 and admissions[0].get('conclusion') == 'success'
             and fast_track_completed_sql_unpublished(repository, prior, jobs, token))
-        if len(writes) < 3 or not (prewrite or completed_sql):
+        unpublished_with_intent = (not prewrite and not completed_sql and
+            fast_track_unpublished_apps_with_migration_intent(repository, prior, revision, token))
+        if len(writes) < 3 or not (prewrite or completed_sql or unpublished_with_intent):
             raise RuntimeError('FAST_TRACK_PREDECESSOR_REQUIRES_OPERATION_RECONCILIATION')
         pulls = api_get(repository, f'commits/{before}/pulls?per_page=100', token)
         merged = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == before

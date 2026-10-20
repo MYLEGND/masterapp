@@ -1,15 +1,37 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue the Founder-authorized canonical Forms and reusable tenant-scoped receptionist work, including spending coordination and confirmed-inquiry integration. This request covers the reviewed additive schema and managed-application source deployment after all existing source, SQL rehearsal and deployment-reconciliation gates pass. Provider funding, paid calls, forwarding and public voice activation remain separate acceptance steps; this request grants no bypass of those requirements or unresolved deployment evidence.",
-  "purpose": "Deploy the reviewed reusable scoped-business receptionist runtime, editable inactive configuration, spending coordination and canonical confirmed-inquiry integration through the existing protected release path.",
-  "requestId": "founder-scoped-receptionist-runtime-20261020-9e8f17dd6db4",
-  "releaseMode": "approved-only",
-  "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect",
-    "masterapp-parfait"
-  ],
+  "authorization": "Continue the Founder-authorized receptionist production release recovery. Promote only the independently reviewed scoped catalog observer, its focused tests, and unpublished application-scope reader through the existing nonpublishing trusted-tool process. This step authorizes no production deployment, SQL replay, routing, provider mutation or voice activation.",
+  "purpose": "Reduce repeated catalog reads while preserving physical checks and fixed deadlines, and carry only positively unpublished application scope while retaining the original migration intent and mandatory runtime SQL reconciliation.",
+  "requestId": "founder-catalog-snapshot-recovery-20261020-2159564cd7d4",
+  "releaseMode": "validate-only",
+  "targets": [],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false
+  "preserveLiveTargets": false,
+  "trustedToolPromotion": {
+    "schemaVersion": 1,
+    "baseRevision": "d77869f989b9dd141bb3f02f250e473f43eb607a",
+    "sourceRevision": "2159564cd7d4b4bac7a3531d422d2f1c67eb4323",
+    "files": {
+      "scripts/MigrationReleaseProbe/CandidateContract.cs": {
+        "mode": "100644",
+        "blob": "0de2555c653e7d94d111474d332d51e59b0285db"
+      },
+      "scripts/MigrationReleaseProbe/CandidateContract.Structures.cs": {
+        "mode": "100644",
+        "blob": "12f07ccd8b0ec1e7829471f3a7dcdbcf3de5244d"
+      },
+      "scripts/MigrationReleaseProbe/Rehearsal/CandidateContractTests.cs": {
+        "mode": "100644",
+        "blob": "1d0a644aecba90fa421e69a3ecf356812395845d"
+      },
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "3f673f12165d176a230f20b6294aaf437c197f82"
+      },
+      "scripts/test-fast-track-release.py": {
+        "mode": "100644",
+        "blob": "1c598427f56d682e08bca51e39b02926433d6758"
+      }
+    }
+  }
 }
