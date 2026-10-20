@@ -5282,13 +5282,13 @@ function nativeOrderingDocument(order=[1,2,3,4]) {
 }
 
 function nativeOrderingHtml({keys=[1,2,3,4],micro=false,dependent=true,terminal=true}={}) {
-  return '<!doctype html><html><head></head><body data-page-key="quote-auto"><main>'+ 
+  return '<!doctype html><html><head></head><body data-page-key="quote-auto"><main>'+
     '<form id="nativeForm" action="/Quote/Auto" method="post" data-form-key="quote_auto_form">'+
     '<input type="hidden" name="__RequestVerificationToken" value="test-token">'+
     '<div data-cms-id="native.steps"><h2 data-cms-id="native.heading">Insurance questions</h2>'+keys.map((key,index)=>
       '<div class="'+(micro?'lq-micro-step':'wizard-step')+'" data-'+(micro?'micro-':'')+'step="'+key+'" data-cms-native-step="'+key+'" data-cms-id="native.step.'+key+'"'+
       (dependent && key===3?' data-cms-step-after="2"':'')+(terminal && index===keys.length-1?' data-cms-step-final="true"':'')+'>'+
-      '<h3 data-cms-id="native.label.'+key+'">Question '+key+'</h3>'+ 
+      '<h3 data-cms-id="native.label.'+key+'">Question '+key+'</h3>'+
       '<label for="field'+key+'">Field '+key+'</label><input id="field'+key+'" name="field'+key+'" '+(micro?'type="radio"':'')+' value="answer'+key+'" required>'+
       '<button type="button" data-cms-step-back>Back</button><button type="button" class="btn-next">Next</button></div>').join('')+
     '</div></form></main></body></html>';

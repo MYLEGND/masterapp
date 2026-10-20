@@ -601,4 +601,3 @@ test('status proof for a different canonical state remains pending without resum
   assert.ok(![...f.document.querySelectorAll('button')].some(x => x.textContent === 'Resume original request'));
   f.dom.window.close();
 });
-
