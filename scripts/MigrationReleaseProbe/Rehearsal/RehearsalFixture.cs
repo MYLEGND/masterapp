@@ -367,8 +367,8 @@ internal static class RehearsalFixture
                 VALUES(@accountA,0,NEWID(),'USD','owner',NEWID(),'synthetic-owner-a','UTC'),
                       (@accountB,0,NEWID(),'USD','owner',NEWID(),'synthetic-owner-b','UTC');
             INSERT dbo.ReceptionistConfigurationVersions(Id,ConfigurationJson,ConfigurationSha256,CreatedByActorId,CreatedUtc,MarketingConnectionId,Version)
-                VALUES(@configA,'{}',REPLICATE('a',64),'synthetic-actor','20260101',@connectionA,1),
-                      (@configB,'{}',REPLICATE('b',64),'synthetic-actor','20260101',@connectionB,1);
+                VALUES(@configA,'{{}}',REPLICATE('a',64),'synthetic-actor','20260101',@connectionA,1),
+                      (@configB,'{{}}',REPLICATE('b',64),'synthetic-actor','20260101',@connectionB,1);
             INSERT dbo.ReceptionistBudgetPeriods(Id,BudgetAccountId,CashCommitted,CashLimit,ConsumptionCommitted,ConsumptionLimit,EndUtc,MonthKey,
                 OpeningCashCeiling,OpeningCashCommitted,OpeningConsumptionCeiling,OpeningConsumptionCommitted,OpeningReceipt,OpeningReconciled,
                 OpeningVoiceSeconds,ReconciledThroughUtc,Revision,StartUtc,VoiceSecondsCommitted)
