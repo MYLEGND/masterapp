@@ -212,10 +212,30 @@ def _audited_fast_track_observer_source(repository, run, token):
     return True
 
 
-def _attested_fast_track_observation_failure(repository, run, jobs, attempt, token):
+def _audited_current_fast_track_observation_failure_source(repository, run, token):
+    """Current command compatibility is separate from old no-write receipts."""
+    source = _release_history_source(repository, run['head_sha'], 'scripts/release-migration.py', token)
+    raw = source.encode()
+    if hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest() != '27ab61878183951f0b4bda885637a9ef50c517ea':
+        return False
+    workflow = _release_history_source(repository, run['head_sha'],
+                                       '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW, token)
+    blocks = _job_blocks(workflow)
+    return all(hashlib.sha256(blocks.get(name, '').encode()).hexdigest() == digest for name, digest in {
+        'commerce-gates': '5dcd32afac471f3401fec56abe10d572c17ff3d7cdcb2f7cc33c9c04475ecb6e',
+        'migrations': 'f38fc0e86db32fe62676f44c3e409ae776a417b81159cf2ae7df41c811142ea7',
+    }.items())
+
+
+def _attested_fast_track_observation_failure(repository, run, jobs, attempt, token, *,
+                                               current_run=None, current_attempt=None):
     import datetime
-    if (not is_fast_track_producer(repository, run) or type(attempt) is not int or attempt < 1
-            or run.get('status') != 'completed'):
+    count = run.get('run_attempt')
+    current_prior = (run.get('id') == current_run and type(current_attempt) is int
+                     and current_attempt == count and type(attempt) is int and attempt < current_attempt)
+    if (not is_fast_track_producer(repository, run) or type(attempt) is not int
+            or type(count) is not int or not 1 <= attempt <= count <= 100
+            or (run.get('status') != 'completed' and not current_prior)):
         return False
     owners = [row for row in jobs if row.get('name') == FAST_TRACK_CHILD_STEPS['migrations'][0]]
     if len(owners) != 1:
@@ -226,7 +246,8 @@ def _attested_fast_track_observation_failure(repository, run, jobs, attempt, tok
             or job.get('run_id') != run['id'] or job.get('run_attempt') != attempt
             or job.get('head_sha') != run['head_sha'] or len(steps) != 1
             or steps[0].get('status') != 'completed' or steps[0].get('conclusion') != 'failure'
-            or not _audited_fast_track_observer_source(repository, run, token)):
+            or not (_audited_fast_track_observer_source(repository, run, token)
+                    or _audited_current_fast_track_observation_failure_source(repository, run, token))):
         return False
     # In these audited complete sources, migration_stage preserves raw active
     # only during initial schema-observation. Post-bundle observation always
@@ -257,12 +278,16 @@ def _attested_fast_track_observation_failure(repository, run, jobs, attempt, tok
         return False
 
 
-def attested_fast_track_migration_prewrite(repository, run, jobs, token, *, attempt=None):
+def attested_fast_track_migration_prewrite(repository, run, jobs, token, *, attempt=None,
+                                            current_run=None, current_attempt=None):
     """Authenticate a terminal pre-bundle failure, never infer it from no receipt."""
     import datetime
     # Original observer failures are prewrite even when later sibling reruns
     # succeeded. Authenticate each original invocation, never the later outcome.
-    if attempt is not None and _attested_fast_track_observation_failure(repository, run, jobs, attempt, token):
+    if attempt is None and run.get('status') == 'completed':
+        attempt = run.get('run_attempt')  # Original job must independently match this exact attempt.
+    if attempt is not None and _attested_fast_track_observation_failure(
+            repository, run, jobs, attempt, token, current_run=current_run, current_attempt=current_attempt):
         return True
     if (not is_fast_track_producer(repository, run) or run.get('status') != 'completed'
         or run.get('conclusion') != 'failure' or run.get('run_attempt') != 1):
@@ -519,7 +544,9 @@ def fast_track_child_attempts(repository, child, token, *, current_run=None, cur
                 raise RuntimeError('FAST_TRACK_CHILD_STEP_UNPROVEN')
             if steps[0].get('conclusion') == 'skipped' or steps[0].get('status') == 'queued':
                 continue
-            if child == 'migrations' and attested_fast_track_migration_prewrite(repository, run, jobs, token, attempt=attempt):
+            if child == 'migrations' and attested_fast_track_migration_prewrite(
+                    repository, run, jobs, token, attempt=attempt,
+                    current_run=current_run, current_attempt=current_attempt):
                 continue
             if child == 'routing-cloudflare' and attested_fast_track_router_prewrite(repository, run, jobs, token):
                 continue
@@ -4865,7 +4892,11 @@ def fast_track_attempts_proven_prewrite(repository, run, revision, token):
             return False
         for name in nonentered:
             matches = [step for step in steps if isinstance(step, dict) and step.get('name') == name]
-            if len(matches) != 1 or matches[0].get('status') != 'completed' or matches[0].get('conclusion') != 'skipped':
+            if len(matches) != 1 or matches[0].get('status') != 'completed':
+                return False
+            if matches[0].get('conclusion') != 'skipped' and not (
+                    name == 'Apply or reconcile the exact rehearsed migration bundle'
+                    and _attested_fast_track_observation_failure(repository, run, jobs, attempt, token)):
                 return False
     return True
 

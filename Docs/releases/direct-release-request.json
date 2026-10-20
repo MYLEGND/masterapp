@@ -1,15 +1,25 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue the Founder-authorized canonical Forms and reusable tenant-scoped receptionist work, including spending coordination and confirmed-inquiry integration. This request covers the reviewed additive schema and managed-application source deployment after all existing source, SQL rehearsal and deployment-reconciliation gates pass. Provider funding, paid calls, forwarding and public voice activation remain separate acceptance steps; this request grants no bypass of those requirements or unresolved deployment evidence.",
-  "purpose": "Deploy the reviewed reusable scoped-business receptionist runtime, editable inactive configuration, spending coordination and canonical confirmed-inquiry integration through the existing protected release path.",
-  "requestId": "founder-scoped-receptionist-runtime-20261020-8a4d5a3456fe",
-  "releaseMode": "approved-only",
-  "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect",
-    "masterapp-parfait"
-  ],
+  "authorization": "Continue the Founder-authorized receptionist production release recovery. Promote only the independently reviewed current-contract initial-observation nonentry reader and focused tests through the existing nonpublishing trusted-tool process. This step authorizes no production deployment, schema mutation, routing, provider mutation or voice activation.",
+  "purpose": "Preserve positive current observer nonentry across completed predecessors and explicitly bound same-run attempts without weakening live database activity or first-write gates.",
+  "requestId": "founder-current-prewrite-recovery-20261020-b7e4650737bf",
+  "releaseMode": "validate-only",
+  "targets": [],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false
+  "preserveLiveTargets": false,
+  "trustedToolPromotion": {
+    "schemaVersion": 1,
+    "baseRevision": "b91b52c3d3b093d5d2c8034613a76575654082f4",
+    "sourceRevision": "b7e4650737bf5f835eb804590e6aaf8de4144c01",
+    "files": {
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "450ed0dad168b87971532213a0ef3e2fd3a6b9d4"
+      },
+      "scripts/test-fast-track-release.py": {
+        "mode": "100644",
+        "blob": "347e2c9513e35a7f10100ed688c8968c460c7ac3"
+      }
+    }
+  }
 }
