@@ -603,6 +603,30 @@ def prepare_observed_fast_track(revision, directory, observation_path, probe_dir
 
 
 def test_schema_contract(directory):
+    # Execute the same trusted offline boundary used before Production sign-in.
+    # The future-entry cases run when that actual migration is in the assembly;
+    # the observer-only precursor still exercises exact/unknown/lossless checks.
+    observer = directory / 'trusted-contract-observer'
+    subprocess.run(['dotnet', 'publish', 'scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj',
+        '-c', 'Release', '--nologo', '-o', str(observer), '-m:1', '-nr:false',
+        '-p:UseSharedCompilation=false'], check=True)
+    env = {key: os.environ[key] for key in ('PATH', 'HOME', 'DOTNET_ROOT') if key in os.environ}
+    tested = subprocess.run(['dotnet', str(observer / 'MigrationReleaseProbe.dll'), '--test-contract-compatibility'],
+        env=env, capture_output=True, text=True, timeout=120, check=False)
+    if tested.returncode or 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS' not in tested.stdout.splitlines():
+        raise RuntimeError('Trusted schema compatibility contract failed')
+    exported = subprocess.run(['dotnet', str(observer / 'MigrationReleaseProbe.dll'), '--export-contract'],
+        env=env, capture_output=True, text=True, timeout=120, check=True)
+    current = json.loads(exported.stdout)
+    reviewed_id = '20261020160000_AddReceptionistCoordination'
+    entries = [row for row in current['migrations'] if row.get('id') == reviewed_id]
+    present = Path('Infrastructure/Migrations/' + reviewed_id + '.cs').is_file()
+    if present or entries:
+        if (len(entries) != 1 or current['migrations'][-1] != entries[0]
+            or hashlib.sha256(json.dumps(entries[0], sort_keys=True, separators=(',', ':'),
+                ensure_ascii=True, allow_nan=False).encode()).hexdigest() != AUTHORITY.REVIEWED_RECEPTIONIST_ENTRY
+            or 'LEGEND_REVIEWED_APPEND_TEST:PROVEN' not in tested.stdout.splitlines()):
+            raise RuntimeError('Reviewed migration entry contract failed')
     subprocess.run(['dotnet', 'publish', 'scripts/MigrationReleaseProbe/Rehearsal/MigrationRehearsal.csproj',
         '-c', 'Release', '--nologo', '-o', str(directory), '-m:1', '-nr:false',
         '-p:UseSharedCompilation=false'], check=True)

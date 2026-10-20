@@ -2558,25 +2558,59 @@ def fast_track_scope(paths):
     # ownership: an unknown sibling is not silently admitted.
     shared_server = {
         'Domain/Entities/ClientSubscriptionOffer.cs',
+        'Domain/Entities/MarketingConnection.cs',
+        'Domain/Entities/ReceptionistCoordination.cs',
         'Infrastructure/Billing/BillingEntitlementService.cs',
         'Infrastructure/Billing/BillingStateMapper.cs',
         'Infrastructure/Billing/MasterAppBillingOrchestrator.cs',
         'Infrastructure/Businesses/BusinessWorkspaceControllerBase.cs',
+        'Infrastructure/Businesses/BusinessWorkspaceControllerBase.Receptionist.cs',
         'Infrastructure/Businesses/CommerceBusinessProvisioningService.cs',
+        'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.cs',
         'Infrastructure/Households/HouseholdMembershipService.cs',
         'Infrastructure/Infrastructure.csproj',
         'Infrastructure/Diagnostics/RoutineSqlPolling.cs',
         'Infrastructure/Messaging/LegendCallSignalDeliveryHostedService.cs',
         'Infrastructure/Notifications/ApplePushDeliveryHostedService.cs',
         'Infrastructure/Notifications/FirebasePushDeliveryHostedService.cs',
+        'Infrastructure/Leads/IWebsiteLifeLeadCaptureService.cs',
+        'Infrastructure/Leads/ReceptionistInquiryAuthority.cs',
+        'Infrastructure/Leads/ReceptionistInquiryContracts.cs',
         'Infrastructure/Leads/WebsiteInquiryAuthority.cs',
+        'Infrastructure/Leads/WebsiteIntakeRecipientResolver.cs',
         'Infrastructure/Leads/WebsiteLeadAppNotificationService.cs',
         'Infrastructure/Leads/WebsiteLeadEmailTemplate.cs',
         'Infrastructure/Leads/WebsiteLeadNotificationAuthority.cs',
+        'Infrastructure/Leads/WebsiteLeadServiceRegistration.cs',
         'Infrastructure/Leads/WebsiteLeadSubmission.cs',
+        'Infrastructure/Leads/WebsiteLifeLeadCaptureService.cs',
+        'Infrastructure/Leads/WorkstationLeadBuckets.cs',
+        'Infrastructure/Reception/IOpenAiReceptionistClient.cs',
+        'Infrastructure/Reception/OpenAiReceptionistClient.cs',
+        'Infrastructure/Reception/OpenAiReceptionistProtocol.cs',
+        'Infrastructure/Reception/ReceptionistAdmissionService.cs',
+        'Infrastructure/Reception/ReceptionistAdmissionService.Accounting.cs',
+        'Infrastructure/Reception/ReceptionistAdmissionService.Operator.cs',
+        'Infrastructure/Reception/ReceptionistAdmissionService.ProviderWork.cs',
+        'Infrastructure/Reception/ReceptionistAdmissionService.Runtime.cs',
+        'Infrastructure/Reception/ReceptionistApplicationContracts.cs',
+        'Infrastructure/Reception/ReceptionistApplicationServices.cs',
+        'Infrastructure/Reception/ReceptionistContracts.cs',
+        'Infrastructure/Reception/ReceptionistCredentialEnvelope.cs',
+        'Infrastructure/Reception/ReceptionistIngressController.cs',
+        'Infrastructure/Reception/ReceptionistOperatorContracts.cs',
+        'Infrastructure/Reception/ReceptionistOperatorService.cs',
+        'Infrastructure/Reception/ReceptionistRuntimeAuthority.cs',
+        'Infrastructure/Reception/ReceptionistRuntimeWorker.cs',
+        'Infrastructure/Reception/ReceptionistServiceRegistration.cs',
+        'Infrastructure/Reception/ReceptionistSetupForms.cs',
+        'Infrastructure/Reception/ReceptionistSidebandProtocol.cs',
+        'Infrastructure/Reception/ReceptionistSql.cs',
         'SHARED/Analytics/AiSafeAnalyticsPayload.cs',
         'SHARED/Analytics/GrowthEconomicsAndOpenAiFeedContracts.cs',
         'SHARED/Analytics/MarketingManagerContracts.cs',
+        'SHARED/Analytics/ReceptionistConfiguration.cs',
+        'SHARED/Analytics/ReceptionistSetup.cs',
     }
     linked = {}
     for key, row in RELEASE_TARGETS.items():
@@ -2666,7 +2700,8 @@ def fast_track_scope(paths):
               for key, row in RELEASE_TARGETS.items() if key in selected]
     schema = any(path.startswith('Infrastructure/Migrations/') or path in {
         'Infrastructure/Infrastructure.csproj',
-        'Infrastructure/Data/MasterAppDbContext.cs', 'Infrastructure/Data/Configurations/CommercePaymentModel.cs'} for path in paths)
+        'Infrastructure/Data/MasterAppDbContext.cs', 'Infrastructure/Data/Configurations/CommercePaymentModel.cs',
+        'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.cs'} for path in paths)
     backend = schema or bool(shared_server.intersection(paths)) or any(path.startswith(('CommerceCore/', 'Infrastructure/Commerce/', 'Infrastructure/WebsiteRuntime/',
         'Infrastructure/Analytics/', 'Infrastructure/WebsitePublishing/', 'Infrastructure/WebsiteEditing/',
         'Domain/Entities/Commerce', 'Legend-Cloudflare/src/website-routing/')) or path in {
@@ -3302,6 +3337,7 @@ WORKFLOWS = {
                     "AgentPortal.Tests/Tracking*Tests.cs",
                     "AgentPortal.Tests/QuoteProductInstrumentationContractTests.cs",
                     "AgentPortal.Tests/ProtectLeadModalInquiryTests.cs",
+                    "AgentPortal.Tests/Receptionist*Tests.cs",
                 ) + MARKETING_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "exclude_paths": DIAGNOSTICS_SOURCE,
                 "materializes": ("compile-regression",),
@@ -6083,6 +6119,52 @@ def migration_contract_static_styles_only(candidate, approved):
         for p in changed)
 
 
+# Exact independently reviewed runtime closures, using the unchanged authority
+# algorithm. The entry digest below uses sorted compact Python JSON; the trusted
+# C# observer separately pins its System.Text.Json representation (d2da70a...).
+REVIEWED_RECEPTIONIST_BASE_RUNTIME = '22534ca70dc760d4c10e2c9726346c84315d2b7179c0acf87db49bf55372bedc'
+REVIEWED_RECEPTIONIST_RUNTIME = '2f07f87d78e0e8e95fa83423161dd6e55553c47238d6acb35bc0d67119b0e283'
+REVIEWED_RECEPTIONIST_ENTRY = 'c457b4d88db0b998b778b2a789e49412b6218e9b87b4f511de0746d739087c8b'
+
+
+def reviewed_receptionist_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
+    """One reviewed dependency closure and declarative suffix, never a generic append waiver.
+
+    These are the existing full migration_probe_identity runtime hashes, with all
+    paths/modes/blobs retained. The trusted tools are promoted first; the feature
+    candidate must inherit them byte-for-byte. Any runtime, model, migration,
+    build input or authority change requires a new independent review.
+    """
+    if (trusted.get('runtimeIdentity') != REVIEWED_RECEPTIONIST_BASE_RUNTIME
+        or current.get('runtimeIdentity') != REVIEWED_RECEPTIONIST_RUNTIME
+        or not current.get('toolIdentity') or current.get('toolIdentity') != trusted.get('toolIdentity')
+        or not current.get('executionIdentity') or current.get('executionIdentity') != trusted.get('executionIdentity')):
+        return False
+    if (not isinstance(contract, dict) or not isinstance(approved_contract, dict)
+        or set(contract) != {'schemaVersion', 'migrations'} or set(approved_contract) != set(contract)
+        or type(contract['schemaVersion']) is not int or contract['schemaVersion'] != 3
+        or type(approved_contract['schemaVersion']) is not int or approved_contract['schemaVersion'] != 3
+        or not isinstance(contract['migrations'], list) or not isinstance(approved_contract['migrations'], list)
+        or not 1 <= len(approved_contract['migrations']) < 10000
+        or len(contract['migrations']) != len(approved_contract['migrations']) + 1
+        or contract['migrations'][:-1] != approved_contract['migrations']):
+        return False
+    entry = contract['migrations'][-1]
+    if (not isinstance(entry, dict) or entry.get('id') != '20261020160000_AddReceptionistCoordination'
+        or entry.get('supported') is not True
+        or hashlib.sha256(json.dumps(entry, sort_keys=True, separators=(',', ':'),
+            ensure_ascii=True, allow_nan=False).encode()).hexdigest() !=
+            REVIEWED_RECEPTIONIST_ENTRY):
+        return False
+    # Only Git objects are inspected. No candidate checkout, script, assembly or
+    # build is executed by the trusted credentialed observer.
+    if subprocess.run(['git', 'merge-base', '--is-ancestor', approved, candidate], capture_output=True).returncode:
+        return False
+    if subprocess.run(['git', 'diff', '--quiet', approved, candidate, '--', 'scripts', '.github'], capture_output=True).returncode:
+        return False
+    return True
+
+
 def candidate_migration_contract_proven(candidate, approved, contract, approved_contract):
     """Candidate metadata cannot declare its own completeness or safety.
 
@@ -6094,6 +6176,12 @@ def candidate_migration_contract_proven(candidate, approved, contract, approved_
     trusted = migration_probe_identity(approved, approved)
     rule = 'approved-definitions-exact'
     if current['runtimeIdentity'] != trusted['runtimeIdentity']:
+        if reviewed_receptionist_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
+            # This exact runtime pair must carry the reviewed suffix. It cannot
+            # fall back to equality and silently omit the pending migration.
+            return {'state': 'proven', 'rule': 'approved-prefix-reviewed-receptionist-entry',
+                    'runtimeIdentity': current['runtimeIdentity'],
+                    'approvedRuntimeIdentity': trusted['runtimeIdentity']}
         if (current.get('toolIdentity') != trusted.get('toolIdentity') or
             current.get('executionIdentity') != trusted.get('executionIdentity') or
             not migration_contract_static_styles_only(candidate, approved)):

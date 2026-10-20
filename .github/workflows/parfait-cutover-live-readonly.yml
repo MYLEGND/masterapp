@@ -131,6 +131,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-dotnet@v4
         with:
@@ -144,17 +145,51 @@ jobs:
           artifact-ids: ${{ needs.validated-observer.outputs.contract-id }}
           path: ${{ runner.temp }}/parfait-candidate-contract
           merge-multiple: true
-      - name: Require candidate contract equal immutable trusted schema authority
+      - name: Require exact candidate inputs and trusted schema compatibility before sign-in
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           dotnet "$RUNNER_TEMP/parfait-trusted-observer/MigrationReleaseProbe.dll" --export-contract > "$RUNNER_TEMP/trusted-contract.json"
           python3 - <<'PYCONTRACT'
-          import json,os,pathlib
+          import importlib.util,json,os,pathlib,re,subprocess
           root=pathlib.Path(os.environ['RUNNER_TEMP'])
           candidate=root/'parfait-candidate-contract/migration-contract.json'
           if candidate.is_symlink() or candidate.stat().st_size>4*1024*1024:
               raise SystemExit('TRUSTED_CANDIDATE_CONTRACT_UNPROVEN')
-          if json.loads(candidate.read_text())!=json.loads((root/'trusted-contract.json').read_text()):
-              raise SystemExit('TRUSTED_SCHEMA_CONTRACT_PROMOTION_REQUIRED')
+          revision,approved=os.environ['CANDIDATE_SHA'],os.environ['GITHUB_SHA']
+          if not all(re.fullmatch('[a-f0-9]{40}',value) for value in (revision,approved)):
+              raise SystemExit('TRUSTED_SCHEMA_REVISION_UNPROVEN')
+          if subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()!=approved:
+              raise SystemExit('TRUSTED_SCHEMA_CHECKOUT_CHANGED')
+          subprocess.run(['git','merge-base','--is-ancestor',approved,revision],check=True)
+          spec=importlib.util.spec_from_file_location('authority','scripts/validation-resume.py')
+          authority=importlib.util.module_from_spec(spec);spec.loader.exec_module(authority)
+          branch=authority.api_get(os.environ['GITHUB_REPOSITORY'],
+              'git/ref/heads/'+authority.FAST_TRACK_PR_BASE,os.environ['GITHUB_TOKEN'])
+          if branch.get('object',{}).get('sha')!=approved:
+              raise SystemExit('TRUSTED_SCHEMA_HEAD_CHANGED')
+          def unique(pairs):
+              result={}
+              for key,value in pairs:
+                  if key in result:raise SystemExit('TRUSTED_CANDIDATE_CONTRACT_UNPROVEN')
+                  result[key]=value
+              return result
+          contract=json.loads(candidate.read_text(),object_pairs_hook=unique)
+          trusted=json.loads((root/'trusted-contract.json').read_text(),object_pairs_hook=unique)
+          proof=authority.candidate_migration_contract_proven(revision,approved,contract,trusted)
+          # Only this immutable trusted DLL runs here. Candidate assemblies are
+          # built and exercised exclusively in credential-free jobs.
+          result=subprocess.run(['dotnet',str(root/'parfait-trusted-observer/MigrationReleaseProbe.dll'),
+              '--validate-contract',str(candidate)],capture_output=True,text=True,timeout=60,check=True)
+          verified=json.loads(result.stdout)
+          expected='approved-prefix-reviewed-receptionist-entry' if proof['rule']=='approved-prefix-reviewed-receptionist-entry' else 'approved-definitions-exact'
+          if (verified.get('schemaVersion')!=1 or verified.get('purpose')!='trusted-schema-contract-compatibility'
+              or verified.get('authorizesMutation') is not False or verified.get('rule')!=expected
+              or any(not re.fullmatch('[a-f0-9]{64}',str(verified.get(key,'')))
+                  for key in ('trustedContractSha256','candidateContractSha256'))):
+              raise SystemExit('TRUSTED_SCHEMA_CONTRACT_COMPATIBILITY_UNPROVEN')
+          (root/'trusted-contract-proof.json').write_text(json.dumps(dict(proof,observer=verified),sort_keys=True)+'\n')
+          print('TRUSTED_SCHEMA_CONTRACT_COMPATIBILITY:PROVEN:'+proof['rule'])
           PYCONTRACT
       - name: Azure production sign-in (read-only queries only)
         uses: azure/login@v2
@@ -284,6 +319,7 @@ jobs:
                           pass  # Keep the original classified failure; never turn inventory into readiness.
           report=dict(schemaVersion=1,purpose='read-only-schema-plan',authorizesMutation=False,
               candidate=os.environ['CANDIDATE_SHA'],toolRevision=os.environ['GITHUB_SHA'],
+              contractCompatibility=json.loads((root/'trusted-contract-proof.json').read_text()),
               contractDigest=hashlib.sha256((root/'parfait-candidate-contract/migration-contract.json').read_bytes()).hexdigest(),
               contractArtifactId=int(os.environ['CONTRACT_ARTIFACT_ID']),
               observerArtifactId=int(os.environ['OBSERVER_ARTIFACT_ID']),runId=os.environ['GITHUB_RUN_ID'],

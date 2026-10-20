@@ -1,4 +1,6 @@
 using System.Data.Common;
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Infrastructure.Data;
@@ -12,7 +14,10 @@ internal static partial class CandidateContract
     internal sealed record Key(string Name, string[] Columns);
     internal sealed record ForeignKey(string Name, string[] Columns, string PrincipalSchema,
         string PrincipalTable, string[] PrincipalColumns);
-    internal sealed record Table(string Schema, string Name, Column[] Columns, Key PrimaryKey, ForeignKey[] ForeignKeys);
+    internal sealed record TableForeignKey(string Schema, string Table, ForeignKey Constraint);
+    internal sealed record CheckConstraint(string Name, string Sql);
+    internal sealed record Table(string Schema, string Name, Column[] Columns, Key PrimaryKey,
+        ForeignKey[] ForeignKeys, Key[] UniqueKeys, CheckConstraint[] Checks);
     internal sealed record Index(string Schema, string Table, string Name, string[] Columns, bool Unique, string? Filter);
     // Recognize precisely the reviewed read-only precondition. Never serialize or
     // execute arbitrary candidate SQL in the observer that has production access.
@@ -24,36 +29,43 @@ internal static partial class CandidateContract
         """;
     private static string Normalize(string value) => Regex.Replace(value.Trim(), @"\s+", " ");
     private static Column DescribeColumn(AddColumnOperation c) => new(c.Schema ?? "dbo", c.Table,
-        c.Name, c.ColumnType ?? "", c.IsNullable, JsonSerializer.SerializeToElement(c.DefaultValue));
+        c.Name, c.ColumnType ?? "", c.IsNullable, JsonSerializer.SerializeToElement(c.DefaultValue),
+        c.Precision, c.Scale, c.Collation);
+    private static ForeignKey DescribeForeignKey(AddForeignKeyOperation f) => new(f.Name, f.Columns,
+        f.PrincipalSchema ?? "dbo", f.PrincipalTable, f.PrincipalColumns ?? []);
     private static bool PlainColumn(AddColumnOperation c, bool newTable) =>
-        c.ComputedColumnSql is null && c.DefaultValueSql is null && c.Collation is null &&
+        c.ComputedColumnSql is null && c.DefaultValueSql is null &&
+        c.Collation is null or "Latin1_General_100_BIN2" &&
         !c.IsRowVersion && !c.GetAnnotations().Any() &&
-        (newTable || c.IsNullable || c.DefaultValue is string or int or long or bool);
+        (newTable || c.IsNullable || c.DefaultValue is string or int or long or bool || c.DefaultValue is Guid g && g == Guid.Empty);
+    private static bool PlainForeignKey(AddForeignKeyOperation f) => !f.GetAnnotations().Any() &&
+        f.OnDelete is ReferentialAction.NoAction or ReferentialAction.Restrict && f.OnUpdate == ReferentialAction.NoAction;
 
     internal static Entry Describe(string id, IReadOnlyList<MigrationOperation> operations)
     {
         var columns = operations.OfType<AddColumnOperation>().Select(DescribeColumn).ToArray();
         var tables = operations.OfType<CreateTableOperation>().Select(t => new Table(t.Schema ?? "dbo", t.Name,
-            t.Columns.Select(DescribeColumn).ToArray(),
-            new Key(t.PrimaryKey?.Name ?? "", t.PrimaryKey?.Columns ?? []),
-            t.ForeignKeys.Select(f => new ForeignKey(f.Name, f.Columns, f.PrincipalSchema ?? "dbo",
-                f.PrincipalTable, f.PrincipalColumns ?? [])).ToArray())).ToArray();
+            t.Columns.Select(DescribeColumn).ToArray(), new Key(t.PrimaryKey?.Name ?? "", t.PrimaryKey?.Columns ?? []),
+            t.ForeignKeys.Select(DescribeForeignKey).ToArray(),
+            t.UniqueConstraints.Select(k => new Key(k.Name, k.Columns)).ToArray(),
+            t.CheckConstraints.Select(c => new CheckConstraint(c.Name, c.Sql)).ToArray())).ToArray();
         var indexes = operations.OfType<CreateIndexOperation>().Select(i => new Index(i.Schema ?? "dbo",
             i.Table, i.Name, i.Columns, i.IsUnique, i.Filter)).ToArray();
+        var foreignKeys = operations.OfType<AddForeignKeyOperation>().Select(f =>
+            new TableForeignKey(f.Schema ?? "dbo", f.Table, DescribeForeignKey(f))).ToArray();
         var guards = operations.OfType<SqlOperation>().Select(s =>
             !s.SuppressTransaction && Normalize(s.Sql) == Normalize(CheckoutGuardSql) ? CheckoutGuard : "unknown").ToArray();
         var supported = operations.Count > 0 && operations.All(op => !op.GetAnnotations().Any() && op switch {
             AddColumnOperation c => PlainColumn(c, false),
             CreateTableOperation t => t.PrimaryKey is not null && !t.PrimaryKey.GetAnnotations().Any() &&
-                t.UniqueConstraints.Count == 0 && t.CheckConstraints.Count == 0 &&
-                t.Columns.All(c => PlainColumn(c, true)) &&
-                t.ForeignKeys.All(f => !f.GetAnnotations().Any() &&
-                    f.OnDelete is ReferentialAction.NoAction or ReferentialAction.Restrict && f.OnUpdate == ReferentialAction.NoAction),
+                t.UniqueConstraints.All(k => !k.GetAnnotations().Any()) && t.CheckConstraints.All(c => !c.GetAnnotations().Any()) &&
+                t.Columns.All(c => PlainColumn(c, true)) && t.ForeignKeys.All(PlainForeignKey),
             CreateIndexOperation i => i.IsDescending is null || i.IsDescending.All(d => !d),
+            AddForeignKeyOperation f => PlainForeignKey(f),
             SqlOperation s => !s.SuppressTransaction && Normalize(s.Sql) == Normalize(CheckoutGuardSql),
             _ => false
         });
-        var entry = new Entry(id, supported, columns, tables, indexes, guards);
+        var entry = new Entry(id, supported, columns, tables, indexes, guards, foreignKeys);
         return entry with { Supported = supported && ValidStructures(entry) };
     }
 
@@ -61,19 +73,52 @@ internal static partial class CandidateContract
     private static bool Names(string[]? values) => values is { Length: > 0 and <= 128 } &&
         values.All(Name) && values.Distinct(StringComparer.Ordinal).Count() == values.Length;
     private static bool Type(string? value) => value is not null && Regex.IsMatch(value,
-        @"^(?:nvarchar|varchar)\((?:max|[1-9][0-9]{0,4})\)$|^(?:int|bigint|bit|uniqueidentifier|datetime2)$");
+        @"^(?:nvarchar|varchar)\((?:max|[1-9][0-9]{0,4})\)$|^(?:int|bigint|bit|uniqueidentifier|datetime2|decimal\(20,6\))$");
     private static bool ValidColumn(Column? c) => c is not null && Name(c.Schema) && Name(c.Table) && Name(c.Name) && Type(c.Type) &&
+        (c.Type == "decimal(20,6)" ? c.Precision == 20 && c.Scale == 6 : c.Precision is null && c.Scale is null) &&
+        (c.Collation is null || c.Collation == "Latin1_General_100_BIN2" && (c.Type.StartsWith("nvarchar(") || c.Type.StartsWith("varchar("))) &&
         c.Default.ValueKind is JsonValueKind.Null or JsonValueKind.String or JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False;
+    private static bool ValidForeignKey(ForeignKey? f) => f is not null && Name(f.Name) && Names(f.Columns) &&
+        Name(f.PrincipalSchema) && Name(f.PrincipalTable) && Names(f.PrincipalColumns) && f.Columns.Length == f.PrincipalColumns.Length;
+    private static bool AddedNullable(Entry m, string name, string type) => m.Columns.Any(c =>
+        c.Schema == "dbo" && c.Table == "MarketingConnections" && c.Name == name && c.Type == type &&
+        c.Nullable && c.Default.ValueKind == JsonValueKind.Null);
+    private static bool MarketingIndex(Entry m, Index i)
+    {
+        if (i.Schema != "dbo" || i.Table != "MarketingConnections") return false;
+        if (i.Name == "IX_MarketingConnections_Id_ReceptionistActiveConfigurationId")
+            return !i.Unique && i.Filter is null && i.Columns.SequenceEqual(new[] { "Id", "ReceptionistActiveConfigurationId" }) &&
+                AddedNullable(m, "ReceptionistActiveConfigurationId", "uniqueidentifier");
+        foreach (var column in new[] { "ReceptionistIngressKey", "ReceptionistProviderProjectKey" })
+            if (i.Name == "IX_MarketingConnections_Provider_" + column)
+                return i.Unique && i.Columns.SequenceEqual(new[] { "Provider", column }) &&
+                    i.Filter == "[" + column + "] IS NOT NULL" && AddedNullable(m, column, "nvarchar(200)") &&
+                    m.Columns.Single(c => c.Schema == "dbo" && c.Table == i.Table && c.Name == column).Collation == "Latin1_General_100_BIN2";
+        return false;
+    }
+    private static bool MarketingForeignKey(Entry m, TableForeignKey f)
+    {
+        var key = f.Constraint;
+        var principal = m.Tables.SingleOrDefault(t => t.Schema == "dbo" && t.Name == "ReceptionistConfigurationVersions");
+        return f.Schema == "dbo" && f.Table == "MarketingConnections" &&
+            key.Name == "FK_MarketingConnections_ReceptionistConfigurationVersions_Id_ReceptionistActiveConfigurationId" &&
+            key.Columns.SequenceEqual(new[] { "Id", "ReceptionistActiveConfigurationId" }) &&
+            key.PrincipalSchema == "dbo" && key.PrincipalTable == "ReceptionistConfigurationVersions" &&
+            key.PrincipalColumns.SequenceEqual(new[] { "MarketingConnectionId", "Id" }) &&
+            AddedNullable(m, "ReceptionistActiveConfigurationId", "uniqueidentifier") &&
+            principal is not null && principal.UniqueKeys.Any(k => k.Columns.SequenceEqual(key.PrincipalColumns));
+    }
     private static bool ValidStructures(Entry m)
     {
-        if (m.Tables is null || m.Indexes is null || m.Guards is null ||
-            m.Tables.Length > 1000 || m.Indexes.Length > 10000 || m.Guards.Length > 10000) return false;
-        // Unsupported historical migrations may have complex structures. They
-        // remain opaque and cannot become pending supported operations.
+        if (m.Tables is null || m.Indexes is null || m.Guards is null || m.ForeignKeys is null ||
+            m.Tables.Length > 1000 || m.Indexes.Length > 10000 || m.Guards.Length > 10000 || m.ForeignKeys.Length > 1000) return false;
+        // Unsupported historical migrations remain opaque and cannot become pending supported operations.
         if (!m.Supported) return true;
         if (m.Guards.Length > 1 || m.Columns.Any(c => !ValidColumn(c)) || m.Guards.Any(g => g != CheckoutGuard) ||
+            m.Columns.Select(c => (c.Schema, c.Table, c.Name)).Distinct().Count() != m.Columns.Length ||
             m.Tables.Select(t => (t?.Schema, t?.Name)).Distinct().Count() != m.Tables.Length ||
-            m.Indexes.Select(i => (i?.Schema, i?.Table, i?.Name)).Distinct().Count() != m.Indexes.Length) return false;
+            m.Indexes.Select(i => (i?.Schema, i?.Table, i?.Name)).Distinct().Count() != m.Indexes.Length ||
+            m.ForeignKeys.Select(f => (f?.Schema, f?.Table, f?.Constraint?.Name)).Distinct().Count() != m.ForeignKeys.Length) return false;
         foreach (var t in m.Tables)
         {
             if (t is null || !Name(t.Schema) || !Name(t.Name) || t.Columns is not { Length: > 0 and <= 1000 } ||
@@ -81,22 +126,32 @@ internal static partial class CandidateContract
                 t.Columns.Select(c => c.Name).Distinct().Count() != t.Columns.Length ||
                 t.PrimaryKey is null || !Name(t.PrimaryKey.Name) || !Names(t.PrimaryKey.Columns) ||
                 t.PrimaryKey.Columns.Any(n => !t.Columns.Any(c => c.Name == n && !c.Nullable)) ||
-                t.ForeignKeys is null || t.ForeignKeys.Length > 1000 ||
-                t.ForeignKeys.Select(f => f?.Name).Distinct().Count() != t.ForeignKeys.Length) return false;
+                t.ForeignKeys is null || t.ForeignKeys.Length > 1000 || t.UniqueKeys is null || t.UniqueKeys.Length > 1000 ||
+                t.Checks is null || t.Checks.Length > 1000 ||
+                t.ForeignKeys.Select(f => f?.Name).Concat(t.UniqueKeys.Select(k => k?.Name)).Concat(t.Checks.Select(c => c?.Name))
+                    .Append(t.PrimaryKey.Name).Distinct().Count() != t.ForeignKeys.Length + t.UniqueKeys.Length + t.Checks.Length + 1) return false;
             foreach (var f in t.ForeignKeys)
-                if (f is null || !Name(f.Name) || !Names(f.Columns) || !Name(f.PrincipalSchema) ||
-                    !Name(f.PrincipalTable) || !Names(f.PrincipalColumns) || f.Columns.Length != f.PrincipalColumns.Length ||
-                    f.Columns.Any(n => !t.Columns.Any(c => c.Name == n))) return false;
+                if (!ValidForeignKey(f) || f.Columns.Any(n => !t.Columns.Any(c => c.Name == n))) return false;
+            foreach (var k in t.UniqueKeys)
+                if (k is null || !Name(k.Name) || !Names(k.Columns) ||
+                    k.Columns.Any(n => !t.Columns.Any(c => c.Name == n && !c.Nullable))) return false;
+            foreach (var c in t.Checks)
+                if (c is null || !Name(c.Name) || CheckCanonical(c.Sql, t.Columns) is null) return false;
         }
+        foreach (var f in m.ForeignKeys)
+            if (f is null || !ValidForeignKey(f.Constraint) || !MarketingForeignKey(m, f)) return false;
         foreach (var i in m.Indexes)
         {
             if (i is null || !Name(i.Schema) || !Name(i.Table) || !Name(i.Name) || !Names(i.Columns)) return false;
             var newTable = m.Tables.SingleOrDefault(t => t.Schema == i.Schema && t.Name == i.Table);
             if (newTable is not null)
             {
-                if (i.Filter is not null || i.Columns.Any(n => !newTable.Columns.Any(c => c.Name == n))) return false;
+                if (i.Columns.Any(n => !newTable.Columns.Any(c => c.Name == n)) ||
+                    i.Filter is not null && !(i.Unique && i.Columns.Length == 1 &&
+                        newTable.Columns.Any(c => c.Name == i.Columns[0] && c.Nullable) &&
+                        i.Filter == "[" + i.Columns[0] + "] IS NOT NULL")) return false;
             }
-            else if (!(i.Schema == "dbo" && i.Table == "CommerceOrders" && i.Unique &&
+            else if (!MarketingIndex(m, i) && !(i.Schema == "dbo" && i.Table == "CommerceOrders" && i.Unique &&
                 i.Columns.SequenceEqual(new[] { "CommerceBusinessId", "CheckoutAttemptId" }) &&
                 i.Filter == "[CheckoutAttemptId] IS NOT NULL" && m.Guards.Contains(CheckoutGuard))) return false;
         }
@@ -132,43 +187,72 @@ internal static partial class CandidateContract
             if (Convert.ToInt32(await existence.ExecuteScalarAsync(cancellation)) != (applied ? 1 : 0))
                 throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
             if (!applied) continue;
-            await VerifyIndex(db, new Index(t.Schema, t.Name, t.PrimaryKey.Name, t.PrimaryKey.Columns, true, null), true, true, cancellation);
+            await VerifyIndex(db, new Index(t.Schema, t.Name, t.PrimaryKey.Name, t.PrimaryKey.Columns, true, null), true, true, false, cancellation);
+            foreach (var key in t.UniqueKeys)
+                await VerifyIndex(db, new Index(t.Schema, t.Name, key.Name, key.Columns, true, null), true, false, true, cancellation);
             foreach (var f in t.ForeignKeys)
-            {
-                await using var command = Query(db, """
-                    SELECT pc.name, rs.name, rt.name, rc.name, fk.delete_referential_action, fk.update_referential_action,
-                           fk.is_disabled, fk.is_not_trusted
-                    FROM sys.foreign_keys fk JOIN sys.tables pt ON pt.object_id=fk.parent_object_id
-                    JOIN sys.schemas ps ON ps.schema_id=pt.schema_id
-                    JOIN sys.foreign_key_columns fc ON fc.constraint_object_id=fk.object_id
-                    JOIN sys.columns pc ON pc.object_id=pt.object_id AND pc.column_id=fc.parent_column_id
-                    JOIN sys.tables rt ON rt.object_id=fk.referenced_object_id JOIN sys.schemas rs ON rs.schema_id=rt.schema_id
-                    JOIN sys.columns rc ON rc.object_id=rt.object_id AND rc.column_id=fc.referenced_column_id
-                    WHERE ps.name=@schema AND pt.name=@table AND fk.name=@name ORDER BY fc.constraint_column_id
-                    """, ("@schema", t.Schema), ("@table", t.Name), ("@name", f.Name));
-                await using var reader = await command.ExecuteReaderAsync(cancellation);
-                var n = 0;
-                while (await reader.ReadAsync(cancellation))
-                {
-                    if (n >= f.Columns.Length || reader.GetString(0) != f.Columns[n] || reader.GetString(1) != f.PrincipalSchema ||
-                        reader.GetString(2) != f.PrincipalTable || reader.GetString(3) != f.PrincipalColumns[n] ||
-                        Convert.ToInt32(reader.GetValue(4)) != 0 || Convert.ToInt32(reader.GetValue(5)) != 0 ||
-                        reader.GetBoolean(6) || reader.GetBoolean(7)) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
-                    n++;
-                }
-                if (n != f.Columns.Length) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
-            }
+                await VerifyForeignKey(db, new TableForeignKey(t.Schema, t.Name, f), true, cancellation);
+            await VerifyChecks(db, t, cancellation);
         }
-        foreach (var i in m.Indexes.Where(i => applied ||
-            !m.Tables.Any(t => t.Schema == i.Schema && t.Name == i.Table)))
-            await VerifyIndex(db, i, applied, false, cancellation);
+        foreach (var f in m.ForeignKeys) await VerifyForeignKey(db, f, applied, cancellation);
+        foreach (var i in m.Indexes.Where(i => applied || !m.Tables.Any(t => t.Schema == i.Schema && t.Name == i.Table)))
+            await VerifyIndex(db, i, applied, false, false, cancellation);
     }
 
-    private static async Task VerifyIndex(MasterAppDbContext db, Index i, bool applied, bool primary, CancellationToken cancellation)
+    private static async Task VerifyForeignKey(MasterAppDbContext db, TableForeignKey owner, bool applied, CancellationToken cancellation)
+    {
+        var f = owner.Constraint;
+        await using var command = Query(db, """
+            SELECT pc.name, rs.name, rt.name, rc.name, fk.delete_referential_action, fk.update_referential_action,
+                   fk.is_disabled, fk.is_not_trusted, fk.is_not_for_replication
+            FROM sys.foreign_keys fk JOIN sys.tables pt ON pt.object_id=fk.parent_object_id
+            JOIN sys.schemas ps ON ps.schema_id=pt.schema_id
+            JOIN sys.foreign_key_columns fc ON fc.constraint_object_id=fk.object_id
+            JOIN sys.columns pc ON pc.object_id=pt.object_id AND pc.column_id=fc.parent_column_id
+            JOIN sys.tables rt ON rt.object_id=fk.referenced_object_id JOIN sys.schemas rs ON rs.schema_id=rt.schema_id
+            JOIN sys.columns rc ON rc.object_id=rt.object_id AND rc.column_id=fc.referenced_column_id
+            WHERE ps.name=@schema AND pt.name=@table AND fk.name=@name ORDER BY fc.constraint_column_id
+            """, ("@schema", owner.Schema), ("@table", owner.Table), ("@name", f.Name));
+        await using var reader = await command.ExecuteReaderAsync(cancellation);
+        var n = 0;
+        while (await reader.ReadAsync(cancellation))
+        {
+            if (!applied || n >= f.Columns.Length || reader.GetString(0) != f.Columns[n] || reader.GetString(1) != f.PrincipalSchema ||
+                reader.GetString(2) != f.PrincipalTable || reader.GetString(3) != f.PrincipalColumns[n] ||
+                Convert.ToInt32(reader.GetValue(4)) != 0 || Convert.ToInt32(reader.GetValue(5)) != 0 ||
+                reader.GetBoolean(6) || reader.GetBoolean(7) || reader.GetBoolean(8))
+                throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            n++;
+        }
+        if (applied && n != f.Columns.Length) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+    }
+
+    private static async Task VerifyChecks(MasterAppDbContext db, Table table, CancellationToken cancellation)
+    {
+        await using var command = Query(db, """
+            SELECT cc.name, cc.definition, cc.is_disabled, cc.is_not_trusted, cc.is_not_for_replication
+            FROM sys.check_constraints cc JOIN sys.tables t ON t.object_id=cc.parent_object_id
+            JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=@schema AND t.name=@table
+            """, ("@schema", table.Schema), ("@table", table.Name));
+        await using var reader = await command.ExecuteReaderAsync(cancellation);
+        var expected = table.Checks.ToDictionary(c => c.Name, StringComparer.Ordinal);
+        var found = new HashSet<string>(StringComparer.Ordinal);
+        while (await reader.ReadAsync(cancellation))
+        {
+            if (!expected.TryGetValue(reader.GetString(0), out var check) || !found.Add(check.Name) ||
+                reader.GetBoolean(2) || reader.GetBoolean(3) || reader.GetBoolean(4) ||
+                CheckCanonical(reader.GetString(1), table.Columns) is not { } actual ||
+                actual != CheckCanonical(check.Sql, table.Columns))
+                throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        }
+        if (found.Count != expected.Count) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+    }
+
+    private static async Task VerifyIndex(MasterAppDbContext db, Index i, bool applied, bool primary, bool constraint, CancellationToken cancellation)
     {
         await using var command = Query(db, """
             SELECT c.name, ix.is_unique, ix.is_primary_key, ix.filter_definition, ix.is_disabled,
-                   ic.is_descending_key, ic.is_included_column, ix.is_hypothetical
+                   ic.is_descending_key, ic.is_included_column, ix.is_hypothetical, ix.is_unique_constraint
             FROM sys.indexes ix JOIN sys.tables t ON t.object_id=ix.object_id JOIN sys.schemas s ON s.schema_id=t.schema_id
             JOIN sys.index_columns ic ON ic.object_id=ix.object_id AND ic.index_id=ix.index_id
             JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id
@@ -183,10 +267,225 @@ internal static partial class CandidateContract
             if (filter is not null && filter.StartsWith('(') && filter.EndsWith(')')) filter = filter[1..^1];
             if (!applied || n >= i.Columns.Length || reader.GetString(0) != i.Columns[n] ||
                 reader.GetBoolean(1) != i.Unique || reader.GetBoolean(2) != primary || filter != i.Filter ||
-                reader.GetBoolean(4) || reader.GetBoolean(5) || reader.GetBoolean(6) || reader.GetBoolean(7))
-                throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+                reader.GetBoolean(4) || reader.GetBoolean(5) || reader.GetBoolean(6) || reader.GetBoolean(7) ||
+                reader.GetBoolean(8) != constraint) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
             n++;
         }
         if (applied && n != i.Columns.Length) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+    }
+
+    // SQL Server rewrites IN/BETWEEN/CAST and parentheses in stored definitions.
+    // Parse only bounded declarative predicates, never execute their SQL. Preserve
+    // three-valued boolean logic, literal bytes, declared columns and operand groups.
+    internal static string? CheckCanonical(string? sql, Column[] columns)
+    {
+        if (sql is null || sql.Length is < 1 or > 8192) return null;
+        try { return new CheckParser(sql, columns).Read(); }
+        catch (InvalidOperationException) { return null; }
+    }
+    private sealed class CheckParser
+    {
+        private sealed record Token(string Kind, string Text);
+        private sealed record Expression(string Kind, string Value, Expression[] Children)
+        {
+            internal bool Boolean => Kind is "and" or "or" or "=" or "<>" or "<" or "<=" or "null" or "notnull";
+            internal string Key => Kind + ":" + JsonSerializer.Serialize(Value) + "[" + string.Join(",", Children.Select(c => c.Key)) + "]";
+        }
+        private readonly List<Token> tokens = [];
+        private readonly Dictionary<string, Column> columns;
+        private int position;
+        private int depth;
+        internal CheckParser(string sql, Column[] declarations)
+        {
+            columns = declarations.ToDictionary(c => c.Name, StringComparer.Ordinal);
+            for (var i = 0; i < sql.Length;)
+            {
+                if (char.IsWhiteSpace(sql[i])) { i++; continue; }
+                if (tokens.Count >= 2048) throw new InvalidOperationException();
+                var ch = sql[i];
+                if (ch == '[')
+                {
+                    var value = new StringBuilder(); i++; var closed = false;
+                    while (i < sql.Length)
+                    {
+                        ch = sql[i++];
+                        if (ch == ']')
+                        {
+                            if (i < sql.Length && sql[i] == ']') { value.Append(']'); i++; }
+                            else { closed = true; break; }
+                        }
+                        else value.Append(ch);
+                    }
+                    if (!closed) throw new InvalidOperationException();
+                    tokens.Add(new("identifier", value.ToString()));
+                }
+                else if (ch == '\'' || ch is 'N' or 'n' && i + 1 < sql.Length && sql[i + 1] == '\'')
+                {
+                    var unicode = ch != '\'';
+                    if (ch != '\'') i++;
+                    i++; var value = new StringBuilder(); var closed = false;
+                    while (i < sql.Length)
+                    {
+                        ch = sql[i++];
+                        if (ch == '\'')
+                        {
+                            if (i < sql.Length && sql[i] == '\'') { value.Append('\''); i++; }
+                            else { closed = true; break; }
+                        }
+                        else value.Append(ch);
+                    }
+                    if (!closed || value.Length > 512 || value.ToString().Any(char.IsControl)) throw new InvalidOperationException();
+                    // ASCII has the same value with or without N. For other
+                    // characters retain the prefix: code-page conversion is not
+                    // equivalent to a Unicode literal and is never inferred.
+                    tokens.Add(new(unicode && value.ToString().Any(c => c > 127) ? "nstring" : "string", value.ToString()));
+                }
+                else if (ch is >= '0' and <= '9')
+                {
+                    var start = i++;
+                    while (i < sql.Length && sql[i] is >= '0' and <= '9') i++;
+                    if (!long.TryParse(sql[start..i], NumberStyles.None, CultureInfo.InvariantCulture, out var number)) throw new InvalidOperationException();
+                    tokens.Add(new("number", number.ToString(CultureInfo.InvariantCulture)));
+                }
+                else if (ch is >= 'A' and <= 'Z' or >= 'a' and <= 'z')
+                {
+                    var start = i++;
+                    while (i < sql.Length && char.IsAsciiLetter(sql[i])) i++;
+                    tokens.Add(new("word", sql[start..i].ToUpperInvariant()));
+                }
+                else if (ch is '(' or ')' or ',' or '%') { tokens.Add(new(ch.ToString(), ch.ToString())); i++; }
+                else if (ch is '=' or '<' or '>')
+                {
+                    var start = i++;
+                    if (i < sql.Length && (sql[i] == '=' || ch == '<' && sql[i] == '>')) i++;
+                    var value = sql[start..i];
+                    if (value is not ("=" or "<>" or "<=" or ">=" or "<" or ">")) throw new InvalidOperationException();
+                    tokens.Add(new("comparison", value));
+                }
+                else throw new InvalidOperationException();
+            }
+        }
+        internal string Read()
+        {
+            var result = Or();
+            if (position != tokens.Count || !result.Boolean) throw new InvalidOperationException();
+            return result.Key;
+        }
+        private bool Take(string value)
+        {
+            if (position < tokens.Count && tokens[position].Text == value &&
+                (tokens[position].Kind == "word" || tokens[position].Kind == value))
+            { position++; return true; }
+            return false;
+        }
+        private void Require(string value) { if (!Take(value)) throw new InvalidOperationException(); }
+        private static Expression Atom(string kind, string value) => new(kind, value, []);
+        private static Expression Boolean(string kind, params Expression[] expressions)
+        {
+            if (expressions.Any(e => !e.Boolean)) throw new InvalidOperationException();
+            return new(kind, "", expressions.SelectMany(e => e.Kind == kind ? e.Children : new[] { e })
+                .OrderBy(e => e.Key, StringComparer.Ordinal).ToArray());
+        }
+        private static Expression Compare(string op, Expression left, Expression right)
+        {
+            if (left.Boolean || right.Boolean) throw new InvalidOperationException();
+            if (op is ">" or ">=") { (left, right) = (right, left); op = op == ">" ? "<" : "<="; }
+            if (op is "=" or "<>" && StringComparer.Ordinal.Compare(left.Key, right.Key) > 0) (left, right) = (right, left);
+            return new(op, "", [left, right]);
+        }
+        private Expression Or()
+        {
+            var value = And();
+            while (Take("OR")) value = Boolean("or", value, And());
+            return value;
+        }
+        private Expression And()
+        {
+            var value = Predicate();
+            while (Take("AND")) value = Boolean("and", value, Predicate());
+            return value;
+        }
+        private Expression Predicate()
+        {
+            var left = Modulo();
+            if (Take("IS"))
+            {
+                var not = Take("NOT"); Require("NULL");
+                if (left.Boolean) throw new InvalidOperationException();
+                return new(not ? "notnull" : "null", "", [left]);
+            }
+            if (Take("IN"))
+            {
+                Require("("); var values = new List<Expression> { Compare("=", left, Modulo()) };
+                while (Take(",")) values.Add(Compare("=", left, Modulo()));
+                Require(")"); return Boolean("or", values.ToArray());
+            }
+            if (Take("BETWEEN"))
+            {
+                var low = Modulo(); Require("AND"); var high = Modulo();
+                return Boolean("and", Compare(">=", left, low), Compare("<=", left, high));
+            }
+            if (position < tokens.Count && tokens[position].Kind == "comparison")
+                return Compare(tokens[position++].Text, left, Modulo());
+            return left;
+        }
+        private Expression Modulo()
+        {
+            var value = Primary();
+            while (Take("%"))
+            {
+                var right = Primary();
+                if (value.Kind != "number" && !(value.Kind == "column" && columns[value.Value].Type is "int" or "bigint") ||
+                    right.Kind != "number" || right.Value == "0") throw new InvalidOperationException();
+                value = new("mod", "", [value, right]);
+            }
+            return value;
+        }
+        private Expression Primary()
+        {
+            if (++depth > 64) throw new InvalidOperationException();
+            try
+            {
+                if (Take("(")) { var value = Or(); Require(")"); return value; }
+                if (Take("CAST"))
+                {
+                    Require("("); var value = Modulo(); Require("AS"); DecimalType(); Require(")");
+                    return DecimalIdentity(value);
+                }
+                if (Take("CONVERT"))
+                {
+                    Require("("); DecimalType(); Require(","); var value = Modulo();
+                    if (Take(","))
+                    {
+                        var style = Primary();
+                        if (style.Kind != "number" || style.Value != "0") throw new InvalidOperationException();
+                    }
+                    Require(")"); return DecimalIdentity(value);
+                }
+                if (position >= tokens.Count) throw new InvalidOperationException();
+                var token = tokens[position++];
+                return token.Kind switch {
+                    "identifier" when columns.ContainsKey(token.Text) => Atom("column", token.Text),
+                    "number" or "string" or "nstring" => Atom(token.Kind, token.Text),
+                    _ => throw new InvalidOperationException()
+                };
+            }
+            finally { depth--; }
+        }
+        private void DecimalType()
+        {
+            if (position >= tokens.Count || !(tokens[position] is { Kind: "word", Text: "DECIMAL" } ||
+                tokens[position] is { Kind: "identifier", Text: "decimal" })) throw new InvalidOperationException();
+            position++; Require("(");
+            if (position >= tokens.Count || tokens[position++] is not { Kind: "number", Text: "20" }) throw new InvalidOperationException();
+            Require(",");
+            if (position >= tokens.Count || tokens[position++] is not { Kind: "number", Text: "6" }) throw new InvalidOperationException();
+            Require(")");
+        }
+        private Expression DecimalIdentity(Expression value)
+        {
+            if (value.Kind != "column" || columns[value.Value].Type != "decimal(20,6)") throw new InvalidOperationException();
+            return value;
+        }
     }
 }

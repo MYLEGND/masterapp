@@ -118,6 +118,7 @@ class Azure:
     def __init__(self, app, package, url, revision, static=False):
         self.app, self.package, self.url, self.revision = app, package, url, revision
         self.static = static
+        self._submission_correlation_supported = False
 
     def deployments(self):
         # Uses the existing OIDC session; no publishing credentials or new authority.
@@ -163,7 +164,43 @@ class Azure:
             raise ValueError('AZURE_DIAGNOSTIC_RESPONSE_TOO_LARGE')
         return json.loads(result.stdout)
 
-    def submit(self):
+    def prepare_submission(self):
+        """Confirm supported correlation before the write-ahead intent exists."""
+        self._submission_correlation_supported = False
+        if self.app not in {target['releaseName'] for target in TARGETS.values()}:
+            raise DeploymentSubmissionNotEntered('Canonical deployment target required for correlation')
+        try:
+            help_result = subprocess.run(['az', 'webapp', 'deploy', '--help'],
+                                         capture_output=True, text=True, timeout=20)
+            if (help_result.returncode or len(help_result.stdout.encode('utf-8')) > 131072 or
+                    not re.search(r'(?m)^\s*--deploymentTag(?:\s|:|$)', help_result.stdout)):
+                raise ValueError('unsupported deployment correlation option')
+            host_result = subprocess.run(
+                ['az', 'webapp', 'show', '-g', _RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP,
+                 '-n', self.app, '--query', '{name:name,reserved:reserved,kind:kind}', '--only-show-errors', '-o', 'json'],
+                capture_output=True, text=True, timeout=20)
+            if host_result.returncode or len(host_result.stdout.encode('utf-8')) > 4096:
+                raise ValueError('unavailable deployment host metadata')
+            host = json.loads(host_result.stdout)
+            kind = host.get('kind') if isinstance(host, dict) else None
+            # CLI 2.91.0 ignores deploymentTag for non-web/function/logic apps.
+            linux_webapp = (isinstance(kind, str) and {'app', 'linux'} <= set(kind.split(',')) and
+                            not any(marker in kind for marker in ('functionapp', 'workflowapp')))
+            if (not isinstance(host, dict) or host.get('name') != self.app or
+                    host.get('reserved') is not True or not linux_webapp):
+                raise ValueError('unsupported deployment host')
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            # Neither provider output nor CLI error details belong in the log.
+            raise DeploymentSubmissionNotEntered('Supported Linux deployment correlation could not be confirmed; no intent or upload created') from None
+        self._submission_correlation_supported = True
+
+    def submit(self, correlation=None):
+        if (not self._submission_correlation_supported or not isinstance(correlation, dict) or
+                set(correlation) != {'kind', 'value'} or
+                correlation.get('kind') != 'azure_onedeploy_deployment_tag_v1' or
+                not isinstance(correlation.get('value'), str) or
+                not re.fullmatch('[a-f0-9]{64}', correlation['value'])):
+            raise DeploymentSubmissionNotEntered('Verified durable deployment correlation required before upload')
         # Async avoids a long synchronous gateway request. CLI runtime tracking is
         # replaced by exact-revision checks below, not waived. Status preflight
         # already warmed SCM; disabling CLI warmup prevents its exception fallback
@@ -180,6 +217,7 @@ class Azure:
                    '--restart', 'true', '--async', 'false' if tracked else 'true',
                    '--track-status', 'true' if tracked else 'false',
                    '--enable-kudu-warmup', 'true' if tracked else 'false',
+                   '--deploymentTag', correlation['value'],
                    '--timeout', '120000',
                    '--enriched-errors', 'true', '--only-show-errors', '-o', 'json']
         try:
@@ -458,8 +496,10 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=PUBLICAT
             stable = 0
             if not submitted and live is False and not reconcile_only:
                 baseline_ids = {row['id'] for row in rows}
+                correlation = None
                 if journal is not None:
                     try:
+                        azure.prepare_submission()
                         allow_recovered_baseline = (
                             getattr(journal, 'history_error', None) is not None and
                             baseline is not None and
@@ -470,13 +510,15 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=PUBLICAT
                             baseline_ids,
                             allow_recovered_baseline=allow_recovered_baseline,
                         )
+                        if allowed:
+                            correlation = journal.submission_correlation()
                     except Exception as exc:
                         raise DeploymentSubmissionNotEntered('Durable upload intent could not be proven; no write authorized') from exc
                     if not allowed:
                         raise DeploymentReconciliationRequired('Existing upload intent requires read-only reconciliation')
                 submitted = True  # Set before I/O: ambiguous responses never replay.
                 print('Submitting the verified immutable ZIP once.', flush=True)
-                azure.submit()
+                azure.submit(correlation)
         sleep(interval)
     raise DeploymentReconciliationRequired('Deployment remains unverified at the deadline. Azure was not cancelled or restarted; inspect status before resuming.')
 

@@ -329,5 +329,70 @@ class ImmutableRestoreRegressionTests(unittest.TestCase):
         self.artifacts.pop();self.artifacts[0]['workflow_run']['id']=99
         with self.assertRaisesRegex(ValueError,'ATTEMPT_UNPROVEN'):self.restore()
 
+class TrustedOfflineContractGateTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.temporary=tempfile.TemporaryDirectory();self.addCleanup(self.temporary.cleanup)
+        self.root=Path(self.temporary.name);self.calls=[];self.sql_entered=False
+        self.test_stdout='LEGEND_REVIEWED_APPEND_TEST:NOT_PRESENT_IN_ASSEMBLY\nLEGEND_TRUSTED_CONTRACT_TESTS:PASS\n'
+        self.current=dict(schemaVersion=3,migrations=[dict(id='20260101000000_Original')])
+        self.test_exit=0;self.source_present=False
+
+    def process(self,command,**kwargs):
+        self.calls.append((command,kwargs))
+        if command[1]=='publish':return SimpleNamespace(returncode=0)
+        if command[-1]=='--test-contract-compatibility':return SimpleNamespace(returncode=self.test_exit,stdout=self.test_stdout)
+        if command[-1]=='--export-contract':return SimpleNamespace(returncode=0,stdout=json.dumps(self.current))
+        if command[-1]=='migration-test':return SimpleNamespace(returncode=0,stdout='')
+        raise AssertionError(command)
+
+    def gate(self):
+        import contextlib,os
+        @contextlib.contextmanager
+        def sql():
+            self.sql_entered=True
+            yield 'Server=127.0.0.1,15433;Database=Synthetic'
+        with patch.object(m.subprocess,'run',side_effect=self.process),patch.object(m,'isolated_sql',side_effect=sql), \
+             patch.object(Path,'is_file',return_value=self.source_present), \
+             patch.dict(os.environ,dict(PATH='/synthetic',HOME='/synthetic',AZURE_CLIENT_SECRET='synthetic-parent-only'),clear=True):
+            m.test_schema_contract(self.root)
+
+    def test_actual_cli_contract_tests_precede_existing_sql_fixture(self):
+        self.gate()
+        self.assertTrue(self.sql_entered)
+        self.assertEqual('--test-contract-compatibility',self.calls[1][0][-1])
+        self.assertEqual('--export-contract',self.calls[2][0][-1])
+        self.assertEqual('migration-test',self.calls[-1][0][-1])
+        for command,kwargs in (self.calls[1],self.calls[2],self.calls[-1]):
+            self.assertNotIn('AZURE_CLIENT_SECRET',kwargs['env'])
+        self.assertIn('LEGEND_ISOLATED_SQL',self.calls[-1][1]['env'])
+
+    def test_failed_or_missing_cli_pass_marker_stops_before_sql(self):
+        for failed in ('exit','marker'):
+            self.test_exit=1 if failed=='exit' else 0
+            self.test_stdout='' if failed=='marker' else 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS\n'
+            with self.subTest(failed=failed),self.assertRaisesRegex(RuntimeError,'compatibility contract failed'):self.gate()
+            self.assertFalse(self.sql_entered)
+
+    def test_present_migration_cannot_be_omitted_from_actual_export(self):
+        self.source_present=True
+        with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
+        self.assertFalse(self.sql_entered)
+
+    def test_actual_generated_entry_must_match_python_pin_and_csharp_test(self):
+        import hashlib
+        entry=dict(id='20261020160000_AddReceptionistCoordination',supported=True)
+        self.current['migrations'].append(entry);self.source_present=True
+        pin=hashlib.sha256(json.dumps(entry,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        with patch.object(m.AUTHORITY,'REVIEWED_RECEPTIONIST_ENTRY',pin):
+            with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
+            self.assertFalse(self.sql_entered)
+            self.test_stdout='LEGEND_REVIEWED_APPEND_TEST:PROVEN\nLEGEND_TRUSTED_CONTRACT_TESTS:PASS\n'
+            self.gate();self.assertTrue(self.sql_entered)
+        self.sql_entered=False
+        with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
+        self.assertFalse(self.sql_entered)
+
+
 if __name__ == '__main__':
     unittest.main()

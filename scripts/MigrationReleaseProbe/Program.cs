@@ -28,23 +28,37 @@ try
         throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
     args = args.Where(arg => arg != "--activity" && arg != "--schema-only-activity").ToArray();
     var export = args.SequenceEqual(new[] { "--export-contract" });
-    var contractPath = args.Length == 2 && args[0] == "--contract" ? args[1] : null;
-    if (!export && contractPath is null && (args.Length > 1 || (args.Length == 1 && args[0] != "--inventory")))
+    var validate = args.Length == 2 && args[0] == "--validate-contract";
+    var contractTests = args.SequenceEqual(new[] { "--test-contract-compatibility" });
+    var offline = export || validate || contractTests;
+    var contractPath = args.Length == 2 && args[0] is "--contract" or "--validate-contract" ? args[1] : null;
+    if ((offline && (inspectActivity || inspectSchemaOnly)) ||
+        (!export && !contractTests && contractPath is null && (args.Length > 1 || (args.Length == 1 && args[0] != "--inventory"))))
         throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
-    var connection = export ? "Server=127.0.0.1;Database=OfflineContract;Integrated Security=true" : Environment.GetEnvironmentVariable("LEGEND_RELEASE_DB_CONNECTION");
+    var connection = offline ? "Server=127.0.0.1;Database=OfflineContract;Integrated Security=true" : Environment.GetEnvironmentVariable("LEGEND_RELEASE_DB_CONNECTION");
     if (string.IsNullOrWhiteSpace(connection)) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
     var options = new DbContextOptionsBuilder<MasterAppDbContext>()
         .UseSqlServer(connection, sql => sql.CommandTimeout(30)).Options;
     await using var db = new MasterAppDbContext(options);
     if (export) { Console.WriteLine(CandidateContract.Export(db)); return; }
+    if (contractTests) { TrustedCandidateContract.Test(CandidateContract.Current(db)); return; }
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
     Phase("contract");
-    var contract = contractPath is null ? CandidateContract.Current(db) : CandidateContract.Read(contractPath);
-    // Defense in depth: production metadata must equal this approved assembly's
-    // definitions. A new migration shape needs a reviewed extraction rule;
-    // candidate-provided Supported/IDs cannot suppress a pending operation.
-    if (contractPath is not null && JsonSerializer.Serialize(contract, CandidateContract.Json) != CandidateContract.Export(db))
-        throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
+    var trusted = CandidateContract.Current(db);
+    var contract = contractPath is null ? trusted : TrustedCandidateContract.Read(contractPath);
+    // One trusted owner is used before OIDC and again before production reads.
+    // The candidate never supplies or replaces the authoritative old prefix.
+    var contractRule = TrustedCandidateContract.Prove(trusted, contract);
+    if (validate)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1, purpose = "trusted-schema-contract-compatibility", authorizesMutation = false,
+            rule = contractRule, trustedContractSha256 = TrustedCandidateContract.Digest(trusted),
+            candidateContractSha256 = TrustedCandidateContract.Digest(contract)
+        }));
+        return;
+    }
     var known = contract.Migrations.Select(m => m.Id).ToArray();
     async Task VerifySettledActivity(bool schemaOnly = false)
     {
@@ -445,6 +459,133 @@ catch
     // Never emit SQL/provider exception messages or connection details.
     Console.Error.WriteLine("LEGEND_SCHEMA_PROBE:UNCLASSIFIED");
     Environment.ExitCode = 1;
+}
+
+// This immutable trusted executable owns compatibility; candidate metadata is
+// data only. Its caller separately pins complete reviewed runtime/tool inputs.
+internal static class TrustedCandidateContract
+{
+    private const string ReviewedMigration = "20261020160000_AddReceptionistCoordination";
+    private const string ReviewedEntrySha256 = "d2da70a25230e14bf520e4129ac95a9fc558e9316385cedfcb172a5d82564fd6";
+
+    internal static string Digest<T>(T value) => Convert.ToHexStringLower(SHA256.HashData(
+        JsonSerializer.SerializeToUtf8Bytes(value, CandidateContract.Json)));
+
+    internal static CandidateContract.Contract Read(string path)
+    {
+        var file = new FileInfo(path);
+        if (!file.Exists || file.Length > 4 * 1024 * 1024 || file.LinkTarget is not null ||
+            (file.Attributes & FileAttributes.ReparsePoint) != 0)
+            throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
+        using var raw = JsonDocument.Parse(File.ReadAllText(path));
+        NoDuplicateProperties(raw.RootElement);
+        var contract = CandidateContract.Read(path);
+        // Deserialization alone ignores unknown properties and supplies missing
+        // defaults. Require the entire data tree to survive the typed boundary.
+        if (!System.Text.Json.Nodes.JsonNode.DeepEquals(
+            System.Text.Json.Nodes.JsonNode.Parse(raw.RootElement.GetRawText()),
+            JsonSerializer.SerializeToNode(contract, CandidateContract.Json)))
+            throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
+        return contract;
+    }
+
+    private static void NoDuplicateProperties(JsonElement node)
+    {
+        if (node.ValueKind == JsonValueKind.Object)
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var property in node.EnumerateObject())
+            {
+                if (!names.Add(property.Name))
+                    throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
+                NoDuplicateProperties(property.Value);
+            }
+        }
+        else if (node.ValueKind == JsonValueKind.Array)
+            foreach (var value in node.EnumerateArray()) NoDuplicateProperties(value);
+    }
+
+    internal static string Prove(CandidateContract.Contract trusted, CandidateContract.Contract candidate)
+    {
+        if (trusted.SchemaVersion != 3 || candidate.SchemaVersion != 3 ||
+            trusted.Migrations is null || candidate.Migrations is null ||
+            trusted.Migrations.Length is < 1 or > 10000)
+            throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
+        if (JsonSerializer.Serialize(trusted, CandidateContract.Json) == JsonSerializer.Serialize(candidate, CandidateContract.Json))
+            return "approved-definitions-exact";
+        if (candidate.Migrations.Length != trusted.Migrations.Length + 1 || candidate.Migrations.Length > 10000 ||
+            !candidate.Migrations.Take(trusted.Migrations.Length).Zip(trusted.Migrations).All(pair =>
+                JsonSerializer.Serialize(pair.First, CandidateContract.Json) == JsonSerializer.Serialize(pair.Second, CandidateContract.Json)))
+            throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
+        var entry = candidate.Migrations[^1];
+        if (entry is null || !entry.Supported || entry.Id != ReviewedMigration ||
+            string.CompareOrdinal(trusted.Migrations[^1].Id, entry.Id) >= 0 || Digest(entry) != ReviewedEntrySha256)
+            throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
+        return "approved-prefix-reviewed-receptionist-entry";
+    }
+
+    // Invoked by the existing credential-free SQL contract gate. No connection
+    // is opened, and this mode emits no observation or release-admission receipt.
+    internal static void Test(CandidateContract.Contract current)
+    {
+        void Require(bool condition)
+        {
+            if (!condition) throw new InvalidOperationException("Trusted contract regression failed.");
+        }
+        void Reject(Action action)
+        {
+            var refused = false;
+            try { action(); }
+            catch (ProbeObservationFailure) { refused = true; }
+            catch (InvalidOperationException) { refused = true; }
+            catch (JsonException) { refused = true; }
+            Require(refused);
+        }
+        Require(Prove(current, current) == "approved-definitions-exact");
+        Reject(() => Prove(current, current with { SchemaVersion = 2 }));
+        Reject(() => Prove(current, current with { Migrations = current.Migrations.Skip(1).ToArray() }));
+        var unknown = new CandidateContract.Entry("29990101000000_Unreviewed", false, [], [], [], [], []);
+        Reject(() => Prove(current, current with { Migrations = [.. current.Migrations, unknown] }));
+        if (current.Migrations[^1].Id == ReviewedMigration)
+        {
+            Require(Digest(current.Migrations[^1]) == ReviewedEntrySha256);
+            var prefix = current with { Migrations = current.Migrations[..^1] };
+            Require(Prove(prefix, current) == "approved-prefix-reviewed-receptionist-entry");
+            Reject(() => Prove(prefix, current with { Migrations = [.. current.Migrations, unknown] }));
+            var changedPrefix = current.Migrations.ToArray();
+            changedPrefix[0] = changedPrefix[0] with { Supported = !changedPrefix[0].Supported };
+            Reject(() => Prove(prefix, current with { Migrations = changedPrefix }));
+            var changedEntry = current.Migrations.ToArray();
+            changedEntry[^1] = changedEntry[^1] with { Supported = false };
+            Reject(() => Prove(prefix, current with { Migrations = changedEntry }));
+            changedEntry[^1] = current.Migrations[^1] with { ForeignKeys = [] };
+            Reject(() => Prove(prefix, current with { Migrations = changedEntry }));
+            Console.WriteLine("LEGEND_REVIEWED_APPEND_TEST:PROVEN");
+        }
+        else Console.WriteLine("LEGEND_REVIEWED_APPEND_TEST:NOT_PRESENT_IN_ASSEMBLY");
+        var path = Path.Combine(Path.GetTempPath(), "legend-contract-test-" + Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            var json = JsonSerializer.Serialize(current, CandidateContract.Json);
+            File.WriteAllText(path, json);
+            Require(Digest(Read(path)) == Digest(current));
+            foreach (var invalid in new[]
+            {
+                json.Replace("\"schemaVersion\":3", "\"schemaVersion\":3,\"schemaVersion\":3", StringComparison.Ordinal),
+                json.Insert(1, "\"unknown\":false,"),
+                json.Replace("\"schemaVersion\":3,", "", StringComparison.Ordinal),
+                json.Replace("\"id\":", "\"unknown\":false,\"id\":", StringComparison.Ordinal),
+                json.Replace("\"supported\":", "\"supported\":false,\"supported\":", StringComparison.Ordinal)
+            })
+            {
+                Require(invalid != json);
+                File.WriteAllText(path, invalid);
+                Reject(() => Read(path));
+            }
+        }
+        finally { File.Delete(path); }
+        Console.WriteLine("LEGEND_TRUSTED_CONTRACT_TESTS:PASS");
+    }
 }
 
 sealed class ProbeObservationFailure : Exception
