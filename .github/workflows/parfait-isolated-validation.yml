@@ -9,6 +9,7 @@ on:
       - 'repair/**'
       - 'isolation/**'
     paths:
+      - Docs/releases/direct-release-request.json
       - .github/workflows/legend-fast-track-ui.yml
       - scripts/deploy-approved-app.py
       - scripts/release-operation-evidence.py

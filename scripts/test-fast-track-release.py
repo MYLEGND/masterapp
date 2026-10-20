@@ -73,6 +73,23 @@ class UniversalFastTrackAdmissionTests(unittest.TestCase):
         self.assertIn('group: legend-approved-release', workflow)
         self.assertEqual(420, deploy.PUBLICATION_RECONCILE_TIMEOUT_SECONDS)
 
+    def test_every_control_promotion_request_schedules_canonical_selector(self):
+        import fnmatch, re
+        workflow = Path('.github/workflows/legend-fast-track-ui.yml').read_text()
+        push = workflow.split('  push:', 1)[1].split('\npermissions:', 1)[0]
+        triggers = re.findall(r'^      - (.+)$', push.split('    paths:', 1)[1], re.M)
+        policy = load('release_policy')
+        # Every accepted promotion changes this existing request, even when its
+        # control files themselves do not match a publication trigger.
+        self.assertIn(policy.REQUEST, triggers)
+        for control in policy.TRUSTED_TOOL_PATHS:
+            changed = [control, policy.REQUEST]
+            self.assertTrue(any(fnmatch.fnmatchcase(path, pattern)
+                for path in changed for pattern in triggers), control)
+        self.assertFalse(any(fnmatch.fnmatchcase('Docs/unrelated.md', pattern)
+            for pattern in triggers))
+        self.assertNotIn('workflow_dispatch:', workflow)
+
     def test_existing_isolated_validation_covers_every_fast_track_trigger(self):
         import fnmatch, re
         def paths(file):
