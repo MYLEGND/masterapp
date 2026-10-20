@@ -1,0 +1,131 @@
+@model AgentPortal.Models.FounderReceptionistOperatorViewModel
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+@{
+    ViewData["Title"] = "Receptionist activation and accounting";
+    string OperationLabel(string operation) => operation switch
+    {
+        "accept_binding" => "Accept the verified provider and inquiry configuration",
+        "open_budget_period" => "Record a reconciled accounting opening",
+        "approve_budget_ceilings" => "Approve accounting limits",
+        "set_budget_admission" => "Change accounting admission",
+        "set_owner_admission" => "Change this owner's call admission",
+        "reconcile_call_cost" => "Reconcile a call's provider charges",
+        "reconcile_account_charge" => "Reconcile an account charge",
+        "reconcile_dated_voice" => "Reconcile voice usage by service period",
+        "record_provider_closure" => "Record verified provider closure",
+        _ => "Review the configured operation"
+    };
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/founder-engineering-command-center.css" asp-append-version="true" />
+}
+
+<main class="eng-command" data-receptionist-operator>
+    <header class="eng-hero">
+        <div class="eng-hero-copy">
+            <a asp-action="Index">Back to Engineering Command Center</a>
+            <div class="eng-kicker">FOUNDER OPERATIONS</div>
+            <h1>Receptionist activation and accounting</h1>
+            <p>Preview one reviewed operation, check its owner and exact change, then apply that state. Each result shows whether the change was recorded and independently verified.</p>
+        </div>
+    </header>
+
+    @if (Model.Error is not null)
+    {
+        <div class="eng-alert is-error" role="alert">@Model.Error</div>
+    }
+
+    @if (Model.Receipt is { } receipt)
+    {
+        var verified = receipt.CommitKnown && receipt.ReadBackVerified;
+        var alreadySatisfied = receipt.Outcome == "already_satisfied" && !receipt.CommitKnown && receipt.ReadBackVerified;
+        <section class="eng-action-center" aria-labelledby="receptionist-result-title">
+            <h2 id="receptionist-result-title">@(alreadySatisfied
+                ? "Current state verified; no new change was required"
+                : verified
+                ? receipt.Outcome == "already_applied" ? "Previously applied change verified" : "Change applied and verified"
+                : receipt.CommitKnown ? "Change recorded; verification still needed" : "Operation result is not yet confirmed")</h2>
+            <p>@OperationLabel(receipt.Operation)</p>
+            <dl class="eng-status-card">
+                <dt>Durable change recorded</dt><dd>@(alreadySatisfied ? "No new change was required" : receipt.CommitKnown ? "Confirmed" : "Not confirmed")</dd>
+                <dt>Independent readback</dt><dd>@(receipt.ReadBackVerified ? "Verified" : "Not verified")</dd>
+                @if (!string.IsNullOrWhiteSpace(receipt.DurableReference))
+                { <dt>Durable reference</dt><dd><code>@receipt.DurableReference</code></dd> }
+                @foreach (var fact in receipt.Facts)
+                { <dt>@fact.Label</dt><dd>@fact.Value</dd> }
+            </dl>
+            @if (!verified && !alreadySatisfied)
+            {
+                <p class="eng-alert is-error" role="alert">Review the current durable state and provider evidence before making another change. This result does not authorize a retry of the previous operation.</p>
+            }
+        </section>
+    }
+
+    @if (Model.Plan is { } plan)
+    {
+        <section class="eng-action-center" aria-labelledby="receptionist-plan-title">
+            <h2 id="receptionist-plan-title">Review: @plan.Label</h2>
+            <p>@OperationLabel(plan.Operation)</p>
+            <dl class="eng-status-card">
+                @foreach (var fact in plan.Facts)
+                { <dt>@fact.Label</dt><dd>@fact.Value</dd> }
+            </dl>
+            <details class="eng-technical">
+                <summary>Exact reviewed configuration</summary>
+                <dl><dt>Package</dt><dd>@plan.PackageKey</dd><dt>Fingerprint</dt><dd><code>@plan.PackageSha256</code></dd></dl>
+            </details>
+            @if (plan.Blockers.Count > 0)
+            {
+                <div class="eng-alert is-error" role="alert">
+                    <h3>Resolve these items before applying</h3>
+                    <ul>@foreach (var blocker in plan.Blockers) { <li>@blocker</li> }</ul>
+                </div>
+            }
+            @if (plan.CanApply && plan.Blockers.Count == 0 && !string.IsNullOrWhiteSpace(plan.ExpectedStateToken))
+            {
+                <p>Applying uses this exact configuration and current state. If either changes, review a new preview.</p>
+                <form asp-action="ApplyReceptionist" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="PackageKey" value="@plan.PackageKey" />
+                    <input type="hidden" name="PackageSha256" value="@plan.PackageSha256" />
+                    <input type="hidden" name="ExpectedStateToken" value="@plan.ExpectedStateToken" />
+                    <button type="submit" class="eng-button is-primary">Apply reviewed change</button>
+                </form>
+            }
+            else
+            {
+                <p>This preview is unavailable for application. Review the listed evidence and current state, then request a fresh preview.</p>
+            }
+        </section>
+    }
+
+    <section class="eng-action-center" aria-labelledby="receptionist-packages-title">
+        <h2 id="receptionist-packages-title">Reviewed operations</h2>
+        <p>Previewing reads the current configuration and evidence. It does not apply a change.</p>
+        @if (Model.Packages.Count == 0)
+        {
+            <div class="eng-action-empty">
+                <strong>No reviewed operations are available.</strong>
+                <span>Complete the required provider and accounting evidence in the existing operator configuration, then reload this page.</span>
+            </div>
+        }
+        else
+        {
+            <div class="eng-action-list">
+                @foreach (var package in Model.Packages)
+                {
+                    <article class="eng-action-card">
+                        <div class="eng-action-copy"><h3>@package.Label</h3></div>
+                        <form asp-action="PlanReceptionist" method="post">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="PackageKey" value="@package.PackageKey" />
+                            <input type="hidden" name="PackageSha256" value="@package.PackageSha256" />
+                            <button type="submit" class="eng-button">Preview planned change</button>
+                        </form>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</main>

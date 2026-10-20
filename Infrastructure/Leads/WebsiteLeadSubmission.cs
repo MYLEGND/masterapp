@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Shared.Meta;
 using Domain.Entities;
 using Infrastructure.Data;
@@ -33,10 +34,44 @@ public static class WebsiteLeadSubmission
     {
         await AttachPublishedProtectLineageAsync(db, lead, ct);
         lead.LeadId = ResolveId(lead, submissionId);
+        return await TryCreateResolvedAsync(db, lead, true, ct, persistHandoff);
+    }
+
+    internal static Guid ResolveConfirmedId(WebsiteLead lead, ConfirmedInquirySubmissionIdentity identity)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        if (identity.Owner is null || identity.CallId == Guid.Empty || identity.SubmissionToken == Guid.Empty ||
+            lead.AgentTrackingProfileId != identity.Owner.AgentTrackingProfileId ||
+            lead.CommerceBusinessId != identity.Owner.CommerceBusinessId)
+            throw new ArgumentException("A confirmed inquiry requires one matching permanent owner and stable call/submission identities.");
+        foreach (var value in new[] { identity.Channel, identity.Provider, identity.ProviderProjectKey, identity.ProviderSessionId })
+            if (string.IsNullOrWhiteSpace(value) || value.Length > 200 || value.Trim() != value || value.Any(char.IsControl))
+                throw new ArgumentException("Confirmed inquiry channel and provider identities must be explicit and bounded.");
+        // Length-delimited JSON avoids collisions between legitimate provider identifiers containing separators.
+        // Contact corrections cannot change this identity or create another row for the same claimed action.
+        var key = JsonSerializer.Serialize(new[] { "confirmed-inquiry:v1", identity.Owner.Key, identity.Channel,
+            identity.Provider, identity.ProviderProjectKey, identity.ProviderSessionId,
+            identity.CallId.ToString("N"), identity.SubmissionToken.ToString("N") });
+        return new Guid(SHA256.HashData(Encoding.UTF8.GetBytes(key)).AsSpan(0, 16));
+    }
+
+    internal static Task<bool> TryCreateConfirmedAsync(MasterAppDbContext db, WebsiteLead lead,
+        ConfirmedInquirySubmissionIdentity identity, CancellationToken ct = default,
+        Func<CancellationToken, Task>? persistHandoff = null)
+    {
+        lead.LeadId = ResolveConfirmedId(lead, identity);
+        // Voice has no published browser lineage, measurement consent or advertising outcome by implication.
+        return TryCreateResolvedAsync(db, lead, false, ct, persistHandoff);
+    }
+
+    private static async Task<bool> TryCreateResolvedAsync(MasterAppDbContext db, WebsiteLead lead,
+        bool websiteMeasurement, CancellationToken ct, Func<CancellationToken, Task>? persistHandoff)
+    {
         if (await db.WebsiteLeads.AsNoTracking().AnyAsync(x => x.LeadId == lead.LeadId, ct)) return false;
         await using var transaction = db.Database.IsRelational() && db.Database.CurrentTransaction == null
             ? await db.Database.BeginTransactionAsync(ct) : null;
-        lead.MetadataJson = MetaLeadTrackingJson.Upsert(lead.MetadataJson, state => state.EventId ??= "lead_" + lead.LeadId.ToString("N"));
+        if (websiteMeasurement)
+            lead.MetadataJson = MetaLeadTrackingJson.Upsert(lead.MetadataJson, state => state.EventId ??= "lead_" + lead.LeadId.ToString("N"));
         db.WebsiteLeads.Add(lead);
         try
         {

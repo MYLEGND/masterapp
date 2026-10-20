@@ -1,0 +1,398 @@
+using Domain.Entities;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+using Shared.Analytics;
+
+namespace Infrastructure.Reception;
+
+/// <summary>
+/// Durable admission and action coordination under MarketingConnection ownership.
+/// Provider I/O must occur after these transactions commit; an uncertain effect is never retried blindly.
+/// </summary>
+public sealed partial class ReceptionistAdmissionService(DbContextOptions<MasterAppDbContext> options, TimeProvider clock)
+{
+    /// <summary>Resolves the private server route before signature validation. Caller fields do not select an owner or secret.</summary>
+    internal async Task<ReceptionistIngressBinding?> GetIngressBindingAsync(string provider, string ingressKey, CancellationToken ct = default)
+    {
+        provider = MarketingDestinationKeys.Normalize(provider);
+        ReceptionistConfigurationCodec.Required(ingressKey, 200, nameof(ingressKey));
+        await using var read = new MasterAppDbContext(options);
+        var connection = await read.MarketingConnections.AsNoTracking().SingleOrDefaultAsync(
+            x => x.Provider == provider && x.ReceptionistIngressKey == ingressKey, ct);
+        if (connection?.ReceptionistActiveConfigurationId is not { } configurationId) return null;
+        var owner = ReceptionistSql.Owner(connection);
+        var version = await read.Set<ReceptionistConfigurationVersion>().AsNoTracking().SingleOrDefaultAsync(
+            x => x.Id == configurationId && x.MarketingConnectionId == connection.Id, ct);
+        if (version is null) return null;
+        var configuration = ReceptionistConfigurationCodec.Read(version.ConfigurationJson, version.ConfigurationSha256);
+        var binding = ReceptionistConfigurationCodec.ReadBinding(version.AcceptedBindingJson, configuration);
+        if (binding is null || binding.IngressKey != ingressKey || connection.ReceptionistProviderProjectKey != binding.ProviderProjectKey) return null;
+        return new(provider, connection.Id, owner, version.Id, configuration, binding);
+    }
+
+    internal async Task<ReceptionistAdmission> ReserveAsync(TrustedReceptionistIngress ingress, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(ingress);
+        ingress = ingress with { Provider = MarketingDestinationKeys.Normalize(ingress.Provider) };
+        ReceptionistConfigurationCodec.Required(ingress.IngressKey, 200, nameof(ingress.IngressKey));
+        ReceptionistConfigurationCodec.Required(ingress.ProviderProjectKey, 200, nameof(ingress.ProviderProjectKey));
+        ReceptionistConfigurationCodec.Required(ingress.ProviderSessionId, 200, nameof(ingress.ProviderSessionId));
+        ReceptionistConfigurationCodec.Required(ingress.EventId, 200, nameof(ingress.EventId));
+        ReceptionistConfigurationCodec.Required(ingress.AuthenticatedOwnerKey, 160, nameof(ingress.AuthenticatedOwnerKey));
+        if (ingress.AuthenticatedConnectionId == Guid.Empty || ingress.AuthenticatedConfigurationId == Guid.Empty)
+            throw new ArgumentException("The exact server binding used to authenticate the ingress is required.");
+        var now = clock.GetUtcNow().UtcDateTime;
+        await using var read = new MasterAppDbContext(options);
+        var connection = await read.MarketingConnections.AsNoTracking().SingleOrDefaultAsync(
+            x => x.Provider == ingress.Provider && x.ReceptionistIngressKey == ingress.IngressKey, ct);
+        ReceptionistConfigurationVersion? initialVersion = connection?.ReceptionistActiveConfigurationId is { } versionId
+            ? await read.Set<ReceptionistConfigurationVersion>().AsNoTracking().SingleOrDefaultAsync(
+                x => x.Id == versionId && x.MarketingConnectionId == connection.Id, ct) : null;
+        ReceptionistBusinessConfiguration? configuration = initialVersion is null ? null :
+            ReceptionistConfigurationCodec.Read(initialVersion.ConfigurationJson, initialVersion.ConfigurationSha256);
+        var binding = configuration is null ? null : ReceptionistConfigurationCodec.ReadBinding(initialVersion!.AcceptedBindingJson, configuration);
+        var ownerAccount = connection is null ? null : await read.Set<ReceptionistBudgetAccount>().AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Kind == "owner" && x.ScopeKey == connection.OwnerKey, ct);
+        var accountIds = ownerAccount is null || binding is null ? [] : binding.Costs.Select(x => x.FundingBudgetAccountId)
+            .Append(ownerAccount.Id).Distinct().ToArray();
+        if (accountIds.Length > 0 && await read.Set<ReceptionistBudgetAccount>().CountAsync(x => accountIds.Contains(x.Id), ct) != accountIds.Length)
+            accountIds = [];
+
+        try
+        {
+            return await ReceptionistSql.TransactionAsync(options, accountIds, async write =>
+            {
+                now = clock.GetUtcNow().UtcDateTime;
+                var current = await AuthenticatedConnectionAsync(write, ingress, ct);
+                // Signature verification does not survive a route transfer, owner change or immutable binding rotation.
+                // Check this before replay so an authenticated event cannot reveal or reserve another owner's call.
+                if (current is null || connection?.Id != current.Id || initialVersion?.Id != ingress.AuthenticatedConfigurationId)
+                    return new(false, false, "authenticated_binding_changed", null);
+                if (configuration is null || binding is null) return new(false, false, "configuration_or_binding_unavailable", null);
+                if (binding.ProviderProjectKey != ingress.ProviderProjectKey || binding.IngressKey != ingress.IngressKey)
+                    return new(false, false, "provider_binding_mismatch", null);
+                var replay = await SessionDecisionAsync(write, ingress, ct);
+                if (replay is not null) return await ReplayAsync(write, replay, ingress, now, ct);
+                await AssertEventAvailableAsync(write, ingress, null, ct);
+                ReceptionistAdmission Deny(string reason) => SaveDecision(write, ingress, now, reason, null);
+                if (ownerAccount is null || accountIds.Length == 0) return Deny("accounting_unavailable");
+                if (!current.ReceptionistAdmissionEnabled) return Deny("admission_disabled");
+                if (binding.ControlledTestOnly && !ingress.ControlledTest) return Deny("controlled_acceptance_only");
+                if (!ReceptionistConfigurationCodec.HasRequiredIntake(configuration, binding)) return Deny("canonical_intake_unaccepted");
+                if (!ReceptionistConfigurationCodec.IsOpen(configuration, now)) return Deny("outside_reception_hours");
+                var accounts = await write.Set<ReceptionistBudgetAccount>().Where(x => accountIds.Contains(x.Id)).ToListAsync(ct);
+                if (accounts.Count != accountIds.Length || accounts.Any(x => !x.AdmissionEnabled || x.Currency != configuration.Currency) ||
+                    accounts.Any(x => x.Id == ownerAccount.Id ? x.Kind != "owner" || x.ScopeKey != current.OwnerKey : x.Kind != "funding"))
+                    return Deny("accounting_disabled_or_mismatched");
+                var boundaryCalls = await write.Set<ReceptionistCall>().Where(x => x.OwnerBudgetAccountId == ownerAccount.Id &&
+                    x.ProviderClosedUtc == null && !x.VoiceUsageFinal && write.Set<ReceptionistBudgetPeriod>().Any(period =>
+                        period.Id == x.OwnerBudgetPeriodId && period.EndUtc <= now)).ToListAsync(ct);
+                if (boundaryCalls.Count > 0)
+                {
+                    foreach (var boundaryCall in boundaryCalls) await HoldVoiceAllocationAsync(write, boundaryCall, ct);
+                    return Deny("voice_allocation_unreconciled");
+                }
+                if (await write.Set<ReceptionistCall>().AnyAsync(x => x.OwnerBudgetAccountId == ownerAccount.Id && x.VoiceAllocationUncertain, ct))
+                    return Deny("voice_allocation_unreconciled");
+                var periods = await write.Set<ReceptionistBudgetPeriod>().Where(x => accountIds.Contains(x.BudgetAccountId) &&
+                    x.StartUtc <= now && x.EndUtc > now).ToListAsync(ct);
+                if (periods.Count != accountIds.Length || periods.Any(x => !x.OpeningReconciled) ||
+                    periods.Select(x => x.BudgetAccountId).Distinct().Count() != accountIds.Length)
+                    return Deny("unreconciled_accounting_period");
+                var ownerPeriod = periods.Single(x => x.BudgetAccountId == ownerAccount.Id);
+                var costReservations = binding.Costs.Select(component => new ReceptionistCostReservation
+                {
+                    OwnerBudgetAccountId = ownerAccount.Id, OwnerBudgetPeriodId = ownerPeriod.Id,
+                    FundingBudgetAccountId = component.FundingBudgetAccountId,
+                    FundingBudgetPeriodId = periods.Single(x => x.BudgetAccountId == component.FundingBudgetAccountId).Id,
+                    FundingControlRevision = accounts.Single(x => x.Id == component.FundingBudgetAccountId).ControlRevision,
+                    ComponentKey = component.Key,
+                    CashReserved = ReceptionistConfigurationCodec.Maximum(component.CashFixedMaximum, component.CashPerSecondMaximum, configuration.MaximumCallSeconds),
+                    ConsumptionReserved = ReceptionistConfigurationCodec.Maximum(component.ConsumptionFixedMaximum, component.ConsumptionPerSecondMaximum, configuration.MaximumCallSeconds)
+                }).ToArray();
+                var outstanding = await write.Set<ReceptionistCostReservation>().AsNoTracking()
+                    .Where(x => (x.OwnerBudgetAccountId == ownerAccount.Id || accountIds.Contains(x.FundingBudgetAccountId)) && (!x.CashFinal || !x.ConsumptionFinal))
+                    .ToListAsync(ct);
+                foreach (var period in periods)
+                {
+                    var isOwner = period.BudgetAccountId == ownerAccount.Id;
+                    var outstandingForAccount = outstanding.Where(x => isOwner ? x.OwnerBudgetAccountId == ownerAccount.Id : x.FundingBudgetAccountId == period.BudgetAccountId).ToArray();
+                    var proposedForAccount = costReservations.Where(x => isOwner || x.FundingBudgetAccountId == period.BudgetAccountId).ToArray();
+                    var cashLimit = isOwner ? Math.Min(period.CashLimit, configuration.MonthlyCashLimit) : period.CashLimit;
+                    var consumptionLimit = isOwner ? Math.Min(period.ConsumptionLimit, configuration.MonthlyConsumptionLimit) : period.ConsumptionLimit;
+                    // Old unpriced reservations continue to encumber the new period. Rollover and rebinding never reset them.
+                    if (checked(period.CashCommitted + outstandingForAccount.Sum(CashRemaining) + proposedForAccount.Sum(x => x.CashReserved)) > cashLimit)
+                        return Deny(isOwner ? "owner_cash_limit" : "funding_cash_limit");
+                    if (checked(period.ConsumptionCommitted + outstandingForAccount.Sum(ConsumptionRemaining) + proposedForAccount.Sum(x => x.ConsumptionReserved)) > consumptionLimit)
+                        return Deny(isOwner ? "owner_consumption_limit" : "funding_consumption_limit");
+                }
+                var unfinishedVoice = await write.Set<ReceptionistCall>().AsNoTracking()
+                    .Where(x => x.OwnerBudgetAccountId == ownerAccount.Id && !x.VoiceUsageFinal)
+                    .Select(x => new { x.ReservedVoiceSeconds, x.ObservedVoiceSeconds }).ToListAsync(ct);
+                if (checked(ownerPeriod.VoiceSecondsCommitted + unfinishedVoice.Sum(x => Math.Max(0, x.ReservedVoiceSeconds - x.ObservedVoiceSeconds)) +
+                    configuration.MaximumCallSeconds) > configuration.MonthlyVoiceSecondsLimit) return Deny("owner_voice_minutes_limit");
+                if (await write.Set<ReceptionistCall>().CountAsync(x => x.OwnerBudgetAccountId == ownerAccount.Id && x.ProviderClosedUtc == null, ct) >=
+                    configuration.MaximumConcurrentCalls) return Deny("owner_concurrency_limit");
+                var since = now.AddSeconds(-configuration.AdmissionWindowSeconds);
+                if (await write.Set<ReceptionistCall>().CountAsync(x => x.OwnerBudgetAccountId == ownerAccount.Id && x.ReservedUtc >= since, ct) >=
+                    configuration.MaximumCallsPerWindow) return Deny("owner_admission_rate_limit");
+                var deadline = new[] { now.AddSeconds(configuration.MaximumCallSeconds), periods.Min(x => x.EndUtc),
+                    ReceptionistConfigurationCodec.CurrentWindowEnd(configuration, now) }.Min();
+                if (deadline <= now) return Deny("reception_window_ended");
+                var call = new ReceptionistCall
+                {
+                    MarketingConnectionId = current.Id, ConfigurationVersionId = initialVersion.Id,
+                    OwnerBudgetAccountId = ownerAccount.Id, OwnerBudgetPeriodId = ownerPeriod.Id,
+                    ConnectionControlRevision = current.ReceptionistControlRevision,
+                    OwnerControlRevision = accounts.Single(x => x.Id == ownerAccount.Id).ControlRevision,
+                    Provider = ingress.Provider, IngressKey = ingress.IngressKey,
+                    ProviderProjectKey = ingress.ProviderProjectKey, ProviderSessionId = ingress.ProviderSessionId,
+                    ControlledTest = ingress.ControlledTest, ReservedUtc = now, MustStopUtc = deadline,
+                    ReservedVoiceSeconds = configuration.MaximumCallSeconds
+                };
+                write.Add(call);
+                foreach (var reservation in costReservations) { reservation.CallId = call.Id; write.Add(reservation); }
+                return SaveDecision(write, ingress, now, "reserved", call);
+            }, ct);
+        }
+        catch (DbUpdateException conflict)
+        {
+            // Concurrent deliveries may race before they resolve an owner. Only an already committed identical
+            // session decision can explain a uniqueness failure; otherwise surface the database error.
+            return await ReceptionistSql.TransactionAsync(options, accountIds, async write =>
+            {
+                if (await AuthenticatedConnectionAsync(write, ingress, ct) is null)
+                    return new(false, false, "authenticated_binding_changed", null);
+                var existing = await SessionDecisionAsync(write, ingress, ct);
+                if (existing is null) throw new DbUpdateException("No identical committed provider decision explains this database conflict.", conflict);
+                return await ReplayAsync(write, existing, ingress, clock.GetUtcNow().UtcDateTime, ct, persistEvent: false);
+            }, ct);
+        }
+    }
+
+    internal async Task<ReceptionistCallContext?> GetCallContextAsync(Guid callId, CancellationToken ct = default)
+    {
+        await using var read = new MasterAppDbContext(options);
+        var call = await read.Set<ReceptionistCall>().AsNoTracking().SingleOrDefaultAsync(x => x.Id == callId, ct);
+        if (call is null) return null;
+        return await ContextAsync(read, call, ct);
+    }
+
+    internal async Task RecordProviderStateAsync(Guid callId, string state, string receipt,
+        DateTime? providerClosedUtc = null, CancellationToken ct = default)
+    {
+        if (state is not ("accepted" or "uncertain" or "closed" or "rejected")) throw new ArgumentException("Unsupported provider state.");
+        ReceptionistConfigurationCodec.Required(receipt, 512, nameof(receipt));
+        var terminal = state is "closed" or "rejected";
+        if (terminal != providerClosedUtc.HasValue || (providerClosedUtc.HasValue && providerClosedUtc.Value.Kind != DateTimeKind.Utc))
+            throw new ArgumentException("A verified terminal state requires its UTC provider closure time.");
+        await WithCallAsync(callId, async (write, call) =>
+        {
+            if (providerClosedUtc is { } closure && (closure < call.ReservedUtc || closure > clock.GetUtcNow().UtcDateTime))
+                throw new ArgumentException("The verified provider closure must fall between reservation and the current UTC time.");
+            if (call.ProviderClosedUtc is not null)
+            {
+                if (!terminal) return true; // A delayed accepted event cannot reopen a closed call.
+                if (call.State != state) throw new InvalidOperationException("Provider terminal states conflict; reconcile before changing evidence.");
+                return true;
+            }
+            if (state == "rejected" && call.State == "accepted")
+                throw new InvalidOperationException("An accepted call requires a closure receipt.");
+            call.State = state; call.ProviderStateReceipt = receipt;
+            call.ProviderClosedUtc = providerClosedUtc; call.Revision = Guid.NewGuid();
+            if (providerClosedUtc is { } closed)
+            {
+                var periodEnd = await write.Set<ReceptionistBudgetPeriod>().Where(x => x.Id == call.OwnerBudgetPeriodId)
+                    .Select(x => x.EndUtc).SingleAsync(ct);
+                if (closed > periodEnd) await HoldVoiceAllocationAsync(write, call, ct);
+            }
+            // Closure releases concurrency only. Usage and money remain reserved until separately reconciled.
+            return true;
+        }, ct);
+    }
+
+    internal async Task<ReceptionistActionClaim> ClaimActionAsync(Guid callId, string logicalActionKey,
+        string capabilityKey, string argumentsSha256, string confirmationReceipt, Guid sidebandLeaseToken, CancellationToken ct = default)
+    {
+        ReceptionistConfigurationCodec.Identifier(logicalActionKey, 160, nameof(logicalActionKey));
+        ReceptionistConfigurationCodec.Identifier(capabilityKey, 100, nameof(capabilityKey));
+        RequireSha256(argumentsSha256);
+        ReceptionistConfigurationCodec.Required(confirmationReceipt, 512, nameof(confirmationReceipt));
+        return await WithCallAsync(callId, async (write, call) =>
+        {
+            var existing = await write.Set<ReceptionistActionIntent>().SingleOrDefaultAsync(x => x.CallId == callId && x.LogicalActionKey == logicalActionKey, ct);
+            if (existing is not null)
+            {
+                if (existing.CapabilityKey != capabilityKey || existing.ArgumentsSha256 != argumentsSha256 || existing.ConfirmationReceipt != confirmationReceipt)
+                    throw new InvalidOperationException("A logical action cannot be replayed with different confirmed facts.");
+                return new ReceptionistActionClaim(false, existing.State, existing.Id, existing.RouteKey, existing.ActualRecordReference, existing.VerificationReceipt, existing.AttemptId);
+            }
+            var context = await ContextAsync(write, call, ct);
+            var now = clock.GetUtcNow().UtcDateTime;
+            if (!OwnsLease(call, sidebandLeaseToken, now) || !await AdmissionStillEnabledAsync(write, call, ct))
+                return new ReceptionistActionClaim(false, "call_not_active", null);
+            var capability = context.Binding.Capabilities.SingleOrDefault(x => x.Key == capabilityKey);
+            if (!context.Configuration.RequestedCapabilities.Contains(capabilityKey, StringComparer.Ordinal) ||
+                capability?.State != ReceptionistCapabilityStates.Accepted)
+                return new ReceptionistActionClaim(false, "capability_unaccepted", null);
+            var action = new ReceptionistActionIntent
+            {
+                CallId = callId, LogicalActionKey = logicalActionKey, CapabilityKey = capabilityKey,
+                RouteKey = capability.RouteKey, ArgumentsSha256 = argumentsSha256, ConfirmationReceipt = confirmationReceipt,
+                ExecutionLeaseToken = sidebandLeaseToken, ExecutionFence = call.SidebandFence, WorkerId = call.SidebandWorkerId,
+                CreatedUtc = now, UpdatedUtc = now
+            };
+            write.Add(action);
+            return new ReceptionistActionClaim(true, action.State, action.Id, action.RouteKey, AttemptId: action.AttemptId);
+        }, ct);
+    }
+
+    internal async Task RecordActionOutcomeAsync(Guid actionId, string state, string? actualRecordReference,
+        string verificationReceipt, CancellationToken ct = default)
+    {
+        if (state is not ("verified" or "uncertain" or "rejected")) throw new ArgumentException("Unsupported action state.");
+        ReceptionistConfigurationCodec.Required(verificationReceipt, 512, nameof(verificationReceipt));
+        if (state == "verified") ReceptionistConfigurationCodec.Required(actualRecordReference, 512, nameof(actualRecordReference));
+        else if (actualRecordReference is not null) ReceptionistConfigurationCodec.Required(actualRecordReference, 512, nameof(actualRecordReference));
+        await using var read = new MasterAppDbContext(options);
+        var callId = await read.Set<ReceptionistActionIntent>().Where(x => x.Id == actionId).Select(x => x.CallId).SingleAsync(ct);
+        await WithCallAsync(callId, async (write, call) =>
+        {
+            var action = await write.Set<ReceptionistActionIntent>().SingleAsync(x => x.Id == actionId && x.CallId == call.Id, ct);
+            if (state == "verified" && action.CapabilityKey == StopCapability && call.ProviderClosedUtc is null)
+                throw new InvalidOperationException("A stop action is successful only after verified provider closure.");
+            if (action.State is "verified" or "rejected")
+            {
+                if (action.State != state || action.ActualRecordReference != actualRecordReference)
+                    throw new InvalidOperationException("A terminal action outcome cannot be overwritten by a conflicting receipt.");
+                return true;
+            }
+            action.State = state; action.ActualRecordReference = actualRecordReference;
+            action.VerificationReceipt = verificationReceipt; action.UpdatedUtc = clock.GetUtcNow().UtcDateTime;
+            action.Revision = Guid.NewGuid();
+            return true;
+        }, ct);
+    }
+
+    internal async Task<IReadOnlyList<ReceptionistStopRequest>> FindStopRequestsAsync(int maximum, CancellationToken ct = default)
+    {
+        if (maximum is < 1 or > 1000) throw new ArgumentOutOfRangeException(nameof(maximum));
+        var now = clock.GetUtcNow().UtcDateTime;
+        await using var read = new MasterAppDbContext(options);
+        var calls = await CallsRequiringStop(read, now).Where(call =>
+                !read.Set<ReceptionistActionIntent>().Any(action => action.CallId == call.Id && action.CapabilityKey == StopCapability))
+            .OrderBy(x => x.MustStopUtc).ThenBy(x => x.Id).Take(maximum).ToListAsync(ct);
+        return calls.Select(call => new ReceptionistStopRequest(call.Id, call.Provider, call.ProviderProjectKey, call.ProviderSessionId,
+            call.ConfigurationVersionId, call.MustStopUtc <= now ? "deadline" : "kill_switch")).ToArray();
+    }
+
+    private static IQueryable<ReceptionistCall> CallsRequiringStop(MasterAppDbContext read, DateTime now) =>
+        read.Set<ReceptionistCall>().AsNoTracking().Where(call => call.ProviderClosedUtc == null &&
+            (call.MustStopUtc <= now || read.MarketingConnections.Any(connection => connection.Id == call.MarketingConnectionId &&
+                (!connection.ReceptionistAdmissionEnabled || connection.ReceptionistControlRevision != call.ConnectionControlRevision ||
+                    connection.ReceptionistProviderProjectKey != call.ProviderProjectKey)) ||
+             read.Set<ReceptionistBudgetAccount>().Any(account => account.Id == call.OwnerBudgetAccountId &&
+                (!account.AdmissionEnabled || account.ControlRevision != call.OwnerControlRevision)) ||
+             read.Set<ReceptionistCostReservation>().Any(cost => cost.CallId == call.Id &&
+                 read.Set<ReceptionistBudgetAccount>().Any(account => account.Id == cost.FundingBudgetAccountId &&
+                     (!account.AdmissionEnabled || account.ControlRevision != cost.FundingControlRevision)))));
+
+    private async Task<T> WithCallAsync<T>(Guid callId, Func<MasterAppDbContext, ReceptionistCall, Task<T>> operation, CancellationToken ct)
+    {
+        await using var read = new MasterAppDbContext(options);
+        var owner = await read.Set<ReceptionistCall>().Where(x => x.Id == callId).Select(x => x.OwnerBudgetAccountId).SingleAsync(ct);
+        var funding = await read.Set<ReceptionistCostReservation>().Where(x => x.CallId == callId).Select(x => x.FundingBudgetAccountId).Distinct().ToArrayAsync(ct);
+        return await ReceptionistSql.TransactionAsync(options, funding.Append(owner).ToArray(), async write =>
+            await operation(write, await write.Set<ReceptionistCall>().SingleAsync(x => x.Id == callId, ct)), ct);
+    }
+
+    private static async Task<ReceptionistCallContext> ContextAsync(MasterAppDbContext read, ReceptionistCall call, CancellationToken ct)
+    {
+        var connection = await read.MarketingConnections.AsNoTracking().SingleAsync(x => x.Id == call.MarketingConnectionId, ct);
+        var version = await read.Set<ReceptionistConfigurationVersion>().AsNoTracking().SingleAsync(
+            x => x.Id == call.ConfigurationVersionId && x.MarketingConnectionId == connection.Id, ct);
+        var owner = ReceptionistSql.Owner(connection);
+        var account = await read.Set<ReceptionistBudgetAccount>().AsNoTracking().SingleAsync(x => x.Id == call.OwnerBudgetAccountId, ct);
+        if (account.Kind != "owner" || account.ScopeKey != owner.Key) throw new InvalidOperationException("Call accounting ownership is inconsistent.");
+        var configuration = ReceptionistConfigurationCodec.Read(version.ConfigurationJson, version.ConfigurationSha256);
+        var binding = ReceptionistConfigurationCodec.ReadBinding(version.AcceptedBindingJson, configuration)
+            ?? throw new InvalidOperationException("The pinned provider binding is absent.");
+        if (binding.IngressKey != call.IngressKey || binding.ProviderProjectKey != call.ProviderProjectKey || connection.Provider != call.Provider)
+            throw new InvalidOperationException("The pinned provider identity is inconsistent.");
+        // Preserve the original immutable session context for stopping and observation after current controls drift.
+        // Dialogue and new business effects additionally require the live project claim in AdmissionStillEnabledAsync.
+        return new(call.Id, owner, call.Provider, call.ProviderProjectKey, call.ProviderSessionId, version.Id,
+            configuration, binding, call.MustStopUtc, call.State, call.ControlledTest);
+    }
+
+    private static async Task<bool> AdmissionStillEnabledAsync(MasterAppDbContext read, ReceptionistCall call, CancellationToken ct) =>
+        await read.MarketingConnections.AnyAsync(x => x.Id == call.MarketingConnectionId && x.ReceptionistAdmissionEnabled &&
+            x.ReceptionistControlRevision == call.ConnectionControlRevision && x.ReceptionistProviderProjectKey == call.ProviderProjectKey, ct) &&
+        await read.Set<ReceptionistBudgetAccount>().AnyAsync(x => x.Id == call.OwnerBudgetAccountId && x.AdmissionEnabled && x.ControlRevision == call.OwnerControlRevision, ct) &&
+        !await read.Set<ReceptionistCostReservation>().AnyAsync(cost => cost.CallId == call.Id &&
+            read.Set<ReceptionistBudgetAccount>().Any(account => account.Id == cost.FundingBudgetAccountId &&
+                (!account.AdmissionEnabled || account.ControlRevision != cost.FundingControlRevision)), ct);
+
+    private static Task<ReceptionistSessionDecision?> SessionDecisionAsync(MasterAppDbContext read, TrustedReceptionistIngress ingress, CancellationToken ct) =>
+        read.Set<ReceptionistSessionDecision>().AsNoTracking().SingleOrDefaultAsync(x => x.Provider == ingress.Provider &&
+            x.ProviderProjectKey == ingress.ProviderProjectKey && x.ProviderSessionId == ingress.ProviderSessionId, ct);
+
+    private static async Task<MarketingConnection?> AuthenticatedConnectionAsync(
+        MasterAppDbContext read, TrustedReceptionistIngress ingress, CancellationToken ct)
+    {
+        var connection = await read.MarketingConnections.AsNoTracking().SingleOrDefaultAsync(x => x.Id == ingress.AuthenticatedConnectionId, ct);
+        if (connection is null || connection.Provider != ingress.Provider || connection.OwnerKey != ingress.AuthenticatedOwnerKey ||
+            connection.ReceptionistIngressKey != ingress.IngressKey || connection.ReceptionistActiveConfigurationId != ingress.AuthenticatedConfigurationId ||
+            connection.ReceptionistProviderProjectKey != ingress.ProviderProjectKey)
+            return null;
+        _ = ReceptionistSql.Owner(connection);
+        return connection;
+    }
+
+    private static async Task AssertEventAvailableAsync(MasterAppDbContext read, TrustedReceptionistIngress ingress, Guid? decisionId, CancellationToken ct)
+    {
+        var existing = await read.Set<ReceptionistIngressEvent>().AsNoTracking().SingleOrDefaultAsync(x => x.Provider == ingress.Provider &&
+            x.ProviderProjectKey == ingress.ProviderProjectKey && x.EventId == ingress.EventId, ct);
+        if (existing is not null && existing.DecisionId != decisionId)
+            throw new InvalidOperationException("The provider event identity is already bound to another session decision.");
+    }
+
+    private static ReceptionistAdmission SaveDecision(MasterAppDbContext write, TrustedReceptionistIngress ingress, DateTime now, string reason, ReceptionistCall? call)
+    {
+        var decision = new ReceptionistSessionDecision
+        {
+            Provider = ingress.Provider, ProviderProjectKey = ingress.ProviderProjectKey, ProviderSessionId = ingress.ProviderSessionId,
+            IngressKey = ingress.IngressKey, Outcome = call is null ? "denied" : "reserved", Reason = reason,
+            CallId = call?.Id, DecidedUtc = now
+        };
+        write.Add(decision);
+        write.Add(new ReceptionistIngressEvent { DecisionId = decision.Id, Provider = ingress.Provider,
+            ProviderProjectKey = ingress.ProviderProjectKey, EventId = ingress.EventId, ReceivedUtc = now });
+        // The webhook may acknowledge this durable decision immediately. Only ClaimProviderAcceptAsync grants external I/O.
+        return new(call is not null, false, reason, call?.Id, call?.ConfigurationVersionId, call?.MustStopUtc);
+    }
+
+    private static async Task<ReceptionistAdmission> ReplayAsync(MasterAppDbContext write, ReceptionistSessionDecision decision,
+        TrustedReceptionistIngress ingress, DateTime now, CancellationToken ct, bool persistEvent = true)
+    {
+        if (decision.IngressKey != ingress.IngressKey) return new(false, false, "session_binding_mismatch", null);
+        var call = decision.CallId is { } id ? await write.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == id, ct) : null;
+        if (call is not null && (call.MarketingConnectionId != ingress.AuthenticatedConnectionId ||
+            call.ConfigurationVersionId != ingress.AuthenticatedConfigurationId))
+            return new(false, false, "session_binding_mismatch", null);
+        await AssertEventAvailableAsync(write, ingress, decision.Id, ct);
+        if (persistEvent && !await write.Set<ReceptionistIngressEvent>().AnyAsync(x => x.Provider == ingress.Provider &&
+            x.ProviderProjectKey == ingress.ProviderProjectKey && x.EventId == ingress.EventId, ct))
+            write.Add(new ReceptionistIngressEvent { DecisionId = decision.Id, Provider = ingress.Provider,
+                ProviderProjectKey = ingress.ProviderProjectKey, EventId = ingress.EventId, ReceivedUtc = now });
+        return new(call is not null, false, decision.Reason, call?.Id, call?.ConfigurationVersionId, call?.MustStopUtc);
+    }
+
+    private static decimal CashRemaining(ReceptionistCostReservation value) => value.CashFinal ? 0m : Math.Max(0m, value.CashReserved - value.CashObserved);
+    private static decimal ConsumptionRemaining(ReceptionistCostReservation value) => value.ConsumptionFinal ? 0m : Math.Max(0m, value.ConsumptionReserved - value.ConsumptionObserved);
+    private static void RequireSha256(string value)
+    {
+        if (value is not { Length: 64 } || value.Any(ch => !(ch is >= '0' and <= '9' or >= 'a' and <= 'f')))
+            throw new ArgumentException("An exact lowercase SHA-256 fingerprint is required.");
+    }
+}

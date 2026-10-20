@@ -1,0 +1,137 @@
+@model Shared.Analytics.ReceptionistSetupPage
+@using System.Globalization
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Receptionist settings";
+    var settings = Model.Input;
+    var snapshot = Model.Snapshot;
+    var accounting = snapshot.Accounting;
+    var canEnable = snapshot.BindingAccepted && accounting is { CurrentOpeningReconciled: true, AdmissionEnabled: true, PolicyLimitsAccepted: true };
+    string Amount(decimal value) => value.ToString(CultureInfo.InvariantCulture);
+}
+<section class="container py-4">
+    <a href="@Model.ReturnUrl">Back to your workspace</a>
+    <h1 class="mt-3">Receptionist settings</h1>
+    <p>Choose how your receptionist answers callers, which services it can discuss, and the limits it must respect.</p>
+    @if (Model.Message is not null)
+    { <p class="alert alert-info" role="status">@Model.Message</p> }
+    <div class="card mb-4"><div class="card-body">
+        <h2 class="h5">Call status</h2>
+        <dl class="row mb-2">
+            <dt class="col-sm-4">New calls</dt><dd class="col-sm-8">@(snapshot.AdmissionEnabled ? "Enabled, subject to verified funding, hours and limits" : "Paused")</dd>
+            <dt class="col-sm-4">Current settings</dt><dd class="col-sm-8">@(snapshot.ConfigurationId.HasValue ? $"Version {snapshot.ConfigurationVersion}" : "No saved version")</dd>
+            <dt class="col-sm-4">Provider and inquiry setup</dt><dd class="col-sm-8">@(snapshot.BindingAccepted ? "Verified for this version" : "Verification required")</dd>
+            <dt class="col-sm-4">Spending controls</dt><dd class="col-sm-8">@(accounting is { CurrentOpeningReconciled: true, PolicyLimitsAccepted: true } ? "Current opening and limits verified" : "Reconciliation and approval required")</dd>
+        </dl>
+        @if (accounting is not null)
+        {
+            <p class="mb-2">Cash committed: @accounting.CashCommitted.ToString("0.00") @settings.Currency; reserved for unresolved calls: @accounting.CashReserved.ToString("0.00") @settings.Currency.<br />
+            Service consumption committed: @accounting.ConsumptionCommitted.ToString("0.00") @settings.Currency; reserved: @accounting.ConsumptionReserved.ToString("0.00") @settings.Currency.</p>
+        }
+        @if (snapshot.ConfigurationId.HasValue)
+        {
+            <form action="@Model.AdmissionUrl" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="ExpectedRevision" value="@snapshot.ConnectionRevision" />
+                <input type="hidden" name="Enabled" value="@(!snapshot.AdmissionEnabled ? "true" : "false")" />
+                <button class="btn @(snapshot.AdmissionEnabled ? "btn-danger" : "btn-outline-primary")" type="submit" disabled="@(!snapshot.AdmissionEnabled && !canEnable)">@(snapshot.AdmissionEnabled ? "Pause calls now" : "Enable verified calls")</button>
+            </form>
+        }
+    </div></div>
+    <form action="@Model.PostUrl" method="post" class="d-grid gap-4">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="ExpectedRevision" value="@settings.ExpectedRevision" />
+        <div asp-validation-summary="All" class="alert alert-danger" role="alert"></div>
+        <fieldset class="card"><div class="card-body d-grid gap-3">
+            <legend class="h4">Business and conversation</legend>
+            <label>Business name<input class="form-control" name="BusinessName" value="@settings.BusinessName" maxlength="200" required /></label>
+            <label>Greeting and conversation guidance<textarea class="form-control" name="ConversationInstructions" rows="8" maxlength="65536" required>@settings.ConversationInstructions</textarea></label>
+            <label>Business policy<textarea class="form-control" name="BusinessPolicy" rows="12" maxlength="65536" required>@settings.BusinessPolicy</textarea></label>
+            <label>Contact permissions and retention policy<textarea class="form-control" name="ContactAndRetentionNotes" rows="5" maxlength="32768">@settings.ContactAndRetentionNotes</textarea></label>
+        </div></fieldset>
+        <fieldset class="card"><div class="card-body d-grid gap-3">
+            <legend class="h4">Services and inquiries</legend>
+            <label><input type="checkbox" name="RequestIntake" value="true" checked="@settings.RequestIntake" /> Save caller-confirmed service inquiries</label>
+            <input type="hidden" name="RequestIntake" value="false" />
+            <label><input type="checkbox" name="NotifyOwner" value="true" checked="@settings.NotifyOwner" /> Use the workspace's existing inquiry notifications</label>
+            <input type="hidden" name="NotifyOwner" value="false" />
+            <p class="text-muted mb-0">Add a service in the empty row and save to add another. Save settings before assigning a new service to a specific answer.</p>
+            @for (var i = 0; i < (settings.Services?.Count ?? 0); i++)
+            {
+                var service = settings.Services![i] ?? new Shared.Analytics.ReceptionistServiceInput();
+                <div class="border rounded p-3 d-grid gap-2">
+                    <h3 class="h6">@(string.IsNullOrEmpty(service.ServiceKey) ? "Add a service" : service.DisplayName)</h3>
+                    <input type="hidden" name="Services[@i].ServiceKey" value="@service.ServiceKey" />
+                    <label>Service name<input class="form-control" name="Services[@i].DisplayName" value="@service.DisplayName" maxlength="120" /></label>
+                    <label>Ways callers ask for this service, one per line<textarea class="form-control" name="Services[@i].Aliases" rows="3" maxlength="4000">@service.Aliases</textarea></label>
+                    <label>Useful discovery question<input class="form-control" name="Services[@i].DiscoveryQuestion" value="@service.DiscoveryQuestion" maxlength="320" /></label>
+                    <label>Approved service summary<textarea class="form-control" name="Services[@i].PublicSummary" rows="3" maxlength="1600">@service.PublicSummary</textarea></label>
+                    <label>Inquiry destination<select class="form-select" name="Services[@i].CrmBucket">
+                        <option value="">Choose a destination</option>
+                        @foreach (var bucket in Model.CrmBuckets)
+                        { <option value="@bucket" selected="@(service.CrmBucket == bucket)">@bucket</option> }
+                    </select></label>
+                    @if (!string.IsNullOrEmpty(service.ServiceKey))
+                    { <label><input type="checkbox" name="Services[@i].Remove" value="true" checked="@service.Remove" /> Remove this service when saving</label> }
+                </div>
+            }
+        </div></fieldset>
+        <fieldset class="card"><div class="card-body d-grid gap-3">
+            <legend class="h4">Approved answers</legend>
+            <p class="text-muted mb-0">Provide the caller questions this answer addresses. Use a dated answer when the information is only established as of a particular date.</p>
+            @for (var i = 0; i < (settings.Answers?.Count ?? 0); i++)
+            {
+                var answer = settings.Answers![i] ?? new Shared.Analytics.ReceptionistAnswerInput();
+                <div class="border rounded p-3 d-grid gap-2">
+                    <h3 class="h6">@(string.IsNullOrEmpty(answer.Key) ? "Add an answer" : $"Answer {i + 1}")</h3>
+                    <input type="hidden" name="Answers[@i].Key" value="@answer.Key" />
+                    <label>Related service<select class="form-select" name="Answers[@i].ServiceKey">
+                        <option value="">General business question</option>
+                        @foreach (var service in (settings.Services ?? []).Where(x => x is not null && !string.IsNullOrEmpty(x.ServiceKey) && !x.Remove))
+                        { <option value="@service.ServiceKey" selected="@(answer.ServiceKey == service.ServiceKey)">@service.DisplayName</option> }
+                    </select></label>
+                    <label>Caller questions, one per line<textarea class="form-control" name="Answers[@i].Questions" rows="3" maxlength="4000">@answer.Questions</textarea></label>
+                    <label>Approved answer<textarea class="form-control" name="Answers[@i].Answer" rows="4" maxlength="2400">@answer.Answer</textarea></label>
+                    <label>Information status<select class="form-select" name="Answers[@i].Status">
+                        <option value="">Choose a status</option>
+                        <option value="approved" selected="@(answer.Status == "approved")">Approved</option>
+                        <option value="dated" selected="@(answer.Status == "dated")">Dated information</option>
+                    </select></label>
+                    <label>Information date, when dated<input class="form-control" type="date" name="Answers[@i].AsOfDate" value="@answer.AsOfDate" /></label>
+                    @if (!string.IsNullOrEmpty(answer.Key))
+                    { <label><input type="checkbox" name="Answers[@i].Remove" value="true" checked="@answer.Remove" /> Remove this answer when saving</label> }
+                </div>
+            }
+        </div></fieldset>
+        <fieldset class="card"><div class="card-body d-grid gap-3">
+            <legend class="h4">Hours and limits</legend>
+            <label>Business time zone<input class="form-control" name="TimeZoneId" value="@settings.TimeZoneId" maxlength="100" placeholder="Area/City" required /></label>
+            <div class="table-responsive"><table class="table"><thead><tr><th>Open</th><th>Day</th><th>From</th><th>Until</th></tr></thead><tbody>
+            @for (var i = 0; i < (settings.Hours?.Count ?? 0); i++)
+            {
+                var hours = settings.Hours![i] ?? new Shared.Analytics.ReceptionistHoursInput();
+                <tr><td><input type="checkbox" name="Hours[@i].Enabled" value="true" checked="@hours.Enabled" aria-label="Open on @hours.Day" /><input type="hidden" name="Hours[@i].Enabled" value="false" /></td>
+                    <td>@hours.Day<input type="hidden" name="Hours[@i].Day" value="@hours.Day" /></td>
+                    <td><input class="form-control" type="time" name="Hours[@i].Start" value="@(hours.Start?.ToString("HH:mm", CultureInfo.InvariantCulture))" aria-label="@hours.Day start time" /></td>
+                    <td><input class="form-control" type="time" name="Hours[@i].End" value="@(hours.End?.ToString("HH:mm", CultureInfo.InvariantCulture))" aria-label="@hours.Day end time" /></td></tr>
+            }
+            </tbody></table></div>
+            <div class="row g-3">
+                <label class="col-md-4">Currency<input class="form-control" name="Currency" value="@settings.Currency" maxlength="3" pattern="[A-Z]{3}" placeholder="Three-letter currency" required /></label>
+                <label class="col-md-4">Monthly cash limit<input class="form-control" type="number" name="MonthlyCashLimit" value="@Amount(settings.MonthlyCashLimit)" min="0" step="0.0001" required /></label>
+                <label class="col-md-4">Monthly service consumption limit<input class="form-control" type="number" name="MonthlyConsumptionLimit" value="@Amount(settings.MonthlyConsumptionLimit)" min="0" step="0.0001" required /></label>
+                <label class="col-md-4">Monthly voice minutes<input class="form-control" type="number" name="MonthlyVoiceMinutesLimit" value="@Amount(settings.MonthlyVoiceMinutesLimit)" min="0" step="any" required /></label>
+                <label class="col-md-4">Concurrent calls<input class="form-control" type="number" name="MaximumConcurrentCalls" value="@settings.MaximumConcurrentCalls" min="1" step="1" required /></label>
+                <label class="col-md-4">Maximum seconds per call<input class="form-control" type="number" name="MaximumCallSeconds" value="@settings.MaximumCallSeconds" min="1" step="1" required /></label>
+                <label class="col-md-6">New-call window, in seconds<input class="form-control" type="number" name="AdmissionWindowSeconds" value="@settings.AdmissionWindowSeconds" min="1" step="1" required /></label>
+                <label class="col-md-6">Maximum calls starting within that window<input class="form-control" type="number" name="MaximumCallsPerWindow" value="@settings.MaximumCallsPerWindow" min="1" step="1" required /></label>
+            </div>
+            <p class="text-muted mb-0">Cash and service consumption are tracked separately. Unresolved provider charges remain reserved. Changing these limits requires verification and does not add provider funds.</p>
+        </div></fieldset>
+        <div>
+            <p>Saving creates an inactive version and pauses new calls until that version is verified. Existing charges and reservations remain accounted for.</p>
+            <button class="btn btn-primary" type="submit">Save receptionist settings</button>
+        </div>
+    </form>
+</section>

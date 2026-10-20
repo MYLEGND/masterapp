@@ -12,7 +12,7 @@ namespace AgentPortal.Controllers;
 [FounderOnly]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None, Duration = 0)]
 [Route("founder/engineering")]
-public sealed class FounderEngineeringController(
+public sealed partial class FounderEngineeringController(
     IFounderEngineeringCommandCenterService commandCenter) : Controller
 {
     private const string ChatGptStateCookie = "__Host-legend-engineering-chatgpt-state";

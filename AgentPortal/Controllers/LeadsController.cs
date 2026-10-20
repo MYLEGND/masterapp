@@ -49,6 +49,7 @@ public class LeadsController : Controller
         WorkstationLeadBuckets.HomeInsurance,
         WorkstationLeadBuckets.HealthInsurance,
         WorkstationLeadBuckets.CommercialInsurance,
+        WorkstationLeadBuckets.ServiceInquiry,
         "CallBack",
         "Contacted",
         "Qualified",
@@ -67,6 +68,7 @@ public class LeadsController : Controller
 
     private static readonly IReadOnlyDictionary<string, string> PipelineStageMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
+        ["serviceinquiry"] = WorkstationLeadBuckets.ServiceInquiry,
         ["mortgageprotection"] = WorkstationLeadBuckets.MortgageProtection,
         ["mortgageprotectionleads"] = WorkstationLeadBuckets.MortgageProtection,
         ["mortgageprotectionrebuttals"] = WorkstationLeadBuckets.MortgageProtection,
@@ -665,6 +667,7 @@ public class LeadsController : Controller
             "HomeInsurance" => "Home Insurance",
             "HealthInsurance" => "Health Insurance",
             "CommercialInsurance" => "Commercial Insurance",
+            "ServiceInquiry" => "Service Inquiry",
             _ => string.IsNullOrWhiteSpace(bucket) ? "Lead" : bucket.Trim()
         };
 

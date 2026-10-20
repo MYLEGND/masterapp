@@ -1,21 +1,15 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue the Founder-authorized canonical Forms and reusable tenant-scoped receptionist work. This reviewed step promotes the exact source identity of the canonical provider mapping correction through the existing validation-only trusted-tool process. Production app deployment, schema mutation, routing, provider changes and voice activation remain subject to their existing separate gates.",
-  "purpose": "Promote the independently reviewed provider-aware receptionist runtime identity while preserving all existing source, migration, deployment and provider safeguards.",
-  "requestId": "founder-receptionist-provider-identity-20261020-620c971d6bec",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "Continue the Founder-authorized canonical Forms and reusable tenant-scoped receptionist work, including spending coordination and confirmed-inquiry integration. This request covers the reviewed additive schema and managed-application source deployment after all existing source, SQL rehearsal and deployment-reconciliation gates pass. Provider funding, paid calls, forwarding and public voice activation remain separate acceptance steps; this request grants no bypass of those requirements or unresolved deployment evidence.",
+  "purpose": "Deploy the reviewed reusable scoped-business receptionist runtime, editable inactive configuration, spending coordination and canonical confirmed-inquiry integration through the existing protected release path.",
+  "requestId": "founder-scoped-receptionist-runtime-20261020-179609bcb4fe",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait"
+  ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "77d31bbc9b907ad9399f1844a1a64e5cd2ef8a48",
-    "sourceRevision": "620c971d6bec0e07736939dac59dcdf729ab1fce",
-    "files": {
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "43ba83eb4feab0744c7961c0762c2945219e4aab"
-      }
-    }
-  }
+  "preserveLiveTargets": false
 }

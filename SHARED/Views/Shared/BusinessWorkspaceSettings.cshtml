@@ -9,6 +9,7 @@
 <section class="legend-workspace-page">
     <h1>@Model.BusinessName</h1>
         <h2>Personalize your workspace</h2>
+        <p><a href="@root/receptionist" class="btn btn-outline-primary">Receptionist settings</a></p>
         <form action="@root/settings" method="post" class="d-grid gap-3">
             @Html.AntiForgeryToken()
             <input type="hidden" name="Revision" value="@Model.SettingsRevision" />
