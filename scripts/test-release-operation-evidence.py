@@ -268,6 +268,51 @@ class DurableOperationProtocolTests(unittest.TestCase):
             self.assertNotIn('secret', str(failure.exception))
 
 
+    def test_windows_intent_is_not_a_caller_tag_and_response_is_not_success(self):
+        operation = self.make()
+        operation.before_submit(['baseline'], submission_kind='azure_onedeploy_windows_intent_v1')
+        self.assertNotIn('providerRequestCorrelation', operation.intent)
+        self.assertEqual('azure_onedeploy_windows_intent_v1', operation.submission_correlation()['kind'])
+        operation.record_submission_observation('new-id')
+        self.assertFalse((self.path / ('success' + operation.operation_id)).exists())
+        resumed = self.make()
+        self.assertFalse(resumed.before_submit([]))
+        with self.assertRaises(RuntimeError):
+            resumed.submission_correlation()
+        with self.assertRaisesRegex(RuntimeError, 'differs from retained'):
+            resumed.record_success(['other-id'])
+        resumed.record_success(['new-id'])
+
+    def test_windows_observation_cannot_bind_baseline_or_mutated_identity(self):
+        operation = self.make()
+        operation.before_submit(['baseline'], submission_kind='azure_onedeploy_windows_intent_v1')
+        for reference in ['baseline', 'https://host/id?secret=hidden', '', None]:
+            with self.subTest(reference=reference), self.assertRaises((RuntimeError, ValueError)):
+                operation.record_submission_observation(reference)
+        operation.record_submission_observation('new-id')
+        path = self.path / ('submitted' + operation.operation_id)
+        record = json.loads(path.read_text())
+        record['packageDigest'] = 'd' * 64
+        path.write_text(json.dumps(record))
+        with self.assertRaisesRegex(RuntimeError, 'original intent'):
+            self.make()
+
+    def test_lost_windows_observation_readback_never_authorizes_replay(self):
+        operation = self.make()
+        operation.before_submit(['baseline'], submission_kind='azure_onedeploy_windows_intent_v1')
+        original = (self.path / ('intent' + operation.operation_id)).read_bytes()
+        def ambiguous(name, record):
+            self.publish(name, record)
+            raise TimeoutError('lost receipt acknowledgment')
+        operation.publisher = ambiguous
+        with self.assertRaises(TimeoutError):
+            operation.record_submission_observation('new-id')
+        resumed = self.make()
+        self.assertFalse(resumed.before_submit([]))
+        self.assertEqual('new-id', resumed.submission_observation['deploymentId'])
+        self.assertEqual(original, (self.path / ('intent' + operation.operation_id)).read_bytes())
+
+
 class CanonicalHistoryTests(unittest.TestCase):
     def setUp(self):
         self.authority = journal._authority()
@@ -311,6 +356,46 @@ class CanonicalHistoryTests(unittest.TestCase):
 
     def test_positive_target_never_started_allows_first_write(self):
         self.assertIsNone(self.history())
+
+    def test_submission_observation_requires_authenticated_producer_and_exact_operation(self):
+        name = 'legend-release-operation-submitted-' + 'b' * 64
+        self.artifacts = [dict(name=name, expired=False, workflow_run=dict(id=9))]
+        record = dict(operationId='b' * 64, target='portal', applicationRevision='a' * 40,
+                      producingRun=9, producingAttempt=1, phase='submitted',
+                      packageDigest='c' * 64, baseline='d' * 40, deploymentId='provider-id')
+        def download(repo, run, artifact_name, directory):
+            self.assertEqual(name, artifact_name)
+            (directory / 'operation.json').write_text(json.dumps(record))
+        def observe():
+            with patch.object(self.authority, 'api_get', side_effect=self.api), \
+                 patch.object(self.authority, '_download_run_artifact', side_effect=download):
+                return self.authority.release_operation_history(
+                    'owner/repo', 'b' * 64, 'a' * 40, 'portal', 10, 1, 'placeholder', phase='submitted')
+        self.assertEqual(record, observe())
+        self.authority._RELEASE_HISTORY_API.clear()
+        record['target'] = 'client'
+        with self.assertRaisesRegex(RuntimeError, 'bind its producer'):
+            observe()
+        self.authority._RELEASE_HISTORY_API.clear()
+        record['target'] = 'portal'
+        self.run['head_repository']['full_name'] = 'untrusted/repo'
+        with self.assertRaisesRegex(RuntimeError, 'untrusted producer'):
+            observe()
+
+    def test_missing_submission_observation_is_not_missing_intent_authority(self):
+        self.job['steps'][0]['conclusion'] = 'failure'
+        with patch.object(self.authority, 'api_get', side_effect=self.api):
+            self.assertIsNone(self.authority.release_operation_history(
+                'owner/repo', 'b' * 64, 'a' * 40, 'portal', 10, 1, 'placeholder', phase='submitted'))
+        with self.assertRaises(RuntimeError):
+            self.history()
+
+    def test_expired_submission_observation_cannot_be_discarded(self):
+        self.artifacts = [dict(name='legend-release-operation-submitted-' + 'b' * 64,
+                               expired=True, workflow_run=dict(id=9))]
+        with patch.object(self.authority, 'api_get', side_effect=self.api), self.assertRaisesRegex(RuntimeError, 'expired'):
+            self.authority.release_operation_history(
+                'owner/repo', 'b' * 64, 'a' * 40, 'portal', 10, 1, 'placeholder', phase='submitted')
 
     def test_started_target_without_retained_intent_blocks_replay(self):
         self.job['steps'][0]['conclusion'] = 'failure'
