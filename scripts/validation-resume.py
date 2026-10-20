@@ -6123,7 +6123,7 @@ def migration_contract_static_styles_only(candidate, approved):
 # algorithm. The entry digest below uses sorted compact Python JSON; the trusted
 # C# observer separately pins its System.Text.Json representation (d2da70a...).
 REVIEWED_RECEPTIONIST_BASE_RUNTIME = '22534ca70dc760d4c10e2c9726346c84315d2b7179c0acf87db49bf55372bedc'
-REVIEWED_RECEPTIONIST_RUNTIME = '2f07f87d78e0e8e95fa83423161dd6e55553c47238d6acb35bc0d67119b0e283'
+REVIEWED_RECEPTIONIST_RUNTIME = '4f6153929faff37fd4209636fa912c8e147adc2c96b6644ad084047e9a597a07'
 REVIEWED_RECEPTIONIST_ENTRY = 'c457b4d88db0b998b778b2a789e49412b6218e9b87b4f511de0746d739087c8b'
 
 
