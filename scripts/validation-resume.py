@@ -408,16 +408,17 @@ def attested_fast_track_router_prewrite(repository, run, jobs, token):
 def fast_track_child_attempts(repository, child, token, *, current_run=None, current_attempt=None):
     if child not in FAST_TRACK_CHILD_STEPS:
         return []
-    attempts = []
     owner_name, step_name = FAST_TRACK_CHILD_STEPS[child]
-    for run in fast_track_execution_history(repository, token):
+
+    def inspect_run(run):
+        attempts = []
         if run['id'] != current_run and run.get('status') != 'completed':
             raise RuntimeError('FAST_TRACK_RESOURCE_WORKER_ACTIVE')
         source = _release_history_source(repository, run['head_sha'], '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW, token)
         raw = source.encode()
         blob = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
         if blob in FAST_TRACK_PRE_MIGRATION_SOURCES:
-            continue
+            return []
         if step_name not in named_step_blocks(source):
             raise RuntimeError('FAST_TRACK_CHILD_SOURCE_UNPROVEN')
         count = run.get('run_attempt')
@@ -452,7 +453,24 @@ def fast_track_child_attempts(repository, child, token, *, current_run=None, cur
             if child == 'routing-cloudflare' and attested_fast_track_router_prewrite(repository, run, jobs, token):
                 continue
             attempts.append((run, attempt, job, steps[0]))
-    return attempts
+        return attempts
+
+    # Each worker inherits the caller's single evidence deadline. Historical
+    # attempts within a run stay ordered; all producers must finish before any
+    # evidence is returned. A failed or timed-out read never becomes absence.
+    runs = fast_track_execution_history(repository, token)
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=6)
+    futures = []
+    try:
+        futures = [pool.submit(contextvars.copy_context().run, inspect_run, run) for run in runs]
+        groups = [future.result(timeout=evidence_remaining(120)) for future in futures]
+    except concurrent.futures.TimeoutError as error:
+        raise EvidenceLookupUnavailable("Evidence lookup deadline exhausted; preserve completed receipts") from error
+    finally:
+        # Never extend the caller deadline by joining unrelated pending reads.
+        # api_get independently bounds every active request by that same deadline.
+        pool.shutdown(wait=False, cancel_futures=True)
+    return [attempt for group in groups for attempt in group]
 
 
 def release_child_history(repository, child, dependency_identity, token, phase):
@@ -4613,6 +4631,53 @@ def attested_fast_track_brand_preupload(repository, run, jobs, token):
     return True
 
 
+def fast_track_attempts_proven_prewrite(repository, run, revision, token):
+    """Carry scope only after positive nonentry from every authenticated attempt."""
+    if (not is_fast_track_producer(repository, run) or run.get('status') != 'completed'
+        or run.get('conclusion') != 'failure' or type(run.get('run_attempt')) is not int
+        or not 2 <= run['run_attempt'] <= 100):
+        return False
+    path = '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW
+    source = _release_history_source(repository, run['head_sha'], path, token)
+    # The current reviewed owner must still execute the identical workflow. A
+    # different historical executable is not certified by matching step labels.
+    if source != git_show_file(revision, path):
+        return False
+    names = {'Select exact affected applications', 'Admit exact validated fast-track source',
+             'Reconcile production schema before publication',
+             'Affected App Deploy — ${{ matrix.target }}', 'Publish verified website routing'}
+    nonentered = {'Apply or reconcile the exact rehearsed migration bundle',
+                  'Reconcile fresh already-ready schema without SQL bundle or mutation'}
+    if not nonentered <= set(named_step_blocks(source)):
+        return False
+    for attempt in range(1, run['run_attempt'] + 1):
+        payload = api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token)
+        jobs = payload.get('jobs')
+        if (not isinstance(jobs, list) or payload.get('total_count') != len(jobs)
+            or len(jobs) != len(names) or any(not isinstance(job, dict) for job in jobs)):
+            return False
+        indexed = {job.get('name'): job for job in jobs}
+        if set(indexed) != names or any(job.get('status') != 'completed'
+            or job.get('run_id') != run['id'] or job.get('head_sha') != run['head_sha']
+            or type(job.get('run_attempt')) is not int or job['run_attempt'] != attempt for job in jobs):
+            return False
+        if any(indexed[name].get('conclusion') != 'success' for name in
+            ('Select exact affected applications', 'Admit exact validated fast-track source')):
+            return False
+        if any(indexed[name].get('conclusion') != 'skipped' for name in
+            ('Affected App Deploy — ${{ matrix.target }}', 'Publish verified website routing')):
+            return False
+        owner = indexed['Reconcile production schema before publication']
+        steps = owner.get('steps')
+        if owner.get('conclusion') not in {'failure', 'cancelled'} or not isinstance(steps, list):
+            return False
+        for name in nonentered:
+            matches = [step for step in steps if isinstance(step, dict) and step.get('name') == name]
+            if len(matches) != 1 or matches[0].get('status') != 'completed' or matches[0].get('conclusion') != 'skipped':
+                return False
+    return True
+
+
 def fast_track_effective_baseline(before, revision):
     """Carry unpublished app scope; this never authorizes SQL or publication replay."""
     repository = os.environ['GITHUB_REPOSITORY']
@@ -4678,8 +4743,10 @@ def fast_track_effective_baseline(before, revision):
         preflight_noentry = (attested_fast_track_two_attempt_no_sql_preflight(
             repository, prior, token) if prior.get('id') == 38178839491 else False)
         brand_preupload = attested_fast_track_brand_preupload(repository, prior, jobs, token)
+        all_attempts_prewrite = (recovery_stopped and fast_track_attempts_proven_prewrite(
+            repository, prior, revision, token))
         prewrite = (prior.get('run_attempt') == 1 and
-                    (selection_stopped or admission_stopped or recovery_stopped or brand_preupload)) or preflight_noentry
+                    (selection_stopped or admission_stopped or recovery_stopped or brand_preupload)) or preflight_noentry or all_attempts_prewrite
         completed_sql = (not prewrite and len(admissions) == 1 and admissions[0].get('conclusion') == 'success'
             and fast_track_completed_sql_unpublished(repository, prior, jobs, token))
         if len(writes) < 3 or not (prewrite or completed_sql):

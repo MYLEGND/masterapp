@@ -1566,4 +1566,166 @@ class TrustedToolPromotionAdmissionTests(unittest.TestCase):
             self.assertIn("needs.select-targets.outputs.production-eligible == 'true'",condition)
 
 
+
+
+class BoundedFastTrackHistoryTests(unittest.TestCase):
+    def test_parallel_complete_inventory_preserves_run_and_attempt_order_and_budget(self):
+        import threading
+        runs = [dict(id=i, run_attempt=2, status='completed', head_sha=format(i, '040x')) for i in range(1, 13)]
+        barrier = threading.Barrier(6)
+        lock = threading.Lock()
+        active = peak = 0
+        seen = []
+        budget = (123.0, lambda: 100.0)
+        def get(repo, path, token):
+            nonlocal active, peak
+            run, attempt = int(path.split('/')[2]), int(path.split('/')[4])
+            self.assertEqual(budget, authority._EVIDENCE_BUDGET.get())
+            with lock:
+                active += 1
+                peak = max(peak, active)
+                seen.append((run, attempt))
+            try:
+                if run <= 6 and attempt == 1:
+                    barrier.wait(timeout=3)
+                return dict(total_count=1, jobs=[dict(name=authority.FAST_TRACK_CHILD_STEPS['migrations'][0],
+                    status='completed', conclusion='success', steps=[dict(
+                        name=authority.FAST_TRACK_CHILD_STEPS['migrations'][1], status='completed', conclusion='success')])])
+            finally:
+                with lock: active -= 1
+        with patch.object(authority, 'fast_track_execution_history', return_value=runs), \
+             patch.object(authority, '_release_history_source', return_value='source'), \
+             patch.object(authority, 'named_step_blocks', return_value={authority.FAST_TRACK_CHILD_STEPS['migrations'][1]: 'body'}), \
+             patch.object(authority, 'attested_fast_track_migration_prewrite', return_value=False), \
+             patch.object(authority, 'api_get', side_effect=get), \
+             authority.evidence_lookup_budget(budget[0], clock=budget[1]):
+            result = authority.fast_track_child_attempts('owner/repo', 'migrations', 'fixture')
+        expected = [(i, a) for i in range(1, 13) for a in (1, 2)]
+        self.assertEqual(expected, [(r['id'], a) for r, a, job, step in result])
+        self.assertEqual(expected, sorted(seen))
+        self.assertEqual(6, peak)
+
+    def test_worker_failure_never_returns_partial_evidence(self):
+        with patch.object(authority, 'fast_track_execution_history', return_value=[dict(id=1, status='completed', head_sha='a'*40, run_attempt=1)]), \
+             patch.object(authority, '_release_history_source', side_effect=authority.EvidenceLookupUnavailable('unavailable')):
+            with self.assertRaisesRegex(authority.EvidenceLookupUnavailable, 'unavailable'):
+                authority.fast_track_child_attempts('owner/repo', 'migrations', 'fixture')
+
+    def test_deadline_wait_cancels_pending_work_without_unbounded_join(self):
+        import concurrent.futures
+        pool = Mock()
+        future = pool.submit.return_value
+        future.result.side_effect = concurrent.futures.TimeoutError()
+        with patch.object(authority, 'fast_track_execution_history', return_value=[dict(id=1)]), \
+             patch.object(authority.concurrent.futures, 'ThreadPoolExecutor', return_value=pool), \
+             authority.evidence_lookup_budget(12, clock=lambda: 10):
+            with self.assertRaises(authority.EvidenceLookupUnavailable):
+                authority.fast_track_child_attempts('owner/repo', 'migrations', 'fixture')
+        future.result.assert_called_once_with(timeout=2)
+        pool.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+
+
+class AllAttemptPrewriteScopeTests(unittest.TestCase):
+    def setUp(self):
+        self.run = dict(id=7, head_sha='a'*40, run_attempt=2, status='completed', conclusion='failure',
+            event='push', head_branch=authority.FAST_TRACK_PR_BASE,
+            path='.github/workflows/'+authority.FAST_TRACK_RELEASE_WORKFLOW,
+            head_repository={'full_name':'owner/repo'})
+        self.steps = [dict(name=name, status='completed', conclusion='skipped') for name in (
+            'Apply or reconcile the exact rehearsed migration bundle',
+            'Reconcile fresh already-ready schema without SQL bundle or mutation')]
+        self.payloads = {}
+        for attempt in (1, 2):
+            jobs = [dict(name=name, status='completed', conclusion=result, run_id=7,
+                run_attempt=attempt, head_sha='a'*40) for name, result in (
+                ('Select exact affected applications', 'success'),
+                ('Admit exact validated fast-track source', 'success'),
+                ('Reconcile production schema before publication', 'failure'),
+                ('Affected App Deploy — ${{ matrix.target }}', 'skipped'),
+                ('Publish verified website routing', 'skipped'))]
+            jobs[2]['steps'] = [dict(step) for step in self.steps]
+            self.payloads[attempt] = dict(total_count=5, jobs=jobs)
+
+    def invoke(self, source='canonical'):
+        def get(repo, path, token):
+            return self.payloads[int(path.split('/')[4])]
+        with patch.object(authority, '_release_history_source', return_value=source), \
+             patch.object(authority, 'git_show_file', return_value='canonical'), \
+             patch.object(authority, 'named_step_blocks', return_value={s['name']: 'body' for s in self.steps}), \
+             patch.object(authority, 'api_get', side_effect=get):
+            return authority.fast_track_attempts_proven_prewrite('owner/repo', self.run, 'b'*40, 'fixture')
+
+    def test_complete_two_attempt_positive_nonentry_allows_scope_only(self):
+        self.assertTrue(self.invoke())
+
+    def test_any_entered_unknown_missing_or_duplicated_mutation_step_blocks(self):
+        import copy
+        original = copy.deepcopy(self.payloads)
+        for attempt in (1, 2):
+            for state in ('failure', 'success', 'cancelled', None):
+                with self.subTest(attempt=attempt, state=state):
+                    self.payloads = copy.deepcopy(original)
+                    self.payloads[attempt]['jobs'][2]['steps'][0]['conclusion'] = state
+                    self.assertFalse(self.invoke())
+            for change in ('missing', 'duplicate', 'active'):
+                self.payloads = copy.deepcopy(original)
+                steps = self.payloads[attempt]['jobs'][2]['steps']
+                if change == 'missing': steps.pop()
+                elif change == 'duplicate': steps.append(dict(steps[0]))
+                else: steps[0]['status'] = 'in_progress'
+                self.assertFalse(self.invoke())
+
+    def test_incomplete_foreign_active_or_started_publication_evidence_blocks(self):
+        import copy
+        original = copy.deepcopy(self.payloads)
+        changes = [lambda p: p.update(total_count=6), lambda p: p['jobs'].pop(),
+            lambda p: p['jobs'][0].update(run_id=8), lambda p: p['jobs'][0].update(head_sha='c'*40),
+            lambda p: p['jobs'][0].update(run_attempt=1), lambda p: p['jobs'][0].update(status='in_progress'),
+            lambda p: p['jobs'][3].update(conclusion='success'), lambda p: p['jobs'][4].update(conclusion='failure')]
+        for change in changes:
+            self.payloads = copy.deepcopy(original)
+            change(self.payloads[2])
+            self.assertFalse(self.invoke())
+        self.payloads = original
+        self.assertFalse(self.invoke(source='different executable'))
+        self.run['status'] = 'in_progress'
+        self.assertFalse(self.invoke())
+
+    def effective_baseline(self):
+        before, head, original = 'a'*40, 'b'*40, 'c'*40
+        def get(repo, path, token):
+            if path.startswith('actions/runs?'):
+                rows = [self.run] if 'head_sha='+before in path else []
+                return dict(total_count=len(rows), workflow_runs=rows)
+            if '/attempts/' in path:
+                return self.payloads[int(path.split('/')[4])]
+            if '/jobs?' in path:
+                return self.payloads[2]
+            if path.startswith('commits/'):
+                return [dict(merged_at='time', merge_commit_sha=before,
+                    base=dict(ref=authority.FAST_TRACK_PR_BASE), head=dict(repo=dict(full_name='owner/repo')))]
+            raise AssertionError(path)
+        with patch.dict(os.environ, GITHUB_REPOSITORY='owner/repo', GITHUB_TOKEN='fixture'), \
+             patch.object(authority, 'api_get', side_effect=get), \
+             patch.object(authority, '_release_history_source', return_value='canonical'), \
+             patch.object(authority, 'git_show_file', return_value='canonical'), \
+             patch.object(authority, 'named_step_blocks', return_value={s['name']: 'body' for s in self.steps}), \
+             patch.object(authority, 'fast_track_untriggered_repair_parent', return_value=None), \
+             patch.object(authority.subprocess, 'run', return_value=SimpleNamespace(returncode=0)), \
+             patch.object(authority.subprocess, 'check_output', return_value=before+' '+original+' '+head):
+            return authority.fast_track_effective_baseline(before, head)
+
+    def test_two_attempt_recovery_failure_carries_unpublished_scope_through_canonical_owner(self):
+        self.assertEqual('c'*40, self.effective_baseline())
+
+    def test_latest_skipped_step_cannot_hide_prior_entered_attempt_during_scope_carry(self):
+        self.payloads[1]['jobs'][2]['steps'][0]['conclusion'] = 'failure'
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRES_OPERATION_RECONCILIATION'):
+            self.effective_baseline()
+
+    def test_evidence_read_error_is_not_positive_nonentry(self):
+        with patch.object(authority, '_release_history_source', side_effect=authority.EvidenceLookupUnavailable('deadline')):
+            with self.assertRaises(authority.EvidenceLookupUnavailable):
+                authority.fast_track_attempts_proven_prewrite('owner/repo', self.run, 'b'*40, 'fixture')
+
 if __name__ == '__main__':unittest.main()
