@@ -1397,6 +1397,181 @@ class FastTrackImpactTests(unittest.TestCase):
             self.scope('Infrastructure/UnreviewedDependency.cs')
 
 
+class ReceptionistReleaseImpactTests(unittest.TestCase):
+    # Complete reviewed voice candidate, including its migration and CI inputs.
+    # This fixture exercises the real aggregate boundary, not a service-only subset.
+    voice_paths = (
+        'Domain/Entities/MarketingConnection.cs',
+        'Domain/Entities/ReceptionistCoordination.cs',
+        'SHARED/Analytics/ReceptionistConfiguration.cs',
+        'Infrastructure/Analytics/MarketingConnectionStore.cs',
+        'Infrastructure/Analytics/MarketingConnectionStore.Receptionist.cs',
+        'Infrastructure/Reception/ReceptionistContracts.cs',
+        'Infrastructure/Reception/ReceptionistSql.cs',
+        'Infrastructure/Reception/ReceptionistAdmissionService.cs',
+        'Infrastructure/Reception/ReceptionistAdmissionService.Accounting.cs',
+        'Infrastructure/Reception/ReceptionistAdmissionService.ProviderWork.cs',
+        'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.cs',
+        'Infrastructure/Data/MasterAppDbContext.cs',
+        'AgentPortal.Tests/ReceptionistCoordinationTests.cs',
+        'Infrastructure/Migrations/20261020160000_AddReceptionistCoordination.cs',
+        'Infrastructure/Migrations/20261020160000_AddReceptionistCoordination.Designer.cs',
+        'Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs',
+        'Infrastructure/Reception/ReceptionistCredentialEnvelope.cs',
+        'Infrastructure/Reception/ReceptionistOperatorContracts.cs',
+        'Infrastructure/Reception/ReceptionistOperatorService.cs',
+        'Infrastructure/Reception/ReceptionistAdmissionService.Operator.cs',
+        'Infrastructure/Analytics/MarketingConnectionStore.ReceptionistOperator.cs',
+        'AgentPortal.Tests/ReceptionistOperatorTests.cs',
+        'Infrastructure/Leads/WebsiteLeadSubmission.cs',
+        'Infrastructure/Leads/IWebsiteLifeLeadCaptureService.cs',
+        'Infrastructure/Leads/WebsiteLifeLeadCaptureService.cs',
+        'Infrastructure/Leads/WorkstationLeadBuckets.cs',
+        'Infrastructure/Leads/WebsiteIntakeRecipientResolver.cs',
+        'Infrastructure/Leads/WebsiteLeadNotificationAuthority.cs',
+        'Infrastructure/Leads/WebsiteLeadAppNotificationService.cs',
+        'Infrastructure/Leads/WebsiteLeadEmailTemplate.cs',
+        'Infrastructure/Leads/WebsiteLeadServiceRegistration.cs',
+        'Infrastructure/Leads/ReceptionistInquiryContracts.cs',
+        'Infrastructure/Leads/ReceptionistInquiryAuthority.cs',
+        'AgentPortal.Tests/ReceptionistInquiryTests.cs',
+        'AgentPortal/Controllers/LeadsController.cs',
+        'AgentPortal/Views/Leads/_LeadPipelineView.cshtml',
+        'AgentPortal/Views/Leads/_LeadQuickView.cshtml',
+        'AgentPortal/wwwroot/js/leads-index.js',
+        'Infrastructure/Reception/ReceptionistApplicationServices.cs',
+        'Infrastructure/Reception/ReceptionistApplicationContracts.cs',
+        'AgentPortal.Tests/ReceptionistApplicationServicesTests.cs',
+        'AgentPortal.Tests/ReceptionistRuntimeWorkerTests.cs',
+        'AgentPortal.Tests/ReceptionistSetupAndAuthorityTests.cs',
+        'AgentPortal.Tests/ReceptionistTransportTests.cs',
+        'AgentPortal/Controllers/WebsiteAnalyticsController.Receptionist.cs',
+        'AgentPortal/Controllers/WebsiteAnalyticsController.cs',
+        'AgentPortal/Program.cs',
+        'AgentPortal/Views/WebsiteAnalytics/Index.cshtml',
+        'AgentPortal/wwwroot/js/website-analytics.js',
+        'Infrastructure/Businesses/BusinessWorkspaceControllerBase.Receptionist.cs',
+        'Infrastructure/Reception/IOpenAiReceptionistClient.cs',
+        'Infrastructure/Reception/OpenAiReceptionistClient.cs',
+        'Infrastructure/Reception/OpenAiReceptionistProtocol.cs',
+        'Infrastructure/Reception/ReceptionistAdmissionService.Runtime.cs',
+        'Infrastructure/Reception/ReceptionistIngressController.cs',
+        'Infrastructure/Reception/ReceptionistRuntimeAuthority.cs',
+        'Infrastructure/Reception/ReceptionistRuntimeWorker.cs',
+        'Infrastructure/Reception/ReceptionistServiceRegistration.cs',
+        'Infrastructure/Reception/ReceptionistSetupForms.cs',
+        'Infrastructure/Reception/ReceptionistSidebandProtocol.cs',
+        'SHARED/Analytics/ReceptionistSetup.cs',
+        'SHARED/Views/Shared/BusinessWorkspaceSettings.cshtml',
+        'SHARED/Views/Shared/ReceptionistSetup.cshtml',
+        'AgentPortal/Controllers/FounderEngineeringController.cs',
+        'AgentPortal/Controllers/FounderEngineeringController.Receptionist.cs',
+        'AgentPortal/Models/FounderReceptionistOperatorViewModel.cs',
+        'AgentPortal/Views/FounderEngineering/Index.cshtml',
+        'AgentPortal/Views/FounderEngineering/Receptionist.cshtml',
+        '.github/workflows/masterapp-platform-architecture-validation.yml',
+        'scripts/validation-resume.py',
+        'scripts/test-validation-resume.py',
+    )
+    managed = {'portal', 'client', 'protect', 'parfait'}
+    model = 'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.cs'
+    migration_audit_paths = (
+        'scripts/MigrationReleaseProbe/CandidateContract.cs',
+        'scripts/MigrationReleaseProbe/CandidateContract.Structures.cs',
+        'scripts/MigrationReleaseProbe/Rehearsal/CandidateContractTests.cs',
+        'scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.cs',
+    )
+
+    def test_complete_voice_inventory_requires_exact_managed_apps_and_schema(self):
+        self.assertEqual(71, len(set(self.voice_paths)))
+        with patch.object(m, 'api_get') as provider, patch.object(m, 'assert_fast_track_release_execution') as admit:
+            result = m.fast_track_scope(self.voice_paths)
+        self.assertEqual(self.managed, {row['key'] for row in result['matrix']['include']})
+        self.assertTrue(result['selected'])
+        self.assertTrue(result['commerce'])
+        self.assertTrue(result['schema'])
+        self.assertFalse(result['routing'])
+        self.assertNotIn('releaseAdmission', result)
+        self.assertEqual(set(self.voice_paths), set(result['impacts']))
+        provider.assert_not_called()
+        admit.assert_not_called()
+
+    def test_migration_probe_audit_overlay_preserves_exact_voice_publication_scope(self):
+        original = m.fast_track_scope(self.voice_paths)
+        expanded = m.fast_track_scope(self.voice_paths + self.migration_audit_paths)
+        self.assertEqual(75, len(expanded['impacts']))
+        for key in ('matrix', 'selected', 'commerce', 'schema', 'routing'):
+            self.assertEqual(original[key], expanded[key], key)
+        for path in self.migration_audit_paths:
+            self.assertEqual([], expanded['impacts'][path])
+        audit_only = m.fast_track_scope(self.migration_audit_paths)
+        self.assertEqual({'include': []}, audit_only['matrix'])
+        for flag in ('selected', 'commerce', 'schema', 'routing'):
+            self.assertFalse(audit_only[flag], flag)
+
+    def test_shared_server_inputs_preserve_four_consumers_without_implied_schema_write(self):
+        runtime = [path for path in self.voice_paths
+                   if path.startswith(('Infrastructure/', 'Domain/', 'SHARED/Analytics/'))
+                   and not path.startswith('Infrastructure/Migrations/')
+                   and path not in {self.model, 'Infrastructure/Data/MasterAppDbContext.cs'}]
+        for path in runtime:
+            with self.subTest(path=path):
+                result = m.fast_track_scope([path])
+                self.assertEqual(self.managed, set(result['impacts'][path]))
+                self.assertTrue(result['commerce'])
+                self.assertFalse(result['schema'])
+                self.assertFalse(result['routing'])
+                self.assertNotIn('releaseAdmission', result)
+
+    def test_actual_ef_model_mapping_requires_schema_readiness_without_admission(self):
+        result = m.fast_track_scope([self.model])
+        self.assertEqual(self.managed, set(result['impacts'][self.model]))
+        self.assertTrue(result['commerce'])
+        self.assertTrue(result['schema'])
+        self.assertFalse(result['routing'])
+        self.assertNotIn('releaseAdmission', result)
+
+    def test_shared_consumers_are_proven_by_actual_project_references(self):
+        import posixpath
+        import xml.etree.ElementTree as ET
+        def references(project):
+            root = ET.fromstring((ROOT / project).read_text())
+            return {posixpath.normpath(str(Path(project).parent) + '/' + row.attrib['Include'].replace('\\', '/'))
+                    for row in root.iter('ProjectReference')}
+        self.assertTrue({'Domain/Domain.csproj', 'SHARED/Shared.csproj'} <= references('Infrastructure/Infrastructure.csproj'))
+        for key in self.managed:
+            with self.subTest(target=key):
+                self.assertTrue({'Infrastructure/Infrastructure.csproj', 'Domain/Domain.csproj'} <=
+                                references(m.RELEASE_TARGETS[key]['project']))
+        self.assertTrue(m.RELEASE_TARGETS['website']['static'])
+
+    def test_new_unknown_siblings_remain_unmapped(self):
+        for path in ('Infrastructure/Reception/UnreviewedProvider.cs',
+                     'Infrastructure/Leads/UnreviewedCapture.cs',
+                     'Infrastructure/Businesses/UnreviewedWorkspace.cs',
+                     'Infrastructure/Data/Configurations/UnreviewedModel.cs',
+                     'Domain/Entities/UnreviewedCoordination.cs',
+                     'SHARED/Analytics/UnreviewedConfiguration.cs'):
+            with self.subTest(path=path), self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+                m.fast_track_scope([path])
+
+    def test_diagnostic_three_file_change_stays_nonpublishing(self):
+        paths = ['.github/workflows/deployment-diagnostics.yml', 'scripts/deploy-approved-app.py',
+                 'scripts/test-deploy-approved-app.py']
+        result = m.fast_track_scope(paths)
+        self.assertEqual({'include': []}, result['matrix'])
+        self.assertEqual(dict.fromkeys(paths, []), result['impacts'])
+        for flag in ('selected', 'commerce', 'schema', 'routing'):
+            self.assertFalse(result[flag], flag)
+
+    def test_receptionist_test_and_ci_inputs_alone_stay_nonpublishing(self):
+        result = m.fast_track_scope([path for path in self.voice_paths if path.startswith(
+            ('AgentPortal.Tests/', '.github/', 'scripts/'))])
+        self.assertEqual({'include': []}, result['matrix'])
+        for flag in ('selected', 'commerce', 'schema', 'routing'):
+            self.assertFalse(result[flag], flag)
+
+
 class FastTrackSourceValidationTests(unittest.TestCase):
     def setUp(self):
         self.sha = 'b' * 40
@@ -2377,6 +2552,36 @@ class ValidationResumePlannerTests(unittest.TestCase):
         self.assertFalse(plan["gates"]["website-regressions"]["run"])
         self.assertFalse(plan["gates"]["crm-regressions"]["run"])
         self.assertFalse(plan["gates"]["renderer-tests"]["run"])
+
+    def test_receptionist_test_only_fix_reruns_meta_and_required_build_chain(self):
+        workflow = "masterapp-platform-architecture-validation.yml"
+        for test_class in (
+            "ReceptionistCoordinationTests",
+            "ReceptionistInquiryTests",
+            "ReceptionistApplicationServicesTests",
+            "ReceptionistTransportTests",
+            "ReceptionistSetupAndAuthorityTests",
+            "ReceptionistRuntimeWorkerTests",
+            "ReceptionistOperatorTests",
+        ):
+            with self.subTest(test_class=test_class):
+                plan = m.compute_plan(
+                    workflow,
+                    "b" * 40,
+                    self.prior(),
+                    self.successful_steps(workflow),
+                    [f"AgentPortal.Tests/{test_class}.cs"],
+                    "prior_run",
+                )
+                self.assertTrue(plan["gates"]["meta-regressions"]["run"])
+                self.assertEqual("gate_inputs_changed", plan["gates"]["meta-regressions"]["reason"])
+                self.assertTrue(plan["gates"]["compile-regression"]["run"])
+                self.assertTrue(plan["gates"]["restore-dotnet"]["run"])
+                for gate in (
+                    "website-regressions", "booking-regressions", "crm-regressions",
+                    "renderer-tests", "founder-diagnostics-regressions",
+                ):
+                    self.assertFalse(plan["gates"][gate]["run"], gate)
 
     def test_diagnostics_only_source_change_preserves_unrelated_domain_regressions(self):
         workflow = "masterapp-platform-architecture-validation.yml"
@@ -4614,21 +4819,49 @@ class HistoricalParallelVerifierTests(unittest.TestCase):
 
     def test_pre_diagnostic_nonentry_still_requires_exact_target_witness(self):
         import subprocess
-        revision = '4fe015cdbf81b5253d64558bf056cb5fcc80fa87'
-        def source(repo, checkout, path, token):
-            return subprocess.check_output(['git', 'show', revision + ':' + path], text=True)
         start = 'masterapp-protect: approved revision ' + 'b' * 40 + ', ZIP sha256 ' + 'c' * 64
         witness = ('DeploymentStatusUnavailable: Azure deployment status remained unavailable for 3 consecutive reads '
                    '(before any upload). No deployment or rollback write was replayed; resume by reconciling the exact revision.')
         ending = '\n##[error]Process completed with exit code 1.'
-        for log, expected in [(start + '\n' + witness + ending, True),
-                              (start + '\nDeploymentReconciliationRequired: unknown' + ending, False),
-                              (start + '\nSubmitting the verified immutable ZIP once.\n' + witness + ending, False),
-                              (witness + ending, False)]:
-            with patch.object(m, '_release_history_source', side_effect=source), \
-                 patch.object(m, '_release_job_log', return_value=log):
-                self.assertEqual(expected, m._historical_publication_failed_before_first_write(
-                    'owner/repo', {'id': 71, 'status': 'completed'}, 'b' * 40, 'protect', revision, 'token'))
+        for revision in ('4fe015cdbf81b5253d64558bf056cb5fcc80fa87',
+                         'ee32e1c5f9e08d17369855c250dc99d8c3e16ce0'):
+            def source(repo, checkout, path, token):
+                return subprocess.check_output(['git', 'show', revision + ':' + path], text=True)
+            for log, expected in [(start + '\n' + witness + ending, True),
+                                  (start + '\nDeploymentReconciliationRequired: unknown' + ending, False),
+                                  (start + '\nSubmitting the verified immutable ZIP once.\n' + witness + ending, False),
+                                  (witness + ending, False)]:
+                with self.subTest(revision=revision, log=log), \
+                     patch.object(m, '_release_history_source', side_effect=source), \
+                     patch.object(m, '_release_job_log', return_value=log):
+                    self.assertEqual(expected, m._historical_publication_failed_before_first_write(
+                        'owner/repo', {'id': 71, 'status': 'completed'}, 'b' * 40, 'protect', revision, 'token'))
+
+    def test_historical_nonentry_rejects_changed_intent_or_upload_order_before_logs(self):
+        import subprocess
+        deploy_path = 'scripts/deploy-approved-app.py'
+        evidence_path = 'scripts/release-operation-evidence.py'
+        publish = "        self.publisher('legend-release-operation-intent-' + self.operation_id, record)\n"
+        intent = '        self.intent = record\n'
+        guard = 'if self.history_error is not None and not allow_recovered_baseline:'
+        for revision in ('4fe015cdbf81b5253d64558bf056cb5fcc80fa87',
+                         'ee32e1c5f9e08d17369855c250dc99d8c3e16ce0'):
+            sources = {path: subprocess.check_output(['git', 'show', revision + ':' + path], text=True)
+                       for path in (deploy_path, evidence_path)}
+            changes = (
+                (evidence_path, publish + intent, intent + publish),
+                (evidence_path, guard, 'if False:'),
+                (deploy_path, '    submitted = False\n', '    azure.submit()\n    submitted = False\n'),
+            )
+            for path, before, after in changes:
+                self.assertEqual(1, sources[path].count(before))
+                altered = dict(sources, **{path: sources[path].replace(before, after, 1)})
+                with self.subTest(revision=revision, changed=path, before=before), \
+                     patch.object(m, '_release_history_source', side_effect=lambda repo, checkout, path, token: altered[path]), \
+                     patch.object(m, '_release_job_log') as logs:
+                    self.assertFalse(m._historical_publication_failed_before_first_write(
+                        'owner/repo', {'id': 71, 'status': 'completed'}, 'b' * 40, 'protect', revision, 'token'))
+                    logs.assert_not_called()
 
     def test_pre_diagnostic_component_workers_preserve_successful_receipt_compatibility(self):
         import subprocess
@@ -4660,6 +4893,103 @@ class HistoricalParallelVerifierTests(unittest.TestCase):
     def test_historical_package_revision_still_requires_verified_workflow_step(self):
         with self.assertRaises(m.ReleaseOperationHistoryUnproven):
             self.prove(workflow=self.workflow.replace('scripts/release-package.py verify', 'scripts/release-package.py inspect'))
+
+
+class ReviewedReceptionistContractTests(unittest.TestCase):
+    def setUp(self):
+        import copy
+        self.copy=copy.deepcopy
+        self.candidate='a'*40;self.approved='b'*40
+        self.trusted=dict(runtimeIdentity=m.REVIEWED_RECEPTIONIST_BASE_RUNTIME,toolIdentity='c'*64,executionIdentity='d'*64)
+        self.current=dict(self.trusted,runtimeIdentity=m.REVIEWED_RECEPTIONIST_RUNTIME)
+        self.prior=dict(schemaVersion=3,migrations=[dict(id='20260101000000_Original',supported=False),dict(id='20260201000000_Original',supported=False)])
+        self.entry=dict(id='20261020160000_AddReceptionistCoordination',supported=True,
+            columns=[dict(schema='dbo',table='Synthetic',name='Key',type='uniqueidentifier',nullable=True,
+                default=None,precision=None,scale=None,collation=None)],tables=[],indexes=[],guards=[],foreignKeys=[])
+        self.contract=dict(schemaVersion=3,migrations=self.copy(self.prior['migrations'])+[self.copy(self.entry)])
+        # The actual accepted entry is checked against both unpatched production
+        # pins by the existing real-C# contract gate. This synthetic unit shape
+        # isolates source/identity/refusal behavior without embedding a second
+        # production migration definition in Python tests.
+        digest=hashlib.sha256(json.dumps(self.entry,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        pin=patch.object(m,'REVIEWED_RECEPTIONIST_ENTRY',digest);pin.start();self.addCleanup(pin.stop)
+
+    def prove(self,contract=None,prior=None,returns=(0,0)):
+        with patch.object(m,'migration_probe_identity',side_effect=[self.current,self.trusted]), \
+             patch.object(m,'migration_contract_static_styles_only',return_value=False), \
+             patch.object(m.subprocess,'run',side_effect=[SimpleNamespace(returncode=r) for r in returns]) as run:
+            result=m.candidate_migration_contract_proven(self.candidate,self.approved,
+                self.contract if contract is None else contract,self.prior if prior is None else prior)
+            self.calls=[c.args[0] for c in run.call_args_list]
+            return result
+
+    def test_exact_reviewed_closure_prefix_entry_and_inherited_authority_are_required(self):
+        proof=self.prove()
+        self.assertEqual('approved-prefix-reviewed-receptionist-entry',proof['rule'])
+        self.assertEqual(m.REVIEWED_RECEPTIONIST_RUNTIME,proof['runtimeIdentity'])
+        self.assertEqual(m.REVIEWED_RECEPTIONIST_BASE_RUNTIME,proof['approvedRuntimeIdentity'])
+        self.assertEqual([
+            ['git','merge-base','--is-ancestor',self.approved,self.candidate],
+            ['git','diff','--quiet',self.approved,self.candidate,'--','scripts','.github']],self.calls)
+
+    def test_reviewed_runtime_cannot_omit_suffix_by_claiming_old_contract_equality(self):
+        with self.assertRaisesRegex(ValueError,'CANDIDATE_MIGRATION_CONTRACT_UNPROVEN'):
+            self.prove(contract=self.copy(self.prior))
+
+    def test_unknown_runtime_baseline_tool_or_execution_never_uses_entry_pin(self):
+        for target,key,value in [('current','runtimeIdentity','e'*64),('trusted','runtimeIdentity','e'*64),
+                ('current','toolIdentity','e'*64),('current','executionIdentity','e'*64),
+                ('current','toolIdentity',None),('current','executionIdentity','')]:
+            row=getattr(self,target);old=row[key];row[key]=value
+            with self.subTest(target=target,key=key),self.assertRaisesRegex(ValueError,'UNPROVEN'):self.prove()
+            row[key]=old
+
+    def test_altered_reordered_removed_prefix_and_extra_entry_fail(self):
+        for kind in ('change','reorder','remove','extra','replace'):
+            value=self.copy(self.contract)
+            if kind=='change':value['migrations'][0]['supported']=True
+            elif kind=='reorder':value['migrations'][:2]=value['migrations'][:2][::-1]
+            elif kind=='remove':value['migrations'].pop(0)
+            elif kind=='extra':value['migrations'].append(self.copy(self.entry))
+            else:value['migrations'][0]['id']='20260101000000_Altered'
+            with self.subTest(kind=kind),self.assertRaisesRegex(ValueError,'UNPROVEN'):self.prove(contract=value)
+
+    def test_every_appended_entry_field_is_bound_including_unknown_metadata(self):
+        for kind in ('supported','identity','type','default','foreignKeys','missing','unknown'):
+            value=self.copy(self.contract);entry=value['migrations'][-1]
+            if kind=='supported':entry['supported']=False
+            elif kind=='identity':entry['id']='20261020160000_Unreviewed'
+            elif kind in ('type','default'):entry['columns'][0][kind]='changed'
+            elif kind=='foreignKeys':entry['foreignKeys']=[{'name':'unexpected'}]
+            elif kind=='missing':entry.pop('guards')
+            else:entry['unknown']=False
+            with self.subTest(kind=kind),self.assertRaisesRegex(ValueError,'UNPROVEN'):self.prove(contract=value)
+
+    def test_contract_versions_types_and_extra_top_level_fields_fail(self):
+        for value in (dict(self.contract,schemaVersion=2),dict(self.contract,schemaVersion=True),
+                      dict(self.contract,migrations={}),dict(self.contract,extra=False),[]):
+            with self.subTest(value=value),self.assertRaisesRegex(ValueError,'UNPROVEN'):self.prove(contract=value)
+
+    def test_current_trusted_ancestor_and_unchanged_control_source_are_mandatory(self):
+        for values in ((1,0),(128,0),(0,1),(0,128)):
+            with self.subTest(values=values),self.assertRaisesRegex(ValueError,'UNPROVEN'):self.prove(returns=values)
+
+    def test_unchanged_runtime_still_cannot_invent_a_reviewed_suffix(self):
+        self.current=dict(self.trusted)
+        with self.assertRaisesRegex(ValueError,'metadata differs'):self.prove()
+
+    def test_existing_full_runtime_hash_detects_unknown_source_mode_and_build_inputs(self):
+        original='100644 blob '+'1'*40+'\tInfrastructure/Original.cs\0'
+        workflow='jobs:\n  validated-migration-probe:\n    runs-on: ubuntu-latest\n    steps: []\n'
+        def identity(rows):
+            with patch.object(m.subprocess,'check_output',return_value=rows),patch.object(m,'git_show_file',return_value=workflow):
+                return m.migration_probe_identity(self.candidate,self.candidate)['runtimeIdentity']
+        expected=identity(original)
+        for rows in ('',original.replace('100644','120000'),original.replace('1'*40,'2'*40),
+                     original+'100644 blob '+'3'*40+'\tInfrastructure/UnknownDiscovery.cs\0',
+                     original+'100644 blob '+'3'*40+'\tDirectory.Build.targets\0',
+                     original+'100644 blob '+'3'*40+'\tSHARED/Unknown.cs\0'):
+            with self.subTest(rows=rows):self.assertNotEqual(expected,identity(rows))
 
 
 if __name__ == "__main__":

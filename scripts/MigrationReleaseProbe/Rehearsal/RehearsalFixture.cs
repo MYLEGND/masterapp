@@ -4,7 +4,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using Microsoft.EntityFrameworkCore.Storage;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Security.Cryptography;
 
 // Synthetic compatibility fixture. This entry point is permitted only in the
 // credential-free rehearsal job, against its disposable loopback SQL database.
@@ -12,6 +15,14 @@ using System.Text.Json;
 // reviewed fixture before readiness can succeed.
 internal static class RehearsalFixture
 {
+    internal const string ReceptionistMigration = "20261020160000_AddReceptionistCoordination";
+    // Pins the complete declarative shape, including every CHECK, collation,
+    // key and default. A same-id edited migration requires a reviewed fixture.
+    internal static bool IsReceptionistFixture(CandidateContract.Entry entry) =>
+        entry.Id == ReceptionistMigration && entry.Supported &&
+        Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(entry, CandidateContract.Json))) ==
+            "d2da70a25230e14bf520e4129ac95a9fc558e9316385cedfcb172a5d82564fd6";
+
     internal static async Task Run(string operation)
     {
         var connection = Environment.GetEnvironmentVariable("LEGEND_ISOLATED_SQL");
@@ -38,12 +49,15 @@ internal static class RehearsalFixture
         const string retentionMigration = "20261011120000_AddWebsiteSnapshotRetirement";
         var payments = pending.Any(m => m.Id == paymentMigration);
         var retention = pending.Any(m => m.Id == retentionMigration);
+        var receptionist = pending.Any(m => m.Id == ReceptionistMigration);
         if (pending.Length != count || pending.Any(m => !m.Supported ||
             (m.Id == retentionMigration && (m.Columns.Length != 1 || m.Tables.Length != 0 ||
-                m.Indexes.Length != 0 || m.Guards.Length != 0 || m.Columns[0] is not {
+                m.Indexes.Length != 0 || m.Guards.Length != 0 || m.ForeignKeys.Length != 0 || m.Columns[0] is not {
                     Schema: "dbo", Table: "WebsiteContentVersion", Name: "SnapshotRetiredUtc",
                     Type: "datetime2", Nullable: true } || m.Columns[0].Default.ValueKind != JsonValueKind.Null)) ||
-            (m.Id != paymentMigration && m.Id != retentionMigration && (m.Tables.Length != 0 || m.Indexes.Length != 0 || m.Guards.Length != 0 ||
+            (m.Id == ReceptionistMigration && !IsReceptionistFixture(m)) ||
+            (m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration &&
+            (m.Tables.Length != 0 || m.Indexes.Length != 0 || m.Guards.Length != 0 || m.ForeignKeys.Length != 0 ||
             m.Columns.Any(c => c.Schema != "dbo" || c.Table != "MobileProfileSettings")))))
             throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
         if (operation == "initialize")
@@ -52,6 +66,7 @@ internal static class RehearsalFixture
                 throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             db.MobileProfileSettings.Add(new Domain.Entities.MobileProfileSettings {
                 ProfileId = Guid.NewGuid(), ParticipantType = "Agent", Bio = "synthetic migration fixture" });
+            if (receptionist) db.AddRange(MarketingRows());
             if (retention)
             {
                 var state = new Domain.Entities.WebsiteContentState { OwnerKey = "synthetic-owner", SiteKey = "legend", Revision = 2 };
@@ -86,8 +101,10 @@ internal static class RehearsalFixture
             // Construct the supported synthetic prior schema explicitly. Never
             // run arbitrary migration Down code or imply database rollback.
             var reverse = pending.Reverse().SelectMany(m =>
-                m.Indexes.Where(i => !m.Tables.Any(t => t.Schema == i.Schema && t.Name == i.Table))
-                    .Select(i => (MigrationOperation)new DropIndexOperation { Schema = i.Schema, Table = i.Table, Name = i.Name })
+                m.ForeignKeys.Select(f => (MigrationOperation)new DropForeignKeyOperation {
+                    Schema = f.Schema, Table = f.Table, Name = f.Constraint.Name })
+                .Concat(m.Indexes.Where(i => !m.Tables.Any(t => t.Schema == i.Schema && t.Name == i.Table))
+                    .Select(i => (MigrationOperation)new DropIndexOperation { Schema = i.Schema, Table = i.Table, Name = i.Name }))
                 .Concat(m.Tables.Reverse().Select(t => (MigrationOperation)new DropTableOperation { Schema = t.Schema, Name = t.Name }))
                 .Concat(m.Columns.Reverse().Select(c => (MigrationOperation)new DropColumnOperation {
                     Schema = c.Schema, Table = c.Table, Name = c.Name }))).ToArray();
@@ -103,20 +120,23 @@ internal static class RehearsalFixture
         }
         else if (operation == "precondition")
         {
-            if (!payments) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+            if (!payments && !receptionist) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             var applied = (await db.Database.GetAppliedMigrationsAsync(timeout.Token)).ToArray();
             await CandidateContract.Verify(db, contract, applied, timeout.Token);
-            await using var transaction = await db.Database.BeginTransactionAsync(timeout.Token);
-            await db.Database.ExecuteSqlRawAsync(
-                "UPDATE dbo.CommerceOrders SET CommerceBusinessId = (SELECT TOP (1) Id FROM dbo.CommerceBusinesses ORDER BY [Key])",
-                timeout.Token);
-            try
+            if (payments)
             {
-                await CandidateContract.Verify(db, contract, applied, timeout.Token);
-                throw new InvalidOperationException("Duplicate checkout identity was accepted");
+                await using var transaction = await db.Database.BeginTransactionAsync(timeout.Token);
+                await db.Database.ExecuteSqlRawAsync(
+                    "UPDATE dbo.CommerceOrders SET CommerceBusinessId = (SELECT TOP (1) Id FROM dbo.CommerceBusinesses ORDER BY [Key])",
+                    timeout.Token);
+                try
+                {
+                    await CandidateContract.Verify(db, contract, applied, timeout.Token);
+                    throw new InvalidOperationException("Duplicate checkout identity was accepted");
+                }
+                catch (ProbeObservationFailure error) when (error.Message == "MERCHANT_CHECKOUT_DUPLICATE_IDENTITY_REQUIRES_REVIEW") { }
+                await transaction.RollbackAsync(timeout.Token);
             }
-            catch (ProbeObservationFailure error) when (error.Message == "MERCHANT_CHECKOUT_DUPLICATE_IDENTITY_REQUIRES_REVIEW") { }
-            await transaction.RollbackAsync(timeout.Token);
         }
         else if (operation == "migrate")
         {
@@ -125,13 +145,15 @@ internal static class RehearsalFixture
         }
         else if (operation == "adversarial")
         {
-            if (!payments) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+            if (!payments && !receptionist) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             var applied = db.Database.GetMigrations().ToArray();
-            foreach (var mutation in new[] {
+            var mutations = payments ? new[] {
                 "ALTER INDEX [IX_CommercePaymentReceipts_Provider_Environment_AccountId_EventId] ON [dbo].[CommercePaymentReceipts] DISABLE",
                 "ALTER TABLE [dbo].[CommercePaymentEffects] NOCHECK CONSTRAINT [FK_CommercePaymentEffects_CommercePaymentAttempts_AttemptId]",
                 "ALTER TABLE [dbo].[CommerceOrders] ALTER COLUMN [PaymentReference] nvarchar(199) NULL"
-            })
+            } : Array.Empty<string>();
+            if (receptionist) mutations = mutations.Concat(ReceptionistDrift(pending.Single(m => m.Id == ReceptionistMigration))).ToArray();
+            foreach (var mutation in mutations)
             {
                 await using var transaction = await db.Database.BeginTransactionAsync(timeout.Token);
                 await db.Database.ExecuteSqlRawAsync(mutation, timeout.Token);
@@ -161,6 +183,28 @@ internal static class RehearsalFixture
                     throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
             }
             await db.Database.OpenConnectionAsync(timeout.Token);
+            if (receptionist)
+            {
+                var expectedRows = MarketingRows();
+                var ids = expectedRows.Select(r => r.Id).ToArray();
+                var actualRows = await db.Set<Domain.Entities.MarketingConnection>().AsNoTracking()
+                    .Where(r => ids.Contains(r.Id)).OrderBy(r => r.Id).ToArrayAsync(timeout.Token);
+                if (actualRows.Length != expectedRows.Length || actualRows.Where((row, index) =>
+                    !JsonNode.DeepEquals(LegacyMarketing(row), LegacyMarketing(expectedRows[index]))).Any())
+                    throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+                await using var defaults = db.Database.GetDbConnection().CreateCommand();
+                defaults.CommandText = """
+                    SELECT COUNT(*) FROM dbo.MarketingConnections
+                    WHERE OwnerKey IN ('rehearsal-voice-a','rehearsal-voice-b')
+                      AND (ReceptionistActiveConfigurationId IS NOT NULL OR ReceptionistIngressKey IS NOT NULL
+                        OR ReceptionistProviderProjectKey IS NOT NULL OR ReceptionistAdmissionEnabled <> 0
+                        OR ReceptionistControlRevision <> '00000000-0000-0000-0000-000000000000')
+                    """;
+                defaults.CommandTimeout = 30;
+                if (Convert.ToInt32(await defaults.ExecuteScalarAsync(timeout.Token)) != 0)
+                    throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+                await VerifyReceptionistData(db, timeout.Token);
+            }
             if (payments)
             {
                 var orders = await db.CommerceOrders.AsNoTracking().OrderBy(o => o.OrderNumber).ToArrayAsync(timeout.Token);
@@ -169,8 +213,8 @@ internal static class RehearsalFixture
                         o.SquarePaymentId != "synthetic-legacy-payment" || o.PaymentProvider is not null ||
                         o.PaymentReference is not null || o.PaymentEnvironment is not null))
                     throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
-                await CandidateContract.Verify(db, contract, db.Database.GetMigrations().ToArray(), timeout.Token);
             }
+            await CandidateContract.Verify(db, contract, db.Database.GetMigrations().ToArray(), timeout.Token);
             foreach (var column in pending.SelectMany(m => m.Columns).Where(c => c.Table == "MobileProfileSettings"))
             {
                 await using var command = db.Database.GetDbConnection().CreateCommand();
@@ -188,5 +232,167 @@ internal static class RehearsalFixture
         }
         else throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
         Console.WriteLine("LEGEND_ISOLATED_FIXTURE:PROVEN");
+    }
+
+    private static Domain.Entities.MarketingConnection[] MarketingRows() => new[]
+    {
+        MarketingRow("00000000-0000-0000-0000-000000000101", "rehearsal-voice-a", "openai"),
+        MarketingRow("00000000-0000-0000-0000-000000000102", "rehearsal-voice-b", "openai"),
+        MarketingRow("00000000-0000-0000-0000-000000000103", "rehearsal-voice-a", "meta")
+    };
+    private static Domain.Entities.MarketingConnection MarketingRow(string id, string owner, string provider) => new()
+    {
+        Id = Guid.Parse(id), OwnerKey = owner, OwnerType = "founder", Provider = provider,
+        PixelId = "synthetic-pixel", TestEventCode = "synthetic-event",
+        AdsAccessTokenCiphertext = "synthetic-ads-ciphertext", CapiAccessTokenCiphertext = "synthetic-capi-ciphertext",
+        AdAccountId = "synthetic-ad-account", AdAccountName = "Preserved account",
+        ProviderReviewStatus = "synthetic-reviewed", ProviderAuthorizationMethod = "synthetic-authorized",
+        ProviderPermissionsJson = "[\"synthetic-permission\"]", ProviderUserId = "synthetic-user",
+        ConnectedUtc = new DateTime(2026, 1, 1), LastVerifiedUtc = new DateTime(2026, 1, 2),
+        CreatedUtc = new DateTime(2026, 1, 1), UpdatedUtc = new DateTime(2026, 1, 2),
+        AccessTokenExpiresUtc = new DateTime(2027, 1, 1),
+        Revision = Guid.Parse("00000000-0000-0000-0000-000000000199")
+    };
+    private static JsonObject LegacyMarketing(Domain.Entities.MarketingConnection row)
+    {
+        var json = JsonSerializer.SerializeToNode(row)!.AsObject();
+        foreach (var name in new[] { "ReceptionistActiveConfigurationId", "ReceptionistAdmissionEnabled",
+            "ReceptionistControlRevision", "ReceptionistIngressKey", "ReceptionistProviderProjectKey" }) json.Remove(name);
+        return json;
+    }
+
+    private static string[] ReceptionistDrift(CandidateContract.Entry entry)
+    {
+        var amounts = entry.Tables.Single(t => t.Name == "ReceptionistBudgetPeriods").Checks
+            .Single(c => c.Name == "CK_ReceptionistBudgetPeriod_Amounts").Sql;
+        string Precision(string type) => """
+            ALTER TABLE dbo.ReceptionistBudgetPeriods DROP CONSTRAINT CK_ReceptionistBudgetPeriod_Amounts;
+            ALTER TABLE dbo.ReceptionistBudgetPeriods ALTER COLUMN CashCommitted
+            """ + " " + type + " NOT NULL;\nALTER TABLE dbo.ReceptionistBudgetPeriods ADD CONSTRAINT CK_ReceptionistBudgetPeriod_Amounts CHECK (" + amounts + ");";
+        return
+        [
+            Precision("decimal(19,6)"), Precision("decimal(20,5)"),
+            """
+            DROP INDEX IX_MarketingConnections_Provider_ReceptionistIngressKey ON dbo.MarketingConnections;
+            ALTER TABLE dbo.MarketingConnections ALTER COLUMN ReceptionistIngressKey nvarchar(200) COLLATE Latin1_General_100_CI_AS NULL;
+            CREATE UNIQUE INDEX IX_MarketingConnections_Provider_ReceptionistIngressKey ON dbo.MarketingConnections(Provider,ReceptionistIngressKey)
+                WHERE ReceptionistIngressKey IS NOT NULL;
+            """,
+            "ALTER TABLE dbo.ReceptionistBudgetAccounts NOCHECK CONSTRAINT CK_ReceptionistBudgetAccount_Kind",
+            """
+            ALTER TABLE dbo.ReceptionistBudgetAccounts NOCHECK CONSTRAINT CK_ReceptionistBudgetAccount_Kind;
+            ALTER TABLE dbo.ReceptionistBudgetAccounts CHECK CONSTRAINT CK_ReceptionistBudgetAccount_Kind;
+            """,
+            """
+            ALTER TABLE dbo.ReceptionistBudgetAccounts DROP CONSTRAINT CK_ReceptionistBudgetAccount_Kind;
+            ALTER TABLE dbo.ReceptionistBudgetAccounts ADD CONSTRAINT CK_ReceptionistBudgetAccount_Kind CHECK ([Kind] IN ('owner','funding','unknown'));
+            """,
+            """
+            ALTER TABLE dbo.MarketingConnections DROP CONSTRAINT FK_MarketingConnections_ReceptionistConfigurationVersions_Id_ReceptionistActiveConfigurationId;
+            ALTER TABLE dbo.MarketingConnections ADD CONSTRAINT FK_MarketingConnections_ReceptionistConfigurationVersions_Id_ReceptionistActiveConfigurationId
+                FOREIGN KEY (ReceptionistActiveConfigurationId) REFERENCES dbo.ReceptionistConfigurationVersions(Id);
+            """,
+            "ALTER TABLE dbo.MarketingConnections NOCHECK CONSTRAINT FK_MarketingConnections_ReceptionistConfigurationVersions_Id_ReceptionistActiveConfigurationId",
+            "ALTER INDEX IX_MarketingConnections_Provider_ReceptionistProviderProjectKey ON dbo.MarketingConnections DISABLE",
+            """
+            DROP INDEX IX_MarketingConnections_Provider_ReceptionistProviderProjectKey ON dbo.MarketingConnections;
+            CREATE UNIQUE INDEX IX_MarketingConnections_Provider_ReceptionistProviderProjectKey
+                ON dbo.MarketingConnections(Provider,ReceptionistProviderProjectKey)
+                WHERE ReceptionistProviderProjectKey IS NOT NULL AND ReceptionistAdmissionEnabled=1;
+            """,
+            """
+            ALTER TABLE dbo.MarketingConnections DROP CONSTRAINT FK_MarketingConnections_ReceptionistConfigurationVersions_Id_ReceptionistActiveConfigurationId;
+            ALTER TABLE dbo.ReceptionistCalls DROP CONSTRAINT FK_ReceptionistCalls_ReceptionistConfigurationVersions_MarketingConnectionId_ConfigurationVersionId;
+            ALTER TABLE dbo.ReceptionistConfigurationVersions DROP CONSTRAINT AK_ReceptionistConfigurationVersions_MarketingConnectionId_Id;
+            CREATE UNIQUE INDEX AK_ReceptionistConfigurationVersions_MarketingConnectionId_Id
+                ON dbo.ReceptionistConfigurationVersions(MarketingConnectionId,Id);
+            ALTER TABLE dbo.MarketingConnections ADD CONSTRAINT FK_MarketingConnections_ReceptionistConfigurationVersions_Id_ReceptionistActiveConfigurationId
+                FOREIGN KEY(Id,ReceptionistActiveConfigurationId) REFERENCES dbo.ReceptionistConfigurationVersions(MarketingConnectionId,Id);
+            ALTER TABLE dbo.ReceptionistCalls ADD CONSTRAINT FK_ReceptionistCalls_ReceptionistConfigurationVersions_MarketingConnectionId_ConfigurationVersionId
+                FOREIGN KEY(MarketingConnectionId,ConfigurationVersionId) REFERENCES dbo.ReceptionistConfigurationVersions(MarketingConnectionId,Id);
+            """
+        ];
+    }
+
+    private static async Task VerifyReceptionistData(MasterAppDbContext db, CancellationToken cancellation)
+    {
+        // Fixed synthetic values only. This runs after the actual EF migration,
+        // inside a rollbacked transaction in the existing loopback-only fixture.
+        // No feature CLR dependency is required when the observer is promoted first.
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellation);
+        await db.Database.ExecuteSqlRawAsync("""
+            DECLARE @connectionA uniqueidentifier='00000000-0000-0000-0000-000000000101',
+                    @connectionB uniqueidentifier='00000000-0000-0000-0000-000000000102',
+                    @accountA uniqueidentifier='00000000-0000-0000-0000-000000000201',
+                    @accountB uniqueidentifier='00000000-0000-0000-0000-000000000202',
+                    @configA uniqueidentifier='00000000-0000-0000-0000-000000000301',
+                    @configB uniqueidentifier='00000000-0000-0000-0000-000000000302',
+                    @periodA uniqueidentifier='00000000-0000-0000-0000-000000000401',
+                    @periodB uniqueidentifier='00000000-0000-0000-0000-000000000402',
+                    @callA uniqueidentifier='00000000-0000-0000-0000-000000000501',
+                    @callB uniqueidentifier='00000000-0000-0000-0000-000000000502';
+            INSERT dbo.ReceptionistBudgetAccounts(Id,AdmissionEnabled,ControlRevision,Currency,Kind,Revision,ScopeKey,TimeZoneId)
+                VALUES(@accountA,0,NEWID(),'USD','owner',NEWID(),'synthetic-owner-a','UTC'),
+                      (@accountB,0,NEWID(),'USD','owner',NEWID(),'synthetic-owner-b','UTC');
+            INSERT dbo.ReceptionistConfigurationVersions(Id,ConfigurationJson,ConfigurationSha256,CreatedByActorId,CreatedUtc,MarketingConnectionId,Version)
+                VALUES(@configA,'{}',REPLICATE('a',64),'synthetic-actor','20260101',@connectionA,1),
+                      (@configB,'{}',REPLICATE('b',64),'synthetic-actor','20260101',@connectionB,1);
+            INSERT dbo.ReceptionistBudgetPeriods(Id,BudgetAccountId,CashCommitted,CashLimit,ConsumptionCommitted,ConsumptionLimit,EndUtc,MonthKey,
+                OpeningCashCeiling,OpeningCashCommitted,OpeningConsumptionCeiling,OpeningConsumptionCommitted,OpeningReceipt,OpeningReconciled,
+                OpeningVoiceSeconds,ReconciledThroughUtc,Revision,StartUtc,VoiceSecondsCommitted)
+                SELECT PeriodId,AccountId,0.000001,12345678901234.123456,0,12345678901234.123456,'20260201',202601,
+                       12345678901234.123456,0,12345678901234.123456,0,'synthetic-opening',1,0,'20260101',NEWID(),'20260101',0
+                FROM (VALUES(@periodA,@accountA),(@periodB,@accountB)) AS p(PeriodId,AccountId);
+            INSERT dbo.ReceptionistCalls(Id,ConfigurationVersionId,ConnectionControlRevision,ControlledTest,IngressKey,MarketingConnectionId,
+                MustStopUtc,ObservedVoiceSeconds,OwnerBudgetAccountId,OwnerBudgetPeriodId,OwnerControlRevision,Provider,ProviderProjectKey,
+                ProviderSessionId,ReservedUtc,ReservedVoiceSeconds,Revision,SidebandFence,SidebandObservationOnly,State,VoiceAllocationUncertain,VoiceUsageFinal)
+                SELECT CallId,ConfigId,NEWID(),1,'synthetic-ingress',ConnectionId,'20260101',0,AccountId,PeriodId,NEWID(),'openai',
+                       'synthetic-project',CONVERT(nvarchar(36),CallId),'20260101',360,NEWID(),0,0,'reserved',0,0
+                FROM (VALUES(@callA,@configA,@connectionA,@accountA,@periodA),(@callB,@configB,@connectionB,@accountB,@periodB))
+                    AS c(CallId,ConfigId,ConnectionId,AccountId,PeriodId);
+            UPDATE dbo.MarketingConnections SET ReceptionistActiveConfigurationId=@configA,ReceptionistProviderProjectKey='ProjectCase',
+                ReceptionistIngressKey='IngressCase' WHERE Id=@connectionA;
+            UPDATE dbo.MarketingConnections SET ReceptionistActiveConfigurationId=@configB,ReceptionistProviderProjectKey='projectcase',
+                ReceptionistIngressKey='ingresscase' WHERE Id=@connectionB;
+            """, cancellation);
+        await using (var amount = db.Database.GetDbConnection().CreateCommand())
+        {
+            amount.Transaction = transaction.GetDbTransaction();
+            amount.CommandText = "SELECT CashLimit FROM dbo.ReceptionistBudgetPeriods WHERE Id='00000000-0000-0000-0000-000000000401'";
+            amount.CommandTimeout = 30;
+            if (Convert.ToDecimal(await amount.ExecuteScalarAsync(cancellation)) != 12345678901234.123456m)
+                throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        }
+        foreach (var (sql, constraint) in new (string, string)[]
+        {
+            ("UPDATE dbo.MarketingConnections SET ReceptionistActiveConfigurationId='00000000-0000-0000-0000-000000000301' WHERE Id='00000000-0000-0000-0000-000000000102'",
+                "FK_MarketingConnections_ReceptionistConfigurationVersions_Id_ReceptionistActiveConfigurationId"),
+            ("UPDATE dbo.MarketingConnections SET ReceptionistProviderProjectKey='ProjectCase' WHERE Id='00000000-0000-0000-0000-000000000102'",
+                "IX_MarketingConnections_Provider_ReceptionistProviderProjectKey"),
+            ("UPDATE dbo.MarketingConnections SET ReceptionistIngressKey='IngressCase' WHERE Id='00000000-0000-0000-0000-000000000102'",
+                "IX_MarketingConnections_Provider_ReceptionistIngressKey"),
+            ("UPDATE dbo.ReceptionistBudgetPeriods SET CashCommitted=-1 WHERE Id='00000000-0000-0000-0000-000000000401'",
+                "CK_ReceptionistBudgetPeriod_Amounts"),
+            ("UPDATE dbo.ReceptionistBudgetPeriods SET MonthKey=202613 WHERE Id='00000000-0000-0000-0000-000000000401'",
+                "CK_ReceptionistBudgetPeriod_Month"),
+            ("UPDATE dbo.ReceptionistCalls SET OwnerBudgetPeriodId='00000000-0000-0000-0000-000000000402' WHERE Id='00000000-0000-0000-0000-000000000501'",
+                "FK_ReceptionistCalls_ReceptionistBudgetPeriods_OwnerBudgetAccountId_OwnerBudgetPeriodId"),
+            ("UPDATE dbo.ReceptionistCalls SET ReservedVoiceSeconds=0 WHERE Id='00000000-0000-0000-0000-000000000501'",
+                "CK_ReceptionistCall_Duration"),
+            ("UPDATE dbo.ReceptionistCalls SET State='closed' WHERE Id='00000000-0000-0000-0000-000000000501'",
+                "CK_ReceptionistCall_State"),
+            ("UPDATE dbo.ReceptionistCalls SET SidebandFence=1 WHERE Id='00000000-0000-0000-0000-000000000501'",
+                "CK_ReceptionistCall_WorkOwnership")
+        })
+        {
+            await transaction.CreateSavepointAsync("constraint_probe", cancellation);
+            var rejected = false;
+            try { await db.Database.ExecuteSqlRawAsync(sql, cancellation); }
+            catch (SqlException error) when (error.Number is 547 or 2601 or 2627 && error.Message.Contains(constraint, StringComparison.Ordinal))
+            { rejected = true; }
+            finally { await transaction.RollbackToSavepointAsync("constraint_probe", cancellation); }
+            if (!rejected) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        }
+        await transaction.RollbackAsync(cancellation);
     }
 }

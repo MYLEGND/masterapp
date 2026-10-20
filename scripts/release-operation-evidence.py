@@ -94,6 +94,7 @@ class OperationJournal:
         self.operation_id = hashlib.sha256(json.dumps(self.identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
         self.run = int(env['GITHUB_RUN_ID'])
         self.attempt = int(env['GITHUB_RUN_ATTEMPT'])
+        self._new_intent_readback = False
         self.authorization = None
         if candidate_revision is not None or component_source is not None:
             self.authorization = self._authorization(candidate_revision, component_source)
@@ -127,8 +128,24 @@ class OperationJournal:
                     raise ValueError('Prior deployment component producer mismatch')
             elif any(key in self.intent for key in ('candidateRevision', 'componentSource')):
                 raise ValueError('Legacy deployment intent contains unversioned component provenance')
+            if ('providerRequestCorrelation' in self.intent and
+                    self.intent['providerRequestCorrelation'] != self._provider_request_correlation()):
+                raise ValueError('Deployment request correlation does not bind its operation')
             self._ids(self.intent.get('baselineDeploymentIds'))
             self.baseline = self.intent['baseline']
+
+    def _provider_request_correlation(self):
+        # Metadata only: Azure does not promise idempotency for deployment tags.
+        return dict(kind='azure_onedeploy_deployment_tag_v1', value=self.operation_id)
+
+    def submission_correlation(self):
+        # Restored intents remain reconciliation-only, including legacy records
+        # which never sent a tag. Never manufacture historical request evidence.
+        expected = self._provider_request_correlation()
+        if (not self._new_intent_readback or self.intent is None or
+                self.intent.get('providerRequestCorrelation') != expected):
+            raise RuntimeError('New durable deployment request correlation required before submit')
+        return dict(expected)
 
     @staticmethod
     def _authorization(candidate, source):
@@ -160,11 +177,13 @@ class OperationJournal:
         record = dict(self.identity, schemaVersion=1, operationId=self.operation_id,
                       baseline=self.baseline, packageProducerRun=self.producer,
                       producingRun=self.run, producingAttempt=self.attempt,
-                      baselineDeploymentIds=self._ids(baseline_ids), phase='intent')
+                      baselineDeploymentIds=self._ids(baseline_ids), phase='intent',
+                      providerRequestCorrelation=self._provider_request_correlation())
         if self.authorization is not None:
             record.update(self.authorization, schemaVersion=2)
         self.publisher('legend-release-operation-intent-' + self.operation_id, record)
         self.intent = record
+        self._new_intent_readback = True
         if allow_recovered_baseline:
             self.history_error = None
         return True
@@ -183,7 +202,8 @@ class OperationJournal:
             if (any(existing.get(key) != value for key, value in self.identity.items()) or
                     existing.get('baseline') != self.baseline or existing.get('phase') != 'success' or
                     any(existing.get(key) != self.intent.get(key) for key in
-                        ('schemaVersion', 'packageProducerRun', 'candidateRevision', 'componentSource'))):
+                        ('schemaVersion', 'packageProducerRun', 'candidateRevision', 'componentSource',
+                         'providerRequestCorrelation'))):
                 raise RuntimeError("Prior deployment success receipt identity mismatch")
             retained = set(self._ids(existing.get('deploymentIds')))
             if (self._ids(existing.get('baselineDeploymentIds')) != sorted(baseline_ids) or

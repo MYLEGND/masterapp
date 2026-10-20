@@ -52,6 +52,9 @@ TRUSTED_TOOL_PATHS = frozenset({
     'AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs',
     'tests/layout/modal-content-region.test.mjs',
     'scripts/deploy-approved-app.py',
+    'scripts/release-operation-evidence.py',
+    'scripts/test-deploy-approved-app.py',
+    'scripts/test-release-operation-evidence.py',
     '.github/workflows/masterapp-platform-architecture-validation.yml',
     '.github/workflows/parfait-isolated-validation.yml',
     '.github/workflows/parfait-cutover-live-readonly.yml',
@@ -62,6 +65,11 @@ TRUSTED_TOOL_PATHS = frozenset({
     'scripts/test-validation-resume.py', 'scripts/test-release-policy.py',
     'scripts/test-release-lifecycle.py', 'scripts/test-fast-track-release.py',
     'scripts/test-parfait-readonly-workflow.py', 'scripts/test-migration-probe-package.py',
+    'scripts/MigrationReleaseProbe/Program.cs',
+    'scripts/MigrationReleaseProbe/CandidateContract.cs',
+    'scripts/MigrationReleaseProbe/CandidateContract.Structures.cs',
+    'scripts/MigrationReleaseProbe/Rehearsal/CandidateContractTests.cs',
+    'scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.cs',
     'Infrastructure/Infrastructure.csproj',
 })
 

@@ -1149,6 +1149,81 @@ class TrustedToolPromotionPolicyTests(unittest.TestCase):
     def test_exact_dependency_promotion_is_nonpublishing(self):
         proof=self.invoke();self.assertFalse(proof['productionEligible']);self.assertFalse(proof['authorizesMutation'])
 
+    def test_existing_schema_observer_owners_promote_without_publishing(self):
+        paths = (
+            'scripts/MigrationReleaseProbe/Program.cs',
+            'scripts/MigrationReleaseProbe/CandidateContract.cs',
+            'scripts/MigrationReleaseProbe/CandidateContract.Structures.cs',
+            'scripts/MigrationReleaseProbe/Rehearsal/CandidateContractTests.cs',
+            'scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.cs',
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                proof=self.invoke(fixture_kw=dict(path=path))
+                self.assertFalse(proof['productionEligible']);self.assertFalse(proof['authorizesMutation'])
+        for path in ('scripts/MigrationReleaseProbe/Unknown.cs',
+                     'scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj',
+                     'Infrastructure/Migrations/20261020160000_AddReceptionistCoordination.cs',
+                     'Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs'):
+            with self.subTest(path=path),self.assertRaisesRegex(ValueError,'SCOPE_UNPROVEN'):
+                self.invoke(fixture_kw=dict(path=path))
+
+    def test_schema_tool_promotion_still_rejects_added_path_and_unbound_source(self):
+        def added(args,result):
+            if args[1]=='diff':result.stdout=result.stdout.replace('M\0','A\0',1)
+            return result
+        with self.assertRaisesRegex(ValueError,'SCOPE_UNPROVEN'):
+            self.invoke(fixture_kw=dict(path='scripts/MigrationReleaseProbe/Program.cs'),git_mutate=added)
+        def changed(args,result):
+            if args[1]=='ls-tree' and args[3]=='c'*40:result.stdout=result.stdout.replace('d'*40,'e'*40)
+            return result
+        with self.assertRaisesRegex(ValueError,'BLOB_UNPROVEN'):
+            self.invoke(fixture_kw=dict(path='scripts/MigrationReleaseProbe/Program.cs'),git_mutate=changed)
+
+    def test_exact_forward_correlation_owners_are_nonpublishing_without_neighbor_expansion(self):
+        for path in ('scripts/deploy-approved-app.py', 'scripts/release-operation-evidence.py',
+                     'scripts/test-deploy-approved-app.py', 'scripts/test-release-operation-evidence.py'):
+            with self.subTest(path=path):
+                proof=self.invoke(fixture_kw=dict(path=path))
+                self.assertFalse(proof['productionEligible']);self.assertFalse(proof['authorizesMutation'])
+        for path in ('scripts/release-operation-evidence-extra.py',
+                     'scripts/test-release-operation-evidence-extra.py',
+                     'scripts/test-deploy-approved-app-extra.py',
+                     'scripts/deploy-unreviewed-app.py'):
+            with self.subTest(path=path),self.assertRaisesRegex(ValueError,'SCOPE_UNPROVEN'):
+                self.invoke(fixture_kw=dict(path=path))
+
+    def test_current_fast_track_promotion_returns_before_unresolved_predecessor(self):
+        import importlib.util
+        spec=importlib.util.spec_from_file_location('promotion_boundary_authority',Path(__file__).with_name('validation-resume.py'))
+        authority=importlib.util.module_from_spec(spec);spec.loader.exec_module(authority)
+        owner,base,head,source,request,admission,git=self.fixture(path='scripts/MigrationReleaseProbe/Program.cs')
+        with patch.object(authority,'_fast_track_policy',return_value=owner), \
+             patch.object(owner,'read_request',side_effect=lambda sha:request if sha==head else {'requestId':'older'}), \
+             patch.object(owner.subprocess,'run',side_effect=git), \
+             patch.object(authority,'fast_track_source_admission',return_value=admission) as authenticate, \
+             patch.object(authority,'fast_track_effective_baseline',side_effect=RuntimeError('unresolved predecessor')) as baseline:
+            scope=authority.fast_track_selection(base,head)
+        authenticate.assert_called_once_with(allow_nonpublishing=True);baseline.assert_not_called()
+        self.assertFalse(scope['productionEligible']);self.assertFalse(scope['selected'])
+        self.assertEqual({'include':[]},scope['matrix']);self.assertFalse(scope['schema']);self.assertFalse(scope['routing'])
+        self.assertEqual('trusted-tool-promotion',scope['promotion']['phase'])
+
+    def test_later_feature_release_still_requires_predecessor_reconciliation(self):
+        import importlib.util
+        spec=importlib.util.spec_from_file_location('promotion_transition_authority',Path(__file__).with_name('validation-resume.py'))
+        authority=importlib.util.module_from_spec(spec);spec.loader.exec_module(authority)
+        owner,base,head,source,prior,admission,git=self.fixture(path='scripts/MigrationReleaseProbe/Program.cs')
+        release=dict(requestedBy='Founder',authorization='Existing release authorization',requestId='fresh-release',
+                     releaseMode='approved-only',targets=['masterapp-portal'],cloudflareWebsiteRouting=False)
+        with patch.object(authority,'_fast_track_policy',return_value=owner), \
+             patch.object(owner,'read_request',side_effect=lambda sha:release if sha==head else prior), \
+             patch.object(authority,'fast_track_source_admission',return_value=admission), \
+             patch.object(authority,'fast_track_effective_baseline',side_effect=RuntimeError('unresolved predecessor')) as baseline:
+            with self.assertRaisesRegex(RuntimeError,'unresolved predecessor'):
+                authority.fast_track_selection(base,head)
+        baseline.assert_called_once_with(base,head)
+
     def test_unbound_replayed_or_app_marker_rejected(self):
         changes=[lambda r,a,p:r.update(trustedToolPromotion=None),
             lambda r,a,p:r['trustedToolPromotion'].update(baseRevision='f'*40),

@@ -212,13 +212,21 @@ class WebsiteOriginalNonentryRepairTests(unittest.TestCase):
         class Result:
             returncode=0
             stderr=''
-            stdout='{}'
-        with patch.object(deploy.subprocess,'run',return_value=Result()) as runner:
-            self.assertTrue(azure.submit())
+            def __init__(self, stdout):
+                self.stdout=stdout
+        correlation={'kind':'azure_onedeploy_deployment_tag_v1','value':'c'*64}
+        with patch.object(deploy.subprocess,'run',side_effect=[
+                Result('    --deploymentTag : Linux deployment identifier.\n'),
+                Result(json.dumps({'name':'masterapp-website','reserved':True,'kind':'app,linux'})),
+                Result('{}')]) as runner:
+            azure.prepare_submission()
+            self.assertTrue(azure.submit(correlation))
+        self.assertEqual(runner.call_count,3)
         command=runner.call_args.args[0]
         self.assertEqual(command[command.index('--async')+1],'false')
         self.assertEqual(command[command.index('--track-status')+1],'true')
         self.assertEqual(command[command.index('--enable-kudu-warmup')+1],'true')
+        self.assertEqual(command[command.index('--deploymentTag')+1],correlation['value'])
 
     def test_prior_unverified_deployment_forces_fresh_noentry_preflight_failure(self):
         azure=deploy.Azure('masterapp-website',Path('/tmp/exact-package.zip'),

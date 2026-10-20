@@ -104,6 +104,81 @@ class DurableOperationProtocolTests(unittest.TestCase):
             self.make(publisher=timeout).before_submit([])
         self.assertFalse(self.make().before_submit([]))
 
+    def test_correlation_is_available_only_after_verified_new_intent(self):
+        operation = self.make()
+        with self.assertRaisesRegex(RuntimeError, 'New durable'):
+            operation.submission_correlation()
+        operation.before_submit(['old'])
+        expected = {'kind': 'azure_onedeploy_deployment_tag_v1', 'value': operation.operation_id}
+        self.assertEqual(expected, operation.submission_correlation())
+        saved = json.loads((self.path / ('intent' + operation.operation_id)).read_text())
+        self.assertEqual(expected, saved['providerRequestCorrelation'])
+        copy = operation.submission_correlation()
+        copy['value'] = 'f' * 64
+        self.assertEqual(expected, operation.submission_correlation())
+        with self.assertRaisesRegex(RuntimeError, 'New durable'):
+            self.make().submission_correlation()
+
+    def test_lost_readback_cannot_expose_new_submission_correlation(self):
+        def lost(name, record):
+            self.publish(name, record)
+            raise TimeoutError('lost readback')
+        operation = self.make(publisher=lost)
+        with self.assertRaises(TimeoutError):
+            operation.before_submit([])
+        with self.assertRaisesRegex(RuntimeError, 'New durable'):
+            operation.submission_correlation()
+        with self.assertRaisesRegex(RuntimeError, 'New durable'):
+            self.make().submission_correlation()
+
+    def test_legacy_intent_and_success_bytes_are_not_annotated_or_rewritten(self):
+        operation = self.make()
+        operation.before_submit(['old'])
+        intent_path = self.path / ('intent' + operation.operation_id)
+        legacy = json.loads(intent_path.read_text())
+        del legacy['providerRequestCorrelation']
+        intent_path.write_text(json.dumps(legacy, indent=2))
+        original = intent_path.read_bytes()
+        restored = self.make()
+        self.assertFalse(restored.before_submit([]))
+        with self.assertRaisesRegex(RuntimeError, 'New durable'):
+            restored.submission_correlation()
+        restored.record_success(['fresh'])
+        receipt_path = self.path / ('success' + operation.operation_id)
+        receipt = receipt_path.read_bytes()
+        self.assertNotIn('providerRequestCorrelation', json.loads(receipt))
+        self.make().record_success(['fresh'])
+        self.assertEqual(original, intent_path.read_bytes())
+        self.assertEqual(receipt, receipt_path.read_bytes())
+
+    def test_correlation_mismatch_is_rejected_without_mutating_retained_evidence(self):
+        operation = self.make()
+        operation.before_submit([])
+        intent_path = self.path / ('intent' + operation.operation_id)
+        saved = json.loads(intent_path.read_text())
+        for value in [None, {'kind': 'other', 'value': operation.operation_id},
+                      {'kind': 'azure_onedeploy_deployment_tag_v1', 'value': 'f' * 64}]:
+            with self.subTest(value=value):
+                saved['providerRequestCorrelation'] = value
+                intent_path.write_text(json.dumps(saved))
+                original = intent_path.read_bytes()
+                with self.assertRaisesRegex(ValueError, 'correlation'):
+                    self.make()
+                self.assertEqual(original, intent_path.read_bytes())
+
+    def test_success_receipt_cannot_claim_a_different_request_tag(self):
+        operation = self.make()
+        operation.before_submit(['old'])
+        operation.record_success(['fresh'])
+        receipt_path = self.path / ('success' + operation.operation_id)
+        receipt = json.loads(receipt_path.read_text())
+        receipt['providerRequestCorrelation']['value'] = 'f' * 64
+        receipt_path.write_text(json.dumps(receipt))
+        original = receipt_path.read_bytes()
+        with self.assertRaisesRegex(RuntimeError, 'identity mismatch'):
+            self.make().record_success(['fresh'])
+        self.assertEqual(original, receipt_path.read_bytes())
+
     def test_history_uncertainty_never_authorizes_write(self):
         self.authority.release_operation_history = lambda *args: (_ for _ in ()).throw(RuntimeError('expired'))
         with self.assertRaisesRegex(RuntimeError, 'expired'):

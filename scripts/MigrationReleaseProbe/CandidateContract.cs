@@ -11,9 +11,9 @@ using Microsoft.EntityFrameworkCore.Migrations.Operations;
 internal static partial class CandidateContract
 {
     internal sealed record Column(string Schema, string Table, string Name, string Type,
-        bool Nullable, JsonElement Default);
+        bool Nullable, JsonElement Default, int? Precision, int? Scale, string? Collation);
     internal sealed record Entry(string Id, bool Supported, Column[] Columns,
-        Table[] Tables, Index[] Indexes, string[] Guards);
+        Table[] Tables, Index[] Indexes, string[] Guards, TableForeignKey[] ForeignKeys);
     internal sealed record Contract(int SchemaVersion, Entry[] Migrations);
     internal static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     internal static string Export(MasterAppDbContext db) => JsonSerializer.Serialize(Current(db), Json);
@@ -26,14 +26,14 @@ internal static partial class CandidateContract
             var operations = assembly.CreateMigration(row.Value, db.Database.ProviderName!).UpOperations;
             return Describe(row.Key, operations);
         }).ToArray();
-        return new Contract(2, entries);
+        return new Contract(3, entries);
     }
 
     internal static Contract Read(string path)
     {
         if (new FileInfo(path).Length > 4 * 1024 * 1024) throw new InvalidOperationException();
         var contract = JsonSerializer.Deserialize<Contract>(File.ReadAllText(path), Json) ?? throw new InvalidOperationException();
-        if (contract.SchemaVersion != 2 || contract.Migrations is null || contract.Migrations.Length is < 1 or > 10000 ||
+        if (contract.SchemaVersion != 3 || contract.Migrations is null || contract.Migrations.Length is < 1 or > 10000 ||
             contract.Migrations.Any(m => m is null || m.Id is null || !Regex.IsMatch(m.Id, @"^[0-9]{8,14}_[A-Za-z0-9_]{1,128}$") ||
                 m.Columns is null || m.Columns.Length > 1000 || !ValidStructures(m) ||
                 (m.Supported && m.Columns.Length + m.Tables.Length == 0) ||
@@ -81,7 +81,8 @@ internal static partial class CandidateContract
         var expected = columns.ToDictionary(c => c.Name, StringComparer.Ordinal);
         var found = new HashSet<string>(StringComparer.Ordinal);
         await using var command = Query(db, """
-            SELECT c.name, ty.name, c.max_length, c.is_nullable, dc.definition, c.scale, c.is_computed, c.is_identity
+            SELECT c.name, ty.name, c.max_length, c.is_nullable, dc.definition, c.scale, c.is_computed, c.is_identity,
+                   c.precision, c.collation_name
             FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id
             LEFT JOIN sys.columns c ON c.object_id=t.object_id
             LEFT JOIN sys.types ty ON ty.user_type_id=c.user_type_id
@@ -98,9 +99,13 @@ internal static partial class CandidateContract
             var type = reader.GetString(1);
             var length = Convert.ToInt32(reader.GetValue(2));
             var actual = type is "nvarchar" or "varchar" ? type + "(" + (length == -1 ? "max" :
-                (length / (type == "nvarchar" ? 2 : 1)).ToString()) + ")" : type;
+                (length / (type == "nvarchar" ? 2 : 1)).ToString()) + ")" : type == "decimal"
+                ? $"decimal({reader.GetByte(8)},{reader.GetByte(5)})" : type;
             if (actual != column.Type || reader.GetBoolean(3) != column.Nullable ||
-                (actual == "datetime2" && reader.GetByte(5) != 7) || reader.GetBoolean(6) || reader.GetBoolean(7))
+                (actual == "datetime2" && reader.GetByte(5) != 7) || reader.GetBoolean(6) || reader.GetBoolean(7) ||
+                (column.Precision is not null && reader.GetByte(8) != column.Precision) ||
+                (column.Scale is not null && reader.GetByte(5) != column.Scale) ||
+                (column.Collation is not null && (reader.IsDBNull(9) || reader.GetString(9) != column.Collation)))
                 throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
             if (column.Default.ValueKind == JsonValueKind.Null && !reader.IsDBNull(4))
                 throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");

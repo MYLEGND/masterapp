@@ -23,12 +23,24 @@ def row(identifier, status):
     return {'id': identifier, 'status': status}
 
 
+CORRELATION = {'kind': 'azure_onedeploy_deployment_tag_v1', 'value': 'c' * 64}
+
+
+def prepare_supported_azure(azure):
+    with patch.object(deploy.subprocess, 'run', side_effect=[
+            subprocess.CompletedProcess([], 0, '    --deploymentTag : Linux deployment identifier.\n', ''),
+            subprocess.CompletedProcess([], 0, json.dumps({'name': azure.app, 'reserved': True, 'kind': 'app,linux'}), '')]):
+        azure.prepare_submission()
+    return azure
+
+
 class FakeAzure:
     def __init__(self, states, revisions, accepted=True, static=False, recovery_accepted=True):
         self.states, self.revisions, self.accepted = list(states), list(revisions), accepted
         self.static, self.recovery_accepted = static, recovery_accepted
         self.uploads = 0
         self.recovery_uploads = 0
+        self.preparations = 0
         self.now = 0
 
     def deployments(self):
@@ -40,7 +52,10 @@ class FakeAzure:
     def revision_live(self):
         return self.revisions.pop(0) if len(self.revisions) > 1 else self.revisions[0]
 
-    def submit(self):
+    def prepare_submission(self):
+        self.preparations += 1
+
+    def submit(self, correlation=None):
         self.uploads += 1
         return self.accepted
 
@@ -70,6 +85,195 @@ class RetainedJournal:
     intent = {'baselineDeploymentIds': []}
     def __init__(self): self.successes = []
     def record_success(self, ids): self.successes.append(ids)
+
+
+class SubmissionCorrelationTests(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('correlated_journal', ROOT / 'release-operation-evidence.py')
+        self.evidence = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.evidence)
+        self.records, self.events = {}, []
+        self.cli_help = subprocess.CompletedProcess([], 0, '    --deploymentTag : Linux only.\n', '')
+        self.host = subprocess.CompletedProcess([], 0, '{"name":"masterapp-protect","reserved":true,"kind":"app,linux"}', '')
+        self.upload_result = subprocess.CompletedProcess([], 0, '{}', '')
+        self.intent_readback_lost = False
+        self.authority = type('Authority', (), {
+            'RELEASE_TARGETS': deploy.TARGETS,
+            'ReleaseOperationHistoryUnproven': deploy._RELEASE_AUTHORITY.ReleaseOperationHistoryUnproven})()
+        self.authority.release_operation_history = lambda repo, operation, *args, phase='intent': (
+            json.loads(json.dumps(self.records[(phase, operation)])) if (phase, operation) in self.records else None)
+
+    def journal(self, target='protect'):
+        return self.evidence.OperationJournal(target=target, application_revision='a' * 40,
+            package_digest='b' * 64, baseline='c' * 40, authority=self.authority,
+            environment=dict(GITHUB_RUN_ID='10', GITHUB_RUN_ATTEMPT='1', PACKAGE_PRODUCER_RUN='10',
+                             GITHUB_REPOSITORY='owner/repo', GITHUB_TOKEN='synthetic'))
+
+    def command(self, args, **kwargs):
+        if args == ['az', 'webapp', 'deploy', '--help']:
+            self.events.append('cli-support')
+            if isinstance(self.cli_help, Exception):
+                raise self.cli_help
+            return self.cli_help
+        if args[:3] == ['az', 'webapp', 'show']:
+            self.events.append('linux-host')
+            self.assertEqual('{name:name,reserved:reserved,kind:kind}', args[args.index('--query') + 1])
+            self.assertEqual('masterapp-rg', args[args.index('-g') + 1])
+            if isinstance(self.host, Exception):
+                raise self.host
+            return self.host
+        if args[0] == 'node':
+            payload = json.loads(kwargs['input'])
+            record = payload['record']
+            self.records[(record['phase'], record['operationId'])] = record
+            self.events.append(record['phase'] + '-readback')
+            if record['phase'] == 'intent' and self.intent_readback_lost:
+                return subprocess.CompletedProcess([], 1, 'DO_NOT_ECHO_SIGNED_URL', 'DO_NOT_ECHO_TOKEN')
+            return subprocess.CompletedProcess([], 0, 'LEGEND_OPERATION_RESULT={"artifactId":12}\n', '')
+        if args[:3] == ['az', 'webapp', 'deploy']:
+            self.events.append('upload')
+            tag = args[args.index('--deploymentTag') + 1]
+            intent = self.records[('intent', tag)]
+            self.assertEqual({'kind': 'azure_onedeploy_deployment_tag_v1', 'value': tag}, intent['providerRequestCorrelation'])
+            self.assertEqual(deploy.TARGETS[intent['target']]['releaseName'], args[args.index('-n') + 1])
+            self.assertLess(self.events.index('intent-readback'), self.events.index('upload'))
+            if isinstance(self.upload_result, Exception):
+                raise self.upload_result
+            return self.upload_result
+        raise AssertionError('Unexpected subprocess boundary')
+
+    def reconcile(self, journal, *, completes=True):
+        key = journal.identity['target']
+        azure = deploy.target_azure(key, Path('/immutable.zip'), 'a' * 40)
+        rows = [[row('old', 4)], [row('old', 4), row('fresh', 4)], [row('old', 4), row('fresh', 4)]] if completes else None
+        revisions = ['c' * 40, 'a' * 40, 'a' * 40] if completes else None
+        now = [0]
+        def sleep(seconds):
+            now[0] += seconds
+        with patch.object(azure, 'deployments', side_effect=rows, return_value=[row('old', 4)]), \
+             patch.object(azure, 'observed_revision', side_effect=revisions, return_value='c' * 40), \
+             patch.object(deploy.subprocess, 'run', side_effect=self.command):
+            return deploy.reconcile(azure, journal=journal, baseline='c' * 40,
+                clock=lambda: now[0], sleep=sleep, interval=1, timeout=10)
+
+    def test_actual_intent_readback_precedes_tagged_upload_and_success_keeps_same_correlation(self):
+        for key in deploy.TARGETS:
+            with self.subTest(target=key):
+                self.events.clear()
+                self.host.stdout = json.dumps({'name': deploy.TARGETS[key]['releaseName'], 'reserved': True,
+                                              'kind': 'app,linux,container' if key == 'website' else 'app,linux'})
+                journal = self.journal(key)
+                self.assertEqual('deployed', self.reconcile(journal))
+                self.assertEqual(['cli-support', 'linux-host', 'intent-readback', 'upload', 'success-readback'], self.events)
+                intent = self.records[('intent', journal.operation_id)]
+                receipt = self.records[('success', journal.operation_id)]
+                self.assertEqual(intent['providerRequestCorrelation'], receipt['providerRequestCorrelation'])
+                self.assertEqual(['fresh'], receipt['deploymentIds'])
+
+    def test_lost_durable_readback_blocks_upload_and_restored_intent_does_not_repeat_capability_reads(self):
+        journal = self.journal()
+        self.intent_readback_lost = True
+        with self.assertRaises(deploy.DeploymentSubmissionNotEntered) as error:
+            self.reconcile(journal)
+        self.assertNotIn('DO_NOT_ECHO', str(error.exception))
+        self.assertEqual(['cli-support', 'linux-host', 'intent-readback'], self.events)
+        self.events.clear()
+        retained = json.dumps(self.records[('intent', journal.operation_id)], sort_keys=True)
+        with self.assertRaises(deploy.DeploymentReconciliationRequired):
+            self.reconcile(self.journal(), completes=False)
+        self.assertEqual([], self.events)
+        self.assertEqual(retained, json.dumps(self.records[('intent', journal.operation_id)], sort_keys=True))
+
+    def test_upload_timeout_preserves_tagged_intent_without_replay_or_success_claim(self):
+        self.upload_result = subprocess.TimeoutExpired(['az'], 180, output='DO_NOT_ECHO', stderr='DO_NOT_ECHO')
+        journal = self.journal()
+        with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired, 'deadline'):
+            self.reconcile(journal, completes=False)
+        self.assertEqual(1, self.events.count('upload'))
+        self.assertNotIn(('success', journal.operation_id), self.records)
+        self.events.clear()
+        with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired, 'deadline'):
+            self.reconcile(self.journal(), completes=False)
+        self.assertEqual([], self.events)
+
+    def test_legacy_intent_reconciles_without_cli_capability_or_retrospective_tag(self):
+        journal = self.journal()
+        with patch.object(deploy.subprocess, 'run', side_effect=self.command):
+            journal.before_submit(['old'])
+        intent = self.records[('intent', journal.operation_id)]
+        del intent['providerRequestCorrelation']
+        original = json.dumps(intent, sort_keys=True)
+        self.events.clear()
+        self.cli_help = AssertionError('Existing intent must not require fresh-submit support')
+        self.host = AssertionError('Existing intent must not recheck fresh-submit host support')
+        self.assertEqual('preserved', self.reconcile(self.journal()))
+        self.assertEqual(['success-readback'], self.events)
+        self.assertEqual(original, json.dumps(self.records[('intent', journal.operation_id)], sort_keys=True))
+        self.assertNotIn('providerRequestCorrelation', self.records[('success', journal.operation_id)])
+
+    def test_correlation_owner_diff_does_not_select_any_production_target(self):
+        result = deploy._RELEASE_AUTHORITY.fast_track_scope([
+            'scripts/deploy-approved-app.py', 'scripts/release-operation-evidence.py',
+            'scripts/test-deploy-approved-app.py', 'scripts/test-release-operation-evidence.py'])
+        self.assertEqual({'include': []}, result['matrix'])
+        for flag in ('selected', 'commerce', 'schema', 'routing'):
+            self.assertFalse(result[flag])
+
+    def test_unsupported_cli_option_fails_before_host_read_intent_or_upload(self):
+        for text in ['    --tag : deprecated\n', '    --deploymenttag : wrong casing\n',
+                     'This installation might mention --deploymentTag without registering it.\n']:
+            with self.subTest(help=text):
+                self.events.clear()
+                self.cli_help.stdout = text
+                with self.assertRaises(deploy.DeploymentSubmissionNotEntered):
+                    self.reconcile(self.journal())
+                self.assertEqual(['cli-support'], self.events)
+                self.assertEqual({}, self.records)
+
+    def test_nonlinux_foreign_or_invalid_metadata_fails_before_intent_or_upload(self):
+        for host in [{'name': 'masterapp-protect', 'reserved': False, 'kind': 'app,linux'},
+                     {'name': 'masterapp-protect', 'reserved': 'true', 'kind': 'app,linux'},
+                     {'name': 'another-app', 'reserved': True, 'kind': 'app,linux'},
+                     *[{'name': 'masterapp-protect', 'reserved': True, 'kind': kind}
+                       for kind in [None, 'app', 'functionapp,linux', 'app,linux,functionapp',
+                                    'app,linux,workflowapp', 'app,Linux', 'unrelatedlinux', ['app', 'linux']]],
+                     {}, [], None, 'DO_NOT_ECHO']:
+            with self.subTest(host=host):
+                self.events.clear()
+                self.host.stdout = json.dumps(host)
+                with self.assertRaises(deploy.DeploymentSubmissionNotEntered):
+                    self.reconcile(self.journal())
+                self.assertEqual(['cli-support', 'linux-host'], self.events)
+                self.assertEqual({}, self.records)
+
+    def test_capability_timeout_or_provider_error_has_no_new_intent_and_no_secret_output(self):
+        original_help, original_host = self.cli_help, self.host
+        failure = subprocess.CompletedProcess([], 1, 'DO_NOT_ECHO', 'DO_NOT_ECHO')
+        timeout = subprocess.TimeoutExpired(['secret'], 20, output='DO_NOT_ECHO', stderr='DO_NOT_ECHO')
+        for boundary in ['cli_help', 'host']:
+            for result in [failure, timeout]:
+                with self.subTest(boundary=boundary, outcome=type(result).__name__):
+                    self.cli_help, self.host = original_help, original_host
+                    setattr(self, boundary, result)
+                    self.events.clear()
+                    with patch('builtins.print') as output, self.assertRaises(deploy.DeploymentSubmissionNotEntered) as error:
+                        self.reconcile(self.journal())
+                    self.assertEqual({}, self.records)
+                    self.assertNotIn('upload', self.events)
+                    self.assertNotIn('DO_NOT_ECHO', str(error.exception) + str(output.call_args_list))
+
+    def test_direct_submit_rejects_missing_capability_or_invalid_tag_without_command(self):
+        azure = deploy.target_azure('protect', Path('/immutable.zip'), 'a' * 40)
+        with patch.object(deploy.subprocess, 'run') as command, self.assertRaises(deploy.DeploymentSubmissionNotEntered):
+            azure.submit(CORRELATION)
+        command.assert_not_called()
+        prepare_supported_azure(azure)
+        for correlation in [None, {}, {'kind': 'other', 'value': 'c' * 64},
+                            dict(CORRELATION, extra='DO_NOT_ECHO'), dict(CORRELATION, value='x?token=DO_NOT_ECHO')]:
+            with self.subTest(correlation=correlation), patch.object(deploy.subprocess, 'run') as command, \
+                    self.assertRaises(deploy.DeploymentSubmissionNotEntered):
+                azure.submit(correlation)
+            command.assert_not_called()
 
 
 class AzureDeploymentObservationTests(unittest.TestCase):
@@ -406,6 +610,9 @@ class ReconciliationTests(unittest.TestCase):
                 self.intent = {'baselineDeploymentIds': sorted(baseline_ids)}
                 return True
 
+            def submission_correlation(self):
+                return dict(CORRELATION)
+
             def record_success(self, deployment_ids):
                 self.receipt_attempts += 1
                 if self.receipt_attempts == 1:
@@ -552,6 +759,9 @@ class ReconciliationTests(unittest.TestCase):
                 return True
             def record_success(self, deployment_ids):
                 return None
+
+            def submission_correlation(self):
+                return dict(CORRELATION)
 
         azure = FakeAzure(
             [[row('old', 4)], [row('old', 4), row('fresh', 4)]],
@@ -710,12 +920,12 @@ class PackageTests(unittest.TestCase):
                 deploy.verify_package(path, 'a' * 40)
 
     def test_portal_submits_tracked_operation_without_second_upload_or_untrusted_success(self):
-        azure = deploy.Azure('masterapp-portal', Path('/immutable.zip'), 'https://example.invalid', 'a' * 40)
+        azure = prepare_supported_azure(deploy.Azure('masterapp-portal', Path('/immutable.zip'), 'https://example.invalid', 'a' * 40))
         with patch.object(deploy.subprocess, 'run') as run:
             run.return_value.returncode = 0
             run.return_value.stdout = '{"deploymentId":"tracked-operation-123"}'
             with patch('builtins.print') as output:
-                self.assertTrue(azure.submit())
+                self.assertTrue(azure.submit(CORRELATION))
             command = run.call_args.args[0]
             for flag, value in [('--async', 'false'), ('--track-status', 'true'),
                                 ('--enable-kudu-warmup', 'true'), ('--type', 'zip')]:
@@ -726,17 +936,17 @@ class PackageTests(unittest.TestCase):
                                 for call in output.call_args_list))
 
     def test_tracked_portal_timeout_never_infers_deployment_success(self):
-        azure = deploy.Azure('masterapp-portal', Path('/immutable.zip'), 'https://example.invalid', 'a' * 40)
+        azure = prepare_supported_azure(deploy.Azure('masterapp-portal', Path('/immutable.zip'), 'https://example.invalid', 'a' * 40))
         with patch.object(deploy.subprocess, 'run', side_effect=subprocess.TimeoutExpired(['az','webapp','deploy'],300)) as run:
-            self.assertFalse(azure.submit())
+            self.assertFalse(azure.submit(CORRELATION))
             self.assertEqual(1, run.call_count)
 
     def test_untracked_other_app_stays_asynchronous(self):
-        azure = deploy.Azure('masterapp-client', Path('/immutable.zip'), 'https://example.invalid', 'a' * 40)
+        azure = prepare_supported_azure(deploy.Azure('masterapp-client', Path('/immutable.zip'), 'https://example.invalid', 'a' * 40))
         with patch.object(deploy.subprocess, 'run') as run:
             run.return_value.returncode = 0
             run.return_value.stdout = '{}'
-            self.assertTrue(azure.submit())
+            self.assertTrue(azure.submit(CORRELATION))
             command = run.call_args.args[0]
             for flag, value in [('--async', 'true'), ('--track-status', 'false'),
                                 ('--enable-kudu-warmup', 'false')]:
@@ -745,10 +955,10 @@ class PackageTests(unittest.TestCase):
             self.assertEqual(1, run.call_count)
 
     def test_submission_has_no_synchronous_gateway_wait_or_internal_warmup_replay(self):
-        azure = deploy.Azure('masterapp-protect', Path('/immutable.zip'), 'https://example.invalid', 'a' * 40)
+        azure = prepare_supported_azure(deploy.Azure('masterapp-protect', Path('/immutable.zip'), 'https://example.invalid', 'a' * 40))
         with patch.object(deploy.subprocess, 'run') as run:
             run.return_value.returncode = 0
-            self.assertTrue(azure.submit())
+            self.assertTrue(azure.submit(CORRELATION))
             command = run.call_args.args[0]
             for flag, value in [('--async', 'true'), ('--track-status', 'false'),
                                 ('--enable-kudu-warmup', 'false'), ('--type', 'zip')]:
