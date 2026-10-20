@@ -7,6 +7,7 @@ release lifecycle; no alternate upload path can bypass durable operation intent.
 """
 import argparse
 import concurrent.futures
+import datetime
 import hashlib
 import importlib.util
 import json
@@ -16,6 +17,8 @@ import re
 import subprocess
 import time
 import urllib.request
+import urllib.error
+import urllib.parse
 import zipfile
 
 def _release_authority_module():
@@ -148,6 +151,18 @@ class Azure:
         revision = self.observed_revision()
         return None if revision is None else revision == self.revision
 
+    def deployment_log(self, deployment_id):
+        # One read of an exact operation; never print CLI stdout/stderr directly.
+        result = subprocess.run(
+            ['az', 'webapp', 'log', 'deployment', 'show', '-g', _RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP,
+             '-n', self.app, '--deployment-id', deployment_id, '--only-show-errors', '-o', 'json'],
+            capture_output=True, text=True, timeout=30)
+        if result.returncode:
+            raise RuntimeError('AZURE_DIAGNOSTIC_READ_FAILED')
+        if len(result.stdout.encode('utf-8')) > DIAGNOSTIC_MAX_BYTES:
+            raise ValueError('AZURE_DIAGNOSTIC_RESPONSE_TOO_LARGE')
+        return json.loads(result.stdout)
+
     def submit(self):
         # Async avoids a long synchronous gateway request. CLI runtime tracking is
         # replaced by exact-revision checks below, not waived. Status preflight
@@ -192,6 +207,182 @@ class Azure:
         except subprocess.TimeoutExpired:
             print('::warning::Upload response timed out; Azure may still be working. No resubmission.', flush=True)
             return False
+
+
+DIAGNOSTIC_MAX_BYTES = 262144
+DIAGNOSTIC_MAX_ROWS = 128
+DIAGNOSTIC_MAX_NESTED = 2
+DIAGNOSTIC_REASON_PATTERNS = (
+    ('DISK_SPACE_ERROR', r'no space left on device|not enough space on the disk|disk quota exceeded'),
+    ('FILE_LOCK_ERROR', r'being used by another process|file.+is locked|sharing violation'),
+    ('PERMISSION_ERROR', r'permission denied|access is denied|unauthorizedaccessexception'),
+    ('ARCHIVE_ERROR', r'invalid zip|badzipfile|end.of.central.directory|archive.+corrupt'),
+    ('DEPLOYMENT_CONFLICT', r'another deployment.+in progress|deployment lock|409 conflict'),
+    ('STARTUP_ERROR', r'failed to start|container.+did not respond|application startup exception'),
+    ('TIMEOUT_ERROR', r'timed out|timeout expired|operation.+timeout'),
+    ('CANCELLED_OPERATION', r'operation.+cancelled|operation.+canceled|taskcanceledexception'),
+    ('NONZERO_COMMAND_EXIT', r'exit code [1-9][0-9]*|exited with code [1-9][0-9]*'),
+    ('PROVIDER_FAILURE_MARKER', r'deployment failed|deploy failed'),
+)
+
+
+def validate_deployment_diagnostic(target, revision, deployment_id=None):
+    if target not in TARGETS or not re.fullmatch('[a-f0-9]{40}', revision or ''):
+        raise ValueError('AZURE_DIAGNOSTIC_IDENTITY_INVALID')
+    if deployment_id is not None and not isinstance(deployment_id, str):
+        raise ValueError('AZURE_DIAGNOSTIC_OPERATION_INVALID')
+    if deployment_id and (not re.fullmatch('[A-Za-z0-9][A-Za-z0-9_-]{3,127}', deployment_id)
+                          or deployment_id.lower() in {'latest', 'active', 'current'}):
+        raise ValueError('AZURE_DIAGNOSTIC_OPERATION_INVALID')
+    if os.environ.get('GITHUB_ACTIONS') == 'true':
+        reference = 'refs/heads/' + _RELEASE_AUTHORITY.FAST_TRACK_PR_BASE
+        repository = os.environ.get('GITHUB_REPOSITORY', '')
+        if (os.environ.get('GITHUB_EVENT_NAME') != 'workflow_dispatch'
+                or os.environ.get('GITHUB_REF') != reference
+                or not re.fullmatch('[a-f0-9]{40}', os.environ.get('GITHUB_SHA', ''))
+                or not re.fullmatch('[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository)
+                or os.environ.get('GITHUB_WORKFLOW_REF') != repository +
+                    '/.github/workflows/deployment-diagnostics.yml@' + reference):
+            raise ValueError('AZURE_DIAGNOSTIC_EXECUTION_INVALID')
+
+
+def _diagnostic_time(value):
+    if not isinstance(value, str) or not re.fullmatch(r'[0-9T:.Z+\-]{19,40}', value):
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value.replace('Z', '+00:00'))
+        return parsed.astimezone(datetime.timezone.utc).isoformat() if parsed.tzinfo is not None else None
+    except ValueError:
+        return None
+
+
+def _diagnostic_log_entries(rows, level):
+    if not isinstance(rows, list) or len(rows) > DIAGNOSTIC_MAX_ROWS:
+        raise ValueError('AZURE_DIAGNOSTIC_LOG_INVALID')
+    entries, links = [], []
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get('message', ''), str):
+            raise ValueError('AZURE_DIAGNOSTIC_LOG_INVALID')
+        message = row.get('message', '')
+        if len(message.encode('utf-8')) > 32768:
+            raise ValueError('AZURE_DIAGNOSTIC_LOG_INVALID')
+        # Only fixed classifications and fingerprints cross the log boundary.
+        # Provider text, paths, actors, credentials and URLs are never echoed.
+        entries.append(dict(level=level,
+            type=row.get('type') if type(row.get('type')) is int and row['type'] in (0, 1, 2) else None,
+            time=_diagnostic_time(row.get('log_time')),
+            reasonCodes=[code for code, pattern in DIAGNOSTIC_REASON_PATTERNS
+                         if re.search(pattern, message, re.I)],
+            messageSha256=hashlib.sha256(message.encode('utf-8')).hexdigest()))
+        if row.get('details_url') is not None:
+            links.append(row['details_url'])
+    return entries, links
+
+
+def _diagnostic_child_url(value, app, deployment_id):
+    if not isinstance(value, str) or len(value) > 512:
+        return None
+    try:
+        parsed = urllib.parse.urlsplit(value)
+    except ValueError:
+        return None
+    host = app + '.scm.azurewebsites.net'
+    prefix = '/api/deployments/' + deployment_id + '/log/'
+    if (parsed.geturl() != value or parsed.scheme != 'https' or parsed.netloc != host or parsed.query or parsed.fragment
+            or not parsed.path.startswith(prefix)
+            or not re.fullmatch('[A-Za-z0-9_-]{1,128}', parsed.path[len(prefix):])):
+        return None
+    return value
+
+
+class _DiagnosticNoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _diagnostic_nested_logs(urls, app, deployment_id):
+    # Existing OIDC Azure authority already supports this GET-only Kudu path.
+    # Never request publishing credentials; the bearer exists only in memory.
+    if (len(urls) > DIAGNOSTIC_MAX_NESTED or
+            any(_diagnostic_child_url(url, app, deployment_id) is None for url in urls)):
+        return [], ['DETAIL_SCOPE_REJECTED']
+    try:
+        result = subprocess.run(['az', 'account', 'get-access-token', '--resource',
+            'https://management.azure.com/', '--query', 'accessToken', '-o', 'tsv'],
+            capture_output=True, text=True, timeout=15)
+        token = result.stdout.strip()
+        if result.returncode or len(token) > 16384 or not re.fullmatch(r'[A-Za-z0-9_.~+/-]+={0,2}', token):
+            return [], ['AUTHENTICATED_READ_UNAVAILABLE']
+    except (OSError, subprocess.TimeoutExpired):
+        return [], ['AUTHENTICATED_READ_UNAVAILABLE']
+    opener = urllib.request.build_opener(_DiagnosticNoRedirect())
+    entries, states = [], []
+    for url in urls:
+        try:
+            request = urllib.request.Request(url, method='GET',
+                headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/json'})
+            with opener.open(request, timeout=15) as response:
+                if response.status != 200 or response.geturl() != url:
+                    states.append('RESPONSE_IDENTITY_UNPROVEN')
+                    continue
+                body = response.read(DIAGNOSTIC_MAX_BYTES + 1)
+            if len(body) > DIAGNOSTIC_MAX_BYTES:
+                states.append('RESPONSE_TOO_LARGE')
+                continue
+            observed, ignored_links = _diagnostic_log_entries(json.loads(body), 'detail')
+            entries.extend(observed)
+            states.append('OBSERVED_WITH_UNFOLLOWED_DETAILS' if ignored_links else 'OBSERVED')
+        except urllib.error.HTTPError as exc:
+            states.append('REDIRECT_REFUSED' if exc.code in (301, 302, 303, 307, 308) else 'HTTP_READ_FAILED')
+        except (OSError, ValueError, TypeError):
+            states.append('READ_UNAVAILABLE_OR_INVALID')
+    return entries, states
+
+
+def observe_azure_deployment(target, revision, deployment_id=None, *, validate_only=False):
+    validate_deployment_diagnostic(target, revision, deployment_id)
+    report = dict(kind='AZURE_DEPLOYMENT_READ_ONLY', target=target, applicationRevision=revision,
+                  applicationRevisionIsCorrelationOnly=True, reasonCodesAreTextMatches=True,
+                  authorizesMutation=False, releaseProof=False)
+    if validate_only:
+        return dict(report, readStatus='INPUTS_VALIDATED')
+    azure = target_azure(target, None, revision)
+    if not deployment_id:
+        report.update(mode='history', historyIsComplete=False, emptyHistoryProvesNonEntry=False)
+        try:
+            rows = azure.deployments()
+            safe = [dict(id=row['id'], status=row['status'],
+                         received=_diagnostic_time(row.get('received_time')),
+                         started=_diagnostic_time(row.get('start_time')),
+                         ended=_diagnostic_time(row.get('end_time')))
+                    for row in rows[:20]
+                    if re.fullmatch('[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}', row['id'])]
+            report.update(readStatus='OBSERVED', deployments=safe,
+                          outputTruncated=len(rows) != len(safe))
+        except subprocess.TimeoutExpired:
+            report.update(readStatus='READ_TIMEOUT', deployments=[])
+        except (OSError, ValueError, RuntimeError, TypeError):
+            report.update(readStatus='READ_UNAVAILABLE_OR_INVALID', deployments=[])
+        report['observedRuntimeRevision'] = azure.observed_revision()
+        return report
+    report.update(mode='exact_operation', deploymentId=deployment_id)
+    try:
+        entries, links = _diagnostic_log_entries(azure.deployment_log(deployment_id), 'root')
+        urls = list(dict.fromkeys(url for value in links
+                    if (url := _diagnostic_child_url(value, azure.app, deployment_id)) is not None))
+        report.update(readStatus='OBSERVED', rejectedDetailLinks=sum(
+            _diagnostic_child_url(value, azure.app, deployment_id) is None for value in links),
+            detailsTruncated=len(urls) > DIAGNOSTIC_MAX_NESTED)
+        nested, states = _diagnostic_nested_logs(urls[:DIAGNOSTIC_MAX_NESTED], azure.app, deployment_id) if urls else ([], [])
+        report.update(entries=entries + nested, nestedReadStates=states)
+        report['reasonCodes'] = sorted({code for entry in report['entries'] for code in entry['reasonCodes']})
+        if not report['reasonCodes']:
+            report['reasonCodes'] = ['NO_CLASSIFIED_FAILURE_DETAIL']
+    except subprocess.TimeoutExpired:
+        report.update(readStatus='READ_TIMEOUT')
+    except (OSError, ValueError, RuntimeError, TypeError):
+        report.update(readStatus='READ_UNAVAILABLE_OR_INVALID')
+    return report
 
 
 def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=PUBLICATION_RECONCILE_TIMEOUT_SECONDS, interval=15, max_status_failures=3, baseline=None, reconcile_only=False, journal=None, require_receipt=True):
@@ -896,6 +1087,10 @@ def main():
     mode.add_argument('--target', choices=TARGETS)
     mode.add_argument('--targets-json')
     mode.add_argument('--fast-track-target', choices=TARGETS)
+    mode.add_argument('--observe-azure-deployment')
+    parser.add_argument('--observation-revision')
+    parser.add_argument('--deployment-id')
+    parser.add_argument('--validate-observation-only', action='store_true')
     parser.add_argument('--baselines-json')
     parser.add_argument('--package-root', default='/tmp/diagnostics-packages')
     parser.add_argument('--rollback-root', default='/tmp/rollback-packages')
@@ -908,6 +1103,18 @@ def main():
                         help='Publish all prepared canonical targets concurrently after the all-target preflight barrier')
     parser.add_argument('--target-results-dir', type=Path, default=Path('/tmp/release-target-results'))
     args = parser.parse_args()
+    if args.observe_azure_deployment is not None:
+        try:
+            result = observe_azure_deployment(args.observe_azure_deployment,
+                args.observation_revision, args.deployment_id, validate_only=args.validate_observation_only)
+        except (ValueError, TypeError):
+            raise SystemExit('AZURE_DEPLOYMENT_OBSERVATION:INVALID_IDENTITY') from None
+        print('AZURE_DEPLOYMENT_OBSERVATION:' + json.dumps(result, sort_keys=True), flush=True)
+        if result['readStatus'] not in {'OBSERVED', 'INPUTS_VALIDATED'}:
+            raise SystemExit('AZURE_DEPLOYMENT_OBSERVATION:READ_INCOMPLETE')
+        return
+    if args.observation_revision or args.deployment_id or args.validate_observation_only:
+        raise SystemExit('Observation inputs require the read-only observation mode')
     if args.fast_track_target:
         fast_track_deploy(args.fast_track_target, Path(args.package_root))
         return
