@@ -2,7 +2,7 @@
   "requestedBy": "Founder",
   "authorization": "Continue the Founder-authorized canonical Forms and tenant-scoped receptionist work from the current session. This reviewed step is limited to validation-only promotion of the existing release and schema tooling; it authorizes no production app deployment, schema mutation, routing change, provider change or voice activation.",
   "purpose": "Promote reviewed trusted schema validation, exact receptionist impact ownership and durable Azure request correlation through the existing protected release path.",
-  "requestId": "founder-canonical-tool-promotion-20261020-53e6c3f33bfb",
+  "requestId": "founder-canonical-tool-promotion-20261020-314a6efcb909",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -10,7 +10,7 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "ee32e1c5f9e08d17369855c250dc99d8c3e16ce0",
-    "sourceRevision": "53e6c3f33bfb4ec897c09a3a094861293be1cb7b",
+    "sourceRevision": "314a6efcb909ca02cef3fcd9b88b840b7fc8d433",
     "files": {
       ".github/workflows/masterapp-platform-architecture-validation.yml": {
         "mode": "100644",
@@ -60,6 +60,10 @@
         "mode": "100644",
         "blob": "d6f0f9d17309d31a00e6bd6e66afd55dd68d41cf"
       },
+      "scripts/test-fast-track-release.py": {
+        "mode": "100644",
+        "blob": "5ef5487f9d82736947ed6dc70aa8355b8a946d2f"
+      },
       "scripts/test-migration-probe-package.py": {
         "mode": "100644",
         "blob": "9e7326dece369aa4d6ec8ab049cdc92e74667708"
@@ -78,11 +82,11 @@
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "90ab53936b12c8c259e189cf980047eb1c342377"
+        "blob": "8342c3c712018155387ea86e54a415b0386f4b9b"
       },
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "6a26291f09af3275f4afb7bd5462f581440d6fb8"
+        "blob": "2d18af77d5e6f8df52a82bb57c011c50fff33abc"
       }
     }
   }
