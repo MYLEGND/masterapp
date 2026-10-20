@@ -377,6 +377,24 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
         self.assertEqual('migration-test',self.calls[-1][0][-1])
         self.assertEqual(300,self.calls[-1][1]['timeout'])
 
+    def test_bounded_exception_types_are_forwarded_without_messages(self):
+        self.fixture_exit=1
+        marker='LEGEND_ISOLATED_FIXTURE:UNPROVEN:verify:UNCLASSIFIED:TYPES:System.Reflection.TargetInvocationException>System.InvalidCastException'
+        self.fixture_stderr='password=synthetic-secret\n'+marker+'\n'
+        with self.assertRaises(RuntimeError) as failed:self.gate()
+        self.assertTrue(str(failed.exception).endswith(marker))
+        self.assertNotIn('secret',str(failed.exception))
+
+    def test_invalid_or_unbounded_exception_types_are_suppressed(self):
+        self.fixture_exit=1
+        prefix='LEGEND_ISOLATED_FIXTURE:UNPROVEN:verify:UNCLASSIFIED:TYPES:'
+        for suffix in ('System.Exception password=synthetic-secret', 'System.Exception:synthetic-secret',
+            'A'*161, '>'.join(['System.Exception']*5), '', '.System.Exception'):
+            self.fixture_stderr=prefix+suffix
+            with self.subTest(suffix=suffix),self.assertRaises(RuntimeError) as failed:self.gate()
+            self.assertTrue(str(failed.exception).endswith('UNPROVEN:dispatch:UNCLASSIFIED'))
+            self.assertNotIn('secret',str(failed.exception))
+
     def test_unrecognized_or_ambiguous_provider_output_is_never_forwarded(self):
         self.fixture_exit=1
         for output in ('connection=synthetic-secret',

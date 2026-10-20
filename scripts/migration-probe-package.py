@@ -638,6 +638,8 @@ def test_schema_contract(directory):
         if result.returncode:
             # Forward only a fixed stage and classification, never raw provider output.
             allowed = r'LEGEND_ISOLATED_FIXTURE:UNPROVEN:(?:dispatch|initialize|precondition|migrate|verify|adversarial):(?:SQL:-?[0-9]{1,10}|INPUT_UNAVAILABLE|MIGRATION_COMPATIBILITY_UNPROVEN|PHYSICAL_SCHEMA_DRIFT|MERCHANT_CHECKOUT_DUPLICATE_IDENTITY_REQUIRES_REVIEW|TIMEOUT|INVALID_OPERATION|UNCLASSIFIED)'
+            exception_type = r'[A-Za-z_][A-Za-z0-9_.+]{0,159}'
+            allowed += r'(?::TYPES:' + exception_type + r'(?:>' + exception_type + r'){0,3})?'
             reasons = [line for line in result.stderr.splitlines() if re.fullmatch(allowed, line)]
             reason = reasons[0] if len(reasons) == 1 else 'LEGEND_ISOLATED_FIXTURE:UNPROVEN:dispatch:UNCLASSIFIED'
             raise RuntimeError('Synthetic payment migration SQL contract failed: ' + reason)

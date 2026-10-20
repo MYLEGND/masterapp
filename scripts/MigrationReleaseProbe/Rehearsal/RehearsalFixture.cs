@@ -42,7 +42,15 @@ internal static class RehearsalFixture
                 InvalidOperationException => "INVALID_OPERATION",
                 _ => "UNCLASSIFIED"
             };
-            Console.Error.WriteLine("LEGEND_ISOLATED_FIXTURE:UNPROVEN:" + stage + ":" + reason);
+            var types = new List<string>();
+            for (Exception? current = error; current is not null && types.Count < 4; current = current.InnerException)
+            {
+                var name = current.GetType().FullName;
+                types.Add(name is not null && System.Text.RegularExpressions.Regex.IsMatch(
+                    name, @"\A[A-Za-z_][A-Za-z0-9_.+]{0,159}\z") ? name : "UnknownExceptionType");
+            }
+            Console.Error.WriteLine("LEGEND_ISOLATED_FIXTURE:UNPROVEN:" + stage + ":" + reason +
+                ":TYPES:" + string.Join(">", types));
             throw;
         }
     }
