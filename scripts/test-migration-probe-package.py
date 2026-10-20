@@ -337,13 +337,14 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
         self.test_stdout='LEGEND_REVIEWED_APPEND_TEST:NOT_PRESENT_IN_ASSEMBLY\nLEGEND_TRUSTED_CONTRACT_TESTS:PASS\n'
         self.current=dict(schemaVersion=3,migrations=[dict(id='20260101000000_Original')])
         self.test_exit=0;self.source_present=False
+        self.fixture_exit=0;self.fixture_stderr=''
 
     def process(self,command,**kwargs):
         self.calls.append((command,kwargs))
         if command[1]=='publish':return SimpleNamespace(returncode=0)
         if command[-1]=='--test-contract-compatibility':return SimpleNamespace(returncode=self.test_exit,stdout=self.test_stdout)
         if command[-1]=='--export-contract':return SimpleNamespace(returncode=0,stdout=json.dumps(self.current))
-        if command[-1]=='migration-test':return SimpleNamespace(returncode=0,stdout='')
+        if command[-1]=='migration-test':return SimpleNamespace(returncode=self.fixture_exit,stdout='synthetic secret',stderr=self.fixture_stderr)
         raise AssertionError(command)
 
     def gate(self):
@@ -366,6 +367,26 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
         for command,kwargs in (self.calls[1],self.calls[2],self.calls[-1]):
             self.assertNotIn('AZURE_CLIENT_SECRET',kwargs['env'])
         self.assertIn('LEGEND_ISOLATED_SQL',self.calls[-1][1]['env'])
+
+    def test_sql_failure_identifies_stage_without_exposing_provider_output(self):
+        self.fixture_exit=1
+        self.fixture_stderr='password=synthetic-secret\nLEGEND_ISOLATED_FIXTURE:UNPROVEN:migrate:SQL:547\n'
+        with self.assertRaises(RuntimeError) as failed:self.gate()
+        self.assertIn('LEGEND_ISOLATED_FIXTURE:UNPROVEN:migrate:SQL:547',str(failed.exception))
+        self.assertNotIn('secret',str(failed.exception))
+        self.assertEqual('migration-test',self.calls[-1][0][-1])
+        self.assertEqual(300,self.calls[-1][1]['timeout'])
+
+    def test_unrecognized_or_ambiguous_provider_output_is_never_forwarded(self):
+        self.fixture_exit=1
+        for output in ('connection=synthetic-secret',
+            'LEGEND_ISOLATED_FIXTURE:UNPROVEN:migrate:SQL:547 password=synthetic-secret',
+            'LEGEND_ISOLATED_FIXTURE:UNPROVEN:migrate:SQL:547\nLEGEND_ISOLATED_FIXTURE:UNPROVEN:verify:SQL:208',
+            'LEGEND_ISOLATED_FIXTURE:UNPROVEN:synthetic-secret:SQL:547'):
+            self.fixture_stderr=output
+            with self.subTest(output=output),self.assertRaises(RuntimeError) as failed:self.gate()
+            self.assertTrue(str(failed.exception).endswith('UNPROVEN:dispatch:UNCLASSIFIED'))
+            self.assertNotIn('secret',str(failed.exception))
 
     def test_failed_or_missing_cli_pass_marker_stops_before_sql(self):
         for failed in ('exit','marker'):

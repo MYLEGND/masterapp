@@ -25,6 +25,30 @@ internal static class RehearsalFixture
 
     internal static async Task Run(string operation)
     {
+        try { await RunCore(operation); }
+        catch (Exception error)
+        {
+            // Preserve the original exception and failure gate. Emit only a fixed
+            // stage and classification; never SQL text, credentials or raw messages.
+            var stage = operation is "initialize" or "precondition" or "migrate" or "verify" or "adversarial"
+                ? operation : "dispatch";
+            var reason = error.GetBaseException() switch
+            {
+                SqlException sql => "SQL:" + sql.Number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ProbeObservationFailure probe when probe.Message is "INPUT_UNAVAILABLE" or
+                    "MIGRATION_COMPATIBILITY_UNPROVEN" or "PHYSICAL_SCHEMA_DRIFT" or
+                    "MERCHANT_CHECKOUT_DUPLICATE_IDENTITY_REQUIRES_REVIEW" => probe.Message,
+                OperationCanceledException => "TIMEOUT",
+                InvalidOperationException => "INVALID_OPERATION",
+                _ => "UNCLASSIFIED"
+            };
+            Console.Error.WriteLine("LEGEND_ISOLATED_FIXTURE:UNPROVEN:" + stage + ":" + reason);
+            throw;
+        }
+    }
+
+    private static async Task RunCore(string operation)
+    {
         var connection = Environment.GetEnvironmentVariable("LEGEND_ISOLATED_SQL");
         var sql = new SqlConnectionStringBuilder(connection);
         if (!System.Text.RegularExpressions.Regex.IsMatch(sql.DataSource, @"^127\.0\.0\.1,[1-9][0-9]{3,4}$") ||
