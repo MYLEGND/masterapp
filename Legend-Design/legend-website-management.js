@@ -94,7 +94,16 @@
     const run = async (action, { startup = false } = {}) => {
       if (busy) return; busy = true; status.textContent = 'Working…';
       dialog.querySelectorAll('button').forEach(n => { if (!startup || n !== closeButton) n.disabled = true; });
-      try { await action(); } catch (error) { if (!dismissed()) status.textContent = error.message; }
+      try { await action(); } catch (error) {
+        if (!dismissed()) {
+          status.textContent = error.message;
+          if (startup && session?.ticket && error.status === 409 && error.details?.error === 'website_draft_duplicate_identity') {
+            const recovery = el('a', 'Review saved website recovery', { href: editorHref(), class: 'wm-primary' });
+            recovery.prepend(icon('editor'));
+            panel.replaceChildren(el('p', 'Review the saved draft in the editor before making further changes.'), recovery);
+          }
+        }
+      }
       finally {
         busy = false;
         if (startup) startupPending = false;
@@ -719,3 +728,4 @@
     }, { startup: true });
   }));
 })();
+

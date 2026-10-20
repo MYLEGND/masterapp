@@ -131,7 +131,7 @@
         <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
         <!-- ===================== STEP 1: ACCOUNT DETAILS ===================== -->
-        <div class="form-step" data-step="1">
+        <div class="form-step" data-step="1" data-cms-native-step="1">
             <div class="section-card">
                 <div class="section-title">Account Details</div>
 
@@ -151,13 +151,14 @@
 
                 <div class="wizard-actions">
                     <span></span>
+                    <button type="button" class="btn btn-outline-gold btn-prev" data-cms-step-back hidden data-cms-id="@(pageKey).native.back.first">Back</button>
                     <button type="button" class="btn btn-gold btn-next">Next</button>
                 </div>
             </div>
         </div>
 
         <!-- ===================== STEP 2: BUSINESS OPERATIONS ===================== -->
-        <div class="form-step" data-step="2">
+        <div class="form-step" data-step="2" data-cms-native-step="2">
             <div class="section-card">
                 <div class="section-title">Business Operations</div>
 
@@ -215,14 +216,14 @@
                 </div>
 
                 <div class="wizard-actions">
-                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-outline-gold btn-prev" data-cms-step-back>Back</button>
                     <button type="button" class="btn btn-gold btn-next">Next</button>
                 </div>
             </div>
         </div>
 
         <!-- ===================== STEP 3: CONTACT ===================== -->
-        <div class="form-step" data-step="3">
+        <div class="form-step" data-step="3" data-cms-native-step="3">
             <div class="section-card">
                 <div class="section-title">Insured &amp; Business Contact</div>
 
@@ -261,14 +262,14 @@
                 </div>
 
                 <div class="wizard-actions">
-                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-outline-gold btn-prev" data-cms-step-back>Back</button>
                     <button type="button" class="btn btn-gold btn-next">Next</button>
                 </div>
             </div>
         </div>
 
         <!-- ===================== STEP 4: ADDRESS ===================== -->
-        <div class="form-step" data-step="4">
+        <div class="form-step" data-step="4" data-cms-native-step="4">
             <div class="section-card">
                 <div class="section-title">Physical Address (No PO Boxes)</div>
 
@@ -301,14 +302,14 @@
                 </div>
 
                 <div class="wizard-actions">
-                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-outline-gold btn-prev" data-cms-step-back>Back</button>
                     <button type="button" class="btn btn-gold btn-next">Next</button>
                 </div>
             </div>
         </div>
 
         <!-- ===================== STEP 5: COVERAGE & TIMING ===================== -->
-        <div class="form-step" data-step="5">
+        <div class="form-step" data-step="5" data-cms-native-step="5">
             <div class="section-card">
                 <div class="section-title">Coverage &amp; Timing</div>
 
@@ -349,14 +350,14 @@
                 <span asp-validation-for="Comments" class="text-danger"></span>
 
                 <div class="wizard-actions">
-                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-outline-gold btn-prev" data-cms-step-back>Back</button>
                     <button type="button" class="btn btn-gold btn-next">Next</button>
                 </div>
             </div>
         </div>
 
         <!-- ===================== STEP 6: CONTACT PREFERENCE ===================== -->
-        <div class="form-step" data-step="6">
+        <div class="form-step" data-step="6" data-cms-native-step="6">
             <div class="section-card">
                 <div class="section-title">Preferred Contact Method</div>
 
@@ -387,14 +388,14 @@
                 </div>
 
                 <div class="wizard-actions">
-                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-outline-gold btn-prev" data-cms-step-back>Back</button>
                     <button type="button" class="btn btn-gold btn-next">Next</button>
                 </div>
             </div>
         </div>
 
         <!-- ===================== STEP 7: ENTITY & GENERAL INFO ===================== -->
-        <div class="form-step" data-step="7">
+        <div class="form-step" data-step="7" data-cms-native-step="7">
             <div class="section-card">
                 <div class="section-title">Entity &amp; General Info</div>
 
@@ -492,14 +493,14 @@
                 </div>
 
                 <div class="wizard-actions">
-                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-outline-gold btn-prev" data-cms-step-back>Back</button>
                     <button type="button" class="btn btn-gold btn-next">Next</button>
                 </div>
             </div>
         </div>
 
         <!-- ===================== STEP 8: LIABILITY, PAYROLL & AUTO ===================== -->
-        <div class="form-step" data-step="8">
+        <div class="form-step" data-step="8" data-cms-native-step="8">
             <div class="section-card">
                 <div class="section-title">Liability, Payroll &amp; Auto</div>
 
@@ -615,14 +616,14 @@
                 </div>
 
                 <div class="wizard-actions">
-                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-outline-gold btn-prev" data-cms-step-back>Back</button>
                     <button type="button" class="btn btn-gold btn-next">Next</button>
                 </div>
             </div>
         </div>
 
         <!-- ===================== STEP 9: OPTIONAL & PROFESSIONAL COVERAGES ===================== -->
-        <div class="form-step" data-step="9">
+        <div class="form-step" data-step="9" data-cms-native-step="9">
             <div class="section-card">
                 <div class="section-title">Optional &amp; Professional Coverages</div>
 
@@ -803,14 +804,14 @@
                 </div>
 
                 <div class="wizard-actions">
-                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-outline-gold btn-prev" data-cms-step-back>Back</button>
                     <button type="button" class="btn btn-gold btn-next">Next</button>
                 </div>
             </div>
         </div>
 
         <!-- ===================== STEP 10: HR / EPLI ===================== -->
-        <div class="form-step" data-step="10">
+        <div class="form-step" data-step="10" data-cms-native-step="10">
             <div class="section-card">
                 <div class="section-title">HR, Legal &amp; Employment Practices Liability Insurance</div>
 
@@ -935,14 +936,14 @@
                 </div>
 
                 <div class="wizard-actions">
-                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-outline-gold btn-prev" data-cms-step-back>Back</button>
                     <button type="button" class="btn btn-gold btn-next">Next</button>
                 </div>
             </div>
         </div>
 
         <!-- ===================== STEP 11: LOSS HISTORY ===================== -->
-        <div class="form-step" data-step="11">
+        <div class="form-step" data-step="11" data-cms-native-step="11">
             <div class="section-card">
                 <div class="section-title">Loss History</div>
 
@@ -1007,14 +1008,14 @@
                 </div>
 
                 <div class="wizard-actions">
-                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-outline-gold btn-prev" data-cms-step-back>Back</button>
                     <button type="button" class="btn btn-gold btn-next">Next</button>
                 </div>
             </div>
         </div>
 
         <!-- ===================== STEP 12: BUILDING INFO ===================== -->
-        <div class="form-step" data-step="12">
+        <div class="form-step" data-step="12" data-cms-native-step="12">
             <div class="section-card">
                 <div class="section-title">Building Information</div>
 
@@ -1178,14 +1179,14 @@
                 </div>
 
                 <div class="wizard-actions">
-                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-outline-gold btn-prev" data-cms-step-back>Back</button>
                     <button type="button" class="btn btn-gold btn-next">Next</button>
                 </div>
             </div>
         </div>
 
         <!-- ===================== STEP 13: CLASS SPECIFIC ===================== -->
-        <div class="form-step" data-step="13">
+        <div class="form-step" data-step="13" data-cms-native-step="13">
             <div class="section-card">
                 <div class="section-title">Class Specific Questions</div>
 
@@ -1218,14 +1219,14 @@
                 </div>
 
                 <div class="wizard-actions">
-                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-outline-gold btn-prev" data-cms-step-back>Back</button>
                     <button type="button" class="btn btn-gold btn-next">Next</button>
                 </div>
             </div>
         </div>
 
         <!-- ===================== STEP 14: BUILDING COVERAGES + DISCLAIMER (SUBMIT) ===================== -->
-        <div class="form-step" data-step="14">
+        <div class="form-step" data-step="14" data-cms-native-step="14" data-cms-step-final="true">
             <div class="section-card">
                 <div class="section-title">Building &amp; Personal Property Coverages</div>
 
@@ -1280,7 +1281,7 @@
                 </div>
 
                 <div class="wizard-actions mt-3">
-                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-outline-gold btn-prev" data-cms-step-back>Back</button>
                     <span></span>
                 </div>
             </div>
@@ -1334,6 +1335,15 @@
             const commercialViewedContactSteps = new Set();
 
 	            if (!form) return;
+            const nativeSteps = Array.from(form.querySelectorAll('.form-step[data-cms-native-step]'));
+            function nativeStepOrder() {
+                return (window.LEGEND_NATIVE_FORM_STEPS?.order(nativeSteps) ?? nativeSteps).map(step => Number(step.dataset.step));
+            }
+            window.addEventListener('legend:website-content-rendered', event => {
+                if (event.detail?.editor || event.detail?.materialize) return;
+                const order = nativeStepOrder();
+                if (order.length) setStep(quoteStarted ? getStep() : order[0]);
+            });
 
 	            function setQuoteStartedState(started) {
 	                quoteStarted = !!started;
@@ -1376,8 +1386,9 @@
                     el.classList.toggle('active', el.getAttribute('data-step') == step);
                 });
 
-                if (stepLabel) stepLabel.textContent = `Step ${step} of ${totalSteps}`;
-                if (progressFill) progressFill.style.width = Math.round((step / totalSteps) * 100) + '%';
+                const position = nativeStepOrder().indexOf(step) + 1;
+                if (stepLabel) stepLabel.textContent = `Step ${position} of ${totalSteps}`;
+                if (progressFill) progressFill.style.width = Math.round((position / totalSteps) * 100) + '%';
 	                if (quoteStarted && step === 3 && trackCommercialQuote && !commercialViewedContactSteps.has(step)) {
 	                    commercialViewedContactSteps.add(step);
 	                    trackCommercialQuote({
@@ -1611,10 +1622,12 @@ function enforceRequiredByLabels() {
             }
 
             function validateAllStepsAndJumpToFirstInvalid() {
+                const order = nativeStepOrder();
+                if (!order.length) return false;
                 // Temporarily activate each step, validate, jump to the first invalid
                 const original = getStep();
 
-                for (let s = 1; s <= totalSteps; s++) {
+                for (const s of order) {
                     setStep(s);
 
                     // step-level custom validations
@@ -1662,8 +1675,9 @@ function enforceRequiredByLabels() {
 	                    if (!quoteStarted) {
 	                        trackCommercialCta('commercial_quote_start', label || 'Check My Business Protection Fit');
 	                    }
+	                    const startStep = quoteStarted ? getStep() : nativeStepOrder()[0];
 	                    setQuoteStartedState(true);
-	                    setStep(getStep());
+	                    if (startStep != null) setStep(startStep);
 	                    if (quoteFlowShell) {
 	                        quoteFlowShell.scrollIntoView({ behavior: 'smooth', block: 'start' });
 	                    }
@@ -1677,25 +1691,35 @@ function enforceRequiredByLabels() {
                 if (nextBtn) {
                     const step = getStep();
                     if (!validateStep(step)) return;
+                    const order = nativeStepOrder();
+                    const next = order[order.indexOf(step) + 1];
+                    if (next == null) return;
                     if (trackCommercialQuote && !commercialCompletedSteps.has(step)) {
                         commercialCompletedSteps.add(step);
                         trackCommercialQuote({
                             EventType: 'quote_step_complete',
                             FormKey: formKey,
                             PageKey: pageKey,
-                            MetadataJson: JSON.stringify({ stepNumber: step, nextStep: step + 1 })
+                            MetadataJson: JSON.stringify({ stepNumber: step, nextStep: next })
                         });
                     }
-                    setStep(step + 1);
+                    setStep(next);
                 }
 
                 if (prevBtn) {
-                    setStep(getStep() - 1);
+                    const order = nativeStepOrder();
+                    const previous = order[order.indexOf(getStep()) - 1];
+                    if (previous != null) setStep(previous);
                 }
             });
 
 
             form.addEventListener('submit', function (e) {
+                if (!nativeStepOrder().length) {
+                    e.preventDefault();
+                    form._trackSubmitAttempt?.(false, 1);
+                    return;
+                }
                 // Strip $ and commas before submit so decimals bind clean
                 document.querySelectorAll('input').forEach(function (input) {
                     if (typeof input.value === 'string' && (input.value.includes('$') || input.value.includes(','))) {

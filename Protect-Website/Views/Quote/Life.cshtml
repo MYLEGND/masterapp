@@ -6184,7 +6184,8 @@ input:checked + .lq-answer-card {
                                         </div>
                                     </div>
 
-                                    <div class="lq-micro-step" data-micro-step="0">
+                                    <div class="lq-micro-step" data-micro-step="0" data-cms-native-step="0">
+                    <button type="button" class="btn-ghost" data-step1-back="0" data-cms-step-back hidden data-cms-id="@(pageKey).native.back.0">Back</button>
                                         @if (!string.IsNullOrWhiteSpace(step1IntroTitle))
                                         {
                                             <div class="lq-step-title lq-step-intro-only">@step1IntroTitle</div>
@@ -6224,7 +6225,8 @@ input:checked + .lq-answer-card {
                                         </div>
                                     </div>
 
-                                    <div class="lq-micro-step" data-micro-step="1" hidden>
+                                    <div class="lq-micro-step" data-micro-step="1" data-cms-native-step="1" hidden>
+                    <button type="button" class="btn-ghost" data-step1-back="1" data-cms-step-back data-cms-id="@(pageKey).native.back.1">Back</button>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="@secondDiscoveryQuestionId">
                                             <div class="lq-choice-label lq-step-question" id="@secondDiscoveryQuestionId">@secondDiscoveryStep.Question</div>
                                             <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
@@ -6257,7 +6259,8 @@ input:checked + .lq-answer-card {
                                         
                                     </div>
 
-                                    <div class="lq-micro-step" data-micro-step="2" hidden>
+                                    <div class="lq-micro-step" data-micro-step="2" data-cms-native-step="2" hidden>
+                    <button type="button" class="btn-ghost" data-step1-back="2" data-cms-step-back data-cms-id="@(pageKey).native.back.2">Back</button>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-coverage-amount">
                                             <div class="lq-choice-label lq-step-question" id="lbl-step1-coverage-amount">@coverageAmountQuestionText</div>
                                             <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
@@ -6286,7 +6289,8 @@ input:checked + .lq-answer-card {
                                         
                                     </div>
 
-                                    <div class="lq-micro-step" data-micro-step="3" hidden>
+                                    <div class="lq-micro-step" data-micro-step="3" data-cms-native-step="3" hidden>
+                    <button type="button" class="btn-ghost" data-step1-back="3" data-cms-step-back data-cms-id="@(pageKey).native.back.3">Back</button>
                                         @if (usesAgeBeforeTobaccoFlow)
                                         {
                                             <div class="lq-choice-group">
@@ -6318,7 +6322,7 @@ input:checked + .lq-answer-card {
                                                 </div>
                                                 <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                                             </div>
-                                            <div class="lq-step-actions dual"><button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;">Continue</button>
+                                            <div class="lq-step-actions dual" data-cms-step-actions><button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;">Continue</button>
                                             </div>
                                         }
                                         else
@@ -6354,7 +6358,8 @@ input:checked + .lq-answer-card {
                                         }
                                     </div>
 
-                                    <div class="lq-micro-step" data-micro-step="4" hidden>
+                                    <div class="lq-micro-step" data-micro-step="4" data-cms-native-step="4" hidden>
+                    <button type="button" class="btn-ghost" data-step1-back="4" data-cms-step-back data-cms-id="@(pageKey).native.back.4">Back</button>
                                         @if (usesAgeBeforeTobaccoFlow)
                                         {
                                             <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
@@ -6384,7 +6389,7 @@ input:checked + .lq-answer-card {
                                                 </div>
                                                 <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use.</div>
                                             </div>
-                                            <div class="lq-step-actions dual"><button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue" data-cta="life_see_estimate" hidden>@stepOneContinueButtonText</button>
+                                            <div class="lq-step-actions dual" data-cms-step-actions><button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue" data-cms-step-continue data-cta="life_see_estimate" hidden>@stepOneContinueButtonText</button>
                                             </div>
                                         }
                                         else
@@ -6418,7 +6423,7 @@ input:checked + .lq-answer-card {
                                                 </div>
                                                 <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                                             </div>
-                                            <div class="lq-step-actions dual"><button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
+                                            <div class="lq-step-actions dual" data-cms-step-actions><button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue" data-cms-step-continue>@stepOneContinueButtonText</button>
                                             </div>
                                         }
                                     </div>
@@ -6557,7 +6562,7 @@ input:checked + .lq-answer-card {
                                             <div class="lq-field-err" id="err-MarketingEmailConsent">@consentErrorText</div>
                                         </div>
                                         </div>
-                                        <div class="lq-step-actions">
+                                        <div class="lq-step-actions" data-cms-step-actions>
                                             <div class="lq-submit-row">
                                                 <div class="lq-trust-note" id="lifeSubmitTrustNote">@stepTwoSubmitNoteText</div>
                                                 <button type="submit" class="btn-gold btn-progress w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
@@ -6679,7 +6684,8 @@ input:checked + .lq-answer-card {
                     </div>
                 </div>
 
-                <div class="lq-micro-step" data-micro-step="0">
+                <div class="lq-micro-step" data-micro-step="0" data-cms-native-step="0">
+                    <button type="button" class="btn-ghost" data-step1-back="0" data-cms-step-back hidden data-cms-id="@(pageKey).native.back.0">Back</button>
                     @if (!string.IsNullOrWhiteSpace(step1IntroTitle))
                     {
                         <div class="lq-step-title lq-step-intro-only">@step1IntroTitle</div>
@@ -6736,7 +6742,8 @@ input:checked + .lq-answer-card {
                     </div>
                 </div>
 
-                <div class="lq-micro-step" data-micro-step="1" hidden>
+                <div class="lq-micro-step" data-micro-step="1" data-cms-native-step="1" hidden>
+                    <button type="button" class="btn-ghost" data-step1-back="1" data-cms-step-back data-cms-id="@(pageKey).native.back.1">Back</button>
                     <div class="lq-choice-group" role="radiogroup" aria-labelledby="@secondDiscoveryQuestionId">
                         <div class="lq-choice-label lq-step-question" id="@secondDiscoveryQuestionId">@secondDiscoveryStep.Question</div>
                         <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
@@ -6769,7 +6776,8 @@ input:checked + .lq-answer-card {
                     
                 </div>
 
-                <div class="lq-micro-step" data-micro-step="2" hidden>
+                <div class="lq-micro-step" data-micro-step="2" data-cms-native-step="2" hidden>
+                    <button type="button" class="btn-ghost" data-step1-back="2" data-cms-step-back data-cms-id="@(pageKey).native.back.2">Back</button>
                     <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-coverage-amount">
                         <div class="lq-choice-label lq-step-question" id="lbl-step1-coverage-amount">@coverageAmountQuestionText</div>
                         <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
@@ -6798,7 +6806,8 @@ input:checked + .lq-answer-card {
                     
                 </div>
 
-                <div class="lq-micro-step" data-micro-step="3" hidden>
+                <div class="lq-micro-step" data-micro-step="3" data-cms-native-step="3" hidden>
+                    <button type="button" class="btn-ghost" data-step1-back="3" data-cms-step-back data-cms-id="@(pageKey).native.back.3">Back</button>
                     @if (usesAgeBeforeTobaccoFlow)
                     {
                         <div class="lq-choice-group">
@@ -6830,7 +6839,7 @@ input:checked + .lq-answer-card {
                             </div>
                             <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                         </div>
-                        <div class="lq-step-actions dual"><button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;">Continue</button>
+                        <div class="lq-step-actions dual" data-cms-step-actions><button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;">Continue</button>
                         </div>
                     }
                     else
@@ -6866,7 +6875,8 @@ input:checked + .lq-answer-card {
                     }
                 </div>
 
-                <div class="lq-micro-step" data-micro-step="4" hidden>
+                <div class="lq-micro-step" data-micro-step="4" data-cms-native-step="4" hidden>
+                    <button type="button" class="btn-ghost" data-step1-back="4" data-cms-step-back data-cms-id="@(pageKey).native.back.4">Back</button>
                     @if (usesAgeBeforeTobaccoFlow)
                     {
                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
@@ -6896,7 +6906,7 @@ input:checked + .lq-answer-card {
                             </div>
                             <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use.</div>
                         </div>
-                        <div class="lq-step-actions dual"><button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue" data-cta="life_see_estimate" hidden>@stepOneContinueButtonText</button>
+                        <div class="lq-step-actions dual" data-cms-step-actions><button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue" data-cms-step-continue data-cta="life_see_estimate" hidden>@stepOneContinueButtonText</button>
                         </div>
                     }
                     else
@@ -6930,7 +6940,7 @@ input:checked + .lq-answer-card {
                             </div>
                             <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                         </div>
-                        <div class="lq-step-actions dual"><button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
+                        <div class="lq-step-actions dual" data-cms-step-actions><button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue" data-cms-step-continue>@stepOneContinueButtonText</button>
                         </div>
                     }
                 </div>
@@ -7127,7 +7137,7 @@ input:checked + .lq-answer-card {
                             <div class="lq-field-err" id="err-MarketingEmailConsent">@consentErrorText</div>
                         </div>
                     </div>
-                    <div class="lq-step-actions">
+                    <div class="lq-step-actions" data-cms-step-actions>
                         <div class="lq-submit-row">
                             <div class="lq-trust-note" id="lifeSubmitTrustNote">@stepTwoSubmitNoteText</div>
                             <button type="submit" class="btn-gold btn-progress w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
@@ -7601,7 +7611,20 @@ body.life-landing .lq-contact-capture-head .lq-agent-handoff-head {
   const step2EstimateSlot = document.getElementById('lifeStep2EstimateSlot');
   const contactCaptureWrap = document.getElementById('lifeContactCaptureWrap');
   const postSubmitSlot = document.getElementById('lifePostSubmitSlot');
-  const microSteps = Array.from(document.querySelectorAll('[data-micro-step]'));
+  const microSteps = Array.from(document.querySelectorAll('[data-micro-step]'))
+    .sort((left, right) => Number(left.dataset.microStep) - Number(right.dataset.microStep));
+  function nativeMicroOrder() {
+    const order = window.LEGEND_NATIVE_FORM_STEPS?.order(microSteps)
+      ?? Array.from(microSteps[0]?.parentElement?.children || []).filter(step => microSteps.includes(step));
+    return order.map(step => microSteps.indexOf(step));
+  }
+  function nativeMicroNeighbor(stepIndex, delta) {
+    const order = nativeMicroOrder();
+    return order[order.indexOf(stepIndex) + delta];
+  }
+  function nativeFirstDiscoveryField() {
+    return discoveryStepSequence[nativeMicroOrder()[0]] || firstDiscoveryFieldName;
+  }
   const ageStepContinueBtn = document.getElementById('ageStepContinueBtn');
   const step1ContinueBtn = document.getElementById('step1Continue');
   const step2BackBtn = document.getElementById('step2BackBtn');
@@ -8566,8 +8589,8 @@ const contactFieldProgress = new Map();
 
     firstQuestionViewTracked = true;
     trackEvent('first_question_view', {
-      questionField: firstDiscoveryFieldName,
-      questionId: firstDiscoveryQuestionId
+      questionField: nativeFirstDiscoveryField(),
+      questionId: microSteps[nativeMicroOrder()[0]]?.querySelector('.lq-step-question')?.id || firstDiscoveryQuestionId
     });
   }
 
@@ -8578,8 +8601,8 @@ const contactFieldProgress = new Map();
 
     firstQuestionAnsweredTracked = true;
     trackEvent('first_question_answered', {
-      questionField: firstDiscoveryFieldName,
-      questionId: firstDiscoveryQuestionId,
+      questionField: nativeFirstDiscoveryField(),
+      questionId: microSteps[nativeMicroOrder()[0]]?.querySelector('.lq-step-question')?.id || firstDiscoveryQuestionId,
       choiceCode: choiceCode || '',
       choiceLabel: choiceLabel || ''
     });
@@ -10308,8 +10331,11 @@ const contactFieldProgress = new Map();
     window.addEventListener('load', passiveCheck);
   }
 
+  let firstQuestionObserver = null;
   function installFirstQuestionVisibilityTracking() {
-    if (!(firstQuestionElement instanceof HTMLElement)) {
+    firstQuestionObserver?.disconnect();
+    const firstQuestion = microSteps[nativeMicroOrder()[0]] || firstQuestionElement;
+    if (!(firstQuestion instanceof HTMLElement)) {
       return;
     }
 
@@ -10333,7 +10359,8 @@ const contactFieldProgress = new Map();
       threshold: 0.6
     });
 
-    observer.observe(firstQuestionElement);
+    firstQuestionObserver = observer;
+    observer.observe(firstQuestion);
   }
 
   function handleStartCtaClick(startSource, triggerElement = null) {
@@ -10342,7 +10369,9 @@ const contactFieldProgress = new Map();
     trackStartCtaClick(placement, triggerElement);
 
     setQuoteEntryStarted(true);
-    showStep1(0, false, { trackView: true });
+    const first = nativeMicroOrder()[0];
+    if (first == null) return;
+    showStep1(first, false, { trackView: true });
     trackFirstQuestionViewOnce();
 
     void ensureQuoteStartTracked({ startSource });
@@ -10496,10 +10525,11 @@ const contactFieldProgress = new Map();
       TobaccoUse: 'Health profile'
     }[fieldName] || 'Protection review';
 
-    return `${label} · ${bounded + 1} of ${microSteps.length}`;
+    return `${label} · ${nativeMicroOrder().indexOf(bounded) + 1} of ${microSteps.length}`;
   }
 
   function showMicroStep(stepIndex, shouldScroll = false, options = {}) {
+    if (!nativeMicroOrder().includes(stepIndex)) return;
     const bounded = Math.max(0, Math.min(microSteps.length - 1, stepIndex));
     currentMicroStep = bounded;
     setStepTransitionState(false);
@@ -10511,7 +10541,7 @@ const contactFieldProgress = new Map();
       step1Progress.textContent = getStepProgressLabel(bounded);
     }
     if (step1ProgressFill) {
-      step1ProgressFill.style.width = `${((bounded + 1) / microSteps.length) * 100}%`;
+      step1ProgressFill.style.width = `${((nativeMicroOrder().indexOf(bounded) + 1) / microSteps.length) * 100}%`;
     }
     if (options.trackView !== false) {
       trackEvent(microStepViewEvents[bounded], { microStep: bounded + 1 });
@@ -11198,13 +11228,13 @@ const contactFieldProgress = new Map();
   }
 
   function resolveInitialMicroStep() {
-    for (let stepIndex = 0; stepIndex < discoveryStepSequence.length; stepIndex += 1) {
+    for (const stepIndex of nativeMicroOrder()) {
       if (!hasSelectionForDiscoveryField(discoveryStepSequence[stepIndex])) {
         return stepIndex;
       }
     }
 
-    return Math.max(0, discoveryStepSequence.length - 1);
+    return nativeMicroOrder().at(-1);
   }
 
   function validateStepOneComplete() {
@@ -11221,13 +11251,15 @@ const contactFieldProgress = new Map();
     showChoiceError('err-step1-coverage-amount', !validationResults.CoverageAmountOption);
     showChoiceError('err-step1-tobacco-use', !validationResults.TobaccoUse);
 
-    for (const fieldName of discoveryStepSequence) {
+    const order = nativeMicroOrder();
+    if (!order.length) return false;
+    for (const stepIndex of order) {
+      const fieldName = discoveryStepSequence[stepIndex];
       if (validationResults[fieldName]) {
         continue;
       }
 
       const trackedFieldName = fieldName === 'Age' ? 'AgeBracket' : fieldName;
-      const stepIndex = discoveryStepIndexes[fieldName] ?? 0;
       trackQuoteFieldError(trackedFieldName, 'required_missing', 'discovery');
       metaSignalApi?.trackFieldError(trackedFieldName, { fieldContext: 'discovery' });
       showStep1(stepIndex, true);
@@ -11266,76 +11298,28 @@ const contactFieldProgress = new Map();
     window.setTimeout(() => selectedCard.classList.remove('is-auto-advancing'), 620);
   }
 
-  function queueMicroAdvance(expectedStep, nextStep) {
-    if (step1Panel.hidden || currentMicroStep !== expectedStep || !Number.isFinite(nextStep) || nextStep >= microSteps.length) return;
+  let autoCompletingDiscovery = false;
+
+  function queueMicroAdvance(expectedStep) {
+    const order = nativeMicroOrder();
+    if (step1Panel.hidden || currentMicroStep !== expectedStep || !order.includes(expectedStep)) return;
+    const nextStep = nativeMicroNeighbor(expectedStep, 1);
     clearAutoAdvanceTimer();
     markSelectedCardAdvancing(expectedStep);
     setStepTransitionState(true);
     autoAdvanceTimer = window.setTimeout(() => {
-      showMicroStep(nextStep, true);
+      if (!step1Panel.hidden && currentMicroStep === expectedStep) {
+        if (nextStep != null) showMicroStep(nextStep, true);
+        else if (nativeMicroOrder().at(-1) === expectedStep) {
+          // Keep one existing, validated transition into processing. The same
+          // Continue control serves whichever independent question is last.
+          autoCompletingDiscovery = true;
+          try { step1ContinueBtn?.click(); }
+          finally { autoCompletingDiscovery = false; }
+        }
+      }
       setStepTransitionState(false);
     }, 330);
-  }
-
-  let tobaccoCompletionQueued = false;
-
-  function completeDiscoveryFromTobacco(radio) {
-    if (tobaccoCompletionQueued) return;
-    tobaccoCompletionQueued = true;
-
-    clearAutoAdvanceTimer();
-
-    window.setTimeout(() => {
-      showChoiceError('err-step1-tobacco-use', false);
-      clearQuoteFieldError('TobaccoUse');
-      clearEstimatePreviewCache();
-
-      if (radio instanceof HTMLInputElement && answer3Hidden) {
-        answer3Hidden.value = radio.value || '';
-      }
-
-      syncStepOneAnswersFromUI();
-      persistFunnelState();
-
-      trackEvent(finalDiscoveryContinueEvent, {
-        protectingWho: answer1Hidden?.value || '',
-        coverageGoal: answer2Hidden?.value || '',
-        coverageAmount: coverageAmountHidden?.value || '',
-        tobaccoUse: answer3Hidden?.value || radio?.value || '',
-        age: answer4Hidden?.value || '',
-        ageRange: ageHidden?.value || '',
-        autoAdvanced: true
-      });
-
-      trackQuoteStepComplete(finalDiscoveryContinueEvent, {
-        protectingWho: answer1Hidden?.value || '',
-        coverageGoal: answer2Hidden?.value || '',
-        coverageAmount: coverageAmountHidden?.value || '',
-        tobaccoUse: answer3Hidden?.value || radio?.value || '',
-        age: answer4Hidden?.value || '',
-        ageRange: ageHidden?.value || '',
-        autoAdvanced: true
-      });
-
-      void ensureQuoteStartTracked({
-        startSource: 'tobacco_direct_finish',
-        fieldName: 'TobaccoUse',
-        choiceCode: radio?.value || answer3Hidden?.value || ''
-      });
-
-      if (metaSignalApi?.trackDiscoveryComplete) {
-        metaSignalApi.trackDiscoveryComplete(buildMetaProgressMetadata());
-      } else {
-        metaSignalApi?.trackStepComplete(1, 'discovery_complete', buildMetaProgressMetadata());
-      }
-
-      markSelectedCardAdvancing(tobaccoStepIndex);
-      setStepTransitionState(true);
-      window.setTimeout(() => {
-        setStepTransitionState(false);
-        showProcessingBridge(true);
-      }, 250);
-    }, 180);
   }
 
   function wireAutoAdvanceGroup(groupName, errorId, selectEvent, expectedStep, nextStep) {
@@ -11349,18 +11333,13 @@ const contactFieldProgress = new Map();
 
         trackEvent(selectEvent, { choice: radio.dataset.label || radio.value, code: radio.value });
 
-        if (groupName === firstDiscoveryFieldName) {
+        if (groupName === nativeFirstDiscoveryField()) {
           trackFirstQuestionAnsweredOnce(radio.value, radio.dataset.label || radio.value);
         }
 
         trackQuoteStepComplete(selectEvent, { choice: radio.dataset.label || radio.value, code: radio.value });
         void ensureQuoteStartTracked({ startSource: `${groupName}_change`, fieldName: groupName, choiceCode: radio.value });
         void ensureMetaLeadFormStart();
-
-        if (groupName === 'TobaccoUse') {
-          completeDiscoveryFromTobacco(radio);
-          return;
-        }
 
         queueMicroAdvance(expectedStep, nextStep);
       };
@@ -11370,11 +11349,6 @@ const contactFieldProgress = new Map();
       radio.closest('label')?.addEventListener('click', () => {
         setTimeout(() => {
           if (!radio.checked) return;
-
-          if (groupName === 'TobaccoUse') {
-            completeDiscoveryFromTobacco(radio);
-            return;
-          }
 
           queueMicroAdvance(expectedStep, nextStep);
         }, 0);
@@ -11391,8 +11365,9 @@ const contactFieldProgress = new Map();
   wireAutoAdvanceGroup('ProtectingWho', 'err-step1-protecting-who', 'life_step1_protecting_select', protectingStepIndex, protectingStepIndex + 1);
   wireAutoAdvanceGroup('CoverageGoal', 'err-step1-coverage-goal', 'life_step1_goal_select', goalStepIndex, goalStepIndex + 1);
   document.getElementById('ageStepBackBtn')?.addEventListener('click', () => {
-    metaSignalApi?.trackBacktrack({ fromStep: 'age', toStep: discoveryStepSequence[Math.max(0, ageStepIndex - 1)] || 'previous' });
-    showStep1(Math.max(0, ageStepIndex - 1), true);
+    metaSignalApi?.trackBacktrack({ fromStep: 'age', toStep: discoveryStepSequence[nativeMicroNeighbor(ageStepIndex, -1)] || 'previous' });
+    const previous = nativeMicroNeighbor(ageStepIndex, -1);
+    if (previous != null) showStep1(previous, true);
   });
   ageStepContinueBtn?.addEventListener('click', () => {
     clearAutoAdvanceTimer();
@@ -11416,11 +11391,14 @@ const contactFieldProgress = new Map();
     });
     void ensureQuoteStartTracked({ startSource: 'age_continue', fieldName: 'AgeBracket' });
     void ensureMetaLeadFormStart();
-    showMicroStep(tobaccoStepIndex, true);
+    const next = nativeMicroNeighbor(ageStepIndex, 1);
+    if (next != null) showMicroStep(next, true);
+    else if (nativeMicroOrder().at(-1) === ageStepIndex) step1ContinueBtn?.click();
   });
   tobaccoStepBackBtn?.addEventListener('click', () => {
-    metaSignalApi?.trackBacktrack({ fromStep: 'tobacco', toStep: 'age' });
-    showStep1(Math.max(0, tobaccoStepIndex - 1), true);
+    const previous = nativeMicroNeighbor(tobaccoStepIndex, -1);
+    metaSignalApi?.trackBacktrack({ fromStep: 'tobacco', toStep: discoveryStepSequence[previous] || 'previous' });
+    if (previous != null) showStep1(previous, true);
   });
 
   wireAutoAdvanceGroup('CoverageAmountOption', 'err-step1-coverage-amount', 'life_step1_coverage_select', coverageAmountStepIndex, coverageAmountStepIndex + 1);
@@ -11447,6 +11425,7 @@ const contactFieldProgress = new Map();
       clearEstimatePreviewCache();
       syncStepOneAnswersFromUI();
       persistFunnelState();
+      if (nativeFirstDiscoveryField() === 'Age') trackFirstQuestionAnsweredOnce(getSelectedAgeBand(), getSelectedAgeValue());
       trackEvent('step1_age_entered', {
         ageRange: getSelectedAgeBand(),
         age: getSelectedAgeValue()
@@ -11477,6 +11456,7 @@ const contactFieldProgress = new Map();
       clearEstimatePreviewCache();
       syncStepOneAnswersFromUI();
       persistFunnelState();
+      if (nativeFirstDiscoveryField() === 'Age') trackFirstQuestionAnsweredOnce(getSelectedAgeBand(), getSelectedAgeValue());
       trackEvent('step1_age_entered', {
         ageRange: getSelectedAgeBand(),
         age: getSelectedAgeValue()
@@ -11492,9 +11472,11 @@ const contactFieldProgress = new Map();
   });
   document.querySelectorAll('[data-step1-back]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      metaSignalApi?.trackBacktrack({ fromStep: `micro_${currentMicroStep + 1}`, toStep: `micro_${btn.getAttribute('data-step1-back') || '0'}` });
-      const target = Number.parseInt(btn.getAttribute('data-step1-back') || '0', 10);
-      showMicroStep(Number.isFinite(target) ? target : 0, true);
+      const target = nativeMicroNeighbor(currentMicroStep, -1);
+      if (target == null) return;
+      clearAutoAdvanceTimer();
+      metaSignalApi?.trackBacktrack({ fromStep: `micro_${currentMicroStep + 1}`, toStep: `micro_${target + 1}` });
+      showMicroStep(target, true);
     });
   });
 
@@ -11503,14 +11485,19 @@ const contactFieldProgress = new Map();
     syncStepOneAnswersFromUI();
     if (!validateStepOneComplete()) return;
     syncStepOneAnswersFromUI();
-    void ensureQuoteStartTracked({ startSource: 'step1_continue' });
+    const finalField = discoveryStepSequence[currentMicroStep];
+    void ensureQuoteStartTracked({
+      startSource: autoCompletingDiscovery && finalField === 'TobaccoUse' ? 'tobacco_direct_finish' : 'step1_continue',
+      ...(autoCompletingDiscovery ? {fieldName: finalField} : {})
+    });
     trackEvent(finalDiscoveryContinueEvent, {
       protectingWho: answer1Hidden?.value || '',
       coverageGoal: answer2Hidden?.value || '',
       coverageAmount: coverageAmountHidden?.value || '',
       tobaccoUse: answer3Hidden?.value || '',
       age: answer4Hidden?.value || '',
-      ageRange: ageHidden?.value || ''
+      ageRange: ageHidden?.value || '',
+      ...(autoCompletingDiscovery ? {autoAdvanced: true} : {})
     });
     trackQuoteStepComplete(finalDiscoveryContinueEvent, {
       protectingWho: answer1Hidden?.value || '',
@@ -11518,7 +11505,8 @@ const contactFieldProgress = new Map();
       coverageAmount: coverageAmountHidden?.value || '',
       tobaccoUse: answer3Hidden?.value || '',
       age: answer4Hidden?.value || '',
-      ageRange: ageHidden?.value || ''
+      ageRange: ageHidden?.value || '',
+      ...(autoCompletingDiscovery ? {autoAdvanced: true} : {})
     });
     if (metaSignalApi?.trackDiscoveryComplete) {
       metaSignalApi.trackDiscoveryComplete(buildMetaProgressMetadata());
@@ -11531,7 +11519,17 @@ const contactFieldProgress = new Map();
   step2BackBtn?.addEventListener('click', () => {
     trackEvent('life_step2_back');
     metaSignalApi?.trackBacktrack({ fromStep: 'contact', toStep: 'discovery' });
-    showStep1(Math.max(0, discoveryStepSequence.length - 1), true);
+    const last = nativeMicroOrder().at(-1);
+    if (last != null) showStep1(last, true);
+  });
+
+  window.addEventListener('legend:website-content-rendered', event => {
+    if (event.detail?.editor || event.detail?.materialize) return;
+    installFirstQuestionVisibilityTracking();
+    if (!step1Panel.hidden) {
+      const first = nativeMicroOrder()[0];
+      if (first != null) showMicroStep(quoteEntryStarted ? currentMicroStep : first, false, {trackView:false});
+    }
   });
 
   // form submission

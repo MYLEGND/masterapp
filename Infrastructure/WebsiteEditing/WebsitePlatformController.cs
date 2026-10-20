@@ -2365,7 +2365,8 @@ public class WebsitePlatformController : ControllerBase
             return Conflict(new { error = "website_draft_recovery_requires_review",
                 message = "This saved website needs an independent recovery review. All content was preserved.",
                 revision = state.Revision, sourceFingerprint, reasonCode = ex.ReasonCode,
-                collisionCount = ex.CollisionCount, collisions = ex.Collisions, truncated = ex.Truncated });
+                collisionCount = ex.CollisionCount, collisions = ex.Collisions,
+                differenceCount = ex.DifferenceCount, differences = ex.Differences, truncated = ex.Truncated });
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or JsonException)
         {
@@ -4257,3 +4258,4 @@ public class WebsitePlatformController : ControllerBase
 
 
 }
+

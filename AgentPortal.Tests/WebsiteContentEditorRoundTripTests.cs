@@ -1672,6 +1672,130 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Throws<InvalidOperationException>(() => WebsiteContentSanitizer.ReadPersisted(original, JsonOptions));
     }
 
+    [Fact]
+    public void DuplicateDraftRecovery_ChangesOnlyTheReportedIdsInTheOriginalJsonTree()
+    {
+        var document = CanonicalDocument();
+        document.Pages["/"].Composition.Add(new WebsiteCompositionNode
+        {
+            Id = ElementId, Type = "heading", Tag = "h2", Text = "Keep this exact authored value"
+        });
+        var original = JsonSerializer.SerializeToNode(WebsiteContentSanitizer.Sanitize(document), JsonOptions)!;
+        // Omitted optional properties are valid and must not be populated as an
+        // incidental part of identity recovery. Property order is also immaterial.
+        original["pages"]!["/"]!["composition"]![1]!.AsObject().Remove("alt");
+        original.AsObject().Remove("faviconImageDataUrl");
+        var bytes = original.ToJsonString();
+        var plan = WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(bytes, JsonOptions);
+        var secondPlan = WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(bytes, JsonOptions);
+        Assert.Equal(plan.RepairedFingerprint, secondPlan.RepairedFingerprint);
+        var change = Assert.Single(plan.Changes);
+        Assert.Equal(ElementId, change.PreviousId);
+        var expected = original.DeepClone();
+        expected["pages"]!["/"]!["composition"]![1]!["id"] = change.ReplacementId;
+        Assert.True(System.Text.Json.Nodes.JsonNode.DeepEquals(expected,
+            System.Text.Json.Nodes.JsonNode.Parse(plan.DocumentJson)));
+        Assert.Equal(bytes, original.ToJsonString());
+        Assert.NotNull(WebsiteContentSanitizer.ReadPersisted(plan.DocumentJson, JsonOptions));
+    }
+
+    [Theory]
+    [InlineData("style")]
+    [InlineData("layout")]
+    [InlineData("navigation")]
+    [InlineData("store")]
+    public async Task DuplicateDraftRecovery_RefusesUnrepresentedNestedFieldsWithoutLosingData(string location)
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Protect);
+        var document = CanonicalDocument();
+        document.Pages["/"].Composition.Add(new WebsiteCompositionNode
+        {
+            Id = ElementId, Type = "heading", Tag = "h2", Text = "Second heading"
+        });
+        var raw = JsonSerializer.SerializeToNode(WebsiteContentSanitizer.Sanitize(document), JsonOptions)!;
+        var target = location switch
+        {
+            "navigation" => raw["pages"]!["/"]!["navigation"]!,
+            "store" => raw["store"]!,
+            _ => raw["pages"]!["/"]!["composition"]![0]![location]!
+        };
+        target["private-unrecognized-field"] = "private-authored-value";
+        var original = raw.ToJsonString();
+        var publication = Guid.NewGuid();
+        var state = new WebsiteContentState
+        {
+            OwnerKey = fixture.OwnerKey, SiteKey = fixture.SiteKey, DraftJson = original,
+            Revision = 9, PublishedVersionId = publication
+        };
+        fixture.Db.Add(state);
+        await fixture.Db.SaveChangesAsync();
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var controller = fixture.CreateController();
+        var response = Assert.IsType<ConflictObjectResult>(await controller.PlanDraftRecovery(ticket));
+        var payload = JsonSerializer.SerializeToElement(response.Value, JsonOptions);
+        Assert.Equal("unrepresented_document_fields", payload.GetProperty("reasonCode").GetString());
+        Assert.True(payload.GetProperty("differenceCount").GetInt32() > 0);
+        Assert.DoesNotContain("private-", payload.ToString());
+        var fingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(original))).ToLowerInvariant();
+        Assert.IsType<ConflictObjectResult>(await controller.RecoverDuplicateDraft(
+            new WebsitePlatformController.RecoverDuplicateDraftRequest(ticket, 9, Guid.NewGuid(), fingerprint, "untrusted")));
+        fixture.Db.ChangeTracker.Clear();
+        var saved = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        Assert.Equal(original, saved.DraftJson);
+        Assert.Equal(9, saved.Revision);
+        Assert.Equal(publication, saved.PublishedVersionId);
+        Assert.Empty(JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(saved.NamedDraftsJson, JsonOptions)!);
+    }
+
+    [Fact]
+    public void DuplicateDraftRecovery_ReportsBoundedNormalizationPathsWithoutChangingAuthoredContent()
+    {
+        var document = CanonicalDocument();
+        document.Pages.Clear();
+        document.Pages["/private-customer-route"] = new WebsitePageDocument
+        {
+            Composition = Enumerable.Range(0, 50).Select(index => new WebsiteCompositionNode
+            {
+                Id = "presentation-" + (index / 2), Type = "heading", Tag = "h2", Text = "Preserve content " + index
+            }).ToList()
+        };
+        var canonical = WebsiteContentSanitizer.Sanitize(document);
+        foreach (var node in canonical.Pages["/private-customer-route"].Composition)
+            node.ClassName = "private-authored-class   another-class";
+        var original = JsonSerializer.Serialize(canonical, JsonOptions);
+        var refusal = Assert.Throws<WebsiteContentSanitizer.RecoveryReviewException>(
+            () => WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions));
+        Assert.Equal("noncanonical_document", refusal.ReasonCode);
+        Assert.Equal(50, refusal.DifferenceCount);
+        Assert.Equal(40, refusal.Differences.Count);
+        Assert.True(refusal.Truncated);
+        Assert.All(refusal.Differences, difference => Assert.EndsWith("/className", difference.Path));
+        var diagnostics = JsonSerializer.Serialize(refusal.Differences, JsonOptions);
+        Assert.DoesNotContain("private-", diagnostics);
+        Assert.DoesNotContain("Preserve content", diagnostics);
+        Assert.Equal(original, JsonSerializer.Serialize(canonical, JsonOptions));
+    }
+
+    [Fact]
+    public void DuplicateDraftRecovery_DoesNotSilentlyConvertALink()
+    {
+        var document = CanonicalDocument();
+        document.Pages["/"].Composition.Add(new WebsiteCompositionNode
+        {
+            Id = ElementId, Type = "link", Tag = "a", Href = "https://example.com/", Text = "Keep this link"
+        });
+        var canonical = WebsiteContentSanitizer.Sanitize(document);
+        canonical.Pages["/"].Composition[1].Href = "#";
+        var original = JsonSerializer.Serialize(canonical, JsonOptions);
+        var refusal = Assert.Throws<WebsiteContentSanitizer.RecoveryReviewException>(
+            () => WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions));
+        Assert.Equal("noncanonical_document", refusal.ReasonCode);
+        Assert.Contains(refusal.Differences, difference => difference.Path.EndsWith("/type", StringComparison.Ordinal));
+        Assert.Equal("#", canonical.Pages["/"].Composition[1].Href);
+        Assert.Equal(original, JsonSerializer.Serialize(canonical, JsonOptions));
+    }
+
     [Theory]
     [InlineData("wrappers")]
     [InlineData("ancestor")]
@@ -1914,3 +2038,4 @@ public sealed class WebsiteContentEditorRoundTripTests
         private static string SourceDirectory([CallerFilePath] string sourcePath = "") => Path.GetDirectoryName(sourcePath)!;
     }
 }
+

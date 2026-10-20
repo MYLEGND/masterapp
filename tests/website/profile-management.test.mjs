@@ -11,7 +11,7 @@ const deferred = () => {
   const promise = new Promise(resolve => { release = resolve; });
   return { promise, release };
 };
-async function fixture({ caps = {}, failPublish = false, scope = 'business', handoff = false, deferPath = null, deferReply = null, publicationBehavior = null, storageEntries = [], publicationScopeId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } = {}) {
+async function fixture({ caps = {}, failPublish = false, scope = 'business', handoff = false, deferPath = null, deferReply = null, manageFailure = null, publicationBehavior = null, storageEntries = [], publicationScopeId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } = {}) {
   const dom = new JSDOM(`<button data-website-manage data-session="/profile/session" data-edit="/profile/edit" data-live="https://business.test" data-title="Business A" data-scope="${scope}">Manage</button>`, { url: 'https://client.mylegnd.com/profile', runScripts: 'outside-only' });
   const { window } = dom, calls = [], publications = new Map();
   for (const [key, value] of storageEntries) window.sessionStorage.setItem(key, value);
@@ -33,6 +33,8 @@ async function fixture({ caps = {}, failPublish = false, scope = 'business', han
       const response = await publicationBehavior({ parsed, options, body, state, publications });
       if (response !== undefined) return response;
     }
+    if (manageFailure && parsed.pathname === '/api/website-content/manage' && !body)
+      return { ok: false, status: manageFailure.status, json: async () => manageFailure.details };
     let value = state;
     if (parsed.pathname === '/profile/session') value = handoff
       ? { handoffUrl: 'https://protect.mylegnd.com/api/website-content/handoff', state: 'opaque-state-' + (++continuationCount) }
@@ -178,6 +180,32 @@ test('agent scope reuses the already-authorized management session for direct ed
   assert.equal(url.searchParams.get('legendEdit'), 'signed-scope-a');
   assert.equal(f.calls.filter(call => call.path === '/profile/edit').length, 0);
   f.dom.window.close();
+});
+
+for (const scope of ['business', 'agent']) test(`${scope} blocked saved draft offers scoped recovery review without a write`, async () => {
+  const f = await fixture({ scope, handoff: true, manageFailure: { status: 409,
+    details: { error: 'website_draft_duplicate_identity', message: 'The saved draft requires recovery review.' } } });
+  const link = [...f.document.querySelectorAll('a')].find(a => a.textContent.includes('Review saved website recovery'));
+  assert.ok(link);
+  const url = new URL(link.href);
+  assert.equal(url.origin, scope === 'business' ? 'https://client.mylegnd.com' : 'https://business.test');
+  assert.equal(url.pathname, scope === 'business' ? '/profile/edit' : '/');
+  assert.equal(url.searchParams.get('legendEdit'), 'signed-opaque-state-1');
+  assert.match(f.document.querySelector('[role=status]').textContent, /recovery review/);
+  assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 1); // Authorization exchange only.
+  assert.equal(f.calls.some(call => /recover|publish|drafts/.test(call.path)), false);
+  assert.equal(f.document.querySelector('.wm-grid'), null);
+  f.dom.window.close();
+});
+
+test('unrelated startup conflicts and authorization failures do not offer draft recovery', async () => {
+  for (const status of [401, 403, 409]) {
+    const f = await fixture({ manageFailure: { status,
+      details: { error: status === 409 ? 'revision_conflict' : 'website_draft_duplicate_identity', message: 'Request refused.' } } });
+    assert.equal(f.document.querySelector('a'), null);
+    assert.match(f.document.querySelector('[role=status]').textContent, /Request refused/);
+    f.dom.window.close();
+  }
 });
 
 test('agent scope excludes business domains and inbox; empty readiness is explicit', async () => {
@@ -573,3 +601,4 @@ test('status proof for a different canonical state remains pending without resum
   assert.ok(![...f.document.querySelectorAll('button')].some(x => x.textContent === 'Resume original request'));
   f.dom.window.close();
 });
+

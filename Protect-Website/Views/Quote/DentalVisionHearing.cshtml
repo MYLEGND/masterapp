@@ -1988,7 +1988,8 @@ body.dvh-final-step-active .dq-form-panel {
                                         </div>
                                     </div>
 
-                                    <div class="lq-micro-step" data-micro-step="0">
+                                    <div class="lq-micro-step" data-micro-step="0" data-cms-native-step="0">
+                                        <button type="button" class="btn-ghost" data-step-back="0" data-cms-step-back hidden data-cms-id="@(pageKey).native.back.first">Back</button>
                                         <div class="lq-step-intro">
                                             <h2 class="lq-step-title">Build Your Dental, Vision & Hearing Review</h2>
                                         </div>
@@ -2042,7 +2043,7 @@ body.dvh-final-step-active .dq-form-panel {
                                         </div>
                                     </div>
 
-                                    <div class="lq-micro-step" data-micro-step="1" hidden>
+                                    <div class="lq-micro-step" data-micro-step="1" data-cms-native-step="1" hidden>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqHouseholdSizeLabel">
                                             <div class="lq-choice-label" id="dqHouseholdSizeLabel">Who needs this dental, vision, and hearing coverage review?</div>
                                             <div class="lq-choice-grid">
@@ -2078,12 +2079,12 @@ body.dvh-final-step-active .dq-form-panel {
                                             </div>
                                             <div class="lq-choice-error" id="err-HouseholdSize">Please choose who needs this review.</div>
                                         </div>
-                                        <div class="lq-step-actions">
-                                            <button type="button" class="btn-ghost" data-step-back="0">Back</button>
+                                        <div class="lq-step-actions" data-cms-step-actions>
+                                            <button type="button" class="btn-ghost" data-step-back="0" data-cms-step-back>Back</button>
                                         </div>
                                     </div>
 
-                                    <div class="lq-micro-step" data-micro-step="2" hidden>
+                                    <div class="lq-micro-step" data-micro-step="2" data-cms-native-step="2" hidden>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqCurrentCoverageLabel">
                                             <div class="lq-choice-label" id="dqCurrentCoverageLabel">What best describes your current dental, vision, and hearing coverage?</div>
                                             <div class="lq-choice-grid">
@@ -2125,12 +2126,12 @@ body.dvh-final-step-active .dq-form-panel {
                                             </div>
                                             <div class="lq-choice-error" id="err-CurrentCoverage">Please choose your current coverage status.</div>
                                         </div>
-                                        <div class="lq-step-actions">
-                                            <button type="button" class="btn-ghost" data-step-back="1">Back</button>
+                                        <div class="lq-step-actions" data-cms-step-actions>
+                                            <button type="button" class="btn-ghost" data-step-back="1" data-cms-step-back>Back</button>
                                         </div>
                                     </div>
 
-                                    <div class="lq-micro-step" data-micro-step="3" hidden>
+                                    <div class="lq-micro-step" data-micro-step="3" data-cms-native-step="3" hidden>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqCoverageTypeLabel">
                                             <div class="lq-choice-label" id="dqCoverageTypeLabel">What kind of dental, vision, and hearing coverage review are you looking for?</div>
                                             <div class="lq-choice-grid">
@@ -2172,12 +2173,12 @@ body.dvh-final-step-active .dq-form-panel {
                                             </div>
                                             <div class="lq-choice-error" id="err-CoverageType">Please choose the type of review you want.</div>
                                         </div>
-                                        <div class="lq-step-actions">
-                                            <button type="button" class="btn-ghost" data-step-back="2">Back</button>
+                                        <div class="lq-step-actions" data-cms-step-actions>
+                                            <button type="button" class="btn-ghost" data-step-back="2" data-cms-step-back>Back</button>
                                         </div>
                                     </div>
 
-                                    <div class="lq-micro-step" data-micro-step="4" hidden>
+                                    <div class="lq-micro-step" data-micro-step="4" data-cms-native-step="4" hidden>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqPrimaryConcernLabel">
                                             <div class="lq-choice-label" id="dqPrimaryConcernLabel">What matters most in your dental, vision, and hearing coverage review?</div>
                                             <div class="lq-choice-grid">
@@ -2219,9 +2220,9 @@ body.dvh-final-step-active .dq-form-panel {
                                             </div>
                                             <div class="lq-choice-error" id="err-PrimaryConcern">Please choose what matters most in this review.</div>
                                         </div>
-                                        <div class="lq-step-actions">
-                                            <button type="button" class="btn-ghost" data-step-back="3">Back</button>
-                                            <button type="button" class="btn-gold btn-progress btn-block" id="dqContinueToContactBtn" data-cta="dvh_see_review">Continue My DVH Review</button>
+                                        <div class="lq-step-actions" data-cms-step-actions>
+                                            <button type="button" class="btn-ghost" data-step-back="3" data-cms-step-back>Back</button>
+                                            <button type="button" class="btn-gold btn-progress btn-block" id="dqContinueToContactBtn" data-cms-step-continue data-cta="dvh_see_review">Continue My DVH Review</button>
                                         </div>
                                     </div>
                                 </div>
@@ -2295,7 +2296,7 @@ body.dvh-final-step-active .dq-form-panel {
                                         <input type="hidden" id="BestTimeToContact" name="BestTimeToContact" value="@(string.IsNullOrWhiteSpace(form.BestTimeToContact) ? "Not specified" : form.BestTimeToContact)" />
                                         <div class="lq-field-err" id="err-AcknowledgedDisclaimer">@consentErrorText</div>
 
-                                        <div class="lq-step-actions">
+                                        <div class="lq-step-actions" data-cms-step-actions>
                                             <button type="button" class="btn-ghost" id="dqBackToQuestionsBtn">Back to answers</button>
                                             <div class="btn-block">
                                                 <p class="dq-submit-note">Private review. No obligation. You stay in control.</p>
@@ -2363,7 +2364,13 @@ body.dvh-final-step-active .dq-form-panel {
         var submitDefaultLabel = submitButton ? asTrimmed(submitButton.textContent) : 'Get My DVH Review';
         var bookingExperienceUrl = '@Url.Action("ActivatePublicBookingExperience", "DentalVisionHearingQuote")';
         var bookingConfirmationUrl = '@Url.Action("ConfirmPublicBookingExperience", "DentalVisionHearingQuote")';
-        var microSteps = Array.prototype.slice.call(step1Panel ? step1Panel.querySelectorAll('[data-micro-step]') : []);
+        var microSteps = Array.prototype.slice.call(step1Panel ? step1Panel.querySelectorAll('[data-micro-step]') : [])
+            .sort(function (left, right) { return Number(left.dataset.microStep) - Number(right.dataset.microStep); });
+        function nativeMicroOrder() {
+            const order = window.LEGEND_NATIVE_FORM_STEPS?.order(microSteps)
+              ?? Array.from(microSteps[0]?.parentElement?.children || []).filter(step => microSteps.includes(step));
+            return order.map(step => microSteps.indexOf(step));
+        }
         var hasServerErrors = '@(hasServerErrors ? "true" : "false")' === 'true';
         var showContactStepByDefault = '@(showContactStepByDefault ? "true" : "false")' === 'true';
         var ageRangeToAge = Object.freeze({
@@ -2475,7 +2482,7 @@ body.dvh-final-step-active .dq-form-panel {
         }
 
         function updateProgress(stepIndex) {
-            var stepNumber = Math.max(0, Math.min(microSteps.length - 1, stepIndex)) + 1;
+            var stepNumber = nativeMicroOrder().indexOf(stepIndex) + 1;
             if (progressLabel) progressLabel.textContent = 'Question ' + stepNumber + ' of ' + microSteps.length;
             if (progressFill) progressFill.style.width = ((stepNumber / microSteps.length) * 100) + '%';
         }
@@ -2559,7 +2566,7 @@ body.dvh-final-step-active .dq-form-panel {
             var config = microStepConfigs[index];
             if (!config) return;
             track({
-                EventType: config.viewEvent,
+                EventType: nativeMicroOrder()[0] === index ? 'first_question_view' : 'quote_step_view',
                 PageKey: pageKey,
                 FormKey: formKey,
                 MetadataJson: JSON.stringify({ stepNumber: index + 1, field: config.field })
@@ -2570,7 +2577,7 @@ body.dvh-final-step-active .dq-form-panel {
             if (completedSteps[stepNumber]) return;
             completedSteps[stepNumber] = true;
             var metadataJson = JSON.stringify({ stepNumber: stepNumber, nextStep: nextStep, source: source });
-            if (stepNumber === 1) {
+            if (stepNumber - 1 === nativeMicroOrder()[0]) {
                 track({
                     EventType: 'first_question_answered',
                     FormKey: formKey,
@@ -2587,7 +2594,7 @@ body.dvh-final-step-active .dq-form-panel {
         }
 
         function showMicroStep(index) {
-            if (index < 0 || index >= microSteps.length) return;
+            if (!Number.isInteger(index) || index < 0 || index >= microSteps.length) return;
             resetPostSubmitShell();
             currentMicroStep = index;
             if (step1Panel) step1Panel.hidden = false;
@@ -2974,7 +2981,7 @@ body.dvh-final-step-active .dq-form-panel {
                     FormKey: formKey
                 });
             }
-            showMicroStep(0);
+            showMicroStep(nativeMicroOrder()[0]);
         }
 
         function showFieldError(fieldId, isVisible) {
@@ -3221,11 +3228,13 @@ body.dvh-final-step-active .dq-form-panel {
                 syncChoiceCards(config.field);
                 clearGroupError(config.field, config.errorId);
                 if (config.field === 'AgeRange') syncAgeHidden();
-                if (stepIndex < microSteps.length - 1 && currentMicroStep === stepIndex) {
-                    trackStepComplete(stepIndex + 1, stepIndex + 2, 'auto_advance');
+                var order = nativeMicroOrder();
+                var next = order[order.indexOf(stepIndex) + 1];
+                if (next != null && currentMicroStep === stepIndex) {
+                    trackStepComplete(stepIndex + 1, next + 1, 'auto_advance');
                     window.clearTimeout(autoAdvanceTimer);
                     autoAdvanceTimer = window.setTimeout(function () {
-                        showMicroStep(stepIndex + 1);
+                        if (currentMicroStep === stepIndex) showMicroStep(next);
                     }, 180);
                 }
             }
@@ -3250,16 +3259,25 @@ body.dvh-final-step-active .dq-form-panel {
 
         Array.prototype.forEach.call(document.querySelectorAll('[data-step-back]'), function (button) {
             button.addEventListener('click', function () {
-                var target = parseInt(button.getAttribute('data-step-back'), 10);
-                if (!Number.isNaN(target)) showMicroStep(target);
+                var order = nativeMicroOrder();
+                var target = order[order.indexOf(currentMicroStep) - 1];
+                window.clearTimeout(autoAdvanceTimer);
+                if (target != null) showMicroStep(target);
             });
         });
 
         if (continueButton) {
             continueButton.addEventListener('click', function () {
-                var config = microStepConfigs[microSteps.length - 1];
-                if (!requireSelection(config.field, config.errorId)) return;
-                trackStepComplete(microSteps.length, microSteps.length + 1, 'continue_to_contact');
+                var order = nativeMicroOrder();
+                if (!order.length) return;
+                for (var index of order) {
+                    var config = microStepConfigs[index];
+                    if (!requireSelection(config.field, config.errorId)) {
+                        showMicroStep(index);
+                        return;
+                    }
+                }
+                trackStepComplete(order.at(-1) + 1, microSteps.length + 1, 'continue_to_contact');
                 trackCta('dvh_see_review', asTrimmed(continueButton.textContent));
                 showProcessingThenContact();
             });
@@ -3267,7 +3285,7 @@ body.dvh-final-step-active .dq-form-panel {
 
         if (backToQuestionsButton) {
             backToQuestionsButton.addEventListener('click', function () {
-                showMicroStep(microSteps.length - 1);
+                showMicroStep(nativeMicroOrder().at(-1));
             });
         }
 
@@ -3321,7 +3339,9 @@ body.dvh-final-step-active .dq-form-panel {
             syncDerivedContactFields();
             clearServerFeedback();
 
-            for (var i = 0; i < microStepConfigs.length; i += 1) {
+            var order = nativeMicroOrder();
+            if (!order.length) return false;
+            for (var i of order) {
                 if (!requireSelection(microStepConfigs[i].field, microStepConfigs[i].errorId)) {
                     showMicroStep(i);
                     return false;
