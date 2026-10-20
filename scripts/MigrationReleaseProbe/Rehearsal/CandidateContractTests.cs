@@ -53,6 +53,7 @@ internal static class CandidateContractTests
             PredicateBounds();
             DefaultDefinitions();
             CatalogPlans(CandidateContract.Current(db));
+            CatalogSnapshot();
             foreach (var staleVersion in new[] { 1, 2 })
             {
                 File.WriteAllText(path, JsonSerializer.Serialize(new CandidateContract.Contract(staleVersion, new[] { entry }), CandidateContract.Json));
@@ -65,9 +66,9 @@ internal static class CandidateContractTests
     }
     private static void CatalogPlans(CandidateContract.Contract contract)
     {
-        // Golden plans were derived from the original serial observer source and
-        // exact contract artifact12286103244 (not an instrumented binary). They bind every SELECT, order and
-        // parameter name/value, not merely a command count or new implementation.
+        // Golden descriptors derive from the original serial plans and exact
+        // contract artifact12286103244. They preserve each validator's kind,
+        // order and parameter values while replacing its catalog transport.
         var suffix = contract.Migrations.Where(m => StringComparer.Ordinal.Compare(m.Id,
             "20261007134500_AddFounderAssistantRules") >= 0 && StringComparer.Ordinal.Compare(m.Id,
             RehearsalFixture.ReceptionistMigration) <= 0).ToArray();
@@ -75,26 +76,120 @@ internal static class CandidateContractTests
         void Verify(CandidateContract.Entry[] entries, string[] applied, int count, string digest)
         {
             var plan = CandidateContract.Plan(entries, applied, CancellationToken.None);
-            var text = string.Join("\n--next--\n", plan.Commands.Select(c => c.Sql + "\n" +
+            var text = string.Join("\n--next--\n", plan.Commands.Select(c => (c.Kind?.ToString() ?? "Sql:" + c.Sql) + "\n" +
                 string.Join("\n", c.Parameters.Select(p => p.Name + "=" + p.Value))));
             var actual = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
                 System.Text.Encoding.UTF8.GetBytes(text)));
-            Check(plan.Commands.Count == count && actual == digest, "serial/batch exact ordered query plan");
-            Check(plan.Commands.Chunk(CandidateContract.CatalogBatch.MaximumCommands).Count() == (count + 31) / 32,
-                "bounded batch count");
+            Check(plan.Commands.Count == count && actual == digest, "snapshot exact ordered validator plan");
+
         }
         var prefix = suffix.Where(m => m.Id != RehearsalFixture.ReceptionistMigration).ToArray();
         Verify(prefix, prefix.Select(m => m.Id).ToArray(), 60,
-            "7c073dbf3499cea966223ee5eb7fa86db2241e0d5ad0e8ac4b20e99b5862e452");
+            "be430157db19b20042c44db3fe7f5b15fb68286146a7e63838ecbdaa4a75647f");
         if (suffix.Any(m => m.Id == RehearsalFixture.ReceptionistMigration))
         {
             Verify(suffix, prefix.Select(m => m.Id).ToArray(), 77,
-                "0b2abf92677119e023d7d43b4069e271d961d8def5197f133665c4c6e4616d3d");
+                "afe703d8df06b4ccee657cf5ed10cc3b202cfaab6e61c3673d615a498cdb40e9");
             Verify(suffix, suffix.Select(m => m.Id).ToArray(), 179,
-                "f849352447c5ea74d344066e6eb982efa1b1b66d37a793d6a5abc615d3e4ae9d");
+                "6f095ed8307650f0814b1fd394ccac921e8e298dc4377ec2f091060baa49ba40");
             Verify(suffix, new[] { "20261007134500_AddFounderAssistantRules" }, 30,
-                "7e35bf384f013d084c4a4916fb71039130c78b8c97937a8c3cdd26549c9142d7");
+                "3a5f67231a8f4d8f1c1559844a9f17c91c5eec8e2abd9f78984be0c854f1d538");
         }
+    }
+
+    private static void CatalogSnapshot()
+    {
+        // Exercise the production reader projection and unchanged validators,
+        // without a SQL connection. Existing disposable SQL tests exercise joins.
+        var token = CancellationToken.None;
+        void Reject(Action action)
+        {
+            try { action(); } catch (ProbeObservationFailure) { return; }
+            throw new InvalidOperationException("Catalog snapshot drift was accepted");
+        }
+        System.Data.DataTable Data(CandidateContract.CatalogKind kind, params object[][] rows)
+        {
+            var table = new System.Data.DataTable();
+            foreach (var type in CandidateContract.CatalogBatch.Types(kind)) table.Columns.Add("c" + table.Columns.Count, type);
+            foreach (var row in rows) table.Rows.Add(row);
+            return table;
+        }
+        var nullValue = JsonSerializer.SerializeToElement<object?>(null);
+        var columns = new[] { "A", "B" }.Select(n => new CandidateContract.Column("dbo", "Synthetic", n, "int", false, nullValue, null, null, null)).ToArray();
+        var table = new CandidateContract.Table("dbo", "Synthetic", columns, new("PK_Synthetic", ["A", "B"]), [], [], []);
+        var entry = new CandidateContract.Entry("29990101000000_Synthetic", true, [], [table], [], [], []);
+        var applied = CandidateContract.Plan([entry], [entry.Id], token);
+        var pending = CandidateContract.Plan([entry], [], token);
+        var snapshot = new Dictionary<CandidateContract.CatalogKind, System.Data.DataTable>
+        {
+            [CandidateContract.CatalogKind.Table] = Data(CandidateContract.CatalogKind.Table, ["dbo", "Synthetic", 1]),
+            [CandidateContract.CatalogKind.Columns] = Data(CandidateContract.CatalogKind.Columns,
+                ["dbo", "Synthetic", "A", "int", (short)4, false, DBNull.Value, (byte)0, false, false, (byte)10, DBNull.Value],
+                ["dbo", "Synthetic", "B", "int", (short)4, false, DBNull.Value, (byte)0, false, false, (byte)10, DBNull.Value]),
+            [CandidateContract.CatalogKind.Index] = Data(CandidateContract.CatalogKind.Index,
+                ["dbo", "Synthetic", "PK_Synthetic", "A", true, true, DBNull.Value, false, false, false, false, false],
+                ["dbo", "Synthetic", "PK_Synthetic", "B", true, true, DBNull.Value, false, false, false, false, false]),
+            [CandidateContract.CatalogKind.Checks] = Data(CandidateContract.CatalogKind.Checks)
+        };
+        void Verify(CandidateContract.CatalogBatch.Command command)
+        {
+            using var selected = CandidateContract.CatalogBatch.Select(snapshot[command.Kind!.Value], command, token);
+            using var reader = selected.CreateDataReader();
+            CandidateContract.CatalogBatch.VerifyResults(reader, [command.Validate], token).GetAwaiter().GetResult();
+        }
+        foreach (var command in applied.Commands) Verify(command);
+        var index = applied.Commands.Single(c => c.Kind == CandidateContract.CatalogKind.Index);
+        var indexData = snapshot[CandidateContract.CatalogKind.Index];
+        indexData.Rows[0][3] = "B"; indexData.Rows[1][3] = "A";
+        Reject(() => Verify(index));
+        indexData.Rows[0][3] = "A"; indexData.Rows[1][3] = "B";
+        indexData.Rows[0][2] = "pk_synthetic";
+        Reject(() => Verify(index)); // Ordinal name matching deliberately fails closed.
+        indexData.Rows[0][2] = "PK_Synthetic";
+        var columnCommand = applied.Commands.Single(c => c.Kind == CandidateContract.CatalogKind.Columns);
+        var columnData = snapshot[CandidateContract.CatalogKind.Columns];
+        columnData.Rows.Add(columnData.Rows[0].ItemArray);
+        Reject(() => Verify(columnCommand));
+        columnData.Rows.RemoveAt(2);
+        columnData.Rows.Clear();
+        Reject(() => Verify(columnCommand));
+        var presence = snapshot[CandidateContract.CatalogKind.Table];
+        presence.Rows[0][2] = 0;
+        foreach (var command in pending.Commands) Verify(command);
+        Reject(() => Verify(applied.Commands.Single(c => c.Kind == CandidateContract.CatalogKind.Table)));
+        presence.Rows[0][2] = 1;
+        Reject(() => Verify(pending.Commands.Single()));
+        using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+        try
+        {
+            using var unused = CandidateContract.CatalogBatch.Select(indexData, index, cancelled.Token);
+            throw new InvalidOperationException("Cancelled projection was accepted");
+        }
+        catch (OperationCanceledException) { }
+
+        void Read(CandidateContract.CatalogKind[] kinds, params System.Data.DataTable[] sets)
+        {
+            using var reader = new System.Data.DataTableReader(sets);
+            var received = new Dictionary<CandidateContract.CatalogKind, System.Data.DataTable>();
+            try { CandidateContract.CatalogBatch.ReadResults(reader, kinds, [("dbo", "Synthetic")], received, token).GetAwaiter().GetResult(); }
+            finally { foreach (var data in received.Values) data.Dispose(); }
+        }
+        Read([CandidateContract.CatalogKind.Table], presence);
+        Reject(() => Read([CandidateContract.CatalogKind.Table, CandidateContract.CatalogKind.Columns], presence));
+        Reject(() => Read([CandidateContract.CatalogKind.Table], presence, columnData));
+        using var outOfScope = Data(CandidateContract.CatalogKind.Table, ["dbo", "Other", 1]);
+        Reject(() => Read([CandidateContract.CatalogKind.Table], outOfScope));
+        using var duplicate = Data(CandidateContract.CatalogKind.Table, ["dbo", "Synthetic", 1], ["dbo", "Synthetic", 1]);
+        Reject(() => Read([CandidateContract.CatalogKind.Table], duplicate));
+        using var missing = Data(CandidateContract.CatalogKind.Table);
+        Reject(() => Read([CandidateContract.CatalogKind.Table], missing));
+        using var wrongShape = Data(CandidateContract.CatalogKind.Checks);
+        Reject(() => Read([CandidateContract.CatalogKind.Table], wrongShape));
+        using var wrongType = new System.Data.DataTable();
+        wrongType.Columns.Add("schema", typeof(string)); wrongType.Columns.Add("table", typeof(string)); wrongType.Columns.Add("count", typeof(long));
+        Reject(() => Read([CandidateContract.CatalogKind.Table], wrongType));
+        foreach (var data in snapshot.Values) data.Dispose();
+        Console.WriteLine("CATALOG_SNAPSHOT_PROJECTION_AND_PROTOCOL:PASS");
     }
 
     private static void Receptionist(IReadOnlyList<MigrationOperation> operations, string path)

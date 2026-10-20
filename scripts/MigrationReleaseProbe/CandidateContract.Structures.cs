@@ -1,3 +1,4 @@
+using System.Data;
 using System.Data.Common;
 using Microsoft.Data.SqlClient;
 using System.Globalization;
@@ -159,31 +160,191 @@ internal static partial class CandidateContract
         return true;
     }
 
+    internal enum CatalogKind { Table, Columns, Index, ForeignKey, Checks }
     internal sealed class CatalogBatch
     {
         internal const int MaximumCommands = 32;
         internal sealed record Command(string Sql, (string Name, object Value)[] Parameters,
-            Func<DbDataReader, Task> Validate);
+            Func<DbDataReader, Task> Validate, CatalogKind? Kind = null);
         internal readonly List<Command> Commands = [];
         internal void Add(string sql, Func<DbDataReader, Task> validate, params (string, object)[] parameters) =>
             Commands.Add(new(sql, parameters, validate));
+        internal void AddCatalog(CatalogKind kind, Func<DbDataReader, Task> validate, params (string, object)[] parameters) =>
+            Commands.Add(new("", parameters, validate, kind));
 
         internal async Task Execute(MasterAppDbContext db, CancellationToken cancellation)
         {
-            foreach (var commands in Commands.Chunk(MaximumCommands))
+            Dictionary<CatalogKind, DataTable>? snapshot = null;
+            try
+            {
+            foreach (var command in Commands)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                if (command.Kind is { } kind)
+                {
+                    // Per-observation only. No metadata survives the current paired read.
+                    snapshot ??= await ReadCatalog(db, cancellation);
+                    using var selected = Select(snapshot[kind], command, cancellation);
+                    using var reader = selected.CreateDataReader();
+                    await VerifyResults(reader, [command.Validate], cancellation);
+                }
+                else
+                {
+                    // The reviewed pending checkout guard retains its exact SQL
+                    // and original execution order, without joining catalog rows.
+                    await using var sql = db.Database.GetDbConnection().CreateCommand();
+                    sql.Transaction = db.Database.CurrentTransaction?.GetDbTransaction();
+                    sql.CommandTimeout = 30;
+                    sql.CommandText = command.Sql;
+                    foreach (var (name, value) in command.Parameters)
+                        sql.Parameters.Add(new SqlParameter(name, value));
+                    await using var reader = await sql.ExecuteReaderAsync(cancellation);
+                    await VerifyResults(reader, [command.Validate], cancellation);
+                }
+            }
+            }
+            finally { if (snapshot is not null) foreach (var table in snapshot.Values) table.Dispose(); }
+        }
+
+        internal static DataTable Select(DataTable source, Command command, CancellationToken cancellation)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            var schema = (string)command.Parameters.Single(p => p.Name == "@schema").Value;
+            var table = (string)command.Parameters.Single(p => p.Name == "@table").Value;
+            var name = command.Parameters.SingleOrDefault(p => p.Name == "@name").Value as string;
+            var offset = command.Kind is CatalogKind.Index or CatalogKind.ForeignKey ? 3 : 2;
+            var result = new DataTable();
+            try
+            {
+            for (var i = offset; i < source.Columns.Count; i++)
+                result.Columns.Add("c" + (i - offset), source.Columns[i].DataType);
+            foreach (DataRow row in source.Rows)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                // Exact ordinal object names intentionally fail closed on a
+                // case-only mismatch that a CI database collation could accept.
+                if ((string)row[0] == schema && (string)row[1] == table &&
+                    (offset == 2 || (string)row[2] == name))
+                    result.Rows.Add(row.ItemArray.Skip(offset).ToArray());
+            }
+            return result;
+            }
+            catch { result.Dispose(); throw; }
+        }
+
+        private async Task<Dictionary<CatalogKind, DataTable>> ReadCatalog(MasterAppDbContext db,
+            CancellationToken cancellation)
+        {
+            var scoped = Commands.Where(c => c.Kind is not null).ToArray();
+            var targets = scoped.Select(c => (
+                Schema: (string)c.Parameters.Single(p => p.Name == "@schema").Value,
+                Table: (string)c.Parameters.Single(p => p.Name == "@table").Value)).Distinct().ToArray();
+            var kinds = scoped.Select(c => c.Kind!.Value).Distinct().Order().ToArray();
+            var result = new Dictionary<CatalogKind, DataTable>();
+            if (targets.Length == 0 || kinds.Length == 0)
+                throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            try
+            {
+            foreach (var chunk in targets.Chunk(MaximumCommands))
             {
                 await using var batch = new SqlBatch((SqlConnection)db.Database.GetDbConnection(),
                     (SqlTransaction?)db.Database.CurrentTransaction?.GetDbTransaction()) { Timeout = 30 };
-                foreach (var item in commands)
+                var values = string.Join(",", chunk.Select((_, i) => $"(@s{i},@t{i})"));
+                foreach (var kind in kinds)
                 {
-                    var command = new SqlBatchCommand(item.Sql);
-                    foreach (var (name, value) in item.Parameters)
-                        command.Parameters.Add(new SqlParameter(name, value));
+                    var command = new SqlBatchCommand(Query(kind).Replace("/*TARGETS*/", values, StringComparison.Ordinal));
+                    for (var i = 0; i < chunk.Length; i++)
+                    {
+                        command.Parameters.Add(new SqlParameter("@s" + i, chunk[i].Schema));
+                        command.Parameters.Add(new SqlParameter("@t" + i, chunk[i].Table));
+                    }
                     batch.BatchCommands.Add(command);
                 }
                 await using var reader = await batch.ExecuteReaderAsync(cancellation);
-                await VerifyResults(reader, commands.Select(c => c.Validate).ToArray(), cancellation);
+                await ReadResults(reader, kinds, chunk, result, cancellation);
             }
+            return result;
+            }
+            catch { foreach (var table in result.Values) table.Dispose(); throw; }
+        }
+
+        internal static async Task ReadResults(DbDataReader reader, CatalogKind[] kinds,
+            (string Schema, string Table)[] targets, Dictionary<CatalogKind, DataTable> result,
+            CancellationToken cancellation)
+        {
+            if (kinds.Length is < 1 or > 5 || kinds.Distinct().Count() != kinds.Length ||
+                targets.Length is < 1 or > MaximumCommands || targets.Distinct().Count() != targets.Length)
+                throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            var rows = result.Values.Sum(t => t.Rows.Count);
+            for (var index = 0; index < kinds.Length; index++)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                if (index > 0 && !await reader.NextResultAsync(cancellation))
+                    throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+                var kind = kinds[index];
+                var types = Types(kind);
+                if (reader.FieldCount != types.Length ||
+                    types.Where((type, i) => reader.GetFieldType(i) != type).Any())
+                    throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+                if (!result.TryGetValue(kind, out var data))
+                {
+                    data = new DataTable();
+                    for (var i = 0; i < types.Length; i++) data.Columns.Add("c" + i, types[i]);
+                    result.Add(kind, data);
+                }
+                if (data.Columns.Count != types.Length ||
+                    types.Where((type, i) => data.Columns[i].DataType != type).Any())
+                    throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+                var seenTables = new HashSet<(string, string)>();
+                while (await reader.ReadAsync(cancellation))
+                {
+                    if (++rows > 100000 || reader.IsDBNull(0) || reader.IsDBNull(1) ||
+                        !targets.Contains((reader.GetString(0), reader.GetString(1))))
+                        throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+                    if (kind == CatalogKind.Table &&
+                        !seenTables.Add((reader.GetString(0), reader.GetString(1))))
+                        throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+                    var row = new object[reader.FieldCount];
+                    reader.GetValues(row);
+                    data.Rows.Add(row);
+                }
+                if (kind == CatalogKind.Table && seenTables.Count != targets.Length)
+                    throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            }
+            if (await reader.NextResultAsync(cancellation))
+                throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        }
+
+        internal static Type[] Types(CatalogKind kind) => kind switch
+        {
+            CatalogKind.Table => [typeof(string), typeof(string), typeof(int)],
+            CatalogKind.Columns => [typeof(string), typeof(string), typeof(string), typeof(string), typeof(short),
+                typeof(bool), typeof(string), typeof(byte), typeof(bool), typeof(bool), typeof(byte), typeof(string)],
+            CatalogKind.Index => [typeof(string), typeof(string), typeof(string), typeof(string), typeof(bool),
+                typeof(bool), typeof(string), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool)],
+            CatalogKind.ForeignKey => [typeof(string), typeof(string), typeof(string), typeof(string), typeof(string),
+                typeof(string), typeof(string), typeof(byte), typeof(byte), typeof(bool), typeof(bool), typeof(bool)],
+            CatalogKind.Checks => [typeof(string), typeof(string), typeof(string), typeof(string), typeof(bool), typeof(bool), typeof(bool)],
+            _ => throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT")
+        };
+
+        private static string Query(CatalogKind kind)
+        {
+            const string scope = "WITH requested(s,n) AS (SELECT * FROM (VALUES /*TARGETS*/) v(s,n)) ";
+            const string tables = " FROM requested r JOIN sys.schemas s ON s.name=r.s JOIN sys.tables t ON t.schema_id=s.schema_id AND t.name=r.n ";
+            return scope + (kind switch
+            {
+                CatalogKind.Table => "SELECT r.s,r.n,COUNT(t.object_id) FROM requested r LEFT JOIN sys.schemas s ON s.name=r.s LEFT JOIN sys.tables t ON t.schema_id=s.schema_id AND t.name=r.n GROUP BY r.s,r.n",
+                CatalogKind.Columns => "SELECT r.s,r.n,c.name,ty.name,c.max_length,c.is_nullable,dc.definition,c.scale,c.is_computed,c.is_identity,c.precision,c.collation_name" + tables +
+                    "LEFT JOIN sys.columns c ON c.object_id=t.object_id LEFT JOIN sys.types ty ON ty.user_type_id=c.user_type_id LEFT JOIN sys.default_constraints dc ON dc.object_id=c.default_object_id ORDER BY r.s,r.n,c.column_id",
+                CatalogKind.Index => "SELECT r.s,r.n,ix.name,c.name,ix.is_unique,ix.is_primary_key,ix.filter_definition,ix.is_disabled,ic.is_descending_key,ic.is_included_column,ix.is_hypothetical,ix.is_unique_constraint" + tables +
+                    "JOIN sys.indexes ix ON ix.object_id=t.object_id JOIN sys.index_columns ic ON ic.object_id=ix.object_id AND ic.index_id=ix.index_id JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id ORDER BY r.s,r.n,ix.name,ic.key_ordinal,ic.index_column_id",
+                CatalogKind.ForeignKey => "SELECT r.s,r.n,fk.name,pc.name,rs.name,rt.name,rc.name,fk.delete_referential_action,fk.update_referential_action,fk.is_disabled,fk.is_not_trusted,fk.is_not_for_replication" + tables +
+                    "JOIN sys.foreign_keys fk ON fk.parent_object_id=t.object_id JOIN sys.foreign_key_columns fc ON fc.constraint_object_id=fk.object_id JOIN sys.columns pc ON pc.object_id=t.object_id AND pc.column_id=fc.parent_column_id JOIN sys.tables rt ON rt.object_id=fk.referenced_object_id JOIN sys.schemas rs ON rs.schema_id=rt.schema_id JOIN sys.columns rc ON rc.object_id=rt.object_id AND rc.column_id=fc.referenced_column_id ORDER BY r.s,r.n,fk.name,fc.constraint_column_id",
+                CatalogKind.Checks => "SELECT r.s,r.n,cc.name,cc.definition,cc.is_disabled,cc.is_not_trusted,cc.is_not_for_replication" + tables +
+                    "JOIN sys.check_constraints cc ON cc.parent_object_id=t.object_id ORDER BY r.s,r.n,cc.name",
+                _ => throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT")
+            });
         }
 
         internal static async Task VerifyResults(DbDataReader reader,
@@ -202,6 +363,7 @@ internal static partial class CandidateContract
             if (await reader.NextResultAsync(cancellation))
                 throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
         }
+
     }
 
     private static async Task<object> Scalar(DbDataReader reader, CancellationToken cancellation)
@@ -228,7 +390,7 @@ internal static partial class CandidateContract
         }
         foreach (var t in m.Tables)
         {
-            batch.Add("SELECT COUNT(*) FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=@schema AND t.name=@table",
+            batch.AddCatalog(CatalogKind.Table,
                 async reader =>
                 {
                     if (Convert.ToInt32(await Scalar(reader, cancellation)) != (applied ? 1 : 0))
@@ -250,17 +412,7 @@ internal static partial class CandidateContract
     private static void PlanForeignKey(CatalogBatch batch, TableForeignKey owner, bool applied, CancellationToken cancellation)
     {
         var f = owner.Constraint;
-        batch.Add("""
-            SELECT pc.name, rs.name, rt.name, rc.name, fk.delete_referential_action, fk.update_referential_action,
-                   fk.is_disabled, fk.is_not_trusted, fk.is_not_for_replication
-            FROM sys.foreign_keys fk JOIN sys.tables pt ON pt.object_id=fk.parent_object_id
-            JOIN sys.schemas ps ON ps.schema_id=pt.schema_id
-            JOIN sys.foreign_key_columns fc ON fc.constraint_object_id=fk.object_id
-            JOIN sys.columns pc ON pc.object_id=pt.object_id AND pc.column_id=fc.parent_column_id
-            JOIN sys.tables rt ON rt.object_id=fk.referenced_object_id JOIN sys.schemas rs ON rs.schema_id=rt.schema_id
-            JOIN sys.columns rc ON rc.object_id=rt.object_id AND rc.column_id=fc.referenced_column_id
-            WHERE ps.name=@schema AND pt.name=@table AND fk.name=@name ORDER BY fc.constraint_column_id
-            """, async reader =>
+        batch.AddCatalog(CatalogKind.ForeignKey, async reader =>
         {
             var n = 0;
             while (await reader.ReadAsync(cancellation))
@@ -278,11 +430,7 @@ internal static partial class CandidateContract
 
     private static void PlanChecks(CatalogBatch batch, Table table, CancellationToken cancellation)
     {
-        batch.Add("""
-            SELECT cc.name, cc.definition, cc.is_disabled, cc.is_not_trusted, cc.is_not_for_replication
-            FROM sys.check_constraints cc JOIN sys.tables t ON t.object_id=cc.parent_object_id
-            JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=@schema AND t.name=@table
-            """, async reader =>
+        batch.AddCatalog(CatalogKind.Checks, async reader =>
         {
             var expected = table.Checks.ToDictionary(c => c.Name, StringComparer.Ordinal);
             var found = new HashSet<string>(StringComparer.Ordinal);
@@ -300,14 +448,7 @@ internal static partial class CandidateContract
 
     private static void PlanIndex(CatalogBatch batch, Index i, bool applied, bool primary, bool constraint, CancellationToken cancellation)
     {
-        batch.Add("""
-            SELECT c.name, ix.is_unique, ix.is_primary_key, ix.filter_definition, ix.is_disabled,
-                   ic.is_descending_key, ic.is_included_column, ix.is_hypothetical, ix.is_unique_constraint
-            FROM sys.indexes ix JOIN sys.tables t ON t.object_id=ix.object_id JOIN sys.schemas s ON s.schema_id=t.schema_id
-            JOIN sys.index_columns ic ON ic.object_id=ix.object_id AND ic.index_id=ix.index_id
-            JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id
-            WHERE s.name=@schema AND t.name=@table AND ix.name=@name ORDER BY ic.key_ordinal, ic.index_column_id
-            """, async reader =>
+        batch.AddCatalog(CatalogKind.Index, async reader =>
         {
             var n = 0;
             while (await reader.ReadAsync(cancellation))

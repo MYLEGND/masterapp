@@ -1980,4 +1980,116 @@ class CurrentObservationPrewriteTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'REQUIRES_OPERATION_RECONCILIATION'):
                 authority.fast_track_effective_baseline(self.revision,'d'*40)
 
+class UnpublishedAppsWithMigrationIntentTests(unittest.TestCase):
+    def setUp(self):
+        import copy
+        self.copy = copy.deepcopy
+        self.run = dict(id=701, head_sha='a'*40, status='completed', conclusion='failure', run_attempt=3)
+        self.names = ['Select exact affected applications','Admit exact validated fast-track source',
+            'Reconcile production schema before publication','Affected App Deploy — ${{ matrix.target }}',
+            'Publish verified website routing']
+        self.mutation = 'Apply or reconcile the exact rehearsed migration bundle'
+        self.no_sql = 'Reconcile fresh already-ready schema without SQL bundle or mutation'
+        self.jobs = {}
+        for attempt in (1,2,3):
+            rows = [dict(name=n,run_id=701,head_sha='a'*40,run_attempt=attempt,status='completed',
+                conclusion=('success' if i<2 else 'failure' if i==2 else 'skipped'),steps=[])
+                for i,n in enumerate(self.names)]
+            rows[2]['steps'] = [dict(name=self.mutation,status='completed',conclusion='failure' if attempt==1 else 'skipped'),
+                               dict(name=self.no_sql,status='completed',conclusion='skipped')]
+            self.jobs[attempt] = dict(jobs=rows,total_count=5)
+        self.artifact = dict(id=801,name='legend-release-child-intent-'+'b'*64,expired=False)
+        self.inventory = dict(artifacts=[self.artifact],total_count=1)
+        self.record = dict(child='migrations',producingAttempt=1,producingRun=701,phase='intent',
+            executionAuthority='a'*40,applicationRevision='a'*40,partitionIdentity='c'*64)
+
+    def api(self, repository, path, token):
+        if '/attempts/' in path:return self.jobs[int(path.split('/attempts/')[1].split('/')[0])]
+        if '/artifacts?' in path:return self.inventory
+        if path.startswith('actions/runs?head_sha='):
+            return dict(workflow_runs=[self.run] if 'head_sha='+'a'*40 in path else [],total_count=1 if 'head_sha='+'a'*40 in path else 0)
+        if path.endswith('/jobs?filter=latest&per_page=100'):return self.jobs[3]
+        if path.startswith('commits/'):
+            return [dict(merged_at='date',merge_commit_sha='a'*40,base=dict(ref=authority.FAST_TRACK_PR_BASE),
+                         head=dict(repo=dict(full_name='o/r')))]
+        raise AssertionError(path)
+
+    def context(self):
+        from contextlib import ExitStack
+        stack=ExitStack()
+        for name,kwargs in [
+            ('is_fast_track_producer',dict(return_value=True)),
+            ('_release_history_source',dict(return_value='immutable workflow')),
+            ('git_show_file',dict(return_value='immutable workflow')),
+            ('named_step_blocks',dict(return_value={self.mutation:'block',self.no_sql:'block'})),
+            ('api_get',dict(side_effect=self.api)),
+            ('_release_history_json',dict(return_value=self.record)),
+            ('_validate_child_generation',dict(return_value='b'*64))]:
+            stack.enter_context(patch.object(authority,name,**kwargs))
+        return stack
+
+    def invoke(self):
+        return authority.fast_track_unpublished_apps_with_migration_intent('o/r',self.run,'d'*40,'token')
+
+    def test_scope_only_accounts_original_intent_all_attempts(self):
+        with self.context():
+            self.assertTrue(self.invoke())
+            authority._release_history_json.assert_called_once_with('o/r',701,self.artifact,'operation.json',verify_digest=True)
+            authority._validate_child_generation.assert_called_once()
+
+    def test_every_original_publication_owner_must_be_skipped(self):
+        original=self.copy(self.jobs)
+        with self.context():
+            for attempt in (1,2,3):
+                for index in (3,4):
+                    for conclusion in ('success','failure','cancelled',None):
+                        self.jobs=self.copy(original);self.jobs[attempt]['jobs'][index]['conclusion']=conclusion
+                        self.assertFalse(self.invoke())
+            self.jobs=self.copy(original);self.jobs[1]['jobs'].pop();self.assertFalse(self.invoke())
+
+    def test_current_worker_changed_source_and_inventory_gap_deny(self):
+        with self.context():
+            self.run['status']='in_progress';self.assertFalse(self.invoke());self.run['status']='completed'
+            self.jobs[2]['total_count']=6;self.assertFalse(self.invoke());self.jobs[2]['total_count']=5
+            with patch.object(authority,'git_show_file',return_value='changed workflow'):self.assertFalse(self.invoke())
+            self.jobs[1]['jobs'][3]['head_sha']='e'*40;self.assertFalse(self.invoke())
+
+    def test_missing_duplicate_changed_or_unverified_intent_deny(self):
+        with self.context():
+            for key,value in [('producingAttempt',2),('producingRun',702),('phase','success'),('applicationRevision','e'*40),('child','portal')]:
+                old=self.record[key];self.record[key]=value;self.assertFalse(self.invoke());self.record[key]=old
+            self.inventory['artifacts']=[];self.inventory['total_count']=0;self.assertFalse(self.invoke())
+            self.inventory['artifacts']=[self.artifact,self.artifact];self.inventory['total_count']=2;self.assertFalse(self.invoke())
+            self.inventory['artifacts']=[self.artifact];self.inventory['total_count']=1
+            with patch.object(authority,'_validate_child_generation',side_effect=RuntimeError('unverified generation')):
+                with self.assertRaisesRegex(RuntimeError,'unverified generation'):self.invoke()
+
+    def test_no_sql_entry_and_unaccounted_mutation_attempt_deny(self):
+        with self.context():
+            self.jobs[2]['jobs'][2]['steps'][0]['conclusion']='failure';self.assertFalse(self.invoke())
+            self.jobs[2]['jobs'][2]['steps'][0]['conclusion']='skipped'
+            self.jobs[2]['jobs'][2]['steps'][1]['conclusion']='success';self.assertFalse(self.invoke())
+
+    def test_effective_baseline_carries_only_unpublished_scope(self):
+        with self.context(),patch.dict(os.environ,{'GITHUB_REPOSITORY':'o/r','GITHUB_TOKEN':'token'}), \
+             patch.object(authority,'fast_track_completed_apps_pending_routing',return_value=False), \
+             patch.object(authority,'attested_fast_track_manual_dns_proxy_completion',return_value=False), \
+             patch.object(authority,'attested_fast_track_brand_preupload',return_value=False), \
+             patch.object(authority,'fast_track_attempts_proven_prewrite',return_value=False), \
+             patch.object(authority,'fast_track_completed_sql_unpublished',return_value=False), \
+             patch.object(authority,'fast_track_untriggered_repair_parent',return_value=None), \
+             patch.object(authority.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
+             patch.object(authority.subprocess,'check_output',return_value='a'*40+' '+'c'*40+' '+'d'*40):
+            self.assertEqual('c'*40,authority.fast_track_effective_baseline('a'*40,'d'*40))
+            self.jobs[1]['jobs'][3]['conclusion']='failure'
+            with self.assertRaisesRegex(RuntimeError,'REQUIRES_OPERATION_RECONCILIATION'):
+                authority.fast_track_effective_baseline('a'*40,'d'*40)
+
+    def test_pending_with_existing_intent_still_denies_mutation(self):
+        with patch.object(migration,'journal_type',return_value=Mock(return_value=SimpleNamespace(intent=self.record,success=None))), \
+             patch.dict(os.environ,{'RELEASE_RESOURCE_GROUP':'group','DATABASE_AUTHORITY':'app'}):
+            with self.assertRaisesRegex(RuntimeError,'child-history'):
+                migration.mutation_admission(dict(ready=False,schemaIdentity='c'*64),'b'*64)
+
+
 if __name__ == '__main__':unittest.main()
