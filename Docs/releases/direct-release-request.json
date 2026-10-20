@@ -1,36 +1,28 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue the Founder-authorized isolated website and scoped receptionist work. Promote only the independently reviewed bounded catalog batching, own-token cancellation classification and focused regression controls through the existing nonpublishing trusted-tool process. This step authorizes no production deployment, schema mutation, routing, provider mutation or voice activation.",
-  "purpose": "Reduce repeated catalog round trips while preserving exact SQL, parameters, ordered validators, history compatibility, readiness, deadlines and retry rules. SQL0 cause is not established by this optimization.",
-  "requestId": "founder-catalog-batch-controls-20261020-a3e589ff12e1",
+  "authorization": "Continue the Founder-authorized isolated website and scoped receptionist work. Promote only the reviewed canonical release-request trigger coverage and focused regression through the existing nonpublishing trusted-tool process. This step authorizes no production deployment, schema mutation, routing, provider mutation or voice activation.",
+  "purpose": "Ensure every valid control-only promotion schedules the canonical selector because its existing request path changes. Repair trigger coverage only; do not fabricate a receipt for prior untriggered M5.",
+  "requestId": "founder-promotion-trigger-repair-20261020-5eeb7406a196",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "36f6f4693c83ed98eb9d45bc681c5ad81ce65022",
-    "sourceRevision": "a3e589ff12e189a61d9b59e8ec6ce16e57641a32",
+    "baseRevision": "13796f348ff0b2775a22ce910b4c0aa71ca05364",
+    "sourceRevision": "5eeb7406a1966f7f90064ea0a528af9e179e5915",
     "files": {
-      "scripts/MigrationReleaseProbe/Program.cs": {
+      ".github/workflows/legend-fast-track-ui.yml": {
         "mode": "100644",
-        "blob": "4bf2447b8c6f8b6d763e80d686daed4a750acf55"
+        "blob": "78009605c81ca53af673af9e14618a569030763e"
       },
-      "scripts/MigrationReleaseProbe/CandidateContract.cs": {
+      ".github/workflows/parfait-isolated-validation.yml": {
         "mode": "100644",
-        "blob": "453638035e18d93e31f0f83ba4a6d4fc7ac478de"
+        "blob": "d4f8001989a24b5f9f0c9536419e7a72e22666bd"
       },
-      "scripts/MigrationReleaseProbe/CandidateContract.Structures.cs": {
+      "scripts/test-fast-track-release.py": {
         "mode": "100644",
-        "blob": "4c94f86e40d8b13868f5ae62d675553f3cc89bcd"
-      },
-      "scripts/MigrationReleaseProbe/Rehearsal/CandidateContractTests.cs": {
-        "mode": "100644",
-        "blob": "139b8c778e6bb032612a42f4c33ad8f234ffefde"
-      },
-      "scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.cs": {
-        "mode": "100644",
-        "blob": "47d5f0f114bcc5744197b1431859bba3a57f73cf"
+        "blob": "2b9593b8d0fcd1b359aa60d5dfb8d85b797c163b"
       }
     }
   }
