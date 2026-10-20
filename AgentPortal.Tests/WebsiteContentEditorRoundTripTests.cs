@@ -1796,6 +1796,227 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Equal(original, JsonSerializer.Serialize(canonical, JsonOptions));
     }
 
+    #region Explicit inert presentation recovery
+
+    private static WebsiteContentDocument InertPresentationRecoveryFixture()
+    {
+        var document = new WebsiteContentDocument();
+        for (var index = 0; index < 24; index++)
+        {
+            var id = "inert.presentation." + index;
+            var nodes = new List<WebsiteCompositionNode>
+            {
+                new() { Id = id, Type = "text", Tag = "span", Text = "Preserve placeholder " + index,
+                    ClassName = "inert-placeholder", Style = new() { FontSize = 19, Color = "#123456" } }
+            };
+            if (index < 18)
+                nodes.Add(new() { Id = id, Type = "text", Tag = "span", Text = "Preserve second presentation " + index });
+            document.Pages["/inert/" + index.ToString("D2")] = new() { Composition = nodes };
+        }
+        var canonical = WebsiteContentSanitizer.Sanitize(document);
+        for (var index = 0; index < 24; index++)
+        {
+            var node = canonical.Pages["/inert/" + index.ToString("D2")].Composition[0];
+            node.Type = "link";
+            node.Tag = index % 2 == 0 ? "a" : "button";
+        }
+        return canonical;
+    }
+
+    [Fact]
+    public void DuplicateDraftRecovery_ReviewsTwentyFourInertConversionsAndEighteenIdentitiesWithoutOtherChanges()
+    {
+        var source = JsonSerializer.SerializeToNode(InertPresentationRecoveryFixture(), JsonOptions)!;
+        source.AsObject().Remove("faviconImageDataUrl");
+        source["pages"]!["/inert/00"]!["composition"]![0]!.AsObject().Remove("alt");
+        var original = source.ToJsonString();
+        var plan = WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions);
+        var repeat = WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions);
+        Assert.Equal(18, plan.Changes.Count);
+        Assert.Equal(24, plan.PresentationChanges.Count);
+        Assert.Equal(plan.RepairedFingerprint, repeat.RepairedFingerprint);
+        Assert.Equal(plan.DocumentJson, repeat.DocumentJson);
+        Assert.All(plan.PresentationChanges, change =>
+        {
+            Assert.Equal("link", change.PreviousType);
+            Assert.Contains(change.PreviousTag, new[] { "a", "button" });
+            Assert.Equal("text", change.ReplacementType);
+            Assert.Equal("span", change.ReplacementTag);
+        });
+
+        var expected = source.DeepClone();
+        for (var index = 0; index < 24; index++)
+        {
+            var page = "/inert/" + index.ToString("D2");
+            var first = expected["pages"]![page]!["composition"]![0]!;
+            first["type"] = "text";
+            first["tag"] = "span";
+            Assert.Equal("pages/" + index + "/0", plan.PresentationChanges[index].Path);
+            if (index < 18)
+            {
+                var change = Assert.Single(plan.Changes, value => value.Path == "pages/" + page + "/1");
+                Assert.Equal("inert.presentation." + index, change.PreviousId);
+                expected["pages"]![page]!["composition"]![1]!["id"] = change.ReplacementId;
+            }
+        }
+        Assert.True(System.Text.Json.Nodes.JsonNode.DeepEquals(expected,
+            System.Text.Json.Nodes.JsonNode.Parse(plan.DocumentJson)));
+        Assert.Equal(original, source.ToJsonString());
+        Assert.Equal(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(original))).ToLowerInvariant(), plan.SourceFingerprint);
+        Assert.NotNull(WebsiteContentSanitizer.ReadPersisted(plan.DocumentJson, JsonOptions));
+        Assert.Throws<InvalidOperationException>(() => WebsiteContentSanitizer.ReadPersisted(original, JsonOptions));
+    }
+
+    [Fact]
+    public void InertPresentationRecovery_DoesNotNormalizeDuringOrdinaryReadsOrExpandToUnrelatedRecovery()
+    {
+        var document = InertPresentationRecoveryFixture();
+        foreach (var page in document.Pages.Values)
+            page.Composition = [page.Composition[0]];
+        var original = JsonSerializer.Serialize(document, JsonOptions);
+        var refusal = Assert.Throws<InvalidOperationException>(() => WebsiteContentSanitizer.ReadPersisted(original, JsonOptions));
+        Assert.Equal("website_v3_noncanonical_persisted_document", refusal.Message);
+        Assert.Throws<ArgumentException>(() => WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions));
+        Assert.Equal(original, JsonSerializer.Serialize(document, JsonOptions));
+    }
+
+    [Theory]
+    [InlineData("placeholder")]
+    [InlineData("empty-url")]
+    [InlineData("target")]
+    [InlineData("system-binding")]
+    [InlineData("data-binding")]
+    [InlineData("signals")]
+    [InlineData("native-ancestor")]
+    [InlineData("form-ancestor")]
+    [InlineData("protected-ancestor")]
+    [InlineData("protected-child")]
+    [InlineData("unsupported-tag")]
+    [InlineData("mixed-case")]
+    [InlineData("other-normalization")]
+    public void InertPresentationRecovery_RefusesUnreviewedSemanticOrStructuralChanges(string defect)
+    {
+        var document = InertPresentationRecoveryFixture();
+        var page = document.Pages["/inert/00"];
+        var node = page.Composition[0];
+        switch (defect)
+        {
+            case "placeholder": node.Href = "#"; break;
+            case "empty-url": node.Href = ""; break;
+            case "target": node.Target = "_self"; break;
+            case "system-binding": node.SystemBinding = "business_name"; break;
+            case "data-binding": node.DataBinding = new() { CollectionId = "facts", Field = "contactEmail", Target = "text" }; break;
+            case "signals":
+                node.Signals = WebsiteSignalBindingPolicy.Validate([new()
+                {
+                    Id = Guid.NewGuid().ToString("N"), Trigger = "click", EventName = "LeadFormStart", DeliveryMode = "analytics"
+                }]);
+                break;
+            case "native-ancestor":
+            case "form-ancestor":
+            case "protected-ancestor":
+                node.Id = "unique.protected.placeholder";
+                page.Composition[0] = new()
+                {
+                    Id = "protected.parent", Type = defect == "form-ancestor" ? "form" : "container",
+                    Tag = defect == "form-ancestor" ? "form" : "div",
+                    SystemKey = defect == "native-ancestor" ? "protect_runtime_form:quote_auto_form"
+                        : defect == "form-ancestor" ? "canonical_inquiry" : null,
+                    SystemBinding = defect == "protected-ancestor" ? "business_name" : null,
+                    Children = [node]
+                };
+                break;
+            case "protected-child":
+                node.Children.Add(new() { Id = "bound.child", Type = "text", Tag = "span", Text = "Bound name", SystemBinding = "business_name" });
+                break;
+            case "unsupported-tag": node.Tag = "summary"; break;
+            case "mixed-case": node.Type = "LINK"; node.Tag = "A"; break;
+            default: node.ClassName = "inert-placeholder   extra-space"; break;
+        }
+        var original = JsonSerializer.Serialize(document, JsonOptions);
+        Assert.Throws<WebsiteContentSanitizer.RecoveryReviewException>(() =>
+            WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions));
+        Assert.Equal(original, JsonSerializer.Serialize(document, JsonOptions));
+    }
+
+    [Theory]
+    [InlineData("destination")]
+    [InlineData("action")]
+    [InlineData("href-binding")]
+    public void InertPresentationRecovery_PreservesCanonicalInteractiveLinks(string behavior)
+    {
+        var document = InertPresentationRecoveryFixture();
+        var node = document.Pages["/inert/00"].Composition[0];
+        if (behavior == "destination") node.Href = "https://example.invalid/existing-destination";
+        else if (behavior == "action") node.ActionKey = "protect_call";
+        else node.DataBinding = new() { CollectionId = "catalog", Field = "url", Target = "href" };
+        var original = JsonSerializer.Serialize(document, JsonOptions);
+        var plan = WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions);
+        Assert.Equal(23, plan.PresentationChanges.Count);
+        Assert.DoesNotContain(plan.PresentationChanges, change => change.Path == "pages/0/0");
+        var repaired = WebsiteContentSanitizer.ReadPersisted(plan.DocumentJson, JsonOptions).Pages["/inert/00"].Composition[0];
+        Assert.Equal("link", repaired.Type); Assert.Equal("a", repaired.Tag);
+        Assert.Equal(node.Href, repaired.Href); Assert.Equal(node.ActionKey, repaired.ActionKey);
+        Assert.Equal(JsonSerializer.Serialize(node.DataBinding, JsonOptions), JsonSerializer.Serialize(repaired.DataBinding, JsonOptions));
+        Assert.Equal(original, JsonSerializer.Serialize(document, JsonOptions));
+    }
+
+    [Fact]
+    public void InertPresentationRecovery_RejectsUnrepresentedFieldsWithoutDroppingTheirValues()
+    {
+        var raw = JsonSerializer.SerializeToNode(InertPresentationRecoveryFixture(), JsonOptions)!;
+        raw["pages"]!["/inert/00"]!["composition"]![0]!["style"]!["unrepresented-private-setting"] = "preserve-exactly";
+        var original = raw.ToJsonString();
+        var refusal = Assert.Throws<WebsiteContentSanitizer.RecoveryReviewException>(() =>
+            WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions));
+        Assert.Equal("unrepresented_document_fields", refusal.ReasonCode);
+        Assert.Equal(original, raw.ToJsonString());
+        Assert.DoesNotContain("preserve-exactly", JsonSerializer.Serialize(refusal.Differences, JsonOptions));
+    }
+
+    #endregion
+
+    [Fact]
+    public async Task InertPresentationRecovery_ControllerPreviewsConversionsAndPreservesRawBackupAndPublication()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Protect);
+        var original = JsonSerializer.Serialize(InertPresentationRecoveryFixture(), JsonOptions);
+        var publication = Guid.NewGuid();
+        var state = new WebsiteContentState
+        {
+            OwnerKey = fixture.OwnerKey, SiteKey = fixture.SiteKey,
+            DraftJson = original, Revision = 66, PublishedVersionId = publication
+        };
+        fixture.Db.Add(state);
+        await fixture.Db.SaveChangesAsync();
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var controller = fixture.CreateController();
+        var response = Assert.IsType<OkObjectResult>(await controller.PlanDraftRecovery(ticket));
+        var plan = JsonSerializer.SerializeToElement(response.Value, JsonOptions);
+        Assert.Equal(24, plan.GetProperty("presentationChanges").GetArrayLength());
+        Assert.Equal(18, plan.GetProperty("changes").GetArrayLength());
+        Assert.Equal(original, state.DraftJson); Assert.Equal(66, state.Revision);
+        var request = new WebsitePlatformController.RecoverDuplicateDraftRequest(ticket, 66, Guid.NewGuid(),
+            plan.GetProperty("sourceFingerprint").GetString()!, plan.GetProperty("repairedFingerprint").GetString()!);
+        var unreviewed = Assert.IsType<ConflictObjectResult>(await controller.RecoverDuplicateDraft(request));
+        Assert.Equal("website_recovery_presentation_review_required",
+            JsonSerializer.SerializeToElement(unreviewed.Value, JsonOptions).GetProperty("error").GetString());
+        Assert.Equal(original, state.DraftJson); Assert.Equal(66, state.Revision);
+        Assert.Equal("[]", state.NamedDraftsJson);
+        request = request with { AcceptPresentationConversions = true };
+        Assert.IsType<ConflictObjectResult>(await controller.RecoverDuplicateDraft(request with { RepairedFingerprint = "unreviewed" }));
+        Assert.Equal(original, state.DraftJson);
+        Assert.IsType<OkObjectResult>(await controller.RecoverDuplicateDraft(request));
+        fixture.Db.ChangeTracker.Clear();
+        var saved = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        Assert.Equal(67, saved.Revision); Assert.Equal(publication, saved.PublishedVersionId);
+        Assert.Equal(original, Assert.Single(JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(saved.NamedDraftsJson, JsonOptions)!).DocumentJson);
+        Assert.NotNull(WebsiteContentSanitizer.ReadPersisted(saved.DraftJson, JsonOptions));
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().RecoverDuplicateDraft(request));
+        Assert.Equal(67, saved.Revision);
+    }
+
     [Theory]
     [InlineData("wrappers")]
     [InlineData("ancestor")]

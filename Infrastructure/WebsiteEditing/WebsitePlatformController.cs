@@ -2337,7 +2337,7 @@ public class WebsitePlatformController : ControllerBase
 
     public sealed record RecoverDuplicateDraftRequest(
         string Ticket, long ExpectedRevision, Guid RecoveryId,
-        string SourceFingerprint, string RepairedFingerprint);
+        string SourceFingerprint, string RepairedFingerprint, bool AcceptPresentationConversions = false);
 
     [HttpGet("manage/draft-recovery")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
@@ -2358,7 +2358,8 @@ public class WebsitePlatformController : ControllerBase
         {
             var plan = WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(state.DraftJson, JsonOptions);
             return Ok(new { revision = state.Revision, plan.SourceFingerprint, plan.RepairedFingerprint,
-                changes = plan.Changes, preservesPublishedVersion = true, preservesOriginalDraft = true });
+                changes = plan.Changes, presentationChanges = plan.PresentationChanges,
+                preservesPublishedVersion = true, preservesOriginalDraft = true });
         }
         catch (WebsiteContentSanitizer.RecoveryReviewException ex)
         {
@@ -2414,6 +2415,9 @@ public class WebsitePlatformController : ControllerBase
             plan = WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(state.DraftJson, JsonOptions);
             if (plan.RepairedFingerprint != request.RepairedFingerprint)
                 return Conflict(new { error = "website_recovery_plan_changed" });
+            if (plan.PresentationChanges.Count > 0 && !request.AcceptPresentationConversions)
+                return Conflict(new { error = "website_recovery_presentation_review_required",
+                    message = "Reopen the recovery review to inspect the inactive presentation conversions before applying this plan." });
             storedDrafts = string.IsNullOrWhiteSpace(state.NamedDraftsJson)
                 ? new System.Text.Json.Nodes.JsonArray()
                 : System.Text.Json.Nodes.JsonNode.Parse(state.NamedDraftsJson) as System.Text.Json.Nodes.JsonArray

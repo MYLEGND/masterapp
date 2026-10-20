@@ -9462,13 +9462,26 @@
             throw new Error(payload.message || 'This website requires an independent recovery review. All content was preserved.');
           }
           plan = payload;
-          status.textContent = 'Recovery will separate ' + plan.changes.length + ' duplicated content identities. Protected fields and events stay unchanged. A saved copy of the original draft will be retained; your published website will not change.';
+          const presentationChanges = Array.isArray(plan.presentationChanges) ? plan.presentationChanges : [];
+          status.textContent = 'Recovery will separate ' + plan.changes.length + ' duplicated content identities. '
+            + (presentationChanges.length ? 'It will also restore ' + presentationChanges.length + ' inactive link or button placeholders as presentation text, preserving their saved text and design settings. ' : '')
+            + 'Protected fields and events stay unchanged. A saved copy of the original draft will be retained; your published website will not change.';
+          if (presentationChanges.length) {
+            const details = document.createElement('details');
+            const summary = document.createElement('summary');
+            summary.textContent = 'Review presentation conversions';
+            const evidence = document.createElement('pre');
+            evidence.textContent = JSON.stringify(presentationChanges, null, 2);
+            details.append(summary, evidence);
+            panel.append(details);
+          }
           button.textContent = 'Recover saved website';
         } else {
           const response = await fetch(url, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ticket: editorTicket, expectedRevision: plan.revision,
-              recoveryId, sourceFingerprint: plan.sourceFingerprint, repairedFingerprint: plan.repairedFingerprint })
+              recoveryId, sourceFingerprint: plan.sourceFingerprint, repairedFingerprint: plan.repairedFingerprint,
+              acceptPresentationConversions: Array.isArray(plan.presentationChanges) && plan.presentationChanges.length > 0 })
           });
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.message || 'Recovery was not confirmed. Reopen Website Studio to check the current saved state.');

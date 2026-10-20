@@ -102,9 +102,14 @@ public static class WebsiteContentSanitizer
     }
 
     public sealed record DuplicateIdentityChange(string Path, string PreviousId, string ReplacementId);
+    public sealed record RecoveryPresentationChange(string Path, string PreviousType, string PreviousTag,
+        string ReplacementType, string ReplacementTag);
     public sealed record DuplicateIdentityRecovery(
         string SourceFingerprint, string RepairedFingerprint, string DocumentJson,
-        IReadOnlyList<DuplicateIdentityChange> Changes);
+        IReadOnlyList<DuplicateIdentityChange> Changes)
+    {
+        public IReadOnlyList<RecoveryPresentationChange> PresentationChanges { get; init; } = [];
+    }
 
     public sealed record RecoveryCollisionNode(string Path, string Type, string Sensitivity);
     public sealed record RecoveryCollision(string IdentityFingerprint, int NodeCount,
@@ -140,12 +145,12 @@ public static class WebsiteContentSanitizer
             document.Shell is null || document.Pages is null || document.ReusableComponents is null)
             throw new ArgumentException("Only canonical v3 identity collisions can be recovered.");
         var entries = new List<(string Path, string DiagnosticPath, WebsiteCompositionNode Node,
-            System.Text.Json.Nodes.JsonObject RawNode, bool IdentitySensitive)>();
+            System.Text.Json.Nodes.JsonObject RawNode, bool IdentitySensitive, bool PresentationSensitive)>();
         static bool ContainsRuntimeForm(WebsiteCompositionNode node) =>
             (node.SystemKey?.StartsWith("protect_runtime_form:", StringComparison.Ordinal) ?? false) ||
             (node.Children ?? []).Any(ContainsRuntimeForm);
         void Visit(IEnumerable<WebsiteCompositionNode> nodes, System.Text.Json.Nodes.JsonNode? rawNodes,
-            string path, string diagnosticPath, bool identitySensitive = false)
+            string path, string diagnosticPath, bool identitySensitive = false, bool presentationSensitive = false)
         {
             var values = (nodes ?? []).ToList();
             if (rawNodes is not null && rawNodes is not System.Text.Json.Nodes.JsonArray ||
@@ -162,8 +167,11 @@ public static class WebsiteContentSanitizer
                 var location = path + "/" + index;
                 var diagnosticLocation = diagnosticPath + "/" + index++;
                 var sensitive = identitySensitive || ContainsRuntimeForm(node);
-                entries.Add((location, diagnosticLocation, node, rawNode, sensitive));
-                Visit(node.Children, rawNode["children"], location + "/children", diagnosticLocation + "/children", sensitive);
+                var presentationProtected = presentationSensitive || Protected(node) ||
+                    node.Href is not null || node.Target is not null || node.SyncSourceId is not null;
+                entries.Add((location, diagnosticLocation, node, rawNode, sensitive, presentationProtected));
+                Visit(node.Children, rawNode["children"], location + "/children", diagnosticLocation + "/children",
+                    sensitive, presentationProtected);
             }
         }
         Visit(document.Shell.Header, root?["shell"]?["header"], "shell/header", "shell/header");
@@ -212,6 +220,42 @@ public static class WebsiteContentSanitizer
                 difference.Items, difference.Count);
         }
 
+        // An early materializer represented inert template buttons/anchors as
+        // links. The current materializer and sanitizer agree on text/span for
+        // those projections. This explicit plan may review that one migration;
+        // ordinary reads and every other stability requirement remain strict.
+        static bool HasRecoveryBehavior(WebsiteCompositionNode node) =>
+            Protected(node) || node.Href is not null || node.Target is not null ||
+            node.SyncSourceId is not null ||
+            (node.Children ?? []).Any(HasRecoveryBehavior);
+        var presentationChanges = new List<RecoveryPresentationChange>();
+        foreach (var entry in entries)
+        {
+            if (entry.IdentitySensitive || entry.PresentationSensitive || entry.Node.Type != "link" || entry.Node.Tag is not ("a" or "button") ||
+                HasRecoveryBehavior(entry.Node))
+                continue;
+            var normalized = System.Text.Json.JsonSerializer.Deserialize<WebsiteCompositionNode>(
+                System.Text.Json.JsonSerializer.Serialize(entry.Node, options), options)!;
+            CanonicalizePassiveLink(normalized);
+            if (normalized.Type != "text" || normalized.Tag != "span") continue;
+
+            // Verify the existing canonical owner changed exactly these two
+            // values. Even an empty-string URL, window target or null signal
+            // array must not be silently discarded by this migration.
+            var expected = System.Text.Json.JsonSerializer.SerializeToNode(entry.Node, options)!;
+            expected["type"] = normalized.Type;
+            expected["tag"] = normalized.Tag;
+            if (!System.Text.Json.Nodes.JsonNode.DeepEquals(expected,
+                    System.Text.Json.JsonSerializer.SerializeToNode(normalized, options)))
+                continue;
+            presentationChanges.Add(new(entry.DiagnosticPath, entry.Node.Type, entry.Node.Tag,
+                normalized.Type, normalized.Tag));
+            entry.Node.Type = normalized.Type;
+            entry.Node.Tag = normalized.Tag;
+            entry.RawNode["type"] = normalized.Type;
+            entry.RawNode["tag"] = normalized.Tag;
+        }
+
         var used = entries.Select(entry => entry.Node.Id).ToHashSet(StringComparer.Ordinal);
         var changes = new List<DuplicateIdentityChange>();
         foreach (var group in collisions)
@@ -234,8 +278,9 @@ public static class WebsiteContentSanitizer
         }
         if (changes.Count == 0)
             throw new ArgumentException("No duplicate content identities require recovery.");
-        // Patch only selected ID values in the original tree. Rebuilding the full
-        // typed document can drop unrelated fields or introduce default values.
+        // Patch only reviewed IDs and the listed inert presentation type/tag
+        // values in the original tree. Rebuilding the full typed document can
+        // drop unrelated fields or introduce default values.
         var repaired = root!.ToJsonString(options);
         // Reject any unrelated corruption or normalization rather than folding
         // an unreviewed content change into identity recovery.
@@ -256,7 +301,8 @@ public static class WebsiteContentSanitizer
                 throw new RecoveryReviewException("sanitization_rejected", collisions.Count, evidence);
             }
         }
-        return new(Fingerprint(json), Fingerprint(repaired), repaired, changes);
+        return new(Fingerprint(json), Fingerprint(repaired), repaired, changes)
+            { PresentationChanges = presentationChanges };
     }
 
     private static bool HasUnrepresentedRecoveryFields(System.Text.Json.Nodes.JsonNode? source,
