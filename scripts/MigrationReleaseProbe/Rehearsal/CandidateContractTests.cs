@@ -52,6 +52,7 @@ internal static class CandidateContractTests
             else Console.WriteLine("RECEPTIONIST_CONTRACT:NOT_PRESENT_IN_ASSEMBLY");
             PredicateBounds();
             DefaultDefinitions();
+            CatalogPlans(CandidateContract.Current(db));
             foreach (var staleVersion in new[] { 1, 2 })
             {
                 File.WriteAllText(path, JsonSerializer.Serialize(new CandidateContract.Contract(staleVersion, new[] { entry }), CandidateContract.Json));
@@ -62,6 +63,40 @@ internal static class CandidateContractTests
         finally { File.Delete(path); }
         Console.WriteLine("LEGEND_MIGRATION_CONTRACT_TESTS:PASS");
     }
+    private static void CatalogPlans(CandidateContract.Contract contract)
+    {
+        // Golden plans were derived from the original serial observer source and
+        // exact contract artifact12286103244 (not an instrumented binary). They bind every SELECT, order and
+        // parameter name/value, not merely a command count or new implementation.
+        var suffix = contract.Migrations.Where(m => StringComparer.Ordinal.Compare(m.Id,
+            "20261007134500_AddFounderAssistantRules") >= 0 && StringComparer.Ordinal.Compare(m.Id,
+            RehearsalFixture.ReceptionistMigration) <= 0).ToArray();
+        Check(suffix.All(m => m.Supported), "golden suffix is additive");
+        void Verify(CandidateContract.Entry[] entries, string[] applied, int count, string digest)
+        {
+            var plan = CandidateContract.Plan(entries, applied, CancellationToken.None);
+            var text = string.Join("\n--next--\n", plan.Commands.Select(c => c.Sql + "\n" +
+                string.Join("\n", c.Parameters.Select(p => p.Name + "=" + p.Value))));
+            var actual = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(text)));
+            Check(plan.Commands.Count == count && actual == digest, "serial/batch exact ordered query plan");
+            Check(plan.Commands.Chunk(CandidateContract.CatalogBatch.MaximumCommands).Count() == (count + 31) / 32,
+                "bounded batch count");
+        }
+        var prefix = suffix.Where(m => m.Id != RehearsalFixture.ReceptionistMigration).ToArray();
+        Verify(prefix, prefix.Select(m => m.Id).ToArray(), 60,
+            "7c073dbf3499cea966223ee5eb7fa86db2241e0d5ad0e8ac4b20e99b5862e452");
+        if (suffix.Any(m => m.Id == RehearsalFixture.ReceptionistMigration))
+        {
+            Verify(suffix, prefix.Select(m => m.Id).ToArray(), 77,
+                "0b2abf92677119e023d7d43b4069e271d961d8def5197f133665c4c6e4616d3d");
+            Verify(suffix, suffix.Select(m => m.Id).ToArray(), 179,
+                "f849352447c5ea74d344066e6eb982efa1b1b66d37a793d6a5abc615d3e4ae9d");
+            Verify(suffix, new[] { "20261007134500_AddFounderAssistantRules" }, 30,
+                "7e35bf384f013d084c4a4916fb71039130c78b8c97937a8c3cdd26549c9142d7");
+        }
+    }
+
     private static void Receptionist(IReadOnlyList<MigrationOperation> operations, string path)
     {
         var entry = CandidateContract.Describe(RehearsalFixture.ReceptionistMigration, operations);

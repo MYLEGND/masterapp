@@ -1,44 +1,36 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue the Founder-authorized isolated website and scoped receptionist work. Promote only the independently reviewed bounded schema-observer diagnostics, exact error classification, focused tests and two existing control-path admissions through the nonpublishing trusted-tool process. This step authorizes no production deployment, schema mutation, routing, provider mutation or voice activation.",
-  "purpose": "Make actual read-only schema failure evidence precise without changing SQL, history compatibility, readiness, retry rules or the preserved feature runtime.",
-  "requestId": "founder-schema-observer-diagnostics-20261020-81c02280613f",
+  "authorization": "Continue the Founder-authorized isolated website and scoped receptionist work. Promote only the independently reviewed bounded catalog batching, own-token cancellation classification and focused regression controls through the existing nonpublishing trusted-tool process. This step authorizes no production deployment, schema mutation, routing, provider mutation or voice activation.",
+  "purpose": "Reduce repeated catalog round trips while preserving exact SQL, parameters, ordered validators, history compatibility, readiness, deadlines and retry rules. SQL0 cause is not established by this optimization.",
+  "requestId": "founder-catalog-batch-controls-20261020-a3e589ff12e1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "990929cc8a458f39948ba38d21442f951ba2023a",
-    "sourceRevision": "81c02280613fb2a55d17741bce02355c2a253fb4",
+    "baseRevision": "36f6f4693c83ed98eb9d45bc681c5ad81ce65022",
+    "sourceRevision": "a3e589ff12e189a61d9b59e8ec6ce16e57641a32",
     "files": {
       "scripts/MigrationReleaseProbe/Program.cs": {
         "mode": "100644",
-        "blob": "ee771499d51fdadc65fd0bdd020c319272cd5f27"
+        "blob": "4bf2447b8c6f8b6d763e80d686daed4a750acf55"
       },
-      "scripts/release-migration.py": {
+      "scripts/MigrationReleaseProbe/CandidateContract.cs": {
         "mode": "100644",
-        "blob": "27ab61878183951f0b4bda885637a9ef50c517ea"
+        "blob": "453638035e18d93e31f0f83ba4a6d4fc7ac478de"
       },
-      ".github/workflows/parfait-cutover-live-readonly.yml": {
+      "scripts/MigrationReleaseProbe/CandidateContract.Structures.cs": {
         "mode": "100644",
-        "blob": "fd37660ab05551023382184b5066ee0eb00112e5"
+        "blob": "4c94f86e40d8b13868f5ae62d675553f3cc89bcd"
       },
-      "scripts/test-release-migration-probe-retry.py": {
+      "scripts/MigrationReleaseProbe/Rehearsal/CandidateContractTests.cs": {
         "mode": "100644",
-        "blob": "3453d65877d1168480028083ae3c70f4ac637c21"
+        "blob": "139b8c778e6bb032612a42f4c33ad8f234ffefde"
       },
-      "scripts/test-parfait-readonly-workflow.py": {
+      "scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.cs": {
         "mode": "100644",
-        "blob": "67891f19788105f53d8e30776eb88600095b3bcc"
-      },
-      "scripts/release_policy.py": {
-        "mode": "100644",
-        "blob": "2fbfabb93e444b4328ece83e7874b31882c81dfa"
-      },
-      "scripts/test-release-policy.py": {
-        "mode": "100644",
-        "blob": "23a7db8b885433ce8490f0ed996376338ac528a4"
+        "blob": "47d5f0f114bcc5744197b1431859bba3a57f73cf"
       }
     }
   }

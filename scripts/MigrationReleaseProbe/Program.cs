@@ -13,6 +13,7 @@ using Microsoft.EntityFrameworkCore;
 var observationClock = Stopwatch.StartNew();
 var phaseClock = Stopwatch.StartNew();
 var observationPhase = "setup";
+CancellationToken observationCancellation = default;
 void Phase(string name) { observationPhase = name; phaseClock.Restart(); }
 void TimeoutDiagnostic()
 {
@@ -57,6 +58,7 @@ try
     if (export) { Console.WriteLine(CandidateContract.Export(db)); return; }
     if (contractTests) { TrustedCandidateContract.Test(CandidateContract.Current(db)); return; }
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+    observationCancellation = timeout.Token;
     Phase("contract");
     var trusted = CandidateContract.Current(db);
     var contract = contractPath is null ? trusted : TrustedCandidateContract.Read(contractPath);
@@ -427,6 +429,14 @@ try
         schemaIdentity = Convert.ToHexStringLower(SHA256.HashData(
             Encoding.UTF8.GetBytes(string.Join("\n", known))))
     }));
+}
+catch (SqlException) when (observationCancellation.IsCancellationRequested)
+{
+    // The observer's own deadline was actually canceled. SQL number zero alone
+    // is not a timeout or transient classification and never permits a retry.
+    Console.Error.WriteLine("LEGEND_SCHEMA_PROBE:SQL_READ_DEADLINE");
+    TimeoutDiagnostic();
+    Environment.ExitCode = 1;
 }
 catch (SqlException ex) when (ex.Number is 40197 or 40501 or 40613 or 49918 or 49919 or 49920)
 {
