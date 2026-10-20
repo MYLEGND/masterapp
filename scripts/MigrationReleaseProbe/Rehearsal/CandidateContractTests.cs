@@ -51,6 +51,7 @@ internal static class CandidateContractTests
                 Receptionist(assembly.CreateMigration(receptionist, db.Database.ProviderName!).UpOperations, path);
             else Console.WriteLine("RECEPTIONIST_CONTRACT:NOT_PRESENT_IN_ASSEMBLY");
             PredicateBounds();
+            DefaultDefinitions();
             foreach (var staleVersion in new[] { 1, 2 })
             {
                 File.WriteAllText(path, JsonSerializer.Serialize(new CandidateContract.Contract(staleVersion, new[] { entry }), CandidateContract.Json));
@@ -127,6 +128,34 @@ internal static class CandidateContractTests
         Check(CandidateContract.CheckCanonical("[Kind]='é'", account.Columns) !=
             CandidateContract.CheckCanonical("[Kind]=N'é'", account.Columns), "non-ASCII Unicode prefix retains meaning");
         Console.WriteLine("RECEPTIONIST_CONTRACT:PROVEN");
+    }
+    private static void DefaultDefinitions()
+    {
+        var bit = new CandidateContract.Column("dbo", "Synthetic", "Enabled", "bit", false,
+            JsonSerializer.SerializeToElement(false), null, null, null);
+        foreach (var value in new[] { false, true })
+        {
+            var column = bit with { Default = JsonSerializer.SerializeToElement(value) };
+            var literal = value ? "1" : "0";
+            foreach (var definition in new[] { literal, "((" + literal + "))", "(CONVERT([bit],(" + literal + ")))" })
+                Check(CandidateContract.DefaultMatches(column, definition), "exact bit default representation accepted");
+            foreach (var definition in new[] { value ? "0" : "1", "CONVERT([bit],(" + (value ? "0" : "1") + "))",
+                "CONVERT([bit],(2))", "CONVERT([bit],(-1))", "CONVERT([bit],(0+0))", "CONVERT([bit],(0),0)",
+                "CONVERT([int],(0))", "CONVERT([bit],('0'))", "CAST(0 AS int)", "(0); SELECT 1", "" })
+                Check(!CandidateContract.DefaultMatches(column, definition), "nonliteral or changed bit default rejected");
+        }
+        Check(!CandidateContract.DefaultMatches(bit with { Type = "int" }, "CONVERT([bit],(0))"),
+            "bit conversion does not normalize other column types");
+        Check(!CandidateContract.DefaultMatches(bit with { Default = JsonSerializer.SerializeToElement(0) }, "CONVERT([bit],(0))"),
+            "bit conversion requires a boolean contract default");
+        var text = bit with { Type = "nvarchar(100)", Default = JsonSerializer.SerializeToElement("literal") };
+        Check(CandidateContract.DefaultMatches(text, "(N'literal')"), "existing Unicode literal comparison preserved");
+        Check(!CandidateContract.DefaultMatches(text, "(N'LITERAL')"), "string default case remains significant");
+        var guid = bit with { Type = "uniqueidentifier", Default = JsonSerializer.SerializeToElement(Guid.Empty.ToString()) };
+        Check(CandidateContract.DefaultMatches(guid, "('00000000-0000-0000-0000-000000000000')"),
+            "existing Guid default comparison preserved");
+        var number = bit with { Type = "int", Default = JsonSerializer.SerializeToElement(42) };
+        Check(CandidateContract.DefaultMatches(number, "((42))"), "existing numeric default comparison preserved");
     }
     private static void Same(string expected, string actual, CandidateContract.Column[] columns) =>
         Check(CandidateContract.CheckCanonical(expected, columns) is { } left &&
