@@ -758,6 +758,7 @@ class AdmissionRepairScopeTests(unittest.TestCase):
             raise AssertionError(path)
         with patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='fixture'), \
              patch.object(authority,'api_get',side_effect=get), \
+             patch.object(authority,'fast_track_unpublished_apps_with_migration_intent',return_value=False), \
              patch.object(authority.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
              patch.object(authority.subprocess,'check_output',return_value=before+' '+original+' '+head):
             return authority.fast_track_effective_baseline(before,head)
@@ -1701,6 +1702,8 @@ class AllAttemptPrewriteScopeTests(unittest.TestCase):
                 return self.payloads[int(path.split('/')[4])]
             if '/jobs?' in path:
                 return self.payloads[2]
+            if '/artifacts?' in path:
+                return dict(total_count=0, artifacts=[])
             if path.startswith('commits/'):
                 return [dict(merged_at='time', merge_commit_sha=before,
                     base=dict(ref=authority.FAST_TRACK_PR_BASE), head=dict(repo=dict(full_name='owner/repo')))]
@@ -1970,6 +1973,7 @@ class CurrentObservationPrewriteTests(unittest.TestCase):
             raise AssertionError(path)
         with patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='fixture'), \
              patch.object(authority,'api_get',side_effect=api), \
+             patch.object(authority,'fast_track_unpublished_apps_with_migration_intent',return_value=False), \
              patch.object(authority,'_release_history_source',side_effect=lambda repo,sha,path,token:self.sources[path]), \
              patch.object(authority,'_release_job_log',side_effect=lambda *args:self.log()), \
              patch.object(authority,'fast_track_untriggered_repair_parent',return_value=None), \

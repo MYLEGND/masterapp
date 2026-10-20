@@ -2,7 +2,7 @@
   "requestedBy": "Founder",
   "authorization": "Continue the Founder-authorized receptionist production release recovery. Promote only the independently reviewed scoped catalog observer, its focused tests, and unpublished application-scope reader through the existing nonpublishing trusted-tool process. This step authorizes no production deployment, SQL replay, routing, provider mutation or voice activation.",
   "purpose": "Reduce repeated catalog reads while preserving physical checks and fixed deadlines, and carry only positively unpublished application scope while retaining the original migration intent and mandatory runtime SQL reconciliation.",
-  "requestId": "founder-catalog-snapshot-recovery-20261020-c2be9e2bd4cc",
+  "requestId": "founder-catalog-snapshot-recovery-20261020-2159564cd7d4",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -10,7 +10,7 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "d77869f989b9dd141bb3f02f250e473f43eb607a",
-    "sourceRevision": "c2be9e2bd4cc7de9ba8cc883291fdcb4078f1070",
+    "sourceRevision": "2159564cd7d4b4bac7a3531d422d2f1c67eb4323",
     "files": {
       "scripts/MigrationReleaseProbe/CandidateContract.cs": {
         "mode": "100644",
@@ -30,7 +30,7 @@
       },
       "scripts/test-fast-track-release.py": {
         "mode": "100644",
-        "blob": "3d3ea848514f215e52d076148f9b47aaff408a56"
+        "blob": "1c598427f56d682e08bca51e39b02926433d6758"
       }
     }
   }
