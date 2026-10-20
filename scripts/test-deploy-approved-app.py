@@ -1,6 +1,7 @@
 """Exercise ambiguous deployment outcomes without contacting or mutating Azure."""
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -9,7 +10,7 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
@@ -69,6 +70,280 @@ class RetainedJournal:
     intent = {'baselineDeploymentIds': []}
     def __init__(self): self.successes = []
     def record_success(self, ids): self.successes.append(ids)
+
+
+class AzureDeploymentObservationTests(unittest.TestCase):
+    revision = '71ccfc080166aff985718f48a99e22cdaa84e209'
+    operation = '780c67e3fd7a4559951fde66bd1a657f'
+
+    def setUp(self):
+        environment = patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'})
+        environment.start()
+        self.addCleanup(environment.stop)
+
+    def command(self, payload, *, code=0):
+        return subprocess.CompletedProcess([], code, json.dumps(payload), 'DO_NOT_ECHO_STDERR')
+
+    def child(self, suffix='detail1'):
+        return 'https://masterapp-client.scm.azurewebsites.net/api/deployments/' + self.operation + '/log/' + suffix
+
+    def test_invalid_identity_never_reaches_any_provider_read(self):
+        with patch.object(deploy.subprocess, 'run') as command, patch.object(deploy.Azure, 'observed_revision') as runtime:
+            for target, revision, operation in [
+                ('foreign-app', self.revision, self.operation), ('client', 'main', self.operation),
+                ('client', self.revision, 'latest'), ('client', self.revision, '../other'),
+                ('client', self.revision, self.operation + '?token=secret'),
+                ('client', self.revision, ' '), ('client', self.revision, [])]:
+                with self.subTest(target=target, operation=operation), self.assertRaises(ValueError):
+                    deploy.observe_azure_deployment(target, revision, operation)
+            command.assert_not_called()
+            runtime.assert_not_called()
+
+    def test_workflow_identity_is_checked_before_azure_login_or_read(self):
+        valid = {'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'workflow_dispatch',
+                 'GITHUB_REF': 'refs/heads/Legend/fast-track-release', 'GITHUB_SHA': 'a' * 40,
+                 'GITHUB_REPOSITORY': 'MYLEGND/masterapp',
+                 'GITHUB_WORKFLOW_REF': 'MYLEGND/masterapp/.github/workflows/deployment-diagnostics.yml@refs/heads/Legend/fast-track-release'}
+        with patch.dict(os.environ, valid), patch.object(deploy.subprocess, 'run') as command:
+            result = deploy.observe_azure_deployment('client', self.revision, self.operation, validate_only=True)
+            self.assertEqual('INPUTS_VALIDATED', result['readStatus'])
+            for name, bad in [('GITHUB_EVENT_NAME', 'push'), ('GITHUB_REF', 'refs/heads/foreign'),
+                              ('GITHUB_WORKFLOW_REF', valid['GITHUB_WORKFLOW_REF'].replace('deployment-diagnostics', 'another'))]:
+                with self.subTest(name=name), patch.dict(os.environ, {name: bad}), self.assertRaises(ValueError):
+                    deploy.observe_azure_deployment('client', self.revision, self.operation, validate_only=True)
+            command.assert_not_called()
+
+    def test_exact_operation_uses_canonical_target_and_does_not_echo_provider_text(self):
+        message = 'Operation timed out. Authorization: Bearer DO_NOT_ECHO_TOKEN; Password=DO_NOT_ECHO_PASSWORD'
+        rows = [{'type': 2, 'log_time': '2026-10-20T04:12:00Z', 'message': message}]
+        with patch.object(deploy.subprocess, 'run', return_value=self.command(rows)) as command:
+            result = deploy.observe_azure_deployment('client', self.revision, self.operation)
+        self.assertEqual(['TIMEOUT_ERROR'], result['reasonCodes'])
+        self.assertEqual(hashlib.sha256(message.encode()).hexdigest(), result['entries'][0]['messageSha256'])
+        self.assertEqual('2026-10-20T04:12:00+00:00', result['entries'][0]['time'])
+        self.assertNotIn('DO_NOT_ECHO', json.dumps(result))
+        self.assertFalse(result['releaseProof'])
+        self.assertFalse(result['authorizesMutation'])
+        self.assertTrue(result['reasonCodesAreTextMatches'])
+        self.assertEqual(['az', 'webapp', 'log', 'deployment', 'show', '-g', 'masterapp-rg',
+            '-n', 'masterapp-client', '--deployment-id', self.operation, '--only-show-errors', '-o', 'json'],
+            command.call_args.args[0])
+        self.assertEqual(30, command.call_args.kwargs['timeout'])
+        command.assert_called_once()
+
+    def test_unknown_provider_detail_is_not_guessed_or_echoed(self):
+        with patch.object(deploy.subprocess, 'run', return_value=self.command([
+                {'type': 'secret-type', 'log_time': 'DO_NOT_ECHO_TIME', 'message': 'DO_NOT_ECHO_UNFAMILIAR_PROVIDER_REASON'}])):
+            result = deploy.observe_azure_deployment('client', self.revision, self.operation)
+        self.assertEqual(['NO_CLASSIFIED_FAILURE_DETAIL'], result['reasonCodes'])
+        self.assertIsNone(result['entries'][0]['type'])
+        self.assertIsNone(result['entries'][0]['time'])
+        self.assertNotIn('DO_NOT_ECHO', json.dumps(result))
+
+    def test_timeout_is_one_read_without_retry_and_hides_exception_payload(self):
+        error = subprocess.TimeoutExpired(['secret-command'], 30, output='DO_NOT_ECHO_BODY', stderr='DO_NOT_ECHO_TOKEN')
+        with patch.object(deploy.subprocess, 'run', side_effect=error) as command:
+            result = deploy.observe_azure_deployment('client', self.revision, self.operation)
+        self.assertEqual('READ_TIMEOUT', result['readStatus'])
+        self.assertNotIn('DO_NOT_ECHO', json.dumps(result))
+        command.assert_called_once()
+
+    def test_invalid_oversized_or_failed_log_read_never_relays_payload(self):
+        results = [self.command({'message': 'DO_NOT_ECHO'}), self.command([{'message': {'token': 'DO_NOT_ECHO'}}]),
+                   self.command([], code=1), subprocess.CompletedProcess([], 0, 'DO_NOT_ECHO_NOT_JSON', 'secret'),
+                   self.command([{'message': 'DO_NOT_ECHO' * deploy.DIAGNOSTIC_MAX_BYTES}])]
+        for response in results:
+            with self.subTest(size=len(response.stdout)), patch.object(deploy.subprocess, 'run', return_value=response) as command:
+                result = deploy.observe_azure_deployment('client', self.revision, self.operation)
+                self.assertEqual('READ_UNAVAILABLE_OR_INVALID', result['readStatus'])
+                self.assertNotIn('DO_NOT_ECHO', json.dumps(result))
+                command.assert_called_once()
+
+    def test_untrusted_detail_links_never_request_a_token_or_send_a_get(self):
+        root = self.child()
+        links = [root.replace('masterapp-client', 'foreign'), root.replace(self.operation, 'anotheroperation'),
+                 root + '?sig=DO_NOT_ECHO', root + '#fragment', root.replace('https:', 'http:'),
+                 root.replace('.net/', '.net:443/'), root.replace('https://', 'https://user:secret@'),
+                 root.replace('/detail1', '/../another'), root.replace('/detail1', '/%2e%2e'), '\n' + root,
+                 'https://[invalid', 123]
+        with patch.object(deploy.subprocess, 'run', return_value=self.command([
+                {'message': 'Deployment failed', 'details_url': url} for url in links])) as command, \
+                patch.object(deploy.urllib.request, 'build_opener') as opener:
+            result = deploy.observe_azure_deployment('client', self.revision, self.operation)
+        self.assertEqual(len(links), result['rejectedDetailLinks'])
+        self.assertEqual([], result['nestedReadStates'])
+        self.assertNotIn('https:', json.dumps(result))
+        command.assert_called_once()
+        opener.assert_not_called()
+
+    def test_nested_get_uses_existing_bearer_only_for_exact_origin_operation_and_bounded_links(self):
+        links = [self.child('detail' + str(i)) for i in range(3)]
+        primary = self.command([{'message': 'Deployment failed', 'details_url': url} for url in links + links[:1]])
+        token = subprocess.CompletedProcess([], 0, 'synthetic.DO_NOT_ECHO_BEARER.signature', '')
+        opener = Mock()
+        opener.open.side_effect = [self.response(url, [{'type': 2, 'message': 'No space left on device /DO_NOT_ECHO_PATH'}])
+                                   for url in links[:2]]
+        with patch.object(deploy.subprocess, 'run', side_effect=[primary, token]) as command, \
+                patch.object(deploy.urllib.request, 'build_opener', return_value=opener) as build:
+            result = deploy.observe_azure_deployment('client', self.revision, self.operation)
+        self.assertTrue(result['detailsTruncated'])
+        self.assertIn('DISK_SPACE_ERROR', result['reasonCodes'])
+        self.assertEqual(['OBSERVED', 'OBSERVED'], result['nestedReadStates'])
+        self.assertEqual(2, command.call_count)
+        self.assertEqual(2, opener.open.call_count)
+        self.assertIsInstance(build.call_args.args[0], deploy._DiagnosticNoRedirect)
+        for call, url in zip(opener.open.call_args_list, links):
+            request = call.args[0]
+            self.assertEqual('GET', request.get_method())
+            self.assertEqual(url, request.full_url)
+            self.assertEqual('Bearer ' + token.stdout, request.get_header('Authorization'))
+        self.assertNotIn('DO_NOT_ECHO', json.dumps(result))
+        self.assertNotIn('https:', json.dumps(result))
+
+    def test_redirect_and_missing_auth_stay_unverified_without_following_or_leaking(self):
+        primary = self.command([{'message': '', 'details_url': self.child()}])
+        denied = subprocess.CompletedProcess([], 1, 'DO_NOT_ECHO_TOKEN', 'DO_NOT_ECHO_ERROR')
+        with patch.object(deploy.subprocess, 'run', side_effect=[primary, denied]), \
+                patch.object(deploy.urllib.request, 'build_opener') as build:
+            result = deploy.observe_azure_deployment('client', self.revision, self.operation)
+        self.assertEqual(['AUTHENTICATED_READ_UNAVAILABLE'], result['nestedReadStates'])
+        build.assert_not_called()
+        self.assertIsNone(deploy._DiagnosticNoRedirect().redirect_request(None, None, 302, None, None, 'https://foreign.invalid'))
+        opener = Mock()
+        opener.open.side_effect = deploy.urllib.error.HTTPError('https://DO_NOT_ECHO.invalid', 302, 'secret', {}, None)
+        with patch.object(deploy.subprocess, 'run', side_effect=[primary, subprocess.CompletedProcess([], 0, 'synthetic.token', '')]), \
+                patch.object(deploy.urllib.request, 'build_opener', return_value=opener):
+            result = deploy.observe_azure_deployment('client', self.revision, self.operation)
+        self.assertEqual(['REDIRECT_REFUSED'], result['nestedReadStates'])
+        self.assertNotIn('DO_NOT_ECHO', json.dumps(result))
+        opener.open.assert_called_once()
+
+    def test_nested_network_boundary_rechecks_scope_before_credentials(self):
+        with patch.object(deploy.subprocess, 'run') as command:
+            entries, state = deploy._diagnostic_nested_logs(['https://foreign.invalid'], 'masterapp-client', self.operation)
+        self.assertEqual([], entries)
+        self.assertEqual(['DETAIL_SCOPE_REJECTED'], state)
+        command.assert_not_called()
+
+    def test_nested_response_identity_size_and_content_remain_bounded(self):
+        wrong_origin = self.response('https://foreign.invalid/DO_NOT_ECHO', [])
+        too_large = self.response(self.child(), [{'message': 'DO_NOT_ECHO' * deploy.DIAGNOSTIC_MAX_BYTES}])
+        invalid = self.response(self.child(), {'message': 'DO_NOT_ECHO'})
+        cases = [(wrong_origin, 'RESPONSE_IDENTITY_UNPROVEN'), (too_large, 'RESPONSE_TOO_LARGE'),
+                 (invalid, 'READ_UNAVAILABLE_OR_INVALID')]
+        for response, expected in cases:
+            opener = Mock()
+            opener.open.return_value = response
+            with self.subTest(expected=expected), patch.object(deploy.subprocess, 'run', return_value=
+                    subprocess.CompletedProcess([], 0, 'synthetic.token', 'DO_NOT_ECHO')), \
+                    patch.object(deploy.urllib.request, 'build_opener', return_value=opener):
+                entries, states = deploy._diagnostic_nested_logs([self.child()], 'masterapp-client', self.operation)
+            self.assertEqual([], entries)
+            self.assertEqual([expected], states)
+            opener.open.assert_called_once()
+            self.assertEqual(15, opener.open.call_args.kwargs['timeout'])
+            if expected == 'RESPONSE_IDENTITY_UNPROVEN':
+                response.read.assert_not_called()
+            else:
+                response.read.assert_called_once_with(deploy.DIAGNOSTIC_MAX_BYTES + 1)
+            self.assertNotIn('DO_NOT_ECHO', json.dumps([entries, states]))
+
+    def test_child_log_does_not_recursively_follow_untrusted_provider_links(self):
+        opener = Mock()
+        opener.open.return_value = self.response(self.child(), [dict(message='Deployment failed',
+            details_url='https://foreign.invalid/DO_NOT_ECHO')])
+        with patch.object(deploy.subprocess, 'run', return_value=
+                subprocess.CompletedProcess([], 0, 'synthetic.token', '')), \
+                patch.object(deploy.urllib.request, 'build_opener', return_value=opener):
+            entries, states = deploy._diagnostic_nested_logs([self.child()], 'masterapp-client', self.operation)
+        self.assertEqual(['OBSERVED_WITH_UNFOLLOWED_DETAILS'], states)
+        self.assertEqual(['PROVIDER_FAILURE_MARKER'], entries[0]['reasonCodes'])
+        self.assertNotIn('DO_NOT_ECHO', json.dumps([entries, states]))
+        opener.open.assert_called_once()
+
+    def test_no_id_reports_bounded_history_and_runtime_without_proving_nonentry(self):
+        rows = [dict(id='provider' + str(i), status=3 if i == 0 else 4,
+                     received_time='2026-10-20T04:00:00Z', message='DO_NOT_ECHO_PROVIDER_TEXT') for i in range(25)]
+        with patch.object(deploy.subprocess, 'run', return_value=self.command(rows)) as command, \
+                patch.object(deploy.Azure, 'observed_revision', return_value=self.revision) as runtime:
+            result = deploy.observe_azure_deployment('client', self.revision)
+        self.assertEqual('history', result['mode'])
+        self.assertEqual(20, len(result['deployments']))
+        self.assertEqual(3, result['deployments'][0]['status'])
+        self.assertEqual(self.revision, result['observedRuntimeRevision'])
+        self.assertTrue(result['outputTruncated'])
+        self.assertFalse(result['historyIsComplete'])
+        self.assertFalse(result['emptyHistoryProvesNonEntry'])
+        self.assertFalse(result['releaseProof'])
+        self.assertNotIn('DO_NOT_ECHO', json.dumps(result))
+        self.assertEqual(['az', 'webapp', 'log', 'deployment', 'list'], command.call_args.args[0][:5])
+        command.assert_called_once()
+        runtime.assert_called_once()
+
+    def test_unknown_history_status_is_not_relabelled_as_a_known_provider_state(self):
+        for value in [7, 'secret-status', True]:
+            with self.subTest(status=value), patch.object(deploy.subprocess, 'run', return_value=
+                    self.command([dict(id='operation1', status=value, message='DO_NOT_ECHO')])), \
+                    patch.object(deploy.Azure, 'observed_revision', return_value=None):
+                result = deploy.observe_azure_deployment('protect', self.revision)
+            self.assertEqual('READ_UNAVAILABLE_OR_INVALID', result['readStatus'])
+            self.assertEqual([], result['deployments'])
+            self.assertNotIn('DO_NOT_ECHO', json.dumps(result))
+            self.assertFalse(result['releaseProof'])
+
+    def test_empty_or_unavailable_history_does_not_authorize_a_new_upload(self):
+        for response in [self.command([]), subprocess.TimeoutExpired(['secret'], 20)]:
+            with self.subTest(response=type(response).__name__), \
+                    patch.object(deploy.subprocess, 'run', side_effect=response if isinstance(response, Exception) else None,
+                                 return_value=response), patch.object(deploy.Azure, 'observed_revision', return_value='b' * 40):
+                result = deploy.observe_azure_deployment('protect', self.revision, '')
+            self.assertEqual([], result['deployments'])
+            self.assertFalse(result['emptyHistoryProvesNonEntry'])
+            self.assertFalse(result['authorizesMutation'])
+            self.assertEqual('b' * 40, result['observedRuntimeRevision'])
+
+    def test_cli_observation_cannot_enter_any_existing_mutation_authority(self):
+        for operation in [self.operation, '']:
+            args = ['deploy-approved-app.py', '--observe-azure-deployment', 'client',
+                    '--observation-revision', self.revision, '--deployment-id', operation]
+            output = io.StringIO()
+            forbidden = {name: Mock(side_effect=AssertionError('Mutation authority entered')) for name in
+                ('operation_journal', 'reconcile', 'fast_track_deploy', 'prepare_transaction',
+                 'publish_prepared_targets_parallel', 'transaction_disposition')}
+            with self.subTest(operation=operation), patch('sys.argv', args), patch('sys.stdout', output), \
+                    patch.multiple(deploy, **forbidden), patch.object(deploy.Azure, 'submit') as submit, \
+                    patch.object(deploy._RELEASE_AUTHORITY, 'assert_protected_release_execution') as admission, \
+                    patch.object(deploy.subprocess, 'run', return_value=self.command([])), \
+                    patch.object(deploy.Azure, 'observed_revision', return_value=self.revision):
+                deploy.main()
+                submit.assert_not_called()
+                admission.assert_not_called()
+            for method in forbidden.values(): method.assert_not_called()
+            self.assertFalse(json.loads(output.getvalue().split(':', 1)[1])['authorizesMutation'])
+
+    def test_diagnostic_only_diff_has_no_application_schema_or_routing_impact(self):
+        paths = ['.github/workflows/deployment-diagnostics.yml', 'scripts/deploy-approved-app.py',
+                 'scripts/test-deploy-approved-app.py']
+        result = deploy._RELEASE_AUTHORITY.fast_track_scope(paths)
+        self.assertEqual({'include': []}, result['matrix'])
+        for flag in ('selected', 'commerce', 'schema', 'routing'): self.assertFalse(result[flag])
+        workflow = (ROOT.parent / paths[0]).read_text()
+        jobs = deploy._RELEASE_AUTHORITY._job_blocks(workflow)
+        self.assertIn("inputs.scope == 'azure_deployment' && github.ref == 'refs/heads/Legend/fast-track-release'", jobs['azure-deployment'])
+        self.assertIn("github.ref == 'refs/heads/legend/approved-changes'", jobs['inspect'])
+        self.assertIn("github.ref == 'refs/heads/legend/approved-changes'", jobs['migration-inventory'])
+        self.assertLess(jobs['azure-deployment'].index('--validate-observation-only'), jobs['azure-deployment'].index('uses: azure/login@'))
+        self.assertNotIn('actions: write', jobs['azure-deployment'])
+
+    @staticmethod
+    def response(url, rows):
+        body = json.dumps(rows).encode()
+        response = Mock(status=200)
+        response.geturl.return_value = url
+        response.read.side_effect = lambda limit: body[:limit]
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=None)
+        return response
 
 
 class ReconciliationTests(unittest.TestCase):

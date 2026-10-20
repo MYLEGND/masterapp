@@ -11,9 +11,17 @@ on:
         required: true
         default: deployment
         type: choice
-        options: [deployment, migration_inventory]
+        options: [deployment, migration_inventory, azure_deployment]
       application_revision:
-        description: Exact validated application SHA for migration inventory
+        description: Exact immutable application SHA for the selected observation
+        required: false
+        type: string
+      target:
+        description: Canonical release target key for azure_deployment observation
+        required: false
+        type: string
+      deployment_id:
+        description: Exact Azure deployment ID; leave empty to observe rolling history and runtime
         required: false
         type: string
 permissions:
@@ -525,3 +533,43 @@ jobs:
           path: ${{ runner.temp }}/migration-inventory.json
           retention-days: 30
           if-no-files-found: error
+
+  azure-deployment:
+    name: Observe one Azure deployment without changing production
+    if: github.event_name == 'workflow_dispatch' && inputs.scope == 'azure_deployment' && github.ref == 'refs/heads/Legend/fast-track-release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: Production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      APPLICATION_REVISION: ${{ inputs.application_revision }}
+      OBSERVATION_TARGET: ${{ inputs.target }}
+      OBSERVATION_DEPLOYMENT_ID: ${{ inputs.deployment_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate exact observation before Azure access
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy-approved-app.py --observe-azure-deployment "$OBSERVATION_TARGET" \
+            --observation-revision "$APPLICATION_REVISION" --deployment-id "$OBSERVATION_DEPLOYMENT_ID" \
+            --validate-observation-only
+          git merge-base --is-ancestor "$APPLICATION_REVISION" "$GITHUB_SHA"
+      - name: Sign in to existing read-only Azure observation
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Read scoped provider evidence without release authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy-approved-app.py --observe-azure-deployment "$OBSERVATION_TARGET" \
+            --observation-revision "$APPLICATION_REVISION" --deployment-id "$OBSERVATION_DEPLOYMENT_ID"
