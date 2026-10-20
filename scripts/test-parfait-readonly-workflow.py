@@ -200,5 +200,47 @@ class TrustedContractExecutionTests(unittest.TestCase):
             with self.subTest(raw=raw),self.assertRaisesRegex(SystemExit,'CONTRACT_UNPROVEN'):self.execute()
         self.owner.candidate_migration_contract_proven.assert_not_called()
 
+
+
+
+class SchemaFailureClassificationTests(unittest.TestCase):
+    def test_actual_schema_step_classifies_only_authored_runtime_errors(self):
+        import json, tempfile
+        schema=text.split("python3 - <<'PYSCHEMA'\n",1)[1].split('          PYSCHEMA',1)[0]
+        schema='\n'.join(line[10:] for line in schema.splitlines())
+        expected = {
+            'Schema probe process deadline exceeded':'PROBE_PROCESS_DEADLINE',
+            'Invalid read-only schema proof':'PROBE_INVALID_PROOF',
+            'Read-only schema proof unavailable; nontransient or unclassified failure':'PROBE_OUTPUT_UNRECOGNIZED',
+            'Transient SQL schema read exhausted bounded retries':'PROBE_TRANSIENT_EXHAUSTED',
+            'Schema probe unclassified exception; readiness unproven':'UNCLASSIFIED',
+        }
+        cases=[(RuntimeError(message), code) for message,code in expected.items()]
+        cases += [(ValueError('Invalid read-only schema proof'),'CANONICAL_SCHEMA_OBSERVATION_UNPROVEN'),
+                  (RuntimeError('Server=private;Password=private'),'CANONICAL_SCHEMA_OBSERVATION_UNPROVEN')]
+        for error,code in cases:
+            with self.subTest(code=code,errorType=type(error).__name__), tempfile.TemporaryDirectory() as directory:
+                root=Path(directory);(root/'parfait-proof').mkdir();(root/'parfait-candidate-contract').mkdir()
+                (root/'trusted-contract-proof.json').write_text('{}')
+                (root/'parfait-candidate-contract/migration-contract.json').write_text('{}')
+                module=SimpleNamespace(PROBE_TERMINAL_REASONS={'UNCLASSIFIED':
+                    'Schema probe unclassified exception; readiness unproven'},
+                    connection_string=Mock(return_value='opaque'), observe=Mock(side_effect=error))
+                spec=SimpleNamespace(loader=SimpleNamespace(exec_module=lambda value:None))
+                stdout=io.StringIO()
+                with patch('importlib.util.spec_from_file_location',return_value=spec), \
+                     patch('importlib.util.module_from_spec',return_value=module), \
+                     patch('subprocess.run',return_value=SimpleNamespace(returncode=1)), \
+                     patch.dict(os.environ,{'RUNNER_TEMP':directory,'CANDIDATE_SHA':'a'*40,'GITHUB_SHA':'b'*40,
+                         'CONTRACT_ARTIFACT_ID':'1','OBSERVER_ARTIFACT_ID':'2','GITHUB_RUN_ID':'3','GITHUB_RUN_ATTEMPT':'1'}), \
+                     contextlib.redirect_stdout(stdout), self.assertRaisesRegex(SystemExit,'SQL_SCHEMA_PLAN_INCOMPLETE'):
+                    exec(compile(schema,'trusted-schema-step','exec'),{})
+                result=json.loads((root/'parfait-proof/sanitized-schema.json').read_text())
+                self.assertFalse(result['authorizesMutation']);self.assertIsNone(result['sharedDatabase'])
+                for app in result['applications'].values():
+                    self.assertEqual(code,app['reason']);self.assertFalse(app['observed'])
+                self.assertNotIn('private',stdout.getvalue())
+                self.assertEqual(2,module.observe.call_count)
+
 if __name__=='__main__':
     unittest.main()

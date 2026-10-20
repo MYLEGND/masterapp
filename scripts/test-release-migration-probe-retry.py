@@ -167,6 +167,53 @@ class ProbeObservationTests(TestCase):
                 sleep.assert_not_called()
                 notice.assert_not_called()
 
+class SafeFailureDiagnosticTests(TestCase):
+    def test_bounded_diagnostic_is_terminal_and_never_relays_provider_data(self):
+        for code in ('UNCLASSIFIED', 'RUNTIME_INVALID_OPERATION'):
+            line = 'LEGEND_SCHEMA_FAILURE:catalog-contract:TYPES:Microsoft.Data.SqlClient.SqlException,System.Exception:SQL:207'
+            result = subprocess.CompletedProcess([], 1, 'Server=private;Password=private',
+                'LEGEND_SCHEMA_PROBE:' + code + '\n' + line + '\n')
+            with self.subTest(code=code), mock.patch.object(m.subprocess, 'run', return_value=result) as run, \
+                 mock.patch.object(m.time, 'sleep') as sleep, mock.patch('builtins.print') as notice:
+                with self.assertRaisesRegex(RuntimeError, m.PROBE_TERMINAL_REASONS[code]):
+                    m.observe('probe', 'opaque')
+            run.assert_called_once(); sleep.assert_not_called()
+            notice.assert_called_once_with(line, flush=True)
+
+    def test_invalid_diagnostics_never_log_or_retry(self):
+        good = 'LEGEND_SCHEMA_FAILURE:catalog-contract:TYPES:System.Exception:SQL:NONE'
+        cases = [
+            ('UNCLASSIFIED', good.replace('catalog-contract', 'unknown')),
+            ('UNCLASSIFIED', good.replace('System.Exception', 'A' * 161)),
+            ('UNCLASSIFIED', good.replace('System.Exception', ','.join(['A'] * 5))),
+            ('UNCLASSIFIED', good.replace('System.Exception', 'Server=private;Password=private')),
+            ('UNCLASSIFIED', good.replace('System.Exception', '/private/path.cs')),
+            ('UNCLASSIFIED', good.replace('System.Exception', 'System.Exception\nprivate')),
+            ('UNCLASSIFIED', good.replace('NONE', '12345678901')),
+            ('UNCLASSIFIED', good + '\nextra'), ('TRANSIENT_SQL_READ', good),
+            ('SQL_AUTH', good), ('', good), ('UNCLASSIFIED', ''),
+        ]
+        for code, diagnostic in cases:
+            payload = ('LEGEND_SCHEMA_PROBE:' + code + '\n' if code else '') + diagnostic
+            # An empty diagnostic after a valid legacy one-line marker remains compatible.
+            if code == 'UNCLASSIFIED' and not diagnostic:
+                payload = diagnostic
+            with self.subTest(payload=payload):
+                result = subprocess.CompletedProcess([], 1, '', payload)
+                with mock.patch.object(m.subprocess, 'run', return_value=result) as run, \
+                     mock.patch.object(m.time, 'sleep') as sleep, mock.patch('builtins.print') as notice:
+                    with self.assertRaisesRegex(RuntimeError, 'unclassified failure'):
+                        m.observe('probe', 'opaque')
+                run.assert_called_once(); sleep.assert_not_called(); notice.assert_not_called()
+
+    def test_invalid_json_remains_terminal_and_private(self):
+        result = subprocess.CompletedProcess([], 0, 'Password=private', '')
+        with mock.patch.object(m.subprocess, 'run', return_value=result) as run, \
+             mock.patch.object(m.time, 'sleep') as sleep, mock.patch('builtins.print') as notice:
+            with self.assertRaisesRegex(RuntimeError, '^Invalid read-only schema proof$'):
+                m.observe('probe', 'opaque')
+        run.assert_called_once(); sleep.assert_not_called(); notice.assert_not_called()
+
 class MigrationAssemblyHistoryContractTests(TestCase):
     def test_frozen_historical_sources_remain_unchanged_and_canonical(self):
         root = Path(__file__).resolve().parents[1]

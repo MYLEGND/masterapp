@@ -301,7 +301,11 @@ jobs:
                   # Emit only locally authored codes, never provider text or values.
                   reasons={value:key for key,value in migration.PROBE_TERMINAL_REASONS.items()}
                   reasons.update({'Database configuration observation unavailable':'AZURE_CONFIGURATION_READ_UNAVAILABLE',
-                                  'Production SQL connection unavailable':'SQL_CONFIGURATION_UNAVAILABLE'})
+                                  'Production SQL connection unavailable':'SQL_CONFIGURATION_UNAVAILABLE',
+                                  'Schema probe process deadline exceeded':'PROBE_PROCESS_DEADLINE',
+                                  'Invalid read-only schema proof':'PROBE_INVALID_PROOF',
+                                  'Read-only schema proof unavailable; nontransient or unclassified failure':'PROBE_OUTPUT_UNRECOGNIZED',
+                                  'Transient SQL schema read exhausted bounded retries':'PROBE_TRANSIENT_EXHAUSTED'})
                   code=reasons.get(str(error),'CANONICAL_SCHEMA_OBSERVATION_UNPROVEN') if type(error) is RuntimeError else 'CANONICAL_SCHEMA_OBSERVATION_UNPROVEN'
                   results[app]={'observed':False,'reason':code}
                   if connection:
