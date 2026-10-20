@@ -61,8 +61,6 @@ public static class WebsiteLeadEmailTemplate
 
     public static string SubjectFor(WebsiteLead lead)
     {
-        if (lead.InterestType == ReceptionistInquiryAuthority.InterestType)
-            return "New confirmed voice inquiry";
         if (string.Equals(lead.InterestType, "ProtectionInquiry", StringComparison.OrdinalIgnoreCase))
             return "New LEGEND Legacy Protection inquiry";
         if (!string.Equals(lead.InterestType, "BusinessInquiry", StringComparison.OrdinalIgnoreCase))

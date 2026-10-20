@@ -99,33 +99,6 @@ public sealed class WebsiteIntakeRecipientResolver(MasterAppDbContext db, IConfi
             tracking.AgentUpn);
     }
 
-    internal async Task<string?> ResolveCrmOwnerAsync(MarketingOwnerScope owner, CancellationToken ct = default)
-    {
-        if (owner.CommerceBusinessId is { } businessId)
-            return await db.CommerceBusinesses.AsNoTracking()
-                .AnyAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", ct) ? string.Empty : null;
-        if (owner.AgentTrackingProfileId is { } trackingId)
-            return CleanActor(await db.AgentTrackingProfiles.AsNoTracking()
-                .Where(x => x.Id == trackingId && x.Status == "active")
-                .Select(x => x.AgentUserId).SingleOrDefaultAsync(ct));
-        if (owner != MarketingOwnerScope.Founder) return null;
-
-        // Founder is its own workspace; a CommerceBusiness or caller-provided email cannot stand in for it.
-        var founderEmail = FirstValidEmail(configuration["Founder:Email"], configuration["Founder:Upn"]);
-        if (founderEmail is null) return null;
-        var normalized = founderEmail.ToLowerInvariant();
-        var trackingActor = await db.AgentTrackingProfiles.AsNoTracking()
-            .Where(x => x.Status == "active" && x.AgentUpn.ToLower() == normalized)
-            .OrderByDescending(x => x.UpdatedUtc).Select(x => x.AgentUserId).FirstOrDefaultAsync(ct);
-        if (CleanActor(trackingActor) is { } actor) return actor;
-        return CleanActor(await db.AgentProfiles.AsNoTracking()
-            .Where(x => x.IsActive && (x.NormalizedEmail == normalized || x.AgentUpn.ToLower() == normalized))
-            .OrderByDescending(x => x.UpdatedUtc).Select(x => x.AgentUserId).FirstOrDefaultAsync(ct));
-    }
-
-    private static string? CleanActor(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
-
     private static string? FirstValidEmail(params string?[] candidates)
     {
         foreach (var candidate in candidates)

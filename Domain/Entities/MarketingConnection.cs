@@ -39,12 +39,4 @@ public sealed class MarketingConnection
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     public Guid Revision { get; set; } = Guid.NewGuid();
-
-    // Voice extends this owner/provider authority without borrowing Ads credentials or readiness.
-    public Guid? ReceptionistActiveConfigurationId { get; set; }
-    public string? ReceptionistIngressKey { get; set; }
-    // Project-wide provider delivery requires an exclusive owner claim, retained while inactive.
-    public string? ReceptionistProviderProjectKey { get; set; }
-    public bool ReceptionistAdmissionEnabled { get; set; }
-    public Guid ReceptionistControlRevision { get; set; } = Guid.NewGuid();
 }

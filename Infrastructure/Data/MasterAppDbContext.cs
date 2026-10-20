@@ -266,7 +266,6 @@ public class MasterAppDbContext : DbContext
                     jsonOutputMapping));
         }
         modelBuilder.ApplyConfiguration(new MarketingConnectionConfiguration());
-        ReceptionistModelConfiguration.Configure(modelBuilder);
         modelBuilder.Entity<FounderAiActionAuthorization>(entity =>
         {
             entity.ToTable("FounderAiActionAuthorizations");

@@ -1192,7 +1192,6 @@ function isSoon(nextISO){
 
 /* ========= CRM STORE ========= */
 const pipelineLabels = {
-  ServiceInquiry: "SERVICE INQUIRIES",
   MortgageProtection: "MORTGAGE PROTECTION LEADS",
   LifeInsurance: "LIFE INSURANCE LEADS",
   TermLife: "TERM LIFE LEADS",
@@ -1238,7 +1237,6 @@ const pipelineStages = crmBusinessId ? JSON.parse(crmWorkspace.dataset.pipelineS
   { key: "Booked", label: "Booked", tone: "good", className: "stage-meetingscheduled", note: "Appointment set; prepare and confirm." },
   { key: "FollowUp", label: "Follow Up", tone: "warn", className: "stage-proposalsent", note: "Needs follow-up after conversation." },
   // Core lead buckets (keep existing order)
-  { key: "ServiceInquiry", label: "SERVICE INQUIRIES", tone: "info", className: "stage-contacted", note: "Service inquiries with confirmed intake details; qualification and identity reconciliation remain separate." },
   { key: "MortgageProtection", label: "MORTGAGE PROTECTION LEADS", tone: "warn", className: "stage-newlead", note: "Mortgage Protection leads direct from scripts." },
   { key: "LifeInsurance", label: "LIFE INSURANCE LEADS", tone: "good", className: "stage-qualified", note: "General life insurance requests ready for first touch." },
   { key: "TermLife", label: "TERM LIFE LEADS", tone: "good", className: "stage-qualified", note: "Term life requests ready for fast protection reviews." },
@@ -1329,13 +1327,11 @@ function normalizePipelineStageValue(stage, fallback = "MortgageProtection"){
   return crmBusinessId ? (pipelineStages.find(x => x.key === fallback)?.key || pipelineStages[0]?.key || "") : (pipelineAliases[value.toLowerCase()] || fallback);
 }
 
-const productBuckets = new Set(["MortgageProtection","LifeInsurance","TermLife","WholeLife","IUL","FinalExpense","DisabilityInsurance","AutoInsurance","HomeInsurance","HealthInsurance","CommercialInsurance","ServiceInquiry"]);
+const productBuckets = new Set(["MortgageProtection","LifeInsurance","TermLife","WholeLife","IUL","FinalExpense","DisabilityInsurance","AutoInsurance","HomeInsurance","HealthInsurance","CommercialInsurance"]);
 const requestedAmountLeadTypes = new Set(["LifeInsurance","TermLife","WholeLife","IUL","FinalExpense"]);
 const derivedPipelineFilterStages = new Set(["CalledToday"]);
 
 function normalizeOriginalLeadTypeValue(value){
-  const exactProduct = Array.from(productBuckets).find(key => key.toLowerCase() === norm(value).toLowerCase());
-  if (exactProduct) return exactProduct;
   const normalized = normalizePipelineStageValue(value, "");
   return productBuckets.has(normalized) ? normalized : "";
 }
@@ -1393,15 +1389,6 @@ function resolveWorkLeadDestination(row, detail){
       row?.dataset?.intakeQuoteType,
       row?.dataset?.intakeProductInterest
     );
-
-  if (leadType === "ServiceInquiry"){
-    return {
-      queueKey: "",
-      route: crmBusinessId ? `/business/${encodeURIComponent(crmBusinessId)}/leads` : "/Leads",
-      label: "Open Service Inquiry CRM",
-      note: "Service inquiries are available in CRM."
-    };
-  }
 
   if (leadType === "FinalExpense"){
     return {
@@ -1518,31 +1505,25 @@ function updateImportCsvHelp(bucket){
 
 function applyQuickViewContactProfileLabels(row, detail, stageOverride){
   const leadType = resolveQuickViewLeadType(row, detail, stageOverride);
-  const serviceInquiry = leadType === "ServiceInquiry";
-  const requestedAmount = isLifeOrFinalExpenseLeadType(leadType);
-  const hideLender = requestedAmount || serviceInquiry;
+  const hideLender = isLifeOrFinalExpenseLeadType(leadType);
 
   const lenderField = document.getElementById("dLenderField");
-  const loanField = document.getElementById("dLoanField");
   const lenderLabel = document.getElementById("dLenderLabel");
   const loanLabel = document.getElementById("dLoanLabel");
 
   if (lenderField){
     lenderField.style.display = hideLender ? "none" : "";
   }
-  if (loanField){
-    loanField.style.display = serviceInquiry ? "none" : "";
-  }
   if (lenderLabel){
     lenderLabel.textContent = "Mortgage Lender";
   }
   if (loanLabel){
-    loanLabel.textContent = requestedAmount ? "Requested" : "Loan Amount";
+    loanLabel.textContent = hideLender ? "Requested" : "Loan Amount";
   }
   if (dLoanAmount){
-    dLoanAmount.placeholder = requestedAmount ? "e.g. 250" : "e.g. 250000";
+    dLoanAmount.placeholder = hideLender ? "e.g. 250" : "e.g. 250000";
   }
-  if (requestedAmount && dLender){
+  if (hideLender && dLender){
     dLender.value = "";
   }
 }
@@ -5784,7 +5765,7 @@ function renderCards(filteredRows){
           </div>
           <div class="pipeline-lane-meta" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <span class="pipeline-lane-count">${stageRows.length} contact${stageRows.length === 1 ? "" : "s"}</span>
-            ${productBuckets.has(stage.key) && stage.key !== "ServiceInquiry" ? `<button type="button" class="btn btn-gold" data-import-bucket="${safeHtml(stage.key)}">Import CSV</button>` : ""}
+            ${productBuckets.has(stage.key) ? `<button type="button" class="btn btn-gold" data-import-bucket="${safeHtml(stage.key)}">Import CSV</button>` : ""}
           </div>
         </div>
         <div class="pipeline-lane-body" data-dropzone="${safeHtml(stage.key)}">

@@ -21,7 +21,7 @@ internal sealed record MarketingProviderCredential(
     DateTime? CredentialExpiresUtc,
     Guid Revision);
 
-public sealed partial class MarketingConnectionStore(MasterAppDbContext db, MarketingCredentialProtector protector)
+public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCredentialProtector protector)
 {
     public Task<bool> ExistsAsync(MarketingOwnerScope owner, CancellationToken ct = default) =>
         ExistsAsync(owner, MarketingDestinationKeys.Meta, ct);
@@ -640,8 +640,6 @@ public static class MarketingServiceRegistration
         services.AddSingleton(sp => MarketingCredentialProtector.CreateShared(
             sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>()));
         services.AddScoped<MarketingConnectionStore>();
-        services.TryAddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddScoped<Infrastructure.Reception.ReceptionistAdmissionService>();
         services.AddScoped<MarketingExternalAdsOAuthService>();
         services.AddScoped<IMarketingExternalAdsReportingService, MarketingExternalAdsReportingService>();
         services.AddHttpClient("MarketingExternalAds", client =>

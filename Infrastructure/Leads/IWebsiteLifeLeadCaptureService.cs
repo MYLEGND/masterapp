@@ -28,9 +28,6 @@ public sealed record WebsiteLifeLeadCaptureRequest
     public Guid? AgentTrackingProfileId { get; init; }
     public string? AgentSlug { get; init; }
     public string? RecipientEmail { get; init; }
-    // Internal channel adapters must supply a resolved owner and explicit canonical bucket.
-    // Confirmed inbound observations do not authorize changes to a matching existing contact.
-    internal ConfirmedInquiryCapturePolicy? ConfirmedInquiry { get; init; }
 }
 
 public sealed record WebsiteLifeLeadCaptureResult(

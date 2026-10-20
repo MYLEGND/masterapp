@@ -1,15 +1,93 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue the Founder-authorized canonical Forms and reusable tenant-scoped receptionist work, including spending coordination and confirmed-inquiry integration. This request covers the reviewed additive schema and managed-application source deployment after all existing source, SQL rehearsal and deployment-reconciliation gates pass. Provider funding, paid calls, forwarding and public voice activation remain separate acceptance steps; this request grants no bypass of those requirements or unresolved deployment evidence.",
-  "purpose": "Deploy the reviewed reusable scoped-business receptionist runtime, editable inactive configuration, spending coordination and canonical confirmed-inquiry integration through the existing protected release path.",
-  "requestId": "founder-tenant-receptionist-20261020-e71f469eb09d",
-  "releaseMode": "approved-only",
-  "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect",
-    "masterapp-parfait"
-  ],
+  "authorization": "Continue the Founder-authorized canonical Forms and tenant-scoped receptionist work from the current session. This reviewed step is limited to validation-only promotion of the existing release and schema tooling; it authorizes no production app deployment, schema mutation, routing change, provider change or voice activation.",
+  "purpose": "Promote reviewed trusted schema validation, exact receptionist impact ownership and durable Azure request correlation through the existing protected release path.",
+  "requestId": "founder-canonical-tool-promotion-20261020-314a6efcb909",
+  "releaseMode": "validate-only",
+  "targets": [],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false
+  "preserveLiveTargets": false,
+  "trustedToolPromotion": {
+    "schemaVersion": 1,
+    "baseRevision": "ee32e1c5f9e08d17369855c250dc99d8c3e16ce0",
+    "sourceRevision": "314a6efcb909ca02cef3fcd9b88b840b7fc8d433",
+    "files": {
+      ".github/workflows/masterapp-platform-architecture-validation.yml": {
+        "mode": "100644",
+        "blob": "872d67f2d3ed8f6a3f82d7dcec550c7b0cb6e3d9"
+      },
+      ".github/workflows/parfait-cutover-live-readonly.yml": {
+        "mode": "100644",
+        "blob": "3e222b384dc2bdc94bb728f20cb70cdd672e81c1"
+      },
+      "scripts/MigrationReleaseProbe/CandidateContract.Structures.cs": {
+        "mode": "100644",
+        "blob": "950d5bc62f0737dc7d08493080cb46dfcec3eadc"
+      },
+      "scripts/MigrationReleaseProbe/CandidateContract.cs": {
+        "mode": "100644",
+        "blob": "da45cea4718e07e90aee8a03602fad3d405a2263"
+      },
+      "scripts/MigrationReleaseProbe/Program.cs": {
+        "mode": "100644",
+        "blob": "fabbfcf3ad8e3291614b67177f7610b6d57f3282"
+      },
+      "scripts/MigrationReleaseProbe/Rehearsal/CandidateContractTests.cs": {
+        "mode": "100644",
+        "blob": "64394c25783565450c52360d194d054ad0b845dc"
+      },
+      "scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.cs": {
+        "mode": "100644",
+        "blob": "7b916bbf06dc154b8b876356a9463673b11c416c"
+      },
+      "scripts/deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "564412a5f6370ef9eaadb0203e9033aa92a80cf5"
+      },
+      "scripts/migration-probe-package.py": {
+        "mode": "100644",
+        "blob": "f432eaa428cbf2f260ec3a44ae17819e7661f887"
+      },
+      "scripts/release-operation-evidence.py": {
+        "mode": "100644",
+        "blob": "c2471b0eef47388e001780a304fc59775a8a0296"
+      },
+      "scripts/release_policy.py": {
+        "mode": "100644",
+        "blob": "01bb1527fe5aaf966ccf1b2a64d4faba5a0f6f1c"
+      },
+      "scripts/test-deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "d6f0f9d17309d31a00e6bd6e66afd55dd68d41cf"
+      },
+      "scripts/test-fast-track-release.py": {
+        "mode": "100644",
+        "blob": "5ef5487f9d82736947ed6dc70aa8355b8a946d2f"
+      },
+      "scripts/test-migration-probe-package.py": {
+        "mode": "100644",
+        "blob": "9e7326dece369aa4d6ec8ab049cdc92e74667708"
+      },
+      "scripts/test-parfait-readonly-workflow.py": {
+        "mode": "100644",
+        "blob": "2ff7350d03222d992941a6efdf258310865060b8"
+      },
+      "scripts/test-release-operation-evidence.py": {
+        "mode": "100755",
+        "blob": "7403cfe93cc727af7b754f0f376a61ad613e1a29"
+      },
+      "scripts/test-release-policy.py": {
+        "mode": "100644",
+        "blob": "a7168390d4ee944966701c31ef11cc47d40c30b9"
+      },
+      "scripts/test-validation-resume.py": {
+        "mode": "100644",
+        "blob": "8342c3c712018155387ea86e54a415b0386f4b9b"
+      },
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "2d18af77d5e6f8df52a82bb57c011c50fff33abc"
+      }
+    }
+  }
 }

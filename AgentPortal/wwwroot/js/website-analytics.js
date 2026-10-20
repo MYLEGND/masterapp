@@ -5541,20 +5541,6 @@ function escapeHtml(value) {
       ? `Configuring ${payload.agentName}`
       : 'Scoped marketing configuration';
 
-    const receptionistLink = document.getElementById('marketing-setup-receptionist');
-    if (receptionistLink) {
-      receptionistLink.removeAttribute('href');
-      receptionistLink.setAttribute('aria-disabled', 'true');
-      receptionistLink.setAttribute('tabindex', '-1');
-      if (typeof payload.agentProfileId === 'string' && payload.agentProfileId && receptionistLink.dataset.receptionistUrl) {
-        const target = new URL(receptionistLink.dataset.receptionistUrl, window.location.href);
-        target.searchParams.set('agentProfileId', payload.agentProfileId);
-        receptionistLink.href = target.pathname + target.search;
-        receptionistLink.removeAttribute('aria-disabled');
-        receptionistLink.removeAttribute('tabindex');
-      }
-    }
-
     setMarketingSetupChip('publicReady', status.publicReady, 'Ready', 'Needs attention', true);
     setMarketingSetupChip('metaCustomPixel', status.metaCustomPixel, 'Custom pixel', 'LEGEND default');
     setMarketingSetupChip('openAiReady', status.openAiReady, 'Configured', 'Needs configuration', true);
