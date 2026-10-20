@@ -30,6 +30,17 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
         var websiteLead = await _db.WebsiteLeads
             .FirstOrDefaultAsync(x => x.LeadId == request.WebsiteLeadId, cancellationToken);
 
+        var confirmed = request.ConfirmedInquiry;
+        if (confirmed is not null)
+        {
+            if (websiteLead is null || websiteLead.AgentTrackingProfileId != confirmed.Owner.AgentTrackingProfileId ||
+                websiteLead.CommerceBusinessId != confirmed.Owner.CommerceBusinessId ||
+                (!confirmed.Owner.CommerceBusinessId.HasValue && string.IsNullOrWhiteSpace(confirmed.AgentUserId)) ||
+                !WorkstationLeadBuckets.ProductBuckets.Contains(confirmed.CrmBucket, StringComparer.Ordinal))
+                throw new InvalidOperationException("A confirmed inquiry requires its persisted owner and explicit canonical CRM bucket.");
+            bucket = confirmed.CrmBucket;
+        }
+
         if (WebsiteLeadCaptureSafety.ShouldSkipWorkstationCapture(websiteLead))
         {
             _logger.LogInformation(
@@ -45,7 +56,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
             if (businessId == Guid.Empty || websiteLead!.AgentTrackingProfileId.HasValue ||
                 !await _db.CommerceBusinesses.AnyAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", cancellationToken))
                 throw new InvalidOperationException("The website lead has no valid permanent business owner.");
-            bucket = "BusinessInquiry";
+            if (confirmed is null) bucket = "BusinessInquiry";
         }
         var initialStage = "New";
         if (businessId.HasValue)
@@ -54,7 +65,8 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
                 .SingleAsync(x => x.CommerceBusinessId == businessId, cancellationToken);
             initialStage = Shared.Crm.BusinessWorkspacePreferences.Read(settings.WorkspacePreferencesJson).Stages[0];
         }
-        var agentUserId = businessId.HasValue ? string.Empty : await ResolveAgentUserIdAsync(request, cancellationToken);
+        var agentUserId = businessId.HasValue ? string.Empty :
+            confirmed?.AgentUserId ?? await ResolveAgentUserIdAsync(request, cancellationToken);
         if (!businessId.HasValue && string.IsNullOrWhiteSpace(agentUserId))
         {
             _logger.LogWarning(
@@ -82,7 +94,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
             : null;
 
         WorkstationLeadProfile? existing = null;
-        if (!string.IsNullOrWhiteSpace(normalizedPhone) || !string.IsNullOrWhiteSpace(normalizedEmail))
+        if (confirmed is null && (!string.IsNullOrWhiteSpace(normalizedPhone) || !string.IsNullOrWhiteSpace(normalizedEmail)))
         {
             // Check tracked local leads first so repeated submissions folded into the same unit of work
             // still attach to the same internal lead before SaveChanges runs.
@@ -113,7 +125,9 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
         var created = false;
         if (existing == null)
         {
-            var leadId = businessId.HasValue
+            // An inbound observation is not account authentication or an accepted cross-channel identity merge.
+            // Its action-stable intake identity preserves existing contacts and keeps reconciliation explicit.
+            var leadId = confirmed is not null ? request.WebsiteLeadId.ToString("N") : businessId.HasValue
                 ? new Guid(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
                     $"business-contact:v1|{businessId:N}|{normalizedEmail}")).AsSpan(0, 16)).ToString("N")
                 : request.WebsiteLeadId.ToString("N");
@@ -317,6 +331,16 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
             return string.Empty;
 
         var summary = new List<IntakeSummaryItem>();
+        if (ReadMetadataString(root, "Channel") == "inbound_voice")
+        {
+            foreach (var (key, label) in new[] { ("RequestSummary", "Stated Need"), ("BusinessName", "Business"),
+                ("ContactPurpose", "Contact Purpose"), ("ContactStatus", "Contact Confirmation"),
+                ("RequestedNextAction", "Requested Next Action"), ("Timing", "Timing"),
+                ("DeduplicationState", "Inquiry Reconciliation") })
+                if (ReadMetadataString(root, key) is { } value)
+                    summary.Add(new IntakeSummaryItem(label, value));
+            return JsonSerializer.Serialize(summary);
+        }
         AppendSummary(summary, root, "ProtectingWho", "Protecting");
         AppendSummary(summary, root, "CoverageGoal", "Goal");
         AppendSummary(summary, root, "CoverageAmountOption", "Coverage");
@@ -440,7 +464,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
         return CultureInfo.GetCultureInfo("en-US").TextInfo.ToTitleCase(normalized.ToLowerInvariant());
     }
 
-    private static string NormalizePhoneKey(string? phone)
+    internal static string NormalizePhoneKey(string? phone)
     {
         if (string.IsNullOrWhiteSpace(phone))
             return string.Empty;

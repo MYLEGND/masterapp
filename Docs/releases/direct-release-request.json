@@ -1,53 +1,15 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue the Founder-authorized scoped receptionist production release recovery. Promote only the independently reviewed canonical Windows OneDeploy, immutable submission evidence, strict artifact transport and focused policy/test changes through the existing nonpublishing trusted-tool process. This step authorizes no production deployment, schema mutation, routing, provider mutation or voice activation.",
-  "purpose": "Make canonical Windows deployment compatible with server-generated provider identity while preserving uncertain-upload gates and durable authenticated observations.",
-  "requestId": "founder-windows-onedeploy-recovery-20261020-f1942bf218f3",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "Continue the Founder-authorized canonical Forms and reusable tenant-scoped receptionist work, including spending coordination and confirmed-inquiry integration. This request covers the reviewed additive schema and managed-application source deployment after all existing source, SQL rehearsal and deployment-reconciliation gates pass. Provider funding, paid calls, forwarding and public voice activation remain separate acceptance steps; this request grants no bypass of those requirements or unresolved deployment evidence.",
+  "purpose": "Deploy the reviewed reusable scoped-business receptionist runtime, editable inactive configuration, spending coordination and canonical confirmed-inquiry integration through the existing protected release path.",
+  "requestId": "founder-scoped-receptionist-runtime-20261020-998d8e8d485f",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait"
+  ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "6ddf83d94a24b5f06c127a366031a9a1f3fba5c6",
-    "sourceRevision": "f1942bf218f34662afcde0e8a0b6a807245539ac",
-    "files": {
-      "scripts/deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "7df101bb1d0dff2353c3202f7302b0b8867bbe61"
-      },
-      "scripts/release-operation-evidence.py": {
-        "mode": "100644",
-        "blob": "95db40706f8579620f9376467bce90aa95dab8a9"
-      },
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "a9ac1ce3245536355ac383e97dd306f2897b4b7a"
-      },
-      "scripts/test-deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "80c43579cb3c839b5a7ddff4ccd422d7958c747f"
-      },
-      "scripts/test-release-operation-evidence.py": {
-        "mode": "100755",
-        "blob": "8303e0ceb1e063df15b1f2a5498f74353ec25f50"
-      },
-      "scripts/release-artifacts/transport.cjs": {
-        "mode": "100644",
-        "blob": "31f19d132d3e8f7ba4d9fee712a8b4a385057f6b"
-      },
-      "scripts/release-artifacts/test-transport.cjs": {
-        "mode": "100644",
-        "blob": "6f2ace7b6546e4fc06cf1cf12dfc523f12e921ac"
-      },
-      "scripts/release_policy.py": {
-        "mode": "100644",
-        "blob": "095cbf301b18618493f4233d7841e92fe02a33f8"
-      },
-      "scripts/test-release-policy.py": {
-        "mode": "100644",
-        "blob": "e06ee38236b3cbecdbbb15cc0f9c079f1673284c"
-      }
-    }
-  }
+  "preserveLiveTargets": false
 }

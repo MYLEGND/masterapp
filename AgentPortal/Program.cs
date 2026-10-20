@@ -45,6 +45,7 @@ using Shared.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
+Infrastructure.Reception.ReceptionistServiceRegistration.AddReceptionistRuntime(builder.Services);
 Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingBackgroundWorkers(builder.Services, builder.Configuration);
 Infrastructure.Leads.WebsiteLeadServiceRegistration.AddWebsiteLeadBackgroundWorkers(builder.Services);
 builder.Services.AddScoped<Infrastructure.Businesses.BusinessWorkspaceService>();
