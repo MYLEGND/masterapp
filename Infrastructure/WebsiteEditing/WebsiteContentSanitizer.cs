@@ -109,13 +109,19 @@ public static class WebsiteContentSanitizer
     public sealed record RecoveryCollisionNode(string Path, string Type, string Sensitivity);
     public sealed record RecoveryCollision(string IdentityFingerprint, int NodeCount,
         IReadOnlyList<RecoveryCollisionNode> Nodes);
+    public sealed record RecoveryDocumentDifference(string Path, string Change, string BeforeKind, string AfterKind);
     public sealed class RecoveryReviewException(string reasonCode, int collisionCount,
-        IReadOnlyList<RecoveryCollision> collisions) : ArgumentException("Saved draft requires independent review.")
+        IReadOnlyList<RecoveryCollision> collisions,
+        IReadOnlyList<RecoveryDocumentDifference>? differences = null, int differenceCount = 0)
+        : ArgumentException("Saved draft requires independent review.")
     {
         public string ReasonCode { get; } = reasonCode;
         public int CollisionCount { get; } = collisionCount;
         public IReadOnlyList<RecoveryCollision> Collisions { get; } = collisions;
-        public bool Truncated => CollisionCount > Collisions.Count || Collisions.Any(x => x.NodeCount > x.Nodes.Count);
+        public IReadOnlyList<RecoveryDocumentDifference> Differences { get; } = differences ?? [];
+        public int DifferenceCount { get; } = differenceCount;
+        public bool Truncated => CollisionCount > Collisions.Count || Collisions.Any(x => x.NodeCount > x.Nodes.Count)
+            || DifferenceCount > Differences.Count;
     }
 
     // Explicit recovery planning only. Ordinary reads remain fail-closed. The
@@ -133,32 +139,42 @@ public static class WebsiteContentSanitizer
             document.Version != WebsiteStudioContract.CurrentDocumentVersion ||
             document.Shell is null || document.Pages is null || document.ReusableComponents is null)
             throw new ArgumentException("Only canonical v3 identity collisions can be recovered.");
-        var entries = new List<(string Path, string DiagnosticPath, WebsiteCompositionNode Node, bool IdentitySensitive)>();
+        var entries = new List<(string Path, string DiagnosticPath, WebsiteCompositionNode Node,
+            System.Text.Json.Nodes.JsonObject RawNode, bool IdentitySensitive)>();
         static bool ContainsRuntimeForm(WebsiteCompositionNode node) =>
             (node.SystemKey?.StartsWith("protect_runtime_form:", StringComparison.Ordinal) ?? false) ||
             (node.Children ?? []).Any(ContainsRuntimeForm);
-        void Visit(IEnumerable<WebsiteCompositionNode> nodes, string path, string diagnosticPath, bool identitySensitive = false)
+        void Visit(IEnumerable<WebsiteCompositionNode> nodes, System.Text.Json.Nodes.JsonNode? rawNodes,
+            string path, string diagnosticPath, bool identitySensitive = false)
         {
+            var values = (nodes ?? []).ToList();
+            if (rawNodes is not null && rawNodes is not System.Text.Json.Nodes.JsonArray ||
+                (rawNodes as System.Text.Json.Nodes.JsonArray)?.Count != values.Count && (rawNodes is not null || values.Count != 0))
+                throw new ArgumentException("Saved content structure requires independent review.");
             var index = 0;
-            foreach (var node in nodes ?? [])
+            foreach (var node in values)
             {
                 if (node is null || string.IsNullOrWhiteSpace(node.Id))
                     throw new ArgumentException("Invalid content identity requires independent review.");
+                var rawNode = rawNodes![index] as System.Text.Json.Nodes.JsonObject;
+                if (rawNode is null || rawNode["id"]?.GetValue<string>() != node.Id)
+                    throw new ArgumentException("Saved content identity representation requires independent review.");
                 var location = path + "/" + index;
                 var diagnosticLocation = diagnosticPath + "/" + index++;
                 var sensitive = identitySensitive || ContainsRuntimeForm(node);
-                entries.Add((location, diagnosticLocation, node, sensitive));
-                Visit(node.Children, location + "/children", diagnosticLocation + "/children", sensitive);
+                entries.Add((location, diagnosticLocation, node, rawNode, sensitive));
+                Visit(node.Children, rawNode["children"], location + "/children", diagnosticLocation + "/children", sensitive);
             }
         }
-        Visit(document.Shell.Header, "shell/header", "shell/header");
-        Visit(document.Shell.Footer, "shell/footer", "shell/footer");
+        Visit(document.Shell.Header, root?["shell"]?["header"], "shell/header", "shell/header");
+        Visit(document.Shell.Footer, root?["shell"]?["footer"], "shell/footer", "shell/footer");
         var pageIndex = 0;
         foreach (var page in document.Pages.OrderBy(pair => pair.Key, StringComparer.Ordinal))
-            Visit(page.Value.Composition, "pages/" + page.Key, "pages/" + pageIndex++);
+            Visit(page.Value.Composition, root?["pages"]?[page.Key]?["composition"], "pages/" + page.Key, "pages/" + pageIndex++);
         var componentIndex = 0;
         foreach (var component in document.ReusableComponents.OrderBy(pair => pair.Key, StringComparer.Ordinal))
-            Visit(component.Value.Composition, "components/" + component.Key, "components/" + componentIndex++);
+            Visit(component.Value.Composition, root?["reusableComponents"]?[component.Key]?["composition"],
+                "components/" + component.Key, "components/" + componentIndex++);
 
         static bool Protected(WebsiteCompositionNode node) =>
             WebsiteSiteSource.HasProtectedSemantics(node) ||
@@ -185,6 +201,17 @@ public static class WebsiteContentSanitizer
                 throw new RecoveryReviewException("protected_identity_ambiguity", collisions.Count, evidence);
         }
 
+        // Deserialization must not hide fields that a later canonical save would
+        // discard. Missing/default properties are harmless; unknown source fields
+        // require review even when they occur inside a nested presentation object.
+        var projection = System.Text.Json.JsonSerializer.SerializeToNode(document, options);
+        if (HasUnrepresentedRecoveryFields(root, projection))
+        {
+            var difference = DescribeRecoveryDifferences(root, projection, sourceFieldsOnly: true);
+            throw new RecoveryReviewException("unrepresented_document_fields", collisions.Count, evidence,
+                difference.Items, difference.Count);
+        }
+
         var used = entries.Select(entry => entry.Node.Id).ToHashSet(StringComparer.Ordinal);
         var changes = new List<DuplicateIdentityChange>();
         foreach (var group in collisions)
@@ -201,20 +228,124 @@ public static class WebsiteContentSanitizer
                 do { nextId = prefix + ".recovered." + Fingerprint(entry.Path + ":" + suffix++)[..16]; }
                 while (!used.Add(nextId));
                 entry.Node.Id = nextId;
+                entry.RawNode["id"] = nextId;
                 changes.Add(new(entry.Path, oldId, nextId));
             }
         }
         if (changes.Count == 0)
             throw new ArgumentException("No duplicate content identities require recovery.");
-        var repaired = System.Text.Json.JsonSerializer.Serialize(document, options);
+        // Patch only selected ID values in the original tree. Rebuilding the full
+        // typed document can drop unrelated fields or introduce default values.
+        var repaired = root!.ToJsonString(options);
         // Reject any unrelated corruption or normalization rather than folding
         // an unreviewed content change into identity recovery.
         try { _ = ReadPersisted(repaired, options); }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Text.Json.JsonException)
         {
-            throw new RecoveryReviewException("noncanonical_document", collisions.Count, evidence);
+            try
+            {
+                var difference = DescribeRecoveryDifferences(
+                    System.Text.Json.JsonSerializer.SerializeToNode(document, options),
+                    System.Text.Json.JsonSerializer.SerializeToNode(Sanitize(document), options));
+                throw new RecoveryReviewException("noncanonical_document", collisions.Count, evidence,
+                    difference.Items, difference.Count);
+            }
+            catch (Exception normalizationException) when (normalizationException is not RecoveryReviewException &&
+                (normalizationException is ArgumentException or InvalidOperationException or System.Text.Json.JsonException))
+            {
+                throw new RecoveryReviewException("sanitization_rejected", collisions.Count, evidence);
+            }
         }
         return new(Fingerprint(json), Fingerprint(repaired), repaired, changes);
+    }
+
+    private static bool HasUnrepresentedRecoveryFields(System.Text.Json.Nodes.JsonNode? source,
+        System.Text.Json.Nodes.JsonNode? projection)
+    {
+        if (source is System.Text.Json.Nodes.JsonObject sourceObject)
+            return projection is not System.Text.Json.Nodes.JsonObject projectedObject || sourceObject.Any(property =>
+                !projectedObject.ContainsKey(property.Key) || HasUnrepresentedRecoveryFields(property.Value, projectedObject[property.Key]));
+        if (source is System.Text.Json.Nodes.JsonArray sourceArray)
+            return projection is not System.Text.Json.Nodes.JsonArray projectedArray || sourceArray.Count != projectedArray.Count ||
+                sourceArray.Where((value, index) => HasUnrepresentedRecoveryFields(value, projectedArray[index])).Any();
+        return false;
+    }
+
+    private static (IReadOnlyList<RecoveryDocumentDifference> Items, int Count) DescribeRecoveryDifferences(
+        System.Text.Json.Nodes.JsonNode? before, System.Text.Json.Nodes.JsonNode? after, bool sourceFieldsOnly = false)
+    {
+        // Only fixed schema vocabulary and ordinal dictionary/array locations are
+        // exposed. No authored names, URLs, field values or exception text escape.
+        var schemaNames = new HashSet<string>(("version shell header footer pages reusableComponents collections theme store breakpoints " +
+            "composition children navigation label title description systemTemplateKey dynamicBinding type tag className text style layout " +
+            "href target alt imageDataUrl videoUrl backgroundImageDataUrl actionKey signals fieldLabels fieldPresentations fieldSignals " +
+            "systemKey systemBinding dataBinding experience syncSourceId responsiveStyles responsiveLayouts breakpointStyles breakpointLayouts " +
+            "desktop tablet mobile key minWidth maxWidth width height minHeight maxHeight display position order hidden enabled " +
+            "color backgroundColor fontSize fontWeight fontFamily textAlign alignItems justifyContent flexDirection flexWrap gap padding margin " +
+            "border borderRadius opacity overflow objectFit objectPosition aspectRatio zIndex animation updatedUtc faviconImageDataUrl " +
+            "id name kind source fields mediaAssetId mediaUrl videoLoop navigationLabel cartIcon cartIconSizePx storeNavigation cartNavigation " +
+            "fontScale widthPercent heightPx offsetXPercent offsetYPx lineHeight letterSpacing paddingTop paddingBottom paddingLeft paddingRight " +
+            "marginTop marginBottom marginLeft marginRight borderWidth borderColor borderStyle textTransform textDecoration " +
+            "minWidthPx maxWidthPx minHeightPx maxHeightPx backgroundGradient boxShadow navy navyDeep gold goldStrong muted surface " +
+            "displaySize h1Size h2Size h3Size bodySize smallSize bodyLineHeight sectionSpace contentGap contentMaxWidth wideMaxWidth " +
+            "narrowMaxWidth gutter cardRadius buttonRadius inputRadius surfaceElevated surfaceMuted shadowSoft shadowStrong navHeight " +
+            "motionFastMs motionStandardMs motionSlowMs isSystem mode direction gapPx columns minItemWidthPx wrap animations " +
+            "trigger effect durationMs delayMs distancePx easing once showInNavigation parentPath isDeleted collectionId field itemKeyField routePattern " +
+            "eventName deliveryMode oncePerSession matchingFields submitCapability steps controls calculations results controlKeys visibleWhen " +
+            "helpText placeholder required defaultValue min max step maxLength options contactRole includeInNotification action value " +
+            "targetStep expression format op ref values map")
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries), StringComparer.Ordinal);
+        var dictionaryNames = new HashSet<string>(["pages", "reusableComponents", "collections", "fieldLabels", "fieldPresentations",
+            "fieldSignals", "responsiveStyles", "responsiveLayouts", "breakpointStyles", "breakpointLayouts", "calculations", "map"], StringComparer.Ordinal);
+        var result = new List<RecoveryDocumentDifference>();
+        var count = 0;
+        static string Kind(System.Text.Json.Nodes.JsonNode? node) => node?.GetValueKind() switch
+        {
+            null or System.Text.Json.JsonValueKind.Null => "null",
+            System.Text.Json.JsonValueKind.Object => "object", System.Text.Json.JsonValueKind.Array => "array",
+            System.Text.Json.JsonValueKind.String => "string", System.Text.Json.JsonValueKind.Number => "number",
+            System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False => "boolean", _ => "other"
+        };
+        void Visit(System.Text.Json.Nodes.JsonNode? left, System.Text.Json.Nodes.JsonNode? right, string path,
+            bool dictionary = false, bool leftPresent = true, bool rightPresent = true)
+        {
+            if (leftPresent == rightPresent && System.Text.Json.Nodes.JsonNode.DeepEquals(left, right)) return;
+            if (left is System.Text.Json.Nodes.JsonObject leftObject && right is System.Text.Json.Nodes.JsonObject rightObject)
+            {
+                var keys = (sourceFieldsOnly ? leftObject.Select(x => x.Key) : leftObject.Select(x => x.Key).Union(rightObject.Select(x => x.Key)))
+                    .OrderBy(x => x, StringComparer.Ordinal).ToArray();
+                for (var index = 0; index < keys.Length; index++)
+                {
+                    var key = keys[index];
+                    var segment = !dictionary && schemaNames.Contains(key) ? key : "entry-" + index;
+                    Visit(leftObject[key], rightObject[key], path + "/" + segment, dictionaryNames.Contains(key),
+                        leftObject.ContainsKey(key), rightObject.ContainsKey(key));
+                }
+                return;
+            }
+            if (left is System.Text.Json.Nodes.JsonArray leftArray && right is System.Text.Json.Nodes.JsonArray rightArray)
+            {
+                for (var index = 0; index < (sourceFieldsOnly ? leftArray.Count : Math.Max(leftArray.Count, rightArray.Count)); index++)
+                    Visit(index < leftArray.Count ? leftArray[index] : null, index < rightArray.Count ? rightArray[index] : null,
+                        path + "/" + index, leftPresent: index < leftArray.Count, rightPresent: index < rightArray.Count);
+                return;
+            }
+            count++;
+            if (result.Count >= 40) return;
+            var change = !rightPresent ? "field_removed" : !leftPresent ? "field_added" : left is null ? "default_added" :
+                right is null ? "value_removed" : "value_changed";
+            if (left?.GetValueKind() == System.Text.Json.JsonValueKind.String && right?.GetValueKind() == System.Text.Json.JsonValueKind.String)
+            {
+                var oldValue = left.GetValue<string>();
+                var newValue = right.GetValue<string>();
+                if (string.IsNullOrWhiteSpace(oldValue) && newValue.Length > 0) change = "empty_text_defaulted";
+                else if (oldValue.Trim() == newValue) change = "text_trimmed";
+                else if (oldValue.Equals(newValue, StringComparison.OrdinalIgnoreCase)) change = "case_normalized";
+            }
+            result.Add(new(path, change, leftPresent ? Kind(left) : "missing", rightPresent ? Kind(right) : "missing"));
+        }
+        Visit(before, after, "document");
+        return (result, count);
     }
 
     internal static void EnsureUniqueCanonicalNodeIds(WebsiteContentDocument document)

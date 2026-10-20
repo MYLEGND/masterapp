@@ -98,6 +98,137 @@
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
   const studioPerformance = [];
+  // The native template owns step identities and prerequisites. The canonical
+  // children array owns their order; navigation reads the same mounted nodes.
+  const nativeFormSequences = [];
+  const nativeSequenceByStep = new WeakMap();
+  for (const form of document.querySelectorAll('main form[data-form-key]')) {
+    const parents = new Map();
+    for (const step of form.querySelectorAll('[data-cms-native-step]')) {
+      if (step.closest('form') !== form) continue;
+      const group = parents.get(step.parentElement) || {
+        form, parent:step.parentElement, steps:[], keys:new Map(), prerequisites:new Map(), final:new Set()
+      };
+      group.steps.push(step);
+      group.keys.set(step, step.dataset.cmsNativeStep);
+      group.prerequisites.set(step, (step.dataset.cmsStepAfter || '').split(/\s+/).filter(Boolean));
+      if (step.dataset.cmsStepFinal === 'true') group.final.add(step);
+      parents.set(step.parentElement, group);
+      nativeSequenceByStep.set(step, group);
+    }
+    for (const group of parents.values()) {
+      const keys = new Set(group.keys.values());
+      group.linkContainers = [...document.querySelectorAll('main [data-cms-step-links-for]')]
+        .filter(container => document.getElementById(container.dataset.cmsStepLinksFor) === form)
+        .map(container => ({container, links:new Map([...container.children]
+          .filter(link => link.hasAttribute('data-cms-step-link'))
+          .map(link => [link.dataset.cmsStepLink, link]))}))
+        .filter(({links}) => links.size === keys.size && [...keys].every(key => links.has(key)));
+      group.continuations = group.steps.flatMap(step => [...step.querySelectorAll('[data-cms-step-continue]')])
+        .map(control => ({control, parent:control.parentElement, next:control.nextSibling}));
+      nativeFormSequences.push(group);
+    }
+  }
+
+  function restoreNativeFormContinuations() {
+    for (const group of nativeFormSequences) for (const {control, parent, next} of group.continuations) {
+      if (control.parentElement !== parent)
+        parent.insertBefore(control, next?.parentNode === parent ? next : null);
+    }
+  }
+
+  function projectNativeFormContinuations() {
+    for (const group of nativeFormSequences) {
+      const last = nativeFormSequenceState(group).steps.at(-1);
+      if (!last) continue;
+      for (const {control, parent} of group.continuations) {
+        // The existing native Continue action follows the question sequence. Its
+        // original owned parent is restored for every canonical capture/apply.
+        const target = last.contains(parent) ? parent : last.querySelector('[data-cms-step-actions]') || last;
+        if (control.parentElement !== target) target.appendChild(control);
+      }
+    }
+  }
+
+  let nativeContinuationCaptureDepth = 0;
+  function withNativeFormContinuationsRestored(capture) {
+    if (nativeContinuationCaptureDepth++ === 0) restoreNativeFormContinuations();
+    try { return capture(); }
+    finally { if (--nativeContinuationCaptureDepth === 0) projectNativeFormContinuations(); }
+  }
+
+  function nativeFormStepLabel(step) {
+    return (step.querySelector('legend,h1,h2,h3,h4,h5,.section-title,.lq-choice-label,.lq-step-question')?.textContent ||
+      step.getAttribute('aria-label') || 'Form step').trim().replace(/\s+/g, ' ').slice(0, 120);
+  }
+
+  function nativeFormSequenceState(group, proposed = null) {
+    const steps = proposed || [...group.parent.children].filter(step => group.keys.has(step));
+    const invalidGroup = group.steps.length !== steps.length || new Set(steps).size !== group.steps.length ||
+      group.steps.some(step => step.parentElement !== group.parent || step.closest('form') !== group.form || !steps.includes(step));
+    if (invalidGroup) return {steps:[], error:'Native form steps must remain together in their original group.'};
+    const keys = steps.map(step => group.keys.get(step));
+    if (keys.some(key => !key) || new Set(keys).size !== keys.length)
+      return {steps:[], error:'Native form step identities must be unique within their group.'};
+    for (const [index, step] of steps.entries()) {
+      for (const prerequisite of group.prerequisites.get(step) || []) {
+        const prerequisiteIndex = keys.indexOf(prerequisite);
+        if (prerequisiteIndex < 0 || prerequisiteIndex >= index) {
+          const requiredStep = group.steps.find(candidate => group.keys.get(candidate) === prerequisite);
+          return {steps:[], error:nativeFormStepLabel(step) + ' must stay after ' + (requiredStep ? nativeFormStepLabel(requiredStep) : 'its required step') + '.'};
+        }
+      }
+      if (group.final.has(step) && index !== steps.length - 1)
+        return {steps:[], error:nativeFormStepLabel(step) + ' contains the final review or continue action and must stay last in this group.'};
+    }
+    return {steps, error:null};
+  }
+
+  function nativeFormOrderErrors() {
+    return nativeFormSequences.map(group => ({group, ...nativeFormSequenceState(group)})).filter(state => state.error);
+  }
+
+  function syncNativeFormSequences() {
+    for (const group of nativeFormSequences) {
+      const state = nativeFormSequenceState(group);
+      let status = group.form.querySelector('[data-cms-native-order-error]');
+      if (state.error) {
+        if (!status) {
+          status = document.createElement('p');
+          status.dataset.cmsNativeOrderError = '';
+          status.setAttribute('role', 'alert');
+          group.form.prepend(status);
+        }
+        status.textContent = state.error;
+        continue;
+      }
+      if (status && !nativeFormOrderErrors().some(item => item.group.form === group.form)) status.remove();
+      for (const [index, step] of state.steps.entries()) {
+        step.querySelectorAll('[data-cms-step-back]').forEach(button => { button.hidden = index === 0; });
+        step.querySelectorAll('[data-cms-step-position]').forEach(label => {
+          label.textContent = 'Step ' + (index + 1) + ' of ' + state.steps.length;
+        });
+      }
+      for (const {container, links} of group.linkContainers) {
+        if (!container.isConnected || (container.closest('form') && container.closest('form') !== group.form) ||
+            [...links.values()].some(link => link.parentElement !== container)) continue;
+        const ordered = state.steps.map(step => links.get(group.keys.get(step)));
+        const originalLinks = new Set(links.values());
+        const children = [...container.childNodes].map(child => originalLinks.has(child) ? ordered.shift() : child);
+        for (const child of children) container.appendChild(child);
+      }
+    }
+    projectNativeFormContinuations();
+  }
+
+  window.LEGEND_NATIVE_FORM_STEPS = Object.freeze({
+    order(elements) {
+      const original = Array.from(elements || []);
+      const group = nativeSequenceByStep.get(original[0]);
+      if (!group || original.length !== group.steps.length || original.some(step => nativeSequenceByStep.get(step) !== group)) return [];
+      return nativeFormSequenceState(group).steps.slice();
+    }
+  });
   let websiteStudioWebMcpStatus = 'not_connected';
   let websiteStudioWebMcpController = null;
   const styleProperties = ['textAlign','fontSize','width','maxWidth','height','minHeight','maxHeight','position','left','top','overflow','paddingTop','paddingBottom','objectPosition','color','backgroundColor','backgroundImage','fontFamily','fontWeight','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius','objectFit','gridColumn','minWidth','overflowWrap','display','flexDirection','gap','gridTemplateColumns','alignItems','justifyContent','flexWrap','marginTop','marginBottom','marginLeft','marginRight','borderWidth','borderColor','borderStyle','opacity','textTransform','textDecoration','aspectRatio','boxShadow'];
@@ -493,6 +624,7 @@
   }
 
   function prepareDom() {
+    restoreNativeFormContinuations();
     const roots = [
       document.querySelector('main'),
       document.querySelector('.site-header'),
@@ -1742,6 +1874,10 @@
   }
 
   function materializeCompositionNode(el, fallbackId = null, identity = null) {
+    return withNativeFormContinuationsRestored(() => materializeCompositionNodeWithNativeControls(el, fallbackId, identity));
+  }
+
+  function materializeCompositionNodeWithNativeControls(el, fallbackId = null, identity = null) {
     if (!(el instanceof HTMLElement) || el.closest('.legend-cms-editor')) return null;
     identity ||= createMaterializationIdentityContext();
     // Template decoration is deliberately presentation-only. Persisting SVG/icon
@@ -2990,6 +3126,8 @@
   async function runWholeSitePreflight() {
     if(sourceEditorDirty)
       throw new Error('Apply or discard Selected Source changes before running whole-site preflight.');
+    const nativeOrderError = nativeFormOrderErrors()[0];
+    if (nativeOrderError) throw new Error(nativeOrderError.error);
     await flushLocalCreativeEdits();
     const checkedRevision=revision;
     const [quality,responsive,conversion]=await Promise.all([
@@ -3008,6 +3146,10 @@
       responsiveRevisions.every(value=>value===checkedRevision);
     if(!evidenceMatches)
       throw new Error('Website revision changed during preflight. Run preflight again on the current draft.');
+    for (const page of responsive || []) for (const result of page.results || []) {
+      const error = (result.checks || []).find(check => check.code === 'native_form_step_order_invalid');
+      if (error) throw new Error(page.route + ': ' + error.message);
+    }
     return {revision:checkedRevision,quality,responsive,conversion};
   }
 
@@ -3920,6 +4062,7 @@
   }
 
   function applyDocument(doc) {
+    restoreNativeFormContinuations();
     restoreFormStepPreview();
     documentState=normalizeDocument(doc);
     applyTheme(documentState.theme);
@@ -3948,6 +4091,7 @@
     applyBusinessPageNavigation();
     applyStoreNavigation();
     ensureCanonicalPublicInquiry();
+    syncNativeFormSequences();
     if (editorMode && document.getElementById('legend-cms-form-navigator')) previewFormStep(formPreviewIndex);
     try {
       window.dispatchEvent(new CustomEvent('legend:website-content-rendered', {
@@ -6512,6 +6656,14 @@
       rejection.expectedRevision===request.expectedRevision;
   }
   async function save(publish = false, namedDraft = null, resumePending = false) {
+    if (publish) {
+      const nativeOrderError = nativeFormOrderErrors()[0];
+      if (nativeOrderError) {
+        const status = document.getElementById('legend-cms-status');
+        if (status) status.textContent = nativeOrderError.error;
+        return false;
+      }
+    }
     if (saving) return false;
     clearTimeout(autoSaveTimer);
     const status=document.getElementById('legend-cms-status');
@@ -7508,6 +7660,10 @@
 
   function liveQualityChecksForDocument(doc=document,viewportWidth=responsiveViewportWidth(),{includeAnimation=true}={}) {
     const checks = [];
+    // Breakpoint frames are snapshots of this mounted page. Its native group
+    // contract is invariant across viewport sizes and belongs to this owner.
+    for (const {group,error} of nativeFormOrderErrors())
+      checks.push({code:'native_form_step_order_invalid',severity:'error',message:error,elementId:group.form.dataset.cmsCompositionId || null});
     const main = doc.querySelector('main');
     const headings = main ? [...main.querySelectorAll('h1:not([hidden])')] : [];
     if (headings.length === 0) checks.push({ code:'live_h1_missing', severity:'warning', message:'The rendered page has no visible H1 heading.' });
@@ -8850,6 +9006,16 @@
 
   function nativeStepOrderContext() {
     const entry = formPreviewEntries()[formPreviewIndex];
+    const group = nativeSequenceByStep.get(entry?.step);
+    if (group) {
+      const elements = nativeFormSequenceState(group).steps;
+      const entries = elements.map(element => compositionEntry(element.dataset.cmsCompositionId));
+      const parent = entries[0]?.parent;
+      if (!parent || entries.length < 2 || entries.some(item => !item || item.parent !== parent)) return null;
+      const steps = entries.map(item => item.node);
+      const index = elements.indexOf(entry.step);
+      return index < 0 ? null : {group,elements,steps,index,siblings:parent.children,key:entry.step.dataset.cmsCompositionId};
+    }
     const node = compositionNode(entry?.form?.dataset.websiteExperienceId);
     const steps = node?.experience?.steps;
     const key = entry?.step?.dataset.experienceStep;
@@ -8857,17 +9023,40 @@
     return index < 0 ? null : { node, steps, index, key };
   }
 
+  function nativeStepMoveError(context, delta) {
+    if (!context?.group) return null;
+    const target = context.index + delta;
+    if (target < 0 || target >= context.steps.length) return null;
+    const proposed = context.elements.slice();
+    [proposed[context.index], proposed[target]] = [proposed[target], proposed[context.index]];
+    return nativeFormSequenceState(context.group, proposed).error;
+  }
+
   function moveNativeFormStep(delta) {
     const context = nativeStepOrderContext();
     if (!context) return;
     const target = context.index + delta;
     if (target < 0 || target >= context.steps.length) return;
+    const error = nativeStepMoveError(context, delta);
+    if (error) {
+      document.querySelector('[data-native-step-order-status]').textContent = error;
+      return;
+    }
     checkpoint();
-    const [step] = context.steps.splice(context.index, 1);
-    context.steps.splice(target, 0, step);
+    if (context.group) {
+      // Swap only the native step slots; surrounding headings, progress and
+      // conditional containers keep their canonical parent and position.
+      const from = context.siblings.indexOf(context.steps[context.index]);
+      const to = context.siblings.indexOf(context.steps[target]);
+      [context.siblings[from], context.siblings[to]] = [context.siblings[to], context.siblings[from]];
+    } else {
+      const [step] = context.steps.splice(context.index, 1);
+      context.steps.splice(target, 0, step);
+    }
     applyDocument(documentState);
-    const index = formPreviewEntries().findIndex(entry =>
-      entry.form.dataset.websiteExperienceId === context.node.id && entry.step.dataset.experienceStep === context.key);
+    const index = formPreviewEntries().findIndex(entry => context.group
+      ? entry.form === context.group.form && entry.step.dataset.cmsCompositionId === context.key
+      : entry.form.dataset.websiteExperienceId === context.node.id && entry.step.dataset.experienceStep === context.key);
     previewFormStep(index);
     markDirty();
   }
@@ -8894,8 +9083,11 @@
     const stepOrder = host.querySelector('[data-native-step-order]');
     const stepContext = nativeStepOrderContext();
     stepOrder.hidden = !stepContext;
-    stepOrder.querySelector('[data-native-step-before]').disabled = !stepContext || stepContext.index === 0;
-    stepOrder.querySelector('[data-native-step-after]').disabled = !stepContext || stepContext.index === stepContext.steps.length - 1;
+    const beforeError = nativeStepMoveError(stepContext, -1);
+    const afterError = nativeStepMoveError(stepContext, 1);
+    stepOrder.querySelector('[data-native-step-before]').disabled = !stepContext || stepContext.index === 0 || !!beforeError;
+    stepOrder.querySelector('[data-native-step-after]').disabled = !stepContext || stepContext.index === stepContext.steps.length - 1 || !!afterError;
+    stepOrder.querySelector('[data-native-step-order-status]').textContent = [...new Set([beforeError,afterError].filter(Boolean))].join(' ');
     host.querySelector('[role="status"]').textContent = formPreviewIndex < 0
       ? entries.length + ' form steps available to edit.'
       : 'Editing step ' + (formPreviewIndex + 1) + ' of ' + entries.length + '. Preview only; no answers or submission.';
@@ -8915,7 +9107,7 @@
     const stepOrder = document.createElement('div');
     stepOrder.dataset.nativeStepOrder = '';
     stepOrder.hidden = true;
-    stepOrder.innerHTML = '<p>Form step order</p><div class="legend-cms-row"><button type="button" data-native-step-before>Move step earlier</button><button type="button" data-native-step-after>Move step later</button></div>';
+    stepOrder.innerHTML = '<p>Form step order</p><div class="legend-cms-row"><button type="button" data-native-step-before>Move step earlier</button><button type="button" data-native-step-after>Move step later</button></div><small data-native-step-order-status role="alert"></small>';
     host.appendChild(stepOrder);
     stepOrder.querySelector('[data-native-step-before]').addEventListener('click', () => moveNativeFormStep(-1));
     stepOrder.querySelector('[data-native-step-after]').addEventListener('click', () => moveNativeFormStep(1));
@@ -9262,7 +9454,8 @@
               const evidence = document.createElement('pre');
               evidence.textContent = JSON.stringify({ reason: payload.reasonCode, revision: payload.revision,
                 sourceFingerprint: payload.sourceFingerprint, collisionCount: payload.collisionCount,
-                collisions: payload.collisions, truncated: payload.truncated }, null, 2);
+                collisions: payload.collisions, differenceCount: payload.differenceCount,
+                differences: payload.differences, truncated: payload.truncated }, null, 2);
               details.append(summary, evidence);
               panel.append(details);
             }
@@ -9434,6 +9627,7 @@
     refreshCompiledResponsivePresentation();
     applyRuntimeActionContracts();
     ensureCanonicalPublicInquiry();
+    syncNativeFormSequences();
     updateStoreCartCount();
     try {
       window.dispatchEvent(new CustomEvent('legend:website-content-rendered', {

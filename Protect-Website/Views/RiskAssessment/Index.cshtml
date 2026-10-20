@@ -242,21 +242,21 @@
     <!-- keep step on postback -->
     <input asp-for="CurrentStep" type="hidden" id="CurrentStep" />
 
-    <div class="stepper" id="stepper">
-        <div class="step-pill" data-step="1">1) Personal</div>
-        <div class="step-pill" data-step="2">2) Income</div>
-        <div class="step-pill" data-step="3">3) Cash Flow</div>
-        <div class="step-pill" data-step="4">4) Estate</div>
-        <div class="step-pill" data-step="5">5) Coverage</div>
-        <div class="step-pill" data-step="6">6) Review</div>
+    <div class="stepper" id="stepper" data-cms-step-links-for="riskAssessmentForm">
+        <div class="step-pill" data-step="1" data-cms-step-link="1">Personal</div>
+        <div class="step-pill" data-step="2" data-cms-step-link="2">Income</div>
+        <div class="step-pill" data-step="3" data-cms-step-link="3">Cash Flow</div>
+        <div class="step-pill" data-step="4" data-cms-step-link="4">Estate</div>
+        <div class="step-pill" data-step="5" data-cms-step-link="5">Coverage</div>
+        <div class="step-pill" data-step="6" data-cms-step-link="6">Review</div>
     </div>
 
     <!-- ===================== STEP 1 ===================== -->
-    <div class="step-wrap" data-step="1">
+    <div class="step-wrap" data-step="1" data-cms-native-step="1">
         <div class="section-card">
             <div class="section-title">
                 <span>Personal Information</span>
-                <span class="ra-step-count">Step 1 of 6</span>
+                <span class="ra-step-count" data-cms-step-position>Step 1 of 6</span>
             </div>
 
             <div class="row">
@@ -331,17 +331,18 @@
 
             <div class="nav-row">
                 <div class="spacer"></div>
+                <button type="button" class="btn btn-outline-gold" id="back-1" data-cms-step-back hidden data-cms-id="native.risk-assessment.back.first">← Back</button>
                 <button type="button" class="btn btn-gold" id="next-1">Next →</button>
             </div>
         </div>
     </div>
 
     <!-- ===================== STEP 2 ===================== -->
-    <div class="step-wrap" data-step="2">
+    <div class="step-wrap" data-step="2" data-cms-native-step="2">
         <div class="section-card">
             <div class="section-title">
                 <span>Income & Work</span>
-                <span class="ra-step-count">Step 2 of 6</span>
+                <span class="ra-step-count" data-cms-step-position>Step 2 of 6</span>
             </div>
 
             <div class="row">
@@ -380,18 +381,18 @@
             </div>
 
             <div class="nav-row">
-                <button type="button" class="btn btn-outline-gold" id="back-2">← Back</button>
+                <button type="button" class="btn btn-outline-gold" id="back-2" data-cms-step-back>← Back</button>
                 <button type="button" class="btn btn-gold" id="next-2">Next →</button>
             </div>
         </div>
     </div>
 
     <!-- ===================== STEP 3 ===================== -->
-    <div class="step-wrap" data-step="3">
+    <div class="step-wrap" data-step="3" data-cms-native-step="3">
         <div class="section-card">
             <div class="section-title">
                 <span>Cash Flow</span>
-                <span class="ra-step-count">Step 3 of 6</span>
+                <span class="ra-step-count" data-cms-step-position>Step 3 of 6</span>
             </div>
 
             <div class="row">
@@ -592,18 +593,18 @@
             </div>
 
             <div class="nav-row">
-                <button type="button" class="btn btn-outline-gold" id="back-3">← Back</button>
+                <button type="button" class="btn btn-outline-gold" id="back-3" data-cms-step-back>← Back</button>
                 <button type="button" class="btn btn-gold" id="next-3">Next →</button>
             </div>
         </div>
     </div>
 
     <!-- ===================== STEP 4 ===================== -->
-    <div class="step-wrap" data-step="4">
+    <div class="step-wrap" data-step="4" data-cms-native-step="4">
         <div class="section-card">
             <div class="section-title">
                 <span>Estate Planning</span>
-                <span class="ra-step-count">Step 4 of 6</span>
+                <span class="ra-step-count" data-cms-step-position>Step 4 of 6</span>
             </div>
 
             <div class="row">
@@ -642,18 +643,18 @@
             </div>
 
             <div class="nav-row">
-                <button type="button" class="btn btn-outline-gold" id="back-4">← Back</button>
+                <button type="button" class="btn btn-outline-gold" id="back-4" data-cms-step-back>← Back</button>
                 <button type="button" class="btn btn-gold" id="next-4">Next →</button>
             </div>
         </div>
     </div>
 
     <!-- ===================== STEP 5 ===================== -->
-    <div class="step-wrap" data-step="5">
+    <div class="step-wrap" data-step="5" data-cms-native-step="5">
         <div class="section-card">
             <div class="section-title">
                 <span>Coverage</span>
-                <span class="ra-step-count">Step 5 of 6</span>
+                <span class="ra-step-count" data-cms-step-position>Step 5 of 6</span>
             </div>
 
             <!-- LIFE -->
@@ -838,18 +839,18 @@
             </div>
 
             <div class="nav-row">
-                <button type="button" class="btn btn-outline-gold" id="back-5">← Back</button>
+                <button type="button" class="btn btn-outline-gold" id="back-5" data-cms-step-back>← Back</button>
                 <button type="button" class="btn btn-gold" id="next-5">Next →</button>
             </div>
         </div>
     </div>
 
     <!-- ===================== STEP 6 ===================== -->
-    <div class="step-wrap" data-step="6">
+    <div class="step-wrap" data-step="6" data-cms-native-step="6" data-cms-step-final="true">
         <div class="section-card">
             <div class="section-title">
                 <span>Review & Submit</span>
-                <span class="ra-step-count">Step 6 of 6</span>
+                <span class="ra-step-count" data-cms-step-position>Step 6 of 6</span>
             </div>
 
             <p>Review your answers before submitting. Select Edit to update a section.</p>
@@ -865,7 +866,7 @@
             </div>
 
             <div class="nav-row">
-                <button type="button" class="btn btn-outline-gold" id="back-6">← Back</button>
+                <button type="button" class="btn btn-outline-gold" id="back-6" data-cms-step-back>← Back</button>
                 <button type="submit" class="btn btn-gold">Submit Risk Assessment</button>
             </div>
         </div>
@@ -890,6 +891,20 @@
         const riskHeroEntryPanel = document.getElementById("riskHeroEntryPanel");
         const riskAssessmentFlowShell = document.getElementById("riskAssessmentFlowShell");
         const riskHeroStartCta = document.getElementById("riskHeroStartCta");
+        function nativeStepOrder() {
+            return (window.LEGEND_NATIVE_FORM_STEPS?.order(stepWraps) ?? stepWraps).map(step => Number(step.dataset.step));
+        }
+        riskAssessmentForm?.addEventListener('submit', event => {
+            if (!nativeStepOrder().length) {
+                event.preventDefault();
+                riskAssessmentForm._trackSubmitAttempt?.(false, 1);
+            }
+        });
+        window.addEventListener('legend:website-content-rendered', event => {
+            if (event.detail?.editor || event.detail?.materialize) return;
+            const order = nativeStepOrder();
+            if (order.length) setStep(riskAssessmentFlowShell?.hidden ? order[0] : clampStep(currentStepInput.value));
+        });
 
         function clampStep(n){
             n = parseInt(n || 1);
@@ -919,6 +934,7 @@
         }
 
         function showRiskAssessmentForm() {
+            const wasHidden = riskAssessmentFlowShell?.hidden;
             if (riskHeroEntryPanel) {
                 riskHeroEntryPanel.hidden = true;
             }
@@ -927,8 +943,8 @@
                 riskAssessmentFlowShell.hidden = false;
             }
 
-            const step = clampStep(currentStepInput?.value || @startStep);
-            setStep(step);
+            const step = wasHidden ? nativeStepOrder()[0] : clampStep(currentStepInput?.value || @startStep);
+            if (step != null) setStep(step);
 
             requestAnimationFrame(() => {
                 riskAssessmentFlowShell?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -938,7 +954,7 @@
         function renderAssessmentReview() {
             const review = document.getElementById("riskAssessmentReview");
             review.replaceChildren();
-            stepWraps.filter(w => Number(w.dataset.step) < 6).forEach(wrap => {
+            (window.LEGEND_NATIVE_FORM_STEPS?.order(stepWraps) ?? stepWraps).filter(w => w.dataset.cmsStepFinal !== 'true').forEach(wrap => {
                 const section = document.createElement("section");
                 section.className = "mini-card ra-subsection-card mt-3";
                 const heading = document.createElement("h3");
@@ -973,7 +989,7 @@
             stepPills.forEach(p => {
                 const s = parseInt(p.getAttribute("data-step"));
                 p.classList.toggle("active", s === step);
-                p.classList.toggle("done", s < step);
+                p.classList.toggle("done", nativeStepOrder().indexOf(s) < nativeStepOrder().indexOf(step));
             });
 
             syncStepRequiredStates(step);
@@ -1013,8 +1029,12 @@
                 const target = parseInt(p.getAttribute("data-step"));
                 const current = clampStep(currentStepInput.value);
 
-                if (target <= current) return setStep(target);
-                for (let step = current; step < target; step++) {
+                const order = nativeStepOrder();
+                const currentIndex = order.indexOf(current);
+                const targetIndex = order.indexOf(target);
+                if (currentIndex < 0 || targetIndex < 0) return;
+                if (targetIndex <= currentIndex) return setStep(target);
+                for (const step of order.slice(currentIndex, targetIndex)) {
                     setStep(step);
                     if (!validateStep(step)) return;
                 }
@@ -1025,10 +1045,14 @@
         // wire next/back buttons
         function next(step){
             if (!validateStep(step)) return;
-            setStep(step + 1);
+            const order = nativeStepOrder();
+            const target = order[order.indexOf(step) + 1];
+            if (target != null) setStep(target);
         }
         function back(step){
-            setStep(step - 1);
+            const order = nativeStepOrder();
+            const target = order[order.indexOf(step) - 1];
+            if (target != null) setStep(target);
         }
 
         document.getElementById("next-1").addEventListener("click", () => next(1));
@@ -1037,6 +1061,7 @@
         document.getElementById("next-4").addEventListener("click", () => next(4));
         document.getElementById("next-5").addEventListener("click", () => next(5));
 
+        document.getElementById("back-1").addEventListener("click", () => back(1));
         document.getElementById("back-2").addEventListener("click", () => back(2));
         document.getElementById("back-3").addEventListener("click", () => back(3));
         document.getElementById("back-4").addEventListener("click", () => back(4));

@@ -99,13 +99,13 @@
 	                    </div>
 	                }
 
-	                <div class="wizard-steps">
-	                    <div class="wizard-pill" data-pill="1">Section 1 - Applicant</div>
-	                    <div class="wizard-pill" data-pill="2">Section 2 - Address and Contact</div>
-	                    <div class="wizard-pill" data-pill="3">Section 3 - Policy</div>
-	                    <div class="wizard-pill" data-pill="4">Section 4 - Dwelling</div>
-	                    <div class="wizard-pill" data-pill="5">Section 5 - Coverages</div>
-	                    <div class="wizard-pill" data-pill="6">Section 6 - Endorsements</div>
+	                <div class="wizard-steps" data-cms-step-links-for="homeQuoteForm">
+	                    <div class="wizard-pill" data-pill="1" data-cms-step-link="1">Applicant</div>
+	                    <div class="wizard-pill" data-pill="2" data-cms-step-link="2">Address and Contact</div>
+	                    <div class="wizard-pill" data-pill="3" data-cms-step-link="3">Policy</div>
+	                    <div class="wizard-pill" data-pill="4" data-cms-step-link="4">Dwelling</div>
+	                    <div class="wizard-pill" data-pill="5" data-cms-step-link="5">Coverages</div>
+	                    <div class="wizard-pill" data-pill="6" data-cms-step-link="6">Endorsements</div>
 	                </div>
 
 	                <form asp-action="SubmitHomeQuote" asp-controller="HomeQuote" method="post" class="pcq-form-frame" id="homeQuoteForm" novalidate data-form-key="@formKey">
@@ -119,7 +119,7 @@
 	    <input type="hidden" name="CurrentStep" id="CurrentStep" value="@startStep" />
 
     <!-- ===================== SECTION 1: APPLICANT INFO ===================== -->
-    <div class="section-card wizard-step active" data-step="1">
+    <div class="section-card wizard-step active" data-step="1" data-cms-native-step="1">
         <div class="section-title">Applicant Info</div>
 
         <div class="mini-card">
@@ -274,12 +274,13 @@
         </div>
 
         <div class="d-flex justify-content-end mt-2">
-            <button type="button" class="btn btn-gold" onclick="goNext()">Next — Address & Contact</button>
+            <button type="button" class="btn btn-outline-gold fw-bold" data-cms-step-back onclick="goBack()" hidden data-cms-id="@(pageKey).native.back.first">Back</button>
+            <button type="button" class="btn btn-gold" onclick="goNext()">Next</button>
         </div>
     </div>
 
     <!-- ===================== SECTION 2: ADDRESS & CONTACT ===================== -->
-    <div class="section-card wizard-step" data-step="2">
+    <div class="section-card wizard-step" data-step="2" data-cms-native-step="2">
         <div class="section-title">Address & Contact</div>
 
         <div class="mini-card" id="primaryAddressCard">
@@ -476,13 +477,13 @@
         </div>
 
         <div class="d-flex justify-content-between mt-2">
-            <button type="button" class="btn btn-secondary fw-bold" onclick="goBack()">Back</button>
-            <button type="button" class="btn btn-gold" onclick="goNext()">Next — Policy</button>
+            <button type="button" class="btn btn-secondary fw-bold" data-cms-step-back onclick="goBack()">Back</button>
+            <button type="button" class="btn btn-gold" onclick="goNext()">Next</button>
         </div>
     </div>
 
     <!-- ===================== SECTION 3: POLICY INFORMATION ===================== -->
-    <div class="section-card wizard-step" data-step="3">
+    <div class="section-card wizard-step" data-step="3" data-cms-native-step="3">
         <div class="section-title">Policy Information</div>
 
         <div class="mini-card">
@@ -709,13 +710,13 @@
         </div>
 
         <div class="d-flex justify-content-between mt-2">
-            <button type="button" class="btn btn-secondary fw-bold" onclick="goBack()">Back</button>
-            <button type="button" class="btn btn-gold" onclick="goNext()">Next — Dwelling</button>
+            <button type="button" class="btn btn-secondary fw-bold" data-cms-step-back onclick="goBack()">Back</button>
+            <button type="button" class="btn btn-gold" onclick="goNext()">Next</button>
         </div>
     </div>
 
     <!-- ===================== SECTION 4: DWELLING INFORMATION ===================== -->
-    <div class="section-card wizard-step" data-step="4">
+    <div class="section-card wizard-step" data-step="4" data-cms-native-step="4">
         <div class="section-title">Dwelling Information</div>
 
         <div class="mini-card">
@@ -1110,13 +1111,13 @@
         </div>
 
         <div class="d-flex justify-content-between mt-2">
-            <button type="button" class="btn btn-secondary fw-bold" onclick="goBack()">Back</button>
-            <button type="button" class="btn btn-gold" onclick="goNext()">Next — Coverages</button>
+            <button type="button" class="btn btn-secondary fw-bold" data-cms-step-back onclick="goBack()">Back</button>
+            <button type="button" class="btn btn-gold" onclick="goNext()">Next</button>
         </div>
     </div>
 
     <!-- ===================== SECTION 5: GENERAL COVERAGES ===================== -->
-    <div class="section-card wizard-step" data-step="5">
+    <div class="section-card wizard-step" data-step="5" data-cms-native-step="5">
         <div class="section-title">General Coverages</div>
 
         <div class="mini-card">
@@ -1250,13 +1251,13 @@
         </div>
 
         <div class="d-flex justify-content-between mt-2">
-            <button type="button" class="btn btn-secondary fw-bold" onclick="goBack()">Back</button>
-            <button type="button" class="btn btn-gold" onclick="goNext()">Next — Endorsements</button>
+            <button type="button" class="btn btn-secondary fw-bold" data-cms-step-back onclick="goBack()">Back</button>
+            <button type="button" class="btn btn-gold" onclick="goNext()">Next</button>
         </div>
     </div>
 
     <!-- ===================== SECTION 6: ENDORSEMENTS + EARTHQUAKE + DISCLAIMER ===================== -->
-    <div class="section-card wizard-step" data-step="6">
+    <div class="section-card wizard-step" data-step="6" data-cms-native-step="6" data-cms-step-final="true">
         <div class="section-title">Endorsements</div>
 
         <div class="mini-card">
@@ -1393,7 +1394,7 @@
             <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
 
             <div class="d-flex justify-content-between mt-3">
-                <button type="button" class="btn btn-secondary fw-bold" onclick="goBack()">Back</button>
+                <button type="button" class="btn btn-secondary fw-bold" data-cms-step-back onclick="goBack()">Back</button>
 	                <button type="submit" class="btn btn-gold">Submit Home Quote Request</button>
             </div>
         </div>
@@ -1443,6 +1444,15 @@
 	        const quoteFlowShell = document.getElementById("homeQuoteFlowShell");
 	        const startButton = document.getElementById("homeHeroStartCta");
 	        const currentStepField = document.getElementById("CurrentStep");
+        const nativeSteps = Array.from(document.querySelectorAll('.wizard-step[data-cms-native-step]'));
+        function nativeStepOrder() {
+            return (window.LEGEND_NATIVE_FORM_STEPS?.order(nativeSteps) ?? nativeSteps).map(step => Number(step.dataset.step));
+        }
+        window.addEventListener('legend:website-content-rendered', event => {
+            if (event.detail?.editor || event.detail?.materialize) return;
+            const order = nativeStepOrder();
+            if (order.length) setStep(quoteStarted ? currentStep : order[0]);
+        });
 
 	        function setQuoteStartedState(started) {
 	            quoteStarted = !!started;
@@ -1558,15 +1568,20 @@
 
         function goNext() {
             if (!validateCurrentStep()) return;
-            if (currentStep < 6) {
-                emitHomeStepComplete(currentStep, currentStep + 1);
-                setStep(currentStep + 1);
+            const order = nativeStepOrder();
+            const next = order[order.indexOf(currentStep) + 1];
+            if (next != null) {
+                emitHomeStepComplete(currentStep, next);
+                setStep(next);
             }
         }
 
         function goBack() {
-            if (currentStep > 1) setStep(currentStep - 1);
+            const order = nativeStepOrder();
+            const previous = order[order.indexOf(currentStep) - 1];
+            if (previous != null) setStep(previous);
         }
+
 
         // -------- Previous Address: show only if PrimaryYearsAtAddress < 3 --------
 
@@ -1658,7 +1673,12 @@
 
         const form = document.getElementById("homeQuoteForm");
         if (form) {
-            form.addEventListener("submit", function () {
+            form.addEventListener("submit", function (e) {
+                if (!nativeStepOrder().length) {
+                    e.preventDefault();
+                    form._trackSubmitAttempt?.(false, 1);
+                    return;
+                }
                 form._trackSubmitAttempt?.(true, 0);
                 // Ensure conditional fields are correct, then allow submit
                 togglePreviousAddress(true);
@@ -1729,8 +1749,9 @@
 	                if (!quoteStarted) {
 	                    trackHomeCta('home_quote_start', label || 'Check My Home Protection Fit');
 	                }
+	                const startStep = quoteStarted ? currentStep : nativeStepOrder()[0];
 	                setQuoteStartedState(true);
-	                setStep(currentStep || initialStartStep || 1);
+	                if (startStep != null) setStep(startStep);
 	                if (quoteFlowShell) {
 	                    quoteFlowShell.scrollIntoView({ behavior: "smooth", block: "start" });
 	                }

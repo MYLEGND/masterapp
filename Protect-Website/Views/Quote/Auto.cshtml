@@ -108,12 +108,12 @@
 	                    </div>
 	                }
 
-	                <div class="wizard-steps">
-	                    <div class="wizard-pill" data-pill="1">Section 1 - Policy</div>
-	                    <div class="wizard-pill" data-pill="2">Section 2 - Drivers</div>
-	                    <div class="wizard-pill" data-pill="3">Section 3 - Vehicles</div>
-	                    <div class="wizard-pill" data-pill="4">Section 4 - Incidents</div>
-	                    <div class="wizard-pill" data-pill="5">Section 5 - Coverage</div>
+	                <div class="wizard-steps" data-cms-step-links-for="autoQuoteForm">
+	                    <div class="wizard-pill" data-pill="1" data-cms-step-link="1">Policy</div>
+	                    <div class="wizard-pill" data-pill="2" data-cms-step-link="2">Drivers</div>
+	                    <div class="wizard-pill" data-pill="3" data-cms-step-link="3">Vehicles</div>
+	                    <div class="wizard-pill" data-pill="4" data-cms-step-link="4">Incidents</div>
+	                    <div class="wizard-pill" data-pill="5" data-cms-step-link="5">Coverage</div>
 	                </div>
 
 	                <form action="/Quote/Auto" method="post" class="pcq-form-frame" id="autoQuoteForm" novalidate data-form-key="@formKey">
@@ -127,7 +127,7 @@
 	    <input type="hidden" name="CurrentStep" id="CurrentStep" value="@startStep" />
 
     <!-- ===================== SECTION 1 ===================== -->
-    <div class="section-card wizard-step active" data-step="1">
+    <div class="section-card wizard-step active" data-step="1" data-cms-native-step="1">
         <div class="section-title">Policy Information — Auto Insurance</div>
 
         <!-- ===================== NEW: APPLICANT INFO (FIRST CARD CONTENT) ===================== -->
@@ -619,12 +619,13 @@
         </div>
 
         <div class="d-flex justify-content-end mt-2">
-            <button type="button" class="btn btn-gold" onclick="goNext()">Next — Drivers</button>
+            <button type="button" class="btn btn-outline-gold fw-bold" data-cms-step-back onclick="goBack()" hidden data-cms-id="@(pageKey).native.back.first">Back</button>
+            <button type="button" class="btn btn-gold" onclick="goNext()">Next</button>
         </div>
     </div>
 
     <!-- ===================== SECTION 2: DRIVERS ===================== -->
-    <div class="section-card wizard-step" data-step="2">
+    <div class="section-card wizard-step" data-step="2" data-cms-native-step="2">
         <div class="section-title">Drivers</div>
 
         <div id="driversContainer">
@@ -933,13 +934,13 @@
         </template>
 
         <div class="d-flex justify-content-between mt-2">
-            <button type="button" class="btn btn-outline-gold fw-bold" onclick="goBack()">Back</button>
-            <button type="button" class="btn btn-gold" onclick="goNext(); syncAllDriverDropdowns();">Next — Vehicles</button>
+            <button type="button" class="btn btn-outline-gold fw-bold" data-cms-step-back onclick="goBack()">Back</button>
+            <button type="button" class="btn btn-gold" onclick="goNext(); syncAllDriverDropdowns();">Next</button>
         </div>
     </div>
 
     <!-- ===================== SECTION 3: VEHICLES ===================== -->
-    <div class="section-card wizard-step" data-step="3">
+    <div class="section-card wizard-step" data-step="3" data-cms-native-step="3" data-cms-step-after="2">
         <div class="section-title">Vehicles</div>
 
         <div id="vehiclesContainer">
@@ -1163,13 +1164,13 @@
         </template>
 
         <div class="d-flex justify-content-between mt-2">
-            <button type="button" class="btn btn-outline-gold fw-bold" onclick="goBack()">Back</button>
-            <button type="button" class="btn btn-gold" onclick="goNext(); syncAllDriverDropdowns(); buildVehicleCoverageCards(); syncIncidentDropdowns();">Next — Incidents</button>
+            <button type="button" class="btn btn-outline-gold fw-bold" data-cms-step-back onclick="goBack()">Back</button>
+            <button type="button" class="btn btn-gold" onclick="goNext(); syncAllDriverDropdowns(); buildVehicleCoverageCards(); syncIncidentDropdowns();">Next</button>
         </div>
     </div>
 
     <!-- ===================== SECTION 4: INCIDENTS ===================== -->
-    <div class="section-card wizard-step" data-step="4">
+    <div class="section-card wizard-step" data-step="4" data-cms-native-step="4" data-cms-step-after="3">
         <div class="section-title">Incidents</div>
 
         <div class="mb-4">
@@ -1281,13 +1282,13 @@
         </template>
 
         <div class="d-flex justify-content-between mt-2">
-            <button type="button" class="btn btn-outline-gold fw-bold" onclick="goBack()">Back</button>
-            <button type="button" class="btn btn-gold" onclick="goNext(); buildVehicleCoverageCards();">Next — General Coverage</button>
+            <button type="button" class="btn btn-outline-gold fw-bold" data-cms-step-back onclick="goBack()">Back</button>
+            <button type="button" class="btn btn-gold" onclick="goNext(); buildVehicleCoverageCards();">Next</button>
         </div>
     </div>
 
     <!-- ===================== SECTION 5: COVERAGE ===================== -->
-    <div class="section-card wizard-step" data-step="5">
+    <div class="section-card wizard-step" data-step="5" data-cms-native-step="5" data-cms-step-final="true">
         <div class="section-title">General Coverage</div>
 
         <div class="row">
@@ -1379,7 +1380,7 @@
             <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
 
             <div class="d-flex justify-content-between mt-3">
-                <button type="button" class="btn btn-outline-gold fw-bold" onclick="goBack()">Back</button>
+                <button type="button" class="btn btn-outline-gold fw-bold" data-cms-step-back onclick="goBack()">Back</button>
 	                <button type="submit" class="btn btn-gold">Submit Auto Quote Request</button>
             </div>
         </div>
@@ -1429,6 +1430,15 @@
 	    const quoteFlowShell = document.getElementById("autoQuoteFlowShell");
 	    const startButton = document.getElementById("autoHeroStartCta");
 	    const currentStepField = document.getElementById("CurrentStep");
+        const nativeSteps = Array.from(document.querySelectorAll('.wizard-step[data-cms-native-step]'));
+        function nativeStepOrder() {
+            return (window.LEGEND_NATIVE_FORM_STEPS?.order(nativeSteps) ?? nativeSteps).map(step => Number(step.dataset.step));
+        }
+        window.addEventListener('legend:website-content-rendered', event => {
+            if (event.detail?.editor || event.detail?.materialize) return;
+            const order = nativeStepOrder();
+            if (order.length) setStep(quoteStarted ? currentStep : order[0]);
+        });
 
 	    function setQuoteStartedState(started) {
 	        quoteStarted = !!started;
@@ -1544,17 +1554,21 @@
         return true;
     }
 
-    function goNext() {
-        if (!validateCurrentStep()) return;
-        if (currentStep < 5) {
-            emitAutoStepComplete(currentStep, currentStep + 1);
-            setStep(currentStep + 1);
+        function goNext() {
+            if (!validateCurrentStep()) return;
+            const order = nativeStepOrder();
+            const next = order[order.indexOf(currentStep) + 1];
+            if (next != null) {
+                emitAutoStepComplete(currentStep, next);
+                setStep(next);
+            }
         }
-    }
 
-    function goBack() {
-        if (currentStep > 1) setStep(currentStep - 1);
-    }
+        function goBack() {
+            const order = nativeStepOrder();
+            const previous = order[order.indexOf(currentStep) - 1];
+            if (previous != null) setStep(previous);
+        }
 
     function removeCard(btn, type) {
         const card = btn.closest(".mini-card");
@@ -1994,12 +2008,19 @@
 
     // ===================== NEW: Applicant -> Primary Driver autofill + Primary Vehicle assignment =====================
 
+    const primaryDriverAutofillValues = new WeakMap();
+
     function safeSet(el, val) {
         if (!el) return;
         const v = (val ?? "").toString();
-        const canOverwrite = (el.value ?? "") === "" || el.getAttribute("data-autofilled") === "1";
+        const current = el.value ?? "";
+        const canOverwrite = current === "" ||
+            (primaryDriverAutofillValues.has(el) && primaryDriverAutofillValues.get(el) === current);
         if (!canOverwrite) return;
         el.value = v;
+        // Selects may normalize the requested value. Own only the rendered
+        // value; later manual Driver answers must survive applicant updates.
+        primaryDriverAutofillValues.set(el, el.value);
         el.setAttribute("data-autofilled", "1");
         el.dispatchEvent(new Event("change", { bubbles: true }));
         el.dispatchEvent(new Event("input", { bubbles: true }));
@@ -2025,13 +2046,9 @@
 
         // Driver marital list in your HTML is missing Single/Married; we only set if option exists.
         const maritalEl = document.getElementById("Driver0_MaritalStatus");
-        if (maritalEl && (maritalEl.value === "" || maritalEl.getAttribute("data-autofilled") === "1")) {
-            const exists = Array.from(maritalEl.options).some(o => o.value === aMarital || o.text === aMarital);
-            if (exists) {
-                maritalEl.value = aMarital;
-                maritalEl.setAttribute("data-autofilled", "1");
-                maritalEl.dispatchEvent(new Event("change", { bubbles: true }));
-            }
+        if (maritalEl) {
+            const option = Array.from(maritalEl.options).find(o => o.value === aMarital || o.text === aMarital);
+            if (option) safeSet(maritalEl, option.value);
         }
 
         safeSet(document.getElementById("Driver0_DLNumber"), aDLNum);
@@ -2146,7 +2163,12 @@
 
         const form = document.getElementById("autoQuoteForm");
         if (form) {
-            form.addEventListener("submit", function () {
+            form.addEventListener("submit", function (e) {
+                if (!nativeStepOrder().length) {
+                    e.preventDefault();
+                    form._trackSubmitAttempt?.(false, 1);
+                    return;
+                }
                 form._trackSubmitAttempt?.(true, 0);
                 buildVehicleCoverageCards();
                 enableAllInputsForSubmit();
@@ -2215,8 +2237,9 @@
 	                if (!quoteStarted) {
 	                    trackAutoCta('auto_quote_start', label || 'Check My Auto Protection Fit');
 	                }
+	                const startStep = quoteStarted ? currentStep : nativeStepOrder()[0];
 	                setQuoteStartedState(true);
-	                setStep(currentStep || initialStartStep || 1);
+	                if (startStep != null) setStep(startStep);
 	                if (quoteFlowShell) {
 	                    quoteFlowShell.scrollIntoView({ behavior: "smooth", block: "start" });
 	                }

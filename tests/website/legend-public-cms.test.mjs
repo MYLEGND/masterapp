@@ -346,7 +346,7 @@ function fixtureMutationResponse(before,after,serverRevision,integerRevisions=fa
   };
 }
 
-async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,dataCatalog=null,dataCollections=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,mutationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,modelContext=null,integerRevisions=false,pendingPublication=null,viewportWidth=1024,scriptTimeoutMs=null,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,dataCatalog=null,dataCollections=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,mutationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,modelContext=null,integerRevisions=false,pendingPublication=null,viewportWidth=1024,scriptTimeoutMs=null,beforeEval=null,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:origin+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[]; const animations=[];
   Object.defineProperty(w.crypto,'subtle',{value:webcrypto.subtle}); w.TextEncoder=TextEncoder;
@@ -525,6 +525,7 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
   };
   if(pendingPublication) w.sessionStorage.setItem(
     'legend-publication:'+siteKey+':'+(business?.id || '')+':'+agentSlug,JSON.stringify(pendingPublication));
+  if(beforeEval) beforeEval(w);
   if(scriptTimeoutMs) {
     try { new Script(source).runInContext(dom.getInternalVMContext(),{timeout:scriptTimeoutMs}); }
     catch(error) { w.close(); throw error; }
@@ -5260,5 +5261,598 @@ test('protected field ordering never promotes a one-field wrapper to a native wi
     f.click('#only');
     assert.equal(f.w.document.querySelector('#legend-cms-field-order').hidden,true);
     assert.deepEqual(await f.save(),before);
+  }finally{f.close();}
+});
+
+function nativeOrderingDocument(order=[1,2,3,4]) {
+  const doc=canonicalDocument();
+  doc.pages['/quote/auto']={
+    title:'Native insurance',systemTemplateKey:'protect_template:auto_quote',
+    composition:[canonicalNode('native.form','container','div',{
+      systemKey:'protect_runtime_form:quote_auto_form',fieldLabels:{field1:'Policy'},
+      children:[canonicalNode('native.steps','container','div',{children:[
+        canonicalNode('native.heading','heading','h2',{text:'Insurance questions'}),
+        ...order.map(key=>canonicalNode('native.step.'+key,'container','div',{
+          children:[canonicalNode('native.label.'+key,'heading','h3',{text:'Question '+key})]
+        }))
+      ]})]
+    })]
+  };
+  return doc;
+}
+
+function nativeOrderingHtml({keys=[1,2,3,4],micro=false,dependent=true,terminal=true}={}) {
+  return '<!doctype html><html><head></head><body data-page-key="quote-auto"><main>'+
+    '<form id="nativeForm" action="/Quote/Auto" method="post" data-form-key="quote_auto_form">'+
+    '<input type="hidden" name="__RequestVerificationToken" value="test-token">'+
+    '<div data-cms-id="native.steps"><h2 data-cms-id="native.heading">Insurance questions</h2>'+keys.map((key,index)=>
+      '<div class="'+(micro?'lq-micro-step':'wizard-step')+'" data-'+(micro?'micro-':'')+'step="'+key+'" data-cms-native-step="'+key+'" data-cms-id="native.step.'+key+'"'+
+      (dependent && key===3?' data-cms-step-after="2"':'')+(terminal && index===keys.length-1?' data-cms-step-final="true"':'')+'>'+
+      '<h3 data-cms-id="native.label.'+key+'">Question '+key+'</h3>'+
+      '<label for="field'+key+'">Field '+key+'</label><input id="field'+key+'" name="field'+key+'" '+(micro?'type="radio"':'')+' value="answer'+key+'" required>'+
+      '<button type="button" data-cms-step-back>Back</button><button type="button" class="btn-next">Next</button></div>').join('')+
+    '</div></form></main></body></html>';
+}
+
+function nativeFunction(view,name) {
+  const match=view.match(new RegExp('^([ \\t]*)function '+name+'\\([^]*?\\n\\1\\}', 'm'));
+  assert.ok(match,'Expected shipped native function '+name);
+  return match[0];
+}
+
+const nativeViewSources=Object.fromEntries([
+  ['auto','Quote/Auto'],['home','Quote/Home'],['commercial','Quote/Commercial'],['life','Quote/Life'],
+  ['dvh','Quote/DentalVisionHearing'],['disability','Quote/Disability'],['risk','RiskAssessment/Index']
+].map(([key,path])=>[key,readFileSync(new URL('../../Protect-Website/Views/'+path+'.cshtml',import.meta.url),'utf8')]));
+
+test('native insurance step order saves canonical slots and reopens with the same controls and real traversal',async()=>{
+  const f=await domFixture({siteKey:'protect',doc:nativeOrderingDocument(),pathname:'/Quote/Auto',html:nativeOrderingHtml()});
+  let saved;
+  try{
+    const input=f.w.document.getElementById('field2');
+    let changes=0;input.addEventListener('change',()=>changes++);
+    f.change('#legend-cms-form-navigator select','1');
+    assert.equal(f.w.document.querySelector('[data-native-step-order]').hidden,false);
+    f.click('[data-native-step-before]');
+    assert.deepEqual([...f.w.document.querySelectorAll('[data-cms-native-step]')].map(step=>step.dataset.step),['2','1','3','4']);
+    assert.equal(f.w.document.getElementById('field2'),input);
+    input.dispatchEvent(new f.w.Event('change'));assert.equal(changes,1);
+    assert.equal(input.name,'field2');assert.equal(input.required,true);assert.equal(input.value,'answer2');
+    assert.equal(f.w.document.querySelector('[data-cms-id="native.steps"]').firstElementChild.dataset.cmsId,'native.heading');
+    assert.equal(f.w.document.querySelector('[data-step="2"] [data-cms-step-back]').hidden,true);
+    assert.equal(f.w.document.querySelector('[data-step="1"] [data-cms-step-back]').hidden,false);
+    saved=await f.save();
+    assert.deepEqual(canonicalNodeById(saved,'native.steps','/quote/auto').children.map(node=>node.id),[
+      'native.heading','native.step.2','native.step.1','native.step.3','native.step.4'
+    ]);
+    assert.deepEqual(canonicalNodeById(saved,'native.form','/quote/auto').fieldLabels,{field1:'Policy'});
+  }finally{f.close();}
+  const live=await domFixture({siteKey:'protect',doc:saved,pathname:'/Quote/Auto',html:nativeOrderingHtml(),search:''});
+  try{
+    assert.deepEqual([...live.w.document.querySelectorAll('[data-cms-native-step]')].map(step=>step.dataset.step),['2','1','3','4']);
+    assert.equal(live.w.document.getElementById('nativeForm').getAttribute('action'),'/Quote/Auto');
+    assert.equal(live.w.document.querySelector('[name="__RequestVerificationToken"]').value,'test-token');
+    assert.equal(live.calls.some(call=>call.method==='POST'),false);
+  }finally{live.close();}
+});
+
+test('native insurance editor explains prerequisite and final-action constraints without changing a draft',async()=>{
+  const f=await domFixture({siteKey:'protect',doc:nativeOrderingDocument(),pathname:'/Quote/Auto',html:nativeOrderingHtml()});
+  try{
+    f.change('#legend-cms-form-navigator select','2');
+    assert.equal(f.w.document.querySelector('[data-native-step-before]').disabled,true);
+    assert.match(f.w.document.querySelector('[data-native-step-order-status]').textContent,/Question 3 must stay after Question 2/);
+    f.change('#legend-cms-form-navigator select','3');
+    assert.equal(f.w.document.querySelector('[data-native-step-before]').disabled,true);
+    assert.match(f.w.document.querySelector('[data-native-step-order-status]').textContent,/final review or continue action.*last/);
+    assert.deepEqual(await f.save(),nativeOrderingDocument());
+  }finally{f.close();}
+});
+
+test('invalid authored native order fails navigation and publish visibly instead of silently using numeric order',async()=>{
+  const f=await domFixture({siteKey:'protect',doc:nativeOrderingDocument([1,3,2,4]),pathname:'/Quote/Auto',html:nativeOrderingHtml()});
+  try{
+    const steps=[...f.w.document.querySelectorAll('[data-cms-native-step]')];
+    assert.equal(f.w.LEGEND_NATIVE_FORM_STEPS.order(steps).length,0);
+    assert.match(f.w.document.querySelector('[data-cms-native-order-error]').textContent,/Question 3 must stay after Question 2/);
+    const before=f.calls.length;
+    f.click('#legend-cms-publish-now');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(f.calls.slice(before).some(call=>call.method==='POST' && call.url.includes('/publish')),false);
+    await assert.rejects(()=>f.w.LEGEND_WEBSITE_STUDIO_AGENT.runPreflight(),/must stay after/);
+    assert.equal(f.w.document.getElementById('field2').value,'answer2');
+  }finally{f.close();}
+});
+
+test('native step ownership rejects moving a question into a different conditional group',async()=>{
+  const doc=nativeOrderingDocument();
+  const group=canonicalNodeById(doc,'native.steps','/quote/auto');
+  const [step]=group.children.splice(2,1);
+  group.children.push(canonicalNode('other.group','container','div',{children:[step]}));
+  const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Auto',html:nativeOrderingHtml()});
+  try{
+    assert.match(f.w.document.querySelector('[data-cms-native-order-error]').textContent,/original group/);
+    assert.equal(f.w.LEGEND_NATIVE_FORM_STEPS.order([...f.w.document.querySelectorAll('[data-cms-native-step]')]).length,0);
+    assert.equal(f.w.document.getElementById('field2').name,'field2');
+  }finally{f.close();}
+});
+
+for(const key of ['auto','home']) test('shipped '+key+' navigator follows saved order with native validation and stable event step identities',async()=>{
+  const f=await domFixture({siteKey:'protect',doc:nativeOrderingDocument([2,1,3,4]),pathname:'/Quote/Auto',html:nativeOrderingHtml(),search:''});
+  try{
+    f.w.nativeSteps=[...f.w.document.querySelectorAll('[data-cms-native-step]')].sort((a,b)=>Number(a.dataset.step)-Number(b.dataset.step));
+    f.w.currentStep=2;f.w.transitions=[];
+    f.w.setStep=step=>{f.w.currentStep=step;};
+    f.w['emit'+(key==='auto'?'Auto':'Home')+'StepComplete']=(from,to)=>f.w.transitions.push([from,to]);
+    f.w.togglePreviousAddress=()=>{};f.w.toggleHouseUpdateYearFields=()=>{};
+    for(const name of ['nativeStepOrder','validateCurrentStep','goNext','goBack']) f.w.eval(nativeFunction(nativeViewSources[key],name));
+    f.w.document.getElementById('field2').value='';f.w.goNext();assert.equal(f.w.currentStep,2);
+    f.w.document.getElementById('field2').value='restored';f.w.goNext();assert.equal(f.w.currentStep,1);
+    assert.deepEqual(f.w.transitions,[[2,1]]);
+    f.w.goBack();assert.equal(f.w.currentStep,2);f.w.goBack();assert.equal(f.w.currentStep,2);
+  }finally{f.close();}
+});
+
+test('shipped commercial and risk navigators preserve validation while traversing canonical positions',async()=>{
+  for(const key of ['commercial','risk']) {
+    const f=await domFixture({siteKey:'protect',doc:nativeOrderingDocument([2,1,3,4]),pathname:'/Quote/Auto',html:nativeOrderingHtml(),search:''});
+    try{
+      f.w.nativeSteps=f.w.stepWraps=[...f.w.document.querySelectorAll('[data-cms-native-step]')].sort((a,b)=>Number(a.dataset.step)-Number(b.dataset.step));
+      f.w.currentStep=2;f.w.valid=false;f.w.validateStep=()=>f.w.valid;
+      f.w.setStep=step=>{f.w.currentStep=step;};f.w.getStep=()=>f.w.currentStep;
+      f.w.eval(nativeFunction(nativeViewSources[key],'nativeStepOrder'));
+      if(key==='commercial') {
+        f.w.trackCommercialQuote=null;
+        const start=nativeViewSources[key].indexOf("document.addEventListener('click', function (e) {");
+        const end=nativeViewSources[key].indexOf("form.addEventListener('submit'",start);
+        f.w.eval(nativeViewSources[key].slice(start,end));
+        f.click('[data-step="2"] .btn-next');assert.equal(f.w.currentStep,2);
+        f.w.valid=true;f.click('[data-step="2"] .btn-next');assert.equal(f.w.currentStep,1);
+      }else{
+        f.w.eval(nativeFunction(nativeViewSources[key],'next')+'\n'+nativeFunction(nativeViewSources[key],'back'));
+        f.w.next(2);assert.equal(f.w.currentStep,2);
+        f.w.valid=true;f.w.next(2);assert.equal(f.w.currentStep,1);
+        f.w.back(1);assert.equal(f.w.currentStep,2);
+      }
+    }finally{f.close();}
+  }
+});
+
+for(const key of ['dvh','disability','life']) test('shipped '+key+' auto advance follows canonical question order without reassigning field identities',async()=>{
+  const f=await domFixture({siteKey:'protect',doc:nativeOrderingDocument([2,0,3,1,4]),pathname:'/Quote/Auto',html:nativeOrderingHtml({keys:[0,1,2,3,4],micro:true,dependent:false}),search:''});
+  try{
+    f.w.microSteps=[...f.w.document.querySelectorAll('[data-cms-native-step]')].sort((a,b)=>Number(a.dataset.microStep)-Number(b.dataset.microStep));
+    f.w.form=f.w.document.getElementById('nativeForm');f.w.currentMicroStep=2;f.w.autoAdvanceTimer=null;
+    f.w.showMicroStep=index=>{f.w.currentMicroStep=index;};
+    f.w.eval(nativeFunction(nativeViewSources[key],'nativeMicroOrder'));
+    assert.deepEqual(Array.from(f.w.nativeMicroOrder()),[2,0,3,1,4]);
+    if(key==='life') {
+      f.w.step1Panel={hidden:false};f.w.clearAutoAdvanceTimer=()=>f.w.clearTimeout(f.w.autoAdvanceTimer);
+      f.w.markSelectedCardAdvancing=()=>{};f.w.setStepTransitionState=()=>{};
+      f.w.eval(nativeFunction(nativeViewSources[key],'nativeMicroNeighbor')+'\n'+nativeFunction(nativeViewSources[key],'queueMicroAdvance'));
+      f.w.queueMicroAdvance(2,3);
+    }else{
+      f.w.syncChoiceCards=()=>{};f.w.clearGroupError=()=>{};f.w.syncAgeHidden=()=>{};
+      f.w.trackStepComplete=(from,to)=>{f.w.traversed=[from,to];};
+      f.w.eval(nativeFunction(nativeViewSources[key],'wireChoiceGroup'));
+      f.w.wireChoiceGroup({field:'field2',errorId:'error2'},2);
+      f.w.document.getElementById('field2').checked=true;
+      f.w.document.getElementById('field2').dispatchEvent(new f.w.Event('change'));
+    }
+    await new Promise(resolve=>setTimeout(resolve,360));
+    assert.equal(f.w.currentMicroStep,0);
+    if(key!=='life') assert.deepEqual(Array.from(f.w.traversed),[3,1]);
+    assert.equal(f.w.document.getElementById('field2').name,'field2');
+    assert.equal(f.calls.some(call=>call.method==='POST'),false);
+  }finally{f.close();}
+});
+
+test('all shipped native insurance question groups declare their canonical order contract',()=>{
+  for(const [key,view] of Object.entries(nativeViewSources)) {
+    const steps=[...view.matchAll(/<div class="(?:section-card wizard-step(?: active)?|form-step|step-wrap|lq-micro-step)" data-(?:micro-)?step="[^"]+"[^>]*>/g)].map(match=>match[0]);
+    assert.ok(steps.length>=2,key);
+    assert.ok(steps.every(step=>step.includes('data-cms-native-step=')),key+' missing native step identity');
+    assert.equal(steps.filter(step=>step.includes('data-cms-step-final="true"')).length,['life','dvh','disability'].includes(key)?0:1,key+' has the wrong terminal action constraint');
+    assert.match(view,/LEGEND_NATIVE_FORM_STEPS\?\.order\(/,key+' ignores canonical runtime order');
+  }
+});
+
+test('new native Back controls preserve every preexisting scalar and container CMS identity',async()=>{
+  const content='<div id="original-step"><h3 id="original-heading">Step</h3><label id="original-label">Answer</label><input name="answer"><div id="original-actions"><span id="original-placeholder"></span><div id="original-spacer" class="spacer"></div>BACK<button id="original-next" type="button">Next</button></div></div><div id="later-step"><label id="later-label">Later answer</label><input name="later"><button id="original-submit" type="submit">Submit</button></div>';
+  const wrap=back=>'<!doctype html><html><body data-page-key="quote-auto"><main><form data-form-key="quote_auto_form">'+content.replace('BACK',back)+'</form></main></body></html>';
+  const doc=nativeOrderingDocument();doc.pages['/quote/auto'].composition=[];
+  const baseline=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Auto',html:wrap('')});
+  const amended=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Auto',html:wrap('<button type="button" data-cms-id="native.fixture.back.first" data-cms-step-back>Back</button>')});
+  try{
+    for(const element of baseline.w.document.querySelectorAll('form [id]'))
+      assert.equal(amended.w.document.getElementById(element.id).dataset.cmsId,element.dataset.cmsId,element.id);
+    for(const [key,view] of Object.entries(nativeViewSources)) {
+      const newBacks=[...view.matchAll(/<button[^>]*data-cms-id="(?:@\(pageKey\)\.native|native\.risk-assessment)\.back\.[^"]*"[^>]*>/g)];
+      assert.equal(newBacks.length,key==='life'?10:1,key+' must reserve explicit IDs for new controls');
+    }
+  }finally{baseline.close();amended.close();}
+});
+
+for(const key of ['auto','home']) test('shipped '+key+' outer progress container follows only its recorded native form',async()=>{
+  const view=nativeViewSources[key];
+  const markup=view.match(/<div class="wizard-steps"[^>]*>[^]*?\n\s*<\/div>/)?.[0];
+  assert.ok(markup);
+  const temporary=new JSDOM(markup);
+  const progress=temporary.window.document.querySelector('.wizard-steps');
+  progress.dataset.cmsId='native.progress';
+  const keys=[...progress.children].map(link=>Number(link.dataset.cmsStepLink));
+  for(const link of progress.children) link.dataset.cmsId='native.progress.'+link.dataset.cmsStepLink;
+  const primaryMarkup=progress.outerHTML;
+  const unrelated=progress.cloneNode(true);
+  unrelated.id='unrelated-progress';unrelated.dataset.cmsStepLinksFor='unrelated-form';
+  unrelated.dataset.cmsId='unrelated.progress';
+  unrelated.querySelectorAll('[data-cms-id]').forEach(node=>node.dataset.cmsId='unrelated.progress.'+node.dataset.cmsStepLink);
+  const unrelatedMarkup=unrelated.outerHTML;
+  temporary.window.close();
+  const order=[2,1,...keys.slice(2)];
+  const doc=nativeOrderingDocument(order);
+  doc.pages['/quote/auto'].composition.unshift(canonicalNode('native.progress','container','div',{
+    children:keys.map(value=>canonicalNode('native.progress.'+value,'text','div',{text:'Question '+value}))
+  }),canonicalNode('unrelated.progress','container','div',{
+    children:keys.map(value=>canonicalNode('unrelated.progress.'+value,'text','div',{text:'Other '+value}))
+  }));
+  const html=nativeOrderingHtml({keys}).replace('id="nativeForm"','id="'+key+'QuoteForm"')
+    .replace('<main>','<main>'+primaryMarkup+unrelatedMarkup+'<form id="unrelated-form"></form>');
+  const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Auto',html,search:''});
+  try{
+    const links=[...f.w.document.querySelector('[data-cms-step-links-for="'+key+'QuoteForm"]').children];
+    assert.deepEqual(links.map(link=>Number(link.dataset.cmsStepLink)),order);
+    assert.deepEqual([...f.w.document.querySelector('#unrelated-progress').children].map(link=>Number(link.dataset.cmsStepLink)),keys);
+    assert.equal(f.w.document.querySelector('[data-cms-step-links-for="'+key+'QuoteForm"]').closest('form'),null);
+    assert.equal(f.w.document.getElementById(key+'QuoteForm').querySelectorAll('[data-cms-step-link]').length,0);
+  }finally{f.close();}
+});
+
+function nativeSubmitHandler(key) {
+  const view=nativeViewSources[key];
+  const start=view.indexOf(key==='risk'?"riskAssessmentForm?.addEventListener('submit'":key==='commercial'?"form.addEventListener('submit'":'form.addEventListener("submit"');
+  assert.ok(start>=0);
+  const closing='\n'+' '.repeat(key==='risk'?8:key==='home'?16:12)+'});';
+  const end=view.indexOf(closing,start);
+  assert.ok(end>start);
+  return view.slice(start,end+closing.length);
+}
+
+for(const key of ['auto','home','commercial','risk']) test('shipped '+key+' submit gate rejects an invalid native sequence before native submission effects',async()=>{
+  const f=await domFixture({siteKey:'protect',doc:nativeOrderingDocument([1,3,2,4]),pathname:'/Quote/Auto',html:nativeOrderingHtml(),search:''});
+  try{
+    f.w.form=f.w.riskAssessmentForm=f.w.document.getElementById('nativeForm');
+    f.w.nativeSteps=f.w.stepWraps=[...f.w.form.querySelectorAll('[data-cms-native-step]')];
+    f.w.attempts=[];f.w.form._trackSubmitAttempt=(success,count)=>f.w.attempts.push([success,count]);
+    f.w.eval(nativeFunction(nativeViewSources[key],'nativeStepOrder'));
+    if(key==='commercial'){
+      f.w.getStep=()=>{throw new Error('Invalid order must fail before reading or mutating the current step');};
+      f.w.eval(nativeFunction(nativeViewSources[key],'validateAllStepsAndJumpToFirstInvalid'));
+      assert.equal(f.w.validateAllStepsAndJumpToFirstInvalid(),false);
+    }
+    f.w.eval(nativeSubmitHandler(key));
+    const field=f.w.document.getElementById('field1');field.value='$1,000';
+    const event=new f.w.Event('submit',{bubbles:true,cancelable:true});
+    assert.equal(f.w.form.dispatchEvent(event),false);
+    assert.equal(event.defaultPrevented,true);
+    assert.deepEqual(Array.from(f.w.attempts,attempt=>Array.from(attempt)),[[false,1]]);
+    assert.equal(field.value,'$1,000');
+    assert.equal(f.w.document.getElementById('AcknowledgedDisclaimerHidden'),null);
+    assert.equal(f.calls.some(call=>call.method==='POST'),false);
+  }finally{f.close();}
+});
+
+test('shipped Auto applicant autofill preserves earlier manual driver answers and still refreshes values it owns',()=>{
+  const names=['FirstName','LastName','DOB','Gender','MaritalStatus','DriversLicenseNumber','DLStatus','DLState','Industry'];
+  const driverIds=['FirstName','LastName','DOB','Gender','MaritalStatus','DLNumber','DLStatus','DLState','OccupationIndustry'];
+  const html=names.map(name=>'<input id="Applicant_'+name+'">').join('')+
+    driverIds.map(name=>['Gender','MaritalStatus'].includes(name)
+      ?'<select id="Driver0_'+name+'"><option value=""></option><option value="first">First</option><option value="second">Second</option></select>'
+      :'<input id="Driver0_'+name+'">').join('');
+  const dom=new JSDOM(html,{runScripts:'outside-only'});const w=dom.window;
+  try{
+    w.primaryDriverAutofillValues=new w.WeakMap();
+    w.syncAllDriverDropdowns=w.syncIncidentDropdowns=w.applyPendingIncidentSelections=()=>{};
+    w.eval(nativeFunction(nativeViewSources.auto,'safeSet')+'\n'+nativeFunction(nativeViewSources.auto,'applyApplicantToPrimaryDriver'));
+    const field=id=>w.document.getElementById(id);
+    w.applyApplicantToPrimaryDriver();
+    assert.equal(field('Driver0_FirstName').getAttribute('data-autofilled'),'1');
+    field('Driver0_FirstName').value='Driver answer';
+    field('Driver0_MaritalStatus').value='second';
+    field('Applicant_FirstName').value='Applicant answer';
+    field('Applicant_LastName').value='Initial shared last name';
+    field('Applicant_MaritalStatus').value='first';
+    // A select normalizes an unavailable applicant value to the empty option.
+    field('Applicant_Gender').value='Unavailable';
+    w.applyApplicantToPrimaryDriver();
+    assert.equal(field('Driver0_FirstName').value,'Driver answer');
+    assert.equal(field('Driver0_MaritalStatus').value,'second');
+    assert.equal(field('Driver0_LastName').value,'Initial shared last name');
+    assert.equal(w.primaryDriverAutofillValues.get(field('Driver0_Gender')),'');
+    field('Driver0_Gender').value='second';
+    field('Applicant_Gender').value='first';
+    field('Applicant_LastName').value='Updated shared last name';
+    w.applyApplicantToPrimaryDriver();
+    assert.equal(field('Driver0_Gender').value,'second');
+    assert.equal(field('Driver0_FirstName').value,'Driver answer');
+    assert.equal(field('Driver0_MaritalStatus').value,'second');
+    assert.equal(field('Driver0_LastName').value,'Updated shared last name');
+  }finally{w.close();}
+});
+
+function nativeContinuationFixture(key,order=[4,2,0,3,1]) {
+  const buttonId=key==='life'?'step1Continue':'dqContinueToContactBtn';
+  const markup=nativeViewSources[key].match(new RegExp('<button[^>]*id="'+buttonId+'"[^>]*>[^]*?</button>'))?.[0];
+  assert.ok(markup);
+  const dom=new JSDOM(nativeOrderingHtml({keys:[0,1,2,3,4],micro:true,dependent:false,terminal:false}));
+  const original=dom.window.document.querySelector('[data-cms-native-step="4"]');
+  original.insertAdjacentHTML('beforeend','<div class="lq-step-actions" data-cms-step-actions data-cms-id="native.actions">'+markup+'</div>');
+  const button=dom.window.document.getElementById(buttonId);button.dataset.cmsId='native.continue';
+  dom.window.document.querySelectorAll('[data-cms-step-back]').forEach(back=>back.dataset.step1Back=back.closest('[data-cms-native-step]').dataset.cmsNativeStep);
+  const html=dom.serialize();dom.window.close();
+  const doc=nativeOrderingDocument(order);
+  canonicalNodeById(doc,'native.step.4','/quote/auto').children.push(
+    canonicalNode('native.actions','container','div',{children:[
+      canonicalNode('native.continue','button','button',{text:'Continue review'})
+    ]})
+  );
+  return {html,doc,buttonId};
+}
+
+for(const key of ['life','dvh','disability']) test('shipped '+key+' original Continue follows the actual last independent question and retains canonical ownership',async()=>{
+  const {html,doc,buttonId}=nativeContinuationFixture(key);
+  const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Auto',html});
+  let saved;
+  try{
+    const button=f.w.document.getElementById(buttonId);let events=0;
+    button.addEventListener('native-control-check',()=>events++);
+    assert.equal(button.closest('[data-cms-native-step]').dataset.cmsNativeStep,'1');
+    f.change('#legend-cms-form-navigator select','4');
+    assert.equal(f.w.document.querySelector('[data-native-step-before]').disabled,false);
+    f.click('[data-native-step-before]');
+    assert.equal(f.w.document.getElementById(buttonId),button);
+    assert.equal(button.closest('[data-cms-native-step]').dataset.cmsNativeStep,'3');
+    button.dispatchEvent(new f.w.Event('native-control-check'));assert.equal(events,1);
+    saved=await f.save();
+    const location=fixtureFindNodeLocation(saved,'native.continue');
+    assert.equal(location.parentId,'native.actions');
+    assert.equal(fixtureFindNodeLocation(saved,'native.actions').parentId,'native.step.4');
+    assert.equal(canonicalNodes(saved,'/quote/auto').filter(node=>node.id==='native.continue').length,1);
+  }finally{f.close();}
+  const reopened=await domFixture({siteKey:'protect',doc:saved,pathname:'/Quote/Auto',html,search:''});
+  try{
+    assert.equal(reopened.w.document.getElementById(buttonId).closest('[data-cms-native-step]').dataset.cmsNativeStep,'3');
+    assert.equal(reopened.w.document.querySelectorAll('#'+buttonId).length,1);
+  }finally{reopened.close();}
+  let snapshot;
+  const capture=await domFixture({siteKey:'protect',doc:saved,pathname:'/Quote/Auto',html,search:'?legendEdit=ticket&legendMaterialize=1',
+    beforeEval:w=>{w.postMessage=payload=>{snapshot=payload;};}});
+  try{
+    assert.equal(snapshot?.type,'legend-site-materialized-page');
+    const captured={...saved,pages:{...saved.pages,'/quote/auto':{...saved.pages['/quote/auto'],composition:snapshot.composition}}};
+    assert.equal(canonicalNodes(captured,'/quote/auto').filter(node=>node.id==='native.continue').length,1);
+    assert.equal(fixtureFindNodeLocation(captured,'native.continue').parentId,'native.actions');
+    assert.equal(fixtureFindNodeLocation(captured,'native.actions').parentId,'native.step.4');
+    assert.equal(capture.w.document.getElementById(buttonId).closest('[data-cms-native-step]').dataset.cmsNativeStep,'3');
+  }finally{capture.close();}
+});
+
+for(const key of ['life','dvh','disability']) test('shipped '+key+' new Back identities remain distinct across product and landing pages',async()=>{
+  const newBacks=[...nativeViewSources[key].matchAll(/<button[^>]*data-cms-id="@\(pageKey\)\.native\.back\.[^"]*"[^>]*>Back<\/button>/g)].map(match=>match[0]);
+  assert.ok(newBacks.length>=1);
+  let document=canonicalDocument();
+  for(const pageKey of ['quote_'+key,'quote_'+key+'_landing_variant']){
+    const path='/'+pageKey.replaceAll('_','-');
+    const markup=[...new Set(newBacks)].join('').replaceAll('@(pageKey)',pageKey);
+    const ids=[...markup.matchAll(/data-cms-id="([^"]+)"/g)].map(match=>match[1]);
+    assert.equal(new Set(ids).size,ids.length);
+    document.pages[path]={title:pageKey,systemTemplateKey:'protect_template:auto_quote',composition:[]};
+    const html='<!doctype html><html><body data-page-key="'+pageKey+'"><main><form data-form-key="'+pageKey+'_form">'+markup+'</form></main></body></html>';
+    let snapshot;
+    const f=await domFixture({siteKey:'protect',doc:document,pathname:path,html,search:'?legendEdit=ticket&legendMaterialize=1',
+      beforeEval:w=>{w.postMessage=payload=>{snapshot=payload;};}});
+    try{
+      assert.ok(snapshot?.composition);
+      document.pages[path].composition=snapshot.composition;
+      const capturedIds=canonicalNodes(document,path).map(node=>node.id);
+      for(const id of ids) assert.ok(capturedIds.includes(id),id+' was remapped during materialization');
+    }finally{f.close();}
+    const reopened=await domFixture({siteKey:'protect',doc:document,pathname:path,html,search:''});
+    try{
+      for(const id of ids) assert.equal(reopened.w.document.querySelectorAll('[data-cms-id="'+id+'"]').length,1);
+    }finally{reopened.close();}
+  }
+  const allIds=Object.keys(document.pages).flatMap(path=>canonicalNodes(document,path).map(node=>node.id));
+  assert.equal(new Set(allIds).size,allIds.length);
+});
+
+for(const key of ['dvh','disability']) test('shipped '+key+' moved Continue validates every discovery answer through the original contact transition',async()=>{
+  const fixture=nativeContinuationFixture(key,[4,2,1,3,0]);
+  const f=await domFixture({siteKey:'protect',...fixture,pathname:'/Quote/Auto',search:''});
+  try{
+    const w=f.w;
+    w.form=w.document.getElementById('nativeForm');
+    w.microSteps=[...w.form.querySelectorAll('[data-cms-native-step]')].sort((a,b)=>Number(a.dataset.microStep)-Number(b.dataset.microStep));
+    w.continueButton=w.document.getElementById(fixture.buttonId);
+    w.microStepConfigs=w.microSteps.map((step,index)=>({field:'field'+index,errorId:'error'+index}));
+    w.showMicroStep=index=>{w.currentMicroStep=index;};
+    w.transitions=[];w.completedSteps=[];
+    w.trackStepComplete=(...args)=>w.completedSteps.push(args);w.trackCta=()=>{};
+    w.showProcessingThenContact=()=>w.transitions.push('processing-to-contact');
+    for(const name of ['nativeMicroOrder','requireSelection','showGroupError','clearGroupError','asTrimmed'])
+      w.eval(nativeFunction(nativeViewSources[key],name));
+    const view=nativeViewSources[key];
+    w.eval(view.slice(view.indexOf('        if (continueButton) {'),view.indexOf('        if (backToQuestionsButton) {')));
+    for(const input of w.form.querySelectorAll('input[type="radio"]')) input.checked=true;
+    w.document.getElementById('field2').checked=false;
+    w.continueButton.click();
+    assert.equal(w.currentMicroStep,2);assert.equal(w.transitions.length,0);
+    w.document.getElementById('field2').checked=true;
+    const button=w.continueButton;
+    assert.equal(button.closest('[data-cms-native-step]').dataset.cmsNativeStep,'0');
+    button.click();
+    assert.deepEqual(Array.from(w.transitions),['processing-to-contact']);
+    assert.deepEqual(Array.from(w.completedSteps[0]),[1,6,'continue_to_contact']);
+    assert.equal(w.document.getElementById(fixture.buttonId),button);
+    assert.equal(f.calls.some(call=>call.method==='POST'),false);
+  }finally{f.close();}
+});
+
+function wireLifeOrderingFixture(f,fields) {
+  const w=f.w,view=nativeViewSources.life;
+  w.form=w.document.getElementById('nativeForm');
+  w.microSteps=[...w.form.querySelectorAll('[data-cms-native-step]')].sort((a,b)=>Number(a.dataset.microStep)-Number(b.dataset.microStep));
+  w.discoveryStepSequence=fields;
+  w.ageStepIndex=fields.indexOf('Age');w.tobaccoStepIndex=fields.indexOf('TobaccoUse');
+  w.step1ContinueBtn=w.document.getElementById('step1Continue');
+  w.step1Panel={hidden:false};w.autoAdvanceTimer=null;w.autoCompletingDiscovery=false;
+  w.nativeEvents=[];w.processingTransitions=[];w.quoteStarts=[];
+  w.selectedRadio=field=>w.form.querySelector('input[name="'+field+'"]:checked');
+  w.showMicroStep=w.showStep1=index=>{
+    w.step1Panel.hidden=false;w.currentMicroStep=index;
+    w.microSteps.forEach((step,value)=>{step.hidden=value!==index;});
+  };
+  fields.forEach((field,index)=>{
+    const input=w.document.getElementById('field'+index);input.name=field;input.checked=true;
+  });
+  for(const name of ['syncStepOneAnswersFromUI','persistFunnelState','showChoiceError','clearQuoteFieldError',
+    'clearEstimatePreviewCache','trackFirstQuestionAnsweredOnce','ensureMetaLeadFormStart','trackQuoteFieldError',
+    'markSelectedCardAdvancing','setStepTransitionState']) w[name]=()=>{};
+  w.clearAutoAdvanceTimer=()=>w.clearTimeout(w.autoAdvanceTimer);
+  w.validateCoverageAmountOnly=()=>!!w.selectedRadio('CoverageAmountOption');
+  w.validateTobaccoOnly=()=>!!w.selectedRadio('TobaccoUse');
+  w.validateAgeOnly=()=>!!w.selectedRadio('Age');
+  w.getDiscoveryFieldFocusTarget=field=>w.form.querySelector('[name="'+field+'"]');
+  w.nativeFirstDiscoveryField=()=>fields[w.nativeMicroOrder()[0]];
+  w.trackEvent=w.trackQuoteStepComplete=(event,metadata)=>w.nativeEvents.push({event,metadata});
+  w.ensureQuoteStartTracked=metadata=>{w.quoteStarts.push(metadata);return Promise.resolve();};
+  w.metaSignalApi={trackDiscoveryComplete:()=>{},trackBacktrack:()=>{},trackFieldError:()=>{}};
+  w.buildMetaProgressMetadata=()=>({});
+  w.showProcessingBridge=value=>{w.processingTransitions.push(value);w.step1Panel.hidden=true;};
+  for(const name of ['answer1Hidden','answer2Hidden','answer3Hidden','answer4Hidden','coverageAmountHidden','ageHidden']) w[name]={value:'fixture'};
+  w.finalDiscoveryContinueEvent=fields[4]==='TobaccoUse'?'life_step1_tobacco_continue':'life_step1_age_continue';
+  for(const name of ['nativeMicroOrder','nativeMicroNeighbor','queueMicroAdvance','wireAutoAdvanceGroup','validateStepOneComplete'])
+    w.eval(nativeFunction(view,name));
+  const eventNames={ProtectingWho:'life_step1_protecting_select',CoverageGoal:'life_step1_goal_select',CoverageAmountOption:'life_step1_coverage_select',TobaccoUse:'life_step1_tobacco_select'};
+  for(const [field,event] of Object.entries(eventNames))
+    w.wireAutoAdvanceGroup(field,'error-'+field,event,fields.indexOf(field),fields.indexOf(field)+1);
+  const backStart=view.indexOf("  document.querySelectorAll('[data-step1-back]').forEach((btn) => {");
+  const continueStart=view.indexOf("  step1ContinueBtn?.addEventListener('click', () => {");
+  const continueEnd=view.indexOf("  step2BackBtn?.addEventListener",continueStart);
+  w.eval(view.slice(backStart,continueStart)+'\n'+view.slice(continueStart,continueEnd));
+  const slider=w.document.createElement('input');slider.type='range';slider.value='40';
+  w.form.appendChild(slider);w.ageSliders=[slider];w.ageQuickButtons=[];
+  w.syncAgePickerUi=()=>{w.document.getElementById('field'+fields.indexOf('Age')).checked=true;};
+  w.getSelectedAgeBand=()=> '35-44';w.getSelectedAgeValue=()=> '40';
+  const ageStart=view.lastIndexOf('\n  ageSliders.forEach((slider) => {',backStart)+1;
+  assert.ok(ageStart>0);
+  w.eval(view.slice(ageStart,backStart));
+  return {w,slider,select:field=>{
+    const input=w.form.querySelector('input[name="'+field+'"]');
+    input.checked=true;input.dispatchEvent(new w.Event('change'));
+  }};
+}
+
+for(const fields of [
+  ['ProtectingWho','CoverageGoal','CoverageAmountOption','Age','TobaccoUse'],
+  ['CoverageGoal','ProtectingWho','CoverageAmountOption','TobaccoUse','Age']
+]) test('shipped Life final '+fields[0]+' selection uses the original validated Continue after Tobacco moves earlier',async()=>{
+  const fixture=nativeContinuationFixture('life',[4,3,2,1,0]);
+  const f=await domFixture({siteKey:'protect',...fixture,pathname:'/Quote/Auto',search:''});
+  try{
+    const {w,select}=wireLifeOrderingFixture(f,fields);
+    const tobacco=fields.indexOf('TobaccoUse');
+    w.showMicroStep(tobacco);select('TobaccoUse');
+    await new Promise(resolve=>setTimeout(resolve,360));
+    assert.equal(w.currentMicroStep,w.nativeMicroNeighbor(tobacco,1));
+    assert.equal(w.processingTransitions.length,0);
+    w.showMicroStep(0);select(fields[0]);
+    // Back must cancel the tracked final transition without poisoning retries.
+    f.click('[data-cms-native-step="0"] [data-step1-back]');
+    await new Promise(resolve=>setTimeout(resolve,360));
+    assert.equal(w.currentMicroStep,1);assert.equal(w.processingTransitions.length,0);
+    w.showMicroStep(0);
+    w.form.querySelector('input[name="CoverageAmountOption"]').checked=false;
+    select(fields[0]);await new Promise(resolve=>setTimeout(resolve,360));
+    assert.equal(w.currentMicroStep,2);assert.equal(w.processingTransitions.length,0);
+    w.form.querySelector('input[name="CoverageAmountOption"]').checked=true;
+    w.showMicroStep(0);select(fields[0]);await new Promise(resolve=>setTimeout(resolve,360));
+    assert.deepEqual(Array.from(w.processingTransitions),[true]);
+    assert.equal(w.document.getElementById('step1Continue'),w.step1ContinueBtn);
+    assert.ok(w.nativeEvents.some(item=>item.event===w.finalDiscoveryContinueEvent && item.metadata.autoAdvanced===true));
+    assert.equal(f.calls.some(call=>call.method==='POST'),false);
+  }finally{f.close();}
+});
+
+test('shipped Life Age slider can finish as the last authored question through the same Continue listener',async()=>{
+  const fields=['ProtectingWho','CoverageGoal','CoverageAmountOption','Age','TobaccoUse'];
+  const fixture=nativeContinuationFixture('life',[4,2,0,1,3]);
+  const f=await domFixture({siteKey:'protect',...fixture,pathname:'/Quote/Auto',search:''});
+  try{
+    const {w,slider}=wireLifeOrderingFixture(f,fields);
+    w.showMicroStep(3);slider.dispatchEvent(new w.Event('change'));
+    await new Promise(resolve=>setTimeout(resolve,360));
+    assert.deepEqual(Array.from(w.processingTransitions),[true]);
+    assert.equal(w.step1ContinueBtn.closest('[data-cms-native-step]').dataset.cmsNativeStep,'3');
+    assert.ok(w.nativeEvents.some(item=>item.event==='step1_age_entered'));
+  }finally{f.close();}
+});
+
+test('native ordering errors remain visible in every rendered breakpoint and fail whole-site preflight for another page',async()=>{
+  const f=await domFixture({siteKey:'protect',doc:nativeOrderingDocument([1,3,2,4]),pathname:'/Quote/Auto',html:nativeOrderingHtml()});
+  try{
+    const create=f.w.document.createElement.bind(f.w.document);
+    f.w.document.createElement=function(tag,...args){
+      const frame=create(tag,...args);
+      if(tag==='iframe') Object.defineProperty(frame,'srcdoc',{set(markup){
+        frame.contentDocument.documentElement.innerHTML=markup;
+        queueMicrotask(()=>frame.dispatchEvent(new f.w.Event('load')));
+      }});
+      return frame;
+    };
+    const results=await f.w.LEGEND_WEBSITE_STUDIO_AGENT.runResponsiveQuality();
+    assert.equal(results.length,3);
+    assert.ok(results.every(result=>result.checks.some(check=>check.code==='native_form_step_order_invalid' && /must stay after/.test(check.message))));
+  }finally{f.close();}
+  const clean=await domFixture();
+  try{
+    const append=clean.w.document.body.appendChild.bind(clean.w.document.body);
+    clean.w.document.body.appendChild=function(node){
+      const result=append(node);
+      if(node.tagName==='IFRAME' && new URL(node.src).searchParams.get('legendAudit')==='1')
+        queueMicrotask(()=>clean.w.dispatchEvent(new clean.w.MessageEvent('message',{
+          origin:clean.w.location.origin,source:node.contentWindow,data:{
+            type:'legend-site-responsive-audit',route:new URL(node.src).pathname,revision:'r1',
+            results:[{key:'desktop',checks:[{code:'native_form_step_order_invalid',severity:'error',message:'Vehicles must stay after Drivers.'}]}]
+          }
+        })));
+      return result;
+    };
+    await assert.rejects(()=>clean.w.LEGEND_WEBSITE_STUDIO_AGENT.runPreflight(),/Vehicles must stay after Drivers/);
+  }finally{clean.close();}
+});
+
+for(const key of ['life','dvh','disability']) test('shipped '+key+' compiled question hydration keeps field indexes stable and traverses authored DOM before and after CMS readiness',async()=>{
+  const order=[4,2,0,3,1],fixture=nativeContinuationFixture(key,order);
+  const temporary=new JSDOM(fixture.html);
+  const parent=temporary.window.document.querySelector('[data-cms-native-step]').parentElement;
+  for(const value of order) parent.appendChild(parent.querySelector('[data-cms-native-step="'+value+'"]'));
+  const html=temporary.serialize();temporary.window.close();
+  const initializer=nativeViewSources[key].match(/(?:const|var) microSteps = [^]*?(?=\n\s*function nativeMicroOrder)/)?.[0];
+  assert.ok(initializer);
+  const f=await domFixture({siteKey:'protect',doc:fixture.doc,pathname:'/Quote/Auto',html,search:'',beforeEval:w=>{
+    w.step1Panel=w.document.getElementById('nativeForm');
+    w.eval(initializer.replace(/^(?:const|var)\s+/,'window.'));
+    w.eval(nativeFunction(nativeViewSources[key],'nativeMicroOrder'));
+    assert.equal(w.LEGEND_NATIVE_FORM_STEPS,undefined);
+    assert.deepEqual(Array.from(w.nativeMicroOrder()),order);
+    assert.deepEqual(Array.from(w.microSteps,step=>Number(step.dataset.microStep)),[0,1,2,3,4]);
+    w.LEGEND_PUBLIC_CMS_RENDER_INPUT={siteKey:'protect',document:fixture.doc,pageKey:'quote-auto',server:false,publishedMarkupReady:true};
+  }});
+  try{
+    assert.ok(f.w.LEGEND_NATIVE_FORM_STEPS);
+    assert.deepEqual(Array.from(f.w.nativeMicroOrder()),order);
+    assert.deepEqual(Array.from(f.w.microSteps,step=>step.querySelector('input').name),['field0','field1','field2','field3','field4']);
+    assert.equal(f.w.document.getElementById(fixture.buttonId).closest('[data-cms-native-step]').dataset.cmsNativeStep,'1');
   }finally{f.close();}
 });
