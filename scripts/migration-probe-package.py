@@ -640,6 +640,7 @@ def test_schema_contract(directory):
             allowed = r'LEGEND_ISOLATED_FIXTURE:UNPROVEN:(?:dispatch|initialize|precondition|migrate|verify|adversarial):(?:SQL:-?[0-9]{1,10}|INPUT_UNAVAILABLE|MIGRATION_COMPATIBILITY_UNPROVEN|PHYSICAL_SCHEMA_DRIFT|MERCHANT_CHECKOUT_DUPLICATE_IDENTITY_REQUIRES_REVIEW|TIMEOUT|INVALID_OPERATION|UNCLASSIFIED)'
             exception_type = r'[A-Za-z_][A-Za-z0-9_.+]{0,159}'
             allowed += r'(?::TYPES:' + exception_type + r'(?:>' + exception_type + r'){0,3})?'
+            allowed += r'(?::LOCATION:(?:UNKNOWN|(?:RehearsalFixture|CandidateContract|CandidateContract\.Structures)\.cs:[1-9][0-9]{0,4}))?'
             reasons = [line for line in result.stderr.splitlines() if re.fullmatch(allowed, line)]
             reason = reasons[0] if len(reasons) == 1 else 'LEGEND_ISOLATED_FIXTURE:UNPROVEN:dispatch:UNCLASSIFIED'
             raise RuntimeError('Synthetic payment migration SQL contract failed: ' + reason)

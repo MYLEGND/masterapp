@@ -395,6 +395,20 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
             self.assertTrue(str(failed.exception).endswith('UNPROVEN:dispatch:UNCLASSIFIED'))
             self.assertNotIn('secret',str(failed.exception))
 
+    def test_source_locations_are_bounded_to_known_files(self):
+        self.fixture_exit=1
+        prefix='LEGEND_ISOLATED_FIXTURE:UNPROVEN:verify:PHYSICAL_SCHEMA_DRIFT:TYPES:ProbeObservationFailure:LOCATION:'
+        for location in ('UNKNOWN', 'RehearsalFixture.cs:238', 'CandidateContract.cs:241', 'CandidateContract.Structures.cs:100'):
+            self.fixture_stderr=prefix+location
+            with self.subTest(location=location),self.assertRaises(RuntimeError) as failed:self.gate()
+            self.assertTrue(str(failed.exception).endswith(prefix+location))
+        for location in ('/secret/CandidateContract.cs:241', 'Other.cs:1', 'CandidateContract.cs:0',
+            'CandidateContract.cs:100000', 'CandidateContract.cs:1 password=synthetic-secret'):
+            self.fixture_stderr=prefix+location
+            with self.subTest(location=location),self.assertRaises(RuntimeError) as failed:self.gate()
+            self.assertTrue(str(failed.exception).endswith('UNPROVEN:dispatch:UNCLASSIFIED'))
+            self.assertNotIn('secret',str(failed.exception))
+
     def test_unrecognized_or_ambiguous_provider_output_is_never_forwarded(self):
         self.fixture_exit=1
         for output in ('connection=synthetic-secret',

@@ -49,8 +49,18 @@ internal static class RehearsalFixture
                 types.Add(name is not null && System.Text.RegularExpressions.Regex.IsMatch(
                     name, @"\A[A-Za-z_][A-Za-z0-9_.+]{0,159}\z") ? name : "UnknownExceptionType");
             }
+            var location = "UNKNOWN";
+            foreach (var frame in new System.Diagnostics.StackTrace(error, true).GetFrames())
+            {
+                var file = Path.GetFileName(frame.GetFileName());
+                var line = frame.GetFileLineNumber();
+                if (file is not ("RehearsalFixture.cs" or "CandidateContract.cs" or "CandidateContract.Structures.cs") ||
+                    line is < 1 or > 99999) continue;
+                location = file + ":" + line.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                break;
+            }
             Console.Error.WriteLine("LEGEND_ISOLATED_FIXTURE:UNPROVEN:" + stage + ":" + reason +
-                ":TYPES:" + string.Join(">", types));
+                ":TYPES:" + string.Join(">", types) + ":LOCATION:" + location);
             throw;
         }
     }
