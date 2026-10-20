@@ -1728,4 +1728,152 @@ class AllAttemptPrewriteScopeTests(unittest.TestCase):
             with self.assertRaises(authority.EvidenceLookupUnavailable):
                 authority.fast_track_attempts_proven_prewrite('owner/repo', self.run, 'b'*40, 'fixture')
 
+
+class HistoricalCanonicalNoWriteTests(unittest.TestCase):
+    def setUp(self):
+        import copy
+        self.copy = copy.deepcopy
+        revision = '93fda2026f5ec2e088af6dab014f006be5118467'
+        self.sources = {path: authority.git_show_file(revision, path) for path in (
+            'scripts/release-migration.py', '.github/workflows/legend-fast-track-ui.yml')}
+        self.run = dict(id=123, head_sha=revision, head_branch=authority.FAST_TRACK_PR_BASE,
+                        path='.github/workflows/' + authority.FAST_TRACK_RELEASE_WORKFLOW,
+                        event='push', head_repository={'full_name': 'test/repo'}, run_attempt=2)
+        self.step = dict(name=authority.FAST_TRACK_CHILD_STEPS['migrations'][1], number=13,
+                         status='completed', conclusion='success',
+                         started_at='2026-10-11T20:47:56Z', completed_at='2026-10-11T20:49:36Z')
+        self.job = dict(id=22, name=authority.FAST_TRACK_CHILD_STEPS['migrations'][0],
+                        run_id=123, run_attempt=2, head_sha=revision, status='completed',
+                        conclusion='success', steps=[self.step])
+        self.original = self.copy(self.job); self.original.update(id=11, run_attempt=1)
+        self.admitted = dict(id=10, name='Admit exact validated fast-track source', run_id=123,
+                             run_attempt=1, head_sha=revision, status='completed', conclusion='success',
+                             steps=[dict(name='Authenticate merged source and preserved required validation',
+                                         status='completed', conclusion='success')])
+        self.record = dict(candidate='c'*40, executionAuthority=revision, databaseIdentity='d'*64,
+                           schemaIdentity='e'*64, baselineIdentity='f'*64, observedUtc='2026-10-11T20:49:30Z',
+                           pendingCount=0, mutationActivity='settled', historicalExecution='outcome-unknown',
+                           historicalEvidenceIdentity='1'*64, historicalReconciliationSources=[],
+                           schemaVersion=1, phase='observation', kind='current-schema-no-write',
+                           bundleDigest='2'*64, sqlExecutionAuthorized=False, producingRun=123, producingAttempt=1)
+        self.observation = dict(id=33, expired=False, digest='sha256:'+'3'*64,
+                                workflow_run=dict(id=123, head_sha=revision))
+        self.admission = dict(id=34, expired=False, name='fast-track-admission-123-1', digest='sha256:'+'4'*64,
+                              workflow_run=dict(id=123, head_sha=revision))
+        self.proof = dict(candidate='c'*40, executionAuthority=revision, sourcePr=55, validation={})
+        self.artifacts = [self.observation, self.admission]
+        self.seal()
+
+    def seal(self):
+        self.record.pop('observationIdentity', None)
+        identity = hashlib.sha256(json.dumps(self.record, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        self.record['observationIdentity'] = identity
+        self.observation['name'] = 'legend-migration-observation-' + identity
+
+    def invoke(self):
+        def api(repo, path, token):
+            rows = [self.original, self.admitted]
+            return dict(total_count=len(rows), jobs=rows)
+        def receipt(repo, run_id, artifact, filename, **kwargs):
+            self.assertTrue(kwargs['verify_digest'])
+            return self.record if artifact['id'] == 33 else self.proof
+        with patch.object(authority, '_release_history_source', side_effect=lambda repo, sha, path, token: self.sources[path]), \
+             patch.object(authority, 'api_get', side_effect=api), \
+             patch.object(authority, '_release_history_json', side_effect=receipt):
+            return authority.attested_fast_track_no_write_observation('test/repo', self.run, 2, self.job,
+                self.step, self.artifacts, 'token', {'databaseIdentity': 'd'*64})
+
+    def test_original_observation_authenticates_exact_carried_execution(self):
+        self.assertTrue(self.invoke())
+
+    def test_changed_main_or_workflow_denies(self):
+        for path in self.sources:
+            with self.subTest(path=path):
+                original = self.sources[path]
+                self.sources[path] += '\nprint("changed")\n' if path.endswith('.py') else '\n  migrations:\n    steps: []\n'
+                self.assertFalse(self.invoke()); self.sources[path] = original
+
+    def test_changed_original_attempt_or_execution_interval_denies(self):
+        self.original['run_attempt'] = 2
+        self.assertFalse(self.invoke())
+        self.original['run_attempt'] = 1
+        self.original['steps'][0]['completed_at'] = '2026-10-11T20:49:35Z'
+        self.assertFalse(self.invoke())
+
+    def test_future_observation_or_changed_database_denies(self):
+        for key, value in [('observedUtc', '2026-10-11T20:50:00Z'), ('databaseIdentity', '0'*64),
+                           ('producingAttempt', 3), ('pendingCount', 1), ('sqlExecutionAuthorized', True)]:
+            with self.subTest(key=key):
+                old = self.record[key]; self.record[key] = value; self.seal()
+                self.assertFalse(self.invoke()); self.record[key] = old; self.seal()
+
+    def test_duplicate_observation_is_ambiguous(self):
+        self.artifacts.append(self.copy(self.observation))
+        self.assertFalse(self.invoke())
+
+    def test_candidate_and_admission_carry_are_bound(self):
+        self.proof['candidate'] = '0'*40
+        self.assertFalse(self.invoke())
+        self.proof['candidate'] = 'c'*40; self.admitted['run_id'] = 456
+        self.assertFalse(self.invoke())
+
+    def test_unhashed_or_unknown_record_fields_deny(self):
+        self.record['observedUtc'] = '2026-10-11T20:49:31Z'
+        with self.assertRaisesRegex(RuntimeError, 'identity mismatch'): self.invoke()
+        self.seal(); self.record['unknown'] = True; self.seal()
+        with self.assertRaisesRegex(RuntimeError, 'schema unproven'): self.invoke()
+
+    def test_digest_requires_immutable_artifact_and_matching_bytes(self):
+        import io, zipfile
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ValueError):
+                authority._download_run_artifact('test/repo', 123, 'receipt', Path(directory), expected_digest='sha256:'+'0'*64)
+            archive = io.BytesIO()
+            with zipfile.ZipFile(archive, 'w') as contents: contents.writestr('operation.json', '{}')
+            def download(*args, **kwargs):
+                kwargs['stdout'].write(archive.getvalue()); return SimpleNamespace(returncode=0)
+            with patch.object(authority.subprocess, 'run', side_effect=download):
+                with self.assertRaisesRegex(RuntimeError, 'digest mismatch'):
+                    authority._download_run_artifact('test/repo', 123, 'receipt', Path(directory),
+                        artifact_id=33, expected_digest='sha256:'+'0'*64)
+                authority._download_run_artifact('test/repo', 123, 'receipt', Path(directory),
+                    artifact_id=33, expected_digest='sha256:'+hashlib.sha256(archive.getvalue()).hexdigest())
+                self.assertEqual((Path(directory)/'operation.json').read_text(), '{}')
+
+    def test_original_observation_failure_only_not_postwrite_verification(self):
+        self.run['status'] = 'completed'
+        failed = self.copy(self.original); failed['conclusion'] = 'failure'
+        failed['steps'][0]['conclusion'] = 'failure'
+        def invoke(marker, stamp='2026-10-11T20:49:30Z'):
+            log = ('2026-10-11T20:40:00Z [command]/usr/bin/git log -1 --format=%H\n'
+                   + '2026-10-11T20:40:00Z ' + self.run['head_sha'] + '\n' + stamp + ' ' + marker + '\n')
+            with patch.object(authority, '_release_history_source', side_effect=lambda repo, sha, path, token: self.sources[path]), \
+                 patch.object(authority, '_release_job_log', return_value=log):
+                return authority._attested_fast_track_observation_failure('test/repo', self.run, [failed], 1, 'token')
+        suffix = '; preserve prior evidence and reconcile without replay.'
+        self.assertTrue(invoke('Database mutation activity remains active' + suffix))
+        self.assertTrue(invoke('Migration stage unresolved: schema-observation' + suffix))
+        self.assertFalse(invoke('Migration stage unresolved: schema-verification' + suffix))
+        self.assertFalse(invoke('Migration stage unresolved: bundle-execution' + suffix))
+        self.assertFalse(invoke('Database mutation activity remains active' + suffix, '2026-10-11T20:40:00Z'))
+        failed['run_attempt'] = 2
+        self.assertFalse(invoke('Database mutation activity remains active' + suffix))
+
+    def test_first_write_uses_reader_but_preserves_prior_entered_attempt(self):
+        def inventory(repo, path, token):
+            if '/artifacts?' in path: return dict(artifacts=self.artifacts, total_count=len(self.artifacts))
+            return dict(workflow_runs=[], total_count=0)
+        attempts = [(self.run, 2, self.job, self.step)]
+        with patch.object(authority, 'fast_track_child_attempts', return_value=attempts), \
+             patch.object(authority, 'api_get', side_effect=inventory), \
+             patch.object(authority, 'attested_fast_track_no_write_observation', return_value=True) as recognize:
+            authority.release_child_first_write_proven('test/repo', 'migrations', 'a'*64, 'b'*64,
+                456, 1, 'token', historical_observation={'databaseIdentity': 'd'*64})
+            self.assertEqual(recognize.call_count, 1)
+            attempts.insert(0, (self.run, 1, self.original, self.original['steps'][0]))
+            recognize.side_effect = [False, True]
+            with self.assertRaisesRegex(RuntimeError, 'missing intent'):
+                authority.release_child_first_write_proven('test/repo', 'migrations', 'a'*64, 'b'*64,
+                    456, 1, 'token', historical_observation={'databaseIdentity': 'd'*64})
+
 if __name__ == '__main__':unittest.main()

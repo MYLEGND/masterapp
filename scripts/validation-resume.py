@@ -190,9 +190,80 @@ def fast_track_execution_history(repository, token):
 
 
 
-def attested_fast_track_migration_prewrite(repository, run, jobs, token):
+def _audited_fast_track_observer_source(repository, run, token):
+    source = _release_history_source(repository, run['head_sha'], 'scripts/release-migration.py', token)
+    raw = source.encode()
+    blob = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+    # Audited original no-SQL command flow, including main, observation and helpers.
+    if blob not in {'6e5fcce433bfbbc83bab2f44067536efbc56c9eb',
+                    '0ca98c14d866aee8f2140bd1a1b9efcce1c6c3a1'}:
+        return False
+    workflow = _release_history_source(repository, run['head_sha'],
+                                       '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW, token)
+    blocks = _job_blocks(workflow)
+    # Exact original checkout, candidate output/environment, and no alternate command.
+    for name, fingerprint in {
+        'commerce-gates': '0294271bb94dfede07ae039185352e372bc1ab2d46054ea8bf5a9198e49c7748',
+        'migrations': '59c1c0a38da79324a1a8bc08e1f27903d1ce068f983bd32c6a8ff1147cf9c747',
+    }.items():
+        if hashlib.sha256(blocks.get(name, '').encode()).hexdigest() != fingerprint:
+            return False
+
+    return True
+
+
+def _attested_fast_track_observation_failure(repository, run, jobs, attempt, token):
+    import datetime
+    if (not is_fast_track_producer(repository, run) or type(attempt) is not int or attempt < 1
+            or run.get('status') != 'completed'):
+        return False
+    owners = [row for row in jobs if row.get('name') == FAST_TRACK_CHILD_STEPS['migrations'][0]]
+    if len(owners) != 1:
+        return False
+    job = owners[0]
+    steps = [row for row in job.get('steps', []) if row.get('name') == FAST_TRACK_CHILD_STEPS['migrations'][1]]
+    if (job.get('status') != 'completed' or job.get('conclusion') != 'failure'
+            or job.get('run_id') != run['id'] or job.get('run_attempt') != attempt
+            or job.get('head_sha') != run['head_sha'] or len(steps) != 1
+            or steps[0].get('status') != 'completed' or steps[0].get('conclusion') != 'failure'
+            or not _audited_fast_track_observer_source(repository, run, token)):
+        return False
+    # In these audited complete sources, migration_stage preserves raw active
+    # only during initial schema-observation. Post-bundle observation always
+    # becomes schema-verification, which is deliberately not accepted here.
+    markers = {
+        'Database mutation activity remains active; preserve prior evidence and reconcile without replay.',
+        'Migration stage unresolved: schema-observation; preserve prior evidence and reconcile without replay.',
+    }
+    try:
+        start = datetime.datetime.fromisoformat(steps[0]['started_at'].replace('Z', '+00:00'))
+        end = datetime.datetime.fromisoformat(steps[0]['completed_at'].replace('Z', '+00:00'))
+        if start.tzinfo is None or end.tzinfo is None or end < start:
+            return False
+        log = _release_job_log(repository, job['id'], token)
+        clean = '\n'.join(re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line) for line in log.splitlines())
+        heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', clean))
+        if heads != {run['head_sha']}:
+            return False
+        terminal = []
+        for line in log.splitlines():
+            stamp, sep, message = line.partition(' ')
+            if sep and message.endswith('; preserve prior evidence and reconcile without replay.'):
+                date = datetime.datetime.fromisoformat(stamp.replace('Z', '+00:00'))
+                if start <= date <= end + datetime.timedelta(seconds=2):
+                    terminal.append(message)
+        return len(terminal) == 1 and terminal[0] in markers
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def attested_fast_track_migration_prewrite(repository, run, jobs, token, *, attempt=None):
     """Authenticate a terminal pre-bundle failure, never infer it from no receipt."""
     import datetime
+    # Original observer failures are prewrite even when later sibling reruns
+    # succeeded. Authenticate each original invocation, never the later outcome.
+    if attempt is not None and _attested_fast_track_observation_failure(repository, run, jobs, attempt, token):
+        return True
     if (not is_fast_track_producer(repository, run) or run.get('status') != 'completed'
         or run.get('conclusion') != 'failure' or run.get('run_attempt') != 1):
         return False
@@ -448,7 +519,7 @@ def fast_track_child_attempts(repository, child, token, *, current_run=None, cur
                 raise RuntimeError('FAST_TRACK_CHILD_STEP_UNPROVEN')
             if steps[0].get('conclusion') == 'skipped' or steps[0].get('status') == 'queued':
                 continue
-            if child == 'migrations' and attested_fast_track_migration_prewrite(repository, run, jobs, token):
+            if child == 'migrations' and attested_fast_track_migration_prewrite(repository, run, jobs, token, attempt=attempt):
                 continue
             if child == 'routing-cloudflare' and attested_fast_track_router_prewrite(repository, run, jobs, token):
                 continue
@@ -2066,6 +2137,123 @@ def attested_fast_track_preserved_router_intent(repository, run, jobs, token, cu
         raise RuntimeError('Historical preserved router evidence unavailable') from error
 
 
+def attested_fast_track_no_write_observation(repository, run, attempt, job, step, artifacts,
+                                             token, historical_observation):
+    """Recognize the canonical observer's original execution, never infer nonentry.
+
+    Successful siblings can be carried into later GitHub attempt inventories
+    under new job IDs. Only identical original step evidence binds that carry.
+    This is historical no-SQL evidence, not current desired-state readiness.
+    """
+    from datetime import datetime
+    if (not is_fast_track_producer(repository, run) or step.get('conclusion') != 'success'
+            or step.get('status') != 'completed' or job.get('conclusion') != 'success'
+            or job.get('head_sha') != run['head_sha'] or job.get('run_attempt') != attempt
+            or job.get('run_id') != run['id'] or job.get('status') != 'completed'
+            or not isinstance(historical_observation, dict)):
+        return False
+    database = historical_observation.get('databaseIdentity')
+    if not isinstance(database, str) or not re.fullmatch('[a-f0-9]{64}', database):
+        return False
+    if not _audited_fast_track_observer_source(repository, run, token):
+        return False
+
+    def jobs_for(number):
+        payload = api_get(repository, f"actions/runs/{run['id']}/attempts/{number}/jobs?per_page=100", token)
+        rows = payload.get('jobs')
+        if not isinstance(rows, list) or payload.get('total_count') != len(rows):
+            raise RuntimeError('Historical no-write attempt inventory incomplete')
+        return rows
+
+    matches = []
+    for artifact in artifacts:
+        if not re.fullmatch(r'legend-migration-observation-[a-f0-9]{64}', artifact.get('name', '')):
+            continue
+        if (artifact.get('workflow_run', {}).get('id') != run['id']
+                or artifact.get('workflow_run', {}).get('head_sha') != run['head_sha']
+                or artifact.get('expired') is not False):
+            raise RuntimeError('Historical no-write artifact producer unproven')
+        record = _release_history_json(repository, run['id'], artifact, 'operation.json', verify_digest=True)
+        fields = {'candidate', 'executionAuthority', 'databaseIdentity', 'schemaIdentity', 'baselineIdentity',
+                  'observedUtc', 'pendingCount', 'mutationActivity', 'historicalExecution',
+                  'historicalEvidenceIdentity', 'historicalReconciliationSources', 'schemaVersion', 'phase',
+                  'kind', 'bundleDigest', 'sqlExecutionAuthorized', 'producingRun', 'producingAttempt',
+                  'observationIdentity'}
+        if not isinstance(record, dict) or set(record) != fields:
+            raise RuntimeError('Historical no-write observation schema unproven')
+        identity = hashlib.sha256(json.dumps({k: v for k, v in record.items() if k != 'observationIdentity'},
+                                            sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        if record['observationIdentity'] != identity or artifact['name'] != 'legend-migration-observation-' + identity:
+            raise RuntimeError('Historical no-write observation identity mismatch')
+        original = record['producingAttempt']
+        if (type(original) is not int or not 1 <= original <= attempt
+                or type(record['producingRun']) is not int or record['producingRun'] != run['id']
+                or record['executionAuthority'] != run['head_sha']):
+            continue
+        if (type(record['schemaVersion']) is not int or record['schemaVersion'] != 1
+                or record['phase'] != 'observation' or record['kind'] != 'current-schema-no-write'
+                or type(record['pendingCount']) is not int or record['pendingCount'] != 0
+                or record['sqlExecutionAuthorized'] is not False or record['mutationActivity'] != 'settled'
+                or record['databaseIdentity'] != database
+                or not isinstance(record['historicalReconciliationSources'], list)
+                or not isinstance(record['historicalExecution'], str)
+                or any(not isinstance(record[key], str) or not re.fullmatch('[a-f0-9]{64}', record[key])
+                       for key in ('databaseIdentity', 'schemaIdentity', 'baselineIdentity', 'bundleDigest',
+                                   'historicalEvidenceIdentity'))
+                or not isinstance(record['candidate'], str) or not re.fullmatch('[a-f0-9]{40}', record['candidate'])):
+            continue
+        original_jobs = jobs_for(original)
+        owners = [row for row in original_jobs if row.get('name') == job['name']]
+        if len(owners) != 1:
+            continue
+        owner = owners[0]
+        if (owner.get('head_sha') != run['head_sha'] or owner.get('run_attempt') != original
+                or owner.get('run_id') != run['id']
+                or owner.get('status') != 'completed' or owner.get('conclusion') != 'success'
+                or owner.get('steps') != job.get('steps')):
+            continue
+        try:
+            observed = datetime.fromisoformat(record['observedUtc'].replace('Z', '+00:00'))
+            start = datetime.fromisoformat(step['started_at'].replace('Z', '+00:00'))
+            end = datetime.fromisoformat(step['completed_at'].replace('Z', '+00:00'))
+            if not start <= observed <= end:
+                continue
+        except (KeyError, TypeError, ValueError):
+            continue
+        admissions = []
+        for evidence in artifacts:
+            match = re.fullmatch(r'fast-track-admission-' + str(run['id']) + r'-(\d+)', evidence.get('name', ''))
+            if not match or not 1 <= int(match[1]) <= original:
+                continue
+            if (evidence.get('workflow_run', {}).get('id') != run['id']
+                    or evidence.get('workflow_run', {}).get('head_sha') != run['head_sha']
+                    or evidence.get('expired') is not False):
+                raise RuntimeError('Historical no-write source admission unproven')
+            admitted_jobs = [row for row in jobs_for(int(match[1]))
+                             if row.get('name') == 'Admit exact validated fast-track source']
+            original_admission = [row for row in original_jobs
+                                  if row.get('name') == 'Admit exact validated fast-track source']
+            if (len(admitted_jobs) != 1 or len(original_admission) != 1
+                    or admitted_jobs[0].get('conclusion') != 'success'
+                    or admitted_jobs[0].get('status') != 'completed'
+                    or admitted_jobs[0].get('run_id') != run['id']
+                    or admitted_jobs[0].get('run_attempt') != int(match[1])
+                    or admitted_jobs[0].get('head_sha') != run['head_sha']
+                    or original_admission[0].get('conclusion') != 'success'
+                    or original_admission[0].get('status') != 'completed'
+                    or original_admission[0].get('run_id') != run['id']
+                    or original_admission[0].get('run_attempt') != original
+                    or original_admission[0].get('head_sha') != run['head_sha']
+                    or original_admission[0].get('steps') != admitted_jobs[0].get('steps')):
+                continue
+            proof = _release_history_json(repository, run['id'], evidence, 'fast-track-admission.json', verify_digest=True)
+            if proof.get('executionAuthority') == run['head_sha'] and proof.get('candidate') == record['candidate']:
+                admissions.append(proof)
+        if admissions and all(proof == admissions[0] for proof in admissions):
+            matches.append(record)
+    return len(matches) == 1
+
+
 def release_child_first_write_proven(repository, child, dependency_identity, material_identity,
                                      current_run, current_attempt, token, *, partition_identity=None,
                                      first_pending_migration_id=None, last_applied_migration_id=None,
@@ -2140,6 +2328,10 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                 intents.append(original)
         for record in intents:
             require_distinct_intent(record, run['id'], attempt)
+        if (not intents and not observations and child == 'migrations'
+                and attested_fast_track_no_write_observation(repository, run, attempt, job, step,
+                                                            artifacts, token, historical_observation)):
+            continue
         if not intents and not (child == 'migrations' and len(observations) == 1 and step.get('conclusion') == 'success'):
             raise rejection('Release child may have written; missing intent cannot authorize replay', run['id'], attempt)
     # The workflow-specific inventory returns 403 to the trusted release token.
@@ -8502,15 +8694,19 @@ def _release_history_source(repository, revision, path, token):
     return source
 
 
-def _release_history_json(repository, run_id, artifact, filename):
+def _release_history_json(repository, run_id, artifact, filename, *, verify_digest=False):
     import tempfile
     if artifact.get("expired"):
         raise ReleaseOperationHistoryUnproven("Historical publication receipt expired")
-    key = (repository, artifact.get('id'), filename)
+    digest = artifact.get('digest') if verify_digest else None
+    if verify_digest and (not isinstance(digest, str) or not re.fullmatch('sha256:[a-f0-9]{64}', digest)):
+        raise RuntimeError('Historical publication artifact digest unproven')
+    key = (repository, artifact.get('id'), filename, digest)
     if artifact.get('id') and key in _RELEASE_HISTORY_RECEIPTS:
         return _RELEASE_HISTORY_RECEIPTS[key]
     with tempfile.TemporaryDirectory(prefix="legend-release-history-") as directory:
-        _download_run_artifact(repository, run_id, artifact["name"], Path(directory), artifact_id=artifact.get('id'))
+        _download_run_artifact(repository, run_id, artifact["name"], Path(directory), artifact_id=artifact.get('id'),
+                               **({'expected_digest': digest} if verify_digest else {}))
         file = Path(directory) / filename
         if not file.is_file() or file.stat().st_size > 131072:
             raise RuntimeError("Malformed historical publication receipt")
@@ -9551,13 +9747,17 @@ def _run_artifact_names(repository: str, run_id: int, token: str):
     }
 
 
-def _download_run_artifact(repository: str, run_id: int, name: str, directory: Path, *, artifact_id=None):
+def _download_run_artifact(repository: str, run_id: int, name: str, directory: Path, *, artifact_id=None, expected_digest=None):
     """Retry only transient GitHub artifact GET failures, never a release mutation.
 
     CLI stderr may contain signed download URLs. Consume it privately; expose
     only fixed outcomes. Extraction still undergoes the existing caller's
     immutable evidence identity/hash validation before it can grant authority.
     """
+    if expected_digest is not None and (
+            type(artifact_id) is not int or artifact_id < 1 or not isinstance(expected_digest, str)
+            or not re.fullmatch('sha256:[a-f0-9]{64}', expected_digest)):
+        raise ValueError('Digest verification requires immutable artifact ID and SHA256')
     directory.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     if env.get("GITHUB_TOKEN") and not env.get("GH_TOKEN"):
@@ -9585,6 +9785,11 @@ def _download_run_artifact(repository: str, run_id: int, name: str, directory: P
                                             stderr=subprocess.PIPE, text=True, timeout=evidence_remaining(120))
                     if result.returncode == 0:
                         archive.seek(0)
+                        if expected_digest is not None:
+                            actual = 'sha256:' + hashlib.file_digest(archive, 'sha256').hexdigest()
+                            if actual != expected_digest:
+                                raise RuntimeError('Immutable artifact digest mismatch')
+                            archive.seek(0)
                         with zipfile.ZipFile(archive) as contents:
                             entries = contents.infolist()
                             root = directory.resolve()
