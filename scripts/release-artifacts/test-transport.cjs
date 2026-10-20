@@ -124,6 +124,63 @@ function durableClient({lostAck = false, failReadback = false} = {}) {
   };
 }
 
+test('actual Python journal records cross the strict artifact transport for Linux and Windows', async () => {
+  const {execFileSync} = require('node:child_process');
+  const script = `
+import importlib.util,json,sys
+spec=importlib.util.spec_from_file_location('journal',sys.argv[1])
+owner=importlib.util.module_from_spec(spec);spec.loader.exec_module(owner)
+authority=type('Authority',(),{'RELEASE_TARGETS':{'protect':{}},'ReleaseOperationHistoryUnproven':RuntimeError})()
+authority.release_operation_history=lambda *args,**kwargs:None
+records=[]
+def publisher(name,record):
+    records.append({'name':name,'record':record})
+    return {'artifactId':1}
+env=dict(GITHUB_RUN_ID='10',GITHUB_RUN_ATTEMPT='1',PACKAGE_PRODUCER_RUN='8',GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='synthetic')
+for kind in ('azure_onedeploy_deployment_tag_v1','azure_onedeploy_windows_intent_v1'):
+    journal=owner.OperationJournal(target='protect',application_revision='a'*40,package_digest='b'*64,baseline='c'*40,authority=authority,publisher=publisher,environment=env)
+    journal.before_submit(['old'],submission_kind=kind)
+    if kind=='azure_onedeploy_windows_intent_v1':journal.record_submission_observation('fresh')
+    journal.record_success(['fresh'])
+print(json.dumps(records))
+`;
+  const records = JSON.parse(execFileSync('python3', ['-c', script,
+    path.join(__dirname, '..', 'release-operation-evidence.py')], {encoding: 'utf8'}));
+  assert.equal(records.length, 5);
+  for (const entry of records) {
+    const client = durableClient();
+    assert.deepEqual(await publish(client, entry.name, entry.record), {artifactId: 45});
+    assert.deepEqual(JSON.parse(client.state.content), entry.record);
+    assert.equal(client.state.uploads, 1);
+    assert.equal(client.state.downloads, 1);
+  }
+});
+
+test('deployment contract and provider observation reject malformed or widened identities before upload', async () => {
+  const windows = {...record, submissionContract: {kind: 'azure_onedeploy_windows_intent_v1', value: record.operationId},
+    baselineDeploymentIds: ['old']};
+  const submitted = {...windows, phase: 'submitted', deploymentId: 'fresh'};
+  const bad = [
+    {...windows, submissionContract: {kind: 'wrong', value: record.operationId}},
+    {...windows, submissionContract: {kind: 'azure_onedeploy_windows_intent_v1', value: 'b'.repeat(64)}},
+    {...windows, submissionContract: {...windows.submissionContract, token: 'forbidden'}},
+    {...windows, submissionContract: null},
+    {...windows, providerRequestCorrelation: {kind: 'azure_onedeploy_deployment_tag_v1', value: record.operationId}},
+    {...windows, deploymentId: 'fresh'},
+    {...submitted, deploymentId: 'old'},
+    {...submitted, deploymentId: 'https://host/id?secret=forbidden'},
+    {...submitted, deploymentIds: ['fresh']},
+    {...submitted, baselineDeploymentIds: undefined},
+    {...submitted, submissionContract: undefined},
+    {...submitted, token: 'forbidden'},
+  ];
+  for (const value of bad) {
+    const client = durableClient();
+    await assert.rejects(publish(client, `legend-release-operation-${value.phase}-${value.operationId}`, value), /Invalid|Conflicting|incorrect phase/);
+    assert.equal(client.state.uploads, 0);
+  }
+});
+
 test('lost upload acknowledgment reconciles identical content without duplicate upload', async () => {
   const client = durableClient({lostAck: true});
   assert.deepEqual(await publish(client, name, record), {artifactId: 45});

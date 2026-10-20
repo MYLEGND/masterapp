@@ -32,7 +32,7 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
   const child = /^legend-release-child-(intent|success)-[a-f0-9]{64}$/.test(name);
   const plan = /^legend-release-transaction-plan-[a-f0-9]{64}$/.test(name);
   const recovery = /^legend-readiness-recovery-[a-f0-9]{64}$/.test(name);
-  if (!observation && !locator && !admission && !child && !plan && !recovery && !/^legend-release-operation-(intent|success)-[a-f0-9]{64}$/.test(name))
+  if (!observation && !locator && !admission && !child && !plan && !recovery && !/^legend-release-operation-(intent|success|submitted)-[a-f0-9]{64}$/.test(name))
     throw new Error('Invalid release operation artifact identity');
   const observationKeys = ['schemaVersion', 'phase', 'kind', 'observationIdentity', 'candidate', 'executionAuthority', 'databaseIdentity', 'schemaIdentity', 'baselineIdentity', 'observedUtc', 'pendingCount', 'mutationActivity', 'historicalExecution', 'historicalEvidenceIdentity', 'historicalReconciliationSources', 'bundleDigest', 'sqlExecutionAuthorized', 'producingRun', 'producingAttempt'];
   const allowed = new Set(observation ? observationKeys : locator ? ['schemaVersion', 'component', 'contentIdentity', 'runId'] : recovery ? ['schemaVersion', 'operationId', 'candidateRevision', 'executionAuthority', 'targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt', 'phase'] : plan ? ['schemaVersion', 'planId', 'candidateRevision', 'producingRun', 'producingAttempt', 'targets', 'historySnapshot'] : child ? ['schemaVersion', 'child', 'dependencyIdentity', 'materialIdentity', 'evidenceIdentity', 'partitionIdentity',
@@ -40,7 +40,8 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
     'applicationRevision', 'authorizedSourceRevision', 'packageIdentity', 'executionAuthority', 'sourceMergeSha', 'selectedTargets',
     'resources', 'authorizationMode', 'producingRun', 'producingAttempt', 'phase'] : ['schemaVersion', 'operationId', 'target', 'applicationRevision',
     'packageDigest', 'baseline', 'packageProducerRun', 'producingRun', 'producingAttempt',
-    'baselineDeploymentIds', 'phase', 'deploymentIds', 'candidateRevision', 'componentSource']);
+    'baselineDeploymentIds', 'phase', 'deploymentIds', 'candidateRevision', 'componentSource',
+    'providerRequestCorrelation', 'submissionContract', 'deploymentId']);
   if (!record || Object.keys(record).some(key => !allowed.has(key)) ||
       JSON.stringify(record).length > (plan ? 524288 : 32768)) throw new Error('Invalid release operation record');
   if (observation) {
@@ -156,7 +157,7 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
         ['selectedTargets', 'resources'].some(key => !Array.isArray(record[key]) || !record[key].length || record[key].length > 100 ||
           record[key].some(value => typeof value !== 'string' || !/^[a-zA-Z0-9:/_.-]{1,128}$/.test(value))))
       throw new Error('Invalid release admission identity');
-  } else if (![1, 2].includes(record.schemaVersion) || !['intent', 'success'].includes(record.phase) ||
+  } else if (![1, 2].includes(record.schemaVersion) || !['intent', 'success', 'submitted'].includes(record.phase) ||
       name !== `legend-release-operation-${record.phase}-${record.operationId}` ||
       !/^[a-f0-9]{64}$/.test(record.operationId) ||
       !/^[a-f0-9]{64}$/.test(record.packageDigest) ||
@@ -167,6 +168,24 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
         !Number.isSafeInteger(record[key]) || record[key] < 1))
     throw new Error('Invalid release operation identity');
   if (!observation && !locator && !recovery && !plan && !child && !admission) {
+    for (const [key, kind] of [['providerRequestCorrelation', 'azure_onedeploy_deployment_tag_v1'],
+                              ['submissionContract', 'azure_onedeploy_windows_intent_v1']]) {
+      if (record[key] !== undefined && (!record[key] || typeof record[key] !== 'object' || Array.isArray(record[key]) ||
+          Object.keys(record[key]).sort().join(',') !== 'kind,value' || record[key].kind !== kind ||
+          typeof record[key].value !== 'string' || record[key].value !== record.operationId))
+        throw new Error('Invalid deployment submission contract');
+    }
+    if (record.providerRequestCorrelation !== undefined && record.submissionContract !== undefined)
+      throw new Error('Conflicting deployment submission contracts');
+    if (record.phase === 'submitted') {
+      if (record.submissionContract === undefined || record.deploymentIds !== undefined ||
+          !Array.isArray(record.baselineDeploymentIds) || typeof record.deploymentId !== 'string' ||
+          !/^[a-zA-Z0-9_.:-]{1,256}$/.test(record.deploymentId) ||
+          record.baselineDeploymentIds.includes(record.deploymentId))
+        throw new Error('Invalid provider submission observation');
+    } else if (record.deploymentId !== undefined) {
+      throw new Error('Provider observation identity has incorrect phase');
+    }
     if (record.schemaVersion === 2) {
       componentSource(record.componentSource);
       if (!/^[a-f0-9]{40}$/.test(record.candidateRevision) || record.packageProducerRun !== record.componentSource.runId)

@@ -1208,6 +1208,26 @@ class TrustedToolPromotionPolicyTests(unittest.TestCase):
             with self.subTest(path=path),self.assertRaisesRegex(ValueError,'SCOPE_UNPROVEN'):
                 self.invoke(fixture_kw=dict(path=path))
 
+    def test_exact_artifact_transport_owners_promote_without_neighbor_or_publication_expansion(self):
+        for path in ('scripts/release-artifacts/transport.cjs', 'scripts/release-artifacts/test-transport.cjs'):
+            with self.subTest(path=path):
+                proof=self.invoke(fixture_kw=dict(path=path))
+                self.assertFalse(proof['productionEligible']);self.assertFalse(proof['authorizesMutation'])
+        for path in ('scripts/release-artifacts/package.json', 'scripts/release-artifacts/action.yml',
+                     'scripts/release-artifacts/alternate.cjs', 'scripts/release-artifacts/transport-extra.cjs'):
+            with self.subTest(path=path),self.assertRaisesRegex(ValueError,'SCOPE_UNPROVEN'):
+                self.invoke(fixture_kw=dict(path=path))
+        for key,value in (('releaseMode','approved-only'), ('targets',['masterapp-protect']),
+                          ('cloudflareWebsiteRouting',True), ('preserveLiveTargets',True)):
+            with self.subTest(key=key),self.assertRaises(ValueError):
+                self.invoke(fixture_kw=dict(path='scripts/release-artifacts/transport.cjs'),
+                            mutate=lambda request,admission,previous:request.update({key:value}))
+        def changed(args,result):
+            if args[1]=='ls-tree' and args[3]=='c'*40:result.stdout=result.stdout.replace('d'*40,'e'*40)
+            return result
+        with self.assertRaisesRegex(ValueError,'BLOB_UNPROVEN'):
+            self.invoke(fixture_kw=dict(path='scripts/release-artifacts/transport.cjs'),git_mutate=changed)
+
     def test_current_fast_track_promotion_returns_before_unresolved_predecessor(self):
         import importlib.util
         spec=importlib.util.spec_from_file_location('promotion_boundary_authority',Path(__file__).with_name('validation-resume.py'))

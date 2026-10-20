@@ -132,9 +132,19 @@ class SubmissionCorrelationTests(unittest.TestCase):
             return subprocess.CompletedProcess([], 0, 'LEGEND_OPERATION_RESULT={"artifactId":12}\n', '')
         if args[:3] == ['az', 'webapp', 'deploy']:
             self.events.append('upload')
-            tag = args[args.index('--deploymentTag') + 1]
-            intent = self.records[('intent', tag)]
-            self.assertEqual({'kind': 'azure_onedeploy_deployment_tag_v1', 'value': tag}, intent['providerRequestCorrelation'])
+            if '--deploymentTag' in args:
+                tag = args[args.index('--deploymentTag') + 1]
+                intent = self.records[('intent', tag)]
+                self.assertEqual({'kind': 'azure_onedeploy_deployment_tag_v1', 'value': tag}, intent['providerRequestCorrelation'])
+            else:
+                intents = [record for (phase, _), record in self.records.items() if phase == 'intent']
+                self.assertEqual(1, len(intents))
+                intent = intents[0]
+                self.assertEqual({'kind': 'azure_onedeploy_windows_intent_v1', 'value': intent['operationId']}, intent['submissionContract'])
+                self.assertNotIn('providerRequestCorrelation', intent)
+                self.assertEqual('zip', args[args.index('--type') + 1])
+                self.assertEqual('true', args[args.index('--clean') + 1])
+                self.assertEqual('false', args[args.index('--enable-kudu-warmup') + 1])
             self.assertEqual(deploy.TARGETS[intent['target']]['releaseName'], args[args.index('-n') + 1])
             self.assertLess(self.events.index('intent-readback'), self.events.index('upload'))
             if isinstance(self.upload_result, Exception):
@@ -214,7 +224,9 @@ class SubmissionCorrelationTests(unittest.TestCase):
     def test_correlation_owner_diff_does_not_select_any_production_target(self):
         result = deploy._RELEASE_AUTHORITY.fast_track_scope([
             'scripts/deploy-approved-app.py', 'scripts/release-operation-evidence.py',
-            'scripts/test-deploy-approved-app.py', 'scripts/test-release-operation-evidence.py'])
+            'scripts/test-deploy-approved-app.py', 'scripts/test-release-operation-evidence.py',
+            'scripts/validation-resume.py', 'scripts/release-artifacts/transport.cjs',
+            'scripts/release-artifacts/test-transport.cjs'])
         self.assertEqual({'include': []}, result['matrix'])
         for flag in ('selected', 'commerce', 'schema', 'routing'):
             self.assertFalse(result[flag])
@@ -274,6 +286,54 @@ class SubmissionCorrelationTests(unittest.TestCase):
                     self.assertRaises(deploy.DeploymentSubmissionNotEntered):
                 azure.submit(correlation)
             command.assert_not_called()
+
+    def windows_host(self):
+        self.host.stdout = json.dumps({'name': 'masterapp-protect', 'reserved': False, 'kind': 'app'})
+
+    def test_windows_one_upload_has_truthful_intent_and_durable_provider_observation(self):
+        self.windows_host()
+        # Azure CLI 2.91.0 _check_zip_deployment_status returns Kudu's latest
+        # deployment object after status=4, not the original POST response.
+        self.upload_result.stdout = json.dumps({'id': 'fresh', 'status': 4,
+            'complete': True, 'active': True, 'deployer': 'OneDeploy',
+            'message': 'OneDeploy', 'end_time': '2026-10-20T04:15:31Z'})
+        journal = self.journal()
+        self.assertEqual('deployed', self.reconcile(journal))
+        self.assertEqual(['cli-support', 'linux-host', 'intent-readback', 'upload',
+                          'submitted-readback', 'success-readback'], self.events)
+        self.assertNotIn('providerRequestCorrelation', journal.intent)
+        self.assertEqual('fresh', self.records[('submitted', journal.operation_id)]['deploymentId'])
+        self.assertEqual(['fresh'], self.records[('success', journal.operation_id)]['deploymentIds'])
+
+    def test_windows_lost_reply_retains_intent_and_never_uploads_again(self):
+        self.windows_host()
+        self.upload_result = subprocess.TimeoutExpired(['az'], 180)
+        journal = self.journal()
+        with self.assertRaises(deploy.DeploymentReconciliationRequired):
+            self.reconcile(journal, completes=False)
+        self.assertEqual(1, self.events.count('upload'))
+        self.assertNotIn(('submitted', journal.operation_id), self.records)
+        self.events.clear()
+        with self.assertRaises(deploy.DeploymentReconciliationRequired):
+            self.reconcile(self.journal(), completes=False)
+        self.assertEqual([], self.events)
+
+    def test_windows_returned_identity_cannot_be_replaced_by_unrelated_live_success(self):
+        self.windows_host()
+        self.upload_result.stdout = '{"id":"different"}'
+        with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired, 'receipt unavailable'):
+            self.reconcile(self.journal())
+        self.assertEqual(1, self.events.count('upload'))
+        self.assertFalse(any(phase == 'success' for phase, _ in self.records))
+
+    def test_windows_foreign_or_function_host_stays_blocked_before_intent(self):
+        for name, kind in [('another-app', 'app'), ('masterapp-protect', 'functionapp'),
+                           ('masterapp-protect', 'app,workflowapp'), ('masterapp-protect', 'app,linux')]:
+            with self.subTest(name=name, kind=kind):
+                self.host.stdout = json.dumps({'name': name, 'reserved': False, 'kind': kind})
+                with self.assertRaises(deploy.DeploymentSubmissionNotEntered):
+                    self.reconcile(self.journal())
+                self.assertEqual({}, self.records)
 
 
 class AzureDeploymentObservationTests(unittest.TestCase):

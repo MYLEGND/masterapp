@@ -9083,7 +9083,7 @@ def release_operation_history(repository, operation_id, application_revision, ta
             return _release_history_api(repository, path, token)
         except OSError as exc:
             raise ReleaseOperationHistoryUnproven("Release evidence provider unavailable") from exc
-    if phase not in {"intent", "success"}:
+    if phase not in {"intent", "success", "submitted"}:
         raise ValueError("Unknown deployment evidence phase")
     name = f"legend-release-operation-{phase}-" + operation_id
     encoded = urllib.parse.quote(name, safe="")
@@ -9128,10 +9128,10 @@ def release_operation_history(repository, operation_id, application_revision, ta
         identity_keys = ("operationId", "applicationRevision", "target", "packageDigest", "baseline")
         if any(any(record.get(key) != records[0].get(key) for key in identity_keys) for record in records[1:]):
             raise RuntimeError("Competing deployment intents require reconciliation")
-        if phase == "intent" and any(record != records[0] for record in records[1:]):
+        if phase in {"intent", "submitted"} and any(record != records[0] for record in records[1:]):
             raise RuntimeError("Competing deployment intent producers require reconciliation")
         return records[0]
-    if phase == "success":
+    if phase in {"success", "submitted"}:
         return None
 
     for run in fast_track_execution_history(repository, token):
