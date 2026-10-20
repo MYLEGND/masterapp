@@ -1876,4 +1876,108 @@ class HistoricalCanonicalNoWriteTests(unittest.TestCase):
                 authority.release_child_first_write_proven('test/repo', 'migrations', 'a'*64, 'b'*64,
                     456, 1, 'token', historical_observation={'databaseIdentity': 'd'*64})
 
+
+class CurrentObservationPrewriteTests(unittest.TestCase):
+    def setUp(self):
+        import copy
+        self.copy = copy.deepcopy
+        self.revision = 'b91b52c3d3b093d5d2c8034613a76575654082f4'
+        self.sources = {path: authority.git_show_file(self.revision, path) for path in (
+            'scripts/release-migration.py', '.github/workflows/legend-fast-track-ui.yml')}
+        self.run = dict(id=7, head_sha=self.revision, run_attempt=1, status='completed', conclusion='failure',
+            event='push', head_branch=authority.FAST_TRACK_PR_BASE,
+            path='.github/workflows/'+authority.FAST_TRACK_RELEASE_WORKFLOW,
+            head_repository={'full_name':'owner/repo'})
+        self.jobs = [dict(id=10+i, name=name, status='completed', conclusion=result, run_id=7,
+            run_attempt=1, head_sha=self.revision) for i, (name, result) in enumerate((
+                ('Select exact affected applications', 'success'),
+                ('Admit exact validated fast-track source', 'success'),
+                ('Reconcile production schema before publication', 'failure'),
+                ('Affected App Deploy — ${{ matrix.target }}', 'skipped'),
+                ('Publish verified website routing', 'skipped')))]
+        self.jobs[2]['steps'] = [dict(name=name, status='completed', conclusion=result,
+             started_at='2026-10-20T21:15:27Z', completed_at='2026-10-20T21:17:28Z') for name,result in (
+             ('Apply or reconcile the exact rehearsed migration bundle','failure'),
+             ('Reconcile fresh already-ready schema without SQL bundle or mutation','skipped'))]
+        self.marker = 'Database mutation activity remains active'
+
+    def log(self):
+        return ('2026-10-20T21:00:00Z [command]/usr/bin/git log -1 --format=%H\n'
+            + '2026-10-20T21:00:00Z '+self.revision+'\n2026-10-20T21:17:28.007Z '+self.marker
+            + '; preserve prior evidence and reconcile without replay.\n')
+
+    def invoke(self, **kwargs):
+        with patch.object(authority,'_release_history_source',side_effect=lambda repo,sha,path,token:self.sources[path]), \
+             patch.object(authority,'_release_job_log',return_value=self.log()):
+            return authority.attested_fast_track_migration_prewrite('owner/repo',self.run,self.jobs,'fixture',**kwargs)
+
+    def test_completed_latest_default_and_exact_initial_marker(self):
+        self.assertTrue(self.invoke())
+        self.marker='Migration stage unresolved: schema-observation'
+        self.assertTrue(self.invoke())
+        for marker in ('Migration stage unresolved: schema-verification','Migration stage unresolved: bundle-execution'):
+            self.marker=marker;self.assertFalse(self.invoke())
+
+    def test_current_contract_does_not_expand_historical_no_write_reader(self):
+        with patch.object(authority,'_release_history_source',side_effect=lambda repo,sha,path,token:self.sources[path]):
+            self.assertFalse(authority._audited_fast_track_observer_source('owner/repo',self.run,'fixture'))
+            self.assertTrue(authority._audited_current_fast_track_observation_failure_source('owner/repo',self.run,'fixture'))
+        self.sources['scripts/release-migration.py']+='\nprint("changed")\n'
+        self.assertFalse(self.invoke())
+
+    def test_active_parent_requires_exact_current_context_and_earlier_attempt(self):
+        self.run.update(status='in_progress',run_attempt=2,conclusion=None)
+        self.assertFalse(self.invoke(attempt=1))
+        self.assertFalse(self.invoke(attempt=1,current_run=8,current_attempt=2))
+        self.assertFalse(self.invoke(attempt=1,current_run=7,current_attempt=3))
+        self.assertTrue(self.invoke(attempt=1,current_run=7,current_attempt=2))
+        self.jobs[2]['run_attempt']=2
+        self.assertFalse(self.invoke(attempt=1,current_run=7,current_attempt=2))
+
+    def test_canonical_inventory_accepts_original_self_attempt_but_rejects_external_active_worker(self):
+        self.run.update(status='in_progress',run_attempt=2,conclusion=None)
+        with patch.object(authority,'_release_history_source',side_effect=lambda repo,sha,path,token:self.sources[path]), \
+             patch.object(authority,'_release_job_log',return_value=self.log()), \
+             patch.object(authority,'fast_track_execution_history',return_value=[self.run]), \
+             patch.object(authority,'api_get',return_value=dict(total_count=5,jobs=self.jobs)):
+            self.assertEqual([],authority.fast_track_child_attempts('owner/repo','migrations','fixture',current_run=7,current_attempt=2))
+            with self.assertRaisesRegex(RuntimeError,'WORKER_ACTIVE'):
+                authority.fast_track_child_attempts('owner/repo','migrations','fixture',current_run=8,current_attempt=2)
+
+    def test_all_attempt_scope_carry_requires_every_original_attempt_prewrite(self):
+        self.run['run_attempt']=2
+        latest=self.copy(self.jobs)
+        for job in latest:job['run_attempt']=2
+        latest[2]['steps'][0]['conclusion']='skipped'
+        payloads={1:self.jobs,2:latest}
+        with patch.object(authority,'_release_history_source',side_effect=lambda repo,sha,path,token:self.sources[path]), \
+             patch.object(authority,'git_show_file',return_value=self.sources['.github/workflows/legend-fast-track-ui.yml']), \
+             patch.object(authority,'_release_job_log',side_effect=lambda *args:self.log()), \
+             patch.object(authority,'api_get',side_effect=lambda repo,path,token:dict(total_count=5,jobs=payloads[int(path.split('/')[4])])):
+            self.assertTrue(authority.fast_track_attempts_proven_prewrite('owner/repo',self.run,'c'*40,'fixture'))
+            self.marker='Migration stage unresolved: schema-verification'
+            self.assertFalse(authority.fast_track_attempts_proven_prewrite('owner/repo',self.run,'c'*40,'fixture'))
+
+    def test_completed_initial_failure_carries_scope_through_effective_baseline(self):
+        def api(repo,path,token):
+            if path.startswith('actions/runs?'):
+                rows=[self.run] if 'head_sha='+self.revision in path else []
+                return dict(total_count=len(rows),workflow_runs=rows)
+            if '/jobs?' in path:return dict(total_count=5,jobs=self.jobs)
+            if path.startswith('commits/'):
+                return [dict(merged_at='time',merge_commit_sha=self.revision,base=dict(ref=authority.FAST_TRACK_PR_BASE),
+                             head=dict(repo=dict(full_name='owner/repo')))]
+            raise AssertionError(path)
+        with patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='fixture'), \
+             patch.object(authority,'api_get',side_effect=api), \
+             patch.object(authority,'_release_history_source',side_effect=lambda repo,sha,path,token:self.sources[path]), \
+             patch.object(authority,'_release_job_log',side_effect=lambda *args:self.log()), \
+             patch.object(authority,'fast_track_untriggered_repair_parent',return_value=None), \
+             patch.object(authority.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
+             patch.object(authority.subprocess,'check_output',return_value=self.revision+' '+'c'*40+' '+'d'*40):
+            self.assertEqual('c'*40,authority.fast_track_effective_baseline(self.revision,'d'*40))
+            self.marker='Migration stage unresolved: schema-verification'
+            with self.assertRaisesRegex(RuntimeError,'REQUIRES_OPERATION_RECONCILIATION'):
+                authority.fast_track_effective_baseline(self.revision,'d'*40)
+
 if __name__ == '__main__':unittest.main()
