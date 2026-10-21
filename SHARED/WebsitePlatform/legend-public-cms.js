@@ -9429,7 +9429,7 @@
     title.textContent = 'Recover your saved website';
     const status = document.createElement('p');
     status.setAttribute('role', 'status');
-    status.textContent = 'Some content shares an internal identity. Review the recovery before editing. Your published website is unchanged.';
+    status.textContent = 'The saved content needs a reviewed recovery before editing. Your published website is unchanged.';
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = 'Review recovery';
@@ -9462,9 +9462,11 @@
             throw new Error(payload.message || 'This website requires an independent recovery review. All content was preserved.');
           }
           plan = payload;
+          const runtimeAnchorChanges = Array.isArray(plan.runtimeAnchorChanges) ? plan.runtimeAnchorChanges : [];
           const presentationChanges = Array.isArray(plan.presentationChanges) ? plan.presentationChanges : [];
           status.textContent = 'Recovery will separate ' + plan.changes.length + ' duplicated content identities. '
             + (presentationChanges.length ? 'It will also restore ' + presentationChanges.length + ' inactive link or button placeholders as presentation text, preserving their saved text and design settings. ' : '')
+            + (runtimeAnchorChanges.length ? 'It will reconnect ' + runtimeAnchorChanges.length + ' saved form placeholders to their route-owned protected forms, preserving their identity, text and design settings. ' : '')
             + 'Protected fields and events stay unchanged. A saved copy of the original draft will be retained; your published website will not change.';
           if (presentationChanges.length) {
             const details = document.createElement('details');
@@ -9475,12 +9477,22 @@
             details.append(summary, evidence);
             panel.append(details);
           }
+          if (runtimeAnchorChanges.length) {
+            const details = document.createElement('details');
+            const summary = document.createElement('summary');
+            summary.textContent = 'Review protected form anchor conversions';
+            const evidence = document.createElement('pre');
+            evidence.textContent = JSON.stringify(runtimeAnchorChanges, null, 2);
+            details.append(summary, evidence);
+            panel.append(details);
+          }
           button.textContent = 'Recover saved website';
         } else {
           const response = await fetch(url, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ticket: editorTicket, expectedRevision: plan.revision,
               recoveryId, sourceFingerprint: plan.sourceFingerprint, repairedFingerprint: plan.repairedFingerprint,
+              acceptRuntimeAnchorConversions: Array.isArray(plan.runtimeAnchorChanges) && plan.runtimeAnchorChanges.length > 0,
               acceptPresentationConversions: Array.isArray(plan.presentationChanges) && plan.presentationChanges.length > 0 })
           });
           const payload = await response.json();
@@ -9506,7 +9518,7 @@
       if (!response.ok) {
         if (response.status===409) {
           const failure = await response.json().catch(() => null);
-          if (failure?.error === 'website_draft_duplicate_identity') {
+          if (['website_draft_duplicate_identity', 'website_draft_runtime_anchor_recovery'].includes(failure?.error)) {
             showSavedDraftRecovery();
             return;
           }

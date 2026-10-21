@@ -104,11 +104,14 @@ public static class WebsiteContentSanitizer
     public sealed record DuplicateIdentityChange(string Path, string PreviousId, string ReplacementId);
     public sealed record RecoveryPresentationChange(string Path, string PreviousType, string PreviousTag,
         string ReplacementType, string ReplacementTag);
+    public sealed record RecoveryRuntimeAnchorChange(string PagePath, string NodeId, string Path,
+        string PreviousType, string PreviousTag, string ReplacementType, string ReplacementTag, string SystemKey);
     public sealed record DuplicateIdentityRecovery(
         string SourceFingerprint, string RepairedFingerprint, string DocumentJson,
         IReadOnlyList<DuplicateIdentityChange> Changes)
     {
         public IReadOnlyList<RecoveryPresentationChange> PresentationChanges { get; init; } = [];
+        public IReadOnlyList<RecoveryRuntimeAnchorChange> RuntimeAnchorChanges { get; init; } = [];
     }
 
     public sealed record RecoveryCollisionNode(string Path, string Type, string Sensitivity);
@@ -133,7 +136,7 @@ public static class WebsiteContentSanitizer
     // caller must preserve the original bytes and compare revision/fingerprints
     // before applying this plan. Protected identities are never renamed.
     public static DuplicateIdentityRecovery PlanDuplicateIdentityRecovery(
-        string json, System.Text.Json.JsonSerializerOptions options)
+        string json, System.Text.Json.JsonSerializerOptions options, string? siteKey = null)
     {
         var root = System.Text.Json.Nodes.JsonNode.Parse(json);
         if (ContainsLegacyAuthority(root))
@@ -256,6 +259,28 @@ public static class WebsiteContentSanitizer
             entry.RawNode["tag"] = normalized.Tag;
         }
 
+        var runtimeChanges = new List<RecoveryRuntimeAnchorChange>();
+        // Preserve existing identity recovery when an unrelated runtime shape
+        // cannot be reviewed. A later runtime-only plan remains fail-closed.
+        var runtimeCandidates = collisions.Count == 0 ||
+            WebsiteSystemTemplateAuthority.HasReviewableRuntimeAnchorRecovery(siteKey ?? "", document)
+            ? WebsiteSystemTemplateAuthority.PlanRuntimeAnchorRecovery(siteKey, document)
+            : [];
+        foreach (var candidate in runtimeCandidates)
+        {
+            var entry = entries.Single(item => ReferenceEquals(item.Node, candidate.Node));
+            if (entry.PresentationSensitive || entry.IdentitySensitive)
+                throw new RecoveryReviewException("protected_runtime_projection", collisions.Count, evidence);
+            runtimeChanges.Add(new(candidate.PagePath, entry.Node.Id, entry.DiagnosticPath,
+                entry.Node.Type, entry.Node.Tag, "container", "div", candidate.SystemKey));
+            entry.Node.Type = "container";
+            entry.Node.Tag = "div";
+            entry.Node.SystemKey = candidate.SystemKey;
+            entry.RawNode["type"] = "container";
+            entry.RawNode["tag"] = "div";
+            entry.RawNode["systemKey"] = candidate.SystemKey;
+        }
+
         var used = entries.Select(entry => entry.Node.Id).ToHashSet(StringComparer.Ordinal);
         var changes = new List<DuplicateIdentityChange>();
         foreach (var group in collisions)
@@ -276,7 +301,7 @@ public static class WebsiteContentSanitizer
                 changes.Add(new(entry.Path, oldId, nextId));
             }
         }
-        if (changes.Count == 0)
+        if (changes.Count == 0 && runtimeChanges.Count == 0)
             throw new ArgumentException("No duplicate content identities require recovery.");
         // Patch only reviewed IDs and the listed inert presentation type/tag
         // values in the original tree. Rebuilding the full typed document can
@@ -302,7 +327,7 @@ public static class WebsiteContentSanitizer
             }
         }
         return new(Fingerprint(json), Fingerprint(repaired), repaired, changes)
-            { PresentationChanges = presentationChanges };
+            { PresentationChanges = presentationChanges, RuntimeAnchorChanges = runtimeChanges };
     }
 
     private static bool HasUnrepresentedRecoveryFields(System.Text.Json.Nodes.JsonNode? source,
