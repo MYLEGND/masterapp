@@ -353,7 +353,8 @@ public sealed class WebsiteStudioV3ContractTests
                     Type = "link",
                     Tag = "a",
                     Text = "Placeholder",
-                    Href = "#"
+                    // Only destination-less anchors are presentation placeholders.
+                    Href = null
                 },
                 new WebsiteCompositionNode
                 {
@@ -668,3 +669,4 @@ public sealed class WebsiteStudioV3ContractTests
     }
 
 }
+

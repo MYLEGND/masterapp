@@ -6,7 +6,7 @@ public sealed record ReceptionistSetupInput
     public string BusinessName { get; init; } = string.Empty;
     public string ConversationInstructions { get; init; } = string.Empty;
     public string BusinessPolicy { get; init; } = string.Empty;
-    public string ContactAndRetentionNotes { get; init; } = string.Empty;
+    public string? ContactAndRetentionNotes { get; init; }
     public string TimeZoneId { get; init; } = string.Empty;
     public string Currency { get; init; } = string.Empty;
     public decimal MonthlyCashLimit { get; init; }
@@ -31,25 +31,27 @@ public sealed record ReceptionistHoursInput
     public TimeOnly? End { get; init; }
 }
 
+// New rows and optional fields bind empty form values as null. Canonical setup
+// validation runs after blank rows are removed and generated identities assigned.
 public sealed record ReceptionistServiceInput
 {
     public bool Remove { get; init; }
-    public string ServiceKey { get; init; } = string.Empty;
-    public string DisplayName { get; init; } = string.Empty;
-    public string Aliases { get; init; } = string.Empty;
-    public string DiscoveryQuestion { get; init; } = string.Empty;
-    public string PublicSummary { get; init; } = string.Empty;
-    public string CrmBucket { get; init; } = string.Empty;
+    public string? ServiceKey { get; init; }
+    public string? DisplayName { get; init; }
+    public string? Aliases { get; init; }
+    public string? DiscoveryQuestion { get; init; }
+    public string? PublicSummary { get; init; }
+    public string? CrmBucket { get; init; }
 }
 
 public sealed record ReceptionistAnswerInput
 {
     public bool Remove { get; init; }
-    public string Key { get; init; } = string.Empty;
+    public string? Key { get; init; }
     public string? ServiceKey { get; init; }
-    public string Questions { get; init; } = string.Empty;
-    public string Answer { get; init; } = string.Empty;
-    public string Status { get; init; } = string.Empty;
+    public string? Questions { get; init; }
+    public string? Answer { get; init; }
+    public string? Status { get; init; }
     public string? AsOfDate { get; init; }
 }
 
@@ -57,3 +59,4 @@ public sealed record ReceptionistSetupPage(ReceptionistConfigurationSnapshot Sna
     string PostUrl, string AdmissionUrl, string ReturnUrl, IReadOnlyList<string> CrmBuckets, string? Message = null);
 
 public sealed record ReceptionistAdmissionInput(Guid ExpectedRevision, bool Enabled);
+

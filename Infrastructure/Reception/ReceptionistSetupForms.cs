@@ -76,7 +76,7 @@ public static class ReceptionistSetupForms
         var allowedBuckets = CrmBuckets(snapshot.Owner);
         foreach (var service in services)
         {
-            if (!allowedBuckets.Contains(service.CrmBucket, StringComparer.Ordinal)) throw new ArgumentException("Choose a supported inquiry destination.");
+            if (!allowedBuckets.Contains(service.CrmBucket ?? string.Empty, StringComparer.Ordinal)) throw new ArgumentException("Choose a supported inquiry destination.");
             var node = Existing(oldServices, "serviceKey", service.ServiceKey);
             node["serviceKey"] = service.ServiceKey; node["displayName"] = service.DisplayName;
             node["aliases"] = Phrases(service.Aliases); node["discoveryQuestion"] = service.DiscoveryQuestion; node["publicSummary"] = service.PublicSummary;
@@ -95,7 +95,7 @@ public static class ReceptionistSetupForms
         oldKnowledge["answers"] = newAnswers;
         canonical["services"] = newRoutes; canonical["notifyOwner"] = input.NotifyOwner;
         if (canonical.Parent is null) oldIntake["canonicalInquiry"] = canonical;
-        var contact = Object(previous.ContactAndRetentionPolicyJson); contact["policyText"] = input.ContactAndRetentionNotes;
+        var contact = Object(previous.ContactAndRetentionPolicyJson); contact["policyText"] = input.ContactAndRetentionNotes ?? string.Empty;
         var capabilities = previous.RequestedCapabilities.Where(x => x != ReceptionistCapabilities.CanonicalIntake).ToList();
         if (input.RequestIntake) capabilities.Add(ReceptionistCapabilities.CanonicalIntake);
         var configuration = previous with
@@ -122,10 +122,11 @@ public static class ReceptionistSetupForms
     private static string Text(JsonObject? node, string key) => node?[key]?.GetValue<string>() ?? string.Empty;
     private static string Lines(JsonNode? node) => node is JsonArray values ? string.Join('\n', values.Select(x => x?.GetValue<string>() ?? string.Empty)) : string.Empty;
     private static JsonArray Phrases(string? value) => new((value ?? string.Empty).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(x => JsonValue.Create(x) as JsonNode).ToArray());
-    private static JsonObject Existing(JsonArray values, string key, string identity) =>
+    private static JsonObject Existing(JsonArray values, string key, string? identity) =>
         values.OfType<JsonObject>().SingleOrDefault(x => Text(x, key) == identity)?.DeepClone() as JsonObject ?? new JsonObject();
     private static bool Blank(ReceptionistServiceInput x) => string.IsNullOrWhiteSpace(x.ServiceKey) && string.IsNullOrWhiteSpace(x.DisplayName) &&
         string.IsNullOrWhiteSpace(x.Aliases) && string.IsNullOrWhiteSpace(x.DiscoveryQuestion) && string.IsNullOrWhiteSpace(x.PublicSummary);
     private static bool Blank(ReceptionistAnswerInput x) => string.IsNullOrWhiteSpace(x.Key) && string.IsNullOrWhiteSpace(x.ServiceKey) &&
         string.IsNullOrWhiteSpace(x.Questions) && string.IsNullOrWhiteSpace(x.Answer) && string.IsNullOrWhiteSpace(x.AsOfDate);
 }
+

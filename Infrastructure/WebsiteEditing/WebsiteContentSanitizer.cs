@@ -993,9 +993,11 @@ public static class WebsiteContentSanitizer
             return;
 
         var href = node.Href?.Trim();
-        if (!string.IsNullOrWhiteSpace(href) && href != "#")
+        if (!string.IsNullOrWhiteSpace(href))
             return;
 
+        // A fragment-only "#" is a real destination (including top-of-page navigation)
+        // and must retain its target, signals and authored link semantics.
         // A persisted anchor with no destination is not a website link. Early
         // materialization retained template/runtime placeholder anchors as links,
         // which created readiness drift. Canonical v3 stores these as presentation
@@ -1614,3 +1616,4 @@ public static class WebsiteContentSanitizer
         return new LegacyWebsitePlacement { SectionId = section, BeforeId = SanitizeId(value.BeforeId), ContainerId = SanitizeId(value.ContainerId), Flow = value.Flow, Column = column, Span = Math.Clamp(value.Span, 1, 13 - column) };
     }
 }
+

@@ -1882,8 +1882,8 @@ public sealed class WebsiteContentEditorRoundTripTests
     }
 
     [Theory]
-    [InlineData("placeholder")]
     [InlineData("empty-url")]
+    [InlineData("unsafe-url")]
     [InlineData("target")]
     [InlineData("system-binding")]
     [InlineData("data-binding")]
@@ -1902,8 +1902,8 @@ public sealed class WebsiteContentEditorRoundTripTests
         var node = page.Composition[0];
         switch (defect)
         {
-            case "placeholder": node.Href = "#"; break;
             case "empty-url": node.Href = ""; break;
+            case "unsafe-url": node.Href = "javascript:alert(1)"; break;
             case "target": node.Target = "_self"; break;
             case "system-binding": node.SystemBinding = "business_name"; break;
             case "data-binding": node.DataBinding = new() { CollectionId = "facts", Field = "contactEmail", Target = "text" }; break;
@@ -1960,6 +1960,33 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Equal(node.Href, repaired.Href); Assert.Equal(node.ActionKey, repaired.ActionKey);
         Assert.Equal(JsonSerializer.Serialize(node.DataBinding, JsonOptions), JsonSerializer.Serialize(repaired.DataBinding, JsonOptions));
         Assert.Equal(original, JsonSerializer.Serialize(document, JsonOptions));
+    }
+
+    [Theory]
+    [InlineData("_self", false)]
+    [InlineData("_blank", false)]
+    [InlineData("_self", true)]
+    [InlineData("_blank", true)]
+    public void DuplicateDraftRecovery_PreservesFragmentNavigationAndAllAuthoredLinkFields(string target, bool withSignals)
+    {
+        var document = InertPresentationRecoveryFixture();
+        var node = document.Pages["/inert/00"].Composition[0];
+        node.Href = "#";
+        node.Target = target;
+        if (withSignals)
+            node.Signals = WebsiteSignalBindingPolicy.Validate([new()
+            {
+                Id = Guid.NewGuid().ToString("N"), Trigger = "click", EventName = "LeadFormStart", DeliveryMode = "analytics"
+            }]);
+        var expected = JsonSerializer.Serialize(node, JsonOptions);
+        var original = JsonSerializer.Serialize(document, JsonOptions);
+        var plan = WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions);
+        Assert.Equal(23, plan.PresentationChanges.Count);
+        Assert.DoesNotContain(plan.PresentationChanges, change => change.Path == "pages/0/0");
+        var repaired = WebsiteContentSanitizer.ReadPersisted(plan.DocumentJson, JsonOptions);
+        Assert.Equal(expected, JsonSerializer.Serialize(repaired.Pages["/inert/00"].Composition[0], JsonOptions));
+        Assert.Equal(original, JsonSerializer.Serialize(document, JsonOptions));
+        Assert.Equal(plan.DocumentJson, WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions).DocumentJson);
     }
 
     [Fact]
@@ -2259,3 +2286,4 @@ public sealed class WebsiteContentEditorRoundTripTests
         private static string SourceDirectory([CallerFilePath] string sourcePath = "") => Path.GetDirectoryName(sourcePath)!;
     }
 }
+
