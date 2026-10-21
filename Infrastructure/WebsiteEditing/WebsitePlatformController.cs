@@ -384,6 +384,9 @@ public class WebsitePlatformController : ControllerBase
             return Conflict(new { error = "website_draft_duplicate_identity",
                 message = "The saved website needs identity recovery before editing. Your content and publication were preserved." });
         }
+        if (WebsiteSystemTemplateAuthority.HasReviewableRuntimeAnchorRecovery(actor.SiteKey, draft))
+            return Conflict(new { error = "website_draft_runtime_anchor_recovery",
+                message = "Review the saved protected form anchors before editing. Your saved content and publication were preserved." });
         WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, draft);
         IReadOnlyDictionary<string, WebsiteCollectionProjection> collectionData =
             business is null || (draft.Collections?.Count ?? 0) == 0
@@ -2337,7 +2340,8 @@ public class WebsitePlatformController : ControllerBase
 
     public sealed record RecoverDuplicateDraftRequest(
         string Ticket, long ExpectedRevision, Guid RecoveryId,
-        string SourceFingerprint, string RepairedFingerprint, bool AcceptPresentationConversions = false);
+        string SourceFingerprint, string RepairedFingerprint, bool AcceptPresentationConversions = false,
+        bool AcceptRuntimeAnchorConversions = false);
 
     [HttpGet("manage/draft-recovery")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
@@ -2356,9 +2360,9 @@ public class WebsitePlatformController : ControllerBase
             System.Text.Encoding.UTF8.GetBytes(state.DraftJson))).ToLowerInvariant();
         try
         {
-            var plan = WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(state.DraftJson, JsonOptions);
+            var plan = WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(state.DraftJson, JsonOptions, actor.SiteKey);
             return Ok(new { revision = state.Revision, plan.SourceFingerprint, plan.RepairedFingerprint,
-                changes = plan.Changes, presentationChanges = plan.PresentationChanges,
+                changes = plan.Changes, presentationChanges = plan.PresentationChanges, runtimeAnchorChanges = plan.RuntimeAnchorChanges,
                 preservesPublishedVersion = true, preservesOriginalDraft = true });
         }
         catch (WebsiteContentSanitizer.RecoveryReviewException ex)
@@ -2412,9 +2416,12 @@ public class WebsitePlatformController : ControllerBase
         System.Text.Json.Nodes.JsonArray storedDrafts;
         try
         {
-            plan = WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(state.DraftJson, JsonOptions);
+            plan = WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(state.DraftJson, JsonOptions, actor.SiteKey);
             if (plan.RepairedFingerprint != request.RepairedFingerprint)
                 return Conflict(new { error = "website_recovery_plan_changed" });
+            if (plan.RuntimeAnchorChanges.Count > 0 && !request.AcceptRuntimeAnchorConversions)
+                return Conflict(new { error = "website_recovery_runtime_review_required",
+                    message = "Review the protected form anchor conversions before applying this plan." });
             if (plan.PresentationChanges.Count > 0 && !request.AcceptPresentationConversions)
                 return Conflict(new { error = "website_recovery_presentation_review_required",
                     message = "Reopen the recovery review to inspect the inactive presentation conversions before applying this plan." });
