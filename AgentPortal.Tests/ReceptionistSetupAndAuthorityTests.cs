@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
@@ -12,9 +13,11 @@ using Infrastructure.Reception;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Primitives;
 using Shared.Analytics;
 using Xunit;
 
@@ -22,6 +25,80 @@ namespace AgentPortal.Tests;
 
 public sealed class ReceptionistSetupAndAuthorityTests
 {
+    [Fact]
+    public async Task ActualMvcFormBindingAcceptsGeneratedIdentitiesAndUntouchedAddRows()
+    {
+        var first = await BindOwnerFormAsync(new Dictionary<string, StringValues>
+        {
+            ["Services[0].ServiceKey"] = "", ["Services[0].DisplayName"] = "Website services",
+            ["Services[0].Aliases"] = "website", ["Services[0].DiscoveryQuestion"] = "",
+            ["Services[0].PublicSummary"] = "Approved website description.", ["Services[0].CrmBucket"] = "ServiceInquiry",
+            ["Answers[0].Key"] = "", ["Answers[0].ServiceKey"] = "", ["Answers[0].Questions"] = "What do you offer?",
+            ["Answers[0].Answer"] = "Approved general answer.", ["Answers[0].Status"] = "approved", ["Answers[0].AsOfDate"] = ""
+        });
+        var empty = Snapshot(null);
+        var saved = ReceptionistSetupForms.Apply(empty, first with { ExpectedRevision = empty.ConnectionRevision });
+        var serviceKey = JsonNode.Parse(saved.ServiceDefinitionsJson)![0]!["serviceKey"]!.GetValue<string>();
+        var answerKey = JsonNode.Parse(saved.ApprovedKnowledgeJson)!["answers"]![0]!["key"]!.GetValue<string>();
+        Assert.StartsWith("service-", serviceKey);
+        Assert.StartsWith("answer-", answerKey);
+        Assert.Null(JsonNode.Parse(saved.ApprovedKnowledgeJson)!["answers"]![0]!["serviceKey"]);
+
+        var next = await BindOwnerFormAsync(new Dictionary<string, StringValues>
+        {
+            ["Services[0].ServiceKey"] = serviceKey, ["Services[0].DisplayName"] = "Website services",
+            ["Services[0].Aliases"] = "website", ["Services[0].DiscoveryQuestion"] = "",
+            ["Services[0].PublicSummary"] = "Approved website description.", ["Services[0].CrmBucket"] = "ServiceInquiry",
+            ["Services[1].ServiceKey"] = "", ["Services[1].DisplayName"] = "", ["Services[1].Aliases"] = "",
+            ["Services[1].DiscoveryQuestion"] = "", ["Services[1].PublicSummary"] = "", ["Services[1].CrmBucket"] = "",
+            ["Answers[0].Key"] = answerKey, ["Answers[0].ServiceKey"] = "", ["Answers[0].Questions"] = "What do you offer?",
+            ["Answers[0].Answer"] = "Approved general answer.", ["Answers[0].Status"] = "approved", ["Answers[0].AsOfDate"] = "",
+            ["Answers[1].Key"] = "", ["Answers[1].ServiceKey"] = "", ["Answers[1].Questions"] = "",
+            ["Answers[1].Answer"] = "", ["Answers[1].Status"] = "", ["Answers[1].AsOfDate"] = ""
+        });
+        var existing = Snapshot(saved);
+        var resaved = ReceptionistSetupForms.Apply(existing, next with { ExpectedRevision = existing.ConnectionRevision });
+        Assert.Single(JsonNode.Parse(resaved.ServiceDefinitionsJson)!.AsArray());
+        Assert.Single(JsonNode.Parse(resaved.ApprovedKnowledgeJson)!["answers"]!.AsArray());
+        Assert.Equal(serviceKey, JsonNode.Parse(resaved.ServiceDefinitionsJson)![0]!["serviceKey"]!.GetValue<string>());
+        Assert.Equal(answerKey, JsonNode.Parse(resaved.ApprovedKnowledgeJson)!["answers"]![0]!["key"]!.GetValue<string>());
+        Assert.Throws<ArgumentException>(() => ReceptionistSetupForms.Apply(existing,
+            next with { ExpectedRevision = existing.ConnectionRevision, Services = [next.Services[0] with { CrmBucket = null }] }));
+        Assert.Throws<DbUpdateConcurrencyException>(() => ReceptionistSetupForms.Apply(existing, next with { ExpectedRevision = Guid.NewGuid() }));
+    }
+
+    private static async Task<ReceptionistSetupInput> BindOwnerFormAsync(Dictionary<string, StringValues> fields)
+    {
+        fields["BusinessName"] = "Synthetic owner";
+        fields["ConversationInstructions"] = "Approved greeting.";
+        fields["BusinessPolicy"] = "Approved caller policy.";
+        fields["ContactAndRetentionNotes"] = "";
+        fields["TimeZoneId"] = "UTC";
+        fields["Currency"] = "USD";
+        fields["MonthlyCashLimit"] = "25";
+        fields["MonthlyConsumptionLimit"] = "25";
+        fields["MonthlyVoiceMinutesLimit"] = "300";
+        fields["MaximumConcurrentCalls"] = "1";
+        fields["MaximumCallSeconds"] = "360";
+        fields["AdmissionWindowSeconds"] = "60";
+        fields["MaximumCallsPerWindow"] = "1";
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddMvc();
+        using var provider = services.BuildServiceProvider();
+        var controller = new OwnerFormBindingController
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { RequestServices = provider } }
+        };
+        var input = new ReceptionistSetupInput();
+        var valid = await controller.TryUpdateModelAsync(input, string.Empty,
+            new FormValueProvider(BindingSource.Form, new FormCollection(fields), CultureInfo.InvariantCulture));
+        Assert.True(valid, string.Join("; ", controller.ModelState.SelectMany(x => x.Value!.Errors.Select(error => x.Key + ": " + error.ErrorMessage))));
+        return input;
+    }
+
+    private sealed class OwnerFormBindingController : Controller { }
+
     [Fact]
     public void InactiveDraftRoundTripPreservesExactPoliciesAndOtherSavedFields()
     {
