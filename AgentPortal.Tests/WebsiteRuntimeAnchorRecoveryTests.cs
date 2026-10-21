@@ -102,7 +102,11 @@ public sealed class WebsiteContentEditorRoundTripTestsRuntimeAnchorRecovery
             case "missing": node["id"] = "authored-placeholder"; break;
             case "foreign": node["systemKey"] = "protect_runtime_form:quote_home_form"; break;
             case "behavior": node["systemBinding"] = "business_name"; break;
-            case "child": node["children"]!.AsArray().Add(node.DeepClone()); break;
+            case "child":
+                var child = node.DeepClone();
+                child["id"] = "unrelated-child";
+                node["children"]!.AsArray().Add(child);
+                break;
             case "unknown-field": node["unknownRecoveryValue"] = "retain"; break;
         }
         var original = raw.ToJsonString();
