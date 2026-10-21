@@ -2127,7 +2127,10 @@
       control.dataset.cmsEditable='true';
       const presentation=presentations[key] || normalizeControlPresentation(null);
       if(presentation){
-        const display={value:control.style.getPropertyValue('display'),priority:control.style.getPropertyPriority('display')};
+        // The server CSS adapter retains !important in the raw value and has
+        // no priority API. Browsers continue to read their native priority.
+        const displayPriority=()=>typeof control.style.getPropertyPriority==='function' ? control.style.getPropertyPriority('display') : '';
+        const display={value:control.style.getPropertyValue('display'),priority:displayPriority()};
         const previousDisplay=formFieldPresentationDisplays.get(control);
         const runtimeDisplay=previousDisplay
           ? display.value!==previousDisplay.value || display.priority!==previousDisplay.priority
@@ -2135,7 +2138,7 @@
         if(compiled) resetCompiledPresentationBaseline(control);
         applyStyle(control,effectiveStyle(presentation));
         applyLayout(control,effectiveLayout(presentation));
-        formFieldPresentationDisplays.set(control,{value:control.style.getPropertyValue('display'),priority:control.style.getPropertyPriority('display')});
+        formFieldPresentationDisplays.set(control,{value:control.style.getPropertyValue('display'),priority:displayPriority()});
         if(runtimeDisplay){
           if(display.value) control.style.setProperty('display',display.value,display.priority);
           else control.style.removeProperty('display');

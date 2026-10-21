@@ -687,7 +687,7 @@ public sealed class WebsiteStudioV3ContractTests
                 {
                     Composition = [new WebsiteCompositionNode
                     {
-                        Id = "intake.form", Type = "form", Tag = "form", SystemKey = "website_inquiry",
+                        Id = "intake.form", Type = "form", Tag = "form", SystemKey = "canonical_inquiry",
                         FieldPresentations = new(StringComparer.Ordinal)
                         {
                             ["firstname"] = new WebsiteControlPresentation
