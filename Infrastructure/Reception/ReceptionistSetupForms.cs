@@ -129,4 +129,3 @@ public static class ReceptionistSetupForms
     private static bool Blank(ReceptionistAnswerInput x) => string.IsNullOrWhiteSpace(x.Key) && string.IsNullOrWhiteSpace(x.ServiceKey) &&
         string.IsNullOrWhiteSpace(x.Questions) && string.IsNullOrWhiteSpace(x.Answer) && string.IsNullOrWhiteSpace(x.AsOfDate);
 }
-

@@ -669,4 +669,3 @@ public sealed class WebsiteStudioV3ContractTests
     }
 
 }
-

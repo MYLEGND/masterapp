@@ -59,4 +59,3 @@ public sealed record ReceptionistSetupPage(ReceptionistConfigurationSnapshot Sna
     string PostUrl, string AdmissionUrl, string ReturnUrl, IReadOnlyList<string> CrmBuckets, string? Message = null);
 
 public sealed record ReceptionistAdmissionInput(Guid ExpectedRevision, bool Enabled);
-

@@ -1778,7 +1778,7 @@ public sealed class WebsiteContentEditorRoundTripTests
     }
 
     [Fact]
-    public void DuplicateDraftRecovery_DoesNotSilentlyConvertALink()
+    public void DuplicateDraftRecovery_DoesNotSilentlyDiscardAnUnsafeLink()
     {
         var document = CanonicalDocument();
         document.Pages["/"].Composition.Add(new WebsiteCompositionNode
@@ -1786,13 +1786,13 @@ public sealed class WebsiteContentEditorRoundTripTests
             Id = ElementId, Type = "link", Tag = "a", Href = "https://example.com/", Text = "Keep this link"
         });
         var canonical = WebsiteContentSanitizer.Sanitize(document);
-        canonical.Pages["/"].Composition[1].Href = "#";
+        canonical.Pages["/"].Composition[1].Href = "javascript:alert(1)";
         var original = JsonSerializer.Serialize(canonical, JsonOptions);
         var refusal = Assert.Throws<WebsiteContentSanitizer.RecoveryReviewException>(
             () => WebsiteContentSanitizer.PlanDuplicateIdentityRecovery(original, JsonOptions));
         Assert.Equal("noncanonical_document", refusal.ReasonCode);
         Assert.Contains(refusal.Differences, difference => difference.Path.EndsWith("/type", StringComparison.Ordinal));
-        Assert.Equal("#", canonical.Pages["/"].Composition[1].Href);
+        Assert.Equal("javascript:alert(1)", canonical.Pages["/"].Composition[1].Href);
         Assert.Equal(original, JsonSerializer.Serialize(canonical, JsonOptions));
     }
 
@@ -2286,4 +2286,3 @@ public sealed class WebsiteContentEditorRoundTripTests
         private static string SourceDirectory([CallerFilePath] string sourcePath = "") => Path.GetDirectoryName(sourcePath)!;
     }
 }
-
