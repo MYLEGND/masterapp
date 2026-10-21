@@ -1247,6 +1247,8 @@ public static class WebsiteDocumentMutationService
         bool mobileFlowSafety = true)
     {
         var protectedIdentity = HasProtectedSemantics(current);
+        var authorableMappedExperience = protectedIdentity && current.Type == "experience" &&
+            string.IsNullOrWhiteSpace(current.SystemKey) && string.IsNullOrWhiteSpace(current.SystemBinding);
         if (protectedIdentity)
         {
             if (!string.IsNullOrWhiteSpace(proposed.SystemKey) &&
@@ -1280,17 +1282,27 @@ public static class WebsiteDocumentMutationService
         next.FieldPresentations = proposed.FieldPresentations ?? new(StringComparer.Ordinal);
         next.FieldLabels = proposed.FieldLabels ?? new(StringComparer.Ordinal);
 
-        if (!protectedIdentity)
+        if (!protectedIdentity || authorableMappedExperience)
         {
-            next.Type = proposed.Type;
-            next.Tag = proposed.Tag;
-            next.DataBinding = proposed.DataBinding;
+            if (authorableMappedExperience)
+            {
+                if (proposed.Experience is null)
+                    throw new WebsiteSiteSourceProtectionException("A mapped native experience must retain its authorable definition.");
+                WebsiteSiteSource.ProtectMappedExperienceControls(proposed, current);
+            }
             if (proposed.Experience?.SubmitCapability is not null &&
                 !string.Equals(proposed.Experience.SubmitCapability, current.Experience?.SubmitCapability, StringComparison.Ordinal))
                 throw new WebsiteSiteSourceProtectionException("Native experience submission capabilities must be selected through the canonical capability authority.");
             next.Experience = proposed.Experience;
             if (next.Experience is not null && current.Experience?.SubmitCapability is not null)
                 next.Experience.SubmitCapability = current.Experience.SubmitCapability;
+        }
+
+        if (!protectedIdentity)
+        {
+            next.Type = proposed.Type;
+            next.Tag = proposed.Tag;
+            next.DataBinding = proposed.DataBinding;
             next.SyncSourceId = proposed.SyncSourceId;
             next.Href = proposed.Href;
             next.Target = proposed.Target;
@@ -1321,7 +1333,7 @@ public static class WebsiteDocumentMutationService
             next.Href = current.Href;
             next.Target = current.Target;
             next.DataBinding = current.DataBinding;
-            next.Experience = current.Experience;
+            if (!authorableMappedExperience) next.Experience = current.Experience;
             next.SyncSourceId = current.SyncSourceId;
         }
 

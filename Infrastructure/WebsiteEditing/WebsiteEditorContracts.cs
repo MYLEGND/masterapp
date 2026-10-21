@@ -154,6 +154,16 @@ public sealed class WebsiteDesignTheme
     public decimal? CardRadius { get; set; }
     public decimal? ButtonRadius { get; set; }
     public decimal? InputRadius { get; set; }
+    // Shared form geometry. Unset values inherit the canonical presentation
+    // defaults; scoped field/node and breakpoint settings remain deliberate overrides.
+    public decimal? FormMaxWidth { get; set; }
+    public decimal? FormPanelPadding { get; set; }
+    public decimal? FormStepGap { get; set; }
+    public decimal? FormFieldGap { get; set; }
+    public decimal? FormLabelGap { get; set; }
+    public decimal? FormControlMinHeight { get; set; }
+    public decimal? FormControlPaddingBlock { get; set; }
+    public decimal? FormControlPaddingInline { get; set; }
     public string? SurfaceElevated { get; set; }
     public string? SurfaceMuted { get; set; }
     public string? BorderColor { get; set; }

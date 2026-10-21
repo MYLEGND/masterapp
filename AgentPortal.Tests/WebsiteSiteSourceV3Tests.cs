@@ -1218,7 +1218,7 @@ public sealed class WebsiteSiteSourceV3Tests
             new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
         var removeError = Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
             WebsiteSiteSource.Parse(removed, baseline, BusinessActions()));
-        Assert.Contains("cannot be removed or renamed", removeError.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cannot be removed, renamed, or duplicated", removeError.Message, StringComparison.OrdinalIgnoreCase);
 
         model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
             serialized,
@@ -1252,6 +1252,80 @@ public sealed class WebsiteSiteSourceV3Tests
         var parsed = WebsiteSiteSource.Parse(freeAgain, baseline, BusinessActions());
         Assert.Empty(parsed.Document.Pages["/"].Composition[0].Children
             .Single(node => node.Id == experience.Id).Experience!.Controls);
+    }
+
+    [Fact]
+    public void NativeExperience_SourceRedesignPreservesTheSameMappedAuthorityAsMutations()
+    {
+        var baseline = CanonicalDocument();
+        baseline.Pages["/"].Composition[0].Children.Add(MappedNativeExperienceTestCase.Create());
+        baseline = WebsiteContentSanitizer.Sanitize(baseline);
+        var before = MappedNativeExperienceTestCase.Snapshot(baseline);
+        var original = MappedNativeExperienceTestCase.Find(baseline);
+        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            WebsiteSiteSource.Serialize(baseline), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var proposed = MappedNativeExperienceTestCase.Find(model);
+        Assert.Empty(proposed.Signals);
+        Assert.Empty(proposed.FieldSignals);
+        MappedNativeExperienceTestCase.Redesign(proposed);
+
+        var parsed = WebsiteSiteSource.Parse(
+            MappedNativeExperienceTestCase.Snapshot(model), baseline, BusinessActions());
+        var restored = MappedNativeExperienceTestCase.ReadBack(parsed.Document);
+        MappedNativeExperienceTestCase.AssertRedesignAndAuthority(original, MappedNativeExperienceTestCase.Find(restored));
+        Assert.Equal(before, MappedNativeExperienceTestCase.Snapshot(baseline));
+        WebsiteSiteSource.ValidateCanonical(restored, BusinessActions());
+    }
+
+    [Theory]
+    [InlineData("remove_definition")]
+    [InlineData("remove_control")]
+    [InlineData("rename_control")]
+    [InlineData("change_key_case")]
+    [InlineData("change_type")]
+    [InlineData("change_contact_role")]
+    [InlineData("retarget_cta")]
+    [InlineData("duplicate_key")]
+    [InlineData("duplicate_key_case")]
+    [InlineData("null_key")]
+    [InlineData("null_control")]
+    [InlineData("null_controls")]
+    [InlineData("append_null_control")]
+    public void NativeExperience_SourceRejectsMappedIdentityChangesWithoutMutatingBaseline(string change)
+    {
+        var baseline = CanonicalDocument();
+        baseline.Pages["/"].Composition[0].Children.Add(MappedNativeExperienceTestCase.Create());
+        baseline = WebsiteContentSanitizer.Sanitize(baseline);
+        var before = MappedNativeExperienceTestCase.Snapshot(baseline);
+        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            WebsiteSiteSource.Serialize(baseline), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        MappedNativeExperienceTestCase.Alter(MappedNativeExperienceTestCase.Find(model), change);
+
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() => WebsiteSiteSource.Parse(
+            MappedNativeExperienceTestCase.Snapshot(model), baseline, BusinessActions()));
+        Assert.Equal(before, MappedNativeExperienceTestCase.Snapshot(baseline));
+    }
+
+    [Theory]
+    [InlineData("unknown_step_control")]
+    [InlineData("unknown_target_step")]
+    [InlineData("unavailable_cta")]
+    [InlineData("change_submit_capability")]
+    [InlineData("optional_consent")]
+    [InlineData("preselected_consent")]
+    public void NativeExperience_SourceStillValidatesAuthorableDefinitionChanges(string change)
+    {
+        var baseline = CanonicalDocument();
+        baseline.Pages["/"].Composition[0].Children.Add(MappedNativeExperienceTestCase.Create());
+        baseline = WebsiteContentSanitizer.Sanitize(baseline);
+        var before = MappedNativeExperienceTestCase.Snapshot(baseline);
+        var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            WebsiteSiteSource.Serialize(baseline), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        MappedNativeExperienceTestCase.Alter(MappedNativeExperienceTestCase.Find(model), change);
+
+        Assert.ThrowsAny<ArgumentException>(() => WebsiteSiteSource.Parse(
+            MappedNativeExperienceTestCase.Snapshot(model), baseline, BusinessActions()));
+        Assert.Equal(before, MappedNativeExperienceTestCase.Snapshot(baseline));
     }
 
     [Fact]

@@ -668,4 +668,99 @@ public sealed class WebsiteStudioV3ContractTests
         Assert.Empty(result.FieldSignals);
     }
 
+    [Fact]
+    public void FormThemeGeometry_RoundTripsWithoutChangingScopedBrandOrFieldOverrides()
+    {
+        var source = new WebsiteContentDocument
+        {
+            Theme = new WebsiteDesignTheme
+            {
+                Navy = "#143253", Gold = "#cb9e52", FontFamily = "Georgia",
+                FormMaxWidth = 720, FormPanelPadding = 28, FormStepGap = 32,
+                FormFieldGap = 22, FormLabelGap = 10, FormControlMinHeight = 56,
+                FormControlPaddingBlock = 15, FormControlPaddingInline = 18,
+                InputRadius = 0, BorderWidth = 0
+            },
+            Pages = new(StringComparer.Ordinal)
+            {
+                ["/"] = new WebsitePageDocument
+                {
+                    Composition = [new WebsiteCompositionNode
+                    {
+                        Id = "intake.form", Type = "form", Tag = "form", SystemKey = "canonical_inquiry",
+                        FieldPresentations = new(StringComparer.Ordinal)
+                        {
+                            ["firstname"] = new WebsiteControlPresentation
+                            {
+                                Style = new WebsiteVisualStyle { MinHeightPx = 64, MarginTop = -6, LetterSpacing = 0 },
+                                BreakpointStyles = new(StringComparer.Ordinal)
+                                {
+                                    ["mobile"] = new WebsiteVisualStyle { MinHeightPx = 52, MarginTop = 0 }
+                                }
+                            }
+                        }
+                    }]
+                }
+            }
+        };
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var clean = WebsiteContentSanitizer.Sanitize(source);
+        var restored = WebsiteContentSanitizer.ReadPersisted(JsonSerializer.Serialize(clean, options), options);
+        Assert.Equal(JsonSerializer.Serialize(clean.Theme, options), JsonSerializer.Serialize(restored.Theme, options));
+        Assert.Equal(720m, restored.Theme.FormMaxWidth);
+        Assert.Equal(28m, restored.Theme.FormPanelPadding);
+        Assert.Equal(32m, restored.Theme.FormStepGap);
+        Assert.Equal(22m, restored.Theme.FormFieldGap);
+        Assert.Equal(10m, restored.Theme.FormLabelGap);
+        Assert.Equal(56m, restored.Theme.FormControlMinHeight);
+        Assert.Equal(15m, restored.Theme.FormControlPaddingBlock);
+        Assert.Equal(18m, restored.Theme.FormControlPaddingInline);
+        Assert.Equal("#143253", restored.Theme.Navy);
+        Assert.Equal("Georgia", restored.Theme.FontFamily);
+        Assert.Equal(0m, restored.Theme.InputRadius);
+        var field = Assert.Single(restored.Pages["/"].Composition).FieldPresentations["firstname"];
+        Assert.Equal(64m, field.Style.MinHeightPx);
+        Assert.Equal(-6m, field.Style.MarginTop);
+        Assert.Equal(0m, field.Style.LetterSpacing);
+        Assert.Equal(52m, field.BreakpointStyles["mobile"].MinHeightPx);
+        Assert.Equal(0m, field.BreakpointStyles["mobile"].MarginTop);
+    }
+
+    [Fact]
+    public void FormThemeGeometry_InvalidDimensionsInheritWhileValidZeroSpacingSurvives()
+    {
+        var invalid = WebsiteContentSanitizer.Sanitize(new WebsiteContentDocument
+        {
+            Theme = new WebsiteDesignTheme
+            {
+                FormMaxWidth = 0, FormPanelPadding = -1, FormStepGap = 121,
+                FormFieldGap = -1, FormLabelGap = 49, FormControlMinHeight = 0,
+                FormControlPaddingBlock = 61, FormControlPaddingInline = 121
+            }
+        }).Theme;
+        Assert.Null(invalid.FormMaxWidth);
+        Assert.Null(invalid.FormPanelPadding);
+        Assert.Null(invalid.FormStepGap);
+        Assert.Null(invalid.FormFieldGap);
+        Assert.Null(invalid.FormLabelGap);
+        Assert.Null(invalid.FormControlMinHeight);
+        Assert.Null(invalid.FormControlPaddingBlock);
+        Assert.Null(invalid.FormControlPaddingInline);
+        var zero = WebsiteContentSanitizer.Sanitize(new WebsiteContentDocument
+        {
+            Theme = new WebsiteDesignTheme
+            {
+                FormPanelPadding = 0, FormStepGap = 0, FormFieldGap = 0,
+                FormLabelGap = 0, FormControlPaddingBlock = 0, FormControlPaddingInline = 0
+            }
+        }).Theme;
+        Assert.Null(zero.FormMaxWidth);
+        Assert.Null(zero.FormControlMinHeight);
+        Assert.Equal(0m, zero.FormPanelPadding);
+        Assert.Equal(0m, zero.FormStepGap);
+        Assert.Equal(0m, zero.FormFieldGap);
+        Assert.Equal(0m, zero.FormLabelGap);
+        Assert.Equal(0m, zero.FormControlPaddingBlock);
+        Assert.Equal(0m, zero.FormControlPaddingInline);
+    }
 }

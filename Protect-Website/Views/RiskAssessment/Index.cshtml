@@ -19,18 +19,12 @@
 <style>
     .ra-shell .stepper {
         display: flex;
-        gap: 10px;
         flex-wrap: wrap;
         justify-content: center;
-        margin: 0 0 18px;
-    }
+}
 
     .ra-shell .step-pill {
         border: 1.35px solid var(--pcq-border-strong);
-        border-radius: 999px;
-        padding: 10px 14px;
-        font-weight: 900;
-        font-size: 0.92rem;
         color: rgba(247, 236, 208, 0.76);
         background: var(--pcq-pill-bg);
         cursor: pointer;
@@ -39,7 +33,7 @@
         box-shadow:
             0 10px 24px rgba(0, 0, 0, 0.14),
             inset 0 1px 0 rgba(255, 255, 255, 0.04);
-    }
+}
 
     .ra-shell .step-pill:hover {
         transform: translateY(-1px);
@@ -66,10 +60,9 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
         position: relative;
         z-index: 1;
-    }
+}
 
     .ra-shell .ra-step-count {
         font-size: 0.95rem;
@@ -81,11 +74,9 @@
     .ra-shell .nav-row {
         display: flex;
         justify-content: space-between;
-        gap: 12px;
-        margin-top: 10px;
         position: relative;
         z-index: 1;
-    }
+}
 
     .ra-shell .nav-row .spacer {
         flex: 1 1 auto;
@@ -104,12 +95,12 @@
     }
 
     .ra-shell .currency-input {
-        padding-right: 36px !important;
+        padding-inline-end: calc(var(--web-form-control-padding-inline) + 24px);
     }
 
     .ra-shell .currency-symbol {
         position: absolute;
-        right: 12px;
+        right: var(--web-form-control-padding-inline);
         top: 50%;
         transform: translateY(-50%);
         color: #6d4a05;
@@ -134,22 +125,11 @@
         margin-bottom: 0;
     }
 
-    .ra-shell .form-check {
-        margin-bottom: 0;
-    }
-
-    .ra-shell .form-check-label {
-        margin-bottom: 0;
-    }
-
     .ra-shell hr {
         margin: 1.4rem 0;
     }
 
     @@media (max-width: 575.98px) {
-        .ra-shell .step-pill {
-            font-size: 0.86rem;
-        }
 
         .ra-shell .nav-row {
             flex-direction: column;
