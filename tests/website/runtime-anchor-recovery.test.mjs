@@ -41,11 +41,17 @@ test('failed runtime recovery does not reload or automatically replay the mutati
 test('native form retains original text and controls when saved placeholder has flattened text',()=>{
   class Image {}
   let textWrites=0;
+  const presentationCalls=[];
   const form={dataset:{cmsSignalOnly:'true'},tagName:'FORM',hasAttribute:()=>false};
+  const model={type:'container',tag:'div',text:'historical flattened text'};
   const context=vm.createContext({HTMLImageElement:Image,rememberOriginal:()=>({text:'native'}),
     setContentText(){textWrites++},applyDataBinding(){},applyCanonicalResponsiveAttributes(){},applyStyle(){},
+    applyFormFieldPresentations(element,model){presentationCalls.push({element,model})},
     effectiveStyle(){},applyLayout(){},effectiveLayout(){},applyAnimations(){}});
   vm.runInContext(extract('function applyCompositionNode(', '  function buildLegacyExtraNode(')+';this.apply=applyCompositionNode',context);
-  context.apply(form,{type:'container',tag:'div',text:'historical flattened text'});
+  context.apply(form,model);
   assert.equal(textWrites,0);
+  assert.equal(presentationCalls.length,1);
+  assert.equal(presentationCalls[0].element,form);
+  assert.equal(presentationCalls[0].model,model);
 });
