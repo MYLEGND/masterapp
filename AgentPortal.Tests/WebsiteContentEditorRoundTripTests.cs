@@ -30,6 +30,65 @@ namespace AgentPortal.Tests;
 public sealed class WebsiteContentEditorRoundTripTests
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    [Fact]
+    public async Task RuntimeAnchorRecovery_ReviewsNoDuplicatePlanAndPreservesSnapshotRevisionAndReplay()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Protect);
+        var document = CanonicalDocument();
+        document.Pages["/Quote/Auto"] = new WebsitePageDocument
+        {
+            Title = "Auto", SystemTemplateKey = WebsiteSystemTemplateAuthority.Resolve(fixture.SiteKey, "/Quote/Auto"),
+            Composition =
+            [
+                new WebsiteCompositionNode
+                {
+                    Id = "signal:quote_auto.form.autoquoteform.0", Type = "text", Tag = "p",
+                    Text = "Saved form presentation", ClassName = "pcq-form-frame",
+                    Style = new WebsiteVisualStyle { OffsetXPercent = 0 }
+                }
+            ]
+        };
+        var original = JsonSerializer.Serialize(WebsiteContentSanitizer.Sanitize(document), JsonOptions);
+        var publication = Guid.NewGuid();
+        var state = new WebsiteContentState
+        {
+            OwnerKey = fixture.OwnerKey, SiteKey = fixture.SiteKey,
+            DraftJson = original, Revision = 68, PublishedVersionId = publication
+        };
+        fixture.Db.Add(state);
+        await fixture.Db.SaveChangesAsync();
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var controller = fixture.CreateController();
+        var response = Assert.IsType<OkObjectResult>(await controller.PlanDraftRecovery(ticket));
+        var plan = JsonSerializer.SerializeToElement(response.Value, JsonOptions);
+        Assert.Equal(0, plan.GetProperty("changes").GetArrayLength());
+        Assert.Equal(1, plan.GetProperty("runtimeAnchorChanges").GetArrayLength());
+        Assert.Equal(original, state.DraftJson);
+        var request = new WebsitePlatformController.RecoverDuplicateDraftRequest(ticket, 68, Guid.NewGuid(),
+            plan.GetProperty("sourceFingerprint").GetString()!, plan.GetProperty("repairedFingerprint").GetString()!);
+        var unreviewed = Assert.IsType<ConflictObjectResult>(await controller.RecoverDuplicateDraft(request));
+        Assert.Equal("website_recovery_runtime_review_required",
+            JsonSerializer.SerializeToElement(unreviewed.Value, JsonOptions).GetProperty("error").GetString());
+        Assert.Equal(original, state.DraftJson);
+        Assert.Equal(68, state.Revision);
+        Assert.Equal("[]", state.NamedDraftsJson);
+        request = request with { AcceptRuntimeAnchorConversions = true };
+        Assert.IsType<ConflictObjectResult>(await controller.RecoverDuplicateDraft(request with { ExpectedRevision = 67 }));
+        Assert.IsType<ConflictObjectResult>(await controller.RecoverDuplicateDraft(request with { RepairedFingerprint = "stale" }));
+        Assert.Equal(original, state.DraftJson);
+        Assert.IsType<OkObjectResult>(await controller.RecoverDuplicateDraft(request));
+        fixture.Db.ChangeTracker.Clear();
+        var saved = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        Assert.Equal(69, saved.Revision);
+        Assert.Equal(publication, saved.PublishedVersionId);
+        Assert.Equal(original, Assert.Single(JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(saved.NamedDraftsJson, JsonOptions)!).DocumentJson);
+        var repaired = WebsiteContentSanitizer.ReadPersisted(saved.DraftJson, JsonOptions);
+        Assert.Equal("protect_runtime_form:quote_auto_form", repaired.Pages["/Quote/Auto"].Composition[0].SystemKey);
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().RecoverDuplicateDraft(request));
+        Assert.Equal(69, saved.Revision);
+    }
+
     private const string ElementId = "home.h1.title";
 
     private static WebsiteContentDocument CanonicalDocument(string text = "Heading")

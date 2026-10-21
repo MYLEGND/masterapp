@@ -280,8 +280,72 @@ public static class WebsiteSystemTemplateAuthority
         if (!TemplatesByRoute.TryGetValue(path, out var template) || template == Prefix + "quote_thank_you")
             return null;
         var route = ProtectRouteCatalog.Routes.Single(route => route.Path == path);
-        return "protect_runtime_form:" + route.PageKey +
+        var landing = route.HasPaidLanding &&
+            (pagePath ?? "").TrimEnd('/').EndsWith("/landing", StringComparison.OrdinalIgnoreCase);
+        return "protect_runtime_form:" + route.PageKey + (landing ? "_landing" : "") +
                (template == Prefix + "life_wizard" ? "" : "_form");
+    }
+
+
+    // Historical signal projections are recoverable only through the explicit,
+    // fingerprint-bound saved-draft recovery plan. IDs are evidence, never authority.
+    internal sealed record RuntimeRecoveryCandidate(string PagePath, WebsiteCompositionNode Node, string SystemKey);
+
+    internal static IReadOnlyList<RuntimeRecoveryCandidate> PlanRuntimeAnchorRecovery(
+        string? siteKey, WebsiteContentDocument document)
+    {
+        var result = new List<RuntimeRecoveryCandidate>();
+        if (siteKey != WebsiteEditorSiteKeys.Protect || document.LegacyMigration is not null) return result;
+        var all = WebsiteSiteSource.Flatten(document).ToArray();
+        foreach (var (path, page) in document.Pages)
+        {
+            if (page.Navigation?.IsDeleted == true || Resolve(siteKey, path) is not { } template ||
+                RuntimeFormKey(path) is not { } expected) continue;
+            var nodes = all.Where(item => item.PagePath == path).Select(item => item.Node).ToArray();
+            var anchors = nodes.Where(node => IsRuntimeFormSystemKey(node.SystemKey)).ToArray();
+            if (anchors.Length == 1 && anchors[0].SystemKey == expected &&
+                anchors[0].Type == "container") continue;
+            if (anchors.Length != 0)
+                throw new ArgumentException("Ambiguous runtime anchor requires independent review.");
+
+            var route = ProtectRouteCatalog.Routes.Single(route => route.Path == NormalizeProtectPath(path));
+            var landing = route.HasPaidLanding && path.TrimEnd('/').EndsWith("/landing", StringComparison.OrdinalIgnoreCase);
+            // Accept only canonical public routes and their catalog-owned paid
+            // variant. Do not infer agent/custom variant ownership from node IDs.
+            var expectedPath = route.Path + (landing ? "/landing" : "");
+            if (!path.TrimEnd('/').Equals(expectedPath, StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Runtime alias requires independent review.");
+            var nativeFormId = template[Prefix.Length..] switch
+            {
+                "risk_assessment" => "riskassessmentform",
+                "life_wizard" => "lifewizardform",
+                "home_quote" => "homequoteform",
+                "auto_quote" => "autoquoteform",
+                "commercial_quote" => "commercialquoteform",
+                "disability_quote" => "disabilityquoteform",
+                "dvh_quote" => "dvhquoteform",
+                _ => throw new ArgumentException("Unknown historical runtime projection.")
+            };
+            var id = "signal:" + route.PageKey + (landing ? "_landing" : "") + ".form." + nativeFormId + ".0";
+            var candidates = nodes.Where(node => node.Id == id).ToArray();
+            if (candidates.Length != 1 || all.Count(item => item.Node.Id == id) != 1)
+                throw new ArgumentException("Missing or ambiguous runtime projection requires independent review.");
+            var candidate = candidates[0];
+            if (candidate.Type != "text" || candidate.Tag != "p" || candidate.SystemKey is not null ||
+                candidate.SystemBinding is not null || WebsiteSiteSource.HasProtectedSemantics(candidate) ||
+                candidate.ActionKey is not null || candidate.DataBinding is not null || candidate.Experience is not null ||
+                candidate.Href is not null || candidate.Target is not null || candidate.SyncSourceId is not null ||
+                (candidate.Children?.Count ?? 0) != 0)
+                throw new ArgumentException("Runtime projection has behavior requiring independent review.");
+            result.Add(new(path, candidate, expected));
+        }
+        return result;
+    }
+
+    public static bool HasReviewableRuntimeAnchorRecovery(string siteKey, WebsiteContentDocument document)
+    {
+        try { return PlanRuntimeAnchorRecovery(siteKey, document).Count > 0; }
+        catch (ArgumentException) { return false; }
     }
 
     public static bool IsProtectedRuntimeSource(string? pageKeyOrPath) =>
@@ -300,7 +364,7 @@ public static class WebsiteSystemTemplateAuthority
                 version.DocumentJson,
                 new JsonSerializerOptions(JsonSerializerDefaults.Web));
             var matches = WebsiteSiteSource.Flatten(document)
-                .Where(item => string.Equals(NormalizeProtectPath(item.PagePath), route, StringComparison.OrdinalIgnoreCase) &&
+                .Where(item => string.Equals(ResolveRuntimeRoute(item.PagePath), route, StringComparison.OrdinalIgnoreCase) &&
                                string.Equals(item.Node.SystemKey, expected, StringComparison.Ordinal))
                 .Select(item => item.Node.Id)
                 .Distinct(StringComparer.Ordinal)
@@ -320,13 +384,19 @@ public static class WebsiteSystemTemplateAuthority
         if (value.StartsWith('/'))
         {
             var path = NormalizeProtectPath(value);
-            return RuntimeFormKey(path) is null ? null : path;
+            if (RuntimeFormKey(path) is null) return null;
+            var landingPath = value.TrimEnd('/').EndsWith("/landing", StringComparison.OrdinalIgnoreCase);
+            if (!landingPath) return path;
+            return ProtectRouteCatalog.Routes.Any(route => route.Path == path && route.HasPaidLanding)
+                ? path + "/landing" : null;
         }
-        if (value.EndsWith("_landing", StringComparison.OrdinalIgnoreCase))
+        var landing = value.EndsWith("_landing", StringComparison.OrdinalIgnoreCase);
+        if (landing)
             value = value[..^"_landing".Length];
         var route = ProtectRouteCatalog.Routes.FirstOrDefault(candidate =>
             string.Equals(candidate.PageKey, value, StringComparison.OrdinalIgnoreCase));
-        return route is null || RuntimeFormKey(route.Path) is null ? null : route.Path;
+        return route is null || RuntimeFormKey(route.Path) is null || landing && !route.HasPaidLanding
+            ? null : route.Path + (landing ? "/landing" : "");
     }
 
     // A submitted presentation may request only the exact runtime already
