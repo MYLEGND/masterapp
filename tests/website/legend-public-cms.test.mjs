@@ -4358,6 +4358,57 @@ test('new Website Studio page edits cannot remove a protected native header when
   } finally {f.close();}
 });
 
+for(const search of ['', '?legendEdit=ticket']){
+  for(const landing of [false,true]){
+    test(`standalone landing shell policy preserves authored content and native controls in ${search?'Studio':'public'} ${landing?'landing':'ordinary'} view`,async()=>{
+      const doc=canonicalBusinessNavigation();
+      const path=landing?'/quote/final-expense/landing':'/quote/final-expense';
+      const key=landing?'quote_final_expense_landing':'quote_final_expense';
+      doc.pages[path]={title:'Final Expense',systemTemplateKey:'protect_template:life_wizard',navigation:{isDeleted:false},composition:[
+        canonicalNode('runtime.form.'+key,'container','div',{systemKey:'protect_runtime_form:'+key})
+      ]};
+      doc.shell.footer[0].children.push(canonicalNode('footer.copy','text','p',{text:'Owned footer'}));
+      const originalShell=JSON.stringify(doc.shell);
+      const html='<!doctype html><html><body'+(landing?' class="standalone-quote-landing"':'')+'><header class="site-header">Previously mounted header</header><aside class="standalone-quote-landing">Child marker is not route policy</aside><main><section><form id="lifeWizardForm" data-form-key="'+key+'"><label for="applicant">Applicant</label><input id="applicant" name="FirstName" required><button type="submit">Continue</button></form></section></main><footer class="site-footer">Native footer</footer></body></html>';
+      let nativeForm,nativeInput,changes=0;
+      const f=await domFixture({siteKey:'protect',doc,pathname:path,search,html,beforeEval:w=>{
+        nativeForm=w.document.getElementById('lifeWizardForm');
+        nativeInput=w.document.getElementById('applicant');
+        nativeInput.addEventListener('change',()=>changes++);
+      }});
+      try{
+        assert.equal(f.w.document.querySelectorAll('.site-header').length,landing?0:1);
+        assert.equal(f.w.document.querySelectorAll('#primary-nav,[data-public-nav]').length,landing?0:1);
+        assert.equal(f.w.document.querySelectorAll('.nav-toggle').length,landing?0:1);
+        assert.equal(f.w.document.querySelector('.site-footer').textContent,'Owned footer');
+        assert.equal(f.w.document.getElementById('lifeWizardForm'),nativeForm);
+        assert.equal(f.w.document.getElementById('applicant'),nativeInput);
+        assert.equal(nativeInput.name,'FirstName');
+        assert.equal(nativeInput.required,true);
+        nativeInput.dispatchEvent(new f.w.Event('change'));
+        assert.equal(changes,1);
+        assert.equal(JSON.stringify(f.serverDocument().shell),originalShell);
+        assert.equal(f.calls.filter(call=>call.method==='POST').length,0);
+        if(search){
+          const saved=await f.save();
+          assert.equal(JSON.stringify(saved.shell),originalShell);
+          assert.equal(f.w.document.getElementById('lifeWizardForm'),nativeForm);
+          assert.equal(f.w.document.getElementById('applicant'),nativeInput);
+        }
+      }finally{f.close();}
+    });
+  }
+}
+
+test('standalone landing marker cannot suppress another site scope shared navigation',async()=>{
+  const f=await domFixture({siteKey:'business',business:{id:'11111111-1111-1111-1111-111111111111',displayName:'Scoped business'},doc:canonicalBusinessNavigation(),html:'<!doctype html><html><body class="standalone-quote-landing"><main><h1>Business page</h1></main></body></html>'});
+  try{
+    assert.ok(f.w.document.querySelector('.site-header'));
+    assert.ok(f.w.document.querySelector('[data-public-nav]'));
+    assert.ok(f.w.document.querySelector('.nav-toggle'));
+  }finally{f.close();}
+});
+
 
 test('publish allows bounded immutable compilation before client cancellation while preserving request reconciliation',async()=>{
   assert.match(source,/const method=String\(options\.method \|\| 'GET'\)\.toUpperCase\(\)/);
@@ -5111,6 +5162,47 @@ test('responsive audit finishes without animation frames and retains breakpoint 
   } finally {f.close();}
 });
 
+for(const state of ['absent','missing','hidden','usable','small','landing-missing']){
+  test('mobile primary navigation audit validates actual controls: '+state,{timeout:5000},async()=>{
+    const f=await domFixture({siteKey:state==='landing-missing'?'protect':'legend'});
+    try{
+      if(state==='landing-missing') f.w.document.body.classList.add('standalone-quote-landing');
+      if(state!=='absent'){
+        const header=f.w.document.createElement('header');
+        header.className='site-header';
+        header.innerHTML='<nav id="primary-nav" data-public-nav><a href="/">Home</a></nav>'+
+          (['hidden','usable','small'].includes(state)?'<button class="nav-toggle">Menu</button>':'');
+        f.w.document.querySelector('main').before(header);
+      }
+      const create=f.w.document.createElement.bind(f.w.document);
+      f.w.document.createElement=function(tag,...args){
+        const frame=create(tag,...args);
+        if(tag!=='iframe') return frame;
+        Object.defineProperty(frame,'srcdoc',{set(markup){
+          const child=frame.contentDocument;
+          child.documentElement.innerHTML=markup;
+          Object.defineProperty(child,'fonts',{value:{ready:Promise.resolve()}});
+          const toggle=child.querySelector('.nav-toggle');
+          if(toggle){
+            const size=state==='small'?20:44;
+            toggle.getClientRects=()=>state==='hidden'?[]:[{width:size,height:size}];
+            toggle.getBoundingClientRect=()=>({width:size,height:size,x:0,y:0,top:0,left:0,right:size,bottom:size});
+          }
+          queueMicrotask(()=>frame.dispatchEvent(new f.w.Event('load')));
+        }});
+        return frame;
+      };
+      const results=await f.w.LEGEND_WEBSITE_STUDIO_AGENT.runResponsiveQuality();
+      assert.deepEqual(Array.from(results,result=>result.key),['mobile','tablet','desktop']);
+      const checks=results[0].checks;
+      assert.equal(checks.some(check=>check.code==='live_mobile_nav_toggle_missing'),['missing','hidden','landing-missing'].includes(state));
+      assert.equal(checks.some(check=>check.code==='live_mobile_nav_touch_target'),state==='small');
+      assert.ok(results.slice(1).every(result=>!result.checks.some(check=>check.code.startsWith('live_mobile_nav_'))));
+      assert.equal(f.w.document.querySelectorAll('iframe').length,0);
+    }finally{f.close();}
+  });
+}
+
 
 test('Studio form step navigation reveals protected later steps without entering answers or changing the saved form',async()=>{
   const doc=canonicalDocument();
@@ -5304,6 +5396,53 @@ const nativeViewSources=Object.fromEntries([
   ['auto','Quote/Auto'],['home','Quote/Home'],['commercial','Quote/Commercial'],['life','Quote/Life'],
   ['dvh','Quote/DentalVisionHearing'],['disability','Quote/Disability'],['risk','RiskAssessment/Index']
 ].map(([key,path])=>[key,readFileSync(new URL('../../Protect-Website/Views/'+path+'.cshtml',import.meta.url),'utf8')]));
+
+test('native Auto coverage labels stay attached across vehicle rebuilds without changing field data',()=>{
+  const properties=['Comprehensive','Collision','Towing','Rental','LoanLease','Liability','SpecialEquipment','BrandedTitle','CustomEquipment'];
+  const dom=new JSDOM('<!doctype html><html><body><form id="autoQuoteForm"><div id="vehicles"></div><div id="vehicleCoverageContainer"></div></form></body></html>',{runScripts:'outside-only'});
+  const w=dom.window;
+  try{
+    for(const name of ['snapshotValues','restoreValues','buildVehicleCoverageCards']) w.eval(nativeFunction(nativeViewSources.auto,name));
+    const addVehicle=index=>{
+      const card=w.document.createElement('div');card.className='vehicle-card';
+      card.innerHTML='<input name="Vehicles['+index+'].Year" value="2020"><input name="Vehicles['+index+'].Make" value="Example"><input name="Vehicles['+index+'].Model" value="Sedan"><input name="Vehicles['+index+'].VIN" value="">';
+      w.document.getElementById('vehicles').appendChild(card);
+      return card;
+    };
+    const coverage=()=>Array.from(w.document.querySelectorAll('#vehicleCoverageContainer input,#vehicleCoverageContainer select'));
+    const data=()=>Array.from(new w.FormData(w.document.getElementById('autoQuoteForm')).entries());
+    const verify=count=>{
+      const controls=coverage();
+      assert.equal(controls.length,count*properties.length);
+      assert.equal(new Set(controls.map(control=>control.id)).size,controls.length);
+      controls.forEach((control,index)=>{
+        const vehicle=Math.floor(index/properties.length),property=properties[index%properties.length];
+        assert.equal(control.name,`Vehicles[${vehicle}].${property}`);
+        assert.equal(control.id,`auto-coverage-${vehicle}-${property}`);
+        assert.equal(control.labels.length,1);
+        assert.equal(control.labels[0].control,control);
+        assert.ok(control.labels[0].textContent.trim());
+      });
+    };
+    addVehicle(0);
+    w.buildVehicleCoverageCards();verify(1);
+    coverage().forEach(control=>{control.value=control.tagName==='SELECT'?control.options[1].value:'Existing answer';});
+    const firstData=data();
+    w.buildVehicleCoverageCards();verify(1);assert.deepEqual(data(),firstData);
+    const second=addVehicle(1);w.buildVehicleCoverageCards();verify(2);
+    assert.deepEqual(data().filter(([name])=>name.startsWith('Vehicles[0].')),firstData);
+    coverage().filter(control=>control.name.startsWith('Vehicles[1].')).forEach(control=>{
+      control.value=control.tagName==='SELECT'?control.options[2].value:'Vehicle 2 answer';
+    });
+    const twoData=data();
+    w.buildVehicleCoverageCards();verify(2);assert.deepEqual(data(),twoData);
+    second.remove();
+    w.buildVehicleCoverageCards();verify(1);
+    assert.deepEqual(data(),firstData);
+    w.buildVehicleCoverageCards();verify(1);assert.deepEqual(data(),firstData);
+    assert.equal(w.document.querySelectorAll('[id^="auto-coverage-1-"]').length,0);
+  }finally{w.close();}
+});
 
 test('native insurance step order saves canonical slots and reopens with the same controls and real traversal',async()=>{
   const f=await domFixture({siteKey:'protect',doc:nativeOrderingDocument(),pathname:'/Quote/Auto',html:nativeOrderingHtml()});

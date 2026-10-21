@@ -1,14 +1,11 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized preserving the accepted PR #666 canonical form consolidation, replacing the Website Analytics receptionist page's one-off styling with the existing shared canonical LEGEND design, and releasing the combined changes live. Preserve independent review, exact-head validation, expected-head integration, production admission, immutable packages and existing successful release receipts. No new database schema, routing, funding, paid calls, forwarding, provider configuration or public voice activation is authorized by this request.",
-  "purpose": "Release the shared canonical form presentation and live Website Studio authoring corrections together with the direct replacement of receptionist page-specific presentation by the existing shared page components and brand tokens. Remove superseded styling at its original source, preserve protected execution and saved configuration, and verify the affected live pages through the existing release path.",
-  "requestId": "founder-canonical-forms-receptionist-style-20261021-a276ad17520c",
+  "authorization": "The Founder's existing instruction to preserve the canonical form updates, correct presentation at its shared source, finish publication readiness and release the completed changes live covers this bounded follow-up. Preserve saved Protect draft revision 80, protected execution, current receptionist owner configuration and all prior successful installation evidence. Require independent exact-candidate review, normal CI, expected-head integration and canonical production admission. The predecessor run 39611360383 remains terminal; this request does not authorize duplicate uploads, replaying recovery, changing deployment guards, schema or routing changes, or voice activation.",
+  "purpose": "Honor the native Protect standalone landing header-omission policy in the shared CMS renderer before publishing the saved shared shell. Require a usable mobile Menu when primary navigation actually exists, retain its error when present navigation lacks a trigger, and connect 47 existing native Risk/Commercial/Auto field captions to their controls so canonical Studio field labels remain usable. Preserve all form names, types, options, handlers and submission semantics; add no CSS or parallel design authority.",
+  "requestId": "founder-protect-publication-readiness-20261021-f9fe495192e2",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
     "masterapp-protect",
-    "masterapp-parfait",
     "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
