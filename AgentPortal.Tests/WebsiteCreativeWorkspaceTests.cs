@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Infrastructure.WebsiteEditing;
 using Xunit;
@@ -434,6 +435,105 @@ public sealed class WebsiteCreativeWorkspaceTests
         var saved = result.Document.Pages["/"].Composition[0].Children
             .Single(value => value.Id == "home.estimator");
         Assert.Equal(WebsiteExperiencePolicy.LeadCaptureCapability, saved.Experience!.SubmitCapability);
+    }
+
+    [Fact]
+    public void Mutation_MappedNativeExperience_PersistsSafeRedesignWithoutChangingExecution()
+    {
+        var baseline = Baseline();
+        baseline.Pages["/"].Composition[0].Children.Add(MappedNativeExperienceTestCase.Create());
+        baseline = WebsiteContentSanitizer.Sanitize(baseline);
+        var before = MappedNativeExperienceTestCase.Snapshot(baseline);
+        var original = MappedNativeExperienceTestCase.Find(baseline);
+        var replacement = MappedNativeExperienceTestCase.Clone(original);
+        MappedNativeExperienceTestCase.Redesign(replacement);
+        // Selected Source omits protected bindings; omission must not disconnect them.
+        replacement.Signals.Clear();
+        replacement.FieldSignals.Clear();
+        replacement.Experience!.SubmitCapability = null;
+
+        var result = WebsiteDocumentMutationService.Apply(
+            baseline, WebsiteEditorSiteKeys.Business, Actions(), Capabilities(baseline),
+            [new WebsiteMutationOperation
+            {
+                Type = "replaceNode", NodeId = original.Id,
+                ExpectedFingerprint = WebsiteCreativeFingerprint.Node(original), Node = replacement
+            }]);
+        var restored = MappedNativeExperienceTestCase.ReadBack(result.Document);
+        var saved = MappedNativeExperienceTestCase.Find(restored);
+
+        MappedNativeExperienceTestCase.AssertRedesignAndAuthority(original, saved);
+        Assert.Equal(before, MappedNativeExperienceTestCase.Snapshot(baseline));
+        Assert.Equal(MappedNativeExperienceTestCase.Snapshot(baseline.Pages["/old"]),
+            MappedNativeExperienceTestCase.Snapshot(restored.Pages["/old"]));
+        WebsiteSiteSource.ValidateCanonical(restored, Actions());
+
+        // A second edit starts from saved state, while the same mappings remain attached.
+        var second = MappedNativeExperienceTestCase.Clone(saved);
+        second.Experience!.Controls.Single(control => control.Key == "phone").Placeholder = "Your preferred number";
+        var secondResult = WebsiteDocumentMutationService.Apply(
+            restored, WebsiteEditorSiteKeys.Business, Actions(), Capabilities(restored),
+            [new WebsiteMutationOperation { Type = "replaceNode", NodeId = saved.Id, Node = second }]);
+        var secondSaved = MappedNativeExperienceTestCase.Find(MappedNativeExperienceTestCase.ReadBack(secondResult.Document));
+        Assert.Equal("Your preferred number", secondSaved.Experience!.Controls.Single(control => control.Key == "phone").Placeholder);
+        Assert.Equal(MappedNativeExperienceTestCase.Snapshot(saved.FieldSignals),
+            MappedNativeExperienceTestCase.Snapshot(secondSaved.FieldSignals));
+    }
+
+    [Theory]
+    [InlineData("remove_definition")]
+    [InlineData("remove_control")]
+    [InlineData("rename_control")]
+    [InlineData("change_key_case")]
+    [InlineData("change_type")]
+    [InlineData("change_contact_role")]
+    [InlineData("retarget_cta")]
+    [InlineData("duplicate_key")]
+    [InlineData("duplicate_key_case")]
+    [InlineData("null_key")]
+    [InlineData("null_control")]
+    [InlineData("null_controls")]
+    [InlineData("append_null_control")]
+    [InlineData("change_submit_capability")]
+    [InlineData("add_submit_capability")]
+    [InlineData("change_field_signal")]
+    [InlineData("change_node_signal")]
+    public void Mutation_MappedNativeExperience_RejectsAuthorityChangesWithoutMutatingBaseline(string change)
+    {
+        var baseline = Baseline();
+        var experience = MappedNativeExperienceTestCase.Create();
+        if (change == "add_submit_capability") experience.Experience!.SubmitCapability = null;
+        baseline.Pages["/"].Composition[0].Children.Add(experience);
+        baseline = WebsiteContentSanitizer.Sanitize(baseline);
+        var before = MappedNativeExperienceTestCase.Snapshot(baseline);
+        var replacement = MappedNativeExperienceTestCase.Clone(MappedNativeExperienceTestCase.Find(baseline));
+        MappedNativeExperienceTestCase.Alter(replacement, change);
+
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() => WebsiteDocumentMutationService.Apply(
+            baseline, WebsiteEditorSiteKeys.Business, Actions(), Capabilities(baseline),
+            [new WebsiteMutationOperation { Type = "replaceNode", NodeId = experience.Id, Node = replacement }]));
+        Assert.Equal(before, MappedNativeExperienceTestCase.Snapshot(baseline));
+    }
+
+    [Theory]
+    [InlineData("unknown_step_control")]
+    [InlineData("unknown_target_step")]
+    [InlineData("unavailable_cta")]
+    [InlineData("optional_consent")]
+    [InlineData("preselected_consent")]
+    public void Mutation_MappedNativeExperience_StillValidatesTheEditedDefinition(string change)
+    {
+        var baseline = Baseline();
+        baseline.Pages["/"].Composition[0].Children.Add(MappedNativeExperienceTestCase.Create());
+        baseline = WebsiteContentSanitizer.Sanitize(baseline);
+        var before = MappedNativeExperienceTestCase.Snapshot(baseline);
+        var replacement = MappedNativeExperienceTestCase.Clone(MappedNativeExperienceTestCase.Find(baseline));
+        MappedNativeExperienceTestCase.Alter(replacement, change);
+
+        Assert.ThrowsAny<ArgumentException>(() => WebsiteDocumentMutationService.Apply(
+            baseline, WebsiteEditorSiteKeys.Business, Actions(), Capabilities(baseline),
+            [new WebsiteMutationOperation { Type = "replaceNode", NodeId = replacement.Id, Node = replacement }]));
+        Assert.Equal(before, MappedNativeExperienceTestCase.Snapshot(baseline));
     }
 
     [Fact]
@@ -1226,5 +1326,180 @@ public sealed class WebsiteCreativeWorkspaceTests
         Assert.Contains(report.Checks, value => value.Code == "design_placeholder_copy");
         Assert.Contains(report.Checks, value => value.Code == "conversion_home_missing");
         Assert.Contains(report.ConversionPaths, value => value.PagePath == "/" && value.TotalConversionPoints == 0);
+    }
+}
+
+// Shared fixture for the two canonical authoring entry points, not a replacement policy.
+internal static class MappedNativeExperienceTestCase
+{
+    private const string ExperienceNodeId = "home.mapped-intake";
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    internal static string Snapshot<T>(T value) => JsonSerializer.Serialize(value, JsonOptions);
+    internal static T Clone<T>(T value) => JsonSerializer.Deserialize<T>(Snapshot(value), JsonOptions)!;
+    internal static WebsiteContentDocument ReadBack(WebsiteContentDocument document) =>
+        WebsiteContentSanitizer.ReadPersisted(Snapshot(document), JsonOptions);
+    internal static WebsiteCompositionNode Find(WebsiteContentDocument document) =>
+        document.Pages["/"].Composition[0].Children.Single(node => node.Id == ExperienceNodeId);
+    internal static WebsiteCompositionNode Find(WebsiteSiteSourceDocument document) =>
+        document.Pages.Single(page => page.Path == "/").Composition
+            .Single(node => node.Id == "home.hero").Children.Single(node => node.Id == ExperienceNodeId);
+
+    private static List<WebsiteSignalBinding> Bind(string eventName, string trigger) =>
+        WebsiteSignalBindingPolicy.Validate(
+        [new WebsiteSignalBinding
+        {
+            Id = Guid.NewGuid().ToString("N"), EventName = eventName, Trigger = trigger,
+            DeliveryMode = "analytics", OncePerSession = false
+        }]);
+
+    internal static WebsiteCompositionNode Create() => new()
+    {
+        Id = ExperienceNodeId, Type = "experience", Tag = "form", Title = "Project estimate",
+        Signals = Bind("form_start", "form_started"),
+        FieldSignals = new(StringComparer.Ordinal)
+        {
+            ["phone"] = Bind("PhoneFieldCompleted", "field_completed"),
+            ["schedule"] = Bind("cta_click", "click")
+        },
+        FieldLabels = new(StringComparer.Ordinal) { ["submit"] = "Send request" },
+        FieldPresentations = new(StringComparer.Ordinal)
+        {
+            ["phone"] = new()
+            {
+                Style = new() { FontSize = 18, PaddingTop = 11, MarginTop = 0, LetterSpacing = -0.2m },
+                BreakpointStyles = new(StringComparer.Ordinal) { ["mobile"] = new() { FontSize = 16, PaddingTop = 12 } }
+            }
+        },
+        Experience = new()
+        {
+            Kind = "calculator", SubmitCapability = WebsiteExperiencePolicy.LeadCaptureCapability,
+            Controls =
+            [
+                new() { Key = "project_type", Type = "choice", Label = "Project type", Options =
+                    [new() { Value = "installation", Label = "Installation" }, new() { Value = "repair", Label = "Repair" }] },
+                new() { Key = "project_size", Type = "number", Label = "Project size", Min = 0, Max = 10000 },
+                new() { Key = "legacy_note", Type = "text", Label = "Old question" },
+                new() { Key = "next", Type = "button", Label = "Continue", Action = new() { Type = "next", TargetStep = "contact" } },
+                new() { Key = "first_name", Type = "text", Label = "First name", Required = true, ContactRole = "first_name" },
+                new() { Key = "last_name", Type = "text", Label = "Last name", Required = true, ContactRole = "last_name" },
+                new() { Key = "phone", Type = "tel", Label = "Phone", Required = true, ContactRole = "phone" },
+                new() { Key = "email", Type = "email", Label = "Email", Required = true, ContactRole = "email" },
+                new() { Key = "consent", Type = "checkbox", Label = "Share my inquiry", Required = true, ContactRole = "consent" },
+                new() { Key = "submit", Type = "button", Label = "Send", Action = new() { Type = "submit" } },
+                new() { Key = "schedule", Type = "cta", Label = "Schedule", Action = new() { Type = "cta", ActionKey = "business_schedule" } }
+            ],
+            Steps =
+            [
+                new() { Key = "project", Title = "Project", ControlKeys = ["project_type", "project_size", "legacy_note", "next"] },
+                new() { Key = "contact", Title = "Contact", ControlKeys = ["first_name", "last_name", "phone", "email", "consent", "submit", "schedule"] }
+            ],
+            Calculations = new(StringComparer.Ordinal)
+            {
+                ["estimate"] = new() { Op = "multiply", Values =
+                    [new() { Op = "ref", Ref = "project_size" }, new() { Op = "value", Value = JsonSerializer.SerializeToElement(2m) }] }
+            },
+            Results = [new() { Key = "estimate", Label = "Estimate", Format = "currency", Expression = new() { Op = "ref", Ref = "calc.estimate" } }]
+        }
+    };
+
+    internal static void Redesign(WebsiteCompositionNode node)
+    {
+        node.Title = "Your project estimate";
+        var definition = node.Experience!;
+        var phone = definition.Controls.Single(control => control.Key == "phone");
+        phone.Label = "Best phone number";
+        phone.HelpText = "Where can we reach you about this project?";
+        var question = definition.Controls.Single(control => control.Key == "project_type");
+        question.Label = "What can we help with?";
+        question.Options[0].Label = "Install new equipment";
+        question.Options.Add(new() { Value = "inspection", Label = "Inspection" });
+        definition.Controls.RemoveAll(control => control.Key == "legacy_note");
+        definition.Controls.Add(new() { Key = "detail", Type = "textarea", Label = "Additional project context" });
+        definition.Controls.Single(control => control.Key == "next").Action!.Type = "back";
+        var contact = definition.Steps.Single(step => step.Key == "contact");
+        contact.ControlKeys = ["first_name", "last_name", "email", "phone", "consent", "schedule", "submit"];
+        var project = definition.Steps.Single(step => step.Key == "project");
+        project.ControlKeys = ["project_type", "detail", "project_size", "next"];
+        project.Description = "Tell us about the work.";
+        project.VisibleWhen = new() { Op = "value", Value = JsonSerializer.SerializeToElement(true) };
+        definition.Steps = [contact, project];
+        definition.Calculations["estimate"].Values[1].Value = JsonSerializer.SerializeToElement(3m);
+        definition.Results[0].Label = "Preliminary estimate";
+    }
+
+    internal static void AssertRedesignAndAuthority(WebsiteCompositionNode original, WebsiteCompositionNode saved)
+    {
+        Assert.Equal(original.Id, saved.Id);
+        Assert.Equal(original.Type, saved.Type);
+        Assert.Equal(original.Tag, saved.Tag);
+        Assert.Equal(original.SystemKey, saved.SystemKey);
+        Assert.Equal(original.SystemBinding, saved.SystemBinding);
+        Assert.Equal(Snapshot(original.Signals), Snapshot(saved.Signals));
+        Assert.Equal(Snapshot(original.FieldSignals), Snapshot(saved.FieldSignals));
+        Assert.Equal(Snapshot(original.FieldPresentations), Snapshot(saved.FieldPresentations));
+        Assert.Equal(Snapshot(original.FieldLabels), Snapshot(saved.FieldLabels));
+        var definition = Assert.IsType<WebsiteExperienceDefinition>(saved.Experience);
+        Assert.Equal(WebsiteExperiencePolicy.LeadCaptureCapability, definition.SubmitCapability);
+        foreach (var key in original.FieldSignals.Keys)
+        {
+            var before = original.Experience!.Controls.Single(control => control.Key == key);
+            var after = definition.Controls.Single(control => control.Key == key);
+            Assert.Equal(before.Type, after.Type);
+            Assert.Equal(before.ContactRole, after.ContactRole);
+            Assert.Equal(before.Action?.ActionKey, after.Action?.ActionKey);
+        }
+        Assert.Equal("Your project estimate", saved.Title);
+        Assert.Equal(new[] { "contact", "project" }, definition.Steps.Select(step => step.Key));
+        Assert.Equal(new[] { "project_type", "detail", "project_size", "next" }, definition.Steps[1].ControlKeys);
+        Assert.True(definition.Steps[1].VisibleWhen!.Value!.Value.GetBoolean());
+        Assert.Contains(definition.Controls, control => control.Key == "detail" && control.Type == "textarea");
+        Assert.DoesNotContain(definition.Controls, control => control.Key == "legacy_note");
+        Assert.Contains(definition.Controls.Single(control => control.Key == "project_type").Options,
+            option => option.Value == "inspection" && option.Label == "Inspection");
+        var phone = definition.Controls.Single(control => control.Key == "phone");
+        Assert.Equal("tel", phone.Type);
+        Assert.Equal("phone", phone.ContactRole);
+        Assert.Equal("Best phone number", phone.Label);
+        Assert.Equal("Where can we reach you about this project?", phone.HelpText);
+        Assert.Equal("business_schedule", definition.Controls.Single(control => control.Key == "schedule").Action!.ActionKey);
+        Assert.Equal("back", definition.Controls.Single(control => control.Key == "next").Action!.Type);
+        Assert.Equal(3m, definition.Calculations["estimate"].Values[1].Value!.Value.GetDecimal());
+        Assert.Equal("Preliminary estimate", definition.Results[0].Label);
+    }
+
+    internal static void Alter(WebsiteCompositionNode node, string change)
+    {
+        if (change == "remove_definition") { node.Experience = null; return; }
+        var definition = node.Experience!;
+        var phone = definition.Controls.Single(control => control.Key == "phone");
+        switch (change)
+        {
+            case "remove_control": definition.Controls.Remove(phone); break;
+            case "rename_control": phone.Key = "mobile_phone"; break;
+            case "change_key_case": phone.Key = "PHONE"; break;
+            case "change_type": phone.Type = "text"; break;
+            case "change_contact_role": phone.ContactRole = "email"; break;
+            case "retarget_cta": definition.Controls.Single(control => control.Key == "schedule").Action!.ActionKey = "business_contact"; break;
+            case "duplicate_key": definition.Controls.Add(Clone(phone)); break;
+            case "duplicate_key_case": var duplicate = Clone(phone); duplicate.Key = "PHONE"; definition.Controls.Add(duplicate); break;
+            case "null_key": phone.Key = null!; break;
+            case "null_control": definition.Controls[definition.Controls.IndexOf(phone)] = null!; break;
+            case "null_controls": definition.Controls = null!; break;
+            case "append_null_control": definition.Controls.Add(null!); break;
+            case "change_submit_capability": definition.SubmitCapability = "checkout"; break;
+            case "add_submit_capability": definition.SubmitCapability = WebsiteExperiencePolicy.LeadCaptureCapability; break;
+            case "change_field_signal": node.FieldSignals["phone"][0].DeliveryMode = "destinations"; break;
+            case "change_node_signal": node.Signals[0].DeliveryMode = "destinations"; break;
+            case "unknown_step_control": definition.Steps[0].ControlKeys.Add("missing_control"); break;
+            case "unknown_target_step": definition.Controls.Single(control => control.Key == "next").Action!.TargetStep = "missing_step"; break;
+            case "unavailable_cta":
+                definition.Controls.Add(new() { Key = "custom_cta", Type = "cta", Action = new() { Type = "cta", ActionKey = "invented_backend_action" } });
+                definition.Steps[0].ControlKeys.Add("custom_cta");
+                break;
+            case "optional_consent": definition.Controls.Single(control => control.Key == "consent").Required = false; break;
+            case "preselected_consent": definition.Controls.Single(control => control.Key == "consent").DefaultValue = JsonSerializer.SerializeToElement(true); break;
+            default: throw new ArgumentOutOfRangeException(nameof(change), change, "Unknown test case.");
+        }
     }
 }

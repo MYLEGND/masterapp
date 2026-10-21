@@ -359,7 +359,7 @@ public static class WebsiteSiteSource
             throw new WebsiteSiteSourceProtectionException("Website v3 may contain only one primary navigation authority.");
     }
 
-    private static void ProtectMappedExperienceControls(
+    internal static void ProtectMappedExperienceControls(
         WebsiteCompositionNode proposed,
         WebsiteCompositionNode previous)
     {
@@ -376,23 +376,36 @@ public static class WebsiteSiteSource
             throw new WebsiteSiteSourceProtectionException(
                 $"Interactive experience '{previous.Id}' cannot remove its definition while mapped controls are attached.");
 
+        if (proposed.Experience.Controls is null ||
+            proposed.Experience.Controls.Any(control => control is null || string.IsNullOrWhiteSpace(control.Key)))
+            throw new WebsiteSiteSourceProtectionException(
+                $"Interactive experience '{previous.Id}' must retain a valid, uniquely keyed control definition while its Analytics mappings are attached.");
+
         foreach (var mappedKey in mappedKeys)
         {
-            var before = previous.Experience.Controls
-                .SingleOrDefault(control => string.Equals(control.Key, mappedKey, StringComparison.OrdinalIgnoreCase));
-            if (before is null)
+            var previousMatches = previous.Experience.Controls?
+                .Where(control => control is not null && string.Equals(control.Key, mappedKey, StringComparison.OrdinalIgnoreCase))
+                .ToArray() ?? [];
+            if (previousMatches.Length != 1)
                 throw new WebsiteSiteSourceProtectionException(
                     $"Interactive experience '{previous.Id}' contains an orphan protected mapping for control '{mappedKey}'.");
+            var before = previousMatches[0];
 
-            var after = proposed.Experience.Controls
-                .SingleOrDefault(control => string.Equals(control.Key, mappedKey, StringComparison.OrdinalIgnoreCase));
-            if (after is null)
+            var proposedMatches = proposed.Experience.Controls?
+                .Where(control => control is not null && string.Equals(control.Key, mappedKey, StringComparison.OrdinalIgnoreCase))
+                .ToArray() ?? [];
+            if (proposedMatches.Length != 1 || !string.Equals(before.Key, proposedMatches[0].Key, StringComparison.Ordinal))
                 throw new WebsiteSiteSourceProtectionException(
-                    $"Mapped control '{mappedKey}' cannot be removed or renamed while its Analytics mapping is attached. Remove the custom mapping through Analytics first.");
+                    $"Mapped control '{mappedKey}' cannot be removed, renamed, or duplicated while its Analytics mapping is attached. Remove the custom mapping through Analytics first.");
+            var after = proposedMatches[0];
 
             if (!string.Equals(before.Type, after.Type, StringComparison.Ordinal))
                 throw new WebsiteSiteSourceProtectionException(
                     $"Mapped control '{mappedKey}' cannot change control type while its Analytics mapping is attached. Remove the custom mapping through Analytics first.");
+
+            if (!string.Equals(before.ContactRole, after.ContactRole, StringComparison.Ordinal))
+                throw new WebsiteSiteSourceProtectionException(
+                    $"Mapped control '{mappedKey}' cannot change contact meaning while its Analytics mapping is attached.");
 
             var beforeAction = before.Action?.ActionKey;
             if (!string.IsNullOrWhiteSpace(beforeAction) &&

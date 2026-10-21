@@ -1826,7 +1826,7 @@ test('shared business inquiry uses Protect contact identity and two-column rows'
   assert.ok(publicInquirySource.includes("fields.get('Email')"));
   assert.ok(source.includes("requiredContactFields: inquiryForm ? ['FirstName','LastName','Phone','Email'] : []"));
   assert.match(publicInquiryFormCss,/\.public-form-grid\s*\{[\s\S]*?display:grid;[\s\S]*?grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
-  assert.match(publicInquiryFormCss, /@media\(max-width:650px\)[\s\S]*?\.public-form-grid\s*\{[\s\S]*?grid-template-columns:1fr;[\s\S]*?gap:14px/);
+  assert.match(publicInquiryFormCss, /@media\(max-width:767px\)[\s\S]*?\.public-form-grid,\.legend-experience-grid,\.legend-experience-options\{grid-template-columns:minmax\(0,1fr\)\}/);
   assert.doesNotMatch(publicCss, /@container legend-public-preview/);
   assert.equal(publicCss.includes('.public-form-grid'),false);
 });
@@ -5855,4 +5855,161 @@ for(const key of ['life','dvh','disability']) test('shipped '+key+' compiled que
     assert.deepEqual(Array.from(f.w.microSteps,step=>step.querySelector('input').name),['field0','field1','field2','field3','field4']);
     assert.equal(f.w.document.getElementById(fixture.buttonId).closest('[data-cms-native-step]').dataset.cmsNativeStep,'1');
   }finally{f.close();}
+});
+
+test('canonical form theme inherits unset numbers and persists live geometry without replacing the brand',async()=>{
+  const doc=canonicalDocument();
+  doc.theme={navy:'#143253',gold:'#cb9e52',fontFamily:'Georgia',bodySize:null,inputRadius:null,contentMaxWidth:null,
+    fontSize:null,bodyLineHeight:null,formMaxWidth:null,formControlMinHeight:null,formPanelPadding:'',formLabelGap:false,
+    contentGap:0,borderWidth:0,motionFastMs:0};
+  const f=await domFixture({doc});
+  try{
+    const root=f.w.document.documentElement;
+    for(const key of ['--web-body-size','--web-input-radius','--web-content-max','--web-base-font-size','--web-body-line-height',
+      '--web-form-max-width','--web-form-control-min-height','--web-form-panel-padding','--web-form-label-gap'])
+      assert.equal(root.style.getPropertyValue(key),'',`${key} inherits instead of coercing null/blank/false to zero`);
+    assert.equal(root.style.getPropertyValue('--web-content-gap'),'0px');
+    assert.equal(root.style.getPropertyValue('--web-border-width'),'0px');
+    assert.equal(root.style.getPropertyValue('--web-motion-fast'),'0ms');
+    f.click('[data-open="theme"]');
+    const settings={formMaxWidth:720,formPanelPadding:28,formStepGap:32,formFieldGap:22,formLabelGap:10,
+      formControlMinHeight:56,formControlPaddingBlock:15,formControlPaddingInline:18,
+      bodySize:18,smallSize:15,bodyLineHeight:1.6,inputRadius:7,buttonRadius:10,cardRadius:16,borderWidth:2};
+    for(const [key,value] of Object.entries(settings)) f.input(`[data-theme-key="${key}"]`,String(value));
+    const saved=await f.save();
+    for(const [key,value] of Object.entries(settings)) assert.equal(saved.theme[key],value);
+    assert.equal(saved.theme.navy,doc.theme.navy);assert.equal(saved.theme.gold,doc.theme.gold);assert.equal(saved.theme.fontFamily,'Georgia');
+    const reloaded=await domFixture({doc:saved,search:''});
+    try{
+      assert.equal(reloaded.w.document.documentElement.style.getPropertyValue('--web-form-control-min-height'),'56px');
+      assert.equal(reloaded.w.document.documentElement.style.getPropertyValue('--web-form-field-gap'),'22px');
+    }finally{reloaded.close();}
+    f.input('[data-theme-key="formControlMinHeight"]','');
+    assert.equal(root.style.getPropertyValue('--web-form-control-min-height'),'');
+    const reset=await f.save();assert.equal(reset.theme.formControlMinHeight,null);assert.equal(reset.theme.formFieldGap,22);
+  }finally{f.close();}
+});
+
+test('field presentation null spacing inherits while zero signed and breakpoint overrides survive save and reload',async()=>{
+  const doc=canonicalDocument();
+  doc.theme={formFieldGap:24,formControlMinHeight:56,formControlPaddingBlock:15,formControlPaddingInline:19};
+  doc.pages['/'].composition=[canonicalNode('spacing.form','experience','form',{
+    experience:{kind:'form',controls:[{key:'inherit',type:'text',label:'Inherited spacing'},
+      {key:'zero',type:'text',label:'Explicit zero'},{key:'signed',type:'text',label:'Signed override'}],steps:[],calculations:{},results:[]},
+    fieldPresentations:{
+      inherit:{style:{letterSpacing:null,marginTop:null,marginBottom:'',marginLeft:false,marginRight:null,paddingTop:null}},
+      zero:{style:{letterSpacing:0,marginTop:0,marginBottom:0,marginLeft:0,marginRight:0}},
+      signed:{style:{letterSpacing:-.4,marginTop:-6,marginBottom:9,paddingTop:12,borderRadius:7,minHeightPx:64},
+        breakpointStyles:{mobile:{letterSpacing:.2,marginTop:-3,paddingTop:8,minHeightPx:52}}}
+    }
+  })];
+  const f=await domFixture({doc,viewportWidth:1280});
+  try{
+    const field=key=>f.w.document.querySelector(`[data-cms-field-key="${key}"]`);
+    for(const key of ['letterSpacing','marginTop','marginBottom','marginLeft','marginRight','paddingTop'])
+      assert.equal(field('inherit').style[key],'',`${key} does not write an unset presentation over the canonical CSS`);
+    for(const key of ['letterSpacing','marginTop','marginBottom','marginLeft','marginRight']) assert.equal(field('zero').style[key],'0px');
+    assert.equal(field('signed').style.letterSpacing,'-0.4px');assert.equal(field('signed').style.marginTop,'-6px');assert.equal(field('signed').style.minHeight,'64px');
+    f.change('#legend-cms-breakpoint','mobile');
+    assert.equal(field('signed').style.marginTop,'-3px');assert.equal(field('signed').style.paddingTop,'8px');assert.equal(field('signed').style.minHeight,'52px');
+    f.change('#legend-cms-breakpoint','base');
+    f.click('[data-cms-field-key="signed"]');
+    f.input('#legend-cms-layout-mode','grid');
+    assert.equal(field('signed').style.display,'grid','field layout edits project live through the form owner');
+    f.input('#legend-cms-layout-mode','free');
+    assert.equal(field('signed').style.display,'','clearing an authored layout restores inherited display');
+    const saved=await f.save();assert.equal(canonicalNodeById(saved,'spacing.form').fieldPresentations.signed.style.marginTop,-6);
+    const reloaded=await domFixture({doc:saved,search:'',viewportWidth:390});
+    try{
+      const input=reloaded.w.document.querySelector('[data-cms-field-key="signed"]');
+      assert.equal(input.style.marginTop,'-3px');assert.equal(input.style.letterSpacing,'0.2px');assert.equal(input.style.minHeight,'52px');assert.equal(input.style.borderRadius,'7px');
+    }finally{reloaded.close();}
+  }finally{f.close();}
+});
+
+test('Studio step preview temporarily beats important hidden ancestors and restores exact native display state',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/quote/auto']={title:'Auto',systemTemplateKey:'protect_template:auto_quote',navigation:{isDeleted:false},composition:[
+    canonicalNode('runtime.form.quote_auto_form','container','div',{systemKey:'protect_runtime_form:quote_auto_form',children:[
+      canonicalNode('preview.ancestor','container','div',{children:[
+        canonicalNode('preview.first','container','div',{className:'wizard-step active'}),
+        canonicalNode('preview.second','container','div',{className:'wizard-step',hidden:true})]})]})]};
+  const html='<!doctype html><html><head><style>#runtimeAncestor{display:none!important}.wizard-step{display:none!important}.wizard-step.active{display:block}</style></head><body><main><form id="autoQuoteForm" action="/Quote/Auto" method="post" data-form-key="quote_auto_form"><div id="runtimeAncestor" data-cms-id="preview.ancestor"><div data-cms-id="preview.first" class="wizard-step active" data-step="1" style="display:grid!important"><input name="FirstName" required></div><div data-cms-id="preview.second" class="wizard-step" data-step="2" hidden style="display:none!important"><input name="VIN" required><button type="submit">Submit</button></div></div></form></main></body></html>';
+  const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Auto',html});
+  try{
+    const ancestor=f.w.document.getElementById('runtimeAncestor');
+    const first=f.w.document.querySelector('[data-cms-id="preview.first"]'),second=f.w.document.querySelector('[data-cms-id="preview.second"]');
+    // Native step code can assign priority after the initial Studio projection.
+    first.style.setProperty('display','grid','important');
+    second.style.setProperty('display','none','important');
+    const input=second.querySelector('input');
+    const state=e=>({hidden:e.hidden,display:e.style.getPropertyValue('display'),priority:e.style.getPropertyPriority('display'),active:e.classList.contains('active')});
+    const before=[ancestor,first,second].map(state),documentBefore=f.serverDocument(),revision=f.serverRevision(),calls=f.calls.length;
+    let runtimeEvents=0;for(const name of ['input','change','submit']) input.form.addEventListener(name,()=>runtimeEvents++);
+    f.change('#legend-cms-form-navigator select','1');
+    assert.equal(f.w.getComputedStyle(ancestor).display,'block');assert.equal(ancestor.style.getPropertyPriority('display'),'important');
+    assert.equal(second.hidden,false);assert.equal(second.style.getPropertyValue('display'),'block');assert.equal(second.style.getPropertyPriority('display'),'important');
+    assert.equal(first.style.getPropertyValue('display'),'none');
+    f.change('#legend-cms-form-navigator select','0');
+    assert.equal(first.style.getPropertyValue('display'),'grid');assert.equal(first.style.getPropertyPriority('display'),'important');
+    f.change('#legend-cms-form-navigator select','-1');
+    assert.deepEqual([ancestor,first,second].map(state),before);
+    assert.equal(second.querySelector('input'),input);assert.equal(input.value,'');assert.equal(input.name,'VIN');assert.equal(input.required,true);
+    assert.equal(runtimeEvents,0);assert.equal(f.calls.slice(calls).some(call=>call.method==='POST'),false);assert.equal(f.serverRevision(),revision);
+    assert.deepEqual(f.serverDocument(),documentBefore);assert.deepEqual(await f.save(),documentBefore);
+  }finally{f.close();}
+});
+
+test('compiled form field breakpoints discard desktop output and preserve later native display decisions and listeners',async()=>{
+  const doc=canonicalDocument();
+  const node=canonicalNode('runtime.form.quote_auto_form','container','div',{
+    systemKey:'protect_runtime_form:quote_auto_form',fieldLabels:{submit:'Send request'},fieldPresentations:{
+      firstname:{style:{paddingLeft:14},breakpointStyles:{desktop:{minHeightPx:64,paddingTop:20},mobile:{paddingTop:8}}},
+      submit:{style:{paddingTop:12},breakpointStyles:{mobile:{paddingTop:6}}}
+    }
+  });
+  doc.pages['/quote/auto']={title:'Auto',systemTemplateKey:'protect_template:auto_quote',composition:[node]};
+  const template='<!doctype html><html><head></head><body><main><form id="autoQuoteForm" data-form-key="quote_auto_form" action="/Quote/Auto" method="post"><input id="nativeName" name="FirstName" required><button id="nativeSubmitBtn" type="submit" data-cms-field-key="submit" style="display:none!important">Continue</button></form></main><script id="legend-cms-published-document" type="application/json"></script></body></html>';
+  const compiler=new JSDOM(template,{url:'https://protect.example.test/Quote/Auto',runScripts:'outside-only'});
+  compiler.window.innerWidth=1280;compiler.window.CSS={escape:value=>String(value)};
+  compiler.window.LEGEND_PUBLIC_CMS_RENDER_INPUT={siteKey:'protect',document:doc,pageKey:'quote-auto',server:true};
+  let html;
+  try{
+    compiler.window.eval(source);
+    const compiledForm=compiler.window.document.getElementById('autoQuoteForm');
+    assert.equal(compiledForm.dataset.cmsCompositionId,node.id);
+    assert.equal(compiledForm.dataset.cmsSignalOnly,'true','actual Protect compilation marks the canonical native form');
+    assert.equal(compiler.window.document.getElementById('nativeName').style.minHeight,'64px');
+    assert.equal(compiler.window.document.getElementById('nativeName').style.paddingTop,'20px');
+    html=compiler.serialize();
+  }finally{compiler.window.close();}
+  const dom=new JSDOM(html,{url:'https://protect.example.test/Quote/Auto',runScripts:'outside-only'});
+  const w=dom.window;w.innerWidth=390;w.CSS={escape:value=>String(value)};
+  const input=w.document.getElementById('nativeName'),button=w.document.getElementById('nativeSubmitBtn');
+  const compiledDisplay={value:button.style.getPropertyValue('display'),priority:button.style.getPropertyPriority('display')};
+  let changes=0,clicks=0;input.addEventListener('change',()=>changes++);button.addEventListener('click',()=>clicks++);
+  w.document.getElementById('legend-cms-published-document').textContent=JSON.stringify({
+    siteKey:'protect',document:doc,pageKey:'quote-auto',server:false,publishedMarkupReady:true,
+    runtime:{apiBase:'https://protect.example.test'}
+  });
+  w.eval(source);
+  try{
+    assert.equal(input.style.minHeight,'','desktop-only output is not an inherited mobile default');
+    assert.equal(input.style.paddingTop,'8px');assert.equal(input.style.paddingLeft,'14px');
+    assert.equal(button.style.display,compiledDisplay.value);assert.equal(button.style.getPropertyPriority('display'),compiledDisplay.priority);
+    assert.equal(button.textContent,'Send request');
+    input.value='Fixture answer';button.hidden=false;button.disabled=true;button.textContent='Sending...';button.style.setProperty('display','inline-flex','important');
+    w.innerWidth=1280;w.dispatchEvent(new w.Event('resize'));await new Promise(resolve=>setTimeout(resolve,20));
+    assert.equal(w.document.getElementById('nativeName'),input);assert.equal(w.document.getElementById('nativeSubmitBtn'),button);
+    assert.equal(input.style.minHeight,'64px');assert.equal(input.style.paddingTop,'20px');
+    assert.equal(button.style.display,'inline-flex');assert.equal(button.style.getPropertyPriority('display'),'important');
+    assert.equal(button.hidden,false);assert.equal(button.disabled,true);assert.equal(button.textContent,'Sending...');assert.equal(input.value,'Fixture answer');
+    assert.equal(input.name,'FirstName');assert.equal(input.required,true);assert.equal(input.form.getAttribute('action'),'/Quote/Auto');
+    w.innerWidth=390;w.dispatchEvent(new w.Event('resize'));await new Promise(resolve=>setTimeout(resolve,20));
+    assert.equal(input.style.minHeight,'');assert.equal(input.style.paddingTop,'8px');
+    assert.equal(button.style.display,'inline-flex');assert.equal(button.style.getPropertyPriority('display'),'important');
+    assert.equal(button.textContent,'Sending...');
+    input.dispatchEvent(new w.Event('change'));button.dispatchEvent(new w.Event('click'));
+    assert.equal(changes,1);assert.equal(clicks,1);
+  }finally{w.close();}
 });

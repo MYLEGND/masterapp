@@ -516,7 +516,6 @@
         if(!el) continue;
         el.dataset.cmsCompositionId=node.id;
         applyCompositionNode(el,node);
-        if(el.tagName==='FORM') applyFormFieldPresentations(el,node);
         // Move the original nodes, retaining native controls, state and listeners.
         // Unrepresented runtime inputs remain in their native parent.
         if(parent && el!==parent) parent.appendChild(el);
@@ -1096,7 +1095,11 @@
       sectionSpace:'--web-section-space', contentGap:'--web-content-gap', contentMaxWidth:'--web-content-max',
       wideMaxWidth:'--web-wide-max', narrowMaxWidth:'--web-narrow-max', gutter:'--web-gutter',
       cardRadius:'--web-card-radius', buttonRadius:'--web-button-radius', inputRadius:'--web-input-radius',
-      borderWidth:'--web-border-width', navHeight:'--web-nav-height'
+      borderWidth:'--web-border-width', navHeight:'--web-nav-height',
+      formMaxWidth:'--web-form-max-width', formPanelPadding:'--web-form-panel-padding',
+      formStepGap:'--web-form-step-gap', formFieldGap:'--web-form-field-gap', formLabelGap:'--web-form-label-gap',
+      formControlMinHeight:'--web-form-control-min-height', formControlPaddingBlock:'--web-form-control-padding-block',
+      formControlPaddingInline:'--web-form-control-padding-inline'
     };
     const milliseconds = {
       motionFastMs:'--web-motion-fast', motionStandardMs:'--web-motion-standard', motionSlowMs:'--web-motion-slow'
@@ -1107,20 +1110,25 @@
       if (theme?.[key]) root.style.setProperty(cssVar, theme[key]);
       else root.style.removeProperty(cssVar);
     });
+    const numberValue=key=>{
+      const value=theme?.[key];
+      return value==null || typeof value==='boolean' || (typeof value==='string' && !value.trim())
+        ? Number.NaN : Number(value);
+    };
     Object.entries(pixels).forEach(([key, cssVar]) => {
-      const value=Number(theme?.[key]);
+      const value=numberValue(key);
       if(Number.isFinite(value) && value>=0) root.style.setProperty(cssVar,`${value}px`);
       else root.style.removeProperty(cssVar);
     });
     Object.entries(milliseconds).forEach(([key, cssVar]) => {
-      const value=Number(theme?.[key]);
+      const value=numberValue(key);
       if(Number.isFinite(value) && value>=0) root.style.setProperty(cssVar,`${value}ms`);
       else root.style.removeProperty(cssVar);
     });
-    const lineHeight=Number(theme?.bodyLineHeight);
+    const lineHeight=numberValue('bodyLineHeight');
     if(Number.isFinite(lineHeight) && lineHeight>0) root.style.setProperty('--web-body-line-height',String(lineHeight));
     else root.style.removeProperty('--web-body-line-height');
-    const base=Number(theme?.fontSize);
+    const base=numberValue('fontSize');
     if(Number.isFinite(base) && base>0) root.style.setProperty('--web-base-font-size',`${base}px`);
     else root.style.removeProperty('--web-base-font-size');
   }
@@ -1501,9 +1509,12 @@
         el.style[cssKey]=`${style[key]}px`;
       }
     });
-    if (Number.isFinite(Number(style.letterSpacing)))
-      el.style.letterSpacing=`${Number(style.letterSpacing)}px`;
-    ['marginTop','marginBottom','marginLeft','marginRight'].forEach(key => { if(Number.isFinite(Number(style[key]))) el.style[key]=`${Number(style[key])}px`; });
+    // Nullable presentation values inherit the shared theme; signed spacing and
+    // deliberate zero remain valid overrides.
+    const signedSpacing = value => typeof value === 'number' && Number.isFinite(value);
+    if (signedSpacing(style.letterSpacing))
+      el.style.letterSpacing=`${style.letterSpacing}px`;
+    ['marginTop','marginBottom','marginLeft','marginRight'].forEach(key => { if(signedSpacing(style[key])) el.style[key]=`${style[key]}px`; });
     if (positiveNumber(style.lineHeight)) el.style.lineHeight = String(style.lineHeight);
     if (style.opacity != null && Number.isFinite(Number(style.opacity))) el.style.opacity=String(style.opacity);
     if (positiveNumber(style.aspectRatio)) el.style.aspectRatio=String(style.aspectRatio);
@@ -2088,7 +2099,22 @@
     return allowed.includes(tag) ? tag : allowed[0];
   }
 
-  function applyFormFieldPresentations(form,node) {
+  // A runtime may change a native control's display between visual renders.
+  // Remember only our last projection, so a breakpoint/theme refresh does not
+  // overwrite a later runtime visibility decision or its inline priority.
+  const formFieldPresentationDisplays = new WeakMap();
+  const formFieldPresentationLabels = new WeakMap();
+  function applyFormFieldLabel(element,text) {
+    const previous=formFieldPresentationLabels.get(element);
+    // Submission runtimes own their busy/outcome copy. A pure visual refresh
+    // must not turn "Sending..." or a confirmed result back into the idle CTA.
+    if(element.matches('button[type="submit"]') &&
+       ((!previous && element.disabled) || ['sending','sent','error'].includes(element.dataset.legendInquiryState))) return;
+    if(previous != null && element.textContent!==previous) return;
+    setContentText(element,text,true);
+    formFieldPresentationLabels.set(element,element.textContent);
+  }
+  function applyFormFieldPresentations(form,node,compiled = false) {
     if(!form || !node) return;
     const presentations=node.fieldPresentations ||= {};
     const labels=node.fieldLabels || {};
@@ -2101,12 +2127,23 @@
       control.dataset.cmsEditable='true';
       const presentation=presentations[key] || normalizeControlPresentation(null);
       if(presentation){
+        const display={value:control.style.getPropertyValue('display'),priority:control.style.getPropertyPriority('display')};
+        const previousDisplay=formFieldPresentationDisplays.get(control);
+        const runtimeDisplay=previousDisplay
+          ? display.value!==previousDisplay.value || display.priority!==previousDisplay.priority
+          : display.value==='none' || (!!display.value && (!compiled || String(node.systemKey || '').startsWith('protect_runtime_form:')));
+        if(compiled) resetCompiledPresentationBaseline(control);
         applyStyle(control,effectiveStyle(presentation));
         applyLayout(control,effectiveLayout(presentation));
+        formFieldPresentationDisplays.set(control,{value:control.style.getPropertyValue('display'),priority:control.style.getPropertyPriority('display')});
+        if(runtimeDisplay){
+          if(display.value) control.style.setProperty('display',display.value,display.priority);
+          else control.style.removeProperty('display');
+        }
       }
-      if(control.matches('button[type="submit"]') && labels[key]) setContentText(control,labels[key],true);
+      if(control.matches('button[type="submit"]') && labels[key]) applyFormFieldLabel(control,labels[key]);
       const label=control.labels?.[0] || control.closest('label');
-      if(label && labels[key]) setContentText(label,labels[key],true);
+      if(label && labels[key]) applyFormFieldLabel(label,labels[key]);
     });
   }
 
@@ -2413,7 +2450,6 @@
 
     form.addEventListener('input',render);
     form.addEventListener('change',render);
-    applyFormFieldPresentations(form,node);
     queueMicrotask(render);
     return form;
   }
@@ -2482,7 +2518,6 @@
 
     fieldset.append(legend,grid,submit);
     el.append(fieldset,status);
-    applyFormFieldPresentations(el,node);
     return el;
   }
 
@@ -2570,7 +2605,6 @@
     el.dataset.cmsCompositionId=node.id;
     el.dataset.cmsId=node.id;
     el.dataset.cmsEditable='true';
-    if(el.tagName==='FORM') applyFormFieldPresentations(el,node);
     if (node.type === 'section' || node.tag === 'header' || node.tag === 'footer') el.dataset.cmsSection=node.id;
     rememberOriginal(el);
     applyCompositionNode(el,node);
@@ -3547,7 +3581,12 @@
   }
 
   function applyCompositionNode(el, model) {
-    if (el?.dataset.cmsSignalOnly && el.tagName!=='FORM') return;
+    if (el?.dataset.cmsSignalOnly && el.tagName!=='FORM') {
+      const form=el.closest('form[data-cms-composition-id]');
+      const formNode=compositionNode(form?.dataset.cmsCompositionId);
+      if(form && formNode) applyFormFieldPresentations(form,formNode);
+      return;
+    }
     if (!el || !model) return;
     if (model.actionKey) el.dataset.websiteActionKey = model.actionKey;
     else if (model.href != null) delete el.dataset.websiteActionKey;
@@ -3589,6 +3628,7 @@
     applyCanonicalResponsiveAttributes(el,model);
     applyStyle(el, effectiveStyle(model,el));
     applyLayout(el, effectiveLayout(model,el));
+    if (el.tagName === 'FORM') applyFormFieldPresentations(el,model);
     applyAnimations(el, model.animations);
   }
 
@@ -8949,7 +8989,8 @@
   function restoreFormStepPreview() {
     for (const [element, state] of formPreviewVisibility) {
       element.hidden = state.hidden;
-      element.style.display = state.display;
+      if (state.display) element.style.setProperty('display', state.display, state.displayPriority);
+      else element.style.removeProperty('display');
       element.classList.toggle('active', state.active);
     }
     formPreviewVisibility.clear();
@@ -8985,19 +9026,23 @@
     const selectedStep = entries[index];
     const remember = element => {
       if (!formPreviewVisibility.has(element))
-        formPreviewVisibility.set(element, { hidden: element.hidden, display: element.style.display, active: element.classList.contains('active') });
+        formPreviewVisibility.set(element, { hidden: element.hidden, display: element.style.getPropertyValue('display'),
+          displayPriority: element.style.getPropertyPriority('display'), active: element.classList.contains('active') });
     };
     for (const entry of entries) {
       if (entry.form !== selectedStep.form || entry.step === selectedStep.step) continue;
       remember(entry.step);
       entry.step.hidden = true;
-      entry.step.style.display = 'none';
+      entry.step.style.setProperty('display', 'none', 'important');
     }
     for (let element = selectedStep.step; element && element.tagName !== 'MAIN'; element = element.parentElement) {
       remember(element);
       element.hidden = false;
       element.classList.add('active');
-      if (getComputedStyle(element).display === 'none') element.style.display = 'block';
+      if (getComputedStyle(element).display === 'none') {
+        const originalDisplay=formPreviewVisibility.get(element)?.display;
+        element.style.setProperty('display', originalDisplay && originalDisplay!=='none' ? originalDisplay : 'block', 'important');
+      }
     }
     refreshFormStepNavigator();
     selectedStep.step.scrollIntoView?.({ block: 'nearest' });
@@ -9191,12 +9236,30 @@
         <label class="legend-cms-group">Margin bottom<input data-style-key="marginBottom" type="number" step="any"></label>
       </div>
       <div class="legend-cms-group"><label><input id="legend-cms-hidden" type="checkbox"> Hide selected content</label></div>
-      <div class="legend-cms-group"><label>Site colors</label>
+      <div class="legend-cms-group"><label>Site design</label>
         <div class="legend-cms-theme">
           <label>Navy<input data-theme-key="navy" type="color" value="#102b62"></label>
           <label>Deep navy<input data-theme-key="navyDeep" type="color" value="#081a3a"></label>
           <label>Gold<input data-theme-key="gold" type="color" value="#d4ad45"></label>
           <label>Bright gold<input data-theme-key="goldStrong" type="color" value="#f0cf78"></label><label>Surface<input data-theme-key="surface" type="color" value="#ffffff"></label><label>Text<input data-theme-key="text" type="color" value="#101a35"></label><label>Muted<input data-theme-key="muted" type="color" value="#667085"></label><label>Font family<input data-theme-key="fontFamily" type="text" value=""></label>
+          <label>Control surface<input data-theme-key="surfaceElevated" type="color" value="#ffffff"></label>
+          <label>Secondary surface<input data-theme-key="surfaceMuted" type="color" value="#f5f7fa"></label>
+          <label>Border color<input data-theme-key="borderColor" type="color" value="#d8dee5"></label>
+          <label>Body and control text (px)<input data-theme-key="bodySize" type="number" min="12" max="32" step="any" placeholder="Shared default"></label>
+          <label>Label and helper text (px)<input data-theme-key="smallSize" type="number" min="10" max="24" step="any" placeholder="Shared default"></label>
+          <label>Body line height<input data-theme-key="bodyLineHeight" type="number" min="1" max="2.4" step="any" placeholder="Shared default"></label>
+          <label>Panel radius (px)<input data-theme-key="cardRadius" type="number" min="0" max="120" step="any" placeholder="Shared default"></label>
+          <label>Button radius (px)<input data-theme-key="buttonRadius" type="number" min="0" max="999" step="any" placeholder="Shared default"></label>
+          <label>Input radius (px)<input data-theme-key="inputRadius" type="number" min="0" max="120" step="any" placeholder="Shared default"></label>
+          <label>Border width (px)<input data-theme-key="borderWidth" type="number" min="0" max="12" step="any" placeholder="Shared default"></label>
+          <label>Form maximum width (px)<input data-theme-key="formMaxWidth" type="number" min="240" max="2400" step="any" placeholder="Shared default"></label>
+          <label>Form panel padding (px)<input data-theme-key="formPanelPadding" type="number" min="0" max="120" step="any" placeholder="Shared default"></label>
+          <label>Form step spacing (px)<input data-theme-key="formStepGap" type="number" min="0" max="120" step="any" placeholder="Shared default"></label>
+          <label>Form field spacing (px)<input data-theme-key="formFieldGap" type="number" min="0" max="120" step="any" placeholder="Shared default"></label>
+          <label>Form label spacing (px)<input data-theme-key="formLabelGap" type="number" min="0" max="48" step="any" placeholder="Shared default"></label>
+          <label>Minimum control height (px)<input data-theme-key="formControlMinHeight" type="number" min="24" max="120" step="any" placeholder="Shared default"></label>
+          <label>Control vertical padding (px)<input data-theme-key="formControlPaddingBlock" type="number" min="0" max="60" step="any" placeholder="Shared default"></label>
+          <label>Control horizontal padding (px)<input data-theme-key="formControlPaddingInline" type="number" min="0" max="120" step="any" placeholder="Shared default"></label>
         </div>
       </div>
     `;
@@ -9378,13 +9441,14 @@
 
     document.querySelectorAll('[data-theme-key]').forEach(input => {
       const key = input.dataset.themeKey;
-      const themeVariables = { navy: '--web-navy', navyDeep: '--web-navy-deep', gold: '--web-gold', goldStrong: '--web-gold-strong',surface:'--web-surface',text:'--web-ink',muted:'--web-muted',fontFamily:'--web-font' };
-      const currentColor = documentState.theme?.[key]
-        || getComputedStyle(document.documentElement).getPropertyValue(themeVariables[key]).trim();
-      if (input.type !== 'color' || /^#[0-9a-f]{6}$/i.test(currentColor)) input.value = currentColor;
+      const themeVariables = { navy: '--web-navy', navyDeep: '--web-navy-deep', gold: '--web-gold', goldStrong: '--web-gold-strong',surface:'--web-surface',text:'--web-ink',muted:'--web-muted',fontFamily:'--web-font',surfaceElevated:'--web-surface-elevated',surfaceMuted:'--web-surface-muted',borderColor:'--web-border-color' };
+      const currentValue = documentState.theme?.[key]
+        ?? (themeVariables[key] ? getComputedStyle(document.documentElement).getPropertyValue(themeVariables[key]).trim() : '');
+      if (input.type !== 'color' || /^#[0-9a-f]{6}$/i.test(currentValue)) input.value = currentValue;
       input.addEventListener('input', () => {
+        if (input.type==='number' && input.value!=='' && !input.validity.valid) return;
         checkpoint();
-        documentState.theme[key] = input.value;
+        documentState.theme[key] = input.type==='number' ? (input.value==='' ? null : Number(input.value)) : input.value;
         applyTheme(documentState.theme);
         markDirty();
       });
@@ -9609,7 +9673,7 @@
   // overlapping desktop widths, offsets and grid layouts. Rebuild presentation
   // from the saved model while preserving element identity and protected inputs.
   const compiledPresentationBaselines = new WeakSet();
-  function applyCompiledResponsivePresentation(el, model) {
+  function resetCompiledPresentationBaseline(el) {
     if(Number(renderInput?.document?.version)===3 && !compiledPresentationBaselines.has(el)){
       const original=rememberOriginal(el);
       // Only authored composition presentation is regenerated. Keep markup,
@@ -9617,9 +9681,13 @@
       styleProperties.forEach(key=>{original.style[key]='';});
       compiledPresentationBaselines.add(el);
     }
+  }
+  function applyCompiledResponsivePresentation(el, model) {
+    resetCompiledPresentationBaseline(el);
     applyCanonicalResponsiveAttributes(el,model);
     applyStyle(el,effectiveStyle(model,el));
     applyLayout(el,effectiveLayout(model,el));
+    if (el.tagName === 'FORM') applyFormFieldPresentations(el,model,true);
   }
 
   // The same canonical model drives the editor and the immutable public DOM.
@@ -9630,7 +9698,7 @@
       walkComposition(root.nodes,node=>canonicalNodes.set(node.id,node));
     document.querySelectorAll('[data-cms-composition-id]').forEach(el=>{
       const model=canonicalNodes.get(el.dataset.cmsCompositionId);
-      if(!model || el.dataset.cmsSignalOnly) return;
+      if(!model || (el.dataset.cmsSignalOnly && el.tagName!=='FORM')) return;
       applyCompiledResponsivePresentation(el,model);
     });
     // These two native commerce actions share canonical responsive controls.

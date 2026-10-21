@@ -393,6 +393,64 @@ Optional art-direction presets can initialize these tokens, e.g. **Roadster Prec
 
 Presets resolve into normal tokens and never become a competing runtime.
 
+### Canonical form presentation and protected behavior
+
+All inquiry forms, native experiences, and the seven Protect runtime view families
+consume `SHARED/WebsitePlatform/public-inquiry-form.css`. Protect's existing layout,
+Parfait's existing layout, and the LEGEND/business build include that asset; the
+custom-domain middleware serves the same compiled asset. Scoped business and agent
+ownership is resolved by the existing document/runtime authorities, not by CSS.
+The existing shared quote-final-review stylesheet consumes the same tokens for its
+summary and calendar wrapper. It continues to own its responsive review structure.
+
+Presentation has one precedence order:
+
+1. The shared stylesheet supplies canonical defaults.
+2. The current scoped `WebsiteDesignTheme` projects intentional site values.
+3. The current node or `FieldPresentations` entry supplies intentional exceptions.
+4. Its active breakpoint presentation overrides the corresponding base properties.
+
+Unset/null numeric values inherit. They must never become zero through JavaScript
+coercion. Zero spacing, border width, or radius remains intentional where the
+existing sanitizer allows it. A field's signed margin or letter spacing is also
+an explicit value. The renderer refreshes the same native objects in Studio and
+compiled publication; it does not replace controls, listeners, answers, hidden
+state, or runtime display decisions merely to change a breakpoint.
+
+The typed form geometry fields are `FormMaxWidth`, `FormPanelPadding`, `FormStepGap`,
+`FormFieldGap`, `FormLabelGap`, `FormControlMinHeight`, `FormControlPaddingBlock`,
+and `FormControlPaddingInline`. Colors, surfaces, typography, borders, shadows,
+`InputRadius`, `ButtonRadius`, and `CardRadius` reuse the existing theme fields.
+The Site design panel and scoped GPT mutation contract edit this same document.
+`setTheme` replaces the theme object: agents must merge a targeted change into the
+current complete theme before sending it. No migration or draft reset is needed
+to adopt shared defaults, and deliberate existing field/breakpoint values survive.
+
+| Live Studio/GPT authoring | Protected implementation and execution |
+| --- | --- |
+| Shared form sizing, spacing, colors, typography and responsive presentation | The schema, sanitizer, renderer and shared default CSS |
+| Runtime form labels and field presentation around real native controls | Native identities, validation, conditional behavior, consent, attribution, routing and submission |
+| Native experience questions, options, steps, calculations and results | Mapped control identity/type/contact meaning/canonical action and approved submit capability |
+| Placement of actual scoped catalog actions and custom mappings through Analytics | Tenant ownership, immutable event identity, provider delivery and server-confirmed outcomes |
+
+A native experience with protected mappings may still be redesigned through the
+normal mutation path. It uses the same mapped-control guard as source ingestion:
+mapped controls cannot be removed, renamed, duplicated, retyped or retargeted;
+unmapped questions may be changed under the existing schema and semantic policies.
+This does not make Protect runtime-template schemas freely authorable. The native
+experience submit capability currently implemented is `lead_capture`; booking,
+payment or other execution must come from a capability actually available in the
+scoped catalog. A design request never grants a new backend capability.
+
+Routine visual edits take effect in the live Studio preview, then become public
+through the existing saved-revision publication flow. They do not require a new
+application deployment. Extending a missing authoring feature or fixing protected
+implementation still requires a reviewed source change and the existing release
+process. Local step preview temporarily reveals selected steps and restores their
+exact hidden/display-priority/active state without answers, submission, funnel
+events or a saved revision; publication readiness remains a separate whole-site
+check.
+
 ## 13. Design-aware media index
 
 Keep the same owner-scoped media authority, but expose compact composition metadata:

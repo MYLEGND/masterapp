@@ -1,129 +1,207 @@
-/* Canonical public inquiry form shared by LEGEND, business, Protect, and Parfait.
-   Presentation is website-owned; field semantics, consent, routing, persistence and outcomes remain platform-owned. */
-.public-form{
-  width:min(100%,900px);
-  max-width:900px;
-  color:var(--ink,#152638);
-  font:inherit
+/* Canonical form presentation for public inquiry, native experiences and the
+   existing Protect runtime adapters. Studio owns theme/field presentation;
+   native controls, validation, consent, events and execution remain unchanged.
+   Precedence: these defaults < scoped site theme < node/field + breakpoint styles.
+   Do not add per-view geometry or !important presentation overrides. */
+:root{
+  --web-form-max-width:900px;
+  --web-form-panel-padding:24px;
+  --web-form-step-gap:24px;
+  --web-form-field-gap:20px;
+  --web-form-label-gap:8px;
+  --web-form-control-min-height:50px;
+  --web-form-control-padding-block:13px;
+  --web-form-control-padding-inline:14px
 }
-.public-form fieldset{
-  min-width:0;
-  margin:0;
-  padding:clamp(22px,3.2vw,36px);
-  border:1px solid color-mix(in srgb,var(--border,#d8dee5) 88%,var(--navy,#0d2940) 12%);
-  border-radius:clamp(18px,2vw,var(--radius-lg,24px));
-  background:
-    linear-gradient(180deg,color-mix(in srgb,var(--white,#fff) 98%,var(--gold,#c9a55d) 2%),var(--white,#fff));
-  box-shadow:
-    0 1px 0 rgba(255,255,255,.92) inset,
-    0 18px 46px rgba(8,30,54,.08)
+.public-form,.legend-native-experience,form[data-form-key],.pcq-form-shell{
+  --legend-form-panel:var(--web-surface-elevated,#fff);
+  --legend-form-label:var(--web-ink,#152638);
+  --legend-form-help:var(--web-muted,#667785);
+  --legend-form-border:var(--web-border-color,#d8dee5);
+  width:100%;max-width:var(--web-form-max-width);min-width:0;margin-inline:auto;
+  font-family:var(--web-font,inherit);font-size:var(--web-body-size,1rem);
+  line-height:var(--web-body-line-height,1.5);color:var(--legend-form-label)
 }
-.public-form legend{
-  padding:0 10px;
-  color:var(--navy,#0d2940);
-  font-size:clamp(1.05rem,1.7vw,1.2rem);
-  font-weight:850;
-  letter-spacing:-.015em
+/* Existing runtime forms use the dark panel role, with the same geometry and
+   semantic theme tokens as light inquiry/native-experience panels. */
+form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry]),.pcq-form-shell{
+  --legend-form-panel:linear-gradient(180deg,var(--web-navy,#102b62),var(--web-navy-deep,#081a36));
+  --legend-form-label:var(--web-surface,#f8fafc);
+  --legend-form-help:color-mix(in srgb,var(--web-surface,#f8fafc) 80%,transparent);
+  --legend-form-border:color-mix(in srgb,var(--web-gold,#c9a55d) 45%,transparent)
 }
-.public-form-grid{
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:20px;
-  margin-bottom:24px
+.public-form fieldset,.legend-native-experience,
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.section-card,.mini-card,.lq-step-panel),.pcq-form-shell .wizard-top{
+  box-sizing:border-box;min-width:0;border:var(--web-border-width,1px) solid var(--legend-form-border);
+  border-radius:var(--web-card-radius,var(--web-radius,22px));
+  background:var(--legend-form-panel);box-shadow:var(--web-shadow-soft,0 12px 32px rgba(8,30,54,.12));
+  color:var(--legend-form-label)
 }
-.public-form-grid>label{
-  display:grid;
-  align-content:start;
-  gap:8px;
-  min-width:0;
-  color:var(--navy,#0d2940);
-  font-size:.94rem;
-  font-weight:760;
-  letter-spacing:.005em
+.public-form fieldset,.legend-native-experience,
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.section-card,.mini-card,.lq-step-panel-pad),.pcq-form-shell .wizard-top{
+  padding:var(--web-form-panel-padding)
+}
+.public-form fieldset{margin:0}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.section-card,.mini-card,.lq-step-panel){margin:0 0 var(--web-form-step-gap)}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .lq-step-panel .lq-step-panel{border:0;background:transparent;box-shadow:none;margin:0}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .mini-card:last-child{margin-bottom:0}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .section-card .mini-card{padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .dq-form-panel{gap:var(--web-form-step-gap);padding:0}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.lq-contact-first-form-surface,.lq-contact-first-flow-surface,.lq-inner-block,.dq-contact-capture-wrap,#lifeContactCaptureWrap){gap:var(--web-form-step-gap);padding:0;margin:0;max-width:none;background:transparent;border:0;box-shadow:none}
+.pcq-form-shell{gap:var(--web-form-step-gap)}
+.public-form legend,.legend-experience-header h2,.legend-experience-step h3,
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.lq-step-title,.section-title,.lq-step-question,.lq-contact-capture-title,.dq-contact-title){
+  margin:0 0 var(--web-form-label-gap);padding:0;color:var(--legend-form-label);
+  font-size:var(--web-h3-size,1.25rem);font-weight:800;line-height:1.2;letter-spacing:normal
+}
+.public-form-grid,.legend-experience-grid,
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.lq-field-row,.lq-contact-grid,.lq-choice-grid,.pcq-choice-grid){
+  display:grid;gap:var(--web-form-field-gap);width:100%;max-width:none;margin:0;min-width:0
+}
+.public-form-grid,.legend-experience-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.public-form-grid{margin-bottom:var(--web-form-step-gap)}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .row{--bs-gutter-x:var(--web-form-field-gap);--bs-gutter-y:var(--web-form-field-gap)}
+.public-form-grid>label,.legend-experience-field,:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .lq-field{
+  display:grid;align-content:start;gap:var(--web-form-label-gap);min-width:0;margin:0
 }
 .public-form-full{grid-column:1/-1}
-.public-form input:not([type=checkbox]),.public-form textarea{
-  width:100%;
-  min-width:0;
-  min-height:50px;
-  padding:13px 14px;
-  border:1px solid color-mix(in srgb,var(--border,#d8dee5) 88%,var(--navy,#0d2940) 12%);
-  border-radius:var(--radius-sm,12px);
-  background:color-mix(in srgb,var(--surface,#f7f9fb) 72%,var(--white,#fff) 28%);
-  color:var(--ink,#152638);
-  font:inherit;
-  line-height:1.5;
-  outline:0;
+.legend-experience-control{min-width:0}
+.public-form-grid>label,.legend-experience-label,
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.lq-field>label,.lq-choice-label:where(:not(.lq-step-question)),.form-label,.col-form-label,.form-check-label){
+  color:var(--legend-form-label);font-size:var(--web-small-size,.94rem);font-weight:750;
+  line-height:1.4;letter-spacing:normal
+}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.form-label,.col-form-label){margin:0 0 var(--web-form-label-gap);padding:0}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .lq-field>label{margin:0;padding:0}
+.pcq-form-shell label:not(.form-check-label){display:inline-block;margin:0 0 var(--web-form-label-gap);color:var(--legend-form-label);font-size:var(--web-small-size,.94rem);font-weight:750;line-height:1.4}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .lq-field-row+.lq-field-row{margin-top:var(--web-form-field-gap)}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.lq-consent,.lq-consent-box,.lq-contact-consent){margin-top:var(--web-form-step-gap);padding:0}
+.public-form :is(input:where(:not([type=checkbox],[type=radio],[type=range],[type=hidden])),select,textarea),
+.legend-experience-field>:is(input:where(:not([type=checkbox],[type=radio],[type=range],[type=hidden])),select,textarea),
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.form-control,.form-select,textarea){
+  box-sizing:border-box;width:100%;min-width:0;min-height:var(--web-form-control-min-height);height:auto;max-height:none;
+  margin:0;padding:var(--web-form-control-padding-block) var(--web-form-control-padding-inline);
+  border:var(--web-border-width,1px) solid var(--web-border-color,#d8dee5);
+  border-radius:var(--web-input-radius,14px);background:var(--web-surface-elevated,#fff);
+  color:var(--web-ink,#152638);box-shadow:none;font-family:var(--web-font,inherit);font-size:var(--web-body-size,1rem);font-weight:400;line-height:1.5;letter-spacing:normal;
   transition:border-color .16s ease,box-shadow .16s ease,background .16s ease
 }
-.public-form input:not([type=checkbox]):hover,.public-form textarea:hover{
-  border-color:color-mix(in srgb,var(--navy,#0d2940) 28%,var(--border,#d8dee5) 72%)
+.public-form select,.legend-experience-field>select,:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) select:is(.form-control,.form-select){
+  padding-inline-end:calc(var(--web-form-control-padding-inline) + 20px)
 }
-.public-form input:not([type=checkbox]):focus,.public-form textarea:focus{
-  border-color:color-mix(in srgb,var(--gold,#c9a55d) 72%,var(--navy,#0d2940) 28%);
-  background:var(--white,#fff);
-  box-shadow:0 0 0 4px color-mix(in srgb,var(--gold,#c9a55d) 15%,transparent)
+.public-form textarea,.legend-experience-field>textarea,:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(textarea.form-control,textarea){
+  min-height:calc(var(--web-form-control-min-height) * 2.5);resize:vertical
 }
-.public-form textarea{min-height:148px;resize:vertical}
+.public-form :is(input,select,textarea):focus-visible,
+.legend-experience-field>:is(input,select,textarea):focus-visible,
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.form-control,.form-select,textarea):focus-visible{
+  border-color:var(--web-gold,#c9a55d);outline:2px solid color-mix(in srgb,var(--web-gold,#c9a55d) 70%,transparent);outline-offset:2px
+}
+.legend-experience-help,:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.lq-field-help,.lq-step-helper,.lq-contact-capture-copy,.dq-contact-copy,.dq-contact-hint){
+  margin:0;padding:0;color:var(--legend-form-help);font-size:var(--web-small-size,.875rem);line-height:1.5
+}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.lq-field-err,.lq-choice-error){
+  margin:var(--web-form-label-gap) 0 0;padding:0;color:#d92d20;font-size:var(--web-small-size,.875rem);font-weight:500;line-height:1.5;letter-spacing:normal
+}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .lq-card-title{color:var(--legend-form-label);font:inherit;font-weight:750;line-height:1.4;letter-spacing:normal}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .lq-card-helper{color:var(--legend-form-help);font-size:var(--web-small-size,.875rem);line-height:1.5;letter-spacing:normal}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .lq-card-copy{gap:var(--web-form-label-gap)}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.lq-card-kicker,.lq-contact-capture-kicker){color:var(--web-gold,#c9a55d);font-size:var(--web-small-size,.875rem);font-weight:750;line-height:1.4;letter-spacing:normal}
+.legend-experience-header,:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.lq-step-intro,.lq-step-progress-wrap,.lq-contact-capture-head,.lq-contact-final-heading,.dq-contact-head){
+  margin:0 0 var(--web-form-step-gap);gap:var(--web-form-label-gap)
+}
+.legend-experience-header p,.legend-experience-step-copy{margin:0;color:var(--legend-form-help)}
+.legend-experience-options,:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .lq-choice-group{
+  display:grid;gap:var(--web-form-field-gap)
+}
+.legend-experience-options{grid-template-columns:repeat(2,minmax(0,1fr))}
+.legend-experience-option,:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.lq-card,.form-check){
+  box-sizing:border-box;gap:var(--web-form-label-gap);min-height:var(--web-form-control-min-height);height:auto;
+  margin:0;padding:var(--web-form-control-padding-block) var(--web-form-control-padding-inline);
+  border:var(--web-border-width,1px) solid var(--legend-form-border);border-radius:var(--web-input-radius,14px);
+  background:var(--legend-form-panel);color:var(--legend-form-label);box-shadow:none;
+  font:inherit;font-weight:700;line-height:1.4;letter-spacing:normal;cursor:pointer
+}
+.legend-experience-option{display:flex;align-items:center}
+.legend-experience-option:has(input:checked){border-color:var(--web-gold,#c9a55d);box-shadow:0 0 0 2px color-mix(in srgb,var(--web-gold,#c9a55d) 22%,transparent)}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.lq-card.lq-selected,.lq-card:where(:has(input:checked)),.input-answered){border-color:var(--web-gold,#c9a55d);box-shadow:0 0 0 2px color-mix(in srgb,var(--web-gold,#c9a55d) 35%,transparent)}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.lq-card:hover,.form-check:hover,.form-control:hover,.form-select:hover,textarea:hover){border-color:var(--web-gold,#c9a55d)}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.lq-card.lq-invalid,.form-control.is-invalid,.form-select.is-invalid,.input-required-missing,.input-validation-error),
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .pcq-group-missing .form-check{border-color:#d92d20;outline:2px solid #d92d20;outline-offset:2px}
+/* Native choice ornament roles share theme paint without changing the actual
+   radio, checked predicate, badge content or interaction target. */
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .lq-card-visual{
+  width:var(--web-form-control-min-height);height:var(--web-form-control-min-height);
+  border:var(--web-border-width,1px) solid var(--legend-form-border);border-radius:var(--web-input-radius,14px);
+  color:var(--web-gold,#c9a55d);background:color-mix(in srgb,var(--web-gold,#c9a55d) 8%,transparent);box-shadow:none
+}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.lq-card.lq-selected,.lq-card:where(:has(input:checked))) .lq-card-visual{
+  color:var(--web-navy-deep,#081a36);background:var(--web-gold,#c9a55d);border-color:var(--web-gold,#c9a55d);box-shadow:none
+}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .lq-card-rich::after{
+  border:1px solid var(--legend-form-border);border-radius:50%;background:transparent;box-shadow:none
+}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.lq-card-rich.lq-selected,.lq-card-rich:where(:has(input:checked)))::after{
+  border-color:var(--web-gold,#c9a55d);background:var(--web-gold,#c9a55d)
+}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .lq-card:has(input:checked)::before{
+  padding:calc(var(--web-form-label-gap) / 3) calc(var(--web-form-control-padding-inline) / 2);
+  border:1px solid var(--legend-form-border);border-radius:var(--web-input-radius,14px);
+  color:var(--legend-form-label);background:var(--legend-form-panel);box-shadow:none;
+  font-size:var(--web-small-size,.875rem);font-weight:750;line-height:1.4;letter-spacing:normal
+}
+.legend-experience-option input{margin:0}
 .public-form-grid>.public-form-consent{
-  display:flex;
-  align-items:flex-start;
-  gap:12px;
-  padding:2px 0;
-  color:var(--muted,#667785);
-  font-size:.9rem;
-  font-weight:500;
-  line-height:1.5
+  display:flex;align-items:flex-start;gap:var(--web-form-label-gap);padding:0;
+  color:var(--legend-form-help);font-size:var(--web-small-size,.9rem);font-weight:500;line-height:1.5
 }
-.public-form-consent input{
-  flex:0 0 20px;
-  width:20px;
-  height:20px;
-  margin:2px 0 0;
-  accent-color:var(--navy,#0d2940)
-}
-.public-form :disabled{cursor:not-allowed;opacity:.68}
-.public-form>p{
-  margin:14px 0 0;
-  color:var(--muted,#667785);
-  font-size:.9rem;
-  line-height:1.5
-}
+.public-form-consent input{flex:0 0 20px;width:20px;height:20px;margin:2px 0 0;accent-color:var(--web-navy,#102b62)}
+.public-form :disabled,.legend-native-experience :disabled{cursor:not-allowed;opacity:.68}
+.public-form>p{margin:var(--web-form-label-gap) 0 0;color:var(--legend-form-help);font-size:var(--web-small-size,.9rem);line-height:1.5}
 .public-form [role=status]:empty{display:none}
-.public-form [role=status]:not(:empty){
-  padding:10px 12px;
-  border-radius:10px;
-  background:color-mix(in srgb,var(--surface,#f7f9fb) 88%,var(--gold,#c9a55d) 12%)
+.public-form [role=status]:not(:empty){padding:var(--web-form-control-padding-block) var(--web-form-control-padding-inline);border-radius:var(--web-input-radius,14px);background:var(--web-surface-muted,#f5f7fa)}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.lq-step-actions,.lq-submit-row,.wizard-actions,.nav-row){
+  gap:var(--web-form-field-gap);margin:var(--web-form-step-gap) 0 0;padding:0
 }
-.public-form .btn.primary{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  min-height:52px;
-  padding:13px 22px;
-  border:1px solid color-mix(in srgb,var(--navy,#0d2940) 82%,#000 18%);
-  border-radius:999px;
-  background:linear-gradient(180deg,color-mix(in srgb,var(--navy,#0d2940) 92%,#fff 8%),var(--navy,#0d2940));
-  color:#fff;
-  box-shadow:0 10px 24px rgba(8,30,54,.18),0 1px 0 rgba(255,255,255,.16) inset;
-  font:inherit;
-  font-weight:850;
-  line-height:1.2;
-  letter-spacing:.005em;
-  text-decoration:none;
-  cursor:pointer;
-  transition:transform .16s ease,box-shadow .16s ease,filter .16s ease
+.public-form .btn.primary,.legend-native-experience .btn,
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.btn-gold,.btn-progress,.btn-ghost,.btn-outline-gold,.btn-secondary){
+  box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;
+  min-height:var(--web-form-control-min-height);height:auto;
+  padding:var(--web-form-control-padding-block) var(--web-form-control-padding-inline);
+  border:var(--web-border-width,1px) solid var(--web-navy,#102b62);border-radius:var(--web-button-radius,14px);
+  background:var(--web-navy,#102b62);color:var(--web-surface-elevated,#fff);box-shadow:none;
+  font:inherit;font-weight:800;line-height:1.2;letter-spacing:normal;text-decoration:none;cursor:pointer
 }
-.public-form .btn.primary:hover{
-  transform:translateY(-1px);
-  filter:brightness(1.06);
-  box-shadow:0 14px 30px rgba(8,30,54,.22),0 1px 0 rgba(255,255,255,.16) inset
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.btn-gold,.btn-progress){background:var(--web-gold,#c9a55d);border-color:var(--web-gold,#c9a55d);color:var(--web-navy-deep,#081a36)}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.btn-ghost,.btn-outline-gold,.btn-secondary){background:transparent;border-color:var(--legend-form-border);color:var(--legend-form-label)}
+.public-form .btn.primary:focus-visible,.legend-native-experience .btn:focus-visible{outline:3px solid var(--web-gold,#c9a55d);outline-offset:3px}
+:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.btn-gold,.btn-progress,.btn-ghost,.btn-outline-gold,.btn-secondary):focus-visible{outline:3px solid var(--web-gold,#c9a55d);outline-offset:3px}
+.legend-experience-control>.btn{width:100%}
+.legend-experience-progress,:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .lq-step-progress-track,.pcq-form-shell .wizard-progress{
+  height:7px;border-radius:999px;overflow:hidden;background:color-mix(in srgb,var(--web-muted,#667785) 20%,transparent)
 }
-.public-form .btn.primary:active{transform:translateY(0)}
-.public-form .btn.primary:focus-visible{
-  outline:3px solid color-mix(in srgb,var(--gold,#c9a55d) 70%,transparent);
-  outline-offset:3px
+.legend-experience-progress{margin:0 0 var(--web-form-step-gap)}
+.legend-experience-progress>span{display:block;height:100%;width:0;background:var(--web-gold,#c9a55d);transition:width .22s ease}
+.pcq-form-shell .wizard-top{gap:var(--web-form-label-gap);max-width:var(--web-form-max-width);margin-inline:auto}
+.pcq-form-shell .wizard-steps,.ra-shell .stepper{gap:var(--web-form-label-gap);margin:0 auto var(--web-form-step-gap);padding:0}
+.pcq-form-shell .wizard-pill,.ra-shell .step-pill,:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .lq-step-progress{
+  padding:calc(var(--web-form-control-padding-block) / 2) var(--web-form-control-padding-inline);
+  min-height:0;border-radius:var(--web-button-radius,14px);font-size:var(--web-small-size,.85rem);font-weight:800;line-height:1.4;letter-spacing:normal
 }
+.legend-experience-results{display:grid;gap:var(--web-form-label-gap);margin-top:var(--web-form-step-gap);padding:var(--web-form-panel-padding);border-radius:var(--web-card-radius,22px);background:var(--web-surface-muted,#f5f7fa)}
+.legend-experience-result{display:flex;align-items:center;justify-content:space-between;gap:var(--web-form-field-gap);min-width:0}
+.legend-experience-result span{color:var(--legend-form-help);font-size:var(--web-small-size,.85rem)}
+.legend-experience-result strong{color:var(--legend-form-label);overflow-wrap:anywhere}
+.legend-experience-status{min-height:1.25em;margin:var(--web-form-label-gap) 0 0;color:var(--legend-form-help);font-size:var(--web-small-size,.85rem)}
+@media(max-width:767px){
+  .public-form-grid,.legend-experience-grid,.legend-experience-options{grid-template-columns:minmax(0,1fr)}
+  .public-form-grid>label{grid-column:1/-1}
+  .public-form .btn.primary{width:100%}
+}
+@media(prefers-reduced-motion:reduce){
+  .public-form input,.public-form textarea,.public-form .btn.primary{transition:none}
+}
+
 /* The submit button owns visible progress and outcome. Keep the existing
    role=status announcement accessible without a disconnected message below. */
 .public-form [role="status"][data-legend-inquiry-announcement],
@@ -160,61 +238,4 @@
 @media(prefers-reduced-motion:reduce){
   .public-form .btn.primary[data-legend-inquiry-state="sending"]::before,
   .legend-native-experience button[type="submit"][data-legend-inquiry-state="sending"]::before{animation:none}
-}
-@media(max-width:650px){
-  .public-form fieldset{padding:20px 16px;border-radius:18px}
-  .public-form-grid{grid-template-columns:1fr;gap:14px;margin-bottom:20px}
-  .public-form-grid>label{grid-column:1/-1}
-  .public-form input:not([type=checkbox]),.public-form textarea{font-size:16px}
-  .public-form .btn.primary{width:100%}
-}
-@media(prefers-reduced-motion:reduce){
-  .public-form input,.public-form textarea,.public-form .btn.primary{transition:none}
-  .public-form .btn.primary:hover{transform:none}
-}
-
-
-/* Canonical native interactive experiences. Presentation is intentionally broad;
-   execution remains declarative and server-authorized. */
-.legend-native-experience{
-  width:min(100%,780px);
-  margin-inline:auto;
-  padding:clamp(16px,3vw,30px);
-  border:1px solid color-mix(in srgb,var(--navy,#102b62) 14%,transparent);
-  border-radius:clamp(14px,2vw,22px);
-  background:var(--surface,#fff);
-  box-shadow:0 16px 44px rgba(16,43,98,.10)
-}
-.legend-experience-header{margin-bottom:16px}
-.legend-experience-header h2,.legend-experience-step h3{margin:0 0 6px;color:var(--navy,#102b62);line-height:1.08}
-.legend-experience-header p,.legend-experience-step-copy{margin:0;color:var(--muted,#607086)}
-.legend-experience-progress{height:4px;margin:0 0 18px;border-radius:999px;background:rgba(16,43,98,.10);overflow:hidden}
-.legend-experience-progress>span{display:block;height:100%;width:0;background:var(--gold,#d9b44a);transition:width .22s ease}
-.legend-experience-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.legend-experience-control{min-width:0}
-.legend-experience-field{display:grid;gap:6px;min-width:0}
-.legend-experience-label{font-size:.84rem;font-weight:800;color:var(--navy,#102b62)}
-.legend-experience-help{font-size:.76rem;color:var(--muted,#607086)}
-.legend-experience-field>input,
-.legend-experience-field>textarea,
-.legend-experience-field>select{
-  width:100%;min-width:0;min-height:46px;padding:10px 12px;
-  border:1px solid rgba(16,43,98,.20);border-radius:10px;background:#fff;color:var(--ink,#152638);font:inherit
-}
-.legend-experience-field>textarea{resize:vertical;min-height:96px}
-.legend-experience-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.legend-experience-option{display:flex;align-items:center;gap:8px;min-height:48px;padding:10px 12px;border:1px solid rgba(16,43,98,.16);border-radius:11px;background:#fff;cursor:pointer}
-.legend-experience-option:has(input:checked){border-color:var(--gold,#d9b44a);box-shadow:0 0 0 2px color-mix(in srgb,var(--gold,#d9b44a) 22%,transparent)}
-.legend-experience-option input{margin:0}
-.legend-experience-control>.btn{width:100%}
-.legend-experience-results{display:grid;gap:8px;margin-top:16px;padding:14px;border-radius:12px;background:color-mix(in srgb,var(--navy,#102b62) 4%,#fff)}
-.legend-experience-result{display:flex;align-items:center;justify-content:space-between;gap:14px}
-.legend-experience-result span{color:var(--muted,#607086);font-size:.84rem}
-.legend-experience-result strong{color:var(--navy,#102b62);font-size:1.05rem}
-.legend-experience-status{min-height:1.25em;margin:10px 0 0;color:var(--muted,#607086);font-size:.82rem}
-@media(max-width:767px){
-  .legend-native-experience{width:100%;padding:14px 12px;border-radius:14px}
-  .legend-experience-grid,.legend-experience-options{grid-template-columns:1fr;gap:8px}
-  .legend-experience-field>input,.legend-experience-field>textarea,.legend-experience-field>select{font-size:16px}
-  .legend-experience-option{min-height:46px}
 }
