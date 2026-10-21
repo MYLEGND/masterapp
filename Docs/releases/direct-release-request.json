@@ -1,14 +1,15 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized completing and deploying the bounded receptionist settings save and Protect Website Studio recovery fixes together. Preserve existing canonical validation, independent review, expected-head integration and production admission. No new schema, funding, paid calls, forwarding or public voice activation is authorized by this release request.",
-  "purpose": "Apply guarded saved runtime-anchor recovery through the existing explicit preview, immutable snapshot, revision and fingerprint checks; preserve canonical and supported landing form identities and deploy affected managed applications through the existing protected release path.",
-  "requestId": "founder-protect-runtime-recovery-20261021-77f91ae931c3",
+  "authorization": "Founder explicitly authorized preserving the accepted PR #666 canonical form consolidation, replacing the Website Analytics receptionist page's one-off styling with the existing shared canonical LEGEND design, and releasing the combined changes live. Preserve independent review, exact-head validation, expected-head integration, production admission, immutable packages and existing successful release receipts. No new database schema, routing, funding, paid calls, forwarding, provider configuration or public voice activation is authorized by this request.",
+  "purpose": "Release the shared canonical form presentation and live Website Studio authoring corrections together with the direct replacement of receptionist page-specific presentation by the existing shared page components and brand tokens. Remove superseded styling at its original source, preserve protected execution and saved configuration, and verify the affected live pages through the existing release path.",
+  "requestId": "founder-canonical-forms-receptionist-style-20261021-a276ad17520c",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
     "masterapp-client",
     "masterapp-protect",
-    "masterapp-parfait"
+    "masterapp-parfait",
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
