@@ -1,13 +1,29 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized deploying the unpublished changes (Sentinel_c08cccc0ded88191ac378f9717f17075,2026-10-22T13:08:58Z) and directed completion of this release work (Sentinel_c4af250f7be88191a6917677fa826cd0,2026-10-22T14:08:19Z). Resume only the already accepted Protect and Website application scope through the now-promoted canonical controls. Preserve independent exact-candidate review, required exact-head CI, expected-head protected integration, runtime identity and production admission. Preserve original run39611360383 and both failed attempts of39792159170; no replay or duplicate upload is authorized. Preserve saved Protect draft revision80 and require its separate current publication preflight. No schema or routing change, voice activation, new access or spending is authorized.",
-  "purpose": "Honor the native Protect standalone landing header-omission policy in the shared CMS renderer before publishing the saved shared shell. Require a usable mobile Menu when primary navigation actually exists, retain its error when present navigation lacks a trigger, and connect 47 existing native Risk/Commercial/Auto field captions to their controls so canonical Studio field labels remain usable. Preserve all form names, types, options, handlers and submission semantics; add no CSS or parallel design authority. Restore Life Back focus to the revealed question or a visible enabled destination control in both shells, retaining natural and explicit tab order, native canonical ordering, answers, events and existing scroll behavior; reject stale delayed focus after navigation. Preserve forward, contact and processing behavior and require the focused DOM/native-keyboard/rendering acceptance gates.",
-  "requestId": "founder-protect-website-release-20261022-2cec438ad86c",
-  "releaseMode": "approved-only",
-  "targets": [
-    "masterapp-protect",
-    "masterapp-website"
-  ],
+  "authorization": "Founder directed completion and recovery of this release (Sentinel_c4af250f7be88191a6917677fa826cd0,2026-10-22T14:08:19Z: Get this through please Layla, don’t ask for more approvals for this release work. Do what is in our best interest). This request promotes only the independently accepted three-path historical inventory correction. It authorizes no application publication, schema mutation, routing change, new access or spending. Existing runner/API allowance may be consumed; no guaranteed cost-free execution is asserted.",
+  "purpose": "Promote complete branch-scoped canonical release history enumeration with strict local exact-head producer matching. Preserve count and pagination proof, repository and branch identity, uniqueness, deadlines, authority gates, accepted application bytes and original/failed receipts. No arbitrary producer fallback or deployment replay.",
+  "requestId": "founder-release-history-20261022-a354c309cdce",
+  "releaseMode": "validate-only",
+  "targets": [],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false
+  "preserveLiveTargets": false,
+  "trustedToolPromotion": {
+    "schemaVersion": 1,
+    "baseRevision": "0d343b8dc2e8d0e2a28df6ab2b8907cd6976e2ed",
+    "sourceRevision": "a354c309cdce2dab1c8066b44d5303632775f596",
+    "files": {
+      "scripts/test-fast-track-release.py": {
+        "mode": "100644",
+        "blob": "6b7ae8d13e6f277409617d4b609fc6934f051984"
+      },
+      "scripts/test-validation-resume.py": {
+        "mode": "100644",
+        "blob": "2320725fd327fcb8a7127a759b7f99e8d2c4cec5"
+      },
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "0891905ed05d0ae2b50f9e84f9c1cbffcf853781"
+      }
+    }
+  }
 }
