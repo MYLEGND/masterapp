@@ -1,16 +1,65 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized preserving the accepted PR #666 canonical form consolidation, replacing the Website Analytics receptionist page's one-off styling with the existing shared canonical LEGEND design, and releasing the combined changes live. Preserve independent review, exact-head validation, expected-head integration, production admission, immutable packages and existing successful release receipts. No new database schema, routing, funding, paid calls, forwarding, provider configuration or public voice activation is authorized by this request.",
-  "purpose": "Release the shared canonical form presentation and live Website Studio authoring corrections together with the direct replacement of receptionist page-specific presentation by the existing shared page components and brand tokens. Remove superseded styling at its original source, preserve protected execution and saved configuration, and verify the affected live pages through the existing release path.",
-  "requestId": "founder-canonical-forms-receptionist-style-20261021-a276ad17520c",
-  "releaseMode": "approved-only",
-  "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect",
-    "masterapp-parfait",
-    "masterapp-website"
-  ],
+  "authorization": "Founder authorized completing the unpublished work and protected production deployment through the isolated branch (Sentinel_a3261e64a09c8191afff4419e0a12be8), explicitly approved proceeding with reviewed V6 (Sentinel_8376c37c0e608191ae7f40c176afeb44), and approved public-repository staging (Sentinel_c5d6c8e3228c819190929391b6ae30ff). This request is limited to the existing nonpublishing promotion of the independently accepted release-control source. It authorizes no application publication, schema mutation or routing change; subsequent completion and application release retain their protected admission and verification gates.",
+  "purpose": "Promote the exact independently accepted V6 release-control correction through the existing trusted-tool promotion contract, preserving all five original target obligations and genuine Website receipts before observation-only completion of original run39611360383 and later protected PR667 integration.",
+  "requestId": "founder-release-control-recovery-v6-ci-20261022-69d15031855a",
+  "releaseMode": "validate-only",
+  "targets": [],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false
+  "preserveLiveTargets": false,
+  "trustedToolPromotion": {
+    "schemaVersion": 1,
+    "baseRevision": "f9fe495192e2b01fa1cf3fcec2e302c69f003a1e",
+    "sourceRevision": "69d15031855a6d95c72a0a440236493b01975012",
+    "files": {
+      ".github/workflows/deployment-diagnostics.yml": {
+        "mode": "100644",
+        "blob": "b1db595324d67e144cc96b628042a504ee7cc827"
+      },
+      "scripts/deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "6e3729b663fc741fdca7fd1953a3cf12a26179b4"
+      },
+      "scripts/release-artifacts/test-transport.cjs": {
+        "mode": "100644",
+        "blob": "d04788bdf56ea505443a3b99779d5d5058458ca5"
+      },
+      "scripts/release-artifacts/transport.cjs": {
+        "mode": "100644",
+        "blob": "1fbe9e156d83fdb272aac863e67a2a35a7c61648"
+      },
+      "scripts/release-operation-evidence.py": {
+        "mode": "100644",
+        "blob": "182977ae31b9a8be91f16d7d8a90fe005d225305"
+      },
+      "scripts/release_policy.py": {
+        "mode": "100644",
+        "blob": "1b2a950797d0d51d0f77b29ef5b9c939b12c2b93"
+      },
+      "scripts/test-deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "6d6c9eb5f235dc8581f49bcbb0f80b23cf11f378"
+      },
+      "scripts/test-release-operation-evidence.py": {
+        "mode": "100755",
+        "blob": "9194c69b11a05a2235627508768419ebf8793abd"
+      },
+      "scripts/test-release-policy.py": {
+        "mode": "100644",
+        "blob": "3895cdaee042e51d3427c673168059f3fe9129f9"
+      },
+      "scripts/test-validation-resume.py": {
+        "mode": "100644",
+        "blob": "b33ba63819a056ded8e4960baeb0471956764783"
+      },
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "54c96035486581eb5520aeecd622b3a0d4228c19"
+      },
+      "scripts/test-fast-track-release.py": {
+        "mode": "100644",
+        "blob": "9bc119e614072f9085e8bad253d29e994c19176d"
+      }
+    }
+  }
 }

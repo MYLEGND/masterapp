@@ -211,13 +211,7 @@ class OperationJournal:
         return True
 
     def _validate_submission_observation(self, record):
-        keys = set(self.intent) - {'phase', 'producingRun', 'producingAttempt'}
-        if (record.get('phase') != 'submitted' or
-                any(record.get(key) != self.intent.get(key) for key in keys) or
-                not isinstance(record.get('deploymentId'), str) or
-                self._ids([record['deploymentId']]) != [record['deploymentId']] or
-                record['deploymentId'] in self.intent['baselineDeploymentIds']):
-            raise RuntimeError('Provider submission observation does not bind the original intent')
+        validate_submission_observation(self.intent, record)
 
     def record_submission_observation(self, deployment_id):
         if self.intent is None or self.intent.get('submissionContract') != self._windows_submission_contract():
@@ -266,6 +260,73 @@ class OperationJournal:
                       producingAttempt=self.attempt, phase='success',
                       deploymentIds=observed)
         return self.publisher('legend-release-operation-success-' + self.operation_id, record)
+
+
+def validate_submission_observation(intent, record):
+    """Canonical validation shared by ordinary and completion-only journals."""
+    keys = set(intent) - {'phase', 'producingRun', 'producingAttempt'}
+    if (record.get('phase') != 'submitted' or
+            any(record.get(key) != intent.get(key) for key in keys) or
+            not isinstance(record.get('deploymentId'), str) or
+            OperationJournal._ids([record['deploymentId']]) != [record['deploymentId']] or
+            record['deploymentId'] in intent['baselineDeploymentIds']):
+        raise RuntimeError('Provider submission observation does not bind the original intent')
+
+
+def validate_original_submission_observation(intent, record, original_run):
+    if record is None:
+        return None
+    validate_submission_observation(intent, record)
+    if (set(record) != set(intent) | {'deploymentId'} or record.get('producingRun') != original_run['id']
+        or type(record.get('producingAttempt')) is not int
+        or not 1 <= record['producingAttempt'] <= original_run['run_attempt']):
+        raise RuntimeError('Retained provider observation does not bind original execution')
+    return record
+
+
+class CompletionJournal:
+    """Success-only adapter. No intent/submission method or upload authority exists."""
+    def __init__(self, original, material, observer, *, authority=None, publisher=None):
+        self.authority=authority or _authority()
+        self.publisher=publisher or publish_record
+        self.original=original; self.material=material; self.observer=observer
+        self.intent=dict(material['intent']); self.baseline=self.intent['baseline']
+        self.operation_id=self.intent['operationId']; self.provider=None
+        self.repository=os.environ['GITHUB_REPOSITORY']
+        self.token=os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+
+    def record_success(self, deployment_ids):
+        observed=OperationJournal._ids(deployment_ids)
+        if (len(observed)!=1 or observed[0] in self.intent['baselineDeploymentIds']
+            or self.provider is None or self.provider['deploymentId']!=observed[0]):
+            raise RuntimeError('Completion requires correlated original provider success')
+        submitted=self.authority.release_operation_history(self.repository,self.operation_id,
+            self.intent['applicationRevision'],self.intent['target'],self.original['run']['id'],
+            self.original['run']['run_attempt'],self.token,phase='submitted')
+        validate_original_submission_observation(self.intent,submitted,self.original['run'])
+        if submitted is not None and observed!=[submitted['deploymentId']]:
+            raise RuntimeError('Completion differs from retained original provider observation')
+        # Ref/real executing job is reauthenticated at the last journal boundary.
+        if self.authority.assert_fast_track_completion_execution(self.original['run']['id'],self.intent['applicationRevision'])!=self.observer:
+            raise RuntimeError('Completion observer changed before recording')
+        existing=self.authority.release_operation_history(self.repository,self.operation_id,
+            self.intent['applicationRevision'],self.intent['target'],self.observer['runId'],
+            self.observer['runAttempt'],self.token,phase='success')
+        if existing is not None:
+            self.authority.validate_original_completion_success(self.repository,self.original,self.material,existing,self.token)
+            if (existing.get('deploymentIds')!=observed
+                or any(existing.get(k)!=v for k,v in self.intent.items() if k not in {'phase','producingRun','producingAttempt'})):
+                raise RuntimeError('Existing success differs from original operation')
+            return existing
+        self.authority._completion_original_unchanged(self.repository,self.original['run'],self.token)
+        proof=dict(originalRun=self.original['run']['id'],originalRunAttempt=self.original['run']['run_attempt'],
+            originalPackageJobId=self.material['packageJob']['id'],originalPackageAttempt=self.material['packageAttempt'],intentArtifactId=self.material['intentArtifact']['id'],
+            intentArtifactDigest=self.material['intentArtifact']['digest'],packageArtifactId=self.material['packageArtifact']['id'],
+            packageArtifactDigest=self.material['packageArtifact']['digest'],originalJobId=self.material['originalJob']['id'],
+            observer=dict(self.observer),provider=dict(self.provider))
+        record=dict(self.intent,phase='success',producingRun=self.observer['runId'],
+            producingAttempt=self.observer['runAttempt'],deploymentIds=observed,completionEvidence=proof)
+        return self.publisher('legend-release-operation-success-'+self.operation_id,record)
 
 
 class ChildJournal:

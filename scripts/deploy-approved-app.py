@@ -98,6 +98,9 @@ def read_deployments_bounded(azure, *, attempts=3, interval=15, sleep=None, phas
     for attempt in range(1, attempts + 1):
         try:
             return azure.deployments()
+        except DeploymentDrift:
+            # Identity conflicts are terminal evidence, never transient reads.
+            raise
         except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired) as exc:
             if attempt >= attempts:
                 raise DeploymentStatusUnavailable(
@@ -1030,16 +1033,8 @@ def verify_fast_track_favicon(key):
 
 
 def fast_track_restore_package(key, directory):
-    # Actions can briefly expose stale parent status while a matrix sibling starts.
-    # Refresh only this read-only entry; mutation admission remains unchanged.
-    for retry in range(3):
-        try:
-            run = _RELEASE_AUTHORITY.assert_fast_track_release_execution()
-            break
-        except RuntimeError as error:
-            if str(error) != 'FAST_TRACK_EXECUTION_PRODUCER_UNPROVEN' or retry == 2:
-                raise
-            time.sleep(2)
+    # The canonical identity owner supplies the single observation budget.
+    run = _RELEASE_AUTHORITY.assert_fast_track_release_execution(target=key)
     repository = os.environ['GITHUB_REPOSITORY']
     token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
     name = 'fast-track-package-' + run['head_sha'] + '-' + key
@@ -1098,7 +1093,7 @@ def fast_track_migration_gate(run):
 
 def fast_track_deploy(key, package_root):
     """Use the canonical one-upload reconciler from the existing fast-track lane."""
-    run = _RELEASE_AUTHORITY.assert_fast_track_release_execution()
+    run = _RELEASE_AUTHORITY.assert_fast_track_release_execution(target=key)
     revision = run['head_sha']
     before = os.environ.get('BEFORE', '')
     if not re.fullmatch('[a-f0-9]{40}', before):
@@ -1147,6 +1142,109 @@ def fast_track_deploy(key, package_root):
     return result
 
 
+def verify_fast_track_public_metadata(key):
+    """Same public favicon/sitemap/robots obligations as the original release."""
+    verify_fast_track_favicon(key)
+    if key not in {'website','protect'}:
+        return
+    import xml.etree.ElementTree as ET
+    origin='https://www.mylegnd.com' if key=='website' else 'https://protect.mylegnd.com'
+    def read(path):
+        request=urllib.request.Request(origin+path,headers={'Cache-Control':'no-cache'})
+        with urllib.request.urlopen(request,timeout=22) as response:
+            if response.status!=200 or response.url!=origin+path:
+                raise ValueError('FAST_TRACK_COMPLETION_PUBLIC_METADATA_UNPROVEN')
+            return response.headers.get('Content-Type','').lower(),response.read(1048577)
+    mime,raw=read('/sitemap.xml')
+    if len(raw)>1048576 or not any(t in mime for t in ('application/xml','text/xml')):
+        raise ValueError('FAST_TRACK_COMPLETION_SITEMAP_UNPROVEN')
+    root=ET.fromstring(raw);ns='{http://www.sitemaps.org/schemas/sitemap/0.9}'
+    locations=[e.text for e in root.findall(ns+'url/'+ns+'loc')]
+    if root.tag!=ns+'urlset' or not locations or len(locations)!=len(set(locations)) or any(not x or not x.startswith(origin+'/') for x in locations):
+        raise ValueError('FAST_TRACK_COMPLETION_SITEMAP_UNPROVEN')
+    mime,raw=read('/robots.txt')
+    if len(raw)>1048576 or 'text/plain' not in mime or 'Sitemap: '+origin+'/sitemap.xml' not in raw.decode().splitlines():
+        raise ValueError('FAST_TRACK_COMPLETION_ROBOTS_UNPROVEN')
+
+
+class CompletionObservation:
+    """Read-only provider facade; an accidental submit remains impossible here."""
+    def __init__(self, azure, journal):
+        self.azure=azure;self.journal=journal;self.revision=azure.revision
+        self.observed_deployment_id=None;self.identity_conflict=False
+    def observed_revision(self):
+        return self.azure.observed_revision()
+    def deployments(self):
+        if self.identity_conflict:
+            raise DeploymentDrift('Original provider identity previously became ambiguous')
+        rows=self.azure.deployments()
+        new=[r for r in rows if r['id'] not in self.journal.intent['baselineDeploymentIds']]
+        self.journal.provider=None
+        if len(new)>1:
+            self.identity_conflict=True
+            raise DeploymentDrift('Multiple original provider operations require reconciliation')
+        observed_id=new[0]['id'] if new else None
+        if self.observed_deployment_id is not None and observed_id!=self.observed_deployment_id:
+            self.identity_conflict=True
+            raise DeploymentDrift('Original provider operation changed or disappeared during observation')
+        if observed_id is not None:
+            self.observed_deployment_id=observed_id
+        if len(new)==1 and new[0]['status']==4:
+            row=new[0];a=_RELEASE_AUTHORITY
+            received=row.get('received_time')
+            if not a.completion_provider_in_original_publication(self.journal.material,received):
+                raise DeploymentDrift('Original provider operation does not correlate to retained intent')
+            self.journal.provider=dict(deploymentId=row['id'],receivedTime=received,status=4,runtimeRevision=self.revision)
+        return rows
+    def submit(self, *args, **kwargs):
+        raise DeploymentSubmissionNotEntered('Completion observer has no submission authority')
+    def prepare_submission(self):
+        raise DeploymentSubmissionNotEntered('Completion observer has no submission authority')
+
+
+def complete_fast_track(original_run, revision, package_root, *, validate_only=False):
+    """Finish genuine original receipts; never rebuild, submit or restart apps."""
+    authority=_RELEASE_AUTHORITY
+    observer=authority.assert_fast_track_completion_execution(original_run,revision)
+    repository=os.environ['GITHUB_REPOSITORY'];token=os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    original=authority.fast_track_completion_original(repository,original_run,revision,token)
+    if subprocess.run(['git','merge-base','--is-ancestor',revision,observer['toolRevision']],capture_output=True).returncode:
+        raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_NOT_ANCESTOR')
+    materials={key:authority.fast_track_completion_material(repository,original,key,token) for key in original['targets']}
+    # Validate all original bytes before even the first completion record.
+    for key,material in materials.items():
+        artifact=material['packageArtifact'];directory=package_root/key
+        if validate_only:
+            authority._download_run_artifact(repository,original_run,artifact['name'],directory,
+                artifact_id=artifact['id'],expected_digest=artifact['digest'])
+        if any(not (directory/name).is_file() or (directory/name).is_symlink() for name in ('deploy.zip','SHA256SUMS')):
+            raise ValueError('FAST_TRACK_COMPLETION_PREPARED_PACKAGE_MISSING')
+        if verify_package(directory/'deploy.zip',revision,TARGETS[key]['static'])!=material['intent']['packageDigest']:
+            raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_PACKAGE_CHANGED')
+    if validate_only:
+        return {'state':'COMPLETION_PACKAGES_VERIFIED','targets':original['targets']}
+    spec=importlib.util.spec_from_file_location('completion_journal',Path(__file__).with_name('release-operation-evidence.py'))
+    owner=importlib.util.module_from_spec(spec);spec.loader.exec_module(owner)
+    results={}
+    for key,material in materials.items():
+        journal=owner.CompletionJournal(original,material,observer,authority=authority)
+        azure=CompletionObservation(target_azure(key,package_root/key/'deploy.zip',revision),journal)
+        # Public checks precede the success record as well as follow reconciliation.
+        verify_fast_track_public_metadata(key)
+        results[key]=reconcile(azure,baseline=journal.baseline,reconcile_only=True,journal=journal,
+            timeout=FINALIZE_RECONCILE_TIMEOUT_SECONDS,require_receipt=True)
+        verify_fast_track_public_metadata(key)
+    completed=authority.fast_track_completed_operation_receipts(repository,original['run'],token,require_completed_observer=False)
+    if not completed:
+        raise ValueError('FAST_TRACK_COMPLETION_RECEIPTS_STILL_MISSING')
+    if authority.assert_fast_track_completion_execution(original_run,revision)!=observer:
+        raise ValueError('FAST_TRACK_COMPLETION_OBSERVER_CHANGED')
+    summary=dict(schemaVersion=1,phase='success',originalRun=original_run,applicationRevision=revision,
+        producingRun=observer['runId'],producingAttempt=observer['runAttempt'],observer=observer,targets=completed)
+    owner.publish_record(authority.fast_track_completion_summary_name(original_run,revision),summary)
+    return {'state':'ORIGINAL_COMPLETIONS_VERIFIED','targets':results,'originalRun':original_run}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -1156,6 +1254,9 @@ def main():
     mode.add_argument('--observe-azure-deployment')
     parser.add_argument('--observation-revision')
     parser.add_argument('--deployment-id')
+    mode.add_argument('--complete-fast-track', type=int)
+    parser.add_argument('--completion-revision')
+    parser.add_argument('--validate-completion-only', action='store_true')
     parser.add_argument('--validate-observation-only', action='store_true')
     parser.add_argument('--baselines-json')
     parser.add_argument('--package-root', default='/tmp/diagnostics-packages')
@@ -1169,6 +1270,17 @@ def main():
                         help='Publish all prepared canonical targets concurrently after the all-target preflight barrier')
     parser.add_argument('--target-results-dir', type=Path, default=Path('/tmp/release-target-results'))
     args = parser.parse_args()
+    if args.complete_fast_track is not None:
+        if (args.observe_azure_deployment or args.fast_track_target or args.target or args.targets_json
+            or args.prepare_only or args.finalize_only or args.disposition_only or args.transaction_plan
+            or args.reconcile_only or args.publish_prepared_parallel or args.observation_revision
+            or args.deployment_id or args.validate_observation_only or args.baselines_json):
+            raise SystemExit('Completion mode cannot be combined with other release modes')
+        print(json.dumps(complete_fast_track(args.complete_fast_track,args.completion_revision,
+            Path(args.package_root),validate_only=args.validate_completion_only),sort_keys=True))
+        return
+    if args.completion_revision or args.validate_completion_only:
+        raise SystemExit('Completion inputs require completion-only mode')
     if args.observe_azure_deployment is not None:
         try:
             result = observe_azure_deployment(args.observe_azure_deployment,

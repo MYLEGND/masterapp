@@ -1324,5 +1324,494 @@ class TrustedToolPromotionPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'MOBILE_FIXTURE_SCOPE_UNPROVEN'):
             self.invoke(fixture_kw=dict(path=path))
 
+class FastTrackIdentityObservationTests(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('identity_authority', ROOT / 'validation-resume.py')
+        self.a = importlib.util.module_from_spec(spec); spec.loader.exec_module(self.a)
+        self.sha = 'b' * 40
+        self.env = dict(GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='push', GITHUB_REF='refs/heads/Legend/fast-track-release',
+            GITHUB_REPOSITORY='owner/repo', GH_TOKEN='test-only', GITHUB_SHA=self.sha, GITHUB_RUN_ID='123',
+            GITHUB_RUN_ATTEMPT='3', GITHUB_WORKFLOW_REF='owner/repo/.github/workflows/legend-fast-track-ui.yml@refs/heads/Legend/fast-track-release',
+            GITHUB_JOB='deploy-ui', TARGET_KEY='portal', RUNNER_NAME='runner-one')
+        self.run = dict(id=123, run_attempt=3, path='.github/workflows/legend-fast-track-ui.yml',
+            head_branch='Legend/fast-track-release', event='push', head_sha=self.sha, status='in_progress',
+            head_repository=dict(full_name='owner/repo'))
+        self.job = dict(id=456, run_id=123, run_attempt=3, head_sha=self.sha, status='in_progress',
+            runner_name='runner-one', name='Affected App Deploy — AgentPortal')
+        self.now = 0; self.sleeps = []; self.reads = []
+    def invoke(self, jobs=None, head=None, allow=False):
+        def get(repo, path, token):
+            self.reads.append(path)
+            self.assertGreater(self.a.evidence_remaining(30), 0)
+            if path.startswith('git/'): return dict(object=dict(sha=head or self.sha))
+            if '/jobs?' in path:
+                rows = jobs() if callable(jobs) else ([self.job] if jobs is None else jobs)
+                return dict(jobs=rows, total_count=len(rows))
+            return self.run
+        def sleep(delay): self.sleeps.append(delay); self.now += delay
+        with patch.dict(os.environ, self.env, clear=True), patch.object(self.a, 'api_get', side_effect=get), \
+             patch.object(self.a, '_fast_track_policy', return_value=SimpleNamespace(tool_promotion_requested=lambda _: allow)):
+            return self.a.assert_fast_track_release_execution(clock=lambda:self.now, sleep=sleep)
+    def test_in_progress_requires_exact_live_job(self):
+        self.assertEqual(self.invoke(), self.run); self.assertEqual(self.sleeps, [])
+    def test_queued_parent_with_exact_live_job_is_valid(self):
+        self.run['status']='queued'; self.assertEqual(self.invoke(), self.run)
+    def test_absent_job_can_be_observed_without_nested_budget(self):
+        count=[0]
+        def rows(): count[0]+=1; return [] if count[0]<3 else [self.job]
+        self.invoke(rows); self.assertEqual(self.sleeps,[2,2])
+    def test_pending_job_can_settle(self):
+        def rows(): return [dict(self.job,status='queued',runner_name=None)] if self.now<2 else [self.job]
+        self.invoke(rows); self.assertEqual(self.sleeps,[2])
+    def test_absence_exhausts_single_budget(self):
+        with self.assertRaises((RuntimeError,self.a.EvidenceLookupUnavailable)): self.invoke([])
+        self.assertLessEqual(sum(self.sleeps),30); self.assertLessEqual(len(self.reads),48)
+    def test_duplicate_identity_is_immediate_failure(self):
+        with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB'): self.invoke([self.job,self.job])
+        self.assertEqual(self.sleeps,[])
+    def test_wrong_target_never_satisfies_ownership(self):
+        with self.assertRaises(RuntimeError): self.invoke([dict(self.job,name='Affected App Deploy — Website')])
+    def test_missing_target_fails_before_reads(self):
+        del self.env['TARGET_KEY']
+        with self.assertRaisesRegex(RuntimeError,'TARGET_UNPROVEN'): self.invoke()
+        self.assertEqual(self.reads,[])
+    def test_mismatched_runner_attempt_revision_or_terminal_job_fails_closed(self):
+        for key,value in [('runner_name','other'),('run_attempt',2),('head_sha','c'*40),('status','completed'),('id',True)]:
+            with self.subTest(key=key), self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB'):
+                self.invoke([dict(self.job,**{key:value})])
+        self.assertEqual(self.sleeps,[])
+    def test_terminal_or_wrong_run_does_not_poll(self):
+        for key,value in [('status','completed'),('run_attempt',2),('head_sha','c'*40),('event','workflow_dispatch')]:
+            old=self.run[key];self.run[key]=value
+            with self.subTest(key=key),self.assertRaisesRegex(RuntimeError,'PRODUCER_UNPROVEN'):self.invoke()
+            self.run[key]=old
+        self.assertEqual(self.sleeps,[])
+    def test_head_change_fails_before_success(self):
+        with self.assertRaisesRegex(RuntimeError,'HEAD_CHANGED'): self.invoke(head='c'*40)
+    def test_promotion_cannot_gain_publication_authority(self):
+        with self.assertRaisesRegex(RuntimeError,'NONPUBLISHING'):self.invoke(allow=True)
+        self.assertEqual(self.reads,[])
+    def test_final_read_over_deadline_cannot_return_identity(self):
+        def get(repo,path,token):
+            if path.startswith('git/'):
+                self.now=31
+                return dict(object=dict(sha=self.sha))
+            if '/jobs?' in path:return dict(jobs=[self.job],total_count=1)
+            return self.run
+        with patch.dict(os.environ,self.env,clear=True),patch.object(self.a,'api_get',side_effect=get),patch.object(self.a,'_fast_track_policy',return_value=SimpleNamespace(tool_promotion_requested=lambda _:False)):
+            with self.assertRaises(self.a.EvidenceLookupUnavailable):
+                self.a.assert_fast_track_release_execution(clock=lambda:self.now,sleep=lambda _:None)
+
+    def test_shorter_parent_deadline_rejects_late_child_read(self):
+        with self.a.evidence_lookup_budget(1,clock=lambda:self.now):
+            with self.assertRaises(self.a.EvidenceLookupUnavailable): self.invoke([])
+        self.assertLessEqual(sum(self.sleeps),1)
+    def test_all_canonical_target_labels(self):
+        for key,label in [('portal','AgentPortal'),('client','ClientApp'),('protect','Protect'),('parfait','Parfait'),('website','Website')]:
+            with self.subTest(key=key):
+                self.env['TARGET_KEY']=key;self.job['name']='Affected App Deploy — '+label
+                self.assertEqual(self.invoke(),self.run)
+    def test_wrong_workflow_ref_repository_or_event(self):
+        for key,value in [('GITHUB_WORKFLOW_REF','wrong'),('GITHUB_REF','refs/heads/other'),('GITHUB_EVENT_NAME','pull_request')]:
+            old=self.env[key];self.env[key]=value
+            with self.subTest(key=key),self.assertRaises(RuntimeError):self.invoke()
+            self.env[key]=old
+        self.run['head_repository']={'full_name':'other/repo'}
+        with self.assertRaises(RuntimeError):self.invoke()
+    def test_nonpublishing_permission_still_requires_identity(self):
+        with patch.dict(os.environ,self.env,clear=True),patch.object(self.a,'api_get',side_effect=lambda r,p,t:dict(object=dict(sha=self.sha)) if p.startswith('git/') else (dict(jobs=[self.job],total_count=1) if '/jobs?' in p else self.run)),patch.object(self.a,'_fast_track_policy',return_value=SimpleNamespace(tool_promotion_requested=lambda _:True)):
+            self.assertEqual(self.a.assert_fast_track_release_execution(allow_nonpublishing=True),self.run)
+    def test_malformed_job_inventory_fails_immediately(self):
+        for payload in [{'jobs':[],'total_count':1},{'jobs':[None],'total_count':1},{'jobs':[],'total_count':True}]:
+            def get(r,p,t):return payload if '/jobs?' in p else self.run
+            with self.subTest(payload=payload),patch.dict(os.environ,self.env,clear=True),patch.object(self.a,'api_get',side_effect=get),patch.object(self.a,'_fast_track_policy',return_value=SimpleNamespace(tool_promotion_requested=lambda _:False)):
+                with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB'):self.a.assert_fast_track_release_execution()
+    def test_api_retry_backoff_obeys_parent_budget(self):
+        def sleep(delay):self.now+=delay
+        with self.a.evidence_lookup_budget(1,clock=lambda:self.now),patch.object(self.a.urllib.request,'urlopen',side_effect=TimeoutError()),patch.object(self.a.time,'sleep',side_effect=sleep):
+            with self.assertRaises(self.a.EvidenceLookupUnavailable):self.a.api_get('owner/repo','actions/runs/123','test-only')
+        self.assertEqual(self.now,1)
+
+    def test_restore_has_no_second_identity_retry(self):
+        spec=importlib.util.spec_from_file_location('identity_deploy',ROOT/'deploy-approved-app.py')
+        d=importlib.util.module_from_spec(spec);spec.loader.exec_module(d)
+        with patch.object(d._RELEASE_AUTHORITY,'assert_fast_track_release_execution',side_effect=RuntimeError('FAST_TRACK_EXECUTION_PRODUCER_UNPROVEN')) as check,patch.object(d.time,'sleep') as sleeper:
+            with self.assertRaises(RuntimeError):d.fast_track_restore_package('portal',Path('/unused'))
+            check.assert_called_once();sleeper.assert_not_called()
+
+class FastTrackCompletionAuthorityTests(unittest.TestCase):
+    def setUp(self):
+        spec=importlib.util.spec_from_file_location('completion_authority_tests',ROOT/'validation-resume.py')
+        self.a=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.a)
+        self.sha='b'*40; self.tool='c'*40; self.repo='owner/repo'
+        self.run=dict(id=123,run_attempt=3,head_sha=self.sha,path='.github/workflows/legend-fast-track-ui.yml',
+            head_branch='Legend/fast-track-release',event='push',head_repository=dict(full_name=self.repo),status='completed',conclusion='failure')
+        self.intent=dict(target='portal',applicationRevision=self.sha,packageDigest='d'*64,schemaVersion=1,
+            baseline='a'*40,packageProducerRun=123,producingRun=123,producingAttempt=1,baselineDeploymentIds=['old'],phase='intent')
+        import hashlib
+        op=hashlib.sha256(json.dumps({k:self.intent[k] for k in ['target','applicationRevision','packageDigest']},sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        self.intent.update(operationId=op,submissionContract=dict(kind='azure_onedeploy_windows_intent_v1',value=op))
+        self.job=dict(id=456,run_id=123,run_attempt=1,head_sha=self.sha,status='completed',conclusion='failure',
+            name='Affected App Deploy — AgentPortal',started_at='2026-10-21T13:00:00Z',completed_at='2026-10-21T13:05:00Z')
+        self.job['steps']=[dict(name=name,status='completed',conclusion=conclusion,started_at=start,completed_at=end) for name,conclusion,start,end in [('Preserve immutable application bytes before upload','success','2026-10-21T13:00:00Z','2026-10-21T13:00:59Z'),('Publish or reconcile exact application bytes','failure','2026-10-21T13:01:00Z','2026-10-21T13:05:00Z')]]
+        def art(id,name,time):return dict(id=id,name=name,expired=False,workflow_run=dict(id=123,head_sha=self.sha),digest='sha256:'+'e'*64,created_at=time)
+        self.ia=art(10,'legend-release-operation-intent-'+op,'2026-10-21T13:01:00Z')
+        self.pa=art(11,'fast-track-package-'+self.sha+'-portal','2026-10-21T13:00:30Z')
+        self.original=dict(run=self.run,targets=['portal'],baseRevision='a'*40)
+        self.material_value=dict(packageJob=self.job,packageAttempt=1,originalPublicationStep=self.job['steps'][1],intent=self.intent,intentArtifact=self.ia,packageArtifact=self.pa,originalJob=self.job,submissionObservation=None)
+        self.observer=dict(runId=789,runAttempt=1,jobId=800,toolRevision=self.tool,promotionRunId=700)
+    def material(self,artifacts=None,jobs=None,retained=None,submitted=None):
+        artifacts=list([self.ia,self.pa] if artifacts is None else artifacts)
+        if submitted is not None:
+            artifacts.append(dict(self.ia,id=12,name='legend-release-operation-submitted-'+self.intent['operationId']))
+        original=dict(self.original,artifacts=artifacts,attempts={1:[self.job] if jobs is None else jobs})
+        def value(r,run,a,*args,**kw):return submitted if '-submitted-' in a['name'] else self.intent
+        with patch.object(self.a,'_completion_original_unchanged'),patch.object(self.a,'component_upload_proven'),patch.object(self.a,'_release_job_log',return_value='fixture'),patch.object(self.a,'_release_history_json',side_effect=value),patch.object(self.a,'release_operation_history',side_effect=lambda *args,**kw:submitted if kw.get('phase')=='submitted' else (self.intent if retained is None else retained)):
+            return self.a.fast_track_completion_material(self.repo,original,'portal','test-only')
+    def test_material_requires_exact_original_intent_package_and_job(self):
+        self.assertEqual(self.material(),self.material_value)
+    def test_material_preserves_valid_submitted_observation_and_rejects_conflicts(self):
+        submitted=dict(self.intent,phase='submitted',deploymentId='new')
+        self.assertEqual(self.material(submitted=submitted)['submissionObservation'],submitted)
+        for key,value in [('deploymentId','old'),('packageDigest','f'*64),('producingRun',999),('phase','intent'),('extra','bad')]:
+            with self.subTest(key=key),self.assertRaises(RuntimeError):self.material(submitted=dict(submitted,**{key:value}))
+    def test_historical_completion_must_match_original_submitted_id(self):
+        self.material_value['submissionObservation']=dict(self.intent,phase='submitted',deploymentId='other')
+        with self.assertRaisesRegex(ValueError,'CONFLICTS_WITH_ORIGINAL_SUBMISSION'):self.validate(self.receipt())
+        self.material_value['submissionObservation']['deploymentId']='new'
+        self.assertEqual(self.validate(self.receipt()),self.receipt())
+    def test_original_success_cannot_override_conflicting_submitted_id(self):
+        self.material_value['submissionObservation']=dict(self.intent,phase='submitted',deploymentId='other')
+        with patch.object(self.a,'fast_track_completion_original',return_value=self.original),patch.object(self.a,'fast_track_completion_material',return_value=self.material_value),patch.object(self.a,'release_operation_history',return_value=self.receipt()):
+            with self.assertRaisesRegex(ValueError,'CONFLICTS_WITH_SUBMISSION'):self.a.fast_track_completed_operation_receipts(self.repo,self.run,'test-only',require_completed_observer=False)
+    def test_material_missing_expired_or_ambiguous_artifact_rejected(self):
+        for artifacts in [[self.ia],[self.ia,self.pa,self.pa],[dict(self.ia,expired=True),self.pa],[dict(self.ia,digest='bad'),self.pa]]:
+            with self.subTest(artifacts=artifacts),self.assertRaises(ValueError):self.material(artifacts)
+    def test_material_intent_mutations_fail_closed(self):
+        for key,value in [('producingRun',999),('producingAttempt',4),('packageProducerRun',999),('phase','success'),('schemaVersion',2),('baseline','bad'),('submissionContract',{}),('packageDigest','bad'),('baselineDeploymentIds',['old','old'])]:
+            old=self.intent[key];self.intent[key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):self.material()
+            self.intent[key]=old
+    def test_material_artifact_outside_owner_window_rejected(self):
+        for time in ['2026-10-21T12:59:00Z','2026-10-21T13:06:00Z','2026-10-21T13:01:00']:
+            with self.subTest(time=time),self.assertRaises(ValueError):self.material([dict(self.ia,created_at=time),self.pa])
+    def test_material_wrong_owner_or_competing_intent_rejected(self):
+        for jobs in [[],[self.job,self.job],[dict(self.job,run_attempt=2)],[dict(self.job,head_sha=self.tool)]]:
+            with self.subTest(jobs=jobs),self.assertRaises(ValueError):self.material(jobs=jobs)
+        with self.assertRaises(ValueError):self.material(retained=dict(self.intent,baseline='f'*40))
+    def original_call(self,jobs=None,request=None):
+        scope=dict(matrix=dict(include=[dict(key='portal',azure_app='masterapp-portal')]),commerce=True,routing=False)
+        names=['Select exact affected applications','Admit exact validated fast-track source','Reconcile production schema before publication','Publish verified website routing']
+        rows=[dict(self.job,id=600+i,name=n,conclusion='skipped' if n==names[-1] else 'success') for i,n in enumerate(names)]+[self.job]
+        for row,step_names in zip(rows,[['Derive application impact exclusively from changed paths'],['Authenticate merged source and preserved required validation'],['Apply or reconcile the exact rehearsed migration bundle','Reconcile fresh already-ready schema without SQL bundle or mutation']]):
+            row['steps']=[dict(name=n,status='completed',conclusion='skipped' if i else 'success') for i,n in enumerate(step_names)]
+        req=dict(releaseMode='approved-only',requestedBy='Founder',preserveLiveTargets=False,targets=['masterapp-portal'],cloudflareWebsiteRouting=False) if request is None else request
+        def api(r,p,t):
+            if p.startswith('actions/runs?'):return dict(workflow_runs=[self.run],total_count=1)
+            if '/artifacts?' in p:return dict(artifacts=[self.ia,self.pa],total_count=2)
+            if '/jobs?' in p:
+                attempt=int(p.split('/attempts/')[1].split('/')[0]);selected=[dict(row,run_attempt=attempt) for row in (rows if jobs is None else jobs)]
+                return dict(jobs=selected,total_count=len(selected))
+            return self.run
+        def git(*args,**kwargs):return self.sha+' '+'a'*40+' '+'d'*40 if 'rev-list' in args[0] else self.a.RELEASE_REQUEST_PATH+'\n'
+        with patch.object(self.a,'api_get',side_effect=api),patch.object(self.a,'fast_track_merged_source_proof'),patch.object(self.a,'fast_track_effective_baseline',return_value='a'*40),patch.object(self.a.subprocess,'check_output',side_effect=git),patch.object(self.a,'fast_track_scope',return_value=scope),patch.object(self.a,'_release_history_source',return_value=json.dumps(req)):
+            return self.a.fast_track_completion_original(self.repo,123,self.sha,'test-only')
+    def test_original_requires_all_obligations_and_selected_targets(self):
+        self.assertEqual(self.original_call()['targets'],['portal'])
+        with self.assertRaises(ValueError):self.original_call(jobs=[self.job])
+        with self.assertRaises(ValueError):self.original_call(request=dict(releaseMode='approved-only',targets=['masterapp-website'],cloudflareWebsiteRouting=False))
+    def test_original_active_or_changed_revision_rejected(self):
+        for key,value in [('status','in_progress'),('head_sha',self.tool),('run_attempt',True),('event','workflow_dispatch')]:
+            old=self.run[key];self.run[key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):self.original_call()
+            self.run[key]=old
+    def receipt(self):
+        proof=dict(originalRun=123,originalRunAttempt=3,originalPackageJobId=456,originalPackageAttempt=1,intentArtifactId=10,intentArtifactDigest=self.ia['digest'],packageArtifactId=11,
+            packageArtifactDigest=self.pa['digest'],originalJobId=456,observer=self.observer,
+            provider=dict(deploymentId='new',receivedTime='2026-10-21T13:02:00Z',status=4,runtimeRevision=self.sha))
+        return dict(self.intent,phase='success',producingRun=789,producingAttempt=1,deploymentIds=['new'],completionEvidence=proof)
+    def validate(self,record,artifact=None):
+        artifact=artifact or dict(workflow_run=dict(id=789),created_at='2026-10-21T14:01:00Z')
+        job=dict(id=800,started_at='2026-10-21T14:00:00Z',completed_at='2026-10-21T14:02:00Z')
+        job.update(status='completed',conclusion='success',steps=[dict(name=n,status='completed',conclusion='success',started_at=job['started_at'],completed_at=job['completed_at']) for n in ['Authenticate original operations and promoted completion authority','Reconcile original bytes and record only missing success receipts']])
+        job.update(getattr(self,'observer_job_changes',{}))
+        with patch.object(self.a,'fast_track_completion_observer',return_value=self.observer),patch.object(self.a,'fast_track_completion_original',return_value=self.original),patch.object(self.a,'fast_track_completion_material',return_value=self.material_value),patch.object(self.a.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(self.a,'api_get',return_value=dict(jobs=[job],total_count=1)):
+            return self.a.validate_fast_track_completion_record(self.repo,dict(id=789),artifact,record,'test-only')
+    def test_receipt_preserves_original_intent_but_records_real_observer(self):
+        record=self.receipt();self.assertEqual(self.validate(record),record)
+        self.assertEqual(record['producingRun'],789);self.assertEqual(record['completionEvidence']['originalRun'],123)
+    def test_receipt_wrong_observer_original_artifact_or_baseline_rejected(self):
+        import copy
+        for key,value in [('intentArtifactId',12),('originalJobId',457),('packageArtifactDigest','sha256:'+'f'*64)]:
+            record=copy.deepcopy(self.receipt());record['completionEvidence'][key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):self.validate(record)
+        for key,value in [('producingRun',123),('phase','intent'),('baseline','f'*40),('deploymentIds',['old'])]:
+            record=copy.deepcopy(self.receipt());record[key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):self.validate(record)
+    def test_receipt_provider_time_revision_or_status_rejected(self):
+        import copy
+        for key,value in [('receivedTime','2026-10-21T13:06:00Z'),('runtimeRevision',self.tool),('status',3),('deploymentId','other')]:
+            record=copy.deepcopy(self.receipt());record['completionEvidence']['provider'][key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):self.validate(record)
+    def test_receipt_outside_observer_job_rejected(self):
+        with self.assertRaises(ValueError):self.validate(self.receipt(),dict(workflow_run=dict(id=789),created_at='2026-10-21T13:01:00Z'))
+    def test_all_receipts_still_require_completed_aggregate_observer(self):
+        original=dict(self.original,targets=['portal'])
+        with patch.object(self.a,'fast_track_completion_original',return_value=original),patch.object(self.a,'fast_track_completion_material',return_value=self.material_value),patch.object(self.a,'release_operation_history',return_value=self.receipt()),patch.object(self.a,'fast_track_completion_summary',return_value=False) as summary:
+            self.assertFalse(self.a.fast_track_completed_operation_receipts(self.repo,self.run,'test-only'))
+            targets=summary.call_args.args[3]
+            self.assertEqual(set(targets),{'portal'})
+            self.assertEqual(targets['portal']['packageDigest'],self.intent['packageDigest'])
+            summary.return_value=True
+            self.assertTrue(self.a.fast_track_completed_operation_receipts(self.repo,self.run,'test-only'))
+
+    def test_predecessor_requires_every_original_target_success(self):
+        original=dict(self.original,targets=['portal','client']);calls=[]
+        def success(*args,**kwargs):calls.append(args[3]);return self.receipt() if args[3]=='portal' else None
+        with patch.object(self.a,'fast_track_completion_original',return_value=original),patch.object(self.a,'fast_track_completion_material',return_value=self.material_value),patch.object(self.a,'release_operation_history',side_effect=success):
+            self.assertFalse(self.a.fast_track_completed_operation_receipts(self.repo,self.run,'test-only'))
+        self.assertEqual(calls,['portal','client'])
+
+    def test_v4_package_step_owns_artifact_not_whole_job(self):
+        for field,value in [('started_at','2026-10-21T13:00:31Z'),('completed_at','2026-10-21T13:00:20Z'),('conclusion','failure')]:
+            old=self.job['steps'][0][field];self.job['steps'][0][field]=value
+            with self.subTest(field=field),self.assertRaises(ValueError):self.material()
+            self.job['steps'][0][field]=old
+    def test_v4_duplicate_original_steps_and_conflicting_copied_execution_refused(self):
+        self.job['steps'].append(dict(self.job['steps'][0]))
+        with self.assertRaises(ValueError):self.material()
+        self.job['steps'].pop()
+        copied=dict(self.job,id=999,run_attempt=2,runner_name='different')
+        context=dict(run=self.run,attempts={1:[self.job],2:[copied]})
+        with self.assertRaisesRegex(ValueError,'COMPETING_ARTIFACT_EXECUTIONS'):
+            self.a._completion_original_artifact_owner(context,'portal',self.pa,'Preserve immutable application bytes before upload',('success',))
+    def test_v4_copied_success_keeps_earliest_real_attempt(self):
+        copied=dict(self.job,id=999,run_attempt=2)
+        context=dict(run=self.run,attempts={1:[self.job],2:[copied]})
+        attempt,job,_=self.a._completion_original_artifact_owner(context,'portal',self.pa,'Preserve immutable application bytes before upload',('success',))
+        self.assertEqual((attempt,job['id']),(1,456))
+    def test_v4_exact_upload_log_cannot_substitute_artifact_id_name_or_time(self):
+        line='2026-10-21T13:00:30Z Artifact '+self.pa['name']+' has been successfully uploaded! Final size is 123 bytes. Artifact ID is 11'
+        self.a.component_upload_proven(self.pa,self.job,'Preserve immutable application bytes before upload',line)
+        for bad in ['',line+'\n'+line,line.replace('ID is 11','ID is 12'),line.replace(self.pa['name'],'different'),line.replace('13:00:30','13:01:30')]:
+            with self.subTest(log=bad),self.assertRaises(ValueError):self.a.component_upload_proven(self.pa,self.job,'Preserve immutable application bytes before upload',bad)
+    def test_v4_strict_inventory_rejects_missing_count_duplicate_boolean_or_nonrow(self):
+        for payload in [dict(jobs=[]),dict(jobs=[dict(id=1)],total_count=2),dict(jobs=[dict(id=1),dict(id=1)],total_count=2),dict(jobs=[dict(id=True)],total_count=1),dict(jobs=[None],total_count=1)]:
+            with self.subTest(payload=payload),self.assertRaises(ValueError):self.a._completion_inventory(payload,'jobs')
+    def test_v4_original_run_change_during_proof_refused(self):
+        for key,value in [('run_attempt',4),('status','in_progress'),('head_sha',self.tool),('conclusion','success')]:
+            with patch.object(self.a,'api_get',return_value=dict(self.run,**{key:value})),self.subTest(key=key),self.assertRaises(ValueError):self.a._completion_original_unchanged(self.repo,self.run,'test-only')
+    def test_v4_original_request_founder_and_no_preservation_hold_required(self):
+        req=dict(releaseMode='approved-only',requestedBy='Founder',preserveLiveTargets=False,targets=['masterapp-portal'],cloudflareWebsiteRouting=False)
+        for key,value in [('requestedBy','other'),('preserveLiveTargets',True),('trustedToolPromotion',{}),('cloudflareWebsiteRouting',True)]:
+            with self.subTest(key=key),self.assertRaises(ValueError):self.original_call(request=dict(req,**{key:value}))
+    def test_v4_original_receipt_requires_successful_exact_step_and_public_check(self):
+        self.intent['target']='website';self.job['name']='Affected App Deploy — Website';self.job['conclusion']='success';self.job['steps'][1]['conclusion']='success'
+        record=dict(self.intent,phase='success',deploymentIds=['new'])
+        artifact=dict(self.ia,id=13,name='legend-release-operation-success-'+self.intent['operationId'])
+        context=dict(self.original,artifacts=[artifact],attempts={1:[self.job]})
+        with patch.object(self.a,'_release_history_json',return_value=record):
+            with self.assertRaisesRegex(ValueError,'STEP_UNPROVEN'):self.a.validate_original_completion_success(self.repo,context,self.material_value,record,'test-only')
+            self.job['steps'].append(dict(name='Verify public sitemap XML and robots contract',status='completed',conclusion='success'))
+            self.assertEqual(self.a.validate_original_completion_success(self.repo,context,self.material_value,record,'test-only'),record)
+            self.job['steps'][1]['conclusion']='failure'
+            with self.assertRaises(ValueError):self.a.validate_original_completion_success(self.repo,context,self.material_value,record,'test-only')
+    def test_v4_receipt_binds_original_terminal_attempt_and_package_owner(self):
+        import copy
+        for key,value in [('originalRunAttempt',2),('originalPackageJobId',999),('originalPackageAttempt',2)]:
+            record=copy.deepcopy(self.receipt());record['completionEvidence'][key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):self.validate(record)
+    def test_v4_observer_step_interval_is_narrower_than_job_interval(self):
+        record=self.receipt()
+        job=dict(id=800,status='completed',conclusion='success',started_at='2026-10-21T14:00:00Z',completed_at='2026-10-21T14:05:00Z',steps=[dict(name='Authenticate original operations and promoted completion authority',status='completed',conclusion='success'),dict(name='Reconcile original bytes and record only missing success receipts',status='completed',conclusion='success',started_at='2026-10-21T14:02:00Z',completed_at='2026-10-21T14:04:00Z')])
+        artifact=dict(workflow_run=dict(id=789),created_at='2026-10-21T14:01:00Z')
+        with patch.object(self.a,'fast_track_completion_observer',return_value=self.observer),patch.object(self.a.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(self.a,'api_get',return_value=dict(jobs=[job],total_count=1)):
+            with self.assertRaisesRegex(ValueError,'OWNER_UNRESOLVED'):self.a.validate_fast_track_completion_record(self.repo,dict(id=789),artifact,record,'test-only')
+    def test_v4_changed_workflow_job_or_top_level_contract_refused(self):
+        source=(ROOT.parent/'.github/workflows/deployment-diagnostics.yml').read_text()
+        with patch.object(self.a,'_release_history_source',return_value=source):self.a._completion_workflow_source(self.repo,self.tool,'test-only')
+        for changed in [source.replace('name: Complete existing fast-track deployment receipts','name: Unexpected owner'),source.replace('  contents: read','  contents: write',1),source.replace('cancel-in-progress: false','cancel-in-progress: true')]:
+            with self.subTest(),patch.object(self.a,'_release_history_source',return_value=changed),self.assertRaises(ValueError):self.a._completion_workflow_source(self.repo,self.tool,'test-only')
+
+    def test_v5_whole_workflow_rejects_quoted_duplicate_alias_and_unrelated_changes(self):
+        source=(ROOT.parent/'.github/workflows/deployment-diagnostics.yml').read_text()
+        variants=['"env":\n  BASH_ENV: scripts/unreviewed-observer.sh\n'+source,
+            "'defaults':\n  run:\n    shell: bash -c 'unexpected'\n"+source,
+            'env: &extra {BASH_ENV: scripts/unreviewed-observer.sh}\n'+source+'\nenv: *extra\n',
+            source+'\npermissions: write-all\n',source+'\n# unrelated comment\n',source+'\ninvalid: [']
+        with patch.object(self.a,'_release_history_source',return_value=source):self.a._completion_workflow_source(self.repo,self.tool,'test-only')
+        for changed in variants:
+            with self.subTest(),patch.object(self.a,'_release_history_source',return_value=changed),self.assertRaises(ValueError):self.a._completion_workflow_source(self.repo,self.tool,'test-only')
+    def test_v5_publication_window_boundaries_and_malformed_intervals(self):
+        import copy
+        material=copy.deepcopy(self.material_value)
+        step=material['originalPublicationStep'];step.update(started_at='2026-10-21T13:59:13Z',completed_at='2026-10-21T14:08:34Z')
+        material['intentArtifact']['created_at']='2026-10-21T13:59:14Z'
+        material['originalJob']['completed_at']='2026-10-21T14:08:37Z'
+        for time,expected in [('13:59:13.999999',False),('13:59:14',True),('14:08:34',True),('14:08:34.999999',True),('14:08:35',False),('14:08:36',False)]:
+            with self.subTest(time=time):self.assertEqual(self.a.completion_provider_in_original_publication(material,'2026-10-21T'+time+'Z'),expected)
+        for field,value in [('started_at','2026-10-21T14:08:35Z'),('completed_at','bad'),('status','in_progress'),('name','cleanup')]:
+            bad=copy.deepcopy(material);bad['originalPublicationStep'][field]=value
+            with self.subTest(field=field):self.assertFalse(self.a.completion_provider_in_original_publication(bad,'2026-10-21T14:08:34Z'))
+        for time in [None,{},'invalid']:
+            self.assertFalse(self.a.completion_provider_in_original_publication(material,time))
+    def test_v5_historical_receipt_rejects_actual_portal_cleanup_window(self):
+        self.material_value['originalPublicationStep'].update(started_at='2026-10-21T13:59:13Z',completed_at='2026-10-21T14:08:34Z')
+        self.material_value['intentArtifact']['created_at']='2026-10-21T13:59:14Z'
+        self.material_value['originalJob']['completed_at']='2026-10-21T14:08:37Z'
+        record=self.receipt();record['completionEvidence']['provider']['receivedTime']='2026-10-21T14:08:36Z'
+        with self.assertRaisesRegex(ValueError,'PROVIDER_CORRELATION_UNPROVEN'):self.validate(record)
+        record['completionEvidence']['provider']['receivedTime']='2026-10-21T14:08:34.999999Z'
+        self.assertEqual(self.validate(record),record)
+
+    def test_v6_fractional_end_before_exact_and_after_historical(self):
+        import copy
+        for end,before,exact,after in [('13:01:59.500000','13:01:59.499999','13:01:59.500000','13:02:00'),('13:02:00.000','13:01:59.999999','13:02:00','13:02:00.000001'),('13:01:59,500000','13:01:59.499999','13:01:59.500000','13:02:00')]:
+            self.material_value['originalPublicationStep']['completed_at']='2026-10-21T'+end+'Z'
+            for received,allowed in [(before,True),(exact,False),(after,False)]:
+                record=copy.deepcopy(self.receipt());record['completionEvidence']['provider']['receivedTime']='2026-10-21T'+received+'Z'
+                with self.subTest(end=end,received=received):
+                    if allowed:self.assertEqual(self.validate(record),record)
+                    else:
+                        with self.assertRaisesRegex(ValueError,'PROVIDER_CORRELATION_UNPROVEN'):self.validate(record)
+
+    def test_v4_failed_observer_receipt_is_preserved_but_unusable(self):
+        self.observer_job_changes=dict(conclusion='failure')
+        self.assertIs(self.validate(self.receipt()),False)
+        self.observer_job_changes=dict(status='in_progress',conclusion=None)
+        with self.assertRaises(ValueError):self.validate(self.receipt())
+
+class CompletionSummaryTests(unittest.TestCase):
+    def setUp(self):
+        spec=importlib.util.spec_from_file_location('completion_summary_tests',ROOT/'validation-resume.py')
+        self.a=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.a)
+        self.repo='owner/repo';self.sha='a'*40;self.tool='b'*40
+        self.original=dict(id=1,head_sha=self.sha)
+        self.observer=dict(runId=2,runAttempt=1,jobId=20,toolRevision=self.tool,promotionRunId=3)
+        self.producer=dict(id=2,status='completed',conclusion='success')
+        self.targets={k:dict(operationId='c'*64,packageDigest='d'*64,deploymentIds=['new'],intentArtifactId=10,packageArtifactId=11) for k in ['portal','website']}
+        self.name=self.a.fast_track_completion_summary_name(1,self.sha)
+        self.artifact=dict(id=30,name=self.name,expired=False,digest='sha256:'+'e'*64,workflow_run=dict(id=2),created_at='2026-10-21T13:05:00Z')
+        self.record=dict(schemaVersion=1,phase='success',originalRun=1,applicationRevision=self.sha,producingRun=2,producingAttempt=1,observer=self.observer,targets=self.targets)
+        self.job=dict(id=20,status='completed',conclusion='success',started_at='2026-10-21T13:00:00Z',completed_at='2026-10-21T13:06:00Z',steps=[dict(name='Reconcile original bytes and record only missing success receipts',status='completed',conclusion='success',started_at='2026-10-21T13:01:00Z',completed_at='2026-10-21T13:06:00Z')])
+    def check(self,artifacts=None):
+        artifacts=[self.artifact] if artifacts is None else artifacts
+        def get(r,p,t):
+            if p.startswith('actions/artifacts?'):return dict(artifacts=artifacts,total_count=len(artifacts))
+            if p.endswith('/jobs?per_page=100'):return dict(jobs=[self.job],total_count=1)
+            return self.producer
+        with patch.object(self.a,'api_get',side_effect=get),patch.object(self.a,'fast_track_completion_observer',return_value=self.observer),patch.object(self.a,'_release_history_json',return_value=self.record) as read,patch.object(self.a.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
+            result=self.a.fast_track_completion_summary(self.repo,self.original,'test-only',self.targets)
+            if artifacts:read.assert_called_with(self.repo,2,self.artifact,'operation.json',verify_digest=True)
+            return result
+    def test_all_targets_only_after_terminal_success(self):
+        self.assertTrue(self.check())
+        for status,conclusion in [('in_progress',None),('completed','failure'),('completed','cancelled')]:
+            self.producer.update(status=status,conclusion=conclusion);self.assertFalse(self.check())
+    def test_missing_summary_never_clears_predecessor(self):self.assertFalse(self.check([]))
+    def test_missing_extra_or_changed_target_rejected(self):
+        import copy
+        for mutation in [lambda x:x.pop('website'),lambda x:x.update(client=x['portal']),lambda x:x['portal'].update(packageDigest='f'*64)]:
+            targets=copy.deepcopy(self.targets);mutation(targets);self.record['targets']=targets
+            with self.assertRaises(ValueError):self.check()
+    def test_wrong_observer_original_or_phase_rejected(self):
+        for key,value in [('originalRun',99),('applicationRevision',self.tool),('phase','intent'),('producingRun',99),('observer',dict(self.observer,jobId=99))]:
+            old=self.record[key];self.record[key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):self.check()
+            self.record[key]=old
+    def test_duplicate_expired_or_digestless_summary_rejected(self):
+        with self.assertRaises(ValueError):self.check([self.artifact,self.artifact])
+        for key,value in [('expired',True),('digest',''),('name','wrong')]:
+            old=self.artifact[key];self.artifact[key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):self.check()
+            self.artifact[key]=old
+    def test_successful_run_requires_exact_completed_completion_step(self):
+        for steps in [[],self.job['steps']*2,[dict(name=self.job['steps'][0]['name'],conclusion='failure')]]:
+            self.job['steps']=steps;self.assertFalse(self.check())
+    def test_summary_outside_job_cannot_clear_predecessor(self):
+        self.artifact['created_at']='2026-10-21T13:07:00Z';self.assertFalse(self.check())
+
+class CompletionObserverTests(unittest.TestCase):
+    def setUp(self):
+        spec=importlib.util.spec_from_file_location('completion_observer_tests',ROOT/'validation-resume.py')
+        self.a=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.a)
+        self.repo='owner/repo';self.sha='a'*40
+        self.run=dict(id=2,run_attempt=1,head_sha=self.sha,status='in_progress',event='workflow_dispatch',head_repository=dict(full_name=self.repo),head_branch='Legend/fast-track-release',path='.github/workflows/deployment-diagnostics.yml')
+        self.job=dict(id=20,run_id=2,run_attempt=1,head_sha=self.sha,name=self.a.FAST_TRACK_COMPLETION_JOB,status='in_progress',runner_name='runner')
+        self.promotion=dict(self.run,id=3,event='push',path='.github/workflows/legend-fast-track-ui.yml',status='completed',conclusion='success')
+        self.promotions=[self.promotion];self.jobs=[self.job];self.head=self.sha;self.promoted='b'*40
+    def check(self):
+        def get(r,p,t):
+            if p.startswith('actions/runs?'):return dict(workflow_runs=self.promotions,total_count=len(self.promotions))
+            if p.startswith('git/'):return dict(object=dict(sha=self.head))
+            return dict(jobs=self.jobs,total_count=len(self.jobs))
+        with patch.object(self.a,'_release_history_source',return_value=(ROOT.parent/'.github/workflows/deployment-diagnostics.yml').read_text()),patch.dict(os.environ,{'RUNNER_NAME':'runner'}),patch.object(self.a,'api_get',side_effect=get),patch.object(self.a,'fast_track_promotion_parent',return_value=self.promoted):
+            return self.a.fast_track_completion_observer(self.repo,self.run,'test-only',live=True,attempt=1)
+    def test_exact_promoted_observer(self):self.assertEqual(self.check()['jobId'],20)
+    def test_wrong_event_ref_repository_workflow_rejected(self):
+        for key,value in [('event','push'),('head_branch','other'),('head_repository',dict(full_name='other/repo')),('path','.github/workflows/other.yml'),('status','completed')]:
+            old=self.run[key];self.run[key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):self.check()
+            self.run[key]=old
+    def test_missing_duplicate_or_unpromoted_tool_rejected(self):
+        for values in [[],[self.promotion,self.promotion]]:
+            self.promotions=values
+            with self.assertRaises(ValueError):self.check()
+        self.promotions=[self.promotion];self.promoted=None
+        with self.assertRaises(ValueError):self.check()
+    def test_ambiguous_changed_or_wrong_runner_owner_rejected(self):
+        self.jobs=[self.job,self.job]
+        with self.assertRaises(ValueError):self.check()
+        self.jobs=[self.job]
+        for key,value in [('run_id',99),('run_attempt',2),('head_sha','b'*40),('runner_name','other'),('status','completed')]:
+            old=self.job[key];self.job[key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):self.check()
+            self.job[key]=old
+    def test_wrong_promotion_source_revision_rejected(self):
+        self.promotion['head_sha']='b'*40
+        with self.assertRaises(ValueError):self.check()
+    def test_tool_head_change_rejected(self):
+        self.head='b'*40
+        with self.assertRaises(ValueError):self.check()
+
+    def execute(self,*,event=None,dirty=False,late=False,original=123,revision=None):
+        self.now=0
+        event=event if event is not None else dict(inputs=dict(scope='complete_fast_track',original_run='123',application_revision='b'*40))
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/'event.json';path.write_text(json.dumps(event))
+            env=dict(GITHUB_ACTIONS='true',GITHUB_EVENT_NAME='workflow_dispatch',GITHUB_REF='refs/heads/Legend/fast-track-release',GITHUB_JOB='complete-fast-track',GITHUB_REPOSITORY=self.repo,GITHUB_TOKEN='test-only',RUNNER_NAME='runner',GITHUB_RUN_ID='2',GITHUB_RUN_ATTEMPT='1',GITHUB_SHA=self.sha,GITHUB_WORKFLOW_REF=self.repo+'/.github/workflows/deployment-diagnostics.yml@refs/heads/Legend/fast-track-release',GITHUB_EVENT_PATH=str(path))
+            timeline=list(getattr(self,'inventory_timeline',[self.jobs]))
+            def api(r,p,t):
+                if p=='actions/runs/2':return self.run
+                if p.startswith('actions/runs?'):return dict(workflow_runs=self.promotions,total_count=len(self.promotions))
+                if p.startswith('git/'):
+                    if late:self.now=31
+                    return dict(object=dict(sha=self.head))
+                rows=timeline.pop(0) if len(timeline)>1 else timeline[0]
+                return dict(jobs=rows,total_count=len(rows))
+            def sleep(seconds):self.now+=seconds
+            with patch.dict(os.environ,env,clear=True),patch.object(self.a,'api_get',side_effect=api),patch.object(self.a,'_release_history_source',return_value=(ROOT.parent/'.github/workflows/deployment-diagnostics.yml').read_text()),patch.object(self.a,'fast_track_promotion_parent',return_value=self.promoted),patch.object(self.a.subprocess,'check_output',return_value=self.sha),patch.object(self.a.subprocess,'run',return_value=SimpleNamespace(returncode=int(dirty))):
+                return self.a.assert_fast_track_completion_execution(original,revision or 'b'*40,clock=lambda:self.now,sleep=sleep)
+    def test_v4_observer_waits_for_its_exact_runner_job(self):
+        self.run['status']='queued';self.inventory_timeline=[[],[dict(self.job,status='queued',runner_name='')],[self.job]]
+        self.assertEqual(self.execute()['jobId'],20);self.assertEqual(self.now,10)
+    def test_v4_observer_pending_exhaustion_never_authenticates(self):
+        self.jobs=[]
+        with self.assertRaises((ValueError,self.a.EvidenceLookupUnavailable)):self.execute()
+        self.assertEqual(self.now,30)
+    def test_v4_final_head_read_after_deadline_rejected(self):
+        with self.assertRaises(self.a.EvidenceLookupUnavailable):self.execute(late=True)
+    def test_v4_observer_respects_shorter_parent_deadline(self):
+        self.now=0;self.jobs=[]
+        with self.a.evidence_lookup_budget(3,clock=lambda:self.now):
+            with self.assertRaises(self.a.EvidenceLookupUnavailable):self.execute()
+        self.assertEqual(self.now,3)
+    def test_v4_dispatch_original_revision_scope_and_target_are_bound(self):
+        inputs=dict(scope='complete_fast_track',original_run='123',application_revision='b'*40)
+        for key,value in [('scope','deployment'),('original_run','124'),('application_revision','c'*40),('target','portal'),('deployment_id','new')]:
+            with self.subTest(key=key),self.assertRaisesRegex(ValueError,'DISPATCH_UNPROVEN'):self.execute(event=dict(inputs=dict(inputs,**{key:value})))
+    def test_v4_dirty_checked_source_never_authenticates(self):
+        with self.assertRaisesRegex(ValueError,'CHECKED_SOURCE_UNPROVEN'):self.execute(dirty=True)
+
 if __name__ == '__main__':
     unittest.main()
