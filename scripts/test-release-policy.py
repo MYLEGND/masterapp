@@ -1149,6 +1149,50 @@ class TrustedToolPromotionPolicyTests(unittest.TestCase):
     def test_exact_dependency_promotion_is_nonpublishing(self):
         proof=self.invoke();self.assertFalse(proof['productionEligible']);self.assertFalse(proof['authorizesMutation'])
 
+    def test_child_fixture_exact_path_is_nonpublishing_without_neighbor_expansion(self):
+        path='scripts/test-release-children.py'
+        proof=self.invoke(fixture_kw=dict(path=path))
+        self.assertFalse(proof['productionEligible']);self.assertFalse(proof['authorizesMutation'])
+        self.assertEqual(set(proof['files']),{path})
+        for neighbor in ('scripts/test-release-children-extra.py', 'scripts/test-release-children.py/extra',
+                         'scripts/release-children.py', 'scripts/unreviewed-child.py'):
+            with self.subTest(path=neighbor),self.assertRaisesRegex(ValueError,'SCOPE_UNPROVEN'):
+                self.invoke(fixture_kw=dict(path=neighbor))
+
+    def test_child_fixture_retains_authorization_and_required_checks(self):
+        for key,value in (('releaseMode','approved-only'), ('targets',['masterapp-protect']),
+                          ('cloudflareWebsiteRouting',True), ('preserveLiveTargets',True),
+                          ('requestedBy','Other')):
+            with self.subTest(key=key),self.assertRaisesRegex(ValueError,'AUTHORIZATION_UNPROVEN'):
+                self.invoke(fixture_kw=dict(path='scripts/test-release-children.py'),
+                            mutate=lambda request,admission,previous:request.update({key:value}))
+        with self.assertRaisesRegex(ValueError,'AUTHORIZATION_UNPROVEN'):
+            self.invoke(fixture_kw=dict(path='scripts/test-release-children.py'),
+                        mutate=lambda request,admission,previous:admission['validation'].pop('parfait-isolated-validation.yml'))
+        with self.assertRaisesRegex(ValueError,'REQUEST_REPLAYED'):
+            self.invoke(fixture_kw=dict(path='scripts/test-release-children.py'),
+                        mutate=lambda request,admission,previous:previous.update(requestId=request['requestId']))
+
+    def test_child_fixture_retains_exact_tree_source_and_mode_binding(self):
+        def change(kind):
+            def changed(args,result):
+                if kind=='added' and args[1]=='diff':result.stdout=result.stdout.replace('M\0','A\0',1)
+                if kind=='source' and args[1]=='ls-tree' and args[3]=='c'*40:result.stdout=result.stdout.replace('d'*40,'e'*40)
+                if kind=='mode' and args[1]=='ls-tree' and args[3]=='a'*40:result.stdout=result.stdout.replace('100644','100755')
+                if kind=='parent' and args[1]=='rev-list':result.stdout=result.stdout.replace('a'*40,'e'*40)
+                return result
+            return changed
+        for kind,error in (('added','SCOPE_UNPROVEN'),('source','BLOB_UNPROVEN'),
+                           ('mode','BLOB_UNPROVEN'),('parent','BASE_CHANGED')):
+            with self.subTest(kind=kind),self.assertRaisesRegex(ValueError,error):
+                self.invoke(fixture_kw=dict(path='scripts/test-release-children.py'),git_mutate=change(kind))
+
+    def test_child_fixture_bootstrap_owners_remain_nonpublishing(self):
+        for path in ('scripts/release_policy.py','scripts/test-release-policy.py'):
+            with self.subTest(path=path):
+                proof=self.invoke(fixture_kw=dict(path=path))
+                self.assertFalse(proof['productionEligible']);self.assertFalse(proof['authorizesMutation'])
+
     def test_existing_schema_observer_owners_promote_without_publishing(self):
         paths = (
             'scripts/MigrationReleaseProbe/Program.cs',
