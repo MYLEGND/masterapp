@@ -165,28 +165,59 @@ def is_fast_track_producer(repository, run):
         and re.fullmatch('[a-f0-9]{40}', run.get('head_sha', '')) is not None)
 
 
-def fast_track_execution_history(repository, token):
-    """Complete bounded inventory; a missing page can never authorize a write."""
-    runs, expected, seen = [], None, 0
-    branch = urllib.parse.quote(FAST_TRACK_PR_BASE, safe='')
-    for page in range(1, 11):
-        payload = api_get(repository, f'actions/runs?branch={branch}&event=push&per_page=100&page={page}', token)
-        rows, total = payload.get('workflow_runs'), payload.get('total_count')
-        if (not isinstance(rows, list) or type(total) is not int or total < 0
-            or (expected is not None and total != expected)):
-            raise RuntimeError('FAST_TRACK_HISTORY_INCOMPLETE')
-        expected = total
-        seen += len(rows)
-        for run in rows:
-            if run.get('path', '').split('@')[0] == '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW:
-                if not is_fast_track_producer(repository, run):
+def fast_track_execution_history(repository, token, *, clock=time.monotonic):
+    """Complete bounded branch inventory; missing pages never authorize a write.
+
+    Omit unreliable server head/event filters and the optional first-page marker.
+    Validate every page before applying the existing canonical producer predicate.
+    One 30-second observation honors shorter enclosing budgets; late replies fail.
+    """
+    path = ('actions/runs?branch=' + urllib.parse.quote(FAST_TRACK_PR_BASE, safe='')
+            + '&per_page=100')
+    rows = []
+    seen = set()
+    total = None
+    with evidence_lookup_budget(clock() + 30, clock=clock):
+        for page in range(1, 11):
+            evidence_remaining(30)
+            payload = api_get(repository, path if page == 1 else path + f'&page={page}', token)
+            evidence_remaining(30)  # A late successful response is not timely proof.
+            if not isinstance(payload, dict):
+                raise RuntimeError('FAST_TRACK_HISTORY_INCOMPLETE')
+            count = payload.get('total_count')
+            entries = payload.get('workflow_runs')
+            if (type(count) is not int or not 1 <= count <= 1000
+                or (total is not None and count != total)
+                or not isinstance(entries, list)
+                or len(entries) != min(100, count - len(rows))):
+                raise RuntimeError('FAST_TRACK_HISTORY_INCOMPLETE')
+            total = count
+            for row in entries:
+                if (not isinstance(row, dict) or type(row.get('id')) is not int
+                    or row['id'] < 1 or row['id'] in seen
+                    or not isinstance(row.get('head_sha'), str)
+                    or not re.fullmatch('[a-f0-9]{40}', row['head_sha'])
+                    or row.get('head_branch') != FAST_TRACK_PR_BASE
+                    or not isinstance(row.get('head_repository'), dict)
+                    or not isinstance(row['head_repository'].get('full_name'), str)
+                    or row['head_repository']['full_name'].lower() != repository.lower()
+                    or not isinstance(row.get('event'), str) or not row['event']
+                    or not isinstance(row.get('path'), str) or not row['path']):
                     raise RuntimeError('FAST_TRACK_HISTORY_PRODUCER_UNPROVEN')
-                runs.append(run)
-        if len(rows) < 100:
-            break
-    if seen != expected or len({r['id'] for r in runs}) != len(runs):
-        raise RuntimeError('FAST_TRACK_HISTORY_INCOMPLETE')
-    return runs
+                seen.add(row['id'])
+                rows.append(row)
+            if len(rows) == total:
+                break
+        if len(rows) != total:
+            raise RuntimeError('FAST_TRACK_HISTORY_INCOMPLETE')
+        producers = []
+        for row in rows:
+            if row['path'].split('@')[0] == '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW:
+                if not is_fast_track_producer(repository, row):
+                    raise RuntimeError('FAST_TRACK_HISTORY_PRODUCER_UNPROVEN')
+                producers.append(row)
+        evidence_remaining(30)
+        return producers
 
 
 
@@ -4619,14 +4650,23 @@ def fast_track_completed_apps_pending_routing(repository, run, jobs, token):
     return True
 
 
+def fast_track_historical_producers(repository, revision, token, *, clock=time.monotonic):
+    """Resolve an exact head only within the complete canonical branch history."""
+    if not isinstance(revision, str) or not re.fullmatch('[a-f0-9]{40}', revision):
+        raise ValueError('FAST_TRACK_HISTORICAL_REVISION_UNPROVEN')
+    with evidence_lookup_budget(clock() + 30, clock=clock):
+        producers = [row for row in fast_track_execution_history(repository, token, clock=clock)
+                     if row['head_sha'] == revision]
+        if len(producers) > 1:
+            raise ValueError('FAST_TRACK_HISTORICAL_PRODUCER_AMBIGUOUS')
+        evidence_remaining(30)
+        return producers
+
+
 def fast_track_pending_routing(revision):
     repository = os.environ['GITHUB_REPOSITORY']
     token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
-    payload = api_get(repository, f'actions/runs?head_sha={revision}&event=push&per_page=100', token)
-    rows = payload.get('workflow_runs')
-    if not isinstance(rows, list) or payload.get('total_count') != len(rows):
-        raise RuntimeError('FAST_TRACK_ROUTING_PREDECESSOR_INCOMPLETE')
-    runs = [r for r in rows if is_fast_track_producer(repository, r)]
+    runs = fast_track_historical_producers(repository, revision, token)
     if len(runs) != 1 or runs[0].get('conclusion') != 'failure':
         return False
     payload = api_get(repository, f"actions/runs/{runs[0]['id']}/jobs?filter=latest&per_page=100", token)
@@ -5377,9 +5417,7 @@ def fast_track_completion_original(repository, original_run, revision, token):
         or run.get('head_sha') != revision or run.get('status') != 'completed'
         or run.get('conclusion') not in {'success', 'failure', 'cancelled'}):
         raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_PRODUCER_UNPROVEN')
-    runs = _completion_inventory(api_get(repository,
-        f'actions/runs?head_sha={revision}&event=push&per_page=100', token), 'workflow_runs')
-    producers = [row for row in runs if is_fast_track_producer(repository, row)]
+    producers = fast_track_historical_producers(repository, revision, token)
     if len(producers) != 1 or producers[0].get('id') != original_run:
         raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_PRODUCER_AMBIGUOUS')
     fast_track_merged_source_proof(repository, revision, token)
@@ -5479,8 +5517,7 @@ def fast_track_completion_observer(repository, run, token, *, live=False, attemp
         or (live and (run.get('status') not in {'in_progress','queued'} or attempt != run['run_attempt']))):
         raise ValueError('FAST_TRACK_COMPLETION_OBSERVER_UNPROVEN')
     _completion_workflow_source(repository, revision, token)
-    promotions = _completion_rows(api_get(repository, f'actions/runs?head_sha={revision}&event=push&per_page=100', token), 'workflow_runs')
-    promotions = [r for r in promotions if is_fast_track_producer(repository, r)]
+    promotions = fast_track_historical_producers(repository, revision, token)
     if (len(promotions) != 1 or promotions[0].get('head_sha') != revision
         or fast_track_promotion_parent(repository, promotions[0], token) is None):
         raise ValueError('FAST_TRACK_COMPLETION_TOOL_NOT_PROMOTED')
@@ -5786,12 +5823,8 @@ def fast_track_effective_baseline(before, revision, *, repository=None, token=No
         if not re.fullmatch('[a-f0-9]{40}', before) or subprocess.run(
                 ['git', 'merge-base', '--is-ancestor', before, revision], capture_output=True).returncode:
             raise RuntimeError('FAST_TRACK_SCOPE_BASELINE_UNPROVEN')
-        payload = api_get(repository, f'actions/runs?head_sha={before}&event=push&per_page=100', token)
-        rows = payload.get('workflow_runs')
-        if not isinstance(rows, list) or payload.get('total_count') != len(rows):
-            raise RuntimeError('FAST_TRACK_PREDECESSOR_INVENTORY_INCOMPLETE')
-        runs = [r for r in rows if is_fast_track_producer(repository, r)]
-        prior = max(runs, key=lambda r:r['id']) if runs else None
+        runs = fast_track_historical_producers(repository, before, token)
+        prior = runs[0] if runs else None
         if prior is None:
             repair_parent = fast_track_untriggered_repair_parent(repository, before, token)
             if repair_parent is None:
