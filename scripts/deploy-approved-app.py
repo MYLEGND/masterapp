@@ -1149,20 +1149,24 @@ def verify_fast_track_public_metadata(key):
         return
     import xml.etree.ElementTree as ET
     origin='https://www.mylegnd.com' if key=='website' else 'https://protect.mylegnd.com'
-    def read(path):
-        request=urllib.request.Request(origin+path,headers={'Cache-Control':'no-cache'})
+    def read(path,accept):
+        request=urllib.request.Request(origin+path,headers={
+            'Accept':accept,
+            'Cache-Control':'no-cache',
+            'User-Agent':'LegendSitemapReleaseVerification/1.0',
+        })
         with urllib.request.urlopen(request,timeout=22) as response:
             if response.status!=200 or response.url!=origin+path:
                 raise ValueError('FAST_TRACK_COMPLETION_PUBLIC_METADATA_UNPROVEN')
             return response.headers.get('Content-Type','').lower(),response.read(1048577)
-    mime,raw=read('/sitemap.xml')
+    mime,raw=read('/sitemap.xml','application/xml,text/xml')
     if len(raw)>1048576 or not any(t in mime for t in ('application/xml','text/xml')):
         raise ValueError('FAST_TRACK_COMPLETION_SITEMAP_UNPROVEN')
     root=ET.fromstring(raw);ns='{http://www.sitemaps.org/schemas/sitemap/0.9}'
     locations=[e.text for e in root.findall(ns+'url/'+ns+'loc')]
     if root.tag!=ns+'urlset' or not locations or len(locations)!=len(set(locations)) or any(not x or not x.startswith(origin+'/') for x in locations):
         raise ValueError('FAST_TRACK_COMPLETION_SITEMAP_UNPROVEN')
-    mime,raw=read('/robots.txt')
+    mime,raw=read('/robots.txt','text/plain')
     if len(raw)>1048576 or 'text/plain' not in mime or 'Sitemap: '+origin+'/sitemap.xml' not in raw.decode().splitlines():
         raise ValueError('FAST_TRACK_COMPLETION_ROBOTS_UNPROVEN')
 
