@@ -1,13 +1,25 @@
 {
   "requestedBy": "Founder",
-  "authorization": "The Founder's existing instruction to preserve the canonical form updates, correct presentation at its shared source, finish publication readiness and release the completed changes live covers this bounded follow-up. Preserve saved Protect draft revision 80, protected execution, current receptionist owner configuration and all prior successful installation evidence. Require independent exact-candidate review, normal CI, expected-head integration and canonical production admission. The predecessor run 39611360383 remains terminal; this request does not authorize duplicate uploads, replaying recovery, changing deployment guards, schema or routing changes, or voice activation.",
-  "purpose": "Honor the native Protect standalone landing header-omission policy in the shared CMS renderer before publishing the saved shared shell. Require a usable mobile Menu when primary navigation actually exists, retain its error when present navigation lacks a trigger, and connect 47 existing native Risk/Commercial/Auto field captions to their controls so canonical Studio field labels remain usable. Preserve all form names, types, options, handlers and submission semantics; add no CSS or parallel design authority. Restore Life Back focus to the revealed question or a visible enabled destination control in both shells, retaining natural and explicit tab order, native canonical ordering, answers, events and existing scroll behavior; reject stale delayed focus after navigation. Preserve forward, contact and processing behavior and require the focused DOM/native-keyboard/rendering acceptance gates.",
-  "requestId": "founder-protect-publication-readiness-20261022-8262c45c87a3",
-  "releaseMode": "approved-only",
-  "targets": [
-    "masterapp-protect",
-    "masterapp-website"
-  ],
+  "authorization": "Founder directed completion of this release work (Sentinel_c4af250f7be88191a6917677fa826cd0,2026-10-22T14:08:19Z) and explicitly approved this specific release-control recovery after checking every failed attempt and proving none entered deployment, while retaining existing identity, review and deployment gates (Sentinel_7c398738ccd8819189343bcc702bab88,2026-10-22T15:17:51Z). This request is limited to nonpublishing promotion of the independently accepted two-path correction. It authorizes no application publication, schema mutation, routing change, new access or spending. Existing runner/API allowance can be consumed; no guaranteed cost-free execution is asserted.",
+  "purpose": "Promote bounded selector metadata visibility followed by fresh exact identity proof, plus positive complete all-attempt selector nonentry evidence for unpublished scope carry. Preserve all application changes and existing identity, permission, review, ancestry, deployment and completion gates. No queued identity is accepted and no original deployment is replayed.",
+  "requestId": "founder-release-control-selector-20261022-776a0ffc7001",
+  "releaseMode": "validate-only",
+  "targets": [],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false
+  "preserveLiveTargets": false,
+  "trustedToolPromotion": {
+    "schemaVersion": 1,
+    "baseRevision": "fec65c487a43daa591da99d28ebab9a810d15803",
+    "sourceRevision": "776a0ffc70016708547dd8f6f7280df43197ca5f",
+    "files": {
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "bf8f8dc8520d27774a13f702ea2df3246095e757"
+      },
+      "scripts/test-validation-resume.py": {
+        "mode": "100644",
+        "blob": "f26528cbe155cd02747f772b3644651635f21338"
+      }
+    }
+  }
 }
