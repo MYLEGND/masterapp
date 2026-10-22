@@ -333,8 +333,13 @@ class CanonicalHistoryTests(unittest.TestCase):
         self.artifacts = []
 
     def api(self, repository, path, token):
-        if path.startswith('actions/runs?branch=Legend%2Ffast-track-release&'):
-            return dict(workflow_runs=[], total_count=0)
+        if path == 'actions/runs?branch=Legend%2Ffast-track-release&per_page=100':
+            # Complete branch inventory with no canonical fast-track producer.
+            unrelated = dict(id=8, head_sha='f' * 40,
+                head_branch=self.authority.FAST_TRACK_PR_BASE, event='workflow_dispatch',
+                path='.github/workflows/unrelated.yml',
+                head_repository=dict(full_name=repository))
+            return dict(workflow_runs=[unrelated], total_count=1)
         if path.startswith('actions/artifacts?'):
             return dict(artifacts=self.artifacts, total_count=len(self.artifacts))
         if path.startswith('actions/workflows/'):

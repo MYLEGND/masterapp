@@ -753,7 +753,7 @@ class AdmissionRepairScopeTests(unittest.TestCase):
             if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
                 return dict(total_count=0, workflow_runs=[])
             if path.startswith('actions/runs?'):
-                runs=([prior,dict(prior,id=8)] if duplicate else [prior]) if before in path else []
+                runs=[prior,dict(prior,id=8)] if duplicate else [prior]
                 return dict(total_count=len(runs),workflow_runs=runs)
             if '/jobs?' in path:return dict(total_count=len(jobs),jobs=jobs)
             if path.startswith('commits/'):
@@ -773,7 +773,7 @@ class AdmissionRepairScopeTests(unittest.TestCase):
     def test_rerun_predecessor_requires_operation_reconciliation(self):
         with self.assertRaisesRegex(RuntimeError,'RECONCILIATION'):self.baseline(attempt=2)
     def test_multiple_runs_require_operation_reconciliation(self):
-        with self.assertRaisesRegex(RuntimeError,'RECONCILIATION'):self.baseline(duplicate=True)
+        with self.assertRaisesRegex(ValueError,'HISTORICAL_PRODUCER_AMBIGUOUS'):self.baseline(duplicate=True)
 
     def test_longer_proven_prewrite_repair_chain_keeps_original_application_scope(self):
         heads=[format(i+1,'040x') for i in range(9)]
@@ -787,11 +787,11 @@ class AdmissionRepairScopeTests(unittest.TestCase):
             if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
                 return dict(total_count=0, workflow_runs=[])
             if path.startswith('actions/runs?'):
-                candidate=path.split('head_sha=')[1].split('&')[0]
-                rows=[] if candidate==original else [dict(id=heads.index(candidate)+1,run_attempt=1,
+                rows=[dict(id=index+1,run_attempt=1,
                     head_sha=candidate,head_branch=authority.FAST_TRACK_PR_BASE,event='push',
                     path='.github/workflows/'+authority.FAST_TRACK_RELEASE_WORKFLOW,
-                    head_repository={'full_name':'owner/repo'},status='completed',conclusion='failure')]
+                    head_repository={'full_name':'owner/repo'},status='completed',conclusion='failure')
+                    for index,candidate in enumerate(heads)]
                 return dict(total_count=len(rows),workflow_runs=rows)
             if '/jobs?' in path:return dict(total_count=len(jobs),jobs=jobs)
             candidate=path.split('/')[1]
@@ -1266,7 +1266,8 @@ class PreservedRouterGenerationTests(unittest.TestCase):
                           created_at='2026-10-12T15:18:10Z',workflow_run=dict(id=producer['id']))
             self.artifacts.setdefault(producer['id'],[]).append(artifact);self.records[artifact['id']]=record
     def api(self,repo,path,token):
-        if 'event=push&' in path:return dict(total_count=len(self.producers),workflow_runs=self.producers)
+        if path == 'actions/runs?branch=Legend%2Ffast-track-release&per_page=100':
+            return dict(total_count=len(self.producers),workflow_runs=self.producers)
         if 'event=workflow_dispatch&' in path:return dict(total_count=len(self.direct),workflow_runs=self.direct)
         if path.startswith('actions/artifacts?name='):
             name=__import__('urllib.parse',fromlist=['unquote']).unquote(path.split('name=',1)[1].split('&')[0])
@@ -1520,7 +1521,10 @@ class TrustedToolPromotionAdmissionTests(unittest.TestCase):
 
     def history(self, mutate=None, carry=False):
         before,head='a'*40,'b'*40
-        run=dict(id=77,run_attempt=1,head_sha=head,status='completed',conclusion='success')
+        run=dict(id=77,run_attempt=1,head_sha=head,status='completed',conclusion='success',
+            head_branch=authority.FAST_TRACK_PR_BASE,event='push',
+            path='.github/workflows/'+authority.FAST_TRACK_RELEASE_WORKFLOW,
+            head_repository=dict(full_name='MYLEGND/masterapp'))
         proof={'phase':'trusted-tool-promotion','baseRevision':before}
         jobs=[dict(name=name,conclusion='success' if index==0 else 'skipped',run_id=77,run_attempt=1,head_sha=head) for index,name in enumerate(('Select exact affected applications','Admit exact validated fast-track source','Reconcile production schema before publication','Publish verified website routing','Affected App Deploy'))]
         artifact=dict(id=99,name='fast-track-admission-77-1',expired=False,workflow_run={'id':77})
@@ -1532,8 +1536,8 @@ class TrustedToolPromotionAdmissionTests(unittest.TestCase):
         def api(repo,path,token):
             if '/artifacts?' in path:return {'total_count':1,'artifacts':[artifact]}
             if '/jobs?' in path:return {'total_count':len(jobs),'jobs':jobs}
-            if 'head_sha='+head in path:return {'total_count':1,'workflow_runs':[run]}
-            if 'head_sha='+before in path:return {'total_count':0,'workflow_runs':[]}
+            if path == 'actions/runs?branch=Legend%2Ffast-track-release&per_page=100':
+                return {'total_count':1,'workflow_runs':[run]}
             raise AssertionError(path)
         def download(repo,runid,name,root,**kwargs):
             self.assertEqual(99,kwargs['artifact_id']);(root/'fast-track-admission.json').write_text(json.dumps(receipt))
@@ -1707,7 +1711,7 @@ class AllAttemptPrewriteScopeTests(unittest.TestCase):
             if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
                 return dict(total_count=0, workflow_runs=[])
             if path.startswith('actions/runs?'):
-                rows = [self.run] if 'head_sha='+before in path else []
+                rows = [self.run]
                 return dict(total_count=len(rows), workflow_runs=rows)
             if '/attempts/' in path:
                 return self.payloads[int(path.split('/')[4])]
@@ -1978,7 +1982,7 @@ class CurrentObservationPrewriteTests(unittest.TestCase):
             if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
                 return dict(total_count=0, workflow_runs=[])
             if path.startswith('actions/runs?'):
-                rows=[self.run] if 'head_sha='+self.revision in path else []
+                rows=[self.run]
                 return dict(total_count=len(rows),workflow_runs=rows)
             if '/jobs?' in path:return dict(total_count=5,jobs=self.jobs)
             if path.startswith('commits/'):
@@ -2002,7 +2006,9 @@ class UnpublishedAppsWithMigrationIntentTests(unittest.TestCase):
     def setUp(self):
         import copy
         self.copy = copy.deepcopy
-        self.run = dict(id=701, head_sha='a'*40, status='completed', conclusion='failure', run_attempt=3)
+        self.run = dict(id=701, head_sha='a'*40, status='completed', conclusion='failure', run_attempt=3,
+            event='push',path='.github/workflows/'+authority.FAST_TRACK_RELEASE_WORKFLOW,
+            head_branch=authority.FAST_TRACK_PR_BASE,head_repository=dict(full_name='o/r'))
         self.names = ['Select exact affected applications','Admit exact validated fast-track source',
             'Reconcile production schema before publication','Affected App Deploy — ${{ matrix.target }}',
             'Publish verified website routing']
@@ -2027,8 +2033,8 @@ class UnpublishedAppsWithMigrationIntentTests(unittest.TestCase):
             return dict(total_count=0, workflow_runs=[])
         if '/attempts/' in path:return self.jobs[int(path.split('/attempts/')[1].split('/')[0])]
         if '/artifacts?' in path:return self.inventory
-        if path.startswith('actions/runs?head_sha='):
-            return dict(workflow_runs=[self.run] if 'head_sha='+'a'*40 in path else [],total_count=1 if 'head_sha='+'a'*40 in path else 0)
+        if path == 'actions/runs?branch=Legend%2Ffast-track-release&per_page=100':
+            return dict(workflow_runs=[self.run],total_count=1)
         if path.endswith('/jobs?filter=latest&per_page=100'):return self.jobs[3]
         if path.startswith('commits/'):
             return [dict(merged_at='date',merge_commit_sha='a'*40,base=dict(ref=authority.FAST_TRACK_PR_BASE),

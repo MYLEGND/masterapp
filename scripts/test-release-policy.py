@@ -1798,11 +1798,17 @@ class CompletionObserverTests(unittest.TestCase):
             with self.subTest(key=key),self.assertRaises(ValueError):self.check()
             self.run[key]=old
     def test_missing_duplicate_or_unpromoted_tool_rejected(self):
-        for values in [[],[self.promotion,self.promotion]]:
+        # Complete branch inventory may contain no matching canonical producer.
+        unrelated=dict(self.promotion,id=4,path='.github/workflows/unrelated.yml')
+        for values in [[unrelated],[self.promotion,dict(self.promotion,id=4)]]:
             self.promotions=values
             with self.assertRaises(ValueError):self.check()
         self.promotions=[self.promotion];self.promoted=None
         with self.assertRaises(ValueError):self.check()
+    def test_duplicate_inventory_id_remains_invalid(self):
+        self.promotions=[self.promotion,self.promotion]
+        with self.assertRaisesRegex(RuntimeError,'FAST_TRACK_HISTORY_PRODUCER_UNPROVEN'):self.check()
+
     def test_ambiguous_changed_or_wrong_runner_owner_rejected(self):
         self.jobs=[self.job,self.job]
         with self.assertRaises(ValueError):self.check()
@@ -1834,7 +1840,10 @@ class CompletionObserverTests(unittest.TestCase):
                 rows=timeline.pop(0) if len(timeline)>1 else timeline[0]
                 return dict(jobs=rows,total_count=len(rows))
             def sleep(seconds):self.now+=seconds
-            with patch.dict(os.environ,env,clear=True),patch.object(self.a,'api_get',side_effect=api),patch.object(self.a,'_release_history_source',return_value=(ROOT.parent/'.github/workflows/deployment-diagnostics.yml').read_text()),patch.object(self.a,'fast_track_promotion_parent',return_value=self.promoted),patch.object(self.a.subprocess,'check_output',return_value=self.sha),patch.object(self.a.subprocess,'run',return_value=SimpleNamespace(returncode=int(dirty))):
+            # Keep the real nested reader on the same injected clock domain.
+            historical=self.a.fast_track_historical_producers
+            def history(r,revision,t):return historical(r,revision,t,clock=lambda:self.now)
+            with patch.object(self.a,'fast_track_historical_producers',side_effect=history),patch.dict(os.environ,env,clear=True),patch.object(self.a,'api_get',side_effect=api),patch.object(self.a,'_release_history_source',return_value=(ROOT.parent/'.github/workflows/deployment-diagnostics.yml').read_text()),patch.object(self.a,'fast_track_promotion_parent',return_value=self.promoted),patch.object(self.a.subprocess,'check_output',return_value=self.sha),patch.object(self.a.subprocess,'run',return_value=SimpleNamespace(returncode=int(dirty))):
                 return self.a.assert_fast_track_completion_execution(original,revision or 'b'*40,clock=lambda:self.now,sleep=sleep)
     def test_v4_observer_waits_for_its_exact_runner_job(self):
         self.run['status']='queued';self.inventory_timeline=[[],[dict(self.job,status='queued',runner_name='')],[self.job]]

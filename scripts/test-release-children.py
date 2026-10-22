@@ -718,7 +718,12 @@ class ChildHistorySafetyTests(unittest.TestCase):
 
     def api(self, repo, path, token):
         if path.startswith('actions/runs?branch=Legend%2Ffast-track-release&'):
-            return dict(workflow_runs=[], total_count=0)
+            # Complete branch history can contain no canonical fast-track producer.
+            unrelated = dict(id=8, head_sha='f' * 40,
+                head_branch=self.authority.FAST_TRACK_PR_BASE,
+                event='workflow_dispatch', path='.github/workflows/unrelated-workflow.yml',
+                head_repository={'full_name': repo})
+            return dict(workflow_runs=[unrelated], total_count=1)
         if path.startswith('actions/runs?branch=legend%2Fapproved-changes&event=workflow_dispatch&per_page=100&page='):
             return dict(workflow_runs=[self.run], total_count=self.total)
         if '/jobs?' in path:

@@ -1486,10 +1486,9 @@ class SelectorAttemptNonentryTests(unittest.TestCase):
         from contextlib import ExitStack
         before=self.run['head_sha'];parent='c'*40;original=self.api
         def api(repo,path,token):
-            if path==f'actions/runs?head_sha={before}&event=push&per_page=100':
-                return dict(total_count=1,workflow_runs=[self.run])
-            if path==f'actions/runs?head_sha={parent}&event=push&per_page=100':
-                return dict(total_count=1,workflow_runs=[dict(self.run,id=8,head_sha=parent,conclusion='success')])
+            if path=='actions/runs?branch=Legend%2Ffast-track-release&per_page=100':
+                return dict(total_count=2,workflow_runs=[self.run,
+                    dict(self.run,id=8,head_sha=parent,conclusion='success')])
             if path==self.endpoint+'/jobs?filter=latest&per_page=100':return self.clone(self.responses[self.jobpath(2)])
             if path==f'commits/{before}/pulls?per_page=100':
                 return [dict(merged_at='2026-10-22T14:00:00Z',merge_commit_sha=before,
@@ -5167,9 +5166,12 @@ class ReleaseAttemptNonentryTests(unittest.TestCase):
         if untrusted:
             prior['head_repository']['full_name'] = 'other/repo'
         def api(repository, path, token):
-            # Legacy-only fixtures still prove a complete empty fast-track inventory.
-            if path == 'actions/runs?branch=Legend%2Ffast-track-release&event=push&per_page=100&page=1':
-                return {'workflow_runs': [], 'total_count': 0}
+            # A complete branch inventory may have no canonical push producer.
+            if path == 'actions/runs?branch=Legend%2Ffast-track-release&per_page=100':
+                observer = dict(id=7, head_branch=m.FAST_TRACK_PR_BASE,
+                    event='workflow_dispatch', head_repository=dict(full_name='owner/repo'),
+                    head_sha='d'*40, path='.github/workflows/deployment-diagnostics.yml')
+                return {'workflow_runs': [observer], 'total_count': 1}
             if path.startswith('actions/artifacts?'):
                 return {'artifacts': [], 'total_count': 0}
             if '/attempts/' in path:
@@ -5467,6 +5469,158 @@ class ReviewedReceptionistContractTests(unittest.TestCase):
                      original+'100644 blob '+'3'*40+'\tSHARED/Unknown.cs\0'):
             with self.subTest(rows=rows):self.assertNotEqual(expected,identity(rows))
 
+
+class HistoricalProducerInventoryTests(unittest.TestCase):
+    def setUp(self):
+        self.repository='owner/repo';self.revision='a'*40;self.now=0;self.calls=[]
+        self.path='actions/runs?branch=Legend%2Ffast-track-release&per_page=100'
+        self.run=dict(id=7,head_sha=self.revision,head_branch=m.FAST_TRACK_PR_BASE,event='push',
+            path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,head_repository=dict(full_name=self.repository))
+        self.rows=[self.run];self.payloads=None
+    def api(self,repository,path,token):
+        self.assertEqual(repository,self.repository);self.calls.append(path)
+        if self.payloads is not None:return self.payloads[len(self.calls)-1]
+        return dict(total_count=len(self.rows),workflow_runs=self.rows)
+    def invoke(self):
+        with patch.object(m,'api_get',side_effect=self.api):
+            return m.fast_track_historical_producers(self.repository,self.revision,'fixture',clock=lambda:self.now)
+    def test_default_first_page_omits_unreliable_head_and_event_filters(self):
+        self.assertEqual(self.invoke(),[self.run]);self.assertEqual(self.calls,[self.path])
+    def test_local_filter_separates_observer_other_head_and_other_workflow(self):
+        self.rows += [dict(self.run,id=8,event='workflow_dispatch',path='.github/workflows/deployment-diagnostics.yml'),dict(self.run,id=9,head_sha='b'*40),dict(self.run,id=10,path='.github/workflows/other.yml')]
+        self.assertEqual(self.invoke(),[self.run])
+    def test_absent_exact_head_requires_complete_nonempty_branch(self):
+        self.rows=[dict(self.run,head_sha='b'*40)];self.assertEqual(self.invoke(),[])
+    def test_empty_branch_cannot_prove_absence(self):
+        self.rows=[]
+        with self.assertRaisesRegex(RuntimeError,'INCOMPLETE'):self.invoke()
+    def test_complete_two_page_inventory(self):
+        rows=[dict(self.run,id=i+1,head_sha='b'*40) for i in range(100)]
+        self.payloads=[dict(total_count=101,workflow_runs=rows),dict(total_count=101,workflow_runs=[self.run|dict(id=101)])]
+        self.assertEqual(self.invoke()[0]['id'],101);self.assertEqual(self.calls,[self.path,self.path+'&page=2'])
+    def test_page_cannot_hide_conflicting_exact_producer(self):
+        rows=[dict(self.run,id=i+1,head_sha='b'*40) for i in range(99)]+[self.run|dict(id=100)]
+        self.payloads=[dict(total_count=101,workflow_runs=rows),dict(total_count=101,workflow_runs=[self.run|dict(id=101)])]
+        with self.assertRaisesRegex(ValueError,'AMBIGUOUS'):self.invoke()
+    def test_conflicting_success_and_failure_are_still_ambiguous(self):
+        self.rows=[dict(self.run,conclusion='failure'),dict(self.run,id=8,conclusion='success')]
+        with self.assertRaisesRegex(ValueError,'AMBIGUOUS'):self.invoke()
+    def test_duplicate_ids_reject_even_if_other_head(self):
+        self.rows.append(dict(self.run,head_sha='b'*40))
+        with self.assertRaisesRegex(RuntimeError,'PRODUCER_UNPROVEN'):self.invoke()
+    def test_duplicate_ids_across_pages(self):
+        rows=[dict(self.run,id=i+1,head_sha='b'*40) for i in range(100)]
+        self.payloads=[dict(total_count=101,workflow_runs=rows),dict(total_count=101,workflow_runs=[rows[0]])]
+        with self.assertRaisesRegex(RuntimeError,'PRODUCER_UNPROVEN'):self.invoke()
+    def test_changed_total_rejects(self):
+        rows=[dict(self.run,id=i+1,head_sha='b'*40) for i in range(100)]
+        self.payloads=[dict(total_count=101,workflow_runs=rows),dict(total_count=102,workflow_runs=[self.run|dict(id=101),self.run|dict(id=102)])]
+        with self.assertRaisesRegex(RuntimeError,'INCOMPLETE'):self.invoke()
+    def test_short_first_page_rejects(self):
+        self.payloads=[dict(total_count=101,workflow_runs=[self.run])]
+        with self.assertRaisesRegex(RuntimeError,'INCOMPLETE'):self.invoke()
+    def test_missing_last_page_rejects(self):
+        rows=[dict(self.run,id=i+1,head_sha='b'*40) for i in range(100)]
+        self.payloads=[dict(total_count=101,workflow_runs=rows),dict(total_count=101,workflow_runs=[])]
+        with self.assertRaisesRegex(RuntimeError,'INCOMPLETE'):self.invoke()
+    def test_malformed_count_and_payload_reject(self):
+        for payload in (None,[],{},dict(total_count=True,workflow_runs=[self.run]),dict(total_count='1',workflow_runs=[self.run]),dict(total_count=-1,workflow_runs=[]),dict(total_count=1001,workflow_runs=[]),dict(total_count=1,workflow_runs={})):
+            with self.subTest(payload=payload):
+                self.calls=[];self.payloads=[payload]
+                with self.assertRaises(RuntimeError):self.invoke()
+    def test_wrong_branch_repository_and_malformed_row_reject(self):
+        for row in (None,{},dict(self.run,id=True),dict(self.run,id=0),dict(self.run,head_sha='x'),dict(self.run,head_branch='main'),dict(self.run,head_repository={}),dict(self.run,head_repository=dict(full_name='other/repo')),dict(self.run,event=''),dict(self.run,path=None)):
+            with self.subTest(row=row):
+                self.calls=[];self.rows=[row]
+                with self.assertRaises(RuntimeError):self.invoke()
+    def test_invalid_requested_revision_rejects_before_read(self):
+        self.revision='x'
+        with self.assertRaises(ValueError):self.invoke()
+        self.assertEqual(self.calls,[])
+    def test_repository_case_is_normalized(self):
+        self.run['head_repository']['full_name']='OWNER/REPO';self.assertEqual(self.invoke(),[self.run])
+    def test_late_first_response_rejects(self):
+        original=self.api
+        def api(*args):
+            result=original(*args);self.now=30;return result
+        with patch.object(m,'api_get',side_effect=api),self.assertRaises(m.EvidenceLookupUnavailable):
+            m.fast_track_historical_producers(self.repository,self.revision,'fixture',clock=lambda:self.now)
+    def test_shorter_enclosing_deadline_remains_binding(self):
+        original=self.api
+        def api(*args):
+            result=original(*args);self.now=3;return result
+        with m.evidence_lookup_budget(3,clock=lambda:self.now),patch.object(m,'api_get',side_effect=api),self.assertRaises(m.EvidenceLookupUnavailable):
+            m.fast_track_historical_producers(self.repository,self.revision,'fixture',clock=lambda:self.now)
+    def test_transport_error_does_not_become_absence_or_new_retry(self):
+        with patch.object(m,'api_get',side_effect=m.EvidenceLookupUnavailable('transport')) as api,self.assertRaises(m.EvidenceLookupUnavailable):
+            m.fast_track_historical_producers(self.repository,self.revision,'fixture',clock=lambda:self.now)
+        self.assertEqual(api.call_count,1)
+    def test_four_callers_share_canonical_helper(self):
+        import inspect
+        for name in ('fast_track_pending_routing','fast_track_completion_original','fast_track_completion_observer','fast_track_effective_baseline'):
+            source=inspect.getsource(getattr(m,name));self.assertIn('fast_track_historical_producers(',source);self.assertNotIn('actions/runs?head_sha=',source)
+
+    def test_original_run_identity_cannot_be_replaced_by_unique_other_id(self):
+        direct=dict(self.run,status='completed',conclusion='failure')
+        self.rows=[dict(self.run,id=8)]
+        def api(repo,path,token):return direct if path=='actions/runs/7' else self.api(repo,path,token)
+        with patch.object(m,'api_get',side_effect=api),patch.object(m,'fast_track_merged_source_proof') as proof:
+            with self.assertRaisesRegex(ValueError,'ORIGINAL_PRODUCER_AMBIGUOUS'):
+                m.fast_track_completion_original(self.repository,7,self.revision,'fixture')
+        proof.assert_not_called()
+    def test_original_positive_identity_still_requires_merged_source_proof(self):
+        direct=dict(self.run,status='completed',conclusion='failure')
+        def api(repo,path,token):return direct if path=='actions/runs/7' else self.api(repo,path,token)
+        with patch.object(m,'api_get',side_effect=api),patch.object(m,'fast_track_merged_source_proof',side_effect=RuntimeError('next immutable source gate')) as proof:
+            with self.assertRaisesRegex(RuntimeError,'next immutable source gate'):
+                m.fast_track_completion_original(self.repository,7,self.revision,'fixture')
+        proof.assert_called_once_with(self.repository,self.revision,'fixture')
+    def test_final_page_late_response_rejects(self):
+        rows=[dict(self.run,id=i+1,head_sha='b'*40) for i in range(100)]
+        self.payloads=[dict(total_count=101,workflow_runs=rows),dict(total_count=101,workflow_runs=[self.run|dict(id=101)])]
+        original=self.api
+        def api(*args):
+            result=original(*args)
+            if len(self.calls)==2:self.now=30
+            return result
+        with patch.object(m,'api_get',side_effect=api),self.assertRaises(m.EvidenceLookupUnavailable):
+            m.fast_track_historical_producers(self.repository,self.revision,'fixture',clock=lambda:self.now)
+    def test_maximum_ten_pages_complete_without_extra_probe(self):
+        rows=[dict(self.run,id=i+1,head_sha='b'*40) for i in range(1000)]
+        rows[-1]['head_sha']=self.revision
+        self.payloads=[dict(total_count=1000,workflow_runs=rows[i:i+100]) for i in range(0,1000,100)]
+        self.assertEqual(self.invoke()[0]['id'],1000);self.assertEqual(len(self.calls),10)
+
+
+    def test_canonical_workflow_wrong_event_or_suffix_still_rejects(self):
+        for changes in (dict(event='workflow_dispatch'),dict(path=self.run['path']+'@wrong')):
+            self.rows=[dict(self.run,**changes)]
+            with self.subTest(changes=changes),self.assertRaisesRegex(RuntimeError,'HISTORY_PRODUCER_UNPROVEN'):self.invoke()
+    def test_existing_child_attempt_consumer_propagates_incomplete_history(self):
+        with patch.object(m,'api_get',return_value=dict(total_count=2,workflow_runs=[self.run])):
+            with self.assertRaisesRegex(RuntimeError,'HISTORY_INCOMPLETE'):
+                m.fast_track_child_attempts(self.repository,'migrations','fixture')
+    def test_existing_child_record_consumer_propagates_incomplete_history(self):
+        with patch.object(m,'api_get',return_value=dict(total_count=2,workflow_runs=[self.run])):
+            with self.assertRaisesRegex(RuntimeError,'HISTORY_INCOMPLETE'):
+                m._release_child_original_records(self.repository,'migrations','fixture',self.revision,99,1)
+    def test_existing_operation_history_cannot_infer_absence_from_incomplete_history(self):
+        with patch.object(m,'api_get',return_value=dict(total_count=2,workflow_runs=[self.run])), \
+             patch.object(m,'_release_history_api',return_value=dict(total_count=0,artifacts=[])):
+            with self.assertRaisesRegex(RuntimeError,'HISTORY_INCOMPLETE'):
+                m.release_operation_history(self.repository,'operation',self.revision,'portal',99,1,'fixture')
+
+
+    def test_revised_legacy_only_fixture_proves_complete_nonproducer_branch(self):
+        _, api = ReleaseAttemptNonentryTests().history([[]])
+        with patch.object(m,'api_get',side_effect=api):
+            self.assertEqual(m.fast_track_execution_history(self.repository,'fixture'),[])
+
+    def test_exact_head_filter_rechecks_shared_deadline_after_history(self):
+        def history(*args,**kwargs):
+            self.now=30;return [self.run]
+        with patch.object(m,'fast_track_execution_history',side_effect=history):
+            with self.assertRaises(m.EvidenceLookupUnavailable):self.invoke()
 
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.
