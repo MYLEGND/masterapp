@@ -26,25 +26,48 @@ function targetMaterial(target, value) {
 // JSON arrives on stdin, never as an arbitrary upload path. Only the bounded
 // release operation record can be persisted; credentials cannot enter it.
 async function publish(client, name, record, {sleep = ms => new Promise(resolve => setTimeout(resolve, ms))} = {}) {
+  const completion = /^legend-release-completion-[a-f0-9]{64}$/.test(name);
   const observation = /^legend-migration-observation-[a-f0-9]{64}$/.test(name);
   const locator = /^validated-component-index-[a-z][a-z0-9-]{0,63}-[a-f0-9]{64}$/.test(name);
   const admission = /^legend-release-admission-[a-f0-9]{64}$/.test(name);
   const child = /^legend-release-child-(intent|success)-[a-f0-9]{64}$/.test(name);
   const plan = /^legend-release-transaction-plan-[a-f0-9]{64}$/.test(name);
   const recovery = /^legend-readiness-recovery-[a-f0-9]{64}$/.test(name);
-  if (!observation && !locator && !admission && !child && !plan && !recovery && !/^legend-release-operation-(intent|success|submitted)-[a-f0-9]{64}$/.test(name))
+  if (!completion && !observation && !locator && !admission && !child && !plan && !recovery && !/^legend-release-operation-(intent|success|submitted)-[a-f0-9]{64}$/.test(name))
     throw new Error('Invalid release operation artifact identity');
   const observationKeys = ['schemaVersion', 'phase', 'kind', 'observationIdentity', 'candidate', 'executionAuthority', 'databaseIdentity', 'schemaIdentity', 'baselineIdentity', 'observedUtc', 'pendingCount', 'mutationActivity', 'historicalExecution', 'historicalEvidenceIdentity', 'historicalReconciliationSources', 'bundleDigest', 'sqlExecutionAuthorized', 'producingRun', 'producingAttempt'];
-  const allowed = new Set(observation ? observationKeys : locator ? ['schemaVersion', 'component', 'contentIdentity', 'runId'] : recovery ? ['schemaVersion', 'operationId', 'candidateRevision', 'executionAuthority', 'targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt', 'phase'] : plan ? ['schemaVersion', 'planId', 'candidateRevision', 'producingRun', 'producingAttempt', 'targets', 'historySnapshot'] : child ? ['schemaVersion', 'child', 'dependencyIdentity', 'materialIdentity', 'evidenceIdentity', 'partitionIdentity',
+  const allowed = new Set(completion ? ['schemaVersion', 'phase', 'originalRun', 'applicationRevision', 'producingRun', 'producingAttempt', 'observer', 'targets'] : observation ? observationKeys : locator ? ['schemaVersion', 'component', 'contentIdentity', 'runId'] : recovery ? ['schemaVersion', 'operationId', 'candidateRevision', 'executionAuthority', 'targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt', 'phase'] : plan ? ['schemaVersion', 'planId', 'candidateRevision', 'producingRun', 'producingAttempt', 'targets', 'historySnapshot'] : child ? ['schemaVersion', 'child', 'dependencyIdentity', 'materialIdentity', 'evidenceIdentity', 'partitionIdentity',
     'applicationRevision', 'executionAuthority', 'producingRun', 'producingAttempt', 'phase', 'observation'] : admission ? ['schemaVersion', 'admissionId', 'sourcePr',
     'applicationRevision', 'authorizedSourceRevision', 'packageIdentity', 'executionAuthority', 'sourceMergeSha', 'selectedTargets',
     'resources', 'authorizationMode', 'producingRun', 'producingAttempt', 'phase'] : ['schemaVersion', 'operationId', 'target', 'applicationRevision',
     'packageDigest', 'baseline', 'packageProducerRun', 'producingRun', 'producingAttempt',
     'baselineDeploymentIds', 'phase', 'deploymentIds', 'candidateRevision', 'componentSource',
-    'providerRequestCorrelation', 'submissionContract', 'deploymentId']);
+    'providerRequestCorrelation', 'submissionContract', 'deploymentId', 'completionEvidence']);
   if (!record || Object.keys(record).some(key => !allowed.has(key)) ||
       JSON.stringify(record).length > (plan ? 524288 : 32768)) throw new Error('Invalid release operation record');
-  if (observation) {
+  if (completion) {
+    const keys = 'applicationRevision,observer,originalRun,phase,producingAttempt,producingRun,schemaVersion,targets';
+    if (Object.keys(record).sort().join(',') !== keys || record.schemaVersion !== 1 || record.phase !== 'success' ||
+        !/^[a-f0-9]{40}$/.test(record.applicationRevision) ||
+        ['originalRun', 'producingRun', 'producingAttempt'].some(k => !Number.isSafeInteger(record[k]) || record[k] < 1) ||
+        !record.observer || Object.keys(record.observer).sort().join(',') !== 'jobId,promotionRunId,runAttempt,runId,toolRevision' ||
+        ['jobId', 'promotionRunId', 'runAttempt', 'runId'].some(k => !Number.isSafeInteger(record.observer[k]) || record.observer[k] < 1) ||
+        !/^[a-f0-9]{40}$/.test(record.observer.toolRevision) || record.observer.runId !== record.producingRun ||
+        record.observer.runAttempt !== record.producingAttempt || !record.targets || Array.isArray(record.targets) ||
+        !Object.keys(record.targets).length || Object.keys(record.targets).length > 10)
+      throw new Error('Invalid completion-only summary identity');
+    const expected = crypto.createHash('sha256').update(JSON.stringify({applicationRevision: record.applicationRevision, originalRun: record.originalRun})).digest('hex');
+    if (name !== `legend-release-completion-${expected}`) throw new Error('Invalid completion-only summary name');
+    for (const [key, target] of Object.entries(record.targets)) {
+      if (!['website', 'portal', 'client', 'protect', 'parfait'].includes(key) || !target ||
+          Object.keys(target).sort().join(',') !== 'deploymentIds,intentArtifactId,operationId,packageArtifactId,packageDigest' ||
+          ['intentArtifactId', 'packageArtifactId'].some(k => !Number.isSafeInteger(target[k]) || target[k] < 1) ||
+          ['operationId', 'packageDigest'].some(k => !/^[a-f0-9]{64}$/.test(target[k])) ||
+          !Array.isArray(target.deploymentIds) || target.deploymentIds.length !== 1 ||
+          !/^[a-zA-Z0-9_.:-]{1,256}$/.test(target.deploymentIds[0]))
+        throw new Error('Invalid completion-only target evidence');
+    }
+  } else if (observation) {
     if (Object.keys(record).sort().join(',') !== observationKeys.sort().join(',') ||
         record.schemaVersion !== 1 || record.phase !== 'observation' || record.kind !== 'current-schema-no-write' ||
         record.pendingCount !== 0 || record.mutationActivity !== 'settled' || record.sqlExecutionAuthorized !== false ||
@@ -167,7 +190,26 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
       ['producingRun', 'producingAttempt', 'packageProducerRun'].some(key =>
         !Number.isSafeInteger(record[key]) || record[key] < 1))
     throw new Error('Invalid release operation identity');
-  if (!observation && !locator && !recovery && !plan && !child && !admission) {
+  if (!completion && !observation && !locator && !recovery && !plan && !child && !admission) {
+    if (record.completionEvidence !== undefined) {
+      const proof = record.completionEvidence;
+      if (record.schemaVersion !== 1 || record.phase !== 'success' || !proof ||
+          Object.keys(proof).sort().join(',') !== 'intentArtifactDigest,intentArtifactId,observer,originalJobId,originalPackageAttempt,originalPackageJobId,originalRun,originalRunAttempt,packageArtifactDigest,packageArtifactId,provider' ||
+          ['originalRun', 'originalRunAttempt', 'originalPackageJobId', 'originalPackageAttempt', 'originalJobId', 'intentArtifactId', 'packageArtifactId'].some(k => !Number.isSafeInteger(proof[k]) || proof[k] < 1) ||
+          ['intentArtifactDigest', 'packageArtifactDigest'].some(k => !/^sha256:[a-f0-9]{64}$/.test(proof[k])) ||
+          proof.originalRun !== record.packageProducerRun || !proof.observer ||
+          Object.keys(proof.observer).sort().join(',') !== 'jobId,promotionRunId,runAttempt,runId,toolRevision' ||
+          ['runId', 'runAttempt', 'jobId', 'promotionRunId'].some(k => !Number.isSafeInteger(proof.observer[k]) || proof.observer[k] < 1) ||
+          proof.observer.runId !== record.producingRun || proof.observer.runAttempt !== record.producingAttempt ||
+          !/^[a-f0-9]{40}$/.test(proof.observer.toolRevision) || !proof.provider ||
+          Object.keys(proof.provider).sort().join(',') !== 'deploymentId,receivedTime,runtimeRevision,status' ||
+          proof.provider.status !== 4 || proof.provider.runtimeRevision !== record.applicationRevision ||
+          typeof proof.provider.receivedTime !== 'string' || !Number.isFinite(Date.parse(proof.provider.receivedTime)) ||
+          !Array.isArray(record.deploymentIds) || record.deploymentIds.length !== 1 ||
+          record.deploymentIds[0] !== proof.provider.deploymentId || !Array.isArray(record.baselineDeploymentIds) ||
+          record.baselineDeploymentIds.includes(proof.provider.deploymentId))
+        throw new Error('Invalid completion-only operation evidence');
+    }
     for (const [key, kind] of [['providerRequestCorrelation', 'azure_onedeploy_deployment_tag_v1'],
                               ['submissionContract', 'azure_onedeploy_windows_intent_v1']]) {
       if (record[key] !== undefined && (!record[key] || typeof record[key] !== 'object' || Array.isArray(record[key]) ||

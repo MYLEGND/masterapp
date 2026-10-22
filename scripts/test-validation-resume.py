@@ -1282,15 +1282,18 @@ class FastTrackExecutionIdentityTests(unittest.TestCase):
         policy_patch.start();self.addCleanup(policy_patch.stop)
         self.env=dict(GITHUB_ACTIONS='true',GITHUB_EVENT_NAME='push',
             GITHUB_REF='refs/heads/Legend/fast-track-release',GITHUB_REPOSITORY='owner/repo',
-            GITHUB_TOKEN='test-token',GITHUB_SHA='a'*40,GITHUB_RUN_ID='123',GITHUB_RUN_ATTEMPT='2',
+            GITHUB_JOB='deploy-ui',TARGET_KEY='parfait',RUNNER_NAME='runner-fixture',GITHUB_TOKEN='test-token',GITHUB_SHA='a'*40,GITHUB_RUN_ID='123',GITHUB_RUN_ATTEMPT='2',
             GITHUB_WORKFLOW_REF='owner/repo/.github/workflows/legend-fast-track-ui.yml@refs/heads/Legend/fast-track-release')
         self.run=dict(id=123,run_attempt=2,path='.github/workflows/legend-fast-track-ui.yml',
             head_branch='Legend/fast-track-release',event='push',head_sha='a'*40,status='in_progress',
             head_repository=dict(full_name='owner/repo'))
 
     def invoke(self, run=None, head=None):
-        with patch.dict(os.environ,self.env,clear=True),patch.object(m,'api_get',side_effect=[
-            self.run if run is None else run,dict(object=dict(sha=head or 'a'*40))]):
+        def api(repo,path,token):
+            if path.startswith('git/ref/'):return dict(object=dict(sha=head or 'a'*40))
+            if '/jobs?' in path:return dict(total_count=1,jobs=[dict(id=1,run_id=123,run_attempt=2,head_sha='a'*40,status='in_progress',runner_name='runner-fixture',name='Affected App Deploy — Parfait')])
+            return self.run if run is None else run
+        with patch.dict(os.environ,self.env,clear=True),patch.object(m,'api_get',side_effect=api):
             return m.assert_fast_track_release_execution()
 
     def test_exact_current_fast_track_run_authenticated(self):
@@ -1313,22 +1316,26 @@ class FastTrackExecutionIdentityTests(unittest.TestCase):
                 self.invoke(self.run|{key:value})
 
     def test_queued_parent_requires_exact_current_active_runner(self):
-        job=dict(run_id=123,run_attempt=2,head_sha='a'*40,status='in_progress',
+        job=dict(id=1,run_id=123,run_attempt=2,head_sha='a'*40,status='in_progress',
             runner_name='runner-fixture',name='Affected App Deploy — Parfait')
         def invoke(jobs,job_key='deploy-ui'):
-            with patch.dict(os.environ,self.env|dict(GITHUB_JOB=job_key,RUNNER_NAME='runner-fixture'),clear=True), \
-                 patch.object(m,'api_get',side_effect=[self.run|dict(status='queued'),
-                    dict(total_count=len(jobs),jobs=jobs),dict(object=dict(sha='a'*40))]):
-                return m.assert_fast_track_release_execution()
+            now=[0]
+            def api(repo,path,token):
+                if '/jobs?' in path:return dict(total_count=len(jobs),jobs=jobs)
+                if path.startswith('git/ref/'):return dict(object=dict(sha='a'*40))
+                return self.run|dict(status='queued')
+            with patch.dict(os.environ,self.env|dict(GITHUB_JOB=job_key,TARGET_KEY='parfait',RUNNER_NAME='runner-fixture'),clear=True), \
+                 patch.object(m,'api_get',side_effect=api):
+                return m.assert_fast_track_release_execution(clock=lambda:now[0],sleep=lambda n:now.__setitem__(0,now[0]+n))
         self.assertEqual('queued',invoke([job])['status'])
         for key,value in [('run_id',124),('run_attempt',1),('head_sha','b'*40),
                 ('status','queued'),('runner_name','other'),('name','unknown')]:
-            with self.subTest(key=key),self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB_UNPROVEN'):
+            with self.subTest(key=key),self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB_UNPROVEN|JOB_UNPROVEN|deadline exhausted'):
                 invoke([job|{key:value}])
-        with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB_UNPROVEN'):invoke([])
-        with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB_UNPROVEN'):invoke([job,job])
-        with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB_UNPROVEN'):invoke([job],job_key='unknown')
-        with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB_UNPROVEN'):invoke([None])
+        with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB_UNPROVEN|JOB_UNPROVEN|deadline exhausted'):invoke([])
+        with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB_UNPROVEN|JOB_UNPROVEN|deadline exhausted'):invoke([job,job])
+        with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB_UNPROVEN|JOB_UNPROVEN|deadline exhausted'):invoke([job],job_key='unknown')
+        with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB_UNPROVEN|JOB_UNPROVEN|deadline exhausted'):invoke([None])
 
     def test_advanced_release_head_stops_stale_execution(self):
         with self.assertRaisesRegex(RuntimeError,'HEAD_CHANGED'):
@@ -1338,6 +1345,153 @@ class FastTrackExecutionIdentityTests(unittest.TestCase):
         self.request['trustedToolPromotion'] = {'schemaVersion':1}
         with self.assertRaisesRegex(RuntimeError,'TRUSTED_TOOL_PROMOTION_NONPUBLISHING'):
             self.invoke()
+
+
+class LiveWorkflowIdentityPollingTests(unittest.TestCase):
+    def setUp(self):
+        self.now=0; self.sleeps=[]; self.reads=[]
+        self.revision='a'*40
+        self.run=dict(id=123,run_attempt=2,head_sha=self.revision,status='queued',event='push',
+            path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,head_branch=m.FAST_TRACK_PR_BASE,
+            head_repository=dict(full_name='owner/repo'))
+        self.env=dict(GITHUB_ACTIONS='true',GITHUB_EVENT_NAME='push',GITHUB_REPOSITORY='owner/repo',
+            GITHUB_TOKEN='test-token',GITHUB_SHA=self.revision,GITHUB_RUN_ID='123',GITHUB_RUN_ATTEMPT='2',
+            GITHUB_REF='refs/heads/'+m.FAST_TRACK_PR_BASE,GITHUB_JOB='deploy-ui',TARGET_KEY='portal',RUNNER_NAME='shared',
+            GITHUB_WORKFLOW_REF='owner/repo/.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW+'@refs/heads/'+m.FAST_TRACK_PR_BASE)
+        self.job=dict(id=10,run_id=123,run_attempt=2,head_sha=self.revision,status='in_progress',
+            conclusion=None,name='Affected App Deploy — AgentPortal',runner_name='shared')
+        self.runs=[self.run];self.inventories=[dict(total_count=1,jobs=[self.job])]
+        self.head=self.revision;self.pr=None
+    def sleep(self,seconds):
+        self.sleeps.append(seconds);self.now+=seconds
+    def api(self,repository,path,token):
+        self.reads.append(path)
+        if '/jobs?' in path:
+            return self.inventories.pop(0) if len(self.inventories)>1 else self.inventories[0]
+        if path.startswith('git/ref/'):
+            return dict(object=dict(sha=self.head))
+        if path.startswith('pulls/'):
+            return self.pr
+        return self.runs.pop(0) if len(self.runs)>1 else self.runs[0]
+    def production(self,target='portal'):
+        with patch.dict(os.environ,self.env,clear=True),patch.object(m,'api_get',side_effect=self.api), \
+             patch.object(m,'_fast_track_policy') as policy:
+            policy.return_value.tool_promotion_requested.return_value=False
+            return m.assert_fast_track_release_execution(target=target,clock=lambda:self.now,sleep=self.sleep)
+    def source(self,workflow='masterapp-platform-architecture-validation.yml',key='validate',name='architecture-validation',
+               source=None,preflight=True):
+        self.env.update(GITHUB_JOB=key)
+        self.run.update(event='pull_request',path='.github/workflows/'+workflow,
+            pull_requests=[dict(number=7,base=dict(ref=m.FAST_TRACK_PR_BASE),head=dict(sha=self.revision))])
+        self.pr=self.pr or dict(number=7,state='open',base=dict(ref=m.FAST_TRACK_PR_BASE),
+            head=dict(sha=self.revision,repo=dict(full_name='owner/repo')))
+        self.job['name']=name or key
+        source=source if source is not None else ('jobs:\n  '+key+':\n'+('    name: '+name+'\n' if name else '')+
+            '    steps:\n      - name: Plan exact validation resume\n        run: python3 scripts/validation-resume.py plan\n')
+        args=SimpleNamespace(repository='owner/repo',current_run_id=123,run_attempt=2,current_sha=self.revision,
+            workflow=workflow,event='pull_request')
+        with patch.dict(os.environ,self.env,clear=True),patch.object(m,'api_get',side_effect=self.api), \
+             patch.object(m,'_release_history_source',return_value=source), \
+             patch.object(m,'approved_head_preflight',return_value=dict(current=preflight,approvedHeadSha='b'*40)):
+            return m.fast_track_source_validation_scope(args,clock=lambda:self.now,sleep=self.sleep)
+    def test_empty_then_unassigned_then_exact_active_target_is_only_success_boundary(self):
+        self.inventories=[dict(total_count=0,jobs=[]),dict(total_count=1,jobs=[self.job|dict(status='queued',runner_name='')]),self.inventories[0]]
+        self.assertEqual('queued',self.production()['status']);self.assertEqual([2,2],self.sleeps)
+    def test_shared_runner_cannot_substitute_another_application(self):
+        sibling=self.job|dict(id=11,name='Affected App Deploy — Parfait')
+        self.inventories=[dict(total_count=2,jobs=[sibling,self.job])]
+        self.assertEqual('queued',self.production()['status'])
+        self.inventories=[dict(total_count=1,jobs=[sibling])]
+        with self.assertRaises((RuntimeError,m.EvidenceLookupUnavailable)):self.production()
+        self.assertEqual(30,self.now);self.assertLessEqual(len(self.sleeps),15)
+    def test_target_binding_is_required_even_for_in_progress_parent_before_reads(self):
+        self.run['status']='in_progress'
+        for value in ('','unknown','protect'):
+            with self.subTest(value=value):
+                self.env['TARGET_KEY']=value
+                with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB_(?:TARGET_)?UNPROVEN'):self.production()
+        self.assertEqual([],self.reads)
+    def test_truncated_malformed_duplicate_foreign_or_terminal_job_fails_without_poll(self):
+        cases=[dict(total_count=2,jobs=[self.job]),dict(total_count=1,jobs=[None]),
+            dict(total_count=2,jobs=[self.job,self.job|dict(id=11)])]
+        cases += [dict(total_count=1,jobs=[self.job|{key:value}]) for key,value in (
+            ('head_sha','b'*40),('run_attempt',1),('run_id',124),('runner_name','other'),
+            ('status','completed'),('status','unknown'),('id',None))]
+        for payload in cases:
+            with self.subTest(payload=payload):
+                self.inventories=[payload]
+                with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB_(?:TARGET_)?UNPROVEN'):self.production()
+                self.assertEqual([],self.sleeps)
+    def test_pending_then_immutable_or_terminal_mismatch_never_retries_mismatch(self):
+        self.inventories=[dict(total_count=0,jobs=[])]
+        for change in (dict(status='completed'),dict(head_sha='b'*40),dict(run_attempt=3),
+                       dict(head_repository=dict(full_name='fork/repo')),dict(path='untrusted')):
+            with self.subTest(change=change):
+                self.sleeps=[];self.runs=[self.run,self.run|change]
+                with self.assertRaisesRegex(RuntimeError,'PRODUCER_UNPROVEN'):self.production()
+                self.assertEqual([2],self.sleeps)
+    def test_release_head_is_rechecked_after_pending_observation(self):
+        self.inventories=[dict(total_count=0,jobs=[]),self.inventories[0]];self.head='b'*40
+        with self.assertRaisesRegex(RuntimeError,'HEAD_CHANGED'):self.production()
+        self.assertEqual([],self.sleeps)
+    def test_source_still_queued_requires_its_exact_planner_display_name(self):
+        for workflow,key,name in [('masterapp-platform-architecture-validation.yml','validate','architecture-validation'),
+                ('approved-release-security-validation.yml','validation_plan','security-validation-plan'),
+                ('parfait-isolated-validation.yml','build-and-focused-tests',None)]:
+            with self.subTest(workflow=workflow):
+                result=self.source(workflow,key,name)
+                self.assertEqual('source-validation-only',result['phase']);self.assertFalse(result['releaseAdmission'])
+        self.assertEqual([],self.sleeps)
+    def test_source_queued_then_in_progress_retains_source_only_scope(self):
+        self.inventories=[dict(total_count=0,jobs=[])]
+        self.runs=[self.run,self.run|dict(status='in_progress',event='pull_request',
+            path='.github/workflows/masterapp-platform-architecture-validation.yml',
+            pull_requests=[dict(number=7,base=dict(ref=m.FAST_TRACK_PR_BASE),head=dict(sha=self.revision))])]
+        self.assertFalse(self.source()['releaseAdmission']);self.assertEqual([5],self.sleeps)
+    def test_source_sibling_only_never_grants_scope(self):
+        self.inventories=[dict(total_count=1,jobs=[self.job|dict(name='Approved-head preflight')])]
+        with self.assertRaisesRegex(ValueError,'pending_deadline_exhausted'):self.source()
+        self.assertEqual(30,self.now)
+    def test_source_unknown_dynamic_or_ambiguous_planner_metadata_fails_without_poll(self):
+        for source in ('jobs:\n  sibling:\n    steps: []\n',
+                'jobs:\n  validate:\n    name: ${{ matrix.name }}\n    steps:\n      - name: Plan exact validation resume\n',
+                'jobs:\n  validate:\n    name: first\n    name: second\n    steps:\n      - name: Plan exact validation resume\n'):
+            with self.subTest(source=source):
+                with self.assertRaisesRegex(ValueError,'ACTIVE_JOB_UNPROVEN'):self.source(source=source)
+                self.assertEqual([],self.sleeps)
+    def test_pr_and_base_change_after_wait_still_fail(self):
+        for mutation in ('head','base'):
+            with self.subTest(mutation=mutation):
+                self.inventories=[dict(total_count=0,jobs=[]),dict(total_count=1,jobs=[self.job])]
+                self.pr=dict(number=7,state='open',base=dict(ref=m.FAST_TRACK_PR_BASE),
+                    head=dict(sha='b'*40 if mutation=='head' else self.revision,repo=dict(full_name='owner/repo')))
+                with self.assertRaisesRegex(ValueError,'PR_CHANGED' if mutation=='head' else 'BASE_CHANGED'):
+                    self.source(preflight=mutation!='base')
+    def test_nested_transport_backoff_consumes_the_same_deadline(self):
+        def timeout(*args,**kwargs):
+            self.assertEqual(30,kwargs['timeout']);self.now+=29;raise TimeoutError()
+        with patch.dict(os.environ,self.env,clear=True),patch.object(m.urllib.request,'urlopen',side_effect=timeout) as read, \
+             patch.object(m.time,'sleep',side_effect=self.sleep):
+            with self.assertRaises(m.EvidenceLookupUnavailable):
+                m.assert_fast_track_release_execution(target='portal',allow_nonpublishing=True,clock=lambda:self.now,sleep=self.sleep)
+        read.assert_called_once();self.assertEqual(30,self.now)
+    def test_success_returned_after_deadline_cannot_authorize(self):
+        api=self.api
+        def slow(*args):
+            value=api(*args)
+            if '/jobs?' in args[1]:self.now=31
+            return value
+        with patch.object(self,'api',side_effect=slow):
+            with self.assertRaises(m.EvidenceLookupUnavailable):self.production()
+        self.assertFalse(any(path.startswith('git/ref/') for path in self.reads))
+    def test_terminal_conclusion_in_pending_run_or_job_is_immediately_rejected(self):
+        for status in ('queued','in_progress'):
+            self.run.update(status=status,conclusion='failure')
+            with self.assertRaisesRegex(RuntimeError,'PRODUCER_UNPROVEN'):self.production()
+        self.run.update(status='queued',conclusion=None)
+        self.inventories=[dict(total_count=1,jobs=[self.job|dict(status='queued',runner_name='',conclusion='failure')])]
+        with self.assertRaisesRegex(RuntimeError,'contradictory_job_state'):self.production()
+        self.assertEqual([],self.sleeps)
 
 
 class FastTrackImpactTests(unittest.TestCase):

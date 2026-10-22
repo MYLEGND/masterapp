@@ -2791,5 +2791,218 @@ class RedactedPrepublicationDiagnosticsTests(unittest.TestCase):
                 self.assertEqual('', output.getvalue())
 
 
+class CompletionOnlyTests(unittest.TestCase):
+    def test_readonly_facade_never_submits(self):
+        from types import SimpleNamespace
+        facade=deploy.CompletionObservation(SimpleNamespace(revision='a'*40),SimpleNamespace())
+        for method in [facade.submit,facade.prepare_submission]:
+            with self.assertRaises(deploy.DeploymentSubmissionNotEntered):method()
+    def fixture(self,status=4,received='2026-10-21T13:02:00Z',revision='a'*40,extra=False):
+        from types import SimpleNamespace
+        journal=SimpleNamespace(baseline='b'*40,intent=dict(baselineDeploymentIds=['old']),provider=None,
+            material=dict(intentArtifact=dict(created_at='2026-10-21T13:01:00Z'),originalPublicationStep=dict(name='Publish or reconcile exact application bytes',status='completed',conclusion='failure',started_at='2026-10-21T13:00:00Z',completed_at='2026-10-21T13:03:00Z'),originalJob=dict(completed_at='2026-10-21T13:03:00Z')),record_success=Mock())
+        rows=[dict(id='old',status=4),dict(id='new',status=status,received_time=received)]
+        if extra:rows.append(dict(id='other',status=4,received_time=received))
+        azure=SimpleNamespace(revision='a'*40,deployments=Mock(return_value=rows),observed_revision=Mock(return_value=revision),submit=Mock(),prepare_submission=Mock())
+        facade=deploy.CompletionObservation(azure,journal);now=[0]
+        def run():return deploy.reconcile(facade,journal=journal,reconcile_only=True,clock=lambda:now[0],sleep=lambda n:now.__setitem__(0,now[0]+n),interval=1,timeout=3)
+        return azure,journal,run
+    def test_v5_actual_portal_cleanup_operation_never_records_success(self):
+        azure,journal,run=self.fixture(received='2026-10-21T14:08:36Z')
+        journal.material['originalPublicationStep'].update(started_at='2026-10-21T13:59:13Z',completed_at='2026-10-21T14:08:34Z')
+        journal.material['intentArtifact']['created_at']='2026-10-21T13:59:14Z'
+        journal.material['originalJob']['completed_at']='2026-10-21T14:08:37Z'
+        with self.assertRaises(deploy.DeploymentDrift):run()
+        journal.record_success.assert_not_called();azure.submit.assert_not_called();azure.prepare_submission.assert_not_called()
+    def test_v5_final_represented_second_is_allowed_but_next_second_is_not(self):
+        for received,allowed in [('2026-10-21T13:03:00.999999Z',True),('2026-10-21T13:03:01Z',False)]:
+            azure,journal,run=self.fixture(received=received)
+            with self.subTest(received=received):
+                if allowed:self.assertEqual(run(),'preserved');journal.record_success.assert_called_once_with(['new'])
+                else:
+                    with self.assertRaises(deploy.DeploymentDrift):run()
+                    journal.record_success.assert_not_called()
+    def test_v5_missing_or_inverted_publication_proof_never_records(self):
+        for missing in [True,False]:
+            azure,journal,run=self.fixture()
+            if missing:journal.material.pop('originalPublicationStep')
+            else:journal.material['originalPublicationStep']['started_at']='2026-10-21T13:04:00Z'
+            with self.subTest(missing=missing),self.assertRaises(deploy.DeploymentDrift):run()
+            journal.record_success.assert_not_called()
+
+    def test_v6_fractional_end_before_exact_and_after_live(self):
+        for end,before,exact,after in [('14:08:34.500000','14:08:34.499999','14:08:34.500000','14:08:35.250000'),('14:08:34.000','14:08:33.999999','14:08:34','14:08:34.000001'),('14:08:34,500000','14:08:34.499999','14:08:34.500000','14:08:35.250000')]:
+            for received,allowed in [(before,True),(exact,False),(after,False)]:
+                azure,journal,run=self.fixture(received='2026-10-21T'+received+'Z')
+                journal.material['originalPublicationStep'].update(started_at='2026-10-21T13:59:13Z',completed_at='2026-10-21T'+end+'Z')
+                journal.material['intentArtifact']['created_at']='2026-10-21T13:59:14Z'
+                journal.material['originalJob']['completed_at']='2026-10-21T14:08:37Z'
+                with self.subTest(end=end,received=received):
+                    if allowed:self.assertEqual(run(),'preserved');journal.record_success.assert_called_once_with(['new'])
+                    else:
+                        with self.assertRaises(deploy.DeploymentDrift):run()
+                        journal.record_success.assert_not_called()
+                    azure.submit.assert_not_called();azure.prepare_submission.assert_not_called()
+
+    def test_exact_original_idle_deployment_records_after_stable_reads(self):
+        azure,journal,run=self.fixture();self.assertEqual(run(),'preserved')
+        self.assertEqual(azure.deployments.call_count,2);journal.record_success.assert_called_once_with(['new'])
+        self.assertEqual(journal.provider['runtimeRevision'],'a'*40)
+        azure.submit.assert_not_called();azure.prepare_submission.assert_not_called()
+    def test_missing_active_failed_concurrent_or_wrong_revision_never_records(self):
+        for kwargs in [dict(status=2),dict(status=3),dict(extra=True),dict(revision='c'*40),dict(revision=None)]:
+            azure,journal,run=self.fixture(**kwargs)
+            with self.subTest(kwargs=kwargs),self.assertRaises((deploy.DeploymentDrift,deploy.DeploymentReconciliationRequired)):run()
+            journal.record_success.assert_not_called();azure.submit.assert_not_called();azure.prepare_submission.assert_not_called()
+    def test_deployment_outside_original_window_never_records(self):
+        for received in ['2026-10-21T13:00:00Z','2026-10-21T13:04:00Z',None]:
+            azure,journal,run=self.fixture(received=received)
+            with self.subTest(received=received),self.assertRaises((ValueError,deploy.DeploymentDrift,deploy.DeploymentReconciliationRequired)):run()
+            journal.record_success.assert_not_called();azure.submit.assert_not_called()
+    def test_changed_or_disappearing_post_intent_id_never_records(self):
+        first=[dict(id='old',status=4),dict(id='A',status=4,received_time='2026-10-21T13:02:00Z')]
+        for later in [[dict(id='old',status=4),dict(id='B',status=4,received_time='2026-10-21T13:02:00Z')],[dict(id='old',status=4)],[]]:
+            azure,journal,run=self.fixture();azure.deployments.side_effect=[first,later]
+            with self.subTest(later=later),self.assertRaises(deploy.DeploymentDrift):run()
+            journal.record_success.assert_not_called();azure.submit.assert_not_called();azure.prepare_submission.assert_not_called()
+    def test_identity_conflict_is_terminal_even_if_original_id_reappears(self):
+        azure,journal,_=self.fixture();facade=deploy.CompletionObservation(azure,journal)
+        a=[dict(id='A',status=4,received_time='2026-10-21T13:02:00Z')]
+        azure.deployments.side_effect=[a,[dict(id='B',status=4,received_time='2026-10-21T13:02:00Z')],a]
+        facade.deployments()
+        with self.assertRaises(deploy.DeploymentDrift):facade.deployments()
+        with self.assertRaises(deploy.DeploymentDrift):facade.deployments()
+        self.assertEqual(azure.deployments.call_count,2);journal.record_success.assert_not_called()
+    def test_active_original_id_cannot_be_replaced_by_successful_other_id(self):
+        azure,journal,run=self.fixture()
+        azure.deployments.side_effect=[[dict(id='A',status=2)],[dict(id='B',status=4,received_time='2026-10-21T13:02:00Z')]]
+        with self.assertRaises(deploy.DeploymentDrift):run()
+        journal.record_success.assert_not_called();azure.submit.assert_not_called()
+    def test_missing_receipt_fails_without_replay(self):
+        azure,journal,run=self.fixture();journal.record_success.side_effect=TimeoutError()
+        with self.assertRaises(deploy.DeploymentReconciliationRequired):run()
+        journal.record_success.assert_called_once();azure.submit.assert_not_called()
+    def test_prelogin_validation_verifies_package_without_provider_effect(self):
+        from types import SimpleNamespace
+        a=deploy._RELEASE_AUTHORITY
+        with patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',return_value=dict(toolRevision='b'*40)),patch.object(a,'fast_track_completion_original',return_value=dict(targets=['portal'])),patch.object(a,'fast_track_completion_material',return_value=dict(packageArtifact=dict(id=10,name='package',digest='sha256:'+'d'*64),intent=dict(packageDigest='e'*64))),patch.object(deploy,'verify_package',return_value='e'*64),patch.object(Path,'is_file',return_value=True),patch.object(Path,'is_symlink',return_value=False),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact') as download,patch.object(deploy,'target_azure') as provider:
+            self.assertEqual(deploy.complete_fast_track(1,'a'*40,Path('/unused'),validate_only=True)['state'],'COMPLETION_PACKAGES_VERIFIED')
+            download.assert_called_once();provider.assert_not_called()
+    def test_bad_original_package_blocks_all_provider_observation(self):
+        from types import SimpleNamespace
+        a=deploy._RELEASE_AUTHORITY;material=dict(packageArtifact=dict(name='package',id=10,digest='sha256:'+'d'*64),intent=dict(packageDigest='e'*64))
+        with patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',return_value=dict(toolRevision='b'*40)),patch.object(a,'fast_track_completion_original',return_value=dict(targets=['portal'])),patch.object(a,'fast_track_completion_material',return_value=material),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact') as download,patch.object(deploy,'verify_package',return_value='wrong'),patch.object(deploy,'target_azure') as provider:
+            with patch.object(Path,'is_file',return_value=True),patch.object(Path,'is_symlink',return_value=False):
+                with self.assertRaisesRegex(ValueError,'PACKAGE_CHANGED'):deploy.complete_fast_track(1,'a'*40,Path('/unused'),validate_only=True)
+            download.assert_called_once();provider.assert_not_called()
+
+class CompletionAdapterTests(unittest.TestCase):
+    def run_adapter(self,*,probe_failure=False,observer_change=False):
+        from types import SimpleNamespace
+        a=deploy._RELEASE_AUTHORITY;revision='a'*40
+        observer=dict(runId=2,runAttempt=1,jobId=20,toolRevision='b'*40,promotionRunId=3)
+        original=dict(targets=['portal','website'],run=dict(id=1))
+        material=dict(packageArtifact=dict(name='package',id=10,digest='sha256:'+'d'*64),intent=dict(packageDigest='e'*64))
+        timeline=[];publish=Mock();owner=SimpleNamespace(publish_record=publish,CompletionJournal=Mock(side_effect=lambda *args,**kwargs:SimpleNamespace(baseline='f'*40)))
+        spec=SimpleNamespace(loader=SimpleNamespace(exec_module=lambda _:None))
+        completed={key:dict(operationId='c'*64) for key in original['targets']}
+        count=[0]
+        def metadata(key):
+            timeline.append('probe:'+key);count[0]+=1
+            if probe_failure and count[0]==4:raise ValueError('mock public metadata failure')
+        def verify(*args):timeline.append('package');return 'e'*64
+        def provider(*args):timeline.append('provider');return SimpleNamespace(revision=revision)
+        with patch.object(Path,'is_file',return_value=True),patch.object(Path,'is_symlink',return_value=False),patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',side_effect=[observer,dict(observer,jobId=99) if observer_change else observer]),patch.object(a,'fast_track_completion_original',return_value=original),patch.object(a,'fast_track_completion_material',return_value=material),patch.object(a,'fast_track_completed_operation_receipts',return_value=completed),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact'),patch.object(deploy,'verify_package',side_effect=verify),patch.object(deploy,'target_azure',side_effect=provider),patch.object(deploy,'reconcile',return_value='preserved') as reconcile,patch.object(deploy,'verify_fast_track_public_metadata',side_effect=metadata),patch.object(deploy.importlib.util,'spec_from_file_location',return_value=spec),patch.object(deploy.importlib.util,'module_from_spec',return_value=owner):
+            if probe_failure or observer_change:
+                with self.assertRaises(ValueError):deploy.complete_fast_track(1,revision,Path('/unused'))
+                publish.assert_not_called()
+            else:
+                result=deploy.complete_fast_track(1,revision,Path('/unused'))
+                self.assertEqual(result['state'],'ORIGINAL_COMPLETIONS_VERIFIED')
+                name,record=publish.call_args.args
+                self.assertEqual(record['targets'],completed);self.assertEqual(record['observer'],observer)
+                self.assertEqual(record['originalRun'],1);self.assertEqual(record['producingRun'],2)
+                self.assertEqual(reconcile.call_count,2)
+                for call in reconcile.call_args_list:
+                    self.assertTrue(call.kwargs['reconcile_only']);self.assertTrue(call.kwargs['require_receipt'])
+            self.assertEqual(timeline[:2],['package','package'])
+    def test_all_bytes_before_observation_and_aggregate_only_after_all_probes(self):self.run_adapter()
+    def test_last_public_probe_failure_never_emits_aggregate(self):self.run_adapter(probe_failure=True)
+    def test_changed_observer_never_emits_aggregate(self):self.run_adapter(observer_change=True)
+
+class CompletionBoundaryTests(unittest.TestCase):
+    def test_completion_cli_routes_only_to_completion_owner(self):
+        with patch('sys.argv',['deploy','--complete-fast-track','123','--completion-revision','a'*40,'--validate-completion-only']),patch.object(deploy,'complete_fast_track',return_value={'state':'INPUTS_VALIDATED'}) as complete,patch.object(deploy,'target_azure',side_effect=AssertionError('provider')):
+            deploy.main()
+            self.assertEqual(complete.call_args.args[:2],(123,'a'*40));self.assertTrue(complete.call_args.kwargs['validate_only'])
+    def test_mixed_completion_modes_fail_before_owner(self):
+        for extra in [['--target','portal'],['--reconcile-only'],['--prepare-only'],['--validate-observation-only']]:
+            with self.subTest(extra=extra),patch('sys.argv',['deploy','--complete-fast-track','123','--completion-revision','a'*40]+extra),patch.object(deploy,'complete_fast_track') as complete:
+                with self.assertRaises(SystemExit):deploy.main()
+                complete.assert_not_called()
+    def test_workflow_exact_observer_and_no_deployment_commands(self):
+        text=(ROOT.parent/'.github/workflows/deployment-diagnostics.yml').read_text().split('  complete-fast-track:',1)[1]
+        for required in ['Complete existing fast-track deployment receipts',"github.ref == 'refs/heads/Legend/fast-track-release'",'group: legend-approved-release','cancel-in-progress: false','ref: ${{ github.sha }}','persist-credentials: false','pull-requests: read','--validate-completion-only','Reconcile original bytes and record only missing success receipts']:
+            self.assertIn(required,text)
+        for forbidden in ['az webapp deploy','az webapp restart','dotnet publish','dotnet build','config appsettings','workflow run']:
+            self.assertNotIn(forbidden,text)
+        self.assertLess(text.index('--validate-completion-only'),text.index('azure/login@'))
+
+class CompletionPackagePhaseV4Tests(unittest.TestCase):
+    def setup_call(self,root,download,*,validate=True):
+        from contextlib import ExitStack
+        from types import SimpleNamespace
+        a=deploy._RELEASE_AUTHORITY;stack=ExitStack();self.addCleanup(stack.close)
+        material=dict(packageArtifact=dict(name='original',id=10,digest='sha256:'+'d'*64),intent=dict(packageDigest=self.digest))
+        stack.enter_context(patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')))
+        for name,value in [('assert_fast_track_completion_execution',dict(toolRevision='b'*40)),('fast_track_completion_original',dict(targets=['portal'])),('fast_track_completion_material',material)]:stack.enter_context(patch.object(a,name,return_value=value))
+        stack.enter_context(patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)))
+        self.download=stack.enter_context(patch.object(a,'_download_run_artifact',side_effect=download))
+        self.provider=stack.enter_context(patch.object(deploy,'target_azure',side_effect=AssertionError('provider reached')))
+        return lambda:deploy.complete_fast_track(1,'a'*40,root,validate_only=validate)
+    def make(self,root,revision='a'*40):
+        import zipfile,hashlib
+        directory=root/'portal';directory.mkdir(exist_ok=True)
+        with zipfile.ZipFile(directory/'deploy.zip','w') as z:z.writestr('wwwroot/_deployment-provenance.json',json.dumps(dict(releaseSha=revision)))
+        self.digest=hashlib.sha256((directory/'deploy.zip').read_bytes()).hexdigest()
+        (directory/'SHA256SUMS').write_text(self.digest+'  deploy.zip\n')
+    def test_actual_prelogin_bytes_are_hashed_without_provider(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);self.make(root)
+            call=self.setup_call(root,lambda *args,**kw:None)
+            self.assertEqual(call()['state'],'COMPLETION_PACKAGES_VERIFIED');self.download.assert_called_once();self.provider.assert_not_called()
+    def test_corrupt_or_wrong_revision_package_blocks_prelogin(self):
+        for wrong in ['digest','revision']:
+            with self.subTest(wrong=wrong),tempfile.TemporaryDirectory() as temp:
+                root=Path(temp);self.make(root,'b'*40 if wrong=='revision' else 'a'*40)
+                if wrong=='digest':(root/'portal/deploy.zip').write_bytes(b'changed')
+                call=self.setup_call(root,lambda *args,**kw:None)
+                with self.assertRaises(ValueError):call()
+                self.provider.assert_not_called()
+    def test_retained_changed_missing_or_symlink_bytes_block_without_download(self):
+        for wrong in ['changed','rehash','missing','symlink']:
+            with self.subTest(wrong=wrong),tempfile.TemporaryDirectory() as temp:
+                root=Path(temp);self.make(root);package=root/'portal/deploy.zip'
+                if wrong=='changed':package.write_bytes(b'changed')
+                elif wrong=='rehash':
+                    import zipfile,hashlib
+                    with zipfile.ZipFile(package,'a') as z:z.writestr('changed-asset.txt','changed')
+                    (package.parent/'SHA256SUMS').write_text(hashlib.sha256(package.read_bytes()).hexdigest()+'  deploy.zip\n')
+                elif wrong=='missing':package.unlink()
+                else:
+                    package.rename(root/'elsewhere.zip');package.symlink_to(root/'elsewhere.zip')
+                call=self.setup_call(root,lambda *args,**kw:None,validate=False)
+                with self.assertRaises(ValueError):call()
+                self.download.assert_not_called();self.provider.assert_not_called()
+    def test_restore_and_deploy_forward_exact_target_before_any_effect(self):
+        for function in [deploy.fast_track_restore_package,deploy.fast_track_deploy]:
+            with patch.object(deploy._RELEASE_AUTHORITY,'assert_fast_track_release_execution',side_effect=RuntimeError('identity')) as auth,patch.object(deploy,'target_azure') as provider,patch.object(deploy,'verify_package') as package:
+                with self.assertRaisesRegex(RuntimeError,'identity'):function('portal',Path('/unused'))
+                auth.assert_called_once_with(target='portal');provider.assert_not_called();package.assert_not_called()
+    def test_workflow_uses_same_retained_directory_before_and_after_login(self):
+        source=(Path(__file__).resolve().parent.parent/'.github/workflows/deployment-diagnostics.yml').read_text().split('  complete-fast-track:',1)[1]
+        self.assertLess(source.index('--validate-completion-only'),source.index('uses: azure/login@v2'))
+        self.assertEqual(source.count('--package-root "$RUNNER_TEMP/original-completion-packages"'),2)
+
 if __name__ == '__main__':
     unittest.main()

@@ -410,3 +410,54 @@ test('pinned SDK delayed artifact visibility recovers without a second upload', 
   assert.equal(attempts, 2);
   assert.equal(client.state.uploads, 1);
 });
+
+test('completion summary binds all original targets to actual observer and immutable bytes', async () => {
+  const crypto = require('node:crypto');
+  const value = {schemaVersion: 1, phase: 'success', originalRun: 1, applicationRevision: 'a'.repeat(40),
+    producingRun: 2, producingAttempt: 1,
+    observer: {runId: 2, runAttempt: 1, jobId: 20, toolRevision: 'b'.repeat(40), promotionRunId: 3},
+    targets: {website: {operationId: 'c'.repeat(64), packageDigest: 'd'.repeat(64), deploymentIds: ['new'], intentArtifactId: 10, packageArtifactId: 11}}};
+  const summaryName = 'legend-release-completion-' + crypto.createHash('sha256').update(JSON.stringify({applicationRevision: value.applicationRevision, originalRun: 1})).digest('hex');
+  let stored;
+  const client = {
+    async listArtifacts() { return {artifacts: []}; },
+    async uploadArtifact(n, files) { assert.equal(n, summaryName); stored = await fs.readFile(files[0]); return {id: 42}; },
+    async downloadArtifact(id, options) { assert.equal(id, 42); await fs.mkdir(options.path); await fs.writeFile(path.join(options.path, 'operation.json'), stored); }
+  };
+  assert.deepEqual(await publish(client, summaryName, value), {artifactId: 42});
+  for (const mutate of [x => x.phase = 'intent', x => x.observer.runId = 9, x => x.targets = {},
+      x => x.targets.website.packageDigest = 'wrong', x => x.targets.website.deploymentIds.push('other'),
+      x => x.targets.unknown = x.targets.website, x => x.unrecognized = 'field']) {
+    const invalid = JSON.parse(JSON.stringify(value)); mutate(invalid);
+    await assert.rejects(publish({}, summaryName, invalid));
+  }
+  await assert.rejects(publish({}, summaryName.slice(0,-1)+'0', value));
+});
+
+test('completion success transport preserves original operation and names the real observer', async () => {
+  const value = {...record, phase: 'success', producingRun: 22, producingAttempt: 2,
+    baselineDeploymentIds: ['old'], deploymentIds: ['new'],
+    submissionContract: {kind: 'azure_onedeploy_windows_intent_v1', value: record.operationId},
+    completionEvidence: {originalRun: record.packageProducerRun, originalRunAttempt: 3, originalPackageJobId: 80, originalPackageAttempt: 1, originalJobId: 80, intentArtifactId: 81, packageArtifactId: 82,
+      intentArtifactDigest: 'sha256:'+'e'.repeat(64), packageArtifactDigest: 'sha256:'+'f'.repeat(64),
+      observer: {runId: 22, runAttempt: 2, jobId: 90, toolRevision: 'a'.repeat(40), promotionRunId: 21},
+      provider: {deploymentId: 'new', receivedTime: '2026-10-21T13:01:00Z', status: 4, runtimeRevision: record.applicationRevision}}};
+  const successName = 'legend-release-operation-success-' + record.operationId;
+  let stored;
+  const client = {
+    async listArtifacts() { return {artifacts: []}; },
+    async uploadArtifact(n, files) { assert.equal(n, successName); stored = await fs.readFile(files[0]); return {id: 42}; },
+    async downloadArtifact(id, options) { await fs.mkdir(options.path); await fs.writeFile(path.join(options.path, 'operation.json'), stored); }
+  };
+  assert.deepEqual(await publish(client, successName, value), {artifactId: 42});
+  for (const mutate of [x => x.completionEvidence.observer.runId = 8,
+      x => x.completionEvidence.originalRun = 99, x => delete x.completionEvidence.originalRunAttempt,
+      x => x.completionEvidence.originalPackageJobId = 0, x => x.completionEvidence.originalPackageAttempt = true, x => x.completionEvidence.provider.status = 3,
+      x => x.completionEvidence.provider.runtimeRevision = 'f'.repeat(40),
+      x => x.completionEvidence.provider.extra = 'unapproved', x => x.completionEvidence.intentArtifactDigest = 'wrong',
+      x => x.baselineDeploymentIds.push('new')]) {
+    const invalid = JSON.parse(JSON.stringify(value)); mutate(invalid);
+    await assert.rejects(publish({}, successName, invalid));
+  }
+  await assert.rejects(publish({}, name, {...value, phase: 'intent'}));
+});
