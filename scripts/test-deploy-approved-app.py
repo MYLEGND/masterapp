@@ -2896,8 +2896,80 @@ class CompletionOnlyTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'PACKAGE_CHANGED'):deploy.complete_fast_track(1,'a'*40,Path('/unused'),validate_only=True)
             download.assert_called_once();provider.assert_not_called()
 
+class CompletionPublicMetadataTests(unittest.TestCase):
+    def responses(self,key):
+        from unittest.mock import MagicMock
+        origin='https://www.mylegnd.com' if key=='website' else 'https://protect.mylegnd.com'
+        sitemap=(f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>{origin}/</loc></url></urlset>').encode()
+        robots=('User-agent: *\nAllow: /\nSitemap: '+origin+'/sitemap.xml\n').encode()
+        result=[]
+        for path,mime,raw in [('/sitemap.xml','application/xml',sitemap),('/robots.txt','text/plain',robots)]:
+            response=MagicMock(status=200,url=origin+path,headers={'Content-Type':mime})
+            response.__enter__.return_value=response;response.read.return_value=raw
+            result.append(response)
+        return result
+
+    def test_exact_original_request_contract_for_both_public_targets(self):
+        for key in ['website','protect']:
+            responses=self.responses(key)
+            with self.subTest(key=key),patch.object(deploy,'verify_fast_track_favicon') as favicon,patch.object(deploy.urllib.request,'urlopen',side_effect=responses) as request:
+                deploy.verify_fast_track_public_metadata(key)
+                favicon.assert_called_once_with(key);self.assertEqual(request.call_count,2)
+                for call,response,accept in zip(request.call_args_list,responses,['application/xml,text/xml','text/plain']):
+                    self.assertEqual(call.args[0].full_url,response.url)
+                    self.assertEqual(call.args[0].get_method(),'GET')
+                    self.assertIsNone(call.args[0].data)
+                    self.assertEqual(dict(call.args[0].header_items()),{'Accept':accept,'Cache-control':'no-cache','User-agent':'LegendSitemapReleaseVerification/1.0'})
+                    self.assertEqual(call.kwargs,{'timeout':22})
+                    response.read.assert_called_once_with(1048577)
+
+    def test_http403_is_fatal_without_retry_or_subsequent_read(self):
+        for key in ['website','protect']:
+            for failure_index in [0,1]:
+                responses=self.responses(key)
+                error=deploy.urllib.error.HTTPError(responses[failure_index].url,403,'Forbidden',{},None)
+                with self.subTest(key=key,path=responses[failure_index].url),patch.object(deploy,'verify_fast_track_favicon'),patch.object(deploy.urllib.request,'urlopen',side_effect=responses[:failure_index]+[error]) as request,patch.object(deploy.time,'sleep') as sleep:
+                    with self.assertRaises(deploy.urllib.error.HTTPError) as caught:deploy.verify_fast_track_public_metadata(key)
+                    self.assertIs(caught.exception,error)
+                    self.assertEqual(request.call_count,failure_index+1);sleep.assert_not_called()
+
+    def test_unchanged_transport_and_content_rejections(self):
+        import xml.etree.ElementTree as ET
+        for key in ['website','protect']:
+            for defect in ['status','redirect','sitemap-mime','sitemap-large','xml','namespace','empty','duplicate','foreign-host','robots-status','robots-redirect','robots-mime','robots-large','robots-sitemap']:
+                responses=self.responses(key);sitemap,robots=responses
+                if defect=='status':sitemap.status=204
+                elif defect=='redirect':sitemap.url+='?redirected=1'
+                elif defect=='sitemap-mime':sitemap.headers={'Content-Type':'text/html'}
+                elif defect=='sitemap-large':sitemap.read.return_value=b'x'*1048577
+                elif defect=='xml':sitemap.read.return_value=b'<broken'
+                elif defect=='namespace':sitemap.read.return_value=b'<urlset/>'
+                elif defect=='empty':sitemap.read.return_value=b'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"/>'
+                elif defect=='duplicate':
+                    raw=sitemap.read.return_value;url=raw[raw.index(b'<url>'):raw.index(b'</url>')+6];sitemap.read.return_value=raw.replace(b'</urlset>',url+b'</urlset>')
+                elif defect=='foreign-host':sitemap.read.return_value=sitemap.read.return_value.replace(b'mylegnd.com',b'example.invalid')
+                elif defect=='robots-status':robots.status=204
+                elif defect=='robots-redirect':robots.url+='?redirected=1'
+                elif defect=='robots-mime':robots.headers={'Content-Type':'text/html'}
+                elif defect=='robots-large':robots.read.return_value=b'x'*1048577
+                elif defect=='robots-sitemap':robots.read.return_value=b'User-agent: *\nAllow: /\nSitemap: https://example.invalid/sitemap.xml\n'
+                with self.subTest(key=key,defect=defect),patch.object(deploy,'verify_fast_track_favicon'),patch.object(deploy.urllib.request,'urlopen',side_effect=responses):
+                    with self.assertRaises(ET.ParseError if defect=='xml' else ValueError):deploy.verify_fast_track_public_metadata(key)
+
+    def test_favicon_failure_precedes_metadata_requests(self):
+        with patch.object(deploy,'verify_fast_track_favicon',side_effect=ValueError('favicon')),patch.object(deploy.urllib.request,'urlopen') as request:
+            with self.assertRaisesRegex(ValueError,'favicon'):deploy.verify_fast_track_public_metadata('website')
+            request.assert_not_called()
+
+    def test_other_targets_keep_only_the_existing_favicon_obligation(self):
+        for key in ['portal','client','parfait']:
+            with self.subTest(key=key),patch.object(deploy,'verify_fast_track_favicon') as favicon,patch.object(deploy.urllib.request,'urlopen') as request:
+                deploy.verify_fast_track_public_metadata(key)
+                favicon.assert_called_once_with(key);request.assert_not_called()
+
+
 class CompletionAdapterTests(unittest.TestCase):
-    def run_adapter(self,*,probe_failure=False,observer_change=False):
+    def run_adapter(self,*,probe_failure=False,observer_change=False,probe_failure_at=4,metadata_error=None):
         from types import SimpleNamespace
         a=deploy._RELEASE_AUTHORITY;revision='a'*40
         observer=dict(runId=2,runAttempt=1,jobId=20,toolRevision='b'*40,promotionRunId=3)
@@ -2909,13 +2981,14 @@ class CompletionAdapterTests(unittest.TestCase):
         count=[0]
         def metadata(key):
             timeline.append('probe:'+key);count[0]+=1
-            if probe_failure and count[0]==4:raise ValueError('mock public metadata failure')
+            if probe_failure and count[0]==probe_failure_at:raise metadata_error or ValueError('mock public metadata failure')
         def verify(*args):timeline.append('package');return 'e'*64
         def provider(*args):timeline.append('provider');return SimpleNamespace(revision=revision)
         with patch.object(Path,'is_file',return_value=True),patch.object(Path,'is_symlink',return_value=False),patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',side_effect=[observer,dict(observer,jobId=99) if observer_change else observer]),patch.object(a,'fast_track_completion_original',return_value=original),patch.object(a,'fast_track_completion_material',return_value=material),patch.object(a,'fast_track_completed_operation_receipts',return_value=completed),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact'),patch.object(deploy,'verify_package',side_effect=verify),patch.object(deploy,'target_azure',side_effect=provider),patch.object(deploy,'reconcile',return_value='preserved') as reconcile,patch.object(deploy,'verify_fast_track_public_metadata',side_effect=metadata),patch.object(deploy.importlib.util,'spec_from_file_location',return_value=spec),patch.object(deploy.importlib.util,'module_from_spec',return_value=owner):
             if probe_failure or observer_change:
-                with self.assertRaises(ValueError):deploy.complete_fast_track(1,revision,Path('/unused'))
+                with self.assertRaises(type(metadata_error) if metadata_error else ValueError):deploy.complete_fast_track(1,revision,Path('/unused'))
                 publish.assert_not_called()
+                if probe_failure:self.assertEqual(reconcile.call_count,probe_failure_at//2)
             else:
                 result=deploy.complete_fast_track(1,revision,Path('/unused'))
                 self.assertEqual(result['state'],'ORIGINAL_COMPLETIONS_VERIFIED')
@@ -2928,6 +3001,10 @@ class CompletionAdapterTests(unittest.TestCase):
             self.assertEqual(timeline[:2],['package','package'])
     def test_all_bytes_before_observation_and_aggregate_only_after_all_probes(self):self.run_adapter()
     def test_last_public_probe_failure_never_emits_aggregate(self):self.run_adapter(probe_failure=True)
+    def test_http403_before_or_after_website_reconciliation_never_emits_aggregate(self):
+        for probe in [3,4]:
+            with self.subTest(probe=probe):
+                self.run_adapter(probe_failure=True,probe_failure_at=probe,metadata_error=deploy.urllib.error.HTTPError('https://www.mylegnd.com/sitemap.xml',403,'Forbidden',{},None))
     def test_changed_observer_never_emits_aggregate(self):self.run_adapter(observer_change=True)
 
 class CompletionBoundaryTests(unittest.TestCase):
