@@ -1266,7 +1266,8 @@ class PreservedRouterGenerationTests(unittest.TestCase):
                           created_at='2026-10-12T15:18:10Z',workflow_run=dict(id=producer['id']))
             self.artifacts.setdefault(producer['id'],[]).append(artifact);self.records[artifact['id']]=record
     def api(self,repo,path,token):
-        if 'event=push&' in path:return dict(total_count=len(self.producers),workflow_runs=self.producers)
+        if path == 'actions/runs?branch=Legend%2Ffast-track-release&per_page=100':
+            return dict(total_count=len(self.producers),workflow_runs=self.producers)
         if 'event=workflow_dispatch&' in path:return dict(total_count=len(self.direct),workflow_runs=self.direct)
         if path.startswith('actions/artifacts?name='):
             name=__import__('urllib.parse',fromlist=['unquote']).unquote(path.split('name=',1)[1].split('&')[0])
@@ -1520,7 +1521,10 @@ class TrustedToolPromotionAdmissionTests(unittest.TestCase):
 
     def history(self, mutate=None, carry=False):
         before,head='a'*40,'b'*40
-        run=dict(id=77,run_attempt=1,head_sha=head,status='completed',conclusion='success')
+        run=dict(id=77,run_attempt=1,head_sha=head,status='completed',conclusion='success',
+            head_branch=authority.FAST_TRACK_PR_BASE,event='push',
+            path='.github/workflows/'+authority.FAST_TRACK_RELEASE_WORKFLOW,
+            head_repository=dict(full_name='MYLEGND/masterapp'))
         proof={'phase':'trusted-tool-promotion','baseRevision':before}
         jobs=[dict(name=name,conclusion='success' if index==0 else 'skipped',run_id=77,run_attempt=1,head_sha=head) for index,name in enumerate(('Select exact affected applications','Admit exact validated fast-track source','Reconcile production schema before publication','Publish verified website routing','Affected App Deploy'))]
         artifact=dict(id=99,name='fast-track-admission-77-1',expired=False,workflow_run={'id':77})
@@ -1532,8 +1536,8 @@ class TrustedToolPromotionAdmissionTests(unittest.TestCase):
         def api(repo,path,token):
             if '/artifacts?' in path:return {'total_count':1,'artifacts':[artifact]}
             if '/jobs?' in path:return {'total_count':len(jobs),'jobs':jobs}
-            if 'head_sha='+head in path:return {'total_count':1,'workflow_runs':[run]}
-            if 'head_sha='+before in path:return {'total_count':0,'workflow_runs':[]}
+            if path == 'actions/runs?branch=Legend%2Ffast-track-release&per_page=100':
+                return {'total_count':1,'workflow_runs':[run]}
             raise AssertionError(path)
         def download(repo,runid,name,root,**kwargs):
             self.assertEqual(99,kwargs['artifact_id']);(root/'fast-track-admission.json').write_text(json.dumps(receipt))
