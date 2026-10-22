@@ -1,41 +1,13 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder directed completion and recovery of this release (Sentinel_c4af250f7be88191a6917677fa826cd0,2026-10-22T14:08:19Z) and explicitly approved admitting the child fixture path under protected nonpublishing promotion (Sentinel_5aec3681cb4c8191a62a72a262727238,2026-10-22T20:29:33Z, answering Sentinel_7b7673eedaa48191b1c76a31b6ace5c9). Stage1 promotion is verified. This Stage2 request promotes only the independently accepted historical inventory and fixture corrections. No application publication, schema mutation, routing change, new access or spending is authorized. Existing runner/API allowance may be consumed; no guaranteed cost-free execution is asserted.",
-  "purpose": "Promote complete branch history enumeration with strict local exact-head producer identity and completeness checks, plus compatible child, observer, fast-track routing/promotion and operation-evidence test fixtures. Preserve Stage1 tests and policy, accepted application bytes, original completion, both failed release attempts and all nonpublishing promotion ancestry. No arbitrary producer fallback, queued identity acceptance or deployment replay.",
-  "requestId": "founder-release-history-stage2-refresh-20261022-43eebb6f4376",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "Founder authorized deploying the unpublished changes (Sentinel_c08cccc0ded88191ac378f9717f17075,2026-10-22T13:08:58Z) and directed completion of this release work (Sentinel_c4af250f7be88191a6917677fa826cd0,2026-10-22T14:08:19Z). Resume only the already accepted Protect and Website application scope through the now-promoted canonical controls. Preserve independent exact-candidate review, required exact-head CI, expected-head protected integration, runtime identity and production admission. Preserve original run39611360383 and both failed attempts of39792159170; no replay or duplicate upload is authorized. Preserve saved Protect draft revision80 and require its separate current publication preflight. No schema or routing change, voice activation, new access or spending is authorized.",
+  "purpose": "Honor the native Protect standalone landing header-omission policy in the shared CMS renderer before publishing the saved shared shell. Require a usable mobile Menu when primary navigation actually exists, retain its error when present navigation lacks a trigger, and connect 47 existing native Risk/Commercial/Auto field captions to their controls so canonical Studio field labels remain usable. Preserve all form names, types, options, handlers and submission semantics; add no CSS or parallel design authority. Restore Life Back focus to the revealed question or a visible enabled destination control in both shells, retaining natural and explicit tab order, native canonical ordering, answers, events and existing scroll behavior; reject stale delayed focus after navigation. Preserve forward, contact and processing behavior and require the focused DOM/native-keyboard/rendering acceptance gates.",
+  "requestId": "founder-protect-website-release-20261022-0c8201054f07",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-protect",
+    "masterapp-website"
+  ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "3ddbaa8b9825fe0daef36f39c006eac070426cfe",
-    "sourceRevision": "43eebb6f43767bd74fdcaf170de89fa3bb249d8f",
-    "files": {
-      "scripts/test-fast-track-release.py": {
-        "mode": "100644",
-        "blob": "6f5aa705bae1d5409c888d6d4071a8291c2a9e2b"
-      },
-      "scripts/test-release-children.py": {
-        "mode": "100644",
-        "blob": "e8bafb442485a4eabdbdbe3891f40bd1fd9b58a6"
-      },
-      "scripts/test-release-operation-evidence.py": {
-        "mode": "100755",
-        "blob": "c5cb7cc4afd0478584409144a7157a6766e7381b"
-      },
-      "scripts/test-release-policy.py": {
-        "mode": "100644",
-        "blob": "797eee3e09dca8ce2fbaf59e2017a2e13a2d02cf"
-      },
-      "scripts/test-validation-resume.py": {
-        "mode": "100644",
-        "blob": "2320725fd327fcb8a7127a759b7f99e8d2c4cec5"
-      },
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "0891905ed05d0ae2b50f9e84f9c1cbffcf853781"
-      }
-    }
-  }
+  "preserveLiveTargets": false
 }
