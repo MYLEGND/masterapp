@@ -5019,6 +5019,76 @@ def attested_fast_track_brand_preupload(repository, run, jobs, token):
     return True
 
 
+def fast_track_selector_attempts_proven_nonentry(repository, run, revision, token,
+                                                *, clock=time.monotonic):
+    """Carry unpublished scope only after every selector attempt proves nonentry.
+
+    This is not a publication, SQL, replay or completion receipt. Keep the older
+    migration-prewrite proof separate: no admitted/entered downstream owner is
+    accepted here. Historical evidence is read once under a shared 30s budget.
+    """
+    if (not isinstance(run, dict) or not isinstance(run.get('head_repository'), dict)
+        or not isinstance(run.get('repository'), dict) or not is_fast_track_producer(repository, run)
+        or run.get('repository', {}).get('full_name', '').lower() != repository.lower()
+        or run.get('status') != 'completed' or run.get('conclusion') != 'failure'
+        or type(run.get('run_attempt')) is not int or not 2 <= run['run_attempt'] <= 100
+        or type(run.get('workflow_id')) is not int or run['workflow_id'] <= 0):
+        return False
+    def same_run(value, attempt):
+        return (isinstance(value, dict) and isinstance(value.get('head_repository'), dict)
+            and isinstance(value.get('repository'), dict) and is_fast_track_producer(repository, value)
+            and value['repository'].get('full_name', '').lower() == repository.lower()
+            and value.get('id') == run['id'] and value.get('head_sha') == run['head_sha']
+            and type(value.get('workflow_id')) is int and value['workflow_id'] == run['workflow_id']
+            and type(value.get('run_attempt')) is int and value['run_attempt'] == attempt
+            and value.get('status') == 'completed' and value.get('conclusion') == 'failure')
+    path = '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW
+    selector = 'Select exact affected applications'
+    downstream = {'Admit exact validated fast-track source',
+                  'Reconcile production schema before publication',
+                  'Affected App Deploy — ${{ matrix.target }}', 'Publish verified website routing'}
+    names = downstream | {selector}
+    with evidence_lookup_budget(clock() + 30.0, clock=clock):
+        def read(endpoint):
+            evidence_remaining(1)
+            value = api_get(repository, endpoint, token)
+            evidence_remaining(1)
+            return value
+        if not same_run(read(f"actions/runs/{run['id']}"), run['run_attempt']):
+            return False
+        source = _release_history_source(repository, run['head_sha'], path, token)
+        if not source or source != git_show_file(revision, path):
+            return False
+        evidence_remaining(1)
+        seen = set()
+        for attempt in range(1, run['run_attempt'] + 1):
+            if not same_run(read(f"actions/runs/{run['id']}/attempts/{attempt}"), attempt):
+                return False
+            payload = read(f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100")
+            if not isinstance(payload, dict):
+                return False
+            jobs = payload.get('jobs')
+            if (not isinstance(jobs, list) or type(payload.get('total_count')) is not int
+                or payload['total_count'] != len(jobs) or len(jobs) != len(names)
+                or any(not isinstance(job, dict) for job in jobs)):
+                return False
+            indexed = {job.get('name'): job for job in jobs}
+            if (set(indexed) != names or any(type(job.get('id')) is not int or job['id'] <= 0
+                or job['id'] in seen or job.get('status') != 'completed'
+                or type(job.get('run_id')) is not int or job['run_id'] != run['id']
+                or job.get('head_sha') != run['head_sha'] or type(job.get('run_attempt')) is not int
+                or job['run_attempt'] != attempt for job in jobs)
+                or len({job['id'] for job in jobs}) != len(jobs)):
+                return False
+            if (indexed[selector].get('conclusion') != 'failure'
+                or any(indexed[name].get('conclusion') != 'skipped'
+                       or indexed[name].get('steps') != [] for name in downstream)):
+                return False
+            seen.update(job['id'] for job in jobs)
+        # A newly started retry invalidates the complete-attempt snapshot.
+        return same_run(read(f"actions/runs/{run['id']}"), run['run_attempt'])
+
+
 def fast_track_attempts_proven_prewrite(repository, run, revision, token):
     """Carry scope only after positive nonentry from every authenticated attempt."""
     if (not is_fast_track_producer(repository, run) or run.get('status') != 'completed'
@@ -5777,8 +5847,11 @@ def fast_track_effective_baseline(before, revision, *, repository=None, token=No
         brand_preupload = attested_fast_track_brand_preupload(repository, prior, jobs, token)
         all_attempts_prewrite = (recovery_stopped and fast_track_attempts_proven_prewrite(
             repository, prior, revision, token))
+        selector_nonentry = (selection_stopped and type(prior.get('run_attempt')) is int
+            and prior['run_attempt'] > 1
+            and fast_track_selector_attempts_proven_nonentry(repository, prior, revision, token))
         prewrite = (prior.get('run_attempt') == 1 and
-                    (selection_stopped or admission_stopped or recovery_stopped or brand_preupload)) or preflight_noentry or all_attempts_prewrite
+                    (selection_stopped or admission_stopped or recovery_stopped or brand_preupload)) or preflight_noentry or all_attempts_prewrite or selector_nonentry
         completed_sql = (not prewrite and len(admissions) == 1 and admissions[0].get('conclusion') == 'success'
             and fast_track_completed_sql_unpublished(repository, prior, jobs, token))
         unpublished_with_intent = (not prewrite and not completed_sql and

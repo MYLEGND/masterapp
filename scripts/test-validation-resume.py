@@ -1348,6 +1348,176 @@ class FastTrackExecutionIdentityTests(unittest.TestCase):
 
 
 
+class SelectorAttemptNonentryTests(unittest.TestCase):
+    """Scope carry needs complete authenticated nonentry across every attempt."""
+    def setUp(self):
+        self.repository='MYLEGND/masterapp';self.revision='b'*40;self.now=0.0;self.calls=[]
+        self.run=dict(id=39792159170,run_attempt=2,workflow_id=123,head_sha='a'*40,
+            status='completed',conclusion='failure',event='push',head_branch=m.FAST_TRACK_PR_BASE,
+            path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,
+            head_repository=dict(full_name=self.repository),repository=dict(full_name=self.repository))
+        self.source=(ROOT/self.run['path']).read_text()
+        self.endpoint=f"actions/runs/{self.run['id']}"
+        self.responses={self.endpoint:self.clone(self.run)}
+        names=['Select exact affected applications','Admit exact validated fast-track source',
+               'Reconcile production schema before publication',
+               'Affected App Deploy — ${{ matrix.target }}','Publish verified website routing']
+        for attempt in (1,2):
+            self.responses[f'{self.endpoint}/attempts/{attempt}']=dict(self.run,run_attempt=attempt)
+            self.responses[self.jobpath(attempt)]=dict(total_count=5,jobs=[
+                dict(id=100*attempt+i,name=name,run_id=self.run['id'],head_sha=self.run['head_sha'],
+                    run_attempt=attempt,status='completed',conclusion='failure' if i==0 else 'skipped',steps=[])
+                for i,name in enumerate(names)])
+    @staticmethod
+    def clone(value):return json.loads(json.dumps(value))
+    def jobpath(self,attempt):return f'{self.endpoint}/attempts/{attempt}/jobs?per_page=100'
+    def api(self,repository,path,token):
+        self.assertEqual(repository,self.repository);self.calls.append(path)
+        return self.clone(self.responses[path])
+    def invoke(self):
+        with patch.object(m,'api_get',side_effect=self.api), \
+             patch.object(m,'_release_history_source',return_value=self.source), \
+             patch.object(m,'git_show_file',return_value=(ROOT/self.run['path']).read_text()):
+            return m.fast_track_selector_attempts_proven_nonentry(
+                self.repository,self.run,self.revision,'placeholder',clock=lambda:self.now)
+    def test_both_failed_attempts_have_positive_complete_nonentry(self):
+        self.assertTrue(self.invoke())
+        self.assertEqual(self.calls,[self.endpoint,f'{self.endpoint}/attempts/1',self.jobpath(1),
+            f'{self.endpoint}/attempts/2',self.jobpath(2),self.endpoint])
+    def test_only_multi_attempt_terminal_failure_is_eligible(self):
+        original=self.clone(self.run)
+        for key,value in [('run_attempt',1),('run_attempt',101),('run_attempt',True),('run_attempt','2'),
+            ('status','in_progress'),('conclusion','success'),('workflow_id',True),('workflow_id',0),
+            ('event','workflow_dispatch'),('head_branch','other'),('head_repository',{}),('repository',{})]:
+            with self.subTest(key=key,value=value):
+                self.run=dict(original,**{key:value});self.assertFalse(self.invoke())
+        self.run=original;self.assertEqual(self.calls,[])
+    def test_wrong_attempt_run_identity_refuses(self):
+        for attempt in (1,2):
+            path=f'{self.endpoint}/attempts/{attempt}';original=self.clone(self.responses[path])
+            for key,value in [('id',5),('run_attempt',3),('run_attempt',True),('head_sha','c'*40),
+                ('workflow_id',9),('head_branch','other'),('event','pull_request'),
+                ('path','.github/workflows/other.yml'),('head_repository',dict(full_name='other/repo')),
+                ('repository',dict(full_name='other/repo')),('status','in_progress'),('conclusion','cancelled')]:
+                with self.subTest(attempt=attempt,key=key):
+                    self.responses[path]=dict(original,**{key:value});self.assertFalse(self.invoke())
+            self.responses[path]=original
+    def test_missing_attempt_transport_error_is_not_skipped(self):
+        del self.responses[f'{self.endpoint}/attempts/1']
+        with self.assertRaises(KeyError):self.invoke()
+    def test_incomplete_duplicate_extra_or_malformed_jobs_refuse(self):
+        path=self.jobpath(1);original=self.clone(self.responses[path])
+        variants=[None,{},dict(total_count=6,jobs=original['jobs']),dict(total_count=True,jobs=original['jobs']),
+            dict(total_count=4,jobs=original['jobs'][:-1]),dict(total_count=6,jobs=original['jobs']+[original['jobs'][0]]),
+            dict(total_count=5,jobs=[original['jobs'][0]]*5),dict(total_count=5,jobs=[None]*5)]
+        for value in variants:
+            with self.subTest(value=value):self.responses[path]=value;self.assertFalse(self.invoke())
+    def test_every_job_has_exact_run_attempt_head_and_distinct_id(self):
+        for attempt in (1,2):
+            path=self.jobpath(attempt);original=self.clone(self.responses[path])
+            for key,value in [('run_id',6),('run_id',True),('run_attempt',3),('run_attempt',True),
+                ('head_sha','c'*40),('status','queued'),('id',0),('id',True),('id',original['jobs'][0]['id'])]:
+                with self.subTest(attempt=attempt,key=key):
+                    self.responses[path]=self.clone(original)
+                    self.responses[path]['jobs'][1][key]=value;self.assertFalse(self.invoke())
+            self.responses[path]=original
+    def test_job_id_reused_across_attempts_refuses(self):
+        self.responses[self.jobpath(2)]['jobs'][0]['id']=self.responses[self.jobpath(1)]['jobs'][0]['id']
+        self.assertFalse(self.invoke())
+    def test_any_downstream_entry_in_either_attempt_refuses(self):
+        for attempt in (1,2):
+            path=self.jobpath(attempt);original=self.clone(self.responses[path])
+            for i in range(1,5):
+                for conclusion in ('success','failure','cancelled',None):
+                    with self.subTest(attempt=attempt,owner=i,conclusion=conclusion):
+                        self.responses[path]=self.clone(original)
+                        self.responses[path]['jobs'][i]['conclusion']=conclusion;self.assertFalse(self.invoke())
+            self.responses[path]=original
+    def test_skipped_job_must_have_empty_steps(self):
+        for steps in (None,[dict(name='mutation',conclusion='success')],[dict(name='mutation',conclusion='skipped')]):
+            self.responses[self.jobpath(1)]['jobs'][2]['steps']=steps;self.assertFalse(self.invoke())
+    def test_each_selector_must_be_failed_not_success_cancelled_or_skipped(self):
+        for attempt in (1,2):
+            owner=self.responses[self.jobpath(attempt)]['jobs'][0]
+            for conclusion in ('success','cancelled','skipped',None):
+                with self.subTest(attempt=attempt,conclusion=conclusion):
+                    owner['conclusion']=conclusion;self.assertFalse(self.invoke())
+            owner['conclusion']='failure'
+    def test_changed_historical_workflow_refuses(self):
+        self.source+='\n# changed historical execution\n';self.assertFalse(self.invoke())
+    def test_latest_run_must_match_before_proof(self):
+        self.responses[self.endpoint]['run_attempt']=3;self.assertFalse(self.invoke())
+        self.assertEqual(self.calls,[self.endpoint])
+    def test_new_attempt_or_active_state_during_proof_refuses(self):
+        original=self.api
+        for key,value in [('run_attempt',3),('status','in_progress'),('head_sha','c'*40),('workflow_id',8)]:
+            self.calls=[]
+            def api(repo,path,token):
+                result=original(repo,path,token)
+                if path==self.endpoint and len(self.calls)>1:result[key]=value
+                return result
+            self.api=api
+            with self.subTest(key=key):self.assertFalse(self.invoke())
+            self.api=original
+    def test_late_final_read_rejected_at_shared_deadline(self):
+        original=self.api
+        def api(repo,path,token):
+            result=original(repo,path,token)
+            if path==self.endpoint and len(self.calls)>1:self.now=30.0
+            return result
+        self.api=api
+        with self.assertRaises(m.EvidenceLookupUnavailable):self.invoke()
+    def test_shorter_enclosing_budget_is_honored(self):
+        original=self.api
+        def api(repo,path,token):
+            result=original(repo,path,token)
+            if path==self.jobpath(1):self.now=7.0
+            return result
+        self.api=api
+        with m.evidence_lookup_budget(7.0,clock=lambda:self.now):
+            with self.assertRaises(m.EvidenceLookupUnavailable):self.invoke()
+        self.assertNotIn(self.jobpath(2),self.calls)
+    def test_transport_unavailable_propagates_without_retry_loop(self):
+        self.api=lambda *args: (_ for _ in ()).throw(m.EvidenceLookupUnavailable('offline unavailable'))
+        with self.assertRaisesRegex(m.EvidenceLookupUnavailable,'offline unavailable'):self.invoke()
+
+
+    def effective_baseline(self, *, merged=True):
+        from contextlib import ExitStack
+        before=self.run['head_sha'];parent='c'*40;original=self.api
+        def api(repo,path,token):
+            if path==f'actions/runs?head_sha={before}&event=push&per_page=100':
+                return dict(total_count=1,workflow_runs=[self.run])
+            if path==f'actions/runs?head_sha={parent}&event=push&per_page=100':
+                return dict(total_count=1,workflow_runs=[dict(self.run,id=8,head_sha=parent,conclusion='success')])
+            if path==self.endpoint+'/jobs?filter=latest&per_page=100':return self.clone(self.responses[self.jobpath(2)])
+            if path==f'commits/{before}/pulls?per_page=100':
+                return [dict(merged_at='2026-10-22T14:00:00Z',merge_commit_sha=before,
+                    base=dict(ref=m.FAST_TRACK_PR_BASE),head=dict(repo=dict(full_name=self.repository)))] if merged else []
+            return original(repo,path,token)
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(m,'api_get',side_effect=api))
+            stack.enter_context(patch.object(m,'_release_history_source',return_value=self.source))
+            stack.enter_context(patch.object(m,'git_show_file',return_value=self.source))
+            stack.enter_context(patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)))
+            stack.enter_context(patch.object(m.subprocess,'check_output',return_value=f'{before} {parent} {self.revision}'))
+            stack.enter_context(patch.object(m,'fast_track_promotion_parent',return_value=None))
+            for name in ['fast_track_completion_present','fast_track_completed_apps_pending_routing',
+                'attested_fast_track_manual_dns_proxy_completion','attested_fast_track_brand_preupload',
+                'fast_track_completed_sql_unpublished','fast_track_unpublished_apps_with_migration_intent']:
+                stack.enter_context(patch.object(m,name,return_value=False))
+            return m.fast_track_effective_baseline(before,self.revision,repository=self.repository,token='placeholder')
+    def test_positive_nonentry_carries_only_scope_through_canonical_owner(self):
+        self.assertEqual(self.effective_baseline(),'c'*40)
+    def test_prior_downstream_entry_still_blocks_scope_carry(self):
+        self.responses[self.jobpath(1)]['jobs'][1]['conclusion']='success'
+        with self.assertRaisesRegex(RuntimeError,'FAST_TRACK_PREDECESSOR_REQUIRES_OPERATION_RECONCILIATION'):
+            self.effective_baseline()
+    def test_positive_nonentry_does_not_bypass_merged_parent_proof(self):
+        with self.assertRaisesRegex(RuntimeError,'FAST_TRACK_PREDECESSOR_MERGE_UNPROVEN'):
+            self.effective_baseline(merged=False)
+
+
 class SelectorVisibilityPollingTests(unittest.TestCase):
     def setUp(self):
         self.now=0; self.sleeps=[]; self.reads=[]; self.head='a'*40
