@@ -2672,6 +2672,13 @@
   function renderCanonicalShell() {
     const renderRoot=(selector,nodes,requiredClass)=>{
       const existing=document.querySelector(selector);
+      // The native Protect layout owns standalone landing-page chrome. Keep
+      // that policy when a saved site-wide header is hydrated in public or
+      // Studio views; the authored shell remains available on ordinary pages.
+      if(requiredClass==='site-header' && SITE_KEY==='protect' && document.body.classList.contains('standalone-quote-landing')){
+        existing?.remove();
+        return;
+      }
       const rendered=(nodes || []).map(buildCompositionNode).filter(Boolean);
       if(rendered.length===0){
         // A publication without custom shared-shell nodes still needs its
@@ -7818,7 +7825,7 @@
         checks.push({code:'live_image_render_failed',severity:'warning',message:'An image source did not render successfully.',elementId:image.dataset.cmsId || image.id || null});
     });
 
-    if(viewportWidth<=767){
+    if(viewportWidth<=767 && doc.querySelector('#primary-nav,[data-public-nav]')){
       const toggle=doc.querySelector('.nav-toggle');
       if(!toggle || toggle.getClientRects().length===0)
         checks.push({code:'live_mobile_nav_toggle_missing',severity:'error',message:'The mobile primary navigation has no usable Menu trigger.'});

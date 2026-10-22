@@ -1,25 +1,13 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized completing the unpublished work and protected production deployment through the isolated branch (Sentinel_a3261e64a09c8191afff4419e0a12be8), explicitly approved proceeding with reviewed V6 (Sentinel_8376c37c0e608191ae7f40c176afeb44), and approved public-repository staging (Sentinel_c5d6c8e3228c819190929391b6ae30ff). This request is limited to the existing nonpublishing promotion of the independently accepted release-control source. It authorizes no application publication, schema mutation or routing change; subsequent completion and application release retain their protected admission and verification gates.",
-  "purpose": "Promote the independently accepted completion metadata request-contract correction under the existing release-control recovery, restoring canonical sitemap/robots request headers while retaining all five original target obligations and genuine Website receipts. This request does not assert resolution of Website HTTP403 or authorize application publication; subsequent completion and PR667 integration retain their protected admission and verification gates.",
-  "requestId": "founder-release-control-metadata-20261022-7da5acde34d8",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "The Founder's existing instruction to preserve the canonical form updates, correct presentation at its shared source, finish publication readiness and release the completed changes live covers this bounded follow-up. Preserve saved Protect draft revision 80, protected execution, current receptionist owner configuration and all prior successful installation evidence. Require independent exact-candidate review, normal CI, expected-head integration and canonical production admission. The predecessor run 39611360383 remains terminal; this request does not authorize duplicate uploads, replaying recovery, changing deployment guards, schema or routing changes, or voice activation.",
+  "purpose": "Honor the native Protect standalone landing header-omission policy in the shared CMS renderer before publishing the saved shared shell. Require a usable mobile Menu when primary navigation actually exists, retain its error when present navigation lacks a trigger, and connect 47 existing native Risk/Commercial/Auto field captions to their controls so canonical Studio field labels remain usable. Preserve all form names, types, options, handlers and submission semantics; add no CSS or parallel design authority. Restore Life Back focus to the revealed question or a visible enabled destination control in both shells, retaining natural and explicit tab order, native canonical ordering, answers, events and existing scroll behavior; reject stale delayed focus after navigation. Preserve forward, contact and processing behavior and require the focused DOM/native-keyboard/rendering acceptance gates.",
+  "requestId": "founder-protect-publication-readiness-20261022-8262c45c87a3",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-protect",
+    "masterapp-website"
+  ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "3c2128d9bd8d7607a57debae05e380bc9c255858",
-    "sourceRevision": "7da5acde34d8a4fcd72cd53f6bd52647cb0f9f2f",
-    "files": {
-      "scripts/deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "485352472426ab2d84d68328f265e06ecc8c5ffc"
-      },
-      "scripts/test-deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "69b03186fd058d9c370103e5a2f8c1e5507590e6"
-      }
-    }
-  }
+  "preserveLiveTargets": false
 }
