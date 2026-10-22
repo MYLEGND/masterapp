@@ -2,7 +2,7 @@
   "requestedBy": "Founder",
   "authorization": "Founder authorized completing the unpublished work and protected production deployment through the isolated branch (Sentinel_a3261e64a09c8191afff4419e0a12be8), explicitly approved proceeding with reviewed V6 (Sentinel_8376c37c0e608191ae7f40c176afeb44), and approved public-repository staging (Sentinel_c5d6c8e3228c819190929391b6ae30ff). This request is limited to the existing nonpublishing promotion of the independently accepted release-control source. It authorizes no application publication, schema mutation or routing change; subsequent completion and application release retain their protected admission and verification gates.",
   "purpose": "Promote the exact independently accepted V6 release-control correction through the existing trusted-tool promotion contract, preserving all five original target obligations and genuine Website receipts before observation-only completion of original run39611360383 and later protected PR667 integration.",
-  "requestId": "founder-release-control-recovery-v6-20261022-8421f7f1415a",
+  "requestId": "founder-release-control-recovery-v6-ci-20261022-69d15031855a",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -10,7 +10,7 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "f9fe495192e2b01fa1cf3fcec2e302c69f003a1e",
-    "sourceRevision": "8421f7f1415a121a2e3e50b27ac74cefed972822",
+    "sourceRevision": "69d15031855a6d95c72a0a440236493b01975012",
     "files": {
       ".github/workflows/deployment-diagnostics.yml": {
         "mode": "100644",
@@ -55,6 +55,10 @@
       "scripts/validation-resume.py": {
         "mode": "100644",
         "blob": "54c96035486581eb5520aeecd622b3a0d4228c19"
+      },
+      "scripts/test-fast-track-release.py": {
+        "mode": "100644",
+        "blob": "9bc119e614072f9085e8bad253d29e994c19176d"
       }
     }
   }
