@@ -1347,6 +1347,158 @@ class FastTrackExecutionIdentityTests(unittest.TestCase):
             self.invoke()
 
 
+
+class SelectorVisibilityPollingTests(unittest.TestCase):
+    def setUp(self):
+        self.now=0; self.sleeps=[]; self.reads=[]; self.head='a'*40
+        self.run=dict(id=123,run_attempt=2,head_sha=self.head,status='queued',event='push',
+            path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,head_branch=m.FAST_TRACK_PR_BASE,
+            head_repository=dict(full_name='owner/repo'))
+        self.job=dict(id=10,run_id=123,run_attempt=2,head_sha=self.head,status='in_progress',
+            name='Select exact affected applications',runner_name='runner-fixture')
+        self.env=dict(GITHUB_ACTIONS='true',GITHUB_EVENT_NAME='push',GITHUB_REPOSITORY='owner/repo',
+            GITHUB_TOKEN='test-token',GITHUB_SHA=self.head,GITHUB_RUN_ID='123',GITHUB_RUN_ATTEMPT='2',
+            GITHUB_REF='refs/heads/'+m.FAST_TRACK_PR_BASE,GITHUB_JOB='select-targets',RUNNER_NAME='runner-fixture',
+            GITHUB_WORKFLOW_REF='owner/repo/.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW+'@refs/heads/'+m.FAST_TRACK_PR_BASE)
+        self.runs=[self.run]; self.inventories=[dict(total_count=1,jobs=[self.job])]
+        self.policy=SimpleNamespace(tool_promotion_requested=lambda revision:False)
+    def sleep(self,seconds):
+        self.sleeps.append(seconds); self.now+=seconds
+    def api(self,repo,path,token):
+        m.evidence_remaining(1); self.reads.append(path)
+        if path.startswith('git/ref/'):
+            return dict(object=dict(sha=self.head))
+        seq=self.inventories if '/jobs?' in path else self.runs
+        return seq.pop(0) if len(seq)>1 else seq[0]
+    def invoke(self,api=None):
+        with patch.dict(os.environ,self.env,clear=True),patch.object(m,'api_get',side_effect=api or self.api), \
+             patch.object(m,'_fast_track_policy',return_value=self.policy):
+            return m.assert_fast_track_release_execution(clock=lambda:self.now,sleep=self.sleep)
+    def pending(self):
+        return dict(total_count=1,jobs=[self.job|dict(status='queued',runner_name=None)])
+    def test_pending_observations_are_discarded_before_fresh_full_proof(self):
+        self.inventories=[self.pending(),dict(total_count=1,jobs=[self.job])]
+        self.assertEqual(self.run,self.invoke());self.assertEqual([5],self.sleeps)
+        self.assertEqual(['actions/runs/123','actions/runs/123/attempts/2/jobs?per_page=100']*3+
+            ['git/ref/heads/'+m.FAST_TRACK_PR_BASE],self.reads)
+    def test_pending_beyond_old_thirty_second_window_can_settle_without_admitting_queued(self):
+        self.inventories=[self.pending() for _ in range(8)]+[dict(total_count=1,jobs=[self.job])]
+        self.assertEqual(self.run,self.invoke());self.assertEqual(40,self.now)
+        self.assertEqual(1,sum(p.startswith('git/ref/') for p in self.reads))
+    def test_pending_timeout_has_no_head_read_or_admission(self):
+        self.inventories=[self.pending()]
+        with self.assertRaisesRegex(RuntimeError,'SELECTOR_VISIBILITY_UNPROVEN'):self.invoke()
+        self.assertEqual(300,self.now);self.assertLessEqual(len(self.reads),122)
+        self.assertFalse(any(p.startswith('git/ref/') for p in self.reads))
+    def test_missing_candidate_and_runner_assignment_are_pending_only(self):
+        for payload in [dict(total_count=0,jobs=[]),dict(total_count=1,jobs=[self.job|dict(runner_name='')])]:
+            with self.subTest(payload=payload):
+                self.setUp();self.inventories=[payload,dict(total_count=1,jobs=[self.job])]
+                self.invoke();self.assertEqual([5],self.sleeps)
+    def test_conflicting_run_identity_and_terminal_states_fail_immediately(self):
+        for key,value in [('run_attempt',1),('head_sha','b'*40),('id',124),('event','pull_request'),
+                ('path','untrusted'),('head_repository',dict(full_name='fork/repo')),
+                ('status','completed'),('conclusion','failure')]:
+            with self.subTest(key=key):
+                self.setUp();self.runs=[self.run|{key:value}]
+                with self.assertRaisesRegex(RuntimeError,'PRODUCER_UNPROVEN'):self.invoke()
+                self.assertEqual([],self.sleeps);self.assertEqual(1,len(self.reads))
+    def test_pending_then_changed_attempt_fails_without_another_sleep(self):
+        self.inventories=[self.pending()];self.runs=[self.run,self.run|dict(run_attempt=3)]
+        with self.assertRaisesRegex(RuntimeError,'PRODUCER_UNPROVEN'):self.invoke()
+        self.assertEqual([5],self.sleeps)
+    def test_wrong_runner_ambiguous_malformed_and_terminal_jobs_fail_immediately(self):
+        cases=[dict(total_count=2,jobs=[self.job,self.job|dict(id=11)]),dict(total_count=2,jobs=[self.job]),
+            dict(total_count=1,jobs=[None])]
+        cases += [dict(total_count=1,jobs=[self.job|{key:value}]) for key,value in
+            [('runner_name','other'),('run_attempt',1),('run_id',124),('head_sha','b'*40),
+             ('status','completed'),('conclusion','failure')]]
+        for payload in cases:
+            with self.subTest(payload=payload):
+                self.setUp();self.inventories=[payload]
+                with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB_UNPROVEN'):self.invoke()
+                self.assertEqual([],self.sleeps)
+    def test_fresh_proof_rechecks_run_instead_of_reusing_positive_wait_evidence(self):
+        self.runs=[self.run,self.run|dict(head_sha='b'*40)]
+        with self.assertRaisesRegex(RuntimeError,'PRODUCER_UNPROVEN'):self.invoke()
+        self.assertEqual(3,len(self.reads));self.assertFalse(any(p.startswith('git/ref/') for p in self.reads))
+    def test_fresh_proof_rechecks_job_runner(self):
+        self.inventories += [dict(total_count=1,jobs=[self.job|dict(runner_name='other')])]
+        with self.assertRaisesRegex(RuntimeError,'runner_mismatch'):self.invoke()
+        self.assertEqual(4,len(self.reads))
+    def test_final_fresh_head_remains_mandatory(self):
+        self.head='b'*40
+        with self.assertRaisesRegex(RuntimeError,'HEAD_CHANGED'):self.invoke()
+        self.assertTrue(self.reads[-1].startswith('git/ref/'))
+    def test_late_positive_pending_read_never_starts_fresh_proof(self):
+        def slow(*args):
+            value=self.api(*args)
+            if '/jobs?' in args[1]:self.now=301
+            return value
+        with self.assertRaises(m.EvidenceLookupUnavailable):self.invoke(slow)
+        self.assertEqual(2,len(self.reads))
+    def test_final_head_read_past_fresh_thirty_second_deadline_cannot_admit(self):
+        def slow(*args):
+            value=self.api(*args)
+            if args[1].startswith('git/ref/'):self.now+=31
+            return value
+        with self.assertRaises(m.EvidenceLookupUnavailable):self.invoke(slow)
+        self.assertEqual(5,len(self.reads))
+    def test_shorter_enclosing_budget_caps_pending_wait(self):
+        self.inventories=[self.pending()]
+        with m.evidence_lookup_budget(7,clock=lambda:self.now):
+            with self.assertRaises(m.EvidenceLookupUnavailable):self.invoke()
+        self.assertEqual(7,self.now);self.assertEqual([5,2],self.sleeps)
+    def test_shorter_enclosing_budget_is_not_reset_for_fresh_proof(self):
+        self.inventories=[self.pending(),dict(total_count=1,jobs=[self.job])]
+        def slow(*args):
+            value=self.api(*args)
+            if len(self.reads)==6:self.now=8
+            return value
+        with m.evidence_lookup_budget(7,clock=lambda:self.now):
+            with self.assertRaises(m.EvidenceLookupUnavailable):self.invoke(slow)
+        self.assertFalse(any(p.startswith('git/ref/') for p in self.reads))
+    def test_transport_timeout_does_not_become_pending_or_success(self):
+        calls=[]
+        def timeout(*args,**kwargs):
+            calls.append(kwargs['timeout']);self.now+=kwargs['timeout'];raise TimeoutError()
+        with patch.dict(os.environ,self.env,clear=True),patch.object(m,'_fast_track_policy',return_value=self.policy), \
+             patch.object(m.urllib.request,'urlopen',side_effect=timeout),patch.object(m.time,'sleep',side_effect=self.sleep):
+            with m.evidence_lookup_budget(7,clock=lambda:self.now):
+                with self.assertRaises(m.EvidenceLookupUnavailable):
+                    m.assert_fast_track_release_execution(clock=lambda:self.now,sleep=self.sleep)
+        self.assertEqual([7],calls);self.assertEqual(7,self.now)
+    def test_pending_phase_is_selector_only(self):
+        self.env.update(GITHUB_JOB='deploy-ui',TARGET_KEY='portal')
+        self.job['name']='Affected App Deploy — AgentPortal'
+        self.invoke();self.assertEqual(3,len(self.reads));self.assertEqual([],self.sleeps)
+    def test_selector_pending_regression_during_fresh_proof_does_not_read_head_early(self):
+        good=dict(total_count=1,jobs=[self.job])
+        self.inventories=[good,self.pending(),good]
+        self.invoke();self.assertEqual([2],self.sleeps)
+        self.assertEqual(1,sum(p.startswith('git/ref/') for p in self.reads))
+    def test_long_pending_phase_does_not_consume_fresh_proof_budget(self):
+        self.inventories=[self.pending() for _ in range(59)]+[dict(total_count=1,jobs=[self.job])]
+        def slow_head(*args):
+            value=self.api(*args)
+            if args[1].startswith('git/ref/'):self.now+=29
+            return value
+        self.assertEqual(self.run,self.invoke(slow_head));self.assertEqual(324,self.now)
+        self.assertEqual(295,sum(self.sleeps))
+    def test_positive_wait_read_at_exact_pending_deadline_is_rejected(self):
+        def slow(*args):
+            value=self.api(*args)
+            if '/jobs?' in args[1]:self.now=300
+            return value
+        with self.assertRaises(m.EvidenceLookupUnavailable):self.invoke(slow)
+        self.assertEqual(2,len(self.reads))
+    def test_observation_count_is_bounded_even_if_injected_clock_does_not_advance(self):
+        self.inventories=[self.pending()]
+        with patch.object(self,'sleep'):
+            with self.assertRaisesRegex(RuntimeError,'pending_deadline_exhausted'):self.invoke()
+        self.assertEqual(122,len(self.reads))
+
+
 class LiveWorkflowIdentityPollingTests(unittest.TestCase):
     def setUp(self):
         self.now=0; self.sleeps=[]; self.reads=[]

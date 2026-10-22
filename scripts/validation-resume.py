@@ -4240,7 +4240,7 @@ def _live_identity_diagnostic(reason, *, run=None, expected_job=None, **details)
     print('LEGEND_LIVE_IDENTITY:' + json.dumps(dict(reason=reason,
         status=(run or {}).get('status'), attempt=(run or {}).get('run_attempt'),
         job=os.environ.get('GITHUB_JOB'), target=os.environ.get('TARGET_KEY'),
-        expectedJob=expected_job, **details), sort_keys=True))
+        expectedJob=expected_job, **details), sort_keys=True), flush=True)
 
 def _exact_active_job(repository, run, token, expected_job, *, error=RuntimeError,
                       code='FAST_TRACK_ACTIVE_JOB_UNPROVEN'):
@@ -4271,7 +4271,9 @@ def _exact_active_job(repository, run, token, expected_job, *, error=RuntimeErro
             raise error(code + ':job_identity_mismatch')
     candidates = [job for job in jobs if job['name'] == expected_job]
     _live_identity_diagnostic('job_inventory', run=run, expected_job=expected_job,
-        inventoryComplete=True, inventoryCount=len(jobs), candidateCount=len(candidates))
+        inventoryComplete=True, inventoryCount=len(jobs), candidateCount=len(candidates),
+        candidateStatus=candidates[0]['status'] if len(candidates) == 1 else None,
+        runnerAssigned=bool(candidates[0].get('runner_name')) if len(candidates) == 1 else None)
     if len(candidates) > 1:
         raise error(code + ':ambiguous_job')
     if not candidates:
@@ -4360,6 +4362,44 @@ def _fast_track_job_name(env):
     return names[env['GITHUB_JOB']]
 
 
+SELECTOR_VISIBILITY_WAIT_SECONDS = 300
+SELECTOR_VISIBILITY_POLL_SECONDS = 5
+SELECTOR_VISIBILITY_MAX_OBSERVATIONS = 61
+
+
+def _await_selector_visibility(repository, expected, token, name, *, clock, sleep):
+    """Wait only for selector metadata; these observations confer no admission.
+
+    This read-only phase adds at most 300 seconds of bounded waiting, subject
+    to any shorter enclosing evidence budget. The caller must then collect a
+    new full identity proof within its existing independent 30-second budget.
+    """
+    started = clock()
+    deadline = started + SELECTOR_VISIBILITY_WAIT_SECONDS
+    with evidence_lookup_budget(deadline, clock=clock):
+        for observation in range(SELECTOR_VISIBILITY_MAX_OBSERVATIONS):
+            if clock() >= deadline:
+                break
+            evidence_remaining(1)
+            run = api_get(repository, f"actions/runs/{expected['id']}", token)
+            if (run.get('status') not in {'in_progress', 'queued'} or run.get('conclusion') is not None
+                or any(run.get(key) != value for key, value in expected.items())
+                or run.get('head_repository', {}).get('full_name', '').lower() != repository.lower()):
+                raise RuntimeError('FAST_TRACK_EXECUTION_PRODUCER_UNPROVEN')
+            evidence_remaining(1)
+            job = _exact_active_job(repository, run, token, name)
+            evidence_remaining(1)
+            _live_identity_diagnostic('selector_visibility_ready' if job is not None else 'selector_visibility_pending',
+                run=run, expected_job=name, observation=observation + 1,
+                elapsedSeconds=round(clock() - started, 3))
+            if job is not None:
+                # Deliberately return no run/job evidence for reuse by admission.
+                return
+            if observation + 1 < SELECTOR_VISIBILITY_MAX_OBSERVATIONS and clock() < deadline:
+                sleep(evidence_remaining(min(SELECTOR_VISIBILITY_POLL_SECONDS, deadline - clock())))
+    raise RuntimeError('FAST_TRACK_SELECTOR_VISIBILITY_UNPROVEN:pending_deadline_exhausted')
+
+
 def assert_fast_track_release_execution(*, allow_nonpublishing=False, target=None, clock=time.monotonic, sleep=time.sleep):
     """One bounded authenticated observation; never a retry of an operation.
 
@@ -4388,6 +4428,10 @@ def assert_fast_track_release_execution(*, allow_nonpublishing=False, target=Non
         raise RuntimeError('FAST_TRACK_TRUSTED_TOOL_PROMOTION_NONPUBLISHING')
     expected = dict(id=int(run_id), run_attempt=int(attempt), path='.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW,
                     head_branch=FAST_TRACK_PR_BASE, event='push', head_sha=revision)
+    selector = env.get('GITHUB_JOB') == 'select-targets'
+    if selector:
+        _await_selector_visibility(repository, expected, token, name, clock=clock, sleep=sleep)
+    # No pending-phase evidence is reused: start the unchanged fresh proof.
     deadline = clock() + 30
     with evidence_lookup_budget(deadline, clock=clock):
         for observation in range(16):
@@ -4399,9 +4443,13 @@ def assert_fast_track_release_execution(*, allow_nonpublishing=False, target=Non
             job = _exact_active_job(repository, run, token, name)
             owners = [job] if job is not None else []
             evidence_remaining(1)
-            current = api_get(repository, 'git/ref/heads/' + FAST_TRACK_PR_BASE, token)
-            if current.get('object', {}).get('sha') != revision:
-                raise RuntimeError('FAST_TRACK_RELEASE_HEAD_CHANGED')
+            # A pending selector has no ownership proof; only its final positive
+            # observation needs the mandatory fresh branch-HEAD check. Other
+            # callers retain their existing HEAD observation behavior.
+            if owners or not selector:
+                current = api_get(repository, 'git/ref/heads/' + FAST_TRACK_PR_BASE, token)
+                if current.get('object', {}).get('sha') != revision:
+                    raise RuntimeError('FAST_TRACK_RELEASE_HEAD_CHANGED')
             # Socket timeouts do not bound a slow response body. Never accept
             # identity after the shared observation deadline has elapsed.
             evidence_remaining(1)
