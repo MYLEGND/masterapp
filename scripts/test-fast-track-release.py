@@ -749,6 +749,9 @@ class AdmissionRepairScopeTests(unittest.TestCase):
             jobs[1 if selector else 0]['conclusion']='success'
             jobs[1].update(conclusion='failure',steps=[dict(name='Apply or reconcile the exact rehearsed migration bundle',conclusion=mutation)])
         def get(repo,path,token):
+            # This predecessor fixture has no completion-observer runs.
+            if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
+                return dict(total_count=0, workflow_runs=[])
             if path.startswith('actions/runs?'):
                 runs=([prior,dict(prior,id=8)] if duplicate else [prior]) if before in path else []
                 return dict(total_count=len(runs),workflow_runs=runs)
@@ -780,6 +783,9 @@ class AdmissionRepairScopeTests(unittest.TestCase):
               dict(name='Affected App Deploy — target',conclusion='skipped'),
               dict(name='Publish verified website routing',conclusion='skipped')]
         def get(repo,path,token):
+            # This predecessor fixture has no completion-observer runs.
+            if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
+                return dict(total_count=0, workflow_runs=[])
             if path.startswith('actions/runs?'):
                 candidate=path.split('head_sha=')[1].split('&')[0]
                 rows=[] if candidate==original else [dict(id=heads.index(candidate)+1,run_attempt=1,
@@ -938,7 +944,9 @@ class SkippedMatrixRecoveryTests(unittest.TestCase):
              patch.object(deploy.time,'sleep') as sleep:
             with self.assertRaisesRegex(RuntimeError,'PRODUCER_UNPROVEN'):
                 deploy.fast_track_restore_package('portal',Path('/unused'))
-            self.assertEqual(3,check.call_count);self.assertEqual(2,sleep.call_count)
+            # The canonical authority owns the single bounded observation budget.
+            check.assert_called_once_with(target='portal')
+            sleep.assert_not_called()
 
 
 class CompletedSqlScopeTests(unittest.TestCase):
@@ -1695,6 +1703,9 @@ class AllAttemptPrewriteScopeTests(unittest.TestCase):
     def effective_baseline(self):
         before, head, original = 'a'*40, 'b'*40, 'c'*40
         def get(repo, path, token):
+            # This predecessor fixture has no completion-observer runs.
+            if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
+                return dict(total_count=0, workflow_runs=[])
             if path.startswith('actions/runs?'):
                 rows = [self.run] if 'head_sha='+before in path else []
                 return dict(total_count=len(rows), workflow_runs=rows)
@@ -1963,6 +1974,9 @@ class CurrentObservationPrewriteTests(unittest.TestCase):
 
     def test_completed_initial_failure_carries_scope_through_effective_baseline(self):
         def api(repo,path,token):
+            # This predecessor fixture has no completion-observer runs.
+            if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
+                return dict(total_count=0, workflow_runs=[])
             if path.startswith('actions/runs?'):
                 rows=[self.run] if 'head_sha='+self.revision in path else []
                 return dict(total_count=len(rows),workflow_runs=rows)
@@ -2008,6 +2022,9 @@ class UnpublishedAppsWithMigrationIntentTests(unittest.TestCase):
             executionAuthority='a'*40,applicationRevision='a'*40,partitionIdentity='c'*64)
 
     def api(self, repository, path, token):
+        # This predecessor fixture has no completion-observer runs.
+        if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
+            return dict(total_count=0, workflow_runs=[])
         if '/attempts/' in path:return self.jobs[int(path.split('/attempts/')[1].split('/')[0])]
         if '/artifacts?' in path:return self.inventory
         if path.startswith('actions/runs?head_sha='):

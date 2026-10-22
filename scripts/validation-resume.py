@@ -4235,11 +4235,137 @@ def fast_track_promotion_parent(repository, run, token):
     return before
 
 
-def assert_fast_track_release_execution(*, allow_nonpublishing=False):
-    """Authenticate the existing fast-track producer, without granting admission.
+def _live_identity_diagnostic(reason, *, run=None, expected_job=None, **details):
+    # Log classifications, never the environment, provider payload or credentials.
+    print('LEGEND_LIVE_IDENTITY:' + json.dumps(dict(reason=reason,
+        status=(run or {}).get('status'), attempt=(run or {}).get('run_attempt'),
+        job=os.environ.get('GITHUB_JOB'), target=os.environ.get('TARGET_KEY'),
+        expectedJob=expected_job, **details), sort_keys=True))
 
-    The caller must still prove package, schema, history and operation admission.
-    This identity check does not delegate execution to another release branch.
+def _exact_active_job(repository, run, token, expected_job, *, error=RuntimeError,
+                      code='FAST_TRACK_ACTIVE_JOB_UNPROVEN'):
+    """Return positive current-attempt ownership or a specifically pending state."""
+    runner = os.environ.get('RUNNER_NAME', '')
+    if not runner or not expected_job:
+        raise error(code + ':job_identity_missing')
+    payload = api_get(repository,
+        f"actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs?per_page=100", token)
+    jobs = payload.get('jobs')
+    complete = (isinstance(jobs, list) and type(payload.get('total_count')) is int
+        and payload['total_count'] == len(jobs))
+    if (not complete or not all(isinstance(job, dict) for job in jobs)
+        or any(type(job.get('id')) is not int or job['id'] < 1
+            or not isinstance(job.get('name'), str) or not job['name']
+            or job.get('status') not in {'queued', 'in_progress', 'completed'}
+            for job in jobs)
+        or len({job['id'] for job in jobs}) != len(jobs)):
+        _live_identity_diagnostic('inventory_malformed', run=run, expected_job=expected_job,
+            inventoryComplete=complete, inventoryCount=len(jobs) if isinstance(jobs, list) else None)
+        raise error(code + ':inventory_malformed')
+    for job in jobs:
+        mismatch = [key for key, value in dict(run_id=run['id'],
+            run_attempt=run['run_attempt'], head_sha=run['head_sha']).items() if job.get(key) != value]
+        if mismatch:
+            _live_identity_diagnostic('job_identity_mismatch', run=run,
+                expected_job=expected_job, fields=mismatch)
+            raise error(code + ':job_identity_mismatch')
+    candidates = [job for job in jobs if job['name'] == expected_job]
+    _live_identity_diagnostic('job_inventory', run=run, expected_job=expected_job,
+        inventoryComplete=True, inventoryCount=len(jobs), candidateCount=len(candidates))
+    if len(candidates) > 1:
+        raise error(code + ':ambiguous_job')
+    if not candidates:
+        return None
+    job = candidates[0]
+    if job['status'] == 'completed':
+        raise error(code + ':terminal_job')
+    if job.get('runner_name') not in {None, '', runner}:
+        raise error(code + ':runner_mismatch')
+    if job.get('conclusion') is not None:
+        raise error(code + ':contradictory_job_state')
+    if job['status'] == 'queued' or not job.get('runner_name'):
+        return None
+    return job
+
+def _observe_live_workflow(repository, expected, token, *, queued_job,
+                           error=RuntimeError, code='FAST_TRACK_EXECUTION_PRODUCER_UNPROVEN',
+                           job_code='FAST_TRACK_ACTIVE_JOB_UNPROVEN', require_job=False,
+                           clock=time.monotonic, sleep=time.sleep):
+    """Bound only pending lifecycle metadata; immutable disagreement is terminal."""
+    deadline = clock() + 30
+    with evidence_lookup_budget(deadline, clock=clock):
+        for observation in range(7):
+            if observation and clock() >= deadline:
+                break
+            run = api_get(repository, f"actions/runs/{expected['id']}", token)
+            mismatch = [key for key, value in expected.items() if run.get(key) != value]
+            if run.get('head_repository', {}).get('full_name', '').lower() != repository.lower():
+                mismatch.append('head_repository')
+            if (mismatch or run.get('status') not in {'in_progress', 'queued'}
+                or run.get('conclusion') is not None):
+                _live_identity_diagnostic('producer_mismatch', run=run, fields=mismatch,
+                    observation=observation + 1)
+                raise error(code)
+            job = None
+            if require_job or run['status'] == 'queued':
+                name = queued_job()
+                job = _exact_active_job(repository, run, token, name, error=error, code=job_code)
+                if job is None:
+                    _live_identity_diagnostic('pending', run=run, expected_job=name,
+                        observation=observation + 1)
+                    if observation < 6 and clock() < deadline:
+                        sleep(evidence_remaining(min(5, deadline - clock())))
+                        continue
+                    break
+            evidence_remaining(1)
+            _live_identity_diagnostic('proven', run=run, observation=observation + 1)
+            return run, job
+    _live_identity_diagnostic('deadline_exhausted', run=run)
+    raise error(job_code + ':pending_deadline_exhausted')
+
+def _source_validation_job_name(repository, revision, workflow, token):
+    key = os.environ.get('GITHUB_JOB', '')
+    source = _release_history_source(repository, revision, '.github/workflows/' + workflow, token)
+    jobs = _job_blocks(source)
+    owners = [name for name, block in jobs.items()
+              if 'Plan exact validation resume' in named_step_blocks(block)]
+    if (not key or owners != [key] or key not in jobs
+        or len(re.findall(r'^  ' + re.escape(key) + r':\s*$', source, re.M)) != 1):
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_ACTIVE_JOB_UNPROVEN:planner_owner')
+    names = re.findall(r'^    name:\s*(.*?)\s*$', jobs[key], re.M)
+    if len(names) > 1:
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_ACTIVE_JOB_UNPROVEN:ambiguous_name')
+    name = names[0] if names else key
+    if len(name) >= 2 and name[0] == name[-1] and name[0] in {'"', "'"}:
+        name = name[1:-1]
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9 _—./:-]{0,199}', name):
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_ACTIVE_JOB_UNPROVEN:dynamic_name')
+    return name
+
+
+def _fast_track_job_name(env):
+    names = {'select-targets': 'Select exact affected applications',
+        'commerce-gates': 'Admit exact validated fast-track source',
+        'migrations': 'Reconcile production schema before publication',
+        'routing-cloudflare': 'Publish verified website routing'}
+    if env.get('GITHUB_JOB') == 'deploy-ui':
+        labels = {'portal': 'AgentPortal', 'client': 'ClientApp', 'protect': 'Protect',
+                  'parfait': 'Parfait', 'website': 'Website'}
+        target = env.get('TARGET_KEY')
+        if target not in labels:
+            raise RuntimeError('FAST_TRACK_ACTIVE_JOB_TARGET_UNPROVEN')
+        return 'Affected App Deploy — ' + labels[target]
+    if env.get('GITHUB_JOB') not in names:
+        raise RuntimeError('FAST_TRACK_ACTIVE_JOB_UNPROVEN')
+    return names[env['GITHUB_JOB']]
+
+
+def assert_fast_track_release_execution(*, allow_nonpublishing=False, target=None, clock=time.monotonic, sleep=time.sleep):
+    """One bounded authenticated observation; never a retry of an operation.
+
+    Run identity, exact job/target ownership and current HEAD must all agree.
+    Only absent/pending live-job observation may settle within this one budget.
+    Terminal, conflicting and malformed identities fail closed immediately.
     """
     env = os.environ
     repository = env.get('GITHUB_REPOSITORY', '')
@@ -4253,43 +4379,38 @@ def assert_fast_track_release_execution(*, allow_nonpublishing=False):
         or not attempt.isdigit() or int(attempt) < 1
         or env.get('GITHUB_WORKFLOW_REF') != repository + '/.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW + '@' + reference):
         raise RuntimeError('FAST_TRACK_EXECUTION_IDENTITY_INCOMPLETE')
-    run = api_get(repository, f'actions/runs/{run_id}', token)
-    expected = dict(id=int(run_id), run_attempt=int(attempt), path='.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW,
-                    head_branch=FAST_TRACK_PR_BASE, event='push', head_sha=revision)
-    if (run.get('status') not in {'in_progress', 'queued'}
-        or any(run.get(key) != value for key, value in expected.items())
-        or run.get('head_repository', {}).get('full_name', '').lower() != repository.lower()):
-        raise RuntimeError('FAST_TRACK_EXECUTION_PRODUCER_UNPROVEN')
-    if run.get('status') == 'queued':
-        # GitHub may mark the parent queued while a capped matrix has active
-        # runners. Authenticate this exact live job instead of treating the
-        # aggregate scheduling label as execution identity.
-        runner = env.get('RUNNER_NAME', '')
-        job_key = env.get('GITHUB_JOB', '')
-        names = {'select-targets': 'Select exact affected applications',
-            'commerce-gates': 'Admit exact validated fast-track source',
-            'migrations': 'Reconcile production schema before publication',
-            'routing-cloudflare': 'Publish verified website routing'}
-        payload = api_get(repository, f'actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100', token)
-        jobs = payload.get('jobs')
-        if (not isinstance(jobs, list) or type(payload.get('total_count')) is not int
-            or payload['total_count'] != len(jobs) or not all(isinstance(job, dict) for job in jobs)
-            or not runner or job_key not in {*names, 'deploy-ui'}):
-            raise RuntimeError('FAST_TRACK_ACTIVE_JOB_UNPROVEN')
-        active = [job for job in jobs if job.get('run_id') == int(run_id)
-            and job.get('run_attempt') == int(attempt) and job.get('head_sha') == revision
-            and job.get('status') == 'in_progress' and job.get('runner_name') == runner
-            and (job.get('name') == names.get(job_key) if job_key != 'deploy-ui' else
-                job.get('name') in {'Affected App Deploy — ' + label for label in
-                    ('AgentPortal','ClientApp','Protect','Parfait','Website')})]
-        if len(active) != 1:
-            raise RuntimeError('FAST_TRACK_ACTIVE_JOB_UNPROVEN')
+    if target is not None and (target not in RELEASE_TARGETS or env.get('GITHUB_JOB') != 'deploy-ui' or env.get('TARGET_KEY') != target):
+        raise RuntimeError('FAST_TRACK_ACTIVE_JOB_TARGET_UNPROVEN')
+    name, runner = _fast_track_job_name(env), env.get('RUNNER_NAME', '')
+    if not runner:
+        raise RuntimeError('FAST_TRACK_ACTIVE_JOB_UNPROVEN')
     if not allow_nonpublishing and _fast_track_policy().tool_promotion_requested(revision):
         raise RuntimeError('FAST_TRACK_TRUSTED_TOOL_PROMOTION_NONPUBLISHING')
-    current = api_get(repository, 'git/ref/heads/' + FAST_TRACK_PR_BASE, token)
-    if current.get('object', {}).get('sha') != revision:
-        raise RuntimeError('FAST_TRACK_RELEASE_HEAD_CHANGED')
-    return run
+    expected = dict(id=int(run_id), run_attempt=int(attempt), path='.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW,
+                    head_branch=FAST_TRACK_PR_BASE, event='push', head_sha=revision)
+    deadline = clock() + 30
+    with evidence_lookup_budget(deadline, clock=clock):
+        for observation in range(16):
+            run = api_get(repository, f'actions/runs/{run_id}', token)
+            if (run.get('status') not in {'in_progress', 'queued'} or run.get('conclusion') is not None
+                or any(run.get(key) != value for key, value in expected.items())
+                or run.get('head_repository', {}).get('full_name', '').lower() != repository.lower()):
+                raise RuntimeError('FAST_TRACK_EXECUTION_PRODUCER_UNPROVEN')
+            job = _exact_active_job(repository, run, token, name)
+            owners = [job] if job is not None else []
+            evidence_remaining(1)
+            current = api_get(repository, 'git/ref/heads/' + FAST_TRACK_PR_BASE, token)
+            if current.get('object', {}).get('sha') != revision:
+                raise RuntimeError('FAST_TRACK_RELEASE_HEAD_CHANGED')
+            # Socket timeouts do not bound a slow response body. Never accept
+            # identity after the shared observation deadline has elapsed.
+            evidence_remaining(1)
+            if owners and owners[0].get('status') == 'in_progress':
+                return run
+            if observation == 15 or clock() >= deadline:
+                break
+            sleep(evidence_remaining(2))
+    raise RuntimeError('FAST_TRACK_ACTIVE_JOB_UNPROVEN')
 
 
 def assert_release_execution():
@@ -4984,10 +5105,564 @@ def fast_track_unpublished_apps_with_migration_intent(repository, run, revision,
     return accounted == entered
 
 
-def fast_track_effective_baseline(before, revision):
+# Completion uses the existing diagnostics workflow and journal channel. It is
+# deliberately not a producer of intent, submission, package or app deployment.
+FAST_TRACK_COMPLETION_WORKFLOW = 'deployment-diagnostics.yml'
+FAST_TRACK_COMPLETION_JOB = 'Complete existing fast-track deployment receipts'
+
+
+def _completion_rows(payload, field):
+    return _completion_inventory(payload, field)
+
+
+def _completion_time(value):
+    import datetime
+    try:
+        when = datetime.datetime.fromisoformat(value.replace('Z', '+00:00'))
+        if when.tzinfo is None:
+            raise ValueError()
+        return when
+    except (AttributeError, TypeError, ValueError):
+        raise ValueError('FAST_TRACK_COMPLETION_TIME_UNPROVEN') from None
+
+
+def fast_track_target_label(key):
+    """One display-name owner for selection and exact matrix-job authentication."""
+    return dict(portal='AgentPortal', client='ClientApp', protect='Protect',
+                parfait='Parfait', website='Website')[key]
+
+def _completion_inventory(payload, field):
+    rows = payload.get(field)
+    if (not isinstance(rows, list) or type(payload.get('total_count')) is not int
+        or payload['total_count'] != len(rows) or any(not isinstance(row, dict)
+            or type(row.get('id')) is not int or row['id'] < 1 for row in rows)
+        or len({row['id'] for row in rows}) != len(rows)):
+        raise ValueError('FAST_TRACK_COMPLETION_INVENTORY_INCOMPLETE:' + field)
+    return rows
+
+def _completion_jobs(repository, run, token):
+    count = run.get('run_attempt')
+    if type(count) is not int or not 1 <= count <= 100:
+        raise ValueError('FAST_TRACK_COMPLETION_ATTEMPT_INVENTORY_UNPROVEN')
+    attempts = {}
+    for attempt in range(1, count + 1):
+        rows = _completion_inventory(api_get(repository,
+            f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token), 'jobs')
+        if any(row.get('run_id') != run['id'] or row.get('run_attempt') != attempt
+            or row.get('head_sha') != run['head_sha'] or not isinstance(row.get('name'), str)
+            or row.get('status') not in {'queued', 'in_progress', 'completed'} for row in rows):
+            raise ValueError('FAST_TRACK_COMPLETION_JOB_IDENTITY_UNPROVEN')
+        attempts[attempt] = rows
+    return attempts
+
+def _completion_step(job, name, *, conclusions=('success',)):
+    steps = job.get('steps')
+    if not isinstance(steps, list) or any(not isinstance(step, dict) for step in steps):
+        raise ValueError('FAST_TRACK_COMPLETION_STEP_INVENTORY_UNPROVEN')
+    rows = [step for step in steps if step.get('name') == name]
+    if len(rows) != 1 or rows[0].get('status') != 'completed' or rows[0].get('conclusion') not in conclusions:
+        raise ValueError('FAST_TRACK_COMPLETION_STEP_UNPROVEN:' + name)
+    return rows[0]
+
+def _completion_artifact(artifacts, name, run):
+    rows = [row for row in artifacts if row.get('name') == name]
+    if (len(rows) != 1 or rows[0].get('expired') is not False
+        or rows[0].get('workflow_run', {}).get('id') != run['id']
+        or rows[0].get('workflow_run', {}).get('head_sha') != run['head_sha']
+        or not re.fullmatch('sha256:[a-f0-9]{64}', str(rows[0].get('digest', '')))):
+        raise ValueError('FAST_TRACK_COMPLETION_ARTIFACT_MISSING_EXPIRED_OR_AMBIGUOUS')
+    return rows[0]
+
+def _completion_artifact_in_step(artifact, step):
+    import datetime
+    def stamp(value):
+        parsed = datetime.datetime.fromisoformat(value.replace('Z', '+00:00'))
+        if parsed.utcoffset() is None:
+            raise ValueError('Missing artifact execution timezone')
+        return parsed
+    try:
+        start, end = stamp(step['started_at']), stamp(step['completed_at'])
+        if '.' not in step['completed_at']:
+            end += datetime.timedelta(seconds=1)
+        return start <= stamp(artifact['created_at']) < end
+    except (KeyError, ValueError, TypeError, AttributeError):
+        raise ValueError('FAST_TRACK_COMPLETION_ARTIFACT_EXECUTION_TIME_UNPROVEN') from None
+
+def completion_provider_in_original_publication(material, received_time):
+    """Attribute only within the authenticated publish step and after its intent.
+
+    GitHub step times have second precision. The final represented second is
+    included as a half-open interval ending one second after completed_at.
+    Explicit fractional precision keeps its exact exclusive end, including
+    fractional zero and comma notation; job cleanup never widens the interval.
+    """
+    import datetime
+    try:
+        step=material['originalPublicationStep']
+        if (step.get('name')!='Publish or reconcile exact application bytes'
+            or step.get('status')!='completed'
+            or step.get('conclusion') not in {'success','failure','cancelled'}):
+            return False
+        start=_completion_time(step.get('started_at'))
+        completed=_completion_time(step.get('completed_at'))
+        intent=_completion_time(material['intentArtifact']['created_at'])
+        received=_completion_time(received_time)
+        end=completed
+        if not any(mark in step['completed_at'] for mark in ('.',',')):
+            end+=datetime.timedelta(seconds=1)
+        return start <= completed and start <= intent < end and intent <= received < end
+    except (KeyError,TypeError,ValueError,OverflowError,AttributeError):
+        return False
+
+
+def _completion_original_artifact_owner(context, target, artifact, step_name, conclusions):
+    matches = []
+    for attempt, jobs in context['attempts'].items():
+        _completion_inventory(dict(total_count=len(jobs),jobs=jobs),'jobs')
+        if any(job.get('run_id') != context['run']['id'] or job.get('run_attempt') != attempt
+            or job.get('head_sha') != context['run']['head_sha'] for job in jobs):
+            raise ValueError('FAST_TRACK_COMPLETION_JOB_IDENTITY_UNPROVEN')
+    label = 'Affected App Deploy — ' + fast_track_target_label(target)
+    for attempt, jobs in context['attempts'].items():
+        for job in jobs:
+            if job.get('name') != label or job.get('conclusion') == 'skipped':
+                continue
+            steps = [step for step in job.get('steps', []) if step.get('name') == step_name]
+            if (len(steps) == 1 and steps[0].get('status') == 'completed'
+                and steps[0].get('conclusion') in conclusions
+                and _completion_artifact_in_step(artifact, steps[0])):
+                matches.append((attempt, job, steps[0]))
+    if not matches:
+        raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_ARTIFACT_OWNER_UNPROVEN')
+    # Failed-job retries copy successful siblings with new job IDs/attempts.
+    # The earliest genuine interval owns the artifact; copied intervals do not
+    # claim a repeated build/upload and cannot change its original producer.
+    first = min(matches, key=lambda item: item[0])
+    def execution(item):
+        return (item[1].get('runner_id'), item[1].get('runner_name'),
+            *(item[2].get(key) for key in ('name', 'started_at', 'completed_at', 'conclusion')))
+    if any(execution(item) != execution(first) for item in matches):
+        raise ValueError('FAST_TRACK_COMPLETION_COMPETING_ARTIFACT_EXECUTIONS')
+    return first
+
+def _completion_original_unchanged(repository, run, token):
+    current = api_get(repository, f"actions/runs/{run['id']}", token)
+    keys = ('id', 'head_sha', 'head_branch', 'path', 'event', 'run_attempt', 'status', 'conclusion', 'head_repository')
+    if current.get('status') != 'completed' or any(current.get(key) != run.get(key) for key in keys):
+        raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_RUN_CHANGED')
+
+
+def fast_track_completion_original(repository, original_run, revision, token):
+    """Derive all original obligations; caller target lists have no authority."""
+    run = api_get(repository, f'actions/runs/{original_run}', token)
+    if (not is_fast_track_producer(repository, run) or run.get('id') != original_run
+        or run.get('head_sha') != revision or run.get('status') != 'completed'
+        or run.get('conclusion') not in {'success', 'failure', 'cancelled'}):
+        raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_PRODUCER_UNPROVEN')
+    runs = _completion_inventory(api_get(repository,
+        f'actions/runs?head_sha={revision}&event=push&per_page=100', token), 'workflow_runs')
+    producers = [row for row in runs if is_fast_track_producer(repository, row)]
+    if len(producers) != 1 or producers[0].get('id') != original_run:
+        raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_PRODUCER_AMBIGUOUS')
+    fast_track_merged_source_proof(repository, revision, token)
+    parents = subprocess.check_output(['git', 'rev-list', '--parents', '-n', '1', revision], text=True).split()
+    if len(parents) != 3 or parents[0] != revision:
+        raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_BASELINE_UNPROVEN')
+    baseline = fast_track_effective_baseline(parents[1], revision, repository=repository, token=token)
+    if baseline != parents[1]:
+        raise ValueError('FAST_TRACK_COMPLETION_CARRIED_SCOPE_REQUIRES_ORIGINAL_BASELINE_PROOF')
+    paths = subprocess.check_output(['git', 'diff', '--name-only', baseline, revision], text=True).splitlines()
+    scope = fast_track_scope(paths)
+    request = json.loads(_release_history_source(repository, revision, RELEASE_REQUEST_PATH, token))
+    selected = [row['key'] for row in scope['matrix']['include']]
+    names = [RELEASE_TARGETS[key]['releaseName'] for key in selected]
+    if (not selected or request.get('releaseMode') != 'approved-only' or request.get('requestedBy') != 'Founder'
+        or 'trustedToolPromotion' in request or request.get('preserveLiveTargets') is not False
+        or not isinstance(request.get('targets'), list) or len(request['targets']) != len(names)
+        or set(request['targets']) != set(names) or request.get('cloudflareWebsiteRouting') is not scope['routing']
+        or RELEASE_REQUEST_PATH not in paths):
+        raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_SCOPE_UNPROVEN')
+    attempts = _completion_jobs(repository, run, token)
+    expected_names = {'Select exact affected applications', 'Admit exact validated fast-track source',
+        'Reconcile production schema before publication', 'Publish verified website routing'}
+    expected_names |= {'Affected App Deploy — ' + fast_track_target_label(key) for key in selected}
+    for jobs in attempts.values():
+        if (len(jobs) != len(expected_names) or {job['name'] for job in jobs} != expected_names
+            or any(job['status'] != 'completed' for job in jobs)):
+            raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_JOB_SCOPE_UNPROVEN')
+    latest = {job['name']: job for job in attempts[run['run_attempt']]}
+    for name, step in [('Select exact affected applications', 'Derive application impact exclusively from changed paths'),
+        ('Admit exact validated fast-track source', 'Authenticate merged source and preserved required validation')]:
+        if latest[name].get('conclusion') != 'success':
+            raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_ADMISSION_UNPROVEN')
+        _completion_step(latest[name], step)
+    schema = latest['Reconcile production schema before publication']
+    if scope['commerce']:
+        if schema.get('conclusion') != 'success':
+            raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_SCHEMA_UNPROVEN')
+        outcomes = [_completion_step(schema, step, conclusions=('success', 'skipped'))['conclusion'] for step in (
+            'Apply or reconcile the exact rehearsed migration bundle',
+            'Reconcile fresh already-ready schema without SQL bundle or mutation')]
+        if sorted(outcomes) != ['skipped', 'success']:
+            raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_SCHEMA_UNPROVEN')
+    elif any(next(job for job in jobs if job['name'] == schema['name']).get('conclusion') != 'skipped'
+             for jobs in attempts.values()):
+        raise ValueError('FAST_TRACK_COMPLETION_UNEXPECTED_SCHEMA_EXECUTION')
+    artifacts = _completion_inventory(api_get(repository,
+        f"actions/runs/{original_run}/artifacts?per_page=100", token), 'artifacts')
+    context = dict(run=run, attempts=attempts, latest=latest, artifacts=artifacts, scope=scope)
+    router = latest['Publish verified website routing']
+    if scope['routing']:
+        if router.get('conclusion') != 'success':
+            raise ValueError('FAST_TRACK_COMPLETION_ROUTING_UNRESOLVED')
+        _completion_step(router, FAST_TRACK_CHILD_STEPS['routing-cloudflare'][1])
+        records = []
+        for artifact in artifacts:
+            if not artifact.get('name', '').startswith('legend-release-child-intent-'):
+                continue
+            intent = _release_history_json(repository, original_run, artifact, 'operation.json', verify_digest=True)
+            if intent.get('child') == 'routing-cloudflare':
+                _validate_child_generation(repository, run, artifact, intent, 'routing-cloudflare', token, 'intent')
+                success = release_child_history(repository, 'routing-cloudflare', intent['dependencyIdentity'], token, 'success')
+                if (not success or success.get('producingRun') != original_run
+                    or success.get('applicationRevision') != revision or any(success.get(key) != intent.get(key)
+                        for key in ('dependencyIdentity', 'materialIdentity', 'partitionIdentity', 'executionAuthority'))):
+                    raise ValueError('FAST_TRACK_COMPLETION_ROUTING_RECEIPT_UNPROVEN')
+                records.append(success)
+        if len(records) != 1:
+            raise ValueError('FAST_TRACK_COMPLETION_ROUTING_RECEIPT_UNPROVEN')
+    elif any(next(job for job in jobs if job['name'] == router['name']).get('conclusion') != 'skipped'
+             for jobs in attempts.values()):
+        raise ValueError('FAST_TRACK_COMPLETION_UNEXPECTED_ROUTING_EXECUTION')
+    _completion_original_unchanged(repository, run, token)
+    return dict(context, targets=selected, baseRevision=baseline)
+
+
+def _completion_workflow_source(repository, revision, token):
+    """Only the reviewed existing observer contract can own a completion receipt."""
+    path = '.github/workflows/' + FAST_TRACK_COMPLETION_WORKFLOW
+    source = _release_history_source(repository, revision, path, token)
+    current = (Path(__file__).resolve().parent.parent / path).read_text()
+    # Compare the complete execution envelope, not regex-selected YAML fields.
+    # Quoted/duplicate keys, aliases, defaults and unrelated edits all fail closed.
+    if source != current:
+        raise ValueError('FAST_TRACK_COMPLETION_WORKFLOW_CONTRACT_UNPROVEN')
+    return source
+
+
+def fast_track_completion_observer(repository, run, token, *, live=False, attempt=None, job_id=None):
+    """Verify real observer provenance plus successful nonpublishing promotion."""
+    revision = run.get('head_sha', '')
+    if (run.get('path') != '.github/workflows/' + FAST_TRACK_COMPLETION_WORKFLOW
+        or run.get('head_branch') != FAST_TRACK_PR_BASE or run.get('event') != 'workflow_dispatch'
+        or run.get('head_repository', {}).get('full_name', '').lower() != repository.lower()
+        or type(run.get('id')) is not int or not re.fullmatch('[a-f0-9]{40}', revision)
+        or type(attempt) is not int or not 1 <= attempt <= run.get('run_attempt', 0)
+        or (live and (run.get('status') not in {'in_progress','queued'} or attempt != run['run_attempt']))):
+        raise ValueError('FAST_TRACK_COMPLETION_OBSERVER_UNPROVEN')
+    _completion_workflow_source(repository, revision, token)
+    promotions = _completion_rows(api_get(repository, f'actions/runs?head_sha={revision}&event=push&per_page=100', token), 'workflow_runs')
+    promotions = [r for r in promotions if is_fast_track_producer(repository, r)]
+    if (len(promotions) != 1 or promotions[0].get('head_sha') != revision
+        or fast_track_promotion_parent(repository, promotions[0], token) is None):
+        raise ValueError('FAST_TRACK_COMPLETION_TOOL_NOT_PROMOTED')
+    jobs = _completion_rows(api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token), 'jobs')
+    owners = [j for j in jobs if j.get('name') == FAST_TRACK_COMPLETION_JOB]
+    if (len(owners) != 1 or type(owners[0].get('id')) is not int
+        or owners[0].get('run_id') != run['id'] or owners[0].get('run_attempt') != attempt
+        or owners[0].get('head_sha') != revision or (job_id is not None and owners[0]['id'] != job_id)
+        or (live and (owners[0].get('status') != 'in_progress'
+            or owners[0].get('runner_name') != os.environ.get('RUNNER_NAME')))):
+        raise ValueError('FAST_TRACK_COMPLETION_OBSERVER_JOB_UNPROVEN')
+    if live:
+        current = api_get(repository, 'git/ref/heads/' + FAST_TRACK_PR_BASE, token)
+        if current.get('object',{}).get('sha') != revision:
+            raise ValueError('FAST_TRACK_COMPLETION_TOOL_HEAD_CHANGED')
+    return dict(runId=run['id'], runAttempt=attempt, jobId=owners[0]['id'], toolRevision=revision,
+                promotionRunId=promotions[0]['id'])
+
+
+def assert_fast_track_completion_execution(original_run, application_revision, *, clock=time.monotonic, sleep=time.sleep):
+    env = os.environ
+    repository = env.get('GITHUB_REPOSITORY',''); token = env.get('GH_TOKEN') or env.get('GITHUB_TOKEN')
+    ref = 'refs/heads/' + FAST_TRACK_PR_BASE
+    if (env.get('GITHUB_ACTIONS') != 'true' or env.get('GITHUB_EVENT_NAME') != 'workflow_dispatch'
+        or env.get('GITHUB_REF') != ref or env.get('GITHUB_JOB') != 'complete-fast-track'
+        or env.get('GITHUB_WORKFLOW_REF') != repository + '/.github/workflows/' + FAST_TRACK_COMPLETION_WORKFLOW + '@' + ref
+        or not token or not env.get('RUNNER_NAME')
+        or not env.get('GITHUB_RUN_ID','').isdigit() or not env.get('GITHUB_RUN_ATTEMPT','').isdigit()):
+        raise ValueError('FAST_TRACK_COMPLETION_EXECUTION_UNPROVEN')
+    run_id, attempt = int(env['GITHUB_RUN_ID']), int(env['GITHUB_RUN_ATTEMPT'])
+    revision = env.get('GITHUB_SHA', '')
+    if min(run_id, attempt) < 1 or not re.fullmatch('[a-f0-9]{40}', revision):
+        raise ValueError('FAST_TRACK_COMPLETION_EXECUTION_UNPROVEN')
+    if type(original_run) is not int or original_run < 1 or not re.fullmatch('[a-f0-9]{40}',application_revision or ''):
+        raise ValueError('FAST_TRACK_COMPLETION_DISPATCH_UNPROVEN')
+    event=json.loads(Path(env['GITHUB_EVENT_PATH']).read_text())
+    inputs=event.get('inputs',{})
+    if (inputs.get('scope')!='complete_fast_track' or inputs.get('original_run')!=str(original_run)
+        or inputs.get('application_revision')!=application_revision or inputs.get('target') or inputs.get('deployment_id')):
+        raise ValueError('FAST_TRACK_COMPLETION_DISPATCH_UNPROVEN')
+    expected = dict(id=run_id, run_attempt=attempt, event='workflow_dispatch',
+        path='.github/workflows/' + FAST_TRACK_COMPLETION_WORKFLOW,
+        head_branch=FAST_TRACK_PR_BASE, head_sha=revision)
+    with evidence_lookup_budget(clock() + 30, clock=clock):
+        run, _ = _observe_live_workflow(repository, expected, token,
+            queued_job=lambda: FAST_TRACK_COMPLETION_JOB, require_job=True,
+            error=ValueError, code='FAST_TRACK_COMPLETION_EXECUTION_CHANGED',
+            job_code='FAST_TRACK_COMPLETION_OBSERVER_JOB_UNPROVEN', clock=clock, sleep=sleep)
+        result = fast_track_completion_observer(repository, run, token, live=True, attempt=attempt)
+        if (subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()!=revision
+            or subprocess.run(['git','diff','--quiet','HEAD','--',
+                '.github/workflows/'+FAST_TRACK_COMPLETION_WORKFLOW,'scripts/validation-resume.py',
+                'scripts/deploy-approved-app.py','scripts/release-operation-evidence.py',
+                'scripts/release_policy.py','scripts/release-artifacts/transport.cjs'],capture_output=True).returncode
+            or subprocess.run(['git','merge-base','--is-ancestor',application_revision,revision],capture_output=True).returncode):
+            raise ValueError('FAST_TRACK_COMPLETION_CHECKED_SOURCE_UNPROVEN')
+        evidence_remaining(1)
+        return result
+
+
+@functools.lru_cache(maxsize=1)
+def _completion_journal_owner():
+    import importlib.util
+    spec=importlib.util.spec_from_file_location('completion_submission_owner',Path(__file__).with_name('release-operation-evidence.py'))
+    owner=importlib.util.module_from_spec(spec);spec.loader.exec_module(owner)
+    return owner
+
+
+def fast_track_completion_material(repository, original, key, token):
+    """Read genuine original intent and immutable package descriptors, never create them."""
+    run = original['run']; revision = run['head_sha']
+    if key not in original['targets']:
+        raise ValueError('FAST_TRACK_COMPLETION_TARGET_OUTSIDE_SCOPE')
+    artifacts = original['artifacts']
+    def artifact(name):
+        return _completion_artifact(artifacts, name, run)
+    package = artifact('fast-track-package-' + revision + '-' + key)
+    intents = []
+    for a in artifacts:
+        if not a.get('name','').startswith('legend-release-operation-intent-'):
+            continue
+        a = artifact(a['name'])
+        value = _release_history_json(repository, run['id'], a, 'operation.json', verify_digest=True)
+        if value.get('target') == key:
+            intents.append((a,value))
+    if len(intents) != 1:
+        raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_INTENT_UNPROVEN')
+    item, intent = intents[0]
+    required = {'target','applicationRevision','packageDigest','schemaVersion','operationId','baseline',
+        'packageProducerRun','producingRun','producingAttempt','baselineDeploymentIds','phase','submissionContract'}
+    operation = hashlib.sha256(json.dumps(dict(target=key,applicationRevision=revision,
+        packageDigest=intent.get('packageDigest')),sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    if (set(intent) != required or intent.get('schemaVersion') != 1 or intent.get('phase') != 'intent'
+        or intent.get('applicationRevision') != revision or intent.get('producingRun') != run['id']
+        or intent.get('packageProducerRun') != run['id'] or type(intent.get('producingAttempt')) is not int
+        or not 1 <= intent['producingAttempt'] <= run['run_attempt']
+        or not re.fullmatch('[a-f0-9]{64}', intent.get('packageDigest',''))
+        or not re.fullmatch('[a-f0-9]{40}', intent.get('baseline',''))
+        or intent.get('operationId') != operation or item['name'] != 'legend-release-operation-intent-' + operation
+        or intent.get('submissionContract') != dict(kind='azure_onedeploy_windows_intent_v1',value=operation)
+        or not isinstance(intent.get('baselineDeploymentIds'),list)
+        or len(intent['baselineDeploymentIds']) > 1000
+        or any(not isinstance(x,str) or not re.fullmatch('[a-zA-Z0-9_.:-]{1,256}',x) for x in intent['baselineDeploymentIds'])
+        or intent['baselineDeploymentIds'] != sorted(set(intent['baselineDeploymentIds']))):
+        raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_INTENT_IDENTITY_CHANGED')
+    intent_attempt, job, publication = _completion_original_artifact_owner(original, key, item,
+        'Publish or reconcile exact application bytes', ('success', 'failure', 'cancelled'))
+    package_attempt, package_job, _ = _completion_original_artifact_owner(original, key, package,
+        'Preserve immutable application bytes before upload', ('success',))
+    if intent_attempt != intent['producingAttempt'] or package_attempt > intent_attempt:
+        raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_ARTIFACT_ATTEMPT_CHANGED')
+    component_upload_proven(package, package_job, 'Preserve immutable application bytes before upload',
+        _release_job_log(repository, package_job['id'], token))
+    # Exact canonical journal history detects competing retained intents too.
+    retained=release_operation_history(repository,operation,revision,key,run['id'],run['run_attempt'],token)
+    if retained != intent:
+        raise ValueError('FAST_TRACK_COMPLETION_COMPETING_ORIGINAL_INTENT')
+    submitted=release_operation_history(repository,operation,revision,key,run['id'],run['run_attempt'],token,phase='submitted')
+    _completion_journal_owner().validate_original_submission_observation(intent,submitted,run)
+    if submitted is None and any(a.get('name')=='legend-release-operation-submitted-'+operation for a in artifacts):
+        raise ValueError('FAST_TRACK_COMPLETION_SUBMITTED_RECEIPT_MISSING')
+    if submitted is not None:
+        submitted_artifact = artifact('legend-release-operation-submitted-' + operation)
+        submitted_attempt, _, _ = _completion_original_artifact_owner(original, key, submitted_artifact,
+            'Publish or reconcile exact application bytes', ('success', 'failure', 'cancelled'))
+        if (submitted.get('producingAttempt') != submitted_attempt or
+            _release_history_json(repository, run['id'], submitted_artifact, 'operation.json', verify_digest=True) != submitted):
+            raise ValueError('FAST_TRACK_COMPLETION_SUBMITTED_OWNER_UNPROVEN')
+    _completion_original_unchanged(repository, run, token)
+    return dict(intent=intent,intentArtifact=item,packageArtifact=package,originalJob=job,
+        packageJob=package_job,packageAttempt=package_attempt,originalPublicationStep=publication,
+        submissionObservation=submitted)
+
+
+def validate_fast_track_completion_record(repository, run, artifact, record, token):
+    """A later observer can attest only success and cannot impersonate the original upload."""
+    proof=record.get('completionEvidence')
+    if not isinstance(proof,dict) or set(proof) != {'originalRun','originalRunAttempt','originalPackageJobId','originalPackageAttempt','intentArtifactId','intentArtifactDigest',
+        'packageArtifactId','packageArtifactDigest','originalJobId','observer','provider'}:
+        raise ValueError('FAST_TRACK_COMPLETION_RECEIPT_SHAPE_UNPROVEN')
+    observer=fast_track_completion_observer(repository,run,token,attempt=record.get('producingAttempt'),
+        job_id=proof.get('observer',{}).get('jobId'))
+    if observer != proof['observer'] or record.get('producingRun') != run['id'] or record.get('phase') != 'success':
+        raise ValueError('FAST_TRACK_COMPLETION_RECEIPT_OBSERVER_CHANGED')
+    if (artifact.get('workflow_run',{}).get('id') != run['id']
+        or subprocess.run(['git','merge-base','--is-ancestor',record.get('applicationRevision',''),observer['toolRevision']],capture_output=True).returncode):
+        raise ValueError('FAST_TRACK_COMPLETION_RECEIPT_ANCESTRY_UNPROVEN')
+    observer_jobs=_completion_rows(api_get(repository,f"actions/runs/{run['id']}/attempts/{observer['runAttempt']}/jobs?per_page=100",token),'jobs')
+    owner=next(j for j in observer_jobs if j.get('id')==observer['jobId'])
+    steps=owner.get('steps')
+    if not isinstance(steps,list) or not all(isinstance(step,dict) for step in steps):
+        raise ValueError('FAST_TRACK_COMPLETION_OBSERVER_STEPS_UNPROVEN')
+    matches=[step for step in steps if step.get('name')=='Reconcile original bytes and record only missing success receipts']
+    if len(matches)!=1:
+        raise ValueError('FAST_TRACK_COMPLETION_OBSERVER_STEP_UNPROVEN')
+    step=matches[0]
+    _completion_step(owner,'Authenticate original operations and promoted completion authority')
+    live=(owner.get('status')=='in_progress' and step.get('status')=='in_progress'
+        and step.get('conclusion') is None and owner.get('conclusion') is None
+        and os.environ.get('GITHUB_JOB')=='complete-fast-track'
+        and os.environ.get('GITHUB_RUN_ID')==str(run['id'])
+        and os.environ.get('GITHUB_RUN_ATTEMPT')==str(observer['runAttempt'])
+        and os.environ.get('RUNNER_NAME')==owner.get('runner_name'))
+    import datetime
+    if live:
+        if not _completion_time(step.get('started_at')) <= _completion_time(artifact.get('created_at')) <= datetime.datetime.now(datetime.timezone.utc):
+            raise ValueError('FAST_TRACK_COMPLETION_RECEIPT_OUTSIDE_OBSERVER_STEP')
+    elif (owner.get('status')!='completed' or owner.get('conclusion') not in {'success','failure','cancelled'}
+        or step.get('status')!='completed' or step.get('conclusion') not in {'success','failure','cancelled'}
+        or not _completion_artifact_in_step(artifact,step)):
+        raise ValueError('FAST_TRACK_COMPLETION_RECEIPT_OWNER_UNRESOLVED')
+    original=fast_track_completion_original(repository,proof['originalRun'],record.get('applicationRevision',''),token)
+    material=fast_track_completion_material(repository,original,record.get('target'),token)
+    expected_proof=dict(originalRun=original['run']['id'],originalRunAttempt=original['run']['run_attempt'],
+        originalPackageJobId=material['packageJob']['id'],originalPackageAttempt=material['packageAttempt'],intentArtifactId=material['intentArtifact']['id'],
+        intentArtifactDigest=material['intentArtifact']['digest'],packageArtifactId=material['packageArtifact']['id'],
+        packageArtifactDigest=material['packageArtifact']['digest'],originalJobId=material['originalJob']['id'],
+        observer=observer,provider=proof['provider'])
+    provider=proof['provider']; ids=record.get('deploymentIds')
+    submitted=material['submissionObservation']
+    if submitted is not None and ids != [submitted['deploymentId']]:
+        raise ValueError('FAST_TRACK_COMPLETION_CONFLICTS_WITH_ORIGINAL_SUBMISSION')
+    if (not isinstance(provider,dict) or set(provider) != {'deploymentId','receivedTime','status','runtimeRevision'}
+        or not isinstance(ids,list) or len(ids)!=1 or provider.get('deploymentId')!=ids[0]
+        or not isinstance(ids[0],str) or not re.fullmatch('[a-zA-Z0-9_.:-]{1,256}',ids[0])
+        or ids[0] in material['intent']['baselineDeploymentIds'] or provider.get('status')!=4
+        or provider.get('runtimeRevision')!=record['applicationRevision']
+        or not completion_provider_in_original_publication(material,provider.get('receivedTime'))):
+        raise ValueError('FAST_TRACK_COMPLETION_PROVIDER_CORRELATION_UNPROVEN')
+    expected=dict(material['intent'],phase='success',producingRun=run['id'],producingAttempt=observer['runAttempt'],
+        deploymentIds=ids,completionEvidence=expected_proof)
+    if record != expected:
+        raise ValueError('FAST_TRACK_COMPLETION_RECEIPT_IDENTITY_CHANGED')
+    if not live and (owner['conclusion']!='success' or step['conclusion']!='success'):
+        return False  # Preserve terminal failed evidence; a new observer must complete it.
+    return record
+
+
+def fast_track_completion_present(repository, revision, token):
+    runs=_completion_rows(api_get(repository,
+        f'actions/workflows/{FAST_TRACK_COMPLETION_WORKFLOW}/runs?event=workflow_dispatch&per_page=100',token),'workflow_runs')
+    for run in runs:
+        if run.get('head_branch')!=FAST_TRACK_PR_BASE or run.get('path')!='.github/workflows/'+FAST_TRACK_COMPLETION_WORKFLOW:
+            continue
+        artifacts=_completion_rows(api_get(repository,f"actions/runs/{run['id']}/artifacts?per_page=100",token),'artifacts')
+        for artifact in artifacts:
+            if not artifact.get('name','').startswith(('legend-release-operation-success-','legend-release-completion-')):
+                continue
+            record=_release_history_json(repository,run['id'],artifact,'operation.json',verify_digest=True)
+            if record.get('applicationRevision')==revision:
+                return True
+    return False
+
+
+def fast_track_completion_summary_name(original_run, revision):
+    return 'legend-release-completion-' + hashlib.sha256(json.dumps(
+        dict(originalRun=original_run,applicationRevision=revision),sort_keys=True,separators=(',',':')).encode()).hexdigest()
+
+
+def fast_track_completion_summary(repository, run, token, targets):
+    name=fast_track_completion_summary_name(run['id'],run['head_sha'])
+    artifacts=_completion_rows(api_get(repository,'actions/artifacts?name='+urllib.parse.quote(name,safe='')+'&per_page=100',token),'artifacts')
+    complete=False;seen=set()
+    for artifact in artifacts:
+        producer_id=artifact.get('workflow_run',{}).get('id')
+        if (artifact.get('name')!=name or artifact.get('expired') is not False
+            or type(producer_id) is not int or producer_id in seen
+            or type(artifact.get('id')) is not int or artifact['id']<1
+            or not re.fullmatch('sha256:[a-f0-9]{64}',artifact.get('digest',''))):
+            raise ValueError('FAST_TRACK_COMPLETION_SUMMARY_ARTIFACT_UNPROVEN')
+        seen.add(producer_id)
+        producer=api_get(repository,f"actions/runs/{artifact.get('workflow_run',{}).get('id')}",token)
+        if producer.get('id') != producer_id:
+            raise ValueError('FAST_TRACK_COMPLETION_SUMMARY_PRODUCER_CHANGED')
+        record=_release_history_json(repository,producer['id'],artifact,'operation.json',verify_digest=True)
+        observer=fast_track_completion_observer(repository,producer,token,attempt=record.get('producingAttempt'),job_id=record.get('observer',{}).get('jobId'))
+        expected=dict(schemaVersion=1,phase='success',originalRun=run['id'],applicationRevision=run['head_sha'],
+            producingRun=producer['id'],producingAttempt=observer['runAttempt'],observer=observer,targets=targets)
+        if record!=expected or subprocess.run(['git','merge-base','--is-ancestor',run['head_sha'],observer['toolRevision']],capture_output=True).returncode:
+            raise ValueError('FAST_TRACK_COMPLETION_SUMMARY_IDENTITY_CHANGED')
+        jobs=_completion_rows(api_get(repository,f"actions/runs/{producer['id']}/attempts/{observer['runAttempt']}/jobs?per_page=100",token),'jobs')
+        job=next(j for j in jobs if j.get('id')==observer['jobId'])
+        steps=[x for x in job.get('steps',[]) if x.get('name')=='Reconcile original bytes and record only missing success receipts']
+        if (producer.get('status')=='completed' and producer.get('conclusion')=='success'
+            and job.get('status')=='completed' and job.get('conclusion')=='success'
+            and len(steps)==1 and steps[0].get('status')=='completed' and steps[0].get('conclusion')=='success'
+            and _completion_artifact_in_step(artifact,steps[0])):
+            complete=True
+    return complete
+
+
+def validate_original_completion_success(repository, original, material, record, token):
+    """Preserve a genuine original success only with its exact successful owner."""
+    if 'completionEvidence' in record:
+        return record  # Canonical history has authenticated the later observer.
+    intent = material['intent']; run = original['run']
+    artifact = _completion_artifact(original['artifacts'],
+        'legend-release-operation-success-' + intent['operationId'], run)
+    attempt, job, _ = _completion_original_artifact_owner(original, intent['target'], artifact,
+        'Publish or reconcile exact application bytes', ('success',))
+    if (record.get('producingRun') != run['id'] or record.get('producingAttempt') != attempt
+        or job.get('conclusion') != 'success'
+        or _release_history_json(repository, run['id'], artifact, 'operation.json', verify_digest=True) != record):
+        raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_SUCCESS_OWNER_UNPROVEN')
+    if intent['target'] in {'website', 'protect'}:
+        _completion_step(job, 'Verify public sitemap XML and robots contract')
+    return record
+
+
+def fast_track_completed_operation_receipts(repository, run, token, *, require_completed_observer=True):
+    """Positive all-target receipt proof; missing evidence never clears the predecessor."""
+    original=fast_track_completion_original(repository,run['id'],run['head_sha'],token)
+    completed_targets={}
+    for key in original['targets']:
+        material=fast_track_completion_material(repository,original,key,token)
+        intent=material['intent']
+        success=release_operation_history(repository,intent['operationId'],run['head_sha'],key,
+            run['id'],run['run_attempt'],token,phase='success')
+        if success is None:
+            return False
+        if (any(success.get(k)!=v for k,v in intent.items() if k not in {'phase','producingRun','producingAttempt'})
+            or not isinstance(success.get('deploymentIds'),list) or len(success['deploymentIds'])!=1
+            or success['deploymentIds'][0] in intent['baselineDeploymentIds']):
+            raise ValueError('FAST_TRACK_COMPLETION_SUCCESS_IDENTITY_CHANGED')
+        if material['submissionObservation'] is not None and success['deploymentIds'] != [material['submissionObservation']['deploymentId']]:
+            raise ValueError('FAST_TRACK_COMPLETION_SUCCESS_CONFLICTS_WITH_SUBMISSION')
+        validate_original_completion_success(repository,original,material,success,token)
+        completed_targets[key]=dict(operationId=intent['operationId'],packageDigest=intent['packageDigest'],
+            deploymentIds=success['deploymentIds'],intentArtifactId=material['intentArtifact']['id'],
+            packageArtifactId=material['packageArtifact']['id'])
+    if require_completed_observer:
+        return fast_track_completion_summary(repository,run,token,completed_targets)
+    return completed_targets
+
+
+
+def fast_track_effective_baseline(before, revision, *, repository=None, token=None):
     """Carry unpublished app scope; this never authorizes SQL or publication replay."""
-    repository = os.environ['GITHUB_REPOSITORY']
-    token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    repository = repository or os.environ['GITHUB_REPOSITORY']
+    token = token or os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
     # Keep a bounded chain while carrying successive positively proven prewrite repairs.
     for _ in range(16):
         if not re.fullmatch('[a-f0-9]{40}', before) or subprocess.run(
@@ -5021,6 +5696,9 @@ def fast_track_effective_baseline(before, revision):
         jobs = payload.get('jobs')
         if not isinstance(jobs, list) or payload.get('total_count') != len(jobs):
             raise RuntimeError('FAST_TRACK_PREDECESSOR_JOBS_INCOMPLETE')
+        if fast_track_completion_present(repository, before, token):
+            if fast_track_completed_operation_receipts(repository, prior, token):
+                return before
         if fast_track_completed_apps_pending_routing(repository, prior, jobs, token):
             return before
         if attested_fast_track_manual_dns_proxy_completion(repository, prior, jobs, token):
@@ -6900,7 +7578,7 @@ def require_readiness(repository, candidate, *, event=None, clock=time.monotonic
         sleep(min(10, max(0, deadline - clock())))
 
 
-def fast_track_source_validation_scope(args):
+def fast_track_source_validation_scope(args, *, clock=time.monotonic, sleep=time.sleep):
     """Separate development pushes from authenticated fast-track PR validation.
 
     Source validation is not production readiness or mutation admission. The
@@ -6915,14 +7593,18 @@ def fast_track_source_validation_scope(args):
     token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
     if not token:
         raise ValueError('FAST_TRACK_SOURCE_VALIDATION_IDENTITY_MISSING')
-    run = api_get(args.repository, f'actions/runs/{args.current_run_id}', token)
     if (not re.fullmatch('[a-f0-9]{40}', args.current_sha or '')
-        or run.get('id') != args.current_run_id or run.get('run_attempt') != args.run_attempt or
-        type(args.run_attempt) is not int or args.run_attempt < 1 or run.get('event') != args.event or
-        (args.event == 'push' and run.get('head_branch') != args.head_branch) or run.get('path') != '.github/workflows/' + args.workflow or run.get('head_sha') != args.current_sha or
-        run.get('head_repository', {}).get('full_name') != args.repository or
-        run.get('status') != 'in_progress'):
+        or type(args.current_run_id) is not int or args.current_run_id < 1
+        or type(args.run_attempt) is not int or args.run_attempt < 1):
         raise ValueError('FAST_TRACK_SOURCE_VALIDATION_IDENTITY_MISMATCH')
+    expected = dict(id=args.current_run_id, run_attempt=args.run_attempt, event=args.event,
+        path='.github/workflows/' + args.workflow, head_sha=args.current_sha)
+    if args.event == 'push':
+        expected['head_branch'] = args.head_branch
+    run, _ = _observe_live_workflow(args.repository, expected, token,
+        queued_job=lambda: _source_validation_job_name(args.repository, args.current_sha, args.workflow, token),
+        error=ValueError, code='FAST_TRACK_SOURCE_VALIDATION_IDENTITY_MISMATCH',
+        job_code='FAST_TRACK_SOURCE_VALIDATION_ACTIVE_JOB_UNPROVEN', clock=clock, sleep=sleep)
     if args.event == 'push':
         if not re.fullmatch(r'(?:fix|repair|isolation)/[^\s]+', args.head_branch or ''):
             raise ValueError('FAST_TRACK_DEVELOPMENT_BRANCH_UNAUTHORIZED')
@@ -9479,7 +10161,10 @@ def release_operation_history(repository, operation_id, application_revision, ta
             raise RuntimeError("Deployment intent producer is missing")
         run = read_api(f"actions/runs/{run_id}")
         fast_track = is_fast_track_producer(repository, run)
-        if not fast_track and (run.get("path") != ".github/workflows/" + DIRECT_RELEASE_WORKFLOW or
+        completion = run.get("path") == ".github/workflows/" + FAST_TRACK_COMPLETION_WORKFLOW
+        if completion and phase != "success":
+            raise RuntimeError("Completion observer cannot produce intent or submission history")
+        if not fast_track and not completion and (run.get("path") != ".github/workflows/" + DIRECT_RELEASE_WORKFLOW or
                 run.get("head_branch") != TRUSTED_PR_BASE or run.get("event") != "workflow_dispatch" or
                 run.get("head_repository", {}).get("full_name", "").lower() != repository.lower()):
             raise RuntimeError("Deployment intent has an untrusted producer")
@@ -9502,11 +10187,22 @@ def release_operation_history(repository, operation_id, application_revision, ta
             or type(record.get('producingAttempt')) is not int
             or not 1 <= record['producingAttempt'] <= run.get('run_attempt', 0)):
             raise RuntimeError('Fast-track deployment intent has unbound revision or attempt')
+        if completion:
+            _completion_inventory(payload, "artifacts")
+            exact = _release_history_json(repository, run_id, artifact, "operation.json", verify_digest=True)
+            if exact != record:
+                raise RuntimeError("Completion receipt artifact identity changed")
+            if validate_fast_track_completion_record(repository, run, artifact, record, token) is False:
+                continue
+        elif "completionEvidence" in record:
+            raise RuntimeError("Completion evidence requires its real observer producer")
         records.append(record)
     if records:
         identity_keys = ("operationId", "applicationRevision", "target", "packageDigest", "baseline")
         if any(any(record.get(key) != records[0].get(key) for key in identity_keys) for record in records[1:]):
             raise RuntimeError("Competing deployment intents require reconciliation")
+        if phase == "success" and any("completionEvidence" in r for r in records) and any(r.get("deploymentIds") != records[0].get("deploymentIds") for r in records):
+            raise RuntimeError("Competing completion success evidence requires reconciliation")
         if phase in {"intent", "submitted"} and any(record != records[0] for record in records[1:]):
             raise RuntimeError("Competing deployment intent producers require reconciliation")
         return records[0]

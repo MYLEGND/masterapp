@@ -848,5 +848,65 @@ class TransactionPreflightResumeTests(unittest.TestCase):
                     'owner/repo', identity, revision, digests, 10, 1, 'placeholder')
 
 
+class CompletionJournalTests(unittest.TestCase):
+    def setUp(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        self.intent=dict(target='portal',applicationRevision='a'*40,packageDigest='b'*64,baseline='c'*40,
+            operationId='d'*64,phase='intent',schemaVersion=1,producingRun=1,producingAttempt=1,
+            packageProducerRun=1,baselineDeploymentIds=['old'],submissionContract=dict(kind='azure_onedeploy_windows_intent_v1',value='d'*64))
+        self.material=dict(intent=self.intent,intentArtifact=dict(id=10,digest='sha256:'+'e'*64),
+            packageJob=dict(id=12),packageAttempt=1,packageArtifact=dict(id=11,digest='sha256:'+'f'*64),originalJob=dict(id=12))
+        self.observer=dict(runId=2,runAttempt=1,jobId=20,toolRevision='f'*40,promotionRunId=3)
+        self.success=None;self.submitted=None
+        self.authority=SimpleNamespace(_completion_original_unchanged=Mock(),validate_original_completion_success=Mock(),assert_fast_track_completion_execution=Mock(return_value=self.observer),release_operation_history=Mock(side_effect=lambda *args,**kw:self.submitted if kw.get('phase')=='submitted' else self.success))
+        self.publish=Mock(return_value=dict(artifactId=42));self.env=dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')
+    def owner(self):
+        import os
+        with patch.dict(os.environ,self.env):
+            owner=journal.CompletionJournal(dict(run=dict(id=1,run_attempt=1)),self.material,self.observer,authority=self.authority,publisher=self.publish)
+        owner.provider=dict(deploymentId='new',receivedTime='2026-10-21T13:02:00Z',status=4,runtimeRevision='a'*40)
+        return owner
+    def test_completion_writes_success_only_with_real_observer(self):
+        owner=self.owner();owner.record_success(['new']);name,record=self.publish.call_args.args
+        self.assertEqual(name,'legend-release-operation-success-'+'d'*64)
+        self.assertEqual(record['producingRun'],2);self.assertEqual(record['completionEvidence']['originalRun'],1)
+        self.assertEqual(self.intent['phase'],'intent');self.assertEqual(self.intent['producingRun'],1)
+        self.assertFalse(hasattr(owner,'before_submit'));self.assertFalse(hasattr(owner,'record_submission_observation'))
+    def test_original_success_preserved_without_new_record(self):
+        success=dict(self.intent,phase='success',deploymentIds=['new'])
+        self.success=success
+        self.assertEqual(self.owner().record_success(['new']),success);self.publish.assert_not_called()
+    def test_missing_or_mismatched_provider_never_writes(self):
+        for provider,ids in [(None,['new']),(dict(deploymentId='other'),['new']),(dict(deploymentId='old'),['old']),(dict(deploymentId='new'),['new','other'])]:
+            owner=self.owner();owner.provider=provider
+            with self.subTest(provider=provider),self.assertRaises(RuntimeError):owner.record_success(ids)
+        self.publish.assert_not_called()
+    def test_changed_observer_or_conflicting_success_never_writes(self):
+        self.authority.assert_fast_track_completion_execution.return_value=dict(self.observer,jobId=99)
+        with self.assertRaises(RuntimeError):self.owner().record_success(['new'])
+        self.authority.assert_fast_track_completion_execution.return_value=self.observer
+        self.success=dict(self.intent,phase='success',deploymentIds=['other'])
+        with self.assertRaises(RuntimeError):self.owner().record_success(['new'])
+        self.publish.assert_not_called()
+    def test_retained_submitted_id_must_match_completion(self):
+        self.submitted=dict(self.intent,phase='submitted',deploymentId='other')
+        with self.assertRaisesRegex(RuntimeError,'differs from retained'):self.owner().record_success(['new'])
+        self.publish.assert_not_called()
+        self.submitted['deploymentId']='new'
+        self.owner().record_success(['new']);self.publish.assert_called_once()
+    def test_invalid_submitted_identity_blocks_completion(self):
+        self.submitted=dict(self.intent,phase='submitted',deploymentId='new',producingRun=999)
+        with self.assertRaisesRegex(RuntimeError,'original execution'):self.owner().record_success(['new'])
+        self.publish.assert_not_called()
+    def test_website_existing_submitted_and_success_are_preserved(self):
+        self.submitted=dict(self.intent,phase='submitted',deploymentId='new')
+        self.success=dict(self.intent,phase='success',deploymentIds=['new'])
+        self.assertEqual(self.owner().record_success(['new']),self.success);self.publish.assert_not_called()
+    def test_ambiguous_journal_publication_is_not_retried(self):
+        self.publish.side_effect=TimeoutError()
+        with self.assertRaises(TimeoutError):self.owner().record_success(['new'])
+        self.publish.assert_called_once()
+
 if __name__ == '__main__':
     unittest.main()

@@ -7157,6 +7157,7 @@ body.life-landing .lq-contact-capture-head .lq-agent-handoff-head {
   }));
   const finalDiscoveryContinueEvent = isAgeBeforeTobaccoFlow ? 'life_step1_tobacco_continue' : 'life_step1_age_continue';
   let currentMicroStep = 0;
+  let microStepFocusVersion = 0;
   let autoAdvanceTimer = null;
   let processingTimer = null;
   let processingStageTimers = [];
@@ -9445,8 +9446,12 @@ const contactFieldProgress = new Map();
     return navbarHeight + viewportPadding;
   }
 
-  function ensureFocusableTarget(target) {
+  function ensureFocusableTarget(target, preserveNativeTabOrder = false) {
     if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    if (preserveNativeTabOrder && target.matches('button, input, select, textarea')) {
       return;
     }
 
@@ -9491,13 +9496,15 @@ const contactFieldProgress = new Map();
     const focusTarget = options.focusTarget instanceof HTMLElement ? options.focusTarget : target;
     const scrollBehavior = options.behavior || ((isLandingMobile && target === step1Panel) ? 'auto' : 'smooth');
     setTimeout(() => {
+      if (options.isCurrentFocus && !options.isCurrentFocus()) return;
       scrollPanelIntoView(target, scrollBehavior, options);
       if (options.spotlightTarget instanceof HTMLElement) {
         spotlightPanel(options.spotlightTarget);
       }
       if (shouldFocus && focusTarget instanceof HTMLElement) {
-        ensureFocusableTarget(focusTarget);
+        ensureFocusableTarget(focusTarget, options.preserveNativeTabOrder === true);
         window.setTimeout(() => {
+          if (options.isCurrentFocus && !options.isCurrentFocus()) return;
           focusTarget.focus({ preventScroll: true });
         }, 120);
       }
@@ -9524,7 +9531,9 @@ const contactFieldProgress = new Map();
       align: options.align || getFunnelPanelAlignment(panelTarget),
       preferVisiblePanel: true,
       spotlightTarget: panelTarget instanceof HTMLElement ? panelTarget : undefined,
-      focusTarget
+      focusTarget,
+      isCurrentFocus: options.isCurrentFocus,
+      preserveNativeTabOrder: options.preserveNativeTabOrder
     });
   }
 
@@ -9862,10 +9871,29 @@ const contactFieldProgress = new Map();
     return `${label} · ${nativeMicroOrder().indexOf(bounded) + 1} of ${microSteps.length}`;
   }
 
+  function isBackFocusTargetAvailable(target, stepEl) {
+    if (!(target instanceof HTMLElement) || !target.isConnected ||
+        !stepEl.contains(target) || target.closest('[hidden], [inert], [aria-hidden="true"]') ||
+        target.matches(':disabled, [aria-disabled="true"]') || target.getClientRects().length === 0) return false;
+    for (let element = target; element instanceof HTMLElement; element = element.parentElement) {
+      const style = window.getComputedStyle(element);
+      if (style.visibility === 'hidden' || style.visibility === 'collapse' || Number(style.opacity || 1) === 0) return false;
+    }
+    return true;
+  }
+
+  function getMicroStepBackFocusTarget(stepEl) {
+    const question = stepEl.querySelector('.lq-step-question');
+    if (isBackFocusTargetAvailable(question, stepEl)) return question;
+    return Array.from(stepEl.querySelectorAll('input:not([type="hidden"]), select, textarea, button:not([data-step1-back]), [tabindex]'))
+      .find(target => !target.hasAttribute('data-step1-back') && isBackFocusTargetAvailable(target, stepEl)) || null;
+  }
+
   function showMicroStep(stepIndex, shouldScroll = false, options = {}) {
     if (!nativeMicroOrder().includes(stepIndex)) return;
     const bounded = Math.max(0, Math.min(microSteps.length - 1, stepIndex));
     currentMicroStep = bounded;
+    const focusVersion = ++microStepFocusVersion;
     setStepTransitionState(false);
     microSteps.forEach((stepEl, i) => {
       stepEl.hidden = i !== bounded;
@@ -9884,8 +9912,18 @@ const contactFieldProgress = new Map();
     persistFunnelState();
 
     if (shouldScroll) {
+      // Back returns to the revealed question, not the progress wrapper hidden
+      // by the public shell. Recheck after both delays so stale work cannot steal focus.
+      const stepEl = microSteps[bounded];
+      const backFocusTarget = options.focusQuestion ? getMicroStepBackFocusTarget(stepEl) : null;
       focusFunnelPanel(step1Panel, {
-        shouldFocus: true
+        shouldFocus: options.focusQuestion ? Boolean(backFocusTarget) : true,
+        focusTarget: backFocusTarget,
+        preserveNativeTabOrder: options.focusQuestion === true,
+        isCurrentFocus: options.focusQuestion ? () =>
+          focusVersion === microStepFocusVersion && currentMicroStep === bounded &&
+          step1Panel.isConnected && !step1Panel.hidden && stepEl.isConnected && !stepEl.hidden &&
+          (!backFocusTarget || isBackFocusTargetAvailable(backFocusTarget, stepEl)) : undefined
       });
     }
   }
@@ -10810,7 +10848,7 @@ const contactFieldProgress = new Map();
       if (target == null) return;
       clearAutoAdvanceTimer();
       metaSignalApi?.trackBacktrack({ fromStep: `micro_${currentMicroStep + 1}`, toStep: `micro_${target + 1}` });
-      showMicroStep(target, true);
+      showMicroStep(target, true, { focusQuestion: true });
     });
   });
 

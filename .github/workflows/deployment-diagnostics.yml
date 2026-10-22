@@ -7,11 +7,15 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: Read-only observation scope
+        description: Observation or authenticated completion-only scope
         required: true
         default: deployment
         type: choice
-        options: [deployment, migration_inventory, azure_deployment]
+        options: [deployment, migration_inventory, azure_deployment, complete_fast_track]
+      original_run:
+        description: Original terminal fast-track run for completion-only reconciliation
+        required: false
+        type: string
       application_revision:
         description: Exact immutable application SHA for the selected observation
         required: false
@@ -573,3 +577,52 @@ jobs:
           set -euo pipefail
           python3 scripts/deploy-approved-app.py --observe-azure-deployment "$OBSERVATION_TARGET" \
             --observation-revision "$APPLICATION_REVISION" --deployment-id "$OBSERVATION_DEPLOYMENT_ID"
+
+  complete-fast-track:
+    name: Complete existing fast-track deployment receipts
+    if: github.event_name == 'workflow_dispatch' && inputs.scope == 'complete_fast_track' && github.ref == 'refs/heads/Legend/fast-track-release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: Production
+    concurrency:
+      group: legend-approved-release
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ORIGINAL_RUN: ${{ inputs.original_run }}
+      ORIGINAL_REVISION: ${{ inputs.application_revision }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Authenticate original operations and promoted completion authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy-approved-app.py --complete-fast-track "$ORIGINAL_RUN" \
+            --completion-revision "$ORIGINAL_REVISION" --validate-completion-only \
+            --package-root "$RUNNER_TEMP/original-completion-packages"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Prepare existing canonical evidence transport
+        run: npm ci --prefix scripts/release-artifacts --ignore-scripts --no-audit --no-fund
+      - uses: ./scripts/release-artifacts
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Reconcile original bytes and record only missing success receipts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy-approved-app.py --complete-fast-track "$ORIGINAL_RUN" \
+            --completion-revision "$ORIGINAL_REVISION" --package-root "$RUNNER_TEMP/original-completion-packages"
