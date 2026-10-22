@@ -1,24 +1,36 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Zac explicitly approved adding scripts/test-release-children.py to the protected nonpublishing promotion list, with identity, review and deployment gates intact and no new access or spending (Sentinel_5aec3681cb4c8191a62a72a262727238,2026-10-22T20:29:33Z: Approve; answering exact question Sentinel_7b7673eedaa48191b1c76a31b6ace5c9). This Stage1 request promotes only the independently accepted allowlist amendment and original-base-compatible policy tests. No application publication, schema mutation or routing change is authorized. Existing runner/API allowance may be consumed; no guaranteed cost-free execution is asserted.",
-  "purpose": "Bootstrap only the exact child test path into the existing protected tool promotion policy. Both bootstrap files are already admitted by the current base policy. Preserve all runtime/history/app bytes, original completion and failed receipts, and unpublished Protect/Website scope. Child fixture and history correction remain separate Stage2 work after successful nonpublishing promotion.",
-  "requestId": "founder-child-fixture-bootstrap-20261022-a26aca41a39d",
+  "authorization": "Founder directed completion and recovery of this release (Sentinel_c4af250f7be88191a6917677fa826cd0,2026-10-22T14:08:19Z) and explicitly approved admitting the child fixture path under protected nonpublishing promotion (Sentinel_5aec3681cb4c8191a62a72a262727238,2026-10-22T20:29:33Z, answering Sentinel_7b7673eedaa48191b1c76a31b6ace5c9). Stage1 promotion is verified. This Stage2 request promotes only the independently accepted historical inventory and fixture corrections. No application publication, schema mutation, routing change, new access or spending is authorized. Existing runner/API allowance may be consumed; no guaranteed cost-free execution is asserted.",
+  "purpose": "Promote complete branch history enumeration with strict local exact-head producer identity and completeness checks, plus compatible child and observer test fixtures. Preserve Stage1 tests and policy, accepted application bytes, original completion, both failed release attempts and all nonpublishing promotion ancestry. No arbitrary producer fallback, queued identity acceptance or deployment replay.",
+  "requestId": "founder-release-history-stage2-20261022-f210b76f5e21",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "0d343b8dc2e8d0e2a28df6ab2b8907cd6976e2ed",
-    "sourceRevision": "a26aca41a39d93371c7a4bf09419e5b704125891",
+    "baseRevision": "3ddbaa8b9825fe0daef36f39c006eac070426cfe",
+    "sourceRevision": "f210b76f5e212c7ca568dbdea5142732ffe2134b",
     "files": {
-      "scripts/release_policy.py": {
+      "scripts/test-fast-track-release.py": {
         "mode": "100644",
-        "blob": "f3b4251d49fc0eb0332d69b3acf701cd4569ed7f"
+        "blob": "6b7ae8d13e6f277409617d4b609fc6934f051984"
+      },
+      "scripts/test-release-children.py": {
+        "mode": "100644",
+        "blob": "e8bafb442485a4eabdbdbe3891f40bd1fd9b58a6"
       },
       "scripts/test-release-policy.py": {
         "mode": "100644",
-        "blob": "59a615ae70d5f72fab05b1dde81e3b2210fecb1f"
+        "blob": "797eee3e09dca8ce2fbaf59e2017a2e13a2d02cf"
+      },
+      "scripts/test-validation-resume.py": {
+        "mode": "100644",
+        "blob": "2320725fd327fcb8a7127a759b7f99e8d2c4cec5"
+      },
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "0891905ed05d0ae2b50f9e84f9c1cbffcf853781"
       }
     }
   }
