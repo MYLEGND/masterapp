@@ -157,6 +157,355 @@ def direct_child_identity(child, revision, material_identity, *, workflow=None):
     return hashlib.sha256(json.dumps(contract, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+# Retained-material recovery is a distinct producer, never a push producer.
+FAST_TRACK_RECOVERY_JOB = 'Recover retained fast-track application materials'
+FAST_TRACK_RECOVERY_JOB_ID = 'recover-fast-track'
+FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS = ({
+    '.github/workflows/legend-fast-track-ui.yml': '4f551f6cda7b2161abe7d36d5dbba510f081b10fa92ab9a64eb2e3205f6081d2',
+    'scripts/deploy-approved-app.py': 'cf6335e11503c862d7f4f743e520aeb543f56fa3583f0f3ece65b934324c2d51',
+    'scripts/release-operation-evidence.py': '6f7a92db9b48255825412321516176a1795935bbfaeb24c2268a4437dcb239b3',
+},)
+
+
+def _fast_track_preupload_log_proven(log, revision, step):
+    """Interpret only the fixed exception from an independently pinned producer."""
+    import datetime
+    start, end = (_completion_time(step.get(key)) for key in ('started_at', 'completed_at'))
+    if end < start:
+        return False
+    clean = '\n'.join(re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line) for line in log.splitlines())
+    heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', clean))
+    if heads != {revision}:
+        return False
+    marker = ('DeploymentStatusUnavailable: Azure deployment status remained unavailable for 3 consecutive reads '
+              '(before any upload). No deployment or rollback write was replayed; resume by reconciling the exact revision.')
+    events = []
+    for line in log.splitlines():
+        stamp, sep, text = line.partition(' ')
+        if not sep or not re.fullmatch(r'\d{4}-\d{2}-\d{2}T[0-9:.]+Z', stamp):
+            continue
+        observed = _completion_time(stamp)
+        if start <= observed <= end + datetime.timedelta(seconds=1):
+            events.append(text)
+    # Positive terminal control-flow evidence, not an absence-of-intent shortcut.
+    # In this pinned generation submitted is set BEFORE submit and never reset;
+    # the literal before-upload phase is impossible after entering that write.
+    return (events.count(marker) == 1 and clean.count(marker) == 1
+        and not any('Submitting the verified immutable ZIP once.' in line
+                    or 'AZURE_TRACKED_DEPLOYMENT_REFERENCE:' in line for line in events)
+        and any('in fast_track_deploy' in line for line in events)
+        and any('in reconcile' in line for line in events)
+        and any('in read_deployments_bounded' in line for line in events)
+        and any('Process completed with exit code 1.' in line for line in events))
+
+
+def attested_fast_track_preupload_failure(repository, run, job, attempt, target, operation_id, token):
+    """Generic reviewed pre-upload read failure; unknown generations stay held."""
+    import tempfile
+    import zipfile
+    try:
+        revision = run.get('head_sha')
+        if (not is_fast_track_producer(repository, run) or run.get('status') != 'completed'
+            or type(attempt) is not int or not 1 <= attempt <= run.get('run_attempt', 0)
+            or target not in RELEASE_TARGETS or job.get('run_id') != run['id']
+            or job.get('run_attempt') != attempt or job.get('head_sha') != revision
+            or job.get('name') != 'Affected App Deploy — ' + fast_track_target_label(target)
+            or job.get('status') != 'completed' or job.get('conclusion') != 'failure'):
+            return False
+        step = _completion_step(job, 'Publish or reconcile exact application bytes', conclusions=('failure',))
+        sources = {path: hashlib.sha256(_release_history_source(repository, revision, path, token).encode()).hexdigest()
+                   for path in FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS[0]}
+        if sources not in FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS:
+            return False
+        inventory = _completion_inventory(api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token), 'artifacts')
+        package = _completion_artifact(inventory, 'fast-track-package-' + revision + '-' + target, run)
+        attempts = _completion_jobs(repository, run, token)
+        _completion_original_artifact_owner(dict(run=run, attempts=attempts), target, package,
+            'Preserve immutable application bytes before upload', ('success',))
+        # The caller has also checked repository-wide exact-operation history.
+        # Confirm no original target record is hidden under another operation ID.
+        for artifact in inventory:
+            if artifact.get('name', '').startswith('legend-release-operation-'):
+                record = _release_history_json(repository, run['id'], artifact, 'operation.json', verify_digest=True)
+                if record.get('target') == target:
+                    return False
+        with tempfile.TemporaryDirectory(prefix='legend-preupload-package-') as temporary:
+            directory = Path(temporary)
+            _download_run_artifact(repository, run['id'], package['name'], directory,
+                                   artifact_id=package['id'], expected_digest=package['digest'])
+            archive = directory / 'deploy.zip'
+            sums = directory / 'SHA256SUMS'
+            if archive.is_symlink() or sums.is_symlink():
+                return False
+            digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+            if [row.split()[0] for row in sums.read_text().splitlines()
+                if len(row.split()) == 2 and Path(row.split()[1]).name == 'deploy.zip'] != [digest]:
+                return False
+            with zipfile.ZipFile(archive) as zipped:
+                if zipped.testzip() is not None:
+                    return False
+                entry = '_deployment-provenance.txt' if RELEASE_TARGETS[target]['static'] else 'wwwroot/_deployment-provenance.json'
+                value = zipped.read(entry).decode().strip()
+                embedded = value if RELEASE_TARGETS[target]['static'] else json.loads(value)['releaseSha']
+                if embedded != revision:
+                    return False
+            identity = dict(target=target, applicationRevision=revision, packageDigest=digest)
+            if hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest() != operation_id:
+                return False
+        return _fast_track_preupload_log_proven(_release_job_log(repository, job['id'], token), revision, step)
+    except (KeyError, TypeError, ValueError, RuntimeError, OSError, UnicodeError, zipfile.BadZipFile, subprocess.SubprocessError):
+        return False
+
+
+def fast_track_recovery_producer(repository, run, token, *, attempt, live=False):
+    """Authenticate this separate dispatch, without changing push provenance."""
+    revision = run.get('head_sha', '')
+    if (run.get('path') != '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW
+        or run.get('event') != 'workflow_dispatch' or run.get('head_branch') != FAST_TRACK_PR_BASE
+        or run.get('head_repository', {}).get('full_name', '').lower() != repository.lower()
+        or type(attempt) is not int or not 1 <= attempt <= run.get('run_attempt', 0)
+        or not re.fullmatch('[a-f0-9]{40}', revision)):
+        raise ValueError('FAST_TRACK_RECOVERY_PRODUCER_UNPROVEN')
+    path = '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW
+    if _release_history_source(repository, revision, path, token) != (Path(__file__).resolve().parent.parent / path).read_text():
+        raise ValueError('FAST_TRACK_RECOVERY_WORKFLOW_CHANGED')
+    promotions = fast_track_historical_producers(repository, revision, token)
+    if (len(promotions) != 1 or promotions[0].get('head_sha') != revision
+        or fast_track_promotion_parent(repository, promotions[0], token) is None):
+        raise ValueError('FAST_TRACK_RECOVERY_TOOL_NOT_PROMOTED')
+    jobs = _completion_rows(api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token), 'jobs')
+    names = {'Select exact affected applications', 'Admit exact validated fast-track source',
+             'Reconcile production schema before publication', 'Publish verified website routing',
+             'Affected App Deploy — ${{ matrix.target }}', FAST_TRACK_RECOVERY_JOB}
+    if (len(jobs) != len(names) or {job.get('name') for job in jobs} != names
+        or any(job.get('run_id') != run['id'] or job.get('run_attempt') != attempt
+               or job.get('head_sha') != revision for job in jobs)):
+        raise ValueError('FAST_TRACK_RECOVERY_JOB_INVENTORY_UNPROVEN')
+    owner = next(job for job in jobs if job['name'] == FAST_TRACK_RECOVERY_JOB)
+    if any(job.get('status') != 'completed' or job.get('conclusion') != 'skipped' or job.get('steps') != []
+           for job in jobs if job is not owner):
+        raise ValueError('FAST_TRACK_RECOVERY_COMPETING_JOB')
+    if live:
+        if (run.get('status') not in {'in_progress', 'queued'} or run.get('run_attempt') != attempt
+            or owner.get('status') != 'in_progress' or owner.get('runner_name') != os.environ.get('RUNNER_NAME')
+            or api_get(repository, 'git/ref/heads/' + FAST_TRACK_PR_BASE, token).get('object', {}).get('sha') != revision):
+            raise ValueError('FAST_TRACK_RECOVERY_LIVE_OWNER_CHANGED')
+    return dict(runId=run['id'], runAttempt=attempt, jobId=owner['id'], toolRevision=revision,
+                promotionRunId=promotions[0]['id'])
+
+
+def assert_fast_track_recovery_execution(original_run, application_revision):
+    env = os.environ
+    repository = env.get('GITHUB_REPOSITORY', '')
+    token = env.get('GH_TOKEN') or env.get('GITHUB_TOKEN')
+    ref = 'refs/heads/' + FAST_TRACK_PR_BASE
+    if (env.get('GITHUB_ACTIONS') != 'true' or env.get('GITHUB_EVENT_NAME') != 'workflow_dispatch'
+        or env.get('GITHUB_REF') != ref or env.get('GITHUB_JOB') != FAST_TRACK_RECOVERY_JOB_ID
+        or env.get('GITHUB_WORKFLOW_REF') != repository + '/.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW + '@' + ref
+        or not token or not env.get('RUNNER_NAME') or not env.get('GITHUB_RUN_ID', '').isdigit()
+        or not env.get('GITHUB_RUN_ATTEMPT', '').isdigit() or type(original_run) is not int or original_run < 1
+        or not re.fullmatch('[a-f0-9]{40}', application_revision or '')):
+        raise ValueError('FAST_TRACK_RECOVERY_EXECUTION_UNPROVEN')
+    inputs = json.loads(Path(env['GITHUB_EVENT_PATH']).read_text()).get('inputs')
+    if inputs != dict(original_run=str(original_run), application_revision=application_revision):
+        raise ValueError('FAST_TRACK_RECOVERY_DISPATCH_UNPROVEN')
+    run = api_get(repository, 'actions/runs/' + env['GITHUB_RUN_ID'], token)
+    if run.get('id') != int(env['GITHUB_RUN_ID']):
+        raise ValueError('FAST_TRACK_RECOVERY_RUN_ID_CHANGED')
+    expected_title = 'LEGEND retained recovery original=' + str(original_run) + ' application=' + application_revision
+    if run.get('display_title') != expected_title:
+        raise ValueError('FAST_TRACK_RECOVERY_DISPATCH_TITLE_CHANGED')
+    proof = fast_track_recovery_producer(repository, run, token, attempt=int(env['GITHUB_RUN_ATTEMPT']), live=True)
+    paths = ['.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW, 'scripts/validation-resume.py',
+             'scripts/deploy-approved-app.py', 'scripts/release-operation-evidence.py', 'scripts/release_policy.py',
+             'scripts/release-artifacts/transport.cjs']
+    if (run.get('head_sha') != env.get('GITHUB_SHA')
+        or subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() != proof['toolRevision']
+        or subprocess.run(['git', 'diff', '--quiet', 'HEAD', '--', *paths], capture_output=True).returncode
+        or subprocess.run(['git', 'merge-base', '--is-ancestor', application_revision, proof['toolRevision']], capture_output=True).returncode):
+        raise ValueError('FAST_TRACK_RECOVERY_CHECKED_SOURCE_UNPROVEN')
+    return proof
+
+
+def fast_track_recovery_material(repository, original, key, token):
+    """Original bytes are mandatory. No rebuild or newly labelled package exists."""
+    if key not in original['targets']:
+        raise ValueError('FAST_TRACK_RECOVERY_TARGET_OUTSIDE_SCOPE')
+    run = original['run']
+    package = _completion_artifact(original['artifacts'], 'fast-track-package-' + run['head_sha'] + '-' + key, run)
+    _completion_original_artifact_owner(original, key, package, 'Preserve immutable application bytes before upload', ('success',))
+    intents = []
+    for artifact in original['artifacts']:
+        if artifact.get('name', '').startswith('legend-release-operation-intent-'):
+            value = _release_history_json(repository, run['id'], artifact, 'operation.json', verify_digest=True)
+            if value.get('target') == key:
+                intents.append(value)
+    if len(intents) > 1:
+        raise ValueError('FAST_TRACK_RECOVERY_COMPETING_INTENT')
+    return dict(packageArtifact=package, originalIntent=intents[0] if intents else None)
+
+
+def fast_track_recovery_package_digest(repository, original, material, key, token):
+    """Independently bind a receipt to original package bytes, not its own claim."""
+    import tempfile
+    import zipfile
+    artifact = material['packageArtifact']
+    with tempfile.TemporaryDirectory(prefix='legend-recovery-material-') as temporary:
+        root = Path(temporary)
+        _download_run_artifact(repository, original['run']['id'], artifact['name'], root,
+                               artifact_id=artifact['id'], expected_digest=artifact['digest'])
+        package, sums = root / 'deploy.zip', root / 'SHA256SUMS'
+        if package.is_symlink() or sums.is_symlink():
+            raise ValueError('RECOVERY_PACKAGE_SYMLINK')
+        with package.open('rb') as stream:
+            digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+        matches = [line.split()[0] for line in sums.read_text().splitlines()
+                   if len(line.split()) == 2 and Path(line.split()[1]).name == 'deploy.zip']
+        if matches != [digest]:
+            raise ValueError('RECOVERY_PACKAGE_CHECKSUM_CHANGED')
+        with zipfile.ZipFile(package) as archive:
+            if archive.testzip() is not None:
+                raise ValueError('RECOVERY_PACKAGE_CORRUPT')
+            static = RELEASE_TARGETS[key]['static']
+            value = archive.read('_deployment-provenance.txt' if static else 'wwwroot/_deployment-provenance.json').decode().strip()
+            embedded = value if static else json.loads(value)['releaseSha']
+            if embedded != original['run']['head_sha']:
+                raise ValueError('RECOVERY_PACKAGE_REVISION_CHANGED')
+        return digest
+
+
+def _without_skipped_recovery_job(jobs, source):
+    """Only the explicitly authored inert owner may extend an old push envelope."""
+    if FAST_TRACK_RECOVERY_JOB_ID not in _job_blocks(source):
+        return jobs
+    rows = [job for job in jobs if job.get('name') == FAST_TRACK_RECOVERY_JOB]
+    if (len(rows) != 1 or rows[0].get('status') != 'completed'
+        or rows[0].get('conclusion') != 'skipped' or rows[0].get('steps') != []):
+        raise ValueError('FAST_TRACK_PUSH_RECOVERY_NONENTRY_UNPROVEN')
+    return [job for job in jobs if job is not rows[0]]
+
+
+def fast_track_recovery_record_proof(original, material, observer):
+    return dict(schemaVersion=1, originalRun=original['run']['id'], originalAttempt=original['run']['run_attempt'],
+                applicationRevision=original['run']['head_sha'], packageArtifactId=material['packageArtifact']['id'],
+                packageArtifactDigest=material['packageArtifact']['digest'], **observer)
+
+
+def validate_fast_track_recovery_record(repository, run, artifact, record, token):
+    proof = record.get('recoveryEvidence')
+    if not isinstance(proof, dict) or proof.get('schemaVersion') != 1:
+        raise ValueError('FAST_TRACK_RECOVERY_RECORD_UNPROVEN')
+    observer = fast_track_recovery_producer(repository, run, token, attempt=record.get('producingAttempt'))
+    expected_title = 'LEGEND retained recovery original=' + str(proof.get('originalRun')) + ' application=' + str(record.get('applicationRevision'))
+    if run.get('display_title') != expected_title:
+        raise ValueError('FAST_TRACK_RECOVERY_RECORD_DISPATCH_CHANGED')
+    original = fast_track_completion_original(repository, proof.get('originalRun'), record.get('applicationRevision'), token)
+    material = fast_track_recovery_material(repository, original, record.get('target'), token)
+    if record.get('packageDigest') != fast_track_recovery_package_digest(repository, original, material, record.get('target'), token):
+        raise ValueError('FAST_TRACK_RECOVERY_RECORD_PACKAGE_DIGEST_CHANGED')
+    expected = fast_track_recovery_record_proof(original, material, observer)
+    # Later original read-only reruns may append attempts; the record must bind
+    # a real earlier terminal snapshot, never claim future original history.
+    if type(proof.get('originalAttempt')) is not int or not 1 <= proof['originalAttempt'] <= expected['originalAttempt']:
+        raise ValueError('FAST_TRACK_RECOVERY_ORIGINAL_ATTEMPT_CHANGED')
+    expected['originalAttempt'] = proof['originalAttempt']
+    if (proof != expected or record.get('producingRun') != run['id']
+        or record.get('packageProducerRun') != original['run']['id']
+        or record.get('applicationRevision') != original['run']['head_sha']):
+        raise ValueError('FAST_TRACK_RECOVERY_MATERIAL_IDENTITY_CHANGED')
+    jobs = _completion_rows(api_get(repository, f"actions/runs/{run['id']}/attempts/{observer['runAttempt']}/jobs?per_page=100", token), 'jobs')
+    job = next(job for job in jobs if job['id'] == observer['jobId'])
+    steps = [step for step in job.get('steps', []) if step.get('name') == 'Recover exact retained application bytes']
+    if len(steps) != 1:
+        raise ValueError('FAST_TRACK_RECOVERY_RECORD_OUTSIDE_OWNER_STEP')
+    step = dict(steps[0])
+    if step.get('status') == 'in_progress' and step.get('completed_at') is None:
+        import datetime
+        if (str(run['id']) != os.environ.get('GITHUB_RUN_ID')
+            or str(observer['runAttempt']) != os.environ.get('GITHUB_RUN_ATTEMPT')):
+            raise ValueError('FAST_TRACK_RECOVERY_RECORD_ACTIVE_OTHER_OWNER')
+        step['completed_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    if not _completion_artifact_in_step(artifact, step):
+        raise ValueError('FAST_TRACK_RECOVERY_RECORD_OUTSIDE_OWNER_STEP')
+    return True
+
+
+
+def fast_track_recovery_summary_name(original_run, revision):
+    value = dict(originalRun=original_run, applicationRevision=revision)
+    return 'legend-retained-recovery-success-' + hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def fast_track_recovery_completed(repository, original, token):
+    """A genuine successful recovery consumer, never a relabelled original job."""
+    run = original['run']; name = fast_track_recovery_summary_name(run['id'], run['head_sha'])
+    artifacts = _completion_inventory(api_get(repository, 'actions/artifacts?name=' + urllib.parse.quote(name, safe='') + '&per_page=100', token), 'artifacts')
+    completed = False
+    for artifact in artifacts:
+        producer_id = artifact.get('workflow_run', {}).get('id')
+        if artifact.get('name') != name or artifact.get('expired') is not False or type(producer_id) is not int:
+            raise ValueError('RECOVERY_SUMMARY_ARTIFACT_UNPROVEN')
+        producer = api_get(repository, f'actions/runs/{producer_id}', token)
+        record = _release_history_json(repository, producer_id, artifact, 'operation.json', verify_digest=True)
+        observer = fast_track_recovery_producer(repository, producer, token, attempt=record.get('producingAttempt'))
+        if (record.get('schemaVersion') != 1 or record.get('phase') != 'success'
+            or record.get('originalRun') != run['id'] or record.get('applicationRevision') != run['head_sha']
+            or record.get('producingRun') != producer_id or record.get('observer') != observer
+            or type(record.get('originalAttempt')) is not int or not 1 <= record['originalAttempt'] <= run['run_attempt']
+            or not isinstance(record.get('targets'), dict) or set(record['targets']) != set(original['targets'])):
+            raise ValueError('RECOVERY_SUMMARY_IDENTITY_CHANGED')
+        for key, row in record['targets'].items():
+            material = fast_track_recovery_material(repository, original, key, token)
+            if (set(row) != {'operationId','packageDigest','packageArtifactId','packageArtifactDigest','deploymentIds'}
+                or row['packageArtifactId'] != material['packageArtifact']['id']
+                or row['packageArtifactDigest'] != material['packageArtifact']['digest']):
+                raise ValueError('RECOVERY_SUMMARY_PACKAGE_CHANGED')
+            if row['packageDigest'] != fast_track_recovery_package_digest(repository, original, material, key, token):
+                raise ValueError('RECOVERY_SUMMARY_PACKAGE_DIGEST_CHANGED')
+            identity = dict(target=key, applicationRevision=run['head_sha'], packageDigest=row['packageDigest'])
+            if row['operationId'] != hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest():
+                raise ValueError('RECOVERY_SUMMARY_OPERATION_CHANGED')
+            receipt = release_operation_history(repository, row['operationId'], run['head_sha'], key,
+                                                producer_id, observer['runAttempt'], token, phase='success')
+            if (receipt is None or receipt.get('packageDigest') != row['packageDigest']
+                or receipt.get('deploymentIds') != row['deploymentIds'] or len(row['deploymentIds']) != 1
+                or row['deploymentIds'][0] in receipt.get('baselineDeploymentIds', [])):
+                raise ValueError('RECOVERY_SUMMARY_RECEIPT_UNPROVEN')
+        jobs = _completion_rows(api_get(repository, f"actions/runs/{producer_id}/attempts/{observer['runAttempt']}/jobs?per_page=100", token), 'jobs')
+        owner = next(job for job in jobs if job['id'] == observer['jobId'])
+        step = _completion_step(owner, 'Recover exact retained application bytes')
+        if (producer.get('status') == 'completed' and producer.get('conclusion') == 'success'
+            and owner.get('conclusion') == 'success' and _completion_artifact_in_step(artifact, step)):
+            completed = True
+    return completed
+
+
+def recovery_history_no_unjournaled_entry(repository, revision, current_run, current_attempt, token):
+    """No forgotten recovery attempt may be erased by original preflight proof."""
+    for run in fast_track_execution_history(repository, token, include_recovery=True):
+        if run.get('event') != 'workflow_dispatch':
+            continue
+        match = re.fullmatch(r'LEGEND retained recovery original=([1-9][0-9]*) application=([a-f0-9]{40})', run.get('display_title', ''))
+        if not match:
+            raise ReleaseOperationHistoryUnproven('Recovery dispatch scope unavailable')
+        if match.group(2) != revision:
+            continue
+        count = run.get('run_attempt')
+        if type(count) is not int or not 1 <= count <= 100:
+            raise ReleaseOperationHistoryUnproven('Recovery attempts incomplete')
+        for attempt in range(1, count + 1):
+            if run['id'] == current_run and attempt == current_attempt:
+                continue
+            if run.get('status') != 'completed':
+                raise ReleaseOperationHistoryUnproven('Competing recovery still active')
+            proof = fast_track_recovery_producer(repository, run, token, attempt=attempt)
+            jobs = _completion_rows(api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token), 'jobs')
+            owner = next(job for job in jobs if job['id'] == proof['jobId'])
+            steps = [step for step in owner.get('steps', []) if step.get('name') == 'Recover exact retained application bytes']
+            if len(steps) != 1 or steps[0].get('conclusion') != 'skipped':
+                raise ReleaseOperationHistoryUnproven('Recovery publication entered without retained intent')
+
+
 def is_fast_track_producer(repository, run):
     return (run.get('path') == '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW
         and run.get('head_branch') == FAST_TRACK_PR_BASE and run.get('event') == 'push'
@@ -165,7 +514,7 @@ def is_fast_track_producer(repository, run):
         and re.fullmatch('[a-f0-9]{40}', run.get('head_sha', '')) is not None)
 
 
-def fast_track_execution_history(repository, token, *, clock=time.monotonic):
+def fast_track_execution_history(repository, token, *, clock=time.monotonic, include_recovery=False):
     """Complete bounded branch inventory; missing pages never authorize a write.
 
     Omit unreliable server head/event filters and the optional first-page marker.
@@ -213,6 +562,16 @@ def fast_track_execution_history(repository, token, *, clock=time.monotonic):
         producers = []
         for row in rows:
             if row['path'].split('@')[0] == '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW:
+                if row.get('event') == 'workflow_dispatch':
+                    path = '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW
+                    if (row['path'] != path
+                        or not re.fullmatch(r'LEGEND retained recovery original=[1-9][0-9]* application=[a-f0-9]{40}', row.get('display_title', ''))
+                        or _release_history_source(repository, row['head_sha'], path, token)
+                        != (Path(__file__).resolve().parent.parent / path).read_text()):
+                        raise RuntimeError('FAST_TRACK_RECOVERY_HISTORY_PRODUCER_UNPROVEN')
+                    if include_recovery:
+                        producers.append(row)
+                    continue
                 if not is_fast_track_producer(repository, row):
                     raise RuntimeError('FAST_TRACK_HISTORY_PRODUCER_UNPROVEN')
                 producers.append(row)
@@ -4245,6 +4604,13 @@ def fast_track_promotion_parent(repository, run, token):
     if any(j.get('run_id') != run['id'] or j.get('run_attempt') != run['run_attempt']
            or j.get('head_sha') != revision for j in jobs):
         raise ValueError('TRUSTED_TOOL_PROMOTION_JOB_IDENTITY_CHANGED')
+    workflow = _release_history_source(repository, revision, '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW, token)
+    if FAST_TRACK_RECOVERY_JOB_ID in _job_blocks(workflow):
+        recovery = [job for job in jobs if job.get('name') == FAST_TRACK_RECOVERY_JOB]
+        if (len(recovery) != 1 or recovery[0].get('status') != 'completed'
+            or recovery[0].get('conclusion') != 'skipped' or recovery[0].get('steps') != []):
+            raise ValueError('TRUSTED_TOOL_PROMOTION_RECOVERY_NONENTRY_UNPROVEN')
+        jobs = [job for job in jobs if job is not recovery[0]]
     selectors = [j for j in jobs if j.get('name') == 'Select exact affected applications']
     names = {'Admit exact validated fast-track source', 'Reconcile production schema before publication',
              'Publish verified website routing'}
@@ -5439,6 +5805,8 @@ def fast_track_completion_original(repository, original_run, revision, token):
         or RELEASE_REQUEST_PATH not in paths):
         raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_SCOPE_UNPROVEN')
     attempts = _completion_jobs(repository, run, token)
+    original_workflow = _release_history_source(repository, revision, '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW, token)
+    attempts = {attempt: _without_skipped_recovery_job(jobs, original_workflow) for attempt, jobs in attempts.items()}
     expected_names = {'Select exact affected applications', 'Admit exact validated fast-track source',
         'Reconcile production schema before publication', 'Publish verified website routing'}
     expected_names |= {'Affected App Deploy — ' + fast_track_target_label(key) for key in selected}
@@ -5790,6 +6158,8 @@ def validate_original_completion_success(repository, original, material, record,
 def fast_track_completed_operation_receipts(repository, run, token, *, require_completed_observer=True):
     """Positive all-target receipt proof; missing evidence never clears the predecessor."""
     original=fast_track_completion_original(repository,run['id'],run['head_sha'],token)
+    if fast_track_recovery_completed(repository, original, token):
+        return True
     completed_targets={}
     for key in original['targets']:
         material=fast_track_completion_material(repository,original,key,token)
@@ -10316,9 +10686,11 @@ def release_operation_history(repository, operation_id, application_revision, ta
         run = read_api(f"actions/runs/{run_id}")
         fast_track = is_fast_track_producer(repository, run)
         completion = run.get("path") == ".github/workflows/" + FAST_TRACK_COMPLETION_WORKFLOW
+        recovery = (run.get('path') == '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW
+                    and run.get('event') == 'workflow_dispatch')
         if completion and phase != "success":
             raise RuntimeError("Completion observer cannot produce intent or submission history")
-        if not fast_track and not completion and (run.get("path") != ".github/workflows/" + DIRECT_RELEASE_WORKFLOW or
+        if not fast_track and not completion and not recovery and (run.get("path") != ".github/workflows/" + DIRECT_RELEASE_WORKFLOW or
                 run.get("head_branch") != TRUSTED_PR_BASE or run.get("event") != "workflow_dispatch" or
                 run.get("head_repository", {}).get("full_name", "").lower() != repository.lower()):
             raise RuntimeError("Deployment intent has an untrusted producer")
@@ -10341,6 +10713,13 @@ def release_operation_history(repository, operation_id, application_revision, ta
             or type(record.get('producingAttempt')) is not int
             or not 1 <= record['producingAttempt'] <= run.get('run_attempt', 0)):
             raise RuntimeError('Fast-track deployment intent has unbound revision or attempt')
+        if recovery:
+            _completion_inventory(payload, "artifacts")
+            exact = _release_history_json(repository, run_id, artifact, "operation.json", verify_digest=True)
+            if exact != record or not validate_fast_track_recovery_record(repository, run, artifact, record, token):
+                raise RuntimeError("Recovery receipt artifact identity changed")
+        elif "recoveryEvidence" in record:
+            raise RuntimeError("Recovery evidence requires its actual dispatch producer")
         if completion:
             _completion_inventory(payload, "artifacts")
             exact = _release_history_json(repository, run_id, artifact, "operation.json", verify_digest=True)
@@ -10362,6 +10741,8 @@ def release_operation_history(repository, operation_id, application_revision, ta
         return records[0]
     if phase in {"success", "submitted"}:
         return None
+
+    recovery_history_no_unjournaled_entry(repository, application_revision, current_run, current_attempt, token)
 
     for run in fast_track_execution_history(repository, token):
         if run['head_sha'] != application_revision:
@@ -10396,6 +10777,8 @@ def release_operation_history(repository, operation_id, application_revision, ta
             steps = [s for s in job.get('steps', []) if s.get('name') in {
                 'Submit one direct ZIP deployment', 'Publish or reconcile exact application bytes'}]
             if len(steps) != 1 or (steps[0].get('status') != 'queued' and steps[0].get('conclusion') != 'skipped'):
+                if attested_fast_track_preupload_failure(repository, run, job, attempt, target, operation_id, token):
+                    continue
                 raise ReleaseOperationHistoryUnproven('Fast-track publication entered without retained intent: ' + label)
 
     for run in _release_history_runs(repository, token):

@@ -7,6 +7,7 @@ release lifecycle; no alternate upload path can bypass durable operation intent.
 """
 import argparse
 import concurrent.futures
+import contextvars
 import datetime
 import hashlib
 import importlib.util
@@ -1249,6 +1250,211 @@ def complete_fast_track(original_run, revision, package_root, *, validate_only=F
     return {'state':'ORIGINAL_COMPLETIONS_VERIFIED','targets':results,'originalRun':original_run}
 
 
+def recovery_preupload_baseline(azure, original, key, *, expected=None):
+    """Fresh idle provider state cannot overtake the attested original no-entry."""
+    rows = read_deployments_bounded(azure, phase='retained recovery before any upload')
+    observed = azure.observed_revision()
+    if (not rows or any(row['status'] in (0, 1, 2) for row in rows)
+        or observed is None or observed == original['run']['head_sha']):
+        raise DeploymentReconciliationRequired('RECOVERY_BASELINE_NOT_IDLE_OR_UNPROVEN')
+    if subprocess.run(['git', 'merge-base', '--is-ancestor', observed, original['run']['head_sha']], capture_output=True).returncode:
+        raise DeploymentDrift('RECOVERY_BASELINE_NOT_ORIGINAL_ANCESTOR')
+    starts = []
+    for jobs in original['attempts'].values():
+        for job in jobs:
+            if job['name'] == 'Affected App Deploy — ' + _RELEASE_AUTHORITY.fast_track_target_label(key):
+                starts.extend(_RELEASE_AUTHORITY._completion_time(step['started_at']) for step in job.get('steps', [])
+                              if step['name'] == 'Publish or reconcile exact application bytes' and step.get('started_at'))
+    if not starts:
+        raise DeploymentReconciliationRequired('RECOVERY_ORIGINAL_PUBLICATION_WINDOW_UNPROVEN')
+    cutoff = min(starts)
+    try:
+        if any(_RELEASE_AUTHORITY._completion_time(row['received_time']) >= cutoff for row in rows):
+            raise DeploymentDrift('RECOVERY_NEWER_PROVIDER_OPERATION')
+    except (KeyError, TypeError, ValueError) as exc:
+        raise DeploymentReconciliationRequired('RECOVERY_PROVIDER_HISTORY_TIME_UNPROVEN') from exc
+    state = dict(revision=observed, deploymentIds=sorted(row['id'] for row in rows))
+    if expected is not None and state != expected:
+        raise DeploymentDrift('RECOVERY_PREFLIGHT_CHANGED')
+    return state
+
+
+def recovery_host_flags(key):
+    # Same immutable-business-host gate as ordinary publication. Never change it.
+    if key not in {'protect', 'parfait'}:
+        return
+    result = subprocess.run(['az', 'webapp', 'config', 'appsettings', 'list', '--resource-group',
+        _RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP, '--name', TARGETS[key]['releaseName'], '--only-show-errors', '-o', 'json'],
+        capture_output=True, text=True, timeout=20)
+    if result.returncode:
+        raise DeploymentReconciliationRequired('RECOVERY_HOST_FLAGS_UNAVAILABLE')
+    values = json.loads(result.stdout)
+    flags = {'commerce__sharedhostcutover__enabled', 'commerce:sharedhostcutover:enabled',
+             'commerce__sharedhostpreview__enabled', 'commerce:sharedhostpreview:enabled', 'legend_commerce_cutover_enabled'}
+    if (not isinstance(values, list) or any(not isinstance(row, dict) or not isinstance(row.get('name'), str)
+        or (row['name'].lower() in flags and str(row.get('value') or '').strip().lower() not in ('', 'false', '0')) for row in values)):
+        raise DeploymentReconciliationRequired('RECOVERY_HOST_FLAGS_NOT_OFF')
+
+
+RECOVERY_FINAL_RESERVE_SECONDS = 420  # metadata64 + authority90 + summary180 + cleanup86
+RECOVERY_WRITE_RESERVE_SECONDS = 660  # intent180 + provider ACK300 + submitted180
+
+
+def recovery_phase_remaining(deadline, minimum=0, *, clock=time.monotonic):
+    remaining = deadline - clock()
+    if remaining <= 0 or remaining < minimum:
+        raise DeploymentReconciliationRequired('RECOVERY_PHASE_DEADLINE_HOLD_RECONCILE_ONLY')
+    return remaining
+
+
+def recovery_job_deadline(authority, repository, observer, token, *, now=None, clock=time.monotonic):
+    job = authority.api_get(repository, 'actions/jobs/' + str(observer['jobId']), token)
+    if (job.get('run_id') != observer['runId'] or job.get('run_attempt') != observer['runAttempt']
+        or job.get('head_sha') != observer['toolRevision'] or job.get('status') != 'in_progress'
+        or job.get('name') != authority.FAST_TRACK_RECOVERY_JOB):
+        raise DeploymentReconciliationRequired('RECOVERY_BUDGET_OWNER_UNPROVEN')
+    elapsed = ((now or datetime.datetime.now(datetime.timezone.utc)) -
+               authority._completion_time(job.get('started_at'))).total_seconds()
+    if elapsed < 0 or elapsed >= 1800:
+        raise DeploymentReconciliationRequired('RECOVERY_JOB_DEADLINE_EXHAUSTED')
+    return clock() + 1800 - elapsed
+
+
+class RecoveryDeadlineAzure:
+    """No new provider behavior: require room for each unchanged canonical cap."""
+    def __init__(self, azure, deadline):
+        self.azure, self.deadline = azure, deadline
+    def __getattr__(self, name):
+        return getattr(self.azure, name)
+    def deployments(self):
+        recovery_phase_remaining(self.deadline, 20)
+        return self.azure.deployments()
+    def observed_revision(self):
+        recovery_phase_remaining(self.deadline, 15)
+        return self.azure.observed_revision()
+    def prepare_submission(self):
+        recovery_phase_remaining(self.deadline, 40)
+        return self.azure.prepare_submission()
+    def submit(self, correlation=None):
+        recovery_phase_remaining(self.deadline, 300)
+        return self.azure.submit(correlation)
+
+
+def recover_fast_track(original_run, revision, package_root, *, prepare_only=False):
+    authority = _RELEASE_AUTHORITY
+    observer = authority.assert_fast_track_recovery_execution(original_run, revision)
+    repository = os.environ['GITHUB_REPOSITORY']; token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    deadline = recovery_job_deadline(authority, repository, observer, token)
+    # Nested authority reads share this finite budget, including parallel workers.
+    with authority.evidence_lookup_budget(deadline - 60):
+        return _recover_fast_track(original_run, revision, package_root, observer, deadline, prepare_only=prepare_only)
+
+
+def _recover_fast_track(original_run, revision, package_root, observer, deadline, *, prepare_only=False):
+    """Resume retained original materials under a separately promoted tool owner."""
+    authority = _RELEASE_AUTHORITY
+    repository = os.environ['GITHUB_REPOSITORY']; token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    original = authority.fast_track_completion_original(repository, original_run, revision, token)
+    materials = {key: authority.fast_track_recovery_material(repository, original, key, token) for key in original['targets']}
+    inventory = {}
+    for key, material in materials.items():
+        artifact = material['packageArtifact']; directory = package_root / key
+        if prepare_only:
+            authority._download_run_artifact(repository, original_run, artifact['name'], directory,
+                                            artifact_id=artifact['id'], expected_digest=artifact['digest'])
+        if any(not (directory / name).is_file() or (directory / name).is_symlink() for name in ('deploy.zip', 'SHA256SUMS')):
+            raise ValueError('RECOVERY_RETAINED_PACKAGE_MISSING_NO_REBUILD')
+        digest = verify_package(directory / 'deploy.zip', revision, TARGETS[key]['static'])
+        identity = dict(target=key, applicationRevision=revision, packageDigest=digest)
+        operation = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        intent = material['originalIntent']
+        if intent is not None and any(intent.get(name) != value for name, value in dict(identity, operationId=operation, packageProducerRun=original_run).items()):
+            raise ValueError('RECOVERY_ORIGINAL_INTENT_MATERIAL_CHANGED')
+        inventory[key] = dict(operationId=operation, packageDigest=digest, packageArtifactId=artifact['id'], packageArtifactDigest=artifact['digest'])
+    proof = dict(originalRun=original_run, originalAttempt=original['run']['run_attempt'], applicationRevision=revision,
+                 observer=observer, targets=inventory)
+    path = package_root / 'retained-recovery-plan.json'
+    if prepare_only:
+        path.write_text(json.dumps(proof, sort_keys=True) + '\n')
+        return dict(state='ORIGINAL_RECOVERY_MATERIALS_VERIFIED', **proof)
+    if path.is_symlink() or json.loads(path.read_text()) != proof:
+        raise ValueError('RECOVERY_PREPARED_AUTHORITY_OR_MATERIAL_CHANGED')
+    spec = importlib.util.spec_from_file_location('recovery_journal', Path(__file__).with_name('release-operation-evidence.py'))
+    owner = importlib.util.module_from_spec(spec); spec.loader.exec_module(owner)
+    os.environ['PACKAGE_PRODUCER_RUN'] = str(original_run)
+    publication_deadline = deadline - RECOVERY_FINAL_RESERVE_SECONDS
+    journals = {}; states = {}
+    def publish_phase_record(name, record):
+        return owner.publish_record(name, record, timeout=min(180, recovery_phase_remaining(publication_deadline)))
+    # All targets are validated before the first possible new intent.
+    for key, material in materials.items():
+        azure = RecoveryDeadlineAzure(target_azure(key, package_root / key / 'deploy.zip', revision), publication_deadline)
+        prior = authority.release_operation_history(repository, inventory[key]['operationId'], revision, key,
+            observer['runId'], observer['runAttempt'], token)
+        if prior is None:
+            states[key] = recovery_preupload_baseline(azure, original, key)
+            baseline = states[key]['revision']
+        else:
+            baseline = prior['baseline']
+        evidence = authority.fast_track_recovery_record_proof(original, material, observer)
+        def before_write(ids, *, key=key, azure=azure):
+            authority._completion_original_unchanged(repository, original['run'], token)
+            if authority.assert_fast_track_recovery_execution(original_run, revision) != observer:
+                raise ValueError('RECOVERY_EXECUTION_CHANGED_BEFORE_INTENT')
+            if verify_package(package_root / key / 'deploy.zip', revision, TARGETS[key]['static']) != inventory[key]['packageDigest']:
+                raise ValueError('RECOVERY_PACKAGE_CHANGED_BEFORE_INTENT')
+            # Re-read all competing original/other recovery history at the write boundary.
+            existing = authority.release_operation_history(repository, inventory[key]['operationId'], revision, key,
+                observer['runId'], observer['runAttempt'], token)
+            if existing is not None:
+                raise DeploymentReconciliationRequired('RECOVERY_INTENT_APPEARED_RECONCILE_ONLY')
+            fresh = recovery_preupload_baseline(azure, original, key, expected=states[key])
+            if sorted(ids) != fresh['deploymentIds']:
+                raise DeploymentDrift('RECOVERY_PROVIDER_BASELINE_CHANGED_BEFORE_INTENT')
+            recovery_host_flags(key)
+            recovery_phase_remaining(publication_deadline, RECOVERY_WRITE_RESERVE_SECONDS)
+        journal = owner.RecoveryJournal(target=key, application_revision=revision, package_digest=inventory[key]['packageDigest'],
+            baseline=baseline, authority=authority, recovery_evidence=evidence, before_new_intent=before_write, publisher=publish_phase_record)
+        if journal.history_error is not None:
+            raise journal.history_error
+        if prior is not None and journal.intent != prior:
+            raise DeploymentDrift('RECOVERY_EXISTING_INTENT_CHANGED')
+        journals[key] = (azure, journal)
+    def recover_target(key):
+        azure, journal = journals[key]
+        with authority.evidence_lookup_budget(publication_deadline):
+            authority._completion_original_unchanged(repository, original['run'], token)
+            result = reconcile(azure, baseline=journal.baseline, journal=journal,
+                reconcile_only=journal.intent is not None, require_receipt=True,
+                timeout=min(PUBLICATION_RECONCILE_TIMEOUT_SECONDS, recovery_phase_remaining(publication_deadline)))
+        recovery_phase_remaining(deadline - 60, 64)
+        verify_fast_track_public_metadata(key)
+        return result
+    # Same all-target barrier and bounded parallel composition as normal release;
+    # five independent 420s observers must not consume five sequential budgets.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(journals))) as executor:
+        futures = {executor.submit(contextvars.copy_context().run, recover_target, key): key for key in journals}
+        results = {futures[future]: future.result() for future in concurrent.futures.as_completed(futures)}
+    with authority.evidence_lookup_budget(min(deadline - 240, time.monotonic() + 90)):
+        authority._completion_original_unchanged(repository, original['run'], token)
+        if authority.assert_fast_track_recovery_execution(original_run, revision) != observer:
+            raise ValueError('RECOVERY_EXECUTION_CHANGED_BEFORE_SUCCESS')
+        records = {}
+        for key in original['targets']:
+            success = authority.release_operation_history(repository, inventory[key]['operationId'], revision, key,
+                observer['runId'], observer['runAttempt'], token, phase='success')
+            if (success is None or success.get('packageDigest') != inventory[key]['packageDigest']
+                or len(success.get('deploymentIds', [])) != 1):
+                raise DeploymentReconciliationRequired('RECOVERY_DURABLE_SUCCESS_UNPROVEN')
+            records[key] = dict(inventory[key], deploymentIds=success['deploymentIds'])
+    summary = dict(schemaVersion=1, phase='success', originalRun=original_run, originalAttempt=original['run']['run_attempt'],
+                   applicationRevision=revision, producingRun=observer['runId'], producingAttempt=observer['runAttempt'],
+                   observer=observer, targets=records)
+    owner.publish_record(authority.fast_track_recovery_summary_name(original_run, revision), summary,
+        timeout=min(180, recovery_phase_remaining(deadline - 60)))
+    return dict(state='RETAINED_RECOVERY_VERIFIED', results=results, summary=summary)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -1258,6 +1464,9 @@ def main():
     mode.add_argument('--observe-azure-deployment')
     parser.add_argument('--observation-revision')
     parser.add_argument('--deployment-id')
+    mode.add_argument('--recover-fast-track', type=int)
+    parser.add_argument('--recovery-revision')
+    parser.add_argument('--prepare-recovery-only', action='store_true')
     mode.add_argument('--complete-fast-track', type=int)
     parser.add_argument('--completion-revision')
     parser.add_argument('--validate-completion-only', action='store_true')
@@ -1274,6 +1483,17 @@ def main():
                         help='Publish all prepared canonical targets concurrently after the all-target preflight barrier')
     parser.add_argument('--target-results-dir', type=Path, default=Path('/tmp/release-target-results'))
     args = parser.parse_args()
+    if args.recover_fast_track is not None:
+        if (args.prepare_only or args.finalize_only or args.disposition_only or args.transaction_plan
+            or args.reconcile_only or args.publish_prepared_parallel or args.observation_revision
+            or args.deployment_id or args.validate_observation_only or args.baselines_json
+            or args.completion_revision or args.validate_completion_only):
+            raise SystemExit('Retained recovery cannot be combined with other modes')
+        print(json.dumps(recover_fast_track(args.recover_fast_track, args.recovery_revision,
+            Path(args.package_root), prepare_only=args.prepare_recovery_only), sort_keys=True))
+        return
+    if args.recovery_revision or args.prepare_recovery_only:
+        raise SystemExit('Recovery inputs require retained recovery mode')
     if args.complete_fast_track is not None:
         if (args.observe_azure_deployment or args.fast_track_target or args.target or args.targets_json
             or args.prepare_only or args.finalize_only or args.disposition_only or args.transaction_plan

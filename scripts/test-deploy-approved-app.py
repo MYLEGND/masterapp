@@ -3081,5 +3081,135 @@ class CompletionPackagePhaseV4Tests(unittest.TestCase):
         self.assertLess(source.index('--validate-completion-only'),source.index('uses: azure/login@v2'))
         self.assertEqual(source.count('--package-root "$RUNNER_TEMP/original-completion-packages"'),2)
 
+class RetainedRecoveryConsumerTests(unittest.TestCase):
+    def setUp(self):
+        self.original=dict(run=dict(id=10,run_attempt=5,head_sha='a'*40),targets=['website'],attempts={1:[
+            dict(name='Affected App Deploy — Website',steps=[dict(name='Publish or reconcile exact application bytes',started_at='2026-10-23T10:00:00Z')])]})
+        self.observer=dict(runId=20,runAttempt=1,jobId=30,toolRevision='b'*40)
+    def baseline(self,rows,revision='c'*40,expected=None):
+        azure=Mock();azure.observed_revision.return_value=revision
+        with patch.object(deploy,'read_deployments_bounded',return_value=rows),patch.object(deploy.subprocess,'run',return_value=Mock(returncode=0)):
+            return deploy.recovery_preupload_baseline(azure,self.original,'website',expected=expected)
+    def test_fresh_idle_ancestor_baseline(self):
+        self.assertEqual(self.baseline([dict(id='old',status=4,received_time='2026-10-23T09:00:00Z')]),dict(revision='c'*40,deploymentIds=['old']))
+    def test_active_empty_unknown_or_newer_baseline_holds(self):
+        for rows in [[],[dict(id='active',status=1)],[dict(id='unknown',status=4)],
+                     [dict(id='new',status=4,received_time='2026-10-23T11:00:00Z')]]:
+            with self.subTest(rows=rows),self.assertRaises((deploy.DeploymentDrift,deploy.DeploymentReconciliationRequired)):
+                self.baseline(rows)
+    def test_baseline_change_before_intent_holds(self):
+        with self.assertRaises(deploy.DeploymentDrift):
+            self.baseline([dict(id='old',status=4,received_time='2026-10-23T09:00:00Z')],expected=dict(revision='d'*40,deploymentIds=['old']))
+    def test_deadline_requires_exact_live_owner_and_preserves_original_ceiling(self):
+        authority=deploy._RELEASE_AUTHORITY
+        job=dict(run_id=20,run_attempt=1,head_sha='b'*40,status='in_progress',name=authority.FAST_TRACK_RECOVERY_JOB,started_at='2026-10-23T10:00:00Z')
+        with patch.object(authority,'api_get',return_value=job):
+            now=deploy.datetime.datetime.fromisoformat('2026-10-23T10:05:00+00:00')
+            self.assertEqual(deploy.recovery_job_deadline(authority,'owner/repo',self.observer,'token',now=now,clock=lambda:10),1510)
+            job['run_attempt']=2
+            with self.assertRaises(deploy.DeploymentReconciliationRequired):
+                deploy.recovery_job_deadline(authority,'owner/repo',self.observer,'token',now=now)
+    def test_phase_reserve_threshold_and_late_hold(self):
+        self.assertEqual(deploy.recovery_phase_remaining(670,660,clock=lambda:10),660)
+        with self.assertRaises(deploy.DeploymentReconciliationRequired):
+            deploy.recovery_phase_remaining(670,660,clock=lambda:10.001)
+        with self.assertRaises(deploy.DeploymentReconciliationRequired):
+            deploy.recovery_phase_remaining(10,clock=lambda:10)
+    def test_late_provider_submission_never_enters_io(self):
+        azure=Mock();bounded=deploy.RecoveryDeadlineAzure(azure,100)
+        with patch.object(deploy,'recovery_phase_remaining',side_effect=deploy.DeploymentReconciliationRequired('late')):
+            with self.assertRaises(deploy.DeploymentReconciliationRequired):bounded.submit({})
+        azure.submit.assert_not_called()
+    def test_deadline_read_retries_spill_only_thirty_seconds_without_provider_io(self):
+        azure=Mock();bounded=deploy.RecoveryDeadlineAzure(azure,100);sleeps=[]
+        with patch.object(deploy,'recovery_phase_remaining',side_effect=deploy.DeploymentReconciliationRequired('late')):
+            with self.assertRaises(deploy.DeploymentStatusUnavailable):
+                deploy.read_deployments_bounded(bounded,sleep=sleeps.append)
+        azure.deployments.assert_not_called()
+        self.assertEqual(sleeps,[15,15])
+        self.assertLess(sum(sleeps),deploy.RECOVERY_FINAL_RESERVE_SECONDS)
+
+    def test_missing_original_package_never_rebuilds_or_contacts_provider(self):
+        authority=deploy._RELEASE_AUTHORITY
+        material=dict(packageArtifact=dict(id=40,name='original',digest='sha256:'+'c'*64),originalIntent=None)
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='token')), \
+             patch.object(authority,'assert_fast_track_recovery_execution',return_value=self.observer), \
+             patch.object(deploy,'recovery_job_deadline',return_value=deploy.time.monotonic()+1800), \
+             patch.object(authority,'fast_track_completion_original',return_value=self.original), \
+             patch.object(authority,'fast_track_recovery_material',return_value=material), \
+             patch.object(authority,'_download_run_artifact') as download, \
+             patch.object(deploy,'target_azure') as azure,patch.object(deploy.subprocess,'run') as process:
+            with self.assertRaisesRegex(ValueError,'MISSING_NO_REBUILD'):
+                deploy.recover_fast_track(10,'a'*40,Path(temporary))
+            download.assert_not_called();azure.assert_not_called();process.assert_not_called()
+
+class RetainedRecoveryIntegratedTests(unittest.TestCase):
+    def run_case(self, *, entered=False, race=False, expired=False):
+        from types import SimpleNamespace
+        authority=deploy._RELEASE_AUTHORITY
+        observer=dict(runId=20,runAttempt=1,jobId=30,toolRevision='b'*40)
+        original=dict(run=dict(id=10,run_attempt=5,head_sha='a'*40),targets=['website'])
+        identity=dict(target='website',applicationRevision='a'*40,packageDigest='d'*64)
+        operation=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        prior=dict(identity,operationId=operation,packageProducerRun=10,baseline='c'*40) if entered else None
+        material=dict(packageArtifact=dict(id=40,name='immutable-original',digest='sha256:'+'e'*64),originalIntent=prior)
+        events=[]; intent_reads=0
+        def history(*args,phase='intent'):
+            nonlocal intent_reads
+            if phase=='success':return dict(packageDigest='d'*64,deploymentIds=['new'])
+            intent_reads+=1
+            return prior or (dict(baseline='c'*40) if race and intent_reads>=2 else None)
+        class Journal:
+            def __init__(self,**kwargs):
+                self.intent=prior;self.baseline=kwargs['baseline'];self.history_error=None
+                self.callback=kwargs['before_new_intent']
+            def before_submit(self):
+                if self.intent is not None:return False
+                self.callback(['old']);events.append('intent');self.intent={};return True
+        def reconcile(azure,**kwargs):
+            events.append(('reconcile_only',kwargs['reconcile_only']))
+            self.assertLessEqual(kwargs['timeout'],420)
+            if kwargs['journal'].before_submit():events.append('upload')
+            return 'preserved' if entered else 'deployed'
+        def download(repo,run,name,directory,**kwargs):
+            self.assertEqual((run,name,kwargs['artifact_id'],kwargs['expected_digest']),
+                             (10,'immutable-original',40,'sha256:'+'e'*64))
+            directory.mkdir(parents=True);(directory/'deploy.zip').write_bytes(b'exact fixture');(directory/'SHA256SUMS').write_text('fixture')
+        owner=SimpleNamespace(RecoveryJournal=Journal,publish_record=Mock())
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='token')), \
+             patch.object(authority,'assert_fast_track_recovery_execution',return_value=observer), \
+             patch.object(deploy,'recovery_job_deadline',side_effect=lambda *args:deploy.time.monotonic()+1800), \
+             patch.object(authority,'fast_track_completion_original',return_value=original), \
+             patch.object(authority,'fast_track_recovery_material',return_value=material), \
+             patch.object(authority,'_download_run_artifact',side_effect=download), \
+             patch.object(authority,'release_operation_history',side_effect=history), \
+             patch.object(authority,'_completion_original_unchanged'), \
+             patch.object(authority,'fast_track_recovery_record_proof',return_value={}), \
+             patch.object(deploy,'verify_package',return_value='d'*64), \
+             patch.object(deploy,'target_azure',return_value=Mock()), \
+             patch.object(deploy,'recovery_preupload_baseline',return_value=dict(revision='c'*40,deploymentIds=['old'])) as baseline, \
+             patch.object(deploy,'recovery_host_flags'),patch.object(deploy,'reconcile',side_effect=reconcile), \
+             patch.object(deploy,'verify_fast_track_public_metadata'), \
+             patch.object(deploy.importlib.util,'spec_from_file_location',return_value=SimpleNamespace(loader=Mock())), \
+             patch.object(deploy.importlib.util,'module_from_spec',return_value=owner):
+            root=Path(temporary)
+            deploy.recover_fast_track(10,'a'*40,root,prepare_only=True)
+            if race:
+                with self.assertRaises(deploy.DeploymentReconciliationRequired):deploy.recover_fast_track(10,'a'*40,root)
+                self.assertNotIn('upload',events);self.assertNotIn('intent',events)
+                owner.publish_record.assert_not_called()
+            else:
+                result=deploy.recover_fast_track(10,'a'*40,root)
+                self.assertEqual(result['state'],'RETAINED_RECOVERY_VERIFIED')
+                self.assertEqual(events.count('upload'),0 if entered else 1)
+                self.assertEqual(events.count('intent'),0 if entered else 1)
+                self.assertIn(('reconcile_only',entered),events)
+                self.assertEqual(baseline.call_count,0 if entered else 2)
+    def test_original_immutable_package_first_write_after_fresh_barriers(self):self.run_case()
+    def test_existing_intent_never_reuploads_or_rebases(self):self.run_case(entered=True)
+    def test_newly_appeared_intent_holds_before_write(self):self.run_case(race=True)
+
 if __name__ == '__main__':
     unittest.main()

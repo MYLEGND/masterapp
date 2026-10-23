@@ -1,4 +1,5 @@
 name: LEGEND Fast Track — Affected Web Apps
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('LEGEND retained recovery original={0} application={1}', inputs.original_run, inputs.application_revision) || github.event.head_commit.message }}
 
 # One affected-app fast track. Every publication requires exact source checks.
 # Backend publication additionally requires
@@ -10,6 +11,16 @@ name: LEGEND Fast Track — Affected Web Apps
 # Completed pre-reuse migration generations retain their original scoped receipts.
 
 on:
+  workflow_dispatch:
+    inputs:
+      original_run:
+        description: Original admitted fast-track run whose exact packages are retained
+        required: true
+        type: string
+      application_revision:
+        description: Exact original application revision, not the promoted tool revision
+        required: true
+        type: string
   push:
     branches:
       - Legend/fast-track-release
@@ -86,6 +97,7 @@ concurrency:
 
 jobs:
   select-targets:
+    if: github.event_name == 'push'
     name: Select exact affected applications
     runs-on: ubuntu-24.04
     outputs:
@@ -521,3 +533,44 @@ jobs:
         uses: ./scripts/release-artifacts
       - name: Publish or reconcile canonical website routing
         run: python3 scripts/release-router.py fast-track
+
+
+  recover-fast-track:
+    name: Recover retained fast-track application materials
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: Production
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      id-token: write
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      ORIGINAL_RUN: ${{ inputs.original_run }}
+      APPLICATION_REVISION: ${{ inputs.application_revision }}
+    steps:
+      - name: Check out promoted recovery tool authority
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Validate original authority and restore retained packages without rebuilding
+        run: python3 scripts/deploy-approved-app.py --recover-fast-track "$ORIGINAL_RUN" --recovery-revision "$APPLICATION_REVISION" --package-root "$RUNNER_TEMP/retained-recovery" --prepare-recovery-only
+      - name: Install canonical durable evidence transport
+        run: npm ci --prefix scripts/release-artifacts --ignore-scripts --no-audit --no-fund
+      - name: Prepare canonical durable evidence transport
+        uses: ./scripts/release-artifacts
+      - name: Sign in to Azure Production
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Recover exact retained application bytes
+        run: python3 scripts/deploy-approved-app.py --recover-fast-track "$ORIGINAL_RUN" --recovery-revision "$APPLICATION_REVISION" --package-root "$RUNNER_TEMP/retained-recovery"
