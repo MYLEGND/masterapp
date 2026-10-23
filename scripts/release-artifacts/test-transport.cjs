@@ -609,3 +609,31 @@ print('full-attestor-accepted')`;
   const accepted=spawnSync('python3',['-c',consumer,path.resolve(__dirname,'..')],{input:bytes,encoding:'utf8',timeout:10000});
   assert.equal(accepted.status,0,accepted.stderr);assert.equal(accepted.stdout.trim(),'full-attestor-accepted');
 });
+
+function actualTargetHoldPayload() {
+  const {spawnSync}=require('node:child_process');
+  const script=String.raw`import importlib.util,json,sys
+from pathlib import Path
+p=Path(sys.argv[1])/'test-deploy-approved-app.py';s=importlib.util.spec_from_file_location('fixture',p);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
+print(json.dumps(m.target_hold_five_target_payload()))`;
+  const made=spawnSync('python3',['-c',script,path.resolve(__dirname,'..')],{encoding:'utf8',timeout:10000});
+  assert.equal(made.status,0,made.stderr);return JSON.parse(made.stdout);
+}
+test('target-only preintent producer passes actual transport and full sibling-aware consumer',async()=>{
+  const {spawnSync}=require('node:child_process');const item=actualTargetHoldPayload();let bytes;
+  const client={async listArtifacts(){return{artifacts:[]}},async uploadArtifact(name,files){assert.equal(name,item.name);bytes=await fs.readFile(files[0]);return{id:99}},async downloadArtifact(id,options){await fs.mkdir(options.path);await fs.writeFile(path.join(options.path,'operation.json'),bytes)}};
+  await publish(client,item.name,item.record);
+  const script=String.raw`import importlib.util,json,sys
+from pathlib import Path
+p=Path(sys.argv[1])/'test-validation-resume.py';s=importlib.util.spec_from_file_location('fixture',p);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
+f=m.RecoveryTargetHoldTests();f.setUp();f.record=json.load(sys.stdin)
+assert f.invoke(), 'Full target consumer rejected actual transport readback'
+print('target-hold-consumer-accepted')`;
+  const accepted=spawnSync('python3',['-c',script,path.resolve(__dirname,'..')],{input:bytes,encoding:'utf8',timeout:10000});assert.equal(accepted.status,0,accepted.stderr);assert.equal(accepted.stdout.trim(),'target-hold-consumer-accepted');
+});
+test('target hold never claims global nonentry and rejects substituted scope before artifact I/O',async()=>{
+  const item=actualTargetHoldPayload();
+  for(const mutate of [r=>r.writePhaseEntered=false,r=>r.targetWritePhaseEntered=true,r=>delete r.targetWritePhaseEntered,r=>r.stage='all-target-preflight',r=>r.phase='preflight-nonentry',r=>r.failedTarget='portal',r=>r.failedTarget=['website'],r=>r.targets.website.packageArtifactDigest='bad',r=>r.observer.toolRevision='unknown',r=>r.producingAttempt++,r=>r.extra='unknown']){
+    const bad=structuredClone(item);mutate(bad.record);await assert.rejects(publish({},bad.name,bad.record),/Invalid|Inconsistent/);
+  }
+});

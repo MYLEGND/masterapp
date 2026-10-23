@@ -3211,7 +3211,8 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
             elif race:
                 with self.assertRaises(deploy.DeploymentReconciliationRequired):deploy.recover_fast_track(10,'a'*40,root)
                 self.assertNotIn('upload',events);self.assertNotIn('intent',events)
-                owner.publish_record.assert_not_called()
+                owner.publish_record.assert_called_once()
+                self.assertEqual(owner.publish_record.call_args.args[1]['phase'],'target-preintent-hold')
             else:
                 result=deploy.recover_fast_track(10,'a'*40,root)
                 self.assertEqual(result['state'],'RETAINED_RECOVERY_VERIFIED')
@@ -3339,6 +3340,70 @@ class PreflightFiveTargetBoundaryTests(unittest.TestCase):
         self.assertEqual(len(item['record']['targets']),5)
         self.assertEqual(item['record']['failedTarget'],'website')
         self.assertEqual(deploy._RELEASE_AUTHORITY.validate_recovery_preflight_nonentry(item['record']),item['name'])
+
+def target_hold_five_target_payload(*, callback_failure=True, publication_failure=False):
+    """Real five-target worker/callback and unchanged RecoveryJournal, no provider."""
+    from types import SimpleNamespace
+    authority=deploy._RELEASE_AUTHORITY
+    spec=importlib.util.spec_from_file_location('actual_hold_journal',ROOT/'release-operation-evidence.py');owner=importlib.util.module_from_spec(spec);spec.loader.exec_module(owner)
+    observer=dict(runId=20,runAttempt=1,jobId=30,toolRevision='b'*40,promotionRunId=19)
+    keys=['portal','client','protect','parfait','website'];original=dict(run=dict(id=10,run_attempt=5,head_sha='a'*40),targets=keys)
+    materials={};targets={};priors={};calls=[]
+    for n,key in enumerate(keys):
+        identity=dict(target=key,applicationRevision='a'*40,packageDigest='d'*64)
+        op=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        priors[key]=None if key=='website' else dict(identity,operationId=op,packageProducerRun=10,baseline='c'*40,schemaVersion=1,phase='intent',producingRun=10,producingAttempt=1,baselineDeploymentIds=['old'],submissionContract=dict(kind='azure_onedeploy_windows_intent_v1',value=op))
+        materials[key]=dict(originalIntent=priors[key],packageArtifact=dict(id=40+n,name='immutable-'+key,digest='sha256:'+'e'*64))
+        targets[key]=dict(operationId=op,packageDigest='d'*64,packageArtifactId=40+n,packageArtifactDigest='sha256:'+'e'*64)
+    before=json.dumps(priors,sort_keys=True);proof=dict(originalRun=10,originalAttempt=5,applicationRevision='a'*40,observer=observer,targets=targets)
+    reads=0
+    def baseline(*args,**kwargs):
+        nonlocal reads
+        reads+=1
+        if callback_failure and reads==2:raise deploy.RecoveryPhaseDeadline('cutoff before fresh provider read')
+        return dict(revision='c'*40,deploymentIds=['old'])
+    def publish(name,record,**kwargs):
+        calls.append(dict(name=name,record=record))
+        if publication_failure or not callback_failure:raise RuntimeError('ambiguous publication readback')
+        return record
+    def reconcile(azure,**kwargs):
+        journal=kwargs['journal']
+        if journal.intent is not None:
+            assert kwargs['reconcile_only'] is True;return 'inherited-reconcile-only'
+        assert kwargs['reconcile_only'] is False
+        journal.before_submit(['old'])
+        raise AssertionError('Provider submit boundary unexpectedly reached')
+    with tempfile.TemporaryDirectory()as temporary,patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='token',GITHUB_RUN_ID='20',GITHUB_RUN_ATTEMPT='1',PACKAGE_PRODUCER_RUN='10')), \
+         patch.object(authority,'fast_track_completion_original',return_value=original), \
+         patch.object(authority,'fast_track_recovery_material',side_effect=lambda repo,o,key,t:materials[key]), \
+         patch.object(authority,'release_operation_history',side_effect=lambda repo,op,rev,key,*args,phase='intent':priors[key]if phase=='intent'else None), \
+         patch.object(authority,'_completion_original_unchanged'),patch.object(authority,'assert_fast_track_recovery_execution',return_value=observer), \
+         patch.object(deploy,'verify_package',return_value='d'*64),patch.object(deploy,'target_azure',return_value=Mock()), \
+         patch.object(deploy,'recovery_preupload_baseline',side_effect=baseline),patch.object(deploy,'recovery_host_flags'), \
+         patch.object(deploy,'reconcile',side_effect=reconcile),patch.object(deploy,'verify_fast_track_public_metadata'), \
+         patch.object(owner,'publish_record',side_effect=publish), \
+         patch.object(deploy.importlib.util,'spec_from_file_location',return_value=SimpleNamespace(loader=Mock())), \
+         patch.object(deploy.importlib.util,'module_from_spec',return_value=owner):
+        root=Path(temporary)
+        for key in keys:
+            (root/key).mkdir();(root/key/'deploy.zip').write_bytes(b'exact');(root/key/'SHA256SUMS').write_text('fixture')
+        (root/'retained-recovery-plan.json').write_text(json.dumps(proof))
+        try:deploy._recover_fast_track(10,'a'*40,root,observer,deploy.time.monotonic()+1800)
+        except (deploy.RecoveryPhaseDeadline,RuntimeError):pass
+        else:raise AssertionError('Failed callback/publication fell through')
+    assert json.dumps(priors,sort_keys=True)==before
+    assert len(calls)==1
+    if callback_failure:
+        assert calls[0]['record']['phase']=='target-preintent-hold'
+        assert authority.validate_recovery_target_preintent(calls[0]['record'])==calls[0]['name']
+    else:assert calls[0]['record']['phase']=='intent'
+    return calls[0]
+
+class TargetPreintentProducerTests(unittest.TestCase):
+    def test_real_callback_hold_preserves_four_entered_siblings(self):
+        row=target_hold_five_target_payload();self.assertEqual(row['record']['failedTarget'],'website');self.assertEqual(len(row['record']['targets']),5)
+    def test_hold_publication_failure_cannot_fall_through(self):target_hold_five_target_payload(publication_failure=True)
+    def test_callback_success_then_ambiguous_intent_publisher_never_emits_hold(self):target_hold_five_target_payload(callback_failure=False)
 
 if __name__ == '__main__':
     unittest.main()

@@ -5790,6 +5790,11 @@ class RetainedPreuploadAttestationTests(unittest.TestCase):
              patch.object(m,'_download_run_artifact',side_effect=download), \
              patch.object(m,'_release_job_log',return_value=RetainedRecoveryAuthorityTests().log()):
             return m.attested_fast_track_preupload_failure('owner/repo',self.run,self.job,1,'website',self.operation,'token')
+    def test_original_and_recovery_share_only_verified_bytes_with_fresh_guards(self):
+        with m.recovery_material_reuse(),patch.object(m,'_verified_recovery_package_digest',wraps=m._verified_recovery_package_digest)as verify:
+            self.assertTrue(self.invoke());self.assertTrue(self.invoke());self.assertEqual(verify.call_count,1)
+            for kwargs in [dict(owner=False),dict(extra_intent=True),dict(complete=False),dict(source='changed')]:self.assertFalse(self.invoke(**kwargs))
+            self.package['expired']=True;self.assertFalse(self.invoke());self.assertEqual(verify.call_count,1)
     def test_source_pinned_package_bound_positive_no_entry(self):self.assertTrue(self.invoke())
     def test_changed_source_missing_owner_intent_incomplete_inventory_or_checksum_holds(self):
         for kwargs in [dict(source='changed'),dict(owner=False),dict(extra_intent=True),dict(complete=False),dict(bad_checksum=True)]:
@@ -5907,7 +5912,7 @@ class RecoveryTransportNonentryTests(unittest.TestCase):
              patch.object(m,'api_get',return_value=dict(jobs=[self.job],total_count=1)), \
              patch.object(m,'attested_recovery_preintent_failure',return_value=True) as attest:
             self.assertIsNone(m.recovery_history_no_unjournaled_entry('owner/repo',self.revision,99,1,'token'))
-            attest.assert_called_once_with('owner/repo',self.run,self.job,1,self.revision,'token')
+            attest.assert_called_once_with('owner/repo',self.run,self.job,1,self.revision,'token',target=None,operation_id=None)
             attest.return_value=False
             with self.assertRaises(m.ReleaseOperationHistoryUnproven):m.recovery_history_no_unjournaled_entry('owner/repo',self.revision,99,1,'token')
 
@@ -6008,6 +6013,147 @@ class RecoveryPreflightTerminalConsumerTests(RecoveryPreflightRecordTests):
                     source.replace('        raise\n    def recover_target','        azure.submit()\n        raise\n    def recover_target'),
                     source.replace("stage='all-target-preflight'","stage='unreviewed'"),source+'\nopen("unreviewed", "w")\n']:
             self.assertFalse(m._recovery_preflight_source_contract(bad,journal))
+
+class RecoveryPackageReuseTests(unittest.TestCase):
+    def setUp(self):
+        self.run=dict(id=10,head_sha='a'*40)
+        self.artifact=dict(id=40,name='fast-track-package-'+'a'*40+'-website',digest='sha256:'+'e'*64,expired=False,workflow_run=dict(id=10,head_sha='a'*40))
+        self.original=dict(run=self.run,targets=['website'],artifacts=[self.artifact]);self.material=dict(packageArtifact=self.artifact)
+    def get(self):return m.fast_track_recovery_package_digest('owner/repo',self.original,self.material,'website','token')
+    def test_verified_digest_reused_only_inside_invocation(self):
+        with patch.object(m,'_verified_recovery_package_digest',return_value='d'*64)as verify:
+            with m.recovery_material_reuse():self.assertEqual(self.get(),self.get());self.assertEqual(verify.call_count,1)
+            with m.recovery_material_reuse():self.get()
+            self.assertEqual(verify.call_count,2)
+    def test_expiry_scope_and_changed_material_checked_on_every_hit(self):
+        for change in [lambda:self.artifact.update(expired=True),lambda:self.artifact.update(digest='bad'),lambda:self.original.update(targets=[]),lambda:self.artifact['workflow_run'].update(id=99)]:
+            self.setUp()
+            with patch.object(m,'_verified_recovery_package_digest',return_value='d'*64)as verify,m.recovery_material_reuse():
+                self.get();change()
+                with self.assertRaises(ValueError):self.get()
+                self.assertEqual(verify.call_count,1)
+    def test_changed_exact_artifact_key_is_reverified(self):
+        with patch.object(m,'_verified_recovery_package_digest',return_value='d'*64)as verify,m.recovery_material_reuse():
+            self.get();self.artifact['id']=41;self.get();self.artifact['digest']='sha256:'+'f'*64;self.get()
+            self.assertEqual(verify.call_count,3)
+    def test_cache_bound_and_waiter_deadline(self):
+        import concurrent.futures
+        with patch.object(m,'_verified_recovery_package_digest',return_value='d'*64)as verify,m.recovery_material_reuse():
+            for i in range(100):self.artifact['id']=40+i;self.get()
+            self.artifact['id']=140
+            with self.assertRaisesRegex(ValueError,'CACHE_BOUND'):self.get()
+            self.assertEqual(verify.call_count,100)
+        self.setUp()
+        with m.recovery_material_reuse(),patch.object(m,'evidence_remaining',return_value=.001):
+            lock,entries=m._RECOVERY_PACKAGE_DIGESTS.get();key=('owner/repo',10,'a'*40,'website',40,self.artifact['name'],self.artifact['digest'])
+            future=concurrent.futures.Future();entries[key]=future
+            with self.assertRaises(concurrent.futures.TimeoutError):self.get()
+            self.assertFalse(future.done(),'Timed-out waiter must not cancel shared owner verification')
+    def test_concurrent_single_flight_and_failure_eviction(self):
+        import concurrent.futures,contextvars,threading,time
+        for fail in [False,True]:
+            entered=threading.Event();release=threading.Event()
+            def verify(*args):
+                entered.set();release.wait(2)
+                if fail:raise ValueError('corrupt immutable bytes')
+                return 'd'*64
+            with patch.object(m,'_verified_recovery_package_digest',side_effect=verify)as verify_call,m.recovery_material_reuse(),concurrent.futures.ThreadPoolExecutor(max_workers=2)as pool:
+                a=pool.submit(contextvars.copy_context().run,self.get);self.assertTrue(entered.wait(2))
+                b=pool.submit(contextvars.copy_context().run,self.get);time.sleep(.02);release.set()
+                for future in [a,b]:
+                    if fail:
+                        with self.assertRaises(ValueError):future.result()
+                    else:self.assertEqual(future.result(),'d'*64)
+                self.assertEqual(verify_call.call_count,1)
+                if fail:
+                    with self.assertRaises(ValueError):self.get()
+                    self.assertEqual(verify_call.call_count,2)
+
+class RecoveryTargetHoldTests(unittest.TestCase):
+    def setUp(self):
+        fixture=RecoveryPreflightRecordTests();fixture.setUp();self.producer=fixture.producer;self.fixture=fixture.fixture;self.proof=fixture.proof;self.fixture.original['artifacts']=[]
+        self.name,self.record=self.producer.recovery_target_preintent_record(self.proof,'website',self.producer.RecoveryPhaseDeadline('cutoff'))
+    def invoke(self,*,late=False,wrong_source=False,producer_bad=False,artifact_change=None,incomplete=False,mixed=False,closure_bad=None,missing_sibling=False,conflict=False,extra_record=None,original_changed=False,effect_records=None):
+        f=self.fixture;artifact=dict(id=99,name=self.name,expired=False,digest='sha256:'+'f'*64,workflow_run=dict(id=20,head_sha=f.tool),created_at='2026-10-23T10:02:00Z')
+        if artifact_change:artifact.update(artifact_change)
+        inventory=dict(artifacts=[artifact],total_count=2 if incomplete else 1);reads=[]
+        if mixed:inventory=dict(artifacts=[artifact,dict(artifact,id=100,name='unknown-operation')],total_count=2)
+        if extra_record:inventory=dict(artifacts=[artifact,dict(artifact,id=100,name=extra_record[0])],total_count=2)
+        extra_by_id={}
+        if effect_records:
+            for n,(name,record) in enumerate(effect_records,200):
+                inventory['artifacts'].append(dict(artifact,id=n,name=name));extra_by_id[n]=record
+            inventory['total_count']=len(inventory['artifacts'])
+        if missing_sibling:f.materials['portal']['originalIntent']=None
+        if conflict:f.materials['website']['originalIntent']=dict(target='website',applicationRevision=f.revision,packageDigest='d'*64,operationId=f.targets['website']['operationId'],packageProducerRun=10)
+        def api(repo,path,token):
+            if path=='actions/runs/10/artifacts?per_page=100':return dict(artifacts=[dict(id=999)]if original_changed else f.original['artifacts'],total_count=1 if original_changed else len(f.original['artifacts']))
+            if path.startswith('actions/runs/20/attempts/'):
+                i=int(path.split('/')[4]);return dict(jobs=[dict(f.job,run_attempt=i,id=29+i)],total_count=1)
+            self.assertEqual(path,'actions/runs/20/artifacts?per_page=100');reads.append(path)
+            return dict(artifacts=[],total_count=0)if late and len(reads)>1 else inventory
+        def source(repo,sha,path,token):return 'unknown'if wrong_source or path==closure_bad else(Path(__file__).parent/path.removeprefix('scripts/')).read_text()
+        with patch.object(m,'_release_history_source',side_effect=source),patch.object(m,'fast_track_completion_original',return_value=f.original), \
+             patch.object(m,'fast_track_recovery_material',side_effect=lambda repo,o,key,t:f.materials[key]), \
+             patch.object(m,'fast_track_completion_material',side_effect=lambda repo,o,key,t:dict(intent=f.materials[key]['originalIntent'])), \
+             patch.object(m,'fast_track_recovery_package_digest',return_value='d'*64), \
+             patch.object(m,'validate_fast_track_recovery_record',return_value=True),patch.object(m,'_release_history_json',side_effect=lambda repo,run,a,*args,**kw:extra_by_id[a['id']]if a['id']in extra_by_id else extra_record[1]if extra_record and a['id']==100 else self.record), \
+             patch.object(m,'fast_track_recovery_producer',side_effect=lambda repo,run,t,attempt:dict(f.observer,runAttempt=attempt,jobId=999 if producer_bad else 29+attempt)), \
+             patch.object(m,'_completion_original_unchanged'),patch.object(m,'api_get',side_effect=api):
+            return m.attested_recovery_target_hold('owner/repo',f.run,f.job,1,f.revision,'token','website',f.targets['website']['operationId'])
+    def test_actual_target_schema_and_full_consumer(self):
+        self.assertEqual(m.validate_recovery_target_preintent(self.record),self.name);self.assertNotIn('writePhaseEntered',self.record)
+        self.assertTrue(self.invoke());self.assertFalse(self.invoke(late=True))
+    def test_target_scope_flags_names_and_unknown_data(self):
+        for field,value in [('targetWritePhaseEntered',True),('writePhaseEntered',False),('phase','preflight-nonentry'),('stage','all-target-preflight'),('failedTarget',['website']),('authorizesMutation',True)]:
+            bad=json.loads(json.dumps(self.record));bad[field]=value
+            with self.subTest(field=field),self.assertRaises(ValueError):m.validate_recovery_target_preintent(bad)
+    def test_all_sibling_coverage_and_conflicting_intent_fail_closed(self):
+        self.assertFalse(self.invoke(missing_sibling=True));self.setUp();self.assertFalse(self.invoke(conflict=True))
+        self.setUp();self.fixture.run['run_attempt']=2;self.assertFalse(self.invoke())
+        self.setUp();other=json.loads(json.dumps(self.record));self.assertFalse(self.invoke(extra_record=(self.name,other)))
+    def test_two_attempt_holds_bind_each_attempt_without_erasing_prior_effects(self):
+        self.fixture.run['run_attempt']=2
+        proof=json.loads(json.dumps(self.proof));proof['observer'].update(runAttempt=2,jobId=31)
+        name,record=self.producer.recovery_target_preintent_record(proof,'website',self.producer.RecoveryPhaseDeadline('cutoff'))
+        self.assertTrue(self.invoke(extra_record=(name,record)))
+        record['targetWritePhaseEntered']=True;self.assertFalse(self.invoke(extra_record=(name,record)))
+    def test_authenticated_sibling_intent_stays_entered_across_attempts(self):
+        f=self.fixture;f.run['run_attempt']=2
+        proof=json.loads(json.dumps(self.proof));proof['observer'].update(runAttempt=2,jobId=31)
+        held=self.producer.recovery_target_preintent_record(proof,'website',self.producer.RecoveryPhaseDeadline('cutoff'))
+        # Receipt provenance validator has its own real-source tests; this seam
+        # isolates sibling/attempt accounting after independently valid evidence.
+        intent=dict(schemaVersion=1,target='portal',phase='intent',operationId=f.targets['portal']['operationId'],packageDigest='d'*64,applicationRevision=f.revision,packageProducerRun=self.proof['originalRun'],producingRun=20,producingAttempt=1,baseline='c'*40,baselineDeploymentIds=[],recoveryEvidence={},submissionContract=dict(kind='azure_onedeploy_windows_intent_v1',value=f.targets['portal']['operationId']))
+        row=('legend-release-operation-intent-'+intent['operationId'],intent)
+        self.assertTrue(self.invoke(missing_sibling=True,extra_record=held,effect_records=[row]))
+        submitted=('legend-release-operation-submitted-'+intent['operationId'],dict(intent,phase='submitted',producingAttempt=2,deploymentId='new-provider'))
+        success=('legend-release-operation-success-'+intent['operationId'],dict(intent,phase='success',producingAttempt=2,deploymentIds=['new-provider']))
+        self.assertTrue(self.invoke(missing_sibling=True,extra_record=held,effect_records=[row,submitted,success]))
+        self.assertFalse(self.invoke(missing_sibling=True,extra_record=held,effect_records=[submitted,success]))
+        badsuccess=(success[0],dict(success[1],deploymentIds=['conflicting-provider']))
+        self.assertFalse(self.invoke(missing_sibling=True,extra_record=held,effect_records=[row,submitted,badsuccess]))
+        for field in ['schemaVersion','baseline','baselineDeploymentIds','submissionContract']:
+            bad=dict(intent);bad.pop(field)
+            with self.subTest(missing=field):self.assertFalse(self.invoke(missing_sibling=True,extra_record=held,effect_records=[(row[0],bad)]))
+        for changes in [dict(extra='unreviewed'),dict(baseline='invalid'),dict(baselineDeploymentIds=['bad id']),dict(deploymentIds=['phase-wrong']),dict(submissionContract={'kind':'unknown','value':intent['operationId']})]:
+            with self.subTest(changes=changes):self.assertFalse(self.invoke(missing_sibling=True,extra_record=held,effect_records=[(row[0],dict(intent,**changes))]))
+        for changes in [dict(deploymentId=''),dict(deploymentId='old',baselineDeploymentIds=['old']),dict(providerRequestCorrelation={'kind':'azure_onedeploy_deployment_tag_v1','value':intent['operationId']})]:
+            self.assertFalse(self.invoke(missing_sibling=True,extra_record=held,effect_records=[row,(submitted[0],dict(submitted[1],**changes))]))
+        duplicate=(row[0],dict(intent,producingAttempt=2))
+        self.assertFalse(self.invoke(missing_sibling=True,extra_record=held,effect_records=[row,duplicate]))
+        later_hold=self.producer.recovery_target_preintent_record(proof,'portal',self.producer.RecoveryPhaseDeadline('cutoff'))
+        self.assertFalse(self.invoke(missing_sibling=True,extra_record=held,effect_records=[row,later_hold]))
+        wrong=(row[0],dict(intent,operationId='f'*64))
+        self.assertFalse(self.invoke(missing_sibling=True,extra_record=held,effect_records=[wrong]))
+    def test_missing_owner_cleanup_and_late_original_inventory_hold(self):
+        self.fixture.job['steps'].pop();self.assertFalse(self.invoke());self.setUp();self.assertFalse(self.invoke(original_changed=True))
+    def test_source_producer_inventory_and_material_negatives(self):
+        self.assertFalse(self.invoke(wrong_source=True));self.assertFalse(self.invoke(producer_bad=True));self.assertFalse(self.invoke(mixed=True));self.assertFalse(self.invoke(incomplete=True))
+        for path in ['scripts/deploy-approved-app.py','scripts/release-operation-evidence.py','scripts/validation-resume.py','scripts/release-artifacts/transport.cjs']:self.assertFalse(self.invoke(closure_bad=path))
+        for change in [dict(expired=True),dict(digest='bad'),dict(created_at='2026-10-23T09:00:00Z'),dict(workflow_run=dict(id=99,head_sha=self.fixture.tool)),dict(name='unknown')]:self.assertFalse(self.invoke(artifact_change=change))
+        for mutate in [lambda r:r['targets'].pop('portal'),lambda r:r['targets']['website'].update(packageArtifactId=999),lambda r:r.update(producingAttempt=2),lambda r:r['observer'].update(toolRevision='f'*40)]:
+            self.setUp();mutate(self.record);self.assertFalse(self.invoke())
 
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.
