@@ -1332,6 +1332,16 @@ def recovery_preflight_nonentry_record(proof, failed_target, failure):
     return name, record
 
 
+def recovery_target_preintent_record(proof, target, failure):
+    """Only this target/attempt stopped within the read-only intent callback."""
+    _, record = recovery_preflight_nonentry_record(proof, target, failure)
+    record.pop('writePhaseEntered')
+    record.update(phase='target-preintent-hold', stage='before-new-intent', targetWritePhaseEntered=False)
+    identity={key:record[key] for key in ('applicationRevision','originalRun','producingRun','producingAttempt','failedTarget')}
+    name='legend-retained-target-preintent-'+hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    return name,record
+
+
 def recovery_preupload_baseline(azure, original, key, *, expected=None):
     """Fresh idle provider state cannot overtake the attested original no-entry."""
     # This function only establishes a NEW-write baseline; inherited intents
@@ -1450,7 +1460,7 @@ def recover_fast_track(original_run, revision, package_root, *, prepare_only=Fal
     repository = os.environ['GITHUB_REPOSITORY']; token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
     deadline = recovery_job_deadline(authority, repository, observer, token)
     # Nested authority reads share this finite budget, including parallel workers.
-    with authority.evidence_lookup_budget(deadline - 60):
+    with authority.recovery_material_reuse(), authority.evidence_lookup_budget(deadline - 60):
         return _recover_fast_track(original_run, revision, package_root, observer, deadline, prepare_only=prepare_only)
 
 
@@ -1504,21 +1514,28 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
                 baseline = prior['baseline']
             evidence = authority.fast_track_recovery_record_proof(original, material, observer)
             def before_write(ids, *, key=key, azure=azure):
-                authority._completion_original_unchanged(repository, original['run'], token)
-                if authority.assert_fast_track_recovery_execution(original_run, revision) != observer:
-                    raise ValueError('RECOVERY_EXECUTION_CHANGED_BEFORE_INTENT')
-                if verify_package(package_root / key / 'deploy.zip', revision, TARGETS[key]['static']) != inventory[key]['packageDigest']:
-                    raise ValueError('RECOVERY_PACKAGE_CHANGED_BEFORE_INTENT')
-                # Re-read all competing original/other recovery history at the write boundary.
-                existing = authority.release_operation_history(repository, inventory[key]['operationId'], revision, key,
-                    observer['runId'], observer['runAttempt'], token)
-                if existing is not None:
-                    raise DeploymentReconciliationRequired('RECOVERY_INTENT_APPEARED_RECONCILE_ONLY')
-                fresh = recovery_preupload_baseline(azure, original, key, expected=states[key])
-                if sorted(ids) != fresh['deploymentIds']:
-                    raise DeploymentDrift('RECOVERY_PROVIDER_BASELINE_CHANGED_BEFORE_INTENT')
-                recovery_host_flags(key)
-                recovery_phase_remaining(publication_deadline, RECOVERY_WRITE_RESERVE_SECONDS)
+                try:
+                    authority._completion_original_unchanged(repository, original['run'], token)
+                    if authority.assert_fast_track_recovery_execution(original_run, revision) != observer:
+                        raise ValueError('RECOVERY_EXECUTION_CHANGED_BEFORE_INTENT')
+                    if verify_package(package_root / key / 'deploy.zip', revision, TARGETS[key]['static']) != inventory[key]['packageDigest']:
+                        raise ValueError('RECOVERY_PACKAGE_CHANGED_BEFORE_INTENT')
+                    # Re-read all competing original/other recovery history at the write boundary.
+                    existing = authority.release_operation_history(repository, inventory[key]['operationId'], revision, key,
+                        observer['runId'], observer['runAttempt'], token)
+                    if existing is not None:
+                        raise DeploymentReconciliationRequired('RECOVERY_INTENT_APPEARED_RECONCILE_ONLY')
+                    fresh = recovery_preupload_baseline(azure, original, key, expected=states[key])
+                    if sorted(ids) != fresh['deploymentIds']:
+                        raise DeploymentDrift('RECOVERY_PROVIDER_BASELINE_CHANGED_BEFORE_INTENT')
+                    recovery_host_flags(key)
+                    recovery_phase_remaining(publication_deadline, RECOVERY_WRITE_RESERVE_SECONDS)
+                except Exception as failure:
+                    # This callback has not returned to journal.before_submit:
+                    # no target intent publication/readback or submit is reachable.
+                    name, record = recovery_target_preintent_record(proof, key, failure)
+                    owner.publish_record(name, record, timeout=min(180, recovery_phase_remaining(deadline - 60)))
+                    raise
             journal = owner.RecoveryJournal(target=key, application_revision=revision, package_digest=inventory[key]['packageDigest'],
                 baseline=baseline, authority=authority, recovery_evidence=evidence, before_new_intent=before_write, publisher=publish_phase_record)
             if journal.history_error is not None:

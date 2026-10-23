@@ -27,6 +27,7 @@ import urllib.request
 import urllib.error
 import contextlib
 import contextvars
+import threading
 
 
 TRUSTED_PR_BASE = "legend/approved-changes"
@@ -229,29 +230,11 @@ def attested_fast_track_preupload_failure(repository, run, job, attempt, target,
                 record = _release_history_json(repository, run['id'], artifact, 'operation.json', verify_digest=True)
                 if record.get('target') == target:
                     return False
-        with tempfile.TemporaryDirectory(prefix='legend-preupload-package-') as temporary:
-            directory = Path(temporary)
-            _download_run_artifact(repository, run['id'], package['name'], directory,
-                                   artifact_id=package['id'], expected_digest=package['digest'])
-            archive = directory / 'deploy.zip'
-            sums = directory / 'SHA256SUMS'
-            if archive.is_symlink() or sums.is_symlink():
-                return False
-            digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-            if [row.split()[0] for row in sums.read_text().splitlines()
-                if len(row.split()) == 2 and Path(row.split()[1]).name == 'deploy.zip'] != [digest]:
-                return False
-            with zipfile.ZipFile(archive) as zipped:
-                if zipped.testzip() is not None:
-                    return False
-                entry = '_deployment-provenance.txt' if RELEASE_TARGETS[target]['static'] else 'wwwroot/_deployment-provenance.json'
-                value = zipped.read(entry).decode().strip()
-                embedded = value if RELEASE_TARGETS[target]['static'] else json.loads(value)['releaseSha']
-                if embedded != revision:
-                    return False
-            identity = dict(target=target, applicationRevision=revision, packageDigest=digest)
-            if hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest() != operation_id:
-                return False
+        digest=fast_track_recovery_package_digest(repository,dict(run=run,targets=[target],artifacts=inventory),
+            dict(packageArtifact=package),target,token)
+        identity = dict(target=target, applicationRevision=revision, packageDigest=digest)
+        if hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest() != operation_id:
+            return False
         return _fast_track_preupload_log_proven(_release_job_log(repository, job['id'], token), revision, step)
     except (KeyError, TypeError, ValueError, RuntimeError, OSError, UnicodeError, zipfile.BadZipFile, subprocess.SubprocessError):
         return False
@@ -345,7 +328,50 @@ def fast_track_recovery_material(repository, original, key, token):
     return dict(packageArtifact=package, originalIntent=intents[0] if intents else None)
 
 
+_RECOVERY_PACKAGE_DIGESTS = contextvars.ContextVar('recovery_package_digests', default=None)
+
+
+@contextlib.contextmanager
+def recovery_material_reuse():
+    """One invocation, shared by its copied worker contexts; never mutable proof."""
+    token = _RECOVERY_PACKAGE_DIGESTS.set((threading.Lock(), {}))
+    try:
+        yield
+    finally:
+        _RECOVERY_PACKAGE_DIGESTS.reset(token)
+
+
 def fast_track_recovery_package_digest(repository, original, material, key, token):
+    state=_RECOVERY_PACKAGE_DIGESTS.get()
+    if state is None:return _verified_recovery_package_digest(repository,original,material,key,token)
+    run = original['run']; artifact = material['packageArtifact']
+    if key not in original['targets'] or not re.fullmatch('[a-f0-9]{40}',run.get('head_sha','')):
+        raise ValueError('RECOVERY_PACKAGE_CACHE_SCOPE')
+    expected = _completion_artifact(original['artifacts'], 'fast-track-package-' + run['head_sha'] + '-' + key, run)
+    if (artifact != expected or artifact.get('expired') is not False
+        or type(artifact.get('id')) is not int or artifact['id'] < 1
+        or not re.fullmatch('sha256:[a-f0-9]{64}',artifact.get('digest',''))):
+        raise ValueError('RECOVERY_PACKAGE_CACHE_IDENTITY')
+    identity=(repository,run['id'],run['head_sha'],key,artifact['id'],artifact['name'],artifact['digest'])
+    lock, entries=state
+    with lock:
+        future=entries.get(identity); owns=future is None
+        if owns:
+            if len(entries)>=100:raise ValueError('RECOVERY_PACKAGE_CACHE_BOUND')
+            future=concurrent.futures.Future();entries[identity]=future
+    if not owns:return future.result(timeout=evidence_remaining(180))
+    try:
+        result=_verified_recovery_package_digest(repository,original,material,key,token)
+        future.set_result(result)
+        return result
+    except BaseException as error:
+        future.set_exception(error)
+        with lock:
+            if entries.get(identity) is future:del entries[identity]
+        raise
+
+
+def _verified_recovery_package_digest(repository, original, material, key, token):
     """Independently bind a receipt to original package bytes, not its own claim."""
     import tempfile
     import zipfile
@@ -484,6 +510,8 @@ FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS = ({'.github/workflows/legend-fast-tra
 
 FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS = ({'.github/workflows/legend-fast-track-ui.yml': 'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd', 'scripts/deploy-approved-app.py': 'd563b924ba2f477fb93945675b931a903331d825511e4c67a31884b1d00736cd', 'scripts/release-operation-evidence.py': '506796abeadfd87f09236f74ca8c79a496a1c5b813f1191d0f0ce39cf5a9483d', 'scripts/validation-resume.py': 'e134012c82b4760dde39fdd22fdb5f8a335a3e1addcd304b0d52ec9d08702268', 'scripts/release-artifacts/transport.cjs': 'c853257dddfe833a8356f94ea3566d93acb7aef666d86e2c8f0dd67763884769'},)
 
+FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS = ({'.github/workflows/legend-fast-track-ui.yml': 'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd', 'scripts/deploy-approved-app.py': 'a4f1ff6424123fd00f61cf24550c970f544ce25247e1a1a2f755e47f18bdc917', 'scripts/release-operation-evidence.py': '506796abeadfd87f09236f74ca8c79a496a1c5b813f1191d0f0ce39cf5a9483d', 'scripts/validation-resume.py': '5617f2173b30626d14a5b5efbae182aadc065e707d9ffe2667fa81002303cfb1', 'scripts/release-artifacts/transport.cjs': '9feb936ada29c549c55d876c9112ef6b9b096a1114c2f07ef199b1ce6cb55e44'},)
+
 def _recovery_preintent_log_proof(log, run, job, observer, *, kind='serializer'):
     """Only authenticated full logs of the pinned pre-transport rejection flow."""
     import datetime
@@ -533,6 +561,27 @@ def _recovery_preintent_log_proof(log, run, job, observer, *, kind='serializer')
         or run.get('display_title') != 'LEGEND retained recovery original=' + str(proof['originalRun']) + ' application=' + str(proof['applicationRevision'])):
         raise ValueError('RECOVERY_PREINTENT_MATERIAL_LOG_CHANGED')
     events = [text for stamp, text in rows if step_start <= stamp <= step_end + datetime.timedelta(seconds=1)]
+    if kind == 'target-deadline':
+        rejected='RecoveryPhaseDeadline: RECOVERY_PHASE_DEADLINE_HOLD_RECONCILE_ONLY'
+        terminal='DeploymentSubmissionNotEntered: Durable upload intent could not be proven; no write authorized'
+        if (events.count(rejected)!=1 or clean.count(rejected)!=1 or events.count(terminal)!=1 or clean.count(terminal)!=1
+            or events.count('Traceback (most recent call last):')!=2 or events.count('The above exception was the direct cause of the following exception:')!=1
+            or events.count('##[error]Process completed with exit code 1.')!=1
+            or any(marker in clean for marker in ['Submitting the verified immutable ZIP once.','AZURE_TRACKED_DEPLOYMENT_REFERENCE:'])):
+            raise ValueError('RECOVERY_TARGET_DEADLINE_TERMINAL_UNPROVEN')
+        if not events.index(rejected)<events.index(terminal)<events.index('##[error]Process completed with exit code 1.') or clean.index('Cleaning up orphan processes')<clean.index(terminal):
+            raise ValueError('RECOVERY_TARGET_DEADLINE_ORDER')
+        traces=[i for i,text in enumerate(events) if text=='Traceback (most recent call last):']
+        cause=events.index('The above exception was the direct cause of the following exception:')
+        if not traces[0]<events.index(rejected)<cause<traces[1]<events.index(terminal):raise ValueError('RECOVERY_TARGET_DEADLINE_TRACE_ORDER')
+        frames=re.findall(r'  File "([^"\n]+)", line ([0-9]+), in ([^\n]+)', '\n'.join(events))
+        normalized=[(path.split('/scripts/',1)[1] if '/scripts/'in path else path,line,fn)for path,line,fn in frames]
+        expected=[('deploy-approved-app.py','574','reconcile'),('release-operation-evidence.py','309','before_submit'),('deploy-approved-app.py','1517','before_write'),('deploy-approved-app.py','1341','recovery_preupload_baseline'),('deploy-approved-app.py','1406','recovery_phase_remaining'),('deploy-approved-app.py','1689','<module>'),('deploy-approved-app.py','1604','main'),('deploy-approved-app.py','1454','recover_fast_track'),('deploy-approved-app.py','1549','_recover_fast_track'),('/usr/lib/python3.12/concurrent/futures/_base.py','449','result'),('/usr/lib/python3.12/concurrent/futures/_base.py','401','__get_result'),('/usr/lib/python3.12/concurrent/futures/thread.py','58','run'),('deploy-approved-app.py','1539','recover_target'),('deploy-approved-app.py','582','reconcile')]
+        if normalized!=expected or sum(text.startswith('  File ')for text in events)!=len(expected):
+            raise ValueError('RECOVERY_TARGET_DEADLINE_SOURCE_CHAIN')
+        if events.count('    recovery_phase_remaining(azure.deadline,1)')!=1 or events.count('    fresh = recovery_preupload_baseline(azure, original, key, expected=states[key])')!=1:
+            raise ValueError('RECOVERY_TARGET_DEADLINE_BOUNDARY')
+        return proof
     if kind == 'preflight':
         terminal = 'DeploymentReconciliationRequired: RECOVERY_BASELINE_NOT_IDLE_OR_UNPROVEN'
         if (events.count(terminal)!=1 or clean.count(terminal)!=1 or events.count('Traceback (most recent call last):')!=1
@@ -573,7 +622,7 @@ def _recovery_preintent_log_proof(log, run, job, observer, *, kind='serializer')
     return proof
 
 
-def attested_recovery_preintent_failure(repository, run, job, attempt, revision, token):
+def attested_recovery_preintent_failure(repository, run, job, attempt, revision, token, *, target=None, operation_id=None):
     """Recognize reviewed pre-entry source flows, never generic missing intent.
 
     Every new journal record in this exact generation contains recoveryEvidence;
@@ -601,19 +650,20 @@ def attested_recovery_preintent_failure(repository, run, job, attempt, revision,
             return False
         source = {path: hashlib.sha256(_release_history_source(repository,run['head_sha'],path,token).encode()).hexdigest()
                   for path in FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS[0]}
-        if source not in FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS + FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS:
+        if source not in FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS + FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS + FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS:
             return False
         # An uncertain or retained artifact is NOT erased by a terminal log.
         if _completion_inventory(api_get(repository,f"actions/runs/{run['id']}/artifacts?per_page=100",token),'artifacts'):
             return False
         proof = _recovery_preintent_log_proof(_release_job_log(repository,job['id'],token),run,job,observer,
-            kind='preflight' if source in FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS else 'serializer')
+            kind='target-deadline' if source in FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS else 'preflight' if source in FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS else 'serializer')
         if proof['applicationRevision'] != revision:
             return False
         original = fast_track_completion_original(repository,proof['originalRun'],revision,token)
         if (not isinstance(proof['targets'],dict) or not 1 <= proof['originalAttempt'] <= original['run']['run_attempt']
             or set(proof['targets']) != set(original['targets'])):
             return False
+        held=[]
         for key, row in proof['targets'].items():
             if not isinstance(row,dict) or set(row) != {'operationId','packageDigest','packageArtifactId','packageArtifactDigest'}:
                 return False
@@ -624,6 +674,9 @@ def attested_recovery_preintent_failure(repository, run, job, attempt, revision,
             # Existing authenticated original intents bind their package digest;
             # otherwise independently restore/check the original immutable ZIP.
             intent = material['originalIntent']
+            if source in FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS:
+                if intent is None:held.append(key)
+                elif fast_track_completion_material(repository,original,key,token)['intent'] != intent:return False
             digest = intent['packageDigest'] if intent is not None else fast_track_recovery_package_digest(repository,original,material,key,token)
             identity = dict(target=key,applicationRevision=revision,packageDigest=digest)
             operation = hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
@@ -632,6 +685,8 @@ def attested_recovery_preintent_failure(repository, run, job, attempt, revision,
                 return False
             if row['packageDigest'] != digest or row['operationId'] != operation:
                 return False
+        if source in FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS and (held!=[target] or proof['targets'][target]['operationId']!=operation_id):return False
+        if source in FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS and _completion_inventory(api_get(repository,f"actions/runs/{original['run']['id']}/artifacts?per_page=100",token),'artifacts')!=original['artifacts']:return False
         _completion_original_unchanged(repository, original['run'], token)
         _completion_original_unchanged(repository, run, token)
         if _completion_inventory(api_get(repository,f"actions/runs/{run['id']}/artifacts?per_page=100",token),'artifacts'):
@@ -684,7 +739,17 @@ def validate_recovery_preflight_nonentry(record):
     return recovery_preflight_nonentry_name(record['originalRun'],record['applicationRevision'],record['producingRun'],record['producingAttempt'])
 
 
-RECOVERY_PREFLIGHT_PRODUCER_SHA256 = 'a4f1ff6424123fd00f61cf24550c970f544ce25247e1a1a2f755e47f18bdc917'
+def validate_recovery_target_preintent(record):
+    if not isinstance(record,dict) or record.get('phase')!='target-preintent-hold' or record.get('stage')!='before-new-intent':
+        raise ValueError('RECOVERY_TARGET_HOLD_STAGE')
+    if 'writePhaseEntered' in record or record.get('targetWritePhaseEntered') is not False:raise ValueError('RECOVERY_TARGET_HOLD_SCOPE')
+    translated=dict(record);translated.pop('targetWritePhaseEntered')
+    validate_recovery_preflight_nonentry(dict(translated,phase='preflight-nonentry',stage='all-target-preflight',writePhaseEntered=False))
+    identity={k:record[k] for k in ('applicationRevision','originalRun','producingRun','producingAttempt','failedTarget')}
+    return 'legend-retained-target-preintent-'+hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+
+
+RECOVERY_PREFLIGHT_PRODUCER_SHA256 = '15ba27c53564223cb41502bb5528949e6435f0e6bccd56a8daea994536dfaa38'
 
 
 def _recovery_preflight_source_contract(source, journal_source):
@@ -757,7 +822,134 @@ def attested_recovery_terminal_preflight(repository, run, job, attempt, revision
     except (KeyError,TypeError,ValueError,RuntimeError,OSError,UnicodeError,StopIteration,subprocess.SubprocessError):return False
 
 
-def recovery_history_no_unjournaled_entry(repository, revision, current_run, current_attempt, token):
+def recovery_effect_contract(record):
+    """Strict retained-operation wire contract before sibling effect coverage.
+
+    Mirrors the existing journal/transport phase contract; provenance is checked
+    separately against authenticated producer, package and artifact evidence.
+    """
+    if not isinstance(record, dict):return False
+    phase=record.get('phase')
+    if phase not in {'intent','submitted','success'}:return False
+    keys=set('schemaVersion operationId target applicationRevision packageDigest baseline packageProducerRun producingRun producingAttempt baselineDeploymentIds phase recoveryEvidence'.split())
+    contracts=[key for key in ('providerRequestCorrelation','submissionContract') if key in record]
+    if len(contracts)!=1:return False
+    keys.update(contracts)
+    if phase=='submitted':keys.add('deploymentId')
+    if phase=='success':keys.add('deploymentIds')
+    if set(record)!=keys or type(record['schemaVersion'])is not int or record['schemaVersion']!=1:return False
+    for key,size in [('operationId',64),('packageDigest',64),('applicationRevision',40),('baseline',40)]:
+        if not isinstance(record[key],str) or not re.fullmatch('[a-f0-9]{'+str(size)+'}',record[key]):return False
+    if any(type(record[key])is not int or not 1<=record[key]<=9007199254740991 for key in ('packageProducerRun','producingRun','producingAttempt')):return False
+    ids=record['baselineDeploymentIds']
+    def valid_ids(values):
+        return isinstance(values,list) and len(values)<=1000 and all(isinstance(v,str) and re.fullmatch(r'[a-zA-Z0-9_.:-]{1,256}',v) for v in values)
+    if not valid_ids(ids) or len(set(ids))!=len(ids):return False
+    key=contracts[0];kind='azure_onedeploy_windows_intent_v1' if key=='submissionContract' else 'azure_onedeploy_deployment_tag_v1'
+    if record[key]!={'kind':kind,'value':record['operationId']}:return False
+    if phase=='submitted':
+        if key!='submissionContract' or not valid_ids([record['deploymentId']]) or record['deploymentId']in ids:return False
+    if phase=='success':
+        values=record['deploymentIds']
+        if not valid_ids(values) or len(values)!=1 or values[0]in ids:return False
+    return True
+
+
+def attested_recovery_target_hold(repository, run, job, attempt, revision, token, target, operation_id):
+    """One held operation; every sibling/attempt effect stays independently bound."""
+    try:
+        if (run.get('status')!='completed' or run.get('conclusion')!='failure' or job.get('status')!='completed'
+            or job.get('conclusion')!='failure' or job.get('run_id')!=run['id'] or job.get('run_attempt')!=attempt
+            or job.get('head_sha')!=run['head_sha'] or job.get('name')!=FAST_TRACK_RECOVERY_JOB):return False
+        if not _recovery_preflight_source_contract(_release_history_source(repository,run['head_sha'],'scripts/deploy-approved-app.py',token),_release_history_source(repository,run['head_sha'],'scripts/release-operation-evidence.py',token)):return False
+        for relative in ('validation-resume.py','release-artifacts/transport.cjs'):
+            if _release_history_source(repository,run['head_sha'],'scripts/'+relative,token)!=(Path(__file__).parent/relative).read_text():return False
+        match=re.fullmatch(r'LEGEND retained recovery original=([1-9][0-9]*) application=([a-f0-9]{40})',run.get('display_title',''))
+        if not match or match[2]!=revision:return False
+        original=fast_track_completion_original(repository,int(match[1]),revision,token)
+        expected={}; inherited={}
+        for key in original['targets']:
+            material=fast_track_recovery_material(repository,original,key,token);intent=material['originalIntent']
+            digest=intent['packageDigest'] if intent else fast_track_recovery_package_digest(repository,original,material,key,token)
+            identity=dict(target=key,applicationRevision=revision,packageDigest=digest)
+            op=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            expected[key]=dict(operationId=op,packageDigest=digest,packageArtifactId=material['packageArtifact']['id'],packageArtifactDigest=material['packageArtifact']['digest'])
+            if intent:
+                bound=fast_track_completion_material(repository,original,key,token)
+                if bound['intent']!=intent or any(intent.get(k)!=v for k,v in dict(identity,operationId=op,packageProducerRun=original['run']['id']).items()):return False
+                inherited[key]=intent
+        if target not in expected or target in inherited or expected[target]['operationId']!=operation_id:return False
+        path=f"actions/runs/{run['id']}/artifacts?per_page=100"
+        inventory=_completion_inventory(api_get(repository,path,token),'artifacts')
+        count=run.get('run_attempt')
+        if type(count)is not int or not 1<=count<=100:return False
+        coverage={i:{k:'entered' for k in inherited}for i in range(1,count+1)}
+        holds=set();effects={};owners={}
+        for i in coverage:
+            observer=fast_track_recovery_producer(repository,run,token,attempt=i)
+            jobs=_completion_rows(api_get(repository,f"actions/runs/{run['id']}/attempts/{i}/jobs?per_page=100",token),'jobs')
+            owner=next(x for x in jobs if x['id']==observer['jobId'])
+            expected_steps=[('Set up job','success'),('Check out promoted recovery tool authority','success'),('Install Node 24','success'),('Validate original authority and restore retained packages without rebuilding','success'),('Install canonical durable evidence transport','success'),('Prepare canonical durable evidence transport','success'),('Sign in to Azure Production','success'),('Recover exact retained application bytes','failure'),('Post Sign in to Azure Production','success'),('Post Install Node 24','skipped'),('Post Check out promoted recovery tool authority','success'),('Complete job','success')]
+            if (owner.get('status')!='completed' or owner.get('conclusion')!='failure'
+                or [(x.get('name'),x.get('conclusion'))for x in owner.get('steps',[])]!=expected_steps
+                or any(x.get('status')!='completed' for x in owner['steps'])):return False
+            step=_completion_step(owner,'Recover exact retained application bytes',conclusions=('failure',))
+            _completion_step(owner,'Validate original authority and restore retained packages without rebuilding')
+            owners[i]=(observer,owner,step)
+        for artifact in inventory:
+            if (artifact.get('expired')is not False or artifact.get('workflow_run',{}).get('id')!=run['id']
+                or artifact.get('workflow_run',{}).get('head_sha')!=run['head_sha']
+                or not re.fullmatch('sha256:[a-f0-9]{64}',str(artifact.get('digest','')))):return False
+            record=_release_history_json(repository,run['id'],artifact,'operation.json',verify_digest=True)
+            i=record.get('producingAttempt')
+            if type(i)is not int or i not in owners:return False
+            observer,owner,step=owners[i]
+            if not _completion_artifact_in_step(artifact,step):return False
+            if record.get('phase')=='target-preintent-hold':
+                key=record.get('failedTarget')
+                if (artifact.get('name')!=validate_recovery_target_preintent(record) or record['targets']!=expected
+                    or record['observer']!=observer or record['producingRun']!=run['id'] or record['originalRun']!=original['run']['id']
+                    or record['applicationRevision']!=revision or not 1<=record['originalAttempt']<=original['run']['run_attempt']
+                    or key in inherited or (i,key) in holds or any(k[0]==i and k[1]==key for k in effects)):return False
+                holds.add((i,key));coverage[i][key]='held'
+            else:
+                key=record.get('target');phase=record.get('phase')
+                if (key not in expected or phase not in {'intent','submitted','success'} or (i,key)in holds
+                    or artifact.get('name')!='legend-release-operation-'+phase+'-'+expected[key]['operationId']
+                    or (i,key,phase)in effects or not recovery_effect_contract(record) or not validate_fast_track_recovery_record(repository,run,artifact,record,token)):return False
+                if record.get('operationId')!=expected[key]['operationId'] or record.get('packageDigest')!=expected[key]['packageDigest']:return False
+                if key in inherited and phase=='intent':return False
+                effects[(i,key,phase)]=record
+                if phase=='intent':coverage[i][key]='entered'
+        entered=dict(inherited);observed_provider={}
+        for i in coverage:
+            for key in expected:
+                new=effects.get((i,key,'intent'))
+                if new is not None:
+                    if key in entered:return False
+                    entered[key]=new
+                if key in entered:
+                    if (i,key)in holds:return False
+                    coverage[i][key]='entered'
+            if set(coverage[i])!=set(expected):return False
+            for key in expected:
+                intent=entered.get(key)
+                for phase in ('submitted','success'):
+                    value=effects.get((i,key,phase))
+                    if value is not None and (intent is None or any(value.get(k)!=v for k,v in intent.items() if k not in {'phase','producingRun','producingAttempt','recoveryEvidence'})):return False
+                    if value is not None:
+                        provider=value['deploymentId'] if phase=='submitted' else value['deploymentIds'][0]
+                        if key in observed_provider and observed_provider[key]!=provider:return False
+                        observed_provider[key]=provider
+        if (attempt,target)not in holds or owners[attempt][1]!=job:return False
+        _completion_original_unchanged(repository,original['run'],token);_completion_original_unchanged(repository,run,token)
+        if _completion_inventory(api_get(repository,f"actions/runs/{original['run']['id']}/artifacts?per_page=100",token),'artifacts')!=original['artifacts']:return False
+        if _completion_inventory(api_get(repository,path,token),'artifacts')!=inventory:return False
+        return True
+    except (KeyError,TypeError,ValueError,RuntimeError,OSError,UnicodeError,StopIteration,subprocess.SubprocessError):return False
+
+
+def recovery_history_no_unjournaled_entry(repository, revision, current_run, current_attempt, token, *, target=None, operation_id=None):
     """No forgotten recovery attempt may be erased by original preflight proof."""
     for run in fast_track_execution_history(repository, token, include_recovery=True):
         if run.get('event') != 'workflow_dispatch':
@@ -781,7 +973,8 @@ def recovery_history_no_unjournaled_entry(repository, revision, current_run, cur
             steps = [step for step in owner.get('steps', []) if step.get('name') == 'Recover exact retained application bytes']
             if len(steps) != 1 or (steps[0].get('conclusion') != 'skipped'
                 and not attested_recovery_terminal_preflight(repository, run, owner, attempt, revision, token)
-                and not attested_recovery_preintent_failure(repository, run, owner, attempt, revision, token)):
+                and not attested_recovery_preintent_failure(repository, run, owner, attempt, revision, token, target=target, operation_id=operation_id)
+                and not attested_recovery_target_hold(repository, run, owner, attempt, revision, token, target, operation_id)):
                 raise ReleaseOperationHistoryUnproven('Recovery publication entered without retained intent')
 
 
@@ -11021,7 +11214,7 @@ def release_operation_history(repository, operation_id, application_revision, ta
     if phase in {"success", "submitted"}:
         return None
 
-    recovery_history_no_unjournaled_entry(repository, application_revision, current_run, current_attempt, token)
+    recovery_history_no_unjournaled_entry(repository, application_revision, current_run, current_attempt, token, target=target, operation_id=operation_id)
 
     for run in fast_track_execution_history(repository, token):
         if run['head_sha'] != application_revision:

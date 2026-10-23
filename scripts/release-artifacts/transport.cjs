@@ -96,9 +96,19 @@ function preflightNonentry(name,record) {
      (record.reason==='runtime-candidate-unproven'&&o.runtimeRevision!==record.applicationRevision))throw new Error('Inconsistent terminal preflight observation');
 }
 
+const targetHoldKeys=preflightKeys.replace('writePhaseEntered','targetWritePhaseEntered');
+function targetPreintent(name,record) {
+  const identity={applicationRevision:record.applicationRevision,failedTarget:record.failedTarget,originalRun:record.originalRun,producingAttempt:record.producingAttempt,producingRun:record.producingRun};
+  if(!exactKeys(record,targetHoldKeys)||record.targetWritePhaseEntered!==false||record.phase!=='target-preintent-hold'||record.stage!=='before-new-intent'||name!=='legend-retained-target-preintent-'+crypto.createHash('sha256').update(JSON.stringify(identity)).digest('hex'))throw new Error('Invalid target preintent identity');
+  const translated={...record,phase:'preflight-nonentry',stage:'all-target-preflight',writePhaseEntered:false};delete translated.targetWritePhaseEntered;
+  const globalIdentity={applicationRevision:record.applicationRevision,originalRun:record.originalRun,producingAttempt:record.producingAttempt,producingRun:record.producingRun};
+  preflightNonentry('legend-retained-preflight-nonentry-'+crypto.createHash('sha256').update(JSON.stringify(globalIdentity)).digest('hex'),translated);
+}
+
 // JSON arrives on stdin, never as an arbitrary upload path. Only the bounded
 // release operation record can be persisted; credentials cannot enter it.
 async function publish(client, name, record, {sleep = ms => new Promise(resolve => setTimeout(resolve, ms))} = {}) {
+  const targetHold = /^legend-retained-target-preintent-[a-f0-9]{64}$/.test(name);
   const preflight = /^legend-retained-preflight-nonentry-[a-f0-9]{64}$/.test(name);
   const retained = /^legend-retained-recovery-success-[a-f0-9]{64}$/.test(name);
   const completion = /^legend-release-completion-[a-f0-9]{64}$/.test(name);
@@ -108,10 +118,10 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
   const child = /^legend-release-child-(intent|success)-[a-f0-9]{64}$/.test(name);
   const plan = /^legend-release-transaction-plan-[a-f0-9]{64}$/.test(name);
   const recovery = /^legend-readiness-recovery-[a-f0-9]{64}$/.test(name);
-  if (!preflight && !retained && !completion && !observation && !locator && !admission && !child && !plan && !recovery && !/^legend-release-operation-(intent|success|submitted)-[a-f0-9]{64}$/.test(name))
+  if (!targetHold && !preflight && !retained && !completion && !observation && !locator && !admission && !child && !plan && !recovery && !/^legend-release-operation-(intent|success|submitted)-[a-f0-9]{64}$/.test(name))
     throw new Error('Invalid release operation artifact identity');
   const observationKeys = ['schemaVersion', 'phase', 'kind', 'observationIdentity', 'candidate', 'executionAuthority', 'databaseIdentity', 'schemaIdentity', 'baselineIdentity', 'observedUtc', 'pendingCount', 'mutationActivity', 'historicalExecution', 'historicalEvidenceIdentity', 'historicalReconciliationSources', 'bundleDigest', 'sqlExecutionAuthorized', 'producingRun', 'producingAttempt'];
-  const allowed = new Set(preflight ? preflightKeys.split(',') : retained ? ['schemaVersion', 'phase', 'originalRun', 'originalAttempt', 'applicationRevision', 'producingRun', 'producingAttempt', 'observer', 'targets'] : completion ? ['schemaVersion', 'phase', 'originalRun', 'applicationRevision', 'producingRun', 'producingAttempt', 'observer', 'targets'] : observation ? observationKeys : locator ? ['schemaVersion', 'component', 'contentIdentity', 'runId'] : recovery ? ['schemaVersion', 'operationId', 'candidateRevision', 'executionAuthority', 'targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt', 'phase'] : plan ? ['schemaVersion', 'planId', 'candidateRevision', 'producingRun', 'producingAttempt', 'targets', 'historySnapshot'] : child ? ['schemaVersion', 'child', 'dependencyIdentity', 'materialIdentity', 'evidenceIdentity', 'partitionIdentity',
+  const allowed = new Set(targetHold ? targetHoldKeys.split(',') : preflight ? preflightKeys.split(',') : retained ? ['schemaVersion', 'phase', 'originalRun', 'originalAttempt', 'applicationRevision', 'producingRun', 'producingAttempt', 'observer', 'targets'] : completion ? ['schemaVersion', 'phase', 'originalRun', 'applicationRevision', 'producingRun', 'producingAttempt', 'observer', 'targets'] : observation ? observationKeys : locator ? ['schemaVersion', 'component', 'contentIdentity', 'runId'] : recovery ? ['schemaVersion', 'operationId', 'candidateRevision', 'executionAuthority', 'targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt', 'phase'] : plan ? ['schemaVersion', 'planId', 'candidateRevision', 'producingRun', 'producingAttempt', 'targets', 'historySnapshot'] : child ? ['schemaVersion', 'child', 'dependencyIdentity', 'materialIdentity', 'evidenceIdentity', 'partitionIdentity',
     'applicationRevision', 'executionAuthority', 'producingRun', 'producingAttempt', 'phase', 'observation'] : admission ? ['schemaVersion', 'admissionId', 'sourcePr',
     'applicationRevision', 'authorizedSourceRevision', 'packageIdentity', 'executionAuthority', 'sourceMergeSha', 'selectedTargets',
     'resources', 'authorizationMode', 'producingRun', 'producingAttempt', 'phase'] : ['schemaVersion', 'operationId', 'target', 'applicationRevision',
@@ -120,7 +130,9 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
     'providerRequestCorrelation', 'submissionContract', 'deploymentId', 'completionEvidence', 'recoveryEvidence']);
   if (!record || Object.keys(record).some(key => !allowed.has(key)) ||
       JSON.stringify(record).length > (plan ? 524288 : 32768)) throw new Error('Invalid release operation record');
-  if (preflight) {
+  if (targetHold) {
+    targetPreintent(name, record);
+  } else if (preflight) {
     preflightNonentry(name, record);
   } else if (retained) {
     retainedSummary(name, record);
