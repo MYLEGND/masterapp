@@ -742,6 +742,20 @@ canvasScrollTop:canvas.scrollTop,
 panelHidden:document.body.classList.contains('legend-cms-panel-hidden'),
 controls:(${quoteControlSnapshots.toString()})(document,window)};`;
 
+const quoteSelectableContentScript = `const nodes=[...document.querySelectorAll('main p.lq-hero-step-copy-helper,main h1,main h2,main h3,main h4,main h5,main h6,main .lq-hero-step-copy-title,main .lq-contact-capture-title,main .dq-contact-title,main .lq-step-title')];const n=nodes.find(e=>e.closest('[data-cms-editable="true"]')&&!e.closest('[hidden],[inert],[aria-hidden="true"],[data-cms-preview-only]')&&e.getClientRects().length&&getComputedStyle(e).visibility==='visible'&&Number(getComputedStyle(e).opacity)>0);return n?{node:n,target:n.closest('[data-cms-editable="true"]')}:null;`;
+
+test('quote selection discovers actual editable native paragraph without fabricating a title',()=>{
+  const owner={id:'native-owner'},paragraph={closest:s=>s==='[data-cms-editable="true"]'?owner:null,getClientRects:()=>[{}]};
+  let selector;
+  const context={document:{querySelectorAll:s=>{selector=s;return s.includes('main p.lq-hero-step-copy-helper')?[paragraph]:[];}},getComputedStyle:()=>({visibility:'visible',opacity:'1'})};
+  const find=()=>vm.runInNewContext('(function(){'+quoteSelectableContentScript+'})()',context);
+  const found=find();assert.equal(found.node,paragraph);assert.equal(found.target,owner);
+  assert.ok(selector.includes('main h1'));assert.ok(!selector.includes('input'));
+  paragraph.closest=()=>null;assert.equal(find(),null);
+  paragraph.closest=s=>s==='[data-cms-editable="true"]'?owner:{};assert.equal(find(),null);
+  paragraph.closest=s=>s==='[data-cms-editable="true"]'?owner:null;paragraph.getClientRects=()=>[];assert.equal(find(),null);
+});
+
 test('actual canonical frontend components render in the existing sandboxed CI browser', {timeout:160000}, async t => {
   const start = Date.now();
   const deadline = start + 160000;
@@ -1103,11 +1117,12 @@ test('actual canonical frontend components render in the existing sandboxed CI b
       return value;
     };
     let selectedQuoteNode;
-    const selectQuoteContent=async()=>{
+    const selectQuoteContent=async(label)=>{
+      quoteDiagnostic={label,stage:'native-content-discovery',...await execute(quoteSnapshotScript)};
       // Discover real noninteractive native title/copy, then use WebDriver's
       // pointer click. The shipped selection owner may select its editable parent.
-      const found=await execute(`const nodes=[...document.querySelectorAll('main h1,main h2,main h3,main h4,main h5,main h6,main .lq-hero-step-copy-title,main .lq-contact-capture-title,main .dq-contact-title,main .lq-step-title')];const n=nodes.find(e=>e.closest('[data-cms-editable="true"]')&&!e.closest('[hidden],[inert],[aria-hidden="true"],[data-cms-preview-only]')&&e.getClientRects().length&&getComputedStyle(e).visibility==='visible'&&Number(getComputedStyle(e).opacity)>0);return n?{node:n,target:n.closest('[data-cms-editable="true"]')}:null;`);
-      assert.ok(found,'Actual selectable native title missing');
+      const found=await execute(quoteSelectableContentScript);
+      assert.ok(found,'Actual selectable native text missing: '+JSON.stringify(quoteDiagnostic));
       await command('POST','/session/'+session+'/element/'+found.node['element-6066-11e4-a52e-4f735466cecf']+'/click',{});
       selectedQuoteNode=found.target;
       assert.equal(await execute('return arguments[0].isConnected && arguments[0]===document.querySelector("main .legend-cms-selected")',[selectedQuoteNode]),true,'Native click did not select the exact discovered content owner');
@@ -1153,13 +1168,13 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     for(const route of ['/quote/life','/quote/disability','/quote/dental-vision-hearing']){
       for(const width of [1920,1214]){
         await metrics(width);await quoteGo(route,'?legendEdit=ticket');
-        await selectQuoteContent();await verifyBreakpoint('base',route+':'+width+':base-ready');
+        await selectQuoteContent(route+':'+width+':cold-base-selection');await verifyBreakpoint('base',route+':'+width+':base-ready');
         const before=await inspectQuote(route+':'+width+':base',{desktop:width-384>=1024,sidebar:true});
         await click('[data-editor-viewport="desktop"]');
         await verifyBreakpoint('desktop',route+':'+width+':desktop-ready');
         await inspectQuote(route+':'+width+':desktop',{desktop:before.canvas.width>=1024,sidebar:true});
         await click('#legend-cms-form-navigator select option[value="8"]');
-        await selectQuoteContent();
+        await selectQuoteContent(route+':'+width+':contact-phase8-selection');
         await click('[data-open="advanced"]');await click('[data-open="layout"]');
         await click('#legend-cms-breakpoint option[value="fixture-wide"]');
         await verifyBreakpoint('fixture-wide',route+':'+width+':named-ready');
