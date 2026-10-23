@@ -256,6 +256,13 @@ def fast_track_recovery_producer(repository, run, token, *, attempt, live=False)
     if (len(promotions) != 1 or promotions[0].get('head_sha') != revision
         or fast_track_promotion_parent(repository, promotions[0], token) is None):
         raise ValueError('FAST_TRACK_RECOVERY_TOOL_NOT_PROMOTED')
+    owner = _fast_track_recovery_owner(repository, run, token, attempt=attempt, live=live)
+    return dict(runId=run['id'], runAttempt=attempt, jobId=owner['id'], toolRevision=revision,
+                promotionRunId=promotions[0]['id'])
+
+
+def _fast_track_recovery_owner(repository, run, token, *, attempt, live):
+    revision = run['head_sha']
     jobs = _completion_rows(api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token), 'jobs')
     names = {'Select exact affected applications', 'Admit exact validated fast-track source',
              'Reconcile production schema before publication', 'Publish verified website routing',
@@ -273,11 +280,10 @@ def fast_track_recovery_producer(repository, run, token, *, attempt, live=False)
             or owner.get('status') != 'in_progress' or owner.get('runner_name') != os.environ.get('RUNNER_NAME')
             or api_get(repository, 'git/ref/heads/' + FAST_TRACK_PR_BASE, token).get('object', {}).get('sha') != revision):
             raise ValueError('FAST_TRACK_RECOVERY_LIVE_OWNER_CHANGED')
-    return dict(runId=run['id'], runAttempt=attempt, jobId=owner['id'], toolRevision=revision,
-                promotionRunId=promotions[0]['id'])
+    return owner
 
 
-def assert_fast_track_recovery_execution(original_run, application_revision):
+def _fast_track_recovery_execution_input(original_run, application_revision):
     env = os.environ
     repository = env.get('GITHUB_REPOSITORY', '')
     token = env.get('GH_TOKEN') or env.get('GITHUB_TOKEN')
@@ -298,7 +304,16 @@ def assert_fast_track_recovery_execution(original_run, application_revision):
     expected_title = 'LEGEND retained recovery original=' + str(original_run) + ' application=' + application_revision
     if run.get('display_title') != expected_title:
         raise ValueError('FAST_TRACK_RECOVERY_DISPATCH_TITLE_CHANGED')
-    proof = fast_track_recovery_producer(repository, run, token, attempt=int(env['GITHUB_RUN_ATTEMPT']), live=True)
+    if (run.get('path') != '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW
+        or run.get('event') != 'workflow_dispatch' or run.get('head_branch') != FAST_TRACK_PR_BASE
+        or run.get('head_repository', {}).get('full_name', '').lower() != repository.lower()
+        or not re.fullmatch('[a-f0-9]{40}', run.get('head_sha', ''))):
+        raise ValueError('FAST_TRACK_RECOVERY_PRODUCER_UNPROVEN')
+    return repository, token, run
+
+
+def _assert_fast_track_recovery_checked_source(run, proof, application_revision):
+    env = os.environ
     paths = ['.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW, 'scripts/validation-resume.py',
              'scripts/deploy-approved-app.py', 'scripts/release-operation-evidence.py', 'scripts/release_policy.py',
              'scripts/release-artifacts/transport.cjs']
@@ -307,7 +322,28 @@ def assert_fast_track_recovery_execution(original_run, application_revision):
         or subprocess.run(['git', 'diff', '--quiet', 'HEAD', '--', *paths], capture_output=True).returncode
         or subprocess.run(['git', 'merge-base', '--is-ancestor', application_revision, proof['toolRevision']], capture_output=True).returncode):
         raise ValueError('FAST_TRACK_RECOVERY_CHECKED_SOURCE_UNPROVEN')
+
+
+def assert_fast_track_recovery_execution(original_run, application_revision):
+    repository, token, run = _fast_track_recovery_execution_input(original_run, application_revision)
+    proof = fast_track_recovery_producer(repository, run, token,
+        attempt=int(os.environ['GITHUB_RUN_ATTEMPT']), live=True)
+    _assert_fast_track_recovery_checked_source(run, proof, application_revision)
     return proof
+
+
+def assert_fast_track_recovery_live_execution(original_run, application_revision, observer):
+    """Fresh mutable owner/source checks after historical proof readback."""
+    repository, token, run = _fast_track_recovery_execution_input(original_run, application_revision)
+    attempt = int(os.environ['GITHUB_RUN_ATTEMPT'])
+    if (run.get('run_attempt') != attempt or run.get('id') != observer.get('runId')
+        or attempt != observer.get('runAttempt') or run.get('head_sha') != observer.get('toolRevision')):
+        raise ValueError('FAST_TRACK_RECOVERY_LIVE_OWNER_CHANGED')
+    owner = _fast_track_recovery_owner(repository, run, token, attempt=attempt, live=True)
+    if owner.get('id') != observer.get('jobId'):
+        raise ValueError('FAST_TRACK_RECOVERY_LIVE_OWNER_CHANGED')
+    _assert_fast_track_recovery_checked_source(run, observer, application_revision)
+    return observer
 
 
 def fast_track_recovery_material(repository, original, key, token):
@@ -389,10 +425,16 @@ def recovery_admission_proof():
     if _RECOVERY_PROOF_VIEW.get() is not None:
         yield
         return
-    state = dict(entries={}, bytes=0)
+    state = dict(entries={}, histories={}, bytes=0)
     handle = _RECOVERY_PROOF_VIEW.set(state)
     try:
         yield
+        # A paginated branch inventory is one observation, never cached pages.
+        # Include active/queued rows and reject their drift just like terminal rows.
+        for repository, entry in state['histories'].items():
+            current = _read_fast_track_history_inventory(repository, entry['token'], uncached=True)
+            if _fast_track_history_raw(current) != entry['raw']:
+                raise ReleaseOperationHistoryUnproven('RECOVERY_HISTORY_CHANGED_AT_BOUNDARY')
         # Use raw transport, not either metadata cache. Compare the complete
         # responses, including pagination counts, expiry and attempt identities.
         for (repository, path), entry in state['entries'].items():
@@ -901,7 +943,7 @@ RECOVERY_PREFLIGHT_PRODUCER_SHA256 = '15ba27c53564223cb41502bb5528949e6435f0e6bc
 
 def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
-    return (hashlib.sha256(source.encode()).hexdigest() in (RECOVERY_PREFLIGHT_PRODUCER_SHA256, 'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850', 'e75833a3c3a4d8827f48b7395a8af7e61eeab9e5cfbb4e1f6a0ebb4af49901ed')
+    return (hashlib.sha256(source.encode()).hexdigest() in (RECOVERY_PREFLIGHT_PRODUCER_SHA256, 'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850', 'e75833a3c3a4d8827f48b7395a8af7e61eeab9e5cfbb4e1f6a0ebb4af49901ed', 'ef930621e8c36e447fd884ef99bd03f5ce666bf1feda3431158af8e86d5ab6ab')
         and hashlib.sha256(journal_source.encode()).hexdigest()=='506796abeadfd87f09236f74ca8c79a496a1c5b813f1191d0f0ce39cf5a9483d')
 
 
@@ -918,7 +960,11 @@ def _recovery_receipt_source_closure(repository, revision, token):
         'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850',
         '9d6f763cfdf5c738eea6f5073666d542f348fe35a74063f31bc854e60fc15266',
         'f1b22bcc777114af2437280ee71550555d6b8e2d1701964915eb76de28248557')))
-    return source in (current, previous, read_hold_generation, receipt_reuse_generation)
+    proof_context_generation = dict(zip(paths, (
+        'e75833a3c3a4d8827f48b7395a8af7e61eeab9e5cfbb4e1f6a0ebb4af49901ed',
+        '45b7270f4f5640bdc7104f0bab0a1602a4f006a86a68fc2b63a28f970d0ad9ab',
+        'f1b22bcc777114af2437280ee71550555d6b8e2d1701964915eb76de28248557')))
+    return source in (current, previous, read_hold_generation, receipt_reuse_generation, proof_context_generation)
 
 
 def attested_recovery_terminal_preflight(repository, run, job, attempt, revision, token):
@@ -1146,13 +1192,7 @@ def is_fast_track_producer(repository, run):
         and re.fullmatch('[a-f0-9]{40}', run.get('head_sha', '')) is not None)
 
 
-def fast_track_execution_history(repository, token, *, clock=time.monotonic, include_recovery=False):
-    """Complete bounded branch inventory; missing pages never authorize a write.
-
-    Omit unreliable server head/event filters and the optional first-page marker.
-    Validate every page before applying the existing canonical producer predicate.
-    One 30-second observation honors shorter enclosing budgets; late replies fail.
-    """
+def _read_fast_track_history_inventory(repository, token, *, clock=time.monotonic, uncached=False):
     path = ('actions/runs?branch=' + urllib.parse.quote(FAST_TRACK_PR_BASE, safe='')
             + '&per_page=100')
     rows = []
@@ -1161,7 +1201,8 @@ def fast_track_execution_history(repository, token, *, clock=time.monotonic, inc
     with evidence_lookup_budget(clock() + 30, clock=clock):
         for page in range(1, 11):
             evidence_remaining(30)
-            payload = api_get(repository, path if page == 1 else path + f'&page={page}', token)
+            read = _api_get_uncached if uncached else api_get
+            payload = read(repository, path if page == 1 else path + f'&page={page}', token)
             evidence_remaining(30)  # A late successful response is not timely proof.
             if not isinstance(payload, dict):
                 raise RuntimeError('FAST_TRACK_HISTORY_INCOMPLETE')
@@ -1191,6 +1232,40 @@ def fast_track_execution_history(repository, token, *, clock=time.monotonic, inc
                 break
         if len(rows) != total:
             raise RuntimeError('FAST_TRACK_HISTORY_INCOMPLETE')
+        return rows
+
+
+def _fast_track_history_raw(rows):
+    return json.dumps(sorted(rows, key=lambda row: row['id']), sort_keys=True, separators=(',', ':'))
+
+
+def _fast_track_history_observation(repository, token, *, clock=time.monotonic):
+    state = _RECOVERY_PROOF_VIEW.get()
+    if state is None:
+        return _read_fast_track_history_inventory(repository, token, clock=clock)
+    prior = state['histories'].get(repository)
+    if prior is not None:
+        evidence_remaining(30)
+        return json.loads(prior['raw'])
+    rows = _read_fast_track_history_inventory(repository, token, clock=clock, uncached=True)
+    raw = _fast_track_history_raw(rows)
+    size = len(raw.encode())
+    if len(state['histories']) >= 4 or size > 16 * 1024 * 1024 or state['bytes'] + size > 32 * 1024 * 1024:
+        raise ReleaseOperationHistoryUnproven('RECOVERY_PROOF_STORAGE_BOUND')
+    state['histories'][repository] = dict(raw=raw, token=token)
+    state['bytes'] += size
+    return json.loads(raw)
+
+
+def fast_track_execution_history(repository, token, *, clock=time.monotonic, include_recovery=False):
+    """Complete bounded branch inventory; missing pages never authorize a write.
+
+    Omit unreliable server head/event filters and the optional first-page marker.
+    Validate every page before applying the existing canonical producer predicate.
+    One 30-second observation honors shorter enclosing budgets; late replies fail.
+    """
+    with evidence_lookup_budget(clock() + 30, clock=clock):
+        rows = _fast_track_history_observation(repository, token, clock=clock)
         producers = []
         for row in rows:
             if row['path'].split('@')[0] == '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW:
