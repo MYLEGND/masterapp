@@ -1466,12 +1466,16 @@ class RecoveryDeadlineAzure:
 
 def recover_fast_track(original_run, revision, package_root, *, prepare_only=False):
     authority = _RELEASE_AUTHORITY
-    observer = authority.assert_fast_track_recovery_execution(original_run, revision)
     repository = os.environ['GITHUB_REPOSITORY']; token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
-    deadline = recovery_job_deadline(authority, repository, observer, token)
-    # Nested authority reads share this finite budget, including parallel workers.
-    with authority.recovery_material_reuse(), authority.evidence_lookup_budget(deadline - 60):
-        return _recover_fast_track(original_run, revision, package_root, observer, deadline, prepare_only=prepare_only)
+    # Authentication receipts belong to the same byte-only invocation cache.
+    with authority.recovery_material_reuse():
+        with authority.recovery_admission_proof():
+            observer = authority.assert_fast_track_recovery_execution(original_run, revision)
+        authority.assert_fast_track_recovery_live_execution(original_run, revision, observer)
+        deadline = recovery_job_deadline(authority, repository, observer, token)
+        # Nested authority reads share the original finite job budget.
+        with authority.evidence_lookup_budget(deadline - 60):
+            return _recover_fast_track(original_run, revision, package_root, observer, deadline, prepare_only=prepare_only)
 
 
 def _recover_fast_track(original_run, revision, package_root, observer, deadline, *, prepare_only=False):
@@ -1534,8 +1538,9 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
                                 observer['runId'], observer['runAttempt'], token)
                             if existing is not None:
                                 raise DeploymentReconciliationRequired('RECOVERY_INTENT_APPEARED_RECONCILE_ONLY')
-                        if authority.assert_fast_track_recovery_execution(original_run, revision) != observer:
-                            raise ValueError('RECOVERY_EXECUTION_CHANGED_BEFORE_INTENT')
+                            if authority.assert_fast_track_recovery_execution(original_run, revision) != observer:
+                                raise ValueError('RECOVERY_EXECUTION_CHANGED_BEFORE_INTENT')
+                        authority.assert_fast_track_recovery_live_execution(original_run, revision, observer)
                         if verify_package(package_root / key / 'deploy.zip', revision, TARGETS[key]['static']) != inventory[key]['packageDigest']:
                             raise ValueError('RECOVERY_PACKAGE_CHANGED_BEFORE_INTENT')
                         fresh = recovery_preupload_baseline(azure, original, key, expected=states[key])
@@ -1582,17 +1587,19 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
         futures = {executor.submit(contextvars.copy_context().run, recover_target, key): key for key in journals}
         results = {futures[future]: future.result() for future in concurrent.futures.as_completed(futures)}
     with authority.evidence_lookup_budget(min(deadline - 240, time.monotonic() + 90)):
-        authority._completion_original_unchanged(repository, original['run'], token)
-        if authority.assert_fast_track_recovery_execution(original_run, revision) != observer:
-            raise ValueError('RECOVERY_EXECUTION_CHANGED_BEFORE_SUCCESS')
-        records = {}
-        for key in original['targets']:
-            success = authority.release_operation_history(repository, inventory[key]['operationId'], revision, key,
-                observer['runId'], observer['runAttempt'], token, phase='success')
-            if (success is None or success.get('packageDigest') != inventory[key]['packageDigest']
-                or len(success.get('deploymentIds', [])) != 1):
-                raise DeploymentReconciliationRequired('RECOVERY_DURABLE_SUCCESS_UNPROVEN')
-            records[key] = dict(inventory[key], deploymentIds=success['deploymentIds'])
+        with authority.recovery_admission_proof():
+            authority._completion_original_unchanged(repository, original['run'], token)
+            if authority.assert_fast_track_recovery_execution(original_run, revision) != observer:
+                raise ValueError('RECOVERY_EXECUTION_CHANGED_BEFORE_SUCCESS')
+            records = {}
+            for key in original['targets']:
+                success = authority.release_operation_history(repository, inventory[key]['operationId'], revision, key,
+                    observer['runId'], observer['runAttempt'], token, phase='success')
+                if (success is None or success.get('packageDigest') != inventory[key]['packageDigest']
+                    or len(success.get('deploymentIds', [])) != 1):
+                    raise DeploymentReconciliationRequired('RECOVERY_DURABLE_SUCCESS_UNPROVEN')
+                records[key] = dict(inventory[key], deploymentIds=success['deploymentIds'])
+        authority.assert_fast_track_recovery_live_execution(original_run, revision, observer)
     summary = dict(schemaVersion=1, phase='success', originalRun=original_run, originalAttempt=original['run']['run_attempt'],
                    applicationRevision=revision, producingRun=observer['runId'], producingAttempt=observer['runAttempt'],
                    observer=observer, targets=records)

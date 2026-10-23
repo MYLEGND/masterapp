@@ -1,32 +1,32 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder authorizes bounded canonical recovery corrections, required validation, protected merge and selective deployment under ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. This exact validate-only control promotion authorizes no application publication or provider/settings/access/cost change.",
-  "purpose": "Reduce repeated terminal historical metadata, promotion receipt and completed log reads while closing each admission proof with uncached comparison. Preserve active ownership, provider checks, exact history and sibling evidence, mutex and time reserves.",
-  "requestId": "founder-retained-recovery-proof-context-20261023-v1",
+  "purpose": "Observe complete paginated execution history once per bounded proof, compare every row through uncached boundary reads, and perform fresh live execution ownership checks after proof closure. Preserve exact target/sibling evidence, packages, mutex and time reserves.",
+  "requestId": "founder-retained-recovery-history-snapshot-20261023-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "d8a5b5f09fec92b8dfea86536d450a844b742738",
-    "sourceRevision": "004d4d7c548dda3362f3ac0252c5c5306515c647",
+    "baseRevision": "79d5aeeb2fec0a1548411cb6fdd7a5643c67a598",
+    "sourceRevision": "e6b548019457797ba738cf56557090ba690cb5cc",
     "files": {
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "b1ef4e8c655413dacfd085dc0b4fad4d360aee02"
-      },
-      "scripts/test-validation-resume.py": {
-        "mode": "100644",
-        "blob": "39dfcfa1fe12c0ba1534dda865ff9136681c67d2"
+        "blob": "c6b12326860440ffcaed3cea5fcdb805c03d2635"
       },
       "scripts/deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "4e2f7eaaceb3bfdad88319047f6820efebbea485"
+        "blob": "be6c0feb3573e9e822bca625e8889b66ac19a61d"
+      },
+      "scripts/test-validation-resume.py": {
+        "mode": "100644",
+        "blob": "2cbbc991b03864bb6b76520d22ece897e07bd7ed"
       },
       "scripts/test-deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "c62ed24c3c4f9c07e4c2048da417e8443f55140e"
+        "blob": "b75b7f332104ab9c92505ed77194eb10dbc63bea"
       }
     }
   }

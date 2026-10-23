@@ -6539,6 +6539,166 @@ class RecoveryAdmissionProofTests(unittest.TestCase):
             with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'STORAGE_BOUND'):get()
 
 
+class RecoveryCompleteHistoryTests(unittest.TestCase):
+    def setUp(self):
+        self.repository='owner/repo';self.revision='b'*40;self.application='a'*40
+        self.workflow=(ROOT/'.github/workflows'/m.FAST_TRACK_RELEASE_WORKFLOW).read_text()
+        self.run=dict(id=20,run_attempt=1,head_sha=self.revision,status='in_progress',conclusion=None,
+            path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,event='workflow_dispatch',
+            head_branch=m.FAST_TRACK_PR_BASE,head_repository=dict(full_name=self.repository),
+            display_title='LEGEND retained recovery original=10 application='+self.application)
+        self.promotion=dict(self.run,id=19,event='push',status='completed',conclusion='success')
+        self.rows=[self.run,self.promotion]
+        self.rows += [dict(self.run,id=1000+i,head_sha='f'*40,path='.github/workflows/other.yml',event='push',status='completed',conclusion='success') for i in range(101)]
+        self.rows[-1].update(status='queued',conclusion=None)
+        self.rows.append(dict(self.run,id=22,head_sha='c'*40,status='completed',conclusion='failure'))
+        names=['Select exact affected applications','Admit exact validated fast-track source',
+            'Reconcile production schema before publication','Publish verified website routing',
+            'Affected App Deploy — ${{ matrix.target }}',m.FAST_TRACK_RECOVERY_JOB]
+        self.jobs=[dict(id=i+1,name=name,run_id=20,run_attempt=1,head_sha=self.revision,
+            status='completed',conclusion='skipped',steps=[]) for i,name in enumerate(names)]
+        self.jobs[-1].update(status='in_progress',conclusion=None,runner_name='fixture-runner')
+        self.promotion_jobs=[dict(j,run_id=19,status='completed',conclusion='success' if i==0 else 'skipped') for i,j in enumerate(self.jobs)]
+        self.calls=[];self.downloads=[];self.ref=self.revision;self.git_result=0
+        candidate='e'*40;self.data={
+            'actions/runs/20':self.run,'actions/runs/19':self.promotion,
+            'actions/runs/20/attempts/1/jobs?per_page=100':dict(total_count=6,jobs=self.jobs),
+            'actions/runs/19/attempts/1/jobs?per_page=100':dict(total_count=6,jobs=self.promotion_jobs),
+            'commits/'+self.revision+'/pulls?per_page=100':[dict(number=7,merged_at='now',merge_commit_sha=self.revision,base=dict(ref=m.FAST_TRACK_PR_BASE),head=dict(sha=candidate,ref='candidate',repo=dict(full_name=self.repository)))]}
+        self.receipts={};validations=[]
+        for ident,workflow,prefix in zip(range(101,104),['approved-release-security-validation.yml','masterapp-platform-architecture-validation.yml','parfait-isolated-validation.yml'],['security','architecture','parfait']):
+            run=dict(id=ident,run_attempt=1,head_sha=candidate,status='completed',conclusion='success',event='pull_request',path='.github/workflows/'+workflow,head_branch='candidate',head_repository=dict(full_name=self.repository))
+            validations.append(run);self.data[f'actions/runs/{ident}']=run
+            artifact=dict(id=ident+100,name=f'validation-resume-{prefix}-{ident}-1',expired=False,digest='sha256:'+'d'*64,workflow_run=dict(id=ident))
+            self.data[f'actions/runs/{ident}/artifacts?per_page=100']=dict(total_count=1,artifacts=[artifact])
+            self.receipts[ident]=dict(workflow=workflow,currentSha=candidate,validationBase=m.FAST_TRACK_PR_BASE,
+                sourceValidationScope=dict(phase='source-validation-only',releaseAdmission=False,baseBranch=m.FAST_TRACK_PR_BASE,candidate=candidate,pullRequest=7))
+        self.data[f'actions/runs?head_sha={candidate}&per_page=100']=dict(total_count=3,workflow_runs=validations)
+        artifact=dict(id=40,name='fast-track-admission-19-1',expired=False,digest='sha256:'+'d'*64,workflow_run=dict(id=19))
+        self.data['actions/runs/19/artifacts?per_page=100']=dict(total_count=1,artifacts=[artifact])
+        self.expected=dict(authorizesMutation=False,productionEligible=False)
+        self.policy=SimpleNamespace(tool_promotion_requested=lambda rev:True,read_request=lambda rev:dict(trustedToolPromotion=dict(baseRevision='d'*40)),trusted_tool_promotion=lambda *args:self.expected)
+    def transport(self,repo,path,token):
+        self.calls.append(path)
+        if path.startswith('actions/runs?branch='):
+            page=int(path.rsplit('&page=',1)[1]) if '&page=' in path else 1
+            value=dict(total_count=len(self.rows),workflow_runs=self.rows[(page-1)*100:page*100])
+        elif path.startswith('git/ref/'):
+            value=dict(object=dict(sha=self.ref))
+        else:value=self.data[path]
+        return json.loads(json.dumps(value))
+    def download(self,repo,ident,name,directory,**kwargs):
+        self.downloads.append(ident)
+        filename='fast-track-admission.json' if ident==19 else 'validation-resume.json'
+        value=dict(self.expected,producingRun=19,producingAttempt=1) if ident==19 else self.receipts[ident]
+        (directory/filename).write_text(json.dumps(value))
+    @__import__('contextlib').contextmanager
+    def environment(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            event=Path(temporary)/'event.json';event.write_text(json.dumps(dict(inputs=dict(original_run='10',application_revision=self.application))))
+            env=dict(GITHUB_ACTIONS='true',GITHUB_EVENT_NAME='workflow_dispatch',GITHUB_REF='refs/heads/'+m.FAST_TRACK_PR_BASE,
+                GITHUB_JOB=m.FAST_TRACK_RECOVERY_JOB_ID,GITHUB_WORKFLOW_REF=self.repository+'/.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW+'@refs/heads/'+m.FAST_TRACK_PR_BASE,
+                GITHUB_REPOSITORY=self.repository,GH_TOKEN='fixture',RUNNER_NAME='fixture-runner',GITHUB_RUN_ID='20',GITHUB_RUN_ATTEMPT='1',GITHUB_SHA=self.revision,GITHUB_EVENT_PATH=str(event))
+            with patch.dict(os.environ,env),patch.object(m,'_api_get_uncached',side_effect=self.transport), \
+                 patch.object(m,'_download_run_artifact',side_effect=self.download), \
+                 patch.object(m,'_release_history_source',return_value=self.workflow), \
+                 patch.object(m,'_fast_track_policy',return_value=self.policy), \
+                 patch.object(m.subprocess,'check_output',return_value=self.revision), \
+                 patch.object(m.subprocess,'run',side_effect=lambda *a,**k:SimpleNamespace(returncode=self.git_result)):
+                yield
+    def history(self):return m.fast_track_historical_producers(self.repository,self.revision,'fixture')
+    def test_actual_execution_orchestration_counts_complete_history(self):
+        import time
+        def exercise(new):
+            self.calls.clear();self.downloads.clear();started=time.perf_counter()
+            def inherited():
+                for _ in range(20):
+                    self.assertEqual(self.history()[0]['id'],19)
+                    m.fast_track_promotion_parent(self.repository,self.promotion,'fixture')
+            with self.environment(),__import__('contextlib').ExitStack() as stack:
+                if not new:
+                    stack.enter_context(patch.object(m,'_fast_track_history_observation',side_effect=lambda repo,token,clock: m._read_fast_track_history_inventory(repo,token,clock=clock)))
+                    observer=m.assert_fast_track_recovery_execution(10,self.application)
+                stack.enter_context(m.recovery_material_reuse())
+                if new:
+                    with m.recovery_admission_proof():observer=m.assert_fast_track_recovery_execution(10,self.application)
+                    m.assert_fast_track_recovery_live_execution(10,self.application,observer)
+                with m.recovery_admission_proof():inherited()
+                with m.recovery_admission_proof():
+                    inherited()
+                    if new:self.assertEqual(m.assert_fast_track_recovery_execution(10,self.application),observer)
+                if new:m.assert_fast_track_recovery_live_execution(10,self.application,observer)
+                else:self.assertEqual(m.assert_fast_track_recovery_execution(10,self.application),observer)
+                if new:
+                    with m.recovery_admission_proof():
+                        self.assertEqual(m.assert_fast_track_recovery_execution(10,self.application),observer)
+                        inherited()
+                    m.assert_fast_track_recovery_live_execution(10,self.application,observer)
+                else:
+                    self.assertEqual(m.assert_fast_track_recovery_execution(10,self.application),observer)
+                    inherited()
+            return dict(historyPageReads=sum(p.startswith('actions/runs?branch=') for p in self.calls),apiReads=len(self.calls),downloads=len(self.downloads),fixtureSeconds=round(time.perf_counter()-started,4))
+        old=exercise(False);new=exercise(True)
+        self.assertEqual(old['historyPageReads'],126);self.assertEqual(new['historyPageReads'],16)
+        self.assertEqual(new['downloads'],4);self.assertLess(new['downloads'],old['downloads'])
+        print('RECOVERY_ACTUAL_EXECUTION_HISTORY_COUNTS:'+json.dumps(dict(before=old,after=new)))
+    def test_complete_snapshot_drift_holds_and_next_boundary_refetches(self):
+        changes=[lambda:self.rows.append(dict(self.rows[-1],id=5000)),lambda:self.rows.pop(),
+            lambda:self.rows[-1].update(id=5001),lambda:self.run.update(run_attempt=2),
+            lambda:self.run.update(status='completed'),lambda:self.rows[-2].update(status='in_progress'),
+            lambda:self.rows[-1].update(id=self.rows[0]['id'])]
+        for index in range(len(changes)):
+            self.setUp();changes=[lambda:self.rows.append(dict(self.rows[-1],id=5000)),lambda:self.rows.pop(),lambda:self.rows[-1].update(id=5001),lambda:self.run.update(run_attempt=2),lambda:self.run.update(status='completed'),lambda:self.rows[-2].update(status='in_progress'),lambda:self.rows[-1].update(id=self.rows[0]['id'])]
+            with self.subTest(change=index),self.environment(),self.assertRaises(RuntimeError):
+                with m.recovery_admission_proof():
+                    self.history();self.history();changes[index]()
+            self.assertIsNone(m._RECOVERY_PROOF_VIEW.get())
+        self.setUp()
+        with self.environment():
+            for _ in range(2):
+                with m.recovery_admission_proof():self.history();self.history()
+        self.assertEqual(sum(p.startswith('actions/runs?branch=') for p in self.calls),8)
+    def test_snapshot_copies_and_order_only_change_preserve_full_rows(self):
+        with self.environment(),m.recovery_admission_proof():
+            first=self.history();first[0]['head_sha']='0'*40
+            self.assertEqual(self.history()[0]['head_sha'],self.revision)
+            self.rows.reverse()
+    def test_final_full_read_rejects_missing_or_changed_late_page(self):
+        for fault in ('missing','changed-count'):
+            self.setUp()
+            def broken(repo,path,token):
+                value=self.transport(repo,path,token)
+                if '&page=2' in path:
+                    if fault=='missing':value['workflow_runs']=[]
+                    else:value['total_count']+=1
+                return value
+            with self.subTest(fault=fault),self.environment(),__import__('contextlib').ExitStack() as patches:
+                with self.assertRaisesRegex(RuntimeError,'HISTORY_INCOMPLETE'):
+                    with m.recovery_admission_proof():
+                        self.history()
+                        patches.enter_context(patch.object(m,'_api_get_uncached',side_effect=broken))
+    def test_full_read_late_response_remains_bounded(self):
+        now=[0]
+        def late(repo,path,token):
+            result=self.transport(repo,path,token)
+            if '&page=2' in path:now[0]=31
+            return result
+        with self.environment(),patch.object(m,'_api_get_uncached',side_effect=late),self.assertRaises(m.EvidenceLookupUnavailable):
+            m._read_fast_track_history_inventory(self.repository,'fixture',clock=lambda:now[0],uncached=True)
+
+    def test_fresh_owner_ref_runner_job_attempt_and_source_cannot_reuse_history(self):
+        changes=[lambda:self.run.update(status='completed'),lambda:self.run.update(run_attempt=2),
+            lambda:setattr(self,'ref','c'*40),lambda:self.jobs[-1].update(runner_name='other'),
+            lambda:self.jobs[-1].update(id=99),lambda:self.jobs[0].update(status='in_progress'),
+            lambda:setattr(self,'git_result',1),lambda:self.run.update(event='push')]
+        for index in range(len(changes)):
+            self.setUp();changes=[lambda:self.run.update(status='completed'),lambda:self.run.update(run_attempt=2),lambda:setattr(self,'ref','c'*40),lambda:self.jobs[-1].update(runner_name='other'),lambda:self.jobs[-1].update(id=99),lambda:self.jobs[0].update(status='in_progress'),lambda:setattr(self,'git_result',1),lambda:self.run.update(event='push')]
+            with self.subTest(change=index),self.environment(),m.recovery_material_reuse():
+                with m.recovery_admission_proof():observer=m.assert_fast_track_recovery_execution(10,self.application)
+                changes[index]()
+                with self.assertRaises(ValueError):m.assert_fast_track_recovery_live_execution(10,self.application,observer)
+
+
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.
     # Synthetic planner revisions must never query the real CI repository.
