@@ -1,32 +1,24 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly delegated routine work acceptance, protected merging and deployment within assigned task scope, including existing release recovery (Sentinel_49c5184a62a081918b1444d44ba6501e; Sentinel_862add8a1b988191b7cdce56be5bbcc4). This validate-only control promotion authorizes no application publication, provider setting, privacy/security/access or spending change.",
-  "purpose": "Promote exact historical Website pre-intent read-failure evidence and future target-scoped read-hold recording. Preserve retained packages, authenticated sibling effects, existing timeout budgets, mutex and reserves. No application publication or provider/settings/access/spending change.",
-  "requestId": "founder-retained-recovery-read-hold-20261023-v1",
+  "authorization": "Founder explicitly authorized routine scoped acceptance, GitHub blobs, protected merge and deployment under ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. This validate-only control promotion authorizes no application publication, provider setting, privacy/security/access or spending change.",
+  "purpose": "Reuse digest-verified immutable receipt bytes within one retained recovery invocation while preserving fresh admission, exact history, target and sibling checks, existing mutex and time reserves. Preserve exact prior control generations. No application publication.",
+  "requestId": "founder-retained-recovery-receipt-reuse-20261023-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "3460c10cebf9e0aa247604991a607eafaa047014",
-    "sourceRevision": "733d0d8265128c5a9d6995ec34435a6a3ba2cf68",
+    "baseRevision": "5c5f30a32cd57e9f4c19fe2c427d3306f6188869",
+    "sourceRevision": "374561663d6c82d78aeb162f19f96028b2794dbe",
     "files": {
-      "scripts/deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "1781c2daee8989a6cfe2b0834ad1a7eeebe72bad"
-      },
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "85712cde9fdeb5345efbeb9b9cc4008b185c9a14"
-      },
-      "scripts/test-deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "5438804c84aba4eb603bc3e0d9e1b2a7b07cf626"
+        "blob": "d59648bdc404993575559023cb10d6c0f6cd5fb1"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "5293509197cf9fd94be30aebad959e3ff2af3a75"
+        "blob": "234a4ffdd9f32fcb95b5144163b646cb36071b5c"
       }
     }
   }
