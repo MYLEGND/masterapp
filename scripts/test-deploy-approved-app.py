@@ -3164,6 +3164,7 @@ class RetainedRecoveryConsumerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary, \
              patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='token')), \
              patch.object(authority,'assert_fast_track_recovery_execution',return_value=self.observer), \
+             patch.object(authority,'assert_fast_track_recovery_live_execution',side_effect=lambda original,revision,observer:observer), \
              patch.object(deploy,'recovery_job_deadline',return_value=deploy.time.monotonic()+1800), \
              patch.object(authority,'fast_track_completion_original',return_value=self.original), \
              patch.object(authority,'fast_track_recovery_material',return_value=material), \
@@ -3174,7 +3175,7 @@ class RetainedRecoveryConsumerTests(unittest.TestCase):
             download.assert_not_called();azure.assert_not_called();process.assert_not_called()
 
 class RetainedRecoveryIntegratedTests(unittest.TestCase):
-    def run_case(self, *, entered=False, race=False, expired=False, preflight_failure=False, publication_failure=False, read_failure=False, proof_failure=0):
+    def run_case(self, *, entered=False, race=False, expired=False, preflight_failure=False, publication_failure=False, read_failure=False, proof_failure=0, live_failure=False):
         from types import SimpleNamespace
         authority=deploy._RELEASE_AUTHORITY
         observer=dict(runId=20,runAttempt=1,jobId=30,toolRevision='b'*40,promotionRunId=19)
@@ -3183,15 +3184,29 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
         operation=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
         prior=dict(identity,operationId=operation,packageProducerRun=10,baseline='c'*40) if entered else None
         material=dict(packageArtifact=dict(id=40,name='immutable-original',digest='sha256:'+'e'*64),originalIntent=prior)
-        events=[]; intent_reads=0; proof_boundaries=[]
+        events=[]; intent_reads=0; proof_boundaries=[]; proof_active=0; live_reads=0
         import contextlib
         @contextlib.contextmanager
         def proof_view():
+            nonlocal proof_active
             proof_boundaries.append('enter')
             number=len(proof_boundaries)
-            yield
-            if number==proof_failure:
-                raise authority.ReleaseOperationHistoryUnproven('RECOVERY_PROOF_CHANGED_AT_BOUNDARY')
+            proof_active+=1
+            try:
+                yield
+                if proof_failure and number==proof_failure+1:
+                    raise authority.ReleaseOperationHistoryUnproven('RECOVERY_PROOF_CHANGED_AT_BOUNDARY')
+            finally:proof_active-=1
+        def authenticate(*args):
+            self.assertGreater(proof_active,0)
+            self.assertIsNotNone(authority._RECOVERY_RECEIPT_BYTES.get())
+            return observer
+        def live_owner(*args):
+            nonlocal live_reads
+            live_reads+=1
+            self.assertEqual(proof_active,0)
+            if live_failure and live_reads==3:raise ValueError('FAST_TRACK_RECOVERY_LIVE_OWNER_CHANGED')
+            return observer
         def history(*args,phase='intent'):
             nonlocal intent_reads
             if phase=='success':return dict(packageDigest='d'*64,deploymentIds=['new'])
@@ -3221,7 +3236,8 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
         owner=SimpleNamespace(RecoveryJournal=Journal,publish_record=Mock())
         with tempfile.TemporaryDirectory() as temporary, \
              patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='token')), \
-             patch.object(authority,'assert_fast_track_recovery_execution',return_value=observer), \
+             patch.object(authority,'assert_fast_track_recovery_execution',side_effect=authenticate), \
+             patch.object(authority,'assert_fast_track_recovery_live_execution',side_effect=live_owner), \
              patch.object(deploy,'recovery_job_deadline',side_effect=lambda *args:deploy.time.monotonic()+1800), \
              patch.object(authority,'fast_track_completion_original',return_value=original), \
              patch.object(authority,'fast_track_recovery_material',return_value=material), \
@@ -3239,6 +3255,7 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
              patch.object(deploy.importlib.util,'module_from_spec',return_value=owner):
             root=Path(temporary)
             deploy.recover_fast_track(10,'a'*40,root,prepare_only=True)
+            proof_boundaries.clear()
             if proof_failure:
                 with self.assertRaises(authority.ReleaseOperationHistoryUnproven):deploy.recover_fast_track(10,'a'*40,root)
                 self.assertNotIn('upload',events);self.assertNotIn('intent',events)
@@ -3246,7 +3263,12 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
                 record=owner.publish_record.call_args.args[1]
                 self.assertEqual(record['phase'],'preflight-nonentry' if proof_failure==1 else 'target-preintent-hold')
                 self.assertFalse(record['authorizesMutation'])
-                self.assertEqual(len(proof_boundaries),proof_failure)
+                self.assertEqual(len(proof_boundaries),proof_failure+1)
+            elif live_failure:
+                with self.assertRaisesRegex(ValueError,'LIVE_OWNER_CHANGED'):deploy.recover_fast_track(10,'a'*40,root)
+                self.assertNotIn('intent',events);self.assertNotIn('upload',events)
+                owner.publish_record.assert_called_once()
+                self.assertEqual(owner.publish_record.call_args.args[1]['phase'],'target-preintent-hold')
             elif preflight_failure:
                 baseline.side_effect=deploy.RecoveryPreflightFailure('provider-read-timeout')
                 if publication_failure:owner.publish_record.side_effect=RuntimeError('durable receipt unavailable')
@@ -3281,6 +3303,7 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
                 self.assertEqual(events.count('intent'),0 if entered else 1)
                 self.assertIn(('reconcile_only',entered),events)
                 self.assertEqual(baseline.call_count,0 if entered else 2)
+    def test_fresh_owner_drift_after_history_readback_prevents_intent(self):self.run_case(live_failure=True)
     def test_original_immutable_package_first_write_after_fresh_barriers(self):self.run_case()
     def test_initial_proof_readback_drift_holds_before_workers(self):self.run_case(proof_failure=1)
     def test_preintent_proof_readback_drift_holds_before_intent(self):self.run_case(proof_failure=2)
@@ -3442,6 +3465,7 @@ def target_hold_five_target_payload(*, callback_failure=True, publication_failur
          patch.object(authority,'fast_track_recovery_material',side_effect=lambda repo,o,key,t:materials[key]), \
          patch.object(authority,'release_operation_history',side_effect=lambda repo,op,rev,key,*args,phase='intent':priors[key]if phase=='intent'else None), \
          patch.object(authority,'_completion_original_unchanged'),patch.object(authority,'assert_fast_track_recovery_execution',return_value=observer), \
+         patch.object(authority,'assert_fast_track_recovery_live_execution',side_effect=lambda original,revision,observer:observer), \
          patch.object(deploy,'verify_package',return_value='d'*64),patch.object(deploy,'target_azure',return_value=Mock()), \
          patch.object(deploy,'recovery_preupload_baseline',side_effect=baseline),patch.object(deploy,'recovery_host_flags'), \
          patch.object(deploy,'reconcile',side_effect=reconcile),patch.object(deploy,'verify_fast_track_public_metadata'), \
