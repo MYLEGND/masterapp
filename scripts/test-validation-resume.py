@@ -5799,6 +5799,118 @@ class RetainedPreuploadAttestationTests(unittest.TestCase):
         self.setUp();self.job['head_sha']='b'*40;self.assertFalse(self.invoke())
         self.setUp();self.operation='f'*64;self.assertFalse(self.invoke())
 
+class RecoveryTransportNonentryTests(unittest.TestCase):
+    def setUp(self):
+        self.revision='a'*40;self.tool='b'*40
+        self.observer=dict(runId=20,runAttempt=1,jobId=30,promotionRunId=19,toolRevision=self.tool)
+        self.run=dict(id=20,run_attempt=1,status='completed',conclusion='failure',head_sha=self.tool,
+            event='workflow_dispatch',head_branch=m.FAST_TRACK_PR_BASE,path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,
+            head_repository=dict(full_name='owner/repo'),display_title='LEGEND retained recovery original=10 application='+self.revision)
+        names=[('Set up job','success'),('Check out promoted recovery tool authority','success'),('Install Node 24','success'),
+            ('Validate original authority and restore retained packages without rebuilding','success'),
+            ('Install canonical durable evidence transport','success'),('Prepare canonical durable evidence transport','success'),
+            ('Sign in to Azure Production','success'),('Recover exact retained application bytes','failure'),
+            ('Post Sign in to Azure Production','success'),('Post Install Node 24','skipped'),
+            ('Post Check out promoted recovery tool authority','success'),('Complete job','success')]
+        self.job=dict(id=30,run_id=20,run_attempt=1,head_sha=self.tool,name=m.FAST_TRACK_RECOVERY_JOB,status='completed',conclusion='failure',
+            started_at='2026-10-23T10:00:00Z',completed_at='2026-10-23T10:03:00Z',
+            steps=[dict(name=name,status='completed',conclusion=state,started_at='2026-10-23T10:00:00Z',completed_at='2026-10-23T10:03:00Z') for name,state in names])
+        self.job['steps'][3].update(started_at='2026-10-23T10:00:10Z',completed_at='2026-10-23T10:01:00Z')
+        self.job['steps'][7].update(started_at='2026-10-23T10:01:10Z',completed_at='2026-10-23T10:02:50Z')
+        self.original=dict(run=dict(id=10,run_attempt=5,head_sha=self.revision),targets=['portal','client','protect','parfait','website'])
+        self.materials={};self.targets={}
+        for n,key in enumerate(self.original['targets']):
+            digest='d'*64
+            identity=dict(target=key,applicationRevision=self.revision,packageDigest=digest)
+            operation=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            self.materials[key]=dict(packageArtifact=dict(id=40+n,digest='sha256:'+'e'*64),originalIntent=None if key=='website' else dict(identity,operationId=operation,packageProducerRun=10))
+            self.targets[key]=dict(operationId=operation,packageDigest=digest,packageArtifactId=40+n,packageArtifactDigest='sha256:'+'e'*64)
+        self.proof=dict(state='ORIGINAL_RECOVERY_MATERIALS_VERIFIED',originalRun=10,originalAttempt=5,applicationRevision=self.revision,
+                        observer=self.observer,targets=self.targets)
+        self.source={key:'reviewed '+key for key in m.FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS[0]}
+        self.generations=({key:hashlib.sha256(value.encode()).hexdigest() for key,value in self.source.items()},)
+        self.inventory=dict(artifacts=[],total_count=0)
+    def log(self):
+        command='##[group]Run python3 scripts/deploy-approved-app.py --recover-fast-track "$ORIGINAL_RUN" --recovery-revision "$APPLICATION_REVISION" --package-root "$RUNNER_TEMP/retained-recovery"'
+        rows=["Current runner version: '2.338.0'",'[command]/usr/bin/git log -1 --format=%H',self.tool,
+            command+' --prepare-recovery-only',json.dumps(self.proof),command,'Traceback (most recent call last):']
+        frames=[('deploy-approved-app.py','reconcile'),('release-operation-evidence.py','before_submit'),
+            ('release-operation-evidence.py','before_submit'),('release-operation-evidence.py','publish'),
+            ('deploy-approved-app.py','publish_phase_record'),('release-operation-evidence.py','publish_record')]
+        rows += [f'  File "/home/runner/work/repo/repo/scripts/{file}", line 1, in {function}' for file,function in frames]
+        rows += ['RuntimeError: Durable operation publication/readback unavailable; reconcile without writing',
+            'The above exception was the direct cause of the following exception:', 'Traceback (most recent call last):',
+            '  File "/home/runner/work/repo/repo/scripts/deploy-approved-app.py", line 1, in recover_target',
+            'DeploymentSubmissionNotEntered: Durable upload intent could not be proven; no write authorized',
+            '##[error]Process completed with exit code 1.','Cleaning up orphan processes']
+        return '\n'.join(('2026-10-23T10:00:30Z ' if i < 5 else '2026-10-23T10:02:00Z ')+row for i,row in enumerate(rows))
+    def parse(self,log=None):return m._recovery_preintent_log_proof(log or self.log(),self.run,self.job,self.observer)
+    def invoke(self, *, log=None, producer=None, uncertain=False, changed=False, artifacts_late=False):
+        reads=[]
+        def api(repo,path,token):
+            self.assertEqual((repo,token),('owner/repo','token'))
+            self.assertEqual(path,'actions/runs/20/artifacts?per_page=100');reads.append(path)
+            if uncertain:raise m.EvidenceLookupUnavailable('unavailable')
+            return dict(artifacts=[dict(id=99)],total_count=1) if artifacts_late and len(reads)>1 else self.inventory
+        with patch.object(m,'FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS',self.generations), \
+             patch.object(m,'fast_track_recovery_producer',side_effect=producer or (lambda *a,**k:self.observer)), \
+             patch.object(m,'_release_history_source',side_effect=lambda r,s,p,t:self.source[p]), \
+             patch.object(m,'api_get',side_effect=api),patch.object(m,'_release_job_log',return_value=log or self.log()), \
+             patch.object(m,'fast_track_completion_original',return_value=self.original), \
+             patch.object(m,'fast_track_recovery_material',side_effect=lambda r,o,k,t:self.materials[k]), \
+             patch.object(m,'fast_track_recovery_package_digest',return_value='d'*64) as package, \
+             patch.object(m,'_completion_original_unchanged',side_effect=ValueError('changed') if changed else None):
+            result=m.attested_recovery_preintent_failure('owner/repo',self.run,self.job,1,self.revision,'token')
+            if result:self.assertEqual(package.call_count,1)
+            return result
+    def test_positive_exact_source_flow_and_all_five_original_materials(self):
+        self.assertEqual(self.parse(),self.proof);self.assertTrue(self.invoke())
+    def test_spoofed_truncated_wrong_checkout_and_incomplete_trace_logs(self):
+        log=self.log()
+        variants=[log.split('\n',1)[1],log.rsplit('\n',1)[0],log.replace(self.tool,'f'*40),log+'\nnot timestamped',
+            log.replace('in publish_phase_record','in unrelated'),log.replace('in recover_target','in unrelated'),
+            log.replace('  File "/home/runner/work/repo/repo/scripts/deploy-approved-app.py", line 1, in reconcile', '  File "/tmp/unknown.py", line 1, in unexpected'),
+            log.replace('The above exception was the direct cause of the following exception:','unrelated'),
+            log.replace('##[error]Process completed with exit code 1.','unrelated'),
+            log+'\n2026-10-23T10:01:00Z Submitting the verified immutable ZIP once.',
+            log+'\n2026-10-23T10:01:00Z '+json.dumps(self.proof),
+            log.replace('##[group]Run python3','missing-command',1),
+            log.replace('2026-10-23T10:02:00Z','2026-10-23T09:00:00Z',1)]
+        for value in variants:
+            with self.subTest(log=value):self.assertFalse(self.invoke(log=value))
+    def test_source_unknown_and_producer_unproven_never_admit(self):
+        self.source['scripts/release-artifacts/transport.cjs']='unknown';self.assertFalse(self.invoke())
+        self.setUp();self.assertFalse(self.invoke(producer=lambda *a,**k:(_ for _ in ()).throw(ValueError('unpromoted'))))
+        self.setUp();self.observer['jobId']=31;self.assertFalse(self.invoke())
+    def test_existing_uncertain_incomplete_or_late_artifact_inventory_holds(self):
+        for payload in [dict(artifacts=[dict(id=90)],total_count=1),dict(artifacts=[]),dict(artifacts=[],total_count=1)]:
+            self.inventory=payload
+            with self.subTest(payload=payload):self.assertFalse(self.invoke())
+        self.setUp();self.assertFalse(self.invoke(uncertain=True));self.assertFalse(self.invoke(artifacts_late=True))
+    def test_original_material_observer_revision_and_snapshot_cannot_be_substituted(self):
+        mutations=[lambda:self.proof.update(originalRun=11),lambda:self.proof.update(originalAttempt=6),
+            lambda:self.proof.update(applicationRevision='f'*40),lambda:self.proof.update(observer=dict(self.observer,runId=21)),
+            lambda:self.targets.pop('client'),lambda:self.targets['website'].update(packageArtifactId=999),
+            lambda:self.targets['website'].update(packageDigest='f'*64),lambda:self.targets['portal'].update(operationId='f'*64)]
+        for mutate in mutations:
+            self.setUp();mutate()
+            with self.subTest(mutation=mutate):self.assertFalse(self.invoke())
+        self.setUp();self.assertFalse(self.invoke(changed=True))
+    def test_active_wrong_attempt_and_incomplete_step_owner_holds(self):
+        for key,value in [('status','in_progress'),('run_attempt',2),('head_sha','c'*40),('run_id',99),('conclusion','cancelled')]:
+            self.setUp();self.job[key]=value
+            with self.subTest(key=key):self.assertFalse(self.invoke())
+        self.setUp();self.job['steps'].pop();self.assertFalse(self.invoke())
+    def test_history_guard_uses_attestation_only_for_exact_failed_owner(self):
+        with patch.object(m,'fast_track_execution_history',return_value=[self.run]), \
+             patch.object(m,'fast_track_recovery_producer',return_value=self.observer), \
+             patch.object(m,'api_get',return_value=dict(jobs=[self.job],total_count=1)), \
+             patch.object(m,'attested_recovery_preintent_failure',return_value=True) as attest:
+            self.assertIsNone(m.recovery_history_no_unjournaled_entry('owner/repo',self.revision,99,1,'token'))
+            attest.assert_called_once_with('owner/repo',self.run,self.job,1,self.revision,'token')
+            attest.return_value=False
+            with self.assertRaises(m.ReleaseOperationHistoryUnproven):m.recovery_history_no_unjournaled_entry('owner/repo',self.revision,99,1,'token')
+
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.
     # Synthetic planner revisions must never query the real CI repository.

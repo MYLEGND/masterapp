@@ -461,3 +461,94 @@ test('completion success transport preserves original operation and names the re
   }
   await assert.rejects(publish({}, name, {...value, phase: 'intent'}));
 });
+
+// Exercise the actual Python producers through the actual JS serialization gate.
+// Only external authority/artifact I/O is injected; producer payloads are not hand-copied.
+function retainedProducerPayloads() {
+  const {spawnSync} = require('node:child_process');
+  const script = String.raw`
+import ast,importlib.util,json,sys
+from pathlib import Path
+from types import SimpleNamespace
+root=Path(sys.argv[1])
+def load(name,path):
+ spec=importlib.util.spec_from_file_location(name,path);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
+owner=load('journal',root/'release-operation-evidence.py')
+authority=load('authority',root/'validation-resume.py')
+observer=dict(runId=20,runAttempt=1,jobId=30,promotionRunId=19,toolRevision='b'*40)
+original=dict(run=dict(id=10,run_attempt=5,head_sha='a'*40))
+env=dict(GITHUB_RUN_ID='20',GITHUB_RUN_ATTEMPT='1',PACKAGE_PRODUCER_RUN='10',GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='test-only')
+fake=SimpleNamespace(RELEASE_TARGETS=authority.RELEASE_TARGETS,ReleaseOperationHistoryUnproven=RuntimeError,release_operation_history=lambda *a,**k:None)
+rows=[];records={}
+for n,target in enumerate(['portal','client','protect','parfait','website']):
+ material=dict(packageArtifact=dict(id=40+n,digest='sha256:'+'c'*64))
+ proof=authority.fast_track_recovery_record_proof(original,material,observer)
+ journal=owner.RecoveryJournal(target=target,application_revision='a'*40,package_digest='d'*64,baseline='e'*40,
+  recovery_evidence=proof,before_new_intent=lambda ids:None,authority=fake,environment=env,
+  publisher=lambda name,record:rows.append(dict(name=name,record=record)))
+ journal.before_submit(['old'],submission_kind='azure_onedeploy_windows_intent_v1')
+ journal.record_submission_observation('new-'+target)
+ journal.record_success(['new-'+target])
+ linux=owner.RecoveryJournal(target=target,application_revision='a'*40,package_digest='d'*64,baseline='e'*40,
+  recovery_evidence=proof,before_new_intent=lambda ids:None,authority=fake,environment=env,
+  publisher=lambda name,record:rows.append(dict(name=name,record=record)))
+ linux.before_submit(['old'])
+ linux.record_success(['new-'+target])
+ records[target]=dict(operationId=journal.operation_id,packageDigest='d'*64,packageArtifactId=40+n,
+                     packageArtifactDigest='sha256:'+'c'*64,deploymentIds=['new-'+target])
+# Compile the exact current consumer summary assignment, not a duplicate schema.
+module=ast.parse((root/'deploy-approved-app.py').read_text())
+function=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='_recover_fast_track')
+assignment=next(n for n in function.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='summary' for t in n.targets))
+context=dict(original_run=10,original=original,revision='a'*40,observer=observer,records=records)
+exec(compile(ast.Module(body=[assignment],type_ignores=[]),'actual-consumer-summary','exec'),context)
+rows.append(dict(name=authority.fast_track_recovery_summary_name(10,'a'*40),record=context['summary']))
+print(json.dumps(rows))
+`;
+  const result = spawnSync('python3', ['-c', script, path.resolve(__dirname, '..')], {encoding:'utf8', timeout:10000});
+  assert.equal(result.status, 0, result.stderr);
+  return JSON.parse(result.stdout);
+}
+async function retainedRoundTrip(item) {
+  const calls=[];let bytes;
+  const client={async listArtifacts(){calls.push('list');return {artifacts:[]}},
+    async uploadArtifact(name, files){calls.push('upload');assert.equal(name,item.name);bytes=await fs.readFile(files[0]);return {id:99}},
+    async downloadArtifact(id,options){calls.push('readback');assert.equal(id,99);await fs.mkdir(options.path);await fs.writeFile(path.join(options.path,'operation.json'),bytes)}};
+  assert.deepEqual(await publish(client,item.name,item.record),{artifactId:99});
+  assert.deepEqual(JSON.parse(bytes),item.record);assert.deepEqual(calls,['list','upload','readback']);
+}
+test('actual RecoveryJournal intent submitted success and five-target consumer summary round trip',async()=>{
+  const rows=retainedProducerPayloads();assert.equal(rows.length,26);
+  for(const row of rows)await retainedRoundTrip(row);
+});
+test('retained operation identity proof and phase mutations reject before artifact access',async()=>{
+  const rows=retainedProducerPayloads();
+  const mutations=[r=>r.recoveryEvidence.originalRun++,r=>r.recoveryEvidence.runId++,r=>r.recoveryEvidence.runAttempt++,
+    r=>r.recoveryEvidence.applicationRevision='f'.repeat(40),r=>r.recoveryEvidence.packageArtifactDigest='bad',
+    r=>r.recoveryEvidence.packageArtifactId=0,r=>r.recoveryEvidence.jobId=true,r=>r.recoveryEvidence.toolRevision='bad',
+    r=>r.recoveryEvidence.extra='no',r=>delete r.recoveryEvidence.originalAttempt,r=>r.operationId='f'.repeat(64),
+    r=>r.target='unknown',r=>delete r.baselineDeploymentIds,r=>r.schemaVersion=2,
+    r=>r.baselineDeploymentIds=['new-'+r.target],r=>r.extra='no'];
+  for(const row of rows.slice(0,3)){
+    for(const mutate of mutations){const bad=structuredClone(row);mutate(bad.record);
+      // An unchanged baseline for intent is valid; only success/submitted binds the new provider ID.
+      if(bad.record.phase==='intent'&&bad.record.baselineDeploymentIds?.[0]==='new-'+bad.record.target)continue;
+      await assert.rejects(publish({},bad.name,bad.record),/Invalid/);
+    }
+    const bad=structuredClone(row);
+    if(bad.record.phase==='intent')bad.record.deploymentIds=['new'];
+    else if(bad.record.phase==='submitted')bad.record.deploymentIds=['new'];
+    else delete bad.record.deploymentIds;
+    await assert.rejects(publish({},bad.name,bad.record),/Invalid/);
+  }
+});
+test('retained summary all target identities and observer bindings reject before artifact access',async()=>{
+  const row=retainedProducerPayloads().at(-1);
+  const mutations=[r=>r.originalRun++,r=>r.originalAttempt=0,r=>r.producingRun++,r=>r.observer.runAttempt++,
+    r=>r.observer.extra='no',r=>r.applicationRevision='f'.repeat(40),r=>r.targets={},r=>r.targets.unknown=r.targets.portal,
+    r=>r.extra='no',r=>r.phase='intent'];
+  for(const key of Object.keys(row.record.targets))for(const field of ['operationId','packageDigest','packageArtifactId','packageArtifactDigest','deploymentIds'])
+    mutations.push(r=>{r.targets[key][field]=field==='packageArtifactId'?0:field==='deploymentIds'?[]:'bad'});
+  for(const mutate of mutations){const bad=structuredClone(row);mutate(bad.record);await assert.rejects(publish({},bad.name,bad.record),/Invalid/);}
+  await assert.rejects(publish({},row.name.replace(/[a-f0-9]{64}$/,'f'.repeat(64)),row.record),/Invalid/);
+});

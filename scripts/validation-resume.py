@@ -480,6 +480,147 @@ def fast_track_recovery_completed(repository, original, token):
     return completed
 
 
+FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS = ({'.github/workflows/legend-fast-track-ui.yml': 'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd', 'scripts/deploy-approved-app.py': 'd563b924ba2f477fb93945675b931a903331d825511e4c67a31884b1d00736cd', 'scripts/release-operation-evidence.py': '506796abeadfd87f09236f74ca8c79a496a1c5b813f1191d0f0ce39cf5a9483d', 'scripts/validation-resume.py': '21d52d576d91ecb842f2b4ad4266643eb6e8de94c73da0a8cb79b1e11d317b39', 'scripts/release-artifacts/transport.cjs': '3a71bff71cabec628b184504de381bd0d41aad0827fc6bb440205eb0cde90ce6'},)
+
+def _recovery_preintent_log_proof(log, run, job, observer):
+    """Only authenticated full logs of the pinned pre-transport rejection flow."""
+    import datetime
+    if not isinstance(log, str) or len(log) > 8 * 1024 * 1024:
+        raise ValueError('RECOVERY_PREINTENT_LOG_UNPROVEN')
+    rows = []
+    for line in log.lstrip('\ufeff').splitlines():
+        stamp, sep, text = line.partition(' ')
+        if not sep or not re.fullmatch(r'\d{4}-\d{2}-\d{2}T[0-9:.]+Z', stamp):
+            raise ValueError('RECOVERY_PREINTENT_LOG_TRUNCATED')
+        rows.append((_completion_time(stamp), text))
+    if (not rows or not rows[0][1].startswith("Current runner version: '")
+        or any(rows[i][0] > rows[i+1][0] for i in range(len(rows)-1))
+        or sum(text == 'Cleaning up orphan processes' for _, text in rows) != 1):
+        raise ValueError('RECOVERY_PREINTENT_LOG_INCOMPLETE')
+    clean = '\n'.join(text for _, text in rows)
+    if set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', clean)) != {run['head_sha']}:
+        raise ValueError('RECOVERY_PREINTENT_CHECKOUT_CHANGED')
+    start, end = (_completion_time(job[key]) for key in ('started_at', 'completed_at'))
+    if end < start or any(stamp < start - datetime.timedelta(seconds=1) or stamp > end + datetime.timedelta(seconds=1) for stamp, _ in rows):
+        raise ValueError('RECOVERY_PREINTENT_LOG_OUTSIDE_JOB')
+    prep = _completion_step(job, 'Validate original authority and restore retained packages without rebuilding')
+    step = _completion_step(job, 'Recover exact retained application bytes', conclusions=('failure',))
+    prep_start, prep_end = (_completion_time(prep[key]) for key in ('started_at', 'completed_at'))
+    step_start, step_end = (_completion_time(step[key]) for key in ('started_at', 'completed_at'))
+    command = '##[group]Run python3 scripts/deploy-approved-app.py --recover-fast-track "$ORIGINAL_RUN" --recovery-revision "$APPLICATION_REVISION" --package-root "$RUNNER_TEMP/retained-recovery"'
+    if not (start <= prep_start <= prep_end <= step_start <= step_end <= end):
+        raise ValueError('RECOVERY_PREINTENT_STEP_ORDER_CHANGED')
+    for expected, lower, upper in [(command + ' --prepare-recovery-only', prep_start, prep_end),
+                                    (command, step_start, step_end)]:
+        matches = [stamp for stamp,text in rows if text == expected]
+        if len(matches) != 1 or not lower <= matches[0] <= upper + datetime.timedelta(seconds=1):
+            raise ValueError('RECOVERY_PREINTENT_INVOCATION_UNPROVEN')
+    proofs = []
+    for stamp, text in rows:
+        if text.startswith('{') and 'ORIGINAL_RECOVERY_MATERIALS_VERIFIED' in text:
+            if not prep_start <= stamp <= prep_end + datetime.timedelta(seconds=1):
+                raise ValueError('RECOVERY_PREINTENT_MATERIAL_OUTSIDE_STEP')
+            proofs.append(json.loads(text))
+    if len(proofs) != 1:
+        raise ValueError('RECOVERY_PREINTENT_MATERIAL_LOG_AMBIGUOUS')
+    proof = proofs[0]
+    if (set(proof) != {'state','originalRun','originalAttempt','applicationRevision','observer','targets'}
+        or proof['state'] != 'ORIGINAL_RECOVERY_MATERIALS_VERIFIED' or proof['observer'] != observer
+        or type(proof['originalRun']) is not int or proof['originalRun'] < 1
+        or type(proof['originalAttempt']) is not int or proof['originalAttempt'] < 1
+        or run.get('display_title') != 'LEGEND retained recovery original=' + str(proof['originalRun']) + ' application=' + str(proof['applicationRevision'])):
+        raise ValueError('RECOVERY_PREINTENT_MATERIAL_LOG_CHANGED')
+    events = [text for stamp, text in rows if step_start <= stamp <= step_end + datetime.timedelta(seconds=1)]
+    terminal = 'DeploymentSubmissionNotEntered: Durable upload intent could not be proven; no write authorized'
+    rejected = 'RuntimeError: Durable operation publication/readback unavailable; reconcile without writing'
+    if (events.count(terminal) != 1 or clean.count(terminal) != 1 or events.count(rejected) != 1
+        or clean.count(rejected) != 1 or events.count('Traceback (most recent call last):') != 2
+        or events.count('The above exception was the direct cause of the following exception:') != 1
+        or events.count('##[error]Process completed with exit code 1.') != 1
+        or any('Submitting the verified immutable ZIP once.' in text or 'AZURE_TRACKED_DEPLOYMENT_REFERENCE:' in text for _,text in rows)):
+        raise ValueError('RECOVERY_PREINTENT_TERMINAL_CHAIN_UNPROVEN')
+    if not (events.index(rejected) < events.index('The above exception was the direct cause of the following exception:')
+            < events.index(terminal) < events.index('##[error]Process completed with exit code 1.')):
+        raise ValueError('RECOVERY_PREINTENT_TERMINAL_ORDER_CHANGED')
+    if clean.index('Cleaning up orphan processes') < clean.index(terminal):
+        raise ValueError('RECOVERY_PREINTENT_CLEANUP_ORDER_CHANGED')
+    first = events[events.index('Traceback (most recent call last):') + 1:events.index(rejected)]
+    frames = re.findall(r'  File "[^"\n]*/scripts/([^"/]+)", line [0-9]+, in ([^\n]+)', '\n'.join(first))
+    expected = [('deploy-approved-app.py','reconcile'), ('release-operation-evidence.py','before_submit'),
+                ('release-operation-evidence.py','before_submit'), ('release-operation-evidence.py','publish'),
+                ('deploy-approved-app.py','publish_phase_record'), ('release-operation-evidence.py','publish_record')]
+    if (frames != expected or sum(text.startswith('  File ') for text in first) != len(expected)
+        or not any('in recover_target' in text for text in events)):
+        raise ValueError('RECOVERY_PREINTENT_CALL_CHAIN_CHANGED')
+    return proof
+
+
+def attested_recovery_preintent_failure(repository, run, job, attempt, revision, token):
+    """Recognize a reviewed serializer rejection, never generic missing intent.
+
+    Every new journal record in this exact generation contains recoveryEvidence;
+    its pinned transport rejects that field before inventory/upload and before
+    the journal can authorize the provider. Other generations stay held.
+    """
+    try:
+        if (run.get('status') != 'completed' or run.get('conclusion') != 'failure' or job.get('status') != 'completed'
+            or job.get('conclusion') != 'failure' or job.get('run_id') != run['id']
+            or job.get('run_attempt') != attempt or job.get('head_sha') != run['head_sha']
+            or job.get('name') != FAST_TRACK_RECOVERY_JOB):
+            return False
+        observer = fast_track_recovery_producer(repository, run, token, attempt=attempt)
+        if observer['jobId'] != job['id']:
+            return False
+        expected_steps = [('Set up job','success'), ('Check out promoted recovery tool authority','success'),
+            ('Install Node 24','success'), ('Validate original authority and restore retained packages without rebuilding','success'),
+            ('Install canonical durable evidence transport','success'), ('Prepare canonical durable evidence transport','success'),
+            ('Sign in to Azure Production','success'), ('Recover exact retained application bytes','failure'),
+            ('Post Sign in to Azure Production','success'), ('Post Install Node 24','skipped'),
+            ('Post Check out promoted recovery tool authority','success'), ('Complete job','success')]
+        if ([(step.get('name'),step.get('conclusion')) for step in job.get('steps',[])] != expected_steps
+            or any(step.get('status') != 'completed' for step in job['steps'])):
+            return False
+        source = {path: hashlib.sha256(_release_history_source(repository,run['head_sha'],path,token).encode()).hexdigest()
+                  for path in FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS[0]}
+        if source not in FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS:
+            return False
+        # An uncertain or retained artifact is NOT erased by a terminal log.
+        if _completion_inventory(api_get(repository,f"actions/runs/{run['id']}/artifacts?per_page=100",token),'artifacts'):
+            return False
+        proof = _recovery_preintent_log_proof(_release_job_log(repository,job['id'],token),run,job,observer)
+        if proof['applicationRevision'] != revision:
+            return False
+        original = fast_track_completion_original(repository,proof['originalRun'],revision,token)
+        if (not isinstance(proof['targets'],dict) or not 1 <= proof['originalAttempt'] <= original['run']['run_attempt']
+            or set(proof['targets']) != set(original['targets'])):
+            return False
+        for key, row in proof['targets'].items():
+            if not isinstance(row,dict) or set(row) != {'operationId','packageDigest','packageArtifactId','packageArtifactDigest'}:
+                return False
+            material = fast_track_recovery_material(repository,original,key,token)
+            if (row['packageArtifactId'] != material['packageArtifact']['id']
+                or row['packageArtifactDigest'] != material['packageArtifact']['digest']):
+                return False
+            # Existing authenticated original intents bind their package digest;
+            # otherwise independently restore/check the original immutable ZIP.
+            intent = material['originalIntent']
+            digest = intent['packageDigest'] if intent is not None else fast_track_recovery_package_digest(repository,original,material,key,token)
+            identity = dict(target=key,applicationRevision=revision,packageDigest=digest)
+            operation = hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            if intent is not None and any(intent.get(name) != value for name,value in
+                    dict(identity,operationId=operation,packageProducerRun=original['run']['id']).items()):
+                return False
+            if row['packageDigest'] != digest or row['operationId'] != operation:
+                return False
+        _completion_original_unchanged(repository, original['run'], token)
+        _completion_original_unchanged(repository, run, token)
+        if _completion_inventory(api_get(repository,f"actions/runs/{run['id']}/artifacts?per_page=100",token),'artifacts'):
+            return False
+        return True
+    except (KeyError,TypeError,ValueError,RuntimeError,OSError,UnicodeError,subprocess.SubprocessError):
+        return False
+
+
 def recovery_history_no_unjournaled_entry(repository, revision, current_run, current_attempt, token):
     """No forgotten recovery attempt may be erased by original preflight proof."""
     for run in fast_track_execution_history(repository, token, include_recovery=True):
@@ -502,7 +643,8 @@ def recovery_history_no_unjournaled_entry(repository, revision, current_run, cur
             jobs = _completion_rows(api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token), 'jobs')
             owner = next(job for job in jobs if job['id'] == proof['jobId'])
             steps = [step for step in owner.get('steps', []) if step.get('name') == 'Recover exact retained application bytes']
-            if len(steps) != 1 or steps[0].get('conclusion') != 'skipped':
+            if len(steps) != 1 or (steps[0].get('conclusion') != 'skipped'
+                and not attested_recovery_preintent_failure(repository, run, owner, attempt, revision, token)):
                 raise ReleaseOperationHistoryUnproven('Recovery publication entered without retained intent')
 
 

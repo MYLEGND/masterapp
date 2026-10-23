@@ -23,9 +23,66 @@ function targetMaterial(target, value) {
     throw new Error('Invalid target artifact name');
 }
 
+// Serialization validation is not producer authorization: the Python authority
+// independently authenticates dispatch, promotion, source and original artifacts.
+const exactKeys = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) &&
+  Object.keys(value).sort().join(',') === keys.split(',').sort().join(',');
+const positive = value => Number.isSafeInteger(value) && value > 0;
+const sha = (value, size) => typeof value === 'string' && new RegExp(`^[a-f0-9]{${size}}$`).test(value);
+const digest = value => typeof value === 'string' && /^sha256:[a-f0-9]{64}$/.test(value);
+const targets = ['website', 'portal', 'client', 'protect', 'parfait'];
+const operationIdentity = (target, revision, packageDigest) => crypto.createHash('sha256')
+  .update(JSON.stringify({applicationRevision: revision, packageDigest, target})).digest('hex');
+function recoveryObserver(value, run, attempt) {
+  return exactKeys(value, 'jobId,promotionRunId,runAttempt,runId,toolRevision') &&
+    ['jobId', 'promotionRunId', 'runAttempt', 'runId'].every(key => positive(value[key])) &&
+    sha(value.toolRevision, 40) && value.runId === run && value.runAttempt === attempt;
+}
+function recoveryEvidence(record) {
+  const proof = record.recoveryEvidence;
+  const keys = ['schemaVersion', 'operationId', 'target', 'applicationRevision', 'packageDigest', 'baseline',
+    'packageProducerRun', 'producingRun', 'producingAttempt', 'baselineDeploymentIds', 'phase', 'recoveryEvidence'];
+  for (const key of ['providerRequestCorrelation', 'submissionContract']) if (record[key] !== undefined) keys.push(key);
+  if (record.phase === 'submitted') keys.push('deploymentId');
+  if (record.phase === 'success') keys.push('deploymentIds');
+  if (!exactKeys(record, keys.join(',')) || !Array.isArray(record.baselineDeploymentIds) ||
+      (record.phase === 'intent' && record.providerRequestCorrelation === undefined && record.submissionContract === undefined) ||
+      (record.phase === 'success' && (!Array.isArray(record.deploymentIds) || record.deploymentIds.length !== 1 ||
+        record.baselineDeploymentIds.includes(record.deploymentIds[0]))))
+    throw new Error('Invalid retained recovery phase fields');
+  if (!exactKeys(proof, 'schemaVersion,originalRun,originalAttempt,applicationRevision,packageArtifactId,packageArtifactDigest,jobId,promotionRunId,runAttempt,runId,toolRevision') ||
+      proof.schemaVersion !== 1 || record.schemaVersion !== 1 || record.completionEvidence !== undefined ||
+      !['originalRun', 'originalAttempt', 'packageArtifactId'].every(key => positive(proof[key])) ||
+      !digest(proof.packageArtifactDigest) || proof.originalRun !== record.packageProducerRun ||
+      proof.originalRun === record.producingRun || proof.applicationRevision !== record.applicationRevision ||
+      !targets.includes(record.target) || record.operationId !== operationIdentity(record.target, record.applicationRevision, record.packageDigest) ||
+      !recoveryObserver(Object.fromEntries(['jobId', 'promotionRunId', 'runAttempt', 'runId', 'toolRevision'].map(key => [key, proof[key]])), record.producingRun, record.producingAttempt))
+    throw new Error('Invalid retained recovery operation evidence');
+}
+function retainedSummary(name, record) {
+  if (!exactKeys(record, 'schemaVersion,phase,originalRun,originalAttempt,applicationRevision,producingRun,producingAttempt,observer,targets') ||
+      record.schemaVersion !== 1 || record.phase !== 'success' || !sha(record.applicationRevision, 40) ||
+      !['originalRun', 'originalAttempt', 'producingRun', 'producingAttempt'].every(key => positive(record[key])) ||
+      record.originalRun === record.producingRun || !recoveryObserver(record.observer, record.producingRun, record.producingAttempt) ||
+      !record.targets || typeof record.targets !== 'object' || Array.isArray(record.targets) ||
+      !Object.keys(record.targets).length || Object.keys(record.targets).length > targets.length)
+    throw new Error('Invalid retained recovery summary identity');
+  const identity = crypto.createHash('sha256').update(JSON.stringify({applicationRevision: record.applicationRevision, originalRun: record.originalRun})).digest('hex');
+  if (name !== `legend-retained-recovery-success-${identity}`) throw new Error('Invalid retained recovery summary name');
+  for (const [target, row] of Object.entries(record.targets)) {
+    if (!targets.includes(target) || !exactKeys(row, 'operationId,packageDigest,packageArtifactId,packageArtifactDigest,deploymentIds') ||
+        !sha(row.packageDigest, 64) || !positive(row.packageArtifactId) || !digest(row.packageArtifactDigest) ||
+        row.operationId !== operationIdentity(target, record.applicationRevision, row.packageDigest) ||
+        !Array.isArray(row.deploymentIds) || row.deploymentIds.length !== 1 ||
+        typeof row.deploymentIds[0] !== 'string' || !/^[a-zA-Z0-9_.:-]{1,256}$/.test(row.deploymentIds[0]))
+      throw new Error('Invalid retained recovery target evidence');
+  }
+}
+
 // JSON arrives on stdin, never as an arbitrary upload path. Only the bounded
 // release operation record can be persisted; credentials cannot enter it.
 async function publish(client, name, record, {sleep = ms => new Promise(resolve => setTimeout(resolve, ms))} = {}) {
+  const retained = /^legend-retained-recovery-success-[a-f0-9]{64}$/.test(name);
   const completion = /^legend-release-completion-[a-f0-9]{64}$/.test(name);
   const observation = /^legend-migration-observation-[a-f0-9]{64}$/.test(name);
   const locator = /^validated-component-index-[a-z][a-z0-9-]{0,63}-[a-f0-9]{64}$/.test(name);
@@ -33,19 +90,21 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
   const child = /^legend-release-child-(intent|success)-[a-f0-9]{64}$/.test(name);
   const plan = /^legend-release-transaction-plan-[a-f0-9]{64}$/.test(name);
   const recovery = /^legend-readiness-recovery-[a-f0-9]{64}$/.test(name);
-  if (!completion && !observation && !locator && !admission && !child && !plan && !recovery && !/^legend-release-operation-(intent|success|submitted)-[a-f0-9]{64}$/.test(name))
+  if (!retained && !completion && !observation && !locator && !admission && !child && !plan && !recovery && !/^legend-release-operation-(intent|success|submitted)-[a-f0-9]{64}$/.test(name))
     throw new Error('Invalid release operation artifact identity');
   const observationKeys = ['schemaVersion', 'phase', 'kind', 'observationIdentity', 'candidate', 'executionAuthority', 'databaseIdentity', 'schemaIdentity', 'baselineIdentity', 'observedUtc', 'pendingCount', 'mutationActivity', 'historicalExecution', 'historicalEvidenceIdentity', 'historicalReconciliationSources', 'bundleDigest', 'sqlExecutionAuthorized', 'producingRun', 'producingAttempt'];
-  const allowed = new Set(completion ? ['schemaVersion', 'phase', 'originalRun', 'applicationRevision', 'producingRun', 'producingAttempt', 'observer', 'targets'] : observation ? observationKeys : locator ? ['schemaVersion', 'component', 'contentIdentity', 'runId'] : recovery ? ['schemaVersion', 'operationId', 'candidateRevision', 'executionAuthority', 'targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt', 'phase'] : plan ? ['schemaVersion', 'planId', 'candidateRevision', 'producingRun', 'producingAttempt', 'targets', 'historySnapshot'] : child ? ['schemaVersion', 'child', 'dependencyIdentity', 'materialIdentity', 'evidenceIdentity', 'partitionIdentity',
+  const allowed = new Set(retained ? ['schemaVersion', 'phase', 'originalRun', 'originalAttempt', 'applicationRevision', 'producingRun', 'producingAttempt', 'observer', 'targets'] : completion ? ['schemaVersion', 'phase', 'originalRun', 'applicationRevision', 'producingRun', 'producingAttempt', 'observer', 'targets'] : observation ? observationKeys : locator ? ['schemaVersion', 'component', 'contentIdentity', 'runId'] : recovery ? ['schemaVersion', 'operationId', 'candidateRevision', 'executionAuthority', 'targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt', 'phase'] : plan ? ['schemaVersion', 'planId', 'candidateRevision', 'producingRun', 'producingAttempt', 'targets', 'historySnapshot'] : child ? ['schemaVersion', 'child', 'dependencyIdentity', 'materialIdentity', 'evidenceIdentity', 'partitionIdentity',
     'applicationRevision', 'executionAuthority', 'producingRun', 'producingAttempt', 'phase', 'observation'] : admission ? ['schemaVersion', 'admissionId', 'sourcePr',
     'applicationRevision', 'authorizedSourceRevision', 'packageIdentity', 'executionAuthority', 'sourceMergeSha', 'selectedTargets',
     'resources', 'authorizationMode', 'producingRun', 'producingAttempt', 'phase'] : ['schemaVersion', 'operationId', 'target', 'applicationRevision',
     'packageDigest', 'baseline', 'packageProducerRun', 'producingRun', 'producingAttempt',
     'baselineDeploymentIds', 'phase', 'deploymentIds', 'candidateRevision', 'componentSource',
-    'providerRequestCorrelation', 'submissionContract', 'deploymentId', 'completionEvidence']);
+    'providerRequestCorrelation', 'submissionContract', 'deploymentId', 'completionEvidence', 'recoveryEvidence']);
   if (!record || Object.keys(record).some(key => !allowed.has(key)) ||
       JSON.stringify(record).length > (plan ? 524288 : 32768)) throw new Error('Invalid release operation record');
-  if (completion) {
+  if (retained) {
+    retainedSummary(name, record);
+  } else if (completion) {
     const keys = 'applicationRevision,observer,originalRun,phase,producingAttempt,producingRun,schemaVersion,targets';
     if (Object.keys(record).sort().join(',') !== keys || record.schemaVersion !== 1 || record.phase !== 'success' ||
         !/^[a-f0-9]{40}$/.test(record.applicationRevision) ||
@@ -190,7 +249,8 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
       ['producingRun', 'producingAttempt', 'packageProducerRun'].some(key =>
         !Number.isSafeInteger(record[key]) || record[key] < 1))
     throw new Error('Invalid release operation identity');
-  if (!completion && !observation && !locator && !recovery && !plan && !child && !admission) {
+  if (!retained && !completion && !observation && !locator && !recovery && !plan && !child && !admission) {
+    if (record.recoveryEvidence !== undefined) recoveryEvidence(record);
     if (record.completionEvidence !== undefined) {
       const proof = record.completionEvidence;
       if (record.schemaVersion !== 1 || record.phase !== 'success' || !proof ||
