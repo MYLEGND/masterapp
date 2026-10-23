@@ -1,52 +1,32 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder directed completion of the already approved five-application release and a safer bounded timeout/reconciliation plan. This validate-only control promotion grants no application publication; retained-material recovery requires independently reviewed canonical producer, original package/source admission, fresh complete history, Production mutex and durable intent.",
-  "purpose": "Promote the reviewed retained-material recovery consumer in the existing fast-track workflow; no application rebuild or new application revision, no optional timeout increase, no production settings or permission change.",
-  "requestId": "founder-retained-fast-track-recovery-tools-20261023-fixture-v2",
+  "authorization": "Founder directed completion and release of the existing approved work, including precise recovery correction. This validate-only control promotion authorizes no application publication or permission change; original retained recovery remains independently gated.",
+  "purpose": "Correct the existing strict durable-record transport compatibility and authenticate proven pre-submit failures without bypassing uncertain-operation holds. Preserve original packages and four verified deployments.",
+  "requestId": "founder-retained-recovery-transport-20261023-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "38756300c87073e5a52a9153046aa09ebe803024",
-    "sourceRevision": "c88dc907f12ae57c450190f908bcf0e58e8e83c4",
+    "baseRevision": "1a91a4484ff9d5be6adaf023d4bb521944daff7c",
+    "sourceRevision": "5cf6ebf56bfebbcff5a3a88408c2da9c7c638550",
     "files": {
-      ".github/workflows/legend-fast-track-ui.yml": {
+      "scripts/release-artifacts/transport.cjs": {
         "mode": "100644",
-        "blob": "17d20e9cc4b652547b746e21c3e37565e5f65254"
+        "blob": "2d3b9b341b1007c1ecab705f712c34b2283e1097"
+      },
+      "scripts/release-artifacts/test-transport.cjs": {
+        "mode": "100644",
+        "blob": "2cff5007fe426d85344e05eb6c962c616f28bad7"
       },
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "39dd334b3bee65dc1b26085a4ff0b6a9673fdb8f"
-      },
-      "scripts/deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "d8c1a9f77fa71027a9e5a1f3805c8ee321daf594"
-      },
-      "scripts/release-operation-evidence.py": {
-        "mode": "100644",
-        "blob": "22dfc67fba15faf879ee95182e603e7e7b712d03"
-      },
-      "scripts/test-fast-track-release.py": {
-        "mode": "100644",
-        "blob": "37be7ec342e3d85ee843178af865efc33ad00af6"
+        "blob": "2907621f6217667f8a63b696a6103fcf66d1b076"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "9ce841b61db2b70bf5b57969484ee9e4ba2f63ed"
-      },
-      "scripts/test-deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "a596eec4623ce3b16dc3a34e4e735e3c74fa9767"
-      },
-      "scripts/test-release-operation-evidence.py": {
-        "mode": "100755",
-        "blob": "be98ad5006702ec40291d44598245eef9ad0b342"
-      },
-      "scripts/test-release-policy.py": {
-        "mode": "100644",
-        "blob": "ef0f19efe927671d6f3148b476b6e07379598362"
+        "blob": "7abf995607059885844edb72da58b897accf46a1"
       }
     }
   }
