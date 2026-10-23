@@ -345,6 +345,32 @@ test('computed color parsing rejects nonopaque invalid out-of-range and unsuppor
   ])assert.throws(()=>computedRgb(value),undefined,value);
 });
 
+function assertCriticalBookingChild(child) {
+  const panel=child.selectionPanel;
+  if(child.selector==='.qv-booking-selection-meta'&&panel?.exact===true&&panel.display==='none'&&panel.rects===0&&child.rects===0){
+    assert.ok(child.w===0&&child.h===0&&child.client===0&&child.scroll===0,'Hidden legacy selection has a layout box:'+JSON.stringify(child));
+    return 'authored-hidden-selection';
+  }
+  assert.ok(child.rects>0&&child.visibility!=='hidden'&&child.visibility!=='collapse'&&child.w>0&&child.h>0,'Critical child not visible:'+JSON.stringify(child));
+  assert.ok(child.x>=child.body.x-1&&child.r<=child.body.r+1,'Critical child escapes body:'+JSON.stringify(child));
+  assert.ok(child.scroll<=child.client+1,'Critical child text/track clipped:'+JSON.stringify(child));
+  return 'visible';
+}
+test('critical booking geometry permits only the exact authored hidden legacy selection',()=>{
+  const hidden={selector:'.qv-booking-selection-meta',rects:0,w:0,h:0,client:0,scroll:0,x:0,r:0,visibility:'visible',body:{x:26,r:1154},selectionPanel:{exact:true,display:'none',rects:0}};
+  assert.equal(assertCriticalBookingChild(hidden),'authored-hidden-selection');
+  for(const change of [{selector:'.qv-booking-slot-focus'},{selector:'#qvBookStatus'},{selectionPanel:null},{selectionPanel:{exact:false,display:'none',rects:0}},{selectionPanel:{exact:true,display:'block',rects:0}},{selectionPanel:{exact:true,display:'none',rects:1}},{w:1},{h:1},{client:1},{scroll:1}]){
+    assert.throws(()=>assertCriticalBookingChild({...hidden,...change}));
+  }
+});
+test('critical booking geometry requires every active child including visible legacy selection',()=>{
+  const visible={rects:1,w:100,h:40,client:100,scroll:100,x:26,r:126,visibility:'visible',body:{x:26,r:1154},selectionPanel:{exact:true,display:'block',rects:1}};
+  for(const selector of ['.qv-booking-slot-card','.qv-booking-slot-focus','.qv-booking-selection-meta','.qv-booking-foot','#qvBookStatus','#btnBookAppointment','#qvBookSlots button']){
+    assert.equal(assertCriticalBookingChild({...visible,selector}),'visible');
+    for(const change of [{rects:0},{w:0},{h:0},{visibility:'hidden'},{visibility:'collapse'},{x:20},{r:1160},{scroll:102}])assert.throws(()=>assertCriticalBookingChild({...visible,selector,...change}));
+  }
+});
+
 test('actual canonical frontend components render in the existing sandboxed CI browser', {timeout:160000}, async t => {
   const start = Date.now();
   const deadline = start + 160000;
@@ -496,8 +522,8 @@ test('actual canonical frontend components render in the existing sandboxed CI b
         assert.equal(hostProof.hidden,false);assert.equal(hostProof.rows,1);
         assert.ok(hostProof.calls.includes('/mobile/agent/booking/appointments'));assert.ok(hostProof.calls.includes('/mobile/agent/booking/availability'));
       }
-      const childBounds=await execute(`const body=document.querySelector('.qv-booking-body').getBoundingClientRect();const selectors=['.qv-booking-slot-card','.qv-booking-slot-focus','.qv-booking-selection-meta','.qv-booking-foot','#qvBookStatus','#btnBookAppointment','#qvBookSlots button'];return selectors.map(selector=>{const e=document.querySelector(selector);if(!e)throw Error('Missing critical child:'+selector);const b=e.getBoundingClientRect();return {selector,x:b.x,r:b.right,w:b.width,client:e.clientWidth,scroll:e.scrollWidth,body:{x:body.x,r:body.right}}});`);
-      for(const child of childBounds){assert.ok(child.x>=child.body.x-1&&child.r<=child.body.r+1,'Critical child escapes body:'+JSON.stringify(child));assert.ok(child.scroll<=child.client+1,'Critical child text/track clipped:'+JSON.stringify(child));}
+      const childBounds=await execute(`const body=document.querySelector('.qv-booking-body').getBoundingClientRect();const selectors=['.qv-booking-slot-card','.qv-booking-slot-focus','.qv-booking-selection-meta','.qv-booking-foot','#qvBookStatus','#btnBookAppointment','#qvBookSlots button'];return selectors.map(selector=>{const e=document.querySelector(selector);if(!e)throw Error('Missing critical child:'+selector);const b=e.getBoundingClientRect();const panel=selector==='.qv-booking-selection-meta'?e.closest('.qv-booking-panel-selection'):null;return {selector,x:b.x,r:b.right,w:b.width,h:b.height,rects:e.getClientRects().length,visibility:getComputedStyle(e).visibility,client:e.clientWidth,scroll:e.scrollWidth,body:{x:body.x,r:body.right},selectionPanel:panel?{exact:e.id==='qvBookingSelectedMeta'&&e.parentElement===panel&&panel.classList.contains('qv-booking-panel'),display:getComputedStyle(panel).display,rects:panel.getClientRects().length}:null}});`);
+      for(const child of childBounds)assertCriticalBookingChild(child);
 
       const before=await execute(`const box=e=>{const b=e.getBoundingClientRect();return {x:b.x,y:b.y,w:b.width,h:b.height,r:b.right,b:b.bottom}};const body=document.querySelector('.qv-booking-body');return {body:box(body),head:box(document.querySelector('.qv-booking-head')),content:box(document.querySelector('.qv-booking-content')),action:box(document.querySelector('#btnBookAppointment')),nav:[...document.querySelectorAll('.qv-booking-calendar-nav')].map(box),dates:[...document.querySelectorAll('[data-qv-booking-date]')].map(box),grid:box(document.querySelector('#qvBookingCalendar')),client:body.clientHeight,scroll:body.scrollHeight,horizontal:body.scrollWidth-body.clientWidth,errors:window.__fixtureErrors};`);
       assert.equal(new Set(before.dates.map(d=>Math.round(d.x*10))).size,7,'Calendar must retain exactly seven distinct date columns');
