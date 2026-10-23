@@ -943,7 +943,6 @@ body.life-landing.page-mode-paid-landing header .navbar .nav-link:focus {
 }
 
 .lq-container{
-    padding: 8px 16px 20px;
 }
 
 .lq-hero-shell{
@@ -959,9 +958,6 @@ body.life-landing.page-mode-paid-landing header .navbar .nav-link:focus {
         0 0 0 1px rgba(255,255,255,0.035),
         inset 0 1px 0 rgba(255,255,255,0.055),
         inset 0 0 34px rgba(226,186,93,0.035);
-    padding: 22px 22px 20px 22px;
-    max-width: 980px;
-    margin: 18px auto 22px auto;
 }
 .form-control::placeholder { color: rgba(15,23,42,0.55); }
 
@@ -1249,12 +1245,8 @@ body.life-landing.page-mode-paid-landing header .navbar .nav-link:focus {
 }
 
 body.life-landing .lq-container {
-    padding: 0;
 }
 body.life-landing .lq-hero-shell {
-    max-width: 760px;
-    margin: 10px auto 16px;
-    padding: 22px 22px 18px;
 }
 body.life-landing .lq-header {
     margin: 0 0 12px;
@@ -1874,7 +1866,7 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 
 /* ── Mobile / tablet tightening (≤640px) ─────────────────────────────────── */
 @@media (max-width: 640px){
-    .lq-container { padding: 4px 12px 14px; }
+    .lq-container {}
     .lq-header h1 { font-size: 1.32rem; line-height: 1.18; margin-bottom: 3px; }
     .lq-subtext { font-size: .88rem; line-height: 1.32; margin-bottom: 6px; }
     .lq-progress-rail { gap: 8px; }
@@ -1895,8 +1887,6 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 
     /* Hero shell — reclaim vertical space */
     .lq-hero-shell {
-        padding: 10px 10px 8px;
-        margin: 4px auto 10px;
         border-radius: 14px;
     }
 
@@ -1973,8 +1963,6 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 
     /* Hero shell */
     .lq-hero-shell {
-        padding: 5px 8px 6px !important;
-        margin: 1px auto 6px !important;
         border-radius: 12px !important;
     }
 
@@ -2084,8 +2072,6 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 /* ── Landing Mobile Fast Path (paid traffic) ─────────────────────────────── */
 @@media (max-width: 767.98px){
     body.life-landing main.layout-content {
-        padding-top: .35rem !important;
-        padding-bottom: 2rem;
     }
     body.life-landing.page-mode-paid-landing header .navbar {
         min-height: 56px !important;
@@ -2101,11 +2087,8 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     }
 
     body.life-landing .lq-container {
-        padding: 0 !important;
     }
     body.life-landing .lq-hero-shell {
-        margin: 3px auto 8px !important;
-        padding: 12px 12px 12px !important;
         border-radius: 12px !important;
         border-color: rgba(199,153,49,.34);
         background:
@@ -2233,8 +2216,6 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     }
     body.life-landing.page-mode-paid-landing header .navbar-brand img { max-height: 28px !important; }
     body.life-landing .lq-hero-shell {
-        margin-top: 2px !important;
-        padding-top: 5px !important;
     }
     body.life-landing .lq-header h1 { font-size: 1.04rem !important; }
     body.life-landing .lq-subtext {
@@ -3928,8 +3909,6 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 
 @@media (min-width: 992px) {
     body.page-variant-contact-first-education-v1.life-landing .lq-hero-shell {
-        max-width: 900px;
-        padding: 22px 24px 18px;
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-hero-rail {
@@ -4510,7 +4489,6 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 
 /* Low-friction options landing variant */
 body.page-variant-low-friction-options-v1.life-landing .lq-hero-shell {
-    max-width: 820px;
 }
 body.page-variant-low-friction-options-v1.life-landing .lq-header {
     margin-bottom: 12px !important;
@@ -4594,8 +4572,6 @@ body.page-variant-low-friction-options-v1.life-landing .lq-header {
 
 @@media (max-width: 767.98px) {
     body.page-variant-low-friction-options-v1.life-landing .lq-hero-shell {
-        margin-top: 4px !important;
-        padding: 14px 12px 12px !important;
     }
 
     body.page-variant-low-friction-options-v1.life-landing .lq-header h1 {
@@ -4637,8 +4613,6 @@ body.life-final-step-active .lq-hero-rail {
     display: none !important;
 }
 body.life-final-step-active .lq-hero-shell {
-    max-width: min(1180px, calc(100vw - 56px));
-    width: min(1180px, calc(100vw - 56px));
 }
 body.life-final-step-active .lq-hero-shell:has(#lifeEducationContactPanel.is-submitted),
 body.life-final-step-active .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-panel-no-chrome),
@@ -4723,8 +4697,6 @@ body.life-final-step-active.page-variant-contact-first-education-v1
 
 @@media (max-width: 767.98px) {
     body.life-final-step-active .lq-hero-shell {
-        padding-top: 10px !important;
-        padding-bottom: 12px !important;
     }
 }
 
@@ -4797,8 +4769,6 @@ body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat
 
 /* Contact step: make the submit action the visual destination */
 body.life-final-step-active .lq-hero-shell {
-    max-width: min(1180px, calc(100vw - 56px)) !important;
-    width: min(1180px, calc(100vw - 56px)) !important;
 }
 
 body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-chips,
@@ -4883,8 +4853,6 @@ body.life-final-step-active #lifeSubmitTrustNote {
 body.life-landing:not(.life-quote-started) .lq-hero-shell {
     position: relative;
     overflow: hidden;
-    max-width: 1160px;
-    padding: 22px 26px 30px;
     border-radius: 22px;
     background:
         radial-gradient(ellipse 72% 38% at 50% 0%, rgba(212,162,58,0.10) 0%, transparent 70%),
@@ -5366,7 +5334,7 @@ input:checked + .lq-answer-card {
     </defs>
 </svg>
 
-<div class="lq-hero-shell">
+<div class="lq-hero-shell" data-protect-form-shell>
 <div class="@(isLandingView ? "lq-container" : "container lq-container")">
     <div class="lq-hero-rail" id="lifeHeroEntryPanel" data-funnel-entry-panel="true">
         <div class="lq-header">
@@ -5486,7 +5454,7 @@ input:checked + .lq-answer-card {
             </div>
         }
     </div>
-<form asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-form-key="@pageKey" data-ajax-submit="true" novalidate>
+<form asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-cms-presentation="quote" data-cms-review-kind="life" data-cms-review-metrics="Monthly range|Coverage range" data-cms-entry-id="lifeHeroEntryPanel" data-cms-education-id="lifeEducationContactPanel" data-cms-question-id="lifeStep1Panel" data-cms-processing-id="lifeProcessingPanel" data-cms-contact-id="lifeStep2Panel" data-cms-review-id="lifeStep2EstimateSlot" data-cms-progress-id="lifeStep1Progress" data-cms-progress-fill-id="lifeStep1ProgressFill" data-cms-processing-fill-id="lifeProcessingFill" data-cms-trust-id="lifeHeroTrustStrip" data-cms-started-class="life-quote-started" data-cms-final-class="life-final-step-active" data-form-key="@pageKey" data-ajax-submit="true" novalidate>
         @Html.AntiForgeryToken()
         <input type="hidden" name="SubmissionId" value="@(Context?.Request is { HasFormContentType: true } submissionRequest && Guid.TryParse(submissionRequest.Form["SubmissionId"], out var submissionToken) ? submissionToken : Guid.NewGuid())" />
         @if (!string.IsNullOrWhiteSpace(agentSlug))
@@ -5560,7 +5528,7 @@ input:checked + .lq-answer-card {
                                         </div>
                                     </div>
 
-                                    <div class="lq-micro-step" data-micro-step="0" data-cms-native-step="0">
+                                    <div class="lq-micro-step" data-micro-step="0" data-cms-native-step="0" data-cms-progress-label="@(string.Equals(firstDiscoveryFieldName, "CoverageGoal", StringComparison.OrdinalIgnoreCase) ? "What matters most" : "Who depends on this")">
                     <button type="button" class="btn-ghost" data-step1-back="0" data-cms-step-back hidden data-cms-id="@(pageKey).native.back.0">Back</button>
                                         @if (!string.IsNullOrWhiteSpace(step1IntroTitle))
                                         {
@@ -5601,7 +5569,7 @@ input:checked + .lq-answer-card {
                                         </div>
                                     </div>
 
-                                    <div class="lq-micro-step" data-micro-step="1" data-cms-native-step="1" hidden>
+                                    <div class="lq-micro-step" data-micro-step="1" data-cms-native-step="1" data-cms-progress-label="@(string.Equals(secondDiscoveryFieldName, "CoverageGoal", StringComparison.OrdinalIgnoreCase) ? "What matters most" : "Who depends on this")" hidden>
                     <button type="button" class="btn-ghost" data-step1-back="1" data-cms-step-back data-cms-id="@(pageKey).native.back.1">Back</button>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="@secondDiscoveryQuestionId">
                                             <div class="lq-choice-label lq-step-question" id="@secondDiscoveryQuestionId">@secondDiscoveryStep.Question</div>
@@ -5635,7 +5603,7 @@ input:checked + .lq-answer-card {
                                         
                                     </div>
 
-                                    <div class="lq-micro-step" data-micro-step="2" data-cms-native-step="2" hidden>
+                                    <div class="lq-micro-step" data-micro-step="2" data-cms-native-step="2" data-cms-progress-label="Coverage range" hidden>
                     <button type="button" class="btn-ghost" data-step1-back="2" data-cms-step-back data-cms-id="@(pageKey).native.back.2">Back</button>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-coverage-amount">
                                             <div class="lq-choice-label lq-step-question" id="lbl-step1-coverage-amount">@coverageAmountQuestionText</div>
@@ -5665,7 +5633,7 @@ input:checked + .lq-answer-card {
                                         
                                     </div>
 
-                                    <div class="lq-micro-step" data-micro-step="3" data-cms-native-step="3" hidden>
+                                    <div class="lq-micro-step" data-micro-step="3" data-cms-native-step="3" data-cms-progress-label="Age" hidden>
                     <button type="button" class="btn-ghost" data-step1-back="3" data-cms-step-back data-cms-id="@(pageKey).native.back.3">Back</button>
                                         @if (usesAgeBeforeTobaccoFlow)
                                         {
@@ -5734,7 +5702,7 @@ input:checked + .lq-answer-card {
                                         }
                                     </div>
 
-                                    <div class="lq-micro-step" data-micro-step="4" data-cms-native-step="4" hidden>
+                                    <div class="lq-micro-step" data-micro-step="4" data-cms-native-step="4" data-cms-progress-label="Health profile" hidden>
                     <button type="button" class="btn-ghost" data-step1-back="4" data-cms-step-back data-cms-id="@(pageKey).native.back.4">Back</button>
                                         @if (usesAgeBeforeTobaccoFlow)
                                         {
@@ -6060,7 +6028,7 @@ input:checked + .lq-answer-card {
                     </div>
                 </div>
 
-                <div class="lq-micro-step" data-micro-step="0" data-cms-native-step="0">
+                <div class="lq-micro-step" data-micro-step="0" data-cms-native-step="0" data-cms-progress-label="@(string.Equals(firstDiscoveryFieldName, "CoverageGoal", StringComparison.OrdinalIgnoreCase) ? "What matters most" : "Who depends on this")">
                     <button type="button" class="btn-ghost" data-step1-back="0" data-cms-step-back hidden data-cms-id="@(pageKey).native.back.0">Back</button>
                     @if (!string.IsNullOrWhiteSpace(step1IntroTitle))
                     {
@@ -6118,7 +6086,7 @@ input:checked + .lq-answer-card {
                     </div>
                 </div>
 
-                <div class="lq-micro-step" data-micro-step="1" data-cms-native-step="1" hidden>
+                <div class="lq-micro-step" data-micro-step="1" data-cms-native-step="1" data-cms-progress-label="@(string.Equals(secondDiscoveryFieldName, "CoverageGoal", StringComparison.OrdinalIgnoreCase) ? "What matters most" : "Who depends on this")" hidden>
                     <button type="button" class="btn-ghost" data-step1-back="1" data-cms-step-back data-cms-id="@(pageKey).native.back.1">Back</button>
                     <div class="lq-choice-group" role="radiogroup" aria-labelledby="@secondDiscoveryQuestionId">
                         <div class="lq-choice-label lq-step-question" id="@secondDiscoveryQuestionId">@secondDiscoveryStep.Question</div>
@@ -6152,7 +6120,7 @@ input:checked + .lq-answer-card {
                     
                 </div>
 
-                <div class="lq-micro-step" data-micro-step="2" data-cms-native-step="2" hidden>
+                <div class="lq-micro-step" data-micro-step="2" data-cms-native-step="2" data-cms-progress-label="Coverage range" hidden>
                     <button type="button" class="btn-ghost" data-step1-back="2" data-cms-step-back data-cms-id="@(pageKey).native.back.2">Back</button>
                     <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-coverage-amount">
                         <div class="lq-choice-label lq-step-question" id="lbl-step1-coverage-amount">@coverageAmountQuestionText</div>
@@ -6182,7 +6150,7 @@ input:checked + .lq-answer-card {
                     
                 </div>
 
-                <div class="lq-micro-step" data-micro-step="3" data-cms-native-step="3" hidden>
+                <div class="lq-micro-step" data-micro-step="3" data-cms-native-step="3" data-cms-progress-label="Age" hidden>
                     <button type="button" class="btn-ghost" data-step1-back="3" data-cms-step-back data-cms-id="@(pageKey).native.back.3">Back</button>
                     @if (usesAgeBeforeTobaccoFlow)
                     {
@@ -6251,7 +6219,7 @@ input:checked + .lq-answer-card {
                     }
                 </div>
 
-                <div class="lq-micro-step" data-micro-step="4" data-cms-native-step="4" hidden>
+                <div class="lq-micro-step" data-micro-step="4" data-cms-native-step="4" data-cms-progress-label="Health profile" hidden>
                     <button type="button" class="btn-ghost" data-step1-back="4" data-cms-step-back data-cms-id="@(pageKey).native.back.4">Back</button>
                     @if (usesAgeBeforeTobaccoFlow)
                     {
@@ -6638,19 +6606,10 @@ input:checked + .lq-answer-card {
 @@media (min-width: 1024px) {
     main.layout-content,
     .container.layout-content {
-        width: min(98vw, 1560px) !important;
-        max-width: 1560px !important;
-        min-width: 0 !important;
-        margin-left: auto !important;
-        margin-right: auto !important;
     }
 
     body.life-landing .lq-hero-shell,
     .lq-hero-shell {
-        width: 100% !important;
-        max-width: 980px !important;
-        margin: 10px auto 16px !important;
-        padding: 14px 16px 18px !important;
     }
 
     body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.is-submitted),
@@ -7211,8 +7170,18 @@ body.life-landing .lq-contact-capture-head .lq-agent-handoff-head {
     return step1Panel;
   }
 
+  function presentNativePhase(phase, step = currentMicroStep) {
+    // Startup may precede the deferred shared CMS asset. Record only the current
+    // presentation; the existing minimal fallback remains usable without CMS.
+    form.dataset.cmsPresentationPhase = phase;
+    form.dataset.cmsPresentationStep = String(step);
+    return window.LEGEND_NATIVE_FORM_PRESENTATION?.apply(form, { phase, step }) === true;
+  }
+
   function setQuoteEntryStarted(isStarted) {
     quoteEntryStarted = !!isStarted;
+    const phase = quoteEntryStarted ? ({step1:'question',processing:'processing',contact:'contact',success:'contact'}[getActivePanelKey()] || 'question') : 'intro';
+    if (typeof presentNativePhase === 'function' && presentNativePhase(phase)) return;
     document.body.classList.toggle('life-quote-started', quoteEntryStarted);
     if (heroEntryPanel instanceof HTMLElement) {
       heroEntryPanel.setAttribute('aria-hidden', quoteEntryStarted ? 'true' : 'false');
@@ -8823,6 +8792,11 @@ const contactFieldProgress = new Map();
       || formatCoverageFigureForStep2(normalized.requestedCoverageAmount || normalized.primary.coverageAmount)
       || 'Calculated';
 
+    const shared=window.LEGEND_NATIVE_FORM_PRESENTATION?.reviewMarkup({kind:'life',
+      kicker:'Your starting range',copy:'Personalized from your answers. Submit to unlock the full carrier review.',
+      metrics:[{label:'Monthly range',value:monthlyRange},{label:'Coverage range',value:coverageRange}]});
+    if(shared) return shared;
+
     return `
       <section class="lq-contact-preview-mini" id="lifeStep2EstimateSummary" aria-label="Starting estimate preview">
         <div class="lq-contact-preview-mini-head">
@@ -9367,6 +9341,8 @@ const contactFieldProgress = new Map();
   }
 
   function setActivePanel(activePanel) {
+    const phase=activePanel===step2Panel ? 'contact' : activePanel===processingPanel ? 'processing' : quoteEntryStarted ? 'question' : 'intro';
+    if (!(typeof presentNativePhase === 'function' && presentNativePhase(phase))) {
     [step1Panel, processingPanel, step2Panel].forEach((panel) => {
       if (!panel) return;
       panel.hidden = panel !== activePanel;
@@ -9374,6 +9350,7 @@ const contactFieldProgress = new Map();
     setFinalContactFocus(activePanel === step2Panel);
     if (heroTrustStrip) {
       // heroTrustStrip handled by setFinalContactFocus (single source of truth)
+    }
     }
     persistFunnelState();
   }
@@ -9859,14 +9836,7 @@ const contactFieldProgress = new Map();
 
   function getStepProgressLabel(stepIndex) {
     const bounded = Math.max(0, Math.min(microSteps.length - 1, stepIndex));
-    const fieldName = discoveryStepSequence[bounded] || '';
-    const label = {
-      CoverageGoal: 'What matters most',
-      ProtectingWho: 'Who depends on this',
-      CoverageAmountOption: 'Coverage range',
-      Age: 'Age',
-      TobaccoUse: 'Health profile'
-    }[fieldName] || 'Protection review';
+    const label = microSteps[bounded]?.dataset.cmsProgressLabel || 'Protection review';
 
     return `${label} · ${nativeMicroOrder().indexOf(bounded) + 1} of ${microSteps.length}`;
   }
@@ -9895,6 +9865,7 @@ const contactFieldProgress = new Map();
     currentMicroStep = bounded;
     const focusVersion = ++microStepFocusVersion;
     setStepTransitionState(false);
+    if (!(typeof presentNativePhase === 'function' && presentNativePhase(quoteEntryStarted ? 'question' : 'intro', bounded))) {
     microSteps.forEach((stepEl, i) => {
       stepEl.hidden = i !== bounded;
     });
@@ -9904,6 +9875,7 @@ const contactFieldProgress = new Map();
     }
     if (step1ProgressFill) {
       step1ProgressFill.style.width = `${((nativeMicroOrder().indexOf(bounded) + 1) / microSteps.length) * 100}%`;
+    }
     }
     if (options.trackView !== false) {
       trackEvent(microStepViewEvents[bounded], { microStep: bounded + 1 });
@@ -11198,8 +11170,6 @@ body.life-landing.life-quote-started .lq-contact-first-proof-chips {
     }
 
     body.life-landing.life-quote-started .lq-hero-shell {
-        margin-top: 6px !important;
-        padding: 8px 8px 12px !important;
     }
 }
 /* LEGEND CTA STEP ZERO CORRECTION END */
@@ -11275,18 +11245,10 @@ main.layout-content,
 }
 
 .lq-container {
-    width: 100%;
-    max-width: 1180px;
-    margin: 0 auto;
-    padding: 22px 20px 64px !important;
 }
 
 body.life-landing .lq-hero-shell,
 .lq-hero-shell {
-    width: min(100%, 980px) !important;
-    max-width: 980px !important;
-    margin: 18px auto 56px !important;
-    padding: clamp(22px, 3vw, 34px) !important;
     border-radius: 28px !important;
     border: 1.4px solid var(--lq-border) !important;
     background:
@@ -11300,8 +11262,6 @@ body.life-landing .lq-hero-shell,
 
 body.life-landing.life-quote-started .lq-hero-shell,
 body.life-final-step-active .lq-hero-shell {
-    width: min(100%, 940px) !important;
-    max-width: 940px !important;
 }
 
 #lifeWizardForm,
@@ -11321,7 +11281,6 @@ body.life-final-step-active .lq-hero-shell {
     display: grid;
     justify-items: center;
     align-content: center;
-    min-height: 460px;
 }
 
 #lifeEducationContactPanel .lq-contact-first-proof-row,
@@ -11625,20 +11584,11 @@ body.life-final-step-active .lq-hero-shell {
 @@media (max-width: 767.98px) {
     main.layout-content,
     .lq-container {
-        width: 100% !important;
-        max-width: none !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        overflow-x: hidden !important;
     }
 
     body.life-landing .lq-hero-shell,
     body.life-final-step-active .lq-hero-shell,
     .lq-hero-shell {
-        width: calc(100vw - 12px) !important;
-        max-width: calc(100vw - 12px) !important;
-        margin: 14px auto 28px !important;
-        padding: 14px 12px 16px !important;
         border-radius: 22px !important;
     }
 
@@ -11656,7 +11606,6 @@ body.life-final-step-active .lq-hero-shell {
     #lifeEducationContactPanel .lq-contact-first-form-surface,
 #lifeEducationContactPanel .lq-contact-first-flow-surface {
         display: grid !important;
-        min-height: auto !important;
         align-content: start !important;
         justify-items: stretch !important;
 }

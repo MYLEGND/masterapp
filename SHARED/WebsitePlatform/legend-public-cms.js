@@ -229,6 +229,92 @@
       return nativeFormSequenceState(group).steps.slice();
     }
   });
+  function nativeReviewMarkup(descriptor = {}) {
+    // Pure display fragment. Callers supply already-computed native values or
+    // visibly illustrative Studio placeholders; this never reads form answers.
+    const life=descriptor.kind==='life';
+    const root=document.createElement(life?'section':'div');
+    if(life){root.className='lq-contact-preview-mini';root.id='lifeStep2EstimateSummary';root.setAttribute('aria-label','Starting estimate preview');}
+    const add=(parent,tag,className,text)=>{const node=document.createElement(tag);if(className)node.className=className;if(text!=null)node.textContent=String(text);parent.appendChild(node);return node;};
+    const head=life?add(root,'div','lq-contact-preview-mini-head'):root;
+    add(head,'div',life?'lq-contact-estimate-kicker':'dq-review-kicker',descriptor.kicker);
+    if(!life)add(head,'div','dq-review-title',descriptor.title);
+    add(head,'div',life?'lq-contact-preview-mini-copy':'dq-review-copy',descriptor.copy);
+    const metrics=add(root,'div',life?'lq-contact-preview-mini-metrics':'dq-review-stats');
+    if(life)metrics.setAttribute('aria-label','Estimate starting range');
+    for(const metric of descriptor.metrics || []){
+      const item=add(metrics,'div',life?'lq-contact-preview-mini-metric':'dq-review-stat');
+      add(item,life?'span':'div',life?'':'dq-review-stat-label',metric.label);
+      add(item,life?'strong':'div',life?'':'dq-review-stat-value',metric.value);
+    }
+    if(descriptor.signal){const signal=add(root,'div','dq-review-signal');add(signal,'strong','', 'Next step:');signal.appendChild(document.createTextNode(' '+descriptor.signal));}
+    return life?root.outerHTML:root.innerHTML;
+  }
+
+  // One presentation-only contract for native transitions and Studio. Template
+  // metadata names the existing DOM; this never invokes the quote runtime,
+  // validates answers, persists a funnel, dispatches events or requests estimates.
+  function nativeFormPresentation(form, state, projection = null) {
+    if (!form?.hasAttribute('data-cms-presentation')) return false;
+    const data=form.dataset, phase=state?.phase || 'intro';
+    const find=key=>document.getElementById(data[key] || '');
+    const operations=projection || {
+      hidden:(element,value)=>{if(element) element.hidden=value;},
+      attribute:(element,key,value)=>{if(element) element.setAttribute(key,value);},
+      class:(element,key,value)=>{if(element && key) element.classList.toggle(key,value);},
+      text:(element,value)=>{if(element) setContentText(element,value,true);},
+      style:(element,key,value)=>{if(element) element.style.setProperty(key,value);}
+    };
+    const started=phase!=='intro', final=phase==='contact' || phase==='review';
+    operations.class(document.body,data.cmsStartedClass,started);
+    operations.class(document.body,data.cmsFinalClass,final);
+    const entry=find('cmsEntryId'), education=find('cmsEducationId');
+    operations.hidden(entry,started);
+    operations.attribute(entry,'aria-hidden',String(started));
+    operations.hidden(education,!started);
+    const question=find('cmsQuestionId'),processing=find('cmsProcessingId'),contact=find('cmsContactId');
+    operations.hidden(question,phase!=='question');
+    operations.hidden(processing,phase!=='processing');
+    operations.hidden(contact,!final);
+    operations.hidden(find('cmsTrustId'),final);
+    const steps=[...form.querySelectorAll('[data-cms-native-step]')];
+    const step=steps.find(element=>element.dataset.cmsNativeStep===String(state?.step ?? '0')) || steps[0];
+    const group=nativeSequenceByStep.get(step);
+    const ordered=group ? nativeFormSequenceState(group).steps : steps;
+    if (phase==='question') {
+      for(const element of steps) operations.hidden(element,element!==step);
+      const position=ordered.indexOf(step)+1;
+      if(position>0){
+        const label=step.dataset.cmsProgressLabel;
+        const progress=label ? label+' · '+position+' of '+ordered.length : 'Question '+position+' of '+ordered.length;
+        operations.text(find('cmsProgressId'),progress);
+        operations.style(find('cmsProgressFillId'),'width',(position/ordered.length*100)+'%');
+        operations.attribute(find('cmsProgressId'),'aria-label',progress);
+      }
+    }
+    if(phase==='processing') operations.style(find('cmsProcessingFillId'),'width','100%');
+    // Sample content exists only in the reversible editor projection, never in
+    // answers, hidden fields, saved composition or an actual estimate response.
+    if(projection && final) {
+      const review=find('cmsReviewId');
+      if(review){
+        operations.hidden(review,false);
+        if(!review.textContent.trim()) projection.sample(review,form);
+      }
+    }
+    return true;
+  }
+  window.LEGEND_NATIVE_FORM_PRESENTATION=Object.freeze({apply:nativeFormPresentation,reviewMarkup:nativeReviewMarkup});
+  function syncNativeFormPresentation() {
+    for(const form of document.querySelectorAll('main form[data-cms-presentation]')) {
+      // Inline native startup can precede this deferred asset. Its compatibility
+      // fallback records the CURRENT phase, not an initial/default phase to replay.
+      if(form.dataset.cmsPresentationPhase)
+        nativeFormPresentation(form,{phase:form.dataset.cmsPresentationPhase,step:form.dataset.cmsPresentationStep});
+    }
+  }
+  syncNativeFormPresentation();
+
   let websiteStudioWebMcpStatus = 'not_connected';
   let websiteStudioWebMcpController = null;
   const styleProperties = ['textAlign','fontSize','width','maxWidth','height','minHeight','maxHeight','position','left','top','overflow','paddingTop','paddingBottom','objectPosition','color','backgroundColor','backgroundImage','fontFamily','fontWeight','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius','objectFit','gridColumn','minWidth','overflowWrap','display','flexDirection','gap','gridTemplateColumns','alignItems','justifyContent','flexWrap','marginTop','marginBottom','marginLeft','marginRight','borderWidth','borderColor','borderStyle','opacity','textTransform','textDecoration','aspectRatio','boxShadow'];
@@ -486,8 +572,24 @@
       page.systemTemplateKey.startsWith('protect_template:');
   }
 
+  function isNativeTemplateFigure(element) {
+    return element?.tagName==='FIGURE' && SITE_KEY==='protect' && pageUsesSystemTemplate();
+  }
+  const boundNativeTemplateRoots = new WeakSet();
+  function bindNativeTemplateIdentities() {
+    const main=document.querySelector('main');
+    if (SITE_KEY !== 'protect' || !main || boundNativeTemplateRoots.has(main)) return;
+    // Use the SAME structural allocator as canonical capture. In particular,
+    // native icon-bearing spans and figures were never assigned prepareDom IDs.
+    // Bind them before reconciliation, without modifying the saved document or
+    // matching authored copy/classes. Existing native IDs are never renumbered.
+    materializeCurrentPageComposition();
+    boundNativeTemplateRoots.add(main);
+  }
+
   function applyTemplateBackedCompositionPage() {
     const page=pageState();
+    bindNativeTemplateIdentities();
     const mounted=new Map();
     walkComposition(page.composition || [],node=>{
       const runtimeKey=String(node.systemKey || '');
@@ -1120,6 +1222,11 @@
       if(Number.isFinite(value) && value>=0) root.style.setProperty(cssVar,`${value}px`);
       else root.style.removeProperty(cssVar);
     });
+    // Existing supported formMaxWidth is also the opted-in Protect OUTER width.
+    // An unset value leaves the shared 75% CSS default; no second theme/control.
+    const formWidth=numberValue('formMaxWidth');
+    if(Number.isFinite(formWidth) && formWidth>=0) root.style.setProperty('--web-quote-shell-width',`${formWidth}px`);
+    else root.style.removeProperty('--web-quote-shell-width');
     Object.entries(milliseconds).forEach(([key, cssVar]) => {
       const value=numberValue(key);
       if(Number.isFinite(value) && value>=0) root.style.setProperty(cssVar,`${value}ms`);
@@ -1448,7 +1555,7 @@
       if (!breakpoint) { editorPreview.style.width=''; editorPreview.style.maxWidth=''; editorPreview.style.justifySelf=''; }
       else {
         const representative = breakpoint.maxWidth == null ? Math.max(Number(breakpoint.minWidth)||1200,1440) : Math.max(320,Math.round(((Number(breakpoint.minWidth)||0)+Number(breakpoint.maxWidth))/2));
-        editorPreview.style.width='100%'; editorPreview.style.maxWidth=`${representative}px`; editorPreview.style.justifySelf='center';
+        editorPreview.style.width=''; editorPreview.style.maxWidth=`${representative}px`; editorPreview.style.justifySelf='center';
       }
     }
     // Hidden whole-site audit frames deliberately do not build the editor UI,
@@ -1885,7 +1992,7 @@
   }
 
   function materializeCompositionNode(el, fallbackId = null, identity = null) {
-    return withNativeFormContinuationsRestored(() => materializeCompositionNodeWithNativeControls(el, fallbackId, identity));
+    return withFormStepPreviewRestored(() => withNativeFormContinuationsRestored(() => materializeCompositionNodeWithNativeControls(el, fallbackId, identity)));
   }
 
   function materializeCompositionNodeWithNativeControls(el, fallbackId = null, identity = null) {
@@ -1894,7 +2001,7 @@
     // Template decoration is deliberately presentation-only. Persisting SVG/icon
     // wrappers as ordinary v3 nodes creates empty colored boxes after the SVG is
     // filtered from the safe composition grammar.
-    if (el.matches?.('[data-cms-decoration="true"]')) return null;
+    if (el.matches?.('[data-cms-decoration="true"],[data-cms-preview-only]')) return null;
     // Menu toggles are runtime shell chrome, not editable website links. Keeping
     // them in v3 created invalid link nodes with no action/destination and made
     // publish fail. Runtime recreates and wires this control from primary nav.
@@ -1987,9 +2094,10 @@
       (tag === 'a' && !actionKey && !dynamicHref && (!rawHref || rawHref === '#'));
     const presentationOnlyControl = runtimePresentationControl || unmanagedInteractiveControl;
 
+    const nativeFigure = isNativeTemplateFigure(el);
     let type = 'text';
     if (tag === 'section') type='section';
-    else if (['div','article','header','footer','nav','ul','ol','fieldset'].includes(tag)) type='container';
+    else if ((['div','article','header','footer','nav','ul','ol','fieldset'].includes(tag) || nativeFigure)) type='container';
     else if (/^h[1-6]$/.test(tag)) type='heading';
     else if (tag === 'a' || tag === 'button') type=presentationOnlyControl ? 'text' : (actionKey ? 'cta' : 'link');
     else if (tag === 'img') type='image';
@@ -1998,9 +2106,12 @@
     // Runtime/UI-only controls are presentation projections only. Their actual
     // behavior stays with the server/runtime owner. Materialization must never
     // manufacture a publishable link from an unmanaged button or empty anchor.
+    // Figure is a native semantic wrapper, not arbitrary executable markup.
+    // Persist only the already-supported container/div grammar; exact native
+    // identity binding retains the original FIGURE and its attributes on reload.
     const projectedTag = presentationOnlyControl ? 'span' : tag;
     const node = {
-      id, type, tag:projectedTag, className:cleanCompositionClassName(el),
+      id, type, tag:nativeFigure ? 'div' : projectedTag, className:cleanCompositionClassName(el),
       actionKey:presentationOnlyControl ? null : (actionKey || null),
       href:presentationOnlyControl ? null : (rawHref || null),
       target:presentationOnlyControl ? null : ((tag === 'a' ? el.getAttribute('target') : model.target) || null),
@@ -2771,7 +2882,7 @@
       if (el.tagName === 'A' && typeof value === 'string' && safeUrl(value)) el.href = value;
       return;
     }
-    if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName)) setContentText(el, String(value), true);
+    if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName) && !isNativeTemplateFigure(el)) setContentText(el, String(value), true);
   }
   function prefersReducedMotion() {
     try { return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true; } catch { return false; }
@@ -3609,7 +3720,7 @@
     if (el instanceof HTMLImageElement) {
       const media = model.mediaAssetId ? API_BASE + '/api/website-content/media/' + model.mediaAssetId : model.mediaUrl;
       el.src = media ? mediaUrl(media) : (original.src || '');
-    } else if (!entityBound && !commerceControl && !el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName)) {
+    } else if (!entityBound && !commerceControl && !el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName) && !isNativeTemplateFigure(el)) {
       const compositionHasChildren = !!el.dataset.cmsCompositionId && Array.isArray(model.children) && model.children.length > 0;
       if (!compositionHasChildren) setContentText(el, model.text != null ? model.text : (original.text || ''), model.text != null);
     }
@@ -4142,6 +4253,7 @@
     applyStoreNavigation();
     ensureCanonicalPublicInquiry();
     syncNativeFormSequences();
+    syncNativeFormPresentation();
     if (editorMode && document.getElementById('legend-cms-form-navigator')) previewFormStep(formPreviewIndex);
     try {
       window.dispatchEvent(new CustomEvent('legend:website-content-rendered', {
@@ -4173,6 +4285,7 @@
       refreshReusableInstances();
     }
     refreshScaledElements();
+    syncNativeFormPresentation();
     if (editorMode && document.getElementById('legend-cms-form-navigator')) previewFormStep(formPreviewIndex);
     updateDirectCanvasUi();
   }
@@ -8827,7 +8940,7 @@
       .legend-cms-corner-nw{left:-7px;top:-7px;cursor:nwse-resize}.legend-cms-corner-ne{right:-7px;top:-7px;cursor:nesw-resize}.legend-cms-corner-se{right:-7px;bottom:-7px;cursor:nwse-resize}.legend-cms-corner-sw{left:-7px;bottom:-7px;cursor:nesw-resize}
       .legend-cms-edge-handle:hover{background:#d4ad451f!important}
       body.legend-cms-editing{display:block;height:100dvh;min-height:0;margin:0;overflow:hidden}
-      .legend-cms-preview{width:100vw;max-width:none;min-width:100vw;min-height:0;height:100dvh;overflow-y:auto;overflow-x:clip;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;position:relative;transform:translateZ(0)}
+      .legend-cms-preview{width:calc(100% - min(24rem, 92vw));max-width:none;min-width:0;min-height:0;height:100dvh;overflow-y:auto;overflow-x:clip;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;position:relative;transform:translateZ(0)}
       .legend-cms-editor{font-family:Inter,system-ui,sans-serif;box-sizing:border-box}
       .legend-cms-editor *{box-sizing:border-box}
       .legend-cms-editor [hidden]{display:none}
@@ -8844,6 +8957,7 @@
       .legend-cms-publication-actions button:disabled{opacity:.55;cursor:wait}
       .legend-cms-panel{position:fixed;z-index:2147483000;top:0;right:0;width:min(24rem,92vw);min-width:20rem;min-height:0;height:100dvh;overflow:auto;background:#081a3a;color:#f7f6f2;border:1px solid #d4ad45;border-radius:0;padding:20px;padding-bottom:max(20px,env(safe-area-inset-bottom));box-shadow:-18px 0 42px #0005}
       body.legend-cms-panel-hidden .legend-cms-panel{display:none}
+      body.legend-cms-panel-hidden .legend-cms-preview{width:100%}
       .legend-cms-draft-dialog{width:min(500px,calc(100vw - 32px));height:auto;max-height:calc(100dvh - 32px);border-radius:16px}.legend-cms-draft-dialog::backdrop{background:#0009}.legend-cms-draft-dialog label{display:grid;gap:8px;margin:16px 0}.legend-cms-draft-dialog button{padding:10px 16px;margin-right:8px}
       .legend-cms-code-dialog{width:min(980px,calc(100vw - 32px));height:min(78dvh,760px);max-height:calc(100dvh - 32px);display:grid;grid-template-rows:auto auto minmax(220px,1fr) auto auto;gap:12px;padding:20px;border:1px solid #d4ad45;border-radius:16px;background:#081a3a;color:#f7f6f2}.legend-cms-code-dialog::backdrop{background:#000a}.legend-cms-code-dialog h2,.legend-cms-code-dialog p{margin:0}.legend-cms-code-source{width:100%;min-width:0;min-height:220px;resize:none;padding:14px;border:1px solid #50617e;border-radius:10px;background:#07152d;color:#f7f6f2;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:2}.legend-cms-code-actions{display:flex;gap:10px;justify-content:flex-end}.legend-cms-code-actions button,#legend-cms-code-group button{padding:10px 14px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;font-weight:700}
       .legend-cms-panel-toggle{position:fixed;z-index:2147483000;top:max(10px,env(safe-area-inset-top));right:10px;width:40px;height:40px;min-width:40px;min-height:40px;padding:0;display:grid;place-items:center;border:1px solid #d4ad45;border-radius:999px;background:#081a3af2;color:#fff;cursor:pointer;box-shadow:0 8px 24px #0005}
@@ -8995,27 +9109,80 @@
   }
 
   const formPreviewVisibility = new Map();
+  const formPreviewSamples = [];
   let formPreviewIndex = -1;
+  function rememberFormPreview(element) {
+    if(!element) return null;
+    if(!formPreviewVisibility.has(element)) formPreviewVisibility.set(element,{
+      hidden:element.hidden,display:element.style.getPropertyValue('display'),
+      displayPriority:element.style.getPropertyPriority('display'),active:element.classList.contains('active'),
+      attributes:new Map(),classes:new Map(),styles:new Map(),text:null
+    });
+    return formPreviewVisibility.get(element);
+  }
   function restoreFormStepPreview() {
+    for(const sample of formPreviewSamples) sample.remove();
+    formPreviewSamples.length=0;
     for (const [element, state] of formPreviewVisibility) {
       element.hidden = state.hidden;
       if (state.display) element.style.setProperty('display', state.display, state.displayPriority);
       else element.style.removeProperty('display');
       element.classList.toggle('active', state.active);
+      for(const [key,value] of state.attributes) {
+        if(value===null) element.removeAttribute(key);else element.setAttribute(key,value);
+      }
+      for(const [key,value] of state.classes) element.classList.toggle(key,value);
+      for(const [key,value] of state.styles) {
+        if(value.value) element.style.setProperty(key,value.value,value.priority);else element.style.removeProperty(key);
+      }
+      if(state.text!==null) setContentText(element,state.text.value,state.text.preserve==='true');
     }
     formPreviewVisibility.clear();
   }
+  function withFormStepPreviewRestored(capture) {
+    if(!formPreviewVisibility.size) return capture();
+    const index=formPreviewIndex;
+    restoreFormStepPreview();
+    try{return capture();}finally{previewFormStep(index);}
+  }
+  const formPreviewProjection={
+    hidden(element,value){if(element){rememberFormPreview(element);element.hidden=value;}},
+    attribute(element,key,value){if(element){const state=rememberFormPreview(element);if(!state.attributes.has(key))state.attributes.set(key,element.getAttribute(key));element.setAttribute(key,value);}},
+    class(element,key,value){if(element && key){const state=rememberFormPreview(element);if(!state.classes.has(key))state.classes.set(key,element.classList.contains(key));element.classList.toggle(key,value);}},
+    text(element,value){if(element){const state=rememberFormPreview(element);if(state.text===null)state.text={value:element.textContent,preserve:element.getAttribute('data-cms-preserve-whitespace')};setContentText(element,value,true);}},
+    style(element,key,value){if(element){const state=rememberFormPreview(element);if(!state.styles.has(key))state.styles.set(key,{value:element.style.getPropertyValue(key),priority:element.style.getPropertyPriority(key)});element.style.setProperty(key,value);}},
+    sample(element,form){
+      const sample=document.createElement('div');sample.dataset.cmsPreviewOnly='true';
+      sample.setAttribute('role','note');
+      sample.innerHTML=nativeReviewMarkup({kind:form.dataset.cmsReviewKind,
+        kicker:'Illustrative Studio review — not a quote',title:'Your review snapshot',
+        copy:'Example presentation only. No request has been submitted.',
+        metrics:(form.dataset.cmsReviewMetrics || '').split('|').filter(Boolean).map(label=>({label,value:'Example — not calculated'})),
+        signal:form.dataset.cmsReviewKind==='life'?null:'Your actual answers determine the licensed review.'});
+      element.appendChild(sample);formPreviewSamples.push(sample);
+    }
+  };
 
   function formPreviewEntries() {
     if (!editorMode) return [];
     const selector = formStepSelector;
     const entries = [];
     for (const form of document.querySelectorAll('main form[data-form-key]')) {
+      if(form.hasAttribute('data-cms-presentation')) {
+        const add=(phase,id,label)=>{const step=document.getElementById(id || '');if(step)entries.push({form,step,label,phase});};
+        add('intro',form.dataset.cmsEntryId,'Introduction');
+        for(const step of form.querySelectorAll('[data-cms-native-step]'))
+          entries.push({form,step,label:nativeFormStepLabel(step),phase:'question',nativeStep:step.dataset.cmsNativeStep});
+        add('processing',form.dataset.cmsProcessingId,'Processing preview');
+        add('review',form.dataset.cmsContactId,'Review / starting estimate');
+        add('contact',form.dataset.cmsContactId,'Contact details');
+        continue;
+      }
       const candidates = [...form.querySelectorAll(selector)];
       const steps = candidates.filter(step => !step.querySelector(selector) &&
         step.querySelector('input:not([type="hidden"]),select,textarea,button,[data-experience-control]'));
       for (const step of steps.length ? steps : [form]) {
-        const heading = step.querySelector('legend,h1,h2,h3,h4,h5,.section-title,.lq-step-question,.lq-step-title');
+        const heading = step.querySelector('legend,h1,h2,h3,h4,h5,.section-title,.lq-step-question,.lq-step-title,.lq-choice-label');
         const label = (heading?.textContent || step.getAttribute('aria-label') || 'Form').trim().replace(/\s+/g, ' ').slice(0, 120);
         entries.push({ form, step, label });
       }
@@ -9034,11 +9201,9 @@
     }
     formPreviewIndex = index;
     const selectedStep = entries[index];
-    const remember = element => {
-      if (!formPreviewVisibility.has(element))
-        formPreviewVisibility.set(element, { hidden: element.hidden, display: element.style.getPropertyValue('display'),
-          displayPriority: element.style.getPropertyPriority('display'), active: element.classList.contains('active') });
-    };
+    const remember=rememberFormPreview;
+    if(selectedStep.phase)
+      nativeFormPresentation(selectedStep.form,{phase:selectedStep.phase,step:selectedStep.nativeStep},formPreviewProjection);
     for (const entry of entries) {
       if (entry.form !== selectedStep.form || entry.step === selectedStep.step) continue;
       remember(entry.step);

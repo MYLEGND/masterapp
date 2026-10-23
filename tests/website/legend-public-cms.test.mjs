@@ -346,7 +346,7 @@ function fixtureMutationResponse(before,after,serverRevision,integerRevisions=fa
   };
 }
 
-async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,dataCatalog=null,dataCollections=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,mutationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,modelContext=null,integerRevisions=false,pendingPublication=null,viewportWidth=1024,scriptTimeoutMs=null,beforeEval=null,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,dataCatalog=null,dataCollections=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,mutationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,modelContext=null,integerRevisions=false,pendingPublication=null,viewportWidth=1024,scriptTimeoutMs=null,beforeEval=null,captureNativePage=false,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:origin+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[]; const animations=[];
   Object.defineProperty(w.crypto,'subtle',{value:webcrypto.subtle}); w.TextEncoder=TextEncoder;
@@ -526,10 +526,12 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
   if(pendingPublication) w.sessionStorage.setItem(
     'legend-publication:'+siteKey+':'+(business?.id || '')+':'+agentSlug,JSON.stringify(pendingPublication));
   if(beforeEval) beforeEval(w);
+  // Test-only visibility into the SAME shipped capture function; no production API.
+  const fixtureSource=captureNativePage ? source.replace('function installCreativeAgentWorkspaceApi() {','function installCreativeAgentWorkspaceApi() { window.__captureNativePage=currentMaterializedPage;') : source;
   if(scriptTimeoutMs) {
-    try { new Script(source).runInContext(dom.getInternalVMContext(),{timeout:scriptTimeoutMs}); }
+    try { new Script(fixtureSource).runInContext(dom.getInternalVMContext(),{timeout:scriptTimeoutMs}); }
     catch(error) { w.close(); throw error; }
-  } else w.eval(source);
+  } else w.eval(fixtureSource);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
   const click=selector=>scriptTimeoutMs
@@ -1246,7 +1248,7 @@ test('public startup styling has one responsive authority and one palette author
 
 test('Website Studio canvas keeps public viewport typography and mobile controls stay inside the viewport',()=>{
   assert.ok(source.includes('body.legend-cms-editing{display:block'));
-  assert.ok(source.includes('.legend-cms-preview{width:100vw'));
+  assert.ok(source.includes('.legend-cms-preview{width:calc(100% - min(24rem, 92vw))'));
   assert.equal(source.includes('grid-template-columns:minmax(0,1fr) minmax(20rem,24rem)'),false);
   assert.equal(publicCss.includes('@container legend-public-preview'),false);
   assert.equal(publicCss.includes('container:legend-public-preview'),false);
@@ -2628,7 +2630,7 @@ test('editor preview is horizontally locked to the rendered website at every bre
     assert.equal(preview.scrollLeft,0);
     f.w.dispatchEvent(new f.w.Event('resize'));
     assert.equal(preview.scrollLeft,0);
-    assert.match(source,/\.legend-cms-preview\{width:100vw;max-width:none;min-width:100vw;[^}]*overflow-x:clip;[^}]*touch-action:pan-y pinch-zoom/);
+    assert.match(source,/\.legend-cms-preview\{width:calc\(100% - min\(24rem, 92vw\)\);max-width:none;min-width:0;[^}]*overflow-x:clip;[^}]*touch-action:pan-y pinch-zoom/);
     assert.match(source,/@media\(max-width:800px\)[\s\S]*?\.legend-cms-preview\{width:100%;max-width:100%;[^}]*overflow-x:hidden/);
     assert.doesNotMatch(source,/window\.innerWidth > 800/);
     assert.doesNotMatch(source,/body\.legend-cms-editing\{[^}]*grid-template/);
@@ -6021,6 +6023,7 @@ test('canonical form theme inherits unset numbers and persists live geometry wit
     const reloaded=await domFixture({doc:saved,search:''});
     try{
       assert.equal(reloaded.w.document.documentElement.style.getPropertyValue('--web-form-control-min-height'),'56px');
+      assert.equal(reloaded.w.document.documentElement.style.getPropertyValue('--web-quote-shell-width'),'720px','existing saved formMaxWidth drives opted-in outer geometry');
       assert.equal(reloaded.w.document.documentElement.style.getPropertyValue('--web-form-field-gap'),'22px');
     }finally{reloaded.close();}
     f.input('[data-theme-key="formControlMinHeight"]','');
@@ -6151,4 +6154,329 @@ test('compiled form field breakpoints discard desktop output and preserve later 
     input.dispatchEvent(new w.Event('change'));button.dispatchEvent(new w.Event('click'));
     assert.equal(changes,1);assert.equal(clicks,1);
   }finally{w.close();}
+});
+
+
+test('native figure and icon identities survive materialization cold reload and reapply through existing safe grammar',async()=>{
+  const path='/quote/iul',doc=canonicalDocument();
+  doc.pages[path]={title:'IUL',systemTemplateKey:'protect_template:life_wizard',navigation:{isDeleted:false},composition:[]};
+  const html='<!doctype html><html><body data-page-key="quote_iul"><main><section><figure id="nativeFigure" class="lq-hero-banner-wrap" aria-label="Owned banner"><img id="nativeBanner" src="/images/family.png" alt="Authored family image" loading="eager" data-owned="kept"></figure><div id="proof"><span id="badge"><svg id="nativeIcon" viewBox="0 0 24 24" aria-hidden="true"><use href="#family-icon"></use></svg>Authored benefit</span><p id="afterBadge">Later copy</p></div><form id="lifeWizardForm" data-form-key="quote_iul"><input name="FirstName" required></form></section></main></body></html>';
+  let snapshot;
+  const capture=await domFixture({siteKey:'protect',doc,legacyMigration:{},pathname:path,html,search:'?legendEdit=ticket&legendMaterialize=1',beforeEval:w=>{w.postMessage=payload=>{snapshot=payload;};}});
+  try{
+    assert.ok(snapshot?.composition);
+    doc.pages[path].composition=snapshot.composition;
+    const figure=canonicalNodes(doc,path).find(node=>node.className==='lq-hero-banner-wrap');
+    assert.ok(figure,JSON.stringify(snapshot.composition));
+    assert.equal(figure.type,'container');assert.equal(figure.tag,'div');
+    assert.equal(figure.children[0].type,'image');assert.equal(figure.children[0].alt,'Authored family image');
+    assert.equal(canonicalNodes(doc,path).some(node=>node.tag==='svg' || node.tag==='use'),false);
+  }finally{capture.close();}
+  for(const search of ['', '?legendEdit=ticket']){
+    let original;
+    const f=await domFixture({siteKey:'protect',doc,pathname:path,html,search,beforeEval:w=>{
+      original=['nativeFigure','nativeBanner','badge','nativeIcon','afterBadge'].map(id=>w.document.getElementById(id));
+    }});
+    try{
+      const documentBefore=f.serverDocument();
+      const ids=original.map(node=>node.dataset.cmsId);
+      for(const [index,node] of original.entries()) assert.equal(f.w.document.getElementById(node.id),node);
+      assert.equal(original[0].tagName,'FIGURE');assert.equal(original[0].getAttribute('aria-label'),'Owned banner');
+      assert.equal(original[1].parentElement,original[0]);assert.equal(original[1].alt,'Authored family image');
+      assert.equal(original[1].getAttribute('loading'),'eager');assert.equal(original[1].dataset.owned,'kept');
+      assert.equal(original[3].querySelector('use').getAttribute('href'),'#family-icon');
+      assert.equal(f.w.document.querySelectorAll('#proof > span').length,1);
+      assert.equal(f.w.document.querySelectorAll('.lq-hero-banner-wrap').length,1);
+      f.w.innerWidth=390;f.w.dispatchEvent(new f.w.Event('resize'));await new Promise(resolve=>setTimeout(resolve,20));
+      for(const [index,node] of original.entries()) {assert.equal(f.w.document.getElementById(node.id),node);assert.equal(node.dataset.cmsId,ids[index]);}
+      if(search){
+        const saved=await f.save();assert.deepEqual(saved,documentBefore);
+        assert.equal(f.w.document.getElementById('nativeFigure'),original[0]);
+        assert.equal(f.w.document.getElementById('nativeBanner'),original[1]);
+        assert.equal(f.w.document.getElementById('nativeIcon'),original[3]);
+      }
+    }finally{f.close();}
+  }
+  // Intentional omissions and historical incomplete records are NOT repaired by
+  // ordinary reads. Saved-record repair requires its own admitted manifest.
+  for(const omission of ['image','badge','incomplete-figure']) {
+    const omitted=structuredClone(doc);
+    const nodes=canonicalNodes(omitted,path);
+    const figure=nodes.find(node=>node.className==='lq-hero-banner-wrap');
+    const badge=nodes.find(node=>node.text?.includes('Authored benefit'));
+    if(omission==='badge'){
+      const location=fixtureFindNodeLocation(omitted,badge.id);const parent=canonicalNodeById(omitted,location.parentId,path);
+      parent.children=parent.children.filter(node=>node.id!==badge.id);
+    }else{
+      figure.children=[];
+      if(omission==='incomplete-figure'){figure.type='text';figure.tag='p';figure.text='';}
+    }
+    const f=await domFixture({siteKey:'protect',doc:omitted,pathname:path,html});
+    try{
+      assert.equal(f.w.document.getElementById(omission==='badge'?'badge':'nativeBanner'),null);
+      assert.deepEqual(f.serverDocument(),omitted);
+      assert.equal(f.calls.some(call=>call.method==='POST'),false);
+    }finally{f.close();}
+  }
+  const compiler=new JSDOM(html,{url:'https://protect.example.test'+path,runScripts:'outside-only'});
+  let compiled;
+  try{
+    compiler.window.CSS={escape:value=>String(value)};
+    compiler.window.LEGEND_PUBLIC_CMS_RENDER_INPUT={siteKey:'protect',document:doc,pageKey:'quote_iul',server:true};
+    const figure=compiler.window.document.getElementById('nativeFigure'),image=compiler.window.document.getElementById('nativeBanner'),icon=compiler.window.document.getElementById('nativeIcon');
+    compiler.window.eval(source);
+    assert.equal(compiler.window.document.getElementById('nativeFigure'),figure);
+    assert.equal(compiler.window.document.getElementById('nativeBanner'),image);
+    assert.equal(compiler.window.document.getElementById('nativeIcon'),icon);
+    compiled=compiler.serialize();
+  }finally{compiler.window.close();}
+  const hydrated=new JSDOM(compiled,{url:'https://protect.example.test'+path,runScripts:'outside-only'});
+  try{
+    const w=hydrated.window;w.CSS={escape:value=>String(value)};
+    w.LEGEND_PUBLIC_CMS_RENDER_INPUT={siteKey:'protect',document:doc,pageKey:'quote_iul',server:false,publishedMarkupReady:true};
+    const figure=w.document.getElementById('nativeFigure'),image=w.document.getElementById('nativeBanner'),icon=w.document.getElementById('nativeIcon');
+    w.eval(source);
+    assert.equal(w.document.getElementById('nativeFigure'),figure);assert.equal(figure.tagName,'FIGURE');
+    assert.equal(w.document.getElementById('nativeBanner'),image);assert.equal(image.parentElement,figure);
+    assert.equal(w.document.getElementById('nativeIcon'),icon);
+  }finally{hydrated.window.close();}
+
+});
+
+
+for(const [route,key] of [['iul','life'],['life','life'],['term-life','life'],['whole-life','life'],['final-expense','life'],['mortgage-protection','life'],['disability','disability'],['dental-vision-hearing','dvh']])
+  test('shared native and Studio presentation is reversible and capture-safe on '+route,async()=>{
+    const view=nativeViewSources[key],path='/quote/'+route,doc=canonicalDocument();
+    const formTag=view.match(/<form[^>]*data-cms-presentation="quote"[^>]*>/)?.[0].replaceAll('@pageKey','quote_'+route.replaceAll('-','_')).replaceAll('@formKey','quote_'+route.replaceAll('-','_'));
+    assert.ok(formTag);
+    const parsed=new JSDOM(formTag+'</form>'),metadata={...parsed.window.document.querySelector('form').dataset},formId=parsed.window.document.querySelector('form').id;parsed.window.close();
+    const staticEnd=Math.min(...[view.indexOf('@section Scripts'),view.indexOf('<script')].filter(index=>index>=0));
+    const staticView=view.slice(0,staticEnd);
+    const reviewMarkup=staticView.match(new RegExp('<div[^>]*id="'+metadata.cmsReviewId+'"[^>]*>\\s*</div>'))?.[0];
+    assert.ok(reviewMarkup,'review mount must exist in actual cold Razor markup, not a dynamic builder string');
+    if(key==='life'){
+      assert.equal(metadata.cmsReviewId,'lifeStep2EstimateSlot');
+      assert.doesNotMatch(staticView,/id="lifeStep2EstimateSummary"/);
+      assert.equal((staticView.match(/data-cms-progress-label=/g)||[]).length,10);
+    }
+    const goalFirst=view.match(/var usesGoalFirstDiscovery\s*=\s*(true|false);/)?.[1]==='true';
+    const progressLabels=[...(goalFirst?['What matters most','Who depends on this']:['Who depends on this','What matters most']),'Coverage range','Age','Health profile'];
+    const progressText=index=>key==='life'?progressLabels[index-1]+' · '+index+' of 5':'Question '+index+' of 5';
+    const steps=Array.from({length:5},(_,index)=>'<div class="lq-micro-step" data-micro-step="'+index+'" data-cms-native-step="'+index+'" '+(key==='life'?'data-cms-progress-label="'+progressLabels[index]+'" ':'')+(index?'hidden':'')+'><div class="lq-choice-label">Question title '+(index+1)+'</div><input name="answer'+index+'" value="kept'+index+'" required></div>').join('');
+    const html='<!doctype html><html><body><main><div data-protect-form-shell><div id="'+metadata.cmsEntryId+'">Intro</div>'+formTag+'<div id="'+metadata.cmsEducationId+'"><div id="'+metadata.cmsQuestionId+'"><div id="'+metadata.cmsProgressId+'">Native progress</div><span id="'+metadata.cmsProgressFillId+'" style="width:20%"></span><div>'+steps+'</div></div><div id="'+metadata.cmsProcessingId+'" hidden><h2>Processing</h2><span id="'+metadata.cmsProcessingFillId+'"></span></div><div id="'+metadata.cmsContactId+'" hidden>'+reviewMarkup+'<input name="FirstName" value="Kept name" required><input type="hidden" name="Estimate" value="unchanged"></div></div></form></div></main></body></html>';
+    doc.pages[path]={title:route,systemTemplateKey:key==='life'?'protect_template:life_wizard':key==='dvh'?'protect_template:dvh_quote':'protect_template:disability_quote',navigation:{isDeleted:false},composition:[]};
+    let snapshot;
+    const capture=await domFixture({siteKey:'protect',doc,legacyMigration:{},pathname:path,html,search:'?legendEdit=ticket&legendMaterialize=1',beforeEval:w=>{w.postMessage=payload=>{snapshot=payload;};}});
+    try{assert.ok(snapshot?.composition);doc.pages[path].composition=structuredClone(snapshot.composition);}finally{capture.close();}
+    for(const initial of ['question','contact']){
+      let nativeControls,nativeEvents=0,storageWrites=0;
+      const f=await domFixture({siteKey:'protect',doc,pathname:path,html,captureNativePage:true,beforeEval:w=>{
+        nativeControls=[...w.document.querySelectorAll('input')];
+        for(const event of ['input','change','submit'])w.document.getElementById(formId).addEventListener(event,()=>nativeEvents++);
+        w.sessionStorage.setItem('existing-native-state','kept');
+        const set=w.Storage.prototype.setItem;w.Storage.prototype.setItem=function(...args){storageWrites++;return set.apply(this,args);};
+        w.eval('var form=document.getElementById('+JSON.stringify(formId)+');var currentMicroStep=2;'+nativeFunction(view,'presentNativePhase'));
+        assert.equal(w.presentNativePhase(initial,2),false,'inline startup precedes deferred CMS');
+        for(const name of ['showMicroStep','showProcessingBridge','showProcessingThenContact','showStep2','showContactStep'])w[name]=()=>{throw new Error('Studio invoked live quote transition '+name);};
+      }});
+      try{
+        const w=f.w,form=w.document.getElementById(formId),get=key=>w.document.getElementById(metadata[key]);
+        assert.equal(get('cmsContactId').hidden,initial!=='contact');
+        if(initial==='question')assert.equal(get('cmsProgressId').textContent,progressText(3));
+        const before=f.serverDocument(),revision=f.serverRevision(),calls=f.calls.length;
+        const captureBefore=JSON.parse(JSON.stringify(w.__captureNativePage()));
+        const state=()=>[w.document.body,...w.document.querySelectorAll('main [id],main [data-cms-native-step]')].map(element=>({element,hidden:element.hidden,display:element.style.getPropertyValue('display'),priority:element.style.getPropertyPriority('display'),width:element.style.getPropertyValue('width'),started:element.classList.contains(metadata.cmsStartedClass),final:element.classList.contains(metadata.cmsFinalClass),aria:element.getAttribute('aria-hidden'),label:element.getAttribute('aria-label'),text:element.id===metadata.cmsProgressId?element.textContent:null}));
+        const original=state();
+        assert.equal(w.document.querySelectorAll('#legend-cms-form-navigator option').length,10);
+        for(let index=1;index<=5;index++){
+          f.change('#legend-cms-form-navigator select',String(index));
+          assert.equal(get('cmsEntryId').hidden,true);assert.equal(get('cmsEducationId').hidden,false);
+          assert.equal(get('cmsProgressId').textContent,progressText(index));
+          assert.equal(w.document.querySelector('[data-cms-native-step="'+(index-1)+'"]').hidden,false);
+        }
+        f.change('#legend-cms-form-navigator select','6');assert.equal(get('cmsProcessingId').hidden,false);
+        assert.equal(get('cmsProcessingFillId').style.width,'100%');
+        f.change('#legend-cms-form-navigator select','7');assert.equal(get('cmsContactId').hidden,false);
+        assert.match(get('cmsReviewId').textContent,/Illustrative Studio review/);
+        assert.equal(get('cmsReviewId').querySelectorAll(key==='life'?'.lq-contact-preview-mini-metric':'.dq-review-stat').length,key==='life'?2:3);
+        assert.match(get('cmsReviewId').textContent,/Example — not calculated/);
+        assert.deepEqual(JSON.parse(JSON.stringify(w.__captureNativePage())),captureBefore,'active sample/progress never joins canonical capture');
+        assert.equal(f.calls.slice(calls).some(call=>call.method==='POST'),false);
+        const saved=await f.save();assert.deepEqual(saved,before);const afterSaveRevision=f.serverRevision(),afterSaveCalls=f.calls.length;
+        f.change('#legend-cms-form-navigator select','8');assert.equal(get('cmsContactId').hidden,false);
+        w.innerWidth=390;w.dispatchEvent(new w.Event('resize'));await new Promise(resolve=>setTimeout(resolve,20));
+        f.change('#legend-cms-form-navigator select','-1');
+        assert.deepEqual(state(),original);assert.equal(w.document.querySelector('[data-cms-preview-only]'),null);
+        assert.deepEqual([...form.querySelectorAll('input')],nativeControls);
+        assert.deepEqual(nativeControls.map(element=>element.value),['kept0','kept1','kept2','kept3','kept4','Kept name','unchanged']);
+        assert.equal(nativeEvents,0);assert.equal(storageWrites,0);assert.equal(w.sessionStorage.getItem('existing-native-state'),'kept');
+        // f.save above is the one explicit user draft operation, not a preview side effect.
+        assert.equal(f.calls.slice(afterSaveCalls).filter(call=>call.method==='POST').length,0);
+        assert.equal(f.serverRevision(),afterSaveRevision);assert.deepEqual(f.serverDocument(),before);
+      }finally{f.close();}
+    }
+  });
+
+
+test('Protect outer geometry has one adjustable scoped default without new masking overrides',()=>{
+  const shell=publicInquiryFormCss.slice(publicInquiryFormCss.indexOf('/* The eight source-backed Protect quote routes'));
+  assert.match(shell,/width:var\(--web-quote-shell-width,75%\)/);
+  assert.match(shell,/height:auto;min-height:0/);
+  assert.match(shell,/@media\(max-width:1023px\)/);
+  assert.doesNotMatch(shell,/!important|overflow:\s*hidden|max-height:\s*\d/);
+  assert.doesNotMatch(shell,/\.public-form|\.legend-native-experience|\.pcq-form-shell/);
+  for(const key of ['life','disability','dvh']){
+    assert.equal((nativeViewSources[key].match(/data-protect-form-shell/g)||[]).length,1);
+    assert.match(nativeViewSources[key],/data-cms-presentation="quote"/);
+    assert.match(nativeViewSources[key],/LEGEND_NATIVE_FORM_PRESENTATION\?\.apply/);
+    assert.doesNotMatch(nativeViewSources[key],/width:\s*min\(96vw,\s*1480px\)/);
+  }
+  assert.doesNotMatch(nativeViewSources.life,/max-width:\s*(?:980|940)px !important/);
+  assert.match(source,/body\.legend-cms-panel-hidden \.legend-cms-preview\{width:100%\}/);
+});
+
+
+test('non-template and Business native figures retain prior text and data binding behavior',async()=>{
+  const html='<!doctype html><html><body><main><figure id="genericFigure" data-cms-id="generic.figure">Original caption <img src="/image.png" alt="Kept"></figure></main></body></html>';
+  for(const siteKey of ['business','protect']){
+    const f=await domFixture({siteKey,business:siteKey==='business'?{id:'business-id',displayName:'Scoped business'}:null,html,search:'',legacyMigration:{elements:{'generic.figure':{text:'Authored generic caption'}}}});
+    try{
+      const figure=f.w.document.getElementById('genericFigure');assert.equal(figure.textContent,'Authored generic caption');assert.ok(figure.querySelector('img'));
+      f.w.eval('const SITE_KEY='+JSON.stringify(siteKey)+';function pageUsesSystemTemplate(){return false;}function resolveDataBinding(){return "Bound generic caption";}'+nativeFunction(source,'isNativeTemplateFigure')+nativeFunction(source,'setContentText')+nativeFunction(source,'applyDataBinding'));
+      f.w.applyDataBinding(figure,{target:'text'});assert.equal(figure.textContent,'Bound generic caption');assert.ok(figure.querySelector('img'));
+    }finally{f.close();}
+  }
+});
+
+
+test('named Studio breakpoints leave canvas width with the reserved-sidebar CSS owner',async()=>{
+  const doc=canonicalDocument();doc.breakpoints.push({key:'custom',label:'Custom',minWidth:1000,maxWidth:1600,isSystem:false});
+  const f=await domFixture({doc,viewportWidth:1440});
+  try{
+    const canvas=f.w.document.querySelector('.legend-cms-preview');
+    for(const key of ['desktop','tablet','mobile','custom','base']){
+      f.change('#legend-cms-breakpoint',key);
+      assert.equal(canvas.style.width,'','named preview may cap width, never replace sidebar reservation with inline 100%');
+      if(key==='base')assert.equal(canvas.style.maxWidth,'');else assert.match(canvas.style.maxWidth,/px$/);
+      f.w.document.body.classList.add('legend-cms-panel-hidden');
+      f.change('#legend-cms-breakpoint',key);assert.equal(canvas.style.width,'');
+      f.w.document.body.classList.remove('legend-cms-panel-hidden');
+    }
+  }finally{f.close();}
+});
+
+test('shared review markup is a pure native layout with escaped representative values',async()=>{
+  const f=await domFixture();
+  try{
+    const api=f.w.LEGEND_NATIVE_FORM_PRESENTATION;
+    for(const kind of ['life','review']){
+      const wrapper=f.w.document.createElement('div');
+      wrapper.innerHTML=api.reviewMarkup({kind,kicker:'Starting review',title:'Review',copy:'Representative',metrics:[{label:'Range',value:'<img src=x onerror=alert(1)>'}],signal:'<script>not executable</script>'});
+      assert.equal(wrapper.querySelector('img,script'),null);
+      assert.match(wrapper.textContent,/<img src=x/);
+      assert.equal(wrapper.querySelectorAll(kind==='life'?'.lq-contact-preview-mini-metric':'.dq-review-stat').length,1);
+    }
+    for(const key of ['life','disability','dvh'])assert.match(nativeViewSources[key],/LEGEND_NATIVE_FORM_PRESENTATION\?\.reviewMarkup/);
+  }finally{f.close();}
+});
+
+test('supported saved formMaxWidth reaches the opted-in native shell and authored breakpoints retain precedence',async()=>{
+  const path='/quote/life',doc=canonicalDocument();doc.theme={formMaxWidth:720};
+  doc.pages[path]={title:'Life',systemTemplateKey:'protect_template:life_wizard',composition:[canonicalNode('quote.shell','container','div',{children:[canonicalNode('runtime.form.quote_life','container','div',{systemKey:'protect_runtime_form:quote_life'})]})]};
+  const html='<!doctype html><html><head><style>'+publicInquiryFormCss+'</style></head><body><main><div data-protect-form-shell data-cms-id="quote.shell"><form id="lifeWizardForm" data-form-key="quote_life"><input name="FirstName" required></form></div></main></body></html>';
+  const f=await domFixture({siteKey:'protect',doc,pathname:path,html});
+  try{
+    const shell=f.w.document.querySelector('[data-protect-form-shell]'),form=f.w.document.getElementById('lifeWizardForm');
+    assert.match(f.w.getComputedStyle(shell).width,/--web-quote-shell-width/,'the actual opted-in shell uses the supported theme alias');
+    assert.equal(f.w.document.documentElement.style.getPropertyValue('--web-quote-shell-width'),'720px');
+    assert.equal(f.w.getComputedStyle(form).width,'100%');assert.equal(f.w.getComputedStyle(form).maxWidth,'100%','native form fills the opted-in outer owner instead of retaining the old pixel cap');
+    const saved=await f.save();assert.equal(saved.theme.formMaxWidth,720);
+    canonicalNodeById(saved,'quote.shell',path).style={widthPercent:80};
+    canonicalNodeById(saved,'quote.shell',path).breakpointStyles={mobile:{widthPercent:90}};
+    const reloaded=await domFixture({siteKey:'protect',doc:saved,pathname:path,html,search:'',viewportWidth:1280});
+    try{
+      const actual=reloaded.w.document.querySelector('[data-protect-form-shell]');
+      assert.equal(actual.style.width,'80%');assert.equal(reloaded.w.document.documentElement.style.getPropertyValue('--web-quote-shell-width'),'720px');
+      reloaded.w.innerWidth=390;reloaded.w.dispatchEvent(new reloaded.w.Event('resize'));await new Promise(resolve=>setTimeout(resolve,20));
+      assert.equal(actual.style.width,'90%');
+    }finally{reloaded.close();}
+  }finally{f.close();}
+  const unset=await domFixture({siteKey:'protect',doc:{...doc,theme:{formMaxWidth:null}},pathname:path,html});
+  try{assert.equal(unset.w.document.documentElement.style.getPropertyValue('--web-quote-shell-width'),'');}finally{unset.close();}
+});
+
+for(const key of ['life','disability','dvh'])test('changed native '+key+' callers preserve startup and steady-state side-effect ownership',async()=>{
+  const view=nativeViewSources[key],formTag=view.match(/<form[^>]*data-cms-presentation="quote"[^>]*>/)[0].replaceAll('@pageKey','quote_native').replaceAll('@formKey','quote_native');
+  const parsed=new JSDOM(formTag+'</form>'),metadata={...parsed.window.document.querySelector('form').dataset},formId=parsed.window.document.querySelector('form').id;parsed.window.close();
+  const goalFirst=view.match(/var usesGoalFirstDiscovery\s*=\s*(true|false);/)?.[1]==='true';
+  const labels=[...(goalFirst?['What matters most','Who depends on this']:['Who depends on this','What matters most']),'Coverage range','Age','Health profile'];
+  const steps=labels.map((label,index)=>'<div data-cms-native-step="'+index+'" data-micro-step="'+index+'" '+(key==='life'?'data-cms-progress-label="'+label+'" ':'')+(index?'hidden':'')+'><div class="lq-step-question">Question '+index+'</div><input name="answer'+index+'" value="kept'+index+'"></div>').join('');
+  const html='<!doctype html><html><body><main>'+formTag+'<div id="'+metadata.cmsEntryId+'">Intro</div><div id="'+metadata.cmsEducationId+'"><div id="'+metadata.cmsQuestionId+'"><div id="'+metadata.cmsProgressId+'">Progress</div><span id="'+metadata.cmsProgressFillId+'"></span><div>'+steps+'</div></div><div id="'+metadata.cmsProcessingId+'" hidden><span id="'+metadata.cmsProcessingFillId+'"></span></div><div id="'+metadata.cmsContactId+'" hidden><input id="FirstName" name="FirstName" value="Kept"><input type="hidden" name="Estimate" value="untouched"></div></div></form></main></body></html>';
+  for(const sharedPresent of [false,true]){
+    const f=await domFixture({siteKey:'protect',html,legacyMigration:{},search:''});
+    try{
+      const w=f.w,api=w.LEGEND_NATIVE_FORM_PRESENTATION;
+      if(!sharedPresent)delete w.LEGEND_NATIVE_FORM_PRESENTATION;
+      w.nativeEffects={persist:0,track:0,focus:0,render:0,reset:0,transition:0,timer:0,clear:0,scroll:0};
+      w.eval(`var effects=window.nativeEffects,body=document.body,form=document.getElementById(${JSON.stringify(formId)});
+        var heroEntryPanel=document.getElementById(${JSON.stringify(metadata.cmsEntryId)}),educationPanel=document.getElementById(${JSON.stringify(metadata.cmsEducationId)});
+        var step1Panel=document.getElementById(${JSON.stringify(metadata.cmsQuestionId)}),processingPanel=document.getElementById(${JSON.stringify(metadata.cmsProcessingId)}),step2Panel=document.getElementById(${JSON.stringify(metadata.cmsContactId)}),contactPanel=step2Panel;
+        var microSteps=Array.from(form.querySelectorAll('[data-cms-native-step]')),currentMicroStep=0,microStepFocusVersion=0,quoteEntryStarted=false,postSubmitSuccessActive=false,heroTrustStrip=null;
+        var step1Progress=document.getElementById(${JSON.stringify(metadata.cmsProgressId)}),step1ProgressFill=document.getElementById(${JSON.stringify(metadata.cmsProgressFillId)}),progressLabel=step1Progress,progressFill=step1ProgressFill,processingFill=document.getElementById(${JSON.stringify(metadata.cmsProcessingFillId)});
+        var microStepViewEvents=['view0','view1','view2','view3','view4'],contactStepTracked=false,processingTimer=null,pageKey='native',formKey='native';
+        function nativeMicroOrder(){return [0,1,2,3,4];}
+        function persistFunnelState(){effects.persist++;} function trackEvent(){effects.track++;} function track(){effects.track++;}
+        function focusFunnelPanel(){effects.focus++;} function focusCurrentMicroStep(){effects.focus++;}
+        function setStepTransitionState(){effects.transition++;} function resetPostSubmitShell(){effects.reset++;} function renderReviewSummary(){effects.render++;}
+        function trackMicroStepView(){effects.track++;}
+      `);
+      w.setTimeout=()=>{w.nativeEffects.timer++;return w.nativeEffects.timer;};w.clearTimeout=()=>{w.nativeEffects.clear++;};
+      w.document.getElementById(metadata.cmsContactId).scrollIntoView=()=>{w.nativeEffects.scroll++;};
+      const functions=key==='life'?['presentNativePhase','getActivePanelKey','getStepProgressLabel','setQuoteEntryStarted','setFinalContactFocus','setActivePanel','showMicroStep']:['presentNativePhase','setStartedState','setFinalStepState','updateProgress','showMicroStep','showContactStep','showProcessingThenContact'];
+      for(const name of functions)w.eval(nativeFunction(view,name));
+      const values=[...w.document.querySelectorAll('main input')].map(element=>[element,element.value]);
+      if(key==='life'){
+        w.setQuoteEntryStarted(true);w.setActivePanel(w.step1Panel);w.showMicroStep(2,true);
+        assert.deepEqual(w.nativeEffects,{persist:2,track:1,focus:1,render:0,reset:0,transition:1,timer:0,clear:0,scroll:0});
+        assert.equal(w.step1Progress.textContent,'Coverage range · 3 of 5');
+        w.setActivePanel(w.processingPanel);assert.equal(w.processingPanel.hidden,false);assert.equal(w.nativeEffects.persist,3);
+        w.setActivePanel(w.step2Panel);assert.equal(w.step2Panel.hidden,false);assert.equal(w.nativeEffects.persist,4);
+      }else{
+        w.setStartedState(true);w.showMicroStep(2);
+        assert.deepEqual(w.nativeEffects,{persist:0,track:1,focus:1,render:0,reset:1,transition:0,timer:0,clear:0,scroll:0});
+        assert.equal(w.progressLabel.textContent,'Question 3 of 5');
+        w.showContactStep(true);
+        assert.deepEqual(w.nativeEffects,{persist:0,track:3,focus:1,render:1,reset:2,transition:0,timer:1,clear:0,scroll:1});
+        w.showProcessingThenContact();
+        assert.deepEqual(w.nativeEffects,{persist:0,track:4,focus:1,render:1,reset:3,transition:0,timer:2,clear:1,scroll:1});
+        assert.equal(w.processingPanel.hidden,false);
+      }
+      const before={...w.nativeEffects},phase=w.form.dataset.cmsPresentationPhase;
+      w.LEGEND_NATIVE_FORM_PRESENTATION=api;
+      w.nativeFormPresentation=api.apply;w.eval(nativeFunction(source,'syncNativeFormPresentation'));w.syncNativeFormPresentation();
+      assert.deepEqual(w.nativeEffects,before,'deferred/current-phase sync never repeats native collaborators');
+      assert.equal(w.form.dataset.cmsPresentationPhase,phase);assert.equal(w.currentMicroStep,2);
+      for(const [element,value] of values){assert.equal(w.document.querySelector('[name="'+element.name+'"]'),element);assert.equal(element.value,value);}
+      assert.equal(f.calls.some(call=>call.method==='POST'),false);
+    }finally{f.close();}
+  }
+});
+
+for(const key of ['life','disability','dvh'])test('native '+key+' review builder has identical fallback and shared display structure',async()=>{
+  const f=await domFixture();
+  try{
+    const w=f.w,api=w.LEGEND_NATIVE_FORM_PRESENTATION,view=nativeViewSources[key];
+    w.eval(nativeFunction(view,'escapeHtml'));
+    if(key==='life')w.eval(`function normalizeStep2Preview(){return {primary:{},requestedCoverageAmount:100000};} function formatCurrencyRangeCompactForStep2(){return '$100–$200 <example>';}
+      function buildRecommendedCoverageRangeForStep2(){return '$100,000 & more';} function formatCoverageFigureForStep2(){return 'unused';}`);
+    else w.eval(`function readSelectedValue(name){return ({AgeRange:'Age <&>',EmploymentType:'Work <&>',IncomeRange:'Income <&>',CurrentCoverage:'Selected <&>',IncomeProtectionImportance:'Priority',HouseholdSize:'Household <&>',CoverageType:'Coverage <&>',PrimaryConcern:'Priority'})[name] || '';}`);
+    const name=key==='life'?'buildPreSubmitEstimateSummaryHtml':'buildReviewSummaryHtml';w.eval(nativeFunction(view,name));
+    const shared=w[name]({});delete w.LEGEND_NATIVE_FORM_PRESENTATION;const fallback=w[name]({});w.LEGEND_NATIVE_FORM_PRESENTATION=api;
+    const signature=markup=>{
+      const container=w.document.createElement('div');container.innerHTML=markup;
+      const visit=node=>node.nodeType===3?(node.textContent.trim()?{text:node.textContent.trim()}:null):{tag:node.tagName,attributes:[...node.attributes].map(attribute=>[attribute.name,attribute.value]).sort(),children:[...node.childNodes].map(visit).filter(Boolean)};
+      return [...container.childNodes].map(visit).filter(Boolean);
+    };
+    assert.deepEqual(signature(shared),signature(fallback));
+  }finally{f.close();}
 });

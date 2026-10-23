@@ -488,6 +488,108 @@ test('mobile booking placement enforces fullscreen edges and positive contained 
   for(const invalid of [null,{}, {...snapshot,viewport:{width:0,height:757}}, {...snapshot,nodes:{}}, {...snapshot,nodes:{modal:snapshot.nodes.modal}}])assert.throws(()=>assertMobileBookingPlacement(invalid));
 });
 
+function homeFocusOpenReady(document, window) {
+  const hub=document.querySelector('#homeFocusHub'),close=document.querySelector('#homeFocusClose');
+  if(!hub||!close||hub.hidden||!hub.classList.contains('open')||hub.closest('[hidden],[inert],[aria-hidden="true"]'))return false;
+  const style=window.getComputedStyle(hub);
+  return style.display!=='none'&&style.visibility==='visible'&&Number(style.opacity)>0&&
+    hub.getClientRects().length>0&&close.getClientRects().length>0&&document.activeElement===close;
+}
+test('every repeated Home open requires accessible visible surface and exact entry focus',()=>{
+  const close={getClientRects:()=>[{}]},hub={hidden:false,classList:{contains:()=>true},closest:()=>null,getClientRects:()=>[{}]};
+  const document={querySelector:selector=>selector==='#homeFocusHub'?hub:close,activeElement:close};
+  const style={display:'block',visibility:'visible',opacity:'1'},window={getComputedStyle:()=>style};
+  assert.equal(homeFocusOpenReady(document,window),true);
+  for(const blocked of ['hidden','inert','aria-hidden']){hub.closest=()=>({blocked});assert.equal(homeFocusOpenReady(document,window),false);}
+  hub.closest=()=>null;document.activeElement={};assert.equal(homeFocusOpenReady(document,window),false);document.activeElement=close;
+  for(const [key,value] of [['display','none'],['visibility','hidden'],['opacity','0']]){const before=style[key];style[key]=value;assert.equal(homeFocusOpenReady(document,window),false);style[key]=before;}
+  hub.getClientRects=()=>[];assert.equal(homeFocusOpenReady(document,window),false);
+});
+
+test('quote source projection retains exact cold mounts and rejects unknown Razor branches',async()=>{
+  const result=await new Promise(resolve=>execFile('python3',['-c',String.raw`
+import importlib.util,re,sys
+from pathlib import Path
+root=Path(sys.argv[1]);spec=importlib.util.spec_from_file_location('fixture',root/'tests/layout/build-native-component-fixture.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+for view in ['Life','Disability','DentalVisionHearing']:
+ text=(root/('Protect-Website/Views/Quote/'+view+'.cshtml')).read_text()
+ anchor='<div class="lq-hero-shell" data-protect-form-shell>' if view=='Life' else '<div class="dq-shell" data-protect-form-shell>'
+ assert text.count(anchor)==1
+ start=text.index(anchor);end=text.index('<script',start) if view=='Life' else text.index('@section Scripts',start)
+ values,conditions=m.quote_projection_values();markup=m.quote_razor_projection(text[start:end],values,conditions)
+ assert len(re.findall(r'data-cms-native-step="[0-9]+"',markup))==5
+ assert '<figure' in markup and '<svg' in markup and '<img' in markup and '<form' in markup
+ if view=='Life':
+  assert len(re.findall(r'\sid="lifeStep2EstimateSlot"',markup))==1 and 'id="lifeStep2EstimateSummary"' not in markup
+  assert 'data-cms-progress-label="Who depends on this"' in markup and 'data-cms-progress-label="What matters most"' in markup
+ assert m.quote_razor_projection('@if (isLandingView) {first} else if (usesContactFirstShell) {second} else {third}',values,conditions).strip()=='first'
+ assert 'else if (' not in markup
+ for bad in ['@if (unknownBranch) {<span>bad</span>}','@(unknownExpression)','@unknownModelValue','@foreach (var x in unknownOptions) {<span>bad</span>}','@{ var unknown = 1; }']:
+  try:m.quote_razor_projection(bad,values,conditions)
+  except ValueError:pass
+  else:raise AssertionError('Unknown Razor accepted: '+bad)
+print('3 canonical regions;15 unknown-source rejection checks PASS;no browser/assets/Razor execution')
+`,root],{timeout:5000,maxBuffer:4096},(error,stdout,stderr)=>resolve({error,stdout,stderr})));
+  assert.equal(result.error,null,result.stderr||result.error?.message);assert.match(result.stdout,/15 unknown-source rejection checks PASS/);
+});
+
+// Quote checks are source-component geometry, not full Razor route or browser-zoom acceptance.
+function quoteGeometryValid(value, {desktop = true, expectedWidth = null, sidebar = false} = {}) {
+  const rect = r => r && ['x','y','width','height','right','bottom'].every(k=>Number.isFinite(r[k])) && r.width>0 && r.height>0;
+  if (!value || !rect(value.shell) || !rect(value.canvas) || value.style?.display==='none' || value.style?.visibility!=='visible' || (!Number.isFinite(Number(value.style?.opacity))||Number(value.style?.opacity)<=0)) return false;
+  const s=value.shell,c=value.canvas;
+  if (s.x<c.x-1 || s.right>c.right+1 || value.overflow>1) return false;
+  if (desktop && (Math.abs(s.width-(expectedWidth??c.width*.75))>1 || Math.abs((s.x+s.right)-(c.x+c.right))>2)) return false;
+  if (sidebar && (!rect(value.panel) || (s.right>value.panel.x+1 && s.x<value.panel.right-1))) return false;
+  return true;
+}
+
+test('quote geometry rejects missing, clipped, hidden, wrong-width and overlapping source components',()=>{
+  const good={shell:{x:150,y:18,width:900,height:400,right:1050,bottom:418},canvas:{x:0,y:0,width:1200,height:900,right:1200,bottom:900},panel:{x:1200,y:0,width:384,height:900,right:1584,bottom:900},style:{display:'block',visibility:'visible',opacity:'1'},overflow:0};
+  assert.equal(quoteGeometryValid(good,{sidebar:true}),true);
+  for(const change of [{shell:null},{overflow:2},{style:{...good.style,visibility:'hidden'}},{shell:{...good.shell,width:899-1}},{panel:{...good.panel,x:1000}}])assert.equal(quoteGeometryValid({...good,...change},{sidebar:true}),false);
+  assert.equal(quoteGeometryValid({...good,shell:{...good.shell,x:240,width:720,right:960}},{expectedWidth:720,sidebar:true}),true);
+});
+
+function quotePhaseValid(p,index) {
+  if(!p || p.selected!==String(index) || !Array.isArray(p.steps) || p.steps.length!==5) return false;
+  const question=index>=1&&index<=5, final=index>=7;
+  if(p.entry!==(index===0)||p.question!==question||p.processing!==(index===6)||p.contact!==final) return false;
+  if(question && (!Array.isArray(p.labels)||p.steps.some((v,i)=>v!==(i===index-1)) || p.progress!==(p.labels[index-1]?p.labels[index-1]+' · '+index+' of 5':'Question '+index+' of 5')))return false;
+  if(!question&&p.steps.some(Boolean))return false;
+  return !final || (p.review&&p.sample&&p.illustrative&&Number.isInteger(p.expectedMetrics)&&p.expectedMetrics>0&&p.metrics===p.expectedMetrics);
+}
+test('quote phase policy rejects noop navigation, hidden active steps, wrong progress and missing real review',()=>{
+  const question={selected:'1',entry:false,question:true,processing:false,contact:false,steps:[true,false,false,false,false],labels:['Who','Goal','Range','Age','Health'],progress:'Who · 1 of 5'};
+  assert.equal(quotePhaseValid(question,1),true);
+  for(const delta of [{selected:'0'},{question:false},{steps:[true,true,false,false,false]},{progress:'Who · 2 of 5'}])assert.equal(quotePhaseValid({...question,...delta},1),false);
+  assert.equal(quotePhaseValid({...question,labels:Array(5).fill(null),progress:'Question 1 of 5'},1),true);
+  assert.equal(quotePhaseValid({...question,labels:Array(5).fill(null),progress:'Wrong question'},1),false);
+  const review={selected:'7',entry:false,question:false,processing:false,contact:true,steps:Array(5).fill(false),review:true,sample:true,illustrative:true,metrics:2,expectedMetrics:2};
+  assert.equal(quotePhaseValid(review,7),true);
+  assert.equal(quotePhaseValid({...review,metrics:3,expectedMetrics:3},7),true);
+  assert.equal(quotePhaseValid({...review,metrics:2,expectedMetrics:3},7),false);
+  for(const delta of [{review:false},{sample:false},{illustrative:false},{metrics:0}])assert.equal(quotePhaseValid({...review,...delta},7),false);
+});
+
+const quoteSnapshotScript = `
+const box=e=>{if(!e)return null;const r=e.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom};};
+const shell=document.querySelector('[data-protect-form-shell]'),canvas=document.querySelector('.legend-cms-preview')||document.documentElement,panel=document.querySelector('.legend-cms-panel');
+const css=shell?getComputedStyle(shell):null;const outer=canvas.getBoundingClientRect(),canvasCss=getComputedStyle(canvas),pl=parseFloat(canvasCss.paddingLeft)||0,pr=parseFloat(canvasCss.paddingRight)||0;const canvasBox={x:outer.x+canvas.clientLeft+pl,y:outer.y+canvas.clientTop,width:canvas.clientWidth-pl-pr,height:canvas.clientHeight};canvasBox.right=canvasBox.x+canvasBox.width;canvasBox.bottom=canvasBox.y+canvasBox.height;
+const form=document.querySelector('main form[data-cms-presentation]'),visible=e=>!!(e&&e.getClientRects().length&&getComputedStyle(e).visibility==='visible'&&Number(getComputedStyle(e).opacity)>0),find=key=>document.getElementById(form?.dataset[key]||'');
+const steps=[...document.querySelectorAll('main [data-cms-native-step]')];
+const phase={selected:document.querySelector('#legend-cms-form-navigator select')?.value,entry:visible(find('cmsEntryId')),question:visible(find('cmsQuestionId')),processing:visible(find('cmsProcessingId')),contact:visible(find('cmsContactId')),review:visible(find('cmsReviewId')),steps:steps.map(n=>visible(n)),progress:find('cmsProgressId')?.textContent,labels:steps.map(n=>n.dataset.cmsProgressLabel),sample:!!find('cmsReviewId')?.querySelector('[data-cms-preview-only]'),illustrative:find('cmsReviewId')?.textContent.includes('Illustrative Studio review — not a quote'),expectedMetrics:(form?.dataset.cmsReviewMetrics||'').split('|').filter(Boolean).length,metrics:find('cmsReviewId')?.querySelectorAll('.lq-contact-preview-mini-metric,.dq-review-stat').length};
+return {phase,shell:box(shell),canvas:canvasBox,panel:box(panel),style:css?{display:css.display,visibility:css.visibility,opacity:css.opacity}:null,
+overflow:Math.max(0,canvas.scrollWidth-canvas.clientWidth),viewport:{width:innerWidth,height:innerHeight},
+errors:window.__quoteErrors,requests:window.__quoteRequests,inputDocumentUnchanged:JSON.stringify(window.__quoteDocumentObject)===window.__quoteDocument,
+identity:(window.__quoteOriginalNodes||[]).every(n=>n.isConnected),duplicateIds:[...document.querySelectorAll('main [id]')].map(n=>n.id).filter((id,i,a)=>a.indexOf(id)!==i).slice(0,10),
+images:[...document.querySelectorAll('main img')].map(n=>({loaded:n.complete&&n.naturalWidth>0,src:n.getAttribute('src')})),
+nativeSteps:document.querySelectorAll('main [data-cms-native-step]').length,
+phaseOptions:[...document.querySelectorAll('#legend-cms-form-navigator select option')].map(n=>n.value),
+canvasScrollTop:canvas.scrollTop,
+panelHidden:document.body.classList.contains('legend-cms-panel-hidden'),
+controls:[...document.querySelectorAll('main button,main input:not([type=hidden]),main select')].filter(e=>e.getClientRects().length&&getComputedStyle(e).visibility==='visible').slice(0,40).map(e=>({rect:box(e),disabled:e.disabled}))};`;
+
 test('actual canonical frontend components render in the existing sandboxed CI browser', {timeout:160000}, async t => {
   const start = Date.now();
   const deadline = start + 160000;
@@ -498,9 +600,10 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.ok(value > 10000, 'Native render budget exhausted; reserve cleanup time');
     return value - 10000;
   };
-  let manifest,chromeVersion,driverVersion,checked,driverBindings,versionProbeFailure,scrollDiagnostic,localeDiagnostic,placementDiagnostic;
-  const requiredScenarios=[...hosts.flatMap(host=>widths.map(width=>'viewport:'+host+':'+width)),'modal-order-and-wrap','locale-month-rollover','long-profile-and-offset','live-mobile-boundary','client-home-focus'];
+  let manifest,chromeVersion,driverVersion,checked,driverBindings,versionProbeFailure,scrollDiagnostic,localeDiagnostic,placementDiagnostic,lifecycleDiagnostic,quoteDiagnostic;
+  const requiredScenarios=[...hosts.flatMap(host=>widths.map(width=>'viewport:'+host+':'+width)),'modal-order-and-wrap','locale-month-rollover','long-profile-and-offset','live-mobile-boundary','client-home-focus',...['life','disability','dental-vision-hearing'].map(route=>'quote-source:'+route),'quote-responsive-studio'];
   const completedScenarios=new Set();
+  const quoteRecords=[];
   const records=[]; let acceptanceComplete=false; let failure; let server,driver,session,driverOrigin; let serverHost; let driverLog='';
   const rejected=[];
   let cleanupPromise;
@@ -560,6 +663,17 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.equal(hash(bytes),manifest.outputs[host+'.html']);
     routes.set('/'+host+'.html',bytes);
   }
+  assert.equal(Object.keys(manifest.quotes.routes).length,3,'Three source-template component projections required');
+  assert.equal(manifest.quotes.routeMapping.length,8,'Eight source route mappings required (not eight rendered route proofs)');
+  for(const [route,file] of Object.entries(manifest.quotes.routes)) {
+    assert.match(route,/^\/quote\/[a-z-]+$/);assert.match(file,/^quote-[a-z-]+\.html$/);
+    const bytes=await readFile(path.join(dir,file));assert.equal(hash(bytes),manifest.outputs[file]);
+    for(const query of ['?legendEdit=ticket&legendMaterialize=1','?legendEdit=ticket','?legendEdit=ticket&width=720','?public=1','?public=1&width=720'])routes.set(route+query,bytes);
+  }
+  for(const [route,file] of Object.entries(manifest.quotes.assets)) {
+    assert.match(route,/^\/images\/ads\/[a-z-]+\.png$/);assert.match(file,/^quote-asset-[a-z-]+\.png$/);
+    const bytes=await readFile(path.join(dir,file));assert.equal(hash(bytes),manifest.outputs[file]);routes.set(route,bytes);
+  }
   const chrome = '/usr/bin/google-chrome';
   const driverBinary = process.env.CHROMEWEBDRIVER ? path.join(process.env.CHROMEWEBDRIVER,'chromedriver') : 'chromedriver';
   chromeVersion=await binaryVersion(chrome,remaining,setupAbort.signal);driverVersion=await binaryVersion(driverBinary,remaining,setupAbort.signal);
@@ -569,7 +683,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
       if(!allowedRequest(req,serverHost,routes)){
         rejected.push({method:req.method,url:req.url,host:req.headers.host});res.writeHead(404);res.end();return;
       }
-      res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(routes.get(req.url));
+      res.writeHead(200,{'Content-Type':req.url.endsWith('.png')?'image/png':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(routes.get(req.url));
     });
     server.requestTimeout=2000;server.headersTimeout=2000;server.keepAliveTimeout=500;
     await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
@@ -690,6 +804,34 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     await execute(`document.querySelector('#fixtureLowerModal').removeEventListener('hide.bs.modal',window.__cancelHide);`);
     await click('#fixtureLowerModal [data-bs-dismiss="modal"]');await waitFor("!document.querySelector('#fixtureLowerModal').classList.contains('show')");
     assert.deepEqual(await execute('return window.__fixtureErrors'),[]);
+    // Component-level sheet lifecycle: real pointer/Enter openers and booking
+    // controls, shared controller unchanged; not an authenticated CRM data flow.
+    await execute(`const opener=document.createElement('button');opener.id='fixtureSheetOpener';opener.type='button';opener.textContent='Open synthetic sheet';document.body.append(opener);const sheet=document.createElement('aside');sheet.id='fixtureFocusSheet';sheet.setAttribute('data-legend-mobile-sheet','');sheet.setAttribute('aria-hidden','true');sheet.style.cssText='display:none;position:fixed;inset:24px;background:white;z-index:5100';sheet.innerHTML='<button type="button" id="fixtureSheetBooking" data-qv-booking-open>Open booking</button><button type="button" id="fixtureSheetClose" data-legend-sheet-close>Close sheet</button>';document.body.append(sheet);opener.addEventListener('click',()=>{sheet.style.display='block';sheet.setAttribute('aria-hidden','false');sheet.classList.add('open');});sheet.querySelector('#fixtureSheetClose').addEventListener('click',()=>{sheet.classList.remove('open');sheet.setAttribute('aria-hidden','true');sheet.style.display='none';});`);
+    await waitFor("document.querySelector('#fixtureFocusSheet').dataset.legendSheetOpen==='false'");
+    for(const width of [1180,393]){
+      await command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setDeviceMetricsOverride',params:{width,height:757,deviceScaleFactor:1,mobile:false}});
+      for(const activation of ['pointer','Enter']){
+        lifecycleDiagnostic={scenario:'modal-order-and-wrap',phase:'sheet-open',width,activation};
+        if(activation==='pointer')await click('#fixtureSheetOpener');
+        else {assert.equal(await execute("return document.activeElement.id"),'fixtureSheetOpener');await keys(['\uE007']);}
+        await waitFor("document.querySelector('#fixtureFocusSheet').dataset.legendSheetOpen==='true'");
+        assert.equal(await execute("return document.querySelector('#fixtureFocusSheet').hasAttribute('data-legend-modal-surface')"),false,'Sheet focus must not register modal geometry');
+        lifecycleDiagnostic.phase='nested-booking';
+        const shownBefore=await execute("return window.__shown.filter(id=>id==='qvBookingModal').length");
+        await click('#fixtureSheetBooking');
+        await waitFor("document.querySelector('#qvBookingModal').classList.contains('show')&&window.__shown.filter(id=>id==='qvBookingModal').length>"+shownBefore);
+        await waitFor(`(${bookingDialogSettled.toString()})(document)`);
+        await keys(['\uE00C']);
+        await waitFor("!document.querySelector('#qvBookingModal').classList.contains('show')&&document.activeElement.id==='fixtureSheetBooking'");
+        lifecycleDiagnostic.phase='sheet-close';
+        await click('#fixtureSheetClose');
+        await waitFor("document.querySelector('#fixtureFocusSheet').dataset.legendSheetOpen==='false'&&document.activeElement.id==='fixtureSheetOpener'");
+      }
+    }
+    lifecycleDiagnostic=undefined;
+    await command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setDeviceMetricsOverride',params:{width:1180,height:757,deviceScaleFactor:1,mobile:false}});
+    await execute("document.querySelector('#fixtureFocusSheet').remove();document.querySelector('#fixtureSheetOpener').remove()");
+    assert.deepEqual(await execute('return window.__fixtureErrors'),[],'Fixture errors in nested sheet focus');
     completedScenarios.add('modal-order-and-wrap');
     console.log('NATIVE_MODAL_ORDER PASS actual shown priority,forward/reverse boundary wraps,top-only Escape,focus restoration,cancelled hide,native close');
     // Locale and year rollover use the shipped Intl/calendar handlers unchanged.
@@ -759,25 +901,123 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     completedScenarios.add('long-profile-and-offset');
     await command('POST','/session/'+session+'/url',{url:'http://'+serverHost+'/client.html'});
     await command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setDeviceMetricsOverride',params:{width:1180,height:757,deviceScaleFactor:1,mobile:false}});
-    await click('.home-focus-trigger');await waitFor("document.querySelector('#homeFocusHub').classList.contains('open')&&document.querySelector('#homeFocusHub').contains(document.activeElement)");
+    const openHome=async phase=>{
+      lifecycleDiagnostic={scenario:'client-home-focus',phase};
+      await click('.home-focus-trigger');await waitFor(`(${homeFocusOpenReady.toString()})(document,window)`);
+    };
+    const homeClosed="document.querySelector('#homeFocusHub').hidden&&document.activeElement.matches('.home-focus-trigger')";
+    await openHome('initial');
     assert.equal(await execute("return document.querySelector('#homeFocusTitle').textContent"),'Synthetic Focus Area');
-    await click('#homeFocusDismiss');await waitFor("document.querySelector('#homeFocusHub').hidden&&document.activeElement.matches('.home-focus-trigger')");
-    await click('.home-focus-trigger');await waitFor("document.querySelector('#homeFocusHub').classList.contains('open')");
-    await keys(['\uE00C']);await waitFor("document.querySelector('#homeFocusHub').hidden&&document.activeElement.matches('.home-focus-trigger')");
-    await click('.home-focus-trigger');await waitFor("document.querySelector('#homeFocusHub').classList.contains('open')");
-    await click('#homeFocusClose');await waitFor("document.querySelector('#homeFocusHub').hidden&&document.activeElement.matches('.home-focus-trigger')");
+    await click('#homeFocusDismiss');await waitFor(homeClosed);
+    await openHome('after-dismiss');await keys(['\uE00C']);await waitFor(homeClosed);
+    await openHome('after-Escape');await click('#homeFocusClose');await waitFor(homeClosed);
+    await openHome('after-explicit-Close');
+    await command('POST','/session/'+session+'/actions',{actions:[{type:'key',id:'keyboard',actions:[{type:'keyDown',value:'\uE008'},{type:'keyDown',value:'\uE004'},{type:'keyUp',value:'\uE004'},{type:'keyUp',value:'\uE008'}]}]});
+    assert.equal(await execute('return document.activeElement.id'),'homeFocusDismiss');
+    await keys(['\uE007']);await waitFor(homeClosed);
+    await openHome('after-keyboard-Back-To-Home');await click('#homeFocusClose');await waitFor(homeClosed);
+    lifecycleDiagnostic=undefined;
     assert.deepEqual(await execute('return window.__fixtureErrors'),[],'Fixture errors in client-home-focus');
     completedScenarios.add('client-home-focus');
     assert.equal(records.length,hosts.length*widths.length,'Missing required viewport/host case');
     // No unknown HTTP requests: favicon is deliberately not a served route either.
     assert.deepEqual(rejected.filter(x=>x.url!=='/favicon.ico'),[],'Unexpected browser requests');
+    // Existing 38 cases remain mandatory. These additional cases use actual source
+    // components and the shipped editor's own materializer/navigation, not a Razor server.
+    const quoteRoutes=Object.keys(manifest.quotes.routes);
+    const metrics=async(width,height=932)=>command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setDeviceMetricsOverride',params:{width,height,deviceScaleFactor:1,mobile:false}});
+    const quoteGo=async(route,query)=>{
+      await command('POST','/session/'+session+'/url',{url:'http://'+serverHost+route+query});
+      if(query.includes('legendMaterialize'))await waitFor('window.__quoteMaterialized!==null');
+      else if(query.includes('public=1'))await waitFor('window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE===true');
+      else await waitFor("document.querySelector('#legend-cms-form-navigator select')?.options.length===10");
+      await waitFor("[...document.querySelectorAll('main img')].every(n=>n.complete&&n.naturalWidth>0)");
+    };
+    const inspectQuote=async(label,options={})=>{
+      const value=await execute(quoteSnapshotScript);quoteDiagnostic={label,...value};
+      assert.ok(quoteGeometryValid(value,options),'Quote component geometry: '+JSON.stringify(quoteDiagnostic));
+      assert.deepEqual(value.errors,[],'Quote fixture/runtime errors');assert.ok(value.requests.every(r=>r.method==='GET'),'Quote fixture must never submit/save/publish');
+      assert.ok(value.controls.every(c=>c.rect.width>0&&c.rect.x>=value.canvas.x-1&&c.rect.right<=value.canvas.right+1&&(!options.sidebar||c.rect.right<=value.panel.x+1)),'Visible native control clipped or beneath sidebar');
+      assert.equal(value.inputDocumentUnchanged,true,'Offline input document object changed (internal CMS preservation covered by website contract suite)');assert.equal(value.identity,true,'Native form/media node identity replaced');
+      assert.deepEqual(value.duplicateIds,[],'Duplicate native IDs after reapply');assert.equal(value.nativeSteps,5);
+      assert.ok(value.images.length>0&&value.images.every(i=>i.loaded),'Actual native banner assets required');
+      quoteRecords.push({label,shell:value.shell,canvas:value.canvas,panel:value.panel,viewport:value.viewport,requestCount:value.requests.length});
+      return value;
+    };
+    const publicAtCanvas=async(route,targetWidth,label)=>{
+      await metrics(Math.round(targetWidth));await quoteGo(route,'?public=1');
+      let measured=await execute(quoteSnapshotScript);
+      // One bounded setup correction for an actual classic scrollbar, not a
+      // style override or repeated search for a passing width.
+      if(Math.abs(measured.canvas.width-targetWidth)>1){
+        const adjusted=Math.round(measured.viewport.width+targetWidth-measured.canvas.width);
+        assert.ok(adjusted>=targetWidth&&adjusted<=targetWidth+40,'Unexpected public canvas chrome delta');
+        await metrics(adjusted);await quoteGo(route,'?public=1');
+      }
+      const value=await inspectQuote(label,{desktop:targetWidth>=1024});
+      assert.ok(Math.abs(value.canvas.width-targetWidth)<=1,'Effective public/Studio canvas width mismatch');
+      return value;
+    };
+    for(const route of quoteRoutes){
+      await metrics(1440);await quoteGo(route,'?legendEdit=ticket&legendMaterialize=1');
+      await quoteGo(route,'?legendEdit=ticket');
+      const baseline=await inspectQuote(route+':1440:base',{sidebar:true});
+      for(let phase=0;phase<9;phase++){
+        await click('#legend-cms-form-navigator select option[value="'+phase+'"]');
+        const snap=await inspectQuote(route+':1440:phase:'+phase,{sidebar:true});
+        assert.ok(quotePhaseValid(snap.phase,phase),'Actual source phase failed: '+JSON.stringify(snap.phase));
+        assert.ok(Math.abs((snap.shell.y-snap.canvas.y+snap.canvasScrollTop)-(baseline.shell.y-baseline.canvas.y+baseline.canvasScrollTop))<=1,'Quote phase moved outer shell offset');
+      }
+      // Return to source-authored cold presentation before comparing with public.
+      await click('#legend-cms-form-navigator select option[value="-1"]');
+      const studio=await inspectQuote(route+':1440:restored',{sidebar:true});
+      const publicValue=await publicAtCanvas(route,studio.canvas.width,route+':equal-canvas-public');
+      assert.ok(Math.abs(publicValue.shell.width-studio.shell.width)<=1,'Public/Studio equal-canvas shell width differs');
+      completedScenarios.add('quote-source:'+route.split('/').at(-1));
+    }
+    for(const route of ['/quote/life','/quote/disability','/quote/dental-vision-hearing']){
+      for(const width of [1920,1214]){
+        await metrics(width);await quoteGo(route,'?legendEdit=ticket');
+        const before=await inspectQuote(route+':'+width+':base',{desktop:width-384>=1024,sidebar:true});
+        await click('[data-editor-viewport="desktop"]');
+        await inspectQuote(route+':'+width+':desktop',{desktop:before.canvas.width>=1024,sidebar:true});
+        await click('#legend-cms-form-navigator select option[value="8"]');
+        await click('[data-open="advanced"]');await click('[data-open="layout"]');
+        await click('#legend-cms-breakpoint option[value="fixture-wide"]');
+        await inspectQuote(route+':'+width+':named',{desktop:before.canvas.width>=1024,sidebar:true});
+        await click('#legend-cms-breakpoint option[value="base"]');
+        await click('#legend-cms-panel-toggle');
+        const hidden=await inspectQuote(route+':'+width+':sidebar-hidden',{desktop:true});assert.equal(hidden.panelHidden,true);
+        await click('#legend-cms-panel-toggle');
+        const restored=await inspectQuote(route+':'+width+':sidebar-restored',{desktop:before.canvas.width>=1024,sidebar:true});
+        assert.ok(Math.abs(restored.shell.width-before.shell.width)<=1,'Sidebar toggle changed source shell width');
+        const publicValue=await publicAtCanvas(route,before.canvas.width,route+':'+width+':equal-canvas-public');
+        assert.ok(Math.abs(publicValue.shell.width-before.shell.width)<=1,'Public/Studio equal-canvas responsive width differs');
+      }
+      await metrics(1440);await quoteGo(route,'?legendEdit=ticket&width=720');
+      await inspectQuote(route+':tenant720',{sidebar:true,expectedWidth:720});
+      // Effective viewport reduction exercises reflow, NOT actual 200% browser zoom.
+      for(const [width,height] of [[607,466],[393,500]]){
+        await metrics(width,height);await quoteGo(route,'?legendEdit=ticket');
+        await click('#legend-cms-form-navigator select option[value="8"]');
+        await click('#legend-cms-panel-toggle');
+        await waitFor("document.body.classList.contains('legend-cms-panel-hidden')");
+        const small=await inspectQuote(route+':small-canvas:'+width,{desktop:false});
+        assert.ok(quotePhaseValid(small.phase,8),'Small fallback must expose actual Contact phase');
+        const reachable=await execute(`const c=document.querySelector('.legend-cms-preview');const controls=[...document.querySelectorAll('main form button[type=submit]')].filter(e=>e.getClientRects().length&&getComputedStyle(e).visibility==='visible'&&!e.disabled);const last=controls.at(-1);if(!last)return null;last.scrollIntoView({block:'center',inline:'nearest'});const r=last.getBoundingClientRect(),b=c.getBoundingClientRect();return {x:r.x,right:r.right,y:r.y,bottom:r.bottom,left:b.x,canvasRight:b.right,top:b.y,canvasBottom:b.bottom,scroll:c.scrollTop};`);
+        assert.ok(reachable&&reachable.x>=reachable.left-1&&reachable.right<=reachable.canvasRight+1&&reachable.bottom>reachable.top&&reachable.y<reachable.canvasBottom,'Essential source control unreachable after native scroll');
+      }
+    }
+    assert.deepEqual(rejected,[],'No unexpected HTTP after quote scenarios');
+    completedScenarios.add('quote-responsive-studio');
+
     requireCompleteScenarios(requiredScenarios,completedScenarios);
     acceptanceComplete=true;
-  } catch(error) {if(placementDiagnostic)console.log('NATIVE_MOBILE_PLACEMENT_FAILURE '+JSON.stringify(placementDiagnostic));if(scrollDiagnostic)console.log('NATIVE_SCROLL_FAILURE '+JSON.stringify(scrollDiagnostic));commandFailure=error.commandFailure;versionProbeFailure=error.versionProbe;failure=String(error.stack||error);throw error;} finally {
+  } catch(error) {if(lifecycleDiagnostic){try{lifecycleDiagnostic.state=await execute(`return {activeId:document.activeElement?.id||'',surfaces:['homeFocusHub','fixtureFocusSheet','qvBookingModal'].map(id=>{const e=document.getElementById(id);return e?{id,hidden:e.hidden,ariaHidden:e.getAttribute('aria-hidden'),open:e.classList.contains('open'),show:e.classList.contains('show'),rects:e.getClientRects().length}:null})}`);}catch{lifecycleDiagnostic.snapshotUnavailable=true;}console.log('NATIVE_LIFECYCLE_FAILURE '+JSON.stringify(lifecycleDiagnostic));}if(placementDiagnostic)console.log('NATIVE_MOBILE_PLACEMENT_FAILURE '+JSON.stringify(placementDiagnostic));if(scrollDiagnostic)console.log('NATIVE_SCROLL_FAILURE '+JSON.stringify(scrollDiagnostic));commandFailure=error.commandFailure;versionProbeFailure=error.versionProbe;failure=String(error.stack||error);throw error;} finally {
     clearTimeout(watchdog);let cleanupError;
     try{await cleanup();}catch(error){cleanupError=error;acceptanceComplete=false;failure=(failure||'')+' Cleanup failed: '+error.message;}
     removeCancellation();
-    const report={status:acceptanceComplete?'PASS':'INCOMPLETE_OR_FAILED',failure,versionProbeFailure,commandFailure,scrollDiagnostic,localeDiagnostic,placementDiagnostic,checkout:manifest?.checkout,nodeVersion:process.version,driverBindings,requiredScenarios,completedScenarios:[...completedScenarios],image:process.env.ImageVersion,chromeVersion,driverVersion,manifest,completed:records.length,required:hosts.length*widths.length,records,limits:['Component fixture; no Razor/server/authentication/business/API proof','System font fallback; no pixel-identical production claim','Live journeys and native safe-area device inset remain required']};
+    const report={status:acceptanceComplete?'PASS':'INCOMPLETE_OR_FAILED',failure,versionProbeFailure,commandFailure,scrollDiagnostic,localeDiagnostic,placementDiagnostic,lifecycleDiagnostic,quoteDiagnostic,quoteRecords,checkout:manifest?.checkout,nodeVersion:process.version,driverBindings,requiredScenarios,completedScenarios:[...completedScenarios],image:process.env.ImageVersion,chromeVersion,driverVersion,manifest,completed:records.length,required:hosts.length*widths.length,records,limits:['Component fixture; no Razor/server/authentication/business/API proof','System font fallback; no pixel-identical production claim','Live journeys and native safe-area device inset remain required']};
     console.log('NATIVE_COMPONENT_REPORT '+JSON.stringify(report));
     if(process.env.GITHUB_STEP_SUMMARY)await appendFile(process.env.GITHUB_STEP_SUMMARY,'\nNative component rendering: '+records.length+'/'+hosts.length*widths.length+' cases completed. Checkout '+(manifest?.checkout||'UNPROVEN')+'. See job log for exact inputs and assertions.\n');
     if(cleanupError)throw cleanupError;

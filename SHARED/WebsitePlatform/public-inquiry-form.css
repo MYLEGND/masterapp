@@ -239,3 +239,26 @@ form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inq
   .public-form .btn.primary[data-legend-inquiry-state="sending"]::before,
   .legend-native-experience button[type="submit"][data-legend-inquiry-state="sending"]::before{animation:none}
 }
+
+
+/* The eight source-backed Protect quote routes opt into one OUTER geometry.
+   The 75% desktop size is a default, not a new cap on authored node/breakpoint
+   sizing. Existing site theme and inline canonical presentation keep precedence.
+   Inner inquiry/business forms do not inherit this shell contract. */
+main:has(> [data-protect-form-shell]){width:100%;max-width:none;margin:0;padding:0}
+[data-protect-form-shell]{
+  box-sizing:border-box;width:var(--web-quote-shell-width,75%);max-width:100%;min-width:0;
+  margin:var(--web-quote-shell-top-gap,18px) auto var(--web-quote-shell-bottom-gap,24px);
+  padding:0;height:auto;min-height:0
+}
+[data-protect-form-shell] .lq-container{width:100%;max-width:none;min-width:0;margin:0;padding:0}
+[data-protect-form-shell] .lq-hero-shell{width:100%;max-width:none;min-width:0;margin:0;padding:0}
+[data-protect-form-shell] .dq-surface{padding:0}
+[data-protect-form-shell] form[data-form-key]{width:100%;max-width:none;min-width:0}
+[data-protect-form-shell] :is(.lq-hero-rail,.dq-hero-entry){padding:var(--web-form-panel-padding)}
+[data-protect-form-shell] :is(.lq-step-panel,.lq-contact-first-form-surface,.lq-contact-first-flow-surface){height:auto;min-height:0}
+@media(max-width:1023px){
+  [data-protect-form-shell]{width:var(--web-quote-shell-width,calc(100% - 32px));max-width:calc(100% - 32px)}
+}
+/* No fixed-height clipping or hidden essential overflow: small windows, larger
+   text and zoom retain the browser's ordinary accessible scrolling fallback. */

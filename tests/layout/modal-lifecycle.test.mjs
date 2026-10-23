@@ -125,3 +125,81 @@ test('actual bound shown handler followed by shared shown handler preserves top 
   vm.runInContext(source.slice(start,source.indexOf('\n    });',start)+7),f.context);
   shown({target:booking});assert.equal(booking.style.zIndex,'5220');assert.equal(booking.style.getPropertyValue('--legend-modal-stack'),'5220');assert.equal(f.context.topModalSurface(),booking);
 });
+
+function sheetFixture(){
+  const f=fixture(),sheet=f.element('sheet',f.body);
+  sheet.dataset={legendSheetOpen:'false'};sheet.open=false;
+  sheet.matches=selector=>selector==='[data-legend-mobile-sheet]';
+  sheet.classList={contains:name=>name==='open'&&sheet.open};
+  f.context.setMobileSheetSnap=()=>{};
+  vm.runInContext(implementation('syncMobileSheetState'),f.context);
+  return {...f,sheet,sync:()=>f.context.syncMobileSheetState(sheet)};
+}
+test('custom fallback hides without poisoning feature-owned reopen or authored aria',()=>{
+  for(const aria of [null,'false','true']){
+    const f=fixture(),s=f.surface('custom'),opener=f.element('opener',f.body),close=f.control('close',s);
+    if(aria!==null)s.setAttribute('aria-hidden',aria);
+    s.classList={remove(){s.open=false;},contains:name=>name==='open'&&s.open};s.matches=()=>false;s.dispatchEvent=()=>{};
+    f.context.CustomEvent=function(){};f.context.syncModalSurfaceState=()=>{};
+    vm.runInContext(implementation('closeSurfaceFallback'),f.context);
+    vm.runInContext(implementation('surfaceOpen'),f.context);
+    f.context.closeSurfaceFallback(s);
+    assert.equal(s.hidden,true);assert.equal(s.getAttribute('aria-hidden'),aria);
+    s.hidden=false;s.open=true;
+    assert.equal(f.context.surfaceOpen(s),aria!=='true');
+    if(aria!=='true'){
+      f.document.activeElement=opener;f.context.beginModalFocus(s);f.flush();assert.equal(f.document.activeElement,close);
+    }
+  }
+});
+test('fallback preserves hidden aria and inert ancestor restrictions on reopen',()=>{
+  for(const restriction of ['hidden','aria-hidden','inert']){
+    const f=fixture(),parent=f.element('restricted',f.body),s=f.surface('custom',5200,parent),close=f.control('close',s);
+    parent.setAttribute(restriction,restriction==='aria-hidden'?'true':'');
+    s.matches=()=>false;s.classList={contains:()=>true};
+    vm.runInContext(implementation('surfaceOpen'),f.context);
+    assert.equal(f.context.focusModalNode(close),false);
+    if(restriction!=='inert')assert.equal(f.context.surfaceOpen(s),false);
+    assert.equal(parent.hasAttribute(restriction),true);
+  }
+});
+test('fallback retains sheet aria contract and Bootstrap native delegation',()=>{
+  const f=fixture(),sheet=f.element('sheet',f.body);sheet.matches=s=>s==='[data-legend-mobile-sheet]';
+  sheet.classList={remove(){}};sheet.dispatchEvent=()=>{};f.context.CustomEvent=function(){};f.context.syncModalSurfaceState=()=>{};
+  vm.runInContext(implementation('closeSurfaceFallback'),f.context);f.context.closeSurfaceFallback(sheet);
+  assert.equal(sheet.getAttribute('aria-hidden'),'true');assert.equal(sheet.hidden,false);
+  let hidden=0;const bootstrap=f.element('bootstrap',f.body);bootstrap.matches=s=>s==='.modal';
+  f.context.window.bootstrap={Modal:{getOrCreateInstance:()=>({hide:()=>hidden++})}};
+  f.context.closeSurfaceFallback(bootstrap);assert.equal(hidden,1);assert.equal(bootstrap.getAttribute('aria-hidden'),null);
+});
+test('sheet captures original opener once without visual modal registration',()=>{
+  const f=sheetFixture(),opener=f.element('opener',f.body),inner=f.element('inner',f.sheet);
+  f.document.activeElement=opener;f.sheet.open=true;f.sync();f.document.activeElement=inner;f.sync();
+  assert.equal(f.focusState.get(f.sheet).opener,opener);
+  assert.equal(f.context.surfaceList.has(f.sheet),false);assert.equal(f.sheet.hasAttribute('data-legend-modal-surface'),false);
+  f.sheet.open=false;f.sync();assert.equal(f.document.activeElement,opener);assert.equal(f.focusState.has(f.sheet),false);
+});
+test('nested booking returns into sheet then outer close restores exact opener',()=>{
+  const f=sheetFixture(),opener=f.element('opener',f.body),launch=f.element('booking launch',f.sheet);
+  f.document.activeElement=opener;f.sheet.open=true;f.sync();f.document.activeElement=launch;
+  const booking=f.surface('booking'),close=f.control('close',booking);f.context.beginModalFocus(booking);f.flush();assert.equal(f.document.activeElement,close);
+  booking.open=false;f.context.endModalFocus(booking);assert.equal(f.document.activeElement,launch);
+  f.sheet.open=false;f.sync();assert.equal(f.document.activeElement,opener);
+});
+test('sheet return respects another top dialog and disconnected hidden inert openers',()=>{
+  for(const restriction of ['disconnected','hidden','inert','aria-hidden']){
+    const f=sheetFixture(),opener=f.element('opener',f.body);f.document.activeElement=opener;f.sheet.open=true;f.sync();
+    if(restriction==='disconnected')opener.isConnected=false;else opener.setAttribute(restriction,restriction==='aria-hidden'?'true':'');
+    const inside=f.element('inside',f.sheet);f.document.activeElement=inside;f.sheet.open=false;f.sync();assert.equal(f.document.activeElement,inside);
+  }
+  const f=sheetFixture(),opener=f.element('opener',f.body);f.document.activeElement=opener;f.sheet.open=true;f.sync();
+  const top=f.surface('other'),control=f.control('other control',top);f.sheet.open=false;f.sync();assert.equal(f.document.activeElement,control);
+});
+test('registered sheet and rapid repeated transitions never double restore or overwrite opener',()=>{
+  const f=sheetFixture(),opener=f.element('opener',f.body);let returned=0;opener.focus=()=>{returned++;f.document.activeElement=opener;};
+  f.document.activeElement=opener;f.sheet.open=true;f.context.prepareModalFocus(f.sheet);f.sync();
+  f.sheet.open=false;f.context.endModalFocus(f.sheet);f.sync();assert.equal(returned,1);
+  f.sheet.open=true;f.sync();const state=f.focusState.get(f.sheet);f.sync();assert.equal(f.focusState.get(f.sheet),state);
+  f.sheet.open=false;f.sync();f.sheet.open=true;f.sync();assert.notEqual(f.focusState.get(f.sheet),state);
+  assert.equal(f.focusState.get(f.sheet).opener,opener);assert.equal(returned,2);
+});
