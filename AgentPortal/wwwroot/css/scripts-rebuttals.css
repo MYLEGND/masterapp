@@ -1468,15 +1468,10 @@ details.section{
 
     #mpShell .script{
         margin: 0;
-        padding: 14px 16px;
         border-radius: 16px;
         border: 1px solid rgba(0,0,0,.06);
-        background: linear-gradient(180deg, #ffffff, #f8f4ec);
         white-space: pre-wrap;
         word-wrap: break-word;
-        font-family: var(--body);
-        font-size: 15px;
-        line-height: 1.68;
         letter-spacing: 0.01em;
         box-shadow: 0 12px 28px rgba(0,0,0,.08);
     }

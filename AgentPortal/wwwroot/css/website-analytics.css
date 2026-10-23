@@ -2436,9 +2436,6 @@ body { background: var(--legend-app-panel-soft); color: var(--legend-ink-dark); 
 }
 
 body {
-    background:
-        radial-gradient(900px 380px at 0% 0%, rgba(199,153,49,.08), transparent 52%),
-        linear-gradient(180deg, #f7f8fb 0%, #eef2f7 100%);
 }
 
 .fa-shell {

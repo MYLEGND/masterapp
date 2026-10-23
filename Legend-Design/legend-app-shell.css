@@ -236,6 +236,7 @@ footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient
   border:1px solid var(--legend-app-border);
   border-radius:var(--legend-app-radius);
   background:var(--legend-app-panel);
+  color:var(--legend-app-on-dark);
   box-shadow:var(--legend-shadow-soft);
  }
  body.legend-app .legend-app-content :where(.card-body){

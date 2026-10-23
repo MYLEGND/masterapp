@@ -148,11 +148,12 @@
         return a.getTime() < b.getTime();
     }
 
-    function formatHumanDate(date) {
+    function formatHumanDate(date, includeYear = false) {
         return date.toLocaleDateString([], {
             weekday: "long",
             month: "long",
-            day: "numeric"
+            day: "numeric",
+            ...(includeYear ? { year: "numeric" } : {})
         });
     }
 
@@ -635,6 +636,7 @@
                     type="button"
                     class="${classNames}"
                     data-qv-booking-date="${iso}"
+                    aria-label="${formatHumanDate(day, true).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}"
                     aria-pressed="${isSelected ? "true" : "false"}"
                     ${isDisabled ? "disabled" : ""}>
                     <span>${day.getDate()}</span>

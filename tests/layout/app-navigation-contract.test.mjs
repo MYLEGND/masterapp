@@ -2,8 +2,68 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
+import vm from 'node:vm';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
+
+test('main mobile Escape reuses close and leaves active Explore to its own handler',()=>{
+  const source=readFileSync(join(ROOT,'SHARED/wwwroot/js/legend-global-navigation.js'),'utf8');
+  const start=source.indexOf("    document.addEventListener('keydown', event => {");
+  const handler=source.slice(start,source.indexOf('\n    });',start)+7);
+  let callback,closed=0,open=true,explore=false;
+  vm.runInNewContext(handler,{document:{addEventListener:(key,fn)=>{assert.equal(key,'keydown');callback=fn;}},nav:{classList:{contains:()=>open}},drawer:{classList:{contains:()=>explore}},close:options=>{assert.equal(options.restoreFocus,true);closed++;}});
+  const event=()=>({key:'Escape',preventDefault(){this.defaultPrevented=true;}});
+  callback(event());assert.equal(closed,1);
+  explore=true;callback(event());assert.equal(closed,1);
+  explore=false;open=false;callback(event());assert.equal(closed,1);
+  open=true;callback({...event(),defaultPrevented:true});assert.equal(closed,1);
+  callback({...event(),key:'Enter'});assert.equal(closed,1);
+});
+
+test('booking date buttons use the existing locale authority with year only in accessible name',()=>{
+  const source=readFileSync(join(ROOT,'AgentPortal/wwwroot/js/scheduling/qv-booking.js'),'utf8');
+  const start=source.indexOf('    function formatHumanDate('),end=source.indexOf('\n    function ',start+1);
+  const context={};vm.createContext(context);vm.runInContext(source.slice(start,end),context);
+  const calls=[],day={getDate:()=>31,toLocaleDateString:(locale,options)=>{calls.push(options);return 'Thursday, December 31, 2026';}};
+  context.formatHumanDate(day);assert.equal(calls[0].year,undefined);
+  const buttonStart=source.indexOf('            cells.push(`\n                <button');
+  assert(buttonStart>=0);
+  const button=source.slice(buttonStart,source.indexOf('            `);',buttonStart)+15);
+  Object.assign(context,{cells:[],day,iso:'2026-12-31',classNames:'is-selected',isSelected:true,isDisabled:false});
+  vm.runInContext(button,context);
+  assert.equal(calls[1].year,'numeric');assert.match(context.cells[0],/aria-label="Thursday, December 31, 2026"/);
+  assert.match(context.cells[0],/data-qv-booking-date="2026-12-31"/);assert.match(context.cells[0],/aria-pressed="true"/);assert.match(context.cells[0],/<span>31<\/span>/);
+});
+
+test('actual booking calendar render keeps month/year header and all42 full-date labels',()=>{
+  const source=readFileSync(join(ROOT,'AgentPortal/wwwroot/js/scheduling/qv-booking.js'),'utf8');
+  const nodes={qvBookingCalendar:{innerHTML:''},qvBookingMonthLabel:{textContent:''},qvBookPrevMonth:{disabled:false},qvBookDate:{value:'2026-12-31'}};
+  const context={$:id=>nodes[id],calendarState:{visibleMonth:null}};
+  vm.createContext(context);
+  for(const name of ['startOfMonth','parseDateInputValue','formatDateInputValue','isSameDate','isBeforeDate','formatHumanDate','formatHumanMonth','renderCalendar']){
+    const start=source.indexOf(`    function ${name}(`);assert(start>=0,name);const end=source.indexOf('\n    function ',start+1);vm.runInContext(source.slice(start,end),context);
+  }
+  vm.runInContext('function todayLocal(){ return new Date(2026,11,22); } renderCalendar();',context);
+  assert.match(nodes.qvBookingMonthLabel.textContent,/2026/);
+  assert.equal((nodes.qvBookingCalendar.innerHTML.match(/aria-label=/g)||[]).length,42);
+  assert.equal((nodes.qvBookingCalendar.innerHTML.match(/aria-pressed="true"/g)||[]).length,1);
+  assert.match(nodes.qvBookingCalendar.innerHTML,/data-qv-booking-date="2027-01-01"\s+aria-label="[^"]*2027/);
+  assert.equal(nodes.qvBookPrevMonth.disabled,true);
+  vm.runInContext('calendarState.visibleMonth=new Date(2027,0,1); renderCalendar();',context);
+  assert.match(nodes.qvBookingMonthLabel.textContent,/2027/);assert.equal(nodes.qvBookPrevMonth.disabled,false);
+});
+
+test('booking and CRM dialogs name their existing headings; badge uses explicit Razor expression',()=>{
+  const booking=readFileSync(join(ROOT,'AgentPortal/Views/Shared/_QuickViewBookingModal.cshtml'),'utf8');
+  assert.match(booking,/aria-labelledby="qvBookingTitle"/);assert.equal((booking.match(/id="qvBookingTitle"/g)||[]).length,1);
+  for(const app of ['Leads','Clients']){
+    const source=readFileSync(join(ROOT,`AgentPortal/Views/${app}/Index.cshtml`),'utf8');
+    assert.match(source,/id="performanceModal" role="dialog" aria-modal="true" aria-labelledby="performanceModalTitle"/);
+    assert.equal((source.match(/id="performanceModalTitle"/g)||[]).length,1);
+  }
+  const badge=readFileSync(join(ROOT,'AgentPortal/Views/FounderEngineering/Index.cshtml'),'utf8');
+  assert.match(badge,/<strong>v@\(Model.Version\)<\/strong>/);
+});
 
 function walk(dir, suffix) {
   const out=[];
@@ -297,4 +357,41 @@ test('mobile navigation keeps approved compact rows and Quick Find as a same-pan
     assert.match(source,/class="container-fluid legend-global-nav-shell"/,file);
     assert.doesNotMatch(source,/container-fluid d-flex flex-wrap align-items-start justify-content-between/,file);
   }
+});
+
+test('booking native host uses existing scrollable extra-large Bootstrap wrapper',()=>{
+  const view=readFileSync(join(ROOT,'AgentPortal/Views/Shared/_QuickViewBookingModal.cshtml'),'utf8');
+  assert.match(view,/class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl qv-booking-dialog"/);
+  assert.match(view,/class="modal-body qv-booking-body"/);
+  for(const [id,name] of [['qvBookPrevMonth','Show previous month'],['qvBookNextMonth','Show next month']]){
+    assert.match(view,new RegExp(`id="${id}" aria-label="${name}"><span class="qv-booking-calendar-icon" aria-hidden="true">[‹›]</span></button>`));
+  }
+});
+
+test('booking date fit shares actual gap and padding authorities without forcing narrow tracks',()=>{
+  const css=readFileSync(join(ROOT,'AgentPortal/wwwroot/css/qv-booking.css'),'utf8');
+  assert.match(css,/--qv-calendar-target:44px/);
+  assert.match(css,/--qv-calendar-gap:clamp\(5px, \.8vh, 8px\)/);
+  assert.match(css,/--qv-fit-panel-padding:clamp\(16px, 1\.8vh, 20px\)/);
+  assert.match(css,/calc\(7 \* var\(--qv-calendar-target\) \+ 6 \* var\(--qv-calendar-gap\) \+ 2 \* var\(--qv-fit-panel-padding\) \+ 2px\)/);
+  assert.match(css,/padding:var\(--qv-fit-panel-padding\)/);
+  assert.match(css,/gap:var\(--qv-calendar-gap\)/);
+  assert.match(css,/@media \(max-width:1100px\)[\s\S]*grid-template-columns:minmax\(0,1fr\)/);
+  assert.match(css,/grid-template-columns:repeat\(7, 1fr\)/);
+  assert.doesNotMatch(css,/repeat\(7,\s*minmax\(44px/);
+});
+
+test('navigation geometry keeps one mobile boundary and gives motto a normal-flow desktop row',()=>{
+  const css=readFileSync(join(ROOT,'SHARED/wwwroot/css/dashboard-home-shared.css'),'utf8');
+  const nav=readFileSync(join(ROOT,'SHARED/wwwroot/js/legend-global-navigation.js'),'utf8');
+  const motto=css.slice(css.indexOf('/* Global navigation motto:'),css.indexOf('/* Life HAC modal:'));
+  assert.match(motto,/position: static;[\s\S]*grid-column: 1 \/ -1;[\s\S]*grid-row: 2;/);
+  assert.doesNotMatch(motto,/translateX\(-50%\)/);
+  assert.match(nav,/const breakpoint = 840;/);
+  assert.match(css,/@media \(max-width: 840px\)/);
+  assert.match(css,/grid-template-columns: minmax\(38px, 44px\) minmax\(0, 1fr\) 44px;/);
+  const mobile=css.slice(css.indexOf('@media (max-width: 840px) {\n    .legend-global-nav {'),css.indexOf('/* Global navigation motto:'));
+  assert.match(mobile,/\.legend-global-nav \.nav-toggle \{[\s\S]*width: 44px;[\s\S]*height: 44px;[\s\S]*min-width: 44px;[\s\S]*min-height: 44px;/);
+  assert.match(mobile,/grid-area: motto/);
+  assert.match(css,/\.legend-global-nav \.navbar-left \.nav-row \{[\s\S]*flex-wrap: wrap;/);
 });

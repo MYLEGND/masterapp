@@ -25,13 +25,20 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.remote, self.publisher, self.local = [self.root / name for name in ['remote.git', 'publisher', 'local']]
         self.git(self.root, 'init', '--bare', str(self.remote))
-        self.git(self.root, 'init', '-b', 'legend/approved-changes', str(self.publisher))
+        self.git(self.root, 'init', '-b', 'Legend/fast-track-release', str(self.publisher))
         self.identity(self.publisher)
         self.commit(self.publisher, 'app.txt', 'original')
         self.git(self.publisher, 'remote', 'add', 'origin', str(self.remote))
-        self.git(self.publisher, 'push', '-u', 'origin', 'legend/approved-changes')
-        self.git(self.root, 'clone', '-b', 'legend/approved-changes', str(self.remote), str(self.local))
+        self.git(self.publisher, 'push', '-u', 'origin', 'Legend/fast-track-release')
+        self.git(self.root, 'clone', '-b', 'Legend/fast-track-release', str(self.remote), str(self.local))
         self.identity(self.local)
+
+    def use_legacy_native_checkout(self):
+        self.git(self.publisher, 'branch', '-m', 'legend/approved-changes')
+        self.git(self.publisher, 'push', '-u', 'origin', 'legend/approved-changes')
+        self.git(self.local, 'fetch', 'origin')
+        self.git(self.local, 'branch', '-m', 'legend/approved-changes')
+        self.git(self.local, 'branch', '--set-upstream-to', 'origin/legend/approved-changes')
 
     def git(self, repo, *args):
         result = subprocess.run(['git', '-C', str(repo), *args], capture_output=True, text=True)
@@ -49,14 +56,14 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
 
     def publish(self):
         self.commit(self.publisher, 'app.txt', 'published')
-        self.git(self.publisher, 'push', 'origin', 'legend/approved-changes')
+        self.git(self.publisher, 'push', 'origin', self.git(self.publisher, 'branch', '--show-current'))
 
     def run_sync(self, probe=lambda: False):
         return sync.sync_checkout(self.local, process_probe=probe)
 
     def configure_native(self):
-        self.git(self.local, 'config', 'legend.nativeTestingRef', 'refs/remotes/origin/legend/approved-changes')
-        self.git(self.local, 'switch', '-c', 'founder/testing', '--track', 'origin/legend/approved-changes')
+        self.git(self.local, 'config', 'legend.nativeTestingRef', 'refs/remotes/origin/Legend/fast-track-release')
+        self.git(self.local, 'switch', '-c', 'founder/testing', '--track', 'origin/Legend/fast-track-release')
 
     def test_native_sync_preserves_unrelated_user_edits(self):
         self.configure_native()
@@ -69,7 +76,7 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
     def test_native_sync_preserves_tracked_build_setting_edits(self):
         self.configure_native()
         self.commit(self.publisher, 'native.txt', 'version=33')
-        self.git(self.publisher, 'push', 'origin', 'legend/approved-changes')
+        self.git(self.publisher, 'push', 'origin', 'Legend/fast-track-release')
         sync.sync_checkout(self.local, process_probe=lambda: False, native=True)
         (self.local / 'native.txt').write_text('version=34')
         self.publish()
@@ -119,7 +126,7 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
             result = authority(repo, *args, **kwargs)
             if args[0] == 'fetch':
                 self.git(self.local, 'switch', '-c', 'other-work', before)
-                self.git(self.local, 'branch', '--set-upstream-to', 'origin/legend/approved-changes')
+                self.git(self.local, 'branch', '--set-upstream-to', 'origin/Legend/fast-track-release')
             return result
         with patch.object(sync, 'git', side_effect=change_branch):
             with self.assertRaisesRegex(sync.SyncSkipped, 'branch changed'):
@@ -146,12 +153,12 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
 
     def test_native_sync_default_probe_blocks_before_fetch(self):
         self.configure_native()
-        before = self.git(self.local, 'rev-parse', 'origin/legend/approved-changes')
+        before = self.git(self.local, 'rev-parse', 'origin/Legend/fast-track-release')
         self.publish()
         with patch.object(sync, 'native_editor_or_build_active', return_value=True):
             with self.assertRaisesRegex(sync.SyncSkipped, 'running'):
                 sync.sync_checkout(self.local, native=True)
-        self.assertEqual(self.git(self.local, 'rev-parse', 'origin/legend/approved-changes'), before)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'origin/Legend/fast-track-release'), before)
 
     def test_workspace_mode_preserves_explicit_target_and_never_falls_back_on_invalid_setting(self):
         self.assertFalse(sync.workspace_uses_native_target(self.local))
@@ -164,16 +171,16 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
 
     def test_readonly_status_does_not_fetch_merge_or_create_sync_lock(self):
         self.configure_native()
-        before = self.git(self.local, 'rev-parse', 'origin/legend/approved-changes')
+        before = self.git(self.local, 'rev-parse', 'origin/Legend/fast-track-release')
         self.publish()
         with patch.object(sync, '__file__', str(self.local / 'scripts' / 'sync-published-checkout.py')), \
                 patch.object(sync, 'native_editor_or_build_active', return_value=False), redirect_stdout(io.StringIO()) as output:
             self.assertEqual(sync.main(['--sync-workspace', '--status']), 0)
         report = json.loads(output.getvalue())
         self.assertEqual(report['status'], 'ready')
-        self.assertEqual(report['target'], 'refs/remotes/origin/legend/approved-changes')
+        self.assertEqual(report['target'], 'refs/remotes/origin/Legend/fast-track-release')
         self.assertEqual(report['remoteFreshness'], 'not_checked')
-        self.assertEqual(self.git(self.local, 'rev-parse', 'origin/legend/approved-changes'), before)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'origin/Legend/fast-track-release'), before)
         self.assertEqual((self.local / 'app.txt').read_text(), 'original')
         self.assertFalse((self.local / '.git' / 'legend-published-sync.lock').exists())
 
@@ -193,7 +200,7 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
 
     def test_dirty_staged_and_untracked_files_are_preserved_without_fetch(self):
         self.publish()
-        old_remote = self.git(self.local, 'rev-parse', 'origin/legend/approved-changes')
+        old_remote = self.git(self.local, 'rev-parse', 'origin/Legend/fast-track-release')
         for mode in ['unstaged', 'staged', 'untracked']:
             with self.subTest(mode=mode):
                 file = self.local / ('native-build.txt' if mode == 'untracked' else 'app.txt')
@@ -202,7 +209,7 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
                 with self.assertRaisesRegex(sync.SyncSkipped, 'Local changes'):
                     self.run_sync()
                 self.assertEqual(file.read_text(), 'user build 32')
-                self.assertEqual(self.git(self.local, 'rev-parse', 'origin/legend/approved-changes'), old_remote)
+                self.assertEqual(self.git(self.local, 'rev-parse', 'origin/Legend/fast-track-release'), old_remote)
                 # Fixture restoration only; the sync implementation never restores or deletes files.
                 if mode == 'untracked': file.unlink()
                 else:
@@ -220,16 +227,16 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
     def test_working_branch_and_missing_upstream_are_not_synced(self):
         self.git(self.local, 'switch', '-c', 'repair/example')
         with self.assertRaisesRegex(sync.SyncSkipped, 'working branch'): self.run_sync()
-        self.git(self.local, 'switch', 'legend/approved-changes')
+        self.git(self.local, 'switch', 'Legend/fast-track-release')
         self.git(self.local, 'branch', '--unset-upstream')
         with self.assertRaises(sync.SyncSkipped): self.run_sync()
 
     def test_active_app_blocks_before_fetch(self):
         self.publish()
-        old_remote = self.git(self.local, 'rev-parse', 'origin/legend/approved-changes')
+        old_remote = self.git(self.local, 'rev-parse', 'origin/Legend/fast-track-release')
         with self.assertRaisesRegex(sync.SyncSkipped, 'running'):
             self.run_sync(lambda: True)
-        self.assertEqual(self.git(self.local, 'rev-parse', 'origin/legend/approved-changes'), old_remote)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'origin/Legend/fast-track-release'), old_remote)
 
     def test_dirty_change_during_fetch_prevents_update(self):
         self.publish()
@@ -247,13 +254,13 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
 
     def test_ignored_configuration_collision_is_not_overwritten(self):
         self.commit(self.publisher, '.gitignore', 'local-config.txt\n')
-        self.git(self.publisher, 'push', 'origin', 'legend/approved-changes')
+        self.git(self.publisher, 'push', 'origin', 'Legend/fast-track-release')
         self.run_sync()
         (self.local / 'local-config.txt').write_text('private local configuration')
         (self.publisher / 'local-config.txt').write_text('published configuration')
         self.git(self.publisher, 'add', '-f', 'local-config.txt')
         self.git(self.publisher, 'commit', '-m', 'fixture tracked configuration')
-        self.git(self.publisher, 'push', 'origin', 'legend/approved-changes')
+        self.git(self.publisher, 'push', 'origin', 'Legend/fast-track-release')
         old_head = self.git(self.local, 'rev-parse', 'HEAD')
         with self.assertRaises(sync.SyncSkipped): self.run_sync()
         self.assertEqual((self.local / 'local-config.txt').read_text(), 'private local configuration')
@@ -267,7 +274,21 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
         self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), old_head)
         self.assertEqual((self.local / 'app.txt').read_text(), 'original')
 
+    def test_ordinary_default_rejects_retired_branch_without_fetch(self):
+        self.use_legacy_native_checkout()
+        before = self.git(self.local, 'rev-parse', 'HEAD')
+        with self.assertRaisesRegex(sync.SyncSkipped, 'working branch'), patch.object(sync, 'git', wraps=sync.git) as calls:
+            self.run_sync()
+        self.assertFalse(any('fetch' in call.args for call in calls.call_args_list))
+        self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), before)
+
+    def test_ordinary_readonly_status_names_current_canonical_target(self):
+        report = sync.sync_status(self.local, process_probe=lambda: False)
+        self.assertEqual(report['target'], 'refs/remotes/origin/Legend/fast-track-release')
+        self.assertEqual(report['remoteFreshness'], 'not_checked')
+
     def test_native_check_reports_current_source_and_never_fetches_or_mutates(self):
+        self.use_legacy_native_checkout()
         before = self.git(self.local, 'rev-parse', 'HEAD')
         remote = self.git(self.local, 'rev-parse', 'origin/legend/approved-changes')
         index = (self.local / '.git/index').read_bytes()
@@ -283,6 +304,7 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
         self.assertEqual((self.local / 'app.txt').read_text(), 'current uncommitted native changes')
 
     def test_native_provenance_uses_verified_actual_head_and_no_private_paths(self):
+        self.use_legacy_native_checkout()
         self.commit(self.local, 'ahead.txt', 'local candidate')
         (self.local / 'uncommitted.txt').write_text('working copy')
         output = self.root / 'DerivedData' / 'LegendBuildProvenance.json'
@@ -296,6 +318,7 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
         self.assertEqual(self.git(self.local, 'status', '--porcelain=v1'), before)
 
     def test_native_provenance_removes_stale_artifact_when_guard_rejects_checkout(self):
+        self.use_legacy_native_checkout()
         output = self.root / 'LegendBuildProvenance.json'
         sync.check_native_checkout(self.local, output)
         self.assertTrue(output.is_file())
@@ -306,6 +329,7 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
         self.assertFalse(output.exists())
 
     def test_native_provenance_cannot_write_or_delete_source_or_git(self):
+        self.use_legacy_native_checkout()
         for output in [self.local / 'source.json', self.local / '.git' / 'metadata.json']:
             with self.subTest(output=output):
                 output.write_text('preserve existing file')
@@ -314,6 +338,7 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
                 self.assertEqual(output.read_text(), 'preserve existing file')
 
     def test_native_provenance_from_worktree_cannot_write_main_checkout(self):
+        self.use_legacy_native_checkout()
         worktree = self.root / 'native-worktree'
         self.git(self.local, 'worktree', 'add', '--detach', str(worktree), 'HEAD')
         output = self.local / 'main-source.json'
@@ -323,6 +348,7 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
         self.assertEqual(output.read_text(), 'preserve main checkout')
 
     def test_native_check_fails_stale_approved_without_changing_local_work(self):
+        self.use_legacy_native_checkout()
         before = self.git(self.local, 'rev-parse', 'HEAD')
         self.publish()
         self.git(self.local, 'fetch', 'origin')  # Explicit external refresh, never the build hook.
@@ -333,6 +359,7 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
         self.assertEqual((self.local / 'native-build.txt').read_text(), 'user build 33')
 
     def test_native_check_uses_shared_testing_ref_and_allows_newer_working_commit(self):
+        self.use_legacy_native_checkout()
         self.git(self.publisher, 'switch', '-c', 'implement/native-current')
         self.commit(self.publisher, 'native.txt', 'candidate')
         self.git(self.publisher, 'push', 'origin', 'implement/native-current')
@@ -348,6 +375,7 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
         self.assertIn('branch=HEAD', sync.check_native_checkout(self.local))
 
     def test_native_check_missing_or_invalid_ref_fails_visible(self):
+        self.use_legacy_native_checkout()
         for ref in ['', 'refs/remotes/origin/not-fetched', '--unsafe-option', 'HEAD~1']:
             with self.subTest(ref=ref):
                 self.git(self.local, 'config', 'legend.nativeTestingRef', ref)
@@ -356,6 +384,7 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
 
 
     def test_native_detached_shallow_ci_uses_existing_exact_workflow_candidate(self):
+        self.use_legacy_native_checkout()
         head = self.git(self.local, 'rev-parse', 'HEAD')
         self.git(self.local, 'checkout', '--detach', head)
         self.git(self.local, 'update-ref', '-d', 'refs/remotes/origin/legend/approved-changes')
@@ -368,6 +397,7 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
                     sync.check_native_checkout(self.local)
 
     def test_explicit_testing_ref_cannot_be_bypassed_by_ci_environment(self):
+        self.use_legacy_native_checkout()
         self.publish()
         self.git(self.local, 'fetch', 'origin')
         self.git(self.local, 'config', 'legend.nativeTestingRef', 'refs/remotes/origin/legend/approved-changes')

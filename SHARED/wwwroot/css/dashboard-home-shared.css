@@ -501,7 +501,7 @@ body.legend-app .legend-app-content :is(
         overflow: hidden !important;
         overscroll-behavior: none !important;
         background: var(--legend-modal-backdrop) !important;
-        z-index: 5200 !important;
+        z-index: var(--legend-modal-stack, 5200) !important;
     }
 
     html[data-legend-modal-region] body.legend-app .modal.show[data-legend-modal-surface],
@@ -5127,8 +5127,8 @@ body.messaging-command-center-open {
     position: static;
     z-index: auto;
     display: flex;
-    width: 42px;
-    height: 42px;
+    width: 44px;
+    height: 44px;
     align-items: center;
     justify-content: center;
     padding: 0;
@@ -5728,7 +5728,7 @@ header .legend-global-nav .container-fluid {
      */
     header .legend-global-nav .container-fluid {
         display: grid;
-        grid-template-columns: minmax(38px, 44px) minmax(0, 1fr) 34px;
+        grid-template-columns: minmax(38px, 44px) minmax(0, 1fr) 44px;
         grid-template-areas:
             "brand motto toggle"
             "panel panel panel";
@@ -5790,10 +5790,10 @@ header .legend-global-nav .container-fluid {
         grid-area: toggle;
         display: inline-grid;
         justify-self: end;
-        width: 32px;
-        height: 32px;
-        min-width: 32px;
-        min-height: 32px;
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
         padding: 0;
         place-items: center;
         border: 1px solid var(--legend-mobile-gold);
@@ -6218,9 +6218,10 @@ header .legend-global-nav .container-fluid {
 
 /* Global navigation motto: shared by AgentPortal and ClientApp. */
 .header-psalms {
-    position: absolute;
-    bottom: 0.45rem;
-    left: 50%;
+    position: static;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: center;
     z-index: 1200;
     max-width: calc(100% - 3rem);
     margin: 0;
@@ -6240,7 +6241,7 @@ header .legend-global-nav .container-fluid {
     text-overflow: ellipsis;
     white-space: nowrap;
     cursor: pointer;
-    transform: translateX(-50%);
+    transform: none;
     transition: transform 0.15s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
 
@@ -6249,13 +6250,13 @@ header .legend-global-nav .container-fluid {
     background: var(--legend-app-surface-elevated);
     box-shadow: 0 14px 30px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.14);
     outline: none;
-    transform: translateX(-50%) translateY(-1px);
+    transform: translateY(-1px);
 }
 
 .header-psalms:active {
     background: var(--legend-app-surface);
     box-shadow: 0 8px 16px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    transform: translateX(-50%);
+    transform: none;
 }
 
 /* Life HAC modal: a single presentation source for AgentPortal and ClientApp. */
@@ -9125,7 +9126,7 @@ header .legend-global-nav .container-fluid {
 
     body.legend-app .legend-global-nav .navbar-left .nav-row,
     body.legend-app .legend-global-nav .navbar-right {
-        flex-wrap: nowrap;
+        /* Preserve each group's canonical wrap behavior. */
         gap: clamp(.35rem,.65vw,.7rem);
     }
 
@@ -9156,9 +9157,6 @@ header .legend-global-nav .container-fluid {
     }
 
     body.legend-app .legend-global-nav .header-psalms {
-        top: 50%;
-        bottom: auto;
-        left: 50%;
         max-width: min(320px, 28vw);
         min-height: 32px;
         margin: 0;
@@ -9171,14 +9169,14 @@ header .legend-global-nav .container-fluid {
         letter-spacing: .045em;
         line-height: 1;
         box-shadow: none;
-        transform: translate(-50%, -50%);
+        transform: none;
     }
 
     body.legend-app .legend-global-nav .header-psalms:hover,
     body.legend-app .legend-global-nav .header-psalms:focus-visible {
         background: var(--legend-app-surface-elevated);
         box-shadow: none;
-        transform: translate(-50%, -50%);
+        transform: none;
     }
 
     body.legend-app .legend-global-nav .profile-avatar {

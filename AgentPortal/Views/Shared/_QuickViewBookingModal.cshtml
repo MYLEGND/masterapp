@@ -1,16 +1,16 @@
-<div class="modal fade qv-booking-modal-shell" id="qvBookingModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered qv-booking-dialog">
+<div class="modal fade qv-booking-modal-shell" id="qvBookingModal" tabindex="-1" aria-hidden="true" aria-labelledby="qvBookingTitle">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl qv-booking-dialog">
         <div class="modal-content qv-booking-content">
             <div class="qv-booking-head">
                 <div class="qv-booking-head-copy">
                     <div class="qv-booking-kicker">Quick View Scheduler</div>
-                    <h3 class="qv-booking-title">Book Appointment</h3>
+                    <h3 class="qv-booking-title" id="qvBookingTitle">Book Appointment</h3>
                     <p class="qv-booking-sub" id="qvBookingClientSub">Pick a date, choose a free slot, and create the appointment without leaving Quick View.</p>
                 </div>
                 <button type="button" class="btn btn-ghost qv-booking-close" data-bs-dismiss="modal" aria-label="Close booking modal">Close</button>
             </div>
 
-            <div class="qv-booking-body">
+            <div class="modal-body qv-booking-body">
                 <div class="qv-booking-record">
                     <div class="qv-booking-record-label">Booking for</div>
                     <div class="qv-booking-record-name" id="qvBookingClientLabel">Current contact</div>
@@ -40,9 +40,9 @@
 
                                 <div class="qv-booking-calendar-card">
                                     <div class="qv-booking-calendar-head">
-                                        <button type="button" class="btn btn-ghost qv-booking-calendar-nav" id="qvBookPrevMonth" aria-label="Show previous month">Prev</button>
+                                        <button type="button" class="btn btn-ghost qv-booking-calendar-nav" id="qvBookPrevMonth" aria-label="Show previous month"><span class="qv-booking-calendar-icon" aria-hidden="true">‹</span></button>
                                         <div class="qv-booking-calendar-label" id="qvBookingMonthLabel">Month</div>
-                                        <button type="button" class="btn btn-ghost qv-booking-calendar-nav" id="qvBookNextMonth" aria-label="Show next month">Next</button>
+                                        <button type="button" class="btn btn-ghost qv-booking-calendar-nav" id="qvBookNextMonth" aria-label="Show next month"><span class="qv-booking-calendar-icon" aria-hidden="true">›</span></button>
                                     </div>
 
                                     <div class="qv-booking-calendar-weekdays" aria-hidden="true">
