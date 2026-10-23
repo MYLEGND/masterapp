@@ -5622,6 +5622,183 @@ class HistoricalProducerInventoryTests(unittest.TestCase):
         with patch.object(m,'fast_track_execution_history',side_effect=history):
             with self.assertRaises(m.EvidenceLookupUnavailable):self.invoke()
 
+class RetainedRecoveryAuthorityTests(unittest.TestCase):
+    revision = 'a' * 40
+    marker = ('DeploymentStatusUnavailable: Azure deployment status remained unavailable for 3 consecutive reads '
+              '(before any upload). No deployment or rollback write was replayed; resume by reconciling the exact revision.')
+    def log(self):
+        rows = ['[command]/usr/bin/git log -1 --format=%H', self.revision,
+                'in fast_track_deploy', 'in reconcile', 'in read_deployments_bounded',
+                self.marker, 'Process completed with exit code 1.']
+        return '\n'.join('2026-10-23T10:00:01Z ' + row for row in rows)
+    def proven(self, log):
+        return m._fast_track_preupload_log_proven(log, self.revision,
+            dict(started_at='2026-10-23T10:00:00Z', completed_at='2026-10-23T10:00:02Z'))
+    def test_exact_terminal_preupload_signature(self):
+        self.assertTrue(self.proven(self.log()))
+    def test_wrong_revision_rejected(self):
+        self.assertFalse(self.proven(self.log().replace(self.revision, 'b' * 40)))
+    def test_duplicate_terminal_rejected(self):
+        self.assertFalse(self.proven(self.log() + '\n2026-10-23T10:00:01Z ' + self.marker))
+    def test_submission_or_provider_ack_rejected(self):
+        for text in ['Submitting the verified immutable ZIP once.', 'AZURE_TRACKED_DEPLOYMENT_REFERENCE: anything']:
+            with self.subTest(text=text):
+                self.assertFalse(self.proven(self.log() + '\n2026-10-23T10:00:01Z ' + text))
+    def test_outside_exact_failed_step_rejected(self):
+        self.assertFalse(self.proven(self.log().replace('10:00:01', '11:00:01')))
+    def test_missing_stack_or_exit_rejected(self):
+        for text in ['in fast_track_deploy', 'in reconcile', 'in read_deployments_bounded', 'Process completed with exit code 1.']:
+            with self.subTest(text=text):
+                self.assertFalse(self.proven(self.log().replace(text, 'unrelated')))
+    def test_new_normal_push_inventory_only_skipped_recovery(self):
+        normal = dict(name='ordinary')
+        recovery = dict(name=m.FAST_TRACK_RECOVERY_JOB, status='completed', conclusion='skipped', steps=[])
+        source = 'jobs:\n  recover-fast-track:\n'
+        self.assertEqual(m._without_skipped_recovery_job([normal, recovery], source), [normal])
+        self.assertEqual(m._without_skipped_recovery_job([normal], ''), [normal])
+        for bad in [[], [dict(recovery, conclusion='success')], [dict(recovery, status='in_progress')],
+                    [dict(recovery, steps=[{}])], [recovery, recovery]]:
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                m._without_skipped_recovery_job([normal] + bad, source)
+
+class RetainedRecoveryProducerTests(unittest.TestCase):
+    def setUp(self):
+        self.run = dict(id=20, run_attempt=1, head_sha='b'*40, path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,
+            event='workflow_dispatch', head_branch=m.FAST_TRACK_PR_BASE, head_repository=dict(full_name='owner/repo'))
+        names = ['Select exact affected applications', 'Admit exact validated fast-track source',
+                 'Reconcile production schema before publication', 'Publish verified website routing',
+                 'Affected App Deploy — ${{ matrix.target }}', m.FAST_TRACK_RECOVERY_JOB]
+        self.jobs = [dict(id=i+1, name=name, run_id=20, run_attempt=1, head_sha='b'*40,
+                         status='completed', conclusion='skipped', steps=[]) for i,name in enumerate(names)]
+        self.source = (ROOT/'.github/workflows'/m.FAST_TRACK_RELEASE_WORKFLOW).read_text()
+    def invoke(self, *, source=None, promotions=None, promoted=True):
+        with patch.object(m, '_release_history_source', return_value=self.source if source is None else source), \
+             patch.object(m, 'fast_track_historical_producers', return_value=[dict(id=19,head_sha='b'*40)] if promotions is None else promotions), \
+             patch.object(m, 'fast_track_promotion_parent', return_value={} if promoted else None), \
+             patch.object(m, 'api_get', return_value=dict(total_count=len(self.jobs), jobs=self.jobs)):
+            return m.fast_track_recovery_producer('owner/repo',self.run,'token',attempt=1)
+    def test_exact_separate_producer(self):
+        proof=self.invoke()
+        self.assertEqual(proof,dict(runId=20,runAttempt=1,jobId=6,toolRevision='b'*40,promotionRunId=19))
+        self.assertFalse(m.is_fast_track_producer('owner/repo',self.run))
+    def test_wrong_event_branch_repository_and_source_rejected(self):
+        for key,value in [('event','push'),('head_branch','other'),('head_repository',dict(full_name='other/repo'))]:
+            previous=self.run[key];self.run[key]=value
+            with self.subTest(key=key), self.assertRaises(ValueError):self.invoke()
+            self.run[key]=previous
+        with self.assertRaisesRegex(ValueError,'WORKFLOW_CHANGED'):self.invoke(source='changed')
+    def test_missing_ambiguous_or_unadmitted_promotion_rejected(self):
+        for rows in [[],[dict(id=1,head_sha='b'*40),dict(id=2,head_sha='b'*40)],[dict(id=1,head_sha='c'*40)]]:
+            with self.subTest(rows=rows),self.assertRaises(ValueError):self.invoke(promotions=rows)
+        with self.assertRaises(ValueError):self.invoke(promoted=False)
+    def test_incomplete_inventory_or_active_competitor_rejected(self):
+        self.jobs.pop()
+        with self.assertRaises(ValueError):self.invoke()
+        self.setUp();self.jobs[0]['status']='in_progress'
+        with self.assertRaisesRegex(ValueError,'COMPETING_JOB'):self.invoke()
+    def test_wrong_job_attempt_and_tool_sha_rejected(self):
+        for key,value in [('run_attempt',2),('head_sha','c'*40),('run_id',21)]:
+            previous=self.jobs[0][key];self.jobs[0][key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):self.invoke()
+            self.jobs[0][key]=previous
+
+class RetainedRecoveryRecordTests(unittest.TestCase):
+    def setUp(self):
+        self.original=dict(run=dict(id=10,run_attempt=5,head_sha='a'*40))
+        self.observer=dict(runId=20,runAttempt=1,jobId=30,toolRevision='b'*40,promotionRunId=19)
+        self.material=dict(packageArtifact=dict(id=40,digest='sha256:'+'c'*64))
+        self.run=dict(id=20,display_title='LEGEND retained recovery original=10 application='+'a'*40)
+        self.record=dict(target='website',applicationRevision='a'*40,packageDigest='d'*64,
+                         producingRun=20,producingAttempt=1,packageProducerRun=10,
+                         recoveryEvidence=m.fast_track_recovery_record_proof(self.original,self.material,self.observer))
+        self.job=dict(id=30,steps=[dict(name='Recover exact retained application bytes',status='completed',
+                    conclusion='success',started_at='2026-10-23T10:00:00Z',completed_at='2026-10-23T10:01:00Z')])
+    def invoke(self):
+        with patch.object(m,'fast_track_recovery_producer',return_value=self.observer), \
+             patch.object(m,'fast_track_completion_original',return_value=self.original), \
+             patch.object(m,'fast_track_recovery_material',return_value=self.material), \
+             patch.object(m,'fast_track_recovery_package_digest',return_value='d'*64), \
+             patch.object(m,'api_get',return_value=dict(total_count=1,jobs=[self.job])):
+            return m.validate_fast_track_recovery_record('owner/repo',self.run,
+                dict(created_at='2026-10-23T10:00:30Z'),self.record,'token')
+    def test_exact_original_bytes_and_actual_tool_owner(self):
+        self.assertTrue(self.invoke())
+    def test_wrong_package_digest_original_producer_actual_producer(self):
+        for key,value in [('packageDigest','e'*64),('packageProducerRun',11),('producingRun',21),('applicationRevision','f'*40)]:
+            previous=self.record[key];self.record[key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):self.invoke()
+            self.record[key]=previous
+    def test_wrong_tool_artifact_or_future_original_attempt(self):
+        for key,value in [('toolRevision','f'*40),('packageArtifactId',41),('packageArtifactDigest','sha256:'+'e'*64),('originalAttempt',6)]:
+            previous=self.record['recoveryEvidence'][key];self.record['recoveryEvidence'][key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):self.invoke()
+            self.record['recoveryEvidence'][key]=previous
+    def test_wrong_dispatch_or_outside_owner_window(self):
+        self.run['display_title']='arbitrary'
+        with self.assertRaises(ValueError):self.invoke()
+        self.setUp();self.job['steps'][0]['completed_at']='2026-10-23T10:00:01Z'
+        with self.assertRaises(ValueError):self.invoke()
+
+class RetainedRecoveryHistoryTests(unittest.TestCase):
+    def invoke(self,run,step):
+        with patch.object(m,'fast_track_execution_history',return_value=[run]), \
+             patch.object(m,'fast_track_recovery_producer',return_value=dict(jobId=3)), \
+             patch.object(m,'api_get',return_value=dict(total_count=1,jobs=[dict(id=3,steps=step)])):
+            return m.recovery_history_no_unjournaled_entry('owner/repo','a'*40,20,2,'token')
+    def run_fixture(self):
+        return dict(id=20,event='workflow_dispatch',run_attempt=2,status='completed',
+                    display_title='LEGEND retained recovery original=10 application='+'a'*40)
+    def test_only_conclusively_skipped_prior_owner_allows_no_entry(self):
+        self.assertIsNone(self.invoke(self.run_fixture(),[dict(name='Recover exact retained application bytes',conclusion='skipped')]))
+    def test_failed_missing_active_or_unknown_prior_owner_holds(self):
+        for steps in [[],[dict(name='Recover exact retained application bytes',conclusion='failure')],
+                      [dict(name='Recover exact retained application bytes',conclusion=None)]]:
+            with self.subTest(steps=steps),self.assertRaises(m.ReleaseOperationHistoryUnproven):self.invoke(self.run_fixture(),steps)
+        run=self.run_fixture();run['status']='in_progress'
+        with self.assertRaises(m.ReleaseOperationHistoryUnproven):self.invoke(run,[])
+        run=self.run_fixture();run['display_title']='unknown'
+        with self.assertRaises(m.ReleaseOperationHistoryUnproven):self.invoke(run,[])
+
+class RetainedPreuploadAttestationTests(unittest.TestCase):
+    def setUp(self):
+        import io,zipfile
+        self.run=dict(id=10,run_attempt=1,status='completed',head_sha='a'*40,event='push',
+                      path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,
+                      head_branch=m.FAST_TRACK_PR_BASE,head_repository=dict(full_name='owner/repo'))
+        self.step=dict(name='Publish or reconcile exact application bytes',status='completed',conclusion='failure',
+                       started_at='2026-10-23T10:00:00Z',completed_at='2026-10-23T10:00:02Z')
+        self.job=dict(id=11,run_id=10,run_attempt=1,head_sha='a'*40,status='completed',conclusion='failure',
+                      name='Affected App Deploy — Website',steps=[self.step])
+        self.package=dict(id=40,name='fast-track-package-'+'a'*40+'-website',expired=False,
+                          digest='sha256:'+'e'*64,workflow_run=dict(id=10,head_sha='a'*40))
+        buffer=io.BytesIO()
+        with zipfile.ZipFile(buffer,'w') as archive:archive.writestr('_deployment-provenance.txt','a'*40)
+        self.archive=buffer.getvalue();self.digest=hashlib.sha256(self.archive).hexdigest()
+        self.operation=hashlib.sha256(json.dumps(dict(target='website',applicationRevision='a'*40,packageDigest=self.digest),sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    def invoke(self, *, source='reviewed-source', owner=True, extra_intent=False, complete=True, bad_checksum=False):
+        rows=[self.package]+([dict(name='legend-release-operation-intent-any')] if extra_intent else [])
+        def download(repo,run,name,directory,**kwargs):
+            self.assertEqual((run,kwargs['artifact_id'],kwargs['expected_digest']),(10,40,'sha256:'+'e'*64))
+            (directory/'deploy.zip').write_bytes(self.archive)
+            (directory/'SHA256SUMS').write_text(('0'*64 if bad_checksum else self.digest)+'  deploy.zip\n')
+        with patch.object(m,'FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS',({'scripts/deploy-approved-app.py':hashlib.sha256(b'reviewed-source').hexdigest()},)), \
+             patch.object(m,'_release_history_source',return_value=source), \
+             patch.object(m,'api_get',return_value=dict(total_count=len(rows)+(0 if complete else 1),artifacts=rows)), \
+             patch.object(m,'_completion_jobs',return_value={1:[self.job]}), \
+             patch.object(m,'_completion_original_artifact_owner',side_effect=None if owner else ValueError('missing owner')), \
+             patch.object(m,'_release_history_json',return_value=dict(target='website')), \
+             patch.object(m,'_download_run_artifact',side_effect=download), \
+             patch.object(m,'_release_job_log',return_value=RetainedRecoveryAuthorityTests().log()):
+            return m.attested_fast_track_preupload_failure('owner/repo',self.run,self.job,1,'website',self.operation,'token')
+    def test_source_pinned_package_bound_positive_no_entry(self):self.assertTrue(self.invoke())
+    def test_changed_source_missing_owner_intent_incomplete_inventory_or_checksum_holds(self):
+        for kwargs in [dict(source='changed'),dict(owner=False),dict(extra_intent=True),dict(complete=False),dict(bad_checksum=True)]:
+            with self.subTest(kwargs=kwargs):self.assertFalse(self.invoke(**kwargs))
+    def test_wrong_attempt_revision_and_operation_holds(self):
+        self.job['run_attempt']=2;self.assertFalse(self.invoke())
+        self.setUp();self.job['head_sha']='b'*40;self.assertFalse(self.invoke())
+        self.setUp();self.operation='f'*64;self.assertFalse(self.invoke())
+
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.
     # Synthetic planner revisions must never query the real CI repository.

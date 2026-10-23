@@ -284,6 +284,37 @@ def validate_original_submission_observation(intent, record, original_run):
     return record
 
 
+class RecoveryJournal(OperationJournal):
+    """Same immutable journal, with actual recovery producer provenance."""
+    def __init__(self, *, recovery_evidence, before_new_intent, publisher=None, **kwargs):
+        self.recovery_evidence = dict(recovery_evidence)
+        self.before_new_intent = before_new_intent
+        actual_publisher = publisher or publish_record
+        def publish(name, record):
+            # Never mutate the original intent object or claim its producer.
+            value = dict(record, recoveryEvidence=dict(self.recovery_evidence))
+            return actual_publisher(name, value)
+        super().__init__(publisher=publish, **kwargs)
+        if (self.recovery_evidence.get('runId') != self.run
+            or self.recovery_evidence.get('runAttempt') != self.attempt
+            or self.recovery_evidence.get('originalRun') != self.producer
+            or self.recovery_evidence.get('applicationRevision') != self.identity['applicationRevision']):
+            raise ValueError('Recovery journal producer/material mismatch')
+
+    def before_submit(self, baseline_ids, **kwargs):
+        if self.intent is not None:
+            return False
+        if self.history_error is not None:
+            raise self.history_error
+        self.before_new_intent(self._ids(baseline_ids))
+        return super().before_submit(baseline_ids, **kwargs)
+
+    def record_submission_observation(self, deployment_id):
+        if not self._new_intent_readback:
+            raise RuntimeError('Inherited recovery intent is reconcile-only; no new submission observation')
+        return super().record_submission_observation(deployment_id)
+
+
 class CompletionJournal:
     """Success-only adapter. No intent/submission method or upload authority exists."""
     def __init__(self, original, material, observer, *, authority=None, publisher=None):

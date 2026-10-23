@@ -88,7 +88,17 @@ class UniversalFastTrackAdmissionTests(unittest.TestCase):
                 for path in changed for pattern in triggers), control)
         self.assertFalse(any(fnmatch.fnmatchcase('Docs/unrelated.md', pattern)
             for pattern in triggers))
-        self.assertNotIn('workflow_dispatch:', workflow)
+        self.assertEqual(workflow.count('  workflow_dispatch:'), 1)
+        jobs=authority._job_blocks(workflow)
+        self.assertIn("if: github.event_name == 'push'", jobs['select-targets'])
+        recovery=jobs['recover-fast-track']
+        self.assertIn("if: github.event_name == 'workflow_dispatch'", recovery)
+        self.assertIn('--prepare-recovery-only', recovery)
+        self.assertIn('--recover-fast-track', recovery)
+        self.assertNotIn('dotnet publish', recovery)
+        self.assertNotIn('npm run build', recovery)
+        self.assertIn('group: legend-approved-release', workflow)
+        self.assertIn('cancel-in-progress: false', workflow)
 
     def test_existing_isolated_validation_covers_every_fast_track_trigger(self):
         import fnmatch, re
@@ -1519,7 +1529,7 @@ class TrustedToolPromotionAdmissionTests(unittest.TestCase):
         with patch.object(authority,'_fast_track_policy',return_value=policy),patch.object(authority,'fast_track_source_admission',return_value={}),patch.object(authority,'fast_track_effective_baseline',side_effect=AssertionError('recovery')):
             with self.assertRaisesRegex(ValueError,'bad marker'):authority.fast_track_selection('a'*40,'b'*40)
 
-    def history(self, mutate=None, carry=False):
+    def history(self, mutate=None, carry=False, recovery=False):
         before,head='a'*40,'b'*40
         run=dict(id=77,run_attempt=1,head_sha=head,status='completed',conclusion='success',
             head_branch=authority.FAST_TRACK_PR_BASE,event='push',
@@ -1527,6 +1537,9 @@ class TrustedToolPromotionAdmissionTests(unittest.TestCase):
             head_repository=dict(full_name='MYLEGND/masterapp'))
         proof={'phase':'trusted-tool-promotion','baseRevision':before}
         jobs=[dict(name=name,conclusion='success' if index==0 else 'skipped',run_id=77,run_attempt=1,head_sha=head) for index,name in enumerate(('Select exact affected applications','Admit exact validated fast-track source','Reconcile production schema before publication','Publish verified website routing','Affected App Deploy'))]
+        if recovery:
+            jobs.append(dict(name=authority.FAST_TRACK_RECOVERY_JOB, status='completed', conclusion='skipped',
+                             steps=[], run_id=77, run_attempt=1, head_sha=head))
         artifact=dict(id=99,name='fast-track-admission-77-1',expired=False,workflow_run={'id':77})
         receipt=dict(proof,producingRun=77,producingAttempt=1)
         if mutate:mutate(run,jobs,artifact,receipt)
@@ -1541,11 +1554,19 @@ class TrustedToolPromotionAdmissionTests(unittest.TestCase):
             raise AssertionError(path)
         def download(repo,runid,name,root,**kwargs):
             self.assertEqual(99,kwargs['artifact_id']);(root/'fast-track-admission.json').write_text(json.dumps(receipt))
-        with patch.object(authority,'_fast_track_policy',return_value=policy),patch.object(authority,'is_fast_track_producer',return_value=True),patch.object(authority,'fast_track_merged_source_proof',return_value={}),patch.object(authority,'api_get',side_effect=api),patch.object(authority,'_download_run_artifact',side_effect=download),patch.object(authority,'fast_track_untriggered_repair_parent',return_value=None),patch.object(authority.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.dict(os.environ,{'GITHUB_REPOSITORY':'MYLEGND/masterapp','GH_TOKEN':'fixture'}):
+        with patch.object(authority,'_release_history_source',return_value='jobs:\n  recover-fast-track:\n' if recovery else ''),patch.object(authority,'_fast_track_policy',return_value=policy),patch.object(authority,'is_fast_track_producer',return_value=True),patch.object(authority,'fast_track_merged_source_proof',return_value={}),patch.object(authority,'api_get',side_effect=api),patch.object(authority,'_download_run_artifact',side_effect=download),patch.object(authority,'fast_track_untriggered_repair_parent',return_value=None),patch.object(authority.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.dict(os.environ,{'GITHUB_REPOSITORY':'MYLEGND/masterapp','GH_TOKEN':'fixture'}):
             return authority.fast_track_effective_baseline(head,'c'*40) if carry else authority.fast_track_promotion_parent('MYLEGND/masterapp',run,'fixture')
 
     def test_successful_nonpublishing_promotion_preserves_original_recovery_baseline(self):
         self.assertEqual('a'*40,self.history(carry=True))
+
+    def test_promoted_recovery_owner_must_be_conclusively_skipped(self):
+        self.assertEqual('a'*40,self.history(recovery=True))
+        for mutation in [lambda r,j,a,p:j[-1].update(conclusion='success'),
+                         lambda r,j,a,p:j[-1].update(status='in_progress'),
+                         lambda r,j,a,p:j[-1].update(steps=[{}]),lambda r,j,a,p:j.pop()]:
+            with self.subTest(mutation=mutation),self.assertRaises(ValueError):
+                self.history(mutation,recovery=True)
 
     def test_historical_receipt_and_job_identities_fail_closed(self):
         mutations=[lambda r,j,a,p:a.update(id=0),lambda r,j,a,p:a.update(workflow_run={'id':78}),

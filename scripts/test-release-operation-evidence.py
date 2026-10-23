@@ -913,5 +913,104 @@ class CompletionJournalTests(unittest.TestCase):
         with self.assertRaises(TimeoutError):self.owner().record_success(['new'])
         self.publish.assert_called_once()
 
+class RetainedRecoveryJournalTests(DurableOperationProtocolTests):
+    def recovery(self, **kwargs):
+        evidence = dict(runId=int(self.env['GITHUB_RUN_ID']), runAttempt=1, originalRun=8,
+                        applicationRevision='a' * 40, toolRevision='d' * 40)
+        args = dict(target='portal', application_revision='a' * 40, package_digest='b' * 64,
+                    baseline='c' * 40, authority=self.authority, publisher=self.publish, environment=self.env,
+                    recovery_evidence=evidence, before_new_intent=lambda ids: None)
+        args.update(kwargs)
+        return journal.RecoveryJournal(**args)
+
+    def test_new_intent_has_actual_recovery_producer(self):
+        owner = self.recovery()
+        self.assertTrue(owner.before_submit(['old']))
+        stored = json.loads((self.path / ('intent' + owner.operation_id)).read_text())
+        self.assertEqual(stored['producingRun'], 10)
+        self.assertEqual(stored['packageProducerRun'], 8)
+        self.assertEqual(stored['recoveryEvidence']['toolRevision'], 'd' * 40)
+
+    def test_existing_original_intent_is_byte_preserved_and_reconcile_only(self):
+        original = self.make()
+        original.before_submit(['old'])
+        path = self.path / ('intent' + original.operation_id)
+        before = path.read_bytes()
+        def forbidden(*args): raise AssertionError('No new write boundary for inherited intent')
+        owner = self.recovery(before_new_intent=forbidden, publisher=forbidden)
+        self.assertFalse(owner.before_submit(['different']))
+        self.assertEqual(path.read_bytes(), before)
+        with self.assertRaisesRegex(RuntimeError, 'reconcile-only'):
+            owner.record_submission_observation('provider')
+
+    def test_previous_recovery_intent_is_immutable_on_resume(self):
+        owner = self.recovery()
+        owner.before_submit(['old'], submission_kind='azure_onedeploy_windows_intent_v1')
+        owner.record_submission_observation('provider')
+        path = self.path / ('intent' + owner.operation_id)
+        before = path.read_bytes()
+        self.env['GITHUB_RUN_ID'] = '11'
+        resumed = self.recovery()
+        self.assertFalse(resumed.before_submit(['other']))
+        with self.assertRaisesRegex(RuntimeError, 'reconcile-only'):
+            resumed.record_submission_observation('provider')
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_failed_fresh_barrier_never_publishes_intent(self):
+        def failed(ids): raise RuntimeError('provider changed')
+        owner = self.recovery(before_new_intent=failed)
+        with self.assertRaisesRegex(RuntimeError, 'provider changed'):
+            owner.before_submit(['old'])
+        self.assertFalse((self.path / ('intent' + owner.operation_id)).exists())
+
+    def test_post_intent_timeout_preserves_reconcile_only_on_next_invocation(self):
+        first=self.recovery()
+        self.assertTrue(first.before_submit(['old'],submission_kind='azure_onedeploy_windows_intent_v1'))
+        path=self.path/('intent'+first.operation_id);before=path.read_bytes()
+        # Provider ACK timed out after entering exactly once; no observation is invented.
+        entered=1
+        self.env['GITHUB_RUN_ID']='11'
+        resumed=self.recovery()
+        if resumed.before_submit(['old']):entered+=1
+        self.assertEqual(entered,1);self.assertEqual(path.read_bytes(),before)
+        self.assertIsNone(resumed.submission_observation)
+
+    def test_submitted_receipt_timeout_preserves_intent_for_next_owner(self):
+        def publish(name,record):
+            if record['phase']=='submitted':raise TimeoutError('receipt deadline')
+            return self.publish(name,record)
+        first=self.recovery(publisher=publish)
+        first.before_submit(['old'],submission_kind='azure_onedeploy_windows_intent_v1')
+        path=self.path/('intent'+first.operation_id);before=path.read_bytes()
+        with self.assertRaises(TimeoutError):first.record_submission_observation('provider')
+        self.env['GITHUB_RUN_ID']='11'
+        resumed=self.recovery()
+        self.assertFalse(resumed.before_submit(['old']))
+        self.assertEqual(path.read_bytes(),before)
+        self.assertIsNone(resumed.submission_observation)
+
+    def test_parallel_target_failure_preserves_each_original_intent(self):
+        import concurrent.futures
+        owners={key:self.recovery(target=key) for key in ('portal','client')}
+        def worker(key):
+            owners[key].before_submit(['old'])
+            if key=='portal':raise TimeoutError('provider ACK deadline')
+            return 'receipt-pending'
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            futures={key:executor.submit(worker,key) for key in owners}
+            with self.assertRaises(TimeoutError):futures['portal'].result()
+            self.assertEqual(futures['client'].result(),'receipt-pending')
+        original={key:(self.path/('intent'+owner.operation_id)).read_bytes() for key,owner in owners.items()}
+        self.env['GITHUB_RUN_ID']='11'
+        for key in owners:
+            resumed=self.recovery(target=key)
+            self.assertFalse(resumed.before_submit(['different']))
+            self.assertEqual((self.path/('intent'+resumed.operation_id)).read_bytes(),original[key])
+
+    def test_wrong_actual_producer_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'producer/material'):
+            self.recovery(recovery_evidence=dict(runId=99, runAttempt=1, originalRun=8,
+                                                applicationRevision='a' * 40))
+
 if __name__ == '__main__':
     unittest.main()
