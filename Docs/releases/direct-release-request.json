@@ -1,40 +1,40 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder explicitly delegated routine work acceptance, protected merging and deployment within assigned task scope, including existing release recovery (Sentinel_49c5184a62a081918b1444d44ba6501e; Sentinel_862add8a1b988191b7cdce56be5bbcc4). This validate-only control promotion authorizes no application publication, provider setting, privacy/security/access or spending change.",
-  "purpose": "Promote the independently reviewed canonical terminal sequential-preflight nonentry receipt producer/transport/consumer, authenticated historical pre-worker failure proof, and a bounded deployment-read latency allowance within unchanged aggregate job/read/write reserves. Preserve uncertain post-worker/intent outcomes, original package identity and four accepted deployments. No workflow, journal publisher or alternative provider identity/transport change.",
-  "requestId": "founder-retained-preflight-evidence-20261023-v1",
+  "purpose": "Promote the independently reviewed target/current-attempt pre-intent hold producer, strict transport and complete sibling/attempt consumer; exact historical read-only callback deadline proof; invocation-local single-flight reuse of verified immutable package digests with fresh mutable gates. Preserve original packages, four accepted deployments, all uncertain entered intents and all existing budgets. No application publication, workflow, journal, provider, identity, access or spending change.",
+  "requestId": "founder-retained-target-preintent-evidence-20261023-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "7e777b32d0ad856bd7422330e3251fbad0ed2073",
-    "sourceRevision": "f7dd136ebf9782e5db8ecdcc79ff596bf7b1f738",
+    "baseRevision": "5dd1671cf39ea02f585db56b00c759264ea3c1fc",
+    "sourceRevision": "afc01b26c7caf8c33d3a3cb860b99178968064d7",
     "files": {
       "scripts/deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "6c6043f094a703daebb93178c6e5e876cb4a1fd0"
+        "blob": "878b76807fc26a63cb15e1446bcad487ac05c83e"
       },
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "d5b238ce70beaa53ceffdd72456295c60c5e98d1"
+        "blob": "7360da08f5d48c08276b633e03549f670b0d2c58"
       },
       "scripts/release-artifacts/transport.cjs": {
         "mode": "100644",
-        "blob": "f3692e12ba9eab7bc06aa3276f1789f7c257c68b"
+        "blob": "56aeef6c1f8dba01626e5f5d0ea78e552fd486f7"
       },
       "scripts/test-deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "057f824406a4c76e2341fa26534feef9f74bc1ab"
+        "blob": "81a683449360d5e94b7e57d5dcac3b28d659f5dc"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "9cd13680f29272cdde67c9a5075eff91f0b9e260"
+        "blob": "ac7272ddff68e634d99c57e2cd27d270ecbc6c93"
       },
       "scripts/release-artifacts/test-transport.cjs": {
         "mode": "100644",
-        "blob": "90d107b1e7c4144d4aeabb19660a98fd6afc1f76"
+        "blob": "f62e720a422b830348c064bb1b408ddadae66cd1"
       }
     }
   }
