@@ -1,24 +1,32 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized routine scoped acceptance, GitHub blobs, protected merge and deployment under ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. This validate-only control promotion authorizes no application publication, provider setting, privacy/security/access or spending change.",
-  "purpose": "Reuse digest-verified immutable receipt bytes within one retained recovery invocation while preserving fresh admission, exact history, target and sibling checks, existing mutex and time reserves. Preserve exact prior control generations. No application publication.",
-  "requestId": "founder-retained-recovery-receipt-reuse-20261023-v1",
+  "authorization": "Founder authorizes bounded canonical recovery corrections, required validation, protected merge and selective deployment under ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. This exact validate-only control promotion authorizes no application publication or provider/settings/access/cost change.",
+  "purpose": "Reduce repeated terminal historical metadata, promotion receipt and completed log reads while closing each admission proof with uncached comparison. Preserve active ownership, provider checks, exact history and sibling evidence, mutex and time reserves.",
+  "requestId": "founder-retained-recovery-proof-context-20261023-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "5c5f30a32cd57e9f4c19fe2c427d3306f6188869",
-    "sourceRevision": "374561663d6c82d78aeb162f19f96028b2794dbe",
+    "baseRevision": "d8a5b5f09fec92b8dfea86536d450a844b742738",
+    "sourceRevision": "004d4d7c548dda3362f3ac0252c5c5306515c647",
     "files": {
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "d59648bdc404993575559023cb10d6c0f6cd5fb1"
+        "blob": "b1ef4e8c655413dacfd085dc0b4fad4d360aee02"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "234a4ffdd9f32fcb95b5144163b646cb36071b5c"
+        "blob": "39dfcfa1fe12c0ba1534dda865ff9136681c67d2"
+      },
+      "scripts/deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "4e2f7eaaceb3bfdad88319047f6820efebbea485"
+      },
+      "scripts/test-deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "c62ed24c3c4f9c07e4c2048da417e8443f55140e"
       }
     }
   }
