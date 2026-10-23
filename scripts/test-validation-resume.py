@@ -6244,6 +6244,102 @@ class RecoveryTargetHoldTests(unittest.TestCase):
         for mutate in [lambda r:r['targets'].pop('portal'),lambda r:r['targets']['website'].update(packageArtifactId=999),lambda r:r.update(producingAttempt=2),lambda r:r['observer'].update(toolRevision='f'*40)]:
             self.setUp();mutate(self.record);self.assertFalse(self.invoke())
 
+class RecoveryReceiptReuseTests(unittest.TestCase):
+    def setUp(self):
+        self.artifact=dict(id=40,name='receipt',digest='sha256:'+'e'*64,expired=False,workflow_run=dict(id=10))
+        self.raw=b'{"items":[1]}'
+    def download(self, repository, run, name, directory, **kw):
+        self.assertEqual(kw,dict(artifact_id=self.artifact['id'],expected_digest=self.artifact['digest']))
+        (directory/'operation.json').write_bytes(self.raw)
+        (directory/'validation-resume.json').write_bytes(self.raw)
+    def get(self, repository='owner/repo', run=10, filename='operation.json', size=32768):
+        return m._release_history_json(repository,run,self.artifact,filename,verify_digest=True,max_bytes=size)
+    def test_reuse_independent_values_and_invocation_exit(self):
+        with patch.object(m,'_download_run_artifact',side_effect=self.download) as download:
+            with m.recovery_material_reuse():
+                self.get()['items'].append(9)
+                self.assertEqual(self.get(),dict(items=[1]));self.assertEqual(download.call_count,1)
+            with m.recovery_material_reuse():self.get()
+            self.assertEqual(download.call_count,2)
+        self.assertIsNone(m._RECOVERY_RECEIPT_BYTES.get())
+    def test_every_identity_dimension_and_size_policy_is_distinct(self):
+        with patch.object(m,'_download_run_artifact',side_effect=self.download) as download,m.recovery_material_reuse():
+            self.get();self.get(repository='other/repo')
+            self.artifact['workflow_run']['id']=11;self.get(run=11)
+            self.artifact['workflow_run']['id']=10;self.artifact['id']=41;self.get()
+            self.artifact['digest']='sha256:'+'f'*64;self.get()
+            self.artifact['name']='other-receipt';self.get()
+            self.get(filename='validation-resume.json');self.get(size=131072)
+            self.assertEqual(download.call_count,8)
+    def test_invalid_metadata_fails_after_prior_hit(self):
+        for change in [dict(expired=True),dict(expired=None),dict(id=True),dict(digest='bad'),dict(name=''),dict(workflow_run=dict(id=99))]:
+            self.setUp()
+            with patch.object(m,'_download_run_artifact',side_effect=self.download) as download,m.recovery_material_reuse():
+                self.get();self.artifact.update(change)
+                with self.assertRaises(m.ReleaseOperationHistoryUnproven):self.get()
+                self.assertEqual(download.call_count,1)
+    def test_raw_byte_limit_and_failure_eviction(self):
+        self.raw=b'{"items":[]}' + b' '*32768
+        with patch.object(m,'_download_run_artifact',side_effect=self.download) as download,m.recovery_material_reuse():
+            self.get(size=131072)
+            for _ in range(2):
+                with self.assertRaisesRegex(RuntimeError,'oversized'):self.get()
+            self.assertEqual(download.call_count,3)
+        self.raw=b'not json'
+        with patch.object(m,'_download_run_artifact',side_effect=self.download) as download,m.recovery_material_reuse():
+            with self.assertRaises(ValueError):self.get()
+            self.raw=b'{"items":[1]}';self.get();self.get()
+            self.assertEqual(download.call_count,2)
+        with patch.object(m,'_download_run_artifact',side_effect=RuntimeError('digest mismatch')) as download,m.recovery_material_reuse():
+            for _ in range(2):
+                with self.assertRaisesRegex(RuntimeError,'digest mismatch'):self.get()
+            self.assertEqual(download.call_count,2)
+    def test_concurrent_single_flight_and_waiter_deadline(self):
+        import concurrent.futures,contextvars,threading
+        entered=threading.Event();release=threading.Event()
+        def download(*args,**kw):
+            entered.set();release.wait(2);self.download(*args,**kw)
+        with patch.object(m,'_download_run_artifact',side_effect=download) as downloads,m.recovery_material_reuse(),concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            first=pool.submit(contextvars.copy_context().run,self.get);self.assertTrue(entered.wait(2))
+            with patch.object(m,'evidence_remaining',return_value=.001):
+                with self.assertRaises(concurrent.futures.TimeoutError):self.get()
+            second=pool.submit(contextvars.copy_context().run,self.get);release.set()
+            self.assertEqual(first.result(),second.result());self.assertEqual(downloads.call_count,1)
+    def test_fresh_source_inventory_and_scope_are_not_cached(self):
+        run=dict(id=10,run_attempt=1,event='pull_request');workflow='approved-release-security-validation.yml'
+        self.artifact['name']='validation-resume-security-10-1'
+        receipt=dict(workflow=workflow,currentSha='a'*40,validationBase=m.FAST_TRACK_PR_BASE,
+            sourceValidationScope=dict(phase='source-validation-only',releaseAdmission=False,
+                baseBranch=m.FAST_TRACK_PR_BASE,candidate='a'*40,pullRequest=679))
+        self.raw=json.dumps(receipt).encode();inventory=dict(total_count=1,artifacts=[self.artifact])
+        with patch.object(m,'api_get',return_value=inventory) as api,patch.object(m,'_download_run_artifact',side_effect=self.download) as download,m.recovery_material_reuse():
+            def get(candidate='a'*40):return m.fast_track_validation_receipt('owner/repo',run,workflow,candidate,679,'token')
+            self.assertEqual(get(),40);self.assertEqual(get(),40)
+            with self.assertRaisesRegex(RuntimeError,'SOURCE_SCOPE'):get('b'*40)
+            inventory['total_count']=2
+            with self.assertRaisesRegex(RuntimeError,'INVENTORY_INCOMPLETE'):get()
+            self.assertEqual(api.call_count,4);self.assertEqual(download.call_count,1)
+    def test_fresh_operation_inventory_and_producer_are_not_cached(self):
+        operation='b'*64;revision='a'*40;self.artifact['name']='legend-release-operation-intent-'+operation
+        self.raw=json.dumps(dict(operationId=operation,target='website',applicationRevision=revision,
+            producingRun=10,producingAttempt=1,phase='intent')).encode()
+        inventory=dict(total_count=1,artifacts=[self.artifact]);run=dict(id=10,head_sha=revision,run_attempt=1)
+        def api(repository,path,token):return inventory if path.startswith('actions/artifacts?') else run
+        with patch.object(m,'_release_history_api',side_effect=api) as reads,patch.object(m,'is_fast_track_producer',return_value=True),patch.object(m,'_download_run_artifact',side_effect=self.download) as downloads,m.recovery_material_reuse():
+            def get():return m.release_operation_history('owner/repo',operation,revision,'website',20,1,'token')
+            self.assertEqual(get(),get());self.assertEqual(downloads.call_count,1)
+            run['run_attempt']=0
+            with self.assertRaisesRegex(RuntimeError,'unbound revision or attempt'):get()
+            run['run_attempt']=1;inventory['total_count']=2
+            with self.assertRaises(m.ReleaseOperationHistoryUnproven):get()
+            self.assertEqual(reads.call_count,7)
+    def test_cache_bound(self):
+        with patch.object(m,'_download_run_artifact',side_effect=self.download) as downloads,m.recovery_material_reuse():
+            for i in range(100):self.artifact['id']=40+i;self.get()
+            self.artifact['id']=140
+            with self.assertRaisesRegex(ValueError,'CACHE_BOUND'):self.get()
+            self.assertEqual(downloads.call_count,100)
+
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.
     # Synthetic planner revisions must never query the real CI repository.

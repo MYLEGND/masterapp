@@ -329,15 +329,18 @@ def fast_track_recovery_material(repository, original, key, token):
 
 
 _RECOVERY_PACKAGE_DIGESTS = contextvars.ContextVar('recovery_package_digests', default=None)
+_RECOVERY_RECEIPT_BYTES = contextvars.ContextVar('recovery_receipt_bytes', default=None)
 
 
 @contextlib.contextmanager
 def recovery_material_reuse():
     """One invocation, shared by its copied worker contexts; never mutable proof."""
     token = _RECOVERY_PACKAGE_DIGESTS.set((threading.Lock(), {}))
+    receipt_token = _RECOVERY_RECEIPT_BYTES.set((threading.Lock(), {}))
     try:
         yield
     finally:
+        _RECOVERY_RECEIPT_BYTES.reset(receipt_token)
         _RECOVERY_PACKAGE_DIGESTS.reset(token)
 
 
@@ -810,7 +813,11 @@ def _recovery_receipt_source_closure(repository, revision, token):
     source = {path: hashlib.sha256(_release_history_source(repository, revision, path, token).encode()).hexdigest() for path in paths}
     current = {path: hashlib.sha256((Path(__file__).parent / path.removeprefix('scripts/')).read_bytes()).hexdigest() for path in paths}
     previous = {path: FAST_TRACK_RECOVERY_TARGET_READ_GENERATIONS[0][path] for path in paths}
-    return source in (current, previous)
+    read_hold_generation = dict(zip(paths, (
+        'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850',
+        'e940347d70b4fcea6059ca7cb4102c9a9ecd479d4e26e29f016967830f149531',
+        'f1b22bcc777114af2437280ee71550555d6b8e2d1701964915eb76de28248557')))
+    return source in (current, previous, read_hold_generation)
 
 
 def attested_recovery_terminal_preflight(repository, run, job, attempt, revision, token):
@@ -5408,12 +5415,16 @@ def fast_track_validation_receipt(repository, run, workflow, candidate, pr, toke
     artifacts = [a for a in rows if a.get('name') == name and a.get('expired') is False]
     if len(artifacts) != 1 or artifacts[0].get('workflow_run', {}).get('id') != run['id']:
         raise RuntimeError('FAST_TRACK_VALIDATION_RECEIPT_MISSING')
-    with tempfile.TemporaryDirectory(prefix='fast-track-source-') as tmp:
-        _download_run_artifact(repository, run['id'], name, Path(tmp), artifact_id=artifacts[0]['id'])
-        path = Path(tmp) / 'validation-resume.json'
-        if path.stat().st_size > 32 * 1024 * 1024:
-            raise RuntimeError('FAST_TRACK_VALIDATION_RECEIPT_OVERSIZED')
-        receipt = json.loads(path.read_text())
+    if _RECOVERY_RECEIPT_BYTES.get() is not None:
+        receipt = _release_history_json(repository, run['id'], artifacts[0], 'validation-resume.json',
+                                        verify_digest=True, max_bytes=32 * 1024 * 1024)
+    else:
+        with tempfile.TemporaryDirectory(prefix='fast-track-source-') as tmp:
+            _download_run_artifact(repository, run['id'], name, Path(tmp), artifact_id=artifacts[0]['id'])
+            path = Path(tmp) / 'validation-resume.json'
+            if path.stat().st_size > 32 * 1024 * 1024:
+                raise RuntimeError('FAST_TRACK_VALIDATION_RECEIPT_OVERSIZED')
+            receipt = json.loads(path.read_text())
     scope = receipt.get('sourceValidationScope', {})
     if (not isinstance(scope, dict) or 'developmentValidationScope' in receipt
         or receipt.get('workflow') != workflow or receipt.get('currentSha') != candidate
@@ -10540,21 +10551,64 @@ def _release_history_source(repository, revision, path, token):
     return source
 
 
-def _release_history_json(repository, run_id, artifact, filename, *, verify_digest=False):
+def _recovery_receipt_json(repository, run_id, artifact, filename, max_bytes):
+    """Reuse authenticated bytes only; every caller still checks fresh authority."""
     import tempfile
+    digest = artifact.get('digest')
+    if (artifact.get('expired') is not False or type(run_id) is not int or run_id < 1
+        or type(artifact.get('id')) is not int or artifact['id'] < 1
+        or artifact.get('workflow_run', {}).get('id') != run_id
+        or not isinstance(artifact.get('name'), str) or not artifact['name']
+        or not isinstance(digest, str) or not re.fullmatch('sha256:[a-f0-9]{64}', digest)
+        or type(max_bytes) is not int or not 0 < max_bytes <= 32 * 1024 * 1024):
+        raise ReleaseOperationHistoryUnproven('Recovery receipt artifact identity unproven')
+    identity = (repository, run_id, artifact['id'], artifact['name'], digest, filename, max_bytes)
+    lock, entries = _RECOVERY_RECEIPT_BYTES.get()
+    with lock:
+        future = entries.get(identity); owns = future is None
+        if owns:
+            if len(entries) >= 100:raise ValueError('RECOVERY_RECEIPT_CACHE_BOUND')
+            future = concurrent.futures.Future(); entries[identity] = future
+    if not owns:
+        raw = future.result(timeout=evidence_remaining(180))
+    else:
+        try:
+            with tempfile.TemporaryDirectory(prefix='legend-recovery-receipt-') as directory:
+                _download_run_artifact(repository, run_id, artifact['name'], Path(directory),
+                    artifact_id=artifact['id'], expected_digest=digest)
+                path = Path(directory) / filename
+                if not path.is_file() or path.is_symlink() or path.stat().st_size > max_bytes:
+                    raise RuntimeError('Malformed or oversized recovery receipt')
+                raw = path.read_bytes()
+            if len(raw) > max_bytes:raise RuntimeError('Oversized recovery receipt')
+            json.loads(raw)  # Invalid content is never retained as a successful read.
+            future.set_result(raw)
+        except BaseException as error:
+            future.set_exception(error)
+            with lock:
+                if entries.get(identity) is future:del entries[identity]
+            raise
+    if len(raw) > max_bytes:raise RuntimeError('Oversized recovery receipt')
+    return json.loads(raw)  # Independent value: consumers cannot mutate shared evidence.
+
+
+def _release_history_json(repository, run_id, artifact, filename, *, verify_digest=False, max_bytes=131072):
+    import tempfile
+    if verify_digest and _RECOVERY_RECEIPT_BYTES.get() is not None:
+        return _recovery_receipt_json(repository, run_id, artifact, filename, max_bytes)
     if artifact.get("expired"):
         raise ReleaseOperationHistoryUnproven("Historical publication receipt expired")
     digest = artifact.get('digest') if verify_digest else None
     if verify_digest and (not isinstance(digest, str) or not re.fullmatch('sha256:[a-f0-9]{64}', digest)):
         raise RuntimeError('Historical publication artifact digest unproven')
-    key = (repository, artifact.get('id'), filename, digest)
+    key = (repository, run_id, artifact.get('id'), filename, digest, max_bytes)
     if artifact.get('id') and key in _RELEASE_HISTORY_RECEIPTS:
         return _RELEASE_HISTORY_RECEIPTS[key]
     with tempfile.TemporaryDirectory(prefix="legend-release-history-") as directory:
         _download_run_artifact(repository, run_id, artifact["name"], Path(directory), artifact_id=artifact.get('id'),
                                **({'expected_digest': digest} if verify_digest else {}))
         file = Path(directory) / filename
-        if not file.is_file() or file.stat().st_size > 131072:
+        if not file.is_file() or file.stat().st_size > max_bytes:
             raise RuntimeError("Malformed historical publication receipt")
         receipt = json.loads(file.read_text())
         if artifact.get('id'):
@@ -11220,15 +11274,19 @@ def release_operation_history(repository, operation_id, application_revision, ta
             raise RuntimeError("Deployment intent has an untrusted producer")
         if artifact.get("expired"):
             raise ReleaseOperationHistoryUnproven("Deployment intent expired; reconciliation required")
-        with tempfile.TemporaryDirectory(prefix="legend-operation-read-") as directory:
-            try:
-                _download_run_artifact(repository, run_id, name, Path(directory))
-            except (OSError, subprocess.SubprocessError) as exc:
-                raise ReleaseOperationHistoryUnproven("Deployment intent download unavailable") from exc
-            path = Path(directory) / "operation.json"
-            if path.stat().st_size > 32768:
-                raise RuntimeError("Oversized deployment intent")
-            record = json.loads(path.read_text())
+        if _RECOVERY_RECEIPT_BYTES.get() is not None:
+            record = _release_history_json(repository, run_id, artifact, 'operation.json',
+                                          verify_digest=True, max_bytes=32768)
+        else:
+            with tempfile.TemporaryDirectory(prefix="legend-operation-read-") as directory:
+                try:
+                    _download_run_artifact(repository, run_id, name, Path(directory))
+                except (OSError, subprocess.SubprocessError) as exc:
+                    raise ReleaseOperationHistoryUnproven("Deployment intent download unavailable") from exc
+                path = Path(directory) / "operation.json"
+                if path.stat().st_size > 32768:
+                    raise RuntimeError("Oversized deployment intent")
+                record = json.loads(path.read_text())
         if (record.get("operationId") != operation_id or record.get("target") != target or
                 record.get("applicationRevision") != application_revision or
                 record.get("producingRun") != run_id or record.get("phase") != phase):
@@ -11239,14 +11297,16 @@ def release_operation_history(repository, operation_id, application_revision, ta
             raise RuntimeError('Fast-track deployment intent has unbound revision or attempt')
         if recovery:
             _completion_inventory(payload, "artifacts")
-            exact = _release_history_json(repository, run_id, artifact, "operation.json", verify_digest=True)
+            exact = _release_history_json(repository, run_id, artifact, "operation.json", verify_digest=True,
+                **({'max_bytes': 32768} if _RECOVERY_RECEIPT_BYTES.get() is not None else {}))
             if exact != record or not validate_fast_track_recovery_record(repository, run, artifact, record, token):
                 raise RuntimeError("Recovery receipt artifact identity changed")
         elif "recoveryEvidence" in record:
             raise RuntimeError("Recovery evidence requires its actual dispatch producer")
         if completion:
             _completion_inventory(payload, "artifacts")
-            exact = _release_history_json(repository, run_id, artifact, "operation.json", verify_digest=True)
+            exact = _release_history_json(repository, run_id, artifact, "operation.json", verify_digest=True,
+                **({'max_bytes': 32768} if _RECOVERY_RECEIPT_BYTES.get() is not None else {}))
             if exact != record:
                 raise RuntimeError("Completion receipt artifact identity changed")
             if validate_fast_track_completion_record(repository, run, artifact, record, token) is False:
