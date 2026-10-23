@@ -204,7 +204,9 @@ async function webdriverCommand({origin,method,endpoint,payload,remaining,ordina
   const started=Date.now();let stage='budget',budget=null,httpStatus=null,webdriverError=null;
   const token=value=>typeof value==='string'&&/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(value)?value:null;
   try {
-    budget=Math.min(5000,remaining());stage='fetch';
+    // Only the first exact session-creation request gets bounded cold-start time.
+    const limit=ordinal===1&&method==='POST'&&endpoint==='/session'?20000:5000;
+    budget=Math.min(limit,remaining());stage='fetch';
     const response=await transport(origin+endpoint,{method,headers:{'Content-Type':'application/json'},body:payload===undefined?undefined:JSON.stringify(payload),signal:AbortSignal.timeout(budget)});
     httpStatus=Number.isInteger(response.status)?response.status:null;stage='body';
     const text=await response.text();stage='global-budget';remaining();stage='parse';const data=JSON.parse(text);
@@ -255,11 +257,42 @@ test('WebDriver command failures identify each stage with bounded redacted diagn
   assert.equal(commandRoute('/session'),'/session');
 });
 test('WebDriver command generic cap remains five seconds and untrusted error text is excluded',async()=>{
-  const input={origin:'http://fixture',method:'POST',endpoint:'/session',remaining:()=>20000,ordinal:1};
+  const input={origin:'http://fixture',method:'POST',endpoint:'/session/existing/timeouts',remaining:()=>20000,ordinal:1};
   await assert.rejects(()=>webdriverCommand(input,async()=>{throw Object.assign(new Error('secret'),{name:'secret message',code:'secret message'})}),error=>{
     assert.equal(error.commandFailure.budgetMs,5000);assert.equal(error.commandFailure.errorName,null);assert.equal(error.commandFailure.errorCode,null);
     assert.doesNotMatch(error.stack,/secret/);return true;
   });
+});
+
+test('WebDriver session budget applies only to first exact POST session request',async()=>{
+  const cases=[
+    ['POST','/session',1,20000],['GET','/session',1,5000],['DELETE','/session',1,5000],
+    ['post','/session',1,5000],['POST','/session/',1,5000],['POST','/session?extra=1',1,5000],
+    ['POST','/session/existing/timeouts',1,5000],['POST','/session',2,5000],['POST','/session',0,5000]
+  ];
+  for(const [method,endpoint,ordinal,expected] of cases){let calls=0;
+    await assert.rejects(()=>webdriverCommand({origin:'http://fixture',method,endpoint,ordinal,remaining:()=>30000},async()=>{
+      calls++;throw Object.assign(new Error('fixture timeout'),{name:'TimeoutError',code:23});
+    }),error=>{assert.equal(error.commandFailure.budgetMs,expected);assert.equal(error.commandFailure.stage,'fetch');return true});
+    assert.equal(calls,1);
+  }
+});
+test('WebDriver initial session budget remains globally clamped and timeout stays fatal without retry',async()=>{
+  for(const remainingMs of [125,12000,30000]){let calls=0;
+    await assert.rejects(()=>webdriverCommand({origin:'http://fixture',method:'POST',endpoint:'/session',ordinal:1,remaining:()=>remainingMs},async()=>{
+      calls++;throw Object.assign(new Error('fixture timeout'),{name:'TimeoutError',code:23});
+    }),error=>{
+      const d=error.commandFailure;assert.equal(d.budgetMs,Math.min(20000,remainingMs));
+      assert.equal(d.route,'/session');assert.equal(d.ordinal,1);assert.equal(d.errorName,'TimeoutError');
+      assert.equal(d.errorCode,23);assert.equal(d.httpStatus,null);assert.equal(d.webdriverError,null);return true;
+    });assert.equal(calls,1);
+  }
+});
+test('WebDriver initial session success returns unchanged session response once',async()=>{
+  const value={sessionId:'fixture-session',capabilities:{browserName:'chrome'}};let calls=0,checks=0;
+  assert.deepEqual(await webdriverCommand({origin:'http://fixture',method:'POST',endpoint:'/session',ordinal:1,remaining:()=>{checks++;return 30000}},async()=>{
+    calls++;return {ok:true,status:200,text:async()=>JSON.stringify({value})};
+  }),value);assert.equal(calls,1);assert.equal(checks,2);
 });
 
 test('actual canonical frontend components render in the existing sandboxed CI browser', {timeout:160000}, async t => {
