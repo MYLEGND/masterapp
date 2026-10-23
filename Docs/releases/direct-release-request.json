@@ -1,11 +1,14 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized deploying the unpublished changes (Sentinel_c08cccc0ded88191ac378f9717f17075,2026-10-22T13:08:58Z) and directed completion of this release work (Sentinel_c4af250f7be88191a6917677fa826cd0,2026-10-22T14:08:19Z). Resume only the already accepted Protect and Website application scope through the now-promoted canonical controls. Preserve independent exact-candidate review, required exact-head CI, expected-head protected integration, runtime identity and production admission. Preserve original run39611360383 and both failed attempts of39792159170; no replay or duplicate upload is authorized. Preserve saved Protect draft revision80 and require its separate current publication preflight. No schema or routing change, voice activation, new access or spending is authorized.",
-  "purpose": "Honor the native Protect standalone landing header-omission policy in the shared CMS renderer before publishing the saved shared shell. Require a usable mobile Menu when primary navigation actually exists, retain its error when present navigation lacks a trigger, and connect 47 existing native Risk/Commercial/Auto field captions to their controls so canonical Studio field labels remain usable. Preserve all form names, types, options, handlers and submission semantics; add no CSS or parallel design authority. Restore Life Back focus to the revealed question or a visible enabled destination control in both shells, retaining natural and explicit tab order, native canonical ordering, answers, events and existing scroll behavior; reject stale delayed focus after navigation. Preserve forward, contact and processing behavior and require the focused DOM/native-keyboard/rendering acceptance gates.",
-  "requestId": "founder-protect-website-release-20261022-0c8201054f07",
+  "authorization": "Founder directed one consolidated next release of all admissible Design and Planning corrections, precise surgical fixes without overrides (Sentinel_abad863d2d9c8191a1bc57147f48938b). Preserve exact-candidate independent review, native CI, protected integration, current runtime identity, historical operation reconciliation, package admission and live acceptance. Existing sole source ownership and current release authority apply. No new access, security/provider settings, dependency installation or spending is authorized.",
+  "purpose": "Release the independently reviewed canonical modal focus/close/stacking and narrow CRM markup repairs; booking accessible names/date labels, canonical scrolling and fitting calendar navigation/date geometry; mobile navigation Escape and proven responsive layout/target repairs; Engineering version badge; measured shared card, Onboarding and Legend Connect contrast pairings; actual-header-aware Commercial scroll; exactly proven shadowed CSS removals with fallbacks retained; and safe ordinary checkout sync to the canonical release branch. Preserve customer fields, events, APIs, answers, tenant customization, active assets and existing business behavior. Require the source-derived native component CI gate and final live journeys. Preserve Draft82 and Published81 until separately admitted quality/publication acceptance.",
+  "requestId": "founder-consolidated-ui-release-20261023-561894ae-v9",
   "releaseMode": "approved-only",
   "targets": [
+    "masterapp-portal",
+    "masterapp-client",
     "masterapp-protect",
+    "masterapp-parfait",
     "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
