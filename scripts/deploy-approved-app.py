@@ -485,7 +485,7 @@ def observe_azure_deployment(target, revision, deployment_id=None, *, validate_o
     return report
 
 
-def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=PUBLICATION_RECONCILE_TIMEOUT_SECONDS, interval=15, max_status_failures=3, baseline=None, reconcile_only=False, journal=None, require_receipt=True):
+def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=PUBLICATION_RECONCILE_TIMEOUT_SECONDS, interval=15, max_status_failures=3, baseline=None, reconcile_only=False, journal=None, require_receipt=True, before_intent_read_failure=None):
     started = clock()
     submitted = False
     baseline_ids = set()
@@ -498,14 +498,24 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=PUBLICAT
     stable = 0
     previous = None
     while clock() - started < timeout:
-        rows = read_deployments_bounded(
-            azure,
-            attempts=max_status_failures,
-            interval=interval,
-            sleep=sleep,
-            phase='after immutable upload' if submitted else 'before any upload',
-            deadline=started+timeout, clock=clock,
-        )
+        try:
+            rows = read_deployments_bounded(
+                azure,
+                attempts=max_status_failures,
+                interval=interval,
+                sleep=sleep,
+                phase='after immutable upload' if submitted else 'before any upload',
+                deadline=started+timeout, clock=clock,
+            )
+        except DeploymentStatusUnavailable as failure:
+            if not submitted and journal is not None and journal.intent is None and before_intent_read_failure is not None:
+                try:
+                    before_intent_read_failure(failure)
+                except Exception:
+                    # Ambiguous evidence publication cannot authorize a retry or
+                    # replace the original provider-read failure.
+                    print('RECOVERY_TARGET_READ_HOLD_PUBLICATION_UNPROVEN', flush=True)
+            raise
         active = [row for row in rows if row['status'] in (0, 1, 2)]
         new = [row for row in rows if row['id'] not in baseline_ids] if submitted else []
         state = (submitted, tuple(sorted((row['id'], row['status']) for row in (new if submitted else active))))
@@ -1333,7 +1343,7 @@ def recovery_preflight_nonentry_record(proof, failed_target, failure):
 
 
 def recovery_target_preintent_record(proof, target, failure):
-    """Only this target/attempt stopped within the read-only intent callback."""
+    """Only this target/attempt stopped before its intent publication."""
     _, record = recovery_preflight_nonentry_record(proof, target, failure)
     record.pop('writePhaseEntered')
     record.update(phase='target-preintent-hold', stage='before-new-intent', targetWritePhaseEntered=False)
@@ -1551,10 +1561,14 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
         raise
     def recover_target(key):
         azure, journal = journals[key]
+        def read_failure(failure):
+            reason = 'provider-read-timeout' if isinstance(failure.__cause__, subprocess.TimeoutExpired) else 'provider-read-unavailable'
+            name, record = recovery_target_preintent_record(proof, key, RecoveryPreflightFailure(reason))
+            owner.publish_record(name, record, timeout=min(180, recovery_phase_remaining(deadline - 60)))
         with authority.evidence_lookup_budget(publication_deadline):
             authority._completion_original_unchanged(repository, original['run'], token)
             result = reconcile(azure, baseline=journal.baseline, journal=journal,
-                reconcile_only=journal.intent is not None, require_receipt=True,
+                reconcile_only=journal.intent is not None, require_receipt=True, before_intent_read_failure=read_failure,
                 timeout=min(PUBLICATION_RECONCILE_TIMEOUT_SECONDS, recovery_phase_remaining(publication_deadline)))
         recovery_phase_remaining(deadline - 60, 64)
         verify_fast_track_public_metadata(key)
