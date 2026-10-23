@@ -4,6 +4,9 @@
 ========================================================= */
 
 .qv-booking-modal-shell{
+    --qv-calendar-target:44px;
+    --qv-calendar-gap:clamp(5px, .8vh, 8px);
+    --qv-fit-panel-padding:clamp(16px, 1.8vh, 20px);
     --qv-bg-1:var(--legend-app-surface-elevated);
     --qv-bg-2:var(--legend-app-surface);
     --qv-bg-3:var(--legend-app-surface);
@@ -21,6 +24,7 @@
 
 /* Header */
 .qv-booking-head{
+    flex:0 0 auto;
     position:relative;
     display:flex;
     align-items:flex-start;
@@ -562,6 +566,8 @@
 /* Remove modal scroll */
 .qv-booking-modal-shell .modal-content{
     overflow:hidden;
+    container-name:qv-booking;
+    container-type:inline-size;
 }
 
 /* Premium duration selector */
@@ -605,19 +611,12 @@
     height:50px;
     min-width:50px;
     border-radius: var(--legend-app-radius-compact);
-    font-size:0;
     position:relative;
 }
 
-#qvBookPrevMonth::before{
-    content:"‹";
+.qv-booking-calendar-icon{
     font-size:28px;
-    font-weight:900;
-}
-
-#qvBookNextMonth::before{
-    content:"›";
-    font-size:28px;
+    line-height:1;
     font-weight:900;
 }
 
@@ -713,7 +712,7 @@
 
 /* =========================================================
    VIEWPORT FIT SYSTEM
-   Keeps scheduler inside visible modal without scroll.
+   Keeps the header visible while the canonical modal body scrolls.
 ========================================================= */
 
 
@@ -729,7 +728,8 @@
 }
 
 .qv-booking-body{
-    height:calc(100% - clamp(96px, 14vh, 132px));
+    height:auto;
+    flex:1 1 auto;
     display:flex;
     flex-direction:column;
     padding:
@@ -758,7 +758,7 @@
 .qv-booking-layout{
     height:100%;
     align-items:stretch;
-    grid-template-columns:clamp(320px, 28vw, 365px) minmax(0,1fr);
+    grid-template-columns:max(clamp(320px, 28vw, 365px), calc(7 * var(--qv-calendar-target) + 6 * var(--qv-calendar-gap) + 2 * var(--qv-fit-panel-padding) + 2px)) minmax(0,1fr);
 }
 
 .qv-booking-sidebar,
@@ -772,7 +772,7 @@
 .qv-booking-slot-card{
     flex:1 1 auto;
     min-height:0;
-    padding:clamp(16px, 1.8vh, 20px);
+    padding:var(--qv-fit-panel-padding);
 }
 
 .qv-booking-panel-head,
@@ -799,14 +799,14 @@
 
 .qv-booking-calendar-nav.btn,
 .qv-booking-calendar-nav.btn-ghost{
-    width:clamp(40px, 5.2vh, 50px);
-    height:clamp(40px, 5.2vh, 50px);
-    min-width:clamp(40px, 5.2vh, 50px);
+    width:clamp(44px, 5.2vh, 50px);
+    height:clamp(44px, 5.2vh, 50px);
+    min-width:clamp(44px, 5.2vh, 50px);
 }
 
 .qv-booking-calendar-grid,
 .qv-booking-calendar-weekdays{
-    gap:clamp(5px, .8vh, 8px);
+    gap:var(--qv-calendar-gap);
 }
 
 .qv-booking-calendar-grid button{
@@ -1098,12 +1098,12 @@ button.qv-booking-launch:focus-visible,
 
 /* =========================================================
    CANONICAL RESPONSIVE GEOMETRY
-   Sole tablet/mobile authority. This intentionally appears
+   Sole component-width layout authority. This intentionally appears
    after every desktop refinement so later desktop rules can
-   never re-expand the scheduler on small viewports.
+   never re-expand the scheduler inside a narrow modal.
 ========================================================= */
 
-@media (max-width:1100px){
+@container qv-booking (max-width:1100px){
     .qv-booking-body{
         height:auto;
         display:block;
@@ -1240,9 +1240,9 @@ button.qv-booking-launch:focus-visible,
 
     .qv-booking-calendar-nav.btn,
     .qv-booking-calendar-nav.btn-ghost{
-        width:var(--legend-mobile-control-height,34px);
-        height:var(--legend-mobile-control-height,34px);
-        min-width:var(--legend-mobile-control-height,34px);
+        width:max(44px, var(--legend-mobile-control-height,34px));
+        height:max(44px, var(--legend-mobile-control-height,34px));
+        min-width:max(44px, var(--legend-mobile-control-height,34px));
     }
 
     .qv-booking-calendar-label{

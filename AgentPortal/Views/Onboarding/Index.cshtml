@@ -92,21 +92,13 @@
         .onb-person-actions { flex-direction: row; flex-wrap: wrap; }
     }
 
-    /* Ensure form inputs use dark text for readability */
-    .legend-form input.form-control,
-    .legend-form select.form-control,
-    .legend-form textarea.form-control,
-    .legend-form input,
-    .legend-form select,
-    .legend-form textarea {
-        color: #0f172a !important;
-    }
     .legend-form ::placeholder {
-        color: #475569 !important;
+        color: var(--legend-app-on-dark-muted) !important;
     }
 
     /* Hard lock premium navy/gold theme */
     .legend-shell.legend-form{
+        --legend-form-label-color:var(--legend-app-on-dark);
         background:
             radial-gradient(1200px 420px at 0% 0%, rgba(201,155,54,.12), transparent 58%),
             radial-gradient(900px 320px at 100% 0%, rgba(102,124,168,.12), transparent 56%),
@@ -237,7 +229,7 @@
 
     <div class="mt-4">
         <h2 class="fw-bold mb-3" style="color:var(--legend-navy);">Onboarding</h2>
-        <p class="text-muted" style="color:#475569 !important;">Owner-only onboarding console. Only zac.owen@mylegnd.com can see this page.</p>
+        <p class="text-muted">Owner-only onboarding console. Only zac.owen@mylegnd.com can see this page.</p>
 
 @if (!string.IsNullOrWhiteSpace(Model.NewInviteLink))
 {

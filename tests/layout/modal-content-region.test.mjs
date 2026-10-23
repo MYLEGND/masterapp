@@ -307,16 +307,15 @@ test('all discovered authenticated mobile modals use one full-screen shared auth
 });
 
 test('newly opened modal surfaces always promote above every already-open modal',()=>{
-  const modal=readFileSync(new URL('../../SHARED/wwwroot/js/legend-modal.js',import.meta.url),'utf8');
-
-  assert.match(modal,/const MODAL_LAYER_BASE = 5200/);
-  assert.match(modal,/const MODAL_LAYER_STEP = 20/);
-  assert.match(modal,/function promoteSurfaceLayer\(surface\)/);
-  assert.match(modal,/surfaceList\.forEach\(other => \{[\s\S]*surfaceOpen\(other\)[\s\S]*highest = Math\.max\(highest, value\)/);
-  assert.match(modal,/surface\.style\.zIndex = String\(Math\.max\(MODAL_LAYER_BASE, highest \+ MODAL_LAYER_STEP\)\)/);
-  assert.match(modal,/if \(open && !wasOpen\) promoteSurfaceLayer\(surface\)/);
-  assert.match(modal,/shown\.bs\.modal'[\s\S]*promoteSurfaceLayer\(event\.target\)/);
-  assert.match(modal,/restoreSurfaceLayer\(surface\)[\s\S]*surfaceOpenState\.delete\(surface\)/);
+  const surface=(z)=>({isConnected:true,style:{zIndex:String(z),values:new Map(),getPropertyValue(n){return this.values.get(n)||'';},setProperty(n,v){this.values.set(n,v);},removeProperty(n){this.values.delete(n);}}});
+  const a=surface(5200),b=surface(1115),surfaceList=new Set([a,b]);
+  const context={surfaceList,surfaceLayerState:new WeakMap(),surfaceOpen:()=>true,MODAL_LAYER_BASE:5200,MODAL_LAYER_STEP:20,window:{getComputedStyle:s=>({zIndex:s.style.zIndex})}};
+  vm.createContext(context);
+  for(const name of ['setSurfaceLayer','captureSurfaceLayer','promoteSurfaceLayer','restoreSurfaceLayer'])vm.runInContext(implementation(name),context);
+  context.promoteSurfaceLayer(b);assert.equal(b.style.zIndex,'5220');
+  assert.equal(b.style.getPropertyValue('--legend-modal-stack'),'5220');
+  b.style.zIndex='1115';context.promoteSurfaceLayer(b);assert.equal(b.style.zIndex,'5220');
+  context.restoreSurfaceLayer(b);assert.equal(b.style.zIndex,'1115');assert.equal(b.style.getPropertyValue('--legend-modal-stack'),'');
 });
 
 test('feature scripts cannot own modal page scrolling anymore',()=>{
@@ -585,7 +584,7 @@ test('mobile modal authority has exactly one vertical scroll owner and a reliabl
   assert.doesNotMatch(shared, /:is\(\[data-legend-modal-panel\], \[data-legend-mobile-sheet\]\)[\s\S]{0,220}position:\s*sticky/);
   assert.match(shared, /\[data-legend-modal-surface\]:not\(\.modal\) > \[data-legend-modal-panel\] \{[\s\S]*overflow:\s*hidden !important;/);
   assert.match(controller, /function requestSurfaceClose\(surface, sourceControl = null\)/);
-  assert.match(controller, /if \(surfaceOpen\(surface\)\) closeSurfaceFallback\(surface\)/);
+  assert.match(controller, /const state = surfaceFocusState\.get\(surface\);[\s\S]*existing\.click\(\);[\s\S]*if \(surfaceFocusState\.get\(surface\) === state && surfaceOpen\(surface\)\) closeSurfaceFallback\(surface\)/);
   assert.match(controller, /event\.key !== 'Escape'[\s\S]*requestSurfaceClose\(top\)/);
 });
 

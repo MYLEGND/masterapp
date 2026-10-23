@@ -112,14 +112,14 @@ def native_editor_or_build_active():
 
 def assert_ready(repo, expected_head=None, process_probe=active_build_or_app, native=False,
                  expected_target=None, expected_branch=None):
-    target = native_target(repo) if native else 'refs/remotes/origin/legend/approved-changes'
+    target = native_target(repo) if native else 'refs/remotes/origin/Legend/fast-track-release'
     branch = git(repo, 'symbolic-ref', '--quiet', '--short', 'HEAD')
     if expected_target is not None and target != expected_target:
         raise SyncSkipped('The configured target changed during synchronization; no source update attempted.')
     if expected_branch is not None and branch != expected_branch:
         raise SyncSkipped('The checkout branch changed during synchronization; no source update attempted.')
-    if not native and branch != 'legend/approved-changes':
-        raise SyncSkipped('This is a working branch; automatic sync applies only to legend/approved-changes.')
+    if not native and branch != 'Legend/fast-track-release':
+        raise SyncSkipped('This is a working branch; automatic sync applies only to Legend/fast-track-release.')
     if git(repo, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}') != target.removeprefix('refs/remotes/'):
         raise SyncSkipped('The checkout must track its intended origin ref; no source update attempted.')
     if not native and git(repo, 'status', '--porcelain=v1', '--untracked-files=all'):
@@ -137,7 +137,7 @@ def assert_ready(repo, expected_head=None, process_probe=active_build_or_app, na
 
 def sync_checkout(repo, process_probe=None, native=False):
     repo = Path(git(repo, 'rev-parse', '--show-toplevel'))
-    target = native_target(repo) if native else 'refs/remotes/origin/legend/approved-changes'
+    target = native_target(repo) if native else 'refs/remotes/origin/Legend/fast-track-release'
     branch = git(repo, 'symbolic-ref', '--quiet', '--short', 'HEAD')
     process_probe = process_probe or (native_editor_or_build_active if native else active_build_or_app)
     head, git_dir = assert_ready(repo, process_probe=process_probe, native=native,
@@ -248,7 +248,7 @@ def sync_status(repo, native=False, process_probe=None):
     try:
         head, _ = assert_ready(repo, process_probe=process_probe, native=native)
         return {'status': 'ready', 'mode': 'configured-native' if native else 'approved',
-                'head': head, 'target': native_target(repo) if native else 'refs/remotes/origin/legend/approved-changes',
+                'head': head, 'target': native_target(repo) if native else 'refs/remotes/origin/Legend/fast-track-release',
                 'remoteFreshness': 'not_checked'}
     except SyncSkipped as error:
         return {'status': 'blocked', 'mode': 'configured-native' if native else 'approved',
@@ -945,7 +945,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--sync-native', action='store_true', help='Synchronize the configured native tracking checkout when editors/builds are closed; preserve conflicting work.')
-    modes.add_argument('--sync-workspace', action='store_true', help='Use the explicit native testing ref when configured; otherwise preserve approved-branch synchronization.')
+    modes.add_argument('--sync-workspace', action='store_true', help='Use the explicit native testing ref when configured; otherwise synchronize the clean Legend/fast-track-release checkout.')
     modes.add_argument('--check-native', action='store_true', help='Fail if this checkout lacks the configured locally known native testing revision; never fetch or mutate source.')
     parser.add_argument('--status', action='store_true', help='Report local readiness only; do not fetch, merge, or write a lock/artifact.')
     parser.add_argument('--strict', action='store_true', help='Return a failing exit status if synchronization is skipped.')

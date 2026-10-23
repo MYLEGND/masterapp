@@ -1669,6 +1669,19 @@ function enforceRequiredByLabels() {
 	            refreshFieldStates();
 	            syncInterestedInState(false);
 
+	            function scrollCommercialFlowIntoView() {
+	                if (!quoteFlowShell?.isConnected) return;
+	                const header = document.querySelector('.site-header');
+	                const style = header ? window.getComputedStyle(header) : null;
+	                const rect = header?.getBoundingClientRect();
+	                const occludes = rect && rect.height > 0 && rect.bottom > 0 &&
+	                    style.display !== 'none' && style.visibility !== 'hidden' &&
+	                    (style.position === 'sticky' || style.position === 'fixed');
+	                const inset = occludes ? Math.min(window.innerHeight, Math.max(0, rect.bottom)) : 0;
+	                const top = Math.max(0, window.scrollY + quoteFlowShell.getBoundingClientRect().top - inset);
+	                window.scrollTo({ top, behavior: 'smooth' });
+	            }
+
 	            if (startButton) {
 	                startButton.addEventListener('click', function () {
 	                    const label = (startButton.textContent || '').trim();
@@ -1678,9 +1691,7 @@ function enforceRequiredByLabels() {
 	                    const startStep = quoteStarted ? getStep() : nativeStepOrder()[0];
 	                    setQuoteStartedState(true);
 	                    if (startStep != null) setStep(startStep);
-	                    if (quoteFlowShell) {
-	                        quoteFlowShell.scrollIntoView({ behavior: 'smooth', block: 'start' });
-	                    }
+	                    scrollCommercialFlowIntoView();
 	                });
 	            }
 

@@ -44,11 +44,11 @@
     bool personalActive = personalRevenueAmount != 0 || personalRevenueCount != 0;
 }
 
-<div class="modal crm-command-modal" id="performanceModal">
+<div class="modal crm-command-modal" id="performanceModal" role="dialog" aria-modal="true" aria-labelledby="performanceModalTitle">
     <div class="modal-head">
         <div class="crm-command-modal-copy">
             <div class="crm-command-modal-kicker">Performance Snapshot</div>
-            <h3 class="modal-title">Revenue + Activity</h3>
+            <h3 class="modal-title" id="performanceModalTitle">Revenue + Activity</h3>
             <p class="crm-command-modal-sub">Submitted, issued, paid, personal revenue, KPI pressure, and call volume in one focused view.</p>
         </div>
         <button class="btn btn-ghost" type="button" data-closemodal>Close</button>

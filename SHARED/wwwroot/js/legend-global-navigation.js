@@ -145,6 +145,13 @@
       close();
     });
 
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape' || event.defaultPrevented || !nav.classList.contains('mobile-open')) return;
+      if (drawer?.classList.contains('open')) return;
+      event.preventDefault();
+      close({ restoreFocus: true });
+    });
+
     window.addEventListener('resize', syncResponsiveState, { passive: true });
     window.visualViewport?.addEventListener('resize', syncResponsiveState, { passive: true });
     nav.__legendOpenNavigation = open;
