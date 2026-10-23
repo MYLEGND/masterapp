@@ -196,6 +196,72 @@ test('synthetic transport accepts only finite recognized GET data and records de
   context.__fixtureCalls=Array(100).fill('synthetic');await assert.rejects(()=>context.fetch('/mobile/agent/booking/appointments'));
 });
 
+function commandRoute(endpoint) {
+  const route=endpoint.replace(/^\/session\/[^/]+/, '/session/:sessionId').replace(/\/element\/[^/]+/, '/element/:elementId');
+  return /^\/session(?:\/:sessionId(?:\/(?:timeouts|window\/rect|url|goog\/cdp\/execute|execute\/sync|element(?:\/:elementId\/click)?|actions))?)?$/.test(route)?route:'[unrecognized route]';
+}
+async function webdriverCommand({origin,method,endpoint,payload,remaining,ordinal},transport=fetch) {
+  const started=Date.now();let stage='budget',budget=null,httpStatus=null,webdriverError=null;
+  const token=value=>typeof value==='string'&&/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(value)?value:null;
+  try {
+    budget=Math.min(5000,remaining());stage='fetch';
+    const response=await transport(origin+endpoint,{method,headers:{'Content-Type':'application/json'},body:payload===undefined?undefined:JSON.stringify(payload),signal:AbortSignal.timeout(budget)});
+    httpStatus=Number.isInteger(response.status)?response.status:null;stage='body';
+    const text=await response.text();stage='global-budget';remaining();stage='parse';const data=JSON.parse(text);
+    stage='status';
+    const errors=new Set(['invalid session id','no such element','no such window','no such frame','unknown command','unknown error','session not created','timeout','script timeout','javascript error','invalid argument','element click intercepted','element not interactable','stale element reference','unsupported operation']);
+    if(data.value?.error)webdriverError=errors.has(data.value.error)?data.value.error:'unrecognized error';
+    assert.ok(response.ok&&!data.value?.error,'WebDriver response failed');return data.value;
+  } catch(error) {
+    const diagnostic={ordinal,method:['GET','POST','DELETE'].includes(method)?method:'[unrecognized method]',route:commandRoute(endpoint),stage,
+      budgetMs:budget,elapsedMs:Date.now()-started,httpStatus,webdriverError,errorName:token(error.name),errorCode:typeof error.code==='number'?error.code:token(error.code)};
+    // Never propagate response text, payloads, scripts, session IDs or error messages.
+    const failure=new Error('WebDriver command failed: '+JSON.stringify(diagnostic));
+    failure.name='WebDriverCommandError';failure.commandFailure=diagnostic;throw failure;
+  }
+}
+test('WebDriver command success retains transport semantics and global-clamped budget',async()=>{
+  const seen=[];let checks=0;
+  const transport=async(url,options)=>{seen.push({url,options});return {status:200,ok:true,text:async()=>JSON.stringify({value:{result:'ok'}})}};
+  const input={origin:'http://fixture',method:'POST',endpoint:'/session/private-id/url',payload:{url:'fixture-url'},remaining:()=>{checks++;return 125},ordinal:1};
+  assert.deepEqual(await webdriverCommand(input,transport),{result:'ok'});
+  assert.equal(seen[0].url,'http://fixture/session/private-id/url');assert.equal(seen[0].options.body,JSON.stringify(input.payload));
+  assert.equal(seen[0].options.method,'POST');assert.ok(seen[0].options.signal instanceof AbortSignal);assert.equal(checks,2);
+});
+test('WebDriver command failures identify each stage with bounded redacted diagnostics and no retry',async()=>{
+  const timeout=()=>Object.assign(new Error('private-id secret-payload'),{name:'TimeoutError',code:23});
+  const response=(text,ok=true,status=200)=>({ok,status,text});
+  const cases=[
+    ['fetch',async()=>{throw timeout()}],
+    ['body',async()=>response(async()=>{throw timeout()})],
+    ['parse',async()=>response(async()=>'private-id secret-payload malformed')],
+    ['status',async()=>response(async()=>JSON.stringify({value:{error:'session not created',message:'private-id secret-payload'}}),false,500)],
+    ['global-budget',async()=>response(async()=>JSON.stringify({value:'ok'}))],
+    ['budget',async()=>{throw Error('must not execute')}]
+  ];
+  for(const [stage,transport] of cases){let calls=0,checks=0;
+    const input={origin:'http://fixture',method:'POST',endpoint:'/session/private-id/element/private-element/click',payload:{script:'secret-payload'},ordinal:7,
+      remaining:()=>{checks++;if(stage==='budget'||(stage==='global-budget'&&checks===2))throw Error('secret-payload exhausted');return 125}};
+    await assert.rejects(()=>webdriverCommand(input,async(...args)=>{calls++;return transport(...args)}),error=>{
+      const d=error.commandFailure;assert.equal(d.stage,stage);assert.equal(d.ordinal,7);assert.equal(d.method,'POST');
+      assert.equal(d.route,'/session/:sessionId/element/:elementId/click');assert.equal(d.budgetMs,stage==='budget'?null:125);assert.ok(d.elapsedMs>=0);
+      assert.doesNotMatch(JSON.stringify(d)+error.stack,/private-id|private-element|secret-payload/);
+      if(stage==='status'){assert.equal(d.httpStatus,500);assert.equal(d.webdriverError,'session not created');}
+      if(stage==='fetch'||stage==='body'){assert.equal(d.errorName,'TimeoutError');assert.equal(d.errorCode,23);}
+      return true;
+    });assert.equal(calls,stage==='budget'?0:1);
+  }
+  assert.equal(commandRoute('/session/private-id/unknown?secret-payload'),'[unrecognized route]');
+  assert.equal(commandRoute('/session'),'/session');
+});
+test('WebDriver command generic cap remains five seconds and untrusted error text is excluded',async()=>{
+  const input={origin:'http://fixture',method:'POST',endpoint:'/session',remaining:()=>20000,ordinal:1};
+  await assert.rejects(()=>webdriverCommand(input,async()=>{throw Object.assign(new Error('secret'),{name:'secret message',code:'secret message'})}),error=>{
+    assert.equal(error.commandFailure.budgetMs,5000);assert.equal(error.commandFailure.errorName,null);assert.equal(error.commandFailure.errorCode,null);
+    assert.doesNotMatch(error.stack,/secret/);return true;
+  });
+});
+
 test('actual canonical frontend components render in the existing sandboxed CI browser', {timeout:160000}, async t => {
   const start = Date.now();
   const deadline = start + 160000;
@@ -230,12 +296,8 @@ test('actual canonical frontend components render in the existing sandboxed CI b
   }
   const removeCancellation=registerCancellation(process,t.signal,cleanup,name=>{cancelled=true;setupAbort.abort();failure='Cancelled: '+name;},code=>process.exit(code));
   const watchdog=setTimeout(()=>{cancelled=true;setupAbort.abort();void cleanup();},150000-(Date.now()-start));
-  async function command(method, endpoint, payload) {
-    const budget=Math.min(5000,remaining());
-    const response=await fetch(driverOrigin+endpoint,{method,headers:{'Content-Type':'application/json'},body:payload===undefined?undefined:JSON.stringify(payload),signal:AbortSignal.timeout(budget)});
-    const text=await response.text();remaining();const data=JSON.parse(text);
-    assert.ok(response.ok&&!data.value?.error, JSON.stringify(data));return data.value;
-  }
+  let commandOrdinal=0,commandFailure;
+  const command=(method,endpoint,payload)=>webdriverCommand({origin:driverOrigin,method,endpoint,payload,remaining,ordinal:++commandOrdinal});
   const execute = (script,args=[])=>command('POST','/session/'+session+'/execute/sync',{script,args});
   const waitFor=async(script)=>{
     const until=Math.min(Date.now()+3000,deadline-10000);
@@ -465,11 +527,11 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.deepEqual(rejected.filter(x=>x.url!=='/favicon.ico'),[],'Unexpected browser requests');
     requireCompleteScenarios(requiredScenarios,completedScenarios);
     acceptanceComplete=true;
-  } catch(error) {versionProbeFailure=error.versionProbe;failure=String(error.stack||error);throw error;} finally {
+  } catch(error) {commandFailure=error.commandFailure;versionProbeFailure=error.versionProbe;failure=String(error.stack||error);throw error;} finally {
     clearTimeout(watchdog);let cleanupError;
     try{await cleanup();}catch(error){cleanupError=error;acceptanceComplete=false;failure=(failure||'')+' Cleanup failed: '+error.message;}
     removeCancellation();
-    const report={status:acceptanceComplete?'PASS':'INCOMPLETE_OR_FAILED',failure,versionProbeFailure,checkout:manifest?.checkout,nodeVersion:process.version,driverBindings,requiredScenarios,completedScenarios:[...completedScenarios],image:process.env.ImageVersion,chromeVersion,driverVersion,manifest,completed:records.length,required:hosts.length*widths.length,records,limits:['Component fixture; no Razor/server/authentication/business/API proof','System font fallback; no pixel-identical production claim','Live journeys and native safe-area device inset remain required']};
+    const report={status:acceptanceComplete?'PASS':'INCOMPLETE_OR_FAILED',failure,versionProbeFailure,commandFailure,checkout:manifest?.checkout,nodeVersion:process.version,driverBindings,requiredScenarios,completedScenarios:[...completedScenarios],image:process.env.ImageVersion,chromeVersion,driverVersion,manifest,completed:records.length,required:hosts.length*widths.length,records,limits:['Component fixture; no Razor/server/authentication/business/API proof','System font fallback; no pixel-identical production claim','Live journeys and native safe-area device inset remain required']};
     console.log('NATIVE_COMPONENT_REPORT '+JSON.stringify(report));
     if(process.env.GITHUB_STEP_SUMMARY)await appendFile(process.env.GITHUB_STEP_SUMMARY,'\nNative component rendering: '+records.length+'/'+hosts.length*widths.length+' cases completed. Checkout '+(manifest?.checkout||'UNPROVEN')+'. See job log for exact inputs and assertions.\n');
     if(cleanupError)throw cleanupError;
