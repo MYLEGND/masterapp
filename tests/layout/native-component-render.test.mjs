@@ -610,6 +610,71 @@ test('quote phase policy rejects noop navigation, hidden active steps, wrong pro
   for(const delta of [{review:false},{sample:false},{illustrative:false},{metrics:0}])assert.equal(quotePhaseValid({...review,...delta},7),false);
 });
 
+function quoteControlSnapshots(document,window) {
+  const text=value=>String(value??'').slice(0,128),css=node=>{const s=window.getComputedStyle(node);return Object.fromEntries(['display','visibility','opacity','position','pointerEvents'].map(k=>[k,text(s[k])]));};
+  const box=node=>{const r=node.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom};};
+  const visibleAncestors=node=>{let count=0;for(;node&&count++<64;node=node.parentElement){const s=window.getComputedStyle(node);if(node.hidden||node.inert||node.getAttribute('aria-hidden')==='true'||s.display==='none'||s.visibility!=='visible'||Number(s.opacity)<=0)return false;}return !node;};
+  return [...document.querySelectorAll('main button,main input:not([type=hidden]),main select')]
+    .filter(e=>e.getClientRects().length&&window.getComputedStyle(e).visibility==='visible').slice(0,40).map(input=>{
+      const style=css(input),native={tag:text(input.tagName),type:text(input.type),name:text(input.name),id:text(input.id),rect:box(input),style,disabled:input.disabled===true,tabIndex:input.tabIndex};
+      const authoredRadio=input.tagName==='INPUT'&&input.type==='radio'&&style.position==='absolute'&&Number(style.opacity)===0&&style.pointerEvents==='none'&&!!input.closest('.lq-card');
+      if(!authoredRadio)return {native,representation:'native',rect:native.rect,style,visible:visibleAncestors(input)};
+      const labels=[...(input.labels||[])],label=labels.length===1?labels[0]:null;
+      const associated=!!label&&label.tagName==='LABEL'&&label.matches('.lq-card')&&label.control===input&&input.form!==null&&label.closest('form')===input.form&&label===input.closest('label.lq-card');
+      const r=label?box(label):null,center=r?{x:r.x+r.width/2,y:r.y+r.height/2}:null;
+      const centerInViewport=!!center&&center.x>=0&&center.y>=0&&center.x<window.innerWidth&&center.y<window.innerHeight;
+      const hit=centerInViewport?document.elementFromPoint(center.x,center.y):null;
+      return {native,representation:'native-radio-label',labelCount:labels.length,associated,
+        semantic:!!input.name&&input.tabIndex>=0&&!input.disabled&&input.getAttribute('aria-hidden')!=='true'&&visibleAncestors(input.parentElement),
+        label:label?{tag:text(label.tagName),id:text(label.id),rect:r,style:css(label),rectCount:label.getClientRects().length,
+          hasNativeCopy:!!label.querySelector('.lq-card-copy,.lq-card-title')?.textContent.trim(),visible:visibleAncestors(label),centerInViewport,hitTarget:!!hit&&(hit===label||label.contains(hit))}:null};
+    });
+}
+function quoteControlFits(control,canvas,panel,sidebar=false) {
+  const visible=style=>style?.display!=='none'&&style?.visibility==='visible'&&Number(style?.opacity)>0;
+  let r=control?.rect;
+  if(control?.representation==='native-radio-label'){
+    const n=control.native,l=control.label;
+    if(n?.tag!=='INPUT'||n.type!=='radio'||n.style?.position!=='absolute'||Number(n.style?.opacity)!==0||n.style?.pointerEvents!=='none'||
+      control.labelCount!==1||control.associated!==true||control.semantic!==true||!l||l.tag!=='LABEL'||l.rectCount<=0||l.hasNativeCopy!==true||l.visible!==true||!visible(l.style)||typeof l.centerInViewport!=='boolean'||(l.centerInViewport&&l.hitTarget!==true))return false;
+    r=l.rect;
+  }else if(control?.representation!=='native'||control.visible!==true||!visible(control.style))return false;
+  return !!r&&[r.x,r.y,r.width,r.height,r.right,r.bottom].every(Number.isFinite)&&r.width>0&&r.height>0&&r.x>=canvas.x-1&&r.right<=canvas.right+1&&(!sidebar||r.right<=panel.x+1);
+}
+test('quote control geometry admits only genuine visible associated native radio labels',()=>{
+  const style={display:'block',visibility:'visible',opacity:'1',position:'static',pointerEvents:'auto'},rect={x:10,y:20,width:100,height:40,right:110,bottom:60},canvas={x:0,right:500},panel={x:500};
+  const native={tag:'INPUT',type:'radio',style:{...style,opacity:'0',position:'absolute',pointerEvents:'none'},rect:{...rect,width:0,height:0,right:10,bottom:20}};
+  const good={native,representation:'native-radio-label',labelCount:1,associated:true,semantic:true,label:{tag:'LABEL',rect,style,rectCount:1,hasNativeCopy:true,visible:true,centerInViewport:true,hitTarget:true}};
+  assert.equal(quoteControlFits(good,canvas,panel,true),true);
+  for(const change of [{label:null},{labelCount:0},{labelCount:2},{associated:false},{semantic:false}])assert.equal(quoteControlFits({...good,...change},canvas,panel,true),false);
+  for(const change of [{visible:false},{centerInViewport:null},{hitTarget:false},{hasNativeCopy:false},{rectCount:0},{style:{...style,opacity:'0'}},{style:{...style,visibility:'hidden'}},{rect:{...rect,width:0}},{rect:{...rect,x:-2}},{rect:{...rect,right:502}}])assert.equal(quoteControlFits({...good,label:{...good.label,...change}},canvas,panel,true),false);
+  // Horizontal geometry does not claim below-fold reachability/keyboard proof.
+  assert.equal(quoteControlFits({...good,label:{...good.label,rect:{...rect,y:1000,bottom:1040},centerInViewport:false,hitTarget:false}},canvas,panel,true),true);
+  const ordinary={native:{tag:'BUTTON'},representation:'native',rect,style,visible:true};
+  assert.equal(quoteControlFits(ordinary,canvas,panel,true),true);
+  assert.equal(quoteControlFits({...ordinary,rect:native.rect},canvas,panel,true),false);
+  assert.equal(quoteControlFits({...ordinary,rect:{...rect,right:502}},canvas,panel,true),false);
+  assert.equal(quoteControlFits({...good,native:{...native,type:'checkbox'}},canvas,panel,true),false);
+});
+
+test('quote snapshot resolves actual native label association without inventing a wrapper',()=>{
+  const style={display:'block',visibility:'visible',opacity:'1',position:'static',pointerEvents:'auto'},rect={x:10,y:20,width:100,height:40,right:110,bottom:60};
+  const node=(tag,ownStyle=style,ownRect=rect)=>({tagName:tag,hidden:false,inert:false,parentElement:null,style:ownStyle,
+    getAttribute:()=>null,getBoundingClientRect:()=>ownRect,getClientRects:()=>[ownRect]});
+  const form=node('FORM'),label=node('LABEL'),input=node('INPUT',{...style,opacity:'0',position:'absolute',pointerEvents:'none'},{...rect,width:0,height:0,right:10,bottom:20});
+  Object.assign(input,{type:'radio',name:'ProtectingWho',id:'',tabIndex:0,disabled:false,form,labels:[label],parentElement:label,closest:()=>label});
+  Object.assign(label,{control:input,parentElement:form,matches:s=>s==='.lq-card',closest:s=>s==='form'?form:null,querySelector:()=>({textContent:'Native option'}),contains:n=>n===input});
+  const document={querySelectorAll:()=>[input],elementFromPoint:()=>label},window={innerWidth:1000,innerHeight:800,getComputedStyle:n=>n.style};
+  const snapshot=()=>quoteControlSnapshots(document,window)[0],fits=()=>quoteControlFits(snapshot(),{x:0,right:500},{x:500},true);
+  assert.equal(fits(),true);assert.equal(snapshot().native.name,'ProtectingWho');assert.equal(snapshot().native.rect.width,0);assert.equal(snapshot().label.rect.width,100);
+  input.labels=[];assert.equal(fits(),false);input.labels=[label];
+  label.control={};assert.equal(fits(),false);label.control=input;
+  label.closest=()=>({});assert.equal(fits(),false);label.closest=()=>form;
+  form.inert=true;assert.equal(fits(),false);form.inert=false;
+  label.hidden=true;assert.equal(fits(),false);label.hidden=false;
+  label.querySelector=()=>null;assert.equal(fits(),false);
+});
+
 const quoteSnapshotScript = `
 const box=e=>{if(!e)return null;const r=e.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom};};
 const shell=document.querySelector('[data-protect-form-shell]'),canvas=document.querySelector('.legend-cms-preview')||document.documentElement,panel=document.querySelector('.legend-cms-panel');
@@ -626,7 +691,7 @@ nativeSteps:document.querySelectorAll('main [data-cms-native-step]').length,
 phaseOptions:[...document.querySelectorAll('#legend-cms-form-navigator select option')].map(n=>n.value),
 canvasScrollTop:canvas.scrollTop,
 panelHidden:document.body.classList.contains('legend-cms-panel-hidden'),
-controls:[...document.querySelectorAll('main button,main input:not([type=hidden]),main select')].filter(e=>e.getClientRects().length&&getComputedStyle(e).visibility==='visible').slice(0,40).map(e=>({rect:box(e),disabled:e.disabled}))};`;
+controls:(${quoteControlSnapshots.toString()})(document,window)};`;
 
 test('actual canonical frontend components render in the existing sandboxed CI browser', {timeout:160000}, async t => {
   const start = Date.now();
@@ -977,7 +1042,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
       const value=await execute(quoteSnapshotScript);quoteDiagnostic={label,...value};
       assert.ok(quoteGeometryValid(value,options),'Quote component geometry: '+JSON.stringify(quoteDiagnostic));
       assert.deepEqual(value.errors,[],'Quote fixture/runtime errors');assert.ok(value.requests.every(r=>r.method==='GET'),'Quote fixture must never submit/save/publish');
-      assert.ok(value.controls.every(c=>c.rect.width>0&&c.rect.x>=value.canvas.x-1&&c.rect.right<=value.canvas.right+1&&(!options.sidebar||c.rect.right<=value.panel.x+1)),'Visible native control clipped or beneath sidebar');
+      assert.ok(value.controls.every(c=>quoteControlFits(c,value.canvas,value.panel,!!options.sidebar)),'Visible native control clipped or beneath sidebar');
       assert.equal(value.inputDocumentUnchanged,true,'Offline input document object changed (internal CMS preservation covered by website contract suite)');assert.equal(value.identity,true,'Native form/media node identity replaced');
       assert.deepEqual(value.duplicateIds,[],'Duplicate native IDs after reapply');assert.equal(value.nativeSteps,5);
       assert.ok(value.images.length>0&&value.images.every(i=>i.loaded),'Actual native banner assets required');
