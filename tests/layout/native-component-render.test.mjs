@@ -623,6 +623,44 @@ test('quote geometry rejects missing, clipped, hidden, wrong-width and overlappi
   assert.equal(quoteGeometryValid(narrow,{sidebar:true,desktop:false}),true,'Named preview clamps to real available canvas');
 });
 
+function quoteCanvasSettled(previous,current) {
+  const aligned=value=>value?.selected && value?.frame && !value.frame.hidden &&
+    ['left','top','width','height'].every(k=>Number.isFinite(value.selected[k]) && Number.isFinite(value.frame[k]) && Math.abs(value.selected[k]-value.frame[k])<=1);
+  return !!(aligned(previous) && aligned(current) &&
+    JSON.stringify(previous)===JSON.stringify(current));
+}
+
+const quoteCanvasObservationScript = `
+const canvas=document.querySelector('.legend-cms-preview'),selected=document.querySelector('main .legend-cms-selected'),frame=canvas?.querySelector('.legend-cms-selection-frame');
+if(!canvas||!selected||!frame)return null;
+const c=canvas.getBoundingClientRect(),s=selected.getBoundingClientRect();
+return {canvas:{x:c.x,y:c.y,width:c.width,height:c.height,clientWidth:canvas.clientWidth,clientHeight:canvas.clientHeight,scrollWidth:canvas.scrollWidth,scrollHeight:canvas.scrollHeight,scrollLeft:canvas.scrollLeft,scrollTop:canvas.scrollTop},
+selected:{left:s.left-c.left+canvas.scrollLeft,top:s.top-c.top+canvas.scrollTop,width:Math.max(s.width,1),height:Math.max(s.height,1)},
+frame:{hidden:frame.hidden,left:parseFloat(frame.style.left),top:parseFloat(frame.style.top),width:parseFloat(frame.style.width),height:parseFloat(frame.style.height)}};`;
+
+const quoteOverflowDiagnosticScript = `
+const canvas=document.querySelector('.legend-cms-preview')||document.documentElement,c=canvas.getBoundingClientRect(),right=c.left+canvas.clientLeft+canvas.clientWidth;
+const describe=e=>{const r=e.getBoundingClientRect();return {tag:e.tagName,id:e.id,classes:typeof e.className==='string'?e.className:'',left:r.left,right:r.right,width:r.width,position:getComputedStyle(e).position,pseudos:['::before','::after'].map(p=>{const s=getComputedStyle(e,p);return {pseudo:p,generated:s.content!=='none'&&s.content!=='normal',display:s.display,position:s.position,left:s.left,right:s.right,width:s.width,transform:s.transform};})};};
+return {frame:canvas.querySelector('.legend-cms-selection-frame')?describe(canvas.querySelector('.legend-cms-selection-frame')):null,selected:document.querySelector('main .legend-cms-selected')?describe(document.querySelector('main .legend-cms-selected')):null,offenders:[...canvas.querySelectorAll('*')].filter(e=>e.getClientRects().length&&e.getBoundingClientRect().right>right+1).slice(0,12).map(describe)};`;
+
+test('sidebar observation waits for the shipped queued selection-frame refresh and stable canvas geometry',async()=>{
+  const source=await readFile(path.join(root,'SHARED/WebsitePlatform/legend-public-cms.js'),'utf8');
+  const section=(start,end)=>{const a=source.indexOf(start),b=source.indexOf(end,a);assert.ok(a>=0&&b>a,'Shipped source boundary missing');return source.slice(a,b);};
+  const queue=[],selectionFrame={hidden:false,style:{},dataset:{}};
+  let width=1100,refreshes=0;
+  const context={selectionFrame,editorPreview:{scrollLeft:0,scrollTop:0,getBoundingClientRect:()=>({left:0,top:0})},selected:{dataset:{},closest:()=>null,getBoundingClientRect:()=>({left:16,top:20,width,height:40})},gridOverlay:null,directGesture:null,inlineEditNode:null,refreshScaledElements:()=>refreshes++,requestAnimationFrame:callback=>queue.push(callback)};
+  vm.runInNewContext(section('  function previewRelativeRect(el) {','  function positionGridOverlay(section) {')+section('  function updateDirectCanvasUi() {','  function lockPreviewHorizontalScroll() {')+section('    const refreshPanelCanvas = () => {',"    panelToggle.addEventListener('click',")+'\nthis.refreshPanelCanvas=refreshPanelCanvas;this.updateDirectCanvasUi=updateDirectCanvasUi;',context);
+  const observe=()=>({canvas:{width:width+32},selected:{left:16,top:20,width,height:40},frame:{hidden:selectionFrame.hidden,...Object.fromEntries(['left','top','width','height'].map(k=>[k,parseFloat(selectionFrame.style[k])]))}});
+  context.updateDirectCanvasUi();const before=observe();assert.equal(quoteCanvasSettled(before,before),true);
+  width=798;context.refreshPanelCanvas();assert.equal(queue.length,1);assert.equal(refreshes,0);
+  const stale=observe();assert.equal(stale.frame.width,1100);assert.equal(quoteCanvasSettled(stale,stale),false,'Stable stale overlay is not ready');
+  queue.shift()();assert.equal(refreshes,1);const refreshed=observe();assert.equal(refreshed.frame.width,798);
+  assert.equal(quoteCanvasSettled(stale,refreshed),false);assert.equal(quoteCanvasSettled(refreshed,observe()),true);
+  assert.equal(quoteCanvasSettled(null,refreshed),false);
+  assert.equal(quoteCanvasSettled(refreshed,{...refreshed,canvas:{width:831}}),false);
+  assert.equal(quoteCanvasSettled({...refreshed,frame:{...refreshed.frame,hidden:true}},{...refreshed,frame:{...refreshed.frame,hidden:true}}),false);
+});
+
 function quoteBreakpointReady(state,key) {
   const caps={base:'',desktop:'1440px','fixture-wide':'1550px'};
   return Object.hasOwn(caps,key) && !!state && state.selected===true && state.disabled===false && state.value===key && state.maxWidth===caps[key] && state.width==='';
@@ -1107,6 +1145,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     };
     const inspectQuote=async(label,options={})=>{
       const value=await execute(quoteSnapshotScript);quoteDiagnostic={label,...value};
+      if(!quoteGeometryValid(value,options))quoteDiagnostic.overflowDiagnostic=await execute(quoteOverflowDiagnosticScript);
       assert.ok(quoteGeometryValid(value,options),'Quote component geometry: '+JSON.stringify(quoteDiagnostic));
       assert.deepEqual(value.errors,[],'Quote fixture/runtime errors');assert.ok(value.requests.every(r=>r.method==='GET'),'Quote fixture must never submit/save/publish');
       assert.ok(value.controls.every(c=>quoteControlFits(c,value.canvas,value.panel,!!options.sidebar)),'Visible native control clipped or beneath sidebar');
@@ -1115,6 +1154,16 @@ test('actual canonical frontend components render in the existing sandboxed CI b
       assert.ok(value.images.length>0&&value.images.every(i=>i.loaded),'Actual native banner assets required');
       quoteRecords.push({label,layout:value.layout,available:value.available,canvasOuter:value.canvasOuter,shell:value.shell,canvas:value.canvas,panel:value.panel,viewport:value.viewport,requestCount:value.requests.length});
       return value;
+    };
+    const settleQuoteCanvas=async(label)=>{
+      const until=Math.min(Date.now()+3000,deadline-10000);let previous=null,current=null;
+      while(Date.now()<until){
+        current=await execute(quoteCanvasObservationScript);
+        if(quoteCanvasSettled(previous,current))return;
+        previous=current;await new Promise(resolve=>setTimeout(resolve,40));
+      }
+      quoteDiagnostic={label,stage:'canvas-settlement',observation:current,...await execute(quoteSnapshotScript)};
+      assert.fail('Selection frame/canvas did not settle: '+JSON.stringify(quoteDiagnostic));
     };
     let selectedQuoteNode;
     const selectQuoteContent=async(label)=>{
@@ -1185,9 +1234,11 @@ test('actual canonical frontend components render in the existing sandboxed CI b
         assert.ok(Math.abs(baseRestored.shell.width-before.shell.width)<=1,'Returning to verified Base changed source shell width');
         await click('#legend-cms-panel-toggle');
         await verifyBreakpoint('base',route+':'+width+':hidden-base-ready');
+        await settleQuoteCanvas(route+':'+width+':sidebar-hidden');
         const hidden=await inspectQuote(route+':'+width+':sidebar-hidden',{desktop:true});assert.equal(hidden.panelHidden,true);
         await click('#legend-cms-panel-toggle');
         await verifyBreakpoint('base',route+':'+width+':restored-base-ready');
+        await settleQuoteCanvas(route+':'+width+':sidebar-restored');
         const restored=await inspectQuote(route+':'+width+':sidebar-restored',{desktop:before.canvas.width>=1024,sidebar:true});
         assert.ok(Math.abs(restored.shell.width-baseRestored.shell.width)<=1,'Sidebar toggle changed source shell width');
         const publicValue=await publicAtCanvas(route,before.canvas.width,route+':'+width+':equal-canvas-public');
@@ -1222,3 +1273,4 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     if(cleanupError)throw cleanupError;
   }
 });
+
