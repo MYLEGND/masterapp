@@ -1,5 +1,6 @@
 """Exercise ambiguous deployment outcomes without contacting or mutating Azure."""
 import hashlib
+from contextlib import ExitStack
 import importlib.util
 import io
 import json
@@ -3234,25 +3235,27 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
                              (10,'immutable-original',40,'sha256:'+'e'*64))
             directory.mkdir(parents=True);(directory/'deploy.zip').write_bytes(b'exact fixture');(directory/'SHA256SUMS').write_text('fixture')
         owner=SimpleNamespace(RecoveryJournal=Journal,publish_record=Mock())
-        with tempfile.TemporaryDirectory() as temporary, \
-             patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='token')), \
-             patch.object(authority,'assert_fast_track_recovery_execution',side_effect=authenticate), \
-             patch.object(authority,'assert_fast_track_recovery_live_execution',side_effect=live_owner), \
-             patch.object(deploy,'recovery_job_deadline',side_effect=lambda *args:deploy.time.monotonic()+1800), \
-             patch.object(authority,'fast_track_completion_original',return_value=original), \
-             patch.object(authority,'fast_track_recovery_material',return_value=material), \
-             patch.object(authority,'_download_run_artifact',side_effect=download), \
-             patch.object(authority,'release_operation_history',side_effect=history), \
-             patch.object(authority,'_completion_original_unchanged'), \
-             patch.object(authority,'recovery_admission_proof',side_effect=proof_view), \
-             patch.object(authority,'fast_track_recovery_record_proof',return_value={}), \
-             patch.object(deploy,'verify_package',return_value='d'*64), \
-             patch.object(deploy,'target_azure',return_value=Mock()), \
-             patch.object(deploy,'recovery_preupload_baseline',return_value=dict(revision='c'*40,deploymentIds=['old'])) as baseline, \
-             patch.object(deploy,'recovery_host_flags'),patch.object(deploy,'reconcile',side_effect=reconcile), \
-             patch.object(deploy,'verify_fast_track_public_metadata'), \
-             patch.object(deploy.importlib.util,'spec_from_file_location',return_value=SimpleNamespace(loader=Mock())), \
-             patch.object(deploy.importlib.util,'module_from_spec',return_value=owner):
+        with ExitStack() as stack:
+            temporary=stack.enter_context(tempfile.TemporaryDirectory())
+            stack.enter_context(patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='token')))
+            stack.enter_context(patch.object(authority,'assert_fast_track_recovery_execution',side_effect=authenticate))
+            stack.enter_context(patch.object(authority,'assert_fast_track_recovery_live_execution',side_effect=live_owner))
+            stack.enter_context(patch.object(deploy,'recovery_job_deadline',side_effect=lambda *args:deploy.time.monotonic()+1800))
+            stack.enter_context(patch.object(authority,'fast_track_completion_original',return_value=original))
+            stack.enter_context(patch.object(authority,'fast_track_recovery_material',return_value=material))
+            stack.enter_context(patch.object(authority,'_download_run_artifact',side_effect=download))
+            stack.enter_context(patch.object(authority,'release_operation_history',side_effect=history))
+            stack.enter_context(patch.object(authority,'_completion_original_unchanged'))
+            stack.enter_context(patch.object(authority,'recovery_admission_proof',side_effect=proof_view))
+            stack.enter_context(patch.object(authority,'fast_track_recovery_record_proof',return_value={}))
+            stack.enter_context(patch.object(deploy,'verify_package',return_value='d'*64))
+            stack.enter_context(patch.object(deploy,'target_azure',return_value=Mock()))
+            baseline=stack.enter_context(patch.object(deploy,'recovery_preupload_baseline',return_value=dict(revision='c'*40,deploymentIds=['old'])))
+            stack.enter_context(patch.object(deploy,'recovery_host_flags'))
+            stack.enter_context(patch.object(deploy,'reconcile',side_effect=reconcile))
+            stack.enter_context(patch.object(deploy,'verify_fast_track_public_metadata'))
+            stack.enter_context(patch.object(deploy.importlib.util,'spec_from_file_location',return_value=SimpleNamespace(loader=Mock())))
+            stack.enter_context(patch.object(deploy.importlib.util,'module_from_spec',return_value=owner))
             root=Path(temporary)
             deploy.recover_fast_track(10,'a'*40,root,prepare_only=True)
             proof_boundaries.clear()
