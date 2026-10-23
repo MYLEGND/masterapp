@@ -1,32 +1,24 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder authorizes bounded canonical recovery corrections, required validation, protected merge and selective deployment under ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. This exact validate-only control promotion authorizes no application publication or provider/settings/access/cost change.",
-  "purpose": "Observe complete paginated execution history once per bounded proof, compare every row through uncached boundary reads, and perform fresh live execution ownership checks after proof closure. Preserve exact target/sibling evidence, packages, mutex and time reserves.",
-  "requestId": "founder-retained-recovery-history-snapshot-20261023-v1",
+  "purpose": "Discover exact retained recovery summary artifacts before invoking unchanged canonical all-target receipt validation. Preserve prior successful recovery, positive prewrite handling and release protections; no recovery redispatch.",
+  "requestId": "founder-retained-recovery-discovery-20261023-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "79d5aeeb2fec0a1548411cb6fdd7a5643c67a598",
-    "sourceRevision": "e6b548019457797ba738cf56557090ba690cb5cc",
+    "baseRevision": "bc6eb03837a5297489447e6a59493a39d57b156a",
+    "sourceRevision": "46cc6adf9d971614bd435af671ff3afba81225a1",
     "files": {
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "c6b12326860440ffcaed3cea5fcdb805c03d2635"
-      },
-      "scripts/deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "be6c0feb3573e9e822bca625e8889b66ac19a61d"
+        "blob": "0aedb424854f1d7cdcbde1738d6988c53325ff91"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "2cbbc991b03864bb6b76520d22ece897e07bd7ed"
-      },
-      "scripts/test-deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "b75b7f332104ab9c92505ed77194eb10dbc63bea"
+        "blob": "e3d04e183bba8d85197afd2a97b853019cce3260"
       }
     }
   }
