@@ -438,6 +438,30 @@ test('booking dialog readiness rejects pending paused idle and missing state but
   assert.throws(()=>bookingDialogSettled({querySelector:()=>null}),/Missing booking dialog readiness node/);
 });
 
+function bookingLocaleClickSnapshot(document,window) {
+  const number=value=>Number.isFinite(value)?value:null;
+  const css=value=>String(value??'').slice(0,256);
+  const target=document.querySelector('#qvBookNextMonth'),modal=document.querySelector('#qvBookingModal'),dialog=document.querySelector('#qvBookingModal > .modal-dialog');
+  const rect=target?.getBoundingClientRect(),style=target?window.getComputedStyle(target):null;
+  const animations=dialog?.getAnimations()??[];
+  return {target:'#qvBookNextMonth',exists:!!target,rect:rect?{x:number(rect.x),y:number(rect.y),width:number(rect.width),height:number(rect.height)}:null,
+    rectCount:target?target.getClientRects().length:0,disabled:target?target.disabled===true:null,
+    style:style?{display:css(style.display),visibility:css(style.visibility),opacity:css(style.opacity),pointerEvents:css(style.pointerEvents)}:null,
+    modal:{exists:!!modal,show:modal?.classList.contains('show')??false,fade:modal?.classList.contains('fade')??false,shownCount:(window.__shown??[]).filter(id=>id==='qvBookingModal').length},
+    dialog:{exists:!!dialog,transform:dialog?css(window.getComputedStyle(dialog).transform):null,animationCount:animations.length,
+      animations:animations.slice(0,8).map(animation=>({playState:['idle','running','paused','finished'].includes(animation.playState)?animation.playState:'unknown',pending:animation.pending===true,currentTime:number(animation.currentTime),duration:number(animation.effect?.getComputedTiming().duration)}))}};
+}
+test('booking locale diagnostics retain bounded control state without page content',()=>{
+  const animation={playState:'running',pending:true,currentTime:2,effect:{getComputedTiming:()=>({duration:300})},id:'private-payload'};
+  const node={disabled:true,textContent:'private-payload',getBoundingClientRect:()=>({x:1,y:2,width:46,height:46}),getClientRects:()=>[{}],classList:{contains:value=>value==='show'},getAnimations:()=>Array(12).fill(animation)};
+  const document={querySelector:()=>node},window={__shown:['qvBookingModal'],getComputedStyle:()=>({display:'grid',visibility:'visible',opacity:'1',pointerEvents:'auto',transform:'x'.repeat(300)})};
+  const value=bookingLocaleClickSnapshot(document,window);
+  assert.equal(value.disabled,true);assert.equal(value.rect.width,46);assert.equal(value.modal.show,true);assert.equal(value.modal.fade,false);assert.equal(value.modal.shownCount,1);
+  assert.equal(value.dialog.animationCount,12);assert.equal(value.dialog.animations.length,8);assert.equal(value.dialog.transform.length,256);assert.doesNotMatch(JSON.stringify(value),/private-payload/);
+  const missing=bookingLocaleClickSnapshot({querySelector:()=>null},{});
+  assert.equal(missing.exists,false);assert.equal(missing.rect,null);assert.equal(missing.modal.exists,false);assert.equal(missing.dialog.exists,false);
+});
+
 test('actual canonical frontend components render in the existing sandboxed CI browser', {timeout:160000}, async t => {
   const start = Date.now();
   const deadline = start + 160000;
@@ -448,7 +472,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.ok(value > 10000, 'Native render budget exhausted; reserve cleanup time');
     return value - 10000;
   };
-  let manifest,chromeVersion,driverVersion,checked,driverBindings,versionProbeFailure,scrollDiagnostic;
+  let manifest,chromeVersion,driverVersion,checked,driverBindings,versionProbeFailure,scrollDiagnostic,localeDiagnostic;
   const requiredScenarios=[...hosts.flatMap(host=>widths.map(width=>'viewport:'+host+':'+width)),'modal-order-and-wrap','locale-month-rollover','long-profile-and-offset','live-mobile-boundary','client-home-focus'];
   const completedScenarios=new Set();
   const records=[]; let acceptanceComplete=false; let failure; let server,driver,session,driverOrigin; let serverHost; let driverLog='';
@@ -646,11 +670,20 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     await command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setLocaleOverride',params:{locale:'de-DE'}});
     await command('POST','/session/'+session+'/url',{url:'http://'+serverHost+'/authenticated.html'});
     await click('#fixtureBookingOpen');await waitFor("document.querySelector('[data-qv-booking-date]')&&document.querySelector('#qvBookSlots button')");
+    await waitFor("document.querySelector('#qvBookingModal').classList.contains('show')&&window.__shown.includes('qvBookingModal')");
+    await waitFor(`(${bookingDialogSettled.toString()})(document)`);
     const initialMonth=await execute("return document.querySelector('#qvBookingMonthLabel').textContent");
     const labels=[];
     for(let i=0;i<13;i++){
       const prior=await execute("return document.querySelector('#qvBookingMonthLabel').textContent");
-      await click('#qvBookNextMonth');await waitFor('document.querySelector("#qvBookingMonthLabel").textContent!=='+JSON.stringify(prior));
+      try { await click('#qvBookNextMonth'); } catch(error) {
+        localeDiagnostic={scenario:'locale-month-rollover',iteration:i+1,target:'#qvBookNextMonth'};
+        try { localeDiagnostic.control=await execute(`return (${bookingLocaleClickSnapshot.toString()})(document,window)`); }
+        catch { localeDiagnostic.snapshotUnavailable=true; }
+        console.log('NATIVE_LOCALE_CLICK_FAILURE '+JSON.stringify(localeDiagnostic));
+        throw error;
+      }
+      await waitFor('document.querySelector("#qvBookingMonthLabel").textContent!=='+JSON.stringify(prior));
       labels.push(await execute("return document.querySelector('#qvBookingMonthLabel').textContent"));
     }
     assert.equal(new Set(labels).size,13);assert.notEqual(labels.at(-1).match(/\d{4}/)?.[0],initialMonth.match(/\d{4}/)?.[0],'Year rollover missing');
@@ -710,7 +743,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     clearTimeout(watchdog);let cleanupError;
     try{await cleanup();}catch(error){cleanupError=error;acceptanceComplete=false;failure=(failure||'')+' Cleanup failed: '+error.message;}
     removeCancellation();
-    const report={status:acceptanceComplete?'PASS':'INCOMPLETE_OR_FAILED',failure,versionProbeFailure,commandFailure,scrollDiagnostic,checkout:manifest?.checkout,nodeVersion:process.version,driverBindings,requiredScenarios,completedScenarios:[...completedScenarios],image:process.env.ImageVersion,chromeVersion,driverVersion,manifest,completed:records.length,required:hosts.length*widths.length,records,limits:['Component fixture; no Razor/server/authentication/business/API proof','System font fallback; no pixel-identical production claim','Live journeys and native safe-area device inset remain required']};
+    const report={status:acceptanceComplete?'PASS':'INCOMPLETE_OR_FAILED',failure,versionProbeFailure,commandFailure,scrollDiagnostic,localeDiagnostic,checkout:manifest?.checkout,nodeVersion:process.version,driverBindings,requiredScenarios,completedScenarios:[...completedScenarios],image:process.env.ImageVersion,chromeVersion,driverVersion,manifest,completed:records.length,required:hosts.length*widths.length,records,limits:['Component fixture; no Razor/server/authentication/business/API proof','System font fallback; no pixel-identical production claim','Live journeys and native safe-area device inset remain required']};
     console.log('NATIVE_COMPONENT_REPORT '+JSON.stringify(report));
     if(process.env.GITHUB_STEP_SUMMARY)await appendFile(process.env.GITHUB_STEP_SUMMARY,'\nNative component rendering: '+records.length+'/'+hosts.length*widths.length+' cases completed. Checkout '+(manifest?.checkout||'UNPROVEN')+'. See job log for exact inputs and assertions.\n');
     if(cleanupError)throw cleanupError;
