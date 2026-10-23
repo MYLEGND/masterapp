@@ -330,6 +330,101 @@ def fast_track_recovery_material(repository, original, key, token):
 
 _RECOVERY_PACKAGE_DIGESTS = contextvars.ContextVar('recovery_package_digests', default=None)
 _RECOVERY_RECEIPT_BYTES = contextvars.ContextVar('recovery_receipt_bytes', default=None)
+_RECOVERY_LOG_BYTES = contextvars.ContextVar('recovery_log_bytes', default=None)
+_RECOVERY_PROOF_VIEW = contextvars.ContextVar('recovery_proof_view', default=None)
+
+
+def _recovery_metadata_endpoint(path):
+    """Explicit historical read classes; live refs and unknown endpoints bypass."""
+    return bool(re.fullmatch(
+        r'actions/runs/\d+(?:/attempts/\d+/jobs\?per_page=100|/artifacts\?per_page=100)?'
+        r'|actions/jobs/\d+'
+        r'|actions/(?:runs|workflows/[^/?]+/runs)\?[^#]+'
+        r'|actions/artifacts\?name=[^&]+&per_page=100'
+        r'|pulls/\d+'
+        r'|commits/[a-f0-9]{40}/pulls\?per_page=100', path))
+
+
+def _recovery_metadata_reusable(repository, path, value, token):
+    if not isinstance(value, (dict, list)):
+        return False
+    current = os.environ.get('GITHUB_RUN_ID')
+    def terminal(row):
+        return (isinstance(row, dict) and row.get('status') == 'completed'
+            and str(row.get('run_id', row.get('id'))) != current)
+    if re.fullmatch(r'actions/(?:runs|jobs)/\d+', path):
+        return terminal(value)
+    if isinstance(value, dict):
+        for field in ('jobs', 'workflow_runs'):
+            if field in value:
+                rows = value[field]
+                return (isinstance(rows, list) and type(value.get('total_count')) is int
+                    and value['total_count'] == len(rows) and all(terminal(row) for row in rows))
+        if 'artifacts' in value:
+            rows = value['artifacts']
+            if (not isinstance(rows, list) or type(value.get('total_count')) is not int
+                or value['total_count'] != len(rows)):
+                return False
+            parent = re.fullmatch(r'actions/runs/(\d+)/artifacts\?per_page=100', path)
+            ids = {int(parent[1])} if parent else set()
+            for row in rows:
+                if not isinstance(row, dict):
+                    return False
+                owner = row.get('workflow_run', {}).get('id')
+                if type(owner) is not int or owner < 1 or (parent and owner != int(parent[1])):
+                    return False
+                ids.add(owner)
+            if not ids or any(str(owner) == current for owner in ids):
+                return False
+            return all(terminal(api_get(repository, f'actions/runs/{owner}', token)) for owner in ids)
+        if path.startswith('pulls/'):
+            return bool(value.get('merged_at'))
+    return (isinstance(value, list) and all(isinstance(row, dict)
+        and row.get('merged_at') for row in value))
+
+
+@contextlib.contextmanager
+def recovery_admission_proof():
+    """One read-only decision boundary, never an invocation-wide approval."""
+    if _RECOVERY_PROOF_VIEW.get() is not None:
+        yield
+        return
+    state = dict(entries={}, bytes=0)
+    handle = _RECOVERY_PROOF_VIEW.set(state)
+    try:
+        yield
+        # Use raw transport, not either metadata cache. Compare the complete
+        # responses, including pagination counts, expiry and attempt identities.
+        for (repository, path), entry in state['entries'].items():
+            if entry['uses'] > 1:
+                current = _api_get_uncached(repository, path, entry['token'])
+                raw = json.dumps(current, sort_keys=True, separators=(',', ':'))
+                if raw != entry['raw']:
+                    raise ReleaseOperationHistoryUnproven('RECOVERY_PROOF_CHANGED_AT_BOUNDARY')
+    finally:
+        _RECOVERY_PROOF_VIEW.reset(handle)
+
+
+def _recovery_proof_read(repository, path, token):
+    state = _RECOVERY_PROOF_VIEW.get()
+    if state is None or not _recovery_metadata_endpoint(path):
+        return _api_get_uncached(repository, path, token)
+    key = (repository, path)
+    if key in state['entries']:
+        entry = state['entries'][key]
+        entry['uses'] += 1
+        evidence_remaining(30)
+        return json.loads(entry['raw'])
+    value = _api_get_uncached(repository, path, token)
+    if _recovery_metadata_reusable(repository, path, value, token):
+        raw = json.dumps(value, sort_keys=True, separators=(',', ':'))
+        size = len(raw.encode())
+        if len(state['entries']) >= 512 or size > 8 * 1024 * 1024 or state['bytes'] + size > 32 * 1024 * 1024:
+            raise ReleaseOperationHistoryUnproven('RECOVERY_PROOF_STORAGE_BOUND')
+        state['entries'][key] = dict(raw=raw, uses=1, token=token)
+        state['bytes'] += size
+        return json.loads(raw)
+    return value
 
 
 @contextlib.contextmanager
@@ -337,9 +432,11 @@ def recovery_material_reuse():
     """One invocation, shared by its copied worker contexts; never mutable proof."""
     token = _RECOVERY_PACKAGE_DIGESTS.set((threading.Lock(), {}))
     receipt_token = _RECOVERY_RECEIPT_BYTES.set((threading.Lock(), {}))
+    log_token = _RECOVERY_LOG_BYTES.set(dict(entries={}, bytes=0, lock=threading.Lock()))
     try:
         yield
     finally:
+        _RECOVERY_LOG_BYTES.reset(log_token)
         _RECOVERY_RECEIPT_BYTES.reset(receipt_token)
         _RECOVERY_PACKAGE_DIGESTS.reset(token)
 
@@ -804,7 +901,7 @@ RECOVERY_PREFLIGHT_PRODUCER_SHA256 = '15ba27c53564223cb41502bb5528949e6435f0e6bc
 
 def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
-    return (hashlib.sha256(source.encode()).hexdigest() in (RECOVERY_PREFLIGHT_PRODUCER_SHA256, 'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850')
+    return (hashlib.sha256(source.encode()).hexdigest() in (RECOVERY_PREFLIGHT_PRODUCER_SHA256, 'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850', 'e75833a3c3a4d8827f48b7395a8af7e61eeab9e5cfbb4e1f6a0ebb4af49901ed')
         and hashlib.sha256(journal_source.encode()).hexdigest()=='506796abeadfd87f09236f74ca8c79a496a1c5b813f1191d0f0ce39cf5a9483d')
 
 
@@ -817,7 +914,11 @@ def _recovery_receipt_source_closure(repository, revision, token):
         'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850',
         'e940347d70b4fcea6059ca7cb4102c9a9ecd479d4e26e29f016967830f149531',
         'f1b22bcc777114af2437280ee71550555d6b8e2d1701964915eb76de28248557')))
-    return source in (current, previous, read_hold_generation)
+    receipt_reuse_generation = dict(zip(paths, (
+        'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850',
+        '9d6f763cfdf5c738eea6f5073666d542f348fe35a74063f31bc854e60fc15266',
+        'f1b22bcc777114af2437280ee71550555d6b8e2d1701964915eb76de28248557')))
+    return source in (current, previous, read_hold_generation, receipt_reuse_generation)
 
 
 def attested_recovery_terminal_preflight(repository, run, job, attempt, revision, token):
@@ -4988,6 +5089,10 @@ def evidence_remaining(maximum):
 
 
 def api_get(repository: str, path: str, token: str):
+    return _recovery_proof_read(repository, path, token)
+
+
+def _api_get_uncached(repository: str, path: str, token: str):
     url = f"https://api.github.com/repos/{repository}/{path.lstrip('/')}"
     request = urllib.request.Request(
         url,
@@ -5151,13 +5256,17 @@ def fast_track_promotion_parent(repository, run, token):
         or any(j.get('conclusion') != 'skipped' for j in downstream)
         or len(jobs) != 1 + len(downstream)):
         raise ValueError('TRUSTED_TOOL_PROMOTION_NONENTRY_UNPROVEN')
-    with tempfile.TemporaryDirectory(prefix='legend-tool-promotion-') as temporary:
-        root = Path(temporary)
-        _download_run_artifact(repository, run['id'], name, root, artifact_id=selected[0]['id'])
-        receipt = root / 'fast-track-admission.json'
-        if receipt.is_symlink() or receipt.stat().st_size > 4 * 1024 * 1024:
-            raise ValueError('TRUSTED_TOOL_PROMOTION_RECEIPT_UNPROVEN')
-        value = json.loads(receipt.read_text())
+    if _RECOVERY_RECEIPT_BYTES.get() is not None:
+        value = _release_history_json(repository, run['id'], selected[0],
+            'fast-track-admission.json', verify_digest=True, max_bytes=4 * 1024 * 1024)
+    else:
+        with tempfile.TemporaryDirectory(prefix='legend-tool-promotion-') as temporary:
+            root = Path(temporary)
+            _download_run_artifact(repository, run['id'], name, root, artifact_id=selected[0]['id'])
+            receipt = root / 'fast-track-admission.json'
+            if receipt.is_symlink() or receipt.stat().st_size > 4 * 1024 * 1024:
+                raise ValueError('TRUSTED_TOOL_PROMOTION_RECEIPT_UNPROVEN')
+            value = json.loads(receipt.read_text())
     if value != dict(expected, producingRun=run['id'], producingAttempt=run['run_attempt']):
         raise ValueError('TRUSTED_TOOL_PROMOTION_RECEIPT_IDENTITY_CHANGED')
     return before
@@ -10511,6 +10620,8 @@ def _remember_release_exclusion(candidate_revision, run, target):
 
 def _release_history_api(repository, path, token):
     """Share immutable terminal proof in one preparation process, not active state."""
+    if _RECOVERY_PROOF_VIEW.get() is not None:
+        return api_get(repository, path, token)
     key = (repository, path)
     if key in _RELEASE_HISTORY_API:
         return _RELEASE_HISTORY_API[key]
@@ -10684,6 +10795,52 @@ class _ReleaseLogRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def _release_job_log(repository, job_id, token):
+    state = _RECOVERY_LOG_BYTES.get()
+    if state is None or _RECOVERY_PROOF_VIEW.get() is None:
+        return _release_job_log_uncached(repository, job_id, token)
+    job = api_get(repository, f'actions/jobs/{job_id}', token)
+    run_id = job.get('run_id')
+    if type(run_id) is not int or run_id < 1:
+        raise ReleaseOperationHistoryUnproven('RECOVERY_LOG_OWNER_UNPROVEN')
+    run = api_get(repository, f'actions/runs/{run_id}', token)
+    attempt = job.get('run_attempt')
+    if (job.get('id') != job_id or job.get('status') != 'completed'
+        or run.get('id') != run_id or run.get('status') != 'completed'
+        or type(attempt) is not int or type(run.get('run_attempt')) is not int
+        or not 1 <= attempt <= run['run_attempt']
+        or not re.fullmatch('[a-f0-9]{40}', job.get('head_sha', ''))
+        or job['head_sha'] != run.get('head_sha')):
+        raise ReleaseOperationHistoryUnproven('RECOVERY_LOG_TERMINAL_IDENTITY_UNPROVEN')
+    key = (repository, run_id, attempt, job_id, job['head_sha'],
+           job.get('started_at'), job.get('completed_at'), job.get('conclusion'))
+    with state['lock']:
+        future = state['entries'].get(key)
+        owns = future is None
+        if owns:
+            if len(state['entries']) >= 100:
+                raise ReleaseOperationHistoryUnproven('RECOVERY_LOG_STORAGE_BOUND')
+            future = concurrent.futures.Future()
+            state['entries'][key] = future
+    if not owns:
+        return future.result(timeout=evidence_remaining(30))
+    try:
+        body = _release_job_log_uncached(repository, job_id, token)
+        size = len(body.encode())
+        with state['lock']:
+            if state['bytes'] + size > 64 * 1024 * 1024:
+                raise ReleaseOperationHistoryUnproven('RECOVERY_LOG_STORAGE_BOUND')
+            state['bytes'] += size
+        future.set_result(body)
+        return body
+    except BaseException as error:
+        future.set_exception(error)
+        with state['lock']:
+            if state['entries'].get(key) is future:
+                del state['entries'][key]
+        raise
+
+
+def _release_job_log_uncached(repository, job_id, token):
     """Read the authenticated log redirect with bounded, credential-safe transport."""
     request = urllib.request.Request(
         f'https://api.github.com/repos/{repository}/actions/jobs/{job_id}/logs',

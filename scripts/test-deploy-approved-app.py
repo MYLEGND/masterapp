@@ -3174,7 +3174,7 @@ class RetainedRecoveryConsumerTests(unittest.TestCase):
             download.assert_not_called();azure.assert_not_called();process.assert_not_called()
 
 class RetainedRecoveryIntegratedTests(unittest.TestCase):
-    def run_case(self, *, entered=False, race=False, expired=False, preflight_failure=False, publication_failure=False, read_failure=False):
+    def run_case(self, *, entered=False, race=False, expired=False, preflight_failure=False, publication_failure=False, read_failure=False, proof_failure=0):
         from types import SimpleNamespace
         authority=deploy._RELEASE_AUTHORITY
         observer=dict(runId=20,runAttempt=1,jobId=30,toolRevision='b'*40,promotionRunId=19)
@@ -3183,7 +3183,15 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
         operation=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
         prior=dict(identity,operationId=operation,packageProducerRun=10,baseline='c'*40) if entered else None
         material=dict(packageArtifact=dict(id=40,name='immutable-original',digest='sha256:'+'e'*64),originalIntent=prior)
-        events=[]; intent_reads=0
+        events=[]; intent_reads=0; proof_boundaries=[]
+        import contextlib
+        @contextlib.contextmanager
+        def proof_view():
+            proof_boundaries.append('enter')
+            number=len(proof_boundaries)
+            yield
+            if number==proof_failure:
+                raise authority.ReleaseOperationHistoryUnproven('RECOVERY_PROOF_CHANGED_AT_BOUNDARY')
         def history(*args,phase='intent'):
             nonlocal intent_reads
             if phase=='success':return dict(packageDigest='d'*64,deploymentIds=['new'])
@@ -3220,6 +3228,7 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
              patch.object(authority,'_download_run_artifact',side_effect=download), \
              patch.object(authority,'release_operation_history',side_effect=history), \
              patch.object(authority,'_completion_original_unchanged'), \
+             patch.object(authority,'recovery_admission_proof',side_effect=proof_view), \
              patch.object(authority,'fast_track_recovery_record_proof',return_value={}), \
              patch.object(deploy,'verify_package',return_value='d'*64), \
              patch.object(deploy,'target_azure',return_value=Mock()), \
@@ -3230,7 +3239,15 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
              patch.object(deploy.importlib.util,'module_from_spec',return_value=owner):
             root=Path(temporary)
             deploy.recover_fast_track(10,'a'*40,root,prepare_only=True)
-            if preflight_failure:
+            if proof_failure:
+                with self.assertRaises(authority.ReleaseOperationHistoryUnproven):deploy.recover_fast_track(10,'a'*40,root)
+                self.assertNotIn('upload',events);self.assertNotIn('intent',events)
+                owner.publish_record.assert_called_once()
+                record=owner.publish_record.call_args.args[1]
+                self.assertEqual(record['phase'],'preflight-nonentry' if proof_failure==1 else 'target-preintent-hold')
+                self.assertFalse(record['authorizesMutation'])
+                self.assertEqual(len(proof_boundaries),proof_failure)
+            elif preflight_failure:
                 baseline.side_effect=deploy.RecoveryPreflightFailure('provider-read-timeout')
                 if publication_failure:owner.publish_record.side_effect=RuntimeError('durable receipt unavailable')
                 with self.assertRaises(RuntimeError):deploy.recover_fast_track(10,'a'*40,root)
@@ -3265,6 +3282,8 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
                 self.assertIn(('reconcile_only',entered),events)
                 self.assertEqual(baseline.call_count,0 if entered else 2)
     def test_original_immutable_package_first_write_after_fresh_barriers(self):self.run_case()
+    def test_initial_proof_readback_drift_holds_before_workers(self):self.run_case(proof_failure=1)
+    def test_preintent_proof_readback_drift_holds_before_intent(self):self.run_case(proof_failure=2)
     def test_worker_read_failure_emits_target_only_receipt(self):self.run_case(read_failure=True)
     def test_existing_intent_never_reuploads_or_rebases(self):self.run_case(entered=True)
     def test_newly_appeared_intent_holds_before_write(self):self.run_case(race=True)
