@@ -522,7 +522,11 @@ public sealed class BusinessWorkspaceTests
         Assert.True(
             schedulerCss.IndexOf("CANONICAL RESPONSIVE GEOMETRY", StringComparison.Ordinal) >
             schedulerCss.IndexOf("VIEWPORT FIT SYSTEM", StringComparison.Ordinal));
-        Assert.Equal(1, schedulerCss.Split("@media (max-width:1100px)", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, schedulerCss.Split("@container qv-booking (max-width:1100px)", StringSplitOptions.None).Length - 1);
+        Assert.DoesNotContain("@media (max-width:1100px)", schedulerCss, StringComparison.Ordinal);
+        Assert.Equal(1, schedulerCss.Split("container-name:qv-booking", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, schedulerCss.Split("container-type:inline-size", StringSplitOptions.None).Length - 1);
+        Assert.Matches(@"\.qv-booking-modal-shell \.modal-content\s*\{[^}]*container-name:qv-booking;[^}]*container-type:inline-size;", schedulerCss);
         Assert.Equal(1, schedulerCss.Split("@media (max-width:760px)", StringSplitOptions.None).Length - 1);
         Assert.Contains("min-height:100dvh", schedulerCss, StringComparison.Ordinal);
         Assert.Contains("grid-template-columns:repeat(2, minmax(0,1fr))", schedulerCss, StringComparison.Ordinal);
