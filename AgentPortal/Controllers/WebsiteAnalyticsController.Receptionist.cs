@@ -18,8 +18,8 @@ public partial class WebsiteAnalyticsController
         var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
         if (owner is null) return Forbid();
         var snapshot = await ReceptionistStore.GetReceptionistConfigurationAsync(owner, MarketingDestinationKeys.OpenAi, cancellationToken);
-        return ReceptionistPage(snapshot, agentProfileId, message: notice == "saved" ? "Your settings were saved as an inactive version. Verification is required before calls can use this version."
-            : notice == "admission" ? "Your call admission setting was saved." : null);
+        return await ReceptionistPageAsync(snapshot, agentProfileId, message: notice == "saved" ? "Your settings were saved as an inactive version. Verification is required before calls can use this version."
+            : notice == "admission" ? "Your receptionist permission was saved. This does not verify that calls are ready." : null, cancellationToken: cancellationToken);
     }
 
     [HttpPost("receptionist")]
@@ -53,7 +53,7 @@ public partial class WebsiteAnalyticsController
             }
         }
         else Response.StatusCode = 400;
-        return ReceptionistPage(snapshot, agentProfileId, input);
+        return await ReceptionistPageAsync(snapshot, agentProfileId, input, cancellationToken: cancellationToken);
     }
 
     [HttpPost("receptionist/admission")]
@@ -72,15 +72,20 @@ public partial class WebsiteAnalyticsController
             return RedirectToAction(nameof(Receptionist), new { agentProfileId, notice = "admission" });
         }
         catch (DbUpdateConcurrencyException) { return Conflict("These settings changed. Reload before changing call admission."); }
-        catch (InvalidOperationException) { return BadRequest("Verified provider and inquiry acceptance are required before enabling calls."); }
+        catch (InvalidOperationException) { return BadRequest("Verified provider and inquiry acceptance are required before allowing receptionist permission."); }
     }
 
     private MarketingConnectionStore ReceptionistStore => HttpContext.RequestServices.GetRequiredService<MarketingConnectionStore>();
 
-    private IActionResult ReceptionistPage(ReceptionistConfigurationSnapshot snapshot, Guid? agentProfileId,
-        ReceptionistSetupInput? input = null, string? message = null) => View("~/Views/Shared/ReceptionistSetup.cshtml",
+    private async Task<IActionResult> ReceptionistPageAsync(ReceptionistConfigurationSnapshot snapshot, Guid? agentProfileId,
+        ReceptionistSetupInput? input = null, string? message = null, CancellationToken cancellationToken = default)
+    {
+        var readiness = await HttpContext.RequestServices.GetRequiredService<ReceptionistAdmissionService>()
+            .GetSetupReadinessAsync(snapshot, observeControlPlaneRuntime: true, ct: cancellationToken);
+        return View("~/Views/Shared/ReceptionistSetup.cshtml",
             new ReceptionistSetupPage(snapshot, input ?? ReceptionistSetupForms.Read(snapshot),
                 Url.Action(nameof(SaveReceptionist), new { agentProfileId })!,
                 Url.Action(nameof(ReceptionistAdmission), new { agentProfileId })!,
-                Url.Action("Index", new { agentProfileId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message));
+                Url.Action("Index", new { agentProfileId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness));
+    }
 }
