@@ -1504,6 +1504,25 @@ class FastTrackCompletionAuthorityTests(unittest.TestCase):
         self.original=dict(run=self.run,targets=['portal'],baseRevision='a'*40)
         self.material_value=dict(packageJob=self.job,packageAttempt=1,originalPublicationStep=self.job['steps'][1],intent=self.intent,intentArtifact=self.ia,packageArtifact=self.pa,originalJob=self.job,submissionObservation=None)
         self.observer=dict(runId=789,runAttempt=1,jobId=800,toolRevision=self.tool,promotionRunId=700)
+        # Original-completion fixtures have no retained recovery summary.
+        # Exercise the real reader, but never leak test-only credentials to HTTP.
+        recovery_path = 'actions/artifacts?name=' + self.a.fast_track_recovery_summary_name(123, self.sha) + '&per_page=100'
+        def recovery_inventory(repository, path, token):
+            self.assertEqual((repository, path, token), (self.repo, recovery_path, 'test-only'))
+            return dict(artifacts=[], total_count=0)
+        api_patch = patch.object(self.a, 'api_get', side_effect=recovery_inventory)
+        self.recovery_inventory_api = api_patch.start()
+        self.addCleanup(api_patch.stop)
+
+    def test_original_completion_fixture_recovery_inventory_is_empty_and_isolated(self):
+        self.assertFalse(self.a.fast_track_recovery_completed(self.repo, self.original, 'test-only'))
+        self.recovery_inventory_api.assert_called_once()
+        path = self.recovery_inventory_api.call_args.args[1]
+        for repository, route, token in [(self.repo, 'actions/runs/123', 'test-only'),
+                                         ('other/repo', path, 'test-only'),
+                                         (self.repo, path, 'unexpected')]:
+            with self.subTest(repository=repository, route=route, token=token), self.assertRaises(AssertionError):
+                self.a.api_get(repository, route, token)
     def material(self,artifacts=None,jobs=None,retained=None,submitted=None):
         artifacts=list([self.ia,self.pa] if artifacts is None else artifacts)
         if submitted is not None:
