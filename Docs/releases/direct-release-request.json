@@ -1,25 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized routine scoped acceptance, GitHub blobs, protected merge and deployment under ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. This validate-only control promotion authorizes no application publication, provider setting, privacy/security/access or spending change.",
-  "purpose": "Reuse digest-verified immutable receipt bytes within one retained recovery invocation while preserving fresh admission, exact history, target and sibling checks, existing mutex and time reserves. Preserve exact prior control generations. No application publication.",
-  "requestId": "founder-retained-recovery-receipt-reuse-20261023-v1",
+  "authorization": "Founder authorized acceptance, compilation, tests and protected integration of Operation's frozen seven-file receptionist readiness candidate under MKT-VOICE-001:readiness-projection:20261023:v1. No call activation, provider changes or additional spend.",
+  "purpose": "Validate the exact independently reviewed receptionist readiness projection and truthful owner-permission labels. Application publication remains held; this request is isolated from PR679's approved application-release request.",
+  "requestId": "founder-receptionist-readiness-validation-20261023-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "5c5f30a32cd57e9f4c19fe2c427d3306f6188869",
-    "sourceRevision": "374561663d6c82d78aeb162f19f96028b2794dbe",
-    "files": {
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "d59648bdc404993575559023cb10d6c0f6cd5fb1"
-      },
-      "scripts/test-validation-resume.py": {
-        "mode": "100644",
-        "blob": "234a4ffdd9f32fcb95b5144163b646cb36071b5c"
-      }
-    }
-  }
+  "preserveLiveTargets": false
 }
