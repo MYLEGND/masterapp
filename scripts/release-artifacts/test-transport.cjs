@@ -552,3 +552,60 @@ test('retained summary all target identities and observer bindings reject before
   for(const mutate of mutations){const bad=structuredClone(row);mutate(bad.record);await assert.rejects(publish({},bad.name,bad.record),/Invalid/);}
   await assert.rejects(publish({},row.name.replace(/[a-f0-9]{64}$/,'f'.repeat(64)),row.record),/Invalid/);
 });
+
+function preflightProducerPayloads() {
+  const {spawnSync}=require('node:child_process');
+  const script=String.raw`
+import importlib.util,json,hashlib,sys
+from pathlib import Path
+p=Path(sys.argv[1])/'deploy-approved-app.py';spec=importlib.util.spec_from_file_location('deploy',p);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+observer=dict(runId=20,runAttempt=1,jobId=30,promotionRunId=19,toolRevision='b'*40)
+proof=dict(originalRun=10,originalAttempt=5,applicationRevision='a'*40,observer=observer,targets={})
+for target in ['website','portal','client','protect','parfait']:
+ identity=dict(target=target,applicationRevision='a'*40,packageDigest='d'*64)
+ proof['targets'][target]=dict(operationId=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest(),packageDigest='d'*64,packageArtifactId=40+len(proof['targets']),packageArtifactDigest='sha256:'+'e'*64)
+rows=[]
+for reason in sorted(m.RECOVERY_PREFLIGHT_REASONS):
+ observation=dict(historyReadComplete=True,historyCount=1,activeCount=0,runtimeRevision='c'*40)
+ if reason in ['provider-read-timeout','provider-read-unavailable','preflight-authority-unproven','phase-deadline']:observation=None
+ elif reason=='history-empty':observation.update(historyCount=0)
+ elif reason=='provider-active':observation.update(activeCount=1)
+ elif reason=='runtime-unavailable':observation.update(runtimeRevision=None)
+ elif reason=='runtime-candidate-unproven':observation.update(runtimeRevision='a'*40)
+ name,record=m.recovery_preflight_nonentry_record(proof,'website',m.RecoveryPreflightFailure(reason,observation))
+ rows.append(dict(name=name,record=record))
+print(json.dumps(rows))
+`;
+  const result=spawnSync('python3',['-c',script,path.resolve(__dirname,'..')],{encoding:'utf8',timeout:10000});
+  assert.equal(result.status,0,result.stderr);return JSON.parse(result.stdout);
+}
+test('actual Python terminal preflight producer all reasons and five materials round trip',async()=>{
+  const rows=preflightProducerPayloads();assert.equal(rows.length,13);
+  for(const item of rows)await retainedRoundTrip(item);
+});
+test('terminal preflight cannot authorize mutation or carry unknown producer/material/observation',async()=>{
+  const item=preflightProducerPayloads()[0];
+  const mutations=[r=>r.authorizesMutation=true,r=>r.writePhaseEntered=true,r=>r.phase='success',r=>r.stage='worker',r=>r.reason='arbitrary log text',r=>r.extra='secret',r=>r.observer.runId++,r=>r.producingRun++,r=>r.originalRun++,r=>r.originalAttempt=false,r=>r.failedTarget='missing',r=>r.failedTarget=['website'],r=>r.failedTarget={},r=>r.failedTarget=1,r=>r.targets.website.packageDigest='a'.repeat(64),r=>r.targets.website.extra='no',r=>r.observation.extra='no',r=>r.observation.runtimeRevision='https://secret',r=>r.observation.historyCount=-1];
+  for(const mutate of mutations){const bad=structuredClone(item);mutate(bad.record);await assert.rejects(publish({},bad.name,bad.record),/Invalid|Inconsistent/);}
+});
+
+test('real five-target preflight failure through Node readback then full Python attestor',async()=>{
+  const {spawnSync}=require('node:child_process');
+  const producer=String.raw`import importlib.util,json,sys
+from pathlib import Path
+p=Path(sys.argv[1])/'test-deploy-approved-app.py';s=importlib.util.spec_from_file_location('fixture',p);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
+print(json.dumps(m.preflight_five_target_payload()))`;
+  const made=spawnSync('python3',['-c',producer,path.resolve(__dirname,'..')],{encoding:'utf8',timeout:10000});
+  assert.equal(made.status,0,made.stderr);const item=JSON.parse(made.stdout);let bytes;
+  const client={async listArtifacts(){return {artifacts:[]}},async uploadArtifact(name,files){assert.equal(name,item.name);bytes=await fs.readFile(files[0]);return{id:99}},
+    async downloadArtifact(id,options){await fs.mkdir(options.path);await fs.writeFile(path.join(options.path,'operation.json'),bytes)}};
+  await publish(client,item.name,item.record);
+  const consumer=String.raw`import importlib.util,json,sys
+from pathlib import Path
+p=Path(sys.argv[1])/'test-validation-resume.py';s=importlib.util.spec_from_file_location('fixture',p);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
+f=m.RecoveryPreflightTerminalConsumerTests();f.setUp();f.record=json.load(sys.stdin)
+assert f.invoke(), 'Full attestor rejected literal Node readback'
+print('full-attestor-accepted')`;
+  const accepted=spawnSync('python3',['-c',consumer,path.resolve(__dirname,'..')],{input:bytes,encoding:'utf8',timeout:10000});
+  assert.equal(accepted.status,0,accepted.stderr);assert.equal(accepted.stdout.trim(),'full-attestor-accepted');
+});

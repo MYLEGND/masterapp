@@ -482,7 +482,9 @@ def fast_track_recovery_completed(repository, original, token):
 
 FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS = ({'.github/workflows/legend-fast-track-ui.yml': 'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd', 'scripts/deploy-approved-app.py': 'd563b924ba2f477fb93945675b931a903331d825511e4c67a31884b1d00736cd', 'scripts/release-operation-evidence.py': '506796abeadfd87f09236f74ca8c79a496a1c5b813f1191d0f0ce39cf5a9483d', 'scripts/validation-resume.py': '21d52d576d91ecb842f2b4ad4266643eb6e8de94c73da0a8cb79b1e11d317b39', 'scripts/release-artifacts/transport.cjs': '3a71bff71cabec628b184504de381bd0d41aad0827fc6bb440205eb0cde90ce6'},)
 
-def _recovery_preintent_log_proof(log, run, job, observer):
+FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS = ({'.github/workflows/legend-fast-track-ui.yml': 'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd', 'scripts/deploy-approved-app.py': 'd563b924ba2f477fb93945675b931a903331d825511e4c67a31884b1d00736cd', 'scripts/release-operation-evidence.py': '506796abeadfd87f09236f74ca8c79a496a1c5b813f1191d0f0ce39cf5a9483d', 'scripts/validation-resume.py': 'e134012c82b4760dde39fdd22fdb5f8a335a3e1addcd304b0d52ec9d08702268', 'scripts/release-artifacts/transport.cjs': 'c853257dddfe833a8356f94ea3566d93acb7aef666d86e2c8f0dd67763884769'},)
+
+def _recovery_preintent_log_proof(log, run, job, observer, *, kind='serializer'):
     """Only authenticated full logs of the pinned pre-transport rejection flow."""
     import datetime
     if not isinstance(log, str) or len(log) > 8 * 1024 * 1024:
@@ -531,6 +533,22 @@ def _recovery_preintent_log_proof(log, run, job, observer):
         or run.get('display_title') != 'LEGEND retained recovery original=' + str(proof['originalRun']) + ' application=' + str(proof['applicationRevision'])):
         raise ValueError('RECOVERY_PREINTENT_MATERIAL_LOG_CHANGED')
     events = [text for stamp, text in rows if step_start <= stamp <= step_end + datetime.timedelta(seconds=1)]
+    if kind == 'preflight':
+        terminal = 'DeploymentReconciliationRequired: RECOVERY_BASELINE_NOT_IDLE_OR_UNPROVEN'
+        if (events.count(terminal)!=1 or clean.count(terminal)!=1 or events.count('Traceback (most recent call last):')!=1
+            or events.count('##[error]Process completed with exit code 1.')!=1
+            or any(any(marker in text for marker in ['Submitting the verified immutable ZIP once.','AZURE_TRACKED_DEPLOYMENT_REFERENCE:','Deployment state after ','in recover_target','in before_submit']) for _,text in rows)):
+            raise ValueError('RECOVERY_PREFLIGHT_TERMINAL_CHAIN_UNPROVEN')
+        if not events.index('Traceback (most recent call last):') < events.index(terminal) < events.index('##[error]Process completed with exit code 1.') or clean.index('Cleaning up orphan processes') < clean.index(terminal):
+            raise ValueError('RECOVERY_PREFLIGHT_TERMINAL_ORDER_CHANGED')
+        frames=re.findall(r'  File "[^"\n]*/scripts/([^"/]+)", line ([0-9]+), in ([^\n]+)', '\n'.join(events))
+        expected=[('deploy-approved-app.py','1577','<module>'),('deploy-approved-app.py','1492','main'),('deploy-approved-app.py','1350','recover_fast_track'),('deploy-approved-app.py','1395','_recover_fast_track'),('deploy-approved-app.py','1259','recovery_preupload_baseline')]
+        if frames!=expected or sum(text.startswith('  File ') for text in events)!=len(expected):
+            raise ValueError('RECOVERY_PREFLIGHT_CALL_CHAIN_CHANGED')
+        if events.count('    states[key] = recovery_preupload_baseline(azure, original, key)')!=1:
+            raise ValueError('RECOVERY_PREFLIGHT_BOUNDARY_UNPROVEN')
+        return proof
+    if kind != 'serializer':raise ValueError('Unknown recovery historical contract')
     terminal = 'DeploymentSubmissionNotEntered: Durable upload intent could not be proven; no write authorized'
     rejected = 'RuntimeError: Durable operation publication/readback unavailable; reconcile without writing'
     if (events.count(terminal) != 1 or clean.count(terminal) != 1 or events.count(rejected) != 1
@@ -556,11 +574,12 @@ def _recovery_preintent_log_proof(log, run, job, observer):
 
 
 def attested_recovery_preintent_failure(repository, run, job, attempt, revision, token):
-    """Recognize a reviewed serializer rejection, never generic missing intent.
+    """Recognize reviewed pre-entry source flows, never generic missing intent.
 
     Every new journal record in this exact generation contains recoveryEvidence;
     its pinned transport rejects that field before inventory/upload and before
-    the journal can authorize the provider. Other generations stay held.
+    the journal can authorize the provider. A separately pinned pre-worker
+    generation terminates in sequential baseline initialization. Unknown flows stay held.
     """
     try:
         if (run.get('status') != 'completed' or run.get('conclusion') != 'failure' or job.get('status') != 'completed'
@@ -582,12 +601,13 @@ def attested_recovery_preintent_failure(repository, run, job, attempt, revision,
             return False
         source = {path: hashlib.sha256(_release_history_source(repository,run['head_sha'],path,token).encode()).hexdigest()
                   for path in FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS[0]}
-        if source not in FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS:
+        if source not in FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS + FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS:
             return False
         # An uncertain or retained artifact is NOT erased by a terminal log.
         if _completion_inventory(api_get(repository,f"actions/runs/{run['id']}/artifacts?per_page=100",token),'artifacts'):
             return False
-        proof = _recovery_preintent_log_proof(_release_job_log(repository,job['id'],token),run,job,observer)
+        proof = _recovery_preintent_log_proof(_release_job_log(repository,job['id'],token),run,job,observer,
+            kind='preflight' if source in FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS else 'serializer')
         if proof['applicationRevision'] != revision:
             return False
         original = fast_track_completion_original(repository,proof['originalRun'],revision,token)
@@ -621,6 +641,122 @@ def attested_recovery_preintent_failure(repository, run, job, attempt, revision,
         return False
 
 
+RECOVERY_PREFLIGHT_NONENTRY_KEYS = frozenset('schemaVersion phase originalRun originalAttempt applicationRevision producingRun producingAttempt observer targets failedTarget stage authorizesMutation writePhaseEntered reason observation'.split())
+RECOVERY_PREFLIGHT_NONENTRY_REASONS = frozenset('provider-read-timeout provider-read-unavailable history-empty provider-active runtime-unavailable runtime-candidate-unproven baseline-not-ancestor original-window-unproven provider-history-time-unproven newer-provider-operation baseline-drift preflight-authority-unproven phase-deadline'.split())
+
+
+def recovery_preflight_nonentry_name(original_run, revision, run, attempt):
+    identity=dict(applicationRevision=revision,originalRun=original_run,producingRun=run,producingAttempt=attempt)
+    return 'legend-retained-preflight-nonentry-'+hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+
+
+def validate_recovery_preflight_nonentry(record):
+    positive=lambda value:type(value) is int and value>0
+    sha=lambda value,size:isinstance(value,str) and re.fullmatch('[a-f0-9]{%d}'%size,value) is not None
+    if (not isinstance(record,dict) or set(record)!=RECOVERY_PREFLIGHT_NONENTRY_KEYS or record['schemaVersion']!=1
+        or type(record['schemaVersion']) is not int or record['phase']!='preflight-nonentry' or record['stage']!='all-target-preflight'
+        or record['authorizesMutation'] is not False or record['writePhaseEntered'] is not False
+        or record['reason'] not in RECOVERY_PREFLIGHT_NONENTRY_REASONS or not sha(record['applicationRevision'],40)
+        or not all(positive(record[k])for k in ['originalRun','originalAttempt','producingRun','producingAttempt'])
+        or record['originalRun']==record['producingRun']):raise ValueError('RECOVERY_PREFLIGHT_RECORD_IDENTITY')
+    observer=record['observer'];material=record['targets'];o=record['observation']
+    if (not isinstance(observer,dict) or set(observer)!={'runId','runAttempt','jobId','toolRevision','promotionRunId'}
+        or not all(positive(observer[k])for k in ['runId','runAttempt','jobId','promotionRunId'])
+        or not sha(observer['toolRevision'],40) or observer['runId']!=record['producingRun'] or observer['runAttempt']!=record['producingAttempt']
+        or not isinstance(material,dict) or not 1<=len(material)<=5 or not isinstance(record['failedTarget'],str) or record['failedTarget'] not in material):raise ValueError('RECOVERY_PREFLIGHT_RECORD_SCOPE')
+    for key,row in material.items():
+        if (key not in RELEASE_TARGETS or not isinstance(row,dict) or set(row)!={'operationId','packageDigest','packageArtifactId','packageArtifactDigest'}
+            or not sha(row['packageDigest'],64) or not positive(row['packageArtifactId'])
+            or not isinstance(row['packageArtifactDigest'],str) or not re.fullmatch('sha256:[a-f0-9]{64}',row['packageArtifactDigest'])):raise ValueError('RECOVERY_PREFLIGHT_RECORD_MATERIAL')
+        identity=dict(target=key,applicationRevision=record['applicationRevision'],packageDigest=row['packageDigest'])
+        if row['operationId']!=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest():raise ValueError('RECOVERY_PREFLIGHT_RECORD_OPERATION')
+    if (not isinstance(o,dict) or set(o)!={'historyReadComplete','historyCount','activeCount','runtimeRevision'}
+        or type(o['historyReadComplete']) is not bool or (o['runtimeRevision'] is not None and not sha(o['runtimeRevision'],40))):raise ValueError('RECOVERY_PREFLIGHT_RECORD_OBSERVATION')
+    if o['historyReadComplete']:
+        if type(o['historyCount']) is not int or not 0<=o['historyCount']<=100000 or type(o['activeCount']) is not int or not 0<=o['activeCount']<=o['historyCount']:raise ValueError('RECOVERY_PREFLIGHT_RECORD_COUNTS')
+    elif o['historyCount'] is not None or o['activeCount'] is not None:raise ValueError('RECOVERY_PREFLIGHT_RECORD_UNKNOWN_HISTORY')
+    reason=record['reason']
+    if ((reason in {'provider-read-timeout','provider-read-unavailable'} and o['historyReadComplete'])
+        or (reason=='history-empty' and (not o['historyReadComplete'] or o['historyCount']!=0))
+        or (reason=='provider-active' and (not o['historyReadComplete'] or o['activeCount']<1))
+        or (reason=='runtime-unavailable' and o['runtimeRevision'] is not None)
+        or (reason=='runtime-candidate-unproven' and o['runtimeRevision']!=record['applicationRevision'])):raise ValueError('RECOVERY_PREFLIGHT_RECORD_REASON')
+    return recovery_preflight_nonentry_name(record['originalRun'],record['applicationRevision'],record['producingRun'],record['producingAttempt'])
+
+
+RECOVERY_PREFLIGHT_PRODUCER_SHA256 = 'a4f1ff6424123fd00f61cf24550c970f544ce25247e1a1a2f755e47f18bdc917'
+
+
+def _recovery_preflight_source_contract(source, journal_source):
+    """Closed reviewed source generation, including every helper and write path."""
+    return (hashlib.sha256(source.encode()).hexdigest()==RECOVERY_PREFLIGHT_PRODUCER_SHA256
+        and hashlib.sha256(journal_source.encode()).hexdigest()=='506796abeadfd87f09236f74ca8c79a496a1c5b813f1191d0f0ce39cf5a9483d')
+
+
+def attested_recovery_terminal_preflight(repository, run, job, attempt, revision, token):
+    """Discharge only authenticated no-worker attempts, never prior intent/history."""
+    try:
+        if (run.get('status')!='completed' or run.get('conclusion')!='failure' or job.get('status')!='completed'
+            or job.get('conclusion')!='failure' or job.get('run_id')!=run['id'] or job.get('run_attempt')!=attempt
+            or job.get('head_sha')!=run['head_sha'] or job.get('name')!=FAST_TRACK_RECOVERY_JOB):return False
+        match=re.fullmatch(r'LEGEND retained recovery original=([1-9][0-9]*) application=([a-f0-9]{40})',run.get('display_title',''))
+        if not match or match[2]!=revision:return False
+        if not _recovery_preflight_source_contract(_release_history_source(repository,run['head_sha'],'scripts/deploy-approved-app.py',token),_release_history_source(repository,run['head_sha'],'scripts/release-operation-evidence.py',token)):return False
+        # The promoted observer must recognize the complete producer authority
+        # and transport generation, not merely the outer deployment function.
+        for relative in ('validation-resume.py','release-artifacts/transport.cjs'):
+            local=Path(__file__).parent / relative
+            if _release_history_source(repository,run['head_sha'],'scripts/'+relative,token)!=local.read_text():return False
+        original=fast_track_completion_original(repository,int(match[1]),revision,token)
+        expected={}
+        for key in original['targets']:
+            material=fast_track_recovery_material(repository,original,key,token);intent=material['originalIntent']
+            digest=intent['packageDigest']if intent is not None else fast_track_recovery_package_digest(repository,original,material,key,token)
+            identity=dict(target=key,applicationRevision=revision,packageDigest=digest)
+            operation=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            if intent is not None and any(intent.get(k)!=v for k,v in dict(identity,operationId=operation,packageProducerRun=original['run']['id']).items()):return False
+            expected[key]=dict(operationId=operation,packageDigest=digest,packageArtifactId=material['packageArtifact']['id'],packageArtifactDigest=material['packageArtifact']['digest'])
+        path=f"actions/runs/{run['id']}/artifacts?per_page=100"
+        inventory=_completion_inventory(api_get(repository,path,token),'artifacts')
+        if not inventory:return False
+        seen=set();matched=False
+        # All retained artifacts must be independently valid terminal receipts for
+        # this exact dispatch/material. Older attempts are not silently discarded.
+        for artifact in inventory:
+            if (artifact.get('expired')is not False or artifact.get('workflow_run',{}).get('id')!=run['id']
+                or artifact.get('workflow_run',{}).get('head_sha')!=run['head_sha']
+                or not re.fullmatch('sha256:[a-f0-9]{64}',str(artifact.get('digest','')))):return False
+            record=_release_history_json(repository,run['id'],artifact,'operation.json',verify_digest=True)
+            if artifact.get('name')!=validate_recovery_preflight_nonentry(record):return False
+            producing=record['producingAttempt']
+            if producing in seen or producing>run['run_attempt']:return False
+            seen.add(producing)
+            observer=fast_track_recovery_producer(repository,run,token,attempt=producing)
+            if (record['observer']!=observer or record['producingRun']!=run['id'] or record['originalRun']!=original['run']['id']
+                or record['applicationRevision']!=revision or not 1<=record['originalAttempt']<=original['run']['run_attempt']or record['targets']!=expected):return False
+            jobs=_completion_rows(api_get(repository,f"actions/runs/{run['id']}/attempts/{producing}/jobs?per_page=100",token),'jobs')
+            owner=next(x for x in jobs if x['id']==observer['jobId'])
+            expected_steps = [('Set up job','success'), ('Check out promoted recovery tool authority','success'),
+                ('Install Node 24','success'), ('Validate original authority and restore retained packages without rebuilding','success'),
+                ('Install canonical durable evidence transport','success'), ('Prepare canonical durable evidence transport','success'),
+                ('Sign in to Azure Production','success'), ('Recover exact retained application bytes','failure'),
+                ('Post Sign in to Azure Production','success'), ('Post Install Node 24','skipped'),
+                ('Post Check out promoted recovery tool authority','success'), ('Complete job','success')]
+            if ([(step.get('name'),step.get('conclusion')) for step in owner.get('steps',[])] != expected_steps
+                or any(step.get('status') != 'completed' for step in owner['steps'])):
+                return False
+            step=_completion_step(owner,'Recover exact retained application bytes',conclusions=('failure',))
+            _completion_step(owner,'Validate original authority and restore retained packages without rebuilding')
+            if owner.get('status')!='completed'or owner.get('conclusion')!='failure'or not _completion_artifact_in_step(artifact,step):return False
+            if producing==attempt:
+                if owner!=job:return False
+                matched=True
+        _completion_original_unchanged(repository,original['run'],token);_completion_original_unchanged(repository,run,token)
+        if _completion_inventory(api_get(repository,path,token),'artifacts')!=inventory:return False
+        return matched
+    except (KeyError,TypeError,ValueError,RuntimeError,OSError,UnicodeError,StopIteration,subprocess.SubprocessError):return False
+
+
 def recovery_history_no_unjournaled_entry(repository, revision, current_run, current_attempt, token):
     """No forgotten recovery attempt may be erased by original preflight proof."""
     for run in fast_track_execution_history(repository, token, include_recovery=True):
@@ -644,6 +780,7 @@ def recovery_history_no_unjournaled_entry(repository, revision, current_run, cur
             owner = next(job for job in jobs if job['id'] == proof['jobId'])
             steps = [step for step in owner.get('steps', []) if step.get('name') == 'Recover exact retained application bytes']
             if len(steps) != 1 or (steps[0].get('conclusion') != 'skipped'
+                and not attested_recovery_terminal_preflight(repository, run, owner, attempt, revision, token)
                 and not attested_recovery_preintent_failure(repository, run, owner, attempt, revision, token)):
                 raise ReleaseOperationHistoryUnproven('Recovery publication entered without retained intent')
 

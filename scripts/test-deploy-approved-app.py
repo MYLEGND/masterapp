@@ -528,7 +528,7 @@ class AzureDeploymentObservationTests(unittest.TestCase):
     def test_no_id_reports_bounded_history_and_runtime_without_proving_nonentry(self):
         rows = [dict(id='provider' + str(i), status=3 if i == 0 else 4,
                      received_time='2026-10-20T04:00:00Z', message='DO_NOT_ECHO_PROVIDER_TEXT') for i in range(25)]
-        with patch.object(deploy.subprocess, 'run', return_value=self.command(rows)) as command, \
+        with patch.object(deploy, 'deployment_read_process', return_value=self.command(rows)) as command, \
                 patch.object(deploy.Azure, 'observed_revision', return_value=self.revision) as runtime:
             result = deploy.observe_azure_deployment('client', self.revision)
         self.assertEqual('history', result['mode'])
@@ -546,7 +546,7 @@ class AzureDeploymentObservationTests(unittest.TestCase):
 
     def test_unknown_history_status_is_not_relabelled_as_a_known_provider_state(self):
         for value in [7, 'secret-status', True]:
-            with self.subTest(status=value), patch.object(deploy.subprocess, 'run', return_value=
+            with self.subTest(status=value), patch.object(deploy, 'deployment_read_process', return_value=
                     self.command([dict(id='operation1', status=value, message='DO_NOT_ECHO')])), \
                     patch.object(deploy.Azure, 'observed_revision', return_value=None):
                 result = deploy.observe_azure_deployment('protect', self.revision)
@@ -558,7 +558,7 @@ class AzureDeploymentObservationTests(unittest.TestCase):
     def test_empty_or_unavailable_history_does_not_authorize_a_new_upload(self):
         for response in [self.command([]), subprocess.TimeoutExpired(['secret'], 20)]:
             with self.subTest(response=type(response).__name__), \
-                    patch.object(deploy.subprocess, 'run', side_effect=response if isinstance(response, Exception) else None,
+                    patch.object(deploy, 'deployment_read_process', side_effect=response if isinstance(response, Exception) else None,
                                  return_value=response), patch.object(deploy.Azure, 'observed_revision', return_value='b' * 40):
                 result = deploy.observe_azure_deployment('protect', self.revision, '')
             self.assertEqual([], result['deployments'])
@@ -578,6 +578,7 @@ class AzureDeploymentObservationTests(unittest.TestCase):
                     patch.multiple(deploy, **forbidden), patch.object(deploy.Azure, 'submit') as submit, \
                     patch.object(deploy._RELEASE_AUTHORITY, 'assert_protected_release_execution') as admission, \
                     patch.object(deploy.subprocess, 'run', return_value=self.command([])), \
+                    patch.object(deploy, 'deployment_read_process', return_value=self.command([])), \
                     patch.object(deploy.Azure, 'observed_revision', return_value=self.revision):
                 deploy.main()
                 submit.assert_not_called()
@@ -768,14 +769,14 @@ class ReconciliationTests(unittest.TestCase):
 
     def test_status_unavailable_is_bounded_and_fail_closed(self):
         azure = FakeAzure([RuntimeError('gateway unavailable')], [False])
-        with self.assertRaisesRegex(deploy.DeploymentStatusUnavailable, '3 consecutive reads'):
+        with self.assertRaisesRegex(deploy.DeploymentStatusUnavailable, 'bounded read wall budget'):
             azure.run()
-        self.assertEqual(2, azure.now)
+        self.assertEqual(1, azure.now)
         self.assertEqual(0, azure.uploads)
 
     def test_transient_status_outage_recovers_without_upload_replay(self):
         azure = FakeAzure(
-            [[], RuntimeError('gateway unavailable'), RuntimeError('gateway unavailable'), [row('new', 4)]],
+            [[], RuntimeError('gateway unavailable'), [row('new', 4)]],
             [False, True, True],
             accepted=False)
         self.assertEqual('deployed', azure.run())
@@ -790,7 +791,7 @@ class ReconciliationTests(unittest.TestCase):
         with patch.object(deploy, 'target_azure', return_value=azure), \
              patch.object(deploy.time, 'sleep') as sleeper:
             deploy.preflight_target('website', Path('/immutable.zip'), 'a' * 40, 'b' * 40, None)
-        sleeper.assert_called_once_with(15)
+        sleeper.assert_called_once_with(10)
         self.assertEqual(0, azure.uploads)
 
     def test_history_gap_allows_one_fresh_upload_only_from_exact_idle_baseline(self):
@@ -2342,7 +2343,7 @@ class PreparedTransactionTests(unittest.TestCase):
 
         self.assertTrue(result['terminal'])
         self.assertEqual([{'target': 'parfait', 'revision': 'a' * 40, 'idle': True}], result['targets'])
-        sleeper.assert_called_once_with(15)
+        sleeper.assert_called_once_with(10)
         self.assertEqual(0, azure.uploads)
         self.assertEqual(0, azure.recovery_uploads)
 
@@ -3120,13 +3121,13 @@ class RetainedRecoveryConsumerTests(unittest.TestCase):
         with patch.object(deploy,'recovery_phase_remaining',side_effect=deploy.DeploymentReconciliationRequired('late')):
             with self.assertRaises(deploy.DeploymentReconciliationRequired):bounded.submit({})
         azure.submit.assert_not_called()
-    def test_deadline_read_retries_spill_only_thirty_seconds_without_provider_io(self):
+    def test_expired_read_deadline_never_sleeps_or_enters_provider_io(self):
         azure=Mock();bounded=deploy.RecoveryDeadlineAzure(azure,100);sleeps=[]
         with patch.object(deploy,'recovery_phase_remaining',side_effect=deploy.DeploymentReconciliationRequired('late')):
             with self.assertRaises(deploy.DeploymentStatusUnavailable):
                 deploy.read_deployments_bounded(bounded,sleep=sleeps.append)
         azure.deployments.assert_not_called()
-        self.assertEqual(sleeps,[15,15])
+        self.assertEqual(sleeps,[])
         self.assertLess(sum(sleeps),deploy.RECOVERY_FINAL_RESERVE_SECONDS)
 
     def test_missing_original_package_never_rebuilds_or_contacts_provider(self):
@@ -3145,10 +3146,10 @@ class RetainedRecoveryConsumerTests(unittest.TestCase):
             download.assert_not_called();azure.assert_not_called();process.assert_not_called()
 
 class RetainedRecoveryIntegratedTests(unittest.TestCase):
-    def run_case(self, *, entered=False, race=False, expired=False):
+    def run_case(self, *, entered=False, race=False, expired=False, preflight_failure=False, publication_failure=False):
         from types import SimpleNamespace
         authority=deploy._RELEASE_AUTHORITY
-        observer=dict(runId=20,runAttempt=1,jobId=30,toolRevision='b'*40)
+        observer=dict(runId=20,runAttempt=1,jobId=30,toolRevision='b'*40,promotionRunId=19)
         original=dict(run=dict(id=10,run_attempt=5,head_sha='a'*40),targets=['website'])
         identity=dict(target='website',applicationRevision='a'*40,packageDigest='d'*64)
         operation=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
@@ -3196,7 +3197,18 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
              patch.object(deploy.importlib.util,'module_from_spec',return_value=owner):
             root=Path(temporary)
             deploy.recover_fast_track(10,'a'*40,root,prepare_only=True)
-            if race:
+            if preflight_failure:
+                baseline.side_effect=deploy.RecoveryPreflightFailure('provider-read-timeout')
+                if publication_failure:owner.publish_record.side_effect=RuntimeError('durable receipt unavailable')
+                with self.assertRaises(RuntimeError):deploy.recover_fast_track(10,'a'*40,root)
+                self.assertEqual(events,[])
+                owner.publish_record.assert_called_once()
+                name,record=owner.publish_record.call_args.args
+                self.assertEqual(authority.validate_recovery_preflight_nonentry(record),name)
+                self.assertFalse(record['authorizesMutation']);self.assertFalse(record['writePhaseEntered'])
+                self.assertEqual(record['failedTarget'],'website')
+                self.assertLessEqual(owner.publish_record.call_args.kwargs['timeout'],180)
+            elif race:
                 with self.assertRaises(deploy.DeploymentReconciliationRequired):deploy.recover_fast_track(10,'a'*40,root)
                 self.assertNotIn('upload',events);self.assertNotIn('intent',events)
                 owner.publish_record.assert_not_called()
@@ -3210,6 +3222,123 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
     def test_original_immutable_package_first_write_after_fresh_barriers(self):self.run_case()
     def test_existing_intent_never_reuploads_or_rebases(self):self.run_case(entered=True)
     def test_newly_appeared_intent_holds_before_write(self):self.run_case(race=True)
+
+    def test_preflight_failure_publishes_terminal_receipt_without_worker_or_intent(self):self.run_case(preflight_failure=True)
+    def test_terminal_receipt_failure_cannot_fall_through_to_worker(self):self.run_case(preflight_failure=True,publication_failure=True)
+
+class DeploymentReadWallBudgetTests(unittest.TestCase):
+    def run_read(self,durations,*,deadline=None,fail=True):
+        from types import SimpleNamespace
+        now=[0];caps=[];sleeps=[]
+        def read():
+            cap=deploy._DEPLOYMENT_READ_CAP.get();caps.append(cap)
+            duration=durations[min(len(caps)-1,len(durations)-1)];now[0]+=min(duration,cap)
+            if fail or duration>cap:raise subprocess.TimeoutExpired('sanitized',cap)
+            return [row('old',4)]
+        def sleep(seconds):sleeps.append(seconds);now[0]+=seconds
+        azure=SimpleNamespace(deployments=read)
+        try:result=deploy.read_deployments_bounded(azure,deadline=deadline,clock=lambda:now[0],sleep=sleep)
+        except deploy.DeploymentStatusUnavailable:result='held'
+        return result,now[0],caps,sleeps
+    def test_success_after_old_twenty_second_cap(self):
+        result,elapsed,caps,sleeps=self.run_read([30],fail=False)
+        self.assertEqual(result,[row('old',4)]);self.assertEqual((elapsed,caps,sleeps),(30,[40],[]))
+    def test_total_ninety_seconds_and_two_attempts_only(self):
+        self.assertEqual(self.run_read([40]),('held',90,[40,40],[10]))
+    def test_phase_clip_and_no_read_without_cleanup_reserve(self):
+        self.assertEqual(self.run_read([40],deadline=55),('held',55,[40,5],[10]))
+        self.assertEqual(self.run_read([40],deadline=1),('held',0,[],[]))
+    def test_owned_process_timeout_kills_group_and_reaps_inside_cap(self):
+        process=Mock(pid=123,returncode=-9);process.communicate.side_effect=[subprocess.TimeoutExpired('az',39),('','')]
+        with patch.object(deploy.subprocess,'Popen',return_value=process) as launch,patch.object(deploy.os,'killpg') as kill:
+            with self.assertRaises(subprocess.TimeoutExpired):deploy.deployment_read_process(['az','read'],40)
+        launch.assert_called_once_with(['az','read'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,start_new_session=True)
+        kill.assert_called_once_with(123,deploy.signal.SIGKILL)
+        self.assertEqual([x.kwargs['timeout'] for x in process.communicate.call_args_list],[39,1])
+    def test_cancel_reaps_and_never_converts_to_retry(self):
+        process=Mock(pid=123);process.communicate.side_effect=[KeyboardInterrupt(),('','')]
+        with patch.object(deploy.subprocess,'Popen',return_value=process),patch.object(deploy.os,'killpg') as kill:
+            with self.assertRaises(KeyboardInterrupt):deploy.deployment_read_process(['az'],40)
+        kill.assert_called_once();self.assertEqual(process.communicate.call_count,2)
+    def test_unproven_cleanup_never_starts_second_read(self):
+        from types import SimpleNamespace
+        read=Mock(side_effect=deploy.DeploymentReadCleanupFailure('unproven'))
+        with self.assertRaises(deploy.DeploymentReadCleanupFailure):deploy.read_deployments_bounded(SimpleNamespace(deployments=read))
+        read.assert_called_once()
+    def test_successful_process_and_invalid_rows_keep_original_validation(self):
+        azure=deploy.Azure('app',Path('/immutable'),'https://example.invalid','a'*40)
+        with patch.object(deploy,'deployment_read_process',return_value=subprocess.CompletedProcess([],0,'[{"id":"old","status":4}]','')) as process:
+            self.assertEqual(azure.deployments(),[row('old',4)]);self.assertEqual(process.call_args.kwargs['timeout'],40)
+        for content in ['{}','[{"id":"old","status":true}]','[{"id":"old","status":9}]']:
+            with patch.object(deploy,'deployment_read_process',return_value=subprocess.CompletedProcess([],0,content,'')),self.assertRaises(RuntimeError):azure.deployments()
+
+class DeploymentReadCleanupAndReserveTests(unittest.TestCase):
+    def test_group_kill_failure_is_terminal_even_if_parent_reaped(self):
+        process=Mock(pid=123);process.communicate.side_effect=[subprocess.TimeoutExpired('az',39),('','')]
+        azure=deploy.Azure('app',Path('/immutable'),'https://example.invalid','a'*40)
+        with patch.object(deploy.subprocess,'Popen',return_value=process) as launch,patch.object(deploy.os,'killpg',side_effect=PermissionError('denied')):
+            with self.assertRaises(deploy.DeploymentReadCleanupFailure):deploy.read_deployments_bounded(azure)
+        launch.assert_called_once();self.assertEqual(process.communicate.call_count,2)
+    def test_cleanup_reap_timeout_is_terminal(self):
+        process=Mock(pid=123);process.communicate.side_effect=subprocess.TimeoutExpired('az',1)
+        azure=deploy.Azure('app',Path('/immutable'),'https://example.invalid','a'*40)
+        with patch.object(deploy.subprocess,'Popen',return_value=process) as launch,patch.object(deploy.os,'killpg'):
+            with self.assertRaises(deploy.DeploymentReadCleanupFailure):deploy.read_deployments_bounded(azure)
+        launch.assert_called_once();self.assertEqual(process.communicate.call_count,2)
+    def test_new_baseline_preserves_write_reserve_before_read(self):
+        azure=Mock();bounded=deploy.RecoveryDeadlineAzure(azure,deploy.time.monotonic()+659)
+        with self.assertRaises(deploy.RecoveryPhaseDeadline):deploy.recovery_preupload_baseline(bounded,{},'website')
+        azure.deployments.assert_not_called();azure.observed_revision.assert_not_called()
+    def test_new_baseline_read_facade_subtracts_exact_reserve(self):
+        azure=Mock();deadline=deploy.time.monotonic()+1000;bounded=deploy.RecoveryDeadlineAzure(azure,deadline)
+        with patch.object(deploy,'read_deployments_bounded',side_effect=deploy.DeploymentStatusUnavailable('held')) as read:
+            with self.assertRaises(deploy.RecoveryPreflightFailure):deploy.recovery_preupload_baseline(bounded,{},'website')
+        self.assertEqual(read.call_args.args[0].deadline,deadline-660)
+        self.assertEqual(bounded.deadline,deadline)
+
+def preflight_five_target_payload():
+    """Execute the real sequential failure with four byte-preserved intents."""
+    from types import SimpleNamespace
+    authority=deploy._RELEASE_AUTHORITY;observer=dict(runId=20,runAttempt=1,jobId=30,toolRevision='b'*40,promotionRunId=19)
+    keys=['portal','client','protect','parfait','website'];original=dict(run=dict(id=10,run_attempt=5,head_sha='a'*40),targets=keys)
+    materials={};targets={};priors={}
+    for n,key in enumerate(keys):
+        identity=dict(target=key,applicationRevision='a'*40,packageDigest='d'*64)
+        op=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        priors[key]=None if key=='website' else dict(identity,operationId=op,packageProducerRun=10,baseline='c'*40)
+        materials[key]=dict(originalIntent=priors[key],packageArtifact=dict(id=40+n,name='immutable-'+key,digest='sha256:'+'e'*64))
+        targets[key]=dict(operationId=op,packageDigest='d'*64,packageArtifactId=40+n,packageArtifactDigest='sha256:'+'e'*64)
+    before=json.dumps(priors,sort_keys=True);proof=dict(originalRun=10,originalAttempt=5,applicationRevision='a'*40,observer=observer,targets=targets)
+    owner=SimpleNamespace(publish_record=Mock(),RecoveryJournal=Mock(side_effect=lambda **kw:SimpleNamespace(intent=priors[kw['target']],history_error=None)))
+    with tempfile.TemporaryDirectory() as temporary,patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='token')), \
+         patch.object(authority,'fast_track_completion_original',return_value=original), \
+         patch.object(authority,'fast_track_recovery_material',side_effect=lambda repo,o,key,t:materials[key]), \
+         patch.object(authority,'release_operation_history',side_effect=lambda repo,op,rev,key,*args:priors[key]), \
+         patch.object(authority,'fast_track_recovery_record_proof',return_value={}), \
+         patch.object(deploy,'verify_package',return_value='d'*64),patch.object(deploy,'target_azure',return_value=Mock()), \
+         patch.object(deploy,'recovery_preupload_baseline',side_effect=deploy.RecoveryPreflightFailure('provider-read-timeout')), \
+         patch.object(deploy,'reconcile') as reconcile,patch.object(deploy.concurrent.futures,'ThreadPoolExecutor') as workers, \
+         patch.object(deploy.importlib.util,'spec_from_file_location',return_value=SimpleNamespace(loader=Mock())), \
+         patch.object(deploy.importlib.util,'module_from_spec',return_value=owner):
+        root=Path(temporary)
+        for key in keys:
+            (root/key).mkdir();(root/key/'deploy.zip').write_bytes(b'exact');(root/key/'SHA256SUMS').write_text('fixture')
+        (root/'retained-recovery-plan.json').write_text(json.dumps(proof))
+        try:deploy._recover_fast_track(10,'a'*40,root,observer,deploy.time.monotonic()+1800)
+        except deploy.RecoveryPreflightFailure:pass
+        else:raise AssertionError('Terminal preflight fell through')
+        workers.assert_not_called();reconcile.assert_not_called();owner.publish_record.assert_called_once()
+        assert owner.RecoveryJournal.call_count==4
+        assert json.dumps(priors,sort_keys=True)==before
+        name,record=owner.publish_record.call_args.args
+        return dict(name=name,record=record)
+
+class PreflightFiveTargetBoundaryTests(unittest.TestCase):
+    def test_four_intents_preserved_and_no_workers_before_website_failure(self):
+        item=preflight_five_target_payload()
+        self.assertEqual(len(item['record']['targets']),5)
+        self.assertEqual(item['record']['failedTarget'],'website')
+        self.assertEqual(deploy._RELEASE_AUTHORITY.validate_recovery_preflight_nonentry(item['record']),item['name'])
 
 if __name__ == '__main__':
     unittest.main()

@@ -15,6 +15,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import time
 import urllib.request
@@ -91,31 +92,74 @@ FINALIZE_RECONCILE_ATTEMPTS = 3
 FINALIZE_RETRY_DELAY_SECONDS = 10
 
 
-def read_deployments_bounded(azure, *, attempts=3, interval=15, sleep=None, phase='before any upload'):
-    """Read Azure deployment state with one canonical bounded read-only retry policy."""
-    if attempts < 1:
-        raise ValueError('Deployment status attempts must be positive')
-    sleeper = sleep or time.sleep
-    for attempt in range(1, attempts + 1):
+class DeploymentReadCleanupFailure(DeploymentReconciliationRequired):
+    """The owned CLI group was not proven reaped; never start another read."""
+
+
+DEPLOYMENT_READ_WALL_SECONDS = 90
+DEPLOYMENT_READ_ATTEMPT_SECONDS = 40
+DEPLOYMENT_READ_BACKOFF_SECONDS = 10
+_DEPLOYMENT_READ_CAP = contextvars.ContextVar('deployment_read_cap', default=DEPLOYMENT_READ_ATTEMPT_SECONDS)
+
+
+def read_deployments_bounded(azure, *, attempts=2, interval=10, sleep=None, phase='before any upload', deadline=None, clock=time.monotonic):
+    """At most two reads in one 90s wall budget, clipped to the enclosing phase.
+
+    The allowance includes CLI startup and process cleanup, not a provider SLA.
+    Existing callers may request fewer reads/shorter backoff, never a larger cap.
+    """
+    if type(attempts) is not int or attempts < 1 or interval < 0:
+        raise ValueError('Deployment status retry bounds invalid')
+    attempts=min(attempts,2);backoff=min(interval,DEPLOYMENT_READ_BACKOFF_SECONDS)
+    sleeper=sleep or time.sleep
+    end=min(clock()+DEPLOYMENT_READ_WALL_SECONDS, deadline if deadline is not None else float('inf'))
+    owner_deadline=getattr(azure,'deadline',None)
+    if isinstance(owner_deadline,(int,float)):end=min(end,owner_deadline)
+    last=None
+    for attempt in range(1,attempts+1):
+        cap=min(DEPLOYMENT_READ_ATTEMPT_SECONDS,end-clock())
+        if cap<=1:break
+        token=_DEPLOYMENT_READ_CAP.set(cap);started=clock();outcome='unavailable'
         try:
-            return azure.deployments()
-        except DeploymentDrift:
-            # Identity conflicts are terminal evidence, never transient reads.
-            raise
-        except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired) as exc:
-            if attempt >= attempts:
-                raise DeploymentStatusUnavailable(
-                    f'Azure deployment status remained unavailable for {attempts} consecutive reads '
-                    f'({phase}). No deployment or rollback write was replayed; '
-                    'resume by reconciling the exact revision.'
-                ) from exc
-            print(
-                f'Deployment status temporarily unavailable; bounded read-only retry '
-                f'{attempt}/{attempts}.',
-                flush=True,
-            )
-            sleeper(interval)
-    raise AssertionError('Unreachable Azure deployment read state')
+            rows=azure.deployments()
+            if clock()>end:raise subprocess.TimeoutExpired('deployment-list',cap)
+            outcome='read-complete'
+            return rows
+        except (DeploymentDrift,DeploymentReadCleanupFailure):
+            outcome='identity-conflict';raise
+        except (RuntimeError,ValueError,OSError,subprocess.TimeoutExpired) as exc:
+            last=exc;outcome='timeout' if isinstance(exc,subprocess.TimeoutExpired) else 'unavailable'
+        finally:
+            _DEPLOYMENT_READ_CAP.reset(token)
+            print(json.dumps(dict(deploymentReadAttempt=attempt,budgetSeconds=round(cap,3),
+                elapsedSeconds=round(max(0,clock()-started),3),outcome=outcome),sort_keys=True),flush=True)
+        if attempt>=attempts or end-clock()<=backoff+1:break
+        sleeper(backoff)
+    raise DeploymentStatusUnavailable(
+        f'Azure deployment status unavailable within the bounded read wall budget deadline ({phase}). '
+        'No deployment or rollback write was replayed; reconcile the exact revision.') from last
+
+
+def deployment_read_process(command, timeout):
+    """Own and reap the CLI process group; reserve one second inside its cap."""
+    if timeout<=1:raise subprocess.TimeoutExpired('deployment-list',timeout)
+    process=subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,start_new_session=True)
+    try:
+        stdout,stderr=process.communicate(timeout=timeout-1)
+        return subprocess.CompletedProcess(command,process.returncode,stdout,stderr)
+    except BaseException:
+        # Only the new session we created is addressed. No process discovery or
+        # credential/transport fallback, and no surviving child may be retried.
+        kill_error=None
+        try:os.killpg(process.pid,signal.SIGKILL)
+        except ProcessLookupError:pass
+        except OSError as exc:kill_error=exc
+        try:process.communicate(timeout=1)
+        except BaseException as cleanup:
+            raise DeploymentReadCleanupFailure('Owned deployment read process cleanup unproven') from cleanup
+        if kill_error is not None:
+            raise DeploymentReadCleanupFailure('Owned deployment read group termination unproven') from kill_error
+        raise
 
 
 class Azure:
@@ -128,9 +172,9 @@ class Azure:
 
     def deployments(self):
         # Uses the existing OIDC session; no publishing credentials or new authority.
-        result = subprocess.run(
+        result = deployment_read_process(
             ['az', 'webapp', 'log', 'deployment', 'list', '-g', _RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP, '-n', self.app,
-             '--only-show-errors', '-o', 'json'], capture_output=True, text=True, timeout=20)
+             '--only-show-errors', '-o', 'json'], timeout=_DEPLOYMENT_READ_CAP.get())
         if result.returncode:
             raise RuntimeError('Azure deployment status unavailable')
         rows = json.loads(result.stdout)
@@ -460,6 +504,7 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=PUBLICAT
             interval=interval,
             sleep=sleep,
             phase='after immutable upload' if submitted else 'before any upload',
+            deadline=started+timeout, clock=clock,
         )
         active = [row for row in rows if row['status'] in (0, 1, 2)]
         new = [row for row in rows if row['id'] not in baseline_ids] if submitted else []
@@ -1250,15 +1295,66 @@ def complete_fast_track(original_run, revision, package_root, *, validate_only=F
     return {'state':'ORIGINAL_COMPLETIONS_VERIFIED','targets':results,'originalRun':original_run}
 
 
+RECOVERY_PREFLIGHT_NONENTRY_CONTRACT = 'retained-recovery-preflight/v1'
+RECOVERY_PREFLIGHT_REASONS = frozenset({
+    'provider-read-timeout','provider-read-unavailable','history-empty','provider-active',
+    'runtime-unavailable','runtime-candidate-unproven','baseline-not-ancestor',
+    'original-window-unproven','provider-history-time-unproven','newer-provider-operation',
+    'baseline-drift','preflight-authority-unproven','phase-deadline'})
+
+
+class RecoveryPreflightFailure(DeploymentReconciliationRequired):
+    def __init__(self, reason, observation=None):
+        if reason not in RECOVERY_PREFLIGHT_REASONS:
+            raise ValueError('Unknown recovery preflight reason')
+        super().__init__('RECOVERY_PREFLIGHT_' + reason.upper().replace('-', '_'))
+        self.reason = reason
+        self.observation = observation or dict(historyReadComplete=False, historyCount=None, activeCount=None, runtimeRevision=None)
+
+
+class RecoveryPreflightDrift(RecoveryPreflightFailure, DeploymentDrift):
+    """Preserve the existing terminal identity-conflict classification."""
+
+
+def recovery_preflight_nonentry_record(proof, failed_target, failure):
+    """A terminal no-worker receipt, NOT idle history or publication authority."""
+    observer = proof['observer']
+    observation = failure.observation if isinstance(failure, RecoveryPreflightFailure) else dict(
+        historyReadComplete=False, historyCount=None, activeCount=None, runtimeRevision=None)
+    reason = failure.reason if isinstance(failure, RecoveryPreflightFailure) else ('phase-deadline' if isinstance(failure, RecoveryPhaseDeadline) else 'preflight-authority-unproven')
+    record = dict(schemaVersion=1, phase='preflight-nonentry', **proof,
+        producingRun=observer['runId'], producingAttempt=observer['runAttempt'], failedTarget=failed_target,
+        stage='all-target-preflight', authorizesMutation=False, writePhaseEntered=False,
+        reason=reason, observation=observation)
+    identity = {key: record[key] for key in ('applicationRevision','originalRun','producingRun','producingAttempt')}
+    name = 'legend-retained-preflight-nonentry-' + hashlib.sha256(
+        json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    return name, record
+
+
 def recovery_preupload_baseline(azure, original, key, *, expected=None):
     """Fresh idle provider state cannot overtake the attested original no-entry."""
-    rows = read_deployments_bounded(azure, phase='retained recovery before any upload')
+    # This function only establishes a NEW-write baseline; inherited intents
+    # reconcile separately with the full publication phase, without this reserve.
+    if isinstance(azure, RecoveryDeadlineAzure):
+        azure=RecoveryDeadlineAzure(azure,azure.deadline-RECOVERY_WRITE_RESERVE_SECONDS)
+        recovery_phase_remaining(azure.deadline,1)
+    try:
+        rows = read_deployments_bounded(azure, phase='retained recovery before any upload')
+    except DeploymentStatusUnavailable as exc:
+        if isinstance(azure,RecoveryDeadlineAzure) and azure.deadline-time.monotonic()<=1:
+            raise RecoveryPhaseDeadline('RECOVERY_PREFLIGHT_READ_PHASE_EXHAUSTED') from exc
+        reason = 'provider-read-timeout' if isinstance(exc.__cause__, subprocess.TimeoutExpired) else 'provider-read-unavailable'
+        raise RecoveryPreflightFailure(reason) from exc
     observed = azure.observed_revision()
-    if (not rows or any(row['status'] in (0, 1, 2) for row in rows)
-        or observed is None or observed == original['run']['head_sha']):
-        raise DeploymentReconciliationRequired('RECOVERY_BASELINE_NOT_IDLE_OR_UNPROVEN')
+    observation = dict(historyReadComplete=True, historyCount=len(rows),
+        activeCount=sum(row['status'] in (0,1,2) for row in rows), runtimeRevision=observed)
+    if not rows: raise RecoveryPreflightFailure('history-empty',observation)
+    if observation['activeCount']: raise RecoveryPreflightFailure('provider-active',observation)
+    if observed is None: raise RecoveryPreflightFailure('runtime-unavailable',observation)
+    if observed == original['run']['head_sha']: raise RecoveryPreflightFailure('runtime-candidate-unproven',observation)
     if subprocess.run(['git', 'merge-base', '--is-ancestor', observed, original['run']['head_sha']], capture_output=True).returncode:
-        raise DeploymentDrift('RECOVERY_BASELINE_NOT_ORIGINAL_ANCESTOR')
+        raise RecoveryPreflightDrift('baseline-not-ancestor',observation)
     starts = []
     for jobs in original['attempts'].values():
         for job in jobs:
@@ -1266,16 +1362,16 @@ def recovery_preupload_baseline(azure, original, key, *, expected=None):
                 starts.extend(_RELEASE_AUTHORITY._completion_time(step['started_at']) for step in job.get('steps', [])
                               if step['name'] == 'Publish or reconcile exact application bytes' and step.get('started_at'))
     if not starts:
-        raise DeploymentReconciliationRequired('RECOVERY_ORIGINAL_PUBLICATION_WINDOW_UNPROVEN')
+        raise RecoveryPreflightFailure('original-window-unproven',observation)
     cutoff = min(starts)
     try:
         if any(_RELEASE_AUTHORITY._completion_time(row['received_time']) >= cutoff for row in rows):
-            raise DeploymentDrift('RECOVERY_NEWER_PROVIDER_OPERATION')
+            raise RecoveryPreflightDrift('newer-provider-operation',observation)
     except (KeyError, TypeError, ValueError) as exc:
-        raise DeploymentReconciliationRequired('RECOVERY_PROVIDER_HISTORY_TIME_UNPROVEN') from exc
+        raise RecoveryPreflightFailure('provider-history-time-unproven',observation) from exc
     state = dict(revision=observed, deploymentIds=sorted(row['id'] for row in rows))
     if expected is not None and state != expected:
-        raise DeploymentDrift('RECOVERY_PREFLIGHT_CHANGED')
+        raise RecoveryPreflightDrift('baseline-drift',observation)
     return state
 
 
@@ -1300,10 +1396,14 @@ RECOVERY_FINAL_RESERVE_SECONDS = 420  # metadata64 + authority90 + summary180 + 
 RECOVERY_WRITE_RESERVE_SECONDS = 660  # intent180 + provider ACK300 + submitted180
 
 
+class RecoveryPhaseDeadline(DeploymentReconciliationRequired):
+    """A finite recovery phase has no authority to consume the next reserve."""
+
+
 def recovery_phase_remaining(deadline, minimum=0, *, clock=time.monotonic):
     remaining = deadline - clock()
     if remaining <= 0 or remaining < minimum:
-        raise DeploymentReconciliationRequired('RECOVERY_PHASE_DEADLINE_HOLD_RECONCILE_ONLY')
+        raise RecoveryPhaseDeadline('RECOVERY_PHASE_DEADLINE_HOLD_RECONCILE_ONLY')
     return remaining
 
 
@@ -1321,14 +1421,18 @@ def recovery_job_deadline(authority, repository, observer, token, *, now=None, c
 
 
 class RecoveryDeadlineAzure:
-    """No new provider behavior: require room for each unchanged canonical cap."""
+    """Clip canonical read allowance to this finite publication phase."""
     def __init__(self, azure, deadline):
         self.azure, self.deadline = azure, deadline
     def __getattr__(self, name):
         return getattr(self.azure, name)
     def deployments(self):
-        recovery_phase_remaining(self.deadline, 20)
-        return self.azure.deployments()
+        remaining=recovery_phase_remaining(self.deadline)
+        cap=min(_DEPLOYMENT_READ_CAP.get(),remaining)
+        if cap<=1:raise DeploymentStatusUnavailable('Recovery deployment read deadline exhausted')
+        token=_DEPLOYMENT_READ_CAP.set(cap)
+        try:return self.azure.deployments()
+        finally:_DEPLOYMENT_READ_CAP.reset(token)
     def observed_revision(self):
         recovery_phase_remaining(self.deadline, 15)
         return self.azure.observed_revision()
@@ -1386,40 +1490,48 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
     journals = {}; states = {}
     def publish_phase_record(name, record):
         return owner.publish_record(name, record, timeout=min(180, recovery_phase_remaining(publication_deadline)))
-    # All targets are validated before the first possible new intent.
-    for key, material in materials.items():
-        azure = RecoveryDeadlineAzure(target_azure(key, package_root / key / 'deploy.zip', revision), publication_deadline)
-        prior = authority.release_operation_history(repository, inventory[key]['operationId'], revision, key,
-            observer['runId'], observer['runAttempt'], token)
-        if prior is None:
-            states[key] = recovery_preupload_baseline(azure, original, key)
-            baseline = states[key]['revision']
-        else:
-            baseline = prior['baseline']
-        evidence = authority.fast_track_recovery_record_proof(original, material, observer)
-        def before_write(ids, *, key=key, azure=azure):
-            authority._completion_original_unchanged(repository, original['run'], token)
-            if authority.assert_fast_track_recovery_execution(original_run, revision) != observer:
-                raise ValueError('RECOVERY_EXECUTION_CHANGED_BEFORE_INTENT')
-            if verify_package(package_root / key / 'deploy.zip', revision, TARGETS[key]['static']) != inventory[key]['packageDigest']:
-                raise ValueError('RECOVERY_PACKAGE_CHANGED_BEFORE_INTENT')
-            # Re-read all competing original/other recovery history at the write boundary.
-            existing = authority.release_operation_history(repository, inventory[key]['operationId'], revision, key,
+    # Versioned terminal receipt boundary: every enclosed operation is read-only.
+    try:
+        # All targets are validated before the first possible new intent.
+        for key, material in materials.items():
+            azure = RecoveryDeadlineAzure(target_azure(key, package_root / key / 'deploy.zip', revision), publication_deadline)
+            prior = authority.release_operation_history(repository, inventory[key]['operationId'], revision, key,
                 observer['runId'], observer['runAttempt'], token)
-            if existing is not None:
-                raise DeploymentReconciliationRequired('RECOVERY_INTENT_APPEARED_RECONCILE_ONLY')
-            fresh = recovery_preupload_baseline(azure, original, key, expected=states[key])
-            if sorted(ids) != fresh['deploymentIds']:
-                raise DeploymentDrift('RECOVERY_PROVIDER_BASELINE_CHANGED_BEFORE_INTENT')
-            recovery_host_flags(key)
-            recovery_phase_remaining(publication_deadline, RECOVERY_WRITE_RESERVE_SECONDS)
-        journal = owner.RecoveryJournal(target=key, application_revision=revision, package_digest=inventory[key]['packageDigest'],
-            baseline=baseline, authority=authority, recovery_evidence=evidence, before_new_intent=before_write, publisher=publish_phase_record)
-        if journal.history_error is not None:
-            raise journal.history_error
-        if prior is not None and journal.intent != prior:
-            raise DeploymentDrift('RECOVERY_EXISTING_INTENT_CHANGED')
-        journals[key] = (azure, journal)
+            if prior is None:
+                states[key] = recovery_preupload_baseline(azure, original, key)
+                baseline = states[key]['revision']
+            else:
+                baseline = prior['baseline']
+            evidence = authority.fast_track_recovery_record_proof(original, material, observer)
+            def before_write(ids, *, key=key, azure=azure):
+                authority._completion_original_unchanged(repository, original['run'], token)
+                if authority.assert_fast_track_recovery_execution(original_run, revision) != observer:
+                    raise ValueError('RECOVERY_EXECUTION_CHANGED_BEFORE_INTENT')
+                if verify_package(package_root / key / 'deploy.zip', revision, TARGETS[key]['static']) != inventory[key]['packageDigest']:
+                    raise ValueError('RECOVERY_PACKAGE_CHANGED_BEFORE_INTENT')
+                # Re-read all competing original/other recovery history at the write boundary.
+                existing = authority.release_operation_history(repository, inventory[key]['operationId'], revision, key,
+                    observer['runId'], observer['runAttempt'], token)
+                if existing is not None:
+                    raise DeploymentReconciliationRequired('RECOVERY_INTENT_APPEARED_RECONCILE_ONLY')
+                fresh = recovery_preupload_baseline(azure, original, key, expected=states[key])
+                if sorted(ids) != fresh['deploymentIds']:
+                    raise DeploymentDrift('RECOVERY_PROVIDER_BASELINE_CHANGED_BEFORE_INTENT')
+                recovery_host_flags(key)
+                recovery_phase_remaining(publication_deadline, RECOVERY_WRITE_RESERVE_SECONDS)
+            journal = owner.RecoveryJournal(target=key, application_revision=revision, package_digest=inventory[key]['packageDigest'],
+                baseline=baseline, authority=authority, recovery_evidence=evidence, before_new_intent=before_write, publisher=publish_phase_record)
+            if journal.history_error is not None:
+                raise journal.history_error
+            if prior is not None and journal.intent != prior:
+                raise DeploymentDrift('RECOVERY_EXISTING_INTENT_CHANGED')
+            journals[key] = (azure, journal)
+    except Exception as failure:
+        # No executor, provider preparation, intent or upload is reachable here.
+        # Failed/ambiguous receipt publication also terminates; it never retries a write.
+        name, record = recovery_preflight_nonentry_record(proof, key, failure)
+        owner.publish_record(name, record, timeout=min(180, recovery_phase_remaining(deadline - 60)))
+        raise
     def recover_target(key):
         azure, journal = journals[key]
         with authority.evidence_lookup_budget(publication_deadline):
