@@ -371,6 +371,49 @@ test('critical booking geometry requires every active child including visible le
   }
 });
 
+function bookingScrollSnapshot(document,window) {
+  const number=value=>Number.isFinite(value)?value:null;
+  const css=value=>String(value??'').slice(0,256);
+  const selectors={modal:'#qvBookingModal',dialog:'#qvBookingModal > .modal-dialog',content:'.qv-booking-content',header:'.qv-booking-head',body:'.qv-booking-body'};
+  const nodes={};
+  for(const [name,selector] of Object.entries(selectors)){
+    const element=document.querySelector(selector);if(!element)throw Error('Missing scroll diagnostic node:'+name);
+    const rect=element.getBoundingClientRect(),style=window.getComputedStyle(element),animations=element.getAnimations();
+    nodes[name]={rect:{x:number(rect.x),y:number(rect.y),width:number(rect.width),height:number(rect.height),right:number(rect.right),bottom:number(rect.bottom)},
+      scroll:{top:number(element.scrollTop),left:number(element.scrollLeft),height:number(element.scrollHeight),clientHeight:number(element.clientHeight)},
+      style:{transform:css(style.transform),transitionProperty:css(style.transitionProperty),transitionDuration:css(style.transitionDuration),transitionDelay:css(style.transitionDelay),overflowY:css(style.overflowY),position:css(style.position)},
+      animationCount:animations.length,animations:animations.slice(0,8).map(animation=>({
+        playState:['idle','running','paused','finished'].includes(animation.playState)?animation.playState:'unknown',
+        pending:animation.pending===true,currentTime:number(animation.currentTime),startTime:number(animation.startTime),
+        duration:number(animation.effect?.getComputedTiming().duration)}))};
+  }
+  const scrolling=document.scrollingElement,viewport=window.visualViewport;
+  return {nodes,page:{x:number(window.scrollX),y:number(window.scrollY),documentTop:number(scrolling?.scrollTop),documentLeft:number(scrolling?.scrollLeft)},
+    viewport:{width:number(window.innerWidth),height:number(window.innerHeight),visualWidth:number(viewport?.width),visualHeight:number(viewport?.height),offsetTop:number(viewport?.offsetTop),offsetLeft:number(viewport?.offsetLeft)},
+    shownCount:window.__shown.filter(id=>id==='qvBookingModal').length};
+}
+function assertStableBookingHeader(before,after) {
+  assert.ok(Math.abs(after.head-before.head.y)<=1,'Header moved with body scrolling');
+}
+test('booking scroll diagnostics are bounded and exclude DOM text URLs and animation payloads',()=>{
+  const animation={playState:'running',pending:true,currentTime:12,startTime:4,effect:{getComputedTiming:()=>({duration:300,secret:'private-payload'})},id:'private-payload'};
+  const node={textContent:'private-payload',url:'https://private.invalid',getBoundingClientRect:()=>({x:1,y:2,width:3,height:4,right:4,bottom:6}),scrollTop:5,scrollLeft:0,scrollHeight:100,clientHeight:80,getAnimations:()=>Array(12).fill(animation)};
+  const document={querySelector:()=>node,scrollingElement:{scrollTop:7,scrollLeft:0}};
+  const window={getComputedStyle:()=>({transform:'none',transitionProperty:'x'.repeat(300),transitionDuration:'.3s',transitionDelay:'0s',overflowY:'auto',position:'relative'}),scrollX:0,scrollY:7,innerWidth:1101,innerHeight:757,visualViewport:{width:1101,height:757,offsetTop:0,offsetLeft:0},__shown:['qvBookingModal','another']};
+  const value=bookingScrollSnapshot(document,window);
+  assert.deepEqual(Object.keys(value.nodes),['modal','dialog','content','header','body']);
+  assert.equal(value.nodes.header.rect.y,2);assert.equal(value.nodes.body.scroll.top,5);assert.equal(value.page.documentTop,7);assert.equal(value.viewport.width,1101);assert.equal(value.shownCount,1);
+  for(const entry of Object.values(value.nodes)){assert.equal(entry.animationCount,12);assert.equal(entry.animations.length,8);assert.equal(entry.style.transitionProperty.length,256);assert.equal(entry.animations[0].duration,300);}
+  assert.doesNotMatch(JSON.stringify(value),/private-payload|private\.invalid/);
+  assert.throws(()=>bookingScrollSnapshot({...document,querySelector:()=>null},window),/Missing scroll diagnostic node/);
+});
+test('booking header stability keeps the exact one pixel absolute predicate',()=>{
+  for(const [start,end] of [[25,25],[25,26],[25,24],[25,26.001],[25,23.999],[0,NaN]]){
+    const before={head:{y:start}},after={head:end},passes=Math.abs(end-start)<=1;
+    if(passes)assert.doesNotThrow(()=>assertStableBookingHeader(before,after));else assert.throws(()=>assertStableBookingHeader(before,after),/Header moved with body scrolling/);
+  }
+});
+
 test('actual canonical frontend components render in the existing sandboxed CI browser', {timeout:160000}, async t => {
   const start = Date.now();
   const deadline = start + 160000;
@@ -381,7 +424,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.ok(value > 10000, 'Native render budget exhausted; reserve cleanup time');
     return value - 10000;
   };
-  let manifest,chromeVersion,driverVersion,checked,driverBindings,versionProbeFailure;
+  let manifest,chromeVersion,driverVersion,checked,driverBindings,versionProbeFailure,scrollDiagnostic;
   const requiredScenarios=[...hosts.flatMap(host=>widths.map(width=>'viewport:'+host+':'+width)),'modal-order-and-wrap','locale-month-rollover','long-profile-and-offset','live-mobile-boundary','client-home-focus'];
   const completedScenarios=new Set();
   const records=[]; let acceptanceComplete=false; let failure; let server,driver,session,driverOrigin; let serverHost; let driverLog='';
@@ -474,6 +517,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     session=created.sessionId;assert.ok(session);
     await command('POST','/session/'+session+'/timeouts',{implicit:0,pageLoad:5000,script:3000});
     for(const host of hosts)for(const width of widths){
+      scrollDiagnostic={host,width};
       remaining();
       await command('POST','/session/'+session+'/window/rect',{width,height:900});
       await command('POST','/session/'+session+'/url',{url:'http://'+serverHost+'/'+host+'.html'});
@@ -525,16 +569,18 @@ test('actual canonical frontend components render in the existing sandboxed CI b
       const childBounds=await execute(`const body=document.querySelector('.qv-booking-body').getBoundingClientRect();const selectors=['.qv-booking-slot-card','.qv-booking-slot-focus','.qv-booking-selection-meta','.qv-booking-foot','#qvBookStatus','#btnBookAppointment','#qvBookSlots button'];return selectors.map(selector=>{const e=document.querySelector(selector);if(!e)throw Error('Missing critical child:'+selector);const b=e.getBoundingClientRect();const panel=selector==='.qv-booking-selection-meta'?e.closest('.qv-booking-panel-selection'):null;return {selector,x:b.x,r:b.right,w:b.width,h:b.height,rects:e.getClientRects().length,visibility:getComputedStyle(e).visibility,client:e.clientWidth,scroll:e.scrollWidth,body:{x:body.x,r:body.right},selectionPanel:panel?{exact:e.id==='qvBookingSelectedMeta'&&e.parentElement===panel&&panel.classList.contains('qv-booking-panel'),display:getComputedStyle(panel).display,rects:panel.getClientRects().length}:null}});`);
       for(const child of childBounds)assertCriticalBookingChild(child);
 
-      const before=await execute(`const box=e=>{const b=e.getBoundingClientRect();return {x:b.x,y:b.y,w:b.width,h:b.height,r:b.right,b:b.bottom}};const body=document.querySelector('.qv-booking-body');return {body:box(body),head:box(document.querySelector('.qv-booking-head')),content:box(document.querySelector('.qv-booking-content')),action:box(document.querySelector('#btnBookAppointment')),nav:[...document.querySelectorAll('.qv-booking-calendar-nav')].map(box),dates:[...document.querySelectorAll('[data-qv-booking-date]')].map(box),grid:box(document.querySelector('#qvBookingCalendar')),client:body.clientHeight,scroll:body.scrollHeight,horizontal:body.scrollWidth-body.clientWidth,errors:window.__fixtureErrors};`);
+      const before=await execute(`const box=e=>{const b=e.getBoundingClientRect();return {x:b.x,y:b.y,w:b.width,h:b.height,r:b.right,b:b.bottom}};const body=document.querySelector('.qv-booking-body');return {body:box(body),head:box(document.querySelector('.qv-booking-head')),content:box(document.querySelector('.qv-booking-content')),action:box(document.querySelector('#btnBookAppointment')),nav:[...document.querySelectorAll('.qv-booking-calendar-nav')].map(box),dates:[...document.querySelectorAll('[data-qv-booking-date]')].map(box),grid:box(document.querySelector('#qvBookingCalendar')),client:body.clientHeight,scroll:body.scrollHeight,horizontal:body.scrollWidth-body.clientWidth,errors:window.__fixtureErrors,scrollDiagnostic:(${bookingScrollSnapshot.toString()})(document,window)};`);
+      scrollDiagnostic.before=before.scrollDiagnostic;
       assert.equal(new Set(before.dates.map(d=>Math.round(d.x*10))).size,7,'Calendar must retain exactly seven distinct date columns');
       assert.deepEqual(before.errors,[]);assert.ok(before.horizontal<=1,'Body horizontal overflow');
       for(const n of before.nav)assert.ok(n.w>=43.9&&n.h>=43.9,'Booking navigation target below44');
       for(const d of before.dates){if(width>=393)assert.ok(d.w>=43.9&&d.h>=43.9,'Date target below44 at admitted393px/desktop widths');assert.ok(d.x>=before.grid.x-1&&d.r<=before.grid.r+1,'Date escapes seven-column grid');}
       await wheel('.qv-booking-body',6000);await new Promise(r=>setTimeout(r,80));
-      const after=await execute(`const body=document.querySelector('.qv-booking-body'),a=document.querySelector('#btnBookAppointment').getBoundingClientRect(),h=document.querySelector('.qv-booking-head').getBoundingClientRect(),b=body.getBoundingClientRect();return {scroll:body.scrollTop,action:{top:a.top,bottom:a.bottom},body:{top:b.top,bottom:b.bottom},head:h.top};`);
+      const after=await execute(`const body=document.querySelector('.qv-booking-body'),a=document.querySelector('#btnBookAppointment').getBoundingClientRect(),h=document.querySelector('.qv-booking-head').getBoundingClientRect(),b=body.getBoundingClientRect();return {scroll:body.scrollTop,action:{top:a.top,bottom:a.bottom},body:{top:b.top,bottom:b.bottom},head:h.top,scrollDiagnostic:(${bookingScrollSnapshot.toString()})(document,window)};`);
+      scrollDiagnostic.after=after.scrollDiagnostic;
       assert.ok(before.scroll<=before.client+1||after.scroll>0,'Native wheel did not scroll body');
       assert.ok(after.action.top>=after.body.top-1&&after.action.bottom<=after.body.bottom+1,'Final action clipped');
-      assert.ok(Math.abs(after.head-before.head.y)<=1,'Header moved with body scrolling');
+      assertStableBookingHeader(before,after);
       assert.ok(after.head>=-1&&before.head.b<=(width<600?640:757)+1,'Header inaccessible');
       await keys(['\uE004']);assert.equal(await execute("return document.querySelector('#qvBookingModal').contains(document.activeElement)"),true,'Tab focus left modal');
       await keys(['\uE00C']);await waitFor("!document.querySelector('#qvBookingModal').classList.contains('show')");
@@ -543,6 +589,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
       records.push({host,width,before,after,mobileExploreMeasurement,status:'PASS',target44Required:width>=393,target44Observed:before.dates.every(d=>d.w>=43.9&&d.h>=43.9)});
       console.log(JSON.stringify({host,width,status:'PASS'}));
     }
+    scrollDiagnostic=undefined;
     // Real Bootstrap fade/MutationObserver/shown ordering and canonical bound layers.
     await command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setDeviceMetricsOverride',params:{width:1180,height:757,deviceScaleFactor:1,mobile:false}});
     await command('POST','/session/'+session+'/url',{url:'http://'+serverHost+'/authenticated.html'});
@@ -634,11 +681,11 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.deepEqual(rejected.filter(x=>x.url!=='/favicon.ico'),[],'Unexpected browser requests');
     requireCompleteScenarios(requiredScenarios,completedScenarios);
     acceptanceComplete=true;
-  } catch(error) {commandFailure=error.commandFailure;versionProbeFailure=error.versionProbe;failure=String(error.stack||error);throw error;} finally {
+  } catch(error) {if(scrollDiagnostic)console.log('NATIVE_SCROLL_FAILURE '+JSON.stringify(scrollDiagnostic));commandFailure=error.commandFailure;versionProbeFailure=error.versionProbe;failure=String(error.stack||error);throw error;} finally {
     clearTimeout(watchdog);let cleanupError;
     try{await cleanup();}catch(error){cleanupError=error;acceptanceComplete=false;failure=(failure||'')+' Cleanup failed: '+error.message;}
     removeCancellation();
-    const report={status:acceptanceComplete?'PASS':'INCOMPLETE_OR_FAILED',failure,versionProbeFailure,commandFailure,checkout:manifest?.checkout,nodeVersion:process.version,driverBindings,requiredScenarios,completedScenarios:[...completedScenarios],image:process.env.ImageVersion,chromeVersion,driverVersion,manifest,completed:records.length,required:hosts.length*widths.length,records,limits:['Component fixture; no Razor/server/authentication/business/API proof','System font fallback; no pixel-identical production claim','Live journeys and native safe-area device inset remain required']};
+    const report={status:acceptanceComplete?'PASS':'INCOMPLETE_OR_FAILED',failure,versionProbeFailure,commandFailure,scrollDiagnostic,checkout:manifest?.checkout,nodeVersion:process.version,driverBindings,requiredScenarios,completedScenarios:[...completedScenarios],image:process.env.ImageVersion,chromeVersion,driverVersion,manifest,completed:records.length,required:hosts.length*widths.length,records,limits:['Component fixture; no Razor/server/authentication/business/API proof','System font fallback; no pixel-identical production claim','Live journeys and native safe-area device inset remain required']};
     console.log('NATIVE_COMPONENT_REPORT '+JSON.stringify(report));
     if(process.env.GITHUB_STEP_SUMMARY)await appendFile(process.env.GITHUB_STEP_SUMMARY,'\nNative component rendering: '+records.length+'/'+hosts.length*widths.length+' cases completed. Checkout '+(manifest?.checkout||'UNPROVEN')+'. See job log for exact inputs and assertions.\n');
     if(cleanupError)throw cleanupError;
