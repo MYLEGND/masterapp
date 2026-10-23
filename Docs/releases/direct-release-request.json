@@ -1,33 +1,16 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder directed completion and release of the existing approved work, including precise recovery correction. This validate-only control promotion authorizes no application publication or permission change; original retained recovery remains independently gated.",
-  "purpose": "Correct the existing strict durable-record transport compatibility and authenticate proven pre-submit failures without bypassing uncertain-operation holds. Preserve original packages and four verified deployments.",
-  "requestId": "founder-retained-recovery-transport-20261023-v1",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "Founder explicitly requested GPT Work/Codex repair coordination, one nonoverlapping combined application draft, and end-to-end completion/release (Sentinel_2062ff5293f88191972a90a899b1efb6, Sentinel_8a45a6ad02b48191be986e28f2f222e0, Sentinel_49c5184a62a081918b1444d44ba6501e). Preserve exact-candidate review, required CI, protected release and current operation history. No permission, credential, provider setting or new spending changes.",
+  "purpose": "Combine the preserved modal repeat/focus and Engineering history-label correction with the reviewed canonical Studio/native form presentation, identity-preserving media materialization, tenant-respecting shared shell geometry and reversible non-executing preview states. Extend only existing native component tests, preserving all prior cases. Keep original deployment successes and retained packages intact; reconcile Website recovery before release decisions. Require hosted genuine-checkout build/render tests and final live full-route acceptance. Preserve current saved/published Studio records and intended content until separately verified publication; no stored-record cleanup, receptionist changes or new feature scope.",
+  "requestId": "founder-combined-studio-ui-release-20261023-v1",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait",
+    "masterapp-website"
+  ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "1a91a4484ff9d5be6adaf023d4bb521944daff7c",
-    "sourceRevision": "5cf6ebf56bfebbcff5a3a88408c2da9c7c638550",
-    "files": {
-      "scripts/release-artifacts/transport.cjs": {
-        "mode": "100644",
-        "blob": "2d3b9b341b1007c1ecab705f712c34b2283e1097"
-      },
-      "scripts/release-artifacts/test-transport.cjs": {
-        "mode": "100644",
-        "blob": "2cff5007fe426d85344e05eb6c962c616f28bad7"
-      },
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "2907621f6217667f8a63b696a6103fcf66d1b076"
-      },
-      "scripts/test-validation-resume.py": {
-        "mode": "100644",
-        "blob": "7abf995607059885844edb72da58b897accf46a1"
-      }
-    }
-  }
+  "preserveLiveTargets": false
 }
