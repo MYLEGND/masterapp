@@ -295,6 +295,56 @@ test('WebDriver initial session success returns unchanged session response once'
   }),value);assert.equal(calls,1);assert.equal(checks,2);
 });
 
+function computedRgb(text) {
+  const number=token=>{
+    assert.match(token,/^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i,'Invalid computed color component');
+    const value=Number(token);assert.ok(Number.isFinite(value),'Nonfinite computed color component');return value;
+  };
+  let components,alpha=1,scale=1;
+  const legacy=text.match(/^rgba?\(([^)]+)\)$/);
+  const srgb=text.match(/^color\(srgb\s+([^()]+)\)$/);
+  if(legacy){
+    const values=legacy[1].split(',').map(value=>number(value.trim()));
+    assert.ok(values.length===3||values.length===4,'Invalid computed RGB component count');
+    components=values.slice(0,3);if(values.length===4)alpha=values[3];
+  } else if(srgb){
+    const parts=srgb[1].split('/');assert.ok(parts.length<=2,'Invalid computed sRGB alpha');
+    components=parts[0].trim().split(/\s+/).map(number);assert.equal(components.length,3,'Invalid computed sRGB component count');
+    if(parts.length===2)alpha=number(parts[1].trim());scale=255;
+  } else assert.fail('Unsupported computed color:'+text);
+  assert.equal(alpha,1,'Nonopaque contrast base');
+  const maximum=scale===255?1:255;
+  assert.ok(components.every(value=>value>=0&&value<=maximum),'Computed color component out of range');
+  return components.map(value=>value*scale);
+}
+const computedLuminance=c=>computedRgb(c).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4}).reduce((a,v,i)=>a+v*[.2126,.7152,.0722][i],0);
+const computedContrast=(a,b)=>{const x=computedLuminance(a),y=computedLuminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
+test('computed colors normalize measured CSS Color4 sRGB and retain opaque legacy forms',()=>{
+  const measured=[0.0558431,0.153961,0.349804];
+  assert.deepEqual(computedRgb('color(srgb 0.0558431 0.153961 0.349804)'),measured.map(value=>value*255));
+  assert.deepEqual(computedRgb('color(srgb 0 .5 1 / 1)'),[0,127.5,255]);
+  assert.deepEqual(computedRgb('rgb(17, 34, 51)'),[17,34,51]);
+  assert.deepEqual(computedRgb('rgba(17, 34, 51, 1)'),[17,34,51]);
+  assert.deepEqual(computedRgb('rgb(0.5, 127.5, 255)'),[0.5,127.5,255]);
+});
+test('computed contrast retains known black white luminance and ratio',()=>{
+  assert.equal(computedLuminance('color(srgb 0 0 0)'),0);
+  assert.equal(computedLuminance('color(srgb 1 1 1)'),1);
+  assert.equal(computedContrast('color(srgb 0 0 0)','rgb(255, 255, 255)'),21);
+  assert.equal(computedContrast('rgba(255, 255, 255, 1)','color(srgb 0 0 0 / 1)'),21);
+  assert.equal(computedContrast('rgb(17, 34, 51)','rgb(17, 34, 51)'),1);
+});
+test('computed color parsing rejects nonopaque invalid out-of-range and unsupported spaces',()=>{
+  for(const value of [
+    'rgba(1,2,3,0.5)','color(srgb 0 0 0 / .5)','color(srgb 0 0 0 / 0)','color(srgb 0 0 0 / 2)',
+    'rgb(256,0,0)','rgb(-1,0,0)','color(srgb 1.01 0 0)','color(srgb -0.01 0 0)',
+    'rgb(NaN,0,0)','rgb(Infinity,0,0)','rgb(1e999,0,0)','color(srgb NaN 0 0)','color(srgb 1e999 0 0)',
+    'rgb(1,,3)','rgb(1,2)','rgb(1,2,3,1,5)','color(srgb 0 0)','color(srgb 0 0 0 0)',
+    'color(srgb 0 0 0 /)','color(srgb 0 0 0 / 1 / 1)','color(display-p3 0 0 0)','color(srgb-linear 0 0 0)',
+    'lab(0 0 0)','transparent','#ffffff','color(srgb 0 0 nope)'
+  ])assert.throws(()=>computedRgb(value),undefined,value);
+});
+
 test('actual canonical frontend components render in the existing sandboxed CI browser', {timeout:160000}, async t => {
   const start = Date.now();
   const deadline = start + 160000;
@@ -418,9 +468,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
         if(width<=840){await keys(['\uE00C']);await waitFor("!document.querySelector('[data-legend-global-nav]').classList.contains('mobile-open')");}
         if(width===1180){
           const paint=await execute(`const css=s=>{const e=document.querySelector(s);if(!e)throw Error('Missing contrast element:'+s);const c=getComputedStyle(e);return {color:c.color,background:c.backgroundColor,image:c.backgroundImage}};return {card:css('#fixtureNavyCard'),body:css('#fixtureNavyCard .card-body'),explicit:css('#fixtureExplicitCard .card-body'),label:css('.legend-shell label'),intro:css('.legend-shell .text-muted'),input:css('#fixtureInput'),connect:css('.lc-panel'),shell:css('.legend-shell')};`);
-          const rgb=text=>{const match=text.match(/^rgba?\(([^)]+)\)$/);assert.ok(match,'Unsupported computed color:'+text);const values=match[1].split(',').map(Number);assert.ok(values.length===3||values[3]===1,'Nonopaque contrast base');return values.slice(0,3);};
-          const luminance=c=>rgb(c).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4}).reduce((a,v,i)=>a+v*[.2126,.7152,.0722][i],0);
-          const contrast=(a,b)=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
+          const contrast=computedContrast;
           assert.ok(contrast(paint.body.color,paint.card.background)>=4.5,'Shared card contrast');
           assert.equal(paint.explicit.color,'rgb(17, 34, 51)','Explicit consumer token preserved');
           for(const key of ['label','intro'])assert.ok(contrast(paint[key].color,paint.shell.background)>=4.5,'Onboarding '+key+' contrast');
