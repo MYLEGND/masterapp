@@ -584,7 +584,7 @@ test('mobile modal authority has exactly one vertical scroll owner and a reliabl
   assert.doesNotMatch(shared, /:is\(\[data-legend-modal-panel\], \[data-legend-mobile-sheet\]\)[\s\S]{0,220}position:\s*sticky/);
   assert.match(shared, /\[data-legend-modal-surface\]:not\(\.modal\) > \[data-legend-modal-panel\] \{[\s\S]*overflow:\s*hidden !important;/);
   assert.match(controller, /function requestSurfaceClose\(surface, sourceControl = null\)/);
-  assert.match(controller, /if \(surfaceOpen\(surface\)\) closeSurfaceFallback\(surface\)/);
+  assert.match(controller, /const state = surfaceFocusState\.get\(surface\);[\s\S]*existing\.click\(\);[\s\S]*if \(surfaceFocusState\.get\(surface\) === state && surfaceOpen\(surface\)\) closeSurfaceFallback\(surface\)/);
   assert.match(controller, /event\.key !== 'Escape'[\s\S]*requestSurfaceClose\(top\)/);
 });
 

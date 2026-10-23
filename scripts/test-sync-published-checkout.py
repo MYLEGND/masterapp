@@ -596,18 +596,18 @@ class SessionContinuityTests(unittest.TestCase):
     def test_wrong_remote_and_branch_block(self):
         with patch.object(sync, 'CANONICAL_REMOTES', set()):
             self.assertEqual(self.run_session(), 1)
-        self.git(self.local, 'switch', 'legend/approved-changes')
+        self.git(self.local, 'switch', 'Legend/fast-track-release')
         self.assertEqual(self.run_session(), 1)
 
 
     def test_recovery_branch_switch_race_is_blocked(self):
         self.advance_remote()
         def switch_branch():
-            self.git(self.local, 'switch', 'legend/approved-changes')
+            self.git(self.local, 'switch', 'Legend/fast-track-release')
             return False
         with patch.object(sync, 'active_build_or_app', side_effect=switch_branch):
             self.assertEqual(self.run_session('recover'), 1)
-        self.assertEqual(self.git(self.local, 'rev-parse', 'legend/approved-changes'), self.base)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'Legend/fast-track-release'), self.base)
         self.assertEqual(self.git(self.local, 'rev-parse', self.branch), self.base)
 
     def test_real_failed_push_bundle_export_and_empty_restore(self):
@@ -653,7 +653,7 @@ class SessionContinuityTests(unittest.TestCase):
         with self.assertRaises(sync.SyncSkipped):
             sync.verify_bundle(self.local, partial, sync.bundle_digest(partial), self.branch, head, self.base)
         wrong = self.root / 'wrong.bundle'
-        self.git(self.local, 'bundle', 'create', str(wrong), 'refs/heads/legend/approved-changes')
+        self.git(self.local, 'bundle', 'create', str(wrong), 'refs/heads/Legend/fast-track-release')
         with self.assertRaises(sync.SyncSkipped):
             sync.verify_bundle(self.local, wrong, sync.bundle_digest(wrong), self.branch, head, self.base)
 
@@ -688,12 +688,12 @@ class SessionContinuityTests(unittest.TestCase):
         bundle = self.root / 'race.bundle'
         self.git(self.publisher, 'bundle', 'create', str(bundle), 'refs/heads/' + self.branch)
         def switch_branch():
-            self.git(self.local, 'switch', 'legend/approved-changes')
+            self.git(self.local, 'switch', 'Legend/fast-track-release')
             return False
         with patch.object(sync, 'active_build_or_app', side_effect=switch_branch):
             self.assertEqual(self.run_session('restore', '--bundle', str(bundle), '--sha256',
                                              sync.bundle_digest(bundle), '--accepted', head), 1)
-        self.assertEqual(self.git(self.local, 'rev-parse', 'legend/approved-changes'), self.base)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'Legend/fast-track-release'), self.base)
         self.assertEqual(self.git(self.local, 'rev-parse', self.branch), self.base)
 
 
@@ -839,7 +839,7 @@ class TwoPhaseRecoveryTests(unittest.TestCase):
 
     def test_partial_and_wrong_ref_bundles_cannot_be_external_receipts(self):
         staged=self.stage();bundle=Path(staged['recoveryBundle'])
-        for ref,exclude in (('refs/heads/'+self.branch,['^'+self.base]),('refs/heads/legend/approved-changes',[])):
+        for ref,exclude in (('refs/heads/'+self.branch,['^'+self.base]),('refs/heads/Legend/fast-track-release',[])):
             bundle.unlink()
             self.git(self.local,'bundle','create',str(bundle),ref,*exclude)
             staged['sha256']=sync.bundle_digest(bundle)
