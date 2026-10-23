@@ -2,7 +2,7 @@
   "requestedBy": "Founder",
   "authorization": "Founder directed completion of the already approved five-application release and a safer bounded timeout/reconciliation plan. This validate-only control promotion grants no application publication; retained-material recovery requires independently reviewed canonical producer, original package/source admission, fresh complete history, Production mutex and durable intent.",
   "purpose": "Promote the reviewed retained-material recovery consumer in the existing fast-track workflow; no application rebuild or new application revision, no optional timeout increase, no production settings or permission change.",
-  "requestId": "founder-retained-fast-track-recovery-tools-20261023",
+  "requestId": "founder-retained-fast-track-recovery-tools-20261023-fixture-v2",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -10,7 +10,7 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "38756300c87073e5a52a9153046aa09ebe803024",
-    "sourceRevision": "450b95bbdb6a1572894a195c3e2a40d829b5dede",
+    "sourceRevision": "c88dc907f12ae57c450190f908bcf0e58e8e83c4",
     "files": {
       ".github/workflows/legend-fast-track-ui.yml": {
         "mode": "100644",
@@ -43,6 +43,10 @@
       "scripts/test-release-operation-evidence.py": {
         "mode": "100755",
         "blob": "be98ad5006702ec40291d44598245eef9ad0b342"
+      },
+      "scripts/test-release-policy.py": {
+        "mode": "100644",
+        "blob": "ef0f19efe927671d6f3148b476b6e07379598362"
       }
     }
   }
