@@ -572,6 +572,24 @@ print('3 canonical regions;15 unknown-source rejection checks PASS;no browser/as
 });
 
 // Quote checks are source-component geometry, not full Razor route or browser-zoom acceptance.
+function bookingHiddenComplete(state, hiddenBefore) {
+  return !!state && state.sameNode===true && Number.isSafeInteger(hiddenBefore) && hiddenBefore>=0 && Number.isSafeInteger(state.hidden) && state.hidden>hiddenBefore && state.show===false && state.activeId==='fixtureSheetBooking';
+}
+
+function bookingLifecycleSnapshot(document,window) {
+  const node=document.getElementById('qvBookingModal'),sequence=window.__bookingLifecycle;
+  if(!node)return null;
+  const style=window.getComputedStyle(node),instance=window.bootstrap?.Modal.getInstance(node);
+  return {sameNode:sequence?.node===node,shown:sequence?.shown,hidden:sequence?.hidden,show:node.classList.contains('show'),ariaHidden:node.getAttribute('aria-hidden'),display:style.display,activeId:document.activeElement?.id||'',transitioning:instance?._isTransitioning??null,animations:node.getAnimations({subtree:true}).slice(0,8).map(a=>({playState:a.playState,pending:a.pending}))};
+}
+
+test('booking close requires a fresh same-node hidden completion, not class removal or restored focus',()=>{
+  const good={sameNode:true,hidden:3,show:false,activeId:'fixtureSheetBooking'};
+  assert.equal(bookingHiddenComplete(good,2),true);
+  for(const bad of [null,{...good,hidden:0},{...good,hidden:2},{...good,sameNode:false},{...good,show:true},{...good,activeId:'elsewhere'}])assert.equal(bookingHiddenComplete(bad,2),false);
+  assert.equal(bookingHiddenComplete(good,-1),false);
+});
+
 function quoteGeometryValid(value, {desktop = true, expectedWidth = null, sidebar = false} = {}) {
   const rect = r => r && ['x','y','width','height','right','bottom'].every(k=>Number.isFinite(r[k])) && r.width>0 && r.height>0;
   if (!value || !rect(value.shell) || !rect(value.canvas) || value.style?.display==='none' || value.style?.visibility!=='visible' || (!Number.isFinite(Number(value.style?.opacity))||Number(value.style?.opacity)<=0)) return false;
@@ -916,7 +934,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     // Real Bootstrap fade/MutationObserver/shown ordering and canonical bound layers.
     await command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setDeviceMetricsOverride',params:{width:1180,height:757,deviceScaleFactor:1,mobile:false}});
     await command('POST','/session/'+session+'/url',{url:'http://'+serverHost+'/authenticated.html'});
-    await execute(`window.__shown=[];document.addEventListener('shown.bs.modal',e=>window.__shown.push(e.target.id));const original=document.querySelector('#qvBookingModal'),lower=original.cloneNode(true);lower.id='fixtureLowerModal';lower.removeAttribute('data-legend-modal-bound');lower.querySelectorAll('[id]').forEach(e=>e.id='fixtureLower-'+e.id);lower.setAttribute('aria-labelledby','fixtureLower-qvBookingTitle');const launch=lower.querySelector('.qv-booking-submit');launch.setAttribute('data-qv-booking-open','');launch.id='fixtureLowerLaunch';launch.textContent='Open nested booking';document.body.append(lower);window.LegendModal.bind(lower.id,{modalZ:1115,backdropZ:1110});window.__lower=bootstrap.Modal.getOrCreateInstance(lower);window.__lower.show();`);
+    await execute(`window.__shown=[];document.addEventListener('shown.bs.modal',e=>window.__shown.push(e.target.id));const original=document.querySelector('#qvBookingModal');window.__bookingLifecycle={node:original,shown:0,hidden:0};for(const type of ['shown','hidden'])original.addEventListener(type+'.bs.modal',e=>{if(e.target===original)window.__bookingLifecycle[type]++;});const lower=original.cloneNode(true);lower.id='fixtureLowerModal';lower.removeAttribute('data-legend-modal-bound');lower.querySelectorAll('[id]').forEach(e=>e.id='fixtureLower-'+e.id);lower.setAttribute('aria-labelledby','fixtureLower-qvBookingTitle');const launch=lower.querySelector('.qv-booking-submit');launch.setAttribute('data-qv-booking-open','');launch.id='fixtureLowerLaunch';launch.textContent='Open nested booking';document.body.append(lower);window.LegendModal.bind(lower.id,{modalZ:1115,backdropZ:1110});window.__lower=bootstrap.Modal.getOrCreateInstance(lower);window.__lower.show();`);
     await waitFor("document.querySelector('#fixtureLowerModal').classList.contains('show')");
     await waitFor("window.__shown.includes('fixtureLowerModal')");
     await click('#fixtureLowerLaunch');
@@ -953,12 +971,16 @@ test('actual canonical frontend components render in the existing sandboxed CI b
         lifecycleDiagnostic.phase='nested-booking';
         await waitFor(`(${sheetControlInteractable.toString()})((${sheetControlSnapshot.toString()})(document,window))`);
         lifecycleDiagnostic.control=await execute(`return (${sheetControlSnapshot.toString()})(document,window)`);
+        lifecycleDiagnostic.bookingBefore=await execute(`return (${bookingLifecycleSnapshot.toString()})(document,window)`);
         const shownBefore=await execute("return window.__shown.filter(id=>id==='qvBookingModal').length");
         await click('#fixtureSheetBooking');
         await waitFor("document.querySelector('#qvBookingModal').classList.contains('show')&&window.__shown.filter(id=>id==='qvBookingModal').length>"+shownBefore);
         await waitFor(`(${bookingDialogSettled.toString()})(document)`);
+        const hiddenBefore=await execute('return window.__bookingLifecycle.hidden');
+        lifecycleDiagnostic.phase='nested-booking-close';lifecycleDiagnostic.hiddenBefore=hiddenBefore;
         await keys(['\uE00C']);
-        await waitFor("!document.querySelector('#qvBookingModal').classList.contains('show')&&document.activeElement.id==='fixtureSheetBooking'");
+        await waitFor(`(${bookingHiddenComplete.toString()})((${bookingLifecycleSnapshot.toString()})(document,window),${hiddenBefore})`);
+        lifecycleDiagnostic.bookingAfter=await execute(`return (${bookingLifecycleSnapshot.toString()})(document,window)`);
         lifecycleDiagnostic.phase='sheet-close';
         await click('#fixtureSheetClose');
         await waitFor("document.querySelector('#fixtureFocusSheet').dataset.legendSheetOpen==='false'&&document.activeElement.id==='fixtureSheetOpener'");
@@ -1175,7 +1197,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
 
     requireCompleteScenarios(requiredScenarios,completedScenarios);
     acceptanceComplete=true;
-  } catch(error) {if(lifecycleDiagnostic){try{if(lifecycleDiagnostic.phase==='nested-booking')lifecycleDiagnostic.control=await execute(`return (${sheetControlSnapshot.toString()})(document,window)`);lifecycleDiagnostic.state=await execute(`return {activeId:document.activeElement?.id||'',surfaces:['homeFocusHub','fixtureFocusSheet','qvBookingModal'].map(id=>{const e=document.getElementById(id);return e?{id,hidden:e.hidden,ariaHidden:e.getAttribute('aria-hidden'),open:e.classList.contains('open'),show:e.classList.contains('show'),rects:e.getClientRects().length}:null})}`);}catch{lifecycleDiagnostic.snapshotUnavailable=true;}console.log('NATIVE_LIFECYCLE_FAILURE '+JSON.stringify(lifecycleDiagnostic));}if(placementDiagnostic)console.log('NATIVE_MOBILE_PLACEMENT_FAILURE '+JSON.stringify(placementDiagnostic));if(scrollDiagnostic)console.log('NATIVE_SCROLL_FAILURE '+JSON.stringify(scrollDiagnostic));commandFailure=error.commandFailure;versionProbeFailure=error.versionProbe;failure=String(error.stack||error);throw error;} finally {
+  } catch(error) {if(lifecycleDiagnostic){try{lifecycleDiagnostic.bookingFailure=await execute(`return (${bookingLifecycleSnapshot.toString()})(document,window)`);if(lifecycleDiagnostic.phase==='nested-booking')lifecycleDiagnostic.control=await execute(`return (${sheetControlSnapshot.toString()})(document,window)`);lifecycleDiagnostic.state=await execute(`return {activeId:document.activeElement?.id||'',surfaces:['homeFocusHub','fixtureFocusSheet','qvBookingModal'].map(id=>{const e=document.getElementById(id);return e?{id,hidden:e.hidden,ariaHidden:e.getAttribute('aria-hidden'),open:e.classList.contains('open'),show:e.classList.contains('show'),rects:e.getClientRects().length}:null})}`);}catch{lifecycleDiagnostic.snapshotUnavailable=true;}console.log('NATIVE_LIFECYCLE_FAILURE '+JSON.stringify(lifecycleDiagnostic));}if(placementDiagnostic)console.log('NATIVE_MOBILE_PLACEMENT_FAILURE '+JSON.stringify(placementDiagnostic));if(scrollDiagnostic)console.log('NATIVE_SCROLL_FAILURE '+JSON.stringify(scrollDiagnostic));commandFailure=error.commandFailure;versionProbeFailure=error.versionProbe;failure=String(error.stack||error);throw error;} finally {
     clearTimeout(watchdog);let cleanupError;
     try{await cleanup();}catch(error){cleanupError=error;acceptanceComplete=false;failure=(failure||'')+' Cleanup failed: '+error.message;}
     removeCancellation();
