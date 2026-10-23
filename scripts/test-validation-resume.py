@@ -5916,6 +5916,95 @@ class RecoveryTransportNonentryTests(unittest.TestCase):
             attest.return_value=False
             with self.assertRaises(m.ReleaseOperationHistoryUnproven):m.recovery_history_no_unjournaled_entry('owner/repo',self.revision,99,1,'token')
 
+class RecoveryTargetReadHistoricalTests(unittest.TestCase):
+    def setUp(self):
+        f = RecoveryTransportNonentryTests();f.setUp();self.f = f
+        f.tool = '3460c10cebf9e0aa247604991a607eafaa047014'
+        f.revision = '38756300c87073e5a52a9153046aa09ebe803024'
+        f.observer.update(runId=40012751935, jobId=120617015463, toolRevision=f.tool)
+        f.run.update(id=40012751935, head_sha=f.tool, display_title='LEGEND retained recovery original=39960308664 application='+f.revision)
+        f.job.update(id=120617015463, run_id=f.run['id'], head_sha=f.tool)
+        f.original['run'].update(id=39960308664, head_sha=f.revision);f.original['artifacts']=[]
+        for key in f.targets:
+            identity=dict(target=key,applicationRevision=f.revision,packageDigest='d'*64)
+            operation=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            f.targets[key]['operationId']=operation
+            if f.materials[key]['originalIntent'] is not None:
+                f.materials[key]['originalIntent']=dict(identity,operationId=operation,packageProducerRun=39960308664)
+        f.proof.update(originalRun=39960308664,applicationRevision=f.revision)
+    def log(self):
+        f=self.f
+        prefix=f.log().split('2026-10-23T10:02:00Z Traceback',1)[0]
+        # Sanitized fixture of the authenticated failure, including Python's
+        # exception cause and exact source frames; no provider/customer payload.
+        first=[('deploy-approved-app.py',124,'read_deployments_bounded'),('deploy-approved-app.py',1444,'deployments'),
+            ('deploy-approved-app.py',175,'deployments'),('deploy-approved-app.py',148,'deployment_read_process'),
+            ('/usr/lib/python3.12/subprocess.py',1209,'communicate'),('/usr/lib/python3.12/subprocess.py',2116,'_communicate'),
+            ('/usr/lib/python3.12/subprocess.py',1253,'_check_timeout')]
+        second=[('deploy-approved-app.py',1706,'<module>'),('deploy-approved-app.py',1621,'main'),
+            ('deploy-approved-app.py',1464,'recover_fast_track'),('deploy-approved-app.py',1566,'_recover_fast_track'),
+            ('/usr/lib/python3.12/concurrent/futures/_base.py',449,'result'),('/usr/lib/python3.12/concurrent/futures/_base.py',401,'__get_result'),
+            ('/usr/lib/python3.12/concurrent/futures/thread.py',58,'run'),('deploy-approved-app.py',1556,'recover_target'),
+            ('deploy-approved-app.py',501,'reconcile'),('deploy-approved-app.py',138,'read_deployments_bounded')]
+        def frames(items):
+            return [f'  File "{path if path.startswith("/") else "/home/runner/work/masterapp/masterapp/scripts/"+path}", line {line}, in {fn}' for path,line,fn in items]
+        rows=['Traceback (most recent call last):']+frames(first)+[
+            "subprocess.TimeoutExpired: Command '['az', 'webapp', 'log', 'deployment', 'list', '-g', 'masterapp-rg', '-n', 'masterapp-website', '--only-show-errors', '-o', 'json']' timed out after 39 seconds",
+            'The above exception was the direct cause of the following exception:', 'Traceback (most recent call last):']+frames(second)+[
+            '    result = reconcile(azure, baseline=journal.baseline, journal=journal,', '    rows = read_deployments_bounded(',
+            'DeploymentStatusUnavailable: Azure deployment status unavailable within the bounded read wall budget deadline (before any upload). No deployment or rollback write was replayed; reconcile the exact revision.',
+            '##[error]Process completed with exit code 1.', 'Cleaning up orphan processes']
+        return prefix+'\n'.join('2026-10-23T10:02:00Z '+row for row in rows)
+    def invoke(self, *, log=None, target='website', operation=None, late=False, original_drift=False, sibling_conflict=False):
+        f=self.f;reads=[]
+        def api(repo,path,token):
+            if path==f"actions/runs/{f.original['run']['id']}/artifacts?per_page=100":
+                return dict(artifacts=[dict(id=999)] if original_drift else [],total_count=1 if original_drift else 0)
+            self.assertEqual(path,f"actions/runs/{f.run['id']}/artifacts?per_page=100");reads.append(path)
+            return dict(artifacts=[dict(id=999)],total_count=1) if late and len(reads)>1 else f.inventory
+        with patch.object(m,'FAST_TRACK_RECOVERY_TARGET_READ_GENERATIONS',f.generations), \
+             patch.object(m,'fast_track_recovery_producer',return_value=f.observer), \
+             patch.object(m,'_release_history_source',side_effect=lambda r,s,p,t:f.source[p]), \
+             patch.object(m,'api_get',side_effect=api),patch.object(m,'_release_job_log',return_value=log or self.log()), \
+             patch.object(m,'fast_track_completion_original',return_value=f.original), \
+             patch.object(m,'fast_track_recovery_material',side_effect=lambda r,o,k,t:f.materials[k]), \
+             patch.object(m,'fast_track_completion_material',side_effect=lambda r,o,k,t:dict(intent={} if sibling_conflict else f.materials[k]['originalIntent'])), \
+             patch.object(m,'fast_track_recovery_package_digest',return_value='d'*64),patch.object(m,'_completion_original_unchanged'):
+            return m.attested_recovery_preintent_failure('MYLEGND/masterapp',f.run,f.job,1,f.revision,'token',
+                target=target,operation_id=operation or f.targets['website']['operationId'])
+    def test_exact_historical_target_and_all_material(self):self.assertTrue(self.invoke())
+    def test_wrong_target_operation_and_identity(self):
+        self.assertFalse(self.invoke(target='portal'));self.assertFalse(self.invoke(operation='f'*64))
+        for obj,key,value in [('run','id',99),('run','run_attempt',2),('job','id',99),('run','head_sha','f'*40)]:
+            self.setUp();getattr(self.f,obj)[key]=value
+            with self.subTest(key=key):self.assertFalse(self.invoke())
+    def test_complete_trace_command_phase_and_cleanup_required(self):
+        log=self.log()
+        variants=[log.split('\n',1)[1],log.rsplit('\n',1)[0],log.replace('line 501','line 502'),
+            log.replace('masterapp-website','masterapp-portal'),log.replace('before any upload','after immutable upload'),
+            log.replace('in recover_target','in before_write'),log.replace('39 seconds','40 seconds'),
+            log.replace('The above exception was the direct cause of the following exception:','missing cause'),
+            log.replace('    rows = read_deployments_bounded(','missing boundary'),
+            log.replace('##[group]Run python3','missing invocation',1),
+            log.replace('2026-10-23T10:02:00Z','2026-10-23T09:00:00Z',1),
+            log+'\n2026-10-23T10:02:00Z Submitting the verified immutable ZIP once.',
+            log+'\n2026-10-23T10:02:00Z AZURE_TRACKED_DEPLOYMENT_REFERENCE:unexpected']
+        for value in variants:
+            with self.subTest(log=value[-120:]):self.assertFalse(self.invoke(log=value))
+    def test_uncertain_effects_and_sibling_material_never_disappear(self):
+        self.assertFalse(self.invoke(late=True));self.assertFalse(self.invoke(original_drift=True));self.assertFalse(self.invoke(sibling_conflict=True))
+        self.f.inventory=dict(artifacts=[dict(id=999)],total_count=1);self.assertFalse(self.invoke())
+        self.setUp();self.f.materials['portal']['originalIntent']=None;self.assertFalse(self.invoke())
+        self.setUp();self.f.targets['website']['packageArtifactId']=999;self.assertFalse(self.invoke())
+        self.setUp();self.f.source['scripts/deploy-approved-app.py']='unknown';self.assertFalse(self.invoke())
+    def test_receipt_source_closure_rejects_mixed_or_unknown_generation(self):
+        paths=('scripts/deploy-approved-app.py','scripts/validation-resume.py','scripts/release-artifacts/transport.cjs')
+        source={p:(Path(__file__).parent/p.removeprefix('scripts/')).read_text() for p in paths}
+        with patch.object(m,'_release_history_source',side_effect=lambda r,s,p,t:source[p]):
+            self.assertTrue(m._recovery_receipt_source_closure('owner/repo','a'*40,'token'))
+            source[paths[1]]='unknown';self.assertFalse(m._recovery_receipt_source_closure('owner/repo','a'*40,'token'))
+
+
 class RecoveryPreflightHistoricalTests(RecoveryTransportNonentryTests):
     def setUp(self):
         super().setUp()
