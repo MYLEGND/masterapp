@@ -381,7 +381,7 @@ function bookingScrollSnapshot(document,window) {
     const rect=element.getBoundingClientRect(),style=window.getComputedStyle(element),animations=element.getAnimations();
     nodes[name]={rect:{x:number(rect.x),y:number(rect.y),width:number(rect.width),height:number(rect.height),right:number(rect.right),bottom:number(rect.bottom)},
       scroll:{top:number(element.scrollTop),left:number(element.scrollLeft),height:number(element.scrollHeight),clientHeight:number(element.clientHeight)},
-      style:{transform:css(style.transform),transitionProperty:css(style.transitionProperty),transitionDuration:css(style.transitionDuration),transitionDelay:css(style.transitionDelay),overflowY:css(style.overflowY),position:css(style.position)},
+      style:{visibility:css(style.visibility),display:css(style.display),opacity:css(style.opacity),transform:css(style.transform),transitionProperty:css(style.transitionProperty),transitionDuration:css(style.transitionDuration),transitionDelay:css(style.transitionDelay),overflowY:css(style.overflowY),position:css(style.position)},
       animationCount:animations.length,animations:animations.slice(0,8).map(animation=>({
         playState:['idle','running','paused','finished'].includes(animation.playState)?animation.playState:'unknown',
         pending:animation.pending===true,currentTime:number(animation.currentTime),startTime:number(animation.startTime),
@@ -462,6 +462,32 @@ test('booking locale diagnostics retain bounded control state without page conte
   assert.equal(missing.exists,false);assert.equal(missing.rect,null);assert.equal(missing.modal.exists,false);assert.equal(missing.dialog.exists,false);
 });
 
+function assertMobileBookingPlacement(snapshot) {
+  const viewport=snapshot?.viewport,modal=snapshot?.nodes?.modal?.rect,header=snapshot?.nodes?.header?.rect;
+  assert.ok(viewport&&Number.isFinite(viewport.width)&&Number.isFinite(viewport.height)&&viewport.width>0&&viewport.height>0,'Missing or invalid mobile viewport');
+  for(const [name,rect] of [['modal',modal],['header',header]]){
+    const style=snapshot.nodes[name]?.style;
+    assert.ok(style&&style.visibility==='visible'&&style.display&&style.display!=='none'&&style.opacity!==''&&Number.isFinite(Number(style.opacity))&&Number(style.opacity)>0&&Number(style.opacity)<=1,'Mobile '+name+' must be visibly painted');
+    assert.ok(rect&&['x','y','width','height','right','bottom'].every(key=>Number.isFinite(rect[key]))&&rect.width>0&&rect.height>0,'Missing or invalid mobile '+name+' rectangle');
+    assert.ok(Math.abs(rect.right-rect.x-rect.width)<=1&&Math.abs(rect.bottom-rect.y-rect.height)<=1,'Inconsistent mobile '+name+' rectangle');
+  }
+  assert.ok(Math.abs(modal.x)<=1&&Math.abs(modal.y)<=1&&Math.abs(modal.right-viewport.width)<=1&&Math.abs(modal.bottom-viewport.height)<=1,'Mobile modal must fill viewport');
+  assert.ok(header.x>=Math.max(0,modal.x)-1&&header.y>=Math.max(0,modal.y)-1&&header.right<=Math.min(viewport.width,modal.right)+1&&header.bottom<=Math.min(viewport.height,modal.bottom)+1,'Booking header outside mobile modal or viewport');
+}
+test('mobile booking placement enforces fullscreen edges and positive contained header',()=>{
+  const snapshot={viewport:{width:900,height:757},nodes:{modal:{rect:{x:0,y:0,width:900,height:757,right:900,bottom:757}},header:{rect:{x:0,y:0,width:900,height:100,right:900,bottom:100}}}};
+  for(const node of Object.values(snapshot.nodes))node.style={visibility:'visible',display:'flex',opacity:'1'};
+  assert.doesNotThrow(()=>assertMobileBookingPlacement(snapshot));
+  const shifted=structuredClone(snapshot);Object.assign(shifted.nodes.modal.rect,{x:1,y:1,right:901,bottom:758});assert.doesNotThrow(()=>assertMobileBookingPlacement(shifted));
+  for(const [node,change] of [['modal',{x:2,width:898}],['modal',{y:2,height:755}],['modal',{right:898,width:898}],['modal',{bottom:755,height:755}],['header',{x:-2,width:902}],['header',{y:-2,height:102}],['header',{right:902,width:902}],['header',{bottom:759,height:759}],['header',{width:0}],['header',{height:0}],['header',{y:NaN}]]){
+    const invalid=structuredClone(snapshot);Object.assign(invalid.nodes[node].rect,change);assert.throws(()=>assertMobileBookingPlacement(invalid),undefined,JSON.stringify({node,change}));
+  }
+  for(const name of ['modal','header'])for(const style of [{visibility:'hidden'},{visibility:'collapse'},{display:'none'},{opacity:'0'},{opacity:''},{opacity:'NaN'},null]){
+    const invalid=structuredClone(snapshot);invalid.nodes[name].style=style===null?null:{...invalid.nodes[name].style,...style};assert.throws(()=>assertMobileBookingPlacement(invalid));
+  }
+  for(const invalid of [null,{}, {...snapshot,viewport:{width:0,height:757}}, {...snapshot,nodes:{}}, {...snapshot,nodes:{modal:snapshot.nodes.modal}}])assert.throws(()=>assertMobileBookingPlacement(invalid));
+});
+
 test('actual canonical frontend components render in the existing sandboxed CI browser', {timeout:160000}, async t => {
   const start = Date.now();
   const deadline = start + 160000;
@@ -472,7 +498,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.ok(value > 10000, 'Native render budget exhausted; reserve cleanup time');
     return value - 10000;
   };
-  let manifest,chromeVersion,driverVersion,checked,driverBindings,versionProbeFailure,scrollDiagnostic,localeDiagnostic;
+  let manifest,chromeVersion,driverVersion,checked,driverBindings,versionProbeFailure,scrollDiagnostic,localeDiagnostic,placementDiagnostic;
   const requiredScenarios=[...hosts.flatMap(host=>widths.map(width=>'viewport:'+host+':'+width)),'modal-order-and-wrap','locale-month-rollover','long-profile-and-offset','live-mobile-boundary','client-home-focus'];
   const completedScenarios=new Set();
   const records=[]; let acceptanceComplete=false; let failure; let server,driver,session,driverOrigin; let serverHost; let driverLog='';
@@ -720,7 +746,15 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     const offsetAfter=await execute(`return {clearance:parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--legend-modal-clearance-top')),content:document.querySelector('.layout-content').getBoundingClientRect().top,header:document.querySelector('body>header').getBoundingClientRect().bottom,area:parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--legend-modal-area-start'))}`);
     assert.ok(offsetAfter.content>=offsetBefore.content+39,'Content did not track grown header');assert.ok(offsetAfter.clearance>=offsetAfter.header-1&&offsetAfter.area>=offsetAfter.clearance,'Modal region missed actual header');
     await click('#fixtureBookingOpen');await waitFor("document.querySelector('#qvBookingModal').classList.contains('show')");
-    const modalTop=await execute("return document.querySelector('.qv-booking-head').getBoundingClientRect().top");assert.ok(modalTop>=offsetAfter.header-1,'Modal under grown header');
+    await waitFor("window.__shown.includes('qvBookingModal')");
+    await waitFor(`(${bookingDialogSettled.toString()})(document)`);
+    // At the accepted <=900px boundary the modal owns the viewport, not the
+    // page-header clearance region. Header growth/content tracking above stays mandatory.
+    placementDiagnostic={scenario:'long-profile-and-offset',host:'authenticated',width:900,offsetBefore,offsetAfter};
+    placementDiagnostic.geometry=await execute(`return (${bookingScrollSnapshot.toString()})(document,window)`);
+    placementDiagnostic.tokens=await execute(`const s=getComputedStyle(document.documentElement);return {clearance:parseFloat(s.getPropertyValue('--legend-modal-clearance-top')),area:parseFloat(s.getPropertyValue('--legend-modal-area-start')),safeHeight:parseFloat(s.getPropertyValue('--legend-modal-safe-height'))}`);
+    assertMobileBookingPlacement(placementDiagnostic.geometry);
+    placementDiagnostic=undefined;
     assert.deepEqual(await execute('return window.__fixtureErrors'),[],'Fixture errors in long-profile-and-offset');
     completedScenarios.add('long-profile-and-offset');
     await command('POST','/session/'+session+'/url',{url:'http://'+serverHost+'/client.html'});
@@ -739,11 +773,11 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.deepEqual(rejected.filter(x=>x.url!=='/favicon.ico'),[],'Unexpected browser requests');
     requireCompleteScenarios(requiredScenarios,completedScenarios);
     acceptanceComplete=true;
-  } catch(error) {if(scrollDiagnostic)console.log('NATIVE_SCROLL_FAILURE '+JSON.stringify(scrollDiagnostic));commandFailure=error.commandFailure;versionProbeFailure=error.versionProbe;failure=String(error.stack||error);throw error;} finally {
+  } catch(error) {if(placementDiagnostic)console.log('NATIVE_MOBILE_PLACEMENT_FAILURE '+JSON.stringify(placementDiagnostic));if(scrollDiagnostic)console.log('NATIVE_SCROLL_FAILURE '+JSON.stringify(scrollDiagnostic));commandFailure=error.commandFailure;versionProbeFailure=error.versionProbe;failure=String(error.stack||error);throw error;} finally {
     clearTimeout(watchdog);let cleanupError;
     try{await cleanup();}catch(error){cleanupError=error;acceptanceComplete=false;failure=(failure||'')+' Cleanup failed: '+error.message;}
     removeCancellation();
-    const report={status:acceptanceComplete?'PASS':'INCOMPLETE_OR_FAILED',failure,versionProbeFailure,commandFailure,scrollDiagnostic,localeDiagnostic,checkout:manifest?.checkout,nodeVersion:process.version,driverBindings,requiredScenarios,completedScenarios:[...completedScenarios],image:process.env.ImageVersion,chromeVersion,driverVersion,manifest,completed:records.length,required:hosts.length*widths.length,records,limits:['Component fixture; no Razor/server/authentication/business/API proof','System font fallback; no pixel-identical production claim','Live journeys and native safe-area device inset remain required']};
+    const report={status:acceptanceComplete?'PASS':'INCOMPLETE_OR_FAILED',failure,versionProbeFailure,commandFailure,scrollDiagnostic,localeDiagnostic,placementDiagnostic,checkout:manifest?.checkout,nodeVersion:process.version,driverBindings,requiredScenarios,completedScenarios:[...completedScenarios],image:process.env.ImageVersion,chromeVersion,driverVersion,manifest,completed:records.length,required:hosts.length*widths.length,records,limits:['Component fixture; no Razor/server/authentication/business/API proof','System font fallback; no pixel-identical production claim','Live journeys and native safe-area device inset remain required']};
     console.log('NATIVE_COMPONENT_REPORT '+JSON.stringify(report));
     if(process.env.GITHUB_STEP_SUMMARY)await appendFile(process.env.GITHUB_STEP_SUMMARY,'\nNative component rendering: '+records.length+'/'+hosts.length*widths.length+' cases completed. Checkout '+(manifest?.checkout||'UNPROVEN')+'. See job log for exact inputs and assertions.\n');
     if(cleanupError)throw cleanupError;
