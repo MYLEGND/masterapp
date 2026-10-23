@@ -438,6 +438,44 @@ test('booking dialog readiness rejects pending paused idle and missing state but
   assert.throws(()=>bookingDialogSettled({querySelector:()=>null}),/Missing booking dialog readiness node/);
 });
 
+function sheetControlSnapshot(document,window) {
+  const css=value=>String(value??'').slice(0,256),number=value=>Number.isFinite(value)?value:null;
+  const sheet=document.querySelector('#fixtureFocusSheet'),target=document.querySelector('#fixtureSheetBooking');
+  const snapshot=node=>{if(!node)return null;const r=node.getBoundingClientRect(),style=window.getComputedStyle(node);
+    return {rect:{x:number(r.x),y:number(r.y),width:number(r.width),height:number(r.height)},rectCount:node.getClientRects().length,
+      style:Object.fromEntries(['display','visibility','opacity','pointerEvents','top','right','bottom','left','transform'].map(k=>[k,css(style[k])]))};};
+  const control=snapshot(target),surface=snapshot(sheet),rect=control?.rect;
+  const center=rect?{x:rect.x+rect.width/2,y:rect.y+rect.height/2}:null;
+  const viewport={width:number(window.innerWidth),height:number(window.innerHeight)};
+  const inViewport=!!center&&center.x>=0&&center.y>=0&&center.x<viewport.width&&center.y<viewport.height;
+  const hit=inViewport?document.elementFromPoint(center.x,center.y):null;
+  let ancestor=target,ancestorBlocked=false,count=0;
+  while(ancestor&&count++<64){const style=window.getComputedStyle(ancestor);
+    if(ancestor.hidden||ancestor.inert||ancestor.getAttribute('aria-hidden')==='true'||style.display==='none'||style.visibility!=='visible'||Number(style.opacity)<=0)ancestorBlocked=true;
+    ancestor=ancestor.parentElement;}
+  if(ancestor)ancestorBlocked=true;
+  const animations=sheet?.getAnimations()??[];
+  return {exists:!!sheet&&!!target,control,surface,viewport,center,inViewport,hitTarget:!!hit&&(hit===target||target.contains(hit)),
+    disabled:target?target.disabled===true:null,ancestorBlocked,activeId:css(document.activeElement?.id),
+    animationsSettled:animations.every(a=>a.pending===false&&a.playState==='finished'),
+    animationCount:animations.length,animations:animations.slice(0,8).map(a=>({pending:a.pending===true,playState:css(a.playState)}))};
+}
+function sheetControlInteractable(value) {
+  const r=value?.control?.rect,s=value?.control?.style;
+  return value?.exists===true&&value.disabled===false&&value.ancestorBlocked===false&&value.animationsSettled===true&&
+    value.control?.rectCount>0&&r&&[r.x,r.y,r.width,r.height].every(Number.isFinite)&&r.width>0&&r.height>0&&
+    s?.display!=='none'&&s?.visibility==='visible'&&Number(s?.opacity)>0&&s?.pointerEvents!=='none'&&value.inViewport===true&&value.hitTarget===true;
+}
+test('sheet real-click readiness rejects offscreen blocked hidden disabled or moving controls',()=>{
+  const good={exists:true,disabled:false,ancestorBlocked:false,animationsSettled:true,inViewport:true,hitTarget:true,
+    control:{rectCount:1,rect:{x:100,y:50,width:100,height:40},style:{display:'block',visibility:'visible',opacity:'1',pointerEvents:'auto'}}};
+  assert.equal(sheetControlInteractable(good),true);
+  for(const [key,value]of [['exists',false],['disabled',true],['ancestorBlocked',true],['animationsSettled',false],['inViewport',false],['hitTarget',false]])assert.equal(sheetControlInteractable({...good,[key]:value}),false);
+  for(const [key,value]of [['display','none'],['visibility','hidden'],['opacity','0'],['pointerEvents','none']])assert.equal(sheetControlInteractable({...good,control:{...good.control,style:{...good.control.style,[key]:value}}}),false);
+  assert.equal(sheetControlInteractable({...good,control:{...good.control,rect:{...good.control.rect,width:0}}}),false);
+  assert.equal(sheetControlInteractable(null),false);
+});
+
 function bookingLocaleClickSnapshot(document,window) {
   const number=value=>Number.isFinite(value)?value:null;
   const css=value=>String(value??'').slice(0,256);
@@ -806,7 +844,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.deepEqual(await execute('return window.__fixtureErrors'),[]);
     // Component-level sheet lifecycle: real pointer/Enter openers and booking
     // controls, shared controller unchanged; not an authenticated CRM data flow.
-    await execute(`const opener=document.createElement('button');opener.id='fixtureSheetOpener';opener.type='button';opener.textContent='Open synthetic sheet';document.body.append(opener);const sheet=document.createElement('aside');sheet.id='fixtureFocusSheet';sheet.setAttribute('data-legend-mobile-sheet','');sheet.setAttribute('aria-hidden','true');sheet.style.cssText='display:none;position:fixed;inset:24px;background:white;z-index:5100';sheet.innerHTML='<button type="button" id="fixtureSheetBooking" data-qv-booking-open>Open booking</button><button type="button" id="fixtureSheetClose" data-legend-sheet-close>Close sheet</button>';document.body.append(sheet);opener.addEventListener('click',()=>{sheet.style.display='block';sheet.setAttribute('aria-hidden','false');sheet.classList.add('open');});sheet.querySelector('#fixtureSheetClose').addEventListener('click',()=>{sheet.classList.remove('open');sheet.setAttribute('aria-hidden','true');sheet.style.display='none';});`);
+    await execute(`const opener=document.createElement('button');opener.id='fixtureSheetOpener';opener.type='button';opener.textContent='Open synthetic sheet';document.body.append(opener);const sheet=document.createElement('aside');sheet.id='fixtureFocusSheet';sheet.setAttribute('data-legend-mobile-sheet','');sheet.setAttribute('aria-hidden','true');sheet.style.cssText='display:none;position:fixed;background:white;z-index:5100';sheet.innerHTML='<button type="button" id="fixtureSheetBooking" data-qv-booking-open>Open booking</button><button type="button" id="fixtureSheetClose" data-legend-sheet-close>Close sheet</button>';document.body.append(sheet);opener.addEventListener('click',()=>{sheet.style.removeProperty('display');sheet.setAttribute('aria-hidden','false');sheet.classList.add('open');});sheet.querySelector('#fixtureSheetClose').addEventListener('click',()=>{sheet.classList.remove('open');sheet.setAttribute('aria-hidden','true');sheet.style.display='none';});`);
     await waitFor("document.querySelector('#fixtureFocusSheet').dataset.legendSheetOpen==='false'");
     for(const width of [1180,393]){
       await command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setDeviceMetricsOverride',params:{width,height:757,deviceScaleFactor:1,mobile:false}});
@@ -817,6 +855,8 @@ test('actual canonical frontend components render in the existing sandboxed CI b
         await waitFor("document.querySelector('#fixtureFocusSheet').dataset.legendSheetOpen==='true'");
         assert.equal(await execute("return document.querySelector('#fixtureFocusSheet').hasAttribute('data-legend-modal-surface')"),false,'Sheet focus must not register modal geometry');
         lifecycleDiagnostic.phase='nested-booking';
+        await waitFor(`(${sheetControlInteractable.toString()})((${sheetControlSnapshot.toString()})(document,window))`);
+        lifecycleDiagnostic.control=await execute(`return (${sheetControlSnapshot.toString()})(document,window)`);
         const shownBefore=await execute("return window.__shown.filter(id=>id==='qvBookingModal').length");
         await click('#fixtureSheetBooking');
         await waitFor("document.querySelector('#qvBookingModal').classList.contains('show')&&window.__shown.filter(id=>id==='qvBookingModal').length>"+shownBefore);
@@ -1013,7 +1053,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
 
     requireCompleteScenarios(requiredScenarios,completedScenarios);
     acceptanceComplete=true;
-  } catch(error) {if(lifecycleDiagnostic){try{lifecycleDiagnostic.state=await execute(`return {activeId:document.activeElement?.id||'',surfaces:['homeFocusHub','fixtureFocusSheet','qvBookingModal'].map(id=>{const e=document.getElementById(id);return e?{id,hidden:e.hidden,ariaHidden:e.getAttribute('aria-hidden'),open:e.classList.contains('open'),show:e.classList.contains('show'),rects:e.getClientRects().length}:null})}`);}catch{lifecycleDiagnostic.snapshotUnavailable=true;}console.log('NATIVE_LIFECYCLE_FAILURE '+JSON.stringify(lifecycleDiagnostic));}if(placementDiagnostic)console.log('NATIVE_MOBILE_PLACEMENT_FAILURE '+JSON.stringify(placementDiagnostic));if(scrollDiagnostic)console.log('NATIVE_SCROLL_FAILURE '+JSON.stringify(scrollDiagnostic));commandFailure=error.commandFailure;versionProbeFailure=error.versionProbe;failure=String(error.stack||error);throw error;} finally {
+  } catch(error) {if(lifecycleDiagnostic){try{if(lifecycleDiagnostic.phase==='nested-booking')lifecycleDiagnostic.control=await execute(`return (${sheetControlSnapshot.toString()})(document,window)`);lifecycleDiagnostic.state=await execute(`return {activeId:document.activeElement?.id||'',surfaces:['homeFocusHub','fixtureFocusSheet','qvBookingModal'].map(id=>{const e=document.getElementById(id);return e?{id,hidden:e.hidden,ariaHidden:e.getAttribute('aria-hidden'),open:e.classList.contains('open'),show:e.classList.contains('show'),rects:e.getClientRects().length}:null})}`);}catch{lifecycleDiagnostic.snapshotUnavailable=true;}console.log('NATIVE_LIFECYCLE_FAILURE '+JSON.stringify(lifecycleDiagnostic));}if(placementDiagnostic)console.log('NATIVE_MOBILE_PLACEMENT_FAILURE '+JSON.stringify(placementDiagnostic));if(scrollDiagnostic)console.log('NATIVE_SCROLL_FAILURE '+JSON.stringify(scrollDiagnostic));commandFailure=error.commandFailure;versionProbeFailure=error.versionProbe;failure=String(error.stack||error);throw error;} finally {
     clearTimeout(watchdog);let cleanupError;
     try{await cleanup();}catch(error){cleanupError=error;acceptanceComplete=false;failure=(failure||'')+' Cleanup failed: '+error.message;}
     removeCancellation();
