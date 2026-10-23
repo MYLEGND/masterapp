@@ -1,40 +1,32 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder explicitly delegated routine work acceptance, protected merging and deployment within assigned task scope, including existing release recovery (Sentinel_49c5184a62a081918b1444d44ba6501e; Sentinel_862add8a1b988191b7cdce56be5bbcc4). This validate-only control promotion authorizes no application publication, provider setting, privacy/security/access or spending change.",
-  "purpose": "Promote the independently reviewed target/current-attempt pre-intent hold producer, strict transport and complete sibling/attempt consumer; exact historical read-only callback deadline proof; invocation-local single-flight reuse of verified immutable package digests with fresh mutable gates. Preserve original packages, four accepted deployments, all uncertain entered intents and all existing budgets. No application publication, workflow, journal, provider, identity, access or spending change.",
-  "requestId": "founder-retained-target-preintent-evidence-20261023-v1",
+  "purpose": "Promote exact historical Website pre-intent read-failure evidence and future target-scoped read-hold recording. Preserve retained packages, authenticated sibling effects, existing timeout budgets, mutex and reserves. No application publication or provider/settings/access/spending change.",
+  "requestId": "founder-retained-recovery-read-hold-20261023-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "5dd1671cf39ea02f585db56b00c759264ea3c1fc",
-    "sourceRevision": "afc01b26c7caf8c33d3a3cb860b99178968064d7",
+    "baseRevision": "3460c10cebf9e0aa247604991a607eafaa047014",
+    "sourceRevision": "733d0d8265128c5a9d6995ec34435a6a3ba2cf68",
     "files": {
       "scripts/deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "878b76807fc26a63cb15e1446bcad487ac05c83e"
+        "blob": "1781c2daee8989a6cfe2b0834ad1a7eeebe72bad"
       },
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "7360da08f5d48c08276b633e03549f670b0d2c58"
-      },
-      "scripts/release-artifacts/transport.cjs": {
-        "mode": "100644",
-        "blob": "56aeef6c1f8dba01626e5f5d0ea78e552fd486f7"
+        "blob": "85712cde9fdeb5345efbeb9b9cc4008b185c9a14"
       },
       "scripts/test-deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "81a683449360d5e94b7e57d5dcac3b28d659f5dc"
+        "blob": "5438804c84aba4eb603bc3e0d9e1b2a7b07cf626"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "ac7272ddff68e634d99c57e2cd27d270ecbc6c93"
-      },
-      "scripts/release-artifacts/test-transport.cjs": {
-        "mode": "100644",
-        "blob": "f62e720a422b830348c064bb1b408ddadae66cd1"
+        "blob": "5293509197cf9fd94be30aebad959e3ff2af3a75"
       }
     }
   }
