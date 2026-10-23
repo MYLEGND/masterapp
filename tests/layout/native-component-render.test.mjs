@@ -414,6 +414,30 @@ test('booking header stability keeps the exact one pixel absolute predicate',()=
   }
 });
 
+function bookingDialogSettled(document) {
+  const dialog=document.querySelector('#qvBookingModal > .modal-dialog');
+  if(!dialog)throw Error('Missing booking dialog readiness node');
+  // Inspect only this dialog's own transitions/animations; never disable them.
+  return dialog.getAnimations().every(animation=>animation.pending===false&&animation.playState==='finished');
+}
+test('booking dialog readiness waits for observed running transition to finish',()=>{
+  const animation={pending:false,playState:'running',currentTime:266.718};
+  const document={querySelector:selector=>{assert.equal(selector,'#qvBookingModal > .modal-dialog');return {getAnimations:()=>[animation]}}};
+  assert.equal(bookingDialogSettled(document),false);
+  animation.playState='finished';animation.currentTime=300;
+  assert.equal(bookingDialogSettled(document),true);
+});
+test('booking dialog readiness rejects pending paused idle and missing state but accepts no animation',()=>{
+  const document=animations=>({querySelector:()=>({getAnimations:()=>animations})});
+  assert.equal(bookingDialogSettled(document([])),true);
+  assert.equal(bookingDialogSettled(document([{pending:false,playState:'finished'}])),true);
+  for(const animation of [{pending:true,playState:'finished'},{pending:true,playState:'running'},{pending:false,playState:'paused'},{pending:false,playState:'idle'},{playState:'finished'},{}]){
+    assert.equal(bookingDialogSettled(document([animation])),false);
+  }
+  assert.equal(bookingDialogSettled(document([{pending:false,playState:'finished'},{pending:false,playState:'running'}])),false);
+  assert.throws(()=>bookingDialogSettled({querySelector:()=>null}),/Missing booking dialog readiness node/);
+});
+
 test('actual canonical frontend components render in the existing sandboxed CI browser', {timeout:160000}, async t => {
   const start = Date.now();
   const deadline = start + 160000;
@@ -569,6 +593,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
       const childBounds=await execute(`const body=document.querySelector('.qv-booking-body').getBoundingClientRect();const selectors=['.qv-booking-slot-card','.qv-booking-slot-focus','.qv-booking-selection-meta','.qv-booking-foot','#qvBookStatus','#btnBookAppointment','#qvBookSlots button'];return selectors.map(selector=>{const e=document.querySelector(selector);if(!e)throw Error('Missing critical child:'+selector);const b=e.getBoundingClientRect();const panel=selector==='.qv-booking-selection-meta'?e.closest('.qv-booking-panel-selection'):null;return {selector,x:b.x,r:b.right,w:b.width,h:b.height,rects:e.getClientRects().length,visibility:getComputedStyle(e).visibility,client:e.clientWidth,scroll:e.scrollWidth,body:{x:body.x,r:body.right},selectionPanel:panel?{exact:e.id==='qvBookingSelectedMeta'&&e.parentElement===panel&&panel.classList.contains('qv-booking-panel'),display:getComputedStyle(panel).display,rects:panel.getClientRects().length}:null}});`);
       for(const child of childBounds)assertCriticalBookingChild(child);
 
+      await waitFor(`(${bookingDialogSettled.toString()})(document)`);
       const before=await execute(`const box=e=>{const b=e.getBoundingClientRect();return {x:b.x,y:b.y,w:b.width,h:b.height,r:b.right,b:b.bottom}};const body=document.querySelector('.qv-booking-body');return {body:box(body),head:box(document.querySelector('.qv-booking-head')),content:box(document.querySelector('.qv-booking-content')),action:box(document.querySelector('#btnBookAppointment')),nav:[...document.querySelectorAll('.qv-booking-calendar-nav')].map(box),dates:[...document.querySelectorAll('[data-qv-booking-date]')].map(box),grid:box(document.querySelector('#qvBookingCalendar')),client:body.clientHeight,scroll:body.scrollHeight,horizontal:body.scrollWidth-body.clientWidth,errors:window.__fixtureErrors,scrollDiagnostic:(${bookingScrollSnapshot.toString()})(document,window)};`);
       scrollDiagnostic.before=before.scrollDiagnostic;
       assert.equal(new Set(before.dates.map(d=>Math.round(d.x*10))).size,7,'Calendar must retain exactly seven distinct date columns');
