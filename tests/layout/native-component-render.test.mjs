@@ -88,9 +88,9 @@ function expectedCheckout(eventName,event,githubSha){
 async function setupCommand(binary,args,remaining,signal,limit=3000,options={},runner=(binary,args,options)=>new Promise(resolve=>{
   execFile(binary,args,options,(error,stdout,stderr)=>resolve({status:error?error.code:0,error,stdout,stderr}));
 })){
-  signal.throwIfAborted();const timeout=Math.min(limit,remaining());
+  signal.throwIfAborted();const timeout=Math.min(limit,remaining());const started=Date.now();
   const result=await runner(binary,args,{...options,encoding:'utf8',timeout,signal,killSignal:'SIGKILL',maxBuffer:200000});
-  signal.throwIfAborted();remaining();return result;
+  signal.throwIfAborted();remaining();return {...result,timeout,elapsedMs:Date.now()-started};
 }
 test('checkout identity supports exact PR push and existing dispatch events',()=>{
   const a='a'.repeat(40),b='b'.repeat(40);
@@ -111,13 +111,60 @@ test('setup subprocess budgets and cancellation fail closed before and after eac
   await assert.rejects(()=>setupCommand('mock',[],()=>{throw Error('exhausted')},fresh.signal,3000,{},runner),/exhausted/);
   assert.equal(calls,2);
 });
-async function binaryVersion(binary, remaining, signal, args = ['--version']) {
-  const result = await setupCommand(binary,args,remaining,signal);
-  assert.equal(result.status, 0, `${binary} is required: ${result.error?.message || result.stderr}`);
-  const value = result.stdout.trim();
-  assert.match(value, /\b\d+\.\d+\.\d+\.\d+\b/);
-  return value;
+async function binaryVersion(binary, remaining, signal, args = ['--version'], runner) {
+  // Cold installed-binary probes may need more than the generic 3s setup cap.
+  // This consumes the existing global budget; it neither retries nor extends it.
+  const result = await setupCommand(binary,args,remaining,signal,10000,{},runner);
+  const bounded=value=>String(value??'').slice(0,2048);
+  const probe={binary:bounded(binary),args:args.slice(0,8).map(bounded),timeoutMs:result.timeout,
+    elapsedMs:result.elapsedMs,status:result.status,errorCode:result.error?.code??null,
+    signal:result.error?.signal??null,killed:result.error?.killed??false,
+    stdout:bounded(result.stdout),stderr:bounded(result.stderr)};
+  try {
+    assert.equal(result.status, 0, `Version probe failed: ${JSON.stringify(probe)}`);
+    const value = result.stdout.trim();
+    assert.match(value, /\b\d+\.\d+\.\d+\.\d+\b/);
+    return value;
+  } catch(error) {error.versionProbe=probe;throw error;}
 }
+
+test('version probes use only their bounded global-clamped budget',async()=>{
+  const control=new AbortController();const seen=[];
+  const runner=async(_binary,_args,options)=>{seen.push(options);return {status:0,stdout:'Chrome 155.0.8059.39',stderr:''}};
+  assert.equal(await binaryVersion('fixture',()=>20000,control.signal,undefined,runner),'Chrome 155.0.8059.39');
+  await binaryVersion('fixture',()=>125,control.signal,undefined,runner);
+  assert.deepEqual(seen.map(options=>options.timeout),[10000,125]);
+  assert.ok(seen.every(options=>options.killSignal==='SIGKILL'&&options.signal===control.signal));
+  control.abort();await assert.rejects(()=>binaryVersion('fixture',()=>20000,control.signal,undefined,runner));
+  assert.equal(seen.length,2);
+});
+test('version probe failures preserve bounded signal and missing-binary diagnostics without retry',async()=>{
+  for(const error of [{code:null,signal:'SIGKILL',killed:true},{code:'ENOENT',killed:false}]){
+    const control=new AbortController();let calls=0;
+    const runner=async()=>{calls++;return {status:error.code,error,stdout:'x'.repeat(3000),stderr:'y'.repeat(3000)}};
+    await assert.rejects(()=>binaryVersion('fixture',()=>20000,control.signal,undefined,runner),failure=>{
+      const probe=failure.versionProbe;
+      assert.equal(probe.timeoutMs,10000);assert.ok(probe.elapsedMs>=0);
+      assert.equal(probe.status,error.code);assert.equal(probe.errorCode,error.code);
+      assert.equal(probe.signal,error.signal??null);assert.equal(probe.killed,error.killed);
+      assert.equal(probe.stdout.length,2048);assert.equal(probe.stderr.length,2048);
+      assert.deepEqual(probe.args,['--version']);assert.equal(probe.binary,'fixture');return true;
+    });
+    assert.equal(calls,1);
+  }
+});
+test('version probes reject malformed success and cancellation or exhaustion after execution',async()=>{
+  const control=new AbortController();let calls=0;
+  const malformed=async()=>{calls++;return {status:0,stdout:'not a version',stderr:''}};
+  await assert.rejects(()=>binaryVersion('fixture',()=>20000,control.signal,undefined,malformed),error=>{
+    assert.equal(error.versionProbe.status,0);assert.equal(error.versionProbe.stdout,'not a version');return true;
+  });
+  let checks=0;
+  await assert.rejects(()=>binaryVersion('fixture',()=>{if(++checks>1)throw Error('budget exhausted');return 20000},control.signal,undefined,malformed),/budget exhausted/);
+  const aborting=async()=>{calls++;control.abort();return {status:0,stdout:'Chrome 155.0.8059.39'}};
+  await assert.rejects(()=>binaryVersion('fixture',()=>20000,control.signal,undefined,aborting));
+  assert.equal(calls,3);
+});
 
 // Pure contract tests can run without opening sockets or launching a browser.
 test('added scenarios validate document errors before recording completion',async()=>{
@@ -159,7 +206,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.ok(value > 10000, 'Native render budget exhausted; reserve cleanup time');
     return value - 10000;
   };
-  let manifest,chromeVersion,driverVersion,checked,driverBindings;
+  let manifest,chromeVersion,driverVersion,checked,driverBindings,versionProbeFailure;
   const requiredScenarios=[...hosts.flatMap(host=>widths.map(width=>'viewport:'+host+':'+width)),'modal-order-and-wrap','locale-month-rollover','long-profile-and-offset','live-mobile-boundary','client-home-focus'];
   const completedScenarios=new Set();
   const records=[]; let acceptanceComplete=false; let failure; let server,driver,session,driverOrigin; let serverHost; let driverLog='';
@@ -418,11 +465,11 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.deepEqual(rejected.filter(x=>x.url!=='/favicon.ico'),[],'Unexpected browser requests');
     requireCompleteScenarios(requiredScenarios,completedScenarios);
     acceptanceComplete=true;
-  } catch(error) {failure=String(error.stack||error);throw error;} finally {
+  } catch(error) {versionProbeFailure=error.versionProbe;failure=String(error.stack||error);throw error;} finally {
     clearTimeout(watchdog);let cleanupError;
     try{await cleanup();}catch(error){cleanupError=error;acceptanceComplete=false;failure=(failure||'')+' Cleanup failed: '+error.message;}
     removeCancellation();
-    const report={status:acceptanceComplete?'PASS':'INCOMPLETE_OR_FAILED',failure,checkout:manifest?.checkout,nodeVersion:process.version,driverBindings,requiredScenarios,completedScenarios:[...completedScenarios],image:process.env.ImageVersion,chromeVersion,driverVersion,manifest,completed:records.length,required:hosts.length*widths.length,records,limits:['Component fixture; no Razor/server/authentication/business/API proof','System font fallback; no pixel-identical production claim','Live journeys and native safe-area device inset remain required']};
+    const report={status:acceptanceComplete?'PASS':'INCOMPLETE_OR_FAILED',failure,versionProbeFailure,checkout:manifest?.checkout,nodeVersion:process.version,driverBindings,requiredScenarios,completedScenarios:[...completedScenarios],image:process.env.ImageVersion,chromeVersion,driverVersion,manifest,completed:records.length,required:hosts.length*widths.length,records,limits:['Component fixture; no Razor/server/authentication/business/API proof','System font fallback; no pixel-identical production claim','Live journeys and native safe-area device inset remain required']};
     console.log('NATIVE_COMPONENT_REPORT '+JSON.stringify(report));
     if(process.env.GITHUB_STEP_SUMMARY)await appendFile(process.env.GITHUB_STEP_SUMMARY,'\nNative component rendering: '+records.length+'/'+hosts.length*widths.length+' cases completed. Checkout '+(manifest?.checkout||'UNPROVEN')+'. See job log for exact inputs and assertions.\n');
     if(cleanupError)throw cleanupError;
