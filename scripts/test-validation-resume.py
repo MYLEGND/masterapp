@@ -6340,6 +6340,205 @@ class RecoveryReceiptReuseTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'CACHE_BOUND'):self.get()
             self.assertEqual(downloads.call_count,100)
 
+class RecoveryAdmissionProofTests(unittest.TestCase):
+    def test_promotion_receipt_download_reuse_preserves_exact_acceptance(self):
+        import contextlib
+        run=dict(id=10,run_attempt=1,head_sha='a'*40,status='completed',conclusion='success',event='push',
+            path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,head_branch=m.FAST_TRACK_PR_BASE,head_repository=dict(full_name='owner/repo'))
+        artifact=dict(id=40,name='fast-track-admission-10-1',expired=False,digest='sha256:'+'d'*64,workflow_run=dict(id=10))
+        names=['Select exact affected applications','Admit exact validated fast-track source','Reconcile production schema before publication',
+            'Publish verified website routing','Affected App Deploy — ${{ matrix.target }}']
+        jobs=[dict(id=i+1,run_id=10,run_attempt=1,head_sha='a'*40,name=name,status='completed',
+            conclusion='success' if i==0 else 'skipped',steps=[]) for i,name in enumerate(names)]
+        expected=dict(authorizesMutation=False,productionEligible=False)
+        policy=SimpleNamespace(tool_promotion_requested=lambda rev:True,read_request=lambda rev:dict(trustedToolPromotion=dict(baseRevision='b'*40)),
+            trusted_tool_promotion=lambda *args:expected)
+        def api(repo,path,token):
+            if path=='actions/runs/10':return run
+            return dict(total_count=1,artifacts=[artifact]) if '/artifacts?' in path else dict(total_count=len(jobs),jobs=jobs)
+        def download(repo,ident,name,directory,**kw):
+            if m._RECOVERY_RECEIPT_BYTES.get() is not None:self.assertEqual(kw['expected_digest'],artifact['digest'])
+            (directory/'fast-track-admission.json').write_text(json.dumps(dict(authorizesMutation=False,productionEligible=False,producingRun=10,producingAttempt=1)))
+        with patch.object(m,'_fast_track_policy',return_value=policy),patch.object(m,'fast_track_merged_source_proof',return_value={}), \
+             patch.object(m,'_release_history_source',return_value='jobs: {}'),patch.object(m,'_api_get_uncached',side_effect=api), \
+             patch.object(m,'_download_run_artifact',side_effect=download) as downloads:
+            for _ in range(20):self.assertEqual(m.fast_track_promotion_parent('owner/repo',run,'fixture'),'b'*40)
+            self.assertEqual(downloads.call_count,20);downloads.reset_mock()
+            with m.recovery_material_reuse():
+                with m.recovery_admission_proof():
+                    for _ in range(20):self.assertEqual(m.fast_track_promotion_parent('owner/repo',run,'fixture'),'b'*40)
+                self.assertEqual(downloads.call_count,1)
+                expected['authorizesMutation']=True
+                with self.assertRaisesRegex(ValueError,'RECEIPT_IDENTITY_CHANGED'):
+                    m.fast_track_promotion_parent('owner/repo',run,'fixture')
+                artifact['expired']=True
+                with self.assertRaisesRegex(ValueError,'RECEIPT_UNPROVEN'):
+                    m.fast_track_promotion_parent('owner/repo',run,'fixture')
+
+    def test_nested_original_authority_chain_measures_five_attempt_reuse(self):
+        import contextlib
+        repo='owner/repo';revision='a'*40;candidate='b'*40;base='c'*40
+        targets=list(m.RELEASE_TARGETS)
+        run=dict(id=10,run_attempt=5,head_sha=revision,status='completed',conclusion='failure',
+            event='push',path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,
+            head_branch=m.FAST_TRACK_PR_BASE,head_repository=dict(full_name=repo))
+        rows={ 'actions/runs/10':run,
+            f'commits/{revision}/pulls?per_page=100':[dict(number=7,merged_at='now',merge_commit_sha=revision,
+                base=dict(ref=m.FAST_TRACK_PR_BASE),head=dict(sha=candidate,ref='candidate',repo=dict(full_name=repo)))] }
+        workflows=['approved-release-security-validation.yml','masterapp-platform-architecture-validation.yml','parfait-isolated-validation.yml']
+        prefixes=['security','architecture','parfait'];validation=[];receipts={}
+        for ident,workflow,prefix in zip(range(101,104),workflows,prefixes):
+            vr=dict(id=ident,run_attempt=1,head_sha=candidate,status='completed',conclusion='success',
+                event='pull_request',path='.github/workflows/'+workflow,head_branch='candidate',head_repository=dict(full_name=repo))
+            validation.append(vr);rows[f'actions/runs/{ident}']=vr
+            artifact=dict(id=ident+100,name=f'validation-resume-{prefix}-{ident}-1',expired=False,digest='sha256:'+'d'*64,workflow_run=dict(id=ident))
+            rows[f'actions/runs/{ident}/artifacts?per_page=100']=dict(total_count=1,artifacts=[artifact])
+            receipts[ident]=dict(workflow=workflow,currentSha=candidate,validationBase=m.FAST_TRACK_PR_BASE,
+                sourceValidationScope=dict(phase='source-validation-only',releaseAdmission=False,baseBranch=m.FAST_TRACK_PR_BASE,candidate=candidate,pullRequest=7))
+        rows[f'actions/runs?head_sha={candidate}&per_page=100']=dict(total_count=3,workflow_runs=validation)
+        specs=[('Select exact affected applications','Derive application impact exclusively from changed paths'),
+            ('Admit exact validated fast-track source','Authenticate merged source and preserved required validation'),
+            ('Reconcile production schema before publication',None),('Publish verified website routing',None)]
+        specs += [('Affected App Deploy — '+m.fast_track_target_label(k),None) for k in targets]
+        for attempt in range(1,6):
+            jobs=[dict(id=attempt*1000+i+1,run_id=10,run_attempt=attempt,head_sha=revision,name=name,status='completed',
+                conclusion='success' if step else 'skipped',steps=[dict(name=step,status='completed',conclusion='success')] if step else []) for i,(name,step) in enumerate(specs)]
+            rows[f'actions/runs/10/attempts/{attempt}/jobs?per_page=100']=dict(total_count=len(jobs),jobs=jobs)
+        rows['actions/runs/10/artifacts?per_page=100']=dict(total_count=0,artifacts=[])
+        request=dict(releaseMode='approved-only',requestedBy='Founder',preserveLiveTargets=False,
+            targets=[m.RELEASE_TARGETS[k]['releaseName'] for k in targets],cloudflareWebsiteRouting=False)
+        calls=[];downloads=[]
+        def transport(repo,path,token):calls.append(path);return json.loads(json.dumps(rows[path]))
+        def download(repo,ident,name,directory,**kwargs):
+            downloads.append(ident);(directory/'validation-resume.json').write_text(json.dumps(receipts[ident]))
+        def source(repo,rev,path,token):return json.dumps(request) if path==m.RELEASE_REQUEST_PATH else 'jobs: {}'
+        def git(args,**kwargs):return (revision+' '+base+' '+candidate) if args[1]=='rev-list' else m.RELEASE_REQUEST_PATH+'\n'
+        def exercise(reuse):
+            calls.clear();downloads.clear()
+            with contextlib.ExitStack() as stack:
+                stack.enter_context(patch.object(m,'_api_get_uncached',side_effect=transport))
+                stack.enter_context(patch.object(m,'_download_run_artifact',side_effect=download))
+                stack.enter_context(patch.object(m,'_release_history_source',side_effect=source))
+                stack.enter_context(patch.object(m,'fast_track_historical_producers',return_value=[run]))
+                stack.enter_context(patch.object(m,'fast_track_effective_baseline',return_value=base))
+                stack.enter_context(patch.object(m,'fast_track_scope',return_value=dict(matrix=dict(include=[dict(key=k) for k in targets]),routing=False,commerce=False)))
+                stack.enter_context(patch.object(m.subprocess,'check_output',side_effect=git))
+                stack.enter_context(patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)))
+                stack.enter_context(m.recovery_material_reuse())
+                if reuse:stack.enter_context(m.recovery_admission_proof())
+                # Repeated original-authority reconstruction reached by four
+                # inherited sibling consumers across five historical attempts.
+                for _ in range(5):
+                    for sibling in targets[:4]:
+                        result=m.fast_track_completion_original(repo,10,revision,'fixture')
+                        self.assertEqual(len(result['attempts']),5)
+                        self.assertIn(sibling,result['targets'])
+            return len(calls),len(set(calls)),len(downloads)
+        baseline=exercise(False);reused=exercise(True)
+        self.assertLess(reused[0],baseline[0]//3)
+        self.assertLessEqual(reused[0],reused[1]*2)
+        self.assertTrue(all(calls.count(path)<=2 for path in set(calls)))
+        self.assertEqual(baseline[2],3);self.assertEqual(reused[2],3)
+        print('RECOVERY_NESTED_ORIGINAL_CALL_COUNTS:'+json.dumps(dict(baseline=baseline,reused=reused)))
+
+    def setUp(self):
+        self.run = dict(id=10, status='completed', run_attempt=5, head_sha='a'*40)
+        self.job = dict(id=30, run_id=10, run_attempt=1, head_sha='a'*40,
+            status='completed', conclusion='success', started_at='start', completed_at='end')
+        self.data = {'actions/runs/10': self.run, 'actions/jobs/30': self.job,
+            'actions/runs/10/artifacts?per_page=100': dict(total_count=1, artifacts=[
+                dict(id=40, expired=False, workflow_run=dict(id=10))]),
+            'actions/runs/10/attempts/1/jobs?per_page=100': dict(total_count=1, jobs=[self.job])}
+        self.calls = []
+    def transport(self, repository, path, token):
+        self.calls.append(path)
+        return json.loads(json.dumps(self.data[path]))
+    def read(self, path='actions/runs/10'):
+        return m.api_get('owner/repo', path, 'fixture')
+    def test_nested_views_close_with_raw_readback_and_do_not_leak(self):
+        with patch.object(m, '_api_get_uncached', side_effect=self.transport):
+            with m.recovery_admission_proof():
+                self.read()['run_attempt'] = 999
+                with m.recovery_admission_proof():
+                    self.assertEqual(self.read()['run_attempt'], 5)
+                self.assertEqual(len(self.calls), 1)
+            self.assertEqual(len(self.calls), 2)
+            with m.recovery_admission_proof(): self.read()
+            self.assertEqual(len(self.calls), 3)
+        self.assertIsNone(m._RECOVERY_PROOF_VIEW.get())
+    def test_changed_attempt_inventory_expiry_and_job_identity_stop_at_exit(self):
+        for path, change in [('actions/runs/10', lambda x:x.update(run_attempt=6)),
+            ('actions/runs/10/artifacts?per_page=100', lambda x:x['artifacts'][0].update(expired=True)),
+            ('actions/runs/10/artifacts?per_page=100', lambda x:x.update(total_count=2)),
+            ('actions/runs/10/attempts/1/jobs?per_page=100', lambda x:x['jobs'][0].update(head_sha='b'*40))]:
+            self.setUp()
+            with patch.object(m, '_api_get_uncached', side_effect=self.transport):
+                with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven, 'CHANGED_AT_BOUNDARY'):
+                    with m.recovery_admission_proof():
+                        self.read(path); self.read(path); change(self.data[path])
+            self.assertIsNone(m._RECOVERY_PROOF_VIEW.get())
+    def test_active_incomplete_current_owner_and_unknown_reads_never_reused(self):
+        cases = [dict(status='in_progress'), dict(id=99)]
+        for change in cases:
+            self.setUp(); self.run.update(change)
+            with patch.dict(os.environ, GITHUB_RUN_ID='99'), patch.object(m, '_api_get_uncached', side_effect=self.transport), m.recovery_admission_proof():
+                self.read(); self.read(); self.assertEqual(len(self.calls), 2)
+        self.setUp(); path='actions/runs/10/attempts/1/jobs?per_page=100'; self.data[path]['total_count']=2
+        with patch.object(m, '_api_get_uncached', side_effect=self.transport), m.recovery_admission_proof():
+            self.read(path); self.read(path); self.assertEqual(len(self.calls), 2)
+        self.setUp(); path='git/ref/heads/'+m.FAST_TRACK_PR_BASE; self.data[path]=dict(object=dict(sha='a'*40))
+        with patch.object(m, '_api_get_uncached', side_effect=self.transport), m.recovery_admission_proof():
+            self.read(path); self.read(path); self.assertEqual(len(self.calls), 2)
+    def test_global_history_cache_cannot_satisfy_boundary_or_hide_changes(self):
+        key=('owner/repo','actions/runs/10'); old=m._RELEASE_HISTORY_API.get(key)
+        m._RELEASE_HISTORY_API[key]=dict(self.run,run_attempt=999)
+        try:
+            with patch.object(m,'_api_get_uncached',side_effect=self.transport),m.recovery_admission_proof():
+                self.assertEqual(m._release_history_api(*key,'fixture')['run_attempt'],5)
+                self.assertEqual(m._release_history_api(*key,'fixture')['run_attempt'],5)
+            self.assertEqual(len(self.calls),2)
+        finally:
+            if old is None:m._RELEASE_HISTORY_API.pop(key,None)
+            else:m._RELEASE_HISTORY_API[key]=old
+    def test_failure_discards_context_without_reusing_partial_result(self):
+        with patch.object(m,'_api_get_uncached',side_effect=self.transport):
+            with self.assertRaisesRegex(ValueError,'stop'):
+                with m.recovery_admission_proof():self.read();raise ValueError('stop')
+            with m.recovery_admission_proof():self.read()
+        self.assertEqual(len(self.calls),2)
+    def test_artifact_owner_and_storage_limits_are_enforced(self):
+        path='actions/runs/10/artifacts?per_page=100'
+        self.run['status']='in_progress'
+        with patch.object(m,'_api_get_uncached',side_effect=self.transport),m.recovery_admission_proof():
+            self.read(path);self.read(path)
+            self.assertEqual(self.calls.count(path),2)
+        self.setUp()
+        with patch.object(m,'_api_get_uncached',side_effect=self.transport):
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'STORAGE_BOUND'):
+                with m.recovery_admission_proof():
+                    m._RECOVERY_PROOF_VIEW.get()['bytes']=32*1024*1024
+                    self.read()
+        self.assertIsNone(m._RECOVERY_PROOF_VIEW.get())
+    def test_log_bytes_singleflight_fresh_owner_failure_eviction_and_bounds(self):
+        import concurrent.futures,contextvars,threading
+        entered=threading.Event();release=threading.Event()
+        def download(*args):entered.set();release.wait(2);return 'complete log'
+        def get():
+            with m.recovery_admission_proof():return m._release_job_log('owner/repo',30,'fixture')
+        with patch.object(m,'_api_get_uncached',side_effect=self.transport),patch.object(m,'_release_job_log_uncached',side_effect=download) as reads,m.recovery_material_reuse(),concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            first=pool.submit(contextvars.copy_context().run,get);self.assertTrue(entered.wait(2))
+            second=pool.submit(contextvars.copy_context().run,get);release.set()
+            self.assertEqual(first.result(),second.result());self.assertEqual(reads.call_count,1)
+            self.job['head_sha']='b'*40
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'TERMINAL_IDENTITY'):get()
+        self.setUp()
+        with patch.object(m,'_api_get_uncached',side_effect=self.transport),patch.object(m,'_release_job_log_uncached',side_effect=[ValueError('failed'),'ok','new']) as reads,m.recovery_material_reuse():
+            with self.assertRaises(ValueError):get()
+            self.assertEqual(get(),'ok');self.assertEqual(get(),'ok');self.assertEqual(reads.call_count,2)
+            self.job['completed_at']='new-end';m._RECOVERY_LOG_BYTES.get()['bytes']=64*1024*1024
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'STORAGE_BOUND'):get()
+
+
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.
     # Synthetic planner revisions must never query the real CI repository.
