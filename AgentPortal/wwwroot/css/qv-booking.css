@@ -566,6 +566,8 @@
 /* Remove modal scroll */
 .qv-booking-modal-shell .modal-content{
     overflow:hidden;
+    container-name:qv-booking;
+    container-type:inline-size;
 }
 
 /* Premium duration selector */
@@ -1096,12 +1098,12 @@ button.qv-booking-launch:focus-visible,
 
 /* =========================================================
    CANONICAL RESPONSIVE GEOMETRY
-   Sole tablet/mobile authority. This intentionally appears
+   Sole component-width layout authority. This intentionally appears
    after every desktop refinement so later desktop rules can
-   never re-expand the scheduler on small viewports.
+   never re-expand the scheduler inside a narrow modal.
 ========================================================= */
 
-@media (max-width:1100px){
+@container qv-booking (max-width:1100px){
     .qv-booking-body{
         height:auto;
         display:block;
