@@ -1552,10 +1552,10 @@
   function applyBreakpointPreview() {
     const breakpoint=(documentState.breakpoints || []).find(value=>value.key===editorBreakpointKey);
     if(editorPreview){
-      if (!breakpoint) { editorPreview.style.width=''; editorPreview.style.maxWidth=''; editorPreview.style.justifySelf=''; }
+      if (!breakpoint) { editorPreview.style.width=''; editorPreview.style.maxWidth=''; }
       else {
         const representative = breakpoint.maxWidth == null ? Math.max(Number(breakpoint.minWidth)||1200,1440) : Math.max(320,Math.round(((Number(breakpoint.minWidth)||0)+Number(breakpoint.maxWidth))/2));
-        editorPreview.style.width=''; editorPreview.style.maxWidth=`${representative}px`; editorPreview.style.justifySelf='center';
+        editorPreview.style.width=''; editorPreview.style.maxWidth=`${representative}px`;
       }
     }
     // Hidden whole-site audit frames deliberately do not build the editor UI,
@@ -8940,7 +8940,9 @@
       .legend-cms-corner-nw{left:-7px;top:-7px;cursor:nwse-resize}.legend-cms-corner-ne{right:-7px;top:-7px;cursor:nesw-resize}.legend-cms-corner-se{right:-7px;bottom:-7px;cursor:nwse-resize}.legend-cms-corner-sw{left:-7px;bottom:-7px;cursor:nesw-resize}
       .legend-cms-edge-handle:hover{background:#d4ad451f!important}
       body.legend-cms-editing{display:block;height:100dvh;min-height:0;margin:0;overflow:hidden}
-      .legend-cms-preview{width:calc(100% - min(24rem, 92vw));max-width:none;min-width:0;min-height:0;height:100dvh;overflow-y:auto;overflow-x:clip;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;position:relative;transform:translateZ(0)}
+      .legend-cms-canvas{width:100%;min-width:0;height:100dvh}
+      body.legend-cms-editing>.legend-cms-canvas{width:calc(100% - min(24rem, 92vw))}
+      .legend-cms-preview{width:100%;max-width:none;min-width:0;margin:0 auto;min-height:0;height:100dvh;overflow-y:auto;overflow-x:clip;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;position:relative;transform:translateZ(0)}
       .legend-cms-editor{font-family:Inter,system-ui,sans-serif;box-sizing:border-box}
       .legend-cms-editor *{box-sizing:border-box}
       .legend-cms-editor [hidden]{display:none}
@@ -8957,7 +8959,7 @@
       .legend-cms-publication-actions button:disabled{opacity:.55;cursor:wait}
       .legend-cms-panel{position:fixed;z-index:2147483000;top:0;right:0;width:min(24rem,92vw);min-width:20rem;min-height:0;height:100dvh;overflow:auto;background:#081a3a;color:#f7f6f2;border:1px solid #d4ad45;border-radius:0;padding:20px;padding-bottom:max(20px,env(safe-area-inset-bottom));box-shadow:-18px 0 42px #0005}
       body.legend-cms-panel-hidden .legend-cms-panel{display:none}
-      body.legend-cms-panel-hidden .legend-cms-preview{width:100%}
+      body.legend-cms-editing.legend-cms-panel-hidden>.legend-cms-canvas{width:100%}
       .legend-cms-draft-dialog{width:min(500px,calc(100vw - 32px));height:auto;max-height:calc(100dvh - 32px);border-radius:16px}.legend-cms-draft-dialog::backdrop{background:#0009}.legend-cms-draft-dialog label{display:grid;gap:8px;margin:16px 0}.legend-cms-draft-dialog button{padding:10px 16px;margin-right:8px}
       .legend-cms-code-dialog{width:min(980px,calc(100vw - 32px));height:min(78dvh,760px);max-height:calc(100dvh - 32px);display:grid;grid-template-rows:auto auto minmax(220px,1fr) auto auto;gap:12px;padding:20px;border:1px solid #d4ad45;border-radius:16px;background:#081a3a;color:#f7f6f2}.legend-cms-code-dialog::backdrop{background:#000a}.legend-cms-code-dialog h2,.legend-cms-code-dialog p{margin:0}.legend-cms-code-source{width:100%;min-width:0;min-height:220px;resize:none;padding:14px;border:1px solid #50617e;border-radius:10px;background:#07152d;color:#f7f6f2;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:2}.legend-cms-code-actions{display:flex;gap:10px;justify-content:flex-end}.legend-cms-code-actions button,#legend-cms-code-group button{padding:10px 14px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;font-weight:700}
       .legend-cms-panel-toggle{position:fixed;z-index:2147483000;top:max(10px,env(safe-area-inset-top));right:10px;width:40px;height:40px;min-width:40px;min-height:40px;padding:0;display:grid;place-items:center;border:1px solid #d4ad45;border-radius:999px;background:#081a3af2;color:#fff;cursor:pointer;box-shadow:0 8px 24px #0005}
@@ -8990,6 +8992,7 @@
       @media(max-width:800px){
         html{max-width:100%;overflow-x:hidden}
         body.legend-cms-editing{width:100%;max-width:100%;overflow:hidden}
+        body.legend-cms-editing>.legend-cms-canvas{width:100%}
         .legend-cms-preview{width:100%;max-width:100%;height:100dvh;overflow-y:auto;overflow-x:hidden;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;padding-top:0}
         .legend-cms-preview>*:not(.legend-cms-grid-overlay):not(.legend-cms-selection-frame){max-width:100%;min-width:0}
         .legend-cms-panel{
@@ -9351,7 +9354,12 @@
     Array.from(document.body.children).forEach(child => {
       if (!['SCRIPT', 'STYLE'].includes(child.tagName)) preview.appendChild(child);
     });
-    document.body.appendChild(preview);
+    // Reserve the sidebar once, then center representative breakpoint caps
+    // inside that usable canvas rather than against the full document body.
+    const canvas = document.createElement('div');
+    canvas.className = 'legend-cms-canvas';
+    canvas.appendChild(preview);
+    document.body.appendChild(canvas);
     document.body.classList.add('legend-cms-editing');
 
     const panel = document.createElement('aside');

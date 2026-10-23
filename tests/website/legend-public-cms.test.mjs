@@ -1248,7 +1248,8 @@ test('public startup styling has one responsive authority and one palette author
 
 test('Website Studio canvas keeps public viewport typography and mobile controls stay inside the viewport',()=>{
   assert.ok(source.includes('body.legend-cms-editing{display:block'));
-  assert.ok(source.includes('.legend-cms-preview{width:calc(100% - min(24rem, 92vw))'));
+  assert.ok(source.includes('body.legend-cms-editing>.legend-cms-canvas{width:calc(100% - min(24rem, 92vw))'));
+  assert.ok(source.includes('.legend-cms-preview{width:100%;max-width:none;min-width:0;margin:0 auto;'));
   assert.equal(source.includes('grid-template-columns:minmax(0,1fr) minmax(20rem,24rem)'),false);
   assert.equal(publicCss.includes('@container legend-public-preview'),false);
   assert.equal(publicCss.includes('container:legend-public-preview'),false);
@@ -2630,7 +2631,8 @@ test('editor preview is horizontally locked to the rendered website at every bre
     assert.equal(preview.scrollLeft,0);
     f.w.dispatchEvent(new f.w.Event('resize'));
     assert.equal(preview.scrollLeft,0);
-    assert.match(source,/\.legend-cms-preview\{width:calc\(100% - min\(24rem, 92vw\)\);max-width:none;min-width:0;[^}]*overflow-x:clip;[^}]*touch-action:pan-y pinch-zoom/);
+    assert.match(source,/body\.legend-cms-editing>\.legend-cms-canvas\{width:calc\(100% - min\(24rem, 92vw\)\)\}/);
+    assert.match(source,/\.legend-cms-preview\{width:100%;max-width:none;min-width:0;margin:0 auto;[^}]*overflow-x:clip;[^}]*touch-action:pan-y pinch-zoom/);
     assert.match(source,/@media\(max-width:800px\)[\s\S]*?\.legend-cms-preview\{width:100%;max-width:100%;[^}]*overflow-x:hidden/);
     assert.doesNotMatch(source,/window\.innerWidth > 800/);
     assert.doesNotMatch(source,/body\.legend-cms-editing\{[^}]*grid-template/);
@@ -6322,7 +6324,9 @@ test('Protect outer geometry has one adjustable scoped default without new maski
   const shell=publicInquiryFormCss.slice(publicInquiryFormCss.indexOf('/* The eight source-backed Protect quote routes'));
   assert.match(shell,/width:var\(--web-quote-shell-width,75%\)/);
   assert.match(shell,/height:auto;min-height:0/);
-  assert.match(shell,/@media\(max-width:1023px\)/);
+  assert.match(shell,/container:protect-quote \/ inline-size/);
+  assert.match(shell,/@container protect-quote \(max-width:1023px\)/);
+  assert.doesNotMatch(shell,/@media/);
   assert.doesNotMatch(shell,/!important|overflow:\s*hidden|max-height:\s*\d/);
   assert.doesNotMatch(shell,/\.public-form|\.legend-native-experience|\.pcq-form-shell/);
   for(const key of ['life','disability','dvh']){
@@ -6332,7 +6336,7 @@ test('Protect outer geometry has one adjustable scoped default without new maski
     assert.doesNotMatch(nativeViewSources[key],/width:\s*min\(96vw,\s*1480px\)/);
   }
   assert.doesNotMatch(nativeViewSources.life,/max-width:\s*(?:980|940)px !important/);
-  assert.match(source,/body\.legend-cms-panel-hidden \.legend-cms-preview\{width:100%\}/);
+  assert.match(source,/body\.legend-cms-editing\.legend-cms-panel-hidden>\.legend-cms-canvas\{width:100%\}/);
 });
 
 
@@ -6353,15 +6357,33 @@ test('named Studio breakpoints leave canvas width with the reserved-sidebar CSS 
   const doc=canonicalDocument();doc.breakpoints.push({key:'custom',label:'Custom',minWidth:1000,maxWidth:1600,isSystem:false});
   const f=await domFixture({doc,viewportWidth:1440});
   try{
-    const canvas=f.w.document.querySelector('.legend-cms-preview');
+    const preview=f.w.document.querySelector('.legend-cms-preview');
+    const canvas=f.w.document.querySelector('body>.legend-cms-canvas');
+    const originalHeading=f.w.document.querySelector('main h1');
+    assert.equal(preview.parentElement,canvas,'one wrapper owns the sidebar-reserved available space');
+    assert.equal(f.w.getComputedStyle(preview).width,'100%');
+    assert.equal(f.w.getComputedStyle(preview).marginLeft,'auto');
+    assert.equal(f.w.getComputedStyle(preview).marginRight,'auto');
+    assert.equal(f.w.getComputedStyle(preview).overflowY,'auto','the existing preview remains the sole scroll owner');
+    assert.notEqual(f.w.getComputedStyle(canvas).overflowY,'auto');
+    f.click('main h1');
+    assert.equal(f.w.document.querySelector('#legend-cms-breakpoint').disabled,false,'exercise enabled real Layout controls');
+    const caps={desktop:'1440px',tablet:'984px',mobile:'384px',custom:'1300px',base:''};
     for(const key of ['desktop','tablet','mobile','custom','base']){
       f.change('#legend-cms-breakpoint',key);
-      assert.equal(canvas.style.width,'','named preview may cap width, never replace sidebar reservation with inline 100%');
-      if(key==='base')assert.equal(canvas.style.maxWidth,'');else assert.match(canvas.style.maxWidth,/px$/);
-      f.w.document.body.classList.add('legend-cms-panel-hidden');
-      f.change('#legend-cms-breakpoint',key);assert.equal(canvas.style.width,'');
-      f.w.document.body.classList.remove('legend-cms-panel-hidden');
+      assert.equal(preview.style.width,'','named preview may cap width, never replace available-space ownership');
+      assert.equal(preview.style.maxWidth,caps[key]);
+      assert.equal(preview.style.justifySelf,'','do not center against the full document body');
+      const state=preview.getAttribute('style');
+      f.click('#legend-cms-panel-toggle');
+      assert.equal(f.w.document.body.classList.contains('legend-cms-panel-hidden'),true);
+      assert.equal(preview.getAttribute('style'),state,'hide uses the same available-space CSS owner, not another inline sizing path');
+      f.click('#legend-cms-panel-toggle');
+      assert.equal(f.w.document.body.classList.contains('legend-cms-panel-hidden'),false);
+      assert.equal(preview.getAttribute('style'),state);
+      assert.equal(f.w.document.querySelector('main h1'),originalHeading,'canvas changes never reconstruct native content');
     }
+    assert.equal(f.calls.some(call=>call.method==='POST'),false);
   }finally{f.close();}
 });
 
@@ -6478,5 +6500,23 @@ for(const key of ['life','disability','dvh'])test('native '+key+' review builder
       return [...container.childNodes].map(visit).filter(Boolean);
     };
     assert.deepEqual(signature(shared),signature(fallback));
+  }finally{f.close();}
+});
+
+
+test('responsive audit clones never reserve a nonexistent Studio sidebar',async()=>{
+  const f=await domFixture({viewportWidth:1920});
+  try{
+    f.w.eval(nativeFunction(source,'responsiveAuditMarkup'));
+    const markup=f.w.responsiveAuditMarkup();
+    const audit=new JSDOM(markup,{url:'https://protect.test/'});
+    try{
+      const canvas=audit.window.document.querySelector('.legend-cms-canvas');
+      assert.ok(canvas);
+      assert.equal(audit.window.document.body.classList.contains('legend-cms-editing'),false);
+      assert.equal(audit.window.document.querySelector('.legend-cms-panel'),null);
+      assert.equal(audit.window.getComputedStyle(canvas).width,'100%','no editor-only sidebar reservation leaks into no-sidebar audit frames');
+      assert.notEqual(audit.window.getComputedStyle(canvas).overflowY,'auto');
+    }finally{audit.window.close();}
   }finally{f.close();}
 });

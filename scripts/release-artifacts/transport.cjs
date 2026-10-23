@@ -79,9 +79,27 @@ function retainedSummary(name, record) {
   }
 }
 
+const preflightKeys='schemaVersion,phase,originalRun,originalAttempt,applicationRevision,producingRun,producingAttempt,observer,targets,failedTarget,stage,authorizesMutation,writePhaseEntered,reason,observation';
+const preflightReasons=['provider-read-timeout','provider-read-unavailable','history-empty','provider-active','runtime-unavailable','runtime-candidate-unproven','baseline-not-ancestor','original-window-unproven','provider-history-time-unproven','newer-provider-operation','baseline-drift','preflight-authority-unproven','phase-deadline'];
+function preflightNonentry(name,record) {
+  if(!exactKeys(record,preflightKeys)||record.schemaVersion!==1||record.phase!=='preflight-nonentry'||record.stage!=='all-target-preflight'||record.authorizesMutation!==false||record.writePhaseEntered!==false||!preflightReasons.includes(record.reason)||!sha(record.applicationRevision,40)||!['originalRun','originalAttempt','producingRun','producingAttempt'].every(k=>positive(record[k]))||record.originalRun===record.producingRun||!recoveryObserver(record.observer,record.producingRun,record.producingAttempt)||!record.targets||Array.isArray(record.targets)||!Object.keys(record.targets).length||Object.keys(record.targets).length>5||typeof record.failedTarget!=='string'||!targets.includes(record.failedTarget)||!Object.hasOwn(record.targets,record.failedTarget))throw new Error('Invalid terminal preflight identity');
+  const identity={applicationRevision:record.applicationRevision,originalRun:record.originalRun,producingAttempt:record.producingAttempt,producingRun:record.producingRun};
+  if(name!=='legend-retained-preflight-nonentry-'+crypto.createHash('sha256').update(JSON.stringify(identity)).digest('hex'))throw new Error('Invalid terminal preflight name');
+  for(const [key,row] of Object.entries(record.targets))if(!targets.includes(key)||!exactKeys(row,'operationId,packageDigest,packageArtifactId,packageArtifactDigest')||!sha(row.packageDigest,64)||!positive(row.packageArtifactId)||!digest(row.packageArtifactDigest)||row.operationId!==operationIdentity(key,record.applicationRevision,row.packageDigest))throw new Error('Invalid terminal preflight material');
+  const o=record.observation;
+  if(!exactKeys(o,'historyReadComplete,historyCount,activeCount,runtimeRevision')||typeof o.historyReadComplete!=='boolean'||(o.runtimeRevision!==null&&!sha(o.runtimeRevision,40))||
+      (o.historyReadComplete?(!Number.isSafeInteger(o.historyCount)||o.historyCount<0||o.historyCount>100000||!Number.isSafeInteger(o.activeCount)||o.activeCount<0||o.activeCount>o.historyCount):(o.historyCount!==null||o.activeCount!==null)))throw new Error('Invalid terminal preflight observation');
+  if((['provider-read-timeout','provider-read-unavailable'].includes(record.reason)&&o.historyReadComplete)||
+     (record.reason==='history-empty'&&(!o.historyReadComplete||o.historyCount!==0))||
+     (record.reason==='provider-active'&&(!o.historyReadComplete||o.activeCount<1))||
+     (record.reason==='runtime-unavailable'&&o.runtimeRevision!==null)||
+     (record.reason==='runtime-candidate-unproven'&&o.runtimeRevision!==record.applicationRevision))throw new Error('Inconsistent terminal preflight observation');
+}
+
 // JSON arrives on stdin, never as an arbitrary upload path. Only the bounded
 // release operation record can be persisted; credentials cannot enter it.
 async function publish(client, name, record, {sleep = ms => new Promise(resolve => setTimeout(resolve, ms))} = {}) {
+  const preflight = /^legend-retained-preflight-nonentry-[a-f0-9]{64}$/.test(name);
   const retained = /^legend-retained-recovery-success-[a-f0-9]{64}$/.test(name);
   const completion = /^legend-release-completion-[a-f0-9]{64}$/.test(name);
   const observation = /^legend-migration-observation-[a-f0-9]{64}$/.test(name);
@@ -90,10 +108,10 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
   const child = /^legend-release-child-(intent|success)-[a-f0-9]{64}$/.test(name);
   const plan = /^legend-release-transaction-plan-[a-f0-9]{64}$/.test(name);
   const recovery = /^legend-readiness-recovery-[a-f0-9]{64}$/.test(name);
-  if (!retained && !completion && !observation && !locator && !admission && !child && !plan && !recovery && !/^legend-release-operation-(intent|success|submitted)-[a-f0-9]{64}$/.test(name))
+  if (!preflight && !retained && !completion && !observation && !locator && !admission && !child && !plan && !recovery && !/^legend-release-operation-(intent|success|submitted)-[a-f0-9]{64}$/.test(name))
     throw new Error('Invalid release operation artifact identity');
   const observationKeys = ['schemaVersion', 'phase', 'kind', 'observationIdentity', 'candidate', 'executionAuthority', 'databaseIdentity', 'schemaIdentity', 'baselineIdentity', 'observedUtc', 'pendingCount', 'mutationActivity', 'historicalExecution', 'historicalEvidenceIdentity', 'historicalReconciliationSources', 'bundleDigest', 'sqlExecutionAuthorized', 'producingRun', 'producingAttempt'];
-  const allowed = new Set(retained ? ['schemaVersion', 'phase', 'originalRun', 'originalAttempt', 'applicationRevision', 'producingRun', 'producingAttempt', 'observer', 'targets'] : completion ? ['schemaVersion', 'phase', 'originalRun', 'applicationRevision', 'producingRun', 'producingAttempt', 'observer', 'targets'] : observation ? observationKeys : locator ? ['schemaVersion', 'component', 'contentIdentity', 'runId'] : recovery ? ['schemaVersion', 'operationId', 'candidateRevision', 'executionAuthority', 'targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt', 'phase'] : plan ? ['schemaVersion', 'planId', 'candidateRevision', 'producingRun', 'producingAttempt', 'targets', 'historySnapshot'] : child ? ['schemaVersion', 'child', 'dependencyIdentity', 'materialIdentity', 'evidenceIdentity', 'partitionIdentity',
+  const allowed = new Set(preflight ? preflightKeys.split(',') : retained ? ['schemaVersion', 'phase', 'originalRun', 'originalAttempt', 'applicationRevision', 'producingRun', 'producingAttempt', 'observer', 'targets'] : completion ? ['schemaVersion', 'phase', 'originalRun', 'applicationRevision', 'producingRun', 'producingAttempt', 'observer', 'targets'] : observation ? observationKeys : locator ? ['schemaVersion', 'component', 'contentIdentity', 'runId'] : recovery ? ['schemaVersion', 'operationId', 'candidateRevision', 'executionAuthority', 'targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt', 'phase'] : plan ? ['schemaVersion', 'planId', 'candidateRevision', 'producingRun', 'producingAttempt', 'targets', 'historySnapshot'] : child ? ['schemaVersion', 'child', 'dependencyIdentity', 'materialIdentity', 'evidenceIdentity', 'partitionIdentity',
     'applicationRevision', 'executionAuthority', 'producingRun', 'producingAttempt', 'phase', 'observation'] : admission ? ['schemaVersion', 'admissionId', 'sourcePr',
     'applicationRevision', 'authorizedSourceRevision', 'packageIdentity', 'executionAuthority', 'sourceMergeSha', 'selectedTargets',
     'resources', 'authorizationMode', 'producingRun', 'producingAttempt', 'phase'] : ['schemaVersion', 'operationId', 'target', 'applicationRevision',
@@ -102,7 +120,9 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
     'providerRequestCorrelation', 'submissionContract', 'deploymentId', 'completionEvidence', 'recoveryEvidence']);
   if (!record || Object.keys(record).some(key => !allowed.has(key)) ||
       JSON.stringify(record).length > (plan ? 524288 : 32768)) throw new Error('Invalid release operation record');
-  if (retained) {
+  if (preflight) {
+    preflightNonentry(name, record);
+  } else if (retained) {
     retainedSummary(name, record);
   } else if (completion) {
     const keys = 'applicationRevision,observer,originalRun,phase,producingAttempt,producingRun,schemaVersion,targets';
@@ -249,7 +269,7 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
       ['producingRun', 'producingAttempt', 'packageProducerRun'].some(key =>
         !Number.isSafeInteger(record[key]) || record[key] < 1))
     throw new Error('Invalid release operation identity');
-  if (!retained && !completion && !observation && !locator && !recovery && !plan && !child && !admission) {
+  if (!preflight && !retained && !completion && !observation && !locator && !recovery && !plan && !child && !admission) {
     if (record.recoveryEvidence !== undefined) recoveryEvidence(record);
     if (record.completionEvidence !== undefined) {
       const proof = record.completionEvidence;

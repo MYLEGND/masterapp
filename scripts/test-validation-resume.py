@@ -5911,6 +5911,104 @@ class RecoveryTransportNonentryTests(unittest.TestCase):
             attest.return_value=False
             with self.assertRaises(m.ReleaseOperationHistoryUnproven):m.recovery_history_no_unjournaled_entry('owner/repo',self.revision,99,1,'token')
 
+class RecoveryPreflightHistoricalTests(RecoveryTransportNonentryTests):
+    def setUp(self):
+        super().setUp()
+        self.generation_patch=patch.object(m,'FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS',self.generations)
+        self.generation_patch.start();self.addCleanup(self.generation_patch.stop)
+    def log(self):
+        old=super().log();prefix=old.split('2026-10-23T10:02:00Z Traceback',1)[0]
+        rows=['Traceback (most recent call last):']
+        rows += [f'  File "/home/runner/work/repo/repo/scripts/deploy-approved-app.py", line {line}, in {name}'
+                 for line,name in [(1577,'<module>'),(1492,'main'),(1350,'recover_fast_track'),(1395,'_recover_fast_track'),(1259,'recovery_preupload_baseline')]]
+        rows += ['    states[key] = recovery_preupload_baseline(azure, original, key)',
+                 "    raise DeploymentReconciliationRequired('RECOVERY_BASELINE_NOT_IDLE_OR_UNPROVEN')",
+                 'DeploymentReconciliationRequired: RECOVERY_BASELINE_NOT_IDLE_OR_UNPROVEN',
+                 '##[error]Process completed with exit code 1.','Cleaning up orphan processes']
+        return prefix+'\n'.join('2026-10-23T10:02:00Z '+row for row in rows)
+    def parse(self,log=None):return m._recovery_preintent_log_proof(log or self.log(),self.run,self.job,self.observer,kind='preflight')
+    def test_spoofed_truncated_wrong_checkout_and_incomplete_trace_logs(self):
+        log=self.log()
+        variants=[log.split('\n',1)[1],log.rsplit('\n',1)[0],log.replace(self.tool,'f'*40),
+                  log.replace('line 1395','line 1396'),log.replace('in _recover_fast_track','in recover_target'),
+                  log.replace('states[key] = recovery_preupload_baseline(azure, original, key)','unknown'),
+                  log.replace('##[group]Run python3','unknown',1),
+                  log.replace('2026-10-23T10:02:00Z','2026-10-23T09:00:00Z',1),
+                  log+'\n2026-10-23T10:02:00Z Submitting the verified immutable ZIP once.']
+        for value in variants:
+            with self.subTest(log=value):self.assertFalse(self.invoke(log=value))
+
+class RecoveryPreflightRecordTests(unittest.TestCase):
+    def setUp(self):
+        path=Path(__file__).with_name('deploy-approved-app.py')
+        spec=importlib.util.spec_from_file_location('preflight_producer',path)
+        self.producer=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.producer)
+        fixture=RecoveryTransportNonentryTests();fixture.setUp();self.fixture=fixture
+        self.proof=json.loads(json.dumps({k:v for k,v in fixture.proof.items() if k!='state'}))
+        self.name,self.record=self.producer.recovery_preflight_nonentry_record(self.proof,'website',self.producer.RecoveryPreflightFailure('provider-read-timeout'))
+    def test_actual_producer_consumer_and_source_boundary(self):
+        self.assertEqual(m.validate_recovery_preflight_nonentry(self.record),self.name)
+        source=Path(self.producer.__file__).read_text();journal=Path(self.producer.__file__).with_name('release-operation-evidence.py').read_text()
+        self.assertTrue(m._recovery_preflight_source_contract(source,journal))
+        for bad in [source.replace("RECOVERY_PREFLIGHT_NONENTRY_CONTRACT = 'retained-recovery-preflight/v1'", "RECOVERY_PREFLIGHT_NONENTRY_CONTRACT = 'unknown'"),
+                    source.replace('name, record = recovery_preflight_nonentry_record(proof, key, failure)','name, record = unknown(proof, key, failure)'),
+                    source.replace('states[key] = recovery_preupload_baseline(azure, original, key)','azure.submit()')]:
+            self.assertFalse(m._recovery_preflight_source_contract(bad,journal))
+        self.assertFalse(m._recovery_preflight_source_contract(source,journal+'unknown'))
+    def test_mutation_authority_and_non_string_target_reject(self):
+        for field,value in [('failedTarget',['website']),('failedTarget',{}),('failedTarget',1),('authorizesMutation',True),('writePhaseEntered',True),('phase','success'),('originalRun',20),('schemaVersion',True)]:
+            bad=json.loads(json.dumps(self.record));bad[field]=value
+            with self.subTest(field=field,value=value),self.assertRaises(ValueError):m.validate_recovery_preflight_nonentry(bad)
+        bad=json.loads(json.dumps(self.record));bad['observation']['historyComplete']=False
+        with self.assertRaises(ValueError):m.validate_recovery_preflight_nonentry(bad)
+
+class RecoveryPreflightTerminalConsumerTests(RecoveryPreflightRecordTests):
+    def invoke(self,*,late=False,wrong_source=False,producer_bad=False,artifact_change=None,incomplete=False,mixed=False,closure_bad=None):
+        f=self.fixture;artifact=dict(id=99,name=self.name,expired=False,digest='sha256:'+'f'*64,
+            workflow_run=dict(id=20,head_sha=f.tool),created_at='2026-10-23T10:02:00Z')
+        if artifact_change:artifact.update(artifact_change)
+        inventory=dict(artifacts=[artifact],total_count=2 if incomplete else 1);reads=[]
+        if mixed:inventory=dict(artifacts=[artifact,dict(artifact,id=100,name='unknown-operation')],total_count=2)
+        source=Path(self.producer.__file__).read_text();journal=Path(self.producer.__file__).with_name('release-operation-evidence.py').read_text()
+        def api(repo,path,token):
+            if path=='actions/runs/20/attempts/1/jobs?per_page=100':return dict(jobs=[f.job],total_count=1)
+            self.assertEqual(path,'actions/runs/20/artifacts?per_page=100');reads.append(path)
+            return dict(artifacts=[],total_count=0)if late and len(reads)>1 else inventory
+        with patch.object(m,'_release_history_source',side_effect=lambda repo,sha,path,token:('unknown' if path==closure_bad else ('unknown' if wrong_source else source)if path.endswith('deploy-approved-app.py')else journal if path.endswith('release-operation-evidence.py')else (Path(__file__).parent/path.removeprefix('scripts/')).read_text())), \
+             patch.object(m,'fast_track_completion_original',return_value=f.original), \
+             patch.object(m,'fast_track_recovery_material',side_effect=lambda repo,o,key,t:f.materials[key]), \
+             patch.object(m,'fast_track_recovery_package_digest',return_value='d'*64), \
+             patch.object(m,'_release_history_json',return_value=self.record) as read, \
+             patch.object(m,'fast_track_recovery_producer',return_value=dict(f.observer,jobId=999)if producer_bad else f.observer), \
+             patch.object(m,'_completion_original_unchanged'),patch.object(m,'api_get',side_effect=api):
+            result=m.attested_recovery_terminal_preflight('owner/repo',f.run,f.job,1,f.revision,'token')
+            if result:self.assertTrue(read.call_args.kwargs['verify_digest'])
+            return result
+    def test_authenticated_full_consumer_positive_and_changed_final_inventory(self):
+        self.assertTrue(self.invoke());self.assertFalse(self.invoke(late=True))
+    def test_source_producer_material_and_target_bindings(self):
+        self.assertFalse(self.invoke(wrong_source=True));self.assertFalse(self.invoke(producer_bad=True))
+        for mutate in [lambda r:r.update(originalAttempt=6),lambda r:r.update(producingAttempt=2),
+                       lambda r:r['targets']['website'].update(packageArtifactId=999),lambda r:r['targets'].pop('portal'),
+                       lambda r:r['observer'].update(toolRevision='f'*40),lambda r:r.update(writePhaseEntered=True)]:
+            self.setUp();mutate(self.record)
+            with self.subTest(mutate=mutate):self.assertFalse(self.invoke())
+    def test_artifact_scope_digest_timing_and_complete_inventory(self):
+        for change in [dict(expired=True),dict(workflow_run=dict(id=99,head_sha=self.fixture.tool)),
+                       dict(workflow_run=dict(id=20,head_sha='f'*40)),dict(digest='unknown'),
+                       dict(created_at='2026-10-23T09:00:00Z'),dict(name='unknown')]:
+            with self.subTest(change=change):self.assertFalse(self.invoke(artifact_change=change))
+        self.assertFalse(self.invoke(incomplete=True));self.assertFalse(self.invoke(mixed=True))
+        for path in ['scripts/validation-resume.py','scripts/release-artifacts/transport.cjs']:self.assertFalse(self.invoke(closure_bad=path))
+        self.fixture.job['steps'].pop()
+        self.assertFalse(self.invoke())
+    def test_complete_generation_rejects_writes_anywhere_and_helper_changes(self):
+        source=Path(self.producer.__file__).read_text();journal=Path(self.producer.__file__).with_name('release-operation-evidence.py').read_text()
+        for bad in [source.replace('# Versioned terminal receipt boundary','submit_unreviewed_provider_write()\n    # Versioned terminal receipt boundary'),
+                    source.replace('        raise\n    def recover_target','        azure.submit()\n        raise\n    def recover_target'),
+                    source.replace("stage='all-target-preflight'","stage='unreviewed'"),source+'\nopen("unreviewed", "w")\n']:
+            self.assertFalse(m._recovery_preflight_source_contract(bad,journal))
+
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.
     # Synthetic planner revisions must never query the real CI repository.

@@ -578,15 +578,44 @@ function quoteGeometryValid(value, {desktop = true, expectedWidth = null, sideba
   const s=value.shell,c=value.canvas;
   if (s.x<c.x-1 || s.right>c.right+1 || value.overflow>1) return false;
   if (desktop && (Math.abs(s.width-(expectedWidth??c.width*.75))>1 || Math.abs((s.x+s.right)-(c.x+c.right))>2)) return false;
+  if (sidebar || value.editing) {
+    const usableRight=sidebar?value.panel?.x:value.viewport?.width;
+    if (!sidebar && value.panelHidden!==true) return false;
+    if (!Number.isFinite(usableRight) || !Number.isFinite(value.viewport?.width) || usableRight>value.viewport.width+1 || !rect(value.available) || !rect(value.canvasOuter)) return false;
+    if (Math.abs(value.available.x)>1 || Math.abs(value.available.right-usableRight)>1 || c.x<value.available.x-1 || c.right>value.available.right+1 || value.canvasOuter.x<value.available.x-1 || value.canvasOuter.right>value.available.right+1 || Math.abs((value.canvasOuter.x+value.canvasOuter.right)-(value.available.x+value.available.right))>2) return false;
+    if (!['','1440px','1550px'].includes(value.layout?.maxWidth) || Math.abs(value.canvasOuter.width-Math.min(value.available.width,parseFloat(value.layout.maxWidth)||value.available.width))>1) return false;
+  }
   if (sidebar && (!rect(value.panel) || (s.right>value.panel.x+1 && s.x<value.panel.right-1))) return false;
   return true;
 }
 
 test('quote geometry rejects missing, clipped, hidden, wrong-width and overlapping source components',()=>{
-  const good={shell:{x:150,y:18,width:900,height:400,right:1050,bottom:418},canvas:{x:0,y:0,width:1200,height:900,right:1200,bottom:900},panel:{x:1200,y:0,width:384,height:900,right:1584,bottom:900},style:{display:'block',visibility:'visible',opacity:'1'},overflow:0};
+  const good={shell:{x:150,y:18,width:900,height:400,right:1050,bottom:418},canvas:{x:0,y:0,width:1200,height:900,right:1200,bottom:900},panel:{x:1200,y:0,width:384,height:900,right:1584,bottom:900},style:{display:'block',visibility:'visible',opacity:'1'},canvasOuter:{x:0,y:0,width:1200,height:900,right:1200,bottom:900},available:{x:0,y:0,width:1200,height:900,right:1200,bottom:900},layout:{maxWidth:''},viewport:{width:1584,height:900},overflow:0};
   assert.equal(quoteGeometryValid(good,{sidebar:true}),true);
-  for(const change of [{shell:null},{overflow:2},{style:{...good.style,visibility:'hidden'}},{shell:{...good.shell,width:899-1}},{panel:{...good.panel,x:1000}}])assert.equal(quoteGeometryValid({...good,...change},{sidebar:true}),false);
+  for(const change of [{shell:null},{overflow:2},{style:{...good.style,visibility:'hidden'}},{shell:{...good.shell,width:899-1}},{panel:{...good.panel,x:1000}},{canvas:{...good.canvas,x:-2}},{canvas:{...good.canvas,right:1300,width:1300}},{available:null},{available:{...good.available,right:1300,width:1300}},{canvasOuter:{...good.canvasOuter,x:10,width:1190}},{canvasOuter:null},{layout:{maxWidth:'900px'}},{available:{...good.available,x:2}},{available:{...good.available,right:1198,width:1198}}])assert.equal(quoteGeometryValid({...good,...change},{sidebar:true}),false);
   assert.equal(quoteGeometryValid({...good,shell:{...good.shell,x:240,width:720,right:960}},{expectedWidth:720,sidebar:true}),true);
+  const hidden={...good,editing:true,panelHidden:true,viewport:{width:1200,height:900}};
+  assert.equal(quoteGeometryValid(hidden),true);
+  assert.equal(quoteGeometryValid({...hidden,viewport:{width:1584,height:900}}),false);
+  assert.equal(quoteGeometryValid({...hidden,panelHidden:false}),false);
+  const capped={...good,layout:{maxWidth:'1440px'},viewport:{width:1920,height:900},panel:{...good.panel,x:1536,right:1920},available:{...good.available,width:1536,right:1536},canvasOuter:{...good.canvasOuter,x:48,width:1440,right:1488},canvas:{...good.canvas,x:48,width:1425,right:1473},shell:{...good.shell,x:226.125,width:1068.75,right:1294.875}};
+  assert.equal(quoteGeometryValid(capped,{sidebar:true}),true,'Classic scrollbar client box need not share outer preview center');
+  assert.equal(quoteGeometryValid({...capped,canvasOuter:{...capped.canvasOuter,x:240,right:1680}},{sidebar:true}),false,'Whole-window-centered preview overlaps reserved sidebar');
+  const narrow={...good,viewport:{width:1214,height:900},panel:{...good.panel,x:830,right:1214},available:{...good.available,width:830,right:830},canvasOuter:{...good.canvasOuter,width:830,right:830},canvas:{...good.canvas,width:830,right:830},shell:{...good.shell,x:16,width:798,right:814},layout:{maxWidth:'1440px'}};
+  assert.equal(quoteGeometryValid(narrow,{sidebar:true,desktop:false}),true,'Named preview clamps to real available canvas');
+});
+
+function quoteBreakpointReady(state,key) {
+  const caps={base:'',desktop:'1440px','fixture-wide':'1550px'};
+  return Object.hasOwn(caps,key) && !!state && state.selected===true && state.disabled===false && state.value===key && state.maxWidth===caps[key] && state.width==='';
+}
+
+test('quote breakpoint readiness rejects disabled, unselected and stale preview states',()=>{
+  const state={selected:true,disabled:false,value:'base',maxWidth:'',width:''};
+  assert.equal(quoteBreakpointReady(state,'base'),true);
+  for(const key of ['desktop','fixture-wide']) assert.equal(quoteBreakpointReady({...state,value:key,maxWidth:key==='desktop'?'1440px':'1550px'},key),true);
+  for(const change of [{selected:false},{disabled:true},{value:'desktop'},{maxWidth:'1440px'},{width:'100%'}]) assert.equal(quoteBreakpointReady({...state,...change},'base'),false);
+  assert.equal(quoteBreakpointReady(null,'base'),false);assert.equal(quoteBreakpointReady(state,'unknown'),false);
 });
 
 function quotePhaseValid(p,index) {
@@ -682,7 +711,9 @@ const css=shell?getComputedStyle(shell):null;const outer=canvas.getBoundingClien
 const form=document.querySelector('main form[data-cms-presentation]'),visible=e=>!!(e&&e.getClientRects().length&&getComputedStyle(e).visibility==='visible'&&Number(getComputedStyle(e).opacity)>0),find=key=>document.getElementById(form?.dataset[key]||'');
 const steps=[...document.querySelectorAll('main [data-cms-native-step]')];
 const phase={selected:document.querySelector('#legend-cms-form-navigator select')?.value,entry:visible(find('cmsEntryId')),question:visible(find('cmsQuestionId')),processing:visible(find('cmsProcessingId')),contact:visible(find('cmsContactId')),review:visible(find('cmsReviewId')),steps:steps.map(n=>visible(n)),progress:find('cmsProgressId')?.textContent,labels:steps.map(n=>n.dataset.cmsProgressLabel),sample:!!find('cmsReviewId')?.querySelector('[data-cms-preview-only]'),illustrative:find('cmsReviewId')?.textContent.includes('Illustrative Studio review — not a quote'),expectedMetrics:(form?.dataset.cmsReviewMetrics||'').split('|').filter(Boolean).length,metrics:find('cmsReviewId')?.querySelectorAll('.lq-contact-preview-mini-metric,.dq-review-stat').length};
-return {phase,shell:box(shell),canvas:canvasBox,panel:box(panel),style:css?{display:css.display,visibility:css.visibility,opacity:css.opacity}:null,
+const breakpoint=document.querySelector('#legend-cms-breakpoint');
+const layout={selected:!!document.querySelector('main .legend-cms-selected[data-cms-editable="true"]'),disabled:breakpoint?.disabled,value:breakpoint?.value,width:canvas.style.width,maxWidth:canvas.style.maxWidth,justifySelf:canvas.style.justifySelf};
+return {editing:document.body.classList.contains('legend-cms-editing'),layout,phase,canvasOuter:box(canvas),available:box(document.querySelector('.legend-cms-canvas')),shell:box(shell),canvas:canvasBox,panel:box(panel),style:css?{display:css.display,visibility:css.visibility,opacity:css.opacity}:null,
 overflow:Math.max(0,canvas.scrollWidth-canvas.clientWidth),viewport:{width:innerWidth,height:innerHeight},
 errors:window.__quoteErrors,requests:window.__quoteRequests,inputDocumentUnchanged:JSON.stringify(window.__quoteDocumentObject)===window.__quoteDocument,
 identity:(window.__quoteOriginalNodes||[]).every(n=>n.isConnected),duplicateIds:[...document.querySelectorAll('main [id]')].map(n=>n.id).filter((id,i,a)=>a.indexOf(id)!==i).slice(0,10),
@@ -1046,8 +1077,25 @@ test('actual canonical frontend components render in the existing sandboxed CI b
       assert.equal(value.inputDocumentUnchanged,true,'Offline input document object changed (internal CMS preservation covered by website contract suite)');assert.equal(value.identity,true,'Native form/media node identity replaced');
       assert.deepEqual(value.duplicateIds,[],'Duplicate native IDs after reapply');assert.equal(value.nativeSteps,5);
       assert.ok(value.images.length>0&&value.images.every(i=>i.loaded),'Actual native banner assets required');
-      quoteRecords.push({label,shell:value.shell,canvas:value.canvas,panel:value.panel,viewport:value.viewport,requestCount:value.requests.length});
+      quoteRecords.push({label,layout:value.layout,available:value.available,canvasOuter:value.canvasOuter,shell:value.shell,canvas:value.canvas,panel:value.panel,viewport:value.viewport,requestCount:value.requests.length});
       return value;
+    };
+    let selectedQuoteNode;
+    const selectQuoteContent=async()=>{
+      // Discover real noninteractive native title/copy, then use WebDriver's
+      // pointer click. The shipped selection owner may select its editable parent.
+      const found=await execute(`const nodes=[...document.querySelectorAll('main h1,main h2,main h3,main h4,main h5,main h6,main .lq-hero-step-copy-title,main .lq-contact-capture-title,main .dq-contact-title,main .lq-step-title')];const n=nodes.find(e=>e.closest('[data-cms-editable="true"]')&&!e.closest('[hidden],[inert],[aria-hidden="true"],[data-cms-preview-only]')&&e.getClientRects().length&&getComputedStyle(e).visibility==='visible'&&Number(getComputedStyle(e).opacity)>0);return n?{node:n,target:n.closest('[data-cms-editable="true"]')}:null;`);
+      assert.ok(found,'Actual selectable native title missing');
+      await command('POST','/session/'+session+'/element/'+found.node['element-6066-11e4-a52e-4f735466cecf']+'/click',{});
+      selectedQuoteNode=found.target;
+      assert.equal(await execute('return arguments[0].isConnected && arguments[0]===document.querySelector("main .legend-cms-selected")',[selectedQuoteNode]),true,'Native click did not select the exact discovered content owner');
+      await waitFor(`document.querySelector('#legend-cms-breakpoint')?.disabled===false`);
+    };
+    const verifyBreakpoint=async(key,label)=>{
+      assert.equal(await execute('return arguments[0]?.isConnected && arguments[0]===document.querySelector("main .legend-cms-selected")',[selectedQuoteNode]),true,'Selected native content identity changed');
+      try {await waitFor(`(${quoteBreakpointReady.toString()})((()=>{const b=document.querySelector('#legend-cms-breakpoint'),c=document.querySelector('.legend-cms-preview');return {selected:!!document.querySelector('main .legend-cms-selected[data-cms-editable="true"]'),disabled:b?.disabled,value:b?.value,width:c?.style.width,maxWidth:c?.style.maxWidth};})(),${JSON.stringify(key)})`);} catch(error) {quoteDiagnostic={label,...await execute(quoteSnapshotScript)};throw error;}
+      const value=await execute(quoteSnapshotScript);quoteDiagnostic={label,...value};
+      assert.ok(quoteBreakpointReady(value.layout,key),'Unverified quote breakpoint: '+JSON.stringify(quoteDiagnostic));
     };
     const publicAtCanvas=async(route,targetWidth,label)=>{
       await metrics(Math.round(targetWidth));await quoteGo(route,'?public=1');
@@ -1083,19 +1131,28 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     for(const route of ['/quote/life','/quote/disability','/quote/dental-vision-hearing']){
       for(const width of [1920,1214]){
         await metrics(width);await quoteGo(route,'?legendEdit=ticket');
+        await selectQuoteContent();await verifyBreakpoint('base',route+':'+width+':base-ready');
         const before=await inspectQuote(route+':'+width+':base',{desktop:width-384>=1024,sidebar:true});
         await click('[data-editor-viewport="desktop"]');
+        await verifyBreakpoint('desktop',route+':'+width+':desktop-ready');
         await inspectQuote(route+':'+width+':desktop',{desktop:before.canvas.width>=1024,sidebar:true});
         await click('#legend-cms-form-navigator select option[value="8"]');
+        await selectQuoteContent();
         await click('[data-open="advanced"]');await click('[data-open="layout"]');
         await click('#legend-cms-breakpoint option[value="fixture-wide"]');
+        await verifyBreakpoint('fixture-wide',route+':'+width+':named-ready');
         await inspectQuote(route+':'+width+':named',{desktop:before.canvas.width>=1024,sidebar:true});
         await click('#legend-cms-breakpoint option[value="base"]');
+        await verifyBreakpoint('base',route+':'+width+':base-restored-ready');
+        const baseRestored=await inspectQuote(route+':'+width+':base-restored',{desktop:before.canvas.width>=1024,sidebar:true});
+        assert.ok(Math.abs(baseRestored.shell.width-before.shell.width)<=1,'Returning to verified Base changed source shell width');
         await click('#legend-cms-panel-toggle');
+        await verifyBreakpoint('base',route+':'+width+':hidden-base-ready');
         const hidden=await inspectQuote(route+':'+width+':sidebar-hidden',{desktop:true});assert.equal(hidden.panelHidden,true);
         await click('#legend-cms-panel-toggle');
+        await verifyBreakpoint('base',route+':'+width+':restored-base-ready');
         const restored=await inspectQuote(route+':'+width+':sidebar-restored',{desktop:before.canvas.width>=1024,sidebar:true});
-        assert.ok(Math.abs(restored.shell.width-before.shell.width)<=1,'Sidebar toggle changed source shell width');
+        assert.ok(Math.abs(restored.shell.width-baseRestored.shell.width)<=1,'Sidebar toggle changed source shell width');
         const publicValue=await publicAtCanvas(route,before.canvas.width,route+':'+width+':equal-canvas-public');
         assert.ok(Math.abs(publicValue.shell.width-before.shell.width)<=1,'Public/Studio equal-canvas responsive width differs');
       }
