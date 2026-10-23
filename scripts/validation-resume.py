@@ -512,6 +512,15 @@ FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS = ({'.github/workflows/legend-fast-tra
 
 FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS = ({'.github/workflows/legend-fast-track-ui.yml': 'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd', 'scripts/deploy-approved-app.py': 'a4f1ff6424123fd00f61cf24550c970f544ce25247e1a1a2f755e47f18bdc917', 'scripts/release-operation-evidence.py': '506796abeadfd87f09236f74ca8c79a496a1c5b813f1191d0f0ce39cf5a9483d', 'scripts/validation-resume.py': '5617f2173b30626d14a5b5efbae182aadc065e707d9ffe2667fa81002303cfb1', 'scripts/release-artifacts/transport.cjs': '9feb936ada29c549c55d876c9112ef6b9b096a1114c2f07ef199b1ce6cb55e44'},)
 
+FAST_TRACK_RECOVERY_TARGET_READ_GENERATIONS = ({
+    '.github/workflows/legend-fast-track-ui.yml': 'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd',
+    'scripts/deploy-approved-app.py': '15ba27c53564223cb41502bb5528949e6435f0e6bccd56a8daea994536dfaa38',
+    'scripts/release-operation-evidence.py': '506796abeadfd87f09236f74ca8c79a496a1c5b813f1191d0f0ce39cf5a9483d',
+    'scripts/validation-resume.py': '13e4765e67eba52cdac0cf8294dee4a703a82ce672052f6990d9841a997bee44',
+    'scripts/release-artifacts/transport.cjs': 'f1b22bcc777114af2437280ee71550555d6b8e2d1701964915eb76de28248557',
+},)
+
+
 def _recovery_preintent_log_proof(log, run, job, observer, *, kind='serializer'):
     """Only authenticated full logs of the pinned pre-transport rejection flow."""
     import datetime
@@ -561,6 +570,35 @@ def _recovery_preintent_log_proof(log, run, job, observer, *, kind='serializer')
         or run.get('display_title') != 'LEGEND retained recovery original=' + str(proof['originalRun']) + ' application=' + str(proof['applicationRevision'])):
         raise ValueError('RECOVERY_PREINTENT_MATERIAL_LOG_CHANGED')
     events = [text for stamp, text in rows if step_start <= stamp <= step_end + datetime.timedelta(seconds=1)]
+    if kind == 'target-read':
+        terminal = 'DeploymentStatusUnavailable: Azure deployment status unavailable within the bounded read wall budget deadline (before any upload). No deployment or rollback write was replayed; reconcile the exact revision.'
+        rejected = "subprocess.TimeoutExpired: Command '['az', 'webapp', 'log', 'deployment', 'list', '-g', 'masterapp-rg', '-n', 'masterapp-website', '--only-show-errors', '-o', 'json']' timed out after 39 seconds"
+        cause = 'The above exception was the direct cause of the following exception:'
+        if (events.count(terminal) != 1 or clean.count(terminal) != 1 or events.count(rejected) != 1 or clean.count(rejected) != 1
+            or events.count('Traceback (most recent call last):') != 2 or events.count(cause) != 1
+            or events.count('##[error]Process completed with exit code 1.') != 1
+            or any(marker in clean for marker in ['Submitting the verified immutable ZIP once.', 'AZURE_TRACKED_DEPLOYMENT_REFERENCE:'])):
+            raise ValueError('RECOVERY_TARGET_READ_TERMINAL_UNPROVEN')
+        traces = [i for i, text in enumerate(events) if text == 'Traceback (most recent call last):']
+        if not (traces[0] < events.index(rejected) < events.index(cause) < traces[1] < events.index(terminal)
+                < events.index('##[error]Process completed with exit code 1.')) or clean.index('Cleaning up orphan processes') < clean.index(terminal):
+            raise ValueError('RECOVERY_TARGET_READ_ORDER')
+        frames = re.findall(r'  File "([^"\n]+)", line ([0-9]+), in ([^\n]+)', '\n'.join(events))
+        normalized = [(path.split('/scripts/', 1)[1] if '/scripts/' in path else path, line, fn) for path, line, fn in frames]
+        expected = [('deploy-approved-app.py', '124', 'read_deployments_bounded'), ('deploy-approved-app.py', '1444', 'deployments'),
+            ('deploy-approved-app.py', '175', 'deployments'), ('deploy-approved-app.py', '148', 'deployment_read_process'),
+            ('/usr/lib/python3.12/subprocess.py', '1209', 'communicate'), ('/usr/lib/python3.12/subprocess.py', '2116', '_communicate'),
+            ('/usr/lib/python3.12/subprocess.py', '1253', '_check_timeout'), ('deploy-approved-app.py', '1706', '<module>'),
+            ('deploy-approved-app.py', '1621', 'main'), ('deploy-approved-app.py', '1464', 'recover_fast_track'),
+            ('deploy-approved-app.py', '1566', '_recover_fast_track'), ('/usr/lib/python3.12/concurrent/futures/_base.py', '449', 'result'),
+            ('/usr/lib/python3.12/concurrent/futures/_base.py', '401', '__get_result'), ('/usr/lib/python3.12/concurrent/futures/thread.py', '58', 'run'),
+            ('deploy-approved-app.py', '1556', 'recover_target'), ('deploy-approved-app.py', '501', 'reconcile'),
+            ('deploy-approved-app.py', '138', 'read_deployments_bounded')]
+        if normalized != expected or sum(text.startswith('  File ') for text in events) != len(expected):
+            raise ValueError('RECOVERY_TARGET_READ_SOURCE_CHAIN')
+        if events.count('    rows = read_deployments_bounded(') != 1 or events.count('    result = reconcile(azure, baseline=journal.baseline, journal=journal,') != 1:
+            raise ValueError('RECOVERY_TARGET_READ_BOUNDARY')
+        return proof
     if kind == 'target-deadline':
         rejected='RecoveryPhaseDeadline: RECOVERY_PHASE_DEADLINE_HOLD_RECONCILE_ONLY'
         terminal='DeploymentSubmissionNotEntered: Durable upload intent could not be proven; no write authorized'
@@ -650,16 +688,25 @@ def attested_recovery_preintent_failure(repository, run, job, attempt, revision,
             return False
         source = {path: hashlib.sha256(_release_history_source(repository,run['head_sha'],path,token).encode()).hexdigest()
                   for path in FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS[0]}
-        if source not in FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS + FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS + FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS:
+        if source not in FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS + FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS + FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS + FAST_TRACK_RECOVERY_TARGET_READ_GENERATIONS:
+            return False
+        target_read = source in FAST_TRACK_RECOVERY_TARGET_READ_GENERATIONS
+        target_scoped = target_read or source in FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS
+        if target_read and (repository != 'MYLEGND/masterapp' or run['id'] != 40012751935 or attempt != 1
+            or run['run_attempt'] != 1 or job['id'] != 120617015463
+            or run['head_sha'] != '3460c10cebf9e0aa247604991a607eafaa047014' or target != 'website'
+            or revision != '38756300c87073e5a52a9153046aa09ebe803024'):
             return False
         # An uncertain or retained artifact is NOT erased by a terminal log.
         if _completion_inventory(api_get(repository,f"actions/runs/{run['id']}/artifacts?per_page=100",token),'artifacts'):
             return False
         proof = _recovery_preintent_log_proof(_release_job_log(repository,job['id'],token),run,job,observer,
-            kind='target-deadline' if source in FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS else 'preflight' if source in FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS else 'serializer')
+            kind='target-read' if target_read else 'target-deadline' if target_scoped else 'preflight' if source in FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS else 'serializer')
         if proof['applicationRevision'] != revision:
             return False
         original = fast_track_completion_original(repository,proof['originalRun'],revision,token)
+        if target_read and (proof['originalRun'] != 39960308664 or proof['originalAttempt'] != 5 or set(proof['targets']) != set(RELEASE_TARGETS)):
+            return False
         if (not isinstance(proof['targets'],dict) or not 1 <= proof['originalAttempt'] <= original['run']['run_attempt']
             or set(proof['targets']) != set(original['targets'])):
             return False
@@ -674,7 +721,7 @@ def attested_recovery_preintent_failure(repository, run, job, attempt, revision,
             # Existing authenticated original intents bind their package digest;
             # otherwise independently restore/check the original immutable ZIP.
             intent = material['originalIntent']
-            if source in FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS:
+            if target_scoped:
                 if intent is None:held.append(key)
                 elif fast_track_completion_material(repository,original,key,token)['intent'] != intent:return False
             digest = intent['packageDigest'] if intent is not None else fast_track_recovery_package_digest(repository,original,material,key,token)
@@ -685,8 +732,8 @@ def attested_recovery_preintent_failure(repository, run, job, attempt, revision,
                 return False
             if row['packageDigest'] != digest or row['operationId'] != operation:
                 return False
-        if source in FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS and (held!=[target] or proof['targets'][target]['operationId']!=operation_id):return False
-        if source in FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS and _completion_inventory(api_get(repository,f"actions/runs/{original['run']['id']}/artifacts?per_page=100",token),'artifacts')!=original['artifacts']:return False
+        if target_scoped and (held!=[target] or proof['targets'][target]['operationId']!=operation_id):return False
+        if target_scoped and _completion_inventory(api_get(repository,f"actions/runs/{original['run']['id']}/artifacts?per_page=100",token),'artifacts')!=original['artifacts']:return False
         _completion_original_unchanged(repository, original['run'], token)
         _completion_original_unchanged(repository, run, token)
         if _completion_inventory(api_get(repository,f"actions/runs/{run['id']}/artifacts?per_page=100",token),'artifacts'):
@@ -754,8 +801,16 @@ RECOVERY_PREFLIGHT_PRODUCER_SHA256 = '15ba27c53564223cb41502bb5528949e6435f0e6bc
 
 def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
-    return (hashlib.sha256(source.encode()).hexdigest()==RECOVERY_PREFLIGHT_PRODUCER_SHA256
+    return (hashlib.sha256(source.encode()).hexdigest() in (RECOVERY_PREFLIGHT_PRODUCER_SHA256, 'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850')
         and hashlib.sha256(journal_source.encode()).hexdigest()=='506796abeadfd87f09236f74ca8c79a496a1c5b813f1191d0f0ce39cf5a9483d')
+
+
+def _recovery_receipt_source_closure(repository, revision, token):
+    paths = ('scripts/deploy-approved-app.py', 'scripts/validation-resume.py', 'scripts/release-artifacts/transport.cjs')
+    source = {path: hashlib.sha256(_release_history_source(repository, revision, path, token).encode()).hexdigest() for path in paths}
+    current = {path: hashlib.sha256((Path(__file__).parent / path.removeprefix('scripts/')).read_bytes()).hexdigest() for path in paths}
+    previous = {path: FAST_TRACK_RECOVERY_TARGET_READ_GENERATIONS[0][path] for path in paths}
+    return source in (current, previous)
 
 
 def attested_recovery_terminal_preflight(repository, run, job, attempt, revision, token):
@@ -769,9 +824,7 @@ def attested_recovery_terminal_preflight(repository, run, job, attempt, revision
         if not _recovery_preflight_source_contract(_release_history_source(repository,run['head_sha'],'scripts/deploy-approved-app.py',token),_release_history_source(repository,run['head_sha'],'scripts/release-operation-evidence.py',token)):return False
         # The promoted observer must recognize the complete producer authority
         # and transport generation, not merely the outer deployment function.
-        for relative in ('validation-resume.py','release-artifacts/transport.cjs'):
-            local=Path(__file__).parent / relative
-            if _release_history_source(repository,run['head_sha'],'scripts/'+relative,token)!=local.read_text():return False
+        if not _recovery_receipt_source_closure(repository, run['head_sha'], token):return False
         original=fast_track_completion_original(repository,int(match[1]),revision,token)
         expected={}
         for key in original['targets']:
@@ -862,8 +915,7 @@ def attested_recovery_target_hold(repository, run, job, attempt, revision, token
             or job.get('conclusion')!='failure' or job.get('run_id')!=run['id'] or job.get('run_attempt')!=attempt
             or job.get('head_sha')!=run['head_sha'] or job.get('name')!=FAST_TRACK_RECOVERY_JOB):return False
         if not _recovery_preflight_source_contract(_release_history_source(repository,run['head_sha'],'scripts/deploy-approved-app.py',token),_release_history_source(repository,run['head_sha'],'scripts/release-operation-evidence.py',token)):return False
-        for relative in ('validation-resume.py','release-artifacts/transport.cjs'):
-            if _release_history_source(repository,run['head_sha'],'scripts/'+relative,token)!=(Path(__file__).parent/relative).read_text():return False
+        if not _recovery_receipt_source_closure(repository, run['head_sha'], token):return False
         match=re.fullmatch(r'LEGEND retained recovery original=([1-9][0-9]*) application=([a-f0-9]{40})',run.get('display_title',''))
         if not match or match[2]!=revision:return False
         original=fast_track_completion_original(repository,int(match[1]),revision,token)

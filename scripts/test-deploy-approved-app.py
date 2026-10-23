@@ -611,6 +611,34 @@ class AzureDeploymentObservationTests(unittest.TestCase):
         return response
 
 
+class RecoveryInitialReadHoldTests(unittest.TestCase):
+    def run_failure(self, *, inherited=False, no_journal=False, publication_failure=False, after_submit=False, failure=None):
+        from types import SimpleNamespace
+        azure = FakeAzure([[]], [False])
+        journal = SimpleNamespace(baseline=None, intent={'baselineDeploymentIds': []} if inherited else None)
+        failure = failure or deploy.DeploymentStatusUnavailable('read unavailable')
+        callback = Mock(side_effect=RuntimeError('ambiguous publication') if publication_failure else None)
+        def before_submit(ids, **kwargs):
+            journal.intent = {'baselineDeploymentIds': ids}
+            return True
+        journal.before_submit = before_submit
+        journal.submission_correlation = lambda: CORRELATION
+        journal.submission_contract = lambda: None
+        reads = [[], failure] if after_submit else failure
+        with patch.object(deploy, 'read_deployments_bounded', side_effect=reads), self.assertRaises(type(failure)) as raised:
+            azure.run(journal=None if no_journal else journal, require_receipt=False, before_intent_read_failure=callback)
+        self.assertIs(raised.exception, failure)
+        self.assertEqual(callback.call_count, 0 if inherited or no_journal or after_submit or not isinstance(failure, deploy.DeploymentStatusUnavailable) else 1)
+        self.assertEqual(azure.uploads, 1 if after_submit else 0)
+        if not after_submit:self.assertEqual(azure.preparations, 0)
+    def test_initial_read_failure_calls_once_without_entering_intent(self):self.run_failure()
+    def test_inherited_intent_never_emits_nonentry(self):self.run_failure(inherited=True)
+    def test_no_journal_never_emits_nonentry(self):self.run_failure(no_journal=True)
+    def test_ambiguous_hold_publication_preserves_original_failure(self):self.run_failure(publication_failure=True)
+    def test_after_submission_never_emits_nonentry(self):self.run_failure(after_submit=True)
+    def test_drift_is_not_a_read_hold(self):self.run_failure(failure=deploy.DeploymentDrift('drift'))
+
+
 class ReconciliationTests(unittest.TestCase):
     def test_matching_live_revision_without_artifact_proof_blocks_without_upload(self):
         azure = FakeAzure([[row('old', 4)]], [True])
@@ -3146,7 +3174,7 @@ class RetainedRecoveryConsumerTests(unittest.TestCase):
             download.assert_not_called();azure.assert_not_called();process.assert_not_called()
 
 class RetainedRecoveryIntegratedTests(unittest.TestCase):
-    def run_case(self, *, entered=False, race=False, expired=False, preflight_failure=False, publication_failure=False):
+    def run_case(self, *, entered=False, race=False, expired=False, preflight_failure=False, publication_failure=False, read_failure=False):
         from types import SimpleNamespace
         authority=deploy._RELEASE_AUTHORITY
         observer=dict(runId=20,runAttempt=1,jobId=30,toolRevision='b'*40,promotionRunId=19)
@@ -3171,6 +3199,11 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
         def reconcile(azure,**kwargs):
             events.append(('reconcile_only',kwargs['reconcile_only']))
             self.assertLessEqual(kwargs['timeout'],420)
+            if read_failure:
+                failure = deploy.DeploymentStatusUnavailable('bounded read unavailable')
+                failure.__cause__ = subprocess.TimeoutExpired('az', 39)
+                kwargs['before_intent_read_failure'](failure)
+                raise failure
             if kwargs['journal'].before_submit():events.append('upload')
             return 'preserved' if entered else 'deployed'
         def download(repo,run,name,directory,**kwargs):
@@ -3208,6 +3241,17 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
                 self.assertFalse(record['authorizesMutation']);self.assertFalse(record['writePhaseEntered'])
                 self.assertEqual(record['failedTarget'],'website')
                 self.assertLessEqual(owner.publish_record.call_args.kwargs['timeout'],180)
+            elif read_failure:
+                with self.assertRaises(deploy.DeploymentStatusUnavailable):deploy.recover_fast_track(10,'a'*40,root)
+                self.assertEqual(events, [('reconcile_only', False)])
+                owner.publish_record.assert_called_once()
+                name, record = owner.publish_record.call_args.args
+                self.assertEqual(authority.validate_recovery_target_preintent(record), name)
+                self.assertEqual(record['reason'], 'provider-read-timeout')
+                self.assertEqual(record['observation'], dict(historyReadComplete=False, historyCount=None, activeCount=None, runtimeRevision=None))
+                self.assertFalse(record['targetWritePhaseEntered']);self.assertFalse(record['authorizesMutation'])
+                self.assertNotIn('writePhaseEntered', record)
+                self.assertLessEqual(owner.publish_record.call_args.kwargs['timeout'], 180)
             elif race:
                 with self.assertRaises(deploy.DeploymentReconciliationRequired):deploy.recover_fast_track(10,'a'*40,root)
                 self.assertNotIn('upload',events);self.assertNotIn('intent',events)
@@ -3221,6 +3265,7 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
                 self.assertIn(('reconcile_only',entered),events)
                 self.assertEqual(baseline.call_count,0 if entered else 2)
     def test_original_immutable_package_first_write_after_fresh_barriers(self):self.run_case()
+    def test_worker_read_failure_emits_target_only_receipt(self):self.run_case(read_failure=True)
     def test_existing_intent_never_reuploads_or_rebases(self):self.run_case(entered=True)
     def test_newly_appeared_intent_holds_before_write(self):self.run_case(race=True)
 
