@@ -10,7 +10,7 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "79d5aeeb2fec0a1548411cb6fdd7a5643c67a598",
-    "sourceRevision": "aea7491324eea4fe802549553164d9a42ede55e5",
+    "sourceRevision": "e6b548019457797ba738cf56557090ba690cb5cc",
     "files": {
       "scripts/validation-resume.py": {
         "mode": "100644",
@@ -26,7 +26,7 @@
       },
       "scripts/test-deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "e256f41b323a79089deafc3d362bba8a94c03d1e"
+        "blob": "b75b7f332104ab9c92505ed77194eb10dbc63bea"
       }
     }
   }
