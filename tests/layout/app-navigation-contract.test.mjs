@@ -63,6 +63,8 @@ test('booking and CRM dialogs name their existing headings; badge uses explicit 
   }
   const badge=readFileSync(join(ROOT,'AgentPortal/Views/FounderEngineering/Index.cshtml'),'utf8');
   assert.match(badge,/<strong>v@\(Model.Version\)<\/strong>/);
+  assert.match(badge,/<strong>v@\(revision.Version\)<\/strong>/);
+  assert.doesNotMatch(badge, /v@(?:Model|revision)\.Version/);
 });
 
 function walk(dir, suffix) {

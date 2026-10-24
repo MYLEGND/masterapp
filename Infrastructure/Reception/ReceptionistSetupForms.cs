@@ -6,6 +6,12 @@ namespace Infrastructure.Reception;
 /// <summary>Owner setup edits known configuration fields while retaining other saved configuration members.</summary>
 public static class ReceptionistSetupForms
 {
+    // Presentation eligibility only: retain the existing button behavior. The owner setter and
+    // every actual incoming call still enforce their own fresh canonical server checks.
+    public static bool CanAllowOwnerPermission(ReceptionistConfigurationSnapshot snapshot) =>
+        snapshot.BindingAccepted && snapshot.Accounting is
+            { CurrentOpeningReconciled: true, AdmissionEnabled: true, PolicyLimitsAccepted: true };
+
     public static ReceptionistSetupInput Read(ReceptionistConfigurationSnapshot snapshot)
     {
         var config = snapshot.Configuration ?? new ReceptionistBusinessConfiguration();

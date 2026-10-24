@@ -7,7 +7,8 @@
     var settings = Model.Input;
     var snapshot = Model.Snapshot;
     var accounting = snapshot.Accounting;
-    var canEnable = snapshot.BindingAccepted && accounting is { CurrentOpeningReconciled: true, AdmissionEnabled: true, PolicyLimitsAccepted: true };
+    var recordedCurrency = snapshot.Configuration?.Currency ?? "currency unknown";
+    var readiness = Model.Readiness ?? new Shared.Analytics.ReceptionistReadinessProjection();
     string Amount(decimal value) => value.ToString(CultureInfo.InvariantCulture);
 }
 <section class="dashboard-page-shell py-4">
@@ -23,15 +24,27 @@
     <section class="dashboard-surface-panel p-3 mb-4" aria-labelledby="receptionist-call-status">
         <h2 class="dashboard-section-title mb-3" id="receptionist-call-status">Call status</h2>
         <dl class="row mb-2">
-            <dt class="dashboard-stat-label col-sm-4">New calls</dt><dd class="col-sm-8">@(snapshot.AdmissionEnabled ? "Enabled, subject to verified funding, hours and limits" : "Paused")</dd>
-            <dt class="dashboard-stat-label col-sm-4">Current settings</dt><dd class="col-sm-8">@(snapshot.ConfigurationId.HasValue ? $"Version {snapshot.ConfigurationVersion}" : "No saved version")</dd>
-            <dt class="dashboard-stat-label col-sm-4">Provider and inquiry setup</dt><dd class="col-sm-8">@(snapshot.BindingAccepted ? "Verified for this version" : "Verification required")</dd>
-            <dt class="dashboard-stat-label col-sm-4">Spending controls</dt><dd class="col-sm-8">@(accounting is { CurrentOpeningReconciled: true, PolicyLimitsAccepted: true } ? "Current opening and limits verified" : "Reconciliation and approval required")</dd>
+            <dt class="dashboard-stat-label col-sm-4">Owner permission</dt><dd class="col-sm-8">@(readiness.OwnerPermissionEnabled is true ? "Allowed when ready" : readiness.OwnerPermissionEnabled is false ? "Paused" : "Unknown — reload to verify")</dd>
+            <dt class="dashboard-stat-label col-sm-4">Call readiness</dt><dd class="col-sm-8">@readiness.CallReadiness</dd>
+            <dt class="dashboard-stat-label col-sm-4">Control-plane runtime</dt><dd class="col-sm-8">@readiness.RuntimeState</dd>
+            <dt class="dashboard-stat-label col-sm-4">Settings version shown</dt><dd class="col-sm-8">@(snapshot.ConfigurationId.HasValue ? $"Version {snapshot.ConfigurationVersion}" : "No saved version")</dd>
+            <dt class="dashboard-stat-label col-sm-4">Accepted binding scope</dt><dd class="col-sm-8">@readiness.BindingScope.Replace('_', ' ')</dd>
+            <dt class="dashboard-stat-label col-sm-4">Application test window</dt><dd class="col-sm-8">@readiness.ApplicationWindowState.Replace('_', ' ')</dd>
+            <dt class="dashboard-stat-label col-sm-4">Observed admission check</dt><dd class="col-sm-8">@readiness.AdmissionReason.Replace('_', ' ')</dd>
+            <dt class="dashboard-stat-label col-sm-4">Current carrier route</dt><dd class="col-sm-8">@readiness.CarrierRouteState; @(readiness.CarrierRouteObservedUtc?.ToString("u") ?? "no verified observation")</dd>
+            <dt class="dashboard-stat-label col-sm-4">Restricted AI call acceptance</dt><dd class="col-sm-8">@readiness.RestrictedAiAcceptanceState</dd>
+            <dt class="dashboard-stat-label col-sm-4">Public AI call acceptance</dt><dd class="col-sm-8">@readiness.PublicAiAcceptanceState</dd>
+            <dt class="dashboard-stat-label col-sm-4">Open call records</dt><dd class="col-sm-8">@(readiness.OpenCalls?.ToString() ?? "unknown")</dd>
+            <dt class="dashboard-stat-label col-sm-4">Open without a current stop condition</dt><dd class="col-sm-8">@(readiness.OpenCallsWithoutStopCondition?.ToString() ?? "unknown") — not verified live call activity</dd>
+            <dt class="dashboard-stat-label col-sm-4">Awaiting stop or provider closure</dt><dd class="col-sm-8">@(readiness.AwaitingStopOrClosure?.ToString() ?? "unknown")</dd>
+            <dt class="dashboard-stat-label col-sm-4">Observed at (UTC)</dt><dd class="col-sm-8">@(readiness.ObservedUtc?.ToString("u") ?? "unknown")</dd>
         </dl>
-        @if (accounting is not null)
+        <p class="dashboard-section-copy mb-3">Owner permission is not runtime readiness. A valid application test window is not proof of a restricted carrier route or successful two-way AI audio. These read-only observations do not reserve capacity; every incoming call is checked again.</p>
+        @if (accounting is not null && readiness.OwnerPermissionEnabled is not null)
         {
-            <p class="dashboard-section-copy mb-3">Cash committed: @accounting.CashCommitted.ToString("0.00") @settings.Currency; reserved for unresolved calls: @accounting.CashReserved.ToString("0.00") @settings.Currency.<br />
-            Service consumption committed: @accounting.ConsumptionCommitted.ToString("0.00") @settings.Currency; reserved: @accounting.ConsumptionReserved.ToString("0.00") @settings.Currency.</p>
+            <p class="dashboard-section-copy mb-3">Owner-account snapshot — recorded amounts, not current call funding eligibility.<br />
+            Cash committed: @accounting.CashCommitted.ToString("0.00") @recordedCurrency; reserved for unresolved calls: @accounting.CashReserved.ToString("0.00") @recordedCurrency.<br />
+            Service consumption committed: @accounting.ConsumptionCommitted.ToString("0.00") @recordedCurrency; reserved: @accounting.ConsumptionReserved.ToString("0.00") @recordedCurrency.</p>
         }
         @if (snapshot.ConfigurationId.HasValue)
         {
@@ -39,7 +52,8 @@
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="ExpectedRevision" value="@snapshot.ConnectionRevision" />
                 <input type="hidden" name="Enabled" value="@(!snapshot.AdmissionEnabled ? "true" : "false")" />
-                <button class="btn dashboard-command-action @(snapshot.AdmissionEnabled ? "btn-clear-search" : "btn-carrier-settings")" type="submit" disabled="@(!snapshot.AdmissionEnabled && !canEnable)">@(snapshot.AdmissionEnabled ? "Pause calls now" : "Enable verified calls")</button>
+                <button class="btn dashboard-command-action @(snapshot.AdmissionEnabled ? "btn-clear-search" : "btn-carrier-settings")" type="submit" disabled="@(!snapshot.AdmissionEnabled && !readiness.CanAllowOwnerPermission)">@(snapshot.AdmissionEnabled ? "Pause receptionist permission" : "Allow calls when ready")</button>
+                <p class="dashboard-section-copy mt-2 mb-0">Pausing permission fences further dialogue and business actions through the existing stop handling; it does not promise an instantaneous provider hangup.</p>
             </form>
         }
     </section>

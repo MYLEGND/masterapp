@@ -372,8 +372,10 @@
     }
     surface.dispatchEvent(new CustomEvent("legend:modal-close", { bubbles: true }));
     surface.classList.remove("open", "show");
-    surface.setAttribute("aria-hidden", "true");
-    if (!surface.matches("[data-legend-mobile-sheet]")) surface.hidden = true;
+    // Sheets own an explicit aria lifecycle; other custom surfaces reopen by
+    // clearing hidden. Do not introduce aria state their owner cannot clear.
+    if (surface.matches("[data-legend-mobile-sheet]")) surface.setAttribute("aria-hidden", "true");
+    else surface.hidden = true;
     syncModalSurfaceState(surface);
   }
 
@@ -654,10 +656,12 @@
     const isOpen = sheet.classList.contains("open");
     const wasOpen = sheet.dataset.legendSheetOpen === "true";
     if (isOpen && !wasOpen){
+      prepareModalFocus(sheet);
       sheet.scrollTop = 0;
       setMobileSheetSnap(sheet, "full");
     } else if (!isOpen && wasOpen) {
       setMobileSheetSnap(sheet, "full");
+      endModalFocus(sheet);
     }
     sheet.dataset.legendSheetOpen = isOpen ? "true" : "false";
   }

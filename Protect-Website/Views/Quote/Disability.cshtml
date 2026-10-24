@@ -106,8 +106,6 @@
 
 <style>
 body.disability-quote main.layout-content {
-    padding-top: 1.3rem;
-    padding-bottom: 2rem;
 }
 
 body.disability-landing {
@@ -118,8 +116,6 @@ body.disability-landing {
 }
 
 body.disability-landing main.layout-content {
-    padding-top: 0.45rem;
-    padding-bottom: 2rem;
 }
 
 body.disability-landing.page-mode-paid-landing header .nav-links,
@@ -146,9 +142,6 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
 }
 
 .dq-shell {
-    max-width: 760px;
-    margin: 18px auto 56px;
-    padding: 0 12px;
 }
 
 .dq-shell *,
@@ -158,7 +151,6 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
 }
 
 .lq-hero-shell {
-    width: 100%;
     border-radius: 20px;
     border: 1.5px solid rgba(226, 186, 93, 0.48);
     background:
@@ -174,7 +166,6 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
 }
 
 .dq-surface {
-    padding: 22px 22px 18px;
 }
 
 .dq-hero-entry {
@@ -1144,29 +1135,17 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
 
 @@media (min-width: 1024px) {
     main.layout-content {
-        width: min(96vw, 1480px) !important;
-        max-width: 1480px !important;
-        min-width: 0 !important;
-        margin-left: auto !important;
-        margin-right: auto !important;
     }
 
     .dq-shell {
-        width: 100% !important;
-        max-width: 100% !important;
-        padding-left: 0 !important;
-        padding-right: 0 !important;
     }
 
     .dq-surface {
         width: 100% !important;
         max-width: 100% !important;
-        padding: 16px 18px 20px !important;
     }
 
     .lq-hero-shell {
-        width: 100% !important;
-        max-width: 100% !important;
     }
 
     #disabilityEducationContactPanel {
@@ -1283,7 +1262,6 @@ body.disability-final-step-active .dq-proof-chips {
 
 @@media (max-width: 767.98px) {
     .dq-surface {
-        padding: 14px;
     }
 
     .lq-field-row,
@@ -1509,7 +1487,7 @@ body.disability-final-step-active .dq-proof-chips {
     </defs>
 </svg>
 
-<div class="dq-shell">
+<div class="dq-shell" data-protect-form-shell>
     <div class="lq-hero-shell">
         <div class="dq-surface">
             <div class="dq-hero-entry" id="disabilityHeroEntryPanel" @((showContactStepByDefault ? "hidden" : null))>
@@ -1556,7 +1534,7 @@ body.disability-final-step-active .dq-proof-chips {
                 </div>
             </div>
 
-            <form asp-action="SubmitDisabilityQuote" asp-controller="DisabilityQuote" method="post" id="disabilityQuoteForm" data-form-key="@formKey" novalidate>
+            <form asp-action="SubmitDisabilityQuote" asp-controller="DisabilityQuote" method="post" id="disabilityQuoteForm" data-cms-presentation="quote" data-cms-review-kind="review" data-cms-review-metrics="Age range|Work type|Income focus" data-cms-entry-id="disabilityHeroEntryPanel" data-cms-education-id="disabilityEducationPanel" data-cms-question-id="dqStep1Panel" data-cms-processing-id="dqProcessingPanel" data-cms-contact-id="dqContactPanel" data-cms-review-id="disabilityReviewSummary" data-cms-progress-id="dqStep1Progress" data-cms-progress-fill-id="dqStep1ProgressFill" data-cms-processing-fill-id="dqProcessingFill" data-cms-trust-id="" data-cms-started-class="disability-quote-started" data-cms-final-class="disability-final-step-active" data-form-key="@formKey" novalidate>
                 @Html.AntiForgeryToken()
         <input type="hidden" name="SubmissionId" value="@(Context?.Request is { HasFormContentType: true } submissionRequest && Guid.TryParse(submissionRequest.Form["SubmissionId"], out var submissionToken) ? submissionToken : Guid.NewGuid())" />
                 @if (!string.IsNullOrWhiteSpace(agentSlug))
@@ -2138,7 +2116,17 @@ body.disability-final-step-active .dq-proof-chips {
             });
         }
 
+  function presentNativePhase(phase, step = currentMicroStep) {
+    // Startup may precede the deferred shared CMS asset. Record only the current
+    // presentation; the existing minimal fallback remains usable without CMS.
+    form.dataset.cmsPresentationPhase = phase;
+    form.dataset.cmsPresentationStep = String(step);
+    return window.LEGEND_NATIVE_FORM_PRESENTATION?.apply(form, { phase, step }) === true;
+  }
+
         function setStartedState(started) {
+            const phase=started ? (form.dataset.cmsPresentationPhase==='intro' ? 'question' : form.dataset.cmsPresentationPhase || 'question') : 'intro';
+            if (typeof presentNativePhase === 'function' && presentNativePhase(phase)) return;
             body.classList.toggle('disability-quote-started', !!started);
             if (heroEntryPanel) heroEntryPanel.hidden = !!started;
             if (educationPanel) educationPanel.hidden = !started;
@@ -2264,6 +2252,7 @@ body.disability-final-step-active .dq-proof-chips {
             if (!Number.isInteger(index) || index < 0 || index >= microSteps.length) return;
             resetPostSubmitShell();
             currentMicroStep = index;
+            if (!(typeof presentNativePhase === 'function' && presentNativePhase('question', index))) {
             if (step1Panel) step1Panel.hidden = false;
             if (processingPanel) processingPanel.hidden = true;
             if (contactPanel) contactPanel.hidden = true;
@@ -2273,6 +2262,7 @@ body.disability-final-step-active .dq-proof-chips {
                 step.hidden = idx !== index;
             });
             updateProgress(index);
+            }
             trackMicroStepView(index);
             focusCurrentMicroStep();
         }
@@ -2292,6 +2282,9 @@ body.disability-final-step-active .dq-proof-chips {
             } else if (priority === 'Critical') {
                 signal = 'Because this feels urgent, the follow-up should stay centered on how quickly lost income would pressure bills, family, and business obligations.';
             }
+
+            var shared=window.LEGEND_NATIVE_FORM_PRESENTATION?.reviewMarkup({kind:'review',kicker:'Review snapshot',title:'We will pick up the conversation from these answers.',copy:'Your answers shape the final follow-up so the review starts with the income risks and coverage gaps that matter most.',metrics:[{label:'Age range',value:ageRange},{label:'Work type',value:employmentType},{label:'Income focus',value:incomeRange}],signal:signal+' Coverage status noted: '+currentCoverage+'.'});
+            if(shared) return shared;
 
             return ''
                 + '<div class="dq-review-kicker">Review snapshot</div>'
@@ -2585,11 +2578,13 @@ body.disability-final-step-active .dq-proof-chips {
 
         function showContactStep(trackView) {
             resetPostSubmitShell();
+            if (!(typeof presentNativePhase === 'function' && presentNativePhase('contact'))) {
             if (step1Panel) step1Panel.hidden = true;
             if (processingPanel) processingPanel.hidden = true;
             if (contactPanel) contactPanel.hidden = false;
             setStartedState(true);
             setFinalStepState(true);
+            }
             renderReviewSummary();
 
             if (trackView !== false && !contactStepTracked) {
@@ -2617,12 +2612,14 @@ body.disability-final-step-active .dq-proof-chips {
 
         function showProcessingThenContact() {
             resetPostSubmitShell();
+            if (!(typeof presentNativePhase === 'function' && presentNativePhase('processing'))) {
             if (step1Panel) step1Panel.hidden = true;
             if (contactPanel) contactPanel.hidden = true;
             if (processingPanel) processingPanel.hidden = false;
             setStartedState(true);
             setFinalStepState(false);
             if (processingFill) processingFill.style.width = '100%';
+            }
             track({
                 EventType: 'form_start',
                 PageKey: pageKey,
