@@ -45,8 +45,38 @@ public sealed partial class ReceptionistAdmissionService
         if (historical is not null)
         {
             var oldConfig = ReceptionistConfigurationCodec.Read(historical.ConfigurationJson, historical.ConfigurationSha256);
-            if (ReceptionistConfigurationCodec.ReadBinding(historical.AcceptedBindingJson, oldConfig) is not null)
-                prior = new(historical.Id, historical.Version, historical.ConfigurationSha256);
+            var oldBinding = ReceptionistConfigurationCodec.ReadBinding(historical.AcceptedBindingJson, oldConfig);
+            if (oldBinding is not null)
+            {
+                // The same owner's immutable historical binding supplies the relationship;
+                // no caller-selected account IDs and no inheritance by the current draft.
+                var oldFundingIds = oldBinding.Costs.Select(x => x.FundingBudgetAccountId).Distinct().ToArray();
+                if (oldFundingIds.Length > 64) throw new InvalidOperationException("The historical funding scope exceeds its supported bound.");
+                var oldFunding = await read.Set<ReceptionistBudgetAccount>().AsNoTracking()
+                    .Where(x => oldFundingIds.Contains(x.Id)).OrderBy(x => x.Id).ToListAsync(ct);
+                if (oldFunding.Count != oldFundingIds.Length || oldFunding.Any(x => x.Kind != "funding" || x.Currency != oldConfig.Currency))
+                    throw new InvalidOperationException("The historical funding references are inconsistent.");
+                var evidence = new ReceptionistHistoricalBindingEvidence("historical_not_current_acceptance",
+                    oldBinding.ProviderProjectKey, oldBinding.Model, oldBinding.Voice, oldBinding.BackendMode,
+                    oldBinding.Transport, oldBinding.ControlledTestOnly, oldBinding.MaximumSupportedCallSeconds,
+                    oldBinding.CredentialReference, oldBinding.WebhookSecretReference, oldBinding.OperatorAcceptancePackageSha256,
+                    [new("provider_setup", oldBinding.ProviderVerificationReceipt),
+                     new("exclusive_project", oldBinding.ExclusiveProjectVerificationReceipt),
+                     new("cost_bounds", oldBinding.CostVerificationReceipt),
+                     new("disclosure", oldBinding.DisclosureConfigurationReceipt),
+                     new("retention", oldBinding.RetentionConfigurationReceipt),
+                     new("carrier_fallback", oldBinding.CarrierFallbackReceipt)],
+                    oldBinding.Costs.Select(x => new ReceptionistPreparationCost(x.Key, x.FundingBudgetAccountId,
+                        x.CashFixedMaximum, x.CashPerSecondMaximum, x.ConsumptionFixedMaximum, x.ConsumptionPerSecondMaximum)).ToArray(),
+                    oldBinding.Capabilities.Select(x => new ReceptionistPreparationCapability(x.Key, x.RouteKey,
+                        x.State, x.AcceptanceReceipt)).ToArray(),
+                    oldFunding.Select(x => new ReceptionistPreparationAccount(x.Id, x.Revision, x.Kind,
+                        x.ScopeKey, x.Currency, x.TimeZoneId)).ToArray(),
+                    oldConfig.Currency == config.Currency && oldConfig.TimeZoneId == config.TimeZoneId &&
+                        oldBinding.ProviderProjectKey == connection.ReceptionistProviderProjectKey);
+                prior = new(historical.Id, historical.Version, historical.ConfigurationSha256,
+                    historical.CreatedUtc, historical.CreatedByActorId, evidence);
+            }
         }
         return new(clock.GetUtcNow().UtcDateTime, "observed_not_reviewed", connection.Id, connection.OwnerKey,
             connection.Provider, connection.Revision, connection.ReceptionistControlRevision, version.Id, version.Version,
@@ -57,6 +87,7 @@ public sealed partial class ReceptionistAdmissionService
              binding is null ? "Current configuration has no accepted binding. Historical acceptance and funding are not inherited."
                 : "Current binding metadata does not replace independently reviewed provider, capability and cost evidence.",
              "Prepare and review exact configuration evidence, then register its JSON and SHA256 through the existing operator package configuration.",
+             "Historical record provenance is not a new review. Receipt references do not supply missing evidence hashes, observation dates, reviewer/expiry, or credential fingerprints. No credentials are decrypted or fingerprints derived here.",
              "No test window, call, admission extension or activation is created by this export."]);
     }
 

@@ -913,6 +913,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.match(route,/^\/quote\/[a-z-]+$/);assert.match(file,/^quote-[a-z-]+\.html$/);
     const bytes=await readFile(path.join(dir,file));assert.equal(hash(bytes),manifest.outputs[file]);
     for(const query of ['?legendEdit=ticket&legendMaterialize=1','?legendEdit=ticket','?legendEdit=ticket&width=720','?public=1','?public=1&width=720'])routes.set(route+query,bytes);
+    if(route==='/quote/disability')for(const tenant of ['legend','other'])routes.set(route+'?legendEdit=fixture&header=1&tenant='+tenant,bytes);
   }
   for (const [mode,file] of Object.entries(manifest.quotes.scripture)) {
     assert.ok(['cold','no-trigger','trigger'].includes(mode));
@@ -1194,11 +1195,18 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     const quoteRoutes=Object.keys(manifest.quotes.routes);
     const metrics=async(width,height=932)=>command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setDeviceMetricsOverride',params:{width,height,deviceScaleFactor:1,mobile:false}});
     const quoteGo=async(route,query)=>{
+      quoteDiagnostic={label:route+query,phase:'navigation'};
+      assert.ok(routes.has(route+query),'Quote fixture URL must be explicitly admitted: '+route+query);
+      try{
       await command('POST','/session/'+session+'/url',{url:'http://'+serverHost+route+query});
       if(query.includes('legendMaterialize'))await waitFor('window.__quoteMaterialized!==null');
       else if(query.includes('public=1'))await waitFor('window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE===true');
       else await waitFor("document.querySelector('#legend-cms-form-navigator select')?.options.length===10");
       await waitFor("[...document.querySelectorAll('main img')].every(n=>n.complete&&n.naturalWidth>0)");
+      }catch(error){
+        try{quoteDiagnostic.navigation=await execute("return {url:location.pathname+location.search,title:document.title,options:document.querySelector('#legend-cms-form-navigator select')?.options.length,errors:(window.__quoteErrors||[]).slice(-8),requests:(window.__quoteRequests||[]).slice(-8),body:document.body?.innerText.slice(0,800)}");}catch{quoteDiagnostic.snapshotUnavailable=true;}
+        quoteDiagnostic.rejected=rejected.slice(-8);throw error;
+      }
     };
     const inspectQuote=async(label,options={})=>{
       const value=await execute(quoteSnapshotScript);quoteDiagnostic={label,...value};

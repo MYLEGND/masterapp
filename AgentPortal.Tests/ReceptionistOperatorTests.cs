@@ -67,9 +67,35 @@ public sealed partial class ReceptionistOperatorTests
         Assert.False(result.AdmissionEnabled);
         Assert.Equal(connection.ReceptionistActiveConfigurationId, result.HistoricalAcceptedConfiguration!.ConfigurationId);
         Assert.Equal(package.ConfigurationSha256, result.HistoricalAcceptedConfiguration.ConfigurationSha256);
+        var historical = result.HistoricalAcceptedConfiguration.BindingEvidence;
+        Assert.Equal("historical_not_current_acceptance", historical.Status);
+        Assert.True(historical.OwnerCurrencyAndProjectCompatible);
+        Assert.Equal(f.FundingId, Assert.Single(historical.Costs).FundingBudgetAccountId);
+        Assert.Equal(package.Binding!.Costs[0].CashFixedMaximum, historical.Costs[0].CashFixedMaximum);
+        Assert.Equal(package.Binding.Capabilities[0].RouteKey, Assert.Single(historical.Capabilities).RouteKey);
+        Assert.Contains(historical.ReceiptReferences, x => x.Label == "provider_setup" && x.Value == package.Binding.ProviderVerificationReceipt);
+        Assert.Equal(identity.Hash, historical.OperatorAcceptancePackageSha256);
+        Assert.Equal(package.Binding.CredentialReference, historical.CredentialReferenceName);
+        var observedFunding = Assert.Single(historical.CurrentlyObservedReferencedFundingAccounts);
+        Assert.Equal(f.FundingId, observedFunding.Id);
+        Assert.Equal((await db.Set<ReceptionistBudgetAccount>().AsNoTracking().SingleAsync(x => x.Id == f.FundingId)).Revision,
+            observedFunding.Revision);
+        var response = JsonSerializer.Serialize(result);
+        foreach (var excluded in new[] { Fixture.ApiSecret, Fixture.WebhookSecret, "ProtectedApiCredential",
+            "ProtectedWebhookSecret", "AcceptedBindingJson", "ConfigurationJson", "private-test-business-policy", "IngressKey" })
+            Assert.DoesNotContain(excluded, response);
         Assert.Equal(f.OwnerBudgetId, Assert.Single(result.Accounts).Id);
         await Assert.ThrowsAsync<InvalidOperationException>(() => f.Operator.PrepareAsync(f.Owner.Key, package.ConfigurationId));
         Assert.Equal(writes, f.Commands.Writes);
+        var storedConnection = await db.MarketingConnections.SingleAsync();
+        storedConnection.ReceptionistProviderProjectKey = "different-project";
+        await db.SaveChangesAsync();
+        Assert.False((await f.Operator.PrepareAsync(f.Owner.Key, current.Id)).HistoricalAcceptedConfiguration!
+            .BindingEvidence.OwnerCurrencyAndProjectCompatible);
+        var funding = await db.Set<ReceptionistBudgetAccount>().SingleAsync(x => x.Id == f.FundingId);
+        funding.Kind = "owner"; await db.SaveChangesAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Operator.PrepareAsync(f.Owner.Key, current.Id));
+        funding.Kind = "funding"; await db.SaveChangesAsync();
         current.ConfigurationSha256 = new string('0', 64); await db.SaveChangesAsync();
         await Assert.ThrowsAnyAsync<Exception>(() => f.Operator.PrepareAsync(f.Owner.Key, current.Id));
     }
