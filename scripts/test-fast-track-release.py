@@ -760,6 +760,9 @@ class AdmissionRepairScopeTests(unittest.TestCase):
             jobs[1].update(conclusion='failure',steps=[dict(name='Apply or reconcile the exact rehearsed migration bundle',conclusion=mutation)])
         def get(repo,path,token):
             # This predecessor fixture has no completion-observer runs.
+            summary = authority.fast_track_recovery_summary_name(prior['id'], before)
+            if path == f'actions/artifacts?name={summary}&per_page=100':
+                return dict(total_count=0, artifacts=[])
             if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
                 return dict(total_count=0, workflow_runs=[])
             if path.startswith('actions/runs?'):
@@ -794,6 +797,10 @@ class AdmissionRepairScopeTests(unittest.TestCase):
               dict(name='Publish verified website routing',conclusion='skipped')]
         def get(repo,path,token):
             # This predecessor fixture has no completion-observer runs.
+            summaries = {authority.fast_track_recovery_summary_name(index + 1, candidate)
+                         for index, candidate in enumerate(heads)}
+            if path in {f'actions/artifacts?name={name}&per_page=100' for name in summaries}:
+                return dict(total_count=0, artifacts=[])
             if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
                 return dict(total_count=0, workflow_runs=[])
             if path.startswith('actions/runs?'):
@@ -2000,6 +2007,9 @@ class CurrentObservationPrewriteTests(unittest.TestCase):
     def test_completed_initial_failure_carries_scope_through_effective_baseline(self):
         def api(repo,path,token):
             # This predecessor fixture has no completion-observer runs.
+            summary = authority.fast_track_recovery_summary_name(self.run['id'], self.revision)
+            if path == f'actions/artifacts?name={summary}&per_page=100':
+                return dict(total_count=0, artifacts=[])
             if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
                 return dict(total_count=0, workflow_runs=[])
             if path.startswith('actions/runs?'):
@@ -2050,6 +2060,9 @@ class UnpublishedAppsWithMigrationIntentTests(unittest.TestCase):
 
     def api(self, repository, path, token):
         # This predecessor fixture has no completion-observer runs.
+        summary = authority.fast_track_recovery_summary_name(self.run['id'], self.run['head_sha'])
+        if path == f'actions/artifacts?name={summary}&per_page=100':
+            return dict(total_count=0, artifacts=[])
         if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
             return dict(total_count=0, workflow_runs=[])
         if '/attempts/' in path:return self.jobs[int(path.split('/attempts/')[1].split('/')[0])]

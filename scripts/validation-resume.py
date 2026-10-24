@@ -6803,7 +6803,16 @@ def validate_fast_track_completion_record(repository, run, artifact, record, tok
     return record
 
 
-def fast_track_completion_present(repository, revision, token):
+def fast_track_completion_present(repository, revision, token, *, original_run=None):
+    # Discovery only: the caller must still authenticate every operation receipt.
+    if original_run is not None:
+        name = fast_track_recovery_summary_name(original_run, revision)
+        artifacts = _completion_inventory(api_get(repository,
+            'actions/artifacts?name=' + urllib.parse.quote(name, safe='') + '&per_page=100', token), 'artifacts')
+        if any(artifact.get('name') != name or artifact.get('expired') is not False for artifact in artifacts):
+            raise ValueError('RECOVERY_SUMMARY_ARTIFACT_UNPROVEN')
+        if artifacts:
+            return True
     runs=_completion_rows(api_get(repository,
         f'actions/workflows/{FAST_TRACK_COMPLETION_WORKFLOW}/runs?event=workflow_dispatch&per_page=100',token),'workflow_runs')
     for run in runs:
@@ -6936,7 +6945,7 @@ def fast_track_effective_baseline(before, revision, *, repository=None, token=No
         jobs = payload.get('jobs')
         if not isinstance(jobs, list) or payload.get('total_count') != len(jobs):
             raise RuntimeError('FAST_TRACK_PREDECESSOR_JOBS_INCOMPLETE')
-        if fast_track_completion_present(repository, before, token):
+        if fast_track_completion_present(repository, before, token, original_run=prior['id']):
             if fast_track_completed_operation_receipts(repository, prior, token):
                 return before
         if fast_track_completed_apps_pending_routing(repository, prior, jobs, token):

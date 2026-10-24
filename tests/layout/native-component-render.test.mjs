@@ -1273,4 +1273,3 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     if(cleanupError)throw cleanupError;
   }
 });
-

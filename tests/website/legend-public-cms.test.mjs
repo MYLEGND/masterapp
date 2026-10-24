@@ -540,7 +540,16 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
   const input=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('input',{bubbles:true}));};
   const change=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}));};
   const editSelected=(value)=> {const el=w.document.querySelector('.legend-cms-selected');assert.ok(el);const edit=w.document.querySelector('#legend-cms-edit-text');if(edit&&!edit.hidden)edit.click();el.textContent=value;el.dispatchEvent(new w.Event('beforeinput',{bubbles:true,cancelable:true}));el.dispatchEvent(new w.Event('input',{bubbles:true}));};
-  const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));return structuredClone(serverDoc);};
+  const save=async()=>{
+    click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');
+    const submit=w.document.querySelector('#legend-cms-draft-submit');
+    click('#legend-cms-draft-submit');
+    assert.equal(submit.disabled,true,'the shipped save callback must own completion');
+    const deadline=Date.now()+5000;
+    while(submit.disabled && Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(submit.disabled,false,'the shipped save callback did not settle before fixture teardown');
+    return structuredClone(serverDoc);
+  };
   return {w,calls,animations,alerts,click,input,change,editSelected,save,serverDocument:()=>structuredClone(serverDoc),publishedDocument:()=>structuredClone(publishedDoc),serverRevision:revisionValue,namedDrafts:()=>structuredClone(serverNamedDrafts),close:()=>w.close()};
 }
 
@@ -5078,6 +5087,44 @@ for(const scenario of [
     } finally {f.close();}
   });
 }
+
+test('draft fixture waits for the actual save callback after a delayed preservation read',async()=>{
+  const f=await domFixture({integerRevisions:true});
+  let release; let started; let saving; let timer;
+  const entered=new Promise(resolve=>{started=resolve;});
+  const held=new Promise(resolve=>{release=resolve;});
+  try {
+    const original=f.w.fetch;
+    f.w.fetch=async(url,options={})=>{
+      if(String(url).endsWith('/manage/publish'))
+        return fixturePreCommitRejection(JSON.parse(options.body),{status:409,error:'revision_conflict'});
+      return original(url,options);
+    };
+    f.click('#legend-cms-publish');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(JSON.parse(f.w.sessionStorage.getItem('legend-publication:legend::')).phase,'review_required');
+    f.click('main h1'); f.editSelected('Local edits retained during delayed save');
+    f.w.fetch=async(url,options={})=>{
+      if(String(url).includes('/manage/drafts/preservation')) {started();await held;}
+      return original(url,options);
+    };
+    let completed=false;
+    saving=f.save().then(value=>{completed=true;return value;});
+    await Promise.race([entered,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Preservation read did not start')),2000);})]);
+    clearTimeout(timer);
+    await new Promise(resolve=>setTimeout(resolve,0));
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(completed,false,'save helper must not finish before the shipped callback');
+    const submit=f.w.document.querySelector('#legend-cms-draft-submit');
+    assert.equal(submit.disabled,true);
+    release();await saving;
+    assert.equal(completed,true);
+    assert.equal(submit.disabled,false);
+    assert.equal(f.w.document.querySelector('main h1').textContent,'Local edits retained during delayed save');
+    assert.equal(f.publishedDocument(),null);
+    assert.equal(f.calls.filter(call=>call.url.endsWith('/manage/mutations')).length,0);
+  } finally {clearTimeout(timer);release();if(saving) await saving;f.close();}
+});
 
 for(const restored of [false,true]) {
   test('matching rejection on '+(restored?'restored':'resumed')+' publication preserves its original ambiguous request',async()=>{
