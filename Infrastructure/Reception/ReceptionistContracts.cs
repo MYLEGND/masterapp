@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Shared.Analytics;
 
 namespace Infrastructure.Reception;
@@ -104,6 +105,14 @@ internal sealed record ReceptionistDatedVoiceUsage(DateTime ServicePeriodEvidenc
 
 internal static class ReceptionistConfigurationCodec
 {
+    internal static bool BookingEnabled(ReceptionistBusinessConfiguration configuration, ReceptionistProviderBinding binding,
+        bool controlledTest, string? serviceKey = null) =>
+        configuration.BookingPolicy is { Enabled: true, AllowConsentedCustomerEmail: true } policy &&
+        (controlledTest || !policy.QaOnly) && policy.Services.Count > 0 &&
+        (serviceKey is null || policy.Services.Any(x => x.ServiceKey == serviceKey)) &&
+        configuration.RequestedCapabilities.Contains(ReceptionistCapabilities.CanonicalBooking) &&
+        binding.Capabilities.Any(x => x.Key == ReceptionistCapabilities.CanonicalBooking &&
+            x.State == ReceptionistCapabilityStates.Accepted && x.RouteKey == Bookings.ReceptionistBookingAuthority.RouteKey);
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow
@@ -171,6 +180,32 @@ internal static class ReceptionistConfigurationCodec
         {
             Identifier(key, 100, "capability");
             if (key.StartsWith("__", StringComparison.Ordinal)) throw new ArgumentException("Provider coordination keys are not business capabilities.");
+        }
+        if (value.BookingPolicy is { } booking)
+        {
+            if (booking.Services is null || booking.Services.Count > 100 || booking.Services.Any(x => x is null) ||
+                booking.Services.Select(x => x.ServiceKey).Distinct(StringComparer.Ordinal).Count() != booking.Services.Count ||
+                booking.MinimumNoticeMinutes is < 0 or > 43200 || booking.MaximumAdvanceDays is < 1 or > 90)
+                throw new ArgumentException("Booking requires bounded, distinct service mappings and an explicit advance limit.");
+            using var services = JsonDocument.Parse(value.ServiceDefinitionsJson);
+            var serviceKeys = services.RootElement.EnumerateArray().Select(x => x.GetProperty("serviceKey").GetString()).ToHashSet(StringComparer.Ordinal);
+            foreach (var route in booking.Services)
+            {
+                Identifier(route.ServiceKey, 100, "booking service");
+                Required(route.BookingServiceId, 200, "approved calendar service");
+                TimeZoneInfo.FindSystemTimeZoneById(Required(route.TimeZoneId, 200, "booking timezone"));
+                if (!serviceKeys.Contains(route.ServiceKey) || route.DurationMinutes is < 5 or > 240)
+                    throw new ArgumentException("Each booking mapping needs an existing service and an approved duration.");
+            }
+            if (booking.Enabled && (!value.RequestedCapabilities.Contains(ReceptionistCapabilities.CanonicalIntake) ||
+                !value.RequestedCapabilities.Contains(ReceptionistCapabilities.CanonicalBooking) ||
+                !Regex.IsMatch(booking.ExpectedCalendarConfigurationSha256 ?? "", "^[a-f0-9]{64}$") ||
+                !Regex.IsMatch(booking.ExpectedCalendarTargetSha256 ?? "", "^[a-f0-9]{64}$") ||
+                booking.BookingAgentProfileId is null || booking.BookingAgentProfileId == Guid.Empty || booking.Services.Count == 0 ||
+                string.IsNullOrWhiteSpace(booking.PrivacyAcceptanceReference) || !booking.AllowConsentedCustomerEmail))
+                throw new ArgumentException("Booking requires explicit intake, calendar revision, service, privacy and consented invitation policy. Saving does not grant provider permissions.");
+            if (booking.PrivacyAcceptanceReference?.Length > 512)
+                throw new ArgumentException("The booking privacy reference exceeds its bound.");
         }
     }
 

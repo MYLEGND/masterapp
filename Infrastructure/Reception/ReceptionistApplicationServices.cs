@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.Leads;
+using Infrastructure.Bookings;
 using Microsoft.EntityFrameworkCore;
 using Shared.Analytics;
 
@@ -16,7 +17,7 @@ internal sealed class ReceptionistApplicationServices(
     DbContextOptions<MasterAppDbContext> options,
     ReceptionistAdmissionService admission,
     ReceptionistInquiryAuthority inquiries,
-    TimeProvider clock)
+    TimeProvider clock, IReceptionistApplicationBooking booking)
 {
     internal static void ValidateConfiguration(ReceptionistBusinessConfiguration configuration) =>
         _ = ReceptionistApplicationCatalog.Read(configuration);
@@ -26,7 +27,7 @@ internal sealed class ReceptionistApplicationServices(
         if (sidebandLeaseToken == Guid.Empty) throw new ArgumentException("A fenced dialogue owner is required.");
         _ = ReceptionistInquiryAuthority.ReadIntakeRules(call);
         return new(call, sidebandLeaseToken, ReceptionistApplicationCatalog.Read(call.Configuration),
-            new CanonicalActions(options, admission, inquiries), clock);
+            new CanonicalActions(options, admission, inquiries), clock, booking);
     }
 
     private sealed class CanonicalActions(DbContextOptions<MasterAppDbContext> options,
@@ -53,9 +54,10 @@ internal sealed class ReceptionistApplicationServices(
                 factsHash, confirmationReceipt, leaseToken, ct);
         public Task<ReceptionistInquiryPersistence> PersistAsync(ReceptionistCallContext call, Guid actionId,
             ConfirmedReceptionistInquiry facts, string confirmationReceipt, CancellationToken ct) =>
-            inquiries.PersistConfirmedAsync(call, actionId, facts, confirmationReceipt, ct);
-        public Task<ReceptionistInquiryReadback?> ReadBackAsync(ReceptionistCallContext call, Guid actionId, CancellationToken ct) =>
-            inquiries.ReadBackAsync(call.Owner, call.CallId, actionId, ct);
+            call.ControlledTest ? inquiries.PersistQaOutcomeAsync(call, actionId, facts, confirmationReceipt, ct) :
+                inquiries.PersistConfirmedAsync(call, actionId, facts, confirmationReceipt, ct);
+        public Task<ReceptionistApplicationOutcome?> ReadBackAsync(ReceptionistCallContext call, Guid actionId, CancellationToken ct) =>
+            inquiries.ReadSafeOutcomeAsync(call, actionId, ct);
         public Task OutcomeAsync(Guid actionId, string state, string? actualReference, string receipt, CancellationToken ct) =>
             admission.RecordActionOutcomeAsync(actionId, state, actualReference, receipt, ct);
     }
@@ -149,7 +151,7 @@ internal sealed record ReceptionistApplicationCatalog(
 /// One disposable state per fenced socket. Observe never waits on application I/O.
 /// The Live API supplies deltas and estimated append timelines, not completed turns or playback receipts.
 /// </summary>
-internal sealed class ReceptionistApplicationSession : IDisposable
+internal sealed partial class ReceptionistApplicationSession : IDisposable
 {
     private const int MaximumContextCharacters = 6000;
     private const int MaximumAppendBytes = 480;
@@ -173,18 +175,28 @@ internal sealed class ReceptionistApplicationSession : IDisposable
     private bool initialized;
     private bool disposed;
     private bool unresolvedAction;
-    private ReceptionistInquiryReadback? saved;
+    private ReceptionistApplicationOutcome? saved;
     private ConfirmedReceptionistInquiry draft = new();
     private string? pendingKnowledgeQuestion;
     private string? pendingNameFragment;
     private string? spellingField;
+    private bool serviceChoiceNeedsClarification;
     private PreparedInquiry? prepared;
     private CancellationTokenSource? activeIntent;
 
     internal ReceptionistApplicationSession(ReceptionistCallContext call, Guid leaseToken,
-        ReceptionistApplicationCatalog catalog, IReceptionistApplicationActions actions, TimeProvider clock)
+        ReceptionistApplicationCatalog catalog, IReceptionistApplicationActions actions, TimeProvider clock,
+        IReceptionistApplicationBooking? booking = null)
     {
-        this.call = call; this.leaseToken = leaseToken; this.catalog = catalog; this.actions = actions; this.clock = clock;
+        this.call = call; this.leaseToken = leaseToken; this.catalog = catalog; this.actions = actions; this.clock = clock; this.booking = booking;
+    }
+
+    internal ReceptionistApplicationDiagnostic Diagnostic()
+    {
+        lock (gate) return new(inputVersion, draft.ServiceKey is not null, draft.CallerName is not null || draft.FirstName is not null,
+            draft.Email is not null || draft.Phone is not null, pendingNameFragment is not null, prepared is not null,
+            prepared?.Acknowledged == true, saved is not null, call.ControlledTest, unresolvedAction || bookingResult?.State == "booking_uncertain",
+            preparedBooking is not null, bookingResult?.Verified == true);
     }
 
     internal void Observe(JsonElement message)
@@ -212,10 +224,12 @@ internal sealed class ReceptionistApplicationSession : IDisposable
                 { input.Clear(); unsafeInput = true; Invalidate(); }
                 if (input.Length == 0) firstInputStart = start;
                 input.Append(delta); lastInputEnd = Math.Max(lastInputEnd, end);
+                ObserveBookingInput(start);
                 if (prepared is { } pending && (!pending.Acknowledged || start <= pending.AcknowledgedEndMs || Correction(input.ToString())))
                     Invalidate();
                 return;
             }
+            ObserveBookingAcknowledgement(message, type);
             if (type == "session.commentary.appended" && prepared is { } summary &&
                 String(message, "client_event_id", out var commandId) && summary.Acknowledgements.ContainsKey(commandId))
             {
@@ -254,7 +268,7 @@ internal sealed class ReceptionistApplicationSession : IDisposable
                 var updates = Updates(null, "session.instructions.append",
                     "Application results are the only authority for saved inquiries. A delegation supplies no typed arguments. Ask one useful clarification when details are uncertain. Never treat a transcript fragment or a lone yes as permission to save; read back the request and wait for an explicit sentence asking to save that request.");
                 if (unresolvedAction) updates.AddRange(Say(null, "I can't yet confirm whether the earlier request was saved. I need its status checked before another save."));
-                else if (saved is not null) updates.AddRange(Say(null, "Your earlier request is saved for the team to review. I have checked the saved record."));
+                else if (saved is not null) updates.AddRange(Say(null, saved.ControlledQa ? SavedMessage(saved) : "Your earlier request is saved for the team to review. I have checked the saved record."));
                 return updates;
             }
         }
@@ -275,7 +289,6 @@ internal sealed class ReceptionistApplicationSession : IDisposable
                 if (!seenDelegations.Add(delegationId)) return [];
                 if (seenDelegations.Count > 128) throw new InvalidOperationException("The bounded call delegation limit was reached.");
                 if (unresolvedAction) return Say(delegationId, "I can't yet confirm whether the earlier request was saved. I won't create another while its status is uncertain.");
-                if (saved is not null) return Say(delegationId, "Your request is saved for the team to review. I can't change that saved record within this call.");
                 text = input.ToString().Trim(); version = inputVersion; start = firstInputStart; end = lastInputEnd; confirmation = prepared;
                 input.Clear(); firstInputStart = -1;
                 if (unsafeInput)
@@ -284,6 +297,7 @@ internal sealed class ReceptionistApplicationSession : IDisposable
                     return Say(delegationId, "I couldn't safely follow the complete statement. Please say the request or correction again in one brief sentence.");
                 }
             }
+            if (saved is not null) return await HandleSavedBookingAsync(delegationId, text, version, start, end, ct);
             if (confirmation is not null)
             {
                 if (confirmation.Acknowledged && start > confirmation.AcknowledgedEndMs && CompleteSaveSentence(text))
@@ -296,30 +310,43 @@ internal sealed class ReceptionistApplicationSession : IDisposable
                 return Say(delegationId, "What would you like help with?");
             if (Sensitive(text))
             {
-                lock (gate) { draft = new(); pendingNameFragment = null; spellingField = null; pendingKnowledgeQuestion = null; Invalidate(); }
+                lock (gate) { draft = new(); pendingNameFragment = null; spellingField = null; pendingKnowledgeQuestion = null; serviceChoiceNeedsClarification = false; bookingRequested = false; requestedBookingDetail = null; Invalidate(); }
                 return Say(delegationId, "Please don't read out card numbers, passwords or verification codes. What general service question or request can I help with?");
             }
             if (DeclinesSaving(text))
             {
-                lock (gate) { draft = new(); pendingNameFragment = null; spellingField = null; pendingKnowledgeQuestion = null; Invalidate(); }
+                lock (gate) { draft = new(); pendingNameFragment = null; spellingField = null; pendingKnowledgeQuestion = null; serviceChoiceNeedsClarification = false; bookingRequested = false; requestedBookingDetail = null; Invalidate(); }
                 return Say(delegationId, "I haven't saved a request. What else would you like to know?");
+            }
+            if (Regex.IsMatch(text, @"\b(?:don't|do not|no|cancel)\b.*\b(?:book|appointment|meeting|invitation)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            {
+                lock (gate) { bookingRequested = false; requestedBookingDetail = null; bookingOptions = []; Invalidate(); }
+                return Say(delegationId, "I won't arrange an appointment or send an invitation. What would you like to know about the service?");
             }
             if (ExistingOrVendor(text))
             {
-                lock (gate) { draft = new(); pendingNameFragment = null; spellingField = null; pendingKnowledgeQuestion = null; Invalidate(); }
+                lock (gate) { draft = new(); pendingNameFragment = null; spellingField = null; pendingKnowledgeQuestion = null; serviceChoiceNeedsClarification = false; bookingRequested = false; requestedBookingDetail = null; Invalidate(); }
                 return Say(delegationId, "I can answer approved general questions. I can't access or change an existing customer account, or create a new service inquiry from that request.");
             }
             text = Regex.Replace(text, @"^(?:Actually|Correction)[,:]?\s+", "", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            text = ExpandRequestedBookingDetail(text);
             // Delegation and punctuation are not evidence that a name fragment is complete.
             // Never concatenate separate requests into an invented name. An unfinished clause
             // requires a fresh, explicit name statement before it can enter the final readback.
             lock (gate)
             {
+                if (Regex.IsMatch(text, @"^my (?:first name|last name|name) is\s+.*\b(?:not|but|instead|from|call me|don't|do not)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ||
+                    draft.CallerName is not null && Regex.IsMatch(text, @"^(?:my )?(?:first name|last name) is\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                {
+                    pendingNameFragment = "complete corrected name required";
+                    return Say(delegationId, "Please say your complete corrected name. I won't guess which part of the earlier name to replace.");
+                }
                 var repeatedName = pendingNameFragment is not null;
                 if (repeatedName)
                 {
-                    pendingNameFragment = null;
-                    if (!Regex.IsMatch(text, @"^(?:my (?:first name|last name|name) is|I'm|I am|This is)\s+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                    if (Regex.IsMatch(text, @"^(?:please )?(?:leave out|remove|do not include|don't include) my name[.!]?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                    { draft = draft with { CallerName = null, FirstName = null, LastName = null }; pendingNameFragment = null; spellingField = null; }
+                    else if (!Regex.IsMatch(text, @"^(?:my (?:first name|last name|name) is|I'm|I am|This is)\s+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
                         return Say(delegationId, "Please say your complete name again, or explicitly spell your first or last name. I won't join separate fragments or guess it.");
                 }
                 if (!repeatedName && Regex.IsMatch(text, @"^my (?:first name|last name|name) is\s+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) &&
@@ -330,22 +357,24 @@ internal sealed class ReceptionistApplicationSession : IDisposable
                 }
             }
             var question = NormalizeQuestion(text);
-            var matches = catalog.Services.Where(service => service.Aliases.Any(alias => Phrase(text, alias))).ToArray();
-            var explicitChoice = ExplicitServiceChoice(text);
+            var matches = MatchedServices(text);
+            var explicitChoice = ExplicitServiceChoice(text, out var explicitlyAmbiguousChoice);
             var isQuestion = text.TrimEnd().EndsWith('?') || Regex.IsMatch(text, @"^(?:what|how|why|when|where|does|can|could)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             var negatedChoice = Regex.IsMatch(text, @"\b(?:not|don't|do not|neither)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            var choice = explicitChoice ?? (matches.Length == 1 && !isQuestion && !negatedChoice ? matches[0] : null);
+            var choice = explicitChoice ?? (matches.Length == 1 && !isQuestion && !negatedChoice && IsBareServiceChoice(text, matches[0]) ? matches[0] : null);
             string? serviceKey;
             lock (gate)
             {
                 if (disposed || inputVersion != version) return Say(delegationId, "I heard more information. Please finish the correction so I can use the right context.");
+                if (explicitlyAmbiguousChoice) serviceChoiceNeedsClarification = true;
+                if (choice is not null) serviceChoiceNeedsClarification = false;
                 if (choice is not null && draft.ServiceKey != choice.ServiceKey)
                     draft = draft with
                     {
                         ServiceKey = choice.ServiceKey,
                         RequestSummary = draft.ServiceKey is null ? draft.RequestSummary : null
                     };
-                serviceKey = isQuestion && matches.Length == 1 ? matches[0].ServiceKey : choice is null && matches.Length > 1 ? null : draft.ServiceKey;
+                serviceKey = isQuestion && matches.Length == 1 ? matches[0].ServiceKey : serviceChoiceNeedsClarification ? null : draft.ServiceKey;
                 if (pendingKnowledgeQuestion is not null && choice is not null && IsServiceSelection(text, choice))
                 {
                     question = pendingKnowledgeQuestion;
@@ -366,34 +395,42 @@ internal sealed class ReceptionistApplicationSession : IDisposable
                     ? "Which service is that question about: " + string.Join(", ", catalog.Services.Select(x => x.DisplayName)) + "?"
                     : "I don't have an approved answer to that question for " + catalog.Services.Single(x => x.ServiceKey == serviceKey).DisplayName + ". Are you asking about a different service?");
             }
-            if (UnavailableAction(text))
+            var wantsBooking = BookingIntent(text) && BookingAvailable && (serviceKey is null || BookingForService(serviceKey));
+            if (wantsBooking) bookingRequested = true;
+            if (UnavailableAction(text) && !wantsBooking)
                 return Say(delegationId, "I can't book an appointment, transfer a call, take payment or arrange a callback in this call. I can answer general service questions or help prepare a service inquiry for the team to review.");
             if (matches.Length > 1 && choice is null)
             {
                 lock (gate)
                 {
                     if (disposed || inputVersion != version) return Say(delegationId, "Please finish the correction before choosing the service.");
+                    if (isQuestion && !explicitlyAmbiguousChoice)
+                        return Say(delegationId, string.Join(" ", matches.Select(x => x.DisplayName + ": " + x.PublicSummary)) +
+                            (draft.ServiceKey is null ? " Which would you like to explore first?" : " I have kept your current service request."));
                     // Mentioning another service does not erase a previously explicit choice or need.
                     if (draft.ServiceKey is null)
                         draft = ExtractExplicitFacts(draft, text).Facts;
+                    if (draft.ServiceKey is null || serviceChoiceNeedsClarification)
+                        return Say(delegationId, "Which service should I use for this request: " + string.Join(", ", matches.Select(x => x.DisplayName)) + "?");
                 }
-                return Say(delegationId, "Which service is this request about: " + string.Join(", ", matches.Select(x => x.DisplayName)) + "?");
             }
             lock (gate)
             {
                 if (disposed || inputVersion != version) return Say(delegationId, "I heard more information. Please finish the correction so I can read back the right request.");
-                if (Regex.IsMatch(text, @"^My name is\s+[\p{L}'-]+\s+[\p{L} '-]+[.!]?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
-                    return Say(delegationId, "Which part should I record as your first name, and which as your last name? Please state each explicitly so I don't guess the split.");
+                if (explicitlyAmbiguousChoice)
+                    return Say(delegationId, "Which service would you like help with: " + string.Join(", ", catalog.Services.Take(4).Select(x => x.DisplayName)) + "?");
                 var possibleName = Regex.Match(text, @"^(?:I'm|I am|This is)\s+([\p{L}'-]{1,120})[.!]?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
                 if (possibleName.Success)
                     return Say(delegationId, "If you are giving your name, please say 'My name is' followed by the name you want in this request. I won't infer a name from a description.");
                 var extracted = ExtractExplicitFacts(draft, text);
                 draft = extracted.Facts;
+                if (wantsBooking && draft.ServiceKey is not null && draft.RequestSummary is null)
+                    draft = draft with { RequestSummary = "Caller requested an appointment about " + catalog.Services.Single(x => x.ServiceKey == draft.ServiceKey).DisplayName + "." };
                 if (extracted.Unrecognized && !(choice is not null && IsServiceSelection(text, choice)) && (Correction(text) || ContactDetail(text)))
                     return Say(delegationId, ContactDetail(text)
                         ? "What contact detail should I correct or leave out? Please state that detail clearly so I can read it back without guessing."
                         : "I couldn't safely interpret the complete correction. Please state the corrected request in one brief sentence.");
-                if (!extracted.Understood && matches.Length == 0)
+                if (!extracted.Understood && matches.Length == 0 && !wantsBooking)
                     return Say(delegationId, draft.ServiceKey is null
                         ? "I couldn't safely interpret that request. What would you like help with?"
                         : "We are discussing " + catalog.Services.Single(x => x.ServiceKey == draft.ServiceKey).DisplayName +
@@ -401,11 +438,24 @@ internal sealed class ReceptionistApplicationSession : IDisposable
                 if (draft.ServiceKey is null)
                     return Say(delegationId, "Which service would you like help with: " + string.Join(", ", catalog.Services.Take(4).Select(x => x.DisplayName)) + "?");
                 var service = catalog.Services.Single(x => x.ServiceKey == draft.ServiceKey);
+                if (bookingRequested && !BookingForService(draft.ServiceKey))
+                {
+                    bookingRequested = false; requestedBookingDetail = null;
+                    return Say(delegationId, "Booking is not available for this service in this call. I can help prepare the service inquiry for review.");
+                }
                 if (draft.RequestSummary is null)
                 {
                     if (question.Contains('?') || question.StartsWith("what ", StringComparison.Ordinal) || question.StartsWith("tell me", StringComparison.Ordinal))
                         return Say(delegationId, service.PublicSummary + " " + service.DiscoveryQuestion);
                     return Say(delegationId, service.DiscoveryQuestion);
+                }
+                if (bookingRequested && BookingAvailable)
+                {
+                    if (draft.CallerName is null && draft.FirstName is null)
+                    { requestedBookingDetail = "name"; return Say(delegationId, "What name would you like on your appointment request?"); }
+                    if (draft.Email is null)
+                    { requestedBookingDetail = "email"; return Say(delegationId, "What email should be included in your request? I will ask separately before creating an appointment and sending its invitation."); }
+                    requestedBookingDetail = null;
                 }
             }
             return Prepare(delegationId, version, null);
@@ -423,19 +473,22 @@ internal sealed class ReceptionistApplicationSession : IDisposable
         lock (gate)
         {
             if (disposed || inputVersion != version) return Say(delegationId, "Please finish the correction before I read the request back.");
+            if (serviceChoiceNeedsClarification) return Say(delegationId, "Please choose the service for this request before I read it back for confirmation.");
+            if (pendingNameFragment is not null) return Say(delegationId, "Please confirm your complete name before I read this request back. I haven't changed or saved an uncertain name.");
             if (draft.ServiceKey is null || draft.RequestSummary is null) return Say(delegationId, "What service do you need, and what would you like help with?");
             var facts = draft with { AcquisitionClass = Genuine, RequestedNextAction = "Save the stated service inquiry for team review." };
             var hash = ReceptionistInquiryAuthority.CanonicalArgumentsSha256(facts);
             var service = catalog.Services.Single(x => x.ServiceKey == facts.ServiceKey);
             var parts = new List<string>();
             if (introduction is not null) parts.Add(introduction);
-            parts.Add($"Here is the request I can save for the team to review. Service: {service.DisplayName}. Request: {facts.RequestSummary}");
+            parts.Add($"{(call.ControlledTest ? "Here is the request I can record as a synthetic test outcome." : "Here is the request I can save for the team to review.")} Service: {service.DisplayName}. Request: {facts.RequestSummary}");
             if (facts.FirstName is not null) parts.Add("First name: " + facts.FirstName + ".");
             if (facts.LastName is not null) parts.Add("Last name: " + facts.LastName + ".");
+            if (facts.CallerName is not null) parts.Add("Name as provided: " + facts.CallerName + ".");
             if (facts.BusinessName is not null) parts.Add("Business: " + facts.BusinessName + ".");
             if (facts.Email is not null) parts.Add("Email provided for this request: " + facts.Email + ".");
             if (facts.Phone is not null) parts.Add("Phone provided for this request: " + facts.Phone + ".");
-            parts.Add("This saves the inquiry for review. No callback, email, booking or other follow-up is arranged by this call. If the details are correct, tell me explicitly that you want me to save the request I just read back, or tell me what to correct.");
+            parts.Add("May I save this request for review? If it is correct, say 'Please save my request', or tell me what to change. Saving does not arrange a callback, email or booking.");
             var updates = parts.SelectMany(part => Say(delegationId, part)).ToList();
             prepared = new(facts, hash, "confirmed-inquiry/" + Guid.NewGuid().ToString("N"),
                 updates.ToDictionary(x => x.EventId, _ => false, StringComparer.Ordinal));
@@ -471,8 +524,9 @@ internal sealed class ReceptionistApplicationSession : IDisposable
             if (!claim.MayExecute)
             {
                 var prior = await ReadAndRecordAsync(actionId.Value, ct);
+                if (prior is not null) RememberBookingScope(intent.Facts);
                 StoreResolution(prior, prior is null);
-                return Say(delegationId, prior is null ? "I can't yet confirm whether the request was saved." : "Your request is saved for the team to review. I have checked the saved record.");
+                return Say(delegationId, prior is null ? "I can't yet confirm whether the request was saved." : SavedMessage(prior));
             }
             bool changed;
             lock (gate) { changed = disposed || prepared != intent || inputVersion != version || effect.IsCancellationRequested; }
@@ -492,18 +546,19 @@ internal sealed class ReceptionistApplicationSession : IDisposable
             }
             using var verify = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             var readback = await ReadAndRecordAsync(actionId.Value, verify.Token);
+            if (readback is not null) RememberBookingScope(intent.Facts);
             StoreResolution(readback, readback is null);
             if (readback is null) return Say(delegationId, "I can't yet confirm whether your request was saved.");
             lock (gate) changed = inputVersion != version;
-            return Say(delegationId, changed
+            return Say(delegationId, changed && !readback.ControlledQa
                 ? "The request you confirmed was saved and checked before the latest correction could be applied. I haven't changed that saved record or arranged a follow-up."
-                : "Your request is saved for the team to review. I have checked the saved record. No follow-up has been arranged by this call.");
+                : SavedMessage(readback) + (changed ? " I have not applied the later correction." : BookingAfterSavePrompt()));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             // A lost claim/commit response is not evidence that nothing happened. Reconcile actual records,
             // and block a second write while the effect remains uncertain.
-            ReceptionistInquiryReadback? readback = null;
+            ReceptionistApplicationOutcome? readback = null;
             using var finish = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             try
             {
@@ -522,9 +577,10 @@ internal sealed class ReceptionistApplicationSession : IDisposable
                 }
             }
             catch (Exception reconciliation) when (reconciliation is not OutOfMemoryException) { }
+            if (readback is not null) RememberBookingScope(intent.Facts);
             StoreResolution(readback, readback is null && (writeStarted || actionId is null));
             return Say(delegationId, readback is not null
-                ? "The request you confirmed is saved and its record has been checked. I haven't applied any later correction or arranged a follow-up."
+                ? (readback.ControlledQa ? SavedMessage(readback) : "Your request was saved and its record has been checked. No follow-up has been arranged by this call.") + " I haven't applied any later correction."
                 : writeStarted || actionId is null ? "I can't yet confirm whether your request was saved. Its status needs to be checked before another save."
                 : "No inquiry write was started. Please finish the corrected request before another confirmation.");
         }
@@ -535,15 +591,16 @@ internal sealed class ReceptionistApplicationSession : IDisposable
         }
     }
 
-    private async Task<ReceptionistInquiryReadback?> ReadAndRecordAsync(Guid actionId, CancellationToken ct)
+    private async Task<ReceptionistApplicationOutcome?> ReadAndRecordAsync(Guid actionId, CancellationToken ct)
     {
         var readback = await actions.ReadBackAsync(call, actionId, ct);
         if (readback is not null)
         {
             if (readback.OwnerKey != call.Owner.Key || readback.CallId != call.CallId || readback.ActionId != actionId ||
-                readback.State != "crm_readback_verified" || readback.InquiryId == Guid.Empty || readback.IntakeLinkId == Guid.Empty ||
-                string.IsNullOrWhiteSpace(readback.RecordReference) || string.IsNullOrWhiteSpace(readback.CrmRecordReference) ||
-                !readback.VerificationReceipt.StartsWith("inquiry-readback:v1:", StringComparison.Ordinal))
+                readback.ControlledQa != call.ControlledTest ||
+                readback.State != (call.ControlledTest ? "qa_outcome_verified" : "crm_readback_verified") ||
+                !readback.RecordReference.StartsWith(call.ControlledTest ? "receptionist-qa:" : "website-lead:", StringComparison.Ordinal) ||
+                !readback.VerificationReceipt.StartsWith(call.ControlledTest ? "qa-intake-outcome:v1:" : "inquiry-readback:v1:", StringComparison.Ordinal))
                 throw new InvalidOperationException("The independent readback does not prove this call's owner-bound canonical inquiry.");
             await actions.OutcomeAsync(actionId, "verified", readback.RecordReference, readback.VerificationReceipt, ct);
         }
@@ -558,9 +615,12 @@ internal sealed class ReceptionistApplicationSession : IDisposable
         foreach (var raw in Regex.Split(text, @"(?<=[.!?])\s+|,?\s+and\s+(?=I (?:need|want|would like)|my (?:name|first name|last name) is)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
         {
             var sentence = Regex.Replace(raw.Trim(), @"^(?:Actually|Correction)[,:]?\s+", "", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (Regex.IsMatch(sentence, @"^my (?:first name|last name|name) is\s+.*\b(?:not|but|instead|from|call me|don't|do not)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ||
+                facts.CallerName is not null && Regex.IsMatch(sentence, @"^(?:my )?(?:first name|last name) is\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            { pendingNameFragment = "complete corrected name required"; unrecognized = true; continue; }
             var recognizedSentence = false;
             var need = Regex.Match(sentence, @"^(?:I need|I want|I would like|I'd like|I am looking for|I'm looking for|Please help me with)\s+.+$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            if (need.Success && !UnavailableAction(sentence) && !SaveDiscussion(sentence))
+            if (need.Success && !InformationRequest(sentence) && !UnavailableAction(sentence) && !SaveDiscussion(sentence))
             {
                 if (Encoding.UTF8.GetByteCount(sentence) > 360) throw new ArgumentException("The minimal stated need must be brief enough to read back accurately.");
                 var selectionOnly = catalog.Services.Any(service => service.Aliases.Any(alias => Regex.IsMatch(
@@ -575,11 +635,14 @@ internal sealed class ReceptionistApplicationSession : IDisposable
             if (email.Success) { facts = facts with { Email = email.Groups[1].Value.TrimEnd('.', '!') }; recognizedSentence = true; }
             var phone = Regex.Match(sentence, @"^(?:My phone number is|My number is)\s+([+()0-9 .-]+)[.!]?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             if (phone.Success) { facts = facts with { Phone = phone.Groups[1].Value.TrimEnd('.', '!').Trim() }; recognizedSentence = true; }
-            if (!Regex.IsMatch(sentence, @"^My first name is spelled\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) && NamedFact(sentence, "first name", out var first)) { facts = facts with { FirstName = first }; spellingField = "first"; recognizedSentence = true; }
-            if (!Regex.IsMatch(sentence, @"^My last name is spelled\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) && NamedFact(sentence, "last name", out var last)) { facts = facts with { LastName = last }; spellingField = "last"; recognizedSentence = true; }
+            if (!Regex.IsMatch(sentence, @"^My first name is spelled\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) && NamedFact(sentence, "first name", out var first)) { facts = facts with { FirstName = first, CallerName = null }; spellingField = "first"; pendingNameFragment = null; recognizedSentence = true; }
+            if (!Regex.IsMatch(sentence, @"^My last name is spelled\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) && NamedFact(sentence, "last name", out var last)) { facts = facts with { LastName = last, CallerName = null }; spellingField = "last"; pendingNameFragment = null; recognizedSentence = true; }
+            var fullIntroduction = Regex.Match(sentence.TrimEnd(','), @"^My name is\s+([\p{L}'-]+(?:\s+[\p{L}'-]+){1,5})[.!]?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (fullIntroduction.Success)
+            { facts = facts with { CallerName = fullIntroduction.Groups[1].Value.Trim(), FirstName = null, LastName = null }; spellingField = null; pendingNameFragment = null; recognizedSentence = true; }
             var introduction = Regex.Match(sentence.TrimEnd(','), @"^(?:My name is)\s+([\p{L}'-]{1,120})[.!]?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             if (introduction.Success && !new[] { "interested", "looking", "calling", "not", "unsure", "ready", "done" }.Contains(introduction.Groups[1].Value, StringComparer.OrdinalIgnoreCase))
-            { facts = facts with { FirstName = introduction.Groups[1].Value }; spellingField = "first"; recognizedSentence = true; }
+            { facts = facts with { FirstName = introduction.Groups[1].Value, LastName = null, CallerName = null }; spellingField = "first"; pendingNameFragment = null; recognizedSentence = true; }
             var spelled = Regex.Match(sentence, @"^(?:(?:My )?(first name|last name) is spelled |(?:It is|It's|That is|That's|Spelled)\s+)([\p{L}](?:[ -]*[\p{L}]){1,119})[.!]?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             if (spelled.Success && (spelled.Groups[1].Success || Regex.IsMatch(spelled.Groups[2].Value, @"[ -]")))
             {
@@ -588,8 +651,8 @@ internal sealed class ReceptionistApplicationSession : IDisposable
                 if (field is not null)
                 {
                     var name = Regex.Replace(spelled.Groups[2].Value, @"[ -]+", "");
-                    facts = field == "first" ? facts with { FirstName = name } : facts with { LastName = name };
-                    spellingField = field; recognizedSentence = true;
+                    facts = field == "first" ? facts with { FirstName = name, CallerName = null } : facts with { LastName = name, CallerName = null };
+                    spellingField = field; pendingNameFragment = null; recognizedSentence = true;
                 }
             }
             if (NamedFact(sentence, "business", out var business)) { facts = facts with { BusinessName = business }; recognizedSentence = true; }
@@ -599,7 +662,7 @@ internal sealed class ReceptionistApplicationSession : IDisposable
                 var field = remove.Groups[1].Value.ToLowerInvariant();
                 if (field == "name") { spellingField = null; pendingNameFragment = null; }
                 facts = field.StartsWith("email", StringComparison.Ordinal) ? facts with { Email = null } :
-                    field.StartsWith("phone", StringComparison.Ordinal) ? facts with { Phone = null } : facts with { FirstName = null, LastName = null };
+                    field.StartsWith("phone", StringComparison.Ordinal) ? facts with { Phone = null } : facts with { FirstName = null, LastName = null, CallerName = null };
                 recognizedSentence = true;
             }
             understood |= recognizedSentence;
@@ -614,17 +677,28 @@ internal sealed class ReceptionistApplicationSession : IDisposable
         }, understood, unrecognized);
     }
 
-    private ReceptionistApplicationServiceDefinition? ExplicitServiceChoice(string text)
+    private ReceptionistApplicationServiceDefinition? ExplicitServiceChoice(string text, out bool ambiguous)
     {
+        ambiguous = false;
         // Resolve an explicit final choice, not arbitrary last-mentioned words. Configured aliases
         // remain the only service identities; ambiguity never grants a route.
-        var clauses = Regex.Split(text, @"[.!?;]|\b(?:but|instead|actually)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var clauses = Regex.Split(text, @"(?<=[.!?;])\s+|\b(?:but|instead|actually)\b|,?\s+and\s+(?=I (?:need|want|would like)|my (?:name|first name|last name) is)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         foreach (var clause in clauses.Reverse())
         {
-            var candidate = Regex.Replace(clause, @"\bnot\s+[^,]+,", "", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant).Trim();
-            if (!Regex.IsMatch(candidate, @"^(?:(?:I (?:want|need|choose|prefer|would like)|I'd like|let's (?:choose|focus on|go with)|(?:please )?(?:focus on|switch to|go with))\s+|(?:the )?.+\s+please[.!]?$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) continue;
-            var options = catalog.Services.Where(service => service.Aliases.Any(alias => Phrase(candidate, alias))).ToArray();
-            return options.Length == 1 && !Regex.IsMatch(candidate, @"\b(?:not|don't|do not|neither)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ? options[0] : null;
+            var candidate = clause.Trim();
+            var exclusion = Regex.Match(candidate, @"^not\s+[^,]+,\s*(.+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (exclusion.Success && MatchedServices(exclusion.Groups[1].Value).Length > 0)
+                candidate = exclusion.Groups[1].Value;
+            if (InformationRequest(candidate)) continue;
+            if (!Regex.IsMatch(candidate, @"^(?:(?:I (?:(?:(?:do not|don't) )?(?:want|need|choose|prefer)|would like|am looking for)|I'm looking for|I'd like|Please help me with|let's (?:choose|focus on|go with)|(?:please )?(?:focus on|switch to|go with)|not)\s+|(?:the )?.+\s+please[.!]?$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) continue;
+            var options = MatchedServices(candidate);
+            var negated = Regex.IsMatch(candidate, @"\b(?:not|don't|do not|neither)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (options.Length == 0 && !negated) continue; // a later need-detail clause is not a service switch
+            // Rejecting a different service does not revoke the caller's saved
+            // choice. Rejecting that choice (or all choices) does require clarity.
+            lock (gate) ambiguous = options.Length > 1 || negated &&
+                (options.Length == 0 || draft.ServiceKey is null || options[0].ServiceKey == draft.ServiceKey);
+            return options.Length == 1 && !negated ? options[0] : null;
         }
         return null;
     }
@@ -633,7 +707,27 @@ internal sealed class ReceptionistApplicationSession : IDisposable
         !text.TrimEnd().EndsWith('?') && service.Aliases.Any(alias => Phrase(text, alias)) &&
         !Regex.IsMatch(text, @"\b(?:what|how|why|when|where|does|can you)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
+    private static bool IsBareServiceChoice(string text, ReceptionistApplicationServiceDefinition service) =>
+        service.Aliases.Any(alias => Regex.IsMatch(ReceptionistApplicationCatalog.Normalize(text),
+            @"^(?:the\s+)?" + Regex.Escape(ReceptionistApplicationCatalog.Normalize(alias)) + @"(?:\s+service)?(?:,?\s+please)?$",
+            RegexOptions.CultureInvariant));
+
+    private ReceptionistApplicationServiceDefinition[] MatchedServices(string text)
+    {
+        // A configured full brand/service alias outranks a shorter alias contained
+        // in that same occurrence. Separate mentions still remain separate choices.
+        var hits = catalog.Services.SelectMany(service => service.Aliases.SelectMany(alias => Regex.Matches(text,
+            @"(?<![\p{L}\p{N}])" + Regex.Escape(alias.Trim()) + @"(?![\p{L}\p{N}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+            .Select(match => (Service: service, Start: match.Index, End: match.Index + match.Length)))).ToArray();
+        return hits.Where(hit => !hits.Any(other => other.Start <= hit.Start && other.End >= hit.End && other.End - other.Start > hit.End - hit.Start))
+            .Select(x => x.Service).DistinctBy(x => x.ServiceKey).ToArray();
+    }
+
     private static string NormalizeQuestion(string text) => ReceptionistApplicationCatalog.NormalizeQuestion(text);
+
+    private static bool InformationRequest(string text) => text.TrimEnd().EndsWith('?') || Regex.IsMatch(text,
+        @"^(?:I (?:want|need|would like)|I'd like)\s+(?:to (?:know|hear|understand|learn|ask|find out)\b|(?:more )?(?:information|details)\b)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static bool NamedFact(string sentence, string label, out string name)
     {
@@ -646,7 +740,8 @@ internal sealed class ReceptionistApplicationSession : IDisposable
     {
         if (text.TrimEnd().EndsWith('?')) return false;
         var value = ReceptionistApplicationCatalog.Normalize(text);
-        return Regex.IsMatch(value, @"^(?:yes,?\s+)?(?:please\s+)?(?:save|record) (?:this|the|my) (?:request|inquiry) (?:you just read back|you just summarized|as we just reviewed it)$", RegexOptions.CultureInvariant) ||
+        return Regex.IsMatch(value, @"^(?:yes,?\s+)?please (?:save|record) (?:my|this|the) (?:request|inquiry)$", RegexOptions.CultureInvariant) ||
+            Regex.IsMatch(value, @"^(?:yes,?\s+)?(?:please\s+)?(?:save|record) (?:this|the|my) (?:request|inquiry) (?:you just read back|you just summarized|as we just reviewed it)$", RegexOptions.CultureInvariant) ||
             value == "i want you to save the request you just read back" ||
             value == "i confirm the details you just read back and want you to save this request";
     }
@@ -699,12 +794,24 @@ internal sealed class ReceptionistApplicationSession : IDisposable
     }
     private static bool Token(string value) => value.Length is > 0 and <= 200 &&
         value.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '_' or '-' or '.');
-    private void Invalidate() { prepared = null; if (activeIntent is not null) _ = activeIntent.CancelAsync(); }
-    private void StoreResolution(ReceptionistInquiryReadback? readback, bool unresolved)
+    private void Invalidate() { prepared = null; preparedBooking = null; if (activeIntent is not null) _ = activeIntent.CancelAsync(); }
+    private static string SavedMessage(ReceptionistApplicationOutcome result) => result.ControlledQa
+        ? "Your synthetic test outcome was recorded and independently checked. No customer inquiry, appointment or follow-up was created."
+        : "Your request is saved for the team to review. I have checked the saved record. No follow-up has been arranged by this call.";
+
+    private void StoreResolution(ReceptionistApplicationOutcome? readback, bool unresolved)
     {
         lock (gate)
         {
-            if (!disposed) { saved = readback; unresolvedAction = unresolved; }
+            if (!disposed)
+            {
+                saved = readback; unresolvedAction = unresolved;
+                if (readback is not null)
+                {
+                    draft = new(); input.Clear(); output.Clear(); pendingNameFragment = null;
+                    spellingField = null; pendingKnowledgeQuestion = null; serviceChoiceNeedsClarification = false;
+                }
+            }
             Invalidate();
         }
     }
@@ -715,6 +822,7 @@ internal sealed class ReceptionistApplicationSession : IDisposable
         {
             if (disposed) return;
             disposed = true; Invalidate(); input.Clear(); output.Clear(); draft = new(); saved = null; pendingKnowledgeQuestion = null; pendingNameFragment = null; spellingField = null;
+            bookingOptions = []; bookingServiceKey = null; requestedBookingDetail = null; bookingRequested = false;
             seenEvents.Clear(); eventOrder.Clear(); seenDelegations.Clear();
         }
     }

@@ -175,6 +175,7 @@ public class CalendarControllerTests
         Assert.Equal(LeadAppointmentBookingSources.InternalCalendar, appointment.RequestedBookingSource);
         Assert.Equal(LeadAppointmentBookingSources.InternalCalendar, appointment.ConfirmationSource);
         Assert.Equal("evt-123", appointment.CalendarEventId);
+        Assert.False(string.IsNullOrWhiteSpace(appointment.BookingPageIdOrMailbox));
         Assert.Equal("https://outlook.test/events/evt-123", appointment.CalendarEventWebLink);
         Assert.Equal(expectedStartUtc, appointment.ScheduledStartUtc);
         Assert.Equal(expectedEndUtc, appointment.ScheduledEndUtc);
@@ -184,6 +185,7 @@ public class CalendarControllerTests
 
         var availability = Assert.IsType<OkObjectResult>(await controller.DayAvailability("2027-05-21"));
         var live = JsonSerializer.SerializeToElement(availability.Value);
+        Assert.False(live.GetProperty("connected").GetBoolean()); // saved booking is absent from the stale provider response
         Assert.DoesNotContain(live.GetProperty("freeSlots").EnumerateArray(), slot =>
             DateTime.Parse(slot.GetProperty("startIso").GetString()!, CultureInfo.InvariantCulture) <= expectedStartUtc &&
             DateTime.Parse(slot.GetProperty("endIso").GetString()!, CultureInfo.InvariantCulture) >= expectedEndUtc);
@@ -192,7 +194,11 @@ public class CalendarControllerTests
         var staleBooking = await controller.CreateEvent(new CalendarController.CreateEventRequest {
             ClientUserId = "second-client", Subject = "Conflicting booking", StartISO = "2027-05-21T09:00:00", EndISO = "2027-05-21T09:30:00"
         });
-        Assert.IsType<ConflictObjectResult>(staleBooking);
+        Assert.Equal(503, Assert.IsType<ObjectResult>(staleBooking).StatusCode);
+        requestAdapter.Verify(adapter => adapter.SendAsync(
+            It.Is<RequestInformation>(request => request.HttpMethod == Method.POST),
+            It.IsAny<ParsableFactory<BookingAppointment>>(),
+            It.IsAny<Dictionary<string, ParsableFactory<IParsable>>>(), It.IsAny<CancellationToken>()), Times.Once);
         Assert.Single(await db.LeadAppointments.ToListAsync());
 
         var lead = await db.WorkstationLeadProfiles.SingleAsync(x => x.LeadId == "L-CALENDAR-1");

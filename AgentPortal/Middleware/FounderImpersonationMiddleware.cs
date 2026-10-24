@@ -19,7 +19,7 @@ public class FounderImpersonationMiddleware
 
     public async Task InvokeAsync(HttpContext context, FounderImpersonationService service)
     {
-        if (MobileApiRoute.IsMobileApi(context.Request))
+        if (ReceptionistMetadataAccess.Granted(context) || MobileApiRoute.IsMobileApi(context.Request))
         {
             await _next(context);
             return;

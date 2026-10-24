@@ -25,6 +25,9 @@ public sealed record ReceptionistBusinessConfiguration
     public int MaximumCallsPerWindow { get; init; }
     public IReadOnlyList<ReceptionistHoursWindow> Hours { get; init; } = [];
     public IReadOnlyList<string> RequestedCapabilities { get; init; } = [];
+    // Omitted for historical configurations. Saving a policy never accepts a capability or enables calls.
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public ReceptionistBookingPolicy? BookingPolicy { get; init; }
 }
 
 public sealed record ReceptionistHoursWindow(DayOfWeek Day, TimeOnly Start, TimeOnly End);
@@ -59,4 +62,38 @@ public static class ReceptionistCapabilityStates
 public static class ReceptionistCapabilities
 {
     public const string CanonicalIntake = "canonical_intake";
+    public const string CanonicalBooking = "canonical_booking";
 }
+
+/// <summary>Human-reviewed mapping under the existing configuration/version/binding authority.</summary>
+public sealed record ReceptionistBookingPolicy
+{
+    public bool Enabled { get; init; }
+    public bool QaOnly { get; init; } = true;
+    public string ExpectedCalendarConfigurationSha256 { get; init; } = string.Empty;
+    public string ExpectedCalendarTargetSha256 { get; init; } = string.Empty;
+    public bool AllowConsentedCustomerEmail { get; init; }
+    public string PrivacyAcceptanceReference { get; init; } = string.Empty;
+    public Guid? BookingAgentProfileId { get; init; }
+    public int MinimumNoticeMinutes { get; init; }
+    public int MaximumAdvanceDays { get; init; }
+    public IReadOnlyList<ReceptionistBookingService> Services { get; init; } = [];
+}
+
+public sealed record ReceptionistBookingService
+{
+    public string ServiceKey { get; init; } = string.Empty;
+    public string BookingServiceId { get; init; } = string.Empty;
+    public string TimeZoneId { get; init; } = string.Empty;
+    public int DurationMinutes { get; init; }
+}
+
+/// <summary>Allowlisted metadata only. No account identity, token, calendar event or client record.</summary>
+public sealed record ReceptionistBookingReadiness(
+    string State, bool CalendarRecorded, bool CalendarConnectedRecorded, Guid? CalendarRevision, string? CalendarConfigurationSha256,
+    bool? BookingAgentEnabled, string? CalendarTargetSha256,
+    string AuthorizationKind, bool AppointmentPermissionRecorded, DateTime? LastVerifiedUtc,
+    bool MappingConfigured, bool Requested, bool QaOnly, string InvitationPolicy,
+    IReadOnlyList<ReceptionistBookingServiceStatus> Services, IReadOnlyList<string> Reasons);
+
+public sealed record ReceptionistBookingServiceStatus(string ServiceKey, string PublicLabel, string TimeZoneId, int DurationMinutes);

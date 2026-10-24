@@ -31,6 +31,17 @@ internal sealed record ReceptionistApplicationAnswer
 
 internal sealed record ReceptionistApplicationPriorAction(Guid ActionId, string State);
 
+// Whitelisted state metadata only: no transcript, caller facts, contact hashes,
+// request text, provider body, credential or opaque booking handle.
+internal sealed record ReceptionistApplicationDiagnostic(long InputRevision, bool ServiceSelected,
+    bool NamePresent, bool ContactPresent, bool NameCorrectionPending, bool ConfirmationPending,
+    bool ConfirmationContextAcknowledged, bool IntakeVerified, bool Synthetic, bool Uncertain,
+    bool BookingPending, bool BookingVerified);
+
+/// <summary>Trusted internal verification only. No stored caller facts or contact hashes cross into dialogue state.</summary>
+internal sealed record ReceptionistApplicationOutcome(string OwnerKey, Guid CallId, Guid ActionId,
+    string State, bool ControlledQa, string RecordReference, string VerificationReceipt);
+
 /// <summary>The implementation invokes the existing admission and canonical inquiry authorities.</summary>
 internal interface IReceptionistApplicationActions
 {
@@ -39,6 +50,6 @@ internal interface IReceptionistApplicationActions
         string confirmationReceipt, Guid leaseToken, CancellationToken ct);
     Task<ReceptionistInquiryPersistence> PersistAsync(ReceptionistCallContext call, Guid actionId,
         ConfirmedReceptionistInquiry facts, string confirmationReceipt, CancellationToken ct);
-    Task<ReceptionistInquiryReadback?> ReadBackAsync(ReceptionistCallContext call, Guid actionId, CancellationToken ct);
+    Task<ReceptionistApplicationOutcome?> ReadBackAsync(ReceptionistCallContext call, Guid actionId, CancellationToken ct);
     Task OutcomeAsync(Guid actionId, string state, string? actualReference, string receipt, CancellationToken ct);
 }

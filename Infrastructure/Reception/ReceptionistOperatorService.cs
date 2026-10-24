@@ -6,6 +6,7 @@ using Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Shared.Analytics;
 using Shared.Auth;
 
@@ -14,11 +15,18 @@ namespace Infrastructure.Reception;
 /// <summary>Authenticated operator entry; all persistence remains in the existing settings/accounting owners.</summary>
 public sealed class ReceptionistOperatorService(MarketingConnectionStore store,
     ReceptionistAdmissionService admission, IConfiguration configuration, MarketingCredentialProtector protector,
-    IHttpContextAccessor httpContext, TimeProvider clock)
+    IHttpContextAccessor httpContext, TimeProvider clock, IServiceProvider? services = null)
 {
     private const string PackageRoot = "Receptionist:OperatorPackages";
     private const string PreviewPurpose = "voice-op-preview";
     private static readonly TimeSpan PreviewLifetime = TimeSpan.FromMinutes(5);
+
+    public Task<ReceptionistBookingRecoveryPreparation> PrepareBookingRecoveryAsync(string expectedOwnerKey,
+        Guid configurationId, Guid? callId, CancellationToken ct = default)
+    {
+        RequireFounder();
+        return admission.ReadBookingRecoveryPreparationAsync(expectedOwnerKey, configurationId, callId, ct);
+    }
 
     public Task<ReceptionistOperatorPreparation> PrepareAsync(string expectedOwnerKey, Guid configurationId,
         CancellationToken ct = default)
@@ -112,7 +120,21 @@ public sealed class ReceptionistOperatorService(MarketingConnectionStore store,
         }
         try
         {
-            if (package.Operation is "accept_binding" or "set_owner_admission")
+            if (package.Operation == "reconcile_booking_action")
+            {
+                if (initial.CompletedReference is { } prior)
+                    throw new ReceptionistOperatorReplayException(prior, initial.SatisfiedWithoutReceipt);
+                initial.RequirePackageRevisions(package);
+                if (initial.StateSha256 != preview.StateSha256 || actor != preview.ActorOid)
+                    throw new DbUpdateConcurrencyException("The reviewed booking state changed.");
+                var booking = services?.GetRequiredService<Bookings.IReceptionistApplicationBooking>() as Bookings.ReceptionistBookingAuthority
+                    ?? throw new InvalidOperationException("The canonical booking recovery implementation is unavailable.");
+                var result = await booking.ReconcileRecordedAsync(initial.Owner, package.BookingActionId!.Value,
+                    package.ExpectedBookingActionRevision!.Value, Guard, ct);
+                if (!result.Verified && result.State != "booking_rejected_before_attempt")
+                    return Receipt(request, package, result.State, false, false, null, initial.Facts);
+            }
+            else if (package.Operation is "accept_binding" or "set_owner_admission")
                 await store.ApplyReceptionistOperatorAsync(package, initial, preflight.Binding, actor, Guard, ct);
             else
                 await admission.ApplyOperatorAccountingAsync(package, initial, Guard, ct);
@@ -260,6 +282,10 @@ internal sealed record ReceptionistOperatorPackage
     public bool? Enabled { get; init; }
     public Guid? CallId { get; init; }
     public Guid? ExpectedCallRevision { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public Guid? BookingActionId { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public Guid? ExpectedBookingActionRevision { get; init; }
     public string? ComponentKey { get; init; }
     public ReceptionistDatedCostObservation? CallCost { get; init; }
     public ReceptionistVerifiedAccountCharge? AccountCharge { get; init; }
@@ -298,6 +324,7 @@ internal sealed record ReceptionistOperatorPackage
         Supplied("callCost", CallCost is not null); Supplied("accountCharge", AccountCharge is not null);
         Supplied("voice", VoiceAllocations is not null); Supplied("finalVoice", FinalVoiceSeconds.HasValue);
         Supplied("closure", ObservedProviderClosedUtc.HasValue);
+        Supplied("bookingAction", BookingActionId.HasValue || ExpectedBookingActionRevision.HasValue);
         string[] allowed = Operation switch
         {
             "accept_binding" => ["binding", "secrets"], "open_budget_period" => ["opening"],
@@ -305,12 +332,16 @@ internal sealed record ReceptionistOperatorPackage
             "set_owner_admission" => ["enabled"], "reconcile_call_cost" => ["call", "component", "callCost"],
             "reconcile_account_charge" => ["accountCharge"], "reconcile_dated_voice" => ["call", "voice", "finalVoice"],
             "record_provider_closure" => ["call", "closure", "finalVoice"],
+            "reconcile_booking_action" => ["call", "bookingAction"],
             _ => throw new ArgumentException("Unsupported operator operation.")
         };
         if (supplied.Except(allowed).Any() || allowed.Where(x => x != "finalVoice").Except(supplied).Any())
             throw new ArgumentException("One exact bounded operator operation is required.");
         if (CallId.HasValue && (CallId == Guid.Empty || ExpectedCallRevision is null || ExpectedCallRevision == Guid.Empty))
             throw new ArgumentException("An exact call and expected revision are required.");
+        if (Operation == "reconcile_booking_action" && (BookingActionId is null || BookingActionId == Guid.Empty ||
+            ExpectedBookingActionRevision is null || ExpectedBookingActionRevision == Guid.Empty))
+            throw new ArgumentException("An exact booking action and expected revision are required.");
         if (BudgetAccountId == Guid.Empty || FinalVoiceSeconds < 0) throw new ArgumentException("An exact accounting target is required.");
         if (Operation == "accept_binding")
         {

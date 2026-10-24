@@ -21,7 +21,7 @@ public class AgentTrackingProvisioningFilter : IAsyncActionFilter
 
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
-        if (MobileApiRoute.IsMobileApi(context.HttpContext.Request))
+        if (AgentPortal.Security.ReceptionistMetadataAccess.Granted(context.HttpContext) || MobileApiRoute.IsMobileApi(context.HttpContext.Request))
         {
             await next();
             return;

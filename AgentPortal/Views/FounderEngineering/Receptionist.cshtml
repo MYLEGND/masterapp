@@ -13,6 +13,7 @@
         "reconcile_account_charge" => "Reconcile an account charge",
         "reconcile_dated_voice" => "Reconcile voice usage by service period",
         "record_provider_closure" => "Record verified provider closure",
+        "reconcile_booking_action" => "Reconcile the original booking outcome without creating or resending",
         _ => "Review the configured operation"
     };
 }
@@ -42,11 +43,16 @@
         <form asp-action="ReceptionistPreparation" method="get">
             <label for="receptionist-preparation-owner">Settings owner key</label>
             <input id="receptionist-preparation-owner" name="expectedOwnerKey" required maxlength="450" autocomplete="off" />
-            <label for="receptionist-preparation-configuration">Current configuration ID</label>
+            <label for="receptionist-preparation-configuration">Configuration ID (original pinned version for recovery)</label>
             <input id="receptionist-preparation-configuration" name="configurationId" required maxlength="36" autocomplete="off" />
+            <label for="receptionist-preparation-call">Original call ID (optional; booking recovery only)</label>
+            <input id="receptionist-preparation-call" name="callId" maxlength="36" autocomplete="off" />
             <button type="submit">Read preparation metadata</button>
+            <button type="submit" formaction="@Url.Action("ReceptionistBookingReadiness")">Read saved booking readiness</button>
+            <button type="submit" formaction="@Url.Action("ReceptionistBookingRecoveryPreparation")">Read booking recovery metadata</button>
         </form>
         <p>Independent provider, capability, cost and reviewer evidence is still required before a reviewed operation can be registered. No call test window starts here.</p>
+        <p>Booking recovery metadata can use the original call's pinned configuration ID. It returns scoped action revisions for review and does not contact the calendar. If the result needs a narrower scope, add the original call ID.</p>
     </section>
 
     @if (Model.Receipt is { } receipt)

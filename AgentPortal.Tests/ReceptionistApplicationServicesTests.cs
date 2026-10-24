@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Infrastructure.Leads;
+using Infrastructure.Bookings;
 using Infrastructure.Reception;
 using Shared.Analytics;
 using Xunit;
@@ -15,6 +16,292 @@ namespace AgentPortal.Tests;
 /// <summary>Real deterministic state machine with a recording application boundary; canonical relational authorities have their own integration tests.</summary>
 public sealed class ReceptionistApplicationServicesTests
 {
+    [Fact]
+    public async Task ACompoundNeedKeepsItsExplicitServiceWhenTheLaterClauseAddsOnlyRequestDetails()
+    {
+        using var f = new SessionFixture();
+        var read = Text(await f.PrepareAsync("I need a website and I want to explain my services."));
+        Assert.Contains("Service: Website services", read); Assert.DoesNotContain("Which service", read);
+    }
+
+    [Fact]
+    public async Task InformationalDetourDoesNotReplaceTheSelectedServiceOrConfirmedNeed()
+    {
+        using var f = new SessionFixture(); await f.PrepareAsync();
+        f.Input("I want to know how much coaching costs?", 300, 400); await f.Session.HandleDelegationAsync("information");
+        f.Input("Please read back my request.", 500, 600);
+        var read = Text(await f.Session.HandleDelegationAsync("preserved"));
+        Assert.Contains("Service: Website services", read); Assert.DoesNotContain("how much coaching costs", read);
+        f.Input("I want coaching instead.", 700, 800); var switched = Text(await f.Session.HandleDelegationAsync("actual-switch"));
+        Assert.DoesNotContain("Service: Website services", switched);
+        f.Input("I need help with a coaching plan.", 900, 1000);
+        Assert.Contains("Service: Coaching", Text(await f.Session.HandleDelegationAsync("new-need")));
+    }
+
+    [Fact]
+    public async Task WholeNameReplacementCannotReuseAnEarlierSurname()
+    {
+        using var f = new SessionFixture(); await f.PrepareAsync();
+        f.Input("My first name is Ada.", 300, 400); await f.Session.HandleDelegationAsync("first");
+        f.Input("My last name is Lovelace.", 500, 600); await f.Session.HandleDelegationAsync("last");
+        f.Input("Actually, my name is Grace.", 700, 800);
+        var read = Text(await f.Session.HandleDelegationAsync("whole-name"));
+        Assert.Contains("Grace", read); Assert.DoesNotContain("Lovelace", read); Assert.DoesNotContain("Ada", read);
+    }
+    [Fact]
+    public async Task CorrectedNameHoldSurvivesAnUnrelatedQuestionAndCannotSaveTheOldName()
+    {
+        using var f = new SessionFixture(); await f.PrepareAsync();
+        f.Input("My name is Jordan Riley.", 300, 400); await f.Session.HandleDelegationAsync("first-name");
+        f.Input("Actually, my last name is Reilly.", 500, 600); await f.Session.HandleDelegationAsync("correction");
+        f.Input("What do you offer?", 700, 800); await f.Session.HandleDelegationAsync("detour");
+        f.Input("Please save my request.", 900, 1000);
+        Assert.Contains("complete name", Text(await f.Session.HandleDelegationAsync("must-not-save")));
+        Assert.Equal(0, f.Actions.Writes);
+    }
+
+    [Fact]
+    public async Task LongerProtectionBrandIsNotMisclassifiedAsTheLegendBrand()
+    {
+        var config = Configuration() with { ServiceDefinitionsJson = JsonSerializer.Serialize(new[]
+        {
+            new { serviceKey = "website_services", displayName = "LEGEND", aliases = new[] { "LEGEND", "website" }, discoveryQuestion = "What is your website goal?", publicSummary = "Synthetic website information." },
+            new { serviceKey = "coaching", displayName = "LEGEND Legacy Protection", aliases = new[] { "LEGEND Legacy Protection", "protection" }, discoveryQuestion = "What protection information do you need?", publicSummary = "Synthetic protection information." }
+        }) };
+        using var f = new SessionFixture(config);
+        var read = Text(await f.PrepareAsync("I want LEGEND Legacy Protection to discuss protection options."));
+        Assert.Contains("Service: LEGEND Legacy Protection", read); Assert.DoesNotContain("Which service", read);
+        f.Input("We also discussed LEGEND earlier.", 300, 400); await f.Session.HandleDelegationAsync("brand-detour");
+        f.Input("Please read back my request.", 500, 600);
+        Assert.Contains("Service: LEGEND Legacy Protection", Text(await f.Session.HandleDelegationAsync("brand-current")));
+    }
+
+    [Fact]
+    public async Task SyntheticIntakeAndRestartWireNeverClaimsARealLeadOrReturnsStoredFacts()
+    {
+        using var f = new SessionFixture(controlledTest: true);
+        await f.PrepareAsync();
+        f.Input("My name is Privacycanary Person.", 300, 400); await f.Session.HandleDelegationAsync("qa-name");
+        f.Input("My email is private-canary@example.invalid.", 500, 600);
+        var summary = await f.Session.HandleDelegationAsync("qa-email");
+        f.Acknowledge(summary, 700); f.Input("Please save my request.", 800, 900);
+        var saved = await f.Session.HandleDelegationAsync("qa-save");
+        var wire = Wire(saved);
+        Assert.Contains("synthetic", wire, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Privacycanary", wire); Assert.DoesNotContain("private-canary", wire);
+        Assert.DoesNotContain(f.Actions.ActionId.ToString(), wire);
+        Assert.DoesNotContain("website-lead:", wire); Assert.DoesNotContain("qa-outcome:", wire);
+        f.Actions.Prior.Add(new(f.Actions.ActionId, "verified"));
+        using var restarted = new ReceptionistApplicationSession(f.Call, Guid.NewGuid(),
+            ReceptionistApplicationCatalog.Read(f.Call.Configuration), f.Actions, TimeProvider.System);
+        var restartWire = Wire(await restarted.InitializeAsync());
+        Assert.Contains("synthetic", restartWire, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Privacycanary", restartWire); Assert.DoesNotContain("private-canary", restartWire);
+        Assert.DoesNotContain(f.Actions.ActionId.ToString(), restartWire);
+        var diagnostic = JsonSerializer.Serialize(f.Session.Diagnostic());
+        Assert.DoesNotContain("Privacycanary", diagnostic); Assert.DoesNotContain("private-canary", diagnostic);
+        Assert.DoesNotContain("explain my services", diagnostic);
+        Assert.True(f.Session.Diagnostic().Synthetic); Assert.True(f.Session.Diagnostic().IntakeVerified);
+        Assert.Equal(1, f.Actions.Writes);
+    }
+
+    [Fact]
+    public async Task AQuestionAboutBookingIsNotConsent()
+    {
+        using var f = new SessionFixture(BookingConfiguration(), controlledTest: true, booking: new FakeBooking());
+        await SaveBookingIntakeAsync(f);
+        f.Input("Please book an appointment tomorrow.", 1000, 1100); await f.Session.HandleDelegationAsync("offer");
+        f.Input("Option one.", 1200, 1300); var confirmation = await f.Session.HandleDelegationAsync("slot");
+        f.Acknowledge(confirmation, 1400);
+        f.Input("Book that appointment and send the email invitation?", 1500, 1600);
+        await f.Session.HandleDelegationAsync("question"); Assert.Equal(0, f.Booking!.Commits);
+    }
+
+    [Fact]
+    public async Task QaOnlyBookingIsNotAdvertisedToAPublicCall()
+    {
+        var config = BookingConfiguration();
+        using var f = new SessionFixture(config with { BookingPolicy = config.BookingPolicy! with { QaOnly = true } }, booking: new FakeBooking());
+        await SaveBookingIntakeAsync(f);
+        f.Input("Please book an appointment tomorrow.", 1000, 1100);
+        Assert.Contains("can't", Text(await f.Session.HandleDelegationAsync("public-qa-only")));
+        Assert.Equal(0, f.Booking!.Preparations); Assert.Equal(0, f.Booking.Commits);
+        Assert.False(ReceptionistConfigurationCodec.BookingEnabled(f.Call.Configuration, f.Call.Binding, false));
+        Assert.True(ReceptionistConfigurationCodec.BookingEnabled(f.Call.Configuration, f.Call.Binding, true));
+    }
+
+    [Fact]
+    public async Task AnUnmappedServiceNeverCollectsAppointmentContactDetailsOrThrows()
+    {
+        using var f = new SessionFixture(BookingConfiguration(), booking: new FakeBooking());
+        await f.PrepareAsync("I need coaching to understand my options.");
+        f.Input("Please book an appointment tomorrow.", 300, 400);
+        var result = Text(await f.Session.HandleDelegationAsync("unmapped-service"));
+        Assert.Contains("can't book", result);
+        Assert.DoesNotContain("What name", result); Assert.DoesNotContain("What email", result);
+        Assert.Equal(0, f.Booking!.Preparations); Assert.Equal(0, f.Actions.Writes);
+    }
+
+    [Theory]
+    [InlineData("Book that appointment and send the email invitation.")]
+    [InlineData("Yes, please book it and email me the invitation.")]
+    [InlineData("Please book that appointment and send me an email invitation.")]
+    public async Task BookingRequiresFreshSlotAcknowledgementAndExplicitInvitationConsent(string explicitConsent)
+    {
+        using var f = new SessionFixture(BookingConfiguration(), controlledTest: true, booking: new FakeBooking());
+        await SaveBookingIntakeAsync(f);
+        f.Input("Please book an appointment tomorrow.", 1000, 1100);
+        var offered = await f.Session.HandleDelegationAsync("offer");
+        Assert.Contains("synthetic test options", Text(offered));
+        f.Input("Option one.", 1200, 1300); var confirmation = await f.Session.HandleDelegationAsync("slot");
+        f.Acknowledge(confirmation, 1400); f.Input("Yes.", 1500, 1600);
+        var repeat = await f.Session.HandleDelegationAsync("bare-yes"); Assert.Equal(0, f.Booking!.Commits);
+        f.Acknowledge(repeat, 1700); f.Input(explicitConsent, 1800, 1900);
+        var result = Wire(await f.Session.HandleDelegationAsync("explicit-consent"));
+        Assert.Equal(1, f.Booking.Commits); Assert.Contains("synthetic booking outcome", result);
+        Assert.DoesNotContain("Your appointment is booked", result);
+        Assert.DoesNotContain("private-canary", result); Assert.DoesNotContain("opaque-option", result);
+    }
+
+    [Theory]
+    [InlineData("Actually, my email is corrected@example.invalid.")]
+    [InlineData("Actually, my name is Different Person.")]
+    [InlineData("Actually, use replacement@example.invalid instead.")]
+    public async Task SavedContactCorrectionPermanentlyBlocksUsingTheOldInvitationRecipient(string correction)
+    {
+        using var f = new SessionFixture(BookingConfiguration(), booking: new FakeBooking());
+        await SaveBookingIntakeAsync(f);
+        f.Input("Please book an appointment tomorrow.", 1000, 1100); await f.Session.HandleDelegationAsync("offer");
+        Assert.Equal(1, f.Booking!.Preparations);
+        f.Input(correction, 1200, 1300); await f.Session.HandleDelegationAsync("correct-contact");
+        f.Input("Please book an appointment tomorrow.", 1400, 1500); await f.Session.HandleDelegationAsync("new-date");
+        f.Input("Book that appointment and send the email invitation.", 1600, 1700); await f.Session.HandleDelegationAsync("old-recipient-consent");
+        Assert.Equal(1, f.Booking.Preparations); Assert.Equal(0, f.Booking.Commits);
+    }
+
+    [Fact]
+    public async Task NegatedOrAmbiguousBookingDatesNeedClarificationWithoutAnAvailabilityLookup()
+    {
+        using var f = new SessionFixture(BookingConfiguration(), booking: new FakeBooking());
+        await SaveBookingIntakeAsync(f);
+        f.Input("Please book an appointment, not tomorrow, today.", 1000, 1100);
+        var read = Text(await f.Session.HandleDelegationAsync("ambiguous-date"));
+        Assert.Contains("What day", read); Assert.Equal(0, f.Booking!.Preparations);
+    }
+
+    private static string Wire(IEnumerable<ReceptionistApplicationUpdate> values) => string.Join("\n",
+        values.Select(x => Encoding.UTF8.GetString(ReceptionistSidebandProtocol.Append(x.EventId, x.DelegationId, x.Type, x.Content))));
+    private static async Task SaveBookingIntakeAsync(SessionFixture f)
+    {
+        await f.PrepareAsync();
+        f.Input("My name is Privacycanary Person.", 300, 400); await f.Session.HandleDelegationAsync("booking-name");
+        f.Input("My email is private-canary@example.invalid.", 500, 600);
+        var summary = await f.Session.HandleDelegationAsync("booking-email");
+        f.Acknowledge(summary, 700); f.Input("Please save my request.", 800, 900);
+        await f.Session.HandleDelegationAsync("booking-save"); Assert.Equal(1, f.Actions.Writes);
+    }
+    private static ReceptionistBusinessConfiguration BookingConfiguration() => Configuration() with
+    {
+        RequestedCapabilities = [ReceptionistCapabilities.CanonicalIntake, ReceptionistCapabilities.CanonicalBooking],
+        BookingPolicy = new() { Enabled = true, QaOnly = false, AllowConsentedCustomerEmail = true,
+            Services = [new() { ServiceKey = "website_services", BookingServiceId = "synthetic-service", TimeZoneId = "UTC", DurationMinutes = 30 }] }
+    };
+    private sealed class FakeBooking : IReceptionistApplicationBooking
+    {
+        internal int Preparations, Commits;
+        public Task<IReadOnlyList<ReceptionistBookingOption>> PrepareAsync(ReceptionistCallContext call, Guid intake, string service, DateOnly date, Guid lease, CancellationToken ct)
+        {
+            Preparations++;
+            var start = DateTime.SpecifyKind(date.ToDateTime(new TimeOnly(12, 0)), DateTimeKind.Utc);
+            return Task.FromResult<IReadOnlyList<ReceptionistBookingOption>>([new("opaque-option", start, start.AddMinutes(30), "UTC", "Website services", call.ControlledTest)]);
+        }
+        public Task<ReceptionistBookingResult> CommitAsync(ReceptionistCallContext call, string handle, bool appointment, bool email, string receipt, Guid lease, CancellationToken ct)
+        { Assert.True(appointment); Assert.True(email); Commits++; return Task.FromResult(new ReceptionistBookingResult(call.ControlledTest ? "qa_booking_outcome_verified" : "booking_verified", true, call.ControlledTest)); }
+    }
+    [Theory]
+    [InlineData("We discussed coaching earlier.")]
+    [InlineData("Thanks for explaining coaching.")]
+    public async Task HistoricalSingleServiceMentionDoesNotReplaceTheChosenRequest(string detour)
+    {
+        using var f = new SessionFixture(); await f.PrepareAsync();
+        f.Input(detour, 300, 400); await f.Session.HandleDelegationAsync("historical-service");
+        f.Input("Please read back my request.", 500, 600);
+        var read = Text(await f.Session.HandleDelegationAsync("current-request"));
+        Assert.Contains("Service: Website services", read); Assert.Contains("explain my services", read);
+    }
+
+    [Theory]
+    [InlineData("My name is not Jordan Riley.")]
+    [InlineData("My name is Jordan Riley but call me Jay.")]
+    public async Task AmbiguousNameStatementRequiresCompleteNameBeforeConfirmation(string statement)
+    {
+        using var f = new SessionFixture(); await f.PrepareAsync();
+        f.Input(statement, 300, 400);
+        Assert.Contains("complete corrected name", Text(await f.Session.HandleDelegationAsync("uncertain-name")));
+        Assert.Equal(0, f.Actions.Writes);
+        f.Input("My name is Jordan Reilly.", 500, 600);
+        Assert.Contains("Name as provided: Jordan Reilly.", Text(await f.Session.HandleDelegationAsync("clear-name")));
+    }
+
+    [Fact]
+    public async Task PartialCorrectionOfUnsplitNameRequiresTheCompleteCorrectedName()
+    {
+        using var f = new SessionFixture(); await f.PrepareAsync();
+        f.Input("My name is Jordan Riley.", 300, 400); await f.Session.HandleDelegationAsync("original-name");
+        f.Input("Actually, my last name is Reilly.", 500, 600);
+        Assert.Contains("complete corrected name", Text(await f.Session.HandleDelegationAsync("partial-name-correction")));
+        f.Input("My name is Jordan Reilly.", 700, 800);
+        var read = await f.Session.HandleDelegationAsync("full-name-correction");
+        Assert.Contains("Name as provided: Jordan Reilly.", Text(read));
+        f.Acknowledge(read, 900); f.Input("Please save my request.", 1000, 1100);
+        await f.Session.HandleDelegationAsync("save-corrected-name");
+        Assert.Equal("Jordan Reilly", f.Actions.WrittenFacts!.CallerName);
+        Assert.Null(f.Actions.WrittenFacts.FirstName); Assert.Null(f.Actions.WrittenFacts.LastName);
+    }
+
+    [Fact]
+    public async Task PreviouslyChosenServiceSurvivesMentionOfBothServicesWithoutRepeatedQualification()
+    {
+        using var f = new SessionFixture();
+        await f.PrepareAsync();
+        f.Input("We discussed website and coaching earlier.", 300, 400);
+        var result = Text(await f.Session.HandleDelegationAsync("comparison-detour"));
+        Assert.DoesNotContain("Which service", result);
+        f.Input("Please read back my request.", 500, 600);
+        var summary = Text(await f.Session.HandleDelegationAsync("resume-selected-request"));
+        Assert.Contains("Service: Website services", summary);
+        Assert.Contains("explain my services", summary);
+        Assert.Equal(0, f.Actions.Writes);
+    }
+
+    [Fact]
+    public async Task CompleteCallerProvidedNameIsPreservedWithoutInventingANameSplit()
+    {
+        using var f = new SessionFixture();
+        await f.PrepareAsync();
+        f.Input("My name is Jordan Riley.", 300, 400);
+        var summary = Text(await f.Session.HandleDelegationAsync("provided-full-name"));
+        Assert.Contains("Name as provided: Jordan Riley.", summary);
+        Assert.DoesNotContain("Which part", summary);
+        f.Input("What do you offer?", 500, 600);
+        await f.Session.HandleDelegationAsync("name-detour");
+        f.Input("Please read back my request.", 700, 800);
+        Assert.Contains("Name as provided: Jordan Riley.", Text(await f.Session.HandleDelegationAsync("name-retained")));
+        Assert.Equal(0, f.Actions.Writes);
+    }
+
+    [Fact]
+    public async Task NaturalExplicitSaveSentenceUsesOnlyTheAcknowledgedCurrentSummary()
+    {
+        using var f = new SessionFixture();
+        var summary = await f.PrepareAsync();
+        f.Acknowledge(summary, 300);
+        f.Input("Yes, please save my request.", 400, 500);
+        await f.Session.HandleDelegationAsync("natural-explicit-confirmation");
+        Assert.Equal(1, f.Actions.Writes);
+        Assert.Contains("explain my services", f.Actions.WrittenFacts!.RequestSummary);
+    }
+
     [Fact]
     public async Task NaturalServiceChoiceResumesPendingApprovedQuestion()
     {
@@ -181,6 +468,22 @@ public sealed class ReceptionistApplicationServicesTests
         var result = Text(await f.Session.HandleDelegationAsync("readback"));
         Assert.Contains("Service: Website services", result);
         Assert.Contains("explain my services", result);
+    }
+
+    [Theory]
+    [InlineData("I do not want website.")]
+    [InlineData("Not website please.")]
+    [InlineData("Not website, please.")]
+    [InlineData("I do not want website, please.")]
+    [InlineData("I want neither.")]
+    public async Task RejectingTheCurrentServiceRequiresANewChoiceBeforeSaving(string statement)
+    {
+        using var f = new SessionFixture(); await f.PrepareAsync();
+        f.Input(statement, 300, 400);
+        Assert.Contains("Which service", Text(await f.Session.HandleDelegationAsync("reject-current")));
+        f.Input("Please save my request.", 500, 600);
+        Assert.Contains("choose the service", Text(await f.Session.HandleDelegationAsync("cannot-save")), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, f.Actions.Claims);
     }
 
     [Fact]
@@ -654,14 +957,18 @@ public sealed class ReceptionistApplicationServicesTests
         internal readonly ReceptionistCallContext Call;
         internal readonly FakeActions Actions = new();
         internal readonly ReceptionistApplicationSession Session;
+        internal readonly FakeBooking? Booking;
         internal int Time;
         private int events;
-        internal SessionFixture(ReceptionistBusinessConfiguration? configuration = null, MarketingOwnerScope? owner = null)
+        internal SessionFixture(ReceptionistBusinessConfiguration? configuration = null, MarketingOwnerScope? owner = null, bool controlledTest = false, FakeBooking? booking = null)
         {
             var config = configuration ?? Configuration();
             Call = new(Guid.NewGuid(), owner ?? MarketingOwnerScope.Founder, "openai", "synthetic-project", Guid.NewGuid().ToString("N"),
-                Guid.NewGuid(), config, new ReceptionistProviderBinding(), DateTime.UtcNow.AddMinutes(3), "accepted", false);
-            Session = new(Call, Guid.NewGuid(), ReceptionistApplicationCatalog.Read(config), Actions, TimeProvider.System);
+                Guid.NewGuid(), config, new ReceptionistProviderBinding { Capabilities = booking is null ? [] :
+                    [new(ReceptionistCapabilities.CanonicalBooking, ReceptionistBookingAuthority.RouteKey, ReceptionistCapabilityStates.Accepted, "synthetic-booking-review")] },
+                DateTime.UtcNow.AddMinutes(3), "accepted", controlledTest);
+            Booking = booking;
+            Session = new(Call, Guid.NewGuid(), ReceptionistApplicationCatalog.Read(config), Actions, TimeProvider.System, booking);
         }
         internal async Task<IReadOnlyList<ReceptionistApplicationUpdate>> PrepareAsync(string statement = "I need a website to explain my services.")
         {
@@ -714,14 +1021,14 @@ public sealed class ReceptionistApplicationServicesTests
             if (AfterCommit is not null) await AfterCommit();
             return new("canonical_intake_saved", ActionId, "website-lead:" + ActionId, true, null, new(true, false, "pending", null, null));
         }
-        public Task<ReceptionistInquiryReadback?> ReadBackAsync(ReceptionistCallContext call, Guid actionId, CancellationToken ct)
+        public Task<ReceptionistApplicationOutcome?> ReadBackAsync(ReceptionistCallContext call, Guid actionId, CancellationToken ct)
         {
             Reads++;
-            return Task.FromResult<ReceptionistInquiryReadback?>(!Committed || SuppressReadback ? null : new(
-                ActionId, "website-lead:" + ActionId, Guid.NewGuid(), ActionId.ToString("N"),
-                WrongReadbackOwner ? "different-owner" : call.Owner.Key, call.CallId, actionId, WrittenFacts!,
-                ReceptionistInquiryAuthority.CanonicalArgumentsSha256(WrittenFacts!), "inquiry-readback:v1:synthetic-proof",
-                "crm_readback_verified", "owner_notification_disabled", new(true, false, "pending", null, null)));
+            return Task.FromResult<ReceptionistApplicationOutcome?>(!Committed || SuppressReadback ? null : new(
+                WrongReadbackOwner ? "different-owner" : call.Owner.Key, call.CallId, actionId,
+                call.ControlledTest ? "qa_outcome_verified" : "crm_readback_verified", call.ControlledTest,
+                call.ControlledTest ? "receptionist-qa:" + ActionId : "website-lead:" + ActionId,
+                call.ControlledTest ? "qa-intake-outcome:v1:synthetic-proof" : "inquiry-readback:v1:synthetic-proof"));
         }
         public Task OutcomeAsync(Guid actionId, string state, string? actualReference, string receipt, CancellationToken ct)
         { Outcomes.Add((state, actualReference, receipt)); return Task.CompletedTask; }

@@ -2006,6 +2006,30 @@ class ReceptionistReleaseImpactTests(unittest.TestCase):
         self.assertFalse(result['routing'])
         self.assertNotIn('releaseAdmission', result)
 
+    def test_bounded_booking_and_privacy_delta_preserves_all_managed_consumers(self):
+        paths = (
+            'Infrastructure/Bookings/BusinessBookingAccess.cs',
+            'Infrastructure/Bookings/MicrosoftCalendarConnectionAuthority.cs',
+            'Infrastructure/Bookings/ReceptionistBookingAuthority.cs',
+            'Infrastructure/Bookings/ReceptionistBookingContracts.cs',
+            'Infrastructure/Bookings/ReceptionistBookingReadinessReader.cs',
+            'Infrastructure/Identity/RestrictedAiAccessBoundary.cs',
+            'Infrastructure/Leads/ReceptionistInquiryAuthority.Outcomes.cs',
+            'Infrastructure/Reception/ReceptionistAdmissionService.Booking.cs',
+            'Infrastructure/Reception/ReceptionistAdmissionService.Projections.cs',
+            'Infrastructure/Reception/ReceptionistApplicationSession.Booking.cs',
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                result = m.fast_track_scope([path])
+                self.assertEqual(self.managed, set(result['impacts'][path]))
+                self.assertTrue(result['commerce'])
+                self.assertFalse(result['schema'])
+                self.assertFalse(result['routing'])
+                self.assertNotIn('releaseAdmission', result)
+        with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+            m.fast_track_scope(['Infrastructure/Bookings/UnreviewedAdapter.cs'])
+
     def test_shared_consumers_are_proven_by_actual_project_references(self):
         import posixpath
         import xml.etree.ElementTree as ET

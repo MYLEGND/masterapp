@@ -356,7 +356,35 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
         }, ct);
     }
 
-    internal async Task RecordActionOutcomeAsync(Guid actionId, string state, string? actualRecordReference,
+    internal Task<bool> RecordSyntheticIntakeOutcomeAsync(Guid callId, Guid actionId, string hash,
+        string confirmation, string reference, string receipt, CancellationToken ct) =>
+        RecordSyntheticOutcomeAsync(callId, actionId, ReceptionistCapabilities.CanonicalIntake,
+            Leads.ReceptionistInquiryAuthority.RouteKey, hash, confirmation, reference, receipt, ct);
+
+    internal Task<bool> RecordSyntheticBookingOutcomeAsync(Guid callId, Guid actionId, string hash,
+        string confirmation, string reference, string receipt, CancellationToken ct) =>
+        RecordSyntheticOutcomeAsync(callId, actionId, ReceptionistCapabilities.CanonicalBooking,
+            Bookings.ReceptionistBookingAuthority.RouteKey, hash, confirmation, reference, receipt, ct);
+
+    private Task<bool> RecordSyntheticOutcomeAsync(Guid callId, Guid actionId, string capability, string route,
+        string hash, string confirmation, string reference, string receipt, CancellationToken ct) => WithCallAsync(callId, async (write, call) =>
+    {
+        var action = await write.Set<ReceptionistActionIntent>().SingleAsync(x => x.Id == actionId && x.CallId == call.Id, ct);
+        if (!call.ControlledTest || action.CapabilityKey != capability ||
+            action.RouteKey != route || action.ArgumentsSha256 != hash ||
+            action.ConfirmationReceipt != confirmation)
+            throw new InvalidOperationException("The synthetic outcome does not match its claimed scope.");
+        if (action.State == "verified" && action.ActualRecordReference == reference && action.VerificationReceipt == receipt) return false;
+        if (action.State != "pending" || action.ExecutionLeaseToken is not { } lease ||
+            action.ExecutionFence != call.SidebandFence || !OwnsLease(call, lease, clock.GetUtcNow().UtcDateTime) ||
+            !await AdmissionStillEnabledAsync(write, call, ct))
+            throw new InvalidOperationException("The synthetic outcome no longer owns an active confirmed action.");
+        action.State = "verified"; action.ActualRecordReference = reference; action.VerificationReceipt = receipt;
+        action.UpdatedUtc = clock.GetUtcNow().UtcDateTime; action.Revision = Guid.NewGuid();
+        return true;
+    }, ct);
+
+    internal async Task<bool> RecordActionOutcomeAsync(Guid actionId, string state, string? actualRecordReference,
         string verificationReceipt, CancellationToken ct = default)
     {
         if (state is not ("verified" or "uncertain" or "rejected")) throw new ArgumentException("Unsupported action state.");
@@ -365,7 +393,7 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
         else if (actualRecordReference is not null) ReceptionistConfigurationCodec.Required(actualRecordReference, 512, nameof(actualRecordReference));
         await using var read = new MasterAppDbContext(options);
         var callId = await read.Set<ReceptionistActionIntent>().Where(x => x.Id == actionId).Select(x => x.CallId).SingleAsync(ct);
-        await WithCallAsync(callId, async (write, call) =>
+        return await WithCallAsync(callId, async (write, call) =>
         {
             var action = await write.Set<ReceptionistActionIntent>().SingleAsync(x => x.Id == actionId && x.CallId == call.Id, ct);
             if (state == "verified" && action.CapabilityKey == StopCapability && call.ProviderClosedUtc is null)
@@ -374,7 +402,7 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
             {
                 if (action.State != state || action.ActualRecordReference != actualRecordReference)
                     throw new InvalidOperationException("A terminal action outcome cannot be overwritten by a conflicting receipt.");
-                return true;
+                return false;
             }
             action.State = state; action.ActualRecordReference = actualRecordReference;
             action.VerificationReceipt = verificationReceipt; action.UpdatedUtc = clock.GetUtcNow().UtcDateTime;

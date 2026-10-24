@@ -1,11 +1,13 @@
 using System.Collections.Concurrent;
 using System.Data;
+using System.Security.Cryptography;
+using System.Text;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace AgentPortal.Services;
 
-/// Serializes portal/mobile booking writes for an agent, including across SQL Server instances.
+/// Serializes canonical booking writes by actor and shared calendar, including across SQL Server instances.
 internal sealed class CalendarBookingLock : IAsyncDisposable
 {
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> Gates = new(StringComparer.Ordinal);
@@ -17,9 +19,19 @@ internal sealed class CalendarBookingLock : IAsyncDisposable
     private CalendarBookingLock(MasterAppDbContext db, SemaphoreSlim gate, string resource)
     { this.db = db; this.gate = gate; this.resource = resource; }
 
-    public static async Task<CalendarBookingLock> AcquireAsync(MasterAppDbContext db, string agentId, CancellationToken ct)
+    public static Task<CalendarBookingLock> AcquireAsync(MasterAppDbContext db, string agentId, CancellationToken ct) =>
+        AcquireResourceAsync(db, "legend-calendar:" + agentId.Trim().ToLowerInvariant(), ct);
+
+    internal static string NormalizeTarget(string target) => target.Trim().TrimEnd('/').ToLowerInvariant();
+
+    // Callers acquire actor then target, and dispose in reverse order. The target
+    // excludes actor/owner so two authorized agents sharing it serialize together.
+    public static Task<CalendarBookingLock> AcquireTargetAsync(MasterAppDbContext db, string target, CancellationToken ct) =>
+        AcquireResourceAsync(db, "legend-calendar-target:" + Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(NormalizeTarget(target)))), ct);
+
+    private static async Task<CalendarBookingLock> AcquireResourceAsync(MasterAppDbContext db, string resource, CancellationToken ct)
     {
-        var resource = "legend-calendar:" + agentId.Trim().ToLowerInvariant();
         var gate = Gates.GetOrAdd(resource, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(ct);
         var lease = new CalendarBookingLock(db, gate, resource);

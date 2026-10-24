@@ -3109,6 +3109,7 @@ namespace AgentPortal.Controllers;
         MobileClientCreationPortalTicket ticket,
         CancellationToken cancellationToken)
     {
+        if (Infrastructure.Identity.RestrictedAiIdentity.RegisteredSubject(ticket.AgentOid, _config)) return Task.FromResult(false);
         return _db.AgentProfiles
             .AsNoTracking()
             .AnyAsync(

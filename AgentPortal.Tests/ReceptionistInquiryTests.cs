@@ -24,8 +24,95 @@ using Xunit;
 namespace AgentPortal.Tests;
 
 /// <summary>Actual inquiry/CRM writers and fenced action authority, with synthetic provider receipts and no network transport.</summary>
-public sealed class ReceptionistInquiryTests
+public sealed partial class ReceptionistInquiryTests
 {
+    [Fact]
+    public async Task ControlledQaOutcomeIsDurableReadBackIndependentlyAndCreatesNoCustomerRecords()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var call = await f.CallAsync(controlledTest: true); var facts = Facts();
+        var action = await f.ClaimAsync(call, facts);
+        Assert.Null(await f.Inquiries.ReadSafeOutcomeAsync(call, action));
+        var result = await f.Inquiries.PersistQaOutcomeAsync(call, action, facts, Receipt);
+        Assert.True(result.Created); Assert.Equal("qa_outcome_saved", result.State);
+        Assert.Null(result.InquiryId); Assert.Equal(0, result.Counting.NewGenuineInquiryCount);
+        Assert.Equal(0, result.Counting.NewVerifiedOrganicInquiryCount);
+        var read = await f.Inquiries.ReadSafeOutcomeAsync(call, action);
+        Assert.NotNull(read); Assert.Equal("qa_outcome_verified", read.State); Assert.True(read.ControlledQa);
+        Assert.DoesNotContain(facts.Email!, JsonSerializer.Serialize(read));
+        Assert.DoesNotContain(facts.RequestSummary!, JsonSerializer.Serialize(read));
+        Assert.False((await f.Inquiries.PersistQaOutcomeAsync(call, action, facts, Receipt)).Created);
+        Assert.Null(await f.Inquiries.ReadBackAsync(call.Owner, call.CallId, action));
+        await using var db = f.Database();
+        var committed = Assert.Single(await db.Set<ReceptionistActionIntent>().AsNoTracking().ToListAsync());
+        Assert.Equal(ReceptionistInquiryAuthority.CanonicalArgumentsSha256(facts), committed.ArgumentsSha256);
+        Assert.Equal("verified", committed.State); Assert.StartsWith("receptionist-qa:", committed.ActualRecordReference);
+        Assert.Empty(await db.WebsiteLeads.ToListAsync()); Assert.Empty(await db.WorkstationLeadProfiles.ToListAsync());
+        Assert.Empty(await db.WebsiteLeadIntakeLinks.ToListAsync()); Assert.Empty(await db.LeadAppointments.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ConcurrentQaReplayHasOneDurableOutcomeAndOneWriteAcknowledgement()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var call = await f.CallAsync(controlledTest: true); var facts = Facts(); var action = await f.ClaimAsync(call, facts);
+        var outcomes = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ =>
+            f.Inquiries.PersistQaOutcomeAsync(call, action, facts, Receipt)));
+        Assert.Single(outcomes.Where(x => x.Created));
+        Assert.Single(outcomes.Select(x => x.RecordReference).Distinct());
+        Assert.Equal("qa_outcome_verified", (await f.Inquiries.ReadSafeOutcomeAsync(call, action))!.State);
+        await using var db = f.Database(); Assert.Single(await db.Set<ReceptionistActionIntent>().ToListAsync());
+        Assert.Empty(await db.WebsiteLeads.ToListAsync()); Assert.Empty(await db.WorkstationLeadProfiles.ToListAsync());
+    }
+
+    [Fact]
+    public async Task QaReceiptCannotAuthorizeChangedFactsScopeOrAProductionCall()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var call = await f.CallAsync(controlledTest: true); var facts = Facts(); var action = await f.ClaimAsync(call, facts);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Inquiries.PersistQaOutcomeAsync(call, action, facts with { Email = "changed@example.invalid" }, Receipt));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Inquiries.PersistQaOutcomeAsync(call, action, facts, "different-confirmation"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Inquiries.PersistQaOutcomeAsync(call with { Owner = MarketingOwnerScope.Business(Guid.NewGuid()) }, action, facts, Receipt));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Inquiries.PersistQaOutcomeAsync(call with { ConfigurationId = Guid.NewGuid() }, action, facts, Receipt));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Inquiries.PersistQaOutcomeAsync(call with { ControlledTest = false }, action, facts, Receipt));
+        var production = await f.CallAsync(); var productionAction = await f.ClaimAsync(production, facts);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Inquiries.PersistQaOutcomeAsync(production, productionAction, facts, Receipt));
+        await using var db = f.Database(); Assert.Empty(await db.WebsiteLeads.ToListAsync());
+    }
+
+    [Fact]
+    public async Task UncertainQaActionIsNotReexecutedAndTamperedCommittedReceiptIsRejected()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var call = await f.CallAsync(controlledTest: true); var facts = Facts(); var action = await f.ClaimAsync(call, facts);
+        await f.Admission.RecordActionOutcomeAsync(action, "uncertain", null, "synthetic-uncertainty");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Inquiries.PersistQaOutcomeAsync(call, action, facts, Receipt));
+        Assert.Null(await f.Inquiries.ReadSafeOutcomeAsync(call, action));
+        var other = await f.CallAsync(controlledTest: true); var otherAction = await f.ClaimAsync(other, facts);
+        await f.Inquiries.PersistQaOutcomeAsync(other, otherAction, facts, Receipt);
+        await using (var db = f.Database())
+        {
+            var row = await db.Set<ReceptionistActionIntent>().SingleAsync(x => x.Id == otherAction);
+            row.VerificationReceipt = "qa-intake-outcome:v1:tampered"; await db.SaveChangesAsync();
+        }
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Inquiries.ReadSafeOutcomeAsync(other, otherAction));
+    }
+
+    [Fact]
+    public async Task CallerProvidedFullNamePersistsWithoutAnInferredFamilyName()
+    {
+        await using var f = await Fixture.CreateAsync(); var call = await f.CallAsync();
+        var facts = Facts() with { FirstName = null, LastName = null, CallerName = "Jordan Riley" };
+        var action = await f.ClaimAsync(call, facts);
+        await f.Inquiries.PersistConfirmedAsync(call, action, facts, Receipt);
+        var read = (await f.Inquiries.ReadBackAsync(call.Owner, call.CallId, action))!;
+        Assert.Equal("Jordan Riley", read.ConfirmedFacts.CallerName);
+        Assert.Null(read.ConfirmedFacts.FirstName); Assert.Null(read.ConfirmedFacts.LastName);
+        await using var db = f.Database();
+        var crm = Assert.Single(await db.WorkstationLeadProfiles.ToListAsync());
+        Assert.Equal("Jordan Riley", crm.FirstName); Assert.Equal("", crm.LastName);
+    }
+
     [Fact]
     public async Task FounderServiceInquiryCommitsCanonicalRecordsAndRequiresIndependentReadback()
     {
@@ -425,13 +512,16 @@ public sealed class ReceptionistInquiryTests
         internal DbContextOptions<MasterAppDbContext> Options = null!;
         internal TestClock Clock = new();
         internal MarketingOwnerScope Owner = MarketingOwnerScope.Founder;
+        internal Guid AgentProfileId = Guid.NewGuid();
+        internal readonly Dictionary<Guid, Guid> Leases = [];
+        internal readonly Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider Protection = new();
         internal IConfiguration Configuration = new ConfigurationBuilder().AddInMemoryCollection(
             new[] { new KeyValuePair<string, string?>("Founder:Email", "founder@example.invalid") }).Build();
         internal ReceptionistAdmissionService Admission => new(Options, Clock);
         internal ReceptionistInquiryAuthority Inquiries => new(Options, Admission, Configuration, NullLogger<WebsiteLifeLeadCaptureService>.Instance, Clock);
         internal MasterAppDbContext Database() => new(Options);
 
-        internal static async Task<Fixture> CreateAsync(MarketingOwnerScope? owner = null, bool notifyOwner = false)
+        internal static async Task<Fixture> CreateAsync(MarketingOwnerScope? owner = null, bool notifyOwner = false, bool bookingEnabled = false, bool qaOnly = true)
         {
             var f = new Fixture { Owner = owner ?? MarketingOwnerScope.Founder };
             var connection = "Data Source=" + f.path + ";Pooling=False;Default Timeout=20";
@@ -449,7 +539,7 @@ public sealed class ReceptionistInquiryTests
             {
                 var actor = f.Owner.AgentTrackingProfileId.HasValue ? "agent-actor" : "founder-actor";
                 var email = f.Owner.AgentTrackingProfileId.HasValue ? "agent@example.invalid" : "founder@example.invalid";
-                db.Add(new AgentProfile { AgentUserId = actor, AgentUpn = email, NormalizedEmail = email });
+                db.Add(new AgentProfile { Id = f.AgentProfileId, AgentUserId = actor, AgentUpn = email, NormalizedEmail = email });
                 if (f.Owner.AgentTrackingProfileId is { } agent)
                     db.Add(new AgentTrackingProfile { Id = agent, AgentUserId = actor, AgentUpn = email, Slug = "synthetic" });
             }
@@ -472,6 +562,22 @@ public sealed class ReceptionistInquiryTests
                 Costs = [new("provider_cost", funding, 1m, 0m, 1m, 0m)],
                 Capabilities = [new(ReceptionistCapabilities.CanonicalIntake, ReceptionistInquiryAuthority.RouteKey, ReceptionistCapabilityStates.Accepted, "synthetic-intake-acceptance")]
             };
+            if (bookingEnabled)
+            {
+                config = config with
+                {
+                    RequestedCapabilities = [ReceptionistCapabilities.CanonicalIntake, ReceptionistCapabilities.CanonicalBooking],
+                    ServiceDefinitionsJson = """[{"serviceKey":"website_services","displayName":"Synthetic website consultation","aliases":["website"],"discoveryQuestion":"What is your website goal?","publicSummary":"Synthetic service information."}]""",
+                    BookingPolicy = new() { Enabled = true, QaOnly = qaOnly, BookingAgentProfileId = f.AgentProfileId,
+                        AllowConsentedCustomerEmail = true, PrivacyAcceptanceReference = "synthetic-reviewed-privacy",
+                        ExpectedCalendarConfigurationSha256 = new('a', 64), ExpectedCalendarTargetSha256 = new('b', 64),
+                        MinimumNoticeMinutes = 0, MaximumAdvanceDays = 30,
+                        Services = [new() { ServiceKey = "website_services", BookingServiceId = "synthetic-service", TimeZoneId = "UTC", DurationMinutes = 30 }] }
+                };
+                binding = binding with { Capabilities = [.. binding.Capabilities,
+                    new(ReceptionistCapabilities.CanonicalBooking, Infrastructure.Bookings.ReceptionistBookingAuthority.RouteKey,
+                        ReceptionistCapabilityStates.Accepted, "synthetic-booking-acceptance")] };
+            }
             var connectionRow = new MarketingConnection
             {
                 OwnerKey = f.Owner.Key, OwnerType = f.Owner.OwnerType, AgentTrackingProfileId = f.Owner.AgentTrackingProfileId,
@@ -519,6 +625,7 @@ public sealed class ReceptionistInquiryTests
         internal async Task<Guid> ClaimAsync(ReceptionistCallContext call, ConfirmedReceptionistInquiry facts)
         {
             var lease = (await Admission.AcquireSidebandLeaseAsync(call.CallId, "synthetic-worker", TimeSpan.FromSeconds(30)))!;
+            Leases[call.CallId] = lease.Token;
             var claim = await Admission.ClaimActionAsync(call.CallId, "confirmed-inquiry", ReceptionistCapabilities.CanonicalIntake,
                 ReceptionistInquiryAuthority.CanonicalArgumentsSha256(facts), Receipt, lease.Token);
             Assert.True(claim.MayExecute); return claim.ActionId!.Value;
@@ -527,13 +634,13 @@ public sealed class ReceptionistInquiryTests
         public ValueTask DisposeAsync() { File.Delete(path); return ValueTask.CompletedTask; }
     }
 
-    private sealed class LostCommitAcknowledgement : DbTransactionInterceptor
+    private sealed class LostCommitAcknowledgement(int commitsToSkip = 0) : DbTransactionInterceptor
     {
-        private int pending = 1;
+        private int commits;
         public override Task TransactionCommittedAsync(DbTransaction transaction, TransactionEndEventData eventData,
             CancellationToken cancellationToken = default)
         {
-            if (Interlocked.Exchange(ref pending, 0) == 1) throw new IOException("Synthetic lost response after the database committed.");
+            if (Interlocked.Increment(ref commits) == commitsToSkip + 1) throw new IOException("Synthetic lost response after the database committed.");
             return Task.CompletedTask;
         }
     }
@@ -565,9 +672,12 @@ public sealed class ReceptionistInquiryTests
                 e.HasOne<WorkstationLeadProfile>().WithMany().HasForeignKey(x => x.WorkstationLeadId).HasPrincipalKey(x => x.LeadId).OnDelete(DeleteBehavior.Cascade);
             });
             model.Entity<CommerceWebsiteInquiry>();
+            model.Entity<LeadAppointment>();
+            model.Entity<ClientProfile>(); model.Entity<AgentClient>(); model.Entity<CommerceBusinessMember>(); model.Entity<AccountLifecycleRecord>();
             var allowed = new HashSet<Type>(typeof(ReceptionistCall).Assembly.GetTypes().Where(x => x.Namespace == "Domain.Entities" && x.Name.StartsWith("Receptionist", StringComparison.Ordinal)))
             { typeof(MarketingConnection), typeof(AgentTrackingProfile), typeof(AgentProfile), typeof(CommerceBusiness), typeof(CommerceBusinessStorefrontSettings),
-                typeof(WebsiteLead), typeof(WebsiteLeadIntakeLink), typeof(WorkstationLeadProfile), typeof(CommerceWebsiteInquiry) };
+                typeof(WebsiteLead), typeof(WebsiteLeadIntakeLink), typeof(WorkstationLeadProfile), typeof(CommerceWebsiteInquiry), typeof(LeadAppointment),
+                typeof(ClientProfile), typeof(AgentClient), typeof(CommerceBusinessMember), typeof(AccountLifecycleRecord) };
             foreach (var entity in model.Model.GetEntityTypes().ToArray())
                 if (!allowed.Contains(entity.ClrType)) model.Ignore(entity.ClrType);
         }

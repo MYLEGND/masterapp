@@ -1,5 +1,6 @@
 using AgentPortal.Services;
 using AgentPortal.Mobile;
+using AgentPortal.Security;
 using Microsoft.Extensions.Configuration;
 
 namespace AgentPortal.Middleware;
@@ -97,7 +98,7 @@ public class AssistantResolutionMiddleware
         AssistantContextService assistantContext,
         AgentRegistryService agentRegistry)
     {
-        if (MobileApiRoute.IsMobileApi(context.Request))
+        if (ReceptionistMetadataAccess.Granted(context) || MobileApiRoute.IsMobileApi(context.Request))
         {
             await _next(context);
             return;

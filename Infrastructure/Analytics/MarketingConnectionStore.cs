@@ -665,6 +665,8 @@ public static class MarketingServiceRegistration
         services.TryAddScoped<IMarketingDestinationRegistry, MarketingDestinationRegistry>();
         services.AddScoped<IOpenAiAdsAccountConnectionAuthority, OpenAiAdsAccountConnectionAuthority>();
         services.AddScoped<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority, Infrastructure.Bookings.MicrosoftCalendarConnectionAuthority>();
+        services.AddScoped<Infrastructure.Bookings.ReceptionistBookingReadinessReader>();
+        services.AddScoped<Infrastructure.Bookings.IReceptionistApplicationBooking, Infrastructure.Bookings.ReceptionistBookingAuthority>();
         services.AddHttpClient<IOpenAiAdsDirectConnectionService, OpenAiAdsDirectConnectionService>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(15);

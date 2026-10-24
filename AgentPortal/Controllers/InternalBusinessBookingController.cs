@@ -127,6 +127,8 @@ public sealed class InternalBusinessBookingController(
     {
         var ticket = tickets.TryUnprotect(Request.Headers[TicketHeader].FirstOrDefault());
         if (ticket is null) return (null, null, Unauthorized());
+        if (Infrastructure.Identity.RestrictedAiIdentity.RegisteredSubject(ticket.AgentUserId,
+            HttpContext.RequestServices.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>())) return (null, null, Forbid());
 
         var agent = await BusinessBookingAccess.ResolveAttachedAgentAsync(
             db, ticket.CommerceBusinessId, ticket.AgentProfileId, ct);

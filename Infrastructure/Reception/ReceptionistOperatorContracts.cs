@@ -28,3 +28,10 @@ public sealed record ReceptionistOperatorPlan(string PackageKey, string PackageS
     bool CanApply, IReadOnlyList<string> Blockers, IReadOnlyList<ReceptionistOperatorFact> Facts, string? ExpectedStateToken);
 public sealed record ReceptionistOperatorReceipt(string PackageKey, string PackageSha256, string Operation,
     string Outcome, bool CommitKnown, bool ReadBackVerified, string? DurableReference, IReadOnlyList<ReceptionistOperatorFact> Facts);
+
+public sealed record ReceptionistBookingRecoveryCandidate(Guid CallId, Guid CallRevision, Guid ActionId, Guid ActionRevision,
+    string State, bool OriginalProviderIdentityRecorded);
+public sealed record ReceptionistBookingRecoveryPreparation(DateTime ObservedUtc, string Status, Guid MarketingConnectionId,
+    string OwnerKey, Guid ConnectionRevision, Guid ConfigurationId, string ConfigurationSha256,
+    IReadOnlyList<ReceptionistBookingRecoveryCandidate> Actions, IReadOnlyList<ReceptionistPreparationAccount> Accounts);
+public sealed record ReceptionistQaOutcomeStatus(Guid TicketId, Guid CallId, string Kind, string State, DateTime UpdatedUtc);

@@ -234,6 +234,18 @@ public sealed partial class ReceptionistAdmissionService
         if (periods.Count > 4096 || reservations.Count > 4096 || charges.Count > 4096 || voice.Count > 4096)
             throw new InvalidOperationException("The scoped reconciliation exceeds the supported review bound.");
         var now = clock.GetUtcNow().UtcDateTime;
+        ReceptionistActionIntent? bookingAction = null;
+        if (package.Operation == "reconcile_booking_action")
+        {
+            bookingAction = await read.Set<ReceptionistActionIntent>().AsNoTracking().SingleOrDefaultAsync(x =>
+                x.Id == package.BookingActionId && x.CallId == package.CallId, ct);
+            if (call?.ControlledTest != false || bookingAction is null ||
+                bookingAction.CapabilityKey != ReceptionistCapabilities.CanonicalBooking ||
+                bookingAction.RouteKey != Bookings.ReceptionistBookingAuthority.RouteKey ||
+                bookingAction.State is not ("pending" or "uncertain" or "verified" or "rejected") ||
+                bookingAction.State == "rejected" && !IsZeroEffectBookingRejection(bookingAction))
+                throw new InvalidOperationException("The exact original production booking attempt is required.");
+        }
         var completed = await OperatorCompletionAsync(read, package, packageSha256, connection, configuration,
             accounts, periods, call, reservations, now, ct);
         var stateHash = ReceptionistConfigurationCodec.Hash(JsonSerializer.Serialize(new
@@ -243,13 +255,14 @@ public sealed partial class ReceptionistAdmissionService
             connection.ReceptionistAdmissionEnabled, connection.ReceptionistControlRevision,
             ConfigurationId = version.Id, version.ConfigurationSha256,
             CallRevision = call?.Revision,
+            BookingActionRevision = bookingAction?.Revision,
             Accounts = accounts.OrderBy(x => x.Id), Periods = periods.OrderBy(x => x.Id),
             Reservations = reservations.OrderBy(x => x.Id), Charges = charges.OrderBy(x => x.Id), Voice = voice.OrderBy(x => x.Id),
             CurrentPeriods = periods.Where(x => x.StartUtc <= now && x.EndUtc > now).Select(x => x.Id).OrderBy(x => x)
         }));
         return new(owner, connection, version, configuration, binding, call, accounts, stateHash,
             completed.Reference, completed.Satisfied, OperatorFacts(package, connection, version, configuration, accounts, periods,
-                reservations, charges, call, now));
+                reservations, charges, call, now, bookingAction)) { BookingActionRevision = bookingAction?.Revision };
     }
 
     private async Task<(string? Reference, bool Satisfied)> OperatorCompletionAsync(MasterAppDbContext read,
@@ -260,6 +273,11 @@ public sealed partial class ReceptionistAdmissionService
     {
         switch (package.Operation)
         {
+            case "reconcile_booking_action":
+                var booking = await read.Set<ReceptionistActionIntent>().AsNoTracking().SingleAsync(x =>
+                    x.Id == package.BookingActionId && x.CallId == package.CallId, ct);
+                return (Bookings.ReceptionistBookingAuthority.VerifiedAction(booking, configuration) || IsZeroEffectBookingRejection(booking))
+                    ? ("booking-action:" + booking.Id.ToString("D"), true) : (null, false);
             case "accept_binding":
                 // The private immutable binding pins the exact reviewed package. A historical replay
                 // verifies that receipt; it never reactivates an old version after an owner edit.
@@ -344,17 +362,30 @@ public sealed partial class ReceptionistAdmissionService
         ReceptionistBusinessConfiguration configuration,
         IReadOnlyList<ReceptionistBudgetAccount> accounts, IReadOnlyList<ReceptionistBudgetPeriod> periods,
         IReadOnlyList<ReceptionistCostReservation> reservations, IReadOnlyList<ReceptionistAccountCharge> charges,
-        ReceptionistCall? call, DateTime now)
+        ReceptionistCall? call, DateTime now, ReceptionistActionIntent? originalBookingAction)
     {
         static string Amount(decimal value) => value.ToString("0.########", CultureInfo.InvariantCulture);
         static string Date(DateTime? value) => value?.ToString("O", CultureInfo.InvariantCulture) ?? "No dated amount";
         var facts = new List<ReceptionistOperatorFact>
         {
-            new("Evidence", "Operator-reviewed evidence; this page does not independently query the provider."),
+            new("Evidence", package.Operation == "reconcile_booking_action"
+                ? "Applying this reviewed operation reads the original calendar appointment and canonical saved appointment. It cannot create, resend, cancel or reschedule."
+                : "Operator-reviewed evidence; this page does not independently query the provider."),
             new("Owner", connection.OwnerKey), new("Provider project", package.ProviderProjectKey),
             new("Configuration", version.Id.ToString("D")), new("Configuration fingerprint", version.ConfigurationSha256),
             new("Current owner admission", connection.ReceptionistAdmissionEnabled ? "Enabled" : "Disabled")
         };
+        if (package.BookingActionId is { } bookingAction)
+        {
+            facts.Add(new("Original booking action", bookingAction.ToString("D")));
+            facts.Add(new("Booking outcome", originalBookingAction is not null &&
+                Bookings.ReceptionistBookingAuthority.VerifiedAction(originalBookingAction, configuration)
+                ? "Appointment independently verified"
+                : originalBookingAction is not null && IsZeroEffectBookingRejection(originalBookingAction)
+                    ? "No appointment created; rejected before provider attempt"
+                    : "Unresolved; no new booking or invitation is authorized"));
+            facts.Add(new("Recovery boundary", "A proven unstarted action may be rejected. Uncertain provider effects stay fenced until exact readback; recovery cannot create or resend."));
+        }
         foreach (var account in accounts.OrderBy(x => x.Id))
         {
             facts.Add(new("Accounting dimension", account.Kind + " / " + account.Id.ToString("D") + " / " + account.Currency + " / " + account.TimeZoneId));
@@ -426,12 +457,14 @@ internal sealed record ReceptionistOperatorState(MarketingOwnerScope Owner, Mark
     ReceptionistProviderBinding? PinnedBinding, ReceptionistCall? Call, IReadOnlyList<ReceptionistBudgetAccount> Accounts,
     string StateSha256, string? CompletedReference, bool SatisfiedWithoutReceipt, IReadOnlyList<ReceptionistOperatorFact> Facts)
 {
+    internal Guid? BookingActionRevision { get; init; }
     internal void RequirePackageRevisions(ReceptionistOperatorPackage package)
     {
         if (Connection.Revision != package.ExpectedConnectionRevision ||
             Accounts.Count != package.ExpectedAccountRevisions.Count ||
             Accounts.Any(x => !package.ExpectedAccountRevisions.TryGetValue(x.Id, out var revision) || x.Revision != revision) ||
             Call is not null && Call.Revision != package.ExpectedCallRevision ||
+            package.Operation == "reconcile_booking_action" && BookingActionRevision != package.ExpectedBookingActionRevision ||
             package.Operation is "accept_binding" or "set_owner_admission" && Connection.ReceptionistActiveConfigurationId != Version.Id)
             throw new DbUpdateConcurrencyException("The reviewed canonical revisions changed. A fresh scoped review is required.");
     }
