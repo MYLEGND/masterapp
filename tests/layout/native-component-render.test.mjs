@@ -1411,7 +1411,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
         await waitFor("document.querySelector('.site-header .nav').dataset.open==='true'");
         const open=await assertCompact();assert.equal(open.expanded,'true');assert.ok(open.nav.top>=open.header.bottom-1);
         await keys(['\uE00C']);await waitFor("document.querySelector('.site-header .nav').dataset.open==='false'");
-        assert.equal(await execute("document.activeElement.hasAttribute('data-public-nav-toggle')"),true);
+        assert.equal(await execute("return document.activeElement.hasAttribute('data-public-nav-toggle')"),true);
       }
       for(const width of [1363,1364,1365,1188]){
         await metrics(width,761);await settleQuoteCanvas('header:'+width);
