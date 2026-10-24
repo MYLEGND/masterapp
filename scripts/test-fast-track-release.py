@@ -1480,7 +1480,9 @@ class ReleaseAdmissionScopeRegressionTests(unittest.TestCase):
             'Infrastructure/Leads/WebsiteLeadSubmission.cs',
             'SHARED/Analytics/AiSafeAnalyticsPayload.cs',
             'SHARED/Analytics/GrowthEconomicsAndOpenAiFeedContracts.cs',
-            'SHARED/Analytics/MarketingManagerContracts.cs')
+            'SHARED/Analytics/MarketingManagerContracts.cs',
+            'Infrastructure/Reception/ReceptionistContentReview.cs',
+            'SHARED/Analytics/ReceptionistContentReview.cs')
         controls = ('LEGEND-REVENUE-LAUNCH-CHECKPOINT.md',
             'scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj',
             'scripts/sync-published-checkout.py','scripts/test-sync-published-checkout.py')
@@ -1509,7 +1511,7 @@ class ReleaseAdmissionScopeRegressionTests(unittest.TestCase):
     def test_unknown_adjacent_sources_still_fail_closed(self):
         for path in ('Infrastructure/Billing/Unreviewed.cs','Domain/Entities/Unreviewed.cs',
                      'Infrastructure/Businesses/Unreviewed.cs','Infrastructure/Leads/Unreviewed.cs',
-                     'SHARED/Analytics/Unreviewed.cs','scripts/unreviewed.py'):
+                     'SHARED/Analytics/Unreviewed.cs','Infrastructure/Reception/Unreviewed.cs','scripts/unreviewed.py'):
             with self.subTest(path=path),self.assertRaisesRegex(ValueError,'Unmapped'):
                 authority.fast_track_scope([path])
 
@@ -1518,6 +1520,13 @@ class ReleaseAdmissionScopeRegressionTests(unittest.TestCase):
              patch.object(authority,'api_get',side_effect=AssertionError('No remote call in scope planning')):
             scope=authority.fast_track_scope(['Infrastructure/Infrastructure.csproj'])
         self.assertTrue(scope['schema'])
+
+    def test_receptionist_content_candidate_selects_only_four_managed_hosts(self):
+        paths = ('AgentPortal/Controllers/WebsiteAnalyticsController.Receptionist.cs', 'AgentPortal.Tests/ReceptionistApplicationServicesTests.cs', 'AgentPortal.Tests/ReceptionistContentReviewTests.cs', 'AgentPortal.Tests/ReceptionistSetupAndAuthorityTests.cs', 'Infrastructure/Analytics/MarketingConnectionStore.ReceptionistContent.cs', 'Infrastructure/Businesses/BusinessWorkspaceControllerBase.Receptionist.cs', 'Infrastructure/Reception/ReceptionistApplicationServices.cs', 'Infrastructure/Reception/ReceptionistContentReview.cs', 'Infrastructure/Reception/ReceptionistContracts.cs', 'Infrastructure/Reception/ReceptionistOperatorService.cs', 'Infrastructure/Reception/ReceptionistRuntimeAuthority.cs', 'Infrastructure/Reception/ReceptionistSetupForms.cs', 'SHARED/Analytics/ReceptionistConfiguration.cs', 'SHARED/Analytics/ReceptionistContentReview.cs', 'SHARED/Analytics/ReceptionistSetup.cs', 'SHARED/Views/Shared/ReceptionistContentReview.cshtml', 'SHARED/Views/Shared/ReceptionistSetup.cshtml')
+        scope = authority.fast_track_scope(paths)
+        self.assertEqual({row['key'] for row in scope['matrix']['include']}, {'portal', 'client', 'protect', 'parfait'})
+        self.assertTrue(scope['selected']); self.assertTrue(scope['commerce'])
+        self.assertFalse(scope['schema']); self.assertFalse(scope['routing'])
 
 class TrustedToolPromotionAdmissionTests(unittest.TestCase):
     def test_promotion_never_enters_recovery_or_provider(self):

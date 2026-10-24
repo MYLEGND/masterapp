@@ -3930,6 +3930,7 @@ def fast_track_scope(paths):
         'Infrastructure/Reception/ReceptionistApplicationContracts.cs',
         'Infrastructure/Reception/ReceptionistApplicationServices.cs',
         'Infrastructure/Reception/ReceptionistContracts.cs',
+        'Infrastructure/Reception/ReceptionistContentReview.cs',
         'Infrastructure/Reception/ReceptionistCredentialEnvelope.cs',
         'Infrastructure/Reception/ReceptionistIngressController.cs',
         'Infrastructure/Reception/ReceptionistOperatorContracts.cs',
@@ -3944,6 +3945,7 @@ def fast_track_scope(paths):
         'SHARED/Analytics/GrowthEconomicsAndOpenAiFeedContracts.cs',
         'SHARED/Analytics/MarketingManagerContracts.cs',
         'SHARED/Analytics/ReceptionistConfiguration.cs',
+        'SHARED/Analytics/ReceptionistContentReview.cs',
         'SHARED/Analytics/ReceptionistSetup.cs',
     }
     linked = {}

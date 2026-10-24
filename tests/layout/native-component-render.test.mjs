@@ -623,6 +623,46 @@ test('quote geometry rejects missing, clipped, hidden, wrong-width and overlappi
   assert.equal(quoteGeometryValid(narrow,{sidebar:true,desktop:false}),true,'Named preview clamps to real available canvas');
 });
 
+function headerRegionSnapshot(document,window) {
+  const header=document.querySelector('body>header'),content=document.querySelector('.layout-content');
+  if(!header||!content)return null;
+  const h=header.getBoundingClientRect(),c=content.getBoundingClientRect(),style=window.getComputedStyle(document.documentElement);
+  return {clearance:parseFloat(style.getPropertyValue('--legend-modal-clearance-top')),area:parseFloat(style.getPropertyValue('--legend-modal-area-start')),content:c.top,header:h.bottom,height:h.height};
+}
+
+function headerRegionSettled(previous,current,before=null) {
+  const coherent=value=>value&&['clearance','area','content','header','height'].every(key=>Number.isFinite(value[key]))&&
+    value.clearance>=value.header-1&&value.area>=value.clearance;
+  return !!(coherent(previous)&&coherent(current)&&JSON.stringify(previous)===JSON.stringify(current)&&
+    (!before||current.content>=before.content+39));
+}
+
+test('header geometry observation waits for the shipped queued resize update without refreshing it',async()=>{
+  const source=await readFile(path.join(root,'SHARED/wwwroot/js/legend-modal.js'),'utf8');
+  const implementation=name=>{const a=source.indexOf('  function '+name+'('),b=source.indexOf('\n  function ',a+1);assert.ok(a>=0&&b>a);return source.slice(a,b);};
+  const queue=[],values=new Map();let height=100;
+  const header={getBoundingClientRect:()=>({top:0,bottom:height,height})},content={getBoundingClientRect:()=>({top:height})};
+  const style={getPropertyValue:key=>values.get(key),setProperty:(key,value)=>values.set(key,value)};
+  const document={documentElement:{style,setAttribute:()=>{}},querySelector:selector=>selector==='body>header'?header:selector==='.layout-content'?content:null,querySelectorAll:()=>[]};
+  const window={innerHeight:757,matchMedia:()=>({matches:true}),getComputedStyle:()=>style,requestAnimationFrame:callback=>{queue.push(callback);return queue.length;}};
+  const context={document,window,header,content,footer:null,impersonation:null,viewportSyncFrame:0};
+  vm.createContext(context);
+  for(const name of ['writeVariable','syncMobileSheetViewport','syncViewportOffsets','scheduleViewportOffsets'])vm.runInContext(implementation(name),context);
+  context.syncViewportOffsets();
+  height=140;context.scheduleViewportOffsets();const unreadyBaseline=headerRegionSnapshot(document,window);
+  assert.equal(headerRegionSettled(unreadyBaseline,unreadyBaseline),false,'Profile reflow may precede its observer frame');
+  queue.shift()();const baseline=headerRegionSnapshot(document,window);assert.equal(headerRegionSettled(baseline,baseline),true);
+  height=180;context.scheduleViewportOffsets();const stale=headerRegionSnapshot(document,window);
+  assert.ok(stale.clearance>unreadyBaseline.clearance,'The old increased-clearance predicate can pass an earlier update');
+  assert.equal(headerRegionSettled(stale,stale,baseline),false,'Stable stale tokens cannot establish header clearance');
+  queue.shift()();const updated=headerRegionSnapshot(document,window);
+  assert.equal(headerRegionSettled(stale,updated,baseline),false);assert.equal(headerRegionSettled(updated,headerRegionSnapshot(document,window),baseline),true);
+  assert.equal(headerRegionSettled(updated,{...updated,area:updated.clearance-1},baseline),false);
+  assert.equal(headerRegionSettled(updated,{...updated,content:baseline.content},baseline),false);
+  assert.equal(headerRegionSettled(null,updated),false);
+  assert.equal(headerRegionSettled({...updated,height:NaN},{...updated,height:NaN}),false);
+});
+
 function quoteCanvasSettled(previous,current) {
   const aligned=value=>value?.selected && value?.frame && !value.frame.hidden &&
     ['left','top','width','height'].every(k=>Number.isFinite(value.selected[k]) && Number.isFinite(value.frame[k]) && Math.abs(value.selected[k]-value.frame[k])<=1);
@@ -1097,10 +1137,22 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     await command('POST','/session/'+session+'/url',{url:'http://'+serverHost+'/authenticated.html'});
     await execute(`document.querySelector('.profile-name').textContent='Synthetic Alexandra Maximiliana Long Profile Name';`);
     const longProfile=await execute(`const e=document.querySelector('.profile-chip'),b=e.getBoundingClientRect();return {x:b.x,r:b.right}`);assert.ok(longProfile.x>=-1&&longProfile.r<=900+1,'Long profile escapes header');
-    const offsetBefore=await execute(`return {clearance:parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--legend-modal-clearance-top')),content:document.querySelector('.layout-content').getBoundingClientRect().top,header:document.querySelector('body>header').getBoundingClientRect().height}`);
+    placementDiagnostic={scenario:'long-profile-and-offset',phase:'header-baseline',host:'authenticated',width:900};
+    const settleHeaderRegion=async(before=null)=>{
+      const until=Math.min(Date.now()+3000,deadline-10000);let previous=null,current=null;
+      while(Date.now()<until){
+        current=await execute(`return (${headerRegionSnapshot.toString()})(document,window)`);
+        placementDiagnostic.previous=previous;placementDiagnostic.observation=current;
+        if(headerRegionSettled(previous,current,before))return current;
+        previous=current;await new Promise(resolve=>setTimeout(resolve,40));
+      }
+      assert.fail('Header/content/modal region did not settle: '+JSON.stringify(placementDiagnostic));
+    };
+    const offsetBefore=await settleHeaderRegion();
+    placementDiagnostic.offsetBefore=offsetBefore;placementDiagnostic.phase='header-growth';
     await execute(`const h=document.querySelector('body>header');h.style.minHeight=(h.getBoundingClientRect().height+40)+'px'`);
-    await waitFor('parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--legend-modal-clearance-top"))>'+offsetBefore.clearance);
-    const offsetAfter=await execute(`return {clearance:parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--legend-modal-clearance-top')),content:document.querySelector('.layout-content').getBoundingClientRect().top,header:document.querySelector('body>header').getBoundingClientRect().bottom,area:parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--legend-modal-area-start'))}`);
+    const offsetAfter=await settleHeaderRegion(offsetBefore);
+    placementDiagnostic.offsetAfter=offsetAfter;
     assert.ok(offsetAfter.content>=offsetBefore.content+39,'Content did not track grown header');assert.ok(offsetAfter.clearance>=offsetAfter.header-1&&offsetAfter.area>=offsetAfter.clearance,'Modal region missed actual header');
     await click('#fixtureBookingOpen');await waitFor("document.querySelector('#qvBookingModal').classList.contains('show')");
     await waitFor("window.__shown.includes('qvBookingModal')");

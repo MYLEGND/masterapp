@@ -1,11 +1,14 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder-authorized bounded canonical correction under ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1:hidden-scripture-focus, returned by Operation in libfile_f7a0f45b7a988191a7d498073fff345b. Preserve protected exact-head checks, independent acceptance, existing deployment mutex and $0 additional spend. No provider, access, credential, permission or call activation changes.",
-  "purpose": "Correct only Protect scripture closed-dialog keyboard exclusion and its existing synchronous open/close/focus/scroll lifecycle. Preserve content/streak, tenant content and intentional Review/Contact aliases. Require actual-layout native keyboard regression and postdeployment Disability sequence verification. Preserve all five accepted deployments from40044204435 and historical recovery40034358838; this request is a new Protect-only correction, not a rerun. Keep intended draft83 unpublished until remaining live acceptance passes.",
-  "requestId": "founder-protect-scripture-focus-20261024-v1",
+  "authorization": "Founder authorizes canonical implementation, tests, protected integration and selective deployment for MKT-VOICE-001:conversation-state-name-quality:20261024:v1, delivered by Operation Sentinel_0d1c0a89590c81918b970d1e6a2e1dd7 at2026-10-24T03:36:22Z. Astra owns independent reasoning/acceptance; Codex is sole implementer; Layla remains global coordinator. Preserve mandatory security/privacy/access/cost safeguards and $0 additional spend. No call, new test window, provider change or public activation is authorized.",
+  "purpose": "Correct bounded call-scoped service/name/task retention and confirmed canonical intake; provide tenant-scoped content draft/review/apply/rollback through existing controls with server-enforced execution authority. Preserve inactive Shayla18, original five-app successes and completed Protect keyboard repair. This is a new four-.NET-host correction, not a replay of any completed release/recovery. Website source is unchanged; no Website deployment or Cloudflare routing is needed. Require exact-head checks, independent final acceptance, protected admission and verified runtime identities. Call quality requires separately authorized consenting test and termination/accounting evidence. Keep draft83 publication and remaining website acceptance separate and pending.",
+  "requestId": "founder-receptionist-conversation-content-release-20261024-v1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-protect"
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
