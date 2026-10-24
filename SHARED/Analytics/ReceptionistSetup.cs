@@ -6,6 +6,7 @@ public sealed record ReceptionistSetupInput
     public string BusinessName { get; init; } = string.Empty;
     public string ConversationInstructions { get; init; } = string.Empty;
     public string BusinessPolicy { get; init; } = string.Empty;
+    public string? CompactVoicePolicy { get; init; }
     public string? ContactAndRetentionNotes { get; init; }
     public string TimeZoneId { get; init; } = string.Empty;
     public string Currency { get; init; } = string.Empty;
@@ -56,7 +57,7 @@ public sealed record ReceptionistAnswerInput
 }
 
 public sealed record ReceptionistSetupPage(ReceptionistConfigurationSnapshot Snapshot, ReceptionistSetupInput Input,
-    string PostUrl, string AdmissionUrl, string ReturnUrl, IReadOnlyList<string> CrmBuckets, string? Message = null, ReceptionistReadinessProjection? Readiness = null);
+    string PostUrl, string AdmissionUrl, string ReturnUrl, IReadOnlyList<string> CrmBuckets, string? Message = null, ReceptionistReadinessProjection? Readiness = null, string? ContentReviewUrl = null);
 
 public sealed record ReceptionistAdmissionInput(Guid ExpectedRevision, bool Enabled);
 

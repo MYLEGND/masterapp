@@ -6,6 +6,10 @@ public sealed record ReceptionistBusinessConfiguration
     public string BusinessName { get; init; } = string.Empty;
     public string ConversationInstructions { get; init; } = string.Empty;
     public string BusinessPolicy { get; init; } = string.Empty;
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? CompactVoicePolicy { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? CompactVoicePolicySourceSha256 { get; init; }
     public string ApprovedKnowledgeJson { get; init; } = "{}";
     public string ServiceDefinitionsJson { get; init; } = "[]";
     public string IntakeRulesJson { get; init; } = "{}";

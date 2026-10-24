@@ -25,7 +25,7 @@ public static class ReceptionistSetupForms
         return new ReceptionistSetupInput
         {
             ExpectedRevision = snapshot.ConnectionRevision, BusinessName = config.BusinessName,
-            ConversationInstructions = config.ConversationInstructions, BusinessPolicy = config.BusinessPolicy,
+            ConversationInstructions = config.ConversationInstructions, BusinessPolicy = config.BusinessPolicy, CompactVoicePolicy = config.CompactVoicePolicy,
             ContactAndRetentionNotes = Text(Object(config.ContactAndRetentionPolicyJson), "policyText"),
             Currency = config.Currency, TimeZoneId = config.TimeZoneId, MonthlyCashLimit = config.MonthlyCashLimit,
             MonthlyConsumptionLimit = config.MonthlyConsumptionLimit, MonthlyVoiceMinutesLimit = config.MonthlyVoiceSecondsLimit / 60m,
@@ -107,6 +107,8 @@ public static class ReceptionistSetupForms
         var configuration = previous with
         {
             BusinessName = input.BusinessName, ConversationInstructions = input.ConversationInstructions, BusinessPolicy = input.BusinessPolicy,
+            CompactVoicePolicy = string.IsNullOrWhiteSpace(input.CompactVoicePolicy) ? null : input.CompactVoicePolicy.Trim(),
+            CompactVoicePolicySourceSha256 = string.IsNullOrWhiteSpace(input.CompactVoicePolicy) ? null : ReceptionistConfigurationCodec.Hash(input.BusinessPolicy),
             ApprovedKnowledgeJson = oldKnowledge.ToJsonString(), ServiceDefinitionsJson = newServices.ToJsonString(),
             IntakeRulesJson = oldIntake.ToJsonString(), ContactAndRetentionPolicyJson = contact.ToJsonString(),
             TimeZoneId = input.TimeZoneId, Currency = input.Currency, MonthlyCashLimit = input.MonthlyCashLimit,

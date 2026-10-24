@@ -1,0 +1,81 @@
+@model Shared.Analytics.ReceptionistContentReviewPage
+@using System.Text.Json
+@{
+    ViewData["Title"] = "Review receptionist content";
+    var preview = Model.Preview;
+}
+<h1>Review receptionist content</h1>
+<p>Saved version @preview.DraftVersion; most recent applied version @preview.BaselineVersion.</p>
+<p>Review the AI introduction, approved answers, qualification wording and every service destination. Applying content keeps calls paused. It does not verify call quality, extend a test window, enable a provider, or authorize public routing.</p>
+@if (preview.BlockReason is not null) { <p role="status">@preview.BlockReason</p> }
+@foreach (var item in new[] { (Title: "Saved draft", Content: preview.Draft), (Title: "Previously applied content", Content: preview.Baseline) })
+{
+    <details open="@(item.Title == "Saved draft")">
+        <summary>@item.Title</summary>
+        <h2>@item.Content.BusinessName</h2>
+        <h3>Greeting and conversation guidance</h3>
+        <p style="white-space:pre-wrap">@item.Content.ConversationInstructions</p>
+        <h3>Voice policy</h3>
+        <p style="white-space:pre-wrap">@(item.Content.CompactVoicePolicy ?? item.Content.BusinessPolicy)</p>
+        @if (item.Content.CompactVoicePolicy is not null)
+        {
+            <details><summary>Full policy to compare with the concise guidance</summary><p style="white-space:pre-wrap">@item.Content.BusinessPolicy</p></details>
+        }
+        <h3>Services and qualification</h3>
+        @using (var services = JsonDocument.Parse(item.Content.ServiceDefinitionsJson))
+        {
+            using var intake = JsonDocument.Parse(item.Content.IntakeRulesJson);
+            @foreach (var service in services.RootElement.EnumerateArray())
+            {
+                <h4>@service.GetProperty("displayName").GetString()</h4>
+                <p>@service.GetProperty("publicSummary").GetString()</p>
+                <p>Qualification: @service.GetProperty("discoveryQuestion").GetString()</p>
+                <p>Recognized names: @string.Join(", ", service.GetProperty("aliases").EnumerateArray().Select(x => x.GetString()))</p>
+                @if (intake.RootElement.TryGetProperty("canonicalInquiry", out var inquiry) && inquiry.TryGetProperty("services", out var routes))
+                {
+                    @foreach (var route in routes.EnumerateArray().Where(x => x.GetProperty("serviceKey").GetString() == service.GetProperty("serviceKey").GetString()))
+                    { <p>Inquiry destination: @route.GetProperty("crmBucket").GetString()</p> }
+                }
+            }
+        }
+        <h3>Approved questions and answers</h3>
+        @using (var knowledge = JsonDocument.Parse(item.Content.ApprovedKnowledgeJson))
+        {
+            @if (knowledge.RootElement.TryGetProperty("answers", out var answers))
+            {
+                @foreach (var answer in answers.EnumerateArray())
+                {
+                    <p><strong>@string.Join(" / ", answer.GetProperty("questions").EnumerateArray().Select(x => x.GetString()))</strong></p>
+                    <p>@answer.GetProperty("answer").GetString()</p>
+                    <p>Service: @(answer.TryGetProperty("serviceKey", out var scope) && scope.ValueKind == JsonValueKind.String ? scope.GetString() : "General information")</p>
+                    <p>Status: @answer.GetProperty("status").GetString() @if (answer.TryGetProperty("asOfDate", out var date) && date.ValueKind == JsonValueKind.String) { <span>— information dated @date.GetString()</span> }</p>
+                }
+            }
+        }
+    </details>
+}
+@if (preview.CanApply)
+{
+    <form method="post" action="@Model.ApplyUrl">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="ExpectedRevision" value="@preview.ExpectedRevision" />
+        <input type="hidden" name="ReviewHash" value="@preview.ReviewHash" />
+        <label><input type="checkbox" name="ConfirmContentReview" value="true" required /> I reviewed the AI disclosure, approved content and service destinations shown above.</label>
+        <button type="submit">Apply reviewed content and keep calls paused</button>
+    </form>
+}
+<h2>Restore content as a new draft</h2>
+<p>This copies greeting, compatible concise voice guidance, service descriptions and approved answers. Current permissions, budgets, privacy policy, provider settings and service routes remain in force. Review the new draft before applying it.</p>
+<form method="post" action="@Model.RollbackUrl">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="ExpectedRevision" value="@preview.ExpectedRevision" />
+    <label for="source-version">Saved version</label>
+    <select id="source-version" name="SourceVersionId">
+    @foreach (var item in preview.History)
+    {
+        <option value="@item.Id">Version @item.Version — @(item.WasApplied ? "previously applied" : "draft")</option>
+    }
+    </select>
+    <button type="submit">Create inactive draft from this content</button>
+</form>
+<p><a href="@Model.ReturnUrl">Return to receptionist settings</a></p>

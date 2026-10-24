@@ -307,7 +307,7 @@ internal sealed record ReceptionistOperatorPackage
         {
             if (Binding!.Capabilities is null || Binding.Capabilities.Count > 100 || Binding.Capabilities.Any(x => x is null))
                 throw new ArgumentException("A bounded explicit capability map is required.");
-            if (Binding!.ProviderProjectKey != ProviderProjectKey || Binding.ProtectedApiCredential is not null ||
+            if (Binding!.ProviderProjectKey != ProviderProjectKey || ReceptionistConfigurationCodec.HasContentProvenance(Binding) || Binding.ProtectedApiCredential is not null ||
                 Binding.ProtectedWebhookSecret is not null || Binding.OperatorAcceptancePackageSha256 is not null ||
                 !ReceptionistOperatorService.HashValue(ApiCredentialSha256) || !ReceptionistOperatorService.HashValue(WebhookSecretSha256))
                 throw new ArgumentException("Reviewed raw-source fingerprints and an unsealed private binding are required.");

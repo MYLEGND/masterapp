@@ -70,6 +70,9 @@
             <label class="dashboard-form-field"><span>Business name</span><input class="form-control" name="BusinessName" value="@settings.BusinessName" maxlength="200" required /></label>
             <label class="dashboard-form-field"><span>Greeting and conversation guidance</span><textarea class="form-control" name="ConversationInstructions" rows="8" maxlength="65536" required>@settings.ConversationInstructions</textarea></label>
             <label class="dashboard-form-field"><span>Business policy</span><textarea class="form-control" name="BusinessPolicy" rows="12" maxlength="65536" required>@settings.BusinessPolicy</textarea></label>
+                <label class="dashboard-form-field" for="CompactVoicePolicy"><span>Optional concise voice policy</span>
+                <textarea id="CompactVoicePolicy" name="CompactVoicePolicy" rows="8" maxlength="8000">@Model.Input.CompactVoicePolicy</textarea></label>
+                <p>Leave blank to retain the full policy in conversation. If supplied, review it against the full policy above: include identity, listening, service boundaries, qualification, handoff limits, privacy and truthful results. Applying it requires content review; it does not change server permissions.</p>
             <label class="dashboard-form-field"><span>Contact permissions and retention policy</span><textarea class="form-control" name="ContactAndRetentionNotes" rows="5" maxlength="32768">@settings.ContactAndRetentionNotes</textarea></label>
         </div></fieldset>
         <fieldset class="dashboard-surface-panel p-3">
@@ -160,3 +163,8 @@
         </div>
     </form>
 </section>
+
+@if (Model.ContentReviewUrl is not null && Model.Snapshot.ConfigurationId is not null)
+{
+    <p><a href="@Model.ContentReviewUrl">Review saved content, apply it while paused, or restore an earlier draft</a></p>
+}

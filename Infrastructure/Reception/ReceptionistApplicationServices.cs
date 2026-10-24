@@ -115,7 +115,7 @@ internal sealed record ReceptionistApplicationCatalog(
                 foreach (var question in answer.Questions)
                 {
                     Text(question, 200);
-                    if (!questions.Add((answer.ServiceKey ?? "*") + "|" + Normalize(question)))
+                    if (!questions.Add((answer.ServiceKey ?? "*") + "|" + NormalizeQuestion(question)))
                         throw new ArgumentException("An approved question cannot select conflicting answers for the same service.");
                 }
             }
@@ -129,6 +129,13 @@ internal sealed record ReceptionistApplicationCatalog(
 
     internal static string Normalize(string value) => Regex.Replace(value.Trim().ToLowerInvariant(), @"\s+", " ")
         .TrimEnd('.', '?', '!');
+
+    internal static string NormalizeQuestion(string text)
+    {
+        var value = Normalize(text);
+        value = Regex.Replace(value, @"^(?:(?:could|can|would) you (?:please )?(?:tell me|explain) |please (?:tell me|explain) )", "", RegexOptions.CultureInvariant);
+        return Regex.Replace(value, @",? please$", "", RegexOptions.CultureInvariant);
+    }
 
     private static void Text(string? value, int maximum)
     {
@@ -169,6 +176,8 @@ internal sealed class ReceptionistApplicationSession : IDisposable
     private ReceptionistInquiryReadback? saved;
     private ConfirmedReceptionistInquiry draft = new();
     private string? pendingKnowledgeQuestion;
+    private string? pendingNameFragment;
+    private string? spellingField;
     private PreparedInquiry? prepared;
     private CancellationTokenSource? activeIntent;
 
@@ -287,39 +296,65 @@ internal sealed class ReceptionistApplicationSession : IDisposable
                 return Say(delegationId, "What would you like help with?");
             if (Sensitive(text))
             {
-                lock (gate) { draft = new(); Invalidate(); }
+                lock (gate) { draft = new(); pendingNameFragment = null; spellingField = null; pendingKnowledgeQuestion = null; Invalidate(); }
                 return Say(delegationId, "Please don't read out card numbers, passwords or verification codes. What general service question or request can I help with?");
             }
             if (DeclinesSaving(text))
             {
-                lock (gate) { draft = new(); Invalidate(); }
+                lock (gate) { draft = new(); pendingNameFragment = null; spellingField = null; pendingKnowledgeQuestion = null; Invalidate(); }
                 return Say(delegationId, "I haven't saved a request. What else would you like to know?");
             }
             if (ExistingOrVendor(text))
             {
-                lock (gate) { draft = new(); Invalidate(); }
+                lock (gate) { draft = new(); pendingNameFragment = null; spellingField = null; pendingKnowledgeQuestion = null; Invalidate(); }
                 return Say(delegationId, "I can answer approved general questions. I can't access or change an existing customer account, or create a new service inquiry from that request.");
             }
-            var question = ReceptionistApplicationCatalog.Normalize(text);
+            text = Regex.Replace(text, @"^(?:Actually|Correction)[,:]?\s+", "", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            // Delegation and punctuation are not evidence that a name fragment is complete.
+            // Never concatenate separate requests into an invented name. An unfinished clause
+            // requires a fresh, explicit name statement before it can enter the final readback.
+            lock (gate)
+            {
+                var repeatedName = pendingNameFragment is not null;
+                if (repeatedName)
+                {
+                    pendingNameFragment = null;
+                    if (!Regex.IsMatch(text, @"^(?:my (?:first name|last name|name) is|I'm|I am|This is)\s+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                        return Say(delegationId, "Please say your complete name again, or explicitly spell your first or last name. I won't join separate fragments or guess it.");
+                }
+                if (!repeatedName && Regex.IsMatch(text, @"^my (?:first name|last name|name) is\s+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) &&
+                    !Regex.IsMatch(text, @"[.!?]$"))
+                {
+                    pendingNameFragment = "name clarification required";
+                    return Say(delegationId, "Please confirm your complete name, or spell your first or last name. I haven't saved anything.");
+                }
+            }
+            var question = NormalizeQuestion(text);
             var matches = catalog.Services.Where(service => service.Aliases.Any(alias => Phrase(text, alias))).ToArray();
+            var explicitChoice = ExplicitServiceChoice(text);
+            var isQuestion = text.TrimEnd().EndsWith('?') || Regex.IsMatch(text, @"^(?:what|how|why|when|where|does|can|could)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            var negatedChoice = Regex.IsMatch(text, @"\b(?:not|don't|do not|neither)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            var choice = explicitChoice ?? (matches.Length == 1 && !isQuestion && !negatedChoice ? matches[0] : null);
             string? serviceKey;
             lock (gate)
             {
                 if (disposed || inputVersion != version) return Say(delegationId, "I heard more information. Please finish the correction so I can use the right context.");
-                if (matches.Length == 1 && draft.ServiceKey != matches[0].ServiceKey)
+                if (choice is not null && draft.ServiceKey != choice.ServiceKey)
                     draft = draft with
                     {
-                        ServiceKey = matches[0].ServiceKey,
+                        ServiceKey = choice.ServiceKey,
                         RequestSummary = draft.ServiceKey is null ? draft.RequestSummary : null
                     };
-                serviceKey = matches.Length > 1 ? null : draft.ServiceKey;
-                if (pendingKnowledgeQuestion is not null && matches.Length == 1 &&
-                    (matches[0].Aliases.Any(alias => ReceptionistApplicationCatalog.Normalize(alias) == question) ||
-                     ReceptionistApplicationCatalog.Normalize(matches[0].DisplayName) == question))
+                serviceKey = isQuestion && matches.Length == 1 ? matches[0].ServiceKey : choice is null && matches.Length > 1 ? null : draft.ServiceKey;
+                if (pendingKnowledgeQuestion is not null && choice is not null && IsServiceSelection(text, choice))
+                {
                     question = pendingKnowledgeQuestion;
-                pendingKnowledgeQuestion = null;
+                    pendingKnowledgeQuestion = null;
+                }
+                else if (isQuestion) pendingKnowledgeQuestion = null;
+                if (!Regex.IsMatch(text, @"^(?:My (?:first name|last name|name) is|It is|It's|That is|That's|Spelled)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) spellingField = null;
             }
-            var answers = catalog.Answers.Where(item => item.Questions.Any(q => ReceptionistApplicationCatalog.Normalize(q) == question)).ToArray();
+            var answers = catalog.Answers.Where(item => item.Questions.Any(q => NormalizeQuestion(q) == question)).ToArray();
             var answer = answers.SingleOrDefault(item => item.ServiceKey is not null && item.ServiceKey == serviceKey)
                 ?? answers.SingleOrDefault(item => item.ServiceKey is null);
             if (answer is not null)
@@ -333,27 +368,36 @@ internal sealed class ReceptionistApplicationSession : IDisposable
             }
             if (UnavailableAction(text))
                 return Say(delegationId, "I can't book an appointment, transfer a call, take payment or arrange a callback in this call. I can answer general service questions or help prepare a service inquiry for the team to review.");
-            if (matches.Length > 1)
+            if (matches.Length > 1 && choice is null)
             {
                 lock (gate)
                 {
                     if (disposed || inputVersion != version) return Say(delegationId, "Please finish the correction before choosing the service.");
-                    var unscoped = ExtractExplicitFacts(draft with { ServiceKey = null, RequestSummary = null }, text);
-                    draft = unscoped.Facts;
+                    // Mentioning another service does not erase a previously explicit choice or need.
+                    if (draft.ServiceKey is null)
+                        draft = ExtractExplicitFacts(draft, text).Facts;
                 }
                 return Say(delegationId, "Which service is this request about: " + string.Join(", ", matches.Select(x => x.DisplayName)) + "?");
             }
             lock (gate)
             {
                 if (disposed || inputVersion != version) return Say(delegationId, "I heard more information. Please finish the correction so I can read back the right request.");
+                if (Regex.IsMatch(text, @"^My name is\s+[\p{L}'-]+\s+[\p{L} '-]+[.!]?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                    return Say(delegationId, "Which part should I record as your first name, and which as your last name? Please state each explicitly so I don't guess the split.");
+                var possibleName = Regex.Match(text, @"^(?:I'm|I am|This is)\s+([\p{L}'-]{1,120})[.!]?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                if (possibleName.Success)
+                    return Say(delegationId, "If you are giving your name, please say 'My name is' followed by the name you want in this request. I won't infer a name from a description.");
                 var extracted = ExtractExplicitFacts(draft, text);
                 draft = extracted.Facts;
-                if (extracted.Unrecognized && (Correction(text) || ContactDetail(text)))
+                if (extracted.Unrecognized && !(choice is not null && IsServiceSelection(text, choice)) && (Correction(text) || ContactDetail(text)))
                     return Say(delegationId, ContactDetail(text)
                         ? "What contact detail should I correct or leave out? Please state that detail clearly so I can read it back without guessing."
                         : "I couldn't safely interpret the complete correction. Please state the corrected request in one brief sentence.");
                 if (!extracted.Understood && matches.Length == 0)
-                    return Say(delegationId, "I couldn't safely interpret that detail or correction. Please state what you need or the corrected detail in one brief sentence.");
+                    return Say(delegationId, draft.ServiceKey is null
+                        ? "I couldn't safely interpret that request. What would you like help with?"
+                        : "We are discussing " + catalog.Services.Single(x => x.ServiceKey == draft.ServiceKey).DisplayName +
+                          ". What detail would you like clarified? I have kept the request you already gave me.");
                 if (draft.ServiceKey is null)
                     return Say(delegationId, "Which service would you like help with: " + string.Join(", ", catalog.Services.Take(4).Select(x => x.DisplayName)) + "?");
                 var service = catalog.Services.Single(x => x.ServiceKey == draft.ServiceKey);
@@ -506,12 +550,12 @@ internal sealed class ReceptionistApplicationSession : IDisposable
         return readback;
     }
 
-    private static (ConfirmedReceptionistInquiry Facts, bool Understood, bool Unrecognized) ExtractExplicitFacts(ConfirmedReceptionistInquiry prior, string text)
+    private (ConfirmedReceptionistInquiry Facts, bool Understood, bool Unrecognized) ExtractExplicitFacts(ConfirmedReceptionistInquiry prior, string text)
     {
         var facts = prior;
         var understood = false;
         var unrecognized = false;
-        foreach (var raw in Regex.Split(text, @"(?<=[.!?])\s+"))
+        foreach (var raw in Regex.Split(text, @"(?<=[.!?])\s+|,?\s+and\s+(?=I (?:need|want|would like)|my (?:name|first name|last name) is)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
         {
             var sentence = Regex.Replace(raw.Trim(), @"^(?:Actually|Correction)[,:]?\s+", "", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             var recognizedSentence = false;
@@ -519,7 +563,11 @@ internal sealed class ReceptionistApplicationSession : IDisposable
             if (need.Success && !UnavailableAction(sentence) && !SaveDiscussion(sentence))
             {
                 if (Encoding.UTF8.GetByteCount(sentence) > 360) throw new ArgumentException("The minimal stated need must be brief enough to read back accurately.");
-                facts = facts with { RequestSummary = sentence.Trim() };
+                var selectionOnly = catalog.Services.Any(service => service.Aliases.Any(alias => Regex.IsMatch(
+                    ReceptionistApplicationCatalog.Normalize(sentence),
+                    @"^(?:i need|i want|i would like|i'd like)\s+(?:the\s+)?" + Regex.Escape(ReceptionistApplicationCatalog.Normalize(alias)) +
+                    @"(?:\s+service)?(?:,?\s+please)?$", RegexOptions.CultureInvariant)));
+                if (!selectionOnly) facts = facts with { RequestSummary = sentence.Trim() };
                 recognizedSentence = true;
             }
             if (SaveDiscussion(sentence) && facts.RequestSummary is not null) recognizedSentence = true;
@@ -527,13 +575,29 @@ internal sealed class ReceptionistApplicationSession : IDisposable
             if (email.Success) { facts = facts with { Email = email.Groups[1].Value.TrimEnd('.', '!') }; recognizedSentence = true; }
             var phone = Regex.Match(sentence, @"^(?:My phone number is|My number is)\s+([+()0-9 .-]+)[.!]?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             if (phone.Success) { facts = facts with { Phone = phone.Groups[1].Value.TrimEnd('.', '!').Trim() }; recognizedSentence = true; }
-            if (NamedFact(sentence, "first name", out var first)) { facts = facts with { FirstName = first }; recognizedSentence = true; }
-            if (NamedFact(sentence, "last name", out var last)) { facts = facts with { LastName = last }; recognizedSentence = true; }
+            if (!Regex.IsMatch(sentence, @"^My first name is spelled\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) && NamedFact(sentence, "first name", out var first)) { facts = facts with { FirstName = first }; spellingField = "first"; recognizedSentence = true; }
+            if (!Regex.IsMatch(sentence, @"^My last name is spelled\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) && NamedFact(sentence, "last name", out var last)) { facts = facts with { LastName = last }; spellingField = "last"; recognizedSentence = true; }
+            var introduction = Regex.Match(sentence.TrimEnd(','), @"^(?:My name is)\s+([\p{L}'-]{1,120})[.!]?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (introduction.Success && !new[] { "interested", "looking", "calling", "not", "unsure", "ready", "done" }.Contains(introduction.Groups[1].Value, StringComparer.OrdinalIgnoreCase))
+            { facts = facts with { FirstName = introduction.Groups[1].Value }; spellingField = "first"; recognizedSentence = true; }
+            var spelled = Regex.Match(sentence, @"^(?:(?:My )?(first name|last name) is spelled |(?:It is|It's|That is|That's|Spelled)\s+)([\p{L}](?:[ -]*[\p{L}]){1,119})[.!]?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (spelled.Success && (spelled.Groups[1].Success || Regex.IsMatch(spelled.Groups[2].Value, @"[ -]")))
+            {
+                var field = spelled.Groups[1].Value.StartsWith("first", StringComparison.OrdinalIgnoreCase) ? "first" :
+                    spelled.Groups[1].Value.StartsWith("last", StringComparison.OrdinalIgnoreCase) ? "last" : spellingField;
+                if (field is not null)
+                {
+                    var name = Regex.Replace(spelled.Groups[2].Value, @"[ -]+", "");
+                    facts = field == "first" ? facts with { FirstName = name } : facts with { LastName = name };
+                    spellingField = field; recognizedSentence = true;
+                }
+            }
             if (NamedFact(sentence, "business", out var business)) { facts = facts with { BusinessName = business }; recognizedSentence = true; }
             var remove = Regex.Match(sentence, @"^(?:please )?(?:leave out|remove|do not include|don't include) my (email(?: address)?|phone(?: number)?|name)[.!]?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             if (remove.Success)
             {
                 var field = remove.Groups[1].Value.ToLowerInvariant();
+                if (field == "name") { spellingField = null; pendingNameFragment = null; }
                 facts = field.StartsWith("email", StringComparison.Ordinal) ? facts with { Email = null } :
                     field.StartsWith("phone", StringComparison.Ordinal) ? facts with { Phone = null } : facts with { FirstName = null, LastName = null };
                 recognizedSentence = true;
@@ -549,6 +613,27 @@ internal sealed class ReceptionistApplicationSession : IDisposable
             ContactPurpose = facts.Email is not null || facts.Phone is not null ? "Record the stated inquiry; no follow-up permission requested." : null
         }, understood, unrecognized);
     }
+
+    private ReceptionistApplicationServiceDefinition? ExplicitServiceChoice(string text)
+    {
+        // Resolve an explicit final choice, not arbitrary last-mentioned words. Configured aliases
+        // remain the only service identities; ambiguity never grants a route.
+        var clauses = Regex.Split(text, @"[.!?;]|\b(?:but|instead|actually)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        foreach (var clause in clauses.Reverse())
+        {
+            var candidate = Regex.Replace(clause, @"\bnot\s+[^,]+,", "", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant).Trim();
+            if (!Regex.IsMatch(candidate, @"^(?:(?:I (?:want|need|choose|prefer|would like)|I'd like|let's (?:choose|focus on|go with)|(?:please )?(?:focus on|switch to|go with))\s+|(?:the )?.+\s+please[.!]?$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) continue;
+            var options = catalog.Services.Where(service => service.Aliases.Any(alias => Phrase(candidate, alias))).ToArray();
+            return options.Length == 1 && !Regex.IsMatch(candidate, @"\b(?:not|don't|do not|neither)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ? options[0] : null;
+        }
+        return null;
+    }
+
+    private static bool IsServiceSelection(string text, ReceptionistApplicationServiceDefinition service) =>
+        !text.TrimEnd().EndsWith('?') && service.Aliases.Any(alias => Phrase(text, alias)) &&
+        !Regex.IsMatch(text, @"\b(?:what|how|why|when|where|does|can you)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static string NormalizeQuestion(string text) => ReceptionistApplicationCatalog.NormalizeQuestion(text);
 
     private static bool NamedFact(string sentence, string label, out string name)
     {
@@ -629,7 +714,7 @@ internal sealed class ReceptionistApplicationSession : IDisposable
         lock (gate)
         {
             if (disposed) return;
-            disposed = true; Invalidate(); input.Clear(); output.Clear(); draft = new(); saved = null; pendingKnowledgeQuestion = null;
+            disposed = true; Invalidate(); input.Clear(); output.Clear(); draft = new(); saved = null; pendingKnowledgeQuestion = null; pendingNameFragment = null; spellingField = null;
             seenEvents.Clear(); eventOrder.Clear(); seenDelegations.Clear();
         }
     }

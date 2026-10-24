@@ -58,9 +58,20 @@ internal sealed class ReceptionistRuntimeAuthority(
             !binding.Capabilities.Any(x => x.Key == ReceptionistCapabilities.CanonicalIntake &&
                 x.State == ReceptionistCapabilityStates.Accepted && x.RouteKey == Infrastructure.Leads.ReceptionistInquiryAuthority.RouteKey))
             throw new InvalidOperationException("The accepted provider and canonical inquiry route are not supported by this runtime.");
-        // Keep each owner-authored policy unchanged while supplying all of it to the accepted conversation model.
+        // Preserve saved policy. Only an explicitly reviewed compact alternative may replace its voice rendering.
         // The deterministic backend still owns capability checks and business effects; policy text cannot grant them.
-        var instructions = configuration.ConversationInstructions + "\n\nFull business policy:\n" + configuration.BusinessPolicy;
+        ReceptionistConfigurationCodec.Validate(configuration);
+        var voicePolicy = configuration.CompactVoicePolicy ?? configuration.BusinessPolicy;
+        var instructions = "You are the AI assistant for " + configuration.BusinessName + ". Clearly disclose that you are AI when introducing yourself. " +
+            "Listen to the latest explicit choice and corrections; keep the current task and do not repeatedly ask answered questions. " +
+            "Ask one narrow clarification for an uncertain name or service. Never invent facts or claim an action completed before its verified backend result.\n\n" +
+            "Backchannel policy: Briefly acknowledge listening without competing with the caller.\n" +
+            "Interruption policy: Yield when interrupted; listen and carry task corrections forward.\n" +
+            "Delegation policy:\nBackend tools: Configured approved information and caller-confirmed canonical inquiry intake only.\n" +
+            "Generate <|SpawnThinking|> when a configured business answer, intake request or correction needs application work.\n" +
+            "Do not generate <|SpawnThinking|> when a current result already answers the question, for an ordinary greeting, or before a necessary brief clarification.\n" +
+            "Only the application determines execution permissions and verified results. Never guess a pending result or imply an unavailable action was performed.\n\n" +
+            "Owner conversation guidance:\n" + configuration.ConversationInstructions + "\n\nOwner-reviewed speech policy (not execution authority):\n" + voicePolicy;
         using var retention = JsonDocument.Parse(configuration.ContactAndRetentionPolicyJson);
         if (retention.RootElement.TryGetProperty("policyText", out var policy))
         {

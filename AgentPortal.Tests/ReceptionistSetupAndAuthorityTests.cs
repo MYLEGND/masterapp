@@ -30,6 +30,109 @@ namespace AgentPortal.Tests;
 public sealed class ReceptionistSetupAndAuthorityTests
 {
     [Fact]
+    public void OptionalCompactVoicePolicyPreservesDefaultAndRequiresExactSourceReview()
+    {
+        var original = Configuration();
+        var unchanged = ReceptionistRuntimeAuthority.Ready("openai", original, RuntimeBinding(), true);
+        Assert.Contains(original.BusinessPolicy, unchanged.ConversationInstructions);
+        var compact = original with { CompactVoicePolicy = "Synthetic concise reviewed policy.", CompactVoicePolicySourceSha256 = ReceptionistConfigurationCodec.Hash(original.BusinessPolicy) };
+        var settings = ReceptionistRuntimeAuthority.Ready("openai", compact, RuntimeBinding(), true);
+        Assert.Contains(compact.CompactVoicePolicy, settings.ConversationInstructions);
+        Assert.DoesNotContain(original.BusinessPolicy, settings.ConversationInstructions);
+        Assert.Contains("Backchannel policy:", settings.ConversationInstructions);
+        Assert.Contains("Interruption policy:", settings.ConversationInstructions);
+        Assert.Contains("Delegation policy:", settings.ConversationInstructions);
+        Assert.Contains("Generate <|SpawnThinking|>", settings.ConversationInstructions);
+        Assert.Contains("independent record readback", settings.ConversationInstructions);
+        Assert.Throws<ArgumentException>(() => ReceptionistRuntimeAuthority.Ready("openai", compact with { BusinessPolicy = "Changed source." }, RuntimeBinding(), true));
+        Assert.Null(original.CompactVoicePolicy);
+    }
+
+    [Fact]
+    public async Task ContentApplyCreatesOnePausedVersionAndHistoricalReplayPreservesNewerDraft()
+    {
+        await using var f = await ReadinessFixture.CreateAsync();
+        await using var db = f.Database(); var store = f.Store(db);
+        var owner = MarketingOwnerScope.Founder;
+        var current = await store.GetReceptionistConfigurationAsync(owner, "openai");
+        var edited = current.Configuration! with { ConversationInstructions = "Synthetic reviewed AI introduction." };
+        var draft = await store.SaveReceptionistConfigurationAsync(owner, "openai", current.ConnectionRevision, edited, "actor-a");
+        var preview = await store.PreviewReceptionistContentAsync(owner, "openai", "actor-a");
+        Assert.True(preview.CanApply, preview.BlockReason);
+        var input = new ReceptionistContentApplyInput(draft.ConnectionRevision, preview.ReviewHash, true);
+        var applied = await store.ApplyReceptionistContentAsync(owner, "openai", input, "actor-a");
+        Assert.False(applied.Replayed); Assert.False(applied.Current.AdmissionEnabled); Assert.True(applied.Current.BindingAccepted);
+        Assert.Equal(draft.ConfigurationVersion + 1, applied.AppliedVersion);
+        var enabled = await store.SetReceptionistAdmissionAsync(owner, "openai", applied.Current.ConnectionRevision, true);
+        var replayWhileEnabled = await store.ApplyReceptionistContentAsync(owner, "openai", input, "actor-a");
+        Assert.True(replayWhileEnabled.Replayed); Assert.True(replayWhileEnabled.Current.AdmissionEnabled);
+        Assert.Equal(enabled.ConfigurationId, replayWhileEnabled.Current.ConfigurationId);
+        var later = await store.SaveReceptionistConfigurationAsync(owner, "openai", enabled.ConnectionRevision,
+            edited with { ConversationInstructions = "A newer unsaved-for-runtime draft." }, "actor-a");
+        var replay = await store.ApplyReceptionistContentAsync(owner, "openai", input, "actor-a");
+        Assert.True(replay.Replayed); Assert.Equal(applied.AppliedConfigurationId, replay.AppliedConfigurationId);
+        Assert.Equal(later.ConfigurationId, replay.Current.ConfigurationId); Assert.False(replay.Current.BindingAccepted);
+        await using var inspect = f.Database();
+        Assert.Equal(4, await inspect.Set<ReceptionistConfigurationVersion>().CountAsync());
+        var bound = await inspect.Set<ReceptionistConfigurationVersion>().SingleAsync(x => x.Id == applied.AppliedConfigurationId);
+        var binding = ReceptionistConfigurationCodec.ReadBinding(bound.AcceptedBindingJson, edited)!;
+        Assert.Null(binding.OperatorAcceptancePackageSha256); Assert.Equal(preview.ReviewHash, binding.ContentReviewHash);
+        Assert.Equal(f.Version.Id, binding.ContentSourceConfigurationId);
+        Assert.Equal(f.Binding.ProviderProjectKey, binding.ProviderProjectKey); Assert.Equal(f.Binding.Costs, binding.Costs);
+    }
+
+    [Fact]
+    public async Task ContentReviewRejectsActorCrossoverStaleStateAndProtectedChangesWithoutWriting()
+    {
+        await using var f = await ReadinessFixture.CreateAsync(); await using var db = f.Database(); var store = f.Store(db);
+        var owner = MarketingOwnerScope.Founder;
+        var current = await store.GetReceptionistConfigurationAsync(owner, "openai");
+        var draft = await store.SaveReceptionistConfigurationAsync(owner, "openai", current.ConnectionRevision,
+            current.Configuration! with { ConversationInstructions = "Reviewed synthetic greeting." }, "actor-a");
+        var preview = await store.PreviewReceptionistContentAsync(owner, "openai", "actor-a");
+        var input = new ReceptionistContentApplyInput(draft.ConnectionRevision, preview.ReviewHash, true);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => store.ApplyReceptionistContentAsync(owner, "openai", input, "actor-b"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => store.ApplyReceptionistContentAsync(MarketingOwnerScope.Business(Guid.NewGuid()), "openai", input, "actor-a"));
+        var newer = await store.SaveReceptionistConfigurationAsync(owner, "openai", draft.ConnectionRevision,
+            draft.Configuration! with { MonthlyCashLimit = 50m }, "actor-a");
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => store.ApplyReceptionistContentAsync(owner, "openai", input, "actor-a"));
+        var blocked = await store.PreviewReceptionistContentAsync(owner, "openai", "actor-a"); Assert.False(blocked.CanApply);
+        var actual = await store.GetReceptionistConfigurationAsync(owner, "openai"); Assert.Equal(newer.ConfigurationId, actual.ConfigurationId);
+        Assert.False(actual.AdmissionEnabled);
+    }
+
+    [Fact]
+    public async Task ContentRollbackCreatesInactiveDraftAndNeverRestoresHistoricalPermission()
+    {
+        await using var f = await ReadinessFixture.CreateAsync(); await using var db = f.Database(); var store = f.Store(db);
+        var owner = MarketingOwnerScope.Founder; var current = await store.GetReceptionistConfigurationAsync(owner, "openai");
+        var changed = await store.SaveReceptionistConfigurationAsync(owner, "openai", current.ConnectionRevision,
+            current.Configuration! with { ConversationInstructions = "Changed greeting.", MonthlyCashLimit = 12m, CompactVoicePolicy = "New compact policy to undo.", CompactVoicePolicySourceSha256 = ReceptionistConfigurationCodec.Hash(current.Configuration.BusinessPolicy) }, "actor-a");
+        var restored = await store.RestoreReceptionistContentDraftAsync(owner, "openai", new(changed.ConnectionRevision, f.Version.Id), "actor-a");
+        Assert.Equal(Configuration().ConversationInstructions, restored.Configuration!.ConversationInstructions);
+        Assert.Null(restored.Configuration.CompactVoicePolicy); Assert.Null(restored.Configuration.CompactVoicePolicySourceSha256);
+        Assert.Equal(12m, restored.Configuration.MonthlyCashLimit); Assert.False(restored.BindingAccepted); Assert.False(restored.AdmissionEnabled);
+        Assert.NotEqual(f.Version.Id, restored.ConfigurationId);
+    }
+
+    [Fact]
+    public async Task ConcurrentContentApplyReusesOneImmutableResult()
+    {
+        await using var f = await ReadinessFixture.CreateAsync(); await using var db = f.Database(); var store = f.Store(db);
+        var owner = MarketingOwnerScope.Founder; var current = await store.GetReceptionistConfigurationAsync(owner, "openai");
+        var draft = await store.SaveReceptionistConfigurationAsync(owner, "openai", current.ConnectionRevision,
+            current.Configuration! with { ConversationInstructions = "Concurrent synthetic greeting." }, "actor-a");
+        var preview = await store.PreviewReceptionistContentAsync(owner, "openai", "actor-a");
+        var input = new ReceptionistContentApplyInput(draft.ConnectionRevision, preview.ReviewHash, true);
+        async Task<ReceptionistContentApplyResult> Apply()
+        { await using var separate = f.Database(); return await f.Store(separate).ApplyReceptionistContentAsync(owner, "openai", input, "actor-a"); }
+        var results = await Task.WhenAll(Task.Run(Apply), Task.Run(Apply));
+        Assert.Single(results.Select(x => x.AppliedConfigurationId).Distinct());
+        Assert.Single(results.Where(x => !x.Replayed));
+        await using var inspect = f.Database(); Assert.Equal(3, await inspect.Set<ReceptionistConfigurationVersion>().CountAsync());
+    }
+
+    [Fact]
     public async Task ActualMvcFormBindingAcceptsGeneratedIdentitiesAndUntouchedAddRows()
     {
         var first = await BindOwnerFormAsync(new Dictionary<string, StringValues>
@@ -239,10 +342,13 @@ public sealed class ReceptionistSetupAndAuthorityTests
         var settings = ReceptionistRuntimeAuthority.Ready("openai", original, binding, controlledTest: true);
         using var request = JsonDocument.Parse(OpenAiReceptionistProtocol.AcceptBody(settings));
         var supplied = request.RootElement.GetProperty("session").GetProperty("instructions").GetString()!;
-        var exactPrefix = original.ConversationInstructions + "\n\nFull business policy:\n" + original.BusinessPolicy +
+        var exactPrefix = original.ConversationInstructions + "\n\nOwner-reviewed speech policy (not execution authority):\n" + original.BusinessPolicy +
             "\n\nContact and retention policy:\n  Exact contact instructions.\n  ";
-        Assert.StartsWith(exactPrefix + "\n\nTrusted application facts for this call:\n", supplied);
-        Assert.Equal(System.Text.Encoding.UTF8.GetBytes(exactPrefix), System.Text.Encoding.UTF8.GetBytes(supplied[..exactPrefix.Length]));
+        var ownerStart = supplied.IndexOf("Owner conversation guidance:\n", StringComparison.Ordinal);
+        Assert.True(ownerStart >= 0);
+        ownerStart += "Owner conversation guidance:\n".Length;
+        Assert.StartsWith(exactPrefix + "\n\nTrusted application facts for this call:\n", supplied[ownerStart..]);
+        Assert.Equal(System.Text.Encoding.UTF8.GetBytes(exactPrefix), System.Text.Encoding.UTF8.GetBytes(supplied.Substring(ownerStart, exactPrefix.Length)));
         Assert.Contains("Call mode: controlled QA.", supplied, StringComparison.Ordinal);
         Assert.Contains("independent record readback", supplied, StringComparison.Ordinal);
         Assert.Throws<InvalidOperationException>(() => ReceptionistRuntimeAuthority.Ready("openai",
@@ -670,6 +776,7 @@ public sealed class ReceptionistSetupAndAuthorityTests
         internal Guid OwnerPeriodId { get; private set; }
         internal ReceptionistAdmissionService Service => new(Options, new ReadinessClock(Now), services);
         internal MasterAppDbContext Database() => new(Options);
+        internal MarketingConnectionStore Store(MasterAppDbContext db) => new(db, protector);
 
         internal static async Task<ReadinessFixture> CreateAsync()
         {
