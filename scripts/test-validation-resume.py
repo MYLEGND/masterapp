@@ -6699,6 +6699,86 @@ class RecoveryCompleteHistoryTests(unittest.TestCase):
                 with self.assertRaises(ValueError):m.assert_fast_track_recovery_live_execution(10,self.application,observer)
 
 
+class RetainedRecoveryDiscoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.before='a'*40; self.revision='b'*40; self.parent='c'*40
+        self.prior=dict(id=71,head_sha=self.before,status='completed',conclusion='failure',run_attempt=1)
+        self.name=m.fast_track_recovery_summary_name(71,self.before)
+        self.artifacts=[dict(id=101,name=self.name,expired=False)]
+        self.jobs=[dict(name='Select exact affected applications',status='completed',conclusion='success'),
+            dict(name='Admit exact validated fast-track source',conclusion='success'),
+            *[dict(name='Affected App Deploy — '+key,conclusion='success') for key in ('portal','client','website')]]
+        self.calls=[];self.complete=True;self.count=None
+    def api(self,repo,path,token):
+        self.calls.append(path)
+        if path.startswith('actions/artifacts?name='):
+            self.assertEqual(path,'actions/artifacts?name='+self.name+'&per_page=100')
+            return dict(total_count=len(self.artifacts) if self.count is None else self.count,artifacts=self.artifacts)
+        if path.startswith('actions/workflows/'):
+            return dict(total_count=0,workflow_runs=[])
+        if path=='actions/runs/71/jobs?filter=latest&per_page=100':
+            return dict(total_count=len(self.jobs),jobs=self.jobs)
+        if path==f'commits/{self.before}/pulls?per_page=100':
+            return [dict(merged_at='2026-10-23T00:00:00Z',merge_commit_sha=self.before,
+                base=dict(ref=m.FAST_TRACK_PR_BASE),head=dict(repo=dict(full_name='owner/repo')))]
+        raise AssertionError(path)
+    def invoke(self):
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(m,'api_get',side_effect=self.api))
+            stack.enter_context(patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)))
+            stack.enter_context(patch.object(m.subprocess,'check_output',return_value=f'{self.before} {self.parent} {self.revision}'))
+            stack.enter_context(patch.object(m,'fast_track_historical_producers',side_effect=lambda repo,head,token:[self.prior] if head==self.before else []))
+            stack.enter_context(patch.object(m,'fast_track_untriggered_repair_parent',return_value=None))
+            for name in ('fast_track_completed_apps_pending_routing','attested_fast_track_manual_dns_proxy_completion',
+                'attested_fast_track_brand_preupload','fast_track_completed_sql_unpublished','fast_track_unpublished_apps_with_migration_intent'):
+                stack.enter_context(patch.object(m,name,return_value=False))
+            validator=stack.enter_context(patch.object(m,'fast_track_completed_operation_receipts',
+                side_effect=self.complete if isinstance(self.complete,Exception) else None,return_value=self.complete))
+            self.validator=validator
+            return m.fast_track_effective_baseline(self.before,self.revision,repository='owner/repo',token='placeholder')
+    def test_recovery_only_summary_reaches_canonical_validator(self):
+        self.assertEqual(self.invoke(),self.before)
+        self.validator.assert_called_once_with('owner/repo',self.prior,'placeholder')
+    def test_summary_presence_does_not_replace_canonical_proof(self):
+        self.complete=False
+        with self.assertRaisesRegex(RuntimeError,'REQUIRES_OPERATION_RECONCILIATION'):self.invoke()
+        self.validator.assert_called_once()
+    def test_canonical_validation_error_is_not_swallowed(self):
+        self.complete=ValueError('RECOVERY_PRODUCER_UNPROVEN')
+        with self.assertRaisesRegex(ValueError,'RECOVERY_PRODUCER_UNPROVEN'):self.invoke()
+    def test_absent_summary_preserves_prewrite_carry_forward(self):
+        self.artifacts=[];self.jobs[0]['conclusion']='failure'
+        for job in self.jobs[1:]:job['conclusion']='skipped'
+        self.assertEqual(self.invoke(),self.parent)
+        self.validator.assert_not_called()
+    def test_malformed_inventory_fails_closed(self):
+        for rows,count in (([None],1),([self.artifacts[0]]*2,2),(self.artifacts,2)):
+            with self.subTest(rows=rows,count=count):
+                self.artifacts=rows;self.count=count
+                with self.assertRaisesRegex(ValueError,'INVENTORY_INCOMPLETE'):self.invoke()
+                self.validator.assert_not_called()
+    def test_wrong_or_expired_summary_cannot_clear_baseline(self):
+        for artifact in (dict(id=101,name='unrelated',expired=False),dict(id=101,name=self.name,expired=True)):
+            with self.subTest(artifact=artifact):
+                self.artifacts=[artifact]
+                with self.assertRaisesRegex(ValueError,'RECOVERY_SUMMARY_ARTIFACT_UNPROVEN'):self.invoke()
+                self.validator.assert_not_called()
+    def test_existing_diagnostics_still_use_canonical_proof(self):
+        self.artifacts=[];original=self.api
+        def api(repo,path,token):
+            if path.startswith('actions/workflows/'):
+                return dict(total_count=1,workflow_runs=[dict(id=81,head_branch=m.FAST_TRACK_PR_BASE,
+                    path='.github/workflows/'+m.FAST_TRACK_COMPLETION_WORKFLOW)])
+            if path=='actions/runs/81/artifacts?per_page=100':
+                return dict(total_count=1,artifacts=[dict(id=102,name='legend-release-completion-fixture')])
+            return original(repo,path,token)
+        self.api=api
+        with patch.object(m,'_release_history_json',return_value=dict(applicationRevision=self.before)):
+            self.assertEqual(self.invoke(),self.before)
+        self.validator.assert_called_once()
+
+
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.
     # Synthetic planner revisions must never query the real CI repository.
