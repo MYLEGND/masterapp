@@ -25,6 +25,13 @@ internal sealed record ReceptionistProviderBinding
     public string? ProtectedApiCredential { get; init; }
     public string? ProtectedWebhookSecret { get; init; }
     public string? OperatorAcceptancePackageSha256 { get; init; }
+    public string? ContentReviewHash { get; init; }
+    public Guid? ContentSourceConfigurationId { get; init; }
+    public string? ContentSourceConfigurationSha256 { get; init; }
+    public string? ContentSourceBindingSha256 { get; init; }
+    public string? ContentSourceOperatorAcceptanceSha256 { get; init; }
+    public string? ContentSourceDisclosureReceipt { get; init; }
+    public string? ContentReviewedConfigurationSha256 { get; init; }
     public string ProviderVerificationReceipt { get; init; } = string.Empty;
     public string ExclusiveProjectVerificationReceipt { get; init; } = string.Empty;
     public string CostVerificationReceipt { get; init; } = string.Empty;
@@ -136,6 +143,14 @@ internal static class ReceptionistConfigurationCodec
         Required(value.BusinessName, 300, nameof(value.BusinessName));
         Required(value.ConversationInstructions, 65536, nameof(value.ConversationInstructions), allowLines: true);
         Required(value.BusinessPolicy, 262144, nameof(value.BusinessPolicy), allowLines: true);
+        if (value.CompactVoicePolicy is not null)
+        {
+            Required(value.CompactVoicePolicy, 8000, nameof(value.CompactVoicePolicy), allowLines: true);
+            if (value.CompactVoicePolicySourceSha256 != Hash(value.BusinessPolicy))
+                throw new ArgumentException("The compact voice policy must be reviewed against the current full business policy.");
+        }
+        else if (value.CompactVoicePolicySourceSha256 is not null)
+            throw new ArgumentException("A compact policy reference requires its reviewed text.");
         JsonObjectOrArray(value.ApprovedKnowledgeJson, nameof(value.ApprovedKnowledgeJson));
         JsonObjectOrArray(value.ServiceDefinitionsJson, nameof(value.ServiceDefinitionsJson));
         JsonObjectOrArray(value.IntakeRulesJson, nameof(value.IntakeRulesJson));
@@ -162,6 +177,18 @@ internal static class ReceptionistConfigurationCodec
     internal static void ValidateBinding(ReceptionistProviderBinding value, ReceptionistBusinessConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(value);
+        if (HasContentProvenance(value))
+        {
+            static bool Sha(string? text) => text is { Length: 64 } && text.All(c => char.IsAsciiHexDigit(c) && !char.IsUpper(c));
+            if (!Sha(value.ContentReviewHash) || value.ContentSourceConfigurationId == Guid.Empty ||
+                !Sha(value.ContentSourceConfigurationSha256) || !Sha(value.ContentSourceBindingSha256) ||
+                !Sha(value.ContentReviewedConfigurationSha256) || value.ContentSourceConfigurationId is null ||
+                value.ContentReviewedConfigurationSha256 != Hash(Serialize(configuration)) ||
+                value.OperatorAcceptancePackageSha256 is not null || string.IsNullOrWhiteSpace(value.ContentSourceDisclosureReceipt) ||
+                (value.ContentSourceOperatorAcceptanceSha256 is not null && !Sha(value.ContentSourceOperatorAcceptanceSha256)) ||
+                value.DisclosureConfigurationReceipt != "owner-content-review:v1:" + value.ContentReviewHash)
+                throw new ArgumentException("Content review provenance must identify the complete reviewed configuration and preserved source authority.");
+        }
         Required(value.IngressKey, 200, nameof(value.IngressKey));
         Required(value.ProviderProjectKey, 200, nameof(value.ProviderProjectKey));
         Required(value.Model, 100, nameof(value.Model));
@@ -206,6 +233,12 @@ internal static class ReceptionistConfigurationCodec
             }
         }
     }
+
+    internal static bool HasContentProvenance(ReceptionistProviderBinding value) =>
+        value.ContentReviewHash is not null || value.ContentSourceConfigurationId is not null ||
+        value.ContentSourceConfigurationSha256 is not null || value.ContentSourceBindingSha256 is not null ||
+        value.ContentSourceOperatorAcceptanceSha256 is not null || value.ContentSourceDisclosureReceipt is not null ||
+        value.ContentReviewedConfigurationSha256 is not null;
 
     internal static bool HasRequiredIntake(ReceptionistBusinessConfiguration configuration, ReceptionistProviderBinding binding) =>
         configuration.RequestedCapabilities.Contains(ReceptionistCapabilities.CanonicalIntake, StringComparer.Ordinal) &&

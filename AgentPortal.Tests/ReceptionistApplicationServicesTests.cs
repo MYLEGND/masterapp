@@ -15,6 +15,251 @@ namespace AgentPortal.Tests;
 /// <summary>Real deterministic state machine with a recording application boundary; canonical relational authorities have their own integration tests.</summary>
 public sealed class ReceptionistApplicationServicesTests
 {
+    [Fact]
+    public async Task NaturalServiceChoiceResumesPendingApprovedQuestion()
+    {
+        var config = Configuration() with { ApprovedKnowledgeJson = JsonSerializer.Serialize(new { answers = new[]
+        {
+            new { key = "website_price", serviceKey = "website_services", questions = new[] { "How much is it?" }, answer = "Synthetic website answer.", status = "approved" },
+            new { key = "coaching_price", serviceKey = "coaching", questions = new[] { "How much is it?" }, answer = "Synthetic coaching answer.", status = "approved" }
+        } }) };
+        using var f = new SessionFixture(config);
+        await f.Session.InitializeAsync();
+        f.Input("How much is it?", 100, 200);
+        Assert.Contains("Which service", Text(await f.Session.HandleDelegationAsync("question")));
+        f.Input("I'd like the website service, please.", 300, 400);
+        var answer = Text(await f.Session.HandleDelegationAsync("choice"));
+        Assert.Contains("Synthetic website answer.", answer);
+        Assert.DoesNotContain("Synthetic coaching answer.", answer);
+        Assert.Equal(0, f.Actions.Writes);
+    }
+
+    [Theory]
+    [InlineData("Not coaching, the website service please.")]
+    [InlineData("We discussed coaching and websites, but I want the website service.")]
+    public async Task ExplicitServiceChoiceWinsOverOtherServiceMentions(string choice)
+    {
+        using var f = new SessionFixture();
+        await f.PrepareAsync();
+        f.Input(choice, 300, 400);
+        var result = Text(await f.Session.HandleDelegationAsync("explicit-choice"));
+        Assert.DoesNotContain("Which service", result);
+        Assert.Contains("Service: Website services", result);
+        Assert.Contains("explain my services", result);
+        Assert.Equal(0, f.Actions.Writes);
+    }
+
+    [Theory]
+    [InlineData("My name is Jordan.")]
+    [InlineData("I'm Jordan.")]
+    public async Task OrdinaryNameIntroductionSurvivesFollowupAndConfirmedIntake(string introduction)
+    {
+        using var f = new SessionFixture();
+        await f.PrepareAsync();
+        f.Input(introduction, 300, 400);
+        var named = await f.Session.HandleDelegationAsync("name");
+        if (introduction.StartsWith("I'm", StringComparison.Ordinal))
+        {
+            Assert.Contains("won't infer a name", Text(named));
+            f.Input("My name is Jordan.", 410, 450);
+            named = await f.Session.HandleDelegationAsync("explicit-name");
+        }
+        Assert.Contains("Jordan", Text(named));
+        f.Input("What do you offer?", 500, 600);
+        await f.Session.HandleDelegationAsync("follow-up");
+        f.Input("Please read back my request.", 700, 800);
+        var summary = await f.Session.HandleDelegationAsync("readback");
+        Assert.Contains("Jordan", Text(summary));
+        f.Acknowledge(summary, 1000);
+        f.Input("Please save the request you just read back.", 1100, 1300);
+        await f.Session.HandleDelegationAsync("save-name");
+        Assert.Equal("Jordan", f.Actions.WrittenFacts!.FirstName);
+        Assert.Null(f.Actions.WrittenFacts.LastName);
+        Assert.Equal(1, f.Actions.Writes);
+    }
+
+    [Fact]
+    public async Task NameAndServiceInOneUtteranceAreBothCaptured()
+    {
+        using var f = new SessionFixture();
+        var summary = await f.PrepareAsync("My name is Jordan, and I need a website to explain my services.");
+        Assert.Contains("Jordan", Text(summary));
+        Assert.Contains("Service: Website services", Text(summary));
+        Assert.Contains("I need a website to explain my services", Text(summary));
+        Assert.Equal(0, f.Actions.Claims);
+    }
+
+    [Fact]
+    public async Task NameFragmentRequiresExplicitRestatementAndSpellingCorrectionIsReadBack()
+    {
+        using var f = new SessionFixture(); await f.PrepareAsync();
+        f.Input("My first name is Jo", 300, 400);
+        Assert.Contains("confirm your complete name", Text(await f.Session.HandleDelegationAsync("fragment")));
+        f.Input("rdan", 500, 600);
+        Assert.Contains("complete name again", Text(await f.Session.HandleDelegationAsync("continuation")));
+        f.Input("Actually, my first name is Jordan.", 700, 800);
+        await f.Session.HandleDelegationAsync("restated");
+        f.Input("It's J-o-r-d-y-n.", 900, 1000);
+        var summary = await f.Session.HandleDelegationAsync("spelling");
+        Assert.Contains("First name: Jordyn.", Text(summary));
+        f.Acknowledge(summary, 1200);
+        f.Input("Please save the request you just read back.", 1300, 1400);
+        await f.Session.HandleDelegationAsync("save");
+        Assert.Equal("Jordyn", f.Actions.WrittenFacts!.FirstName);
+        Assert.Equal(1, f.Actions.Writes);
+    }
+
+    [Theory]
+    [InlineData("I'm interested in coaching.")]
+    [InlineData("I'm looking for website services.")]
+    public async Task NonNameStatementsNeverBecomeCallerNames(string statement)
+    {
+        using var f = new SessionFixture(); await f.PrepareAsync();
+        f.Input(statement, 300, 400);
+        var result = Text(await f.Session.HandleDelegationAsync("not-name"));
+        Assert.DoesNotContain("First name:", result);
+        Assert.Equal(0, f.Actions.Writes);
+    }
+
+    [Fact]
+    public async Task InformationAboutAnotherServiceDoesNotChangeTheSelectedInquiry()
+    {
+        using var f = new SessionFixture(); await f.PrepareAsync();
+        f.Input("What about coaching?", 300, 400);
+        await f.Session.HandleDelegationAsync("other-question");
+        f.Input("Please read back my request.", 500, 600);
+        var result = Text(await f.Session.HandleDelegationAsync("readback"));
+        Assert.Contains("Service: Website services", result);
+        Assert.Contains("explain my services", result);
+        Assert.Equal(0, f.Actions.Writes);
+    }
+
+    [Fact]
+    public async Task ExplicitServiceSwitchDropsOnlyTheOldServiceNeed()
+    {
+        using var f = new SessionFixture(); await f.PrepareAsync("My name is Jordan, and I need a website to explain my services.");
+        f.Input("Actually, switch to coaching.", 300, 400);
+        var result = Text(await f.Session.HandleDelegationAsync("switch"));
+        Assert.DoesNotContain("explain my services", result);
+        f.Input("I need help setting personal goals.", 500, 600);
+        var summary = Text(await f.Session.HandleDelegationAsync("new-need"));
+        Assert.Contains("Service: Coaching", summary);
+        Assert.Contains("Jordan", summary);
+        Assert.DoesNotContain("explain my services", summary);
+    }
+
+    [Fact]
+    public async Task DistinctOwnerCallsKeepNamesNeedsAndDelegationsIsolated()
+    {
+        using var first = new SessionFixture(owner: MarketingOwnerScope.Business(Guid.NewGuid()));
+        using var second = new SessionFixture(owner: MarketingOwnerScope.Business(Guid.NewGuid()));
+        await first.PrepareAsync("My name is Jordan, and I need a website to explain my services.");
+        var other = Text(await second.PrepareAsync("My name is Casey, and I need coaching for personal goals."));
+        Assert.DoesNotContain("Jordan", other);
+        Assert.Contains("Casey", other);
+        first.Input("Please read back my request.", 300, 400);
+        var original = Text(await first.Session.HandleDelegationAsync("same-delegation"));
+        second.Input("Please read back my request.", 300, 400);
+        var independent = Text(await second.Session.HandleDelegationAsync("same-delegation"));
+        Assert.Contains("Jordan", original);
+        Assert.DoesNotContain("Casey", original);
+        Assert.Contains("Casey", independent);
+        Assert.Empty(await first.Session.HandleDelegationAsync("same-delegation"));
+        Assert.Equal(0, first.Actions.Writes + second.Actions.Writes);
+    }
+
+    [Theory]
+    [InlineData("I do not want coaching.")]
+    [InlineData("Not coaching please.")]
+    [InlineData("I do not want coaching, please.")]
+    public async Task NegatedServiceCannotReplaceAnExplicitChoice(string statement)
+    {
+        using var f = new SessionFixture(); await f.PrepareAsync();
+        f.Input(statement, 300, 400);
+        await f.Session.HandleDelegationAsync("negation");
+        f.Input("Please read back my request.", 500, 600);
+        var result = Text(await f.Session.HandleDelegationAsync("readback"));
+        Assert.Contains("Service: Website services", result);
+        Assert.Contains("explain my services", result);
+    }
+
+    [Fact]
+    public async Task AmbiguousFinalChoiceCannotFallBackToAnEarlierChoice()
+    {
+        using var f = new SessionFixture(); await f.Session.InitializeAsync();
+        f.Input("I want website. Actually I want website and coaching.", 100, 200);
+        Assert.Contains("Which service", Text(await f.Session.HandleDelegationAsync("ambiguous-final")));
+        Assert.Equal(0, f.Actions.Claims);
+    }
+
+    [Theory]
+    [InlineData("I'm married.")]
+    [InlineData("I am happy.")]
+    [InlineData("This is confusing.")]
+    public async Task SelfDescriptionsRequireNameClarificationRatherThanBecomingNames(string statement)
+    {
+        using var f = new SessionFixture(); await f.PrepareAsync();
+        f.Input(statement, 300, 400);
+        Assert.Contains("won't infer a name", Text(await f.Session.HandleDelegationAsync("description")));
+        f.Input("Please read back my request.", 500, 600);
+        Assert.DoesNotContain("First name:", Text(await f.Session.HandleDelegationAsync("readback")));
+    }
+
+    [Fact]
+    public void ParaphraseNormalizationRejectsConflictingApprovedAnswersAtConfigurationValidation()
+    {
+        var config = Configuration() with { ApprovedKnowledgeJson = JsonSerializer.Serialize(new { answers = new[]
+        {
+            new { key = "one", questions = new[] { "How much is it?" }, answer = "Synthetic first answer.", status = "approved" },
+            new { key = "two", questions = new[] { "Please tell me how much is it?" }, answer = "Synthetic conflicting answer.", status = "approved" }
+        } }) };
+        Assert.Throws<ArgumentException>(() => ReceptionistApplicationServices.ValidateConfiguration(config));
+    }
+
+    [Fact]
+    public async Task RemovedNameCannotBeResurrectedByUnscopedSpelling()
+    {
+        using var f = new SessionFixture(); await f.PrepareAsync("My name is Jordan, and I need a website to explain my services.");
+        f.Input("Please remove my name.", 300, 400);
+        await f.Session.HandleDelegationAsync("remove");
+        f.Input("It's A-B-C.", 500, 600);
+        await f.Session.HandleDelegationAsync("unscoped-spelling");
+        f.Input("Please read back my request.", 700, 800);
+        Assert.DoesNotContain("First name:", Text(await f.Session.HandleDelegationAsync("readback")));
+    }
+
+    [Fact]
+    public async Task SpellingMarkerIsNeverPartOfTheRecordedName()
+    {
+        using var f = new SessionFixture(); await f.PrepareAsync();
+        f.Input("My first name is spelled Jordan.", 300, 400);
+        var summary = Text(await f.Session.HandleDelegationAsync("spelling-word"));
+        Assert.Contains("First name: Jordan.", summary);
+        Assert.DoesNotContain("First name: spelled", summary);
+    }
+
+    [Theory]
+    [InlineData("My first name is Mary Ann.", "First name: Mary Ann.")]
+    [InlineData("My last name is Smith-Jones.", "Last name: Smith-Jones.")]
+    public async Task OrdinaryNamesPreserveTheirSpacesAndHyphens(string input, string expected)
+    {
+        using var f = new SessionFixture(); await f.PrepareAsync();
+        f.Input(input, 300, 400);
+        Assert.Contains(expected, Text(await f.Session.HandleDelegationAsync("ordinary-name")));
+        Assert.Equal(0, f.Actions.Writes);
+    }
+
+    [Fact]
+    public async Task SelectionOnlyReplyPreservesThePreviouslyStatedNeed()
+    {
+        using var f = new SessionFixture(); await f.PrepareAsync("I need help explaining my services.");
+        f.Input("I want the website service.", 300, 400);
+        var result = Text(await f.Session.HandleDelegationAsync("natural-selection"));
+        Assert.Contains("Service: Website services", result);
+        Assert.Contains("I need help explaining my services.", result);
+        Assert.Equal(0, f.Actions.Writes);
+    }
+
     [Theory]
     [InlineData("missing-service")]
     [InlineData("unknown-route")]
@@ -411,10 +656,10 @@ public sealed class ReceptionistApplicationServicesTests
         internal readonly ReceptionistApplicationSession Session;
         internal int Time;
         private int events;
-        internal SessionFixture(ReceptionistBusinessConfiguration? configuration = null)
+        internal SessionFixture(ReceptionistBusinessConfiguration? configuration = null, MarketingOwnerScope? owner = null)
         {
             var config = configuration ?? Configuration();
-            Call = new(Guid.NewGuid(), MarketingOwnerScope.Founder, "openai", "synthetic-project", Guid.NewGuid().ToString("N"),
+            Call = new(Guid.NewGuid(), owner ?? MarketingOwnerScope.Founder, "openai", "synthetic-project", Guid.NewGuid().ToString("N"),
                 Guid.NewGuid(), config, new ReceptionistProviderBinding(), DateTime.UtcNow.AddMinutes(3), "accepted", false);
             Session = new(Call, Guid.NewGuid(), ReceptionistApplicationCatalog.Read(config), Actions, TimeProvider.System);
         }

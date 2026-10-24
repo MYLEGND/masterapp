@@ -16,6 +16,8 @@ public abstract partial class BusinessWorkspaceControllerBase
         if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
         var snapshot = await ReceptionistStore.GetReceptionistConfigurationAsync(MarketingOwnerScope.Business(businessId), MarketingDestinationKeys.OpenAi, cancellationToken);
         return await ReceptionistPageAsync(snapshot, businessId, message: notice == "saved" ? "Your settings were saved as an inactive version. Verification is required before calls can use this version."
+            : notice == "content-replayed" ? "This content review was already applied. Its prior result was reused; the current settings and call permission are shown below and were not changed."
+            : notice == "content-applied" ? "The reviewed content was applied. Calls remain paused; readiness and call-quality acceptance are separate."
             : notice == "admission" ? "Your receptionist permission was saved. This does not verify that calls are ready." : null, cancellationToken: cancellationToken);
     }
 
@@ -69,6 +71,64 @@ public abstract partial class BusinessWorkspaceControllerBase
         catch (InvalidOperationException) { return BadRequest("Verified provider and inquiry acceptance are required before allowing receptionist permission."); }
     }
 
+    [HttpGet("receptionist/content")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> ReviewReceptionistContent(Guid businessId, CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+        var owner = MarketingOwnerScope.Business(businessId);
+        try
+        {
+            var preview = await ReceptionistStore.PreviewReceptionistContentAsync(owner, MarketingDestinationKeys.OpenAi,
+                User.GetCanonicalUserId(), cancellationToken);
+            return View("~/Views/Shared/ReceptionistContentReview.cshtml", new ReceptionistContentReviewPage(preview,
+                Url.Action(nameof(ApplyReceptionistContent), new { businessId })!,
+                Url.Action(nameof(RestoreReceptionistContent), new { businessId })!,
+                Url.Action(nameof(Receptionist), new { businessId })!));
+        }
+        catch (InvalidOperationException) { return BadRequest("Save a valid receptionist draft before content review."); }
+    }
+
+    [HttpPost("receptionist/content/apply")]
+    [ValidateAntiForgeryToken]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> ApplyReceptionistContent([FromForm] ReceptionistContentApplyInput input, Guid businessId,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+        var owner = MarketingOwnerScope.Business(businessId);
+        if (!ModelState.IsValid) return BadRequest("Review the saved draft before applying it.");
+        try
+        {
+            var applied = await ReceptionistStore.ApplyReceptionistContentAsync(owner, MarketingDestinationKeys.OpenAi, input,
+                User.GetCanonicalUserId(), cancellationToken);
+            return RedirectToAction(nameof(Receptionist), new { businessId, notice = applied.Replayed ? "content-replayed" : "content-applied" });
+        }
+        catch (DbUpdateConcurrencyException) { return Conflict("The settings changed. Reload and review the current draft."); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Text.Json.JsonException)
+        { return BadRequest("This draft could not be applied. Reload its review; protected changes require full operator acceptance."); }
+    }
+
+    [HttpPost("receptionist/content/restore")]
+    [ValidateAntiForgeryToken]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> RestoreReceptionistContent([FromForm] ReceptionistContentRollbackInput input, Guid businessId,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+        var owner = MarketingOwnerScope.Business(businessId);
+        if (!ModelState.IsValid) return BadRequest("Choose a saved content version.");
+        try
+        {
+            await ReceptionistStore.RestoreReceptionistContentDraftAsync(owner, MarketingDestinationKeys.OpenAi, input,
+                User.GetCanonicalUserId(), cancellationToken);
+            return RedirectToAction(nameof(Receptionist), new { businessId, notice = "saved" });
+        }
+        catch (DbUpdateConcurrencyException) { return Conflict("The settings changed. Reload before restoring content."); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Text.Json.JsonException)
+        { return BadRequest("This content cannot be restored with the current service routes. Review the existing setup form."); }
+    }
+
     private MarketingConnectionStore ReceptionistStore => HttpContext.RequestServices.GetRequiredService<MarketingConnectionStore>();
 
     private async Task<IActionResult> ReceptionistPageAsync(ReceptionistConfigurationSnapshot snapshot, Guid businessId,
@@ -80,6 +140,6 @@ public abstract partial class BusinessWorkspaceControllerBase
             new ReceptionistSetupPage(snapshot, input ?? ReceptionistSetupForms.Read(snapshot),
                 Url.Action(nameof(SaveReceptionist), new { businessId })!,
                 Url.Action(nameof(ReceptionistAdmission), new { businessId })!,
-                Url.Action(nameof(Settings), new { businessId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness));
+                Url.Action(nameof(Settings), new { businessId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness, Url.Action(nameof(ReviewReceptionistContent), new { businessId })!));
     }
 }

@@ -19,6 +19,8 @@ public partial class WebsiteAnalyticsController
         if (owner is null) return Forbid();
         var snapshot = await ReceptionistStore.GetReceptionistConfigurationAsync(owner, MarketingDestinationKeys.OpenAi, cancellationToken);
         return await ReceptionistPageAsync(snapshot, agentProfileId, message: notice == "saved" ? "Your settings were saved as an inactive version. Verification is required before calls can use this version."
+            : notice == "content-replayed" ? "This content review was already applied. Its prior result was reused; the current settings and call permission are shown below and were not changed."
+            : notice == "content-applied" ? "The reviewed content was applied. Calls remain paused; readiness and call-quality acceptance are separate."
             : notice == "admission" ? "Your receptionist permission was saved. This does not verify that calls are ready." : null, cancellationToken: cancellationToken);
     }
 
@@ -75,6 +77,64 @@ public partial class WebsiteAnalyticsController
         catch (InvalidOperationException) { return BadRequest("Verified provider and inquiry acceptance are required before allowing receptionist permission."); }
     }
 
+    [HttpGet("receptionist/content")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> ReviewReceptionistContent([FromQuery] Guid? agentProfileId = null, CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+        try
+        {
+            var preview = await ReceptionistStore.PreviewReceptionistContentAsync(owner, MarketingDestinationKeys.OpenAi,
+                User.GetCanonicalUserId(), cancellationToken);
+            return View("~/Views/Shared/ReceptionistContentReview.cshtml", new ReceptionistContentReviewPage(preview,
+                Url.Action(nameof(ApplyReceptionistContent), new { agentProfileId })!,
+                Url.Action(nameof(RestoreReceptionistContent), new { agentProfileId })!,
+                Url.Action(nameof(Receptionist), new { agentProfileId })!));
+        }
+        catch (InvalidOperationException) { return BadRequest("Save a valid receptionist draft before content review."); }
+    }
+
+    [HttpPost("receptionist/content/apply")]
+    [ValidateAntiForgeryToken]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> ApplyReceptionistContent([FromForm] ReceptionistContentApplyInput input, [FromQuery] Guid? agentProfileId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+        if (!ModelState.IsValid) return BadRequest("Review the saved draft before applying it.");
+        try
+        {
+            var applied = await ReceptionistStore.ApplyReceptionistContentAsync(owner, MarketingDestinationKeys.OpenAi, input,
+                User.GetCanonicalUserId(), cancellationToken);
+            return RedirectToAction(nameof(Receptionist), new { agentProfileId, notice = applied.Replayed ? "content-replayed" : "content-applied" });
+        }
+        catch (DbUpdateConcurrencyException) { return Conflict("The settings changed. Reload and review the current draft."); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Text.Json.JsonException)
+        { return BadRequest("This draft could not be applied. Reload its review; protected changes require full operator acceptance."); }
+    }
+
+    [HttpPost("receptionist/content/restore")]
+    [ValidateAntiForgeryToken]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> RestoreReceptionistContent([FromForm] ReceptionistContentRollbackInput input, [FromQuery] Guid? agentProfileId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+        if (!ModelState.IsValid) return BadRequest("Choose a saved content version.");
+        try
+        {
+            await ReceptionistStore.RestoreReceptionistContentDraftAsync(owner, MarketingDestinationKeys.OpenAi, input,
+                User.GetCanonicalUserId(), cancellationToken);
+            return RedirectToAction(nameof(Receptionist), new { agentProfileId, notice = "saved" });
+        }
+        catch (DbUpdateConcurrencyException) { return Conflict("The settings changed. Reload before restoring content."); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Text.Json.JsonException)
+        { return BadRequest("This content cannot be restored with the current service routes. Review the existing setup form."); }
+    }
+
     private MarketingConnectionStore ReceptionistStore => HttpContext.RequestServices.GetRequiredService<MarketingConnectionStore>();
 
     private async Task<IActionResult> ReceptionistPageAsync(ReceptionistConfigurationSnapshot snapshot, Guid? agentProfileId,
@@ -86,6 +146,6 @@ public partial class WebsiteAnalyticsController
             new ReceptionistSetupPage(snapshot, input ?? ReceptionistSetupForms.Read(snapshot),
                 Url.Action(nameof(SaveReceptionist), new { agentProfileId })!,
                 Url.Action(nameof(ReceptionistAdmission), new { agentProfileId })!,
-                Url.Action("Index", new { agentProfileId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness));
+                Url.Action("Index", new { agentProfileId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness, Url.Action(nameof(ReviewReceptionistContent), new { agentProfileId })!));
     }
 }
