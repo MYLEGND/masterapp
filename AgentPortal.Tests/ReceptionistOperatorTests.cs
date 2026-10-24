@@ -654,4 +654,3 @@ public sealed partial class ReceptionistOperatorTests
         }
     }
 }
-

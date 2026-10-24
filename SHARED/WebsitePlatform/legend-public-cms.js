@@ -10042,4 +10042,3 @@
     if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
   }, { once: true });
 })();
-

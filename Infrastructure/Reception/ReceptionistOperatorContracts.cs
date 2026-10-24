@@ -3,10 +3,10 @@ namespace Infrastructure.Reception;
 // Explicit nonsecret projection; never serialize entities, bindings or configuration policy.
 public sealed record ReceptionistPreparationAccount(Guid Id, Guid Revision, string Kind, string ScopeKey,
     string Currency, string TimeZoneId);
-public sealed record ReceptionistPreparationHistory(Guid ConfigurationId, int Version, string ConfigurationSha256);
+public sealed record ReceptionistPreparationHistory(Guid ConfigurationId, long Version, string ConfigurationSha256);
 public sealed record ReceptionistOperatorPreparation(DateTime ObservedUtc, string Status,
     Guid MarketingConnectionId, string OwnerKey, string Provider, Guid ConnectionRevision, Guid ControlRevision,
-    Guid ConfigurationId, int ConfigurationVersion, string ConfigurationSha256, string? ConnectionProviderProjectKey,
+    Guid ConfigurationId, long ConfigurationVersion, string ConfigurationSha256, string? ConnectionProviderProjectKey,
     bool AdmissionEnabled, bool CurrentBindingAccepted, IReadOnlyList<ReceptionistPreparationAccount> Accounts,
     ReceptionistPreparationHistory? HistoricalAcceptedConfiguration, IReadOnlyList<string> RemainingRequirements);
 
