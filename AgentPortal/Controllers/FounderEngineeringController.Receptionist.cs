@@ -9,6 +9,25 @@ namespace AgentPortal.Controllers;
 
 public sealed partial class FounderEngineeringController
 {
+    [HttpGet("receptionist/preparation")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> ReceptionistPreparation(string expectedOwnerKey, Guid configurationId,
+        CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        try
+        {
+            var observation = await ReceptionistOperator.PrepareAsync(expectedOwnerKey, configurationId, cancellationToken);
+            return Json(observation);
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or
+            System.Text.Json.JsonException or System.Security.Cryptography.CryptographicException)
+        {
+            return BadRequest(new { error = "The exact current configuration and scoped metadata could not be verified. Reload the setup and check its owner and configuration identity." });
+        }
+    }
+
     [HttpGet("receptionist")]
     public async Task<IActionResult> Receptionist(CancellationToken cancellationToken)
     {

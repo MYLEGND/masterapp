@@ -36,6 +36,19 @@
         <div class="eng-alert is-error" role="alert">@Model.Error</div>
     }
 
+    <section class="eng-action-center" aria-labelledby="receptionist-preparation-title">
+        <h2 id="receptionist-preparation-title">Prepare a configuration review</h2>
+        <p>Read the exact current configuration fingerprint and scoped account revisions. This read-only observation does not approve a binding, apply an operation, or enable calls. Earlier configuration acceptance is shown separately.</p>
+        <form asp-action="ReceptionistPreparation" method="get">
+            <label for="receptionist-preparation-owner">Settings owner key</label>
+            <input id="receptionist-preparation-owner" name="expectedOwnerKey" required maxlength="450" autocomplete="off" />
+            <label for="receptionist-preparation-configuration">Current configuration ID</label>
+            <input id="receptionist-preparation-configuration" name="configurationId" required maxlength="36" autocomplete="off" />
+            <button type="submit">Read preparation metadata</button>
+        </form>
+        <p>Independent provider, capability, cost and reviewer evidence is still required before a reviewed operation can be registered. No call test window starts here.</p>
+    </section>
+
     @if (Model.Receipt is { } receipt)
     {
         var verified = receipt.CommitKnown && receipt.ReadBackVerified;

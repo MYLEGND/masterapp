@@ -20,6 +20,15 @@ public sealed class ReceptionistOperatorService(MarketingConnectionStore store,
     private const string PreviewPurpose = "voice-op-preview";
     private static readonly TimeSpan PreviewLifetime = TimeSpan.FromMinutes(5);
 
+    public Task<ReceptionistOperatorPreparation> PrepareAsync(string expectedOwnerKey, Guid configurationId,
+        CancellationToken ct = default)
+    {
+        RequireFounder();
+        if (configurationId == Guid.Empty || string.IsNullOrWhiteSpace(expectedOwnerKey) || expectedOwnerKey.Length > 450)
+            throw new ArgumentException("An exact current configuration and settings owner are required.");
+        return admission.ReadOperatorPreparationAsync(expectedOwnerKey, configurationId, ct);
+    }
+
     public Task<IReadOnlyList<ReceptionistOperatorPackageSummary>> CatalogAsync(CancellationToken ct = default)
     {
         var actor = RequireFounder();

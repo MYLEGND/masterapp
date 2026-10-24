@@ -1,5 +1,26 @@
 namespace Infrastructure.Reception;
 
+// Explicit nonsecret projection; never serialize entities, bindings or configuration policy.
+public sealed record ReceptionistPreparationAccount(Guid Id, Guid Revision, string Kind, string ScopeKey,
+    string Currency, string TimeZoneId);
+public sealed record ReceptionistPreparationCost(string Key, Guid FundingBudgetAccountId, decimal CashFixedMaximum,
+    decimal CashPerSecondMaximum, decimal ConsumptionFixedMaximum, decimal ConsumptionPerSecondMaximum);
+public sealed record ReceptionistPreparationCapability(string Key, string RouteKey, string State, string ReceiptReference);
+public sealed record ReceptionistHistoricalBindingEvidence(string Status, string ProviderProjectKey, string Model,
+    string Voice, string BackendMode, string Transport, bool ControlledTestOnly, int MaximumSupportedCallSeconds,
+    string CredentialReferenceName, string WebhookSecretReferenceName, string? OperatorAcceptancePackageSha256,
+    IReadOnlyList<ReceptionistOperatorFact> ReceiptReferences, IReadOnlyList<ReceptionistPreparationCost> Costs,
+    IReadOnlyList<ReceptionistPreparationCapability> Capabilities,
+    IReadOnlyList<ReceptionistPreparationAccount> CurrentlyObservedReferencedFundingAccounts,
+    bool OwnerCurrencyAndProjectCompatible);
+public sealed record ReceptionistPreparationHistory(Guid ConfigurationId, long Version, string ConfigurationSha256,
+    DateTime RecordedCreatedUtc, string RecordedCreatedByActorId, ReceptionistHistoricalBindingEvidence BindingEvidence);
+public sealed record ReceptionistOperatorPreparation(DateTime ObservedUtc, string Status,
+    Guid MarketingConnectionId, string OwnerKey, string Provider, Guid ConnectionRevision, Guid ControlRevision,
+    Guid ConfigurationId, long ConfigurationVersion, string ConfigurationSha256, string? ConnectionProviderProjectKey,
+    bool AdmissionEnabled, bool CurrentBindingAccepted, IReadOnlyList<ReceptionistPreparationAccount> Accounts,
+    ReceptionistPreparationHistory? HistoricalAcceptedConfiguration, IReadOnlyList<string> RemainingRequirements);
+
 public sealed record ReceptionistOperatorPackageSummary(string PackageKey, string PackageSha256, string Label);
 public sealed record ReceptionistOperatorApplyRequest(string PackageKey, string PackageSha256, string ExpectedStateToken);
 public sealed record ReceptionistOperatorFact(string Label, string Value);

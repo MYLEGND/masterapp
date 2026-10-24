@@ -687,14 +687,14 @@ test('sidebar observation waits for the shipped queued selection-frame refresh a
   const source=await readFile(path.join(root,'SHARED/WebsitePlatform/legend-public-cms.js'),'utf8');
   const section=(start,end)=>{const a=source.indexOf(start),b=source.indexOf(end,a);assert.ok(a>=0&&b>a,'Shipped source boundary missing');return source.slice(a,b);};
   const queue=[],selectionFrame={hidden:false,style:{},dataset:{}};
-  let width=1100,refreshes=0;
-  const context={selectionFrame,editorPreview:{scrollLeft:0,scrollTop:0,getBoundingClientRect:()=>({left:0,top:0})},selected:{dataset:{},closest:()=>null,getBoundingClientRect:()=>({left:16,top:20,width,height:40})},gridOverlay:null,directGesture:null,inlineEditNode:null,refreshScaledElements:()=>refreshes++,requestAnimationFrame:callback=>queue.push(callback)};
+  let width=1100,refreshes=0,headerRefreshes=0;
+  const context={refreshEditorHeaderProjection:()=>headerRefreshes++,selectionFrame,editorPreview:{scrollLeft:0,scrollTop:0,getBoundingClientRect:()=>({left:0,top:0})},selected:{dataset:{},closest:()=>null,getBoundingClientRect:()=>({left:16,top:20,width,height:40})},gridOverlay:null,directGesture:null,inlineEditNode:null,refreshScaledElements:()=>refreshes++,requestAnimationFrame:callback=>queue.push(callback)};
   vm.runInNewContext(section('  function previewRelativeRect(el) {','  function positionGridOverlay(section) {')+section('  function updateDirectCanvasUi() {','  function lockPreviewHorizontalScroll() {')+section('    const refreshPanelCanvas = () => {',"    panelToggle.addEventListener('click',")+'\nthis.refreshPanelCanvas=refreshPanelCanvas;this.updateDirectCanvasUi=updateDirectCanvasUi;',context);
   const observe=()=>({canvas:{width:width+32},selected:{left:16,top:20,width,height:40},frame:{hidden:selectionFrame.hidden,...Object.fromEntries(['left','top','width','height'].map(k=>[k,parseFloat(selectionFrame.style[k])]))}});
   context.updateDirectCanvasUi();const before=observe();assert.equal(quoteCanvasSettled(before,before),true);
   width=798;context.refreshPanelCanvas();assert.equal(queue.length,1);assert.equal(refreshes,0);
   const stale=observe();assert.equal(stale.frame.width,1100);assert.equal(quoteCanvasSettled(stale,stale),false,'Stable stale overlay is not ready');
-  queue.shift()();assert.equal(refreshes,1);const refreshed=observe();assert.equal(refreshed.frame.width,798);
+  queue.shift()();assert.equal(refreshes,1);assert.equal(headerRefreshes,1);const refreshed=observe();assert.equal(refreshed.frame.width,798);
   assert.equal(quoteCanvasSettled(stale,refreshed),false);assert.equal(quoteCanvasSettled(refreshed,observe()),true);
   assert.equal(quoteCanvasSettled(null,refreshed),false);
   assert.equal(quoteCanvasSettled(refreshed,{...refreshed,canvas:{width:831}}),false);
@@ -820,7 +820,7 @@ canvasScrollTop:canvas.scrollTop,
 panelHidden:document.body.classList.contains('legend-cms-panel-hidden'),
 controls:(${quoteControlSnapshots.toString()})(document,window)};`;
 
-const quoteSelectableContentScript = `const nodes=[...document.querySelectorAll('main p.lq-hero-step-copy-helper,main h1,main h2,main h3,main h4,main h5,main h6,main .lq-hero-step-copy-title,main .lq-contact-capture-title,main .dq-contact-title,main .lq-step-title')];const n=nodes.find(e=>e.closest('[data-cms-editable="true"]')&&!e.closest('[hidden],[inert],[aria-hidden="true"],[data-cms-preview-only]')&&e.getClientRects().length&&getComputedStyle(e).visibility==='visible'&&Number(getComputedStyle(e).opacity)>0);return n?{node:n,target:n.closest('[data-cms-editable="true"]')}:null;`;
+const quoteSelectableContentScript = `const nodes=[...document.querySelectorAll('main p.lq-hero-step-copy-helper,main h1,main h2,main h3,main h4,main h5,main h6,main .lq-hero-step-copy-title,main .lq-contact-capture-title,main .dq-contact-title,main .lq-step-title,main .lq-choice-label')];const n=nodes.find(e=>e.closest('[data-cms-editable="true"]')&&!e.closest('[hidden],[inert],[aria-hidden="true"],[data-cms-preview-only]')&&e.getClientRects().length&&getComputedStyle(e).visibility==='visible'&&Number(getComputedStyle(e).opacity)>0);return n?{node:n,target:n.closest('[data-cms-editable="true"]')}:null;`;
 
 test('quote selection discovers actual editable native paragraph without fabricating a title',()=>{
   const owner={id:'native-owner'},paragraph={closest:s=>s==='[data-cms-editable="true"]'?owner:null,getClientRects:()=>[{}]};
@@ -845,7 +845,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     return value - 10000;
   };
   let manifest,chromeVersion,driverVersion,checked,driverBindings,versionProbeFailure,scrollDiagnostic,localeDiagnostic,placementDiagnostic,lifecycleDiagnostic,quoteDiagnostic;
-  const requiredScenarios=[...hosts.flatMap(host=>widths.map(width=>'viewport:'+host+':'+width)),'modal-order-and-wrap','locale-month-rollover','long-profile-and-offset','live-mobile-boundary','client-home-focus',...['life','disability','dental-vision-hearing'].map(route=>'quote-source:'+route),'quote-responsive-studio','protect-scripture-keyboard'];
+  const requiredScenarios=[...hosts.flatMap(host=>widths.map(width=>'viewport:'+host+':'+width)),'modal-order-and-wrap','locale-month-rollover','long-profile-and-offset','live-mobile-boundary','client-home-focus',...['life','disability','dental-vision-hearing'].map(route=>'quote-source:'+route),'quote-responsive-studio','protect-scripture-keyboard','studio-header-projection'];
   const completedScenarios=new Set();
   const quoteRecords=[];
   const records=[]; let acceptanceComplete=false; let failure; let server,driver,session,driverOrigin; let serverHost; let driverLog='';
@@ -913,6 +913,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.match(route,/^\/quote\/[a-z-]+$/);assert.match(file,/^quote-[a-z-]+\.html$/);
     const bytes=await readFile(path.join(dir,file));assert.equal(hash(bytes),manifest.outputs[file]);
     for(const query of ['?legendEdit=ticket&legendMaterialize=1','?legendEdit=ticket','?legendEdit=ticket&width=720','?public=1','?public=1&width=720'])routes.set(route+query,bytes);
+    if(route==='/quote/disability')for(const tenant of ['legend','other'])routes.set(route+'?legendEdit=fixture&header=1&tenant='+tenant,bytes);
   }
   for (const [mode,file] of Object.entries(manifest.quotes.scripture)) {
     assert.ok(['cold','no-trigger','trigger'].includes(mode));
@@ -1194,11 +1195,18 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     const quoteRoutes=Object.keys(manifest.quotes.routes);
     const metrics=async(width,height=932)=>command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setDeviceMetricsOverride',params:{width,height,deviceScaleFactor:1,mobile:false}});
     const quoteGo=async(route,query)=>{
+      quoteDiagnostic={label:route+query,phase:'navigation'};
+      assert.ok(routes.has(route+query),'Quote fixture URL must be explicitly admitted: '+route+query);
+      try{
       await command('POST','/session/'+session+'/url',{url:'http://'+serverHost+route+query});
       if(query.includes('legendMaterialize'))await waitFor('window.__quoteMaterialized!==null');
       else if(query.includes('public=1'))await waitFor('window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE===true');
       else await waitFor("document.querySelector('#legend-cms-form-navigator select')?.options.length===10");
       await waitFor("[...document.querySelectorAll('main img')].every(n=>n.complete&&n.naturalWidth>0)");
+      }catch(error){
+        try{quoteDiagnostic.navigation=await execute("return {url:location.pathname+location.search,title:document.title,options:document.querySelector('#legend-cms-form-navigator select')?.options.length,errors:(window.__quoteErrors||[]).slice(-8),requests:(window.__quoteRequests||[]).slice(-8),body:document.body?.innerText.slice(0,800)}");}catch{quoteDiagnostic.snapshotUnavailable=true;}
+        quoteDiagnostic.rejected=rejected.slice(-8);throw error;
+      }
     };
     const inspectQuote=async(label,options={})=>{
       const value=await execute(quoteSnapshotScript);quoteDiagnostic={label,...value};
@@ -1380,6 +1388,49 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.ok((await execute('return window.__quoteRequests')).every(r=>r.method==='GET'));
     assert.deepEqual(rejected,[],'Unexpected HTTP in scripture source fixtures');
     completedScenarios.add('protect-scripture-keyboard');
+
+    // Bounded authored-header reproduction. Exercise the shipped controller;
+    // never set data-open directly, save a draft, or submit a quote.
+    for(const tenant of ['legend','other']){
+      await metrics(1188,761);
+      await quoteGo('/quote/disability','?legendEdit=fixture&header=1&tenant='+tenant);
+      const headerSnapshot=()=>execute(`const h=document.querySelector('.site-header'),b=h.querySelector('.brand-wordmark'),n=h.querySelector('.nav'),t=h.querySelector('[data-public-nav-toggle]'),p=document.querySelector('.legend-cms-preview');const rect=e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height};};return {header:rect(h),brand:rect(b),nav:rect(n),toggle:rect(t),canvas:rect(p),position:getComputedStyle(n).position,headerPosition:getComputedStyle(h).position,open:n.dataset.open,expanded:t.getAttribute('aria-expanded'),font:getComputedStyle(b.querySelector('strong')).fontSize,textFits:b.querySelector('strong').scrollWidth<=b.querySelector('strong').clientWidth+1,textRect:rect(b.querySelector('strong')),undo:document.querySelector('#legend-cms-undo').disabled,unchanged:JSON.stringify(window.__quoteDocumentObject)===window.__quoteDocument,identity:window.__quoteOriginalNodes.every(e=>e.isConnected)};`);
+      const assertCompact=async()=>{
+        const v=await headerSnapshot();quoteDiagnostic={scenario:'studio-header-projection',tenant,...v};
+        assert.equal(v.headerPosition,'sticky');assert.equal(v.position,'absolute');
+        assert.equal(v.font,tenant==='other'?'32px':'44px');assert.ok(v.textFits&&v.textRect.width>0&&v.textRect.height>0,'Authored wordmark must remain legible without truncation');
+        assert.ok(v.brand.left>=v.header.left-1&&v.brand.right<=v.toggle.left+1);
+        assert.ok(v.brand.top>=v.header.top-1&&v.brand.bottom<=v.header.bottom+1);
+        assert.ok(v.toggle.width>=44&&v.toggle.height>=44);
+        assert.ok(v.unchanged&&v.identity&&v.undo);return v;
+      };
+      await assertCompact();
+      for(const action of ['pointer','Enter','Space']){
+        if(action==='pointer')await click('[data-public-nav-toggle]');
+        else {await execute("document.querySelector('[data-public-nav-toggle]').focus()");await keys([action==='Enter'?'\uE007':' ']);}
+        await waitFor("document.querySelector('.site-header .nav').dataset.open==='true'");
+        const open=await assertCompact();assert.equal(open.expanded,'true');assert.ok(open.nav.top>=open.header.bottom-1);
+        await keys(['\uE00C']);await waitFor("document.querySelector('.site-header .nav').dataset.open==='false'");
+        assert.equal(await execute("return document.activeElement.hasAttribute('data-public-nav-toggle')"),true);
+      }
+      await click('#legend-cms-form-navigator select option[value="2"]');
+      await selectQuoteContent('header:'+tenant+':Q2');
+      for(const width of [1363,1364,1365,1188]){
+        await metrics(width,761);await settleQuoteCanvas('header:'+width);
+        const v=await headerSnapshot();
+        if(v.canvas.width<=980)await assertCompact();
+        else assert.ok(v.brand.width<v.canvas.width*.2,'Expanded Base restores authored14% width');
+      }
+      const formState=()=>execute("return {step:document.querySelector('#legend-cms-form-navigator select').value,answers:[...document.querySelectorAll('main input,main select,main textarea')].map(e=>[e.id,e.value,e.checked]),hidden:[...document.querySelectorAll('main [data-cms-native-step]')].map(e=>[e.dataset.cmsNativeStep,e.hidden])}");
+      const beforeSidebar=await formState();
+      await click('#legend-cms-panel-toggle');await settleQuoteCanvas('header:sidebar-hidden');
+      assert.ok((await headerSnapshot()).brand.width<240);
+      await click('#legend-cms-panel-toggle');await settleQuoteCanvas('header:sidebar-restored');await assertCompact();
+      assert.deepEqual(await formState(),beforeSidebar,'Sidebar projection must preserve the actual selected step and answers');
+      assert.ok((await execute('return window.__quoteRequests')).every(r=>r.method==='GET'));
+      assert.deepEqual(await execute('return window.__quoteErrors'),[]);
+    }
+    completedScenarios.add('studio-header-projection');
 
     requireCompleteScenarios(requiredScenarios,completedScenarios);
     acceptanceComplete=true;
