@@ -112,6 +112,16 @@ def quote_projection_values():
     return values,conditions
 
 
+def protect_scripture_projection(layout):
+    """Exact production modal markup and its owning inline lifecycle."""
+    modal = re.search(r'(<div id="psalmsModal"[\s\S]*?)\n\n<footer', layout)
+    scripts = [m[1] for m in re.finditer(r'<script>([\s\S]*?)</script>', layout)
+               if "const trigger = document.getElementById('psalmsTrigger');" in m[1]]
+    if modal is None or len(scripts) != 1 or '@' in modal[1] or '@' in scripts[0]:
+        raise ValueError('Protect scripture source boundary changed')
+    return modal[1], '<script data-source="Protect-Website/Views/Shared/_Layout.cshtml">' + scripts[0] + '</script>'
+
+
 def build_quote_fixtures(root, out, raw):
     """Source-component projection only: not Razor execution or a submitted quote."""
     source=lambda path:raw(path).decode('utf-8')
@@ -121,6 +131,7 @@ def build_quote_fixtures(root, out, raw):
     layout=source('Protect-Website/Views/Shared/_Layout.cshtml')
     for anchor in ['<body class="legend-public--protect @bodyClasses">','var mainClasses = isStandaloneQuoteLanding ? "layout-content" : "public-main layout-content";']:
         if layout.count(anchor)!=1:raise ValueError('Quote layout authority changed')
+    scripture_markup, scripture_script = protect_scripture_projection(layout)
     review_assets=source('Protect-Website/Views/Shared/_QuoteFinalReviewAssets.cshtml')
     if review_assets.count('href="~/css/quote-final-review.css"')!=1:raise ValueError('Quote review CSS authority changed')
     css_paths=['Protect-Website/wwwroot/lib/bootstrap/dist/css/bootstrap.min.css','Protect-Website/wwwroot/css/site.css','Legend-Design/legend-web-foundation.css','SHARED/WebsitePlatform/legend-public-web.css','SHARED/WebsitePlatform/public-inquiry-form.css','Protect-Website/wwwroot/css/quote-final-review.css']
@@ -195,10 +206,19 @@ const payload={siteKey:'protect',revision:'r1',document:doc,business:null,store:
 window.fetch=async(input,options={})=>{const u=new URL(String(input),location.origin);const method=options.method||'GET';window.__quoteRequests.push({method,path:u.pathname});if(method!=='GET'||u.origin!==location.origin)deny(method+':'+u.pathname);let value;if(u.pathname==='/api/website-content/manage')value=payload;else if(u.pathname==='/api/website-content/manage/agent/contract')value={schema:'legend-website-studio-agent/v1',promptTemplate:'compact'};else if(u.pathname==='/api/website-content/manage/agent/summary')value={schema:'legend-creative-workspace/v1',siteKey:'protect',revision:'r1',pages:[],capabilities:{capabilities:[]}};else deny('GET:'+u.pathname);return{ok:true,status:200,json:async()=>structuredClone(value)};};
 if(q.get('public')==='1')window.LEGEND_PUBLIC_CMS_RENDER_INPUT={...payload,server:true};
 })();</script>'''.replace('CONFIG',json.dumps(config))
-        html='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src \'none\';script-src \'unsafe-inline\';style-src \'unsafe-inline\';img-src \'self\' data:;connect-src \'none\';form-action \'none\';base-uri \'none\'"><link rel="icon" href="data:,">'+common+'</head><body class="'+body+'"><main id="main" class="public-main layout-content">'+native_before+preceding+markup+native_after+'</main>'+bootstrap+'<script>'+cms+'</script></body></html>'
+        html='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src \'none\';script-src \'unsafe-inline\';style-src \'unsafe-inline\';img-src \'self\' data:;connect-src \'none\';form-action \'none\';base-uri \'none\'"><link rel="icon" href="data:,">'+common+'</head><body class="'+body+'"><main id="main" class="public-main layout-content">'+native_before+preceding+markup+native_after+'</main>'+scripture_markup+scripture_script+bootstrap+'<script>'+cms+'</script></body></html>'
         filename='quote-'+route+'.html';(out/filename).write_text(html);outputs[config['route']]=filename
         proof.append({'route':config['route'],'view':path,'inlineStyles':len(blocks),'branch':('Life normal quote contact-first site mode' if view=='Life' else 'Normal quote website/site_mode')+'; empty synthetic model','modelValues':values,'conditions':conditions})
-    return {'routes':outputs,'routeMapping':route_mapping,'assets':assets,'projection':proof,'limits':['Actual source shell, native static nodes, all inline styles and shipped CMS; finite synthetic model only.','One synthetic option row per model loop: NOT full-route height, content parity or Razor/controller execution.','No quote submission, provider, analytics, save or publish; all fetches finite offline GET fixtures.','Small effective viewport is not real browser zoom proof.','Header/footer, route handlers, native validation and server quote calculations are not executed; geometry is relative to component canvas.','Additional authored node/breakpoint width preservation remains in the existing website contract suite, not this native matrix.']}
+    # Actual closed layout is tested before JS, after no-trigger initialization,
+    # and with one synthetic opener exercising the unchanged production lifecycle.
+    scripture_outputs = {}
+    for mode in ['cold', 'no-trigger', 'trigger']:
+        trigger = '<button id="psalmsTrigger" type="button" style="margin-top:300px">Open scripture</button>' if mode == 'trigger' else ''
+        html = '<!doctype html><html><head><meta charset="utf-8"><link rel="icon" href="data:,"><meta http-equiv="Content-Security-Policy" content="default-src &apos;none&apos;;script-src &apos;unsafe-inline&apos;;style-src &apos;unsafe-inline&apos;;img-src data:;connect-src &apos;none&apos;;form-action &apos;none&apos;;base-uri &apos;none&apos;">' + common + '</head><body><button id="before" type="button">Before</button>' + trigger + scripture_markup + '<button id="after" type="button">After</button><div style="height:1800px"></div>' + ('' if mode == 'cold' else scripture_script) + '</body></html>'
+        filename = 'scripture-' + mode + '.html'
+        (out / filename).write_text(html)
+        scripture_outputs[mode] = filename
+    return {'scripture':scripture_outputs,'routes':outputs,'routeMapping':route_mapping,'assets':assets,'projection':proof,'limits':['Actual source shell, native static nodes, all inline styles and shipped CMS; finite synthetic model only.','One synthetic option row per model loop: NOT full-route height, content parity or Razor/controller execution.','No quote submission, provider, analytics, save or publish; all fetches finite offline GET fixtures.','Small effective viewport is not real browser zoom proof.','Header/footer, route handlers, native validation and server quote calculations are not executed; geometry is relative to component canvas.','Additional authored node/breakpoint width preservation remains in the existing website contract suite, not this native matrix.']}
 
 
 def build(root, out):

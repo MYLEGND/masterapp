@@ -245,7 +245,7 @@
     @RenderBody()
 </main>
 
-<div id="psalmsModal" class="scripture-modal" aria-hidden="true">
+<div id="psalmsModal" class="scripture-modal" aria-hidden="true" hidden inert>
     <div class="scripture-card" role="dialog" aria-modal="true" aria-labelledby="psalmsReference" tabindex="-1">
         <div class="scripture-card-header">
             <div>
@@ -457,7 +457,13 @@
     (function () {
         const trigger = document.getElementById('psalmsTrigger');
         const modal = document.getElementById('psalmsModal');
-        if (!trigger || !modal) return;
+        if (!modal) return;
+        // Closed state must also exclude keyboard focus on pages without a trigger.
+        modal.hidden = true;
+        modal.inert = true;
+        modal.setAttribute('aria-hidden', 'true');
+        modal.classList.remove('open');
+        if (!trigger) return;
 
         const textEl = document.getElementById('psalmsText');
         const refEl = document.getElementById('psalmsReference');
@@ -557,23 +563,56 @@
             streakNoteEl.textContent = streak >= 7 ? 'Nice streak. Keep going.' : 'Tap daily to build momentum.';
         }
 
+        const card = modal.querySelector('.scripture-card');
+        let opener = null;
+        let ownedScrollLock = false;
+        function focusable(node) {
+            return node?.isConnected && !node.disabled && !node.closest('[hidden], [inert]') &&
+                node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden';
+        }
         function openModal() {
+            if (!modal.hidden) return;
             fillContent();
+            opener = document.activeElement;
+            ownedScrollLock = !document.body.classList.contains('no-scroll');
+            modal.hidden = false;
+            modal.inert = false;
             modal.classList.add('open');
-            document.body.classList.add('no-scroll');
             modal.setAttribute('aria-hidden', 'false');
-            modal.querySelector('.scripture-card')?.focus();
+            document.body.classList.add('no-scroll');
+            card?.focus({ preventScroll: true });
         }
         function closeModal() {
+            if (modal.hidden) return;
             modal.classList.remove('open');
-            document.body.classList.remove('no-scroll');
+            modal.hidden = true;
+            modal.inert = true;
             modal.setAttribute('aria-hidden', 'true');
+            if (ownedScrollLock) document.body.classList.remove('no-scroll');
+            ownedScrollLock = false;
+            const target = focusable(opener) ? opener : trigger;
+            opener = null;
+            if (focusable(target)) target.focus({ preventScroll: true });
         }
 
         trigger.addEventListener('click', openModal);
         closeEl?.addEventListener('click', closeModal);
         modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+        document.addEventListener('keydown', (e) => {
+            if (modal.hidden) return;
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closeModal();
+            } else if (e.key === 'Tab') {
+                const targets = [...modal.querySelectorAll('a[href], button, input, select, textarea, [tabindex]')]
+                    .filter(node => node.tabIndex >= 0 && focusable(node));
+                const index = targets.indexOf(document.activeElement);
+                if (!targets.length || index < 0 || (e.shiftKey ? index === 0 : index === targets.length - 1)) {
+                    e.preventDefault();
+                    (targets.length ? targets[e.shiftKey ? targets.length - 1 : 0] : card)?.focus({ preventScroll: true });
+                }
+            }
+        });
     })();
 </script>
 <script>
