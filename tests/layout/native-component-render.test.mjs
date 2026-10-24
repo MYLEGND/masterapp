@@ -820,7 +820,7 @@ canvasScrollTop:canvas.scrollTop,
 panelHidden:document.body.classList.contains('legend-cms-panel-hidden'),
 controls:(${quoteControlSnapshots.toString()})(document,window)};`;
 
-const quoteSelectableContentScript = `const nodes=[...document.querySelectorAll('main p.lq-hero-step-copy-helper,main h1,main h2,main h3,main h4,main h5,main h6,main .lq-hero-step-copy-title,main .lq-contact-capture-title,main .dq-contact-title,main .lq-step-title')];const n=nodes.find(e=>e.closest('[data-cms-editable="true"]')&&!e.closest('[hidden],[inert],[aria-hidden="true"],[data-cms-preview-only]')&&e.getClientRects().length&&getComputedStyle(e).visibility==='visible'&&Number(getComputedStyle(e).opacity)>0);return n?{node:n,target:n.closest('[data-cms-editable="true"]')}:null;`;
+const quoteSelectableContentScript = `const nodes=[...document.querySelectorAll('main p.lq-hero-step-copy-helper,main h1,main h2,main h3,main h4,main h5,main h6,main .lq-hero-step-copy-title,main .lq-contact-capture-title,main .dq-contact-title,main .lq-step-title,main .lq-choice-label')];const n=nodes.find(e=>e.closest('[data-cms-editable="true"]')&&!e.closest('[hidden],[inert],[aria-hidden="true"],[data-cms-preview-only]')&&e.getClientRects().length&&getComputedStyle(e).visibility==='visible'&&Number(getComputedStyle(e).opacity)>0);return n?{node:n,target:n.closest('[data-cms-editable="true"]')}:null;`;
 
 test('quote selection discovers actual editable native paragraph without fabricating a title',()=>{
   const owner={id:'native-owner'},paragraph={closest:s=>s==='[data-cms-editable="true"]'?owner:null,getClientRects:()=>[{}]};
@@ -1413,13 +1413,14 @@ test('actual canonical frontend components render in the existing sandboxed CI b
         await keys(['\uE00C']);await waitFor("document.querySelector('.site-header .nav').dataset.open==='false'");
         assert.equal(await execute("return document.activeElement.hasAttribute('data-public-nav-toggle')"),true);
       }
+      await click('#legend-cms-form-navigator select option[value="2"]');
+      await selectQuoteContent('header:'+tenant+':Q2');
       for(const width of [1363,1364,1365,1188]){
         await metrics(width,761);await settleQuoteCanvas('header:'+width);
         const v=await headerSnapshot();
         if(v.canvas.width<=980)await assertCompact();
         else assert.ok(v.brand.width<v.canvas.width*.2,'Expanded Base restores authored14% width');
       }
-      await click('#legend-cms-form-navigator select option[value="2"]');
       const formState=()=>execute("return {step:document.querySelector('#legend-cms-form-navigator select').value,answers:[...document.querySelectorAll('main input,main select,main textarea')].map(e=>[e.id,e.value,e.checked]),hidden:[...document.querySelectorAll('main [data-cms-native-step]')].map(e=>[e.dataset.cmsNativeStep,e.hidden])}");
       const beforeSidebar=await formState();
       await click('#legend-cms-panel-toggle');await settleQuoteCanvas('header:sidebar-hidden');
