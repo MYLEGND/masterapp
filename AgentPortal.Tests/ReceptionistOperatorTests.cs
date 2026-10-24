@@ -26,6 +26,73 @@ namespace AgentPortal.Tests;
 
 public sealed partial class ReceptionistOperatorTests
 {
+    [Fact]
+    public async Task PreparationReadsExactStoredStateWithoutSecretsWritesOrInventedFunding()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var package = await f.BindingPackageAsync();
+        var writes = f.Commands.Writes;
+        var result = await f.Operator.PrepareAsync(f.Owner.Key, package.ConfigurationId);
+        Assert.Equal("observed_not_reviewed", result.Status);
+        Assert.Equal(package.ConfigurationSha256, result.ConfigurationSha256);
+        Assert.Equal(package.ExpectedConnectionRevision, result.ConnectionRevision);
+        Assert.Equal(package.MarketingConnectionId, result.MarketingConnectionId);
+        Assert.False(result.CurrentBindingAccepted); Assert.False(result.AdmissionEnabled);
+        Assert.Null(result.HistoricalAcceptedConfiguration);
+        Assert.Equal(f.OwnerBudgetId, Assert.Single(result.Accounts).Id);
+        Assert.Equal(writes, f.Commands.Writes);
+        var json = JsonSerializer.Serialize(result);
+        foreach (var value in new[] { Fixture.ApiSecret, Fixture.WebhookSecret, "private-test-business-policy",
+            "ProtectedApiCredential", "AcceptedBindingJson", "ConfigurationJson", "ExpectedStateToken" })
+            Assert.DoesNotContain(value, json);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Operator.PrepareAsync("foreign-owner", package.ConfigurationId));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Operator.PrepareAsync(f.Owner.Key, Guid.NewGuid()));
+        Assert.Equal(writes, f.Commands.Writes);
+    }
+
+    [Fact]
+    public async Task PreparationDoesNotInheritEarlierAcceptanceAndRejectsStaleIdentityOrCorruptHash()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var package = await f.BindingPackageAsync(); var identity = f.Publish(package);
+        await f.Operator.ApplyAsync(f.Request(await f.Operator.PlanAsync(identity.Key, identity.Hash)));
+        await using var db = f.Database();
+        var connection = await db.MarketingConnections.AsNoTracking().SingleAsync();
+        await f.Store.SaveReceptionistConfigurationAsync(f.Owner, "openai", connection.Revision,
+            Fixture.Configuration(), "synthetic-owner");
+        var current = await db.Set<ReceptionistConfigurationVersion>().OrderByDescending(x => x.Version).FirstAsync();
+        var writes = f.Commands.Writes;
+        var result = await f.Operator.PrepareAsync(f.Owner.Key, current.Id);
+        Assert.Equal(current.Id, result.ConfigurationId); Assert.False(result.CurrentBindingAccepted);
+        Assert.False(result.AdmissionEnabled);
+        Assert.Equal(connection.ReceptionistActiveConfigurationId, result.HistoricalAcceptedConfiguration!.ConfigurationId);
+        Assert.Equal(package.ConfigurationSha256, result.HistoricalAcceptedConfiguration.ConfigurationSha256);
+        Assert.Equal(f.OwnerBudgetId, Assert.Single(result.Accounts).Id);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Operator.PrepareAsync(f.Owner.Key, package.ConfigurationId));
+        Assert.Equal(writes, f.Commands.Writes);
+        current.ConfigurationSha256 = new string('0', 64); await db.SaveChangesAsync();
+        await Assert.ThrowsAnyAsync<Exception>(() => f.Operator.PrepareAsync(f.Owner.Key, current.Id));
+    }
+
+    [Theory]
+    [InlineData("provider")]
+    [InlineData("project")]
+    public async Task PreparationRejectsConflictingConnectionAuthority(string mismatch)
+    {
+        await using var f = await Fixture.CreateAsync();
+        var package = await f.BindingPackageAsync(); var identity = f.Publish(package);
+        await f.Operator.ApplyAsync(f.Request(await f.Operator.PlanAsync(identity.Key, identity.Hash)));
+        await using var db = f.Database();
+        var connection = await db.MarketingConnections.SingleAsync();
+        if (mismatch == "provider") connection.Provider = "other";
+        else connection.ReceptionistProviderProjectKey = "different-project";
+        await db.SaveChangesAsync();
+        var writes = f.Commands.Writes;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Operator.PrepareAsync(f.Owner.Key,
+            connection.ReceptionistActiveConfigurationId!.Value));
+        Assert.Equal(writes, f.Commands.Writes);
+    }
+
     [Theory]
     [InlineData("email")]
     [InlineData("name_identifier")]
@@ -44,6 +111,7 @@ public sealed partial class ReceptionistOperatorTests
         };
         if (caseName == "missing_configuration") f.Host["FOUNDER_OID"] = null;
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Operator.CatalogAsync());
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Operator.PrepareAsync(f.Owner.Key, package.ConfigurationId));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Operator.PlanAsync(identity.Key, identity.Hash));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Operator.ApplyAsync(new(identity.Key, identity.Hash, "untrusted")));
         await using var db = f.Database();
@@ -510,7 +578,7 @@ public sealed partial class ReceptionistOperatorTests
         public async ValueTask DisposeAsync()
         { await storeContext.DisposeAsync(); Protector.Dispose(); File.Delete(path); }
 
-        private static ReceptionistBusinessConfiguration Configuration() => new()
+        internal static ReceptionistBusinessConfiguration Configuration() => new()
         {
             BusinessName = "Synthetic operator-test owner", ConversationInstructions = "Use synthetic approved instructions.",
             BusinessPolicy = "private-test-business-policy", TimeZoneId = "UTC", Currency = "USD",
@@ -586,3 +654,4 @@ public sealed partial class ReceptionistOperatorTests
         }
     }
 }
+

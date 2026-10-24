@@ -9,6 +9,57 @@ namespace Infrastructure.Reception;
 
 public sealed partial class ReceptionistAdmissionService
 {
+    internal async Task<ReceptionistOperatorPreparation> ReadOperatorPreparationAsync(
+        string expectedOwnerKey, Guid configurationId, CancellationToken ct)
+    {
+        await using var read = new MasterAppDbContext(options);
+        // A coherent read across settings, immutable configuration and accounts.
+        // This path performs no SaveChanges, provider calls, or acceptance writes.
+        await using var transaction = await read.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        var version = await read.Set<ReceptionistConfigurationVersion>().AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == configurationId, ct)
+            ?? throw new InvalidOperationException("The requested current configuration is unavailable.");
+        var connection = await read.MarketingConnections.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == version.MarketingConnectionId && x.OwnerKey == expectedOwnerKey &&
+                x.ReceptionistActiveConfigurationId == configurationId, ct)
+            ?? throw new InvalidOperationException("The requested configuration is not current for this settings owner.");
+        var owner = ReceptionistSql.Owner(connection);
+        if (owner.Key != expectedOwnerKey || connection.Provider != "openai")
+            throw new InvalidOperationException("The canonical owner or receptionist provider does not match.");
+        var config = ReceptionistConfigurationCodec.Read(version.ConfigurationJson, version.ConfigurationSha256);
+        var binding = ReceptionistConfigurationCodec.ReadBinding(version.AcceptedBindingJson, config);
+        if (binding is not null && connection.ReceptionistProviderProjectKey != binding.ProviderProjectKey)
+            throw new InvalidOperationException("The current binding does not match the connection provider project.");
+        var fundingIds = binding?.Costs.Select(x => x.FundingBudgetAccountId).Distinct().ToArray() ?? [];
+        if (fundingIds.Length > 64) throw new InvalidOperationException("The current funding scope exceeds its supported bound.");
+        var accounts = await read.Set<ReceptionistBudgetAccount>().AsNoTracking()
+            .Where(x => x.Kind == "owner" && x.ScopeKey == expectedOwnerKey || x.Kind == "funding" && fundingIds.Contains(x.Id))
+            .OrderBy(x => x.Id).ToListAsync(ct);
+        if (accounts.Any(x => x.Currency != config.Currency || x.Kind == "owner" && x.TimeZoneId != config.TimeZoneId) ||
+            fundingIds.Any(id => accounts.All(x => x.Id != id)))
+            throw new InvalidOperationException("The current accounting scope is inconsistent.");
+        var historical = await read.Set<ReceptionistConfigurationVersion>().AsNoTracking()
+            .Where(x => x.MarketingConnectionId == connection.Id && x.Version < version.Version && x.AcceptedBindingJson != null)
+            .OrderByDescending(x => x.Version).FirstOrDefaultAsync(ct);
+        ReceptionistPreparationHistory? prior = null;
+        if (historical is not null)
+        {
+            var oldConfig = ReceptionistConfigurationCodec.Read(historical.ConfigurationJson, historical.ConfigurationSha256);
+            if (ReceptionistConfigurationCodec.ReadBinding(historical.AcceptedBindingJson, oldConfig) is not null)
+                prior = new(historical.Id, historical.Version, historical.ConfigurationSha256);
+        }
+        return new(clock.GetUtcNow().UtcDateTime, "observed_not_reviewed", connection.Id, connection.OwnerKey,
+            connection.Provider, connection.Revision, connection.ReceptionistControlRevision, version.Id, version.Version,
+            version.ConfigurationSha256, connection.ReceptionistProviderProjectKey, connection.ReceptionistAdmissionEnabled,
+            binding is not null, accounts.Select(x => new ReceptionistPreparationAccount(x.Id, x.Revision, x.Kind,
+                x.ScopeKey, x.Currency, x.TimeZoneId)).ToArray(), prior,
+            ["This observation is not a reviewed operation, provider verification, or permission to enable calls.",
+             binding is null ? "Current configuration has no accepted binding. Historical acceptance and funding are not inherited."
+                : "Current binding metadata does not replace independently reviewed provider, capability and cost evidence.",
+             "Prepare and review exact configuration evidence, then register its JSON and SHA256 through the existing operator package configuration.",
+             "No test window, call, admission extension or activation is created by this export."]);
+    }
+
     internal async Task ApplyOperatorAccountingAsync(ReceptionistOperatorPackage package,
         ReceptionistOperatorState state, Func<MasterAppDbContext, Task> guard, CancellationToken ct)
     {

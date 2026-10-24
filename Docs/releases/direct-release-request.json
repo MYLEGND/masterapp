@@ -1,14 +1,15 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorizes canonical implementation, tests, protected integration and selective deployment for MKT-VOICE-001:conversation-state-name-quality:20261024:v1, delivered by Operation Sentinel_0d1c0a89590c81918b970d1e6a2e1dd7 at2026-10-24T03:36:22Z. Astra owns independent reasoning/acceptance; Codex is sole implementer; Layla remains global coordinator. Preserve mandatory security/privacy/access/cost safeguards and $0 additional spend. No call, new test window, provider change or public activation is authorized.",
-  "purpose": "Correct bounded call-scoped service/name/task retention and confirmed canonical intake; provide tenant-scoped content draft/review/apply/rollback through existing controls with server-enforced execution authority. Preserve inactive Shayla18, original five-app successes and completed Protect keyboard repair. This is a new four-.NET-host correction, not a replay of any completed release/recovery. Website source is unchanged; no Website deployment or Cloudflare routing is needed. Require exact-head checks, independent final acceptance, protected admission and verified runtime identities. Call quality requires separately authorized consenting test and termination/accounting evidence. Keep draft83 publication and remaining website acceptance separate and pending.",
-  "requestId": "founder-receptionist-conversation-content-release-20261024-v1",
+  "authorization": "Founder original Website Studio and voice receptionist continuation authorization, clarified 2026-10-24T11:20:25Z Sentinel_4d755da7ef548191b8d2da804976a144. Same Engineering owner; Codex sole implementer, Astra independent acceptance, Layla coordinator. Necessary canonical fixes, tests, protected integration and selective deployment authorized. Preserve mandatory privacy/security/access/new-cost confirmations and $0 additional spend. No calls, expiring test window, admission extension or activation.",
+  "purpose": "Correct only editor canvas header projection and provide Founder-only read-only exact-current receptionist preparation metadata. Preserve authored styles, visitor behavior, form state, intended publication84 and accepted prior deployments. New corrected source artifacts only; never replay completed release/recovery/publication. Shared CMS consumers require protected impact selection. Exact-head CI, independent acceptance and canonical admission required. Metadata observation is not reviewed-package registration, provider acceptance or heard-call quality.",
+  "requestId": "founder-studio-header-voice-preparation-release-20261024-v1",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
     "masterapp-client",
     "masterapp-protect",
-    "masterapp-parfait"
+    "masterapp-parfait",
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false

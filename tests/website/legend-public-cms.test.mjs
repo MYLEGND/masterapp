@@ -36,6 +36,57 @@ const legendSiteToolsBridgeSource = readFileSync(new URL('../../SHARED/wwwroot/j
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
 
+test('editor compact header restores authored Base geometry without remounting content or saving',async()=>{
+  for(const name of ['LEGEND®','Cedar Advisory']){
+    const doc=canonicalBusinessNavigation();
+    const header=doc.shell.header[0];
+    header.style={heightPx:96};
+    header.children.unshift(canonicalNode('shell.brand','container','div',{
+      className:'brand-wordmark',style:{widthPercent:14,offsetYPx:-18.5},children:[
+        canonicalNode('shell.name','text','strong',{text:name,style:{fontSize:44}})
+      ]}));
+    const initial=JSON.stringify(doc);let width=804,observer;
+    const f=await domFixture({doc,viewportWidth:1188,beforeEval:w=>{
+      Object.defineProperty(w.HTMLElement.prototype,'clientWidth',{configurable:true,get(){return this.classList.contains('legend-cms-preview')?width:0;}});
+      w.ResizeObserver=class{constructor(callback){observer=callback;}observe(){}disconnect(){}};
+    }});
+    try{
+      const brand=f.w.document.querySelector('.brand-wordmark');
+      const main=f.w.document.querySelector('main');
+      const title=main.querySelector('h1');
+      const undo=f.w.document.querySelector('#legend-cms-undo');
+      assert.equal(brand.style.width,'');
+      assert.equal(f.w.document.querySelector('.site-header').style.height,'');
+      assert.equal(brand.textContent,name);
+      f.w.eval(publicWebSource);
+      f.click('[data-public-nav-toggle]');
+      assert.equal(f.w.document.querySelector('.nav').dataset.open,'true','Studio capture must allow the shared runtime Menu controller');
+      f.w.document.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+      assert.equal(f.w.document.querySelector('.nav').dataset.open,'false');
+      assert.equal(f.w.document.activeElement.hasAttribute('data-public-nav-toggle'),true);
+      assert.equal(brand.querySelector('strong').style.fontSize,'44px');
+      const compactStyle=brand.getAttribute('style');
+      for(const next of [981,980,979,1188,804]){
+        width=next;observer();
+        assert.equal(brand.style.width,next>980?'14%':'');
+        if(next<=980){
+          assert.equal(brand.style.top,'');
+          assert.equal(f.w.document.querySelector('.nav').style.position,'');
+          assert.equal(f.w.document.querySelector('.nav').style.top,'');
+        }
+        assert.equal(f.w.document.querySelector('.site-header').style.height,next>980?'96px':'');
+        assert.equal(f.w.document.querySelector('main'),main);
+        assert.equal(main.querySelector('h1'),title);
+        assert.equal(undo.disabled,true);
+      }
+      assert.equal(brand.getAttribute('style'),compactStyle);
+      assert.equal(JSON.stringify(doc),initial);
+      assert.equal(f.calls.some(call=>call.method==='POST'),false);
+      assert.equal(JSON.stringify(f.serverDocument()),initial);
+    }finally{f.close();}
+  }
+});
+
 const canonicalBreakpoints = () => [
   {key:'mobile',label:'Mobile',minWidth:0,maxWidth:767,isSystem:true},
   {key:'tablet',label:'Tablet',minWidth:768,maxWidth:1199,isSystem:true},

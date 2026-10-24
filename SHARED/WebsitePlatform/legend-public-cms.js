@@ -1248,6 +1248,35 @@
     return Number(document.documentElement?.clientWidth) || 1200;
   }
 
+  // Match the editor-only header container query, not the browser viewport.
+  // Base remains the authored Base; only shell geometry is projected to fit.
+  function compactEditorHeader() {
+    if (!editorMode || !editorPreview) return false;
+    const css=getComputedStyle(editorPreview);
+    const width=editorPreview.clientWidth-(parseFloat(css.paddingLeft)||0)-(parseFloat(css.paddingRight)||0);
+    return width>0 && width<=980;
+  }
+
+  function editorHeaderChrome(model, el) {
+    return !!el?.closest?.('.site-header') && !!(
+      responsiveShellChromeKind(model,el) || el.closest('.brand,.brand-wordmark,.business-brand-banner,.nav'));
+  }
+
+  let previousCompactEditorHeader=null;
+  function refreshEditorHeaderProjection() {
+    const compact=compactEditorHeader();
+    if(previousCompactEditorHeader===compact) return;
+    previousCompactEditorHeader=compact;
+    // Presentation only: do not remount the shell, reset navigation, restore
+    // form previews, checkpoint history or write the canonical document.
+    walkComposition(documentState.shell?.header || [],model=>{
+      const el=findEditableElement(model.id);
+      if(!el?.closest?.('.site-header')) return;
+      applyStyle(el,effectiveStyle(model,el));
+      applyLayout(el,effectiveLayout(model,el));
+    });
+  }
+
   function activeBreakpoint(width = responsiveViewportWidth()) {
     if (editorMode) {
       if (editorBreakpointKey === 'base') return null;
@@ -1416,6 +1445,11 @@
     const responsive = key && model?.breakpointStyles && typeof model.breakpointStyles[key] === 'object' ? model.breakpointStyles[key] : null;
     const style = responsive ? { ...base, ...responsive } : { ...base };
     applyCanonicalResponsiveStyle(model,el,key,style,responsive);
+    if(compactEditorHeader() && editorHeaderChrome(model,el)){
+      // Even zero offsets make applyStyle emit position:relative; leave the
+      // sticky header and absolute navigation positioning to their CSS owner.
+      RESPONSIVE_MOBILE_HEADER_GEOMETRY_FIELDS.forEach(field=>delete style[field]);
+    }
     // Stored width and in-section position are independent. Rendering constrains
     // the effective width to the remaining section space, so movement stays free
     // without creating horizontal page overflow.
@@ -1431,7 +1465,7 @@
     const key = activeBreakpoint();
     const responsive = key && model?.breakpointLayouts && typeof model.breakpointLayouts[key] === 'object' ? model.breakpointLayouts[key] : null;
     const layout=responsive ? { ...base, ...responsive } : { ...base };
-    if(key==='mobile' && (
+    if((key==='mobile' || (compactEditorHeader() && el?.closest?.('.site-header'))) && (
       responsiveShellChromeKind(model,el)==='frame' ||
       responsiveShellChromeKind(model,el)==='navigation' ||
       el?.matches?.('.site-header,.nav')
@@ -8946,6 +8980,20 @@
       .legend-cms-editor{font-family:Inter,system-ui,sans-serif;box-sizing:border-box}
       .legend-cms-editor *{box-sizing:border-box}
       .legend-cms-editor [hidden]{display:none}
+
+      body.legend-cms-editing .legend-cms-preview{container:legend-studio / inline-size}
+      /* Editor canvas counterpart of legend-public-web.css's 980px header.
+         Public media rules and authored Base styles remain unchanged. */
+      @container legend-studio (max-width:980px){
+        body.legend-cms-editing .legend-cms-preview .site-header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;height:auto;min-height:76px;padding:10px 18px}
+        body.legend-cms-editing .legend-cms-preview .site-header :is(.brand,.brand-wordmark,.business-brand-banner){width:auto;min-width:0;max-width:100%}
+        body.legend-cms-editing .legend-cms-preview .site-header .brand-wordmark strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        body.legend-cms-editing .legend-cms-preview .site-header .nav-toggle{display:inline-flex;align-items:center;justify-content:center;justify-self:end;min-width:48px;min-height:44px;padding:9px 14px;border-radius:10px}
+        body.legend-cms-editing .legend-cms-preview .site-header .nav{position:absolute;z-index:3;top:calc(100% + 6px);left:12px;right:12px;width:auto;max-width:none;max-height:min(68dvh,520px);display:none;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;gap:6px;margin:0;padding:8px;overflow-x:clip;overflow-y:auto;overscroll-behavior-y:auto;-webkit-overflow-scrolling:touch;background:color-mix(in srgb,var(--navy-deep) 96%,transparent);border:1px solid rgba(255,255,255,.14);border-radius:14px;box-shadow:0 18px 44px rgba(0,0,0,.34)}
+        body.legend-cms-editing .legend-cms-preview .site-header .nav[data-open=true]{display:grid}
+        body.legend-cms-editing .legend-cms-preview .site-header .nav :is(a,button){width:100%;min-width:0;min-height:44px;padding:10px 12px;text-align:center;justify-content:center;border:1px solid rgba(255,255,255,.2);border-radius:8px;background:rgba(255,255,255,.07);white-space:normal;overflow-wrap:anywhere;font-size:14px;line-height:1.25}
+        body.legend-cms-editing .legend-cms-preview .site-header .nav .nav-cta{width:100%;min-height:44px;padding:10px 12px;text-align:center;justify-content:center;margin-top:0;border-radius:8px}
+      }
       .legend-cms-preview,.legend-cms-panel{scrollbar-width:none}
       .legend-cms-preview::-webkit-scrollbar,.legend-cms-panel::-webkit-scrollbar{display:none}
       .legend-cms-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:14px 0;background:#081a3a;color:#fff;border-bottom:1px solid #344766;margin:0 0 12px;position:sticky;top:-20px;z-index:2}
@@ -9465,7 +9513,7 @@
       panelToggle.setAttribute('aria-expanded',hidden ? 'false' : 'true');
     };
     const refreshPanelCanvas = () => {
-      const refresh = () => { refreshScaledElements(); updateDirectCanvasUi(); };
+      const refresh = () => { refreshEditorHeaderProjection(); refreshScaledElements(); updateDirectCanvasUi(); };
       if (typeof requestAnimationFrame === 'function') requestAnimationFrame(refresh);
       else refresh();
     };
@@ -9556,10 +9604,13 @@
     enhanceEditor(panel, preview);
     installFormStepNavigator(panel);
     refreshScaledElements();
-    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { refreshScaledElements(); updateDirectCanvasUi(); }).observe(preview);
+    refreshEditorHeaderProjection();
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { refreshEditorHeaderProjection(); refreshScaledElements(); updateDirectCanvasUi(); }).observe(preview);
     syncEditorControls();
 
     document.addEventListener('click', event => {
+      // This locked runtime control belongs to the shared navigation listener.
+      if(event.target?.closest?.('.site-header [data-public-nav-toggle]')) return;
       const target = editorSelectionTarget(event.target);
       if (!target || target.closest('.legend-cms-editor')) return;
       const alreadySelected = target === selected;
@@ -9991,3 +10042,4 @@
     if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
   }, { once: true });
 })();
+
