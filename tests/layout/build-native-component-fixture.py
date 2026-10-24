@@ -213,7 +213,7 @@ if(q.get('public')==='1')window.LEGEND_PUBLIC_CMS_RENDER_INPUT={...payload,serve
     # and with one synthetic opener exercising the unchanged production lifecycle.
     scripture_outputs = {}
     for mode in ['cold', 'no-trigger', 'trigger']:
-        trigger = '<button id="psalmsTrigger" type="button">Open scripture</button>' if mode == 'trigger' else ''
+        trigger = '<button id="psalmsTrigger" type="button" style="margin-top:300px">Open scripture</button>' if mode == 'trigger' else ''
         html = '<!doctype html><html><head><meta charset="utf-8"><link rel="icon" href="data:,"><meta http-equiv="Content-Security-Policy" content="default-src &apos;none&apos;;script-src &apos;unsafe-inline&apos;;style-src &apos;unsafe-inline&apos;;img-src data:;connect-src &apos;none&apos;;form-action &apos;none&apos;;base-uri &apos;none&apos;">' + common + '</head><body><button id="before" type="button">Before</button>' + trigger + scripture_markup + '<button id="after" type="button">After</button><div style="height:1800px"></div>' + ('' if mode == 'cold' else scripture_script) + '</body></html>'
         filename = 'scripture-' + mode + '.html'
         (out / filename).write_text(html)

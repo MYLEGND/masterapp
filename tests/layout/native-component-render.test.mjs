@@ -1285,15 +1285,28 @@ test('actual canonical frontend components render in the existing sandboxed CI b
       await execute("window.scrollTo({top:250,left:0,behavior:'instant'});document.getElementById('psalmsTrigger').focus({preventScroll:true})");
       const scrollBefore=await execute('return window.scrollY');
       assert.ok(scrollBefore>0,'Scroll restoration requires an actually scrolled page');
+      const openerRect=await execute("const r=document.getElementById('psalmsTrigger').getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height,viewport:innerHeight}");
+      assert.ok(openerRect.height>0&&openerRect.top>=0&&openerRect.bottom<=openerRect.viewport,'Keyboard opener must be visible: '+JSON.stringify(openerRect));
+      const scrollTrace=[];
+      const assertScroll=async phase=>{
+        const state=await execute("const r=document.getElementById('psalmsTrigger').getBoundingClientRect();return {scroll:scrollY,active:document.activeElement.id,hidden:document.getElementById('psalmsModal').hidden,openerTop:r.top,openerBottom:r.bottom}");
+        scrollTrace.push({phase,...state});
+        assert.equal(state.scroll,scrollBefore,'Scripture '+dismissal+' scroll ownership: '+JSON.stringify(scrollTrace));
+      };
       await keys(['\uE007']);
       assert.equal(await execute("return !document.getElementById('psalmsModal').hidden && document.activeElement.classList.contains('scripture-card')"),true);
+      await assertScroll('open');
       await keys(['\uE004']);assert.equal(await execute('return document.activeElement.id'),'psalmsClose');
+      await assertScroll('Tab');
       await reverseTab();assert.equal(await execute('return document.activeElement.id'),'psalmsClose');
+      await assertScroll('ShiftTab');
       // A repeated opener event must not replace the original focus/lock owner.
       await execute("document.getElementById('psalmsTrigger').click()");
+      await assertScroll('repeated-open');
       if(dismissal==='escape')await keys(['\uE00C']);
       else if(dismissal==='close')await click('#psalmsClose');
       else await command('POST','/session/'+session+'/actions',{actions:[{type:'pointer',id:'pointer',parameters:{pointerType:'mouse'},actions:[{type:'pointerMove',origin:'viewport',x:2,y:2},{type:'pointerDown',button:0},{type:'pointerUp',button:0}]}]});
+      await assertScroll('dismissed');
       assert.deepEqual(await execute("return [document.getElementById('psalmsModal').hidden,document.getElementById('psalmsModal').inert,document.activeElement.id,document.body.classList.contains('no-scroll'),window.scrollY]"),[true,true,'psalmsTrigger',false,scrollBefore]);
       await keys(['\uE004']);assert.equal(await execute('return document.activeElement.id'),'after');
     }
