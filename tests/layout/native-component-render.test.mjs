@@ -1280,7 +1280,9 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     }
     await command('POST','/session/'+session+'/url',{url:'http://'+serverHost+'/scripture-trigger.html'});
     for (const dismissal of ['escape','close','backdrop']) {
-      await execute("window.scrollTo(0,250);document.getElementById('psalmsTrigger').focus({preventScroll:true})");
+      // Bootstrap's :root smooth scrolling otherwise leaves this immediate
+      // precondition at zero before the animation has advanced.
+      await execute("window.scrollTo({top:250,left:0,behavior:'instant'});document.getElementById('psalmsTrigger').focus({preventScroll:true})");
       const scrollBefore=await execute('return window.scrollY');
       assert.ok(scrollBefore>0,'Scroll restoration requires an actually scrolled page');
       await keys(['\uE007']);
