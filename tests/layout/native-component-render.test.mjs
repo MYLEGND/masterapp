@@ -805,7 +805,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     return value - 10000;
   };
   let manifest,chromeVersion,driverVersion,checked,driverBindings,versionProbeFailure,scrollDiagnostic,localeDiagnostic,placementDiagnostic,lifecycleDiagnostic,quoteDiagnostic;
-  const requiredScenarios=[...hosts.flatMap(host=>widths.map(width=>'viewport:'+host+':'+width)),'modal-order-and-wrap','locale-month-rollover','long-profile-and-offset','live-mobile-boundary','client-home-focus',...['life','disability','dental-vision-hearing'].map(route=>'quote-source:'+route),'quote-responsive-studio'];
+  const requiredScenarios=[...hosts.flatMap(host=>widths.map(width=>'viewport:'+host+':'+width)),'modal-order-and-wrap','locale-month-rollover','long-profile-and-offset','live-mobile-boundary','client-home-focus',...['life','disability','dental-vision-hearing'].map(route=>'quote-source:'+route),'quote-responsive-studio','protect-scripture-keyboard'];
   const completedScenarios=new Set();
   const quoteRecords=[];
   const records=[]; let acceptanceComplete=false; let failure; let server,driver,session,driverOrigin; let serverHost; let driverLog='';
@@ -873,6 +873,11 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.match(route,/^\/quote\/[a-z-]+$/);assert.match(file,/^quote-[a-z-]+\.html$/);
     const bytes=await readFile(path.join(dir,file));assert.equal(hash(bytes),manifest.outputs[file]);
     for(const query of ['?legendEdit=ticket&legendMaterialize=1','?legendEdit=ticket','?legendEdit=ticket&width=720','?public=1','?public=1&width=720'])routes.set(route+query,bytes);
+  }
+  for (const [mode,file] of Object.entries(manifest.quotes.scripture)) {
+    assert.ok(['cold','no-trigger','trigger'].includes(mode));
+    const bytes=await readFile(path.join(dir,file));assert.equal(hash(bytes),manifest.outputs[file]);
+    routes.set('/scripture-'+mode+'.html',bytes);
   }
   for(const [route,file] of Object.entries(manifest.quotes.assets)) {
     assert.match(route,/^\/images\/ads\/[a-z-]+\.png$/);assert.match(file,/^quote-asset-[a-z-]+\.png$/);
@@ -1260,6 +1265,54 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     }
     assert.deepEqual(rejected,[],'No unexpected HTTP after quote scenarios');
     completedScenarios.add('quote-responsive-studio');
+
+    // The real Protect layout modal was previously omitted from quote fixtures.
+    // Cold and no-trigger pages prove native focus exclusion independently of JS.
+    const reverseTab=()=>command('POST','/session/'+session+'/actions',{actions:[{type:'key',id:'keyboard',actions:[{type:'keyDown',value:'\uE008'},{type:'keyDown',value:'\uE004'},{type:'keyUp',value:'\uE004'},{type:'keyUp',value:'\uE008'}]}]});
+    await metrics(1188,761);
+    for (const mode of ['cold','no-trigger']) {
+      await command('POST','/session/'+session+'/url',{url:'http://'+serverHost+'/scripture-'+mode+'.html'});
+      assert.deepEqual(await execute("const m=document.getElementById('psalmsModal');return [m.hidden,m.inert,m.getAttribute('aria-hidden'),getComputedStyle(m).display]"),[true,true,'true','none']);
+      await execute("document.getElementById('before').focus()");
+      await keys(['\uE004']);assert.equal(await execute('return document.activeElement.id'),'after');
+      await reverseTab();assert.equal(await execute('return document.activeElement.id'),'before');
+      await keys(['\uE00C']);assert.equal(await execute('return document.activeElement.id'),'before','Closed Escape changed focus');
+    }
+    await command('POST','/session/'+session+'/url',{url:'http://'+serverHost+'/scripture-trigger.html'});
+    for (const dismissal of ['escape','close','backdrop']) {
+      await execute("window.scrollTo(0,250);document.getElementById('psalmsTrigger').focus({preventScroll:true})");
+      const scrollBefore=await execute('return window.scrollY');
+      assert.ok(scrollBefore>0,'Scroll restoration requires an actually scrolled page');
+      await keys(['\uE007']);
+      assert.equal(await execute("return !document.getElementById('psalmsModal').hidden && document.activeElement.classList.contains('scripture-card')"),true);
+      await keys(['\uE004']);assert.equal(await execute('return document.activeElement.id'),'psalmsClose');
+      await reverseTab();assert.equal(await execute('return document.activeElement.id'),'psalmsClose');
+      // A repeated opener event must not replace the original focus/lock owner.
+      await execute("document.getElementById('psalmsTrigger').click()");
+      if(dismissal==='escape')await keys(['\uE00C']);
+      else if(dismissal==='close')await click('#psalmsClose');
+      else await command('POST','/session/'+session+'/actions',{actions:[{type:'pointer',id:'pointer',parameters:{pointerType:'mouse'},actions:[{type:'pointerMove',origin:'viewport',x:2,y:2},{type:'pointerDown',button:0},{type:'pointerUp',button:0}]}]});
+      assert.deepEqual(await execute("return [document.getElementById('psalmsModal').hidden,document.getElementById('psalmsModal').inert,document.activeElement.id,document.body.classList.contains('no-scroll'),window.scrollY]"),[true,true,'psalmsTrigger',false,scrollBefore]);
+      await keys(['\uE004']);assert.equal(await execute('return document.activeElement.id'),'after');
+    }
+    await execute("document.body.classList.add('no-scroll');document.getElementById('psalmsTrigger').focus()");
+    await keys(['\uE007','\uE00C']);
+    assert.equal(await execute("return document.body.classList.contains('no-scroll')"),true,'Removed another scroll owner');
+    // Exercise the source Q2 preview with the actual layout in place. Full
+    // AgeRange-to-Q2 production sequencing is a separate live acceptance check.
+    await quoteGo('/quote/disability','?legendEdit=ticket');
+    await click('#legend-cms-form-navigator select option[value="2"]');
+    await click('#legend-cms-panel-toggle');
+    await waitFor("document.body.classList.contains('legend-cms-panel-hidden')");
+    const originalAnswers=await execute("return [...document.querySelectorAll('main input')].map(e=>[e.name,e.value,e.checked])");
+    assert.equal(await execute("const step=document.querySelector('[data-cms-native-step=\"1\"]');const radio=step?.querySelector('input[type=radio]');if(!radio||radio.disabled||!radio.getClientRects().length||getComputedStyle(radio).visibility!=='visible')return false;radio.focus();return document.querySelector('#legend-cms-form-navigator select').value==='2'&&document.activeElement===radio&&step.getClientRects().length>0"),true,'Actual Q2 radio must be visible, enabled and focused');
+    for(let i=0;i<4;i++) {await keys(['\uE004']);assert.equal(await execute("return !!document.activeElement.closest('#psalmsModal')"),false);}
+    for(let i=0;i<4;i++) {await reverseTab();assert.equal(await execute("return !!document.activeElement.closest('#psalmsModal')"),false);}
+    assert.deepEqual(await execute("return [...document.querySelectorAll('main input')].map(e=>[e.name,e.value,e.checked])"),originalAnswers);
+    assert.deepEqual(await execute('return window.__quoteErrors'),[]);
+    assert.ok((await execute('return window.__quoteRequests')).every(r=>r.method==='GET'));
+    assert.deepEqual(rejected,[],'Unexpected HTTP in scripture source fixtures');
+    completedScenarios.add('protect-scripture-keyboard');
 
     requireCompleteScenarios(requiredScenarios,completedScenarios);
     acceptanceComplete=true;
