@@ -1618,6 +1618,45 @@ class CanonicalReplacementAdapterTests(unittest.TestCase):
                 independent_review=entries['independentReview']['record'],
                 entries=entries, verification_digest='0' * 64, _factory_token=object())
 
+    def test_expiry_after_claim_or_final_fence_never_enters_provider(self):
+        for boundary in ('claim', 'final-fence'):
+            with self.subTest(boundary=boundary):
+                owner, fence, store = self.owner()
+                now = [self.now]
+                owner.journal.clock = lambda: now[0]
+                expired = self.now + dt.timedelta(minutes=10)
+                if boundary == 'claim':
+                    claim = store.claim
+                    def delayed_claim(name, record):
+                        result = claim(name, record)
+                        now[0] = expired
+                        return result
+                    owner.journal.claim = delayed_claim
+                else:
+                    verify = fence.verify
+                    calls = [0]
+                    def delayed_fence():
+                        result = verify()
+                        calls[0] += 1
+                        if calls[0] == 2:
+                            now[0] = expired
+                        return result
+                    fence.verify = delayed_fence
+                provider_calls = []
+                with self.assertRaisesRegex(self.adapter.PRIMITIVE.RecoveryAdmissionError, 'fresh'):
+                    owner.call_provider_once(lambda value: provider_calls.append(value) or 'new',
+                        baseline_deployment_ids=['old'], ambiguity_evidence_digest='a' * 64)
+                self.assertEqual([], provider_calls)
+                self.assertFalse(owner.provider_call_entered)
+                self.assertEqual(1, store.claims)
+                self.assertIsNotNone(store.lookup('intent', owner.journal.operation_id))
+                reloaded, _, _ = self.owner(store=store)
+                with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'consumed'):
+                    reloaded.call_provider_once(lambda value: provider_calls.append(value) or 'new',
+                        baseline_deployment_ids=['old'], ambiguity_evidence_digest='a' * 64)
+                self.assertEqual([], provider_calls)
+                self.assertEqual(1, store.claims)
+
     def test_bundle_binds_candidate_fresh_no_sql_baseline_bytes_and_review(self):
         admission = self.admission(); entries = self.evidence_entries(admission)
         self.adapter._validate_bundle(admission, entries)

@@ -562,6 +562,10 @@ class CanonicalReplacementAdapter:
         self.evidence.revalidate(self.journal.admission)
         if expected_baseline != self.evidence.entries["terminalNonresumable"]["record"]["baselineDeploymentIds"]:
             raise RecoveryAdapterError("Consumed baseline differs from authenticated terminal evidence")
+        # Claim/readback and final evidence checks can outlive the admission.
+        # Expiry retains the durable intent; it never restores upload authority.
+        PRIMITIVE.validate_recovery_admission(
+            self.journal.admission, now=self.journal._now(), require_fresh=True)
         self.provider_call_entered = True
         try:
             deployment_id = provider_call(correlation)
