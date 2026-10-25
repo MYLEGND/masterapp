@@ -1388,6 +1388,38 @@ class ReplacementRecoveryAdmissionTests(unittest.TestCase):
                 with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
                     owner.submission_correlation()
 
+    def test_nonstring_claim_status_poison_requires_reload_and_blocks_mutators(self):
+        for bad_status in ([], {}):
+            with self.subTest(status=type(bad_status).__name__):
+                store = self.Store()
+                original_claim = store.claim
+                def claim(name, record, status=bad_status):
+                    created = original_claim(name, record)
+                    self.assertEqual('created', created['status'])
+                    return {'status': status, 'record': created['record']}
+                store.claim = claim
+                owner, _ = self.owner(store=store)
+                with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+                    owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+                self.assertEqual('reconcile-only', owner.state().state)
+                self.assertIn(('intent', owner.operation_id), store.rows)
+                for action in (
+                    lambda: owner.submission_correlation(),
+                    lambda: owner.record_ambiguous(ambiguity_evidence_digest='a' * 64),
+                    lambda: owner.record_terminal_failure(
+                        failure_code='provider-terminal-failure',
+                        terminal_evidence_digest='b' * 64,
+                        serialization_release_digest='c' * 64),
+                ):
+                    with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+                        action()
+                resumed, _ = self.owner(store=store, admission=owner.admission, run=31)
+                self.assertEqual('reconcile-only', resumed.state().state)
+                self.assertFalse(resumed.before_submit(
+                    [], submission_kind='azure_onedeploy_windows_intent_v1'))
+                with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+                    resumed.submission_correlation()
+
     def test_contradictory_durable_records_are_rejected_on_fresh_reload(self):
         owner, store = self.owner()
         owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
