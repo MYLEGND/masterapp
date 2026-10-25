@@ -1651,6 +1651,66 @@ class CanonicalReplacementAdapterTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(self.adapter.RecoveryAdapterError):
                 self.adapter._canonical_mutex_source(bad)
 
+    def test_consumed_record_mutation_before_construction_rejects(self):
+        for name in ('terminal_nonresumable', 'no_sql', 'rollback', 'independent_review'):
+            with self.subTest(record=name):
+                admission = self.admission(); fence = self.Fence(); store = self.Store()
+                admission['serializationFenceEvidenceDigest'] = self.adapter._canonical_digest(fence.verify())
+                evidence = self.authenticated(admission)
+                getattr(evidence, name)['unauthenticated'] = True
+                admission['admissionId'] = self.adapter.PRIMITIVE.recovery_admission_id(admission)
+                with self.assertRaises(self.adapter.RecoveryAdapterError):
+                    self.adapter.CanonicalReplacementAdapter(
+                        admission=admission, original_intent=self.original_intent(),
+                        authenticated_evidence=evidence, fence=fence, store=store,
+                        package_producer_run=20, producing_run=30, producing_attempt=1,
+                        clock=lambda: self.now)
+                self.assertEqual(0, store.claims); self.assertEqual({}, store.rows)
+
+    def test_consumed_record_mutation_after_construction_has_zero_effects(self):
+        for name in ('terminal_nonresumable', 'no_sql', 'rollback', 'independent_review'):
+            with self.subTest(record=name):
+                owner, _, store = self.owner(); calls = []
+                getattr(owner.evidence, name)['unauthenticated'] = True
+                with self.assertRaises(self.adapter.RecoveryAdapterError):
+                    owner.call_provider_once(lambda _: calls.append(True) or 'new',
+                        baseline_deployment_ids=['old'], ambiguity_evidence_digest='e' * 64)
+                self.assertEqual([], calls); self.assertFalse(owner.provider_call_entered)
+                self.assertEqual(0, store.claims); self.assertEqual({}, store.rows)
+
+    def test_tampered_nested_baseline_cannot_be_consumed_or_restored_during_fence(self):
+        for restore in (False, True):
+            with self.subTest(restore=restore):
+                owner, fence, store = self.owner(); calls = []
+                owner.evidence.terminal_nonresumable['baselineDeploymentIds'][:] = ['not-authenticated']
+                original_verify = fence.verify
+                def verify():
+                    if restore:
+                        owner.evidence.terminal_nonresumable['baselineDeploymentIds'][:] = ['old']
+                    return original_verify()
+                fence.verify = verify
+                with self.assertRaises(self.adapter.RecoveryAdapterError):
+                    owner.call_provider_once(lambda _: calls.append(True) or 'new',
+                        baseline_deployment_ids=['not-authenticated'], ambiguity_evidence_digest='e' * 64)
+                self.assertEqual([], calls); self.assertFalse(owner.provider_call_entered)
+                self.assertEqual(0, store.claims); self.assertEqual({}, store.rows)
+
+    def test_evidence_mutation_after_claim_cannot_enter_provider(self):
+        owner, fence, store = self.owner(); calls = []; original_verify = fence.verify
+        def verify():
+            result = original_verify()
+            if store.claims:
+                owner.evidence.terminal_nonresumable['baselineDeploymentIds'][:] = ['not-authenticated']
+            return result
+        fence.verify = verify
+        with self.assertRaises(self.adapter.RecoveryAdapterError):
+            owner.call_provider_once(lambda _: calls.append(True) or 'new',
+                baseline_deployment_ids=['old'], ambiguity_evidence_digest='e' * 64)
+        self.assertEqual([], calls); self.assertFalse(owner.provider_call_entered)
+        self.assertEqual(1, store.claims)
+        self.assertIn(('intent', owner.journal.operation_id), store.rows)
+        self.assertEqual('reconcile-only', owner.journal.state().state)
+
     def test_exactly_one_fake_provider_call_and_reconcile_only_after_submission(self):
         owner, fence, store = self.owner()
         calls = []

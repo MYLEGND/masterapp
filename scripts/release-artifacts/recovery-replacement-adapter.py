@@ -304,6 +304,11 @@ class AuthenticatedRecoveryEvidence:
         digest = _validate_bundle(admission, self.entries)
         if digest != self.verification_digest:
             raise RecoveryAdapterError("Authenticated recovery evidence bundle changed")
+        for record, key in ((self.terminal_nonresumable, "terminalNonresumable"),
+                            (self.no_sql, "noSql"), (self.rollback, "rollback"),
+                            (self.independent_review, "independentReview")):
+            if _canonical_digest(record) != _canonical_digest(self.entries[key]["record"]):
+                raise RecoveryAdapterError("Consumed recovery evidence differs from authenticated record")
 
 
 def authenticate_recovery_evidence(admission: Mapping, refs: Mapping,
@@ -541,16 +546,22 @@ class CanonicalReplacementAdapter:
         """
         if self.provider_call_entered:
             raise RecoveryAdapterError("Provider call ownership already consumed")
-        expected_baseline = self.evidence.terminal_nonresumable["baselineDeploymentIds"]
+        expected_baseline = list(self.evidence.terminal_nonresumable["baselineDeploymentIds"])
         if list(baseline_deployment_ids) != expected_baseline:
             raise RecoveryAdapterError("Provider-call baseline differs from authenticated terminal evidence")
         self.fence.verify()  # before claim
+        self.evidence.revalidate(self.journal.admission)
+        if expected_baseline != self.evidence.entries["terminalNonresumable"]["record"]["baselineDeploymentIds"]:
+            raise RecoveryAdapterError("Consumed baseline differs from authenticated terminal evidence")
         if not self.journal.before_submit(
                 expected_baseline,
                 submission_kind="azure_onedeploy_windows_intent_v1"):
             raise RecoveryAdapterError("Replacement intent already consumed; reconcile only")
         correlation = self.journal.submission_correlation()
         self.fence.verify()  # immediately before provider I/O
+        self.evidence.revalidate(self.journal.admission)
+        if expected_baseline != self.evidence.entries["terminalNonresumable"]["record"]["baselineDeploymentIds"]:
+            raise RecoveryAdapterError("Consumed baseline differs from authenticated terminal evidence")
         self.provider_call_entered = True
         try:
             deployment_id = provider_call(correlation)
