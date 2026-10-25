@@ -1456,5 +1456,188 @@ class ReplacementRecoveryAdmissionTests(unittest.TestCase):
         self.assertEqual(before, json.dumps(original, sort_keys=True))
         self.assertEqual('1' * 64, owner.intent['replacementOfOperationId'])
 
+
+class CanonicalReplacementAdapterTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        adapter_spec = importlib.util.spec_from_file_location(
+            'replacement_recovery_adapter',
+            Path(__file__).with_name('recovery-replacement-adapter.py'))
+        cls.adapter = importlib.util.module_from_spec(adapter_spec)
+        sys.modules[adapter_spec.name] = cls.adapter
+        adapter_spec.loader.exec_module(cls.adapter)
+        cls.now = dt.datetime(2026, 10, 25, 18, 30, tzinfo=dt.timezone.utc)
+
+    def admission(self):
+        value = {
+            'schemaVersion': 1, 'phase': 'replacement-admission', 'admissionId': '0' * 64,
+            'target': 'protect', 'originalOperationId': '1' * 64,
+            'applicationRevision': 'a' * 40, 'packageDigest': '2' * 64,
+            'baselineRevision': 'b' * 40, 'expectedHead': 'a' * 40,
+            'controlRevision': 'c' * 40, 'rollbackPackageDigest': '3' * 64,
+            'terminalNonresumableEvidenceDigest': '0' * 64,
+            'serializationFenceEvidenceDigest': '5' * 64, 'noSqlEvidenceDigest': '0' * 64,
+            'rollbackEvidenceDigest': '0' * 64, 'independentReviewDigest': '0' * 64,
+            'contentMode': 'deterministic-full-replacement',
+            'serializationKey': 'legend-approved-release',
+            'observedAtUtc': '2026-10-25T18:29:00Z',
+            'expiresAtUtc': '2026-10-25T18:39:00Z',
+            'authorizesOneReplacement': True,
+        }
+        return value
+
+    @staticmethod
+    def original_intent():
+        return {'operationId': '1' * 64, 'target': 'protect',
+                'applicationRevision': 'd' * 40, 'packageDigest': '9' * 64,
+                'baseline': 'b' * 40, 'packageProducerRun': 20,
+                'producingRun': 20, 'producingAttempt': 1,
+                'baselineDeploymentIds': ['old'], 'phase': 'intent',
+                'schemaVersion': 1,
+                'submissionContract': {'kind': 'azure_onedeploy_windows_intent_v1',
+                                       'value': '1' * 64}}
+
+    class Fence:
+        def __init__(self): self.calls = 0
+        def verify(self):
+            self.calls += 1
+            return {'runId': 30, 'runAttempt': 1, 'revision': 'c' * 40,
+                    'group': 'legend-approved-release'}
+
+    class Store:
+        def __init__(self):
+            self.rows = {}
+            self.claims = 0
+        def lookup(self, phase, operation):
+            value = self.rows.get((phase, operation))
+            return None if value is None else json.loads(json.dumps(value))
+        def claim(self, name, record):
+            self.claims += 1
+            key = ('intent', record['operationId'])
+            if key in self.rows:
+                return {'status': 'existing', 'record': json.loads(json.dumps(self.rows[key]))}
+            frozen = json.loads(json.dumps(record))
+            self.rows[key] = frozen
+            return {'status': 'created', 'record': frozen}
+        def append(self, name, record):
+            frozen = json.loads(json.dumps(record))
+            self.rows[(record['phase'], record['operationId'])] = frozen
+            return {'record': frozen}
+
+    def evidence(self):
+        return self.adapter.AuthenticatedRecoveryEvidence(
+            terminal_nonresumable={'terminalNonresumable': True},
+            no_sql={'pendingCount': 0}, rollback={'recoverable': True},
+            independent_review={'accepted': True})
+
+    def owner(self):
+        admission = self.admission()
+        admission['admissionId'] = self.adapter.PRIMITIVE.recovery_admission_id(admission)
+        fence, store = self.Fence(), self.Store()
+        owner = self.adapter.CanonicalReplacementAdapter(
+            admission=admission, original_intent=self.original_intent(),
+            authenticated_evidence=self.evidence(), fence=fence, store=store,
+            package_producer_run=20, producing_run=30, producing_attempt=1,
+            clock=lambda: self.now)
+        return owner, fence, store
+
+    def test_adapter_owns_exactly_one_fake_provider_call_under_same_fence(self):
+        owner, fence, store = self.owner()
+        calls = []
+        result = owner.call_provider_once(
+            lambda correlation: calls.append(dict(correlation)) or 'new-deployment',
+            ambiguity_evidence_digest='e' * 64)
+        self.assertEqual('new-deployment', result)
+        self.assertEqual(1, len(calls))
+        self.assertEqual('submitted', owner.journal.state().state)
+        self.assertGreaterEqual(fence.calls, 3)
+        with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'already consumed'):
+            owner.call_provider_once(lambda _: self.fail('provider called twice'),
+                                     ambiguity_evidence_digest='f' * 64)
+        self.assertEqual(1, len(calls))
+        self.assertIn(('submitted', owner.journal.operation_id), store.rows)
+
+    def test_adapter_provider_exception_records_ambiguity_and_never_replays(self):
+        owner, _, store = self.owner()
+        calls = [0]
+        def fail(_):
+            calls[0] += 1
+            raise TimeoutError('synthetic provider timeout')
+        with self.assertRaises(TimeoutError):
+            owner.call_provider_once(fail, ambiguity_evidence_digest='e' * 64)
+        self.assertEqual(1, calls[0])
+        self.assertEqual('reconcile-only', owner.journal.state().state)
+        self.assertIn(('ambiguous', owner.journal.operation_id), store.rows)
+        with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'already consumed'):
+            owner.call_provider_once(fail, ambiguity_evidence_digest='e' * 64)
+        self.assertEqual(1, calls[0])
+
+    def test_canonical_fence_authenticates_run_and_exact_mutex_source(self):
+        from types import SimpleNamespace
+        env = dict(GITHUB_REPOSITORY='MYLEGND/masterapp', GITHUB_TOKEN='synthetic',
+                   GITHUB_RUN_ID='30', GITHUB_RUN_ATTEMPT='1', GITHUB_SHA='c' * 40)
+        source = 'name: x\nconcurrency:\n  group: legend-approved-release\n  cancel-in-progress: false\njobs: {}\n'
+        authority = SimpleNamespace(
+            FAST_TRACK_RELEASE_WORKFLOW='legend-fast-track-ui.yml',
+            api_get=lambda repo, path, token: {
+                'path': '.github/workflows/legend-fast-track-ui.yml',
+                'head_sha': 'c' * 40, 'status': 'in_progress', 'run_attempt': 1,
+                'head_repository': {'full_name': 'MYLEGND/masterapp'}},
+            _release_history_source=lambda repo, sha, path, token: source)
+        fence = self.adapter.CanonicalPublisherFence(
+            authority=authority, environment=env)
+        self.assertEqual('legend-approved-release', fence.verify()['group'])
+        authority._release_history_source = lambda *args: source.replace(
+            'legend-approved-release', 'other')
+        with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'mutex'):
+            fence.verify()
+
+    def test_authenticated_evidence_is_read_before_digest_binding_and_semantics(self):
+        admission = self.admission()
+        terminal = {'target': 'protect', 'originalOperationId': '1' * 64,
+                    'terminalNonresumable': True}
+        no_sql = {'pendingCount': 0, 'mutationActivity': 'settled',
+                  'sqlExecutionAuthorized': False}
+        rollback = {'target': 'protect', 'recoverable': True,
+                    'packageDigest': '3' * 64}
+        review = {'accepted': True, 'controlRevision': 'c' * 40}
+        admission.update(
+            terminalNonresumableEvidenceDigest=self.adapter._canonical_digest(terminal),
+            noSqlEvidenceDigest=self.adapter._canonical_digest(no_sql),
+            rollbackEvidenceDigest=self.adapter._canonical_digest(rollback),
+            independentReviewDigest=self.adapter._canonical_digest(review))
+        records = dict(terminalNonresumable=terminal, noSql=no_sql,
+                       rollback=rollback, independentReview=review)
+        class Reader:
+            def read(self, ref, *, allowed_workflows):
+                return {'record': records[ref.artifact_name],
+                        'run': {'path': next(iter(allowed_workflows))},
+                        'artifact': {'id': ref.artifact_id}}
+        refs = {key: {'runId': 1, 'artifactId': i + 1, 'artifactName': key,
+                      'artifactDigest': 'sha256:' + str(i + 1) * 64}
+                for i, key in enumerate(records)}
+        value = self.adapter.authenticate_recovery_evidence(
+            admission, refs, reader=Reader())
+        self.assertTrue(value.terminal_nonresumable['terminalNonresumable'])
+        records['noSql'] = dict(no_sql, pendingCount=1)
+        with self.assertRaises(self.adapter.RecoveryAdapterError):
+            self.adapter.authenticate_recovery_evidence(admission, refs, reader=Reader())
+
+    def test_missing_live_evidence_blocks_adapter_preparation_without_store_or_provider_write(self):
+        admission = self.admission()
+        admission['admissionId'] = self.adapter.PRIMITIVE.recovery_admission_id(admission)
+        class Fence(self.Fence):
+            repository = 'MYLEGND/masterapp'
+            token = 'synthetic'
+        from types import SimpleNamespace
+        authority = SimpleNamespace(
+            release_operation_history=lambda *args, **kwargs: self.original_intent())
+        with self.assertRaises(self.adapter.MissingProductionEvidence):
+            self.adapter.prepare_canonical_adapter(
+                admission=admission, original_revision='d' * 40,
+                current_run=30, current_attempt=1, evidence_refs={},
+                fence=Fence(), authority=authority)
+
+
 if __name__ == '__main__':
     unittest.main()
