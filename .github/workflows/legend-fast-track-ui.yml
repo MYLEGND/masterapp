@@ -33,6 +33,7 @@ on:
       - scripts/release-migration.py
       - scripts/release-router.py
       - scripts/release-operation-evidence.py
+      - scripts/recovery-replacement-adapter.py
       - scripts/release-artifacts/**
       - SHARED/Branding/**
       - SHARED/Shared.csproj
