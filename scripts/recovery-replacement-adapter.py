@@ -170,9 +170,13 @@ def authenticate_recovery_evidence(admission: Mapping, refs: Mapping,
     )
     if any(_canonical_digest(record) != expected for record, expected in checks):
         raise RecoveryAdapterError("Authenticated evidence digest does not bind admission")
+    baseline_ids = terminal.get("baselineDeploymentIds")
     if (terminal.get("target") != "protect" or
             terminal.get("originalOperationId") != admission["originalOperationId"] or
-            terminal.get("terminalNonresumable") is not True):
+            terminal.get("terminalNonresumable") is not True or
+            not isinstance(baseline_ids, list) or
+            any(not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,256}", value)
+                for value in baseline_ids) or len(baseline_ids) != len(set(baseline_ids))):
         raise RecoveryAdapterError("Prior Protect work is not authenticated terminal/nonresumable evidence")
     if (no_sql.get("pendingCount") != 0 or no_sql.get("mutationActivity") != "settled"
             or no_sql.get("sqlExecutionAuthorized") is not False):
@@ -296,9 +300,12 @@ class CanonicalReplacementAdapter:
         """
         if self.provider_call_entered:
             raise RecoveryAdapterError("Provider call ownership already consumed")
+        expected_baseline = self.evidence.terminal_nonresumable["baselineDeploymentIds"]
+        if list(baseline_deployment_ids) != expected_baseline:
+            raise RecoveryAdapterError("Provider-call baseline differs from authenticated terminal evidence")
         self.fence.verify()
         if not self.journal.before_submit(
-                baseline_deployment_ids,
+                expected_baseline,
                 submission_kind="azure_onedeploy_windows_intent_v1"):
             raise RecoveryAdapterError("Replacement intent already consumed; reconcile only")
         correlation = self.journal.submission_correlation()
