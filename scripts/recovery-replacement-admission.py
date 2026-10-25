@@ -520,7 +520,8 @@ class ReplacementOperationJournal:
                 "Atomic replacement claim did not return validated ownership; reload required")
         status = result.get("status")
         readback = result.get("record")
-        if status not in {"created", "existing"} or not isinstance(readback, Mapping):
+        if (not isinstance(status, str) or status not in {"created", "existing"} or
+                not isinstance(readback, Mapping)):
             self._poison()
             raise RecoveryAdmissionError("Atomic replacement claim result is invalid; reload required")
         readback = dict(readback)
