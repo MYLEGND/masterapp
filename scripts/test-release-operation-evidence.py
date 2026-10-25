@@ -1575,6 +1575,27 @@ class CanonicalReplacementAdapterTests(unittest.TestCase):
             owner.call_provider_once(fail, ambiguity_evidence_digest='e' * 64)
         self.assertEqual(1, calls[0])
 
+    def test_fence_loss_after_fake_provider_call_records_ambiguity_and_never_replays(self):
+        owner, fence, store = self.owner()
+        original_verify = fence.verify
+        calls = [0]
+        def verify():
+            calls[0] += 1
+            if calls[0] >= 4:
+                raise self.adapter.RecoveryAdapterError('synthetic fence loss')
+            return original_verify()
+        fence.verify = verify
+        with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'fence loss'):
+            owner.call_provider_once(
+                lambda _: 'new-deployment', baseline_deployment_ids=['old'],
+                ambiguity_evidence_digest='e' * 64)
+        self.assertEqual('reconcile-only', owner.journal.state().state)
+        self.assertIn(('ambiguous', owner.journal.operation_id), store.rows)
+        with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'already consumed'):
+            owner.call_provider_once(
+                lambda _: self.fail('provider called twice'),
+                baseline_deployment_ids=['old'], ambiguity_evidence_digest='f' * 64)
+
     def test_canonical_fence_authenticates_run_and_exact_mutex_source(self):
         from types import SimpleNamespace
         env = dict(GITHUB_REPOSITORY='MYLEGND/masterapp', GITHUB_TOKEN='synthetic',
@@ -1598,12 +1619,13 @@ class CanonicalReplacementAdapterTests(unittest.TestCase):
     def test_authenticated_evidence_is_read_before_digest_binding_and_semantics(self):
         admission = self.admission()
         terminal = {'target': 'protect', 'originalOperationId': '1' * 64,
-                    'terminalNonresumable': True, 'baselineDeploymentIds': ['old']}
+                    'terminalNonresumable': True, 'baselineDeploymentIds': ['old'],
+                    'producingRun': 1}
         no_sql = {'pendingCount': 0, 'mutationActivity': 'settled',
-                  'sqlExecutionAuthorized': False}
+                  'sqlExecutionAuthorized': False, 'producingRun': 1}
         rollback = {'target': 'protect', 'recoverable': True,
-                    'packageDigest': '3' * 64}
-        review = {'accepted': True, 'controlRevision': 'c' * 40}
+                    'packageDigest': '3' * 64, 'producingRun': 1}
+        review = {'accepted': True, 'controlRevision': 'c' * 40, 'producingRun': 1}
         admission.update(
             terminalNonresumableEvidenceDigest=self.adapter._canonical_digest(terminal),
             noSqlEvidenceDigest=self.adapter._canonical_digest(no_sql),
