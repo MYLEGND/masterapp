@@ -278,6 +278,9 @@ class CanonicalReplacementAdapter:
         self.fence = fence
         self.store = store
         self.provider_call_entered = False
+        fence_evidence = self.fence.verify()
+        if _canonical_digest(fence_evidence) != admission["serializationFenceEvidenceDigest"]:
+            raise RecoveryAdapterError("Active canonical publisher fence does not bind admission")
         self.journal = PRIMITIVE.ReplacementOperationJournal(
             admission=admission, original_intent=original_intent,
             lookup=store.lookup, claim=store.claim, append=store.append,
@@ -286,7 +289,7 @@ class CanonicalReplacementAdapter:
             clock=clock)
 
     def call_provider_once(self, provider_call: Callable[[Mapping], str],
-                           *, ambiguity_evidence_digest: str) -> str:
+                           *, baseline_deployment_ids, ambiguity_evidence_digest: str) -> str:
         """Own exactly one provider call while the canonical run fence is active.
 
         No production code calls this method today. Tests must use a fake callback.
@@ -295,7 +298,7 @@ class CanonicalReplacementAdapter:
             raise RecoveryAdapterError("Provider call ownership already consumed")
         self.fence.verify()
         if not self.journal.before_submit(
-                self.journal.intent["baselineDeploymentIds"] if self.journal.intent else [],
+                baseline_deployment_ids,
                 submission_kind="azure_onedeploy_windows_intent_v1"):
             raise RecoveryAdapterError("Replacement intent already consumed; reconcile only")
         correlation = self.journal.submission_correlation()
