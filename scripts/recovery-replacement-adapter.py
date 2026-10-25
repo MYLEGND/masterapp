@@ -131,6 +131,8 @@ class CanonicalActionsReader:
             verify_digest=True, max_bytes=32768)
         if not isinstance(record, dict):
             raise RecoveryAdapterError("Authenticated evidence record is not an object")
+        if record.get("producingRun") != ref.run_id:
+            raise RecoveryAdapterError("Authenticated evidence does not bind its producing run")
         return {"record": record, "run": run, "artifact": artifact}
 
 
@@ -317,7 +319,15 @@ class CanonicalReplacementAdapter:
             self.journal.record_ambiguous(
                 ambiguity_evidence_digest=ambiguity_evidence_digest)
             raise
-        self.fence.verify()
+        try:
+            self.fence.verify()
+        except Exception:
+            self.journal.record_ambiguous(
+                ambiguity_evidence_digest=ambiguity_evidence_digest)
+            raise
+        # If this durable submitted append is itself uncertain, the primitive
+        # poisons the instance and requires reload. Do not attempt a second phase
+        # write from the same instance.
         self.journal.record_submission_observation(deployment_id)
         return deployment_id
 
