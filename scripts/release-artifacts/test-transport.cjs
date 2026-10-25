@@ -637,3 +637,115 @@ test('target hold never claims global nonentry and rejects substituted scope bef
     const bad=structuredClone(item);mutate(bad.record);await assert.rejects(publish({},bad.name,bad.record),/Invalid|Inconsistent/);
   }
 });
+
+
+test('replacement recovery records use canonical artifact transport and claim disposition', async () => {
+  const admission = {
+    schemaVersion: 1, phase: 'replacement-admission', admissionId: '1'.repeat(64),
+    target: 'protect', originalOperationId: '2'.repeat(64),
+    applicationRevision: 'a'.repeat(40), packageDigest: '3'.repeat(64),
+    baselineRevision: 'b'.repeat(40), expectedHead: 'a'.repeat(40),
+    controlRevision: 'c'.repeat(40), rollbackPackageDigest: '4'.repeat(64),
+    terminalNonresumableEvidenceDigest: '5'.repeat(64),
+    serializationFenceEvidenceDigest: '6'.repeat(64), noSqlEvidenceDigest: '7'.repeat(64),
+    rollbackEvidenceDigest: '8'.repeat(64), independentReviewDigest: '9'.repeat(64),
+    contentMode: 'deterministic-full-replacement', serializationKey: 'legend-approved-release',
+    observedAtUtc: '2026-10-25T18:29:00Z', expiresAtUtc: '2026-10-25T18:39:00Z',
+    authorizesOneReplacement: true
+  };
+  const operationId = 'd'.repeat(64);
+  const intent = {
+    schemaVersion: 1, phase: 'intent', operationId, target: 'protect',
+    applicationRevision: admission.applicationRevision, packageDigest: admission.packageDigest,
+    baseline: admission.baselineRevision, packageProducerRun: 20,
+    producingRun: 30, producingAttempt: 1, baselineDeploymentIds: ['old'],
+    replacementOfOperationId: admission.originalOperationId,
+    recoveryAdmissionId: admission.admissionId, recoveryAdmission: admission,
+    submissionContract: {kind: 'azure_onedeploy_windows_intent_v1', value: operationId}
+  };
+  const artifact = 'legend-replacement-operation-intent-' + operationId;
+  const client = durableClient();
+  assert.deepEqual(await publish(client, artifact, intent, {claim: true}),
+    {artifactId: 45, created: true});
+  assert.deepEqual(await publish(client, artifact, intent, {claim: true}),
+    {artifactId: 45, created: false});
+  assert.equal(client.state.uploads, 1);
+  await assert.rejects(publish(client, artifact, {...intent, token: 'forbidden'}, {claim: true}), /Invalid/);
+});
+
+test('lost replacement claim acknowledgment never returns created ownership', async () => {
+  const admission = {
+    schemaVersion: 1, phase: 'replacement-admission', admissionId: '1'.repeat(64),
+    target: 'protect', originalOperationId: '2'.repeat(64),
+    applicationRevision: 'a'.repeat(40), packageDigest: '3'.repeat(64),
+    baselineRevision: 'b'.repeat(40), expectedHead: 'a'.repeat(40),
+    controlRevision: 'c'.repeat(40), rollbackPackageDigest: '4'.repeat(64),
+    terminalNonresumableEvidenceDigest: '5'.repeat(64),
+    serializationFenceEvidenceDigest: '6'.repeat(64), noSqlEvidenceDigest: '7'.repeat(64),
+    rollbackEvidenceDigest: '8'.repeat(64), independentReviewDigest: '9'.repeat(64),
+    contentMode: 'deterministic-full-replacement', serializationKey: 'legend-approved-release',
+    observedAtUtc: '2026-10-25T18:29:00Z', expiresAtUtc: '2026-10-25T18:39:00Z',
+    authorizesOneReplacement: true
+  };
+  const operationId = 'e'.repeat(64);
+  const intent = {
+    schemaVersion: 1, phase: 'intent', operationId, target: 'protect',
+    applicationRevision: admission.applicationRevision, packageDigest: admission.packageDigest,
+    baseline: admission.baselineRevision, packageProducerRun: 20,
+    producingRun: 30, producingAttempt: 1, baselineDeploymentIds: [],
+    replacementOfOperationId: admission.originalOperationId,
+    recoveryAdmissionId: admission.admissionId, recoveryAdmission: admission,
+    submissionContract: {kind: 'azure_onedeploy_windows_intent_v1', value: operationId}
+  };
+  const client = durableClient({lostAck: true});
+  const artifact = 'legend-replacement-operation-intent-' + operationId;
+  assert.deepEqual(await publish(client, artifact, intent, {claim: true}),
+    {artifactId: 45, created: false});
+  assert.equal(client.state.uploads, 1);
+});
+
+test('concurrent replacement claims expose one created owner and one existing observer', async () => {
+  const admission = {
+    schemaVersion: 1, phase: 'replacement-admission', admissionId: '1'.repeat(64),
+    target: 'protect', originalOperationId: '2'.repeat(64),
+    applicationRevision: 'a'.repeat(40), packageDigest: '3'.repeat(64),
+    baselineRevision: 'b'.repeat(40), expectedHead: 'a'.repeat(40),
+    controlRevision: 'c'.repeat(40), rollbackPackageDigest: '4'.repeat(64),
+    terminalNonresumableEvidenceDigest: '5'.repeat(64),
+    serializationFenceEvidenceDigest: '6'.repeat(64), noSqlEvidenceDigest: '7'.repeat(64),
+    rollbackEvidenceDigest: '8'.repeat(64), independentReviewDigest: '9'.repeat(64),
+    contentMode: 'deterministic-full-replacement', serializationKey: 'legend-approved-release',
+    observedAtUtc: '2026-10-25T18:29:00Z', expiresAtUtc: '2026-10-25T18:39:00Z',
+    authorizesOneReplacement: true
+  };
+  const operationId = 'f'.repeat(64);
+  const intent = {
+    schemaVersion: 1, phase: 'intent', operationId, target: 'protect',
+    applicationRevision: admission.applicationRevision, packageDigest: admission.packageDigest,
+    baseline: admission.baselineRevision, packageProducerRun: 20,
+    producingRun: 30, producingAttempt: 1, baselineDeploymentIds: [],
+    replacementOfOperationId: admission.originalOperationId,
+    recoveryAdmissionId: admission.admissionId, recoveryAdmission: admission,
+    submissionContract: {kind: 'azure_onedeploy_windows_intent_v1', value: operationId}
+  };
+  const artifact = 'legend-replacement-operation-intent-' + operationId;
+  const client = durableClient();
+  let accepted = 0, arrivals = 0, open;
+  const both = new Promise(resolve => { open = resolve; });
+  const original = client.uploadArtifact;
+  client.uploadArtifact = async (...args) => {
+    arrivals++;
+    if (arrivals === 2) open();
+    await both;
+    if (accepted) throw new Error('409 immutable artifact already exists');
+    accepted++;
+    return original(...args);
+  };
+  const results = await Promise.all([
+    publish(client, artifact, intent, {claim: true}),
+    publish(client, artifact, intent, {claim: true})
+  ]);
+  assert.deepEqual(results.map(x => x.created).sort(), [false, true]);
+  assert.equal(accepted, 1);
+  assert.equal(client.state.uploads, 1);
+});
