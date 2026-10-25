@@ -496,18 +496,22 @@ class ReplacementOperationJournal:
         try:
             result = self.claim(name, record)
         except Exception as exc:
-            # Claim may have committed. Re-read exact identity once and fail closed
-            # regardless: uncertain ownership never grants provider authority.
+            # Claim may have committed. Poison BEFORE any read/validation so every
+            # exception path is reload-required, including malformed durable state.
+            self._poison()
             observed = self._read("intent")
             if observed is not None:
-                self._validate_phase(observed, "intent")
-                self._same_lineage(record, observed)
+                try:
+                    self._validate_phase(observed, "intent")
+                    self._same_lineage(record, observed)
+                except Exception as validation_error:
+                    raise RecoveryAdmissionError(
+                        "Uncertain replacement claim durable state is invalid; reload required"
+                    ) from validation_error
                 if observed != record:
-                    self._poison()
                     raise RecoveryAdmissionError(
                         "Uncertain replacement claim conflicts with durable intent; reload required") from exc
                 self.intent = observed
-            self._poison()
             raise RecoveryAdmissionError(
                 "Replacement intent claim outcome uncertain; validated reload required") from exc
         if not isinstance(result, Mapping) or set(result) != {"status", "record"}:
@@ -520,8 +524,13 @@ class ReplacementOperationJournal:
             self._poison()
             raise RecoveryAdmissionError("Atomic replacement claim result is invalid; reload required")
         readback = dict(readback)
-        self._validate_phase(readback, "intent")
-        self._same_lineage(record, readback)
+        try:
+            self._validate_phase(readback, "intent")
+            self._same_lineage(record, readback)
+        except Exception as exc:
+            self._poison()
+            raise RecoveryAdmissionError(
+                "Atomic replacement claim readback is malformed; reload required") from exc
         if readback != record:
             self._poison()
             raise RecoveryAdmissionError("Atomic replacement claim readback mismatch; reload required")
