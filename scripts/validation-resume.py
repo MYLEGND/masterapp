@@ -9773,6 +9773,63 @@ def package_backfill_receipt_name(revision: str, package_identity: str) -> str:
     return f"validated-package-backfill-{revision}-{package_identity}"
 
 
+def compute_package_preparation_plan(repository, revision, current_sha, branch, *, preparation_only=False):
+    """Nonpublishing Protect bytes only; never an aggregate or release admission."""
+    if (preparation_only is not True or repository != 'MYLEGND/masterapp' or
+            branch != 'isolation/receptionist-quality-pro-20261024' or
+            not re.fullmatch('[0-9a-f]{40}', revision or '') or revision != current_sha):
+        raise ValueError('Exact isolated preparation dispatch required')
+    token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or ''
+    if not token:
+        raise ValueError('Authenticated preparation evidence required')
+    pr = api_get(repository, 'pulls/691', token)
+    def eligible(row):
+        return (row.get('number') == 691 and row.get('state') == 'open' and
+            row.get('merged_at') is None and row.get('draft') is True and
+            row.get('head', {}).get('sha') == revision and
+            row.get('head', {}).get('ref') == branch and
+            row.get('head', {}).get('repo', {}).get('full_name') == repository and
+            row.get('base', {}).get('ref') == FAST_TRACK_PR_BASE and
+            row.get('base', {}).get('repo', {}).get('full_name') == repository)
+    if not eligible(pr):
+        raise ValueError('Current preparation PR binding invalid')
+    baseline = approved_head_preflight(repository, revision, token, base_branch=FAST_TRACK_PR_BASE)
+    if baseline.get('current') is not True:
+        raise ValueError('Preparation candidate does not contain current release base')
+    evidence = []
+    for workflow in ('approved-release-security-validation.yml',
+                     'masterapp-platform-architecture-validation.yml', 'parfait-isolated-validation.yml'):
+        payload = api_get(repository, 'actions/workflows/' + workflow +
+            '/runs?head_sha=' + revision + '&event=pull_request&per_page=100', token)
+        # A truncated/uncertain listing cannot select a possibly superseded run.
+        runs = payload.get('workflow_runs', [])
+        if payload.get('total_count') != len(runs) or not runs:
+            raise ValueError('Complete bounded exact-head CI evidence required')
+        latest = max(runs, key=lambda row: (int(row.get('id', 0)), int(row.get('run_attempt', 0))))
+        associations = latest.get('pull_requests', [])
+        if (latest.get('head_sha') != revision or latest.get('event') != 'pull_request' or
+                latest.get('path') != '.github/workflows/' + workflow or
+                latest.get('head_repository', {}).get('full_name') != repository or
+                latest.get('status') != 'completed' or latest.get('conclusion') != 'success' or
+                len(associations) != 1 or associations[0].get('number') != 691 or
+                associations[0].get('head', {}).get('sha') != revision or
+                associations[0].get('base', {}).get('ref') != FAST_TRACK_PR_BASE):
+            raise ValueError('Latest exact-head preparation CI is not accepted')
+        evidence.append(dict(workflow=workflow, runId=latest['id'], runAttempt=latest['run_attempt']))
+    if not eligible(api_get(repository, 'pulls/691', token)):
+        raise ValueError('Preparation head changed during admission')
+    return dict(schema='legend-nonpublishing-package-preparation.v1', candidateRevision=revision,
+        controlRevision=current_sha, branch=branch, sourcePr=691, component='protect',
+        publicationAuthorized=False, releaseAdmission=False, validationRuns=evidence,
+        baseEvidence=baseline)
+
+
+def cmd_package_preparation_plan(args):
+    result = compute_package_preparation_plan(args.repository, args.revision, args.current_sha,
+        args.branch, preparation_only=args.preparation_only)
+    Path(args.output).write_text(json.dumps(result, sort_keys=True, indent=2) + '\n')
+
+
 def compute_package_backfill_plan(repository: str, revision: str, current_sha: str):
     """Authorize package-only recovery for an already-green historical product head.
 
@@ -13081,6 +13138,15 @@ def build_parser():
     component_sources.add_argument('--output', required=True)
     component_sources.add_argument('--github-output')
     component_sources.set_defaults(func=cmd_component_sources)
+
+    preparation = sub.add_parser('package-preparation-plan')
+    preparation.add_argument('--repository', required=True)
+    preparation.add_argument('--revision', required=True)
+    preparation.add_argument('--current-sha', required=True)
+    preparation.add_argument('--branch', required=True)
+    preparation.add_argument('--preparation-only', action='store_true')
+    preparation.add_argument('--output', required=True)
+    preparation.set_defaults(func=cmd_package_preparation_plan)
 
     package_backfill = sub.add_parser("package-backfill-plan")
     package_backfill.add_argument("--repository", required=True)

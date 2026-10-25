@@ -16,6 +16,78 @@ spec.loader.exec_module(m)
 
 
 
+class NonpublishingPreparationTests(unittest.TestCase):
+    def setUp(self):
+        self.sha = 'b' * 40
+        self.branch = 'isolation/receptionist-quality-pro-20261024'
+        self.pr = dict(number=691, state='open', merged_at=None, draft=True,
+            head=dict(sha=self.sha, ref=self.branch, repo=dict(full_name='MYLEGND/masterapp')),
+            base=dict(ref=m.FAST_TRACK_PR_BASE, repo=dict(full_name='MYLEGND/masterapp')))
+        self.mutate_run = lambda row: None
+        self.api_calls = 0
+
+    def api(self, repo, path, token):
+        if path == 'pulls/691':
+            self.api_calls += 1
+            return self.pr
+        workflow = path.split('/')[2]
+        run = dict(id=17, run_attempt=1, head_sha=self.sha, event='pull_request',
+            path='.github/workflows/' + workflow, head_repository=dict(full_name=repo),
+            status='completed', conclusion='success', pull_requests=[self.pr])
+        self.mutate_run(run)
+        return dict(total_count=1, workflow_runs=[run])
+
+    def plan(self, **changes):
+        args=dict(repository='MYLEGND/masterapp', revision=self.sha, current_sha=self.sha,
+            branch=self.branch, preparation_only=True)
+        args.update(changes)
+        with patch.dict(os.environ, {'GITHUB_TOKEN':'fixture'}), \
+             patch.object(m, 'api_get', side_effect=self.api), \
+             patch.object(m, 'approved_head_preflight', return_value=dict(current=True)):
+            return m.compute_package_preparation_plan(**args)
+
+    def test_exact_green_draft_prepares_only_protect(self):
+        plan=self.plan()
+        self.assertEqual('protect', plan['component'])
+        self.assertFalse(plan['publicationAuthorized'])
+        self.assertFalse(plan['releaseAdmission'])
+        self.assertEqual(3, len(plan['validationRuns']))
+        self.assertEqual(2, self.api_calls)
+        self.assertFalse(m.package_artifact_match('nonpublishing-protect-preparation-' + self.sha))
+
+    def test_rejects_invalid_dispatch_and_pr_binding(self):
+        for changes in ({'preparation_only':False}, {'revision':'bad'},
+                        {'current_sha':'c'*40}, {'branch':m.TRUSTED_PR_BASE},
+                        {'repository':'attacker/repo'}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError): self.plan(**changes)
+        for field,value in [('state','closed'),('merged_at','today'),('draft',False)]:
+            old=self.pr[field];self.pr[field]=value
+            with self.assertRaises(ValueError): self.plan()
+            self.pr[field]=old
+        self.pr['head']['repo']['full_name']='attacker/repo'
+        with self.assertRaises(ValueError): self.plan()
+
+    def test_failed_wrong_head_or_unbound_ci_never_prepares(self):
+        for change in (dict(conclusion='failure'), dict(status='in_progress'),
+                       dict(head_sha='c'*40), dict(pull_requests=[])):
+            self.mutate_run=lambda row: row.update(change)
+            with self.subTest(change=change), self.assertRaises(ValueError): self.plan()
+
+    def test_workflow_has_no_provider_or_promotion_in_preparation_lane(self):
+        import yaml
+        workflow=yaml.safe_load((ROOT / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text())
+        jobs=workflow['jobs'];lane=jobs['nonpublishing-protect-preparation']
+        self.assertTrue(all(value=='read' for value in lane['permissions'].values()))
+        text=json.dumps(lane)
+        for prohibited in ('azure/login', 'id-token', 'environment', 'wake-release', 'deploy-approved-app', 'secrets.'):
+            self.assertNotIn(prohibited,text)
+        self.assertIn('build-component --revision',text)
+        self.assertIn('--component protect',text)
+        for name in ('approved-head-preflight','validate','validated-release-package-plan',
+                     'wake-release-lifecycle-after-package-backfill','validated-migration-probe'):
+            self.assertIn('!inputs.preparation_only',jobs[name]['if'])
+
+
 class PackageDescriptorIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.identity='a'*64;self.revision='b'*40

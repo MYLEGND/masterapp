@@ -27,6 +27,11 @@ on:
       - Legend/fast-track-release
   workflow_dispatch:
     inputs:
+      preparation_only:
+        description: Prepare Protect bytes on the admitted isolated draft only; never publish
+        required: false
+        default: false
+        type: boolean
       package_revision:
         description: Exact already-validated PR head to backfill as an immutable release package
         required: false
@@ -41,8 +46,59 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  nonpublishing-protect-preparation:
+    if: github.event_name == 'workflow_dispatch' && inputs.preparation_only
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Admit exact green isolated Protect preparation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REVISION: ${{ inputs.package_revision }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/protect-preparation"
+          python3 scripts/validation-resume.py package-preparation-plan \
+            --repository "$GITHUB_REPOSITORY" --revision "$REVISION" \
+            --current-sha "$GITHUB_SHA" --branch "$GITHUB_REF_NAME" --preparation-only \
+            --output "$RUNNER_TEMP/protect-preparation/preparation.json"
+      - name: Build Protect with canonical isolated package authority
+        run: |
+          python3 scripts/release-package.py build-component --revision "$GITHUB_SHA" \
+            --component protect --directory "$RUNNER_TEMP/protect-preparation"
+      - name: Bind verified bytes to nonpublishing preparation
+        run: |
+          python3 - <<'PYPREPARE'
+          import importlib.util,json,os,pathlib
+          spec=importlib.util.spec_from_file_location('package','scripts/release-package.py')
+          package=importlib.util.module_from_spec(spec);spec.loader.exec_module(package)
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'protect-preparation'
+          package.verify_component(os.environ['GITHUB_SHA'],'protect',root)
+          receipt=json.loads((root/'protect.component.json').read_text())
+          path=root/'preparation.json'; manifest=json.loads(path.read_text())
+          manifest.update(packageFile=receipt['file'],packageSha256=receipt['sha256'],
+              runId=int(os.environ['GITHUB_RUN_ID']),runAttempt=int(os.environ['GITHUB_RUN_ATTEMPT']))
+          path.write_text(json.dumps(manifest,sort_keys=True,indent=2)+'\n')
+          PYPREPARE
+      - name: Retain nonpublishing Protect preparation
+        uses: actions/upload-artifact@v4
+        with:
+          name: nonpublishing-protect-preparation-${{ github.sha }}-${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/protect-preparation/
+          retention-days: 30
+          if-no-files-found: error
+
   approved-head-preflight:
     name: approved-head-preflight
+    if: ${{ !inputs.preparation_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -70,6 +126,7 @@ jobs:
       always() &&
       needs.approved-head-preflight.result == 'success' &&
       (github.event_name != 'pull_request' || needs.validated-migration-probe.result == 'success') &&
+      !inputs.preparation_only &&
       (github.event_name != 'workflow_dispatch' || inputs.package_revision == '')
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -695,6 +752,7 @@ jobs:
       always() &&
       needs.approved-head-preflight.result == 'success' &&
       (github.event_name != 'pull_request' || needs.validated-migration-probe.result == 'success') &&
+      !inputs.preparation_only &&
       ((github.event_name == 'pull_request' && github.base_ref == 'legend/approved-changes') || (github.event_name == 'workflow_dispatch' && inputs.package_revision != ''))
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -1098,7 +1156,7 @@ jobs:
 
   wake-release-lifecycle-after-package-backfill:
     needs: validated-release-package
-    if: always() && github.event_name == 'workflow_dispatch' && inputs.package_revision != ''
+    if: always() && !inputs.preparation_only && github.event_name == 'workflow_dispatch' && inputs.package_revision != ''
     runs-on: ubuntu-latest
     timeout-minutes: 3
     permissions:
@@ -1119,7 +1177,7 @@ jobs:
   validated-migration-probe:
     needs: approved-head-preflight
     name: validated-migration-probe
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && !inputs.preparation_only
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:

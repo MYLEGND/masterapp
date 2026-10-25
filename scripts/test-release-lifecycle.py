@@ -4078,6 +4078,18 @@ class LifecycleEventBoundaryTests(unittest.TestCase):
             with patch.dict(os.environ,env), patch.object(m,'release_queue_lease',side_effect=AssertionError('queue read')), patch.object(api,'dispatch',side_effect=AssertionError('dispatch')):
                 return getattr(m,command)(api) if command else m.lifecycle_event_admission(api)
 
+    def test_isolated_preparation_cannot_admit_lifecycle_or_reconciliation(self):
+        def preparation(api,event,own,producer,pr):
+            producer.update(event='workflow_dispatch', head_branch='isolation/receptionist-quality-pro-20261024',
+                path='.github/workflows/' + m.PACKAGE_VALIDATION, pull_requests=[], conclusion='success')
+            event['workflow_run']=json.loads(json.dumps(producer))
+            event['inputs']={'release_run':'77'}
+        for event_name in ('workflow_run','workflow_dispatch'):
+            for command in ('pending_updates','reconcile'):
+                with self.subTest(event=event_name,command=command):
+                    result=self.invoke(event_name,change=preparation,command=command)
+                    self.assertFalse(result['eventAdmission']['admitted'])
+
     def test_exact_approved_validation_and_pr_target_admit(self):
         self.assertTrue(self.invoke()['admitted'])
         self.assertTrue(self.invoke('pull_request_target')['admitted'])
