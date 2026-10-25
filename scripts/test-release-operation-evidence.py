@@ -1526,7 +1526,7 @@ class CanonicalReplacementAdapterTests(unittest.TestCase):
 
     def evidence(self):
         return self.adapter.AuthenticatedRecoveryEvidence(
-            terminal_nonresumable={'terminalNonresumable': True},
+            terminal_nonresumable={'terminalNonresumable': True, 'baselineDeploymentIds': ['old']},
             no_sql={'pendingCount': 0}, rollback={'recoverable': True},
             independent_review={'accepted': True})
 
@@ -1598,7 +1598,7 @@ class CanonicalReplacementAdapterTests(unittest.TestCase):
     def test_authenticated_evidence_is_read_before_digest_binding_and_semantics(self):
         admission = self.admission()
         terminal = {'target': 'protect', 'originalOperationId': '1' * 64,
-                    'terminalNonresumable': True}
+                    'terminalNonresumable': True, 'baselineDeploymentIds': ['old']}
         no_sql = {'pendingCount': 0, 'mutationActivity': 'settled',
                   'sqlExecutionAuthorized': False}
         rollback = {'target': 'protect', 'recoverable': True,
