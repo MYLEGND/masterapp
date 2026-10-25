@@ -1532,8 +1532,9 @@ class CanonicalReplacementAdapterTests(unittest.TestCase):
 
     def owner(self):
         admission = self.admission()
-        admission['admissionId'] = self.adapter.PRIMITIVE.recovery_admission_id(admission)
         fence, store = self.Fence(), self.Store()
+        admission['serializationFenceEvidenceDigest'] = self.adapter._canonical_digest(fence.verify())
+        admission['admissionId'] = self.adapter.PRIMITIVE.recovery_admission_id(admission)
         owner = self.adapter.CanonicalReplacementAdapter(
             admission=admission, original_intent=self.original_intent(),
             authenticated_evidence=self.evidence(), fence=fence, store=store,
@@ -1546,13 +1547,14 @@ class CanonicalReplacementAdapterTests(unittest.TestCase):
         calls = []
         result = owner.call_provider_once(
             lambda correlation: calls.append(dict(correlation)) or 'new-deployment',
-            ambiguity_evidence_digest='e' * 64)
+            baseline_deployment_ids=['old'], ambiguity_evidence_digest='e' * 64)
         self.assertEqual('new-deployment', result)
         self.assertEqual(1, len(calls))
         self.assertEqual('reconcile-only', owner.journal.state().state)
         self.assertGreaterEqual(fence.calls, 3)
         with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'already consumed'):
             owner.call_provider_once(lambda _: self.fail('provider called twice'),
+                                     baseline_deployment_ids=['old'],
                                      ambiguity_evidence_digest='f' * 64)
         self.assertEqual(1, len(calls))
         self.assertIn(('submitted', owner.journal.operation_id), store.rows)
@@ -1564,7 +1566,8 @@ class CanonicalReplacementAdapterTests(unittest.TestCase):
             calls[0] += 1
             raise TimeoutError('synthetic provider timeout')
         with self.assertRaises(TimeoutError):
-            owner.call_provider_once(fail, ambiguity_evidence_digest='e' * 64)
+            owner.call_provider_once(fail, baseline_deployment_ids=['old'],
+                                     ambiguity_evidence_digest='e' * 64)
         self.assertEqual(1, calls[0])
         self.assertEqual('reconcile-only', owner.journal.state().state)
         self.assertIn(('ambiguous', owner.journal.operation_id), store.rows)
