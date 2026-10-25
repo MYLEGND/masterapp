@@ -210,6 +210,9 @@ def _validate_bundle(admission: Mapping, entries: Mapping) -> str:
                 not isinstance(entry["record"], Mapping) or not isinstance(entry["provenance"], Mapping)):
             raise RecoveryAdapterError(f"Authenticated {key} bundle entry is malformed")
         provenance = entry["provenance"]
+        if (entry["record"].get("producingRun") != provenance.get("runId") or
+                entry["record"].get("producingAttempt") != provenance.get("runAttempt")):
+            raise RecoveryAdapterError(f"Authenticated {key} record/provenance producer mismatch")
         if (set(provenance) != {
                 "runId", "runAttempt", "jobId", "stepName", "sourceRevision",
                 "artifactId", "artifactDigest"} or
