@@ -4113,6 +4113,7 @@ RELEASE_EXECUTION_CONTROL_INPUTS = (
     "scripts/release-workflow.py",
     "scripts/test-release-workflow.py",
     "scripts/release-operation-evidence.py",
+    "scripts/recovery-replacement-adapter.py",
     "scripts/test-release-operation-evidence.py",
     "scripts/release-artifacts/**",
 )
