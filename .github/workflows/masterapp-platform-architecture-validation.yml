@@ -28,7 +28,7 @@ on:
   workflow_dispatch:
     inputs:
       preparation_only:
-        description: Prepare Protect bytes on the admitted isolated draft only; never publish
+        description: Prepare Protect and Parfait bytes on the admitted isolated draft only; never publish
         required: false
         default: false
         type: boolean
@@ -46,10 +46,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  nonpublishing-protect-preparation:
+  nonpublishing-protect-parfait-preparation:
     if: github.event_name == 'workflow_dispatch' && inputs.preparation_only
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 40
     permissions:
       contents: read
       actions: read
@@ -60,39 +60,46 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Admit exact green isolated Protect preparation
+      - name: Admit exact green isolated Protect and Parfait preparation
         env:
           GITHUB_TOKEN: ${{ github.token }}
           REVISION: ${{ inputs.package_revision }}
         run: |
-          mkdir -p "$RUNNER_TEMP/protect-preparation"
+          mkdir -p "$RUNNER_TEMP/combined-preparation"
           python3 scripts/validation-resume.py package-preparation-plan \
             --repository "$GITHUB_REPOSITORY" --revision "$REVISION" \
             --current-sha "$GITHUB_SHA" --branch "$GITHUB_REF_NAME" --preparation-only \
-            --output "$RUNNER_TEMP/protect-preparation/preparation.json"
-      - name: Build Protect with canonical isolated package authority
+            --output "$RUNNER_TEMP/combined-preparation/preparation.json"
+      - name: Build Protect and Parfait with canonical isolated package authority
         run: |
           python3 scripts/release-package.py build-component --revision "$GITHUB_SHA" \
-            --component protect --directory "$RUNNER_TEMP/protect-preparation"
+            --component protect --directory "$RUNNER_TEMP/combined-preparation"
+          python3 scripts/release-package.py build-component --revision "$GITHUB_SHA" \
+            --component parfait --directory "$RUNNER_TEMP/combined-preparation"
       - name: Bind verified bytes to nonpublishing preparation
         run: |
           python3 - <<'PYPREPARE'
           import importlib.util,json,os,pathlib
           spec=importlib.util.spec_from_file_location('package','scripts/release-package.py')
           package=importlib.util.module_from_spec(spec);spec.loader.exec_module(package)
-          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'protect-preparation'
-          package.verify_component(os.environ['GITHUB_SHA'],'protect',root)
-          receipt=json.loads((root/'protect.component.json').read_text())
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'combined-preparation'
           path=root/'preparation.json'; manifest=json.loads(path.read_text())
-          manifest.update(packageFile=receipt['file'],packageSha256=receipt['sha256'],
+          if manifest.get('components') != ['protect','parfait']:
+              raise SystemExit('COMBINED_PREPARATION_COMPONENTS_INVALID')
+          packages={}
+          for component in manifest['components']:
+              package.verify_component(os.environ['GITHUB_SHA'],component,root)
+              receipt=json.loads((root/(component+'.component.json')).read_text())
+              packages[component]={'file':receipt['file'],'sha256':receipt['sha256']}
+          manifest.update(packages=packages,
               runId=int(os.environ['GITHUB_RUN_ID']),runAttempt=int(os.environ['GITHUB_RUN_ATTEMPT']))
           path.write_text(json.dumps(manifest,sort_keys=True,indent=2)+'\n')
           PYPREPARE
-      - name: Retain nonpublishing Protect preparation
+      - name: Retain nonpublishing Protect and Parfait preparation
         uses: actions/upload-artifact@v4
         with:
-          name: nonpublishing-protect-preparation-${{ github.sha }}-${{ github.run_id }}-a${{ github.run_attempt }}
-          path: ${{ runner.temp }}/protect-preparation/
+          name: nonpublishing-protect-parfait-preparation-${{ github.sha }}-${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/combined-preparation/
           retention-days: 30
           if-no-files-found: error
 

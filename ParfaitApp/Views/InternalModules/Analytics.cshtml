@@ -295,12 +295,13 @@
                          role="button"
                          tabindex="0"
                          data-bs-toggle="modal"
-                         data-bs-target="#pfRecentOrdersModal"
-                         aria-label="Purchases. Open Recent Orders breakdown."
-                         title="Open Recent Orders breakdown">
-                        <div class="fa-kpi-title">Purchases</div>
+                         data-bs-target="#pfRawEventsModal"
+                         aria-label="Tracked purchase events. Open Recent Events."
+                         title="Open Recent Events">
+                        <div class="fa-kpi-title">Tracked purchase events</div>
                         <div class="fa-kpi-value">@Model.Purchases</div>
-                        <div class="fa-kpi-sub">Completed orders</div>
+                        <div class="fa-kpi-note">In this scope and period: @Model.PaidOrdersWithoutPurchaseEvent paid orders without a purchase event; @Model.PurchaseEventsWithoutPaidOrder purchase events without a matching paid order number.</div>
+                        <div class="fa-kpi-sub">Recorded events; payment evidence shown separately</div>
                     </div>
                 </div>
             </div>
@@ -322,7 +323,7 @@
                          title="Open Products Snapshot breakdown">
                         <div class="fa-kpi-title">Revenue</div>
                         <div class="fa-kpi-value">@Money(Model.RevenueCents)</div>
-                        <div class="fa-kpi-sub">Net tracked revenue</div>
+                        <div class="fa-kpi-sub">Order revenue after refunds; fees and settlement unverified</div>
                     </div>
                 </div>
                 <div>

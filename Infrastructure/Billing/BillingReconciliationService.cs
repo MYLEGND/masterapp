@@ -222,7 +222,13 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
                 providerEvent,
                 subscription is null ? "PAYMENT_SUBSCRIPTION_NOT_FOUND" : "PAYMENT_ATTEMPT_NOT_FOUND");
 
-        if (payment.ClientSubscriptionId is null && subscription is not null)
+        var standaloneCommerce = payment.Kind == SubscriptionPaymentKind.CommerceOneTime && payment.ClientSubscriptionId is null;
+        // Preserve the original payment authority before considering provider references.
+        if (standaloneCommerce && (providerResult.AmountCents != payment.AmountCents ||
+            !string.Equals(providerResult.Currency, payment.Currency, StringComparison.OrdinalIgnoreCase)))
+            return CreateExpectedResolutionDecision(providerEvent, "COMMERCE_PAYMENT_EVIDENCE_MISMATCH");
+
+        if (!standaloneCommerce && payment.ClientSubscriptionId is null && subscription is not null)
         {
             payment.ClientSubscriptionId = subscription.Id;
             payment.ClientSubscription = subscription;

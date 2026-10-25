@@ -393,7 +393,7 @@
                 }
 
                 try {
-                    await fetch(leadEndpoint, {
+                    const response = await fetch(leadEndpoint, {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -401,7 +401,7 @@
                         },
                         body: signature
                     });
-                    lastLeadSignature = signature;
+                    if (response.ok) lastLeadSignature = signature;
                 } catch {
                     // Lead capture should never interrupt checkout.
                 }

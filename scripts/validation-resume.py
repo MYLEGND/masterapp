@@ -9818,8 +9818,8 @@ def compute_package_preparation_plan(repository, revision, current_sha, branch, 
         evidence.append(dict(workflow=workflow, runId=latest['id'], runAttempt=latest['run_attempt']))
     if not eligible(api_get(repository, 'pulls/691', token)):
         raise ValueError('Preparation head changed during admission')
-    return dict(schema='legend-nonpublishing-package-preparation.v1', candidateRevision=revision,
-        controlRevision=current_sha, branch=branch, sourcePr=691, component='protect',
+    return dict(schema='legend-nonpublishing-package-preparation.v2', candidateRevision=revision,
+        controlRevision=current_sha, branch=branch, sourcePr=691, components=['protect', 'parfait'],
         publicationAuthorized=False, releaseAdmission=False, validationRuns=evidence,
         baseEvidence=baseline)
 

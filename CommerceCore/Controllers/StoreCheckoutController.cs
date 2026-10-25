@@ -563,7 +563,8 @@ public sealed class StoreCheckoutController : Controller
 
     private static int ResolvePaymentFailureStatusCode(ExecuteCommerceOneTimePaymentResult result)
     {
-        if (result.Retryable) return StatusCodes.Status503ServiceUnavailable;
+        if (result.Retryable || string.Equals(result.SafeErrorCode, "PAYMENT_RECONCILIATION_REQUIRED", StringComparison.Ordinal))
+            return StatusCodes.Status503ServiceUnavailable;
         if (string.Equals(result.SafeErrorCode, "UNHANDLED_BILLING_ERROR", StringComparison.OrdinalIgnoreCase))
             return StatusCodes.Status503ServiceUnavailable;
         if (!string.IsNullOrWhiteSpace(result.SafeErrorCode) &&

@@ -242,16 +242,54 @@ public sealed class BusinessAnalyticsCompletionTests
     }
 
     [Fact]
-    public void ParfaitAnalyticsUsesCanonicalServicesWithoutStaleDashboardCache()
+    public async Task ParfaitAnalyticsQueriesFreshScopedFactsWithoutInventingPurchases()
     {
-        var root = RepoRoot();
-        var source = File.ReadAllText(Path.Combine(root, "CommerceCore", "Services", "ParfaitInternalAnalyticsService.cs"));
-
-        Assert.Contains("IAnalyticsQueryService _analytics", source, StringComparison.Ordinal);
-        Assert.Contains("IMetaSignalAnalyticsService _metaSignal", source, StringComparison.Ordinal);
-        Assert.Contains("DashboardCacheDuration = TimeSpan.Zero", source, StringComparison.Ordinal);
-        Assert.Contains("WorkspaceCacheDuration = TimeSpan.Zero", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("TimeSpan.FromSeconds(45)", source, StringComparison.Ordinal);
+        using var db = ControllerTestHelpers.BuildDb();
+        using var cache = new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions());
+        var business = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var analytics = new AnalyticsQueryService(db, new ConfigurationBuilder().Build());
+        var profile = new Mock<ParfaitApp.Services.IParfaitBusinessProfileService>();
+        profile.Setup(x => x.GetMetaSettingsAsync(business, It.IsAny<System.Threading.CancellationToken>()))
+            .ReturnsAsync(new ParfaitApp.Models.ParfaitMetaAnalyticsSettingsViewModel());
+        var service = new ParfaitApp.Services.ParfaitInternalAnalyticsService(
+            analytics, new MetaSignalAnalyticsService(db, analytics), profile.Object,
+            new MarketingConnectionStore(db, new MarketingCredentialProtector(new EphemeralDataProtectionProvider())),
+            new ParfaitApp.Services.ParfaitOrderService(db), cache, new ParfaitApp.Services.ParfaitInternalAnalyticsCacheStamp());
+        var order = new CommerceOrder { CommerceBusinessId = business, OrderNumber = "test-order", CreatedUtc = now,
+            PaidUtc = now, PaymentStatus = "Paid", TotalCents = 2500, RefundedCents = 500 };
+        db.CommerceOrders.Add(order);
+        db.CommerceOrders.Add(new CommerceOrder { CommerceBusinessId = Guid.NewGuid(), OrderNumber = "foreign", CreatedUtc = now,
+            PaidUtc = now, PaymentStatus = "Paid", TotalCents = 9000 });
+        await db.SaveChangesAsync();
+        var empty = await service.GetWorkspaceSummaryAsync(business, qualityMode: TrafficQualityMode.AllTraffic);
+        var financial = await service.GetDashboardAsync(business, qualityMode: TrafficQualityMode.AllTraffic);
+        Assert.False(empty.HasTrackedEvents);
+        Assert.Equal(0, financial.Purchases);
+        Assert.Equal(1, financial.PaidOrdersWithoutPurchaseEvent);
+        Assert.Equal(1, financial.PaidOrders);
+        Assert.Equal(2000, financial.RevenueCents);
+        foreach (var name in new[] { "CheckoutStarted", "InitiateCheckout", "Purchase" })
+            db.AnalyticsEvents.Add(new AnalyticsEvent { CommerceBusinessId = business, EventUtc = now, EventType = name,
+                SessionId = "test-session", VisitorId = "test-visitor", EventId = Guid.NewGuid(), MetadataJson = "{\"orderNumber\":\"test-order\"}" });
+        db.AnalyticsEvents.Add(new AnalyticsEvent { CommerceBusinessId = Guid.NewGuid(), EventUtc = now, EventType = "Purchase", EventId = Guid.NewGuid() });
+        await db.SaveChangesAsync();
+        var fresh = await service.GetWorkspaceSummaryAsync(business, qualityMode: TrafficQualityMode.AllTraffic);
+        var measured = await service.GetDashboardAsync(business, qualityMode: TrafficQualityMode.AllTraffic);
+        Assert.Equal(2, fresh.GetEventCount("InitiateCheckout"));
+        Assert.Equal(2, fresh.GetEventCount("CheckoutStarted"));
+        Assert.Equal(1, fresh.GetEventCount("Purchase"));
+        Assert.Equal(1, measured.Purchases);
+        Assert.Equal(0, measured.PaidOrdersWithoutPurchaseEvent);
+        Assert.Equal(0, measured.PurchaseEventsWithoutPaidOrder);
+        Assert.Equal(2000, measured.RevenueCents);
+        db.CommerceOrders.Remove(order);
+        await db.SaveChangesAsync();
+        var telemetryOnly = await service.GetDashboardAsync(business, qualityMode: TrafficQualityMode.AllTraffic);
+        Assert.Equal(1, telemetryOnly.Purchases);
+        Assert.Equal(1, telemetryOnly.PurchaseEventsWithoutPaidOrder);
+        Assert.Equal(0, telemetryOnly.Orders);
+        Assert.Equal(0, telemetryOnly.RevenueCents);
     }
 
     [Fact]

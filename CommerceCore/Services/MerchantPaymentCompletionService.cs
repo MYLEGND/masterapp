@@ -23,7 +23,9 @@ public sealed class MerchantPaymentCompletionService(
             var attempt = await db.CommercePaymentAttempts.SingleAsync(x => x.Id == attemptId, ct);
             if (attempt.State != "Captured") return;
             var entity = await db.CommerceOrders.SingleAsync(x => x.Id == attempt.CommerceOrderId && x.CommerceBusinessId == attempt.CommerceBusinessId, ct);
-            if (attempt.AmountMinor != entity.TotalCents || string.IsNullOrWhiteSpace(attempt.PaymentReference))
+            if (attempt.AmountMinor != entity.TotalCents || !string.Equals(attempt.Currency, "USD", StringComparison.OrdinalIgnoreCase)
+                || attempt.RefundedMinor < 0 || attempt.RefundedMinor > entity.TotalCents
+                || string.IsNullOrWhiteSpace(attempt.PaymentReference))
                 throw new InvalidOperationException("Verified payment does not match order.");
             var applied = await db.CommercePaymentEffects.AnyAsync(x => x.AttemptId == attemptId && x.Kind == "OrderAndInventory" && x.State == "Completed", ct);
             if (!applied)
@@ -38,7 +40,7 @@ public sealed class MerchantPaymentCompletionService(
                 AddEffect(attemptId, "Notification", "Pending");
                 await db.SaveChangesAsync(ct);
             }
-            entity.RefundedCents = (int)Math.Clamp(attempt.RefundedMinor, 0, entity.TotalCents);
+            entity.RefundedCents = (int)attempt.RefundedMinor;
             if (entity.RefundedCents == entity.TotalCents) { entity.PaymentStatus = "Refunded"; entity.Status = "Refunded"; }
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);

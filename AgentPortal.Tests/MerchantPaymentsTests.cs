@@ -70,7 +70,9 @@ public sealed class MerchantPaymentsTests
         f.Db.CommercePaymentRefunds.Add(new(){AttemptId=attempt.Id,IdempotencyKey="unknown-earlier",AmountMinor=300,State="Unknown",CreatedUtc=DateTime.UtcNow});await f.Db.SaveChangesAsync();
         await Assert.ThrowsAsync<MerchantPaymentException>(()=>f.Checkout.RefundAsync(f.Business,f.Order,400,"new-request"));Assert.Equal(0,f.Gateway.Refunds);
     }
-    [Fact] public async Task RepeatedCompletionCommitsInventoryPurchaseAndTenantMailOnce()
+    [Theory] [InlineData("USD", 0, true)] [InlineData("CAD", 0, false)]
+    [InlineData("USD", -1, false)] [InlineData("USD", 1001, false)]
+    public async Task RepeatedCompletionCommitsInventoryPurchaseAndTenantMailOnce(string currency, long refunded, bool valid)
     {
         using var f=new Fixture(true);
         var root=Path.Combine(Path.GetTempPath(),"merchant-completion-tests",Guid.NewGuid().ToString("N"));
@@ -90,6 +92,16 @@ public sealed class MerchantPaymentsTests
             mail.Setup(x=>x.SendOrderNotificationAsync(It.IsAny<ParfaitOrderRecord>(),It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             var completion=new MerchantPaymentCompletionService(f.Db,orders,products,new ParfaitCustomerAutomationService(storage,configuration,orders,products,f.Db),new CommerceSignalService(f.Db),mail.Object);
             var attempt=await f.Db.CommercePaymentAttempts.SingleAsync();
+            attempt.Currency=currency;attempt.RefundedMinor=refunded;await f.Db.SaveChangesAsync();
+            if (!valid)
+            {
+                await Assert.ThrowsAsync<InvalidOperationException>(()=>completion.CompleteAsync(attempt.Id));
+                Assert.Equal(5,(await f.Db.CommerceProductInventoryItems.SingleAsync()).StockQuantity);
+                Assert.Empty(await f.Db.CommercePaymentEffects.ToListAsync());
+                Assert.Empty(await f.Db.AnalyticsEvents.ToListAsync());
+                Assert.Equal("Pending",(await f.Db.CommerceOrders.SingleAsync()).PaymentStatus);
+                return;
+            }
             await completion.CompleteAsync(attempt.Id);await completion.CompleteAsync(attempt.Id);
             Assert.Equal(4,(await f.Db.CommerceProductInventoryItems.SingleAsync()).StockQuantity);
             Assert.Equal(1,await f.Db.AnalyticsEvents.CountAsync());

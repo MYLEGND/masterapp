@@ -28,6 +28,8 @@ public sealed class ParfaitInternalAnalyticsViewModel
     public int Orders { get; set; }
     public int PaidOrders { get; set; }
     public int Purchases { get; set; }
+    public int PaidOrdersWithoutPurchaseEvent { get; set; }
+    public int PurchaseEventsWithoutPaidOrder { get; set; }
     public int RevenueCents { get; set; }
     public int AverageOrderValueCents { get; set; }
     public decimal RevenuePerVisitor { get; set; }

@@ -291,13 +291,13 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         }
         catch (Exception)
         {
-            paymentRecord.Status = SubscriptionPaymentStatus.Failed;
-            paymentRecord.SafeFailureCode = "UNHANDLED_BILLING_ERROR";
+            paymentRecord.Status = SubscriptionPaymentStatus.Processing;
+            paymentRecord.SafeFailureCode = "PAYMENT_RECONCILIATION_REQUIRED";
             paymentRecord.UpdatedUtc = DateTime.UtcNow;
             AddAuditEntry(
                 "SubscriptionPayment",
                 paymentRecord.Id,
-                "failed",
+                "reconciliation_required",
                 SubscriptionPaymentStatus.Pending.ToString(),
                 paymentRecord.Status.ToString(),
                 BillingActorType.System,
@@ -305,24 +305,44 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
                 "billing_orchestrator",
                 paymentRecord.SafeFailureCode,
                 command.CorrelationId,
-                "One-time payment failed before the provider returned a safe result.");
+                "Payment outcome is unconfirmed and requires reconciliation.");
             await _db.SaveChangesAsync(cancellationToken);
 
-            var failedResult = new BillingOneTimePaymentResult(false, null, "FAILED", "UNHANDLED_BILLING_ERROR", "One-time payment failed before the provider returned a safe result.", null, false);
+            var failedResult = new BillingOneTimePaymentResult(false, null, "PROCESSING", "PAYMENT_RECONCILIATION_REQUIRED", "Payment outcome is unconfirmed and requires reconciliation.", null, false);
             return new ExecuteCommerceOneTimePaymentResult(false, failedResult.SafeErrorCode, failedResult.SanitizedSummary, null, false, paymentRecord, failedResult);
+        }
+
+        var completed = string.Equals(providerResult.NormalizedStatus, "COMPLETED", StringComparison.OrdinalIgnoreCase);
+        var verifiedCapture = providerResult.Success && completed
+            && !string.IsNullOrWhiteSpace(providerResult.ExternalId)
+            && providerResult.AmountCents == paymentRecord.AmountCents
+            && string.Equals(providerResult.Currency, paymentRecord.Currency, StringComparison.OrdinalIgnoreCase);
+        var definiteFailure = !providerResult.Success && !providerResult.Retryable
+            && (string.Equals(providerResult.NormalizedStatus, "FAILED", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(providerResult.NormalizedStatus, "CANCELED", StringComparison.OrdinalIgnoreCase));
+        if (!verifiedCapture && !definiteFailure)
+        {
+            providerResult = providerResult with
+            {
+                Success = false, NormalizedStatus = "PROCESSING", Retryable = false,
+                SafeErrorCode = "PAYMENT_RECONCILIATION_REQUIRED",
+                SanitizedSummary = "Payment outcome is unconfirmed and requires reconciliation."
+            };
         }
 
         paymentRecord.ProviderPaymentId = providerResult.ExternalId;
         paymentRecord.ProviderRequestId = providerResult.ProviderRequestId;
         paymentRecord.ProviderOccurredUtc = providerResult.ProviderOccurredUtc;
-        paymentRecord.Status = BillingStateMapper.MapPaymentStatus(providerResult.NormalizedStatus);
+        paymentRecord.Status = providerResult.SafeErrorCode == "PAYMENT_RECONCILIATION_REQUIRED"
+            ? SubscriptionPaymentStatus.Processing
+            : BillingStateMapper.MapPaymentStatus(providerResult.NormalizedStatus);
         paymentRecord.SafeFailureCode = providerResult.SafeErrorCode;
         paymentRecord.UpdatedUtc = DateTime.UtcNow;
 
         AddAuditEntry(
             "SubscriptionPayment",
             paymentRecord.Id,
-            providerResult.Success ? "completed" : "failed",
+            verifiedCapture ? "completed" : definiteFailure ? "failed" : "reconciliation_required",
             SubscriptionPaymentStatus.Pending.ToString(),
             paymentRecord.Status.ToString(),
             BillingActorType.System,

@@ -2037,6 +2037,36 @@ public sealed class BillingCentralizationTests
         Assert.Null(providerEvent.RetryUtc);
     }
 
+    [Theory]
+    [InlineData(2499, "USD")]
+    [InlineData(null, "USD")]
+    [InlineData(2500, "CAD")]
+    [InlineData(2500, null)]
+    public async Task CommercePaymentReconciliationPreservesCommandedFinancialEvidence(int? amount, string? currency)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddClientProfileAsync(db);
+        var offer = await AddOfferAsync(db, profile.Id);
+        var subscription = await AddSubscriptionAsync(db, profile.Id, offer.Id, ClientSubscriptionStatus.Active, ClientSubscriptionPaymentStanding.Current, "sub_commerce_guard");
+        var payment = new SubscriptionPayment { Kind = SubscriptionPaymentKind.CommerceOneTime,
+            Provider = BillingProvider.Square, ProviderEnvironment = BillingProviderEnvironment.Sandbox,
+            ProviderPaymentId = "pay_commerce", AmountCents = 2500, Currency = "USD",
+            Status = SubscriptionPaymentStatus.Processing, CreatedUtc = DateTime.UtcNow, UpdatedUtc = DateTime.UtcNow };
+        db.SubscriptionPayments.Add(payment); await db.SaveChangesAsync();
+        await RecordProviderEventAsync(db, BuildPaymentPayload("evt_commerce", "payment.updated", "pay_commerce",
+            "cust", "", "COMPLETED", "2026-07-22T01:05:00Z", subscription.Id.ToString()));
+        var gateway = BuildGateway();
+        gateway.Setup(x => x.GetPaymentAsync(It.IsAny<BillingPaymentLookupRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BillingPaymentResult(true, "pay_commerce", "COMPLETED", null, null, "req", false,
+                AmountCents: amount, Currency: currency));
+        await new BillingReconciliationService(db, gateway.Object, BuildEntitlementService(db)).ReconcilePendingProviderEventsAsync(10);
+        var saved = await db.SubscriptionPayments.SingleAsync();
+        Assert.Null(saved.ClientSubscriptionId);
+        Assert.Equal(2500, saved.AmountCents);
+        Assert.Equal("USD", saved.Currency);
+        Assert.Equal(SubscriptionPaymentStatus.Processing, saved.Status);
+    }
+
     [Fact]
     public async Task PaymentEvent_ResolvesByProviderPaymentId_WithoutOverridingPlatformLifecycle()
     {

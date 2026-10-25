@@ -46,14 +46,15 @@ class NonpublishingPreparationTests(unittest.TestCase):
              patch.object(m, 'approved_head_preflight', return_value=dict(current=True)):
             return m.compute_package_preparation_plan(**args)
 
-    def test_exact_green_draft_prepares_only_protect(self):
+    def test_exact_green_draft_prepares_fixed_combined_pair(self):
         plan=self.plan()
-        self.assertEqual('protect', plan['component'])
+        self.assertEqual(['protect','parfait'], plan['components'])
+        self.assertEqual('legend-nonpublishing-package-preparation.v2',plan['schema'])
         self.assertFalse(plan['publicationAuthorized'])
         self.assertFalse(plan['releaseAdmission'])
         self.assertEqual(3, len(plan['validationRuns']))
         self.assertEqual(2, self.api_calls)
-        self.assertFalse(m.package_artifact_match('nonpublishing-protect-preparation-' + self.sha))
+        self.assertFalse(m.package_artifact_match('nonpublishing-protect-parfait-preparation-' + self.sha))
 
     def test_rejects_invalid_dispatch_and_pr_binding(self):
         for changes in ({'preparation_only':False}, {'revision':'bad'},
@@ -76,13 +77,14 @@ class NonpublishingPreparationTests(unittest.TestCase):
     def test_workflow_has_no_provider_or_promotion_in_preparation_lane(self):
         import yaml
         workflow=yaml.safe_load((ROOT / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text())
-        jobs=workflow['jobs'];lane=jobs['nonpublishing-protect-preparation']
+        jobs=workflow['jobs'];lane=jobs['nonpublishing-protect-parfait-preparation']
         self.assertTrue(all(value=='read' for value in lane['permissions'].values()))
         text=json.dumps(lane)
         for prohibited in ('azure/login', 'id-token', 'environment', 'wake-release', 'deploy-approved-app', 'secrets.'):
             self.assertNotIn(prohibited,text)
         self.assertIn('build-component --revision',text)
         self.assertIn('--component protect',text)
+        self.assertIn('--component parfait',text)
         for name in ('approved-head-preflight','validate','validated-release-package-plan',
                      'wake-release-lifecycle-after-package-backfill','validated-migration-probe'):
             self.assertIn('!inputs.preparation_only',jobs[name]['if'])

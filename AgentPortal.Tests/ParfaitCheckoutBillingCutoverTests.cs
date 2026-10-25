@@ -213,9 +213,38 @@ public sealed class ParfaitCheckoutBillingCutoverTests
         // A provider exception does not prove the charge failed; duplicate checkout stays blocked.
         var retry = await harness.Controller.Pay(harness.BuildPayRequest(), CancellationToken.None);
         ReadResponse(retry, StatusCodes.Status409Conflict);
-        Assert.Equal(SubscriptionPaymentStatus.Failed, payment.Status);
-        Assert.Equal("UNHANDLED_BILLING_ERROR", payment.SafeFailureCode);
+        Assert.Equal(SubscriptionPaymentStatus.Processing, payment.Status);
+        Assert.Equal("PAYMENT_RECONCILIATION_REQUIRED", payment.SafeFailureCode);
         Assert.Equal(3, inventory.StockQuantity);
+    }
+
+    [Theory]
+    [InlineData(null, "USD", "pay", "COMPLETED", true)]
+    [InlineData(2499, "USD", "pay", "COMPLETED", true)]
+    [InlineData(2500, null, "pay", "COMPLETED", true)]
+    [InlineData(2500, "CAD", "pay", "COMPLETED", true)]
+    [InlineData(2500, "USD", null, "COMPLETED", true)]
+    [InlineData(2500, "USD", "pay", "PENDING", true)]
+    [InlineData(2500, "USD", "pay", "COMPLETED", false)]
+    public async Task Pay_UnverifiedCaptureBlocksEffectsAndReplay(int? amount, string? currency, string? reference, string status, bool success)
+    {
+        using var harness = new CheckoutHarness(gateway => gateway
+            .Setup(x => x.CreateOneTimePaymentAsync(It.IsAny<BillingOneTimePaymentRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BillingOneTimePaymentResult(success, reference, status, null, null, "req", false, amount, currency)),
+            shippingFeeCents: 500, stockQuantity: 3);
+        ReadResponse(await harness.Controller.Pay(harness.BuildPayRequest(), CancellationToken.None), StatusCodes.Status503ServiceUnavailable);
+        var order = Assert.Single(harness.Db.CommerceOrders);
+        var payment = Assert.Single(harness.Db.SubscriptionPayments);
+        Assert.Equal("Pending", order.PaymentStatus);
+        Assert.True(order.IsPaymentProcessing);
+        Assert.Null(order.PaidUtc);
+        Assert.Equal(SubscriptionPaymentStatus.Processing, payment.Status);
+        Assert.Equal(2500, payment.AmountCents);
+        Assert.Equal("USD", payment.Currency);
+        Assert.Equal(3, Assert.Single(harness.Db.CommerceProductInventoryItems).StockQuantity);
+        Assert.DoesNotContain(harness.Db.AnalyticsEvents, e => e.EventType == "Purchase");
+        ReadResponse(await harness.Controller.Pay(harness.BuildPayRequest(), CancellationToken.None), StatusCodes.Status409Conflict);
+        Assert.Single(harness.Db.SubscriptionPayments);
     }
 
     [Fact]
@@ -233,7 +262,7 @@ public sealed class ParfaitCheckoutBillingCutoverTests
                         null,
                         "Payment completed.",
                         "req_email",
-                        false));
+                        false, 2500, "USD"));
             },
             configureMail: mail =>
             {
