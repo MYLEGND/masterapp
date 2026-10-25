@@ -1766,6 +1766,107 @@ class CanonicalReplacementAdapterTests(unittest.TestCase):
         result = store.claim('ignored', record)
         self.assertEqual('existing', result['status']); self.assertEqual(0, claims[0])
 
+    def test_global_store_same_run_rerun_and_cross_run_duplicates_never_claim_twice(self):
+        from types import SimpleNamespace
+        admission = self.admission(); operation = 'f' * 64
+        record = {
+            'schemaVersion': 1, 'phase': 'intent', 'operationId': operation, 'target': 'protect',
+            'applicationRevision': 'a' * 40, 'packageDigest': '2' * 64, 'baseline': 'b' * 40,
+            'packageProducerRun': 20, 'producingRun': 30, 'producingAttempt': 1,
+            'baselineDeploymentIds': [], 'replacementOfOperationId': '1' * 64,
+            'recoveryAdmissionId': '9' * 64, 'recoveryAdmission': admission,
+            'submissionContract': {'kind': 'azure_onedeploy_windows_intent_v1', 'value': operation},
+        }
+        name = self.adapter._artifact_name('intent', operation)
+        artifact = {'id': 99, 'name': name, 'digest': 'sha256:' + 'a' * 64,
+                    'expired': False, 'workflow_run': {'id': 30}}
+        class Authority:
+            def api_get(self, repo, path, token):
+                if path.startswith('actions/artifacts?name='): return {'total_count': 1, 'artifacts': [artifact]}
+                if path == 'actions/runs/30': return {'path': self.adapter_path, 'head_sha': 'c' * 40,
+                    'head_repository': {'full_name': repo}}
+                raise AssertionError(path)
+            def _release_history_json(self, *args, **kwargs): return json.loads(json.dumps(record))
+        authority = Authority(); authority.adapter_path = self.adapter._FAST_TRACK_PATH
+        claims = [0]
+        evidence = SimpleNamespace(claim_record=lambda *args: claims.__setitem__(0, claims[0] + 1))
+        for run_id, attempt in ((30, 1), (30, 2), (31, 1)):
+            with self.subTest(run_id=run_id, attempt=attempt):
+                class Fence:
+                    repository = 'MYLEGND/masterapp'; token = 'synthetic'
+                    def verify(self):
+                        return {'runId': run_id, 'runAttempt': attempt, 'revision': 'c' * 40,
+                                'sourceDigest': 'd' * 64, 'group': 'legend-approved-release'}
+                fence = Fence(); digest = self.adapter._canonical_digest(fence.verify())
+                store = self.adapter.CanonicalReplacementStore(
+                    fence=fence, expected_fence_digest=digest, authority=authority,
+                    evidence_module=evidence, repository=fence.repository, token=fence.token)
+                self.assertEqual('existing', store.claim('ignored', record)['status'])
+        self.assertEqual(0, claims[0])
+
+    def test_concrete_store_fence_loss_after_provider_keeps_global_intent_and_no_ambiguity_claim(self):
+        from types import SimpleNamespace
+        admission = self.admission(); fence = self.Fence()
+        admission['serializationFenceEvidenceDigest'] = self.adapter._canonical_digest(fence.verify())
+        evidence_bundle = self.authenticated(admission)
+        admission['admissionId'] = self.adapter.PRIMITIVE.recovery_admission_id(admission)
+        artifacts = {}; records = {}; next_id = [100]
+        class Authority:
+            def api_get(self, repo, path, token):
+                if path.startswith('actions/artifacts?name='):
+                    import urllib.parse
+                    name = urllib.parse.unquote(path.split('name=', 1)[1].split('&', 1)[0])
+                    rows = [row for row in artifacts.values() if row['name'] == name]
+                    return {'total_count': len(rows), 'artifacts': rows}
+                if path.startswith('actions/runs/'):
+                    run_id = int(path.rsplit('/', 1)[1])
+                    return {'path': self_path, 'head_sha': 'c' * 40,
+                            'run_attempt': 1, 'head_repository': {'full_name': repo}}
+                raise AssertionError(path)
+            def _release_history_json(self, repo, run_id, artifact, filename, **kwargs):
+                return json.loads(json.dumps(records[artifact['id']]))
+        self_path = self.adapter._FAST_TRACK_PATH
+        authority = Authority()
+        class Evidence:
+            def claim_record(self, name, record):
+                next_id[0] += 1; artifact_id = next_id[0]
+                artifacts[artifact_id] = {'id': artifact_id, 'name': name,
+                    'digest': 'sha256:' + format(artifact_id, '064x'), 'expired': False,
+                    'workflow_run': {'id': record['producingRun']}}
+                records[artifact_id] = json.loads(json.dumps(record))
+                return {'status': 'created', 'record': json.loads(json.dumps(record))}
+            def publish_record(self, name, record):
+                self.fail('append must be fenced before transport')
+        evidence_module = Evidence(); evidence_module.fail = self.fail
+        store = self.adapter.CanonicalReplacementStore(
+            fence=fence, expected_fence_digest=admission['serializationFenceEvidenceDigest'],
+            authority=authority, evidence_module=evidence_module,
+            repository=fence.repository, token=fence.token)
+        owner = self.adapter.CanonicalReplacementAdapter(
+            admission=admission, original_intent=self.original_intent(),
+            authenticated_evidence=evidence_bundle, fence=fence, store=store,
+            package_producer_run=20, producing_run=30, producing_attempt=1,
+            clock=lambda: self.now)
+        real_verify = fence.verify; checks = [0]
+        def verify():
+            checks[0] += 1
+            if checks[0] >= 7: raise RuntimeError('synthetic concrete fence loss')
+            return real_verify()
+        fence.verify = verify; checks[0] = 0
+        calls = [0]
+        def provider(_): calls[0] += 1; return 'new-deployment'
+        with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'ambiguity append'):
+            owner.call_provider_once(provider, baseline_deployment_ids=['old'],
+                                     ambiguity_evidence_digest='e' * 64)
+        self.assertEqual(1, calls[0])
+        operation = owner.journal.operation_id
+        self.assertIsNotNone(store.lookup('intent', operation))
+        self.assertIsNone(store.lookup('ambiguous', operation))
+        with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'already consumed'):
+            owner.call_provider_once(provider, baseline_deployment_ids=['old'],
+                                     ambiguity_evidence_digest='f' * 64)
+        self.assertEqual(1, calls[0])
+
     def test_missing_production_evidence_blocks_preparation_before_store_or_provider(self):
         admission = self.admission(); admission['admissionId'] = self.adapter.PRIMITIVE.recovery_admission_id(admission)
         class Fence(self.Fence):
