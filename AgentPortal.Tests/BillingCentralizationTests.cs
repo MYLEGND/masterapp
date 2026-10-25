@@ -2038,6 +2038,7 @@ public sealed class BillingCentralizationTests
     }
 
     [Theory]
+    [InlineData(2500, "USD")]
     [InlineData(2499, "USD")]
     [InlineData(null, "USD")]
     [InlineData(2500, "CAD")]
@@ -2059,12 +2060,14 @@ public sealed class BillingCentralizationTests
         gateway.Setup(x => x.GetPaymentAsync(It.IsAny<BillingPaymentLookupRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BillingPaymentResult(true, "pay_commerce", "COMPLETED", null, null, "req", false,
                 AmountCents: amount, Currency: currency));
-        await new BillingReconciliationService(db, gateway.Object, BuildEntitlementService(db)).ReconcilePendingProviderEventsAsync(10);
+        var entitlements = new Mock<IBillingEntitlementService>(MockBehavior.Strict);
+        await new BillingReconciliationService(db, gateway.Object, entitlements.Object).ReconcilePendingProviderEventsAsync(10);
+        entitlements.VerifyNoOtherCalls();
         var saved = await db.SubscriptionPayments.SingleAsync();
         Assert.Null(saved.ClientSubscriptionId);
         Assert.Equal(2500, saved.AmountCents);
         Assert.Equal("USD", saved.Currency);
-        Assert.Equal(SubscriptionPaymentStatus.Processing, saved.Status);
+        Assert.Equal(amount == 2500 && currency == "USD" ? SubscriptionPaymentStatus.Completed : SubscriptionPaymentStatus.Processing, saved.Status);
     }
 
     [Fact]

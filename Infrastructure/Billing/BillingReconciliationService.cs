@@ -223,6 +223,7 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
                 subscription is null ? "PAYMENT_SUBSCRIPTION_NOT_FOUND" : "PAYMENT_ATTEMPT_NOT_FOUND");
 
         var standaloneCommerce = payment.Kind == SubscriptionPaymentKind.CommerceOneTime && payment.ClientSubscriptionId is null;
+        if (standaloneCommerce) subscription = null;
         // Preserve the original payment authority before considering provider references.
         if (standaloneCommerce && (providerResult.AmountCents != payment.AmountCents ||
             !string.Equals(providerResult.Currency, payment.Currency, StringComparison.OrdinalIgnoreCase)))

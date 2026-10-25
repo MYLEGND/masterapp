@@ -89,6 +89,36 @@ class NonpublishingPreparationTests(unittest.TestCase):
                      'wake-release-lifecycle-after-package-backfill','validated-migration-probe'):
             self.assertIn('!inputs.preparation_only',jobs[name]['if'])
 
+    def test_combined_manifest_requires_both_verified_receipts(self):
+        import yaml
+        workflow=yaml.safe_load((ROOT / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text())
+        step=next(s for s in workflow['jobs']['nonpublishing-protect-parfait-preparation']['steps']
+                  if s.get('name')=='Bind verified bytes to nonpublishing preparation')
+        body=step['run']
+        code=body[body.index("root=pathlib.Path"):body.rindex('PYPREPARE')]
+        for fault in (None, 'missing', 'mismatch'):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)/'combined-preparation';root.mkdir()
+                original=self.plan();(root/'preparation.json').write_text(json.dumps(original))
+                for component in ('protect','parfait'):
+                    if component=='parfait' and fault=='missing': continue
+                    (root/(component+'.component.json')).write_text(json.dumps(dict(file=component+'.zip',sha256='a'*64)))
+                calls=[]
+                def verify(revision,component,directory):
+                    self.assertEqual(self.sha,revision);calls.append(component)
+                    if component=='parfait' and fault=='mismatch': raise ValueError('receipt mismatch')
+                context=dict(pathlib=__import__('pathlib'),json=json,os=os,package=SimpleNamespace(verify_component=verify))
+                with patch.dict(os.environ,dict(RUNNER_TEMP=tmp,GITHUB_SHA=self.sha,GITHUB_RUN_ID='1',GITHUB_RUN_ATTEMPT='1')):
+                    if fault:
+                        with self.assertRaises((ValueError,FileNotFoundError)): exec(code,context)
+                        self.assertEqual(original,json.loads((root/'preparation.json').read_text()))
+                    else:
+                        exec(code,context)
+                        result=json.loads((root/'preparation.json').read_text())
+                        self.assertEqual({'protect','parfait'},set(result['packages']))
+                        self.assertFalse(result['publicationAuthorized'])
+                self.assertEqual(['protect','parfait'],calls)
+
 
 class PackageDescriptorIntegrationTests(unittest.TestCase):
     def setUp(self):
