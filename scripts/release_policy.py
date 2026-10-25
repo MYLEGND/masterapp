@@ -53,6 +53,7 @@ TRUSTED_TOOL_PATHS = frozenset({
     'tests/layout/modal-content-region.test.mjs',
     'scripts/deploy-approved-app.py',
     'scripts/release-operation-evidence.py',
+    'scripts/recovery-replacement-adapter.py',
     '.github/workflows/deployment-diagnostics.yml',
     'scripts/test-deploy-approved-app.py',
     'scripts/test-release-operation-evidence.py',
