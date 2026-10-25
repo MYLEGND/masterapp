@@ -268,27 +268,47 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
         if (!providerRefund.Success)
             return CreateRetryableFailureDecision(providerEvent, providerRefund.SafeErrorCode ?? "REFUND_LOOKUP_FAILED");
 
-        var payment = await FindSubscriptionPaymentAsync(
-            providerEvent.Provider,
-            providerEvent.ProviderEnvironment,
-            providerRefund.ExternalId ?? summary.PaymentId,
-            providerRefund.ProviderInvoiceId ?? summary.InvoiceId,
-            providerRefund.ProviderRefundId ?? providerRefundId,
-            cancellationToken);
+        // A successful lookup is not evidence that the refund completed.
+        if (!string.Equals(providerRefund.NormalizedStatus, "COMPLETED", StringComparison.OrdinalIgnoreCase))
+            return CreateExpectedResolutionDecision(providerEvent, "REFUND_NOT_COMPLETED");
+        if (string.IsNullOrWhiteSpace(providerRefund.ProviderRefundId) ||
+            !string.Equals(providerRefund.ProviderRefundId, providerRefundId, StringComparison.Ordinal) ||
+            string.IsNullOrWhiteSpace(providerRefund.ExternalId) ||
+            (!string.IsNullOrWhiteSpace(summary.PaymentId) &&
+             !string.Equals(summary.PaymentId, providerRefund.ExternalId, StringComparison.Ordinal)))
+            return CreateExpectedResolutionDecision(providerEvent, "REFUND_IDENTITY_MISMATCH");
+
+        // Invoice/refund fallbacks cannot authorize a different payment.
+        var payment = await _db.SubscriptionPayments
+            .Include(x => x.ClientSubscription)
+            .FirstOrDefaultAsync(x => x.Provider == providerEvent.Provider &&
+                x.ProviderEnvironment == providerEvent.ProviderEnvironment &&
+                x.ProviderPaymentId == providerRefund.ExternalId, cancellationToken);
         if (payment is null)
             return CreateExpectedResolutionDecision(providerEvent, "REFUND_PAYMENT_NOT_FOUND");
+        if (!string.Equals(payment.ProviderPaymentId, providerRefund.ExternalId, StringComparison.Ordinal) ||
+            providerRefund.AmountCents is not > 0 ||
+            providerRefund.AmountCents > payment.AmountCents ||
+            string.IsNullOrWhiteSpace(providerRefund.Currency) ||
+            !string.Equals(providerRefund.Currency, payment.Currency, StringComparison.OrdinalIgnoreCase))
+            return CreateExpectedResolutionDecision(providerEvent, "REFUND_FINANCIAL_EVIDENCE_MISMATCH");
+
+        if (string.Equals(payment.ProviderRefundId, providerRefundId, StringComparison.Ordinal))
+            return new ProviderEventDecision(BillingProviderEventProcessingStatus.Processed);
+        // The legacy single-ID field cannot prove cumulative distinct refunds.
+        if (!string.IsNullOrWhiteSpace(payment.ProviderRefundId))
+            return new ProviderEventDecision(BillingProviderEventProcessingStatus.ReconciliationRequired, "REFUND_CUMULATIVE_RECONCILIATION_REQUIRED");
+        if (IsStaleProviderTimestamp(payment.ProviderOccurredUtc, providerRefund.ProviderOccurredUtc ?? summary.ProviderOccurredUtc))
+            return CreateExpectedResolutionDecision(providerEvent, "REFUND_STALE_EVIDENCE");
 
         var previousStatus = payment.Status.ToString();
-        var refundAmountCents = providerRefund.AmountCents ?? payment.AmountCents;
-        var isPartialRefund = payment.AmountCents > 0 && refundAmountCents < payment.AmountCents;
-        if (!IsStaleProviderTimestamp(payment.ProviderOccurredUtc, providerRefund.ProviderOccurredUtc ?? summary.ProviderOccurredUtc))
-        {
-            payment.ProviderRefundId = providerRefund.ProviderRefundId ?? providerRefundId;
-            payment.ProviderInvoiceId = providerRefund.ProviderInvoiceId ?? summary.InvoiceId ?? payment.ProviderInvoiceId;
-            payment.ProviderOccurredUtc = MaxDate(payment.ProviderOccurredUtc, providerRefund.ProviderOccurredUtc ?? summary.ProviderOccurredUtc);
-            payment.Status = isPartialRefund ? SubscriptionPaymentStatus.PartiallyRefunded : SubscriptionPaymentStatus.Refunded;
-            payment.UpdatedUtc = DateTime.UtcNow;
-        }
+        var refundAmountCents = providerRefund.AmountCents.Value;
+        var isPartialRefund = refundAmountCents < payment.AmountCents;
+        payment.ProviderRefundId = providerRefundId;
+        payment.ProviderInvoiceId = providerRefund.ProviderInvoiceId ?? summary.InvoiceId ?? payment.ProviderInvoiceId;
+        payment.ProviderOccurredUtc = MaxDate(payment.ProviderOccurredUtc, providerRefund.ProviderOccurredUtc ?? summary.ProviderOccurredUtc);
+        payment.Status = isPartialRefund ? SubscriptionPaymentStatus.PartiallyRefunded : SubscriptionPaymentStatus.Refunded;
+        payment.UpdatedUtc = DateTime.UtcNow;
 
         var subscription = payment.ClientSubscription
             ?? (payment.ClientSubscriptionId.HasValue

@@ -2200,6 +2200,122 @@ public sealed class BillingCentralizationTests
         Assert.Equal("HISTORICAL_PROVIDER_INVOICE_EVENT", providerEvent.SafeErrorCode);
     }
 
+    [Theory]
+    [InlineData("pending")]
+    [InlineData("failed")]
+    [InlineData("canceled")]
+    [InlineData("missing-status")]
+    [InlineData("missing-amount")]
+    [InlineData("zero-amount")]
+    [InlineData("negative-amount")]
+    [InlineData("excess-amount")]
+    [InlineData("missing-currency")]
+    [InlineData("wrong-currency")]
+    [InlineData("missing-refund")]
+    [InlineData("wrong-refund")]
+    [InlineData("missing-payment")]
+    [InlineData("wrong-payment")]
+    [InlineData("unknown-payment")]
+    [InlineData("stale")]
+    [InlineData("distinct-refund")]
+    public async Task RefundEvidence_InvalidLookupPreservesFinancialAndEntitlementState(string scenario)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddClientProfileAsync(db);
+        var offer = await AddOfferAsync(db, profile.Id);
+        var subscription = await AddSubscriptionAsync(db, profile.Id, offer.Id,
+            status: ClientSubscriptionStatus.Active,
+            paymentStanding: ClientSubscriptionPaymentStanding.Current,
+            providerSubscriptionId: "sub_refund_guard");
+        var originalTime = DateTime.Parse("2026-07-22T01:00:00Z");
+        var payment = new SubscriptionPayment
+        {
+            ClientSubscriptionId = subscription.Id,
+            Provider = BillingProvider.Square,
+            ProviderEnvironment = BillingProviderEnvironment.Sandbox,
+            ProviderPaymentId = "pay_guard",
+            ProviderInvoiceId = "inv_guard",
+            AmountCents = 10000, Currency = "USD",
+            Status = SubscriptionPaymentStatus.Completed,
+            ProviderOccurredUtc = originalTime, UpdatedUtc = originalTime,
+            ProviderRefundId = scenario == "distinct-refund" ? "ref_previous" : null
+        };
+        db.SubscriptionPayments.Add(payment);
+        await db.SaveChangesAsync();
+        await RecordProviderEventAsync(db, BuildRefundPayload("evt_guard", "refund.updated",
+            "ref_guard", scenario == "unknown-payment" ? "pay_unknown" : "pay_guard", "inv_guard", "2026-07-22T01:15:00Z"));
+        var result = new BillingPaymentResult(true, "pay_guard", "COMPLETED", null, null, null, false,
+            ProviderInvoiceId: "inv_guard", ProviderRefundId: "ref_guard",
+            AmountCents: 10000, Currency: "USD", ProviderOccurredUtc: originalTime.AddMinutes(15));
+        result = scenario switch
+        {
+            "pending" => result with { NormalizedStatus = "PENDING" },
+            "failed" => result with { NormalizedStatus = "FAILED" },
+            "canceled" => result with { NormalizedStatus = "CANCELED" },
+            "missing-status" => result with { NormalizedStatus = null },
+            "missing-amount" => result with { AmountCents = null },
+            "zero-amount" => result with { AmountCents = 0 },
+            "negative-amount" => result with { AmountCents = -1 },
+            "excess-amount" => result with { AmountCents = 10001 },
+            "missing-currency" => result with { Currency = null },
+            "wrong-currency" => result with { Currency = "CAD" },
+            "missing-refund" => result with { ProviderRefundId = null },
+            "wrong-refund" => result with { ProviderRefundId = "ref_other" },
+            "missing-payment" => result with { ExternalId = null },
+            "wrong-payment" => result with { ExternalId = "pay_other" },
+            "unknown-payment" => result with { ExternalId = "pay_unknown" },
+            "stale" => result with { ProviderOccurredUtc = originalTime.AddMinutes(-1) },
+            _ => result
+        };
+        var gateway = BuildGateway();
+        gateway.Setup(x => x.GetRefundAsync(It.IsAny<BillingRefundLookupRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+        var service = new BillingReconciliationService(db, gateway.Object, BuildEntitlementService(db));
+        await service.ReconcilePendingProviderEventsAsync(10);
+        Assert.Equal(SubscriptionPaymentStatus.Completed, payment.Status);
+        Assert.Equal(originalTime, payment.UpdatedUtc);
+        Assert.Equal(originalTime, payment.ProviderOccurredUtc);
+        Assert.Equal(scenario == "distinct-refund" ? "ref_previous" : null, payment.ProviderRefundId);
+        Assert.Equal(ClientSubscriptionStatus.Active, subscription.Status);
+        Assert.Equal(ClientSubscriptionPaymentStanding.Current, subscription.PaymentStanding);
+        Assert.Empty(await db.ClientEntitlements.ToListAsync());
+        Assert.Empty(await db.BillingAuditEntries.Where(x => x.Action == "refund_applied").ToListAsync());
+        var observed = await db.BillingProviderEvents.SingleAsync();
+        Assert.Equal(scenario == "distinct-refund" ? BillingProviderEventProcessingStatus.ReconciliationRequired
+            : BillingProviderEventProcessingStatus.Deferred, observed.ProcessingStatus);
+        Assert.StartsWith("REFUND_", observed.SafeErrorCode);
+    }
+
+    [Fact]
+    public async Task RefundEvidence_ReplayedRefundDoesNotRepeatStandaloneEffects()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var payment = new SubscriptionPayment
+        {
+            ProviderPaymentId = "pay_replay", Provider = BillingProvider.Square,
+            ProviderEnvironment = BillingProviderEnvironment.Sandbox,
+            AmountCents = 10000, Currency = "USD", Status = SubscriptionPaymentStatus.Completed
+        };
+        db.SubscriptionPayments.Add(payment);
+        await db.SaveChangesAsync();
+        var gateway = BuildGateway();
+        gateway.Setup(x => x.GetRefundAsync(It.IsAny<BillingRefundLookupRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BillingPaymentResult(true, "pay_replay", "COMPLETED", null, null, null, false,
+                ProviderRefundId: "ref_replay", AmountCents: 2500, Currency: "USD"));
+        var service = new BillingReconciliationService(db, gateway.Object, BuildEntitlementService(db));
+        await RecordProviderEventAsync(db, BuildRefundPayload("evt_first", "refund.updated", "ref_replay", "pay_replay", "", "2026-07-22T01:15:00Z"));
+        await service.ReconcilePendingProviderEventsAsync(10);
+        var appliedTime = payment.UpdatedUtc;
+        await RecordProviderEventAsync(db, BuildRefundPayload("evt_replay", "refund.updated", "ref_replay", "pay_replay", "", "2026-07-22T01:16:00Z"));
+        await service.ReconcilePendingProviderEventsAsync(10);
+        Assert.Equal(SubscriptionPaymentStatus.PartiallyRefunded, payment.Status);
+        Assert.Equal(appliedTime, payment.UpdatedUtc);
+        Assert.Single(await db.BillingAuditEntries.Where(x => x.Action == "refund_applied").ToListAsync());
+        Assert.All(await db.BillingProviderEvents.ToListAsync(), e => Assert.Equal(BillingProviderEventProcessingStatus.Processed, e.ProcessingStatus));
+        Assert.Empty(await db.ClientEntitlements.ToListAsync());
+        Assert.Empty(await db.ClientSubscriptions.ToListAsync());
+    }
+
     [Fact]
     public async Task RefundEvent_UpdatesOriginalPayment_AndAuditTrail()
     {
