@@ -105,9 +105,74 @@ function targetPreintent(name,record) {
   preflightNonentry('legend-retained-preflight-nonentry-'+crypto.createHash('sha256').update(JSON.stringify(globalIdentity)).digest('hex'),translated);
 }
 
+
+function replacementAdmission(value) {
+  const keys = 'admissionId,applicationRevision,authorizesOneReplacement,baselineRevision,contentMode,controlRevision,expectedHead,expiresAtUtc,independentReviewDigest,noSqlEvidenceDigest,observedAtUtc,originalOperationId,packageDigest,phase,rollbackEvidenceDigest,rollbackPackageDigest,schemaVersion,serializationFenceEvidenceDigest,serializationKey,target,terminalNonresumableEvidenceDigest';
+  if (!exactKeys(value, keys) || value.schemaVersion !== 1 || value.phase !== 'replacement-admission' ||
+      value.target !== 'protect' || value.authorizesOneReplacement !== true ||
+      value.contentMode !== 'deterministic-full-replacement' || value.serializationKey !== 'legend-approved-release' ||
+      !['applicationRevision','baselineRevision','controlRevision','expectedHead'].every(k => sha(value[k],40)) ||
+      !['admissionId','independentReviewDigest','noSqlEvidenceDigest','originalOperationId','packageDigest',
+         'rollbackEvidenceDigest','rollbackPackageDigest','serializationFenceEvidenceDigest',
+         'terminalNonresumableEvidenceDigest'].every(k => sha(value[k],64)) ||
+      typeof value.observedAtUtc !== 'string' || !Number.isFinite(Date.parse(value.observedAtUtc)) ||
+      typeof value.expiresAtUtc !== 'string' || !Number.isFinite(Date.parse(value.expiresAtUtc)))
+    throw new Error('Invalid replacement recovery admission');
+}
+function replacementOperation(name, record) {
+  const match = /^legend-replacement-operation-(intent|submitted|ambiguous|success|failure|resolution-success|resolution-failure)-([a-f0-9]{64})$/.exec(name);
+  if (!match || !record || record.schemaVersion !== 1 || record.phase !== match[1] ||
+      record.operationId !== match[2] || record.target !== 'protect' ||
+      !sha(record.applicationRevision,40) || !sha(record.packageDigest,64) || !sha(record.baseline,40) ||
+      !sha(record.replacementOfOperationId,64) || !sha(record.recoveryAdmissionId,64) ||
+      !positive(record.packageProducerRun) || !positive(record.producingRun) || !positive(record.producingAttempt) ||
+      !Array.isArray(record.baselineDeploymentIds) ||
+      record.baselineDeploymentIds.some(v => typeof v !== 'string' || !/^[a-zA-Z0-9_.:-]{1,256}$/.test(v)))
+    throw new Error('Invalid replacement recovery operation');
+  replacementAdmission(record.recoveryAdmission);
+  if (record.recoveryAdmission.admissionId !== record.recoveryAdmissionId ||
+      record.recoveryAdmission.originalOperationId !== record.replacementOfOperationId ||
+      record.recoveryAdmission.applicationRevision !== record.applicationRevision ||
+      record.recoveryAdmission.packageDigest !== record.packageDigest ||
+      record.recoveryAdmission.baselineRevision !== record.baseline)
+    throw new Error('Replacement recovery admission does not bind operation');
+  const contracts = ['providerRequestCorrelation','submissionContract'].filter(k => record[k] !== undefined);
+  if (contracts.length !== 1) throw new Error('Replacement recovery operation requires one submission contract');
+  const contract = record[contracts[0]];
+  const kind = contracts[0] === 'submissionContract' ? 'azure_onedeploy_windows_intent_v1' : 'azure_onedeploy_deployment_tag_v1';
+  if (!exactKeys(contract,'kind,value') || contract.kind !== kind || contract.value !== record.operationId)
+    throw new Error('Invalid replacement recovery submission contract');
+  const common = ['schemaVersion','phase','operationId','target','applicationRevision','packageDigest','baseline',
+    'packageProducerRun','producingRun','producingAttempt','baselineDeploymentIds','replacementOfOperationId',
+    'recoveryAdmissionId','recoveryAdmission',contracts[0]];
+  const extra = {
+    intent: [],
+    submitted: ['deploymentId'],
+    ambiguous: ['ambiguityEvidenceDigest','replayAuthorized'],
+    success: ['deploymentIds','providerTerminalStatus','runtimeRevision','liveAcceptanceDigest','contentVerificationDigest','serializationReleaseDigest'],
+    failure: ['failureCode','terminalEvidenceDigest','serializationReleaseDigest','replayAuthorized'],
+    'resolution-success': ['deploymentIds','providerTerminalStatus','runtimeRevision','liveAcceptanceDigest','contentVerificationDigest','serializationReleaseDigest','ambiguityRecordDigest','reconciliationEvidenceDigest'],
+    'resolution-failure': ['failureCode','terminalEvidenceDigest','serializationReleaseDigest','replayAuthorized','ambiguityRecordDigest','reconciliationEvidenceDigest'],
+  }[record.phase];
+  if (!exactKeys(record, common.concat(extra).join(','))) throw new Error('Invalid replacement recovery phase shape');
+  for (const key of ['ambiguityEvidenceDigest','liveAcceptanceDigest','contentVerificationDigest','serializationReleaseDigest',
+                     'terminalEvidenceDigest','ambiguityRecordDigest','reconciliationEvidenceDigest'])
+    if (record[key] !== undefined && !sha(record[key],64)) throw new Error('Invalid replacement recovery evidence digest');
+  if (record.deploymentId !== undefined && (typeof record.deploymentId !== 'string' || record.baselineDeploymentIds.includes(record.deploymentId)))
+    throw new Error('Invalid replacement recovery deployment observation');
+  if (record.deploymentIds !== undefined && (!Array.isArray(record.deploymentIds) || record.deploymentIds.length !== 1 ||
+      record.baselineDeploymentIds.includes(record.deploymentIds[0]))) throw new Error('Invalid replacement recovery deployment result');
+  if ((record.phase === 'success' || record.phase === 'resolution-success') &&
+      (record.providerTerminalStatus !== 4 || record.runtimeRevision !== record.applicationRevision))
+    throw new Error('Invalid replacement recovery terminal success');
+  if ((record.phase === 'ambiguous' || record.phase === 'failure' || record.phase === 'resolution-failure') &&
+      record.replayAuthorized !== false) throw new Error('Replacement recovery replay must remain disabled');
+  return true;
+}
+
 // JSON arrives on stdin, never as an arbitrary upload path. Only the bounded
 // release operation record can be persisted; credentials cannot enter it.
-async function publish(client, name, record, {sleep = ms => new Promise(resolve => setTimeout(resolve, ms))} = {}) {
+async function publish(client, name, record, {sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), claim = false} = {}) {
   const targetHold = /^legend-retained-target-preintent-[a-f0-9]{64}$/.test(name);
   const preflight = /^legend-retained-preflight-nonentry-[a-f0-9]{64}$/.test(name);
   const retained = /^legend-retained-recovery-success-[a-f0-9]{64}$/.test(name);
@@ -118,10 +183,12 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
   const child = /^legend-release-child-(intent|success)-[a-f0-9]{64}$/.test(name);
   const plan = /^legend-release-transaction-plan-[a-f0-9]{64}$/.test(name);
   const recovery = /^legend-readiness-recovery-[a-f0-9]{64}$/.test(name);
-  if (!targetHold && !preflight && !retained && !completion && !observation && !locator && !admission && !child && !plan && !recovery && !/^legend-release-operation-(intent|success|submitted)-[a-f0-9]{64}$/.test(name))
+  const replacement = /^legend-replacement-operation-(intent|submitted|ambiguous|success|failure|resolution-success|resolution-failure)-[a-f0-9]{64}$/.test(name);
+  if (!targetHold && !preflight && !retained && !completion && !observation && !locator && !admission && !child && !plan && !recovery && !replacement && !/^legend-release-operation-(intent|success|submitted)-[a-f0-9]{64}$/.test(name))
     throw new Error('Invalid release operation artifact identity');
   const observationKeys = ['schemaVersion', 'phase', 'kind', 'observationIdentity', 'candidate', 'executionAuthority', 'databaseIdentity', 'schemaIdentity', 'baselineIdentity', 'observedUtc', 'pendingCount', 'mutationActivity', 'historicalExecution', 'historicalEvidenceIdentity', 'historicalReconciliationSources', 'bundleDigest', 'sqlExecutionAuthorized', 'producingRun', 'producingAttempt'];
-  const allowed = new Set(targetHold ? targetHoldKeys.split(',') : preflight ? preflightKeys.split(',') : retained ? ['schemaVersion', 'phase', 'originalRun', 'originalAttempt', 'applicationRevision', 'producingRun', 'producingAttempt', 'observer', 'targets'] : completion ? ['schemaVersion', 'phase', 'originalRun', 'applicationRevision', 'producingRun', 'producingAttempt', 'observer', 'targets'] : observation ? observationKeys : locator ? ['schemaVersion', 'component', 'contentIdentity', 'runId'] : recovery ? ['schemaVersion', 'operationId', 'candidateRevision', 'executionAuthority', 'targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt', 'phase'] : plan ? ['schemaVersion', 'planId', 'candidateRevision', 'producingRun', 'producingAttempt', 'targets', 'historySnapshot'] : child ? ['schemaVersion', 'child', 'dependencyIdentity', 'materialIdentity', 'evidenceIdentity', 'partitionIdentity',
+  if (replacement) replacementOperation(name, record);
+  const allowed = new Set(replacement ? Object.keys(record) : targetHold ? targetHoldKeys.split(',') : preflight ? preflightKeys.split(',') : retained ? ['schemaVersion', 'phase', 'originalRun', 'originalAttempt', 'applicationRevision', 'producingRun', 'producingAttempt', 'observer', 'targets'] : completion ? ['schemaVersion', 'phase', 'originalRun', 'applicationRevision', 'producingRun', 'producingAttempt', 'observer', 'targets'] : observation ? observationKeys : locator ? ['schemaVersion', 'component', 'contentIdentity', 'runId'] : recovery ? ['schemaVersion', 'operationId', 'candidateRevision', 'executionAuthority', 'targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt', 'phase'] : plan ? ['schemaVersion', 'planId', 'candidateRevision', 'producingRun', 'producingAttempt', 'targets', 'historySnapshot'] : child ? ['schemaVersion', 'child', 'dependencyIdentity', 'materialIdentity', 'evidenceIdentity', 'partitionIdentity',
     'applicationRevision', 'executionAuthority', 'producingRun', 'producingAttempt', 'phase', 'observation'] : admission ? ['schemaVersion', 'admissionId', 'sourcePr',
     'applicationRevision', 'authorizedSourceRevision', 'packageIdentity', 'executionAuthority', 'sourceMergeSha', 'selectedTargets',
     'resources', 'authorizationMode', 'producingRun', 'producingAttempt', 'phase'] : ['schemaVersion', 'operationId', 'target', 'applicationRevision',
@@ -352,12 +419,14 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
       return matches[0].id;
     }
     let artifactId = await existing();
+    let created = false;
     if (artifactId === null) {
       try {
         const result = await client.uploadArtifact(name, [source], directory, {retentionDays: 90});
         if (!Number.isSafeInteger(result.id) || result.id <= 0)
           throw new Error('Artifact upload did not return durable identity');
         artifactId = result.id;
+        created = true;
       } catch {
         // The upload may have committed. Reconcile with bounded read-only observation by exact immutable
         // name and bytes; absence or uncertainty never permits another upload.
@@ -387,7 +456,16 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
       }
       const readback = await fs.readFile(path.join(destination, filename), 'utf8');
       if (readback !== content) throw new Error('Release operation readback mismatch');
-      return {artifactId};
+      if (created) {
+        let confirmed = null;
+        for (let visibility = 0; visibility < 3; visibility++) {
+          if (visibility) await sleep(visibility * 1000);
+          confirmed = await existing();
+          if (confirmed !== null) break;
+        }
+        if (confirmed !== artifactId) throw new Error('Created artifact identity not uniquely confirmed');
+      }
+      return claim ? {artifactId, created} : {artifactId};
     }
   } finally { await fs.rm(directory, {recursive: true, force: true}); }
 }
@@ -399,8 +477,9 @@ if (require.main === module) {
       input += chunk;
       if (input.length > 524288) throw new Error('Operation record too large');
     }
-    const {name, record} = JSON.parse(input);
-    const result = await publish(new DefaultArtifactClient(), name, record);
+    const {mode, name, record} = JSON.parse(input);
+    if (mode !== undefined && mode !== 'claim') throw new Error('Unknown release operation transport mode');
+    const result = await publish(new DefaultArtifactClient(), name, record, {claim: mode === 'claim'});
     process.stdout.write(`LEGEND_OPERATION_RESULT=${JSON.stringify(result)}\n`);
   })().catch(() => {
     // SDK errors can contain signed URLs. Never forward those to release logs.
