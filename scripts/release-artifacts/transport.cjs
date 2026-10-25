@@ -338,7 +338,7 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
         ['selectedTargets', 'resources'].some(key => !Array.isArray(record[key]) || !record[key].length || record[key].length > 100 ||
           record[key].some(value => typeof value !== 'string' || !/^[a-zA-Z0-9:/_.-]{1,128}$/.test(value))))
       throw new Error('Invalid release admission identity');
-  } else if (![1, 2].includes(record.schemaVersion) || !['intent', 'success', 'submitted'].includes(record.phase) ||
+  } else if (!replacement && (![1, 2].includes(record.schemaVersion) || !['intent', 'success', 'submitted'].includes(record.phase) ||
       name !== `legend-release-operation-${record.phase}-${record.operationId}` ||
       !/^[a-f0-9]{64}$/.test(record.operationId) ||
       !/^[a-f0-9]{64}$/.test(record.packageDigest) ||
@@ -346,9 +346,9 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
       !/^[a-f0-9]{40}$/.test(record.baseline) ||
       !/^[a-z][a-z0-9-]{0,63}$/.test(record.target) ||
       ['producingRun', 'producingAttempt', 'packageProducerRun'].some(key =>
-        !Number.isSafeInteger(record[key]) || record[key] < 1))
+        !Number.isSafeInteger(record[key]) || record[key] < 1)))
     throw new Error('Invalid release operation identity');
-  if (!preflight && !retained && !completion && !observation && !locator && !recovery && !plan && !child && !admission) {
+  if (!preflight && !retained && !completion && !observation && !locator && !recovery && !plan && !child && !admission && !replacement) {
     if (record.recoveryEvidence !== undefined) recoveryEvidence(record);
     if (record.completionEvidence !== undefined) {
       const proof = record.completionEvidence;
