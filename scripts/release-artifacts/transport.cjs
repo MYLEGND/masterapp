@@ -456,7 +456,7 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
       }
       const readback = await fs.readFile(path.join(destination, filename), 'utf8');
       if (readback !== content) throw new Error('Release operation readback mismatch');
-      if (created) {
+      if (created && claim) {
         let confirmed = null;
         for (let visibility = 0; visibility < 3; visibility++) {
           if (visibility) await sleep(visibility * 1000);
