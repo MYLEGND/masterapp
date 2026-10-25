@@ -224,6 +224,7 @@ class ReplacementOperationJournal:
         self.resolution_success = self._read("resolution-success")
         self.resolution_failure = self._read("resolution-failure")
         self._submission_authority = False
+        self._reload_required = False
         self._validate_existing_state()
 
     def _now(self) -> _dt.datetime:
@@ -384,16 +385,29 @@ class ReplacementOperationJournal:
             raise RecoveryAdmissionError("Replacement submission contract conflict")
 
     def _append_exact(self, name: str, record: Mapping) -> dict:
-        """Append one immutable record and require exact synchronous readback."""
+        """Append one immutable record and require exact synchronous readback.
+
+        Any uncertain, malformed, or mismatched result poisons this journal
+        instance. The caller must construct a fresh journal and validate durable
+        state before any further mutation or provider authority is possible.
+        """
+        self._require_loaded_instance()
         try:
             result = self.append(name, record)
         except Exception as exc:
-            raise RecoveryAdmissionError("Replacement evidence append outcome uncertain; reload reconcile-only") from exc
-        if not isinstance(result, Mapping) or set(result) != {"record"} or not isinstance(result.get("record"), Mapping):
-            raise RecoveryAdmissionError("Replacement evidence append lacks exact validated readback")
+            self._poison()
+            raise RecoveryAdmissionError(
+                "Replacement evidence append outcome uncertain; validated reload required") from exc
+        if (not isinstance(result, Mapping) or set(result) != {"record"} or
+                not isinstance(result.get("record"), Mapping)):
+            self._poison()
+            raise RecoveryAdmissionError(
+                "Replacement evidence append lacks exact validated readback; reload required")
         readback = dict(result["record"])
         if readback != dict(record):
-            raise RecoveryAdmissionError("Replacement evidence append readback mismatch")
+            self._poison()
+            raise RecoveryAdmissionError(
+                "Replacement evidence append readback mismatch; reload required")
         return readback
 
     def _validate_existing_state(self) -> None:
@@ -439,7 +453,18 @@ class ReplacementOperationJournal:
         elif resolutions:
             raise RecoveryAdmissionError("Ambiguity resolution exists without retained ambiguity")
 
+    def _poison(self) -> None:
+        self._submission_authority = False
+        self._reload_required = True
+
+    def _require_loaded_instance(self) -> None:
+        if self._reload_required:
+            raise RecoveryAdmissionError(
+                "Replacement journal requires validated reload before further mutation")
+
     def state(self) -> RecoveryState:
+        if self._reload_required:
+            return RecoveryState("reconcile-only", self.operation_id)
         if self.success is not None or self.resolution_success is not None:
             return RecoveryState("terminal-success", self.operation_id)
         if self.failure is not None or self.resolution_failure is not None:
@@ -453,6 +478,7 @@ class ReplacementOperationJournal:
 
     def before_submit(self, baseline_ids, *, submission_kind: str) -> bool:
         """Atomically consume the one-use admission before provider I/O."""
+        self._require_loaded_instance()
         if submission_kind not in _ALLOWED_SUBMISSION_KINDS:
             raise RecoveryAdmissionError("Unsupported replacement submission contract")
         if self.intent is not None or any(x is not None for x in (
@@ -477,24 +503,28 @@ class ReplacementOperationJournal:
                 self._validate_phase(observed, "intent")
                 self._same_lineage(record, observed)
                 if observed != record:
-                    raise RecoveryAdmissionError("Uncertain replacement claim conflicts with durable intent") from exc
+                    self._poison()
+                    raise RecoveryAdmissionError(
+                        "Uncertain replacement claim conflicts with durable intent; reload required") from exc
                 self.intent = observed
-            self._revoke_submit()
-            raise RecoveryAdmissionError("Replacement intent claim outcome uncertain; reconcile-only") from exc
+            self._poison()
+            raise RecoveryAdmissionError(
+                "Replacement intent claim outcome uncertain; validated reload required") from exc
         if not isinstance(result, Mapping) or set(result) != {"status", "record"}:
-            self._revoke_submit()
-            raise RecoveryAdmissionError("Atomic replacement claim did not return validated ownership")
+            self._poison()
+            raise RecoveryAdmissionError(
+                "Atomic replacement claim did not return validated ownership; reload required")
         status = result.get("status")
         readback = result.get("record")
         if status not in {"created", "existing"} or not isinstance(readback, Mapping):
-            self._revoke_submit()
-            raise RecoveryAdmissionError("Atomic replacement claim result is invalid")
+            self._poison()
+            raise RecoveryAdmissionError("Atomic replacement claim result is invalid; reload required")
         readback = dict(readback)
         self._validate_phase(readback, "intent")
         self._same_lineage(record, readback)
         if readback != record:
-            self._revoke_submit()
-            raise RecoveryAdmissionError("Atomic replacement claim readback mismatch")
+            self._poison()
+            raise RecoveryAdmissionError("Atomic replacement claim readback mismatch; reload required")
         self.intent = readback
         if status == "existing":
             self._revoke_submit()
@@ -504,6 +534,7 @@ class ReplacementOperationJournal:
         return True
 
     def submission_correlation(self) -> dict:
+        self._require_loaded_instance()
         if (not self._submission_authority or self.intent is None or
                 any(x is not None for x in (
                     self.submitted, self.ambiguous, self.success, self.failure,
@@ -512,6 +543,7 @@ class ReplacementOperationJournal:
         return self._contract(self.intent)
 
     def record_submission_observation(self, deployment_id: str) -> dict:
+        self._require_loaded_instance()
         _provider_id(deployment_id, "replacement deploymentId")
         if self.intent is None:
             raise RecoveryAdmissionError("Durable replacement intent required")
@@ -532,6 +564,7 @@ class ReplacementOperationJournal:
         return record
 
     def record_ambiguous(self, *, ambiguity_evidence_digest: str) -> dict:
+        self._require_loaded_instance()
         _digest(ambiguity_evidence_digest, "ambiguity evidence digest")
         if self.intent is None:
             raise RecoveryAdmissionError("Durable replacement intent required")
@@ -584,6 +617,7 @@ class ReplacementOperationJournal:
     def record_success(self, *, deployment_id: str, runtime_revision: str,
                        live_acceptance_digest: str, content_verification_digest: str,
                        serialization_release_digest: str) -> dict:
+        self._require_loaded_instance()
         if self.intent is None or self.ambiguous is not None or self.failure is not None or self.resolution_failure is not None:
             raise RecoveryAdmissionError("Replacement success cannot override unresolved or terminal evidence")
         self._revoke_submit()
@@ -603,6 +637,7 @@ class ReplacementOperationJournal:
                                   serialization_release_digest: str,
                                   reconciliation_evidence_digest: str) -> dict:
         """Append authenticated terminal resolution without erasing ambiguity."""
+        self._require_loaded_instance()
         if self.intent is None or self.ambiguous is None:
             raise RecoveryAdmissionError("Retained ambiguous replacement evidence is required")
         if self.success is not None or self.failure is not None or self.resolution_failure is not None:
@@ -642,6 +677,7 @@ class ReplacementOperationJournal:
 
     def record_terminal_failure(self, *, failure_code: str, terminal_evidence_digest: str,
                                 serialization_release_digest: str) -> dict:
+        self._require_loaded_instance()
         if self.intent is None or self.ambiguous is not None or self.success is not None or self.resolution_success is not None:
             raise RecoveryAdmissionError("Replacement failure cannot override unresolved or terminal evidence")
         self._revoke_submit()
@@ -659,6 +695,7 @@ class ReplacementOperationJournal:
                                   serialization_release_digest: str,
                                   reconciliation_evidence_digest: str) -> dict:
         """Append authenticated terminal failure resolution without erasing ambiguity."""
+        self._require_loaded_instance()
         if self.intent is None or self.ambiguous is None:
             raise RecoveryAdmissionError("Retained ambiguous replacement evidence is required")
         if self.success is not None or self.failure is not None or self.resolution_success is not None:
