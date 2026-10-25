@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+import datetime as dt
 import importlib.util
 import json
+import sys
 from pathlib import Path
 import tempfile
 import subprocess
@@ -1011,6 +1013,153 @@ class RetainedRecoveryJournalTests(DurableOperationProtocolTests):
         with self.assertRaisesRegex(ValueError, 'producer/material'):
             self.recovery(recovery_evidence=dict(runId=99, runAttempt=1, originalRun=8,
                                                 applicationRevision='a' * 40))
+
+
+class ReplacementRecoveryAdmissionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        replacement_spec = importlib.util.spec_from_file_location(
+            'replacement_recovery_admission',
+            Path(__file__).with_name('recovery-replacement-admission.py'))
+        cls.replacement = importlib.util.module_from_spec(replacement_spec)
+        sys.modules[replacement_spec.name] = cls.replacement
+        replacement_spec.loader.exec_module(cls.replacement)
+        cls.now = dt.datetime(2026, 10, 25, 16, 40, tzinfo=dt.timezone.utc)
+
+    def admission(self, **changes):
+        value = {
+            'schemaVersion': 1, 'phase': 'replacement-admission', 'admissionId': '0' * 64,
+            'target': 'protect', 'originalOperationId': '1' * 64,
+            'applicationRevision': 'a' * 40, 'packageDigest': '2' * 64,
+            'baselineRevision': 'b' * 40, 'expectedHead': 'a' * 40,
+            'controlRevision': 'c' * 40, 'rollbackPackageDigest': '3' * 64,
+            'terminalNonresumableEvidenceDigest': '4' * 64,
+            'serializationFenceEvidenceDigest': '5' * 64, 'noSqlEvidenceDigest': '6' * 64,
+            'rollbackEvidenceDigest': '7' * 64, 'independentReviewDigest': '8' * 64,
+            'contentMode': 'deterministic-full-replacement',
+            'serializationKey': 'legend-approved-release',
+            'observedAtUtc': '2026-10-25T16:39:00Z',
+            'expiresAtUtc': '2026-10-25T16:49:00Z', 'authorizesOneReplacement': True,
+        }
+        value.update(changes)
+        value['admissionId'] = self.replacement.recovery_admission_id(value)
+        return value
+
+    @staticmethod
+    def original_intent():
+        return {'operationId': '1' * 64, 'target': 'protect',
+                'applicationRevision': 'd' * 40, 'packageDigest': '9' * 64,
+                'baseline': 'b' * 40}
+
+    class Store:
+        def __init__(self):
+            self.rows, self.published = {}, []
+        def lookup(self, phase, operation):
+            return self.rows.get((phase, operation))
+        def publish(self, name, record):
+            frozen = json.loads(json.dumps(record, sort_keys=True))
+            key = (record['phase'], record['operationId'])
+            if key in self.rows and self.rows[key] != frozen:
+                raise AssertionError('conflicting durable record')
+            self.rows[key] = frozen
+            self.published.append((name, frozen))
+            return {'artifactId': len(self.published)}
+
+    def owner(self, store=None, admission=None, run=30):
+        store = store or self.Store()
+        return self.replacement.ReplacementOperationJournal(
+            admission=admission or self.admission(), original_intent=self.original_intent(),
+            lookup=store.lookup, publish=store.publish, package_producer_run=20,
+            producing_run=run, producing_attempt=1, now=self.now), store
+
+    def test_replacement_operation_is_distinct_and_binds_all_admission_evidence(self):
+        owner, _ = self.owner()
+        changed, _ = self.owner(admission=self.admission(noSqlEvidenceDigest='f' * 64))
+        self.assertNotEqual('1' * 64, owner.operation_id)
+        self.assertNotEqual(owner.operation_id, changed.operation_id)
+
+    def test_stale_or_snapshot_only_admission_cannot_authorize_replacement(self):
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'fresh'):
+            self.owner(admission=self.admission(expiresAtUtc='2026-10-25T16:39:30Z'))
+        incomplete = self.admission()
+        incomplete.pop('terminalNonresumableEvidenceDigest')
+        incomplete['admissionId'] = self.replacement.recovery_admission_id(incomplete)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'shape'):
+            self.owner(admission=incomplete)
+
+    def test_one_use_admission_is_consumed_before_provider_io_and_resume_is_reconcile_only(self):
+        owner, store = self.owner()
+        self.assertTrue(owner.before_submit(['old'], submission_kind='azure_onedeploy_windows_intent_v1'))
+        self.assertEqual('reconcile-only', owner.state().state)
+        self.assertEqual(owner.operation_id, owner.submission_correlation()['value'])
+        resumed, _ = self.owner(store=store, admission=owner.admission, run=31)
+        self.assertFalse(resumed.before_submit(['old'], submission_kind='azure_onedeploy_windows_intent_v1'))
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'Fresh durable replacement intent'):
+            resumed.submission_correlation()
+        self.assertEqual(1, len(store.published))
+
+    def test_provider_observation_must_be_new_and_conflicts_fail(self):
+        owner, _ = self.owner()
+        owner.before_submit(['old'], submission_kind='azure_onedeploy_windows_intent_v1')
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'outside the baseline'):
+            owner.record_submission_observation('old')
+        owner.record_submission_observation('new-deployment')
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'Conflicting'):
+            owner.record_submission_observation('different-deployment')
+
+    def test_ambiguous_replacement_is_durable_reconcile_only_and_never_replays(self):
+        owner, store = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        owner.record_ambiguous(ambiguity_evidence_digest='a' * 64)
+        self.assertEqual('reconcile-only', owner.state().state)
+        self.assertFalse(owner.state().replay_authorized)
+        resumed, _ = self.owner(store=store, admission=owner.admission, run=31)
+        self.assertFalse(resumed.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1'))
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'unresolved'):
+            resumed.record_success(deployment_id='new', runtime_revision='a' * 40,
+                live_acceptance_digest='b' * 64, content_verification_digest='c' * 64,
+                serialization_release_digest='d' * 64)
+
+    def test_success_requires_exact_runtime_content_live_acceptance_and_new_provider_id(self):
+        owner, _ = self.owner()
+        owner.before_submit(['old'], submission_kind='azure_onedeploy_windows_intent_v1')
+        owner.record_submission_observation('new')
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'runtime'):
+            owner.record_success(deployment_id='new', runtime_revision='e' * 40,
+                live_acceptance_digest='b' * 64, content_verification_digest='c' * 64,
+                serialization_release_digest='d' * 64)
+        success = owner.record_success(deployment_id='new', runtime_revision='a' * 40,
+            live_acceptance_digest='b' * 64, content_verification_digest='c' * 64,
+            serialization_release_digest='d' * 64)
+        self.assertEqual(4, success['providerTerminalStatus'])
+        self.assertEqual('terminal-success', owner.state().state)
+
+    def test_terminal_failure_is_final_and_does_not_authorize_retry(self):
+        owner, _ = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        failure = owner.record_terminal_failure(failure_code='provider-terminal-failure',
+            terminal_evidence_digest='e' * 64, serialization_release_digest='f' * 64)
+        self.assertFalse(failure['replayAuthorized'])
+        self.assertEqual('terminal-failure', owner.state().state)
+        self.assertFalse(owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1'))
+
+    def test_admission_mutation_invalidates_identity(self):
+        value = self.admission()
+        value['rollbackPackageDigest'] = 'f' * 64
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'identity mismatch'):
+            self.owner(admission=value)
+
+    def test_original_ambiguous_intent_is_preserved_not_reclassified(self):
+        original = self.original_intent()
+        before = json.dumps(original, sort_keys=True)
+        store = self.Store()
+        owner = self.replacement.ReplacementOperationJournal(
+            admission=self.admission(), original_intent=original, lookup=store.lookup,
+            publish=store.publish, package_producer_run=20, producing_run=30,
+            producing_attempt=1, now=self.now)
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        self.assertEqual(before, json.dumps(original, sort_keys=True))
+        self.assertEqual('1' * 64, owner.intent['replacementOfOperationId'])
 
 if __name__ == '__main__':
     unittest.main()
