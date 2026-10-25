@@ -1015,6 +1015,7 @@ class RetainedRecoveryJournalTests(DurableOperationProtocolTests):
                                                 applicationRevision='a' * 40))
 
 
+
 class ReplacementRecoveryAdmissionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -1053,24 +1054,48 @@ class ReplacementRecoveryAdmissionTests(unittest.TestCase):
 
     class Store:
         def __init__(self):
+            import threading
             self.rows, self.published = {}, []
+            self.lock = threading.Lock()
+            self.fail_claim_after_create = False
+            self.claim_calls = 0
+
         def lookup(self, phase, operation):
-            return self.rows.get((phase, operation))
-        def publish(self, name, record):
+            with self.lock:
+                row = self.rows.get((phase, operation))
+                return None if row is None else json.loads(json.dumps(row))
+
+        def claim(self, name, record):
+            frozen = json.loads(json.dumps(record, sort_keys=True))
+            key = ('intent', record['operationId'])
+            with self.lock:
+                self.claim_calls += 1
+                if key in self.rows:
+                    return {'status': 'existing',
+                            'record': json.loads(json.dumps(self.rows[key]))}
+                self.rows[key] = frozen
+                self.published.append((name, frozen))
+                if self.fail_claim_after_create:
+                    raise TimeoutError('claim readback lost')
+                return {'status': 'created', 'record': json.loads(json.dumps(frozen))}
+
+        def append(self, name, record):
             frozen = json.loads(json.dumps(record, sort_keys=True))
             key = (record['phase'], record['operationId'])
-            if key in self.rows and self.rows[key] != frozen:
-                raise AssertionError('conflicting durable record')
-            self.rows[key] = frozen
-            self.published.append((name, frozen))
-            return {'artifactId': len(self.published)}
+            with self.lock:
+                if key in self.rows and self.rows[key] != frozen:
+                    raise AssertionError('conflicting durable record')
+                self.rows[key] = frozen
+                self.published.append((name, frozen))
+                return {'record': json.loads(json.dumps(frozen))}
 
-    def owner(self, store=None, admission=None, run=30):
+    def owner(self, store=None, admission=None, run=30, clock=None):
         store = store or self.Store()
         return self.replacement.ReplacementOperationJournal(
             admission=admission or self.admission(), original_intent=self.original_intent(),
-            lookup=store.lookup, publish=store.publish, package_producer_run=20,
-            producing_run=run, producing_attempt=1, now=self.now), store
+            lookup=store.lookup, claim=store.claim, append=store.append,
+            package_producer_run=20, producing_run=run, producing_attempt=1,
+            clock=clock or (lambda: self.now)), store
 
     def test_replacement_operation_is_distinct_and_binds_all_admission_evidence(self):
         owner, _ = self.owner()
@@ -1078,70 +1103,172 @@ class ReplacementRecoveryAdmissionTests(unittest.TestCase):
         self.assertNotEqual('1' * 64, owner.operation_id)
         self.assertNotEqual(owner.operation_id, changed.operation_id)
 
-    def test_stale_or_snapshot_only_admission_cannot_authorize_replacement(self):
+    def test_freshness_is_rechecked_at_claim_not_only_construction(self):
+        moment = [self.now]
+        owner, store = self.owner(clock=lambda: moment[0])
+        moment[0] = dt.datetime(2026, 10, 25, 16, 50, tzinfo=dt.timezone.utc)
         with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'fresh'):
-            self.owner(admission=self.admission(expiresAtUtc='2026-10-25T16:39:30Z'))
-        incomplete = self.admission()
-        incomplete.pop('terminalNonresumableEvidenceDigest')
-        incomplete['admissionId'] = self.replacement.recovery_admission_id(incomplete)
-        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'shape'):
-            self.owner(admission=incomplete)
+            owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        self.assertEqual(0, store.claim_calls)
 
-    def test_one_use_admission_is_consumed_before_provider_io_and_resume_is_reconcile_only(self):
-        owner, store = self.owner()
-        self.assertTrue(owner.before_submit(['old'], submission_kind='azure_onedeploy_windows_intent_v1'))
-        self.assertEqual('reconcile-only', owner.state().state)
-        self.assertEqual(owner.operation_id, owner.submission_correlation()['value'])
-        resumed, _ = self.owner(store=store, admission=owner.admission, run=31)
-        self.assertFalse(resumed.before_submit(['old'], submission_kind='azure_onedeploy_windows_intent_v1'))
-        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'Fresh durable replacement intent'):
+    def test_expired_consumed_operation_loads_reconcile_only_without_renewed_authority(self):
+        store = self.Store()
+        first, _ = self.owner(store=store)
+        self.assertTrue(first.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1'))
+        expired = dt.datetime(2026, 10, 25, 16, 55, tzinfo=dt.timezone.utc)
+        resumed, _ = self.owner(store=store, admission=first.admission, run=31, clock=lambda: expired)
+        self.assertEqual('reconcile-only', resumed.state().state)
+        self.assertFalse(resumed.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1'))
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
             resumed.submission_correlation()
-        self.assertEqual(1, len(store.published))
 
-    def test_provider_observation_must_be_new_and_conflicts_fail(self):
+    def test_preconstructed_journals_share_one_atomic_claim(self):
+        store = self.Store()
+        left, _ = self.owner(store=store)
+        right, _ = self.owner(store=store)
+        self.assertTrue(left.before_submit(['old'], submission_kind='azure_onedeploy_windows_intent_v1'))
+        self.assertFalse(right.before_submit(['old'], submission_kind='azure_onedeploy_windows_intent_v1'))
+        self.assertEqual(2, store.claim_calls)
+        self.assertEqual(1, len([x for x in store.published if x[1]['phase'] == 'intent']))
+        self.assertEqual(left.operation_id, left.submission_correlation()['value'])
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+            right.submission_correlation()
+
+    def test_concurrent_journals_cannot_both_obtain_submission_authority(self):
+        import concurrent.futures
+        import threading
+        store = self.Store()
+        owners = [self.owner(store=store)[0], self.owner(store=store)[0]]
+        barrier = threading.Barrier(2)
+        def claim(owner):
+            barrier.wait()
+            return owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(claim, owners))
+        self.assertEqual([False, True], sorted(results))
+        authority = 0
+        for owner in owners:
+            try:
+                owner.submission_correlation()
+                authority += 1
+            except self.replacement.RecoveryAdmissionError:
+                pass
+        self.assertEqual(1, authority)
+
+    def test_uncertain_claim_write_fails_closed_even_when_intent_committed(self):
+        store = self.Store()
+        store.fail_claim_after_create = True
+        owner, _ = self.owner(store=store)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'uncertain'):
+            owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        self.assertEqual('reconcile-only', owner.state().state)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+            owner.submission_correlation()
+        resumed, _ = self.owner(store=store, admission=owner.admission, run=31)
+        self.assertEqual('reconcile-only', resumed.state().state)
+        self.assertFalse(resumed.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1'))
+
+    def test_provider_observation_must_be_new_and_revokes_submission_authority(self):
         owner, _ = self.owner()
         owner.before_submit(['old'], submission_kind='azure_onedeploy_windows_intent_v1')
         with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'outside the baseline'):
             owner.record_submission_observation('old')
         owner.record_submission_observation('new-deployment')
-        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'Conflicting'):
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+            owner.submission_correlation()
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
             owner.record_submission_observation('different-deployment')
 
-    def test_ambiguous_replacement_is_durable_reconcile_only_and_never_replays(self):
+    def test_malformed_terminal_success_is_rejected_on_resume(self):
+        owner, store = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        bad = dict(owner.intent, phase='success')
+        store.rows[('success', owner.operation_id)] = bad
+        with self.assertRaises(self.replacement.RecoveryAdmissionError):
+            self.owner(store=store, admission=owner.admission, run=31)
+
+    def test_runtime_provider_and_producer_conflicts_are_rejected_on_resume(self):
+        owner, store = self.owner()
+        owner.before_submit(['old'], submission_kind='azure_onedeploy_windows_intent_v1')
+        submitted = dict(owner.intent, phase='submitted', deploymentId='new')
+        submitted['producingRun'] = owner.intent['producingRun'] + 1
+        store.rows[('submitted', owner.operation_id)] = submitted
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'producer'):
+            self.owner(store=store, admission=owner.admission, run=31)
+        store.rows.pop(('submitted', owner.operation_id))
+        success = dict(owner.intent, phase='success', deploymentIds=['new'],
+            providerTerminalStatus=4, runtimeRevision='e' * 40,
+            liveAcceptanceDigest='a' * 64, contentVerificationDigest='b' * 64,
+            serializationReleaseDigest='c' * 64)
+        store.rows[('success', owner.operation_id)] = success
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'runtime'):
+            self.owner(store=store, admission=owner.admission, run=31)
+        success['runtimeRevision'] = 'a' * 40
+        success['deploymentIds'] = ['old']
+        store.rows[('success', owner.operation_id)] = success
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'new provider'):
+            self.owner(store=store, admission=owner.admission, run=31)
+
+    def test_submitted_and_success_provider_conflict_is_rejected(self):
+        owner, store = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        owner.record_submission_observation('submitted-id')
+        success = dict(owner.intent, phase='success', deploymentIds=['other-id'],
+            providerTerminalStatus=4, runtimeRevision='a' * 40,
+            liveAcceptanceDigest='a' * 64, contentVerificationDigest='b' * 64,
+            serializationReleaseDigest='c' * 64,
+            producingRun=31, producingAttempt=1)
+        store.rows[('success', owner.operation_id)] = success
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'conflicts'):
+            self.owner(store=store, admission=owner.admission, run=31)
+
+    def test_ambiguous_result_revokes_authority_and_can_only_resolve_append_only(self):
         owner, store = self.owner()
         owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
         owner.record_ambiguous(ambiguity_evidence_digest='a' * 64)
-        self.assertEqual('reconcile-only', owner.state().state)
-        self.assertFalse(owner.state().replay_authorized)
-        resumed, _ = self.owner(store=store, admission=owner.admission, run=31)
-        self.assertFalse(resumed.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1'))
-        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'unresolved'):
-            resumed.record_success(deployment_id='new', runtime_revision='a' * 40,
-                live_acceptance_digest='b' * 64, content_verification_digest='c' * 64,
-                serialization_release_digest='d' * 64)
-
-    def test_success_requires_exact_runtime_content_live_acceptance_and_new_provider_id(self):
-        owner, _ = self.owner()
-        owner.before_submit(['old'], submission_kind='azure_onedeploy_windows_intent_v1')
-        owner.record_submission_observation('new')
-        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'runtime'):
-            owner.record_success(deployment_id='new', runtime_revision='e' * 40,
-                live_acceptance_digest='b' * 64, content_verification_digest='c' * 64,
-                serialization_release_digest='d' * 64)
-        success = owner.record_success(deployment_id='new', runtime_revision='a' * 40,
+        ambiguity = json.loads(json.dumps(owner.ambiguous))
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+            owner.submission_correlation()
+        resolution = owner.resolve_ambiguous_success(
+            deployment_id='new', runtime_revision='a' * 40,
             live_acceptance_digest='b' * 64, content_verification_digest='c' * 64,
-            serialization_release_digest='d' * 64)
-        self.assertEqual(4, success['providerTerminalStatus'])
+            serialization_release_digest='d' * 64, reconciliation_evidence_digest='e' * 64)
         self.assertEqual('terminal-success', owner.state().state)
+        self.assertEqual(ambiguity, store.rows[('ambiguous', owner.operation_id)])
+        self.assertEqual(self.replacement._record_digest(ambiguity), resolution['ambiguityRecordDigest'])
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'Conflicting'):
+            owner.resolve_ambiguous_failure(
+                failure_code='provider-terminal-failure',
+                terminal_evidence_digest='f' * 64,
+                serialization_release_digest='1' * 64,
+                reconciliation_evidence_digest='2' * 64)
 
-    def test_terminal_failure_is_final_and_does_not_authorize_retry(self):
+    def test_terminal_failure_revokes_authority_and_rejects_later_submission(self):
         owner, _ = self.owner()
         owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
-        failure = owner.record_terminal_failure(failure_code='provider-terminal-failure',
+        owner.record_terminal_failure(
+            failure_code='provider-terminal-failure',
             terminal_evidence_digest='e' * 64, serialization_release_digest='f' * 64)
-        self.assertFalse(failure['replayAuthorized'])
         self.assertEqual('terminal-failure', owner.state().state)
-        self.assertFalse(owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1'))
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+            owner.submission_correlation()
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+            owner.record_submission_observation('new')
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'terminal'):
+            owner.record_success(
+                deployment_id='new', runtime_revision='a' * 40,
+                live_acceptance_digest='a' * 64, content_verification_digest='b' * 64,
+                serialization_release_digest='c' * 64)
+
+    def test_repeated_authority_read_is_only_valid_before_any_later_phase(self):
+        owner, _ = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        first = owner.submission_correlation()
+        second = owner.submission_correlation()
+        self.assertEqual(first, second)
+        owner.record_ambiguous(ambiguity_evidence_digest='a' * 64)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+            owner.submission_correlation()
 
     def test_admission_mutation_invalidates_identity(self):
         value = self.admission()
@@ -1155,8 +1282,8 @@ class ReplacementRecoveryAdmissionTests(unittest.TestCase):
         store = self.Store()
         owner = self.replacement.ReplacementOperationJournal(
             admission=self.admission(), original_intent=original, lookup=store.lookup,
-            publish=store.publish, package_producer_run=20, producing_run=30,
-            producing_attempt=1, now=self.now)
+            claim=store.claim, append=store.append, package_producer_run=20,
+            producing_run=30, producing_attempt=1, clock=lambda: self.now)
         owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
         self.assertEqual(before, json.dumps(original, sort_keys=True))
         self.assertEqual('1' * 64, owner.intent['replacementOfOperationId'])
