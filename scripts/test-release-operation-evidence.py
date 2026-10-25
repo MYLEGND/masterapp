@@ -1678,7 +1678,7 @@ class CanonicalReplacementAdapterTests(unittest.TestCase):
         original = fence.verify; count = [0]
         def verify():
             count[0] += 1
-            if count[0] >= 3: raise RuntimeError('synthetic fence loss')
+            if count[0] >= 2: raise RuntimeError('synthetic fence loss')
             return original()
         fence.verify = verify
         # Reset threshold accounting after construction.
