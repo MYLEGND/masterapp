@@ -1572,7 +1572,9 @@ class CanonicalReplacementAdapterTests(unittest.TestCase):
         self.assertEqual('reconcile-only', owner.journal.state().state)
         self.assertIn(('ambiguous', owner.journal.operation_id), store.rows)
         with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'already consumed'):
-            owner.call_provider_once(fail, ambiguity_evidence_digest='e' * 64)
+            owner.call_provider_once(
+                fail, baseline_deployment_ids=['old'],
+                ambiguity_evidence_digest='e' * 64)
         self.assertEqual(1, calls[0])
 
     def test_fence_loss_after_fake_provider_call_records_ambiguity_and_never_replays(self):
@@ -1581,7 +1583,7 @@ class CanonicalReplacementAdapterTests(unittest.TestCase):
         calls = [0]
         def verify():
             calls[0] += 1
-            if calls[0] >= 4:
+            if calls[0] >= 3:
                 raise self.adapter.RecoveryAdapterError('synthetic fence loss')
             return original_verify()
         fence.verify = verify
