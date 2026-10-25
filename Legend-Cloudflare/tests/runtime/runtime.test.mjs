@@ -69,8 +69,36 @@ test('cancellation during reservation settles zero without dispatching model', a
   assert.equal(result.error.code, 'cancelled'); assert.equal(f.dispatches.length, 0); assert.equal(result.usage.costMicrousd, 0);
 });
 test('deadline bounds hanging provider and unknown charge survives', async () => {
-  const f = fixture(); f.envelope.limits.deadlineUnixMs = Date.now() + 15; f.env.AI.run = async () => new Promise(() => {});
-  const result = await orchestrate(f); assert.equal(result.error.code, 'deadline_exceeded'); assert.equal(f.settlements[0].usageKnown, false);
+  const realNow = Date.now; const realSetTimeout = globalThis.setTimeout; const realClearTimeout = globalThis.clearTimeout;
+  let now = 1000; let fireDeadline;
+  Date.now = () => now;
+  globalThis.setTimeout = (callback, delay) => { assert.equal(delay, 15); fireDeadline = callback; return 1; };
+  globalThis.clearTimeout = () => {};
+  try {
+    const f = fixture(); f.envelope.limits.deadlineUnixMs = now + 15;
+    let providerStarted; const started = new Promise(resolve => { providerStarted = resolve; });
+    f.env.AI.run = async () => { providerStarted(); return new Promise(() => {}); };
+    const pending = orchestrate(f);
+    await started;
+    assert.equal(f.dispatches.length, 0); // The synthetic provider override does not use fixture dispatch accounting.
+    now += 15; fireDeadline();
+    const result = await pending;
+    assert.equal(result.error.code, 'deadline_exceeded');
+    assert.equal(f.settlements.length, 1); assert.equal(f.settlements[0].usageKnown, false);
+  } finally {
+    Date.now = realNow; globalThis.setTimeout = realSetTimeout; globalThis.clearTimeout = realClearTimeout;
+  }
+});
+test('deadline expired before provider dispatch remains known zero', async () => {
+  const realNow = Date.now; let now = 2000; Date.now = () => now;
+  try {
+    const f = fixture(); f.envelope.limits.deadlineUnixMs = now;
+    let providerCalls = 0; f.env.AI.run = async () => { providerCalls++; return response('unexpected'); };
+    const result = await orchestrate(f);
+    assert.equal(result.error.code, 'deadline_exceeded');
+    assert.equal(providerCalls, 0); assert.equal(f.settlements.length, 0);
+    assert.equal(result.usage.costMicrousd, 0); assert.equal(result.usage.costEvidence, 'provider_usage');
+  } finally { Date.now = realNow; }
 });
 test('one cloud loop passes tool results with stable identity to next model turn', async () => {
   const f = fixture(); f.envelope.task.tools = [{ type: 'function', name: 'read_repository', parameters: { type: 'object' } }];
