@@ -1549,7 +1549,7 @@ class CanonicalReplacementAdapterTests(unittest.TestCase):
             ambiguity_evidence_digest='e' * 64)
         self.assertEqual('new-deployment', result)
         self.assertEqual(1, len(calls))
-        self.assertEqual('submitted', owner.journal.state().state)
+        self.assertEqual('reconcile-only', owner.journal.state().state)
         self.assertGreaterEqual(fence.calls, 3)
         with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'already consumed'):
             owner.call_provider_once(lambda _: self.fail('provider called twice'),
