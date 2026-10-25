@@ -1462,7 +1462,7 @@ class CanonicalReplacementAdapterTests(unittest.TestCase):
     def setUpClass(cls):
         adapter_spec = importlib.util.spec_from_file_location(
             'replacement_recovery_adapter',
-            Path(__file__).with_name('recovery-replacement-adapter.py'))
+            Path(__file__).with_name('release-artifacts') / 'recovery-replacement-adapter.py')
         cls.adapter = importlib.util.module_from_spec(adapter_spec)
         sys.modules[adapter_spec.name] = cls.adapter
         adapter_spec.loader.exec_module(cls.adapter)
