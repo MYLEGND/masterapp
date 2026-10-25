@@ -1058,6 +1058,8 @@ class ReplacementRecoveryAdmissionTests(unittest.TestCase):
             self.rows, self.published = {}, []
             self.lock = threading.Lock()
             self.fail_claim_after_create = False
+            self.claim_mode = None
+            self.append_mode = None
             self.claim_calls = 0
 
         def lookup(self, phase, operation):
@@ -1075,18 +1077,34 @@ class ReplacementRecoveryAdmissionTests(unittest.TestCase):
                             'record': json.loads(json.dumps(self.rows[key]))}
                 self.rows[key] = frozen
                 self.published.append((name, frozen))
-                if self.fail_claim_after_create:
+                if self.fail_claim_after_create or self.claim_mode == 'commit-timeout':
                     raise TimeoutError('claim readback lost')
+                if self.claim_mode == 'malformed':
+                    return {'status': 'created', 'record': None}
+                if self.claim_mode == 'mismatch':
+                    wrong = json.loads(json.dumps(frozen))
+                    wrong['baseline'] = 'e' * 40
+                    return {'status': 'created', 'record': wrong}
                 return {'status': 'created', 'record': json.loads(json.dumps(frozen))}
 
         def append(self, name, record):
             frozen = json.loads(json.dumps(record, sort_keys=True))
             key = (record['phase'], record['operationId'])
             with self.lock:
+                if self.append_mode == 'no-commit-timeout':
+                    raise TimeoutError('append write unavailable')
                 if key in self.rows and self.rows[key] != frozen:
                     raise AssertionError('conflicting durable record')
                 self.rows[key] = frozen
                 self.published.append((name, frozen))
+                if self.append_mode == 'commit-timeout':
+                    raise TimeoutError('append readback lost')
+                if self.append_mode == 'malformed':
+                    return {'unexpected': True}
+                if self.append_mode == 'mismatch':
+                    wrong = json.loads(json.dumps(frozen))
+                    wrong['producingAttempt'] = wrong['producingAttempt'] + 1
+                    return {'record': wrong}
                 return {'record': json.loads(json.dumps(frozen))}
 
     def owner(self, store=None, admission=None, run=30, clock=None):
@@ -1269,6 +1287,124 @@ class ReplacementRecoveryAdmissionTests(unittest.TestCase):
         owner.record_ambiguous(ambiguity_evidence_digest='a' * 64)
         with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
             owner.submission_correlation()
+
+    def test_success_commit_before_timeout_poison_blocks_opposite_terminal_until_reload(self):
+        owner, store = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        store.append_mode = 'commit-timeout'
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+            owner.record_success(
+                deployment_id='new', runtime_revision='a' * 40,
+                live_acceptance_digest='a' * 64, content_verification_digest='b' * 64,
+                serialization_release_digest='c' * 64)
+        self.assertIn(('success', owner.operation_id), store.rows)
+        self.assertEqual('reconcile-only', owner.state().state)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+            owner.record_terminal_failure(
+                failure_code='provider-terminal-failure',
+                terminal_evidence_digest='d' * 64, serialization_release_digest='e' * 64)
+        store.append_mode = None
+        resumed, _ = self.owner(store=store, admission=owner.admission, run=31)
+        self.assertEqual('terminal-success', resumed.state().state)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'cannot override'):
+            resumed.record_terminal_failure(
+                failure_code='provider-terminal-failure',
+                terminal_evidence_digest='d' * 64, serialization_release_digest='e' * 64)
+
+    def test_no_commit_timeout_poison_requires_reload_then_allows_same_evidence_append(self):
+        owner, store = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        store.append_mode = 'no-commit-timeout'
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+            owner.record_success(
+                deployment_id='new', runtime_revision='a' * 40,
+                live_acceptance_digest='a' * 64, content_verification_digest='b' * 64,
+                serialization_release_digest='c' * 64)
+        self.assertNotIn(('success', owner.operation_id), store.rows)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+            owner.record_ambiguous(ambiguity_evidence_digest='d' * 64)
+        store.append_mode = None
+        resumed, _ = self.owner(store=store, admission=owner.admission, run=31)
+        success = resumed.record_success(
+            deployment_id='new', runtime_revision='a' * 40,
+            live_acceptance_digest='a' * 64, content_verification_digest='b' * 64,
+            serialization_release_digest='c' * 64)
+        self.assertEqual(['new'], success['deploymentIds'])
+        self.assertEqual('terminal-success', resumed.state().state)
+
+    def test_malformed_append_readback_poison_blocks_all_later_mutation(self):
+        owner, store = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        store.append_mode = 'malformed'
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+            owner.record_ambiguous(ambiguity_evidence_digest='a' * 64)
+        self.assertIn(('ambiguous', owner.operation_id), store.rows)
+        for action in (
+            lambda: owner.record_terminal_failure(
+                failure_code='provider-terminal-failure',
+                terminal_evidence_digest='b' * 64, serialization_release_digest='c' * 64),
+            lambda: owner.submission_correlation(),
+        ):
+            with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+                action()
+        store.append_mode = None
+        resumed, _ = self.owner(store=store, admission=owner.admission, run=31)
+        self.assertEqual('reconcile-only', resumed.state().state)
+
+    def test_mismatched_append_readback_poison_then_valid_reload_uses_durable_record(self):
+        owner, store = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        store.append_mode = 'mismatch'
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+            owner.record_terminal_failure(
+                failure_code='provider-terminal-failure',
+                terminal_evidence_digest='a' * 64, serialization_release_digest='b' * 64)
+        self.assertIn(('failure', owner.operation_id), store.rows)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+            owner.record_success(
+                deployment_id='new', runtime_revision='a' * 40,
+                live_acceptance_digest='c' * 64, content_verification_digest='d' * 64,
+                serialization_release_digest='e' * 64)
+        store.append_mode = None
+        resumed, _ = self.owner(store=store, admission=owner.admission, run=31)
+        self.assertEqual('terminal-failure', resumed.state().state)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'cannot override'):
+            resumed.record_success(
+                deployment_id='new', runtime_revision='a' * 40,
+                live_acceptance_digest='c' * 64, content_verification_digest='d' * 64,
+                serialization_release_digest='e' * 64)
+
+    def test_malformed_and_mismatched_claim_readback_poison_instance(self):
+        for mode in ('malformed', 'mismatch'):
+            with self.subTest(mode=mode):
+                store = self.Store()
+                store.claim_mode = mode
+                owner, _ = self.owner(store=store)
+                with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+                    owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+                self.assertEqual('reconcile-only', owner.state().state)
+                with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+                    owner.record_ambiguous(ambiguity_evidence_digest='a' * 64)
+                with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+                    owner.submission_correlation()
+
+    def test_contradictory_durable_records_are_rejected_on_fresh_reload(self):
+        owner, store = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        store.append_mode = 'commit-timeout'
+        with self.assertRaises(self.replacement.RecoveryAdmissionError):
+            owner.record_success(
+                deployment_id='new', runtime_revision='a' * 40,
+                live_acceptance_digest='a' * 64, content_verification_digest='b' * 64,
+                serialization_release_digest='c' * 64)
+        store.append_mode = None
+        failure = dict(owner.intent, phase='failure',
+            failureCode='provider-terminal-failure',
+            terminalEvidenceDigest='d' * 64, serializationReleaseDigest='e' * 64,
+            replayAuthorized=False, producingRun=31, producingAttempt=1)
+        store.rows[('failure', owner.operation_id)] = failure
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'Competing direct terminal'):
+            self.owner(store=store, admission=owner.admission, run=31)
 
     def test_admission_mutation_invalidates_identity(self):
         value = self.admission()
