@@ -1180,7 +1180,7 @@ class ReplacementRecoveryAdmissionTests(unittest.TestCase):
         with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'uncertain'):
             owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
         self.assertEqual('reconcile-only', owner.state().state)
-        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
             owner.submission_correlation()
         resumed, _ = self.owner(store=store, admission=owner.admission, run=31)
         self.assertEqual('reconcile-only', resumed.state().state)
