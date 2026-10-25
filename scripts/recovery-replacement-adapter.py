@@ -205,8 +205,7 @@ class CanonicalPublisherFence:
                 or run.get("run_attempt") != self.attempt):
             raise RecoveryAdapterError("Canonical publisher fence run ownership is not active")
         source = self.authority._release_history_source(
-            self.repository, self.sha, _FAST_TRACK_PATH.removeprefix(".github/workflows/"), self.token)
-        # _release_history_source expects a repository path, not a workflow identifier.
+            self.repository, self.sha, _FAST_TRACK_PATH, self.token)
         if _MUTEX_FRAGMENT not in source:
             raise RecoveryAdapterError("Canonical publication mutex source contract changed")
         return {"runId": self.run_id, "runAttempt": self.attempt,
