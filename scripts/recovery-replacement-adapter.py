@@ -24,6 +24,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 import re
+import sys
 from typing import Callable, Mapping, Optional
 
 ROOT = Path(__file__).resolve().parent
@@ -32,6 +33,7 @@ ROOT = Path(__file__).resolve().parent
 def _load(name, filename):
     spec = importlib.util.spec_from_file_location(name, ROOT / filename)
     module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
