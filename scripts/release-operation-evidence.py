@@ -38,6 +38,30 @@ def publish_record(name, record, *, timeout=180):
     return artifact
 
 
+
+def claim_record(name, record, *, timeout=180):
+    """Atomically claim one immutable Actions artifact name.
+
+    The canonical Node transport returns created=true only when this invocation
+    received the provider's create acknowledgment. Lost acknowledgments or an
+    already-existing exact artifact return created=false and therefore never
+    grant new provider-call ownership.
+    """
+    result = subprocess.run(
+        ['node', str(Path(__file__).with_name('release-artifacts') / 'transport.cjs')],
+        input=json.dumps(dict(mode='claim', name=name, record=record)),
+        capture_output=True, text=True, timeout=timeout, check=False)
+    marker = 'LEGEND_OPERATION_RESULT='
+    rows = [line[len(marker):] for line in result.stdout.splitlines() if line.startswith(marker)]
+    if result.returncode or len(rows) != 1:
+        raise RuntimeError("Durable operation claim/readback unavailable; reconcile without writing")
+    artifact = json.loads(rows[0])
+    if (type(artifact.get('artifactId')) is not int or artifact['artifactId'] < 1
+            or type(artifact.get('created')) is not bool):
+        raise RuntimeError("Deployment operation claim lacks durable ownership identity")
+    return {'status': 'created' if artifact['created'] else 'existing', 'record': dict(record)}
+
+
 def readiness_refresh_once(identity, *, lookup, observe, execute, publisher=publish_record, environment=None):
     """Record one read-only child rerun request; ambiguous delivery never replays.
 
