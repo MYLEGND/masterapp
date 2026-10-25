@@ -383,6 +383,19 @@ class ReplacementOperationJournal:
         if self._contract(left) != self._contract(right):
             raise RecoveryAdmissionError("Replacement submission contract conflict")
 
+    def _append_exact(self, name: str, record: Mapping) -> dict:
+        """Append one immutable record and require exact synchronous readback."""
+        try:
+            result = self.append(name, record)
+        except Exception as exc:
+            raise RecoveryAdmissionError("Replacement evidence append outcome uncertain; reload reconcile-only") from exc
+        if not isinstance(result, Mapping) or set(result) != {"record"} or not isinstance(result.get("record"), Mapping):
+            raise RecoveryAdmissionError("Replacement evidence append lacks exact validated readback")
+        readback = dict(result["record"])
+        if readback != dict(record):
+            raise RecoveryAdmissionError("Replacement evidence append readback mismatch")
+        return readback
+
     def _validate_existing_state(self) -> None:
         phases = [
             ("intent", self.intent), ("submitted", self.submitted),
@@ -399,6 +412,12 @@ class ReplacementOperationJournal:
             for phase, record in present:
                 if phase != "intent":
                     self._same_lineage(self.intent, record)
+            for record in (self.submitted, self.ambiguous):
+                if record is not None and (
+                    record.get("producingRun") != self.intent.get("producingRun") or
+                    record.get("producingAttempt") != self.intent.get("producingAttempt")
+                ):
+                    raise RecoveryAdmissionError("Replacement preterminal producer changed")
         if self.submitted is not None:
             deployment = self.submitted["deploymentId"]
             for terminal in (self.success, self.resolution_success):
@@ -508,7 +527,7 @@ class ReplacementOperationJournal:
         record = dict(self.intent, phase="submitted", deploymentId=deployment_id,
                       producingRun=self.producing_run, producingAttempt=self.producing_attempt)
         self._validate_phase(record, "submitted")
-        self.append("legend-release-operation-submitted-" + self.operation_id, record)
+        record = self._append_exact("legend-release-operation-submitted-" + self.operation_id, record)
         self.submitted = record
         return record
 
@@ -526,7 +545,7 @@ class ReplacementOperationJournal:
                       replayAuthorized=False,
                       producingRun=self.producing_run, producingAttempt=self.producing_attempt)
         self._validate_phase(record, "ambiguous")
-        self.append("legend-release-operation-ambiguous-" + self.operation_id, record)
+        record = self._append_exact("legend-release-operation-ambiguous-" + self.operation_id, record)
         self.ambiguous = record
         return record
 
@@ -575,7 +594,7 @@ class ReplacementOperationJournal:
             live_acceptance_digest=live_acceptance_digest,
             content_verification_digest=content_verification_digest,
             serialization_release_digest=serialization_release_digest)
-        self.append("legend-release-operation-success-" + self.operation_id, record)
+        record = self._append_exact("legend-release-operation-success-" + self.operation_id, record)
         self.success = record
         return record
 
@@ -597,7 +616,7 @@ class ReplacementOperationJournal:
             content_verification_digest=content_verification_digest,
             serialization_release_digest=serialization_release_digest,
             reconciliation_evidence_digest=reconciliation_evidence_digest)
-        self.append("legend-release-operation-resolution-success-" + self.operation_id, record)
+        record = self._append_exact("legend-release-operation-resolution-success-" + self.operation_id, record)
         self.resolution_success = record
         return record
 
@@ -632,7 +651,7 @@ class ReplacementOperationJournal:
             "failure", failure_code=failure_code,
             terminal_evidence_digest=terminal_evidence_digest,
             serialization_release_digest=serialization_release_digest)
-        self.append("legend-release-operation-failure-" + self.operation_id, record)
+        record = self._append_exact("legend-release-operation-failure-" + self.operation_id, record)
         self.failure = record
         return record
 
@@ -652,6 +671,6 @@ class ReplacementOperationJournal:
             terminal_evidence_digest=terminal_evidence_digest,
             serialization_release_digest=serialization_release_digest,
             reconciliation_evidence_digest=reconciliation_evidence_digest)
-        self.append("legend-release-operation-resolution-failure-" + self.operation_id, record)
+        record = self._append_exact("legend-release-operation-resolution-failure-" + self.operation_id, record)
         self.resolution_failure = record
         return record
