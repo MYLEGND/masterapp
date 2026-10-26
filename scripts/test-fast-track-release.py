@@ -29,6 +29,17 @@ deploy = load('deploy-approved-app')
 
 
 class UniversalFastTrackAdmissionTests(unittest.TestCase):
+    def test_training_shared_sources_select_every_managed_consumer_without_widening_unknown_paths(self):
+        paths = ['Domain/Billing/BillingEnums.cs', 'Domain/Billing/ClientSubscriptionScope.cs', 'Domain/Billing/TrainingPlanTerms.cs', 'Domain/Entities/ClientSubscription.cs', 'Infrastructure/Billing/ClientBillingNotificationService.cs', 'Infrastructure/Billing/ClientPaymentMethodService.cs', 'Infrastructure/Billing/ClientSubscriptionActivationPolicyOptions.cs', 'Infrastructure/Data/MasterAppSqliteSchemaBootstrapper.cs', 'Infrastructure/Households/HouseholdReconciliationService.cs', 'Infrastructure/Identity/ClientEntraProvisioningRecoveryHostedService.cs', 'Infrastructure/Messaging/TranslationEntitlementAuthority.cs']
+        managed = {key for key, row in authority.RELEASE_TARGETS.items() if not row['static']}
+        for path in paths:
+            with self.subTest(path=path):
+                scope = authority.fast_track_scope([path])
+                self.assertEqual(managed, {row['key'] for row in scope['matrix']['include']})
+                self.assertTrue(scope['commerce'])
+        with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+            authority.fast_track_scope(['Domain/Billing/UnreviewedTrainingSibling.cs'])
+
     def invoke(self, paths, admission_error=None, migration_error=None):
         run = {'id': 123, 'head_sha': 'b' * 40, 'run_attempt': 1}
         with patch.dict(os.environ, {'BEFORE': 'a' * 40}), \

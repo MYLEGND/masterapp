@@ -3893,6 +3893,17 @@ def fast_track_scope(paths):
     # Infrastructure/Domain/Shared ProjectReference dependencies. Keep exact
     # ownership: an unknown sibling is not silently admitted.
     shared_server = {
+        'Domain/Billing/BillingEnums.cs',
+        'Domain/Billing/ClientSubscriptionScope.cs',
+        'Domain/Billing/TrainingPlanTerms.cs',
+        'Domain/Entities/ClientSubscription.cs',
+        'Infrastructure/Billing/ClientBillingNotificationService.cs',
+        'Infrastructure/Billing/ClientPaymentMethodService.cs',
+        'Infrastructure/Billing/ClientSubscriptionActivationPolicyOptions.cs',
+        'Infrastructure/Data/MasterAppSqliteSchemaBootstrapper.cs',
+        'Infrastructure/Households/HouseholdReconciliationService.cs',
+        'Infrastructure/Identity/ClientEntraProvisioningRecoveryHostedService.cs',
+        'Infrastructure/Messaging/TranslationEntitlementAuthority.cs',
         'Domain/Billing/BillingModels.cs',
         'Domain/Entities/SubscriptionPayment.cs',
         'Domain/Entities/SubscriptionPaymentCompletionEffect.cs',
