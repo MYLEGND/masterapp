@@ -94,6 +94,30 @@ class DurableOperationProtocolTests(unittest.TestCase):
         self.assertTrue(self.make().before_submit([]))
         self.assertFalse(self.make().before_submit([]))
 
+    def test_authorized_supersession_is_bound_and_never_submitted_twice(self):
+        proof={'candidateRevision':'a'*40,'originalOperationId':'f'*64,'historicalOutcome':'UNKNOWN'}
+        self.authority.RELEASE_TARGETS['protect']={}
+        self.authority.fast_track_protect_supersession=lambda revision:proof
+        self.authority.assert_fast_track_release_execution=lambda **kw:dict(head_sha='a'*40,id=10)
+        first=self.make(target='protect',supersession=proof)
+        self.assertTrue(first.before_submit(['old-provider-id']))
+        self.assertEqual(proof,first.intent['supersession'])
+        second=self.make(target='protect',supersession=proof)
+        self.assertFalse(second.before_submit([]))
+        self.assertEqual(first.operation_id,second.operation_id)
+        with self.assertRaisesRegex(ValueError,'authorization changed'):
+            self.make(target='protect')
+
+    def test_supersession_write_rechecks_exact_current_head(self):
+        proof={'candidateRevision':'a'*40}
+        self.authority.RELEASE_TARGETS['protect']={}
+        self.authority.fast_track_protect_supersession=lambda revision:proof
+        self.authority.assert_fast_track_release_execution=lambda **kw:dict(head_sha='d'*40,id=10)
+        operation=self.make(target='protect',supersession=proof)
+        with self.assertRaisesRegex(ValueError,'write authority changed'):
+            operation.before_submit([])
+        self.assertIsNone(operation.intent)
+
     def test_untouched_other_target_has_distinct_operation(self):
         self.assertTrue(self.make().before_submit([]))
         self.assertTrue(self.make(target='client').before_submit([]))

@@ -1758,6 +1758,7 @@ class TrustedToolPromotionAdmissionTests(unittest.TestCase):
 
     def test_following_release_selects_recovered_application_and_routing(self):
         policy=Mock();policy.tool_promotion_requested.side_effect=lambda sha:sha=='b'*40
+        policy.read_request.return_value={}
         normal=authority.fast_track_scope(['Infrastructure/Infrastructure.csproj'])
         policy.release_after_tool_promotion.return_value={'targets':[r['azure_app'] for r in normal['matrix']['include']],'cloudflareWebsiteRouting':True}
         with patch.object(authority,'_fast_track_policy',return_value=policy),patch.object(authority,'fast_track_source_admission',return_value={}),patch.object(authority,'fast_track_effective_baseline',return_value='a'*40),patch.object(authority.subprocess,'check_output',return_value='Infrastructure/Infrastructure.csproj\n'),patch.object(authority,'attested_website_only_recovery_scope',return_value=False),patch.object(authority,'fast_track_pending_routing',return_value=True) as routing:
@@ -2320,5 +2321,64 @@ class UnpublishedAppsWithMigrationIntentTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'child-history'):
                 migration.mutation_admission(dict(ready=False,schemaIdentity='c'*64),'b'*64)
 
+
+
+class FounderProtectSupersessionTests(unittest.TestCase):
+    def setUp(self):
+        self.request=json.loads(Path('Docs/releases/direct-release-request.json').read_text())
+        self.revision='a'*40
+        self.parent=self.request['protectSupersession']['expectedReleaseParent']
+
+    def invoke(self, request=None, parent=None):
+        with patch.object(authority.subprocess,'check_output',return_value=f'{self.revision} {parent or self.parent} '+ 'b'*40), patch.object(authority.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
+            return authority.fast_track_protect_supersession(self.revision,request=self.request if request is None else request)
+
+    def test_explicit_replacement_preserves_unknown_and_binds_candidate(self):
+        before=json.dumps(self.request,sort_keys=True)
+        proof=self.invoke()
+        self.assertEqual(self.revision,proof['candidateRevision'])
+        self.assertEqual('UNKNOWN',proof['historicalOutcome'])
+        self.assertEqual(before,json.dumps(self.request,sort_keys=True))
+
+    def test_wrong_operation_target_or_authorization_denied(self):
+        for key,value in [('target','portal'),('originalRun',1),('originalOperationId','f'*64),('originalRevision','c'*40),('authorizeOneReplacement',False),('historicalOutcome','success'),('rollbackArtifactId',1)]:
+            with self.subTest(key=key):
+                request=json.loads(json.dumps(self.request));request['protectSupersession'][key]=value
+                with self.assertRaisesRegex(ValueError,'AUTHORIZATION_CHANGED'):self.invoke(request)
+
+    def test_later_release_cannot_reuse_authorization(self):
+        with self.assertRaisesRegex(ValueError,'CANDIDATE_CHANGED'):self.invoke(parent='c'*40)
+
+    def test_missing_authorization_does_not_change_existing_admission(self):
+        self.request.pop('protectSupersession')
+        self.assertIsNone(self.invoke())
+
+    def test_selector_uses_only_authorized_baseline_and_keeps_source_gate(self):
+        proof=self.invoke();policy=Mock();policy.tool_promotion_requested.return_value=False
+        policy.read_request.return_value=self.request
+        with patch.object(authority,'_fast_track_policy',return_value=policy), patch.object(authority,'fast_track_protect_supersession',return_value=proof), patch.object(authority,'fast_track_source_admission') as source, patch.object(authority,'fast_track_effective_baseline',side_effect=AssertionError('No old receipt search')) as old, patch.object(authority.subprocess,'check_output',return_value='Infrastructure/Infrastructure.csproj\n'), patch.object(authority,'attested_website_only_recovery_scope',return_value=False), patch.object(authority,'fast_track_pending_routing',return_value=False):
+            result=authority.fast_track_selection(self.parent,self.revision)
+            self.assertEqual(proof['originalRevision'],result['baseline'])
+            self.assertTrue(result['schema']);self.assertTrue(result['commerce'])
+            source.assert_called_once();old.assert_not_called()
+            source.side_effect=RuntimeError('required validation missing')
+            with self.assertRaisesRegex(RuntimeError,'required validation missing'):
+                authority.fast_track_selection(self.parent,self.revision)
+            with self.assertRaisesRegex(ValueError,'PARENT_CHANGED'):
+                authority.fast_track_selection('d'*40,self.revision)
+
+    def test_active_provider_blocks_before_rollback_or_write(self):
+        proof=self.invoke();azure=Mock()
+        with patch.object(deploy._RELEASE_AUTHORITY,'fast_track_protect_supersession',return_value=proof), patch.object(deploy,'read_deployments_bounded',return_value=[{'status':1}]), patch.object(deploy._RELEASE_AUTHORITY,'_download_run_artifact') as download:
+            with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired,'PROVIDER_ACTIVE'):
+                deploy.prepare_protect_replacement(self.revision,proof['originalRevision'],azure)
+            download.assert_not_called();azure.submit.assert_not_called()
+
+    def test_changed_live_baseline_blocks_replacement(self):
+        proof=self.invoke()
+        with patch.object(deploy._RELEASE_AUTHORITY,'fast_track_protect_supersession',return_value=proof),patch.object(deploy,'read_deployments_bounded') as read:
+            with self.assertRaisesRegex(deploy.DeploymentDrift,'LIVE_BASELINE_CHANGED'):
+                deploy.prepare_protect_replacement(self.revision,'c'*40,Mock())
+            read.assert_not_called()
 
 if __name__ == '__main__':unittest.main()

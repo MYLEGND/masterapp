@@ -943,10 +943,13 @@ RECOVERY_PREFLIGHT_PRODUCER_SHA256 = '15ba27c53564223cb41502bb5528949e6435f0e6bc
 
 def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
-    return (hashlib.sha256(source.encode()).hexdigest() in (RECOVERY_PREFLIGHT_PRODUCER_SHA256, 'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850', 'e75833a3c3a4d8827f48b7395a8af7e61eeab9e5cfbb4e1f6a0ebb4af49901ed', 'ef930621e8c36e447fd884ef99bd03f5ce666bf1feda3431158af8e86d5ab6ab')
+    return (hashlib.sha256(source.encode()).hexdigest() in (RECOVERY_PREFLIGHT_PRODUCER_SHA256, 'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850', 'e75833a3c3a4d8827f48b7395a8af7e61eeab9e5cfbb4e1f6a0ebb4af49901ed', 'ef930621e8c36e447fd884ef99bd03f5ce666bf1feda3431158af8e86d5ab6ab',
+        # Reviewed supersession generation retains the existing recovery preflight path.
+        '6bec907bd7048c7a0e221f9bcfd84a9546eb750f654075a02260f2c606679dbb')
         and hashlib.sha256(journal_source.encode()).hexdigest() in (
             '506796abeadfd87f09236f74ca8c79a496a1c5b813f1191d0f0ce39cf5a9483d',
-            '1d84e59c997e1f8b9111ab047277b93a78ae8e73d9e7a9f33c1bbc283eeb543c'))
+            '1d84e59c997e1f8b9111ab047277b93a78ae8e73d9e7a9f33c1bbc283eeb543c',
+            'cf73cff19073d290ddff5efe3fdd54f7a901d674f804821e2f0abf32474060c0'))
 
 
 def _recovery_receipt_source_closure(repository, revision, token):
@@ -5280,6 +5283,40 @@ def _fast_track_policy():
     return owner
 
 
+def fast_track_protect_supersession(revision, *, request=None):
+    """Founder replacement authority, never evidence of old completion.
+
+    First-parent binding prevents reuse by later releases. The exact validated
+    merge owns a new operation; retries retain its immutable write-ahead intent.
+    """
+    request = _fast_track_policy().read_request(revision) if request is None else request
+    record = request.get('protectSupersession')
+    if record is None:
+        return None
+    expected = {'authorizationId': 'ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1:protect-replacement-20261026',
+     'authorizedBy': 'Founder',
+     'target': 'protect',
+     'originalRun': 40095849719,
+     'originalOperationId': '1618e118093e091b4eb6852d90514e0d156d8d53a6513d991ff8e4803d8bf1cd',
+     'originalRevision': '7dcfe753f90ee559bc80a5350d6012779cb36426',
+     'expectedReleaseParent': '3c6b1822935806e46bb56d36d7d49f47f2fc72c2',
+     'historicalOutcome': 'UNKNOWN',
+     'authorizeOneReplacement': True,
+     'rollbackArtifactId': 12561256924,
+     'rollbackArtifactDigest': 'sha256:03321a68f9e5f39ff237c93def0d683b633f938710bf35053c2ade48db0803ca'}
+    if (record != expected or request.get('requestedBy') != 'Founder'
+        or request.get('releaseMode') != 'approved-only'
+        or request.get('cloudflareWebsiteRouting') is not False
+        or request.get('preserveLiveTargets') is not False
+        or request.get('targets') != ['masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-parfait', 'masterapp-website']):
+        raise ValueError('FAST_TRACK_SUPERSESSION_AUTHORIZATION_CHANGED')
+    parents = subprocess.check_output(['git', 'rev-list', '--parents', '-n', '1', revision], text=True).split()
+    if (len(parents) != 3 or parents[0] != revision or parents[1] != record['expectedReleaseParent']
+        or subprocess.run(['git', 'merge-base', '--is-ancestor', record['originalRevision'], revision], capture_output=True).returncode):
+        raise ValueError('FAST_TRACK_SUPERSESSION_CANDIDATE_CHANGED')
+    return dict(record, candidateRevision=revision)
+
+
 def fast_track_selection(before, head):
     """Own promotion admission before inherited application/routing recovery."""
     if not re.fullmatch('[a-f0-9]{40}', head) or not re.fullmatch('[a-f0-9]{40}', before):
@@ -5300,7 +5337,15 @@ def fast_track_selection(before, head):
     if before == '0' * 40:
         changed = subprocess.check_output(['git', 'diff-tree', '--root', '--no-commit-id', '--name-only', '-r', head], text=True).splitlines()
     else:
-        before = fast_track_effective_baseline(before, head)
+        supersession = fast_track_protect_supersession(head, request=policy.read_request(head))
+        if supersession is not None:
+            if before != supersession['expectedReleaseParent']:
+                raise ValueError('FAST_TRACK_SUPERSESSION_PARENT_CHANGED')
+            fast_track_source_admission()
+            before = supersession['originalRevision']
+            print('FAST_TRACK_AUTHORIZED_SUPERSESSION:protect:historical-outcome-UNKNOWN')
+        else:
+            before = fast_track_effective_baseline(before, head)
         changed = subprocess.check_output(['git', 'diff', '--name-only', before, head], text=True).splitlines()
     # The existing request is an authorization/control input, never an app file.
     scope = fast_track_scope(changed)
@@ -11327,7 +11372,9 @@ def _historical_publication_failed_before_first_write(repository, release_job, a
     prior_intent = historical_intent is not None and hashlib.sha256(
         ast.get_source_segment(historical_evidence, historical_intent).encode()).hexdigest() in {
         '9fd5781cd54c10c9a5fb74af4bb005f172480583c9da0396387309888e953e26',
-        '3fa03ccdb9d20f8df43434e0059888415dd6d11b4d11d3d55872bd6b032c6691'}
+        '3fa03ccdb9d20f8df43434e0059888415dd6d11b4d11d3d55872bd6b032c6691',
+        # Accepted pre-supersession intent: unchanged intent-before-upload boundary.
+        'ba734241c9ae81a7184bd8c19980b9443ade2ae1d4bd8115d98153fbd0c68be2'}
     if ((function_dump(historical_deploy, 'reconcile') != function_dump(current_deploy, 'reconcile')
          and not prior_reconcile) or
             (method_dump(historical_evidence, 'OperationJournal', 'before_submit') !=
