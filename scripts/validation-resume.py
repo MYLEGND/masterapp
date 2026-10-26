@@ -5413,7 +5413,7 @@ def fast_track_protect_supersession(revision, *, request=None):
      'originalRun': 40095849719,
      'originalOperationId': '1618e118093e091b4eb6852d90514e0d156d8d53a6513d991ff8e4803d8bf1cd',
      'originalRevision': '7dcfe753f90ee559bc80a5350d6012779cb36426',
-     'expectedReleaseParent': '477a2d21630059a344fa0a0157f1cd67155402d5',
+     'expectedReleaseParent': '95d534023a59fda7d231fca69cafe84d10038520',
      'historicalOutcome': 'UNKNOWN',
      'authorizeOneReplacement': True,
      'rollbackArtifactId': 12561256924,
