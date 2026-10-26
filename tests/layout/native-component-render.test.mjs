@@ -395,6 +395,47 @@ function bookingScrollSnapshot(document,window) {
 function assertStableBookingHeader(before,after) {
   assert.ok(Math.abs(after.head-before.head.y)<=1,'Header moved with body scrolling');
 }
+function bookingWheelTarget(document,window) {
+  const body=document.querySelector('.qv-booking-body'),rect=body.getClientRects()[0];
+  // WebDriver uses the center of the element's first rectangle clipped to the viewport.
+  const x=Math.floor((Math.max(0,Math.min(rect.x,rect.right))+Math.min(window.innerWidth,Math.max(rect.x,rect.right)))/2);
+  const y=Math.floor((Math.max(0,Math.min(rect.y,rect.bottom))+Math.min(window.innerHeight,Math.max(rect.y,rect.bottom)))/2);
+  const hit=document.elementFromPoint(x,y),ancestry=[];
+  let scrollOwner=null;
+  for(let node=hit;node&&ancestry.length<16;node=node.parentElement){
+    const label={tag:String(node.tagName).slice(0,32),classes:[...node.classList].slice(0,8).map(value=>value.slice(0,64))};
+    ancestry.push(label);
+    if(!scrollOwner&&/^(auto|scroll)$/.test(window.getComputedStyle(node).overflowY)&&node.scrollHeight>node.clientHeight+1)scrollOwner={...label,isBody:node===body};
+  }
+  return {x,y,insideBody:!!hit&&body.contains(hit),ancestry,scrollOwner};
+}
+function bookingWheelComplete(document) {
+  const body=document.querySelector('.qv-booking-body'),action=document.querySelector('#btnBookAppointment').getBoundingClientRect(),bounds=body.getBoundingClientRect();
+  return (body.scrollHeight<=body.clientHeight+1||body.scrollTop>0)&&action.top>=bounds.top-1&&action.bottom<=bounds.bottom+1;
+}
+test('native wheel target diagnoses viewport clipping and an occluding hit without altering scroll',()=>{
+  const body={tagName:'DIV',classList:['qv-booking-body'],scrollTop:0,scrollHeight:692,clientHeight:597,parentElement:null,getClientRects:()=>[{x:26,y:-100,right:1154,bottom:732}],contains:node=>node===body||node===child};
+  const child={tagName:'BUTTON',classList:['slot'],scrollHeight:40,clientHeight:40,parentElement:body,textContent:'excluded-private-text'};
+  let hit=child;
+  const document={querySelector:()=>body,elementFromPoint:(x,y)=>{assert.equal(x,590);assert.equal(y,366);return hit}};
+  const window={innerWidth:1180,innerHeight:757,getComputedStyle:node=>({overflowY:node===body?'auto':'visible'})};
+  const value=bookingWheelTarget(document,window);
+  assert.equal(value.insideBody,true);assert.equal(value.scrollOwner.isBody,true);assert.equal(value.ancestry.length,2);
+  assert.doesNotMatch(JSON.stringify(value),/excluded-private-text/);assert.equal(body.scrollTop,0);
+  hit={...child,parentElement:null};assert.equal(bookingWheelTarget(document,window).insideBody,false);
+  hit=null;assert.deepEqual(bookingWheelTarget(document,window),{x:590,y:366,insideBody:false,ancestry:[],scrollOwner:null});
+});
+test('native wheel completion requires actual scrolling and the entire final action',()=>{
+  const body={scrollHeight:692,clientHeight:597,scrollTop:0,getBoundingClientRect:()=>({top:135,bottom:732})};
+  const action={top:700,bottom:740};
+  const document={querySelector:selector=>selector==='.qv-booking-body'?body:{getBoundingClientRect:()=>action}};
+  assert.equal(bookingWheelComplete(document),false);
+  body.scrollTop=95;assert.equal(bookingWheelComplete(document),false);
+  action.bottom=732;assert.equal(bookingWheelComplete(document),true);
+  action.top=133;assert.equal(bookingWheelComplete(document),false);
+  action.top=700;body.scrollTop=0;assert.equal(bookingWheelComplete(document),false);
+  body.scrollHeight=597;assert.equal(bookingWheelComplete(document),true);
+});
 test('booking scroll diagnostics are bounded and exclude DOM text URLs and animation payloads',()=>{
   const animation={playState:'running',pending:true,currentTime:12,startTime:4,effect:{getComputedTiming:()=>({duration:300,secret:'private-payload'})},id:'private-payload'};
   const node={textContent:'private-payload',url:'https://private.invalid',getBoundingClientRect:()=>({x:1,y:2,width:3,height:4,right:4,bottom:6}),scrollTop:5,scrollLeft:0,scrollHeight:100,clientHeight:80,getAnimations:()=>Array(12).fill(animation)};
@@ -1014,9 +1055,16 @@ test('actual canonical frontend components render in the existing sandboxed CI b
       assert.deepEqual(before.errors,[]);assert.ok(before.horizontal<=1,'Body horizontal overflow');
       for(const n of before.nav)assert.ok(n.w>=43.9&&n.h>=43.9,'Booking navigation target below44');
       for(const d of before.dates){if(width>=393)assert.ok(d.w>=43.9&&d.h>=43.9,'Date target below44 at admitted393px/desktop widths');assert.ok(d.x>=before.grid.x-1&&d.r<=before.grid.r+1,'Date escapes seven-column grid');}
-      await wheel('.qv-booking-body',6000);await new Promise(r=>setTimeout(r,80));
-      const after=await execute(`const body=document.querySelector('.qv-booking-body'),a=document.querySelector('#btnBookAppointment').getBoundingClientRect(),h=document.querySelector('.qv-booking-head').getBoundingClientRect(),b=body.getBoundingClientRect();return {scroll:body.scrollTop,action:{top:a.top,bottom:a.bottom},body:{top:b.top,bottom:b.bottom},head:h.top,scrollDiagnostic:(${bookingScrollSnapshot.toString()})(document,window)};`);
-      scrollDiagnostic.after=after.scrollDiagnostic;
+      scrollDiagnostic.wheelTarget=await execute(`return (${bookingWheelTarget.toString()})(document,window)`);
+      assert.equal(scrollDiagnostic.wheelTarget.insideBody,true,'Native wheel center is outside booking body');
+      let after;
+      try {
+        await wheel('.qv-booking-body',6000);
+        await waitFor(`(${bookingWheelComplete.toString()})(document)`);
+      } finally {
+        after=await execute(`const body=document.querySelector('.qv-booking-body'),a=document.querySelector('#btnBookAppointment').getBoundingClientRect(),h=document.querySelector('.qv-booking-head').getBoundingClientRect(),b=body.getBoundingClientRect();return {scroll:body.scrollTop,action:{top:a.top,bottom:a.bottom},body:{top:b.top,bottom:b.bottom},head:h.top,scrollDiagnostic:(${bookingScrollSnapshot.toString()})(document,window)};`);
+        scrollDiagnostic.after=after.scrollDiagnostic;
+      }
       assert.ok(before.scroll<=before.client+1||after.scroll>0,'Native wheel did not scroll body');
       assert.ok(after.action.top>=after.body.top-1&&after.action.bottom<=after.body.bottom+1,'Final action clipped');
       assertStableBookingHeader(before,after);
