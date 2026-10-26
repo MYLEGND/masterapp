@@ -14,10 +14,10 @@ public sealed class ReceptionistCalendarBookingGateway(IServiceScopeFactory scop
         return controller;
     }
     public async Task<IReadOnlyList<ReceptionistCalendarSlot>> SlotsAsync(ReceptionistTrustedBookingTarget target,
-        DateOnly date, int minimumNoticeMinutes, int maximumAdvanceDays, CancellationToken ct)
+        DateOnly date, int minimumNoticeMinutes, int maximumAdvanceDays, CancellationToken ct, Func<DateTime, bool>? eligibleStart = null)
     {
         await using var scope = scopes.CreateAsyncScope();
-        return await Controller(scope.ServiceProvider, ct).ReadReceptionistSlotsAsync(target, date, minimumNoticeMinutes, maximumAdvanceDays, ct);
+        return await Controller(scope.ServiceProvider, ct).ReadReceptionistSlotsAsync(target, date, minimumNoticeMinutes, maximumAdvanceDays, ct, eligibleStart);
     }
     public async Task CreateAsync(ReceptionistTrustedBookingCommit command, IReceptionistBookingExecutionFence fence, CancellationToken ct)
     {

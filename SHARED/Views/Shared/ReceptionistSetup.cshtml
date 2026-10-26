@@ -123,6 +123,8 @@
             <label class="dashboard-form-field"><span>Approved booking privacy evidence reference</span><input class="form-control" name="BookingPrivacyAcceptanceReference" value="@settings.BookingPrivacyAcceptanceReference" maxlength="512" /></label>
             <label class="dashboard-form-field"><span>Existing authorized booking agent profile ID</span><input class="form-control" name="BookingAgentProfileId" value="@settings.BookingAgentProfileId" maxlength="36" /></label>
             <label class="dashboard-form-field"><span>Minimum notice in minutes</span><input class="form-control" type="number" name="BookingMinimumNoticeMinutes" value="@settings.BookingMinimumNoticeMinutes" min="0" max="43200" /></label>
+            <label class="dashboard-form-field"><span>Minimum business days of notice</span><input class="form-control" type="number" name="BookingMinimumNoticeBusinessDays" value="@settings.BookingMinimumNoticeBusinessDays" min="0" max="30" /></label>
+            <p>Business days follow the open weekdays in your reception hours. Notice runs to the same local time on the counted day, skipping closed weekdays. Appointments are also restricted to those open weekdays when business-day notice is enabled. Both notice limits apply. Calendar availability can impose stricter limits.</p>
             <label class="dashboard-form-field"><span>Maximum days ahead</span><input class="form-control" type="number" name="BookingMaximumAdvanceDays" value="@settings.BookingMaximumAdvanceDays" min="1" max="90" /></label>
         </fieldset>
         <fieldset class="dashboard-surface-panel p-3">

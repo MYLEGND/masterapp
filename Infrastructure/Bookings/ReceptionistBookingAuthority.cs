@@ -61,16 +61,16 @@ internal sealed class ReceptionistBookingAuthority(DbContextOptions<MasterAppDbC
             var target = await TargetAsync(call, intakeActionId, service, ct);
             factsHash = target.ConfirmedFactsSha256;
             slots = await services.GetRequiredService<IReceptionistBookingGateway>().SlotsAsync(target, date,
-                policy.MinimumNoticeMinutes, policy.MaximumAdvanceDays, ct);
+                policy.MinimumNoticeMinutes, policy.MaximumAdvanceDays, ct, start => NoticeAllows(start, now, call.Configuration));
         }
         var label = JsonSerializer.Deserialize<ReceptionistApplicationServiceDefinition[]>(call.Configuration.ServiceDefinitionsJson,
             ReceptionistConfigurationCodec.Json)!.Single(x => x.ServiceKey == serviceKey).DisplayName;
         // Canonical SQL UTC columns are materialized with Unspecified DateTime.Kind.
         // Preserve their UTC meaning when issuing the protected, round-tripped handle.
         var expires = new[] { now.AddMinutes(5), DateTime.SpecifyKind(call.MustStopUtc, DateTimeKind.Utc) }.Min();
-        return slots.Take(3).Select(slot =>
+        return slots.Where(slot => NoticeAllows(slot.StartUtc, now, call.Configuration)).Take(3).Select(slot =>
         {
-            RequireSlot(slot, service, now, policy);
+            RequireSlot(slot, service, now, policy, call.Configuration);
             var purpose = new Purpose(1, call.CallId, call.Owner.Key, call.ConfigurationId, hash, intakeActionId,
                 serviceKey, factsHash, slot, service.TimeZoneId, policy.ExpectedCalendarConfigurationSha256,
                 now, expires, call.ControlledTest, "email", attempts.Length + 1);
@@ -201,7 +201,7 @@ internal sealed class ReceptionistBookingAuthority(DbContextOptions<MasterAppDbC
             purpose.CalendarConfigurationSha256 != policy.ExpectedCalendarConfigurationSha256 ||
             service is null || purpose.TimeZoneId != service.TimeZoneId)
             throw new InvalidOperationException("The booking purpose is stale or outside this call's scope.");
-        RequireSlot(purpose.Slot, service, now, policy);
+        RequireSlot(purpose.Slot, service, now, policy, call.Configuration);
     }
 
     private async Task<ReceptionistTrustedBookingTarget> TargetAsync(ReceptionistCallContext call, Guid intakeAction,
@@ -230,12 +230,33 @@ internal sealed class ReceptionistBookingAuthority(DbContextOptions<MasterAppDbC
             ?? throw new InvalidOperationException("The purpose handle is absent."); }
         catch (Exception error) when (error is CryptographicException or JsonException) { throw new InvalidOperationException("The purpose handle is invalid."); }
     }
-    private static void RequireSlot(ReceptionistCalendarSlot slot, ReceptionistBookingService service, DateTime now, ReceptionistBookingPolicy policy)
+    private static void RequireSlot(ReceptionistCalendarSlot slot, ReceptionistBookingService service, DateTime now, ReceptionistBookingPolicy policy, ReceptionistBusinessConfiguration configuration)
     {
         if (slot.StartUtc.Kind != DateTimeKind.Utc || slot.EndUtc.Kind != DateTimeKind.Utc ||
-            slot.StartUtc <= now.AddMinutes(policy.MinimumNoticeMinutes) || slot.EndUtc - slot.StartUtc != TimeSpan.FromMinutes(service.DurationMinutes) ||
+            !NoticeAllows(slot.StartUtc, now, configuration) || slot.EndUtc - slot.StartUtc != TimeSpan.FromMinutes(service.DurationMinutes) ||
             string.IsNullOrWhiteSpace(slot.StaffId) || string.IsNullOrWhiteSpace(slot.TargetSha256))
             throw new InvalidOperationException("The offered appointment is outside its approved bounds.");
+    }
+    // Rechecked at commitment as well as when offering slots. Closed weekdays do not
+    // count as notice; use wall time so DST cannot turn a business day into 24 hours.
+    internal static bool NoticeAllows(DateTime startUtc, DateTime nowUtc, ReceptionistBusinessConfiguration configuration)
+    {
+        var policy = configuration.BookingPolicy!;
+        if (startUtc.Kind != DateTimeKind.Utc || nowUtc.Kind != DateTimeKind.Utc ||
+            startUtc <= nowUtc.AddMinutes(policy.MinimumNoticeMinutes)) return false;
+        if (policy.MinimumNoticeBusinessDays == 0) return true;
+        if (policy.MinimumNoticeBusinessDays is < 0 or > 30) return false;
+        var open = configuration.Hours.Select(x => x.Day).Where(day => Enum.IsDefined(day)).ToHashSet();
+        if (open.Count == 0) return false;
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(configuration.TimeZoneId);
+        var cutoff = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, zone);
+        var start = TimeZoneInfo.ConvertTimeFromUtc(startUtc, zone);
+        for (var remaining = policy.MinimumNoticeBusinessDays; remaining > 0;)
+        {
+            cutoff = cutoff.AddDays(1);
+            if (open.Contains(cutoff.DayOfWeek)) remaining--;
+        }
+        return open.Contains(start.DayOfWeek) && start >= cutoff;
     }
     private static string BindingReceipt(Guid actionId, string hash, ReceptionistProviderBookingIdentity identity) =>
         "booking-binding:v1:" + ReceptionistConfigurationCodec.Hash(JsonSerializer.Serialize(new { actionId, hash, identity }));

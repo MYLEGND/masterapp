@@ -185,7 +185,8 @@ internal static class ReceptionistConfigurationCodec
         {
             if (booking.Services is null || booking.Services.Count > 100 || booking.Services.Any(x => x is null) ||
                 booking.Services.Select(x => x.ServiceKey).Distinct(StringComparer.Ordinal).Count() != booking.Services.Count ||
-                booking.MinimumNoticeMinutes is < 0 or > 43200 || booking.MaximumAdvanceDays is < 1 or > 90)
+                booking.MinimumNoticeMinutes is < 0 or > 43200 || booking.MinimumNoticeBusinessDays is < 0 or > 30 ||
+                (booking.MinimumNoticeBusinessDays > 0 && value.Hours.Count == 0) || booking.MaximumAdvanceDays is < 1 or > 90)
                 throw new ArgumentException("Booking requires bounded, distinct service mappings and an explicit advance limit.");
             using var services = JsonDocument.Parse(value.ServiceDefinitionsJson);
             var serviceKeys = services.RootElement.EnumerateArray().Select(x => x.GetProperty("serviceKey").GetString()).ToHashSet(StringComparer.Ordinal);

@@ -38,7 +38,7 @@ public sealed class ReceptionistSetupAndAuthorityTests
             BookingPolicy = new() { Enabled = true, QaOnly = true, AllowConsentedCustomerEmail = true,
                 ExpectedCalendarConfigurationSha256 = new string('a', 64), ExpectedCalendarTargetSha256 = new string('b', 64),
                 BookingAgentProfileId = Guid.NewGuid(), PrivacyAcceptanceReference = "synthetic-reviewed-privacy",
-                MinimumNoticeMinutes = 75, MaximumAdvanceDays = 21,
+                MinimumNoticeMinutes = 75, MinimumNoticeBusinessDays = 1, MaximumAdvanceDays = 21,
                 Services = [new() { ServiceKey = "service_a", BookingServiceId = "approved-service", TimeZoneId = "America/Phoenix", DurationMinutes = 45 }] }
         };
         var snapshot = Snapshot(config); var input = ReceptionistSetupForms.Read(snapshot);
@@ -47,6 +47,7 @@ public sealed class ReceptionistSetupAndAuthorityTests
         var saved = ReceptionistSetupForms.Apply(snapshot, input);
         Assert.Equal(expected, JsonSerializer.Serialize(saved.BookingPolicy));
         Assert.Equal(config.BusinessPolicy, saved.BusinessPolicy); Assert.Equal(config.ConversationInstructions, saved.ConversationInstructions);
+        Assert.Equal(1, ReceptionistSetupForms.Apply(snapshot, input with { BookingMinimumNoticeBusinessDays = null }).BookingPolicy!.MinimumNoticeBusinessDays);
         input = input with { BookingFieldsPresent = false, BookingEnabled = false };
         Assert.Equal(expected, JsonSerializer.Serialize(ReceptionistSetupForms.Apply(snapshot, input).BookingPolicy));
         var old = Snapshot(Configuration()); var oldInput = ReceptionistSetupForms.Read(old);

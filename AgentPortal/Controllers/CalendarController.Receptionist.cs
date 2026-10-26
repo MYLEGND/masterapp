@@ -40,7 +40,7 @@ public partial class CalendarController
 
     [NonAction]
     internal async Task<IReadOnlyList<ReceptionistCalendarSlot>> ReadReceptionistSlotsAsync(ReceptionistTrustedBookingTarget target,
-        DateOnly date, int minimumNoticeMinutes, int maximumAdvanceDays, CancellationToken ct)
+        DateOnly date, int minimumNoticeMinutes, int maximumAdvanceDays, CancellationToken ct, Func<DateTime, bool>? eligibleStart = null)
     {
         if (receptionistBooking is not null) throw new InvalidOperationException("A calendar command is already active.");
         receptionistBooking = await ResolveReceptionistTargetAsync(target, null, null, ct);
@@ -70,7 +70,7 @@ public partial class CalendarController
                     if (zone.IsInvalidTime(start) || zone.IsAmbiguousTime(start) || zone.IsInvalidTime(end) || zone.IsAmbiguousTime(end)) continue;
                     var utc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(start, DateTimeKind.Unspecified), zone);
                     var utcEnd = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(end, DateTimeKind.Unspecified), zone);
-                    if (utc <= now.AddMinutes(minimumNoticeMinutes) || utcEnd - utc != TimeSpan.FromMinutes(target.Service.DurationMinutes)) continue;
+                    if (eligibleStart?.Invoke(utc) == false || utc <= now.AddMinutes(minimumNoticeMinutes) || utcEnd - utc != TimeSpan.FromMinutes(target.Service.DurationMinutes)) continue;
                     slots.Add(new(utc, utcEnd, receptionistBooking.StaffId!, receptionistBooking.TargetSha256));
                 }
                 if (slots.Count == 3) break;

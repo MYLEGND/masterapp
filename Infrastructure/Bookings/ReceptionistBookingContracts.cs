@@ -23,7 +23,7 @@ public interface IReceptionistBookingExecutionFence
 public interface IReceptionistBookingGateway
 {
     Task<IReadOnlyList<ReceptionistCalendarSlot>> SlotsAsync(ReceptionistTrustedBookingTarget target,
-        DateOnly date, int minimumNoticeMinutes, int maximumAdvanceDays, CancellationToken ct);
+        DateOnly date, int minimumNoticeMinutes, int maximumAdvanceDays, CancellationToken ct, Func<DateTime, bool>? eligibleStart = null);
     Task CreateAsync(ReceptionistTrustedBookingCommit command, IReceptionistBookingExecutionFence fence, CancellationToken ct);
     Task<ReceptionistCalendarSlot?> ReadOriginalSlotAsync(ReceptionistTrustedBookingTarget target,
         string originalAppointmentId, CancellationToken ct);

@@ -28,6 +28,7 @@ public sealed record ReceptionistSetupInput
     public string? BookingPrivacyAcceptanceReference { get; init; }
     public Guid? BookingAgentProfileId { get; init; }
     public int? BookingMinimumNoticeMinutes { get; init; }
+    public int? BookingMinimumNoticeBusinessDays { get; init; }
     public int? BookingMaximumAdvanceDays { get; init; }
     public List<ReceptionistHoursInput> Hours { get; init; } = [];
     public List<ReceptionistServiceInput> Services { get; init; } = [];
