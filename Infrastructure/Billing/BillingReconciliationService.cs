@@ -90,7 +90,7 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
                 correlationId,
                 "A completed, durable initial-payment attempt activated the platform-managed subscription.");
             await _db.SaveChangesAsync(cancellationToken);
-            await RefreshEntitlementAsync(subscription.ClientProfileId, "INITIAL_PAYMENT_RECONCILED", cancellationToken);
+            await RefreshEntitlementAsync(subscription.Id, "INITIAL_PAYMENT_RECONCILED", cancellationToken);
             return subscription;
         }
 
@@ -112,7 +112,7 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
                 correlationId,
                 "The durable initial-payment attempt was not completed.");
             await _db.SaveChangesAsync(cancellationToken);
-            await RefreshEntitlementAsync(subscription.ClientProfileId, "INITIAL_PAYMENT_RECONCILIATION_FAILED", cancellationToken);
+            await RefreshEntitlementAsync(subscription.Id, "INITIAL_PAYMENT_RECONCILIATION_FAILED", cancellationToken);
         }
 
         return subscription;
@@ -253,7 +253,7 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
             payment.CommerceCaptureVerifiedUtc ??= DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
         if (subscription is not null)
-            await RefreshEntitlementAsync(subscription.ClientProfileId, "PROVIDER_EVENT_PAYMENT", cancellationToken);
+            await RefreshEntitlementAsync(subscription.Id, "PROVIDER_EVENT_PAYMENT", cancellationToken);
 
         return new ProviderEventDecision(BillingProviderEventProcessingStatus.Processed);
     }
@@ -298,7 +298,7 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
             !string.Equals(providerRefund.Currency, payment.Currency, StringComparison.OrdinalIgnoreCase))
             return CreateExpectedResolutionDecision(providerEvent, "REFUND_FINANCIAL_EVIDENCE_MISMATCH");
 
-        Guid? refreshProfileId = null;
+        Guid? refreshSubscriptionId = null;
         var strategy = _db.Database.CreateExecutionStrategy();
         var decision = await strategy.ExecuteAsync(async () =>
         {
@@ -337,7 +337,7 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
                     ? await _db.ClientSubscriptions.SingleAsync(x => x.Id == payment.ClientSubscriptionId.Value, cancellationToken)
                     : null;
                 if (subscription is not null) await _db.Entry(subscription).ReloadAsync(cancellationToken);
-                refreshProfileId = subscription?.ClientProfileId;
+                refreshSubscriptionId = subscription?.Id;
                 if (known is null)
                 {
                     var previousStatus = payment.Status.ToString();
@@ -375,8 +375,8 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
                 throw;
             }
         });
-        if (decision.Status == BillingProviderEventProcessingStatus.Processed && refreshProfileId.HasValue)
-            await RefreshEntitlementAsync(refreshProfileId.Value, "PROVIDER_EVENT_REFUND", cancellationToken);
+        if (decision.Status == BillingProviderEventProcessingStatus.Processed && refreshSubscriptionId.HasValue)
+            await RefreshEntitlementAsync(refreshSubscriptionId.Value, "PROVIDER_EVENT_REFUND", cancellationToken);
         return decision;
     }
 
@@ -413,7 +413,7 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
         AddAuditEntry("SubscriptionPayment", payment.Id, "dispute_opened", previousStatus, payment.Status.ToString(), BillingActorType.Provider, null, "billing_reconciliation", null, providerEvent.ProviderEventId, summary.ToSanitizedJson());
         await _db.SaveChangesAsync(cancellationToken);
         if (subscription is not null)
-            await RefreshEntitlementAsync(subscription.ClientProfileId, "PROVIDER_EVENT_DISPUTE", cancellationToken);
+            await RefreshEntitlementAsync(subscription.Id, "PROVIDER_EVENT_DISPUTE", cancellationToken);
 
         return new ProviderEventDecision(BillingProviderEventProcessingStatus.Processed);
     }
@@ -586,11 +586,13 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
 
     private static int CalculateRetryDelayMinutes(int attemptCount) => Math.Min(30, Math.Max(5, attemptCount * 5));
 
-    private async Task RefreshEntitlementAsync(Guid clientProfileId, string reasonCode, CancellationToken cancellationToken)
+    private async Task RefreshEntitlementAsync(Guid subscriptionId, string reasonCode, CancellationToken cancellationToken)
     {
+        var subscription = await _db.ClientSubscriptions.AsNoTracking()
+            .SingleAsync(x => x.Id == subscriptionId, cancellationToken);
         await _entitlements.RefreshAsync(
-            clientProfileId,
-            BillingEntitlementKeys.ClientAppFullAccess,
+            subscription.ClientProfileId,
+            ClientSubscriptionScope.EntitlementKey(subscription),
             reasonCode,
             cancellationToken);
     }

@@ -28,8 +28,8 @@ public sealed class ParfaitCanonicalPresentationPreservationTests
     // Reviewed payment-flow changes only: hosted-provider handoff retains the
     // original form/layout and legacy Square wording; cart clearing waits for
     // server-confirmed payment on success. All other visual pins stay unchanged.
-    // Reviewed script-only fix: contact autosave deduplicates successful HTTP responses only.
-    [InlineData("Views/Store/Checkout.cshtml", "5d17e4797b29a63e10d58008c91ddf9a2aed7f52")]
+    // Reviewed canonical inquiry correction: explicit consent replaces silent autosave.
+    [InlineData("Views/Store/Checkout.cshtml", "c17f1ce21aac9ff68fe376227f5b941d1229cd59")]
     [InlineData("Views/Store/Success.cshtml", "7e56736764ae474b5a07ef21debea631df67c58d")]
     [InlineData("wwwroot/css/site.css", "10f00e83c8e9b8a9e7428efebe01a40a0072903d")]
     [InlineData("wwwroot/css/home.css", "00f32a42b0f2f1ea1324c6f8897abe91a130ec94")]

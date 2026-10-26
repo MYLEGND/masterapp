@@ -279,7 +279,7 @@ public class ProfileController : Controller
 
         if (!context.IsAgentView)
         {
-            var latestSubscription = await _db.ClientSubscriptions
+            var latestSubscription = await _db.ClientSubscriptions.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership)
                 .AsNoTracking()
                 .Where(subscription => subscription.ClientProfileId == context.ClientProfileId)
                 .OrderByDescending(subscription => subscription.UpdatedUtc)

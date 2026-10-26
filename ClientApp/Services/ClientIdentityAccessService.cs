@@ -22,7 +22,8 @@ public sealed record ClientSignInCompletionResult(
     string ReturnUrl,
     string? SafeErrorCode = null,
     string? SanitizedMessage = null,
-    string? LoginHint = null);
+    string? LoginHint = null,
+    Guid? TrainingBillingProfileId = null);
 
 public sealed class ClientIdentityAccessService
 {
@@ -44,6 +45,41 @@ public sealed class ClientIdentityAccessService
         _continuationService = continuationService;
         _returnUrlNormalizer = returnUrlNormalizer;
         _entraLifecycle = entraLifecycle;
+    }
+
+    public const string TrainingBillingProfileClaim = "legend:training-billing-profile";
+    public const string TrainingBillingPath = "/subscription/training";
+
+    public async Task<ClientSubscription?> FindTrainingBillingSubscriptionAsync(Guid profileId, Guid? subscriptionId = null, CancellationToken cancellationToken = default)
+    {
+        // Paid history permits billing repair/receipts, never training benefits.
+        if (await _db.AccountLifecycleRecords.AsNoTracking().AnyAsync(x => x.ProfileId == profileId &&
+            x.ParticipantType == Domain.Messaging.MessagingParticipantTypes.Client &&
+            (x.State == Domain.Accounts.AccountLifecycleStates.Closed || x.State == Domain.Accounts.AccountLifecycleStates.DeletionRequested), cancellationToken))
+            return null;
+        var candidates = await _db.ClientSubscriptions.AsNoTracking()
+            .Where(x => x.ClientProfileId == profileId && x.ActivatedUtc != null &&
+                x.CommerceBusinessId != null && x.CommerceProductId != null &&
+                (!subscriptionId.HasValue || x.Id == subscriptionId.Value))
+            .OrderByDescending(x => x.UpdatedUtc).ToListAsync(cancellationToken);
+        return candidates.FirstOrDefault(x => x.CommerceBusinessId != Guid.Empty && x.CommerceProductId != Guid.Empty &&
+            x.SubscriptionScope == ClientSubscriptionScope.Training(x.CommerceBusinessId!.Value));
+    }
+
+    public async Task<ClientProfile?> ResolveTrainingBillingOnlyProfileAsync(ClaimsPrincipal principal, CancellationToken cancellationToken = default)
+    {
+        var oid = principal.GetCanonicalUserId();
+        if (string.IsNullOrWhiteSpace(oid)) return null;
+        var profile = await _db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(x =>
+            (x.ExternalIdentityObjectId ?? "").ToLower() == oid || (x.ClientUserId ?? "").ToLower() == oid, cancellationToken);
+        if (profile is null) return null;
+        // Include closed training accounts here so the global boundary cannot
+        // disappear when their management eligibility is revoked.
+        if (!await _db.ClientSubscriptions.AsNoTracking().AnyAsync(x => x.ClientProfileId == profile.Id &&
+            x.ActivatedUtc != null && x.CommerceBusinessId != null && x.CommerceProductId != null &&
+            x.SubscriptionScope.StartsWith("Training:"), cancellationToken)) return null;
+        var full = await _entitlementService.EvaluateAsync(new(profile.Id, BillingEntitlementKeys.ClientAppFullAccess, DateTime.UtcNow), cancellationToken);
+        return full.Status is ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod ? null : profile;
     }
 
     public static bool IsSupportReturnUrl(string? returnUrl)
@@ -91,6 +127,11 @@ public sealed class ClientIdentityAccessService
                 DateTime.UtcNow),
             cancellationToken);
 
+        if (entitlement.Status is not (ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod) &&
+            continuation.Purpose == ClientIdentityContinuationPurpose.TrainingBilling && continuation.ClientSubscriptionId.HasValue &&
+            await FindTrainingBillingSubscriptionAsync(profile.Id, continuation.ClientSubscriptionId, cancellationToken) is not null)
+            return new ClientSignInCompletionResult(true, TrainingBillingPath, LoginHint: continuation.IntendedNormalizedEmail);
+
         return entitlement.Status is ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod
             ? new ClientSignInCompletionResult(true, continuation.ReturnUrl, LoginHint: continuation.IntendedNormalizedEmail)
             : new ClientSignInCompletionResult(
@@ -124,7 +165,8 @@ public sealed class ClientIdentityAccessService
                 (x.Email ?? string.Empty).ToLower() == normalizedEmail,
                 cancellationToken);
 
-        if (profile is null || !IsPortalClientProfile(profile))
+        var training = profile is null ? null : await FindTrainingBillingSubscriptionAsync(profile.Id, cancellationToken: cancellationToken);
+        if (profile is null || (!IsPortalClientProfile(profile) && training is null))
         {
             return new ClientSignInPreparationResult(false, "CLIENT_NOT_READY", "We could not find an activated client profile for that email yet.", safeReturnUrl);
         }
@@ -136,7 +178,9 @@ public sealed class ClientIdentityAccessService
                 DateTime.UtcNow),
             cancellationToken);
 
-        if (entitlement.Status is not (ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod))
+        var trainingOnly = entitlement.Status is not (ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod) && training is not null;
+        if (trainingOnly) safeReturnUrl = TrainingBillingPath;
+        if (!trainingOnly && entitlement.Status is not (ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod))
         {
             return new ClientSignInPreparationResult(false, "CLIENT_NOT_ACTIVE", "This client account is not active for sign-in yet. Use the activation link or contact your agent for help.", safeReturnUrl);
         }
@@ -193,7 +237,8 @@ public sealed class ClientIdentityAccessService
             profile.Id,
             normalizedEmail,
             safeReturnUrl,
-            ClientIdentityContinuationPurpose.SignIn,
+            trainingOnly ? ClientIdentityContinuationPurpose.TrainingBilling : ClientIdentityContinuationPurpose.SignIn,
+            subscriptionId: trainingOnly ? training!.Id : null,
             cancellationToken: cancellationToken);
 
         return new ClientSignInPreparationResult(
@@ -233,7 +278,8 @@ public sealed class ClientIdentityAccessService
                 (x.ClientUserId ?? string.Empty).ToLower() == oid,
                 cancellationToken);
 
-        if (profile is null || !IsPortalClientProfile(profile))
+        var training = profile is null ? null : await FindTrainingBillingSubscriptionAsync(profile.Id, cancellationToken: cancellationToken);
+        if (profile is null || (!IsPortalClientProfile(profile) && training is null))
             return new ClientSignInCompletionResult(false, safeReturnUrl, "UNKNOWN_CLIENT", "A valid client subscription is required before opening the portal.");
 
         var entitlement = await _entitlementService.EvaluateAsync(
@@ -243,6 +289,8 @@ public sealed class ClientIdentityAccessService
                 DateTime.UtcNow),
             cancellationToken);
 
+        if (training is not null && entitlement.Status is not (ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod))
+            return new ClientSignInCompletionResult(true, TrainingBillingPath, TrainingBillingProfileId: profile.Id);
         return entitlement.Status is ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod
             ? new ClientSignInCompletionResult(true, safeReturnUrl)
             : new ClientSignInCompletionResult(false, safeReturnUrl, "INACTIVE_ENTITLEMENT", "This client subscription is not active for access.");
@@ -415,7 +463,10 @@ public sealed class ClientIdentityAccessService
                 DateTime.UtcNow),
             cancellationToken);
 
-        if (entitlement.Status is not (ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod))
+        var trainingOnly = entitlement.Status is not (ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod) &&
+            continuation.Purpose == ClientIdentityContinuationPurpose.TrainingBilling && continuation.ClientSubscriptionId.HasValue &&
+            await FindTrainingBillingSubscriptionAsync(profile.Id, continuation.ClientSubscriptionId, cancellationToken) is not null;
+        if (!trainingOnly && entitlement.Status is not (ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod))
         {
             return new ClientSignInCompletionResult(
                 false,
@@ -475,7 +526,8 @@ public sealed class ClientIdentityAccessService
         await _continuationService.ConsumeAsync(continuation, cancellationToken);
         _continuationService.ClearCookie(httpContext.Response);
 
-        return new ClientSignInCompletionResult(true, continuation.ReturnUrl);
+        return new ClientSignInCompletionResult(true, trainingOnly ? TrainingBillingPath : continuation.ReturnUrl,
+            TrainingBillingProfileId: trainingOnly ? profile.Id : null);
     }
 
     private async Task<bool> IsAgentPrincipalAsync(

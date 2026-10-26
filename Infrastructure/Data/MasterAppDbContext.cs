@@ -777,6 +777,7 @@ public class MasterAppDbContext : DbContext
 
         modelBuilder.Entity<CommerceProduct>(e =>
         {
+            e.Property(x => x.BillingKind).HasMaxLength(32).HasDefaultValue(Domain.Billing.ClientSubscriptionScope.OneTimeProduct).IsRequired();
             e.HasKey(x => x.Id);
             e.Property(x => x.ExternalProductKey).IsRequired().HasMaxLength(120);
             e.Property(x => x.Name).IsRequired().HasMaxLength(180);
@@ -900,8 +901,14 @@ public class MasterAppDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.ToTable("ClientSubscriptionOffers");
+            e.Property(x => x.SubscriptionScope).HasMaxLength(64).HasDefaultValue(Domain.Billing.ClientSubscriptionScope.LegendMembership).IsRequired();
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<CommerceProduct>().WithMany().HasForeignKey(x => x.CommerceProductId).OnDelete(DeleteBehavior.Restrict);
             e.Property(x => x.OwnerAgentUserId).HasMaxLength(450).IsRequired();
             e.Property(x => x.PriceType).HasConversion<string>().HasMaxLength(32).IsRequired();
+            e.Property(x => x.TrainingPlanName).HasMaxLength(256);
+            e.Property(x => x.TrainingBenefits).HasMaxLength(12000);
+            e.Property(x => x.TrainingPromotionCode).HasMaxLength(120);
             e.Property(x => x.Currency).HasMaxLength(8).IsRequired();
             e.Property(x => x.BillingAnchorSelectionMode).HasConversion<string>().HasMaxLength(40).IsRequired();
             e.Property(x => x.FreeTrialDays).HasDefaultValue(0);
@@ -930,6 +937,9 @@ public class MasterAppDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.ToTable("ClientSubscriptions");
+            e.Property(x => x.SubscriptionScope).HasMaxLength(64).HasDefaultValue(Domain.Billing.ClientSubscriptionScope.LegendMembership).IsRequired();
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<CommerceProduct>().WithMany().HasForeignKey(x => x.CommerceProductId).OnDelete(DeleteBehavior.Restrict);
             e.Property(x => x.OwnerAgentUserId).HasMaxLength(450).IsRequired();
             e.Property(x => x.Provider).HasConversion<string>().HasMaxLength(40).IsRequired();
             e.Property(x => x.ProviderEnvironment).HasConversion<string>().HasMaxLength(40).IsRequired();
@@ -942,7 +952,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.PaymentStanding).HasConversion<string>().HasMaxLength(40).IsRequired();
 
             if (isSqlServer)
-                e.HasIndex(x => x.ClientProfileId).IsUnique().HasFilter("[Status] <> 'Canceled' AND [Status] <> 'ActivationFailed'");
+                e.HasIndex(x => new { x.ClientProfileId, x.SubscriptionScope }).IsUnique().HasFilter("[Status] <> 'Canceled' AND [Status] <> 'ActivationFailed'");
             else
                 e.HasIndex(x => new { x.ClientProfileId, x.Status });
 

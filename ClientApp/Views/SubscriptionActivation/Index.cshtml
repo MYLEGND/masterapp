@@ -24,7 +24,13 @@
             <header class="activation-header">
                 <div>
                     <p class="activation-brand">@Shared.Branding.LegendBrand.RegisteredUpper</p>
-                    <h1>Activate your access</h1>
+                    <h1>@(Model.IsTraining ? "Activate your training subscription" : "Activate your access")</h1>
+                    @if (Model.IsTraining)
+                    {
+                        <h2>@Model.TrainingPlanName</h2>
+                        <p>@Model.TrainingBenefits</p>
+                        <p>Includes only these training benefits. LEGEND membership and client-app access are separate.</p>
+                    }
                     <p class="activation-client">@Model.ClientName · @Model.ClientEmail</p>
                 </div>
                 <div class="activation-summary" aria-label="Subscription summary">

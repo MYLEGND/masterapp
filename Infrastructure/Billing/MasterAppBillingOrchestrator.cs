@@ -7,6 +7,7 @@ namespace Infrastructure.Billing;
 
 internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
 {
+    private readonly ClientSubscriptionActivationPolicyOptions _rollout;
     private readonly MasterAppDbContext _db;
     private readonly IBillingGateway _gateway;
     private readonly IBillingEntitlementService _entitlements;
@@ -18,8 +19,10 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         IBillingGateway gateway,
         IBillingEntitlementService entitlements,
         IClientSubscriptionActivationPolicyService billingPolicy,
-        IClientBillingNotificationService? notifications = null)
+        IClientBillingNotificationService? notifications = null,
+        ClientSubscriptionActivationPolicyOptions? rollout = null)
     {
+        _rollout = rollout ?? new();
         _db = db;
         _gateway = gateway;
         _entitlements = entitlements;
@@ -32,7 +35,28 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         await EnsureClientExistsAsync(command.ClientProfileId, cancellationToken);
 
         var nowUtc = DateTime.UtcNow;
-        var authoritativeAmount = ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
+        CommerceProduct? trainingProduct = null;
+        TrainingPlanTerms? trainingTerms = null;
+        var scope = ClientSubscriptionScope.LegendMembership;
+        if (command.TrainingBusinessId.HasValue || command.TrainingProductId.HasValue)
+        {
+            if (!_rollout.TrainingSubscriptionsEnabled)
+                throw new InvalidOperationException("Training enrollment is temporarily unavailable.");
+            if (await TrainingAccountClosedAsync(command.ClientProfileId, cancellationToken))
+                throw new InvalidOperationException("Training enrollment is unavailable for this account.");
+            if (command.TrainingBusinessId is not Guid businessId || businessId == Guid.Empty ||
+                command.TrainingProductId is not Guid productId || productId == Guid.Empty ||
+                command.Currency != "USD" || command.HasFreeTrial || command.FreeTrialDays.GetValueOrDefault() != 0)
+                throw new InvalidOperationException("The training subscription mapping is invalid.");
+            trainingProduct = await _db.CommerceProducts.Include(x => x.Discounts)
+                .SingleOrDefaultAsync(x => x.Id == productId && x.CommerceBusinessId == businessId, cancellationToken)
+                ?? throw new InvalidOperationException("The training plan is unavailable.");
+            if (!await _db.CommerceBusinesses.AnyAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", cancellationToken))
+                throw new InvalidOperationException("The training business is unavailable.");
+            trainingTerms = TrainingPlanTerms.FromCatalog(trainingProduct, command.TrainingPromotionCode);
+            scope = ClientSubscriptionScope.Training(businessId);
+        }
+        var authoritativeAmount = trainingTerms?.MonthlyAmountCents ?? ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
             command.PriceType,
             command.CustomMonthlyAmountCents,
             command.AllowFounderZeroDollarCustomAmount
@@ -52,7 +76,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         }
 
         var existingOffers = await _db.ClientSubscriptionOffers
-            .Where(x => x.ClientProfileId == command.ClientProfileId &&
+            .Where(x => x.ClientProfileId == command.ClientProfileId && x.SubscriptionScope == scope &&
                         (x.Status == ClientSubscriptionOfferStatus.Draft || x.Status == ClientSubscriptionOfferStatus.Offered))
             .ToListAsync(cancellationToken);
 
@@ -65,8 +89,14 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         var offer = new ClientSubscriptionOffer
         {
             ClientProfileId = command.ClientProfileId,
+            SubscriptionScope = scope,
+            CommerceBusinessId = trainingProduct?.CommerceBusinessId,
+            CommerceProductId = trainingProduct?.Id,
+            TrainingPlanName = trainingTerms?.Name,
+            TrainingBenefits = trainingTerms?.Benefits,
+            TrainingPromotionCode = trainingTerms?.PromotionCode,
             OwnerAgentUserId = command.OwnerAgentUserId.Trim(),
-            PriceType = command.PriceType,
+            PriceType = trainingTerms is null ? command.PriceType : ClientSubscriptionOfferPriceType.Custom,
             MonthlyAmountCents = authoritativeAmount,
             Currency = NormalizeCurrency(command.Currency),
             BillingAnchorSelectionMode = command.BillingAnchorSelectionMode,
@@ -375,6 +405,27 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         if (offer.ClientProfileId != client.Id)
             throw new InvalidOperationException("The accepted offer does not belong to the client.");
 
+        // Validate the accepted purpose before any gateway or payment-method operation.
+        if (offer.SubscriptionScope != ClientSubscriptionScope.LegendMembership)
+        {
+            if (!_rollout.TrainingSubscriptionsEnabled)
+                throw new InvalidOperationException("Training activation is temporarily unavailable.");
+            if (await TrainingAccountClosedAsync(client.Id, cancellationToken))
+                throw new InvalidOperationException("Training enrollment is unavailable for this account.");
+            if (offer.CommerceBusinessId is not Guid trainingBusiness || trainingBusiness == Guid.Empty ||
+                offer.CommerceProductId is not Guid trainingProduct || trainingProduct == Guid.Empty ||
+                offer.SubscriptionScope != ClientSubscriptionScope.Training(trainingBusiness) ||
+                string.IsNullOrWhiteSpace(offer.TrainingPlanName) || string.IsNullOrWhiteSpace(offer.TrainingBenefits) ||
+                NormalizeEmail(client.NormalizedEmail ?? client.Email) != NormalizeEmail(command.IntendedNormalizedEmail) ||
+                offer.MonthlyAmountCents <= 0 || offer.MonthlyAmountCents > 250000 || offer.Currency != "USD" || offer.FreeTrialDays != 0 ||
+                !await _db.CommerceBusinesses.AnyAsync(x => x.Id == trainingBusiness && x.IsActive && x.Status == "Active", cancellationToken) ||
+                !await _db.CommerceProducts.AnyAsync(x => x.Id == trainingProduct && x.CommerceBusinessId == trainingBusiness &&
+                    x.IsActive && x.BillingKind == ClientSubscriptionScope.MonthlyTraining, cancellationToken))
+                throw new InvalidOperationException("The accepted training offer has no valid canonical mapping.");
+        }
+        else if (offer.CommerceBusinessId.HasValue || offer.CommerceProductId.HasValue)
+            throw new InvalidOperationException("The membership offer has an invalid product mapping.");
+
         var nowUtc = DateTime.UtcNow;
         var authoritativeCurrency = NormalizeCurrency(offer.Currency);
         var intendedNormalizedEmail = NormalizeEmail(command.IntendedNormalizedEmail);
@@ -408,7 +459,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
 
         if (subscription is null)
         {
-            var blockingSubscription = await FindBlockingSubscriptionAsync(command.ClientProfileId, command.ClientSubscriptionOfferId, cancellationToken);
+            var blockingSubscription = await FindBlockingSubscriptionAsync(command.ClientProfileId, command.ClientSubscriptionOfferId, offer.SubscriptionScope, cancellationToken);
             if (blockingSubscription is not null)
             {
                 var blockingResult = new ClientSubscriptionLifecycleResult(false, blockingSubscription.Status.ToString(), "ACTIVE_SUBSCRIPTION_EXISTS", "A non-terminal subscription already exists for this client.", null, false);
@@ -419,6 +470,9 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             {
                 ClientProfileId = command.ClientProfileId,
                 AcceptedOfferId = offer.Id,
+                SubscriptionScope = offer.SubscriptionScope,
+                CommerceBusinessId = offer.CommerceBusinessId,
+                CommerceProductId = offer.CommerceProductId,
                 OwnerAgentUserId = command.OwnerAgentUserId.Trim(),
                 Provider = _gateway.Provider,
                 ProviderEnvironment = _gateway.Environment,
@@ -759,7 +813,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         QueueUpcomingRenewalReminder(subscription);
         await _db.SaveChangesAsync(cancellationToken);
 
-        var entitlement = await _entitlements.RefreshAsync(command.ClientProfileId, BillingEntitlementKeys.ClientAppFullAccess, "SUBSCRIPTION_ACTIVATED", cancellationToken);
+        var entitlement = await _entitlements.RefreshAsync(command.ClientProfileId, ClientSubscriptionScope.EntitlementKey(subscription), "SUBSCRIPTION_ACTIVATED", cancellationToken);
         var activationResult = new ClientSubscriptionLifecycleResult(
             true,
             ClientSubscriptionStatus.Active.ToString(),
@@ -831,7 +885,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             QueueNotification(subscription, ClientBillingNotificationKind.MembershipCancelled, $"membership-cancelled:{subscription.Id:N}:{cancelledUtc:O}");
         await _db.SaveChangesAsync(cancellationToken);
 
-        var entitlement = await _entitlements.RefreshAsync(subscription.ClientProfileId, BillingEntitlementKeys.ClientAppFullAccess, "SUBSCRIPTION_CANCELLED", cancellationToken);
+        var entitlement = await _entitlements.RefreshAsync(subscription.ClientProfileId, ClientSubscriptionScope.EntitlementKey(subscription), "SUBSCRIPTION_CANCELLED", cancellationToken);
         var cancellationResult = new ClientSubscriptionLifecycleResult(
             true,
             subscription.Status.ToString(),
@@ -869,6 +923,14 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         var subscription = await _db.ClientSubscriptions
             .FirstOrDefaultAsync(x => x.Id == command.ClientSubscriptionId, cancellationToken)
             ?? throw new InvalidOperationException($"Client subscription {command.ClientSubscriptionId} was not found.");
+
+        if (subscription.SubscriptionScope != ClientSubscriptionScope.LegendMembership ||
+            subscription.CommerceBusinessId.HasValue || subscription.CommerceProductId.HasValue)
+        {
+            return new ClientSubscriptionLifecycleResult(false, subscription.Status.ToString(),
+                "PURCHASED_TRAINING_TERMS_IMMUTABLE",
+                "Purchased training terms cannot be changed. Catalog changes apply only to future offers.", null, false);
+        }
 
         if (subscription.Status == ClientSubscriptionStatus.Canceled)
         {
@@ -978,7 +1040,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         CancellationToken cancellationToken = default)
     {
         var subscription = await _db.ClientSubscriptions
-            .Where(item => item.ClientProfileId == command.ClientProfileId)
+            .Where(item => item.ClientProfileId == command.ClientProfileId && item.SubscriptionScope == ClientSubscriptionScope.LegendMembership)
             .OrderByDescending(item => item.UpdatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -999,7 +1061,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         {
             var existingEntitlement = await _entitlements.RefreshAsync(
                 subscription.ClientProfileId,
-                BillingEntitlementKeys.ClientAppFullAccess,
+                ClientSubscriptionScope.EntitlementKey(subscription),
                 "ACCOUNT_PAUSED",
                 cancellationToken);
             return new AccountLifecycleSubscriptionResult(true, null, "Client subscription is already paused.", subscription, existingEntitlement);
@@ -1035,7 +1097,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
 
         var entitlement = await _entitlements.RefreshAsync(
             subscription.ClientProfileId,
-            BillingEntitlementKeys.ClientAppFullAccess,
+            ClientSubscriptionScope.EntitlementKey(subscription),
             "ACCOUNT_PAUSED",
             cancellationToken);
         return new AccountLifecycleSubscriptionResult(true, null, "Client subscription paused.", subscription, entitlement);
@@ -1051,7 +1113,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         CancellationToken cancellationToken = default)
     {
         var subscription = await _db.ClientSubscriptions
-            .Where(item => item.ClientProfileId == command.ClientProfileId)
+            .Where(item => item.ClientProfileId == command.ClientProfileId && item.SubscriptionScope == ClientSubscriptionScope.LegendMembership)
             .OrderByDescending(item => item.UpdatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -1097,7 +1159,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
 
         var entitlement = await _entitlements.RefreshAsync(
             subscription.ClientProfileId,
-            BillingEntitlementKeys.ClientAppFullAccess,
+            ClientSubscriptionScope.EntitlementKey(subscription),
             "ACCOUNT_RESUMED",
             cancellationToken);
         return new AccountLifecycleSubscriptionResult(true, null, "Client subscription resumed.", subscription, entitlement);
@@ -1316,7 +1378,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
                 "Subscription ended locally at its scheduled period boundary.");
             QueueNotification(subscription, ClientBillingNotificationKind.MembershipCancelled, $"membership-ended-at-period-boundary:{subscription.Id:N}:{subscription.CurrentPeriodEndUtc:O}");
             await _db.SaveChangesAsync(cancellationToken);
-            await _entitlements.RefreshAsync(subscription.ClientProfileId, BillingEntitlementKeys.ClientAppFullAccess, "SUBSCRIPTION_ENDED_AT_PERIOD_END", cancellationToken);
+            await _entitlements.RefreshAsync(subscription.ClientProfileId, ClientSubscriptionScope.EntitlementKey(subscription), "SUBSCRIPTION_ENDED_AT_PERIOD_END", cancellationToken);
             return new RecurringBillingOutcome(0, 0, 0, 1);
         }
 
@@ -1349,7 +1411,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
                 "The membership was cancelled after the configured grace period expired without a successful renewal payment.");
             QueueNotification(subscription, ClientBillingNotificationKind.MembershipCancelled, $"membership-cancelled-after-grace:{subscription.Id:N}:{endedUtc:O}");
             await _db.SaveChangesAsync(cancellationToken);
-            await _entitlements.RefreshAsync(subscription.ClientProfileId, BillingEntitlementKeys.ClientAppFullAccess, "GRACE_PERIOD_EXPIRED_CANCELLED", cancellationToken);
+            await _entitlements.RefreshAsync(subscription.ClientProfileId, ClientSubscriptionScope.EntitlementKey(subscription), "GRACE_PERIOD_EXPIRED_CANCELLED", cancellationToken);
             return new RecurringBillingOutcome(0, 0, 0, 1);
         }
 
@@ -1368,7 +1430,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             subscription.UpdatedUtc = nowUtc;
             AddAuditEntry("ClientSubscription", subscription.Id, "renewal_schedule_invalid", null, subscription.Status.ToString(), BillingActorType.System, null, "billing_renewal_worker", "RENEWAL_SCHEDULE_INVALID", workerId);
             await _db.SaveChangesAsync(cancellationToken);
-            await _entitlements.RefreshAsync(subscription.ClientProfileId, BillingEntitlementKeys.ClientAppFullAccess, "RENEWAL_SCHEDULE_INVALID", cancellationToken);
+            await _entitlements.RefreshAsync(subscription.ClientProfileId, ClientSubscriptionScope.EntitlementKey(subscription), "RENEWAL_SCHEDULE_INVALID", cancellationToken);
             return RecurringBillingOutcome.None;
         }
 
@@ -1552,7 +1614,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         await _db.SaveChangesAsync(cancellationToken);
         await _entitlements.RefreshAsync(
             subscription.ClientProfileId,
-            BillingEntitlementKeys.ClientAppFullAccess,
+            ClientSubscriptionScope.EntitlementKey(subscription),
             backupPaymentUsed ? "RENEWAL_BACKUP_PAYMENT_COMPLETED" : "RENEWAL_PAYMENT_COMPLETED",
             cancellationToken);
         return new RecurringBillingOutcome(1, 1, 0, 0);
@@ -1588,7 +1650,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             QueueGracePeriodReminders(subscription, subscription.GracePeriodEndsUtc.Value);
         }
         await _db.SaveChangesAsync(cancellationToken);
-        await _entitlements.RefreshAsync(subscription.ClientProfileId, BillingEntitlementKeys.ClientAppFullAccess, "RENEWAL_PAYMENT_FAILED", cancellationToken);
+        await _entitlements.RefreshAsync(subscription.ClientProfileId, ClientSubscriptionScope.EntitlementKey(subscription), "RENEWAL_PAYMENT_FAILED", cancellationToken);
         return new RecurringBillingOutcome(1, 0, 1, 0);
     }
 
@@ -1784,7 +1846,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
 
         var entitlement = await _entitlements.RefreshAsync(
             command.ClientProfileId,
-            BillingEntitlementKeys.ClientAppFullAccess,
+            ClientSubscriptionScope.EntitlementKey(subscription),
             "SUBSCRIPTION_TRIAL_ACTIVATED",
             cancellationToken);
         var lifecycle = new ClientSubscriptionLifecycleResult(
@@ -1870,7 +1932,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
 
         var entitlement = await _entitlements.RefreshAsync(
             command.ClientProfileId,
-            BillingEntitlementKeys.ClientAppFullAccess,
+            ClientSubscriptionScope.EntitlementKey(subscription),
             "ZERO_DOLLAR_SUBSCRIPTION_ACTIVATED",
             cancellationToken);
         var result = new ClientSubscriptionLifecycleResult(
@@ -1882,6 +1944,11 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             false);
         return new ActivateClientSubscriptionResult(true, null, result.SanitizedSummary, null, false, subscription, entitlement, result);
     }
+
+    private Task<bool> TrainingAccountClosedAsync(Guid profileId, CancellationToken ct) =>
+        _db.AccountLifecycleRecords.AsNoTracking().AnyAsync(x => x.ProfileId == profileId &&
+            x.ParticipantType == Domain.Messaging.MessagingParticipantTypes.Client &&
+            (x.State == Domain.Accounts.AccountLifecycleStates.Closed || x.State == Domain.Accounts.AccountLifecycleStates.DeletionRequested), ct);
 
     private async Task<ClientProfile> EnsureClientExistsAsync(Guid clientProfileId, CancellationToken cancellationToken)
     {
@@ -1900,10 +1967,10 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    private async Task<ClientSubscription?> FindBlockingSubscriptionAsync(Guid clientProfileId, Guid offerId, CancellationToken cancellationToken)
+    private async Task<ClientSubscription?> FindBlockingSubscriptionAsync(Guid clientProfileId, Guid offerId, string subscriptionScope, CancellationToken cancellationToken)
     {
         return await _db.ClientSubscriptions
-            .Where(x => x.ClientProfileId == clientProfileId &&
+            .Where(x => x.ClientProfileId == clientProfileId && x.SubscriptionScope == subscriptionScope &&
                         x.AcceptedOfferId != offerId &&
                         x.Status != ClientSubscriptionStatus.Canceled &&
                         x.Status != ClientSubscriptionStatus.ActivationFailed)

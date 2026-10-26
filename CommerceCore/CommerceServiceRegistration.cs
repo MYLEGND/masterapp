@@ -114,7 +114,7 @@ public static class CommerceServiceRegistration
         {
             var allowed = new[] {
                 typeof(StoreController), typeof(StoreCartController),
-                typeof(StoreCheckoutController), typeof(MerchantPaymentWebhookController), typeof(ParfaitPublicPreviewController),
+                typeof(StoreCheckoutController), typeof(TrainingSubscriptionsController), typeof(MerchantPaymentWebhookController), typeof(ParfaitPublicPreviewController),
                 typeof(CommerceManagementController)
             };
             var assembly = typeof(StoreController).Assembly;
@@ -154,6 +154,7 @@ public static class CommerceServiceRegistration
 
         services.AddLegendCommerceCatalogReadOnly();
         services.AddMerchantPayments();
+        services.AddScoped<TrainingEnrollmentService>();
         services.AddScoped<MerchantCheckoutService>();
         services.AddScoped<MerchantPaymentCompletionService>();
         services.AddScoped<ParfaitOrderService>();

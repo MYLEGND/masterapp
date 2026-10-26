@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise disposable SQL ownership without contacting Docker or production."""
 import importlib.util
+import hashlib
 import json
 import copy
 from pathlib import Path
@@ -104,7 +105,7 @@ class ObservedRehearsalReuseTests(unittest.TestCase):
             restore.assert_not_called()
 
     def test_same_merge_rehearsal_uses_parent_impact_without_relabeling(self):
-        self.same_merge(); parent='d'*40; base='e'*40
+        self.same_merge(); parent='d'*40; base=parent
         self.observation.write_text(json.dumps(dict(producingAttempt=2,contractDigest='c'*64,observerArtifactId=42)))
         calls=[]
         def git(args,**kwargs):
@@ -123,7 +124,8 @@ class ObservedRehearsalReuseTests(unittest.TestCase):
                  patch.object(m,'trusted_fast_track_run',return_value=self.run), \
                  patch.object(m.AUTHORITY,'api_get',return_value=dict(object=dict(sha=self.revision))), \
                  patch.object(m.AUTHORITY,'fast_track_inventory_merge_proof',return_value=dict(baseline=parent)) as proof, \
-                 patch.object(m.AUTHORITY,'fast_track_effective_baseline',return_value=base) as effective, \
+                 patch.object(m.AUTHORITY,'fast_track_effective_baseline',side_effect=RuntimeError('UNKNOWN')) as effective, \
+                 patch.object(m,'fast_track_observed_rehearsal_scope',return_value=dict(schema=True,matrix=dict(include=[]))) as scope, \
                  patch.object(m.subprocess,'check_output',side_effect=git), \
                  patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
                  patch.object(m,'fast_track_observation_source',return_value=dict(attempt=2,artifactId=41)), \
@@ -132,7 +134,8 @@ class ObservedRehearsalReuseTests(unittest.TestCase):
                  patch.object(m,'isolated_sql',return_value=contextlib.nullcontext('synthetic-local-only')):
                 m.rehearse_fast_track(self.revision,directory,self.observation,self.root/'probe')
                 proof.assert_called_once_with('owner/repo',self.revision,'fixture')
-                effective.assert_called_once_with(parent,self.revision,repository='owner/repo',token='fixture')
+                effective.assert_not_called()
+                scope.assert_called_once_with(parent,self.revision,self.baseline,self.root/'probe'/'migration-contract.json')
                 result=json.loads((directory/'rehearsal.json').read_text())
                 self.assertEqual(self.revision,result['candidate'])
                 self.assertEqual(self.revision,result['fastTrackHead'])
@@ -140,23 +143,77 @@ class ObservedRehearsalReuseTests(unittest.TestCase):
                 self.assertFalse(result['authorizesMutation'])
                 if pending:self.assertTrue(result['proven'])
                 else:spec.assert_not_called()
-        self.assertEqual(2,calls.count(['git','diff','--name-only',base,self.revision]))
+        self.assertEqual(0,calls.count(['git','diff','--name-only',base,self.revision]))
 
 
-    def test_unresolved_predecessor_stops_before_observation_or_bundle(self):
+    def test_rehearsal_requires_authenticated_observation_before_scope_or_sql(self):
         self.same_merge()
         with patch.object(m,'trusted_fast_track_run',return_value=self.run), \
              patch.object(m.AUTHORITY,'api_get',return_value=dict(object=dict(sha=self.revision))), \
              patch.object(m.AUTHORITY,'fast_track_inventory_merge_proof',return_value=dict(baseline='e'*40)), \
-             patch.object(m.AUTHORITY,'fast_track_effective_baseline',side_effect=RuntimeError('PREDECESSOR_REQUIRES_OPERATION_RECONCILIATION')), \
+             patch.object(m.AUTHORITY,'fast_track_effective_baseline') as effective, \
              patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
-             patch.object(m,'fast_track_observation_source') as observation, \
+             patch.object(m,'verified_fast_track_observation',side_effect=ValueError('OBSERVATION_UNPROVEN')), \
+             patch.object(m,'fast_track_observed_rehearsal_scope') as scope, \
              patch.object(m,'isolated_sql') as sql:
-            with self.assertRaisesRegex(RuntimeError,'PREDECESSOR_REQUIRES_OPERATION_RECONCILIATION'):
+            with self.assertRaisesRegex(ValueError,'OBSERVATION_UNPROVEN'):
                 m.rehearse_fast_track(self.revision,self.root/'blocked',self.observation,self.root/'probe')
-            observation.assert_not_called();sql.assert_not_called()
+            effective.assert_not_called();scope.assert_not_called();sql.assert_not_called()
             self.assertFalse((self.root/'blocked').exists())
 
+
+
+class ObservedPendingSchemaScopeTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / 'contract.json'
+        self.ids = ['20261020160000_AddReceptionistCoordination',
+                    '20261026000134_AddCanonicalSubscriptionPaymentCompletion',
+                    '20261026063902_AddScopedTrainingSubscriptions']
+        self.contract = dict(schemaVersion=3, migrations=[dict(id=x,supported=True) for x in self.ids])
+        self.baseline = dict(lastAppliedMigrationId=self.ids[0],firstPendingMigrationId=self.ids[1],pendingCount=2)
+
+    def invoke(self, missing_source=False):
+        self.path.write_text(json.dumps(self.contract))
+        with patch.object(m.subprocess,'check_output',return_value='ClientApp/Program.cs\n'), \
+             patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=int(missing_source))):
+            return m.fast_track_observed_rehearsal_scope('a'*40,'b'*40,self.baseline,self.path)
+
+    def test_older_pending_schema_not_in_immediate_diff_selects_all_consumers(self):
+        result = self.invoke()
+        self.assertTrue(result['schema'])
+        self.assertEqual({'portal','client','protect','parfait'}, {row['key'] for row in result['matrix']['include']})
+        self.assertIn('Infrastructure/Migrations/'+self.ids[1]+'.cs', result['impacts'])
+        self.assertIn('Infrastructure/Migrations/'+self.ids[2]+'.cs', result['impacts'])
+        self.assertNotIn('productionEligible',result)
+
+    def test_unknown_empty_or_gapped_applied_prefix_rejects(self):
+        for value in (None, '', '20261025000000_Unknown'):
+            self.baseline['lastAppliedMigrationId'] = value
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError,'PREFIX_UNPROVEN'):self.invoke()
+
+    def test_wrong_pending_count_or_first_id_rejects(self):
+        for changes in (dict(pendingCount=1),dict(pendingCount=True),dict(firstPendingMigrationId=self.ids[2])):
+            with self.subTest(changes=changes), patch.dict(self.baseline,changes), self.assertRaisesRegex(ValueError,'SUFFIX_UNPROVEN'):self.invoke()
+
+    def test_duplicate_reordered_unknown_or_unsupported_contract_rejects(self):
+        original=copy.deepcopy(self.contract)
+        for rows in ([dict(id=self.ids[0],supported=True)]*2,
+                     list(reversed(original['migrations'])),
+                     [dict(id='../escape',supported=True)],
+                     [original['migrations'][0],dict(id=self.ids[1],supported=False),original['migrations'][2]]):
+            self.contract['migrations']=rows
+            with self.subTest(rows=rows), self.assertRaises(ValueError):self.invoke()
+
+    def test_missing_candidate_migration_source_rejects(self):
+        with self.assertRaisesRegex(ValueError,'SOURCE_UNPROVEN'):self.invoke(missing_source=True)
+
+    def test_complete_schema_has_no_synthetic_pending_files(self):
+        self.baseline.update(lastAppliedMigrationId=self.ids[-1],firstPendingMigrationId=None,pendingCount=0)
+        result=self.invoke()
+        self.assertFalse(result['schema'])
+        self.assertEqual({'ClientApp/Program.cs'},set(result['impacts']))
 
 
 class IsolatedSqlTests(unittest.TestCase):
@@ -557,6 +614,23 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
             self.assertNotIn('AZURE_CLIENT_SECRET',kw['env'])
             self.assertNotIn('LEGEND_RELEASE_DB_CONNECTION',kw['env'])
             self.assertEqual(300,kw['timeout'])
+
+    def test_training_runs_matching_two_migration_baseline_and_training_only(self):
+        with self.payment_fixture():
+            training=dict(id='20261026063902_AddScopedTrainingSubscriptions',supported=True)
+            self.current['migrations'].append(training)
+            self.source_present.add(training['id']+'.cs')
+            self.test_stdout += 'LEGEND_TRAINING_APPEND_TEST:PROVEN\n'
+            digest=hashlib.sha256(json.dumps(training,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            with patch.object(m.AUTHORITY,'REVIEWED_TRAINING_ENTRY',digest):
+                self.gate()
+                fixtures=[kw for cmd,kw in self.calls if cmd[-1]=='migration-test']
+                self.assertEqual(['payment-and-successors','canonical-payment-and-training','training-only'],
+                    [kw['env']['LEGEND_REHEARSAL_PENDING_COUNT'] for kw in fixtures])
+                self.sql_entered=False
+                self.test_stdout=self.test_stdout.replace('LEGEND_TRAINING_APPEND_TEST:PROVEN\n','')
+                with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'): self.gate()
+                self.assertFalse(self.sql_entered)
 
     def test_payment_only_failure_cannot_be_hidden_by_broad_suffix_success(self):
         original=self.process

@@ -26,7 +26,11 @@ internal sealed class ClientBillingNotificationService : IClientBillingNotificat
         if (alreadyQueued)
             return;
 
-        var message = ClientBillingNotificationTemplates.Create(request);
+        var subscription = _db.ClientSubscriptions.Local.FirstOrDefault(x => x.Id == request.ClientSubscriptionId)
+            ?? _db.ClientSubscriptions.FirstOrDefault(x => x.Id == request.ClientSubscriptionId);
+        var training = subscription is not null && ClientSubscriptionScope.TryTrainingEntitlement(
+            ClientSubscriptionScope.EntitlementKey(subscription), out _, out _);
+        var message = training ? TrainingMessage(request) : ClientBillingNotificationTemplates.Create(request);
         var nowUtc = DateTime.UtcNow;
         _db.ClientBillingNotifications.Add(new ClientBillingNotification
         {
@@ -40,6 +44,27 @@ internal sealed class ClientBillingNotificationService : IClientBillingNotificat
             CreatedUtc = nowUtc,
             UpdatedUtc = nowUtc
         });
+    }
+
+    private static (string Subject, string Body) TrainingMessage(ClientBillingNotificationRequest request)
+    {
+        var amount = request.AmountCents.HasValue ? $"${request.AmountCents.Value / 100m:F2}" : "your scheduled amount";
+        var message = request.Kind switch
+        {
+            ClientBillingNotificationKind.MembershipActivated => "Your training subscription is active.",
+            ClientBillingNotificationKind.PaymentReceived => $"Your training payment of {amount} was received.",
+            ClientBillingNotificationKind.PaymentFailed => "Your training renewal payment could not be completed. Review your payment method; an unconfirmed payment must be reconciled before retrying.",
+            ClientBillingNotificationKind.PaymentMethodUpdated => "Your saved payment-method settings were updated.",
+            ClientBillingNotificationKind.BackupPaymentUsed => "Your training renewal completed using your authorized backup payment method.",
+            ClientBillingNotificationKind.GracePeriodStarted or ClientBillingNotificationKind.GracePeriodReminder or ClientBillingNotificationKind.GracePeriodFinalReminder =>
+                $"Your training subscription needs a payment update. Review your billing status before your grace period ends{(request.GracePeriodEndsUtc.HasValue ? $" on {request.GracePeriodEndsUtc.Value:yyyy-MM-dd} UTC" : "")}.",
+            ClientBillingNotificationKind.MembershipCancelled => "Your training subscription has ended.",
+            ClientBillingNotificationKind.MembershipReactivated => "Your training subscription is active again.",
+            ClientBillingNotificationKind.UpcomingRenewal => $"Your monthly training renewal for {amount} is coming up.",
+            ClientBillingNotificationKind.MembershipTermsUpdated => "Your training billing terms were updated. Review the effective date and amount before the next charge.",
+            _ => throw new ArgumentOutOfRangeException(nameof(request.Kind))
+        };
+        return ("Training subscription billing update", message + " Review Training Billing for your status, receipts and payment settings. Training benefits are separate from LEGEND membership and do not include full Client Portal access.");
     }
 
     private static class ClientBillingNotificationTemplates

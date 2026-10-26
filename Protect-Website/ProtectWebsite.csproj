@@ -171,6 +171,7 @@
     <Content Include="../ParfaitApp/Views/Home/Index.cshtml" Link="Views/ParfaitOriginal/Home.cshtml" />
     <Content Include="../ParfaitApp/Views/About/About.cshtml" Link="Views/ParfaitOriginal/About.cshtml" />
     <Content Include="../ParfaitApp/Views/Contact/Index.cshtml" Link="Views/ParfaitOriginal/Contact.cshtml" />
+    <Content Include="../ParfaitApp/Views/TrainingSubscriptions/Index.cshtml" Link="Views/TrainingSubscriptions/Index.cshtml" />
     <Content Include="../ParfaitApp/Views/TrainingPackages/Index.cshtml" Link="Views/ParfaitOriginal/TrainingPackages.cshtml" />
     <Content Include="../ParfaitApp/Views/Training/Index.cshtml" Link="Views/ParfaitOriginal/Training.cshtml" />
     <Content Include="../ParfaitApp/Views/Resources/Index.cshtml" Link="Views/ParfaitOriginal/Resources.cshtml" />

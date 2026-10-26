@@ -36,7 +36,25 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
         if (legend is not null) return legend;
 
         var business = await ResolveAsync(context, WebsiteEditorSiteKeys.Business, cancellationToken);
-        if (business is not null) return business;
+        if (business is not null)
+        {
+            // A published website may also own the canonical Parfait checkout,
+            // which is a server route rather than a compiled CMS page. Both
+            // authorities must agree on the business before admitting its form.
+            if (NormalizePath(sourcePath) == "/store/checkout")
+            {
+                var commerceStores = context.RequestServices?.GetService<ParfaitApp.Services.CommerceStoreContextService>();
+                var checkoutStore = commerceStores is null ? null :
+                    await commerceStores.ResolveAnalyticsAsync(context, sourcePath, cancellationToken);
+                if (checkoutStore?.IsParfait == true)
+                {
+                    if (checkoutStore.CommerceBusinessId != business.CommerceBusinessId ||
+                        checkoutStore.CheckoutPath != NormalizePath(sourcePath)) return null;
+                    return business with { IsCommerceApp = true, CommerceCheckoutPath = checkoutStore.CheckoutPath };
+                }
+            }
+            return business;
+        }
 
         if (!TryOrigin(context.Request.Headers.Origin.ToString(), out var origin))
             return null;
@@ -88,7 +106,8 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
                     null,
                     null,
                     false,
-                    true);
+                    true,
+                    store.CheckoutPath);
             }
         }
 
@@ -165,7 +184,9 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
                    PublishedDocumentContainsPath(scope.PublishedVersion, normalized, WebsiteEditorSiteKeys.Protect);
 
         if (scope.IsCommerceApp)
-            return IsContactPath(normalized, allowAgentPrefix: false);
+            return IsContactPath(normalized, allowAgentPrefix: false) ||
+                   (!string.IsNullOrWhiteSpace(scope.CommerceCheckoutPath) &&
+                    string.Equals(normalized, scope.CommerceCheckoutPath, StringComparison.OrdinalIgnoreCase));
 
         if (scope.SiteKey != WebsiteEditorSiteKeys.Business ||
             string.IsNullOrWhiteSpace(scope.PublishedVersion?.CompiledPagesJson))
@@ -295,4 +316,5 @@ public sealed record PublicWebsiteRuntimeScope(
     Guid? AgentTrackingProfileId = null,
     string? AgentSlug = null,
     bool IsFounder = false,
-    bool IsCommerceApp = false);
+    bool IsCommerceApp = false,
+    string? CommerceCheckoutPath = null);

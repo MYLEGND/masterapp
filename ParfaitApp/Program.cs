@@ -147,6 +147,7 @@ builder.Services.AddScoped<IParfaitBusinessPlatformService, ParfaitBusinessPlatf
 builder.Services.AddSingleton<IParfaitInternalPageRegistry, ParfaitInternalPageRegistry>();
 builder.Services.AddScoped<IParfaitTeamAccessService, ParfaitTeamAccessService>();
 builder.Services.AddMasterAppBilling(builder.Configuration);
+Infrastructure.Leads.WebsiteLeadServiceRegistration.AddWebsiteLeadNotificationTransport(builder.Services);
 builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
 builder.Services.AddHttpClient("ResilientDefault")
     .SetHandlerLifetime(TimeSpan.FromMinutes(5));

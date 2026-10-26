@@ -3893,6 +3893,17 @@ def fast_track_scope(paths):
     # Infrastructure/Domain/Shared ProjectReference dependencies. Keep exact
     # ownership: an unknown sibling is not silently admitted.
     shared_server = {
+        'Domain/Billing/BillingEnums.cs',
+        'Domain/Billing/ClientSubscriptionScope.cs',
+        'Domain/Billing/TrainingPlanTerms.cs',
+        'Domain/Entities/ClientSubscription.cs',
+        'Infrastructure/Billing/ClientBillingNotificationService.cs',
+        'Infrastructure/Billing/ClientPaymentMethodService.cs',
+        'Infrastructure/Billing/ClientSubscriptionActivationPolicyOptions.cs',
+        'Infrastructure/Data/MasterAppSqliteSchemaBootstrapper.cs',
+        'Infrastructure/Households/HouseholdReconciliationService.cs',
+        'Infrastructure/Identity/ClientEntraProvisioningRecoveryHostedService.cs',
+        'Infrastructure/Messaging/TranslationEntitlementAuthority.cs',
         'Domain/Billing/BillingModels.cs',
         'Domain/Entities/SubscriptionPayment.cs',
         'Domain/Entities/SubscriptionPaymentCompletionEffect.cs',
@@ -8504,6 +8515,10 @@ def migration_contract_static_styles_only(candidate, approved):
 REVIEWED_RECEPTIONIST_BASE_RUNTIME = '22534ca70dc760d4c10e2c9726346c84315d2b7179c0acf87db49bf55372bedc'
 REVIEWED_RECEPTIONIST_RUNTIME = '4f6153929faff37fd4209636fa912c8e147adc2c96b6644ad084047e9a597a07'
 REVIEWED_RECEPTIONIST_ENTRY = 'c457b4d88db0b998b778b2a789e49412b6218e9b87b4f511de0746d739087c8b'
+REVIEWED_TRAINING_ENTRY = '49ef5a95c19084b799e9a92a5d0c496792dbdcab367e4360795d55e443338434'
+# Empty until independent acceptance freezes the exact application dependency closure.
+REVIEWED_TRAINING_RUNTIME_PAIRS = frozenset()
+
 REVIEWED_CANONICAL_PAYMENT_ENTRY = '0c16fa4ce2197954982578e1cdbc4291f077d8660b65b769799c58dfbcbc3a1d'
 # Frozen recovered application closure. These pins do not promote the changed
 # observer: trusted tooling must first be legitimately promoted and inherited.
@@ -8516,6 +8531,34 @@ REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS = frozenset({
     ('3fbe9ce6512a2ebb7db43f0f45a5227786094ac6b287ccc3eca40c59da05f6e0',
      'e097be398e774e6226b9a7cb72b41b7eec92eb8a3043af8e16e412381ca0051f')
 })
+
+
+def reviewed_training_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
+    if ((trusted.get('runtimeIdentity'), current.get('runtimeIdentity')) not in REVIEWED_TRAINING_RUNTIME_PAIRS
+        or not current.get('toolIdentity') or current.get('toolIdentity') != trusted.get('toolIdentity')
+        or not current.get('executionIdentity') or current.get('executionIdentity') != trusted.get('executionIdentity')):
+        return False
+    if (not isinstance(contract, dict) or not isinstance(approved_contract, dict)
+        or set(contract) != {'schemaVersion', 'migrations'} or set(approved_contract) != set(contract)
+        or type(contract['schemaVersion']) is not int or contract['schemaVersion'] != 3
+        or type(approved_contract['schemaVersion']) is not int or approved_contract['schemaVersion'] != 3
+        or not isinstance(contract['migrations'], list) or not isinstance(approved_contract['migrations'], list)
+        or not 1 <= len(approved_contract['migrations']) < 10000
+        or len(contract['migrations']) != len(approved_contract['migrations']) + 1
+        or contract['migrations'][:-1] != approved_contract['migrations']):
+        return False
+    previous, entry = approved_contract['migrations'][-1], contract['migrations'][-1]
+    if (not isinstance(previous, dict) or previous.get('id') != '20261026000134_AddCanonicalSubscriptionPaymentCompletion'
+        or not isinstance(entry, dict) or entry.get('id') != '20261026063902_AddScopedTrainingSubscriptions'
+        or entry.get('supported') is not True
+        or hashlib.sha256(json.dumps(entry, sort_keys=True, separators=(',', ':'),
+            ensure_ascii=True, allow_nan=False).encode()).hexdigest() != REVIEWED_TRAINING_ENTRY):
+        return False
+    if subprocess.run(['git', 'merge-base', '--is-ancestor', approved, candidate], capture_output=True).returncode:
+        return False
+    if subprocess.run(['git', 'diff', '--quiet', approved, candidate, '--', 'scripts', '.github'], capture_output=True).returncode:
+        return False
+    return True
 
 
 def reviewed_canonical_payment_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
@@ -8595,6 +8638,10 @@ def candidate_migration_contract_proven(candidate, approved, contract, approved_
     trusted = migration_probe_identity(approved, approved)
     rule = 'approved-definitions-exact'
     if current['runtimeIdentity'] != trusted['runtimeIdentity']:
+        if reviewed_training_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
+            return {'state': 'proven', 'rule': 'approved-prefix-reviewed-training-entry',
+                    'runtimeIdentity': current['runtimeIdentity'],
+                    'approvedRuntimeIdentity': trusted['runtimeIdentity']}
         if reviewed_canonical_payment_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
             return {'state': 'proven', 'rule': 'approved-prefix-reviewed-canonical-payment-entry',
                     'runtimeIdentity': current['runtimeIdentity'],

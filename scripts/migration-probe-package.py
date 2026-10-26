@@ -352,6 +352,36 @@ def fast_track_baseline(report, revision, run_id, source):
     return baseline
 
 
+def fast_track_observed_rehearsal_scope(impact_base, revision, baseline, contract_path):
+    """Plan disposable SQL from observed pending schema; never settle app history."""
+    contract = json.loads(contract_path.read_text())
+    migrations = contract.get('migrations')
+    if (contract.get('schemaVersion') != 3 or not isinstance(migrations, list) or not migrations
+        or any(not isinstance(row, dict) or not re.fullmatch(r'[0-9]{8,14}_[A-Za-z0-9_]{1,128}', str(row.get('id', '')))
+               for row in migrations)):
+        raise ValueError('FAST_TRACK_PENDING_SCHEMA_CONTRACT_UNPROVEN')
+    ids = [row['id'] for row in migrations]
+    if len(set(ids)) != len(ids) or ids != sorted(ids):
+        raise ValueError('FAST_TRACK_PENDING_SCHEMA_CONTRACT_UNPROVEN')
+    # The existing observer requires a nonempty applied prefix. An empty or
+    # unknown database is not silently admitted as a fresh installation.
+    last = baseline.get('lastAppliedMigrationId')
+    if last not in ids:
+        raise ValueError('FAST_TRACK_APPLIED_SCHEMA_PREFIX_UNPROVEN')
+    pending = migrations[ids.index(last) + 1:]
+    if (type(baseline.get('pendingCount')) is not int or baseline['pendingCount'] != len(pending)
+        or baseline.get('firstPendingMigrationId') != (pending[0]['id'] if pending else None)
+        or any(row.get('supported') is not True for row in pending)):
+        raise ValueError('FAST_TRACK_PENDING_SCHEMA_SUFFIX_UNPROVEN')
+    changed = subprocess.check_output(['git', 'diff', '--name-only', impact_base, revision], text=True).splitlines()
+    for row in pending:
+        path = 'Infrastructure/Migrations/' + row['id'] + '.cs'
+        if subprocess.run(['git', 'cat-file', '-e', revision + ':' + path], capture_output=True).returncode:
+            raise ValueError('FAST_TRACK_PENDING_SCHEMA_SOURCE_UNPROVEN')
+        changed.append(path)
+    return AUTHORITY.fast_track_scope(sorted(set(changed)))
+
+
 def rehearse_fast_track(revision, directory, observation_path, probe_directory):
     """Prepare exact bundle bytes through existing owners; never admit production."""
     import tempfile
@@ -382,12 +412,6 @@ def rehearse_fast_track(revision, directory, observation_path, probe_directory):
             raise ValueError('FAST_TRACK_BASE_UNPROVEN')
         impact_base = proof['baseline']
     subprocess.run(['git', 'merge-base', '--is-ancestor', base, revision], check=True)
-    # A tool-only successor still carries earlier unpublished migration scope.
-    # Reuse the release authority's authenticated operation reconciliation; an
-    # unresolved predecessor cannot be treated as a shipped schema boundary.
-    impact_base = AUTHORITY.fast_track_effective_baseline(impact_base, revision, repository=repository, token=token)
-    changed = subprocess.check_output(['git', 'diff', '--name-only', impact_base, revision], text=True).splitlines()
-    scope = AUTHORITY.fast_track_scope(changed)
     source = fast_track_observation_source(repository, revision, run_id, attempt, token)
     report = verified_fast_track_observation(repository, run_id, source, observation_path)
     if report.get('producingAttempt') != source['attempt']:
@@ -396,6 +420,7 @@ def rehearse_fast_track(revision, directory, observation_path, probe_directory):
     manifest(probe_directory, revision, revision)
     if digest(probe_directory / 'migration-contract.json') != report['contractDigest']:
         raise ValueError('FAST_TRACK_OBSERVER_CONTRACT_CHANGED')
+    scope = fast_track_observed_rehearsal_scope(impact_base, revision, baseline, probe_directory / 'migration-contract.json')
     directory.mkdir(parents=True, exist_ok=False)
     if not baseline['pendingCount']:
         (directory / 'rehearsal.json').write_text(json.dumps(dict(schemaVersion=1,
@@ -634,7 +659,9 @@ def test_schema_contract(directory):
         ('20261020160000_AddReceptionistCoordination', AUTHORITY.REVIEWED_RECEPTIONIST_ENTRY,
          'LEGEND_REVIEWED_APPEND_TEST:PROVEN'),
         ('20261026000134_AddCanonicalSubscriptionPaymentCompletion', AUTHORITY.REVIEWED_CANONICAL_PAYMENT_ENTRY,
-         'LEGEND_CANONICAL_PAYMENT_APPEND_TEST:PROVEN')]
+         'LEGEND_CANONICAL_PAYMENT_APPEND_TEST:PROVEN'),
+        ('20261026063902_AddScopedTrainingSubscriptions', AUTHORITY.REVIEWED_TRAINING_ENTRY,
+         'LEGEND_TRAINING_APPEND_TEST:PROVEN')]
     migrations = current['migrations']
     for index, (migration_id, digest, marker) in enumerate(reviewed):
         entries = [row for row in migrations if row.get('id') == migration_id]
@@ -654,7 +681,9 @@ def test_schema_contract(directory):
         '-c', 'Release', '--nologo', '-o', str(directory), '-m:1', '-nr:false',
         '-p:UseSharedCompilation=false'], check=True)
     scenarios = ['payment-and-successors']
-    if any(row.get('id') == reviewed[1][0] for row in migrations):
+    if any(row.get('id') == reviewed[2][0] for row in migrations):
+        scenarios.extend(['canonical-payment-and-training', 'training-only'])
+    elif any(row.get('id') == reviewed[1][0] for row in migrations):
         scenarios.append('canonical-payment-only')
     for scenario in scenarios:
         with isolated_sql() as connection:

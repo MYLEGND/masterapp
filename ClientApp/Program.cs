@@ -375,6 +375,10 @@ Task CompleteClientSignInAsync(TokenValidatedContext context) =>
 {
     var identityAccess = context.HttpContext.RequestServices.GetRequiredService<ClientIdentityAccessService>();
     var returnUrlNormalizer = context.HttpContext.RequestServices.GetRequiredService<ClientAppReturnUrlNormalizer>();
+    // Provider claims cannot confer or remove our protected session restriction.
+    foreach (var incomingIdentity in context.Principal!.Identities)
+        foreach (var claim in incomingIdentity.FindAll(ClientIdentityAccessService.TrainingBillingProfileClaim).ToArray())
+            incomingIdentity.RemoveClaim(claim);
     var completion = await identityAccess.CompleteClientSignInAsync(
         context.HttpContext,
         context.Principal!,
@@ -383,6 +387,9 @@ Task CompleteClientSignInAsync(TokenValidatedContext context) =>
 
     if (completion.Success)
     {
+        if (completion.TrainingBillingProfileId is Guid billingProfileId)
+            ((ClaimsIdentity)context.Principal!.Identity!).AddClaim(new Claim(
+                ClientIdentityAccessService.TrainingBillingProfileClaim, billingProfileId.ToString("D")));
         context.Properties!.RedirectUri = returnUrlNormalizer.Normalize(completion.ReturnUrl);
         return;
     }
@@ -444,6 +451,7 @@ app.UseRateLimiter();
 app.UseCookiePolicy();
 app.UseAuthentication();
 app.UseMiddleware<Infrastructure.Identity.RestrictedAiAccessBoundary>();
+app.UseMiddleware<ClientApp.Infrastructure.TrainingBillingAccessBoundary>();
 app.UseAuthorization();
 
 // Cache prevention

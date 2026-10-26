@@ -37,6 +37,7 @@ public sealed record SubscriptionActivationExecutionResult(
 
 public sealed class SubscriptionActivationService
 {
+    private readonly global::Infrastructure.Billing.ClientSubscriptionActivationPolicyOptions _rollout;
     private readonly MasterAppDbContext _db;
     private readonly IBillingOrchestrator _billingOrchestrator;
     private readonly IClientSubscriptionActivationPolicyService _activationPolicyService;
@@ -54,8 +55,10 @@ public sealed class SubscriptionActivationService
         ClientIdentityContinuationService continuationService,
         ClientAppReturnUrlNormalizer returnUrlNormalizer,
         global::Infrastructure.Identity.IClientEntraLifecycleService entraLifecycle,
-        IHouseholdMembershipService households)
+        IHouseholdMembershipService households,
+        global::Infrastructure.Billing.ClientSubscriptionActivationPolicyOptions? rollout = null)
     {
+        _rollout = rollout ?? new();
         _db = db;
         _billingOrchestrator = billingOrchestrator;
         _activationPolicyService = activationPolicyService;
@@ -91,8 +94,15 @@ public sealed class SubscriptionActivationService
         if (invitation.Status is SubscriptionActivationInvitationStatus.Revoked or SubscriptionActivationInvitationStatus.Superseded)
             return new SubscriptionActivationContextResult(SubscriptionActivationAvailability.Unavailable, "This activation link is no longer available.", invitation, invitation.ClientProfile, invitation.ClientSubscriptionOffer);
 
+        if (invitation.ClientSubscriptionOffer?.SubscriptionScope != ClientSubscriptionScope.LegendMembership &&
+            (invitation.ClientProfile is null || !string.Equals(
+                (invitation.ClientProfile.NormalizedEmail ?? invitation.ClientProfile.Email).Trim(),
+                invitation.IntendedNormalizedEmail.Trim(), StringComparison.OrdinalIgnoreCase)))
+            return new SubscriptionActivationContextResult(SubscriptionActivationAvailability.Unavailable,
+                "This activation link is no longer available. Request a new invitation.");
+
         var latestSubscription = await _db.ClientSubscriptions
-            .Where(x => x.ClientProfileId == invitation.ClientProfileId)
+            .Where(x => x.ClientProfileId == invitation.ClientProfileId && x.AcceptedOfferId == invitation.ClientSubscriptionOfferId)
             .OrderByDescending(x => x.UpdatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -109,6 +119,24 @@ public sealed class SubscriptionActivationService
 
         if (invitation.ClientProfile is null || invitation.ClientSubscriptionOffer is null)
             return new SubscriptionActivationContextResult(SubscriptionActivationAvailability.Unavailable, "The activation details could not be loaded.");
+
+        if (invitation.ClientSubscriptionOffer.SubscriptionScope != ClientSubscriptionScope.LegendMembership)
+        {
+            if (!_rollout.TrainingSubscriptionsEnabled)
+                return new SubscriptionActivationContextResult(SubscriptionActivationAvailability.Unavailable,
+                    "Training activation is temporarily unavailable. No payment has been taken.");
+            var trainingOffer = invitation.ClientSubscriptionOffer;
+            if (await _db.AccountLifecycleRecords.AsNoTracking().AnyAsync(x => x.ProfileId == invitation.ClientProfileId &&
+                    x.ParticipantType == Domain.Messaging.MessagingParticipantTypes.Client &&
+                    (x.State == Domain.Accounts.AccountLifecycleStates.Closed || x.State == Domain.Accounts.AccountLifecycleStates.DeletionRequested), cancellationToken) ||
+                !await _db.CommerceProducts.AsNoTracking().AnyAsync(x => x.Id == trainingOffer.CommerceProductId &&
+                    x.CommerceBusinessId == trainingOffer.CommerceBusinessId && x.IsActive &&
+                    x.BillingKind == ClientSubscriptionScope.MonthlyTraining, cancellationToken) ||
+                !await _db.CommerceBusinesses.AsNoTracking().AnyAsync(x => x.Id == trainingOffer.CommerceBusinessId &&
+                    x.IsActive && x.Status == "Active", cancellationToken))
+                return new SubscriptionActivationContextResult(SubscriptionActivationAvailability.Unavailable,
+                    "This training invitation is unavailable. No payment has been taken.");
+        }
 
         if (!invitation.ClientSubscriptionOffer.IsEligibleForActivation(nowUtc))
             return new SubscriptionActivationContextResult(SubscriptionActivationAvailability.Unavailable,
@@ -190,15 +218,15 @@ public sealed class SubscriptionActivationService
             var identity = await _entraLifecycle.EnsureClientIdentityAsync(
                 context.Client.Id,
                 cancellationToken);
-            await _households.EnsurePrimaryHouseholdActiveAsync(
-                context.Client.Id,
-                cancellationToken);
+            var training = context.Offer.SubscriptionScope != ClientSubscriptionScope.LegendMembership;
+            if (!training)
+                await _households.EnsurePrimaryHouseholdActiveAsync(context.Client.Id, cancellationToken);
 
             var continuation = await _continuationService.CreateProtectedStateAsync(
                 context.Client.Id,
                 context.Invitation.IntendedNormalizedEmail,
-                _returnUrlNormalizer.Normalize(input.ReturnUrl),
-                ClientIdentityContinuationPurpose.Activation,
+                training ? ClientIdentityAccessService.TrainingBillingPath : _returnUrlNormalizer.Normalize(input.ReturnUrl),
+                training ? ClientIdentityContinuationPurpose.TrainingBilling : ClientIdentityContinuationPurpose.Activation,
                 context.Invitation.Id,
                 activationResult.Subscription.Id,
                 cancellationToken);
@@ -231,7 +259,11 @@ public sealed class SubscriptionActivationService
         return new SubscriptionActivationPageViewModel
         {
             Token = token,
-            ReturnUrl = _returnUrlNormalizer.Normalize(returnUrl),
+            IsTraining = context.Offer.SubscriptionScope != ClientSubscriptionScope.LegendMembership,
+            TrainingPlanName = context.Offer.TrainingPlanName,
+            TrainingBenefits = context.Offer.TrainingBenefits,
+            ReturnUrl = context.Offer.SubscriptionScope != ClientSubscriptionScope.LegendMembership
+                ? ClientIdentityAccessService.TrainingBillingPath : _returnUrlNormalizer.Normalize(returnUrl),
             ClientName = $"{context.Client.FirstName} {context.Client.LastName}".Trim(),
             ClientEmail = context.Client.Email,
             MonthlyAmountCents = context.Schedule.MonthlyAmountCents,

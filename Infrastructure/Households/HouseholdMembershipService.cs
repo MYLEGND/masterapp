@@ -755,7 +755,7 @@ public sealed class HouseholdMembershipService : IHouseholdMembershipService
         Guid ownerClientProfileId,
         CancellationToken cancellationToken)
     {
-        var subscription = await _db.ClientSubscriptions
+        var subscription = await _db.ClientSubscriptions.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership)
             .AsNoTracking()
             .Where(x => x.ClientProfileId == ownerClientProfileId)
             .OrderByDescending(x => x.UpdatedUtc)

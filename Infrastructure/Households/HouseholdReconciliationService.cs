@@ -43,7 +43,7 @@ public sealed class HouseholdReconciliationService
         CancellationToken cancellationToken = default)
     {
         var result = new HouseholdReconciliationResult();
-        var ownerIds = await _db.ClientSubscriptions
+        var ownerIds = await _db.ClientSubscriptions.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership)
             .AsNoTracking()
             .Where(x => x.Status == ClientSubscriptionStatus.Active ||
                         x.Status == ClientSubscriptionStatus.GracePeriod)

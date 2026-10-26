@@ -4,6 +4,8 @@ namespace Infrastructure.Billing;
 
 public sealed class ClientSubscriptionActivationPolicyOptions
 {
+    // Enable only after migration and every affected consumer have verified release receipts.
+    public bool TrainingSubscriptionsEnabled { get; init; }
     public string BusinessTimeZoneId { get; init; } = "America/Phoenix";
     public int SameDayAnchorCutoffHourLocal { get; init; } = 17;
     public int MinimumDaysBeforeAnchoredRenewal { get; init; } = 14;
@@ -24,6 +26,7 @@ public sealed class ClientSubscriptionActivationPolicyOptions
 
         return new ClientSubscriptionActivationPolicyOptions
         {
+            TrainingSubscriptionsEnabled = bool.TryParse(section["TrainingSubscriptionsEnabled"], out var trainingEnabled) && trainingEnabled,
             BusinessTimeZoneId = Normalize(section["BusinessTimeZoneId"]) ?? "America/Phoenix",
             SameDayAnchorCutoffHourLocal = int.TryParse(section["SameDayAnchorCutoffHourLocal"], out var cutoffHour) && cutoffHour is >= 0 and <= 23
                 ? cutoffHour

@@ -7032,6 +7032,42 @@ class RetainedRecoveryDiscoveryTests(unittest.TestCase):
         self.validator.assert_called_once()
 
 
+class ReviewedTrainingContractTests(unittest.TestCase):
+    def setUp(self):
+        self.prior = {'schemaVersion':3,'migrations':[{'id':'20261026000134_AddCanonicalSubscriptionPaymentCompletion','supported':True}]}
+        self.entry = {'id':'20261026063902_AddScopedTrainingSubscriptions','supported':True,'columns':[]}
+        self.contract = {'schemaVersion':3,'migrations':self.prior['migrations']+[self.entry]}
+        self.current = {'runtimeIdentity':'a'*64,'toolIdentity':'c'*64,'executionIdentity':'d'*64}
+        self.trusted = dict(self.current, runtimeIdentity='b'*64)
+        self.pin = hashlib.sha256(json.dumps(self.entry,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+
+    def prove(self):
+        with patch.object(m,'REVIEWED_TRAINING_ENTRY',self.pin), patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
+            return m.reviewed_training_contract_extension('e'*40,'f'*40,self.contract,self.prior,self.current,self.trusted)
+
+    def test_unreviewed_runtime_pair_is_refused(self):
+        with patch.object(m,'REVIEWED_TRAINING_RUNTIME_PAIRS',frozenset()): self.assertFalse(self.prove())
+
+    def test_exact_reviewed_pair_and_suffix_are_required(self):
+        with patch.object(m,'REVIEWED_TRAINING_RUNTIME_PAIRS',frozenset({('b'*64,'a'*64)})):
+            self.assertTrue(self.prove())
+            for key in ('runtimeIdentity','toolIdentity','executionIdentity'):
+                old=self.current[key];self.current[key]='0'*64
+                self.assertFalse(self.prove());self.current[key]=old
+            self.entry['supported']=False;self.assertFalse(self.prove())
+
+    def test_changed_prefix_or_missing_predecessor_is_refused(self):
+        with patch.object(m,'REVIEWED_TRAINING_RUNTIME_PAIRS',frozenset({('b'*64,'a'*64)})):
+            self.prior['migrations'][0]['id']='20260101000000_Unknown'
+            self.assertFalse(self.prove())
+
+    def test_git_ancestry_and_inherited_tools_are_required(self):
+        with patch.object(m,'REVIEWED_TRAINING_RUNTIME_PAIRS',frozenset({('b'*64,'a'*64)})), patch.object(m,'REVIEWED_TRAINING_ENTRY',self.pin):
+            for results in ([1],[0,1]):
+                with patch.object(m.subprocess,'run',side_effect=[SimpleNamespace(returncode=x) for x in results]):
+                    self.assertFalse(m.reviewed_training_contract_extension('e'*40,'f'*40,self.contract,self.prior,self.current,self.trusted))
+
+
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.
     # Synthetic planner revisions must never query the real CI repository.

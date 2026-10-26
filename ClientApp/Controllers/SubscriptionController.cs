@@ -16,7 +16,7 @@ namespace ClientApp.Controllers;
 
 [Authorize]
 [BypassClientSubscriptionRequirement]
-public sealed class SubscriptionController : Controller
+public sealed partial class SubscriptionController : Controller
 {
     private readonly MasterAppDbContext _db;
     private readonly EffectiveClientContextService _clientContextService;
@@ -74,7 +74,7 @@ public sealed class SubscriptionController : Controller
             });
         }
 
-        var latestSubscription = await _db.ClientSubscriptions
+        var latestSubscription = await _db.ClientSubscriptions.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership)
             .Where(x => x.ClientProfileId == context.ClientProfileId)
             .OrderByDescending(x => x.UpdatedUtc)
             .FirstOrDefaultAsync();
@@ -306,7 +306,7 @@ public sealed class SubscriptionController : Controller
             });
         }
 
-        var latestSubscription = await _db.ClientSubscriptions
+        var latestSubscription = await _db.ClientSubscriptions.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership)
             .Where(x => x.ClientProfileId == context.ClientProfileId)
             .OrderByDescending(x => x.UpdatedUtc)
             .FirstOrDefaultAsync();
@@ -461,7 +461,7 @@ public sealed class SubscriptionController : Controller
 
     private Task<ClientSubscription?> GetCurrentSubscriptionAsync(Guid clientProfileId)
     {
-        return _db.ClientSubscriptions
+        return _db.ClientSubscriptions.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership)
             .Where(subscription => subscription.ClientProfileId == clientProfileId)
             .OrderByDescending(subscription => subscription.UpdatedUtc)
             .FirstOrDefaultAsync(HttpContext.RequestAborted);

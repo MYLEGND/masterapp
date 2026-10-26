@@ -56,6 +56,11 @@ public sealed class ClientAccountLifecycleAuthorizeFilter : IAsyncAuthorizationF
                 MessagingParticipantTypes.Client,
                 client.ClientProfileId),
             context.HttpContext.RequestAborted);
+        // Paused customers may still repair billing or cancel a training
+        // subscription; the global boundary rejects closed/deleting accounts.
+        if (lifecycle.State == AccountLifecycleStates.Paused &&
+            endpoint?.Metadata.GetMetadata<TrainingBillingRouteAttribute>() is { Authentication: false })
+            return;
         if (lifecycle.AllowsFullAccess || IsProfileRoute(context))
             return;
 

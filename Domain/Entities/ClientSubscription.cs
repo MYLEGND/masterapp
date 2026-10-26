@@ -12,6 +12,10 @@ public sealed class ClientSubscription
     public Guid AcceptedOfferId { get; set; }
     public ClientSubscriptionOffer? AcceptedOffer { get; set; }
 
+    public string SubscriptionScope { get; set; } = ClientSubscriptionScope.LegendMembership;
+    public Guid? CommerceBusinessId { get; set; }
+    public Guid? CommerceProductId { get; set; }
+
     public string OwnerAgentUserId { get; set; } = string.Empty;
     public BillingProvider Provider { get; set; } = BillingProvider.Square;
     public BillingProviderEnvironment ProviderEnvironment { get; set; } = BillingProviderEnvironment.Sandbox;

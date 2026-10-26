@@ -163,11 +163,11 @@ public sealed class FounderSubscribersService
             .Select(profile => new
             {
                 profile.ClientUserId,
-                IsAuthorized = _db.ClientSubscriptions.AsNoTracking().Any(subscription =>
+                IsAuthorized = _db.ClientSubscriptions.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership).AsNoTracking().Any(subscription =>
                     subscription.ClientProfileId == profile.Id &&
                     subscription.OwnerAgentUserId.ToLower() == normalizedAgentIdLower) ||
                     (from invitation in _db.SubscriptionActivationInvitations.AsNoTracking()
-                     join offer in _db.ClientSubscriptionOffers.AsNoTracking() on invitation.ClientSubscriptionOfferId equals offer.Id
+                     join offer in _db.ClientSubscriptionOffers.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership).AsNoTracking() on invitation.ClientSubscriptionOfferId equals offer.Id
                      where invitation.ClientProfileId == profile.Id && offer.OwnerAgentUserId.ToLower() == normalizedAgentIdLower
                      select invitation.Id).Any()
             })
@@ -184,7 +184,7 @@ public sealed class FounderSubscribersService
         var nowUtc = DateTime.UtcNow;
 
         var subscriptionSourceRows = await (
-            from subscription in _db.ClientSubscriptions.AsNoTracking()
+            from subscription in _db.ClientSubscriptions.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership).AsNoTracking()
             join client in _db.ClientProfiles.AsNoTracking() on subscription.ClientProfileId equals client.Id
             join agentProfile in _db.AgentProfiles.AsNoTracking() on subscription.OwnerAgentUserId equals agentProfile.AgentUserId into agentProfiles
             from agentProfile in agentProfiles.DefaultIfEmpty()
@@ -251,14 +251,14 @@ public sealed class FounderSubscribersService
 
         var invitationSourceRows = await (
             from invitation in _db.SubscriptionActivationInvitations.AsNoTracking()
-            join offer in _db.ClientSubscriptionOffers.AsNoTracking() on invitation.ClientSubscriptionOfferId equals offer.Id
+            join offer in _db.ClientSubscriptionOffers.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership).AsNoTracking() on invitation.ClientSubscriptionOfferId equals offer.Id
             join client in _db.ClientProfiles.AsNoTracking() on invitation.ClientProfileId equals client.Id
             join agentProfile in _db.AgentProfiles.AsNoTracking() on offer.OwnerAgentUserId equals agentProfile.AgentUserId into agentProfiles
             from agentProfile in agentProfiles.DefaultIfEmpty()
             where invitation.Status != SubscriptionActivationInvitationStatus.Redeemed &&
                   invitation.Status != SubscriptionActivationInvitationStatus.Revoked &&
                   invitation.Status != SubscriptionActivationInvitationStatus.Superseded &&
-                  !_db.ClientSubscriptions.Any(subscription => subscription.AcceptedOfferId == offer.Id)
+                  !_db.ClientSubscriptions.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership).Any(subscription => subscription.AcceptedOfferId == offer.Id)
             select new
             {
                 InvitationId = invitation.Id,

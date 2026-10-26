@@ -17,7 +17,8 @@ public sealed class ParfaitOriginalPublicPagesTests
         var preview = File.ReadAllText(Path.Combine(root, "CommerceCore", "Controllers", "ParfaitPublicPreviewController.cs"));
         Assert.Contains("CommerceSharedHostPreviewGate.OriginalPagePathItem", preview, StringComparison.Ordinal);
         Assert.Contains("ParfaitHostLayout", preview, StringComparison.Ordinal);
-        Assert.Contains("ViewBag.SquarePrelaunchLink = \"#\"", preview, StringComparison.Ordinal);
+        Assert.DoesNotContain("SquarePrelaunchLink", preview, StringComparison.Ordinal);
+        Assert.Contains("CommerceSharedHostCutoverGate.IsAdmitted", preview, StringComparison.Ordinal);
         Assert.Contains("return NotFound()", preview, StringComparison.Ordinal);
 
         var home = File.ReadAllText(Path.Combine(root, "ParfaitApp", "Views", "Home", "Index.cshtml"));

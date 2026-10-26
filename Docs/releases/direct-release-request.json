@@ -1,29 +1,16 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder successor instruction for ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1: correct demonstrated rehearsal defect and complete existing protected release with Codex sole implementation and Astra independent acceptance. Nonpublishing promotion only; mandatory run-specific MYLEGND Production approval remains separate; no new spend, security or access changes.",
-  "purpose": "Promote the independently reviewed disposable baseline fixture correction and canonical carried migration scope so the existing completion-only operation can reconcile predecessor receipts. No SQL, application deployment, routing, site publication or voice activation.",
-  "requestId": "founder-rehearsal-baseline-tool-promotion-20261026-v1",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "Founder ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1 continuing combined release as new baseline. Codex sole implementer, Astra independent acceptance. Preserve mandatory human MYLEGND Production review, current-head checks, migration and recovery evidence, and candidate-specific writer fencing. No new spend or access changes.",
+  "purpose": "Complete canonical checkout inquiry and scoped training through existing billing/payment owners; preserve all prior Studio/forms/receptionist changes. Training remains default-off until all affected consumers are compatible. Old Protect UNKNOWN history is retained without replay. This request does not waive production selector or replacement admission.",
+  "requestId": "founder-training-checkout-forward-baseline-20261026-v1",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait",
+    "masterapp-website"
+  ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "9eef4bc2c19e1a0f9db8d5fb623a423c85a0dee6",
-    "sourceRevision": "aee61a8e992f085dab79606d1ee187b45f1675e3",
-    "files": {
-      "scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.cs": {
-        "mode": "100644",
-        "blob": "84221653907974fbf507ae57521a6e6b9f515de4"
-      },
-      "scripts/migration-probe-package.py": {
-        "mode": "100644",
-        "blob": "239efcccc05b9712d30dbb81e2e122676260f5f4"
-      },
-      "scripts/test-migration-probe-package.py": {
-        "mode": "100644",
-        "blob": "a0d2d3dc313c56413fb2546688176648f12c4374"
-      }
-    }
-  }
+  "preserveLiveTargets": false
 }
