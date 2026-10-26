@@ -76,6 +76,56 @@ public sealed class ReceptionistSetupAndAuthorityTests
     }
 
     [Fact]
+    public async Task SavingOptionalDraftPreservesOperatingVersionPermissionAndCallFence()
+    {
+        await using var f = await ReadinessFixture.CreateAsync();
+        await using var db = f.Database(); var store = f.Store(db);
+        var owner = MarketingOwnerScope.Founder;
+        var original = await store.GetReceptionistConfigurationAsync(owner, "openai");
+        var enabled = await store.SetReceptionistAdmissionAsync(owner, "openai", original.ConnectionRevision, true);
+        await using var before = f.Database();
+        var prior = await before.MarketingConnections.AsNoTracking().SingleAsync(x => x.OwnerKey == owner.Key);
+        var draft = await store.SaveReceptionistConfigurationAsync(owner, "openai", enabled.ConnectionRevision,
+            original.Configuration! with { ConversationInstructions = "Unaccepted optional changes." }, "actor-a");
+        var next = await store.SaveReceptionistConfigurationAsync(owner, "openai", draft.ConnectionRevision,
+            draft.Configuration! with { ConversationInstructions = "Another unaccepted draft." }, "actor-a");
+        Assert.Equal(draft.ConfigurationVersion + 1, next.ConfigurationVersion);
+        Assert.True(next.AdmissionEnabled); Assert.False(next.BindingAccepted);
+        var operating = await store.GetReceptionistConfigurationAsync(owner, "openai", operating: true);
+        Assert.Equal(original.ConfigurationId, operating.ConfigurationId);
+        Assert.True(operating.BindingAccepted); Assert.True(operating.AdmissionEnabled);
+        await using var after = f.Database();
+        var actual = await after.MarketingConnections.AsNoTracking().SingleAsync(x => x.Id == prior.Id);
+        Assert.Equal(prior.ReceptionistControlRevision, actual.ReceptionistControlRevision);
+        Assert.Equal(prior.ReceptionistActiveConfigurationId, actual.ReceptionistActiveConfigurationId);
+        Assert.NotEqual(prior.Revision, actual.Revision);
+    }
+
+    [Fact]
+    public async Task AcceptedCallsOnlyRecoveryRequiresReviewAndDoesNotRestorePermission()
+    {
+        await using var f = await ReadinessFixture.CreateAsync();
+        await using var db = f.Database(); var store = f.Store(db);
+        var owner = MarketingOwnerScope.Founder;
+        var current = await store.GetReceptionistConfigurationAsync(owner, "openai");
+        var draft = await store.SaveReceptionistConfigurationAsync(owner, "openai", current.ConnectionRevision,
+            current.Configuration! with { MonthlyCashLimit = 50m }, "actor-a");
+        var recovery = await store.RestoreReceptionistContentDraftAsync(owner, "openai",
+            new(draft.ConnectionRevision, f.Version.Id, true), "actor-a");
+        Assert.Equal(current.Configuration!.MonthlyCashLimit, recovery.Configuration!.MonthlyCashLimit);
+        Assert.False(recovery.BindingAccepted); Assert.Equal(current.AdmissionEnabled, recovery.AdmissionEnabled);
+        var review = await store.PreviewReceptionistContentAsync(owner, "openai", "actor-a");
+        Assert.True(review.CanApply, review.BlockReason);
+        var applied = await store.ApplyReceptionistContentAsync(owner, "openai",
+            new(recovery.ConnectionRevision, review.ReviewHash, true), "actor-a");
+        Assert.True(applied.Current.BindingAccepted); Assert.False(applied.Current.AdmissionEnabled);
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => store.RestoreReceptionistContentDraftAsync(owner,
+            "openai", new(recovery.ConnectionRevision, f.Version.Id, true), "actor-a"));
+        await Assert.ThrowsAnyAsync<Exception>(() => store.RestoreReceptionistContentDraftAsync(
+            MarketingOwnerScope.Business(Guid.NewGuid()), "openai", new(Guid.NewGuid(), f.Version.Id, true), "actor-a"));
+    }
+
+    [Fact]
     public async Task ContentApplyCreatesOnePausedVersionAndHistoricalReplayPreservesNewerDraft()
     {
         await using var f = await ReadinessFixture.CreateAsync();
@@ -125,7 +175,7 @@ public sealed class ReceptionistSetupAndAuthorityTests
         await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => store.ApplyReceptionistContentAsync(owner, "openai", input, "actor-a"));
         var blocked = await store.PreviewReceptionistContentAsync(owner, "openai", "actor-a"); Assert.False(blocked.CanApply);
         var actual = await store.GetReceptionistConfigurationAsync(owner, "openai"); Assert.Equal(newer.ConfigurationId, actual.ConfigurationId);
-        Assert.False(actual.AdmissionEnabled);
+        Assert.Equal(current.AdmissionEnabled, actual.AdmissionEnabled);
     }
 
     [Fact]
@@ -138,7 +188,7 @@ public sealed class ReceptionistSetupAndAuthorityTests
         var restored = await store.RestoreReceptionistContentDraftAsync(owner, "openai", new(changed.ConnectionRevision, f.Version.Id), "actor-a");
         Assert.Equal(Configuration().ConversationInstructions, restored.Configuration!.ConversationInstructions);
         Assert.Null(restored.Configuration.CompactVoicePolicy); Assert.Null(restored.Configuration.CompactVoicePolicySourceSha256);
-        Assert.Equal(12m, restored.Configuration.MonthlyCashLimit); Assert.False(restored.BindingAccepted); Assert.False(restored.AdmissionEnabled);
+        Assert.Equal(12m, restored.Configuration.MonthlyCashLimit); Assert.False(restored.BindingAccepted); Assert.Equal(current.AdmissionEnabled, restored.AdmissionEnabled);
         Assert.NotEqual(f.Version.Id, restored.ConfigurationId);
     }
 

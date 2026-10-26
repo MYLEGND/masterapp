@@ -70,7 +70,7 @@ public sealed record ReceptionistAnswerInput
 }
 
 public sealed record ReceptionistSetupPage(ReceptionistConfigurationSnapshot Snapshot, ReceptionistSetupInput Input,
-    string PostUrl, string AdmissionUrl, string ReturnUrl, IReadOnlyList<string> CrmBuckets, string? Message = null, ReceptionistReadinessProjection? Readiness = null, string? ContentReviewUrl = null);
+    string PostUrl, string AdmissionUrl, string ReturnUrl, IReadOnlyList<string> CrmBuckets, string? Message = null, ReceptionistReadinessProjection? Readiness = null, string? ContentReviewUrl = null, ReceptionistConfigurationSnapshot? OperatingSnapshot = null);
 
 public sealed record ReceptionistAdmissionInput(Guid ExpectedRevision, bool Enabled);
 
@@ -78,6 +78,7 @@ public sealed record ReceptionistAdmissionInput(Guid ExpectedRevision, bool Enab
 public sealed record ReceptionistReadinessProjection
 {
     public DateTimeOffset? ObservedUtc { get; init; }
+    public long? OperatingConfigurationVersion { get; init; }
     public bool? OwnerPermissionEnabled { get; init; }
     public bool CanAllowOwnerPermission { get; init; }
     public string RuntimeState { get; init; } = "unknown";

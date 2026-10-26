@@ -29,9 +29,10 @@ public sealed class ReceptionistBookingReadinessReader(DbContextOptions<MasterAp
         await using var db = new MasterAppDbContext(options);
         var version = await (from connection in db.MarketingConnections.AsNoTracking()
             join configuration in db.Set<ReceptionistConfigurationVersion>().AsNoTracking()
-                on connection.ReceptionistActiveConfigurationId equals configuration.Id
+                on connection.Id equals configuration.MarketingConnectionId
             where connection.OwnerKey == owner.Key && connection.Provider == "openai" &&
-                configuration.Id == configurationId && configuration.MarketingConnectionId == connection.Id
+                configuration.Id == configurationId && (connection.ReceptionistActiveConfigurationId == configuration.Id ||
+                    !db.Set<ReceptionistConfigurationVersion>().Any(v => v.MarketingConnectionId == connection.Id && v.Version > configuration.Version))
             select new { configuration.ConfigurationJson, configuration.ConfigurationSha256,
                 connection.Revision, connection.OwnerType, connection.AgentTrackingProfileId, connection.CommerceBusinessId })
             .SingleOrDefaultAsync(ct) ?? throw new InvalidOperationException("The exact current owner configuration is unavailable.");
@@ -63,7 +64,7 @@ public sealed class ReceptionistBookingReadinessReader(DbContextOptions<MasterAp
         var mappings = policy?.Services.Select(x => new ReceptionistBookingServiceStatus(x.ServiceKey,
             definitions.Single(y => y.ServiceKey == x.ServiceKey).DisplayName, x.TimeZoneId, x.DurationMinutes)).ToArray() ?? [];
         var stillCurrent = await db.MarketingConnections.AsNoTracking().AnyAsync(x => x.OwnerKey == owner.Key &&
-            x.Provider == "openai" && x.ReceptionistActiveConfigurationId == configurationId && x.Revision == version.Revision, ct);
+            x.Provider == "openai" && x.Revision == version.Revision, ct);
         if (!stillCurrent) throw new DbUpdateConcurrencyException("The observed configuration changed during metadata preparation.");
         var calendarAfter = await ReadCalendarAsync(db, owner, ct);
         if (calendarAfter?.Revision != calendar?.Revision || calendarAfter?.Fingerprint != fingerprint)

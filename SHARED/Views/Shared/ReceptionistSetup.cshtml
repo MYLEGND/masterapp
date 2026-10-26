@@ -6,8 +6,8 @@
     ViewData["Title"] = "Receptionist settings";
     var settings = Model.Input;
     var snapshot = Model.Snapshot;
-    var accounting = snapshot.Accounting;
-    var recordedCurrency = snapshot.Configuration?.Currency ?? "currency unknown";
+    var accounting = Model.OperatingSnapshot?.Accounting;
+    var recordedCurrency = Model.OperatingSnapshot?.Configuration?.Currency ?? "currency unknown";
     var readiness = Model.Readiness ?? new Shared.Analytics.ReceptionistReadinessProjection();
     string Amount(decimal value) => value.ToString(CultureInfo.InvariantCulture);
 }
@@ -27,7 +27,8 @@
             <dt class="dashboard-stat-label col-sm-4">Owner permission</dt><dd class="col-sm-8">@(readiness.OwnerPermissionEnabled is true ? "Allowed when ready" : readiness.OwnerPermissionEnabled is false ? "Paused" : "Unknown — reload to verify")</dd>
             <dt class="dashboard-stat-label col-sm-4">Call readiness</dt><dd class="col-sm-8">@readiness.CallReadiness</dd>
             <dt class="dashboard-stat-label col-sm-4">Control-plane runtime</dt><dd class="col-sm-8">@readiness.RuntimeState</dd>
-            <dt class="dashboard-stat-label col-sm-4">Settings version shown</dt><dd class="col-sm-8">@(snapshot.ConfigurationId.HasValue ? $"Version {snapshot.ConfigurationVersion}" : "No saved version")</dd>
+            <dt class="dashboard-stat-label col-sm-4">Editable settings version</dt><dd class="col-sm-8">@(snapshot.ConfigurationId.HasValue ? $"Version {snapshot.ConfigurationVersion}" : "No saved version")</dd>
+            <dt class="dashboard-stat-label col-sm-4">Operating version</dt><dd class="col-sm-8">@(readiness.OperatingConfigurationVersion is { } operatingVersion ? $"Version {operatingVersion}" : readiness.BindingScope == "unaccepted" ? "No accepted operating configuration" : "Unknown — reload to verify")</dd>
             <dt class="dashboard-stat-label col-sm-4">Accepted binding scope</dt><dd class="col-sm-8">@readiness.BindingScope.Replace('_', ' ')</dd>
             <dt class="dashboard-stat-label col-sm-4">Application test window</dt><dd class="col-sm-8">@readiness.ApplicationWindowState.Replace('_', ' ')</dd>
             <dt class="dashboard-stat-label col-sm-4">Observed admission check</dt><dd class="col-sm-8">@readiness.AdmissionReason.Replace('_', ' ')</dd>

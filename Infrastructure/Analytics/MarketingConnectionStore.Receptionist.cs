@@ -11,7 +11,7 @@ public sealed partial class MarketingConnectionStore
 {
     /// <summary>The caller must resolve the actor through the existing website/workspace settings authorization.</summary>
     public async Task<ReceptionistConfigurationSnapshot> GetReceptionistConfigurationAsync(
-        MarketingOwnerScope owner, string provider, CancellationToken ct = default)
+        MarketingOwnerScope owner, string provider, CancellationToken ct = default, bool operating = false)
     {
         ArgumentNullException.ThrowIfNull(owner);
         var key = MarketingDestinationKeys.Normalize(provider);
@@ -20,7 +20,7 @@ public sealed partial class MarketingConnectionStore
             .SingleOrDefaultAsync(x => x.OwnerKey == owner.Key && x.Provider == key, ct);
         if (connection is null)
             return new(owner, key, Guid.Empty, null, 0, null, false, false, null, []);
-        return await ReceptionistSnapshotAsync(read, owner, connection, ct);
+        return await ReceptionistSnapshotAsync(read, owner, connection, ct, operating);
     }
 
     /// <summary>Edits create an immutable revision. They never grant provider acceptance, funding or Ads permission.</summary>
@@ -39,9 +39,8 @@ public sealed partial class MarketingConnectionStore
             var connection = await ReceptionistConnectionForWriteAsync(write, owner, key, expectedConnectionRevision, ct);
             if (write.Entry(connection).State == EntityState.Added)
                 await write.SaveChangesAsync(ct); // The configuration FK is created after its existing authority row.
-            var previous = connection.ReceptionistActiveConfigurationId is { } previousId
-                ? await write.Set<ReceptionistConfigurationVersion>().SingleAsync(x => x.Id == previousId && x.MarketingConnectionId == connection.Id, ct)
-                : null;
+            var previous = await write.Set<ReceptionistConfigurationVersion>()
+                .Where(x => x.MarketingConnectionId == connection.Id).OrderByDescending(x => x.Version).FirstOrDefaultAsync(ct);
             var version = new ReceptionistConfigurationVersion
             {
                 MarketingConnectionId = connection.Id,
@@ -55,9 +54,8 @@ public sealed partial class MarketingConnectionStore
             };
             write.Add(version);
             await write.SaveChangesAsync(ct);
-            connection.ReceptionistActiveConfigurationId = version.Id;
-            connection.ReceptionistAdmissionEnabled = false;
-            connection.ReceptionistControlRevision = Guid.NewGuid();
+            // A draft never changes the accepted operating selection or fences active calls.
+            // Legacy unaccepted active selections remain unaccepted until explicit review.
             Touch(connection);
             await write.SaveChangesAsync(ct);
             return await ReceptionistSnapshotAsync(write, owner, connection, ct);
@@ -125,8 +123,8 @@ public sealed partial class MarketingConnectionStore
         {
             if (guard is not null) await guard(write);
             var connection = await ReceptionistConnectionForWriteAsync(write, owner, key, expectedConnectionRevision, ct, mustExist: true);
-            var previous = await write.Set<ReceptionistConfigurationVersion>().SingleOrDefaultAsync(
-                x => x.Id == connection.ReceptionistActiveConfigurationId && x.MarketingConnectionId == connection.Id, ct)
+            var previous = await write.Set<ReceptionistConfigurationVersion>()
+                .Where(x => x.MarketingConnectionId == connection.Id).OrderByDescending(x => x.Version).FirstOrDefaultAsync(ct)
                 ?? throw new InvalidOperationException("Owner-authored configuration is required before provider acceptance.");
             var configuration = ReceptionistConfigurationCodec.Read(previous.ConfigurationJson, previous.ConfigurationSha256);
             ReceptionistConfigurationCodec.ValidateBinding(binding, configuration);
@@ -194,14 +192,14 @@ public sealed partial class MarketingConnectionStore
     }
 
     private static async Task<ReceptionistConfigurationSnapshot> ReceptionistSnapshotAsync(
-        MasterAppDbContext read, MarketingOwnerScope owner, MarketingConnection connection, CancellationToken ct)
+        MasterAppDbContext read, MarketingOwnerScope owner, MarketingConnection connection, CancellationToken ct, bool operating = false)
     {
         if (ReceptionistSql.Owner(connection) != owner)
             throw new InvalidOperationException("Receptionist owner identity is inconsistent.");
-        var version = connection.ReceptionistActiveConfigurationId is { } id
-            ? await read.Set<ReceptionistConfigurationVersion>().AsNoTracking()
-                .SingleAsync(x => x.Id == id && x.MarketingConnectionId == connection.Id, ct)
-            : null;
+        var versions = read.Set<ReceptionistConfigurationVersion>().AsNoTracking().Where(x => x.MarketingConnectionId == connection.Id);
+        var version = operating
+            ? await versions.SingleOrDefaultAsync(x => x.Id == connection.ReceptionistActiveConfigurationId, ct)
+            : await versions.OrderByDescending(x => x.Version).FirstOrDefaultAsync(ct);
         if (version is null)
             return new(owner, connection.Provider, connection.Revision, null, 0, null, false, false, null, []);
         var configuration = ReceptionistConfigurationCodec.Read(version.ConfigurationJson, version.ConfigurationSha256);

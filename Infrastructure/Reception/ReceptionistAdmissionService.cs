@@ -38,6 +38,9 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
         if (ReceptionistSql.Owner(connection) != snapshot.Owner || connection.Revision != snapshot.ConnectionRevision ||
             connection.ReceptionistActiveConfigurationId != snapshot.ConfigurationId)
             return Unavailable("snapshot_changed");
+        if (connection.ReceptionistActiveConfigurationId is null)
+            return new() { ObservedUtc = observed, OwnerPermissionEnabled = connection.ReceptionistAdmissionEnabled,
+                BindingScope = "unaccepted", AdmissionReason = "configuration_or_binding_unavailable", CallReadiness = "Not ready" };
         var version = await read.Set<ReceptionistConfigurationVersion>().SingleOrDefaultAsync(
             x => x.MarketingConnectionId == connection.Id && x.Id == connection.ReceptionistActiveConfigurationId, ct);
         if (version is null || version.ConfigurationSha256 != snapshot.ConfigurationSha256 || version.Version != snapshot.ConfigurationVersion)
@@ -82,7 +85,7 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
             return Unavailable("snapshot_changed");
         return new()
         {
-            ObservedUtc = observed, OwnerPermissionEnabled = connection.ReceptionistAdmissionEnabled,
+            ObservedUtc = observed, OperatingConfigurationVersion = bound ? version.Version : null, OwnerPermissionEnabled = connection.ReceptionistAdmissionEnabled,
             CanAllowOwnerPermission = bound && ReceptionistConfigurationCodec.HasRequiredIntake(configuration, binding!) &&
                 ReceptionistSetupForms.CanAllowOwnerPermission(snapshot),
             RuntimeState = enabled is null ? "unknown" : enabled.Value ? "enabled" : "disabled",

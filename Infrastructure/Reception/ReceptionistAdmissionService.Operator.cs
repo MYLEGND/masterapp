@@ -21,7 +21,7 @@ public sealed partial class ReceptionistAdmissionService
             ?? throw new InvalidOperationException("The requested current configuration is unavailable.");
         var connection = await read.MarketingConnections.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == version.MarketingConnectionId && x.OwnerKey == expectedOwnerKey &&
-                x.ReceptionistActiveConfigurationId == configurationId, ct)
+                (x.ReceptionistActiveConfigurationId == configurationId || !read.Set<ReceptionistConfigurationVersion>().Any(v => v.MarketingConnectionId == x.Id && v.Version > version.Version)), ct)
             ?? throw new InvalidOperationException("The requested configuration is not current for this settings owner.");
         var owner = ReceptionistSql.Owner(connection);
         if (owner.Key != expectedOwnerKey || connection.Provider != "openai")
@@ -248,12 +248,14 @@ public sealed partial class ReceptionistAdmissionService
         }
         var completed = await OperatorCompletionAsync(read, package, packageSha256, connection, configuration,
             accounts, periods, call, reservations, now, ct);
+        var latestConfigurationId = await read.Set<ReceptionistConfigurationVersion>().Where(x => x.MarketingConnectionId == connection.Id)
+            .OrderByDescending(x => x.Version).Select(x => x.Id).FirstAsync(ct);
         var stateHash = ReceptionistConfigurationCodec.Hash(JsonSerializer.Serialize(new
         {
             connection.Id, connection.OwnerKey, connection.Provider, connection.Revision,
             connection.ReceptionistActiveConfigurationId, connection.ReceptionistProviderProjectKey,
             connection.ReceptionistAdmissionEnabled, connection.ReceptionistControlRevision,
-            ConfigurationId = version.Id, version.ConfigurationSha256,
+            ConfigurationId = version.Id, version.ConfigurationSha256, latestConfigurationId,
             CallRevision = call?.Revision,
             BookingActionRevision = bookingAction?.Revision,
             Accounts = accounts.OrderBy(x => x.Id), Periods = periods.OrderBy(x => x.Id),
@@ -262,7 +264,7 @@ public sealed partial class ReceptionistAdmissionService
         }));
         return new(owner, connection, version, configuration, binding, call, accounts, stateHash,
             completed.Reference, completed.Satisfied, OperatorFacts(package, connection, version, configuration, accounts, periods,
-                reservations, charges, call, now, bookingAction)) { BookingActionRevision = bookingAction?.Revision };
+                reservations, charges, call, now, bookingAction)) { BookingActionRevision = bookingAction?.Revision, LatestConfigurationId = latestConfigurationId };
     }
 
     private async Task<(string? Reference, bool Satisfied)> OperatorCompletionAsync(MasterAppDbContext read,
@@ -458,6 +460,7 @@ internal sealed record ReceptionistOperatorState(MarketingOwnerScope Owner, Mark
     string StateSha256, string? CompletedReference, bool SatisfiedWithoutReceipt, IReadOnlyList<ReceptionistOperatorFact> Facts)
 {
     internal Guid? BookingActionRevision { get; init; }
+    internal Guid LatestConfigurationId { get; init; }
     internal void RequirePackageRevisions(ReceptionistOperatorPackage package)
     {
         if (Connection.Revision != package.ExpectedConnectionRevision ||
@@ -465,7 +468,8 @@ internal sealed record ReceptionistOperatorState(MarketingOwnerScope Owner, Mark
             Accounts.Any(x => !package.ExpectedAccountRevisions.TryGetValue(x.Id, out var revision) || x.Revision != revision) ||
             Call is not null && Call.Revision != package.ExpectedCallRevision ||
             package.Operation == "reconcile_booking_action" && BookingActionRevision != package.ExpectedBookingActionRevision ||
-            package.Operation is "accept_binding" or "set_owner_admission" && Connection.ReceptionistActiveConfigurationId != Version.Id)
+            package.Operation == "accept_binding" && LatestConfigurationId != Version.Id ||
+            package.Operation == "set_owner_admission" && Connection.ReceptionistActiveConfigurationId != Version.Id)
             throw new DbUpdateConcurrencyException("The reviewed canonical revisions changed. A fresh scoped review is required.");
     }
 }

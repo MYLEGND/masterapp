@@ -18,7 +18,7 @@ public partial class WebsiteAnalyticsController
         var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
         if (owner is null) return Forbid();
         var snapshot = await ReceptionistStore.GetReceptionistConfigurationAsync(owner, MarketingDestinationKeys.OpenAi, cancellationToken);
-        return await ReceptionistPageAsync(snapshot, agentProfileId, message: notice == "saved" ? "Your settings were saved as an inactive version. Verification is required before calls can use this version."
+        return await ReceptionistPageAsync(snapshot, agentProfileId, message: notice == "saved" ? "Your settings were saved as an inactive version. Your operating configuration and call permission were not changed. Review and apply this version before calls can use it."
             : notice == "content-replayed" ? "This content review was already applied. Its prior result was reused; the current settings and call permission are shown below and were not changed."
             : notice == "content-applied" ? "The reviewed content was applied. Calls remain paused; readiness and call-quality acceptance are separate."
             : notice == "admission" ? "Your receptionist permission was saved. This does not verify that calls are ready." : null, cancellationToken: cancellationToken);
@@ -128,7 +128,9 @@ public partial class WebsiteAnalyticsController
         {
             await ReceptionistStore.RestoreReceptionistContentDraftAsync(owner, MarketingDestinationKeys.OpenAi, input,
                 User.GetCanonicalUserId(), cancellationToken);
-            return RedirectToAction(nameof(Receptionist), new { agentProfileId, notice = "saved" });
+            return input.RestoreOperatingConfiguration
+                ? RedirectToAction(nameof(ReviewReceptionistContent), new { agentProfileId })
+                : RedirectToAction(nameof(Receptionist), new { agentProfileId, notice = "saved" });
         }
         catch (DbUpdateConcurrencyException) { return Conflict("The settings changed. Reload before restoring content."); }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Text.Json.JsonException)
@@ -140,12 +142,15 @@ public partial class WebsiteAnalyticsController
     private async Task<IActionResult> ReceptionistPageAsync(ReceptionistConfigurationSnapshot snapshot, Guid? agentProfileId,
         ReceptionistSetupInput? input = null, string? message = null, CancellationToken cancellationToken = default)
     {
+        var operating = await ReceptionistStore.GetReceptionistConfigurationAsync(snapshot.Owner, snapshot.Provider, cancellationToken, operating: true);
         var readiness = await HttpContext.RequestServices.GetRequiredService<ReceptionistAdmissionService>()
-            .GetSetupReadinessAsync(snapshot, observeControlPlaneRuntime: true, ct: cancellationToken);
+            .GetSetupReadinessAsync(operating, observeControlPlaneRuntime: true, ct: cancellationToken);
+        if (operating.ConnectionRevision != snapshot.ConnectionRevision)
+            readiness = new ReceptionistReadinessProjection { AdmissionReason = "snapshot_changed" };
         return View("~/Views/Shared/ReceptionistSetup.cshtml",
             new ReceptionistSetupPage(snapshot, input ?? ReceptionistSetupForms.Read(snapshot),
                 Url.Action(nameof(SaveReceptionist), new { agentProfileId })!,
                 Url.Action(nameof(ReceptionistAdmission), new { agentProfileId })!,
-                Url.Action("Index", new { agentProfileId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness, Url.Action(nameof(ReviewReceptionistContent), new { agentProfileId })!));
+                Url.Action("Index", new { agentProfileId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness, Url.Action(nameof(ReviewReceptionistContent), new { agentProfileId })!, OperatingSnapshot: operating));
     }
 }

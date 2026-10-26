@@ -531,7 +531,10 @@ public sealed partial class ReceptionistOperatorTests
             await using var db = Database();
             var connection = await db.MarketingConnections.AsNoTracking().SingleAsync();
             var call = callId.HasValue ? await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == callId) : null;
-            var versionId = call?.ConfigurationVersionId ?? connection.ReceptionistActiveConfigurationId!.Value;
+            var latest = await db.Set<ReceptionistConfigurationVersion>().AsNoTracking()
+                .Where(x => x.MarketingConnectionId == connection.Id).OrderByDescending(x => x.Version).FirstAsync();
+            var versionId = call?.ConfigurationVersionId ?? (operation == "set_owner_admission"
+                ? connection.ReceptionistActiveConfigurationId!.Value : latest.Id);
             var version = await db.Set<ReceptionistConfigurationVersion>().AsNoTracking().SingleAsync(x => x.Id == versionId);
             Guid[] ids = operation switch
             {

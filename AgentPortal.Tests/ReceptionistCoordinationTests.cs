@@ -91,7 +91,7 @@ public sealed class ReceptionistCoordinationTests
         var store = new MarketingConnectionStore(storeDb, null!);
         var edited = await store.SaveReceptionistConfigurationAsync(a.Owner, a.Provider, before.ConnectionRevision,
             before.Configuration! with { BusinessPolicy = "Updated private owner policy", MaximumCallSeconds = before.Configuration!.MaximumCallSeconds + 60 }, "authorized-actor");
-        Assert.False(edited.AdmissionEnabled);
+        Assert.Equal(before.AdmissionEnabled, edited.AdmissionEnabled);
         Assert.False(edited.BindingAccepted);
         Assert.NotEqual(before.ConfigurationId, edited.ConfigurationId);
         Assert.Equal(before.ConfigurationVersion + 1, edited.ConfigurationVersion);
@@ -110,7 +110,7 @@ public sealed class ReceptionistCoordinationTests
         Assert.Equal("independent-ads-ciphertext", ads.AdsAccessTokenCiphertext);
         Assert.Equal("{\"ads\":true}", ads.ProviderPermissionsJson);
         Assert.Equal(f.Clock.Now.AddDays(-1), ads.DisconnectedUtc);
-        Assert.Single(await f.Service.FindStopRequestsAsync(10));
+        Assert.Empty(await f.Service.FindStopRequestsAsync(10));
     }
 
     [Fact]
@@ -168,14 +168,14 @@ public sealed class ReceptionistCoordinationTests
         settings = await store.SaveReceptionistConfigurationAsync(a.Owner, a.Provider, settings.ConnectionRevision,
             settings.Configuration! with { BusinessPolicy = "New inactive owner policy" }, "authorized-actor");
         Assert.False(settings.BindingAccepted); Assert.False(settings.AdmissionEnabled);
-        Assert.Null(await f.Service.GetIngressBindingAsync(a.Provider, a.Ingress));
+        Assert.Equal(original.ConfigurationId, (await f.Service.GetIngressBindingAsync(a.Provider, a.Ingress))!.ConfigurationId);
         await Assert.ThrowsAsync<InvalidOperationException>(() => f.AcceptDraftAsync(b, funding));
         await Assert.ThrowsAsync<InvalidOperationException>(() => store.AcceptReceptionistBindingAsync(a.Owner, a.Provider,
             settings.ConnectionRevision, original.Binding with { ProviderProjectKey = "replacement-project" }, "verified-operator"));
         await Assert.ThrowsAsync<ArgumentException>(() => store.AcceptReceptionistBindingAsync(a.Owner, a.Provider,
             settings.ConnectionRevision, original.Binding with { ExclusiveProjectVerificationReceipt = "" }, "verified-operator"));
         var unchanged = await db.MarketingConnections.AsNoTracking().SingleAsync(x => x.Id == a.ConnectionId);
-        Assert.Equal(a.ProjectKey, unchanged.ReceptionistProviderProjectKey); Assert.Equal(settings.ConfigurationId, unchanged.ReceptionistActiveConfigurationId);
+        Assert.Equal(a.ProjectKey, unchanged.ReceptionistProviderProjectKey); Assert.Equal(original.ConfigurationId, unchanged.ReceptionistActiveConfigurationId);
         settings = await store.AcceptReceptionistBindingAsync(a.Owner, a.Provider, settings.ConnectionRevision,
             original.Binding with { IngressKey = "rotated-owner-route", WebhookSecretReference = "secret-store:rotated-owner-webhook" }, "verified-operator");
         Assert.True(settings.BindingAccepted); Assert.False(settings.AdmissionEnabled);
