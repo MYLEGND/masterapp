@@ -3195,7 +3195,7 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
         original=dict(run=dict(id=10,run_attempt=5,head_sha='a'*40),targets=['website'])
         identity=dict(target='website',applicationRevision='a'*40,packageDigest='d'*64)
         operation=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
-        prior=dict(identity,operationId=operation,packageProducerRun=10,baseline='c'*40) if entered else None
+        prior=dict(identity,operationId=operation,packageProducerRun=10,baseline='c'*40,baselineDeploymentIds=['old']) if entered else None
         material=dict(packageArtifact=dict(id=40,name='immutable-original',digest='sha256:'+'e'*64),originalIntent=prior)
         events=[]; intent_reads=0; proof_boundaries=[]; proof_active=0; live_reads=0
         import contextlib
@@ -3229,6 +3229,8 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
             def __init__(self,**kwargs):
                 self.intent=prior;self.baseline=kwargs['baseline'];self.history_error=None
                 self.callback=kwargs['before_new_intent']
+            def validate_contract(self, *args, **kwargs):
+                pass
             def before_submit(self):
                 if self.intent is not None:return False
                 self.callback(['old']);events.append('intent');self.intent={};return True
@@ -3246,7 +3248,7 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
             self.assertEqual((run,name,kwargs['artifact_id'],kwargs['expected_digest']),
                              (10,'immutable-original',40,'sha256:'+'e'*64))
             directory.mkdir(parents=True);(directory/'deploy.zip').write_bytes(b'exact fixture');(directory/'SHA256SUMS').write_text('fixture')
-        owner=SimpleNamespace(RecoveryJournal=Journal,publish_record=Mock())
+        owner=SimpleNamespace(RecoveryJournal=Journal,publish_record=Mock(),validate_record=Mock())
         with ExitStack() as stack:
             temporary=stack.enter_context(tempfile.TemporaryDirectory())
             stack.enter_context(patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='token')))
@@ -3408,11 +3410,11 @@ def preflight_five_target_payload():
     for n,key in enumerate(keys):
         identity=dict(target=key,applicationRevision='a'*40,packageDigest='d'*64)
         op=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
-        priors[key]=None if key=='website' else dict(identity,operationId=op,packageProducerRun=10,baseline='c'*40)
+        priors[key]=None if key=='website' else dict(identity,operationId=op,packageProducerRun=10,baseline='c'*40,baselineDeploymentIds=['old'])
         materials[key]=dict(originalIntent=priors[key],packageArtifact=dict(id=40+n,name='immutable-'+key,digest='sha256:'+'e'*64))
         targets[key]=dict(operationId=op,packageDigest='d'*64,packageArtifactId=40+n,packageArtifactDigest='sha256:'+'e'*64)
     before=json.dumps(priors,sort_keys=True);proof=dict(originalRun=10,originalAttempt=5,applicationRevision='a'*40,observer=observer,targets=targets)
-    owner=SimpleNamespace(publish_record=Mock(),RecoveryJournal=Mock(side_effect=lambda **kw:SimpleNamespace(intent=priors[kw['target']],history_error=None)))
+    owner=SimpleNamespace(publish_record=Mock(),RecoveryJournal=Mock(side_effect=lambda **kw:SimpleNamespace(intent=priors[kw['target']],history_error=None,validate_contract=Mock())))
     with tempfile.TemporaryDirectory() as temporary,patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='token')), \
          patch.object(authority,'fast_track_completion_original',return_value=original), \
          patch.object(authority,'fast_track_recovery_material',side_effect=lambda repo,o,key,t:materials[key]), \
@@ -3484,7 +3486,7 @@ def target_hold_five_target_payload(*, callback_failure=True, publication_failur
          patch.object(deploy,'verify_package',return_value='d'*64),patch.object(deploy,'target_azure',return_value=Mock()), \
          patch.object(deploy,'recovery_preupload_baseline',side_effect=baseline),patch.object(deploy,'recovery_host_flags'), \
          patch.object(deploy,'reconcile',side_effect=reconcile),patch.object(deploy,'verify_fast_track_public_metadata'), \
-         patch.object(owner,'publish_record',side_effect=publish), \
+         patch.object(owner,'publish_record',side_effect=publish), patch.object(owner,'validate_record'), \
          patch.object(deploy.importlib.util,'spec_from_file_location',return_value=SimpleNamespace(loader=Mock())), \
          patch.object(deploy.importlib.util,'module_from_spec',return_value=owner):
         root=Path(temporary)
@@ -3535,6 +3537,63 @@ class ProtectRetainedBaselineTests(unittest.TestCase):
     def test_changed_live_baseline_cannot_enable_write(self):self.invoke(baseline='b'*40)
     def test_changed_rollback_bytes_cannot_enable_write(self):self.invoke(digest='f'*64)
     def test_enabled_host_flag_cannot_enable_write(self):self.invoke(flags_error=True)
+
+
+class RecoveryContractBarrierTests(unittest.TestCase):
+    def test_late_target_contract_drift_blocks_every_worker_and_intent(self):
+        from types import SimpleNamespace
+        authority = deploy._RELEASE_AUTHORITY
+        spec = importlib.util.spec_from_file_location('contract_journal', ROOT/'release-operation-evidence.py')
+        owner = importlib.util.module_from_spec(spec); spec.loader.exec_module(owner)
+        observer = dict(runId=20,runAttempt=1,jobId=30,toolRevision='b'*40,promotionRunId=19)
+        keys = list(deploy.TARGETS)
+        original = dict(run=dict(id=10,run_attempt=1,head_sha='a'*40),targets=keys)
+        materials = {key:dict(originalIntent=None,packageArtifact=dict(id=40+n,name='immutable-'+key,digest='sha256:'+'e'*64)) for n,key in enumerate(keys)}
+        targets = {}
+        for key in keys:
+            identity = dict(target=key,applicationRevision='a'*40,packageDigest='d'*64)
+            targets[key] = dict(operationId=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
+                packageDigest='d'*64,packageArtifactId=materials[key]['packageArtifact']['id'],packageArtifactDigest='sha256:'+'e'*64)
+        original_builder = authority.fast_track_recovery_record_proof
+        def drift(original, material, observer):
+            proof = original_builder(original, material, observer)
+            if material is materials[keys[-1]]: proof['newUnrecognizedField'] = True
+            return proof
+        validated = []
+        actual_validator = owner.validate_record
+        def validate(name, record, **kwargs):
+            actual_validator(name, record, **kwargs)
+            validated.append(record['target'])
+        with tempfile.TemporaryDirectory() as temporary, ExitStack() as stack:
+            root = Path(temporary)
+            for key in keys:
+                (root/key).mkdir(); (root/key/'deploy.zip').write_bytes(b'fixture'); (root/key/'SHA256SUMS').write_text('fixture')
+            proof = dict(originalRun=10,originalAttempt=1,applicationRevision='a'*40,observer=observer,targets=targets)
+            (root/'retained-recovery-plan.json').write_text(json.dumps(proof))
+            stack.enter_context(patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='synthetic',GITHUB_RUN_ID='20',GITHUB_RUN_ATTEMPT='1')))
+            stack.enter_context(patch.object(authority,'fast_track_completion_original',return_value=original))
+            stack.enter_context(patch.object(authority,'fast_track_recovery_material',side_effect=lambda repo,o,key,t:materials[key]))
+            stack.enter_context(patch.object(authority,'fast_track_recovery_record_proof',side_effect=drift))
+            stack.enter_context(patch.object(authority,'release_operation_history',return_value=None))
+            stack.enter_context(patch.object(deploy,'verify_package',return_value='d'*64))
+            stack.enter_context(patch.object(deploy,'target_azure',return_value=Mock()))
+            stack.enter_context(patch.object(deploy,'recovery_preupload_baseline',return_value=dict(revision='c'*40,deploymentIds=['old'])))
+            stack.enter_context(patch.object(deploy,'prepare_protect_retained_replacement'))
+            stack.enter_context(patch.object(owner,'validate_record',side_effect=validate))
+            published = stack.enter_context(patch.object(owner,'publish_record'))
+            workers = stack.enter_context(patch.object(deploy.concurrent.futures,'ThreadPoolExecutor'))
+            reconcile = stack.enter_context(patch.object(deploy,'reconcile'))
+            stack.enter_context(patch.object(deploy.importlib.util,'spec_from_file_location',return_value=SimpleNamespace(loader=Mock())))
+            stack.enter_context(patch.object(deploy.importlib.util,'module_from_spec',return_value=owner))
+            with self.assertRaisesRegex(owner.RecordContractError,'RELEASE_RECORD_CONTRACT_INVALID'):
+                deploy._recover_fast_track(10,'a'*40,root,observer,deploy.time.monotonic()+1800)
+            self.assertEqual(set(validated),set(keys[:-1]))
+            workers.assert_not_called(); reconcile.assert_not_called()
+            published.assert_called_once()
+            failure = published.call_args.args[1]
+            self.assertEqual(failure['phase'],'preflight-nonentry')
+            self.assertEqual(failure['failedTarget'],keys[-1])
+            self.assertFalse(failure['writePhaseEntered'])
 
 
 if __name__ == '__main__':

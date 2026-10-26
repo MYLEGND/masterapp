@@ -3,7 +3,6 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const {DefaultArtifactClient, ArtifactNotFoundError} = require('@actions/artifact');
 
 function componentSource(source) {
   const keys = ['runId', 'runAttempt', 'artifactId', 'artifactDigest', 'artifactName', 'receiptArtifactId', 'producingJobId'];
@@ -193,7 +192,7 @@ function replacementOperation(name, record) {
 
 // JSON arrives on stdin, never as an arbitrary upload path. Only the bounded
 // release operation record can be persisted; credentials cannot enter it.
-async function publish(client, name, record, {sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), claim = false} = {}) {
+function validateRecord(name, record) {
   const targetHold = /^legend-retained-target-preintent-[a-f0-9]{64}$/.test(name);
   const preflight = /^legend-retained-preflight-nonentry-[a-f0-9]{64}$/.test(name);
   const retained = /^legend-retained-recovery-success-[a-f0-9]{64}$/.test(name);
@@ -421,9 +420,14 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
         record[key].some(value => typeof value !== 'string' || !/^[a-zA-Z0-9_.:-]{1,256}$/.test(value))))
       throw new Error('Invalid provider operation identities');
   }
+  return {filename: plan ? 'release-transaction.json' : 'operation.json'};
+}
+
+async function publish(client, name, record, {sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), claim = false} = {}) {
+  const {filename} = validateRecord(name, record);
+  const {ArtifactNotFoundError} = require('@actions/artifact');
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'legend-operation-'));
   try {
-    const filename = plan ? 'release-transaction.json' : 'operation.json';
     const source = path.join(directory, filename);
     const content = JSON.stringify(record);
     await fs.writeFile(source, content, {mode: 0o600});
@@ -499,7 +503,17 @@ if (require.main === module) {
       if (input.length > 524288) throw new Error('Operation record too large');
     }
     const {mode, name, record} = JSON.parse(input);
+    if (mode === 'validate') {
+      try { validateRecord(name, record); } catch {
+        process.stderr.write('LEGEND_RECORD_CONTRACT_INVALID\n');
+        process.exitCode = 2;
+        return;
+      }
+      process.stdout.write('LEGEND_RECORD_CONTRACT_VALID\n');
+      return;
+    }
     if (mode !== undefined && mode !== 'claim') throw new Error('Unknown release operation transport mode');
+    const {DefaultArtifactClient} = require('@actions/artifact');
     const result = await publish(new DefaultArtifactClient(), name, record, {claim: mode === 'claim'});
     process.stdout.write(`LEGEND_OPERATION_RESULT=${JSON.stringify(result)}\n`);
   })().catch(() => {
@@ -508,4 +522,4 @@ if (require.main === module) {
     process.exitCode = 1;
   });
 }
-module.exports = {publish};
+module.exports = {publish, validateRecord};

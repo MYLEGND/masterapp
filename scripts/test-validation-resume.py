@@ -6331,6 +6331,15 @@ class RecoveryPreflightTerminalConsumerTests(RecoveryPreflightRecordTests):
             result=m.attested_recovery_terminal_preflight('owner/repo',f.run,f.job,1,f.revision,'token')
             if result:self.assertTrue(read.call_args.kwargs['verify_digest'])
             return result
+    def test_contract_rejection_receipt_authenticates_current_source_without_write_authority(self):
+        self.name,self.record=self.producer.recovery_preflight_nonentry_record(
+            self.proof,'website',RuntimeError('RELEASE_RECORD_CONTRACT_INVALID'))
+        self.assertFalse(self.record['writePhaseEntered'])
+        self.assertFalse(self.record['authorizesMutation'])
+        self.assertTrue(self.invoke())
+        self.assertFalse(self.invoke(wrong_source=True))
+        self.assertFalse(self.invoke(closure_bad='scripts/release-artifacts/transport.cjs'))
+
     def test_authenticated_full_consumer_positive_and_changed_final_inventory(self):
         self.assertTrue(self.invoke());self.assertFalse(self.invoke(late=True))
     def test_source_producer_material_and_target_bindings(self):

@@ -3,7 +3,7 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const {publish} = require('./transport.cjs');
+const {publish, validateRecord} = require('./transport.cjs');
 const name = 'legend-release-operation-intent-' + 'a'.repeat(64);
 const record = {schemaVersion: 1, phase: 'intent', operationId: 'a'.repeat(64),
   packageDigest: 'b'.repeat(64), applicationRevision: 'c'.repeat(40), baseline: 'd'.repeat(40),
@@ -464,7 +464,7 @@ test('completion success transport preserves original operation and names the re
 
 // Exercise the actual Python producers through the actual JS serialization gate.
 // Only external authority/artifact I/O is injected; producer payloads are not hand-copied.
-function retainedProducerPayloads(corrected = false) {
+function retainedProducerPayloads(corrected = false, preview = false) {
   const {spawnSync} = require('node:child_process');
   const script = String.raw`
 import ast,importlib.util,json,sys
@@ -472,6 +472,7 @@ from pathlib import Path
 from types import SimpleNamespace
 root=Path(sys.argv[1])
 corrected=sys.argv[2]=='true'
+preview=sys.argv[3]=='true'
 def load(name,path):
  spec=importlib.util.spec_from_file_location(name,path);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
 owner=load('journal',root/'release-operation-evidence.py')
@@ -480,7 +481,7 @@ observer=dict(runId=20,runAttempt=1,jobId=30,promotionRunId=19,toolRevision='b'*
 original=dict(run=dict(id=10,run_attempt=5,head_sha='a'*40))
 env=dict(GITHUB_RUN_ID='20',GITHUB_RUN_ATTEMPT='1',PACKAGE_PRODUCER_RUN='10',GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='test-only')
 fake=SimpleNamespace(RELEASE_TARGETS=authority.RELEASE_TARGETS,ReleaseOperationHistoryUnproven=RuntimeError,release_operation_history=lambda *a,**k:None)
-rows=[];records={}
+rows=[];records={};previews=[]
 for n,target in enumerate(['portal','client','protect','parfait','website']):
  material=dict(packageArtifact=dict(id=40+n,digest='sha256:'+'c'*64))
  if corrected and target=='protect':
@@ -498,6 +499,8 @@ for n,target in enumerate(['portal','client','protect','parfait','website']):
  journal=owner.RecoveryJournal(target=target,application_revision='a'*40,package_digest='d'*64,baseline='e'*40,
   recovery_evidence=proof,before_new_intent=lambda ids:None,authority=fake,environment=env,
   publisher=lambda name,record:rows.append(dict(name=name,record=record)))
+ journal.validate_contract(['old'],validator=lambda name,record:previews.append(dict(name=name,record=record)))
+ assert journal.intent is None and journal._new_intent_readback is False and not journal.submission_observation
  journal.before_submit(['old'],submission_kind='azure_onedeploy_windows_intent_v1')
  journal.record_submission_observation('new-'+target)
  journal.record_success(['new-'+target])
@@ -508,16 +511,12 @@ for n,target in enumerate(['portal','client','protect','parfait','website']):
  linux.record_success(['new-'+target])
  records[target]=dict(operationId=journal.operation_id,packageDigest='d'*64,packageArtifactId=40+n,
                      packageArtifactDigest='sha256:'+'c'*64,deploymentIds=['new-'+target])
-# Compile the exact current consumer summary assignment, not a duplicate schema.
-module=ast.parse((root/'deploy-approved-app.py').read_text())
-function=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='_recover_fast_track')
-assignment=next(n for n in function.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='summary' for t in n.targets))
-context=dict(original_run=10,original=original,revision='a'*40,observer=observer,records=records)
-exec(compile(ast.Module(body=[assignment],type_ignores=[]),'actual-consumer-summary','exec'),context)
-rows.append(dict(name=authority.fast_track_recovery_summary_name(10,'a'*40),record=context['summary']))
-print(json.dumps(rows))
+consumer=load('consumer',root/'deploy-approved-app.py')
+summary=consumer.recovery_summary_record(10,original,'a'*40,observer,records)
+rows.append(dict(name=authority.fast_track_recovery_summary_name(10,'a'*40),record=summary))
+print(json.dumps(previews if preview else rows))
 `;
-  const result = spawnSync('python3', ['-c', script, path.resolve(__dirname, '..'), String(corrected)], {encoding:'utf8', timeout:10000});
+  const result = spawnSync('python3', ['-c', script, path.resolve(__dirname, '..'), String(corrected), String(preview)], {encoding:'utf8', timeout:10000});
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout);
 }
@@ -785,4 +784,40 @@ test('Protect correction rejects malformed fields and inconsistent bindings befo
     const bad = structuredClone(row); mutate(bad.record);
     await assert.rejects(publish({}, bad.name, bad.record), /Invalid/);
   }
+});
+
+
+test('all five journal contract previews use the publication gate without authorizing writes', async () => {
+  for (const corrected of [false, true]) {
+    const rows = retainedProducerPayloads(corrected, true);
+    assert.equal(rows.length, 25);
+    assert.deepEqual(new Set(rows.map(x => x.record.target)), new Set(['portal','client','protect','parfait','website']));
+    for (const row of rows) {
+      const before = JSON.stringify(row);
+      const original = fs.mkdtemp;
+      fs.mkdtemp = () => {throw new Error('validation must not create files')};
+      try { validateRecord(row.name, row.record); } finally { fs.mkdtemp = original; }
+      assert.equal(JSON.stringify(row), before);
+      await retainedRoundTrip(row);
+      const bad = structuredClone(row); bad.record.recoveryEvidence.futureUnrecognizedField = true;
+      assert.throws(() => validateRecord(bad.name, bad.record), /Invalid/);
+      await assert.rejects(publish({}, bad.name, bad.record), /Invalid/);
+    }
+  }
+});
+
+test('validation CLI is read-only and distinguishes contract rejection without SDK output', () => {
+  const {spawnSync} = require('node:child_process');
+  const item = retainedProducerPayloads(true, true).find(x => x.record.target === 'protect');
+  const run = record => spawnSync(process.execPath, [path.join(__dirname, 'transport.cjs')], {
+    input: JSON.stringify({mode:'validate', name:item.name, record}), encoding:'utf8',
+    env: {PATH:process.env.PATH, NODE_PATH:process.env.NODE_PATH || '', TMPDIR:'/nonexistent/no-write-permitted'}, timeout:10000});
+  const good = run(item.record);
+  assert.equal(good.status, 0, good.stderr);
+  assert.equal(good.stdout, 'LEGEND_RECORD_CONTRACT_VALID\n');
+  assert.equal(good.stderr, '');
+  const bad = run({...item.record, secret:'must-never-be-logged'});
+  assert.equal(bad.status, 2);
+  assert.equal(bad.stdout, '');
+  assert.equal(bad.stderr, 'LEGEND_RECORD_CONTRACT_INVALID\n');
 });
