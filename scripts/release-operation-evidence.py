@@ -106,7 +106,7 @@ def readiness_refresh_once(identity, *, lookup, observe, execute, publisher=publ
 class OperationJournal:
     _publish = staticmethod(publish_record)
     def __init__(self, *, target, application_revision, package_digest, baseline,
-                 authority=None, publisher=None, environment=None, candidate_revision=None, component_source=None):
+                 authority=None, publisher=None, environment=None, candidate_revision=None, component_source=None, supersession=None):
         env = os.environ if environment is None else environment
         self.authority = authority or _authority()
         if target not in self.authority.RELEASE_TARGETS:
@@ -129,6 +129,11 @@ class OperationJournal:
         self.publisher = publisher or self._publish
         self.repository = env['GITHUB_REPOSITORY']
         self.token = env.get('GH_TOKEN') or env['GITHUB_TOKEN']
+        self.supersession = supersession
+        if supersession is not None:
+            if (target != 'protect' or candidate_revision is not None
+                or supersession != self.authority.fast_track_protect_supersession(application_revision)):
+                raise ValueError('Replacement authorization does not bind this operation')
         self.history_error = None
         try:
             self.intent = self.authority.release_operation_history(
@@ -161,6 +166,8 @@ class OperationJournal:
                     raise ValueError('Windows submission contract does not bind its operation')
             self._ids(self.intent.get('baselineDeploymentIds'))
             self.baseline = self.intent['baseline']
+        if self.intent is not None and self.intent.get('supersession') != self.supersession:
+            raise ValueError('Replacement intent authorization changed')
         self.submission_observation = None
         if self.intent is not None and 'submissionContract' in self.intent:
             self.submission_observation = self.authority.release_operation_history(
@@ -217,6 +224,10 @@ class OperationJournal:
             raise self.history_error
         if self.intent is not None:
             return False
+        if self.supersession is not None:
+            run = self.authority.assert_fast_track_release_execution(target='protect')
+            if run['head_sha'] != self.identity['applicationRevision'] or run['id'] != self.run:
+                raise ValueError('Replacement write authority changed')
         record = dict(self.identity, schemaVersion=1, operationId=self.operation_id,
                       baseline=self.baseline, packageProducerRun=self.producer,
                       producingRun=self.run, producingAttempt=self.attempt,
@@ -227,6 +238,8 @@ class OperationJournal:
             record['submissionContract'] = self._windows_submission_contract()
         if self.authorization is not None:
             record.update(self.authorization, schemaVersion=2)
+        if self.supersession is not None:
+            record['supersession'] = dict(self.supersession)
         self.publisher('legend-release-operation-intent-' + self.operation_id, record)
         self.intent = record
         self._new_intent_readback = True
@@ -269,7 +282,7 @@ class OperationJournal:
                     existing.get('baseline') != self.baseline or existing.get('phase') != 'success' or
                     any(existing.get(key) != self.intent.get(key) for key in
                         ('schemaVersion', 'packageProducerRun', 'candidateRevision', 'componentSource',
-                         'providerRequestCorrelation', 'submissionContract'))):
+                         'providerRequestCorrelation', 'submissionContract', 'supersession'))):
                 raise RuntimeError("Prior deployment success receipt identity mismatch")
             retained = set(self._ids(existing.get('deploymentIds')))
             if (self._ids(existing.get('baselineDeploymentIds')) != sorted(baseline_ids) or

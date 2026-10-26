@@ -1025,6 +1025,18 @@ class PackageTests(unittest.TestCase):
             self.assertTrue(any('AZURE_TRACKED_DEPLOYMENT_REFERENCE:masterapp-portal:tracked-operation-123' in str(call.args)
                                 for call in output.call_args_list))
 
+    def test_authorized_protect_replacement_tracks_one_submission(self):
+        azure=prepare_supported_azure(deploy.Azure('masterapp-protect',Path('/immutable.zip'),'https://example.invalid','a'*40))
+        azure.authorized_replacement=True
+        with patch.object(deploy.subprocess,'run') as run:
+            run.return_value.returncode=0;run.return_value.stdout='{"deploymentId":"replacement-123"}'
+            azure.submit({'kind':azure._submission_kind,'value':'b'*64})
+            command=run.call_args.args[0]
+            self.assertEqual('false',command[command.index('--async')+1])
+            self.assertEqual('true',command[command.index('--track-status')+1])
+            self.assertEqual(1,run.call_count)
+            self.assertEqual('replacement-123',azure.submission_reference)
+
     def test_tracked_portal_timeout_never_infers_deployment_success(self):
         azure = prepare_supported_azure(deploy.Azure('masterapp-portal', Path('/immutable.zip'), 'https://example.invalid', 'a' * 40))
         with patch.object(deploy.subprocess, 'run', side_effect=subprocess.TimeoutExpired(['az','webapp','deploy'],300)) as run:

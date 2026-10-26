@@ -267,7 +267,7 @@ class Azure:
         # operation ID that the durable receipt gate requires. A synchronous
         # tracked submit does not waive runtime or deployment-history checks.
         # Other apps retain their existing async submission contract.
-        tracked = self.app == "masterapp-portal" or (
+        tracked = self.app == "masterapp-portal" or getattr(self, "authorized_replacement", False) or (
             self.static and self.app == "masterapp-website")
         command = ['az', 'webapp', 'deploy', '-g', _RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP, '-n', self.app,
                    '--src-path', str(self.package), '--type', 'zip', '--clean', 'true',
@@ -622,7 +622,7 @@ def _baseline_map(raw: str):
     return result
 
 
-def operation_journal(key, revision, digest, baseline, *, candidate_revision=None, component_source=None):
+def operation_journal(key, revision, digest, baseline, *, candidate_revision=None, component_source=None, supersession=None):
     if os.environ.get('GITHUB_ACTIONS') != 'true':
         return None
     if baseline is None:
@@ -631,7 +631,7 @@ def operation_journal(key, revision, digest, baseline, *, candidate_revision=Non
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module.OperationJournal(target=key, application_revision=revision, package_digest=digest, baseline=baseline, authority=_RELEASE_AUTHORITY,
-                                   candidate_revision=candidate_revision, component_source=component_source)
+                                   candidate_revision=candidate_revision, component_source=component_source, supersession=supersession)
 
 
 def deploy_one(key: str, revision: str, package_root: Path, *, baseline=None, reconcile_only=False, journal=None):
@@ -1147,6 +1147,29 @@ def fast_track_migration_gate(run):
     return owners[0]
 
 
+def prepare_protect_replacement(revision, baseline, azure):
+    """Validate retained rollback bytes for the explicitly superseded baseline."""
+    proof = _RELEASE_AUTHORITY.fast_track_protect_supersession(revision)
+    if proof is None:
+        return None
+    if baseline != proof['originalRevision']:
+        raise DeploymentDrift('FAST_TRACK_SUPERSESSION_LIVE_BASELINE_CHANGED')
+    # This is a fresh no-active observation, not proof about the old missing reply.
+    rows = read_deployments_bounded(azure, phase='authorized replacement preflight')
+    if any(row['status'] in (0, 1, 2) for row in rows):
+        raise DeploymentReconciliationRequired('FAST_TRACK_SUPERSESSION_PROVIDER_ACTIVE')
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix='protect-retained-rollback-') as directory:
+        root = Path(directory)
+        _RELEASE_AUTHORITY._download_run_artifact(os.environ['GITHUB_REPOSITORY'],
+            proof['originalRun'], 'fast-track-package-' + baseline + '-protect', root,
+            artifact_id=proof['rollbackArtifactId'], expected_digest=proof['rollbackArtifactDigest'])
+        rollback_digest = verify_package(root / 'deploy.zip', baseline, False)
+    print('FAST_TRACK_SUPERSESSION_ROLLBACK_VERIFIED:' + rollback_digest)
+    azure.authorized_replacement = True
+    return proof
+
+
 def fast_track_deploy(key, package_root):
     """Use the canonical one-upload reconciler from the existing fast-track lane."""
     run = _RELEASE_AUTHORITY.assert_fast_track_release_execution(target=key)
@@ -1187,7 +1210,11 @@ def fast_track_deploy(key, package_root):
     if baseline is None:
         raise DeploymentReconciliationRequired('FAST_TRACK_LIVE_BASELINE_UNAVAILABLE')
     os.environ['PACKAGE_PRODUCER_RUN'] = str(run['id'])
-    journal = operation_journal(key, revision, digest, baseline)
+    supersession = _RELEASE_AUTHORITY.fast_track_protect_supersession(revision) if key == 'protect' else None
+    journal_args = {'supersession': supersession} if supersession is not None else {}
+    journal = operation_journal(key, revision, digest, baseline, **journal_args)
+    if supersession is not None and journal.intent is None:
+        prepare_protect_replacement(revision, baseline, azure)
     # Raw current provenance alone cannot erase an unknown earlier upload.
     if journal.history_error is not None:
         raise journal.history_error
