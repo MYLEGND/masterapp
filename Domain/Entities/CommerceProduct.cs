@@ -13,6 +13,8 @@ public sealed class CommerceProduct
     public string PriceLabel { get; set; } = "Coming Soon";
     public string Badge { get; set; } = "";
 
+    public string BillingKind { get; set; } = Domain.Billing.ClientSubscriptionScope.OneTimeProduct;
+
     public int PriceCents { get; set; }
     public int CompareAtPriceCents { get; set; }
     public bool IsFeatured { get; set; }

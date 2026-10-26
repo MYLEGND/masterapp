@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.RateLimiting;
 namespace ClientApp.Controllers;
 
 [AllowAnonymous]
+[ClientApp.Infrastructure.TrainingBillingRoute(authentication: true)]
 [EnableRateLimiting("clientapp-public")]
 public sealed class SubscriptionActivationController : Controller
 {
@@ -51,9 +52,10 @@ public sealed class SubscriptionActivationController : Controller
         {
             return View("Unavailable", new SubscriptionActivationNoticeViewModel
             {
-                Title = "Membership Active — Sign-In Setup Pending",
+                Title = activation.Context.Offer?.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership
+                    ? "Membership Active — Sign-In Setup Pending" : "Training Active — Sign-In Setup Pending",
                 Message = activation.SanitizedMessage
-                    ?? "Your membership is active. Secure sign-in setup is still completing. Do not submit another payment.",
+                    ?? "Your subscription is active. Secure sign-in setup is still completing. Do not submit another payment.",
                 ReturnUrl = _returnUrlNormalizer.Normalize(input.ReturnUrl)
             });
         }
@@ -93,7 +95,8 @@ public sealed class SubscriptionActivationController : Controller
         if (!string.IsNullOrWhiteSpace(activation.IdentityRedemptionUrl))
             return Redirect(activation.IdentityRedemptionUrl);
 
-        return RedirectToAction("AzureLogin", "Account", new { returnUrl = _returnUrlNormalizer.Normalize(input.ReturnUrl) });
+        return RedirectToAction("AzureLogin", "Account", new { returnUrl = activation.Context.Offer?.SubscriptionScope != Domain.Billing.ClientSubscriptionScope.LegendMembership
+            ? ClientIdentityAccessService.TrainingBillingPath : _returnUrlNormalizer.Normalize(input.ReturnUrl) });
     }
 
     [HttpGet("/activate/{token}/status")]
@@ -139,8 +142,9 @@ public sealed class SubscriptionActivationController : Controller
         {
             return View("Unavailable", new SubscriptionActivationNoticeViewModel
             {
-                Title = "Membership Active — Sign-In Setup Pending",
-                Message = "Your membership is active. Microsoft sign-in setup is still completing. Do not submit another payment. Try member sign-in again shortly.",
+                Title = validation.Continuation.Purpose == Domain.Billing.ClientIdentityContinuationPurpose.TrainingBilling
+                    ? "Training Active — Sign-In Setup Pending" : "Membership Active — Sign-In Setup Pending",
+                Message = "Your subscription is active. Microsoft sign-in setup is still completing. Do not submit another payment. Try sign-in again shortly.",
                 ReturnUrl = _returnUrlNormalizer.Normalize(returnUrl)
             });
         }

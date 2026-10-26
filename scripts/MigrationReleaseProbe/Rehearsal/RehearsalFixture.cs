@@ -17,6 +17,10 @@ internal static class RehearsalFixture
 {
     internal const string ReceptionistMigration = "20261020160000_AddReceptionistCoordination";
     internal const string CanonicalPaymentMigration = "20261026000134_AddCanonicalSubscriptionPaymentCompletion";
+    internal static bool IsTrainingFixture(CandidateContract.Entry entry) =>
+        entry.Id == CandidateContract.TrainingMigration && entry.Supported &&
+        Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(entry, CandidateContract.Json))) ==
+            "5a543b02a2a1ae2f2bb35d5e2a8fb51f41e9601b1ef4de2707ec6db51029be10";
     internal static bool IsCanonicalPaymentFixture(CandidateContract.Entry entry) =>
         entry.Id == CanonicalPaymentMigration && entry.Supported &&
         Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(entry, CandidateContract.Json))) ==
@@ -92,6 +96,13 @@ internal static class RehearsalFixture
                 throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
             requestedCount = "1";
         }
+        if (requestedCount is "canonical-payment-and-training" or "training-only")
+        {
+            if (contract.Migrations.LastOrDefault()?.Id != CandidateContract.TrainingMigration ||
+                contract.Migrations[^2].Id != CanonicalPaymentMigration)
+                throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
+            requestedCount = requestedCount == "training-only" ? "1" : "2";
+        }
         if (!int.TryParse(requestedCount, out var count) || count is < 1 or > 1000)
             throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
         var pending = contract.Migrations.TakeLast(count).ToArray();
@@ -103,6 +114,7 @@ internal static class RehearsalFixture
         var payments = pending.Any(m => m.Id == paymentMigration);
         var retention = pending.Any(m => m.Id == retentionMigration);
         var receptionist = pending.Any(m => m.Id == ReceptionistMigration);
+        var training = pending.Any(m => m.Id == CandidateContract.TrainingMigration);
         var canonicalPayments = pending.Any(m => m.Id == CanonicalPaymentMigration);
         if (pending.Length != count || pending.Any(m => !m.Supported ||
             (m.Id == retentionMigration && (m.Columns.Length != 1 || m.Tables.Length != 0 ||
@@ -111,7 +123,8 @@ internal static class RehearsalFixture
                     Type: "datetime2", Nullable: true } || m.Columns[0].Default.ValueKind != JsonValueKind.Null)) ||
             (m.Id == ReceptionistMigration && !IsReceptionistFixture(m)) ||
             (m.Id == CanonicalPaymentMigration && !IsCanonicalPaymentFixture(m)) ||
-            (m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration && m.Id != CanonicalPaymentMigration &&
+            (m.Id == CandidateContract.TrainingMigration && !IsTrainingFixture(m)) ||
+            (m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration && m.Id != CanonicalPaymentMigration && m.Id != CandidateContract.TrainingMigration &&
             (m.Tables.Length != 0 || m.Indexes.Length != 0 || m.Guards.Length != 0 || m.ForeignKeys.Length != 0 ||
             m.Columns.Any(c => c.Schema != "dbo" || c.Table != "MobileProfileSettings")))))
             throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
@@ -126,6 +139,7 @@ internal static class RehearsalFixture
                 ProfileId = Guid.NewGuid(), ParticipantType = "Agent", Bio = "synthetic migration fixture" });
             if (receptionist) db.AddRange(MarketingRows());
             if (canonicalPayments) db.AddRange(CanonicalPaymentRows());
+            if (training) db.AddRange(TrainingLegacyRows());
             if (retention)
             {
                 var state = new Domain.Entities.WebsiteContentState { OwnerKey = "synthetic-owner", SiteKey = "legend", Revision = 2 };
@@ -169,6 +183,8 @@ internal static class RehearsalFixture
                     Schema = c.Schema, Table = c.Table, Name = c.Name }))).ToArray();
             foreach (var command in db.GetService<IMigrationsSqlGenerator>().Generate(reverse))
                 await db.Database.ExecuteSqlRawAsync(command.CommandText, timeout.Token);
+            if (training)
+                await db.Database.ExecuteSqlRawAsync("CREATE UNIQUE INDEX IX_ClientSubscriptions_ClientProfileId ON dbo.ClientSubscriptions(ClientProfileId) WHERE [Status] <> 'Canceled' AND [Status] <> 'ActivationFailed'", timeout.Token);
             // EnsureCreated follows the model, which omits these migration-owned
             // defaults. Reconstruct the pinned applied migration's physical shape
             // before recording synthetic history; never repair an observed database.
@@ -189,10 +205,25 @@ internal static class RehearsalFixture
         }
         else if (operation == "precondition")
         {
-            if (!payments && !receptionist && !canonicalPayments) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+            if (!payments && !receptionist && !canonicalPayments && !training) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             await VerifyCatalogBatchProtocol(db, timeout.Token);
             var applied = (await db.Database.GetAppliedMigrationsAsync(timeout.Token)).ToArray();
             await CandidateContract.Verify(db, contract, applied, timeout.Token);
+            if (training)
+            {
+                foreach (var change in new[] {
+                    "DROP INDEX IX_ClientSubscriptions_ClientProfileId ON dbo.ClientSubscriptions",
+                    "DROP INDEX IX_ClientSubscriptions_ClientProfileId ON dbo.ClientSubscriptions; CREATE INDEX IX_ClientSubscriptions_ClientProfileId ON dbo.ClientSubscriptions(ClientProfileId) WHERE [Status] <> 'Canceled' AND [Status] <> 'ActivationFailed'",
+                    "DROP INDEX IX_ClientSubscriptions_ClientProfileId ON dbo.ClientSubscriptions; CREATE UNIQUE INDEX IX_ClientSubscriptions_ClientProfileId ON dbo.ClientSubscriptions(ClientProfileId) WHERE [Status] = 'Active'"
+                })
+                {
+                    await using var transaction = await db.Database.BeginTransactionAsync(timeout.Token);
+                    await db.Database.ExecuteSqlRawAsync(change, timeout.Token);
+                    try { await CandidateContract.Verify(db, contract, applied, timeout.Token); throw new InvalidOperationException("Invalid predecessor index accepted"); }
+                    catch (ProbeObservationFailure error) when (error.Message == "PHYSICAL_SCHEMA_DRIFT") { }
+                    await transaction.RollbackAsync(timeout.Token);
+                }
+            }
             if (payments)
             {
                 await using var transaction = await db.Database.BeginTransactionAsync(timeout.Token);
@@ -215,13 +246,20 @@ internal static class RehearsalFixture
         }
         else if (operation == "adversarial")
         {
-            if (!payments && !receptionist && !canonicalPayments) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+            if (!payments && !receptionist && !canonicalPayments && !training) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             var applied = db.Database.GetMigrations().ToArray();
             var mutations = payments ? new[] {
                 "ALTER INDEX [IX_CommercePaymentReceipts_Provider_Environment_AccountId_EventId] ON [dbo].[CommercePaymentReceipts] DISABLE",
                 "ALTER TABLE [dbo].[CommercePaymentEffects] NOCHECK CONSTRAINT [FK_CommercePaymentEffects_CommercePaymentAttempts_AttemptId]",
                 "ALTER TABLE [dbo].[CommerceOrders] ALTER COLUMN [PaymentReference] nvarchar(199) NULL"
             } : Array.Empty<string>();
+            if (training) mutations = mutations.Concat(new[] {
+                "ALTER INDEX IX_ClientSubscriptions_ClientProfileId_SubscriptionScope ON dbo.ClientSubscriptions DISABLE",
+                "DROP INDEX IX_ClientSubscriptions_ClientProfileId_SubscriptionScope ON dbo.ClientSubscriptions",
+                "ALTER TABLE dbo.ClientSubscriptions NOCHECK CONSTRAINT FK_ClientSubscriptions_CommerceProducts_CommerceProductId",
+                "ALTER TABLE dbo.ClientSubscriptionOffers ALTER COLUMN TrainingPlanName nvarchar(255) NULL",
+                "CREATE UNIQUE INDEX IX_ClientSubscriptions_ClientProfileId ON dbo.ClientSubscriptions(ClientProfileId) WHERE [Status] <> 'Canceled' AND [Status] <> 'ActivationFailed'"
+            }).ToArray();
             if (receptionist) mutations = mutations.Concat(ReceptionistDrift(pending.Single(m => m.Id == ReceptionistMigration))).ToArray();
             if (appliedReceptionist is not null && !receptionist)
                 mutations = mutations.Concat(new[] {
@@ -300,6 +338,7 @@ internal static class RehearsalFixture
                         o.PaymentReference is not null || o.PaymentEnvironment is not null))
                     throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
             }
+            if (training) await VerifyTrainingData(db, timeout.Token);
             await CandidateContract.Verify(db, contract, db.Database.GetMigrations().ToArray(), timeout.Token);
             foreach (var column in pending.SelectMany(m => m.Columns).Where(c => c.Table == "MobileProfileSettings"))
             {
@@ -606,4 +645,62 @@ internal static class RehearsalFixture
         }
         await transaction.RollbackAsync(cancellation);
     }
+    private static readonly Guid TrainingBusiness = Guid.Parse("cfaf0000-0000-4000-8000-000000000001");
+    private static readonly Guid TrainingProduct = Guid.Parse("cfaf0000-0000-4000-8000-000000000002");
+    private static readonly Guid TrainingClient = Guid.Parse("cfaf0000-0000-4000-8000-000000000003");
+    private static readonly Guid TrainingOffer = Guid.Parse("cfaf0000-0000-4000-8000-000000000004");
+    private static object[] TrainingLegacyRows() => [
+        new Domain.Entities.CommerceBusiness { Id = TrainingBusiness, Key = "rehearsal-training", DisplayName = "Legacy business" },
+        new Domain.Entities.CommerceProduct { Id = TrainingProduct, CommerceBusinessId = TrainingBusiness,
+            ExternalProductKey = "legacy-training-fixture", Name = "Legacy product", Slug = "legacy-training-fixture", Description = "Legacy description", PriceCents = 4321, IsActive = false },
+        new Domain.Entities.ClientProfile { Id = TrainingClient, ClientUserId = "lead:training-rehearsal", Email = "training-rehearsal@example.invalid", NormalizedEmail = "training-rehearsal@example.invalid" },
+        new Domain.Entities.ClientSubscriptionOffer { Id = TrainingOffer, ClientProfileId = TrainingClient, OwnerAgentUserId = "synthetic-training-owner", MonthlyAmountCents = 10000 },
+        new Domain.Entities.ClientSubscription { ClientProfileId = TrainingClient, AcceptedOfferId = TrainingOffer,
+            MonthlyAmountCents = 10000, Status = Domain.Billing.ClientSubscriptionStatus.Active },
+        new Domain.Entities.ClientSubscription { ClientProfileId = TrainingClient, AcceptedOfferId = TrainingOffer,
+            MonthlyAmountCents = 9000, Status = Domain.Billing.ClientSubscriptionStatus.Canceled },
+        new Domain.Entities.ClientSubscription { ClientProfileId = TrainingClient, AcceptedOfferId = TrainingOffer,
+            MonthlyAmountCents = 8000, Status = Domain.Billing.ClientSubscriptionStatus.ActivationFailed }
+    ];
+    private static async Task VerifyTrainingData(MasterAppDbContext db, CancellationToken ct)
+    {
+        var product = await db.CommerceProducts.AsNoTracking().SingleAsync(x => x.Id == TrainingProduct, ct);
+        var offer = await db.ClientSubscriptionOffers.AsNoTracking().SingleAsync(x => x.Id == TrainingOffer, ct);
+        var subscription = await db.ClientSubscriptions.AsNoTracking().SingleAsync(x => x.ClientProfileId == TrainingClient && x.Status == Domain.Billing.ClientSubscriptionStatus.Active, ct);
+        if (product.Name != "Legacy product" || product.Description != "Legacy description" || product.PriceCents != 4321 || product.IsActive ||
+            product.BillingKind != "OneTime" || offer.MonthlyAmountCents != 10000 || offer.OwnerAgentUserId != "synthetic-training-owner" ||
+            offer.SubscriptionScope != "LegendMembership" || offer.CommerceBusinessId.HasValue || offer.CommerceProductId.HasValue ||
+            offer.TrainingBenefits is not null || offer.TrainingPlanName is not null || offer.TrainingPromotionCode is not null ||
+            subscription.MonthlyAmountCents != 10000 || subscription.AcceptedOfferId != TrainingOffer ||
+            subscription.Status != Domain.Billing.ClientSubscriptionStatus.Active || subscription.SubscriptionScope != "LegendMembership" ||
+            subscription.CommerceBusinessId.HasValue || subscription.CommerceProductId.HasValue)
+            throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        var historical = await db.ClientSubscriptions.AsNoTracking().Where(x => x.ClientProfileId == TrainingClient &&
+            x.Status != Domain.Billing.ClientSubscriptionStatus.Active).OrderBy(x => x.MonthlyAmountCents).ToArrayAsync(ct);
+        if (historical.Length != 2 || historical[0].MonthlyAmountCents != 8000 || historical[1].MonthlyAmountCents != 9000 ||
+            historical[0].Status != Domain.Billing.ClientSubscriptionStatus.ActivationFailed || historical[1].Status != Domain.Billing.ClientSubscriptionStatus.Canceled ||
+            historical.Any(x => x.SubscriptionScope != "LegendMembership" || x.CommerceBusinessId.HasValue || x.CommerceProductId.HasValue || x.AcceptedOfferId != TrainingOffer))
+            throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        Domain.Entities.ClientSubscription Row(Domain.Billing.ClientSubscriptionStatus status) => new() {
+            ClientProfileId = TrainingClient, AcceptedOfferId = TrainingOffer, CommerceBusinessId = TrainingBusiness,
+            CommerceProductId = TrainingProduct, SubscriptionScope = Domain.Billing.ClientSubscriptionScope.Training(TrainingBusiness),
+            MonthlyAmountCents = 35000, Status = status };
+        db.ClientSubscriptions.AddRange(Row(Domain.Billing.ClientSubscriptionStatus.Active),
+            Row(Domain.Billing.ClientSubscriptionStatus.Canceled), Row(Domain.Billing.ClientSubscriptionStatus.ActivationFailed));
+        await db.SaveChangesAsync(ct);
+        db.ClientSubscriptions.Add(Row(Domain.Billing.ClientSubscriptionStatus.Active));
+        try { await db.SaveChangesAsync(ct); throw new InvalidOperationException("Duplicate nonterminal training scope accepted"); }
+        catch (DbUpdateException error) when (error.InnerException is SqlException sql && sql.Number is 2601 or 2627) { }
+        await transaction.RollbackAsync(ct);
+        db.ChangeTracker.Clear();
+        await using var membershipTransaction = await db.Database.BeginTransactionAsync(ct);
+        db.ClientSubscriptions.Add(new Domain.Entities.ClientSubscription { ClientProfileId = TrainingClient, AcceptedOfferId = TrainingOffer,
+            MonthlyAmountCents = 10000, Status = Domain.Billing.ClientSubscriptionStatus.Active });
+        try { await db.SaveChangesAsync(ct); throw new InvalidOperationException("Duplicate nonterminal membership accepted"); }
+        catch (DbUpdateException error) when (error.InnerException is SqlException sql && sql.Number is 2601 or 2627) { }
+        await membershipTransaction.RollbackAsync(ct);
+        db.ChangeTracker.Clear();
+    }
+
 }

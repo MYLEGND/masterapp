@@ -55,8 +55,11 @@ internal static partial class CandidateContract
             i.Table, i.Name, i.Columns, i.IsUnique, i.Filter)).ToArray();
         var foreignKeys = operations.OfType<AddForeignKeyOperation>().Select(f =>
             new TableForeignKey(f.Schema ?? "dbo", f.Table, DescribeForeignKey(f))).ToArray();
-        var guards = operations.OfType<SqlOperation>().Select(s =>
-            !s.SuppressTransaction && Normalize(s.Sql) == Normalize(CheckoutGuardSql) ? CheckoutGuard : "unknown").ToArray();
+        var guards = operations.Where(op => op is SqlOperation or DropIndexOperation).Select(op => op switch {
+            SqlOperation sql when !sql.SuppressTransaction && Normalize(sql.Sql) == Normalize(CheckoutGuardSql) => CheckoutGuard,
+            DropIndexOperation drop when IsTrainingIndexDrop(id, drop) => TrainingIndexTransition,
+            _ => "unknown"
+        }).ToArray();
         var supported = operations.Count > 0 && operations.All(op => !op.GetAnnotations().Any() && op switch {
             AddColumnOperation c => PlainColumn(c, false),
             CreateTableOperation t => t.PrimaryKey is not null && !t.PrimaryKey.GetAnnotations().Any() &&
@@ -64,6 +67,7 @@ internal static partial class CandidateContract
                 t.Columns.All(c => PlainColumn(c, true)) && t.ForeignKeys.All(PlainForeignKey),
             CreateIndexOperation i => i.IsDescending is null || i.IsDescending.All(d => !d),
             AddForeignKeyOperation f => PlainForeignKey(f),
+            DropIndexOperation drop => IsTrainingIndexDrop(id, drop),
             SqlOperation s => !s.SuppressTransaction && Normalize(s.Sql) == Normalize(CheckoutGuardSql),
             _ => false
         });
@@ -114,9 +118,11 @@ internal static partial class CandidateContract
     {
         if (m.Tables is null || m.Indexes is null || m.Guards is null || m.ForeignKeys is null ||
             m.Tables.Length > 1000 || m.Indexes.Length > 10000 || m.Guards.Length > 10000 || m.ForeignKeys.Length > 1000) return false;
+        if (m.Supported && m.Id == TrainingMigration && Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(m, Json))) !=
+            "5a543b02a2a1ae2f2bb35d5e2a8fb51f41e9601b1ef4de2707ec6db51029be10") return false;
         // Unsupported historical migrations remain opaque and cannot become pending supported operations.
         if (!m.Supported) return true;
-        if (m.Guards.Length > 1 || m.Columns.Any(c => !ValidColumn(c)) || m.Guards.Any(g => g != CheckoutGuard) ||
+        if (m.Guards.Length > 1 || m.Columns.Any(c => !ValidColumn(c)) || m.Guards.Any(g => g != CheckoutGuard && !(g == TrainingIndexTransition && m.Id == TrainingMigration)) ||
             m.Columns.Select(c => (c.Schema, c.Table, c.Name)).Distinct().Count() != m.Columns.Length ||
             m.Tables.Select(t => (t?.Schema, t?.Name)).Distinct().Count() != m.Tables.Length ||
             m.Indexes.Select(i => (i?.Schema, i?.Table, i?.Name)).Distinct().Count() != m.Indexes.Length ||
@@ -141,7 +147,7 @@ internal static partial class CandidateContract
                 if (c is null || !Name(c.Name) || CheckCanonical(c.Sql, t.Columns) is null) return false;
         }
         foreach (var f in m.ForeignKeys)
-            if (f is null || !ValidForeignKey(f.Constraint) || !MarketingForeignKey(m, f)) return false;
+            if (f is null || !ValidForeignKey(f.Constraint) || !MarketingForeignKey(m, f) && !TrainingForeignKey(m, f)) return false;
         foreach (var i in m.Indexes)
         {
             if (i is null || !Name(i.Schema) || !Name(i.Table) || !Name(i.Name) || !Names(i.Columns)) return false;
@@ -153,11 +159,51 @@ internal static partial class CandidateContract
                         newTable.Columns.Any(c => c.Name == i.Columns[0] && c.Nullable) &&
                         i.Filter == "[" + i.Columns[0] + "] IS NOT NULL")) return false;
             }
-            else if (!MarketingIndex(m, i) && !(i.Schema == "dbo" && i.Table == "CommerceOrders" && i.Unique &&
+            else if (!MarketingIndex(m, i) && !TrainingIndex(m, i) && !(i.Schema == "dbo" && i.Table == "CommerceOrders" && i.Unique &&
                 i.Columns.SequenceEqual(new[] { "CommerceBusinessId", "CheckoutAttemptId" }) &&
                 i.Filter == "[CheckoutAttemptId] IS NOT NULL" && m.Guards.Contains(CheckoutGuard))) return false;
         }
         return true;
+    }
+
+    internal const string TrainingMigration = "20261026063902_AddScopedTrainingSubscriptions";
+    internal const string TrainingIndexTransition = "training-client-scope-index-v1";
+    private const string TrainingActiveFilter = "[Status] <> 'Canceled' AND [Status] <> 'ActivationFailed'";
+    private static readonly Index TrainingLegacyIndex = new("dbo", "ClientSubscriptions", "IX_ClientSubscriptions_ClientProfileId",
+        ["ClientProfileId"], true, TrainingActiveFilter);
+    private static bool IsTrainingIndexDrop(string id, DropIndexOperation drop) => id == TrainingMigration &&
+        (drop.Schema ?? "dbo") == "dbo" && drop.Table == TrainingLegacyIndex.Table && drop.Name == TrainingLegacyIndex.Name;
+    private static bool TrainingForeignKey(Entry m, TableForeignKey f)
+    {
+        if (m.Id != TrainingMigration || !m.Guards.SequenceEqual(new[] { TrainingIndexTransition }) || f.Schema != "dbo" ||
+            f.Table is not ("ClientSubscriptions" or "ClientSubscriptionOffers")) return false;
+        var key = f.Constraint;
+        foreach (var pair in new[] { ("CommerceBusinessId", "CommerceBusinesses"), ("CommerceProductId", "CommerceProducts") })
+            if (key.Name == $"FK_{f.Table}_{pair.Item2}_{pair.Item1}" && key.Columns.SequenceEqual(new[] { pair.Item1 }) &&
+                key.PrincipalSchema == "dbo" && key.PrincipalTable == pair.Item2 && key.PrincipalColumns.SequenceEqual(new[] { "Id" }) &&
+                m.Columns.Any(c => c.Schema == "dbo" && c.Table == f.Table && c.Name == pair.Item1 && c.Type == "uniqueidentifier" && c.Nullable))
+                return true;
+        return false;
+    }
+    private static bool TrainingIndex(Entry m, Index i)
+    {
+        if (m.Id != TrainingMigration || !m.Guards.SequenceEqual(new[] { TrainingIndexTransition }) || i.Schema != "dbo" ||
+            i.Table is not ("ClientSubscriptions" or "ClientSubscriptionOffers")) return false;
+        if (i.Table == "ClientSubscriptions" && i.Name == "IX_ClientSubscriptions_ClientProfileId_SubscriptionScope")
+            return i.Unique && i.Columns.SequenceEqual(new[] { "ClientProfileId", "SubscriptionScope" }) && i.Filter == TrainingActiveFilter;
+        return !i.Unique && i.Filter is null && i.Columns.Length == 1 && i.Columns[0] is "CommerceBusinessId" or "CommerceProductId" &&
+            i.Name == $"IX_{i.Table}_{i.Columns[0]}";
+    }
+    private static bool IndexFilterMatches(Index index, string? observed)
+    {
+        if (index.Schema != "dbo" || index.Table != "ClientSubscriptions" ||
+            index.Name is not ("IX_ClientSubscriptions_ClientProfileId" or "IX_ClientSubscriptions_ClientProfileId_SubscriptionScope"))
+            return observed == index.Filter;
+        // Use the existing bounded predicate parser, retaining column names and literal bytes.
+        Column[] columns = [new("dbo", "ClientSubscriptions", "Status", "nvarchar(32)", false,
+            JsonSerializer.SerializeToElement((string?)null), null, null, null)];
+        var expected = CheckCanonical(TrainingActiveFilter, columns);
+        return index.Filter == TrainingActiveFilter && expected is not null && CheckCanonical(observed, columns) == expected;
     }
 
     internal enum CatalogKind { Table, Columns, Index, ForeignKey, Checks }
@@ -388,6 +434,8 @@ internal static partial class CandidateContract
                     throw new ProbeObservationFailure("MERCHANT_CHECKOUT_DUPLICATE_IDENTITY_REQUIRES_REVIEW");
             });
         }
+        if (m.Guards.Contains(TrainingIndexTransition))
+            PlanIndex(batch, TrainingLegacyIndex, !applied, false, false, cancellation);
         foreach (var t in m.Tables)
         {
             batch.AddCatalog(CatalogKind.Table,
@@ -457,7 +505,7 @@ internal static partial class CandidateContract
                 // SQL Server encloses stored filter predicates in parentheses.
                 if (filter is not null && filter.StartsWith('(') && filter.EndsWith(')')) filter = filter[1..^1];
                 if (!applied || n >= i.Columns.Length || reader.GetString(0) != i.Columns[n] ||
-                    reader.GetBoolean(1) != i.Unique || reader.GetBoolean(2) != primary || filter != i.Filter ||
+                    reader.GetBoolean(1) != i.Unique || reader.GetBoolean(2) != primary || !IndexFilterMatches(i, filter) ||
                     reader.GetBoolean(4) || reader.GetBoolean(5) || reader.GetBoolean(6) || reader.GetBoolean(7) ||
                     reader.GetBoolean(8) != constraint) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
                 n++;

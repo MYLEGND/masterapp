@@ -5,8 +5,8 @@ import {JSDOM} from 'jsdom';
 import {publicInquiryForm} from '../../SHARED/WebsitePlatform/public-inquiry-form.mjs';
 const source = readFileSync(new URL('../../Legend-Design/legend-public-inquiry.js', import.meta.url), 'utf8');
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
-function fixture() {
-  const dom = new JSDOM(publicInquiryForm(), {url:'https://www.mylegnd.com/contact', runScripts:'outside-only'});
+function fixture({url = 'https://www.mylegnd.com/contact', preview = false} = {}) {
+  const dom = new JSDOM(publicInquiryForm({preview, ownerLabel: 'Parfait'}), {url, runScripts:'outside-only'});
   const w = dom.window;
   for (const [name,value] of Object.entries({FirstName:'Test',LastName:'Visitor',Phone:'6025550199',Email:'test@example.test',Message:'Please contact me'}))
     w.document.querySelector(`[name="${name}"]`).value=value;
@@ -113,4 +113,26 @@ test('repeated initialization and double clicks retain one pending request and o
     resolve({ok:true,json:async()=>({accepted:true})});await tick();
     f.submit();await tick();assert.equal(f.calls.length,1);assert.equal(confirmed,1);
   } finally {f.close();}
+});
+
+test('checkout inquiry requires explicit consent and retries the same scoped request', async () => {
+ const f = fixture({url: 'https://shopparfait.com/store/checkout'});
+ try {
+  const consent = f.form.querySelector('[name="consent"]');
+  consent.checked = false;
+  f.submit(); await tick();
+  assert.equal(f.calls.length, 0);
+  consent.checked = true;
+  f.submit(); await tick();
+  const original = JSON.parse(f.calls[0].body);
+  assert.equal(original.sourcePath, '/store/checkout');
+  assert.equal(original.consent, true);
+  f.submit(); await tick();
+  assert.deepEqual(JSON.parse(f.calls[1].body), original);
+ } finally { f.close(); }
+});
+test('preview checkout inquiry cannot send a request', async () => {
+ const f = fixture({url: 'https://shopparfait.com/store/checkout', preview: true});
+ try { f.submit(); await tick(); assert.equal(f.calls.length, 0); }
+ finally { f.close(); }
 });

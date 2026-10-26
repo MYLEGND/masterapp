@@ -50,6 +50,8 @@ internal static class CandidateContractTests
             if (assembly.Migrations.TryGetValue(RehearsalFixture.ReceptionistMigration, out var receptionist))
                 Receptionist(assembly.CreateMigration(receptionist, db.Database.ProviderName!).UpOperations, path);
             else Console.WriteLine("RECEPTIONIST_CONTRACT:NOT_PRESENT_IN_ASSEMBLY");
+            if (assembly.Migrations.TryGetValue(CandidateContract.TrainingMigration, out var training))
+                Training(assembly.CreateMigration(training, db.Database.ProviderName!).UpOperations);
             PredicateBounds();
             DefaultDefinitions();
             CatalogPlans(CandidateContract.Current(db));
@@ -64,6 +66,43 @@ internal static class CandidateContractTests
         finally { File.Delete(path); }
         Console.WriteLine("LEGEND_MIGRATION_CONTRACT_TESTS:PASS");
     }
+    private static void Training(IReadOnlyList<MigrationOperation> operations)
+    {
+        var id = CandidateContract.TrainingMigration;
+        var entry = CandidateContract.Describe(id, operations);
+        Check(entry.Supported && RehearsalFixture.IsTrainingFixture(entry), "exact training transition");
+        Check(entry.Columns.Length == 10 && entry.Indexes.Length == 5 && entry.ForeignKeys.Length == 4 &&
+            entry.Tables.Length == 0 && entry.Guards.SequenceEqual(new[] { CandidateContract.TrainingIndexTransition }), "complete training shape");
+        foreach (var operation in operations)
+            Check(!CandidateContract.Describe(id, operations.Where(x => !ReferenceEquals(x, operation)).ToArray()).Supported,
+                "training transition cannot omit any operation");
+        Check(!CandidateContract.Describe(id, operations.Concat(new MigrationOperation[] {
+            new AddColumnOperation { Table = "ClientSubscriptions", Name = "Unreviewed", ColumnType = "int", IsNullable = true }
+        }).ToArray()).Supported, "training transition cannot append a column");
+        var drop = operations.OfType<DropIndexOperation>().Single();
+        var oldName = drop.Name;
+        drop.Name = "IX_Unreviewed";
+        Check(!CandidateContract.Describe(id, operations).Supported, "unreviewed drop rejected");
+        drop.Name = oldName;
+        var index = operations.OfType<CreateIndexOperation>().Single(x => x.IsUnique);
+        index.IsUnique = false;
+        Check(!CandidateContract.Describe(id, operations).Supported, "training uniqueness cannot change");
+        index.IsUnique = true;
+        var columns = index.Columns;
+        index.Columns = columns.Reverse().ToArray();
+        Check(!CandidateContract.Describe(id, operations).Supported, "training column order cannot change");
+        index.Columns = columns;
+        var filter = index.Filter;
+        index.Filter = "[Status] <> 'Canceled'";
+        Check(!CandidateContract.Describe(id, operations).Supported, "training filter cannot change");
+        index.Filter = filter;
+        var scope = operations.OfType<AddColumnOperation>().First(x => x.Name == "SubscriptionScope");
+        scope.DefaultValue = "Training";
+        Check(!CandidateContract.Describe(id, operations).Supported, "training legacy default cannot change");
+        scope.DefaultValue = "LegendMembership";
+        Check(CandidateContract.Describe(id, operations).Supported, "test mutations restored");
+    }
+
     private static void CatalogPlans(CandidateContract.Contract contract)
     {
         // Golden descriptors derive from the original serial plans and exact

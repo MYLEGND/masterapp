@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise disposable SQL ownership without contacting Docker or production."""
 import importlib.util
+import hashlib
 import json
 import copy
 from pathlib import Path
@@ -557,6 +558,23 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
             self.assertNotIn('AZURE_CLIENT_SECRET',kw['env'])
             self.assertNotIn('LEGEND_RELEASE_DB_CONNECTION',kw['env'])
             self.assertEqual(300,kw['timeout'])
+
+    def test_training_runs_matching_two_migration_baseline_and_training_only(self):
+        with self.payment_fixture():
+            training=dict(id='20261026063902_AddScopedTrainingSubscriptions',supported=True)
+            self.current['migrations'].append(training)
+            self.source_present.add(training['id']+'.cs')
+            self.test_stdout += 'LEGEND_TRAINING_APPEND_TEST:PROVEN\n'
+            digest=hashlib.sha256(json.dumps(training,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            with patch.object(m.AUTHORITY,'REVIEWED_TRAINING_ENTRY',digest):
+                self.gate()
+                fixtures=[kw for cmd,kw in self.calls if cmd[-1]=='migration-test']
+                self.assertEqual(['payment-and-successors','canonical-payment-and-training','training-only'],
+                    [kw['env']['LEGEND_REHEARSAL_PENDING_COUNT'] for kw in fixtures])
+                self.sql_entered=False
+                self.test_stdout=self.test_stdout.replace('LEGEND_TRAINING_APPEND_TEST:PROVEN\n','')
+                with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'): self.gate()
+                self.assertFalse(self.sql_entered)
 
     def test_payment_only_failure_cannot_be_hidden_by_broad_suffix_success(self):
         original=self.process

@@ -21,6 +21,20 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
 
     public async Task<BillingEntitlementEvaluationResult> EvaluateAsync(BillingEntitlementEvaluationRequest request, CancellationToken cancellationToken = default)
     {
+        if (ClientSubscriptionScope.TryTrainingEntitlement(request.EntitlementKey, out var businessId, out var productId))
+        {
+            var scope = ClientSubscriptionScope.Training(businessId);
+            var training = await _db.ClientSubscriptions.AsNoTracking()
+                .Where(x => x.ClientProfileId == request.ClientProfileId && x.SubscriptionScope == scope &&
+                    x.CommerceBusinessId == businessId && x.CommerceProductId == productId)
+                .OrderByDescending(x => x.UpdatedUtc).ThenByDescending(x => x.CreatedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+            return BillingStateMapper.EvaluateSubscription(training, request.EntitlementKey, request.EvaluatedUtc);
+        }
+        if (request.EntitlementKey != BillingEntitlementKeys.ClientAppFullAccess)
+            return new BillingEntitlementEvaluationResult(ClientEntitlementStatus.NotGranted, null, null, null,
+                "UNKNOWN_ENTITLEMENT", ClientEntitlementSourceType.Subscription, string.Empty, "No subscription owns this entitlement.");
+
         var access = await _households.ResolveActiveAccessAsync(
             request.ClientProfileId,
             cancellationToken);
@@ -40,7 +54,7 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
         var ownerProfileId = access.SubscriptionOwnerClientProfileId ?? request.ClientProfileId;
         var subscription = await _db.ClientSubscriptions
             .AsNoTracking()
-            .Where(x => x.ClientProfileId == ownerProfileId)
+            .Where(x => x.ClientProfileId == ownerProfileId && x.SubscriptionScope == ClientSubscriptionScope.LegendMembership)
             .OrderByDescending(x => x.UpdatedUtc)
             .ThenByDescending(x => x.CreatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
@@ -54,20 +68,27 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
             new BillingEntitlementEvaluationRequest(clientProfileId, entitlementKey, DateTime.UtcNow),
             cancellationToken);
 
-        var access = await _households.ResolveActiveAccessAsync(clientProfileId, cancellationToken);
-        if (!CanEvaluateSubscription(access))
-            throw new InvalidOperationException("Eligible household access is required before entitlement can be refreshed.");
-
-        // Subscription inactivity still refreshes the paid owner's one
-        // projection. Explicit membership/household denials cannot enter this
-        // writer, and a client with no membership can fall back only to its
-        // own subscription.
-        var entitlementOwnerProfileId = access.SubscriptionOwnerClientProfileId ?? clientProfileId;
-        var isDirectSubscriptionOwner = await _db.ClientSubscriptions
-            .AsNoTracking()
-            .AnyAsync(x => x.ClientProfileId == entitlementOwnerProfileId, cancellationToken);
-        if (!isDirectSubscriptionOwner)
-            throw new InvalidOperationException("A household subscription owner is required before entitlement can be refreshed.");
+        Guid entitlementOwnerProfileId;
+        if (ClientSubscriptionScope.TryTrainingEntitlement(entitlementKey, out var businessId, out var productId))
+        {
+            entitlementOwnerProfileId = clientProfileId;
+            var scope = ClientSubscriptionScope.Training(businessId);
+            if (!await _db.ClientSubscriptions.AsNoTracking().AnyAsync(x => x.ClientProfileId == clientProfileId &&
+                x.SubscriptionScope == scope && x.CommerceBusinessId == businessId && x.CommerceProductId == productId, cancellationToken))
+                throw new InvalidOperationException("An exact training subscription owner is required.");
+        }
+        else
+        {
+            if (entitlementKey != BillingEntitlementKeys.ClientAppFullAccess)
+                throw new InvalidOperationException("Unknown subscription entitlement.");
+            var access = await _households.ResolveActiveAccessAsync(clientProfileId, cancellationToken);
+            if (!CanEvaluateSubscription(access))
+                throw new InvalidOperationException("Eligible household access is required before entitlement can be refreshed.");
+            entitlementOwnerProfileId = access.SubscriptionOwnerClientProfileId ?? clientProfileId;
+            if (!await _db.ClientSubscriptions.AsNoTracking().AnyAsync(x => x.ClientProfileId == entitlementOwnerProfileId &&
+                x.SubscriptionScope == ClientSubscriptionScope.LegendMembership, cancellationToken))
+                throw new InvalidOperationException("A household subscription owner is required before entitlement can be refreshed.");
+        }
 
         // One entitlement projection belongs to the paid owner. Partner access
         // is derived from HouseholdMembership, never represented by a copied

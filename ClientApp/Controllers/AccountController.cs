@@ -42,6 +42,7 @@ public class AccountController : Controller
         return Challenge(props, OpenIdConnectDefaults.AuthenticationScheme);
     }
 
+    [TrainingBillingRoute(authentication: true)]
     [HttpGet("/Account/AzureLogin")]
     public async Task<IActionResult> AzureLogin(string returnUrl = "/")
     {
@@ -79,6 +80,7 @@ public class AccountController : Controller
         });
     }
 
+    [TrainingBillingRoute(authentication: true)]
     [HttpGet]
     public async Task<IActionResult> Login(string returnUrl = "/", string? message = null)
     {
@@ -113,6 +115,7 @@ public class AccountController : Controller
         });
     }
 
+    [TrainingBillingRoute(authentication: true)]
     [HttpPost]
     [EnableRateLimiting("clientapp-login")]
     [ValidateAntiForgeryToken]
@@ -146,6 +149,7 @@ public class AccountController : Controller
     }
 
     // ✅ This is what your middleware redirects to on Forbid()
+    [TrainingBillingRoute(authentication: true)]
     [HttpGet]
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     public IActionResult AccessDenied(string? returnUrl = null)
@@ -178,6 +182,7 @@ public class AccountController : Controller
         return View("~/Views/Shared/Error.cshtml", model);
     }
 
+    [TrainingBillingRoute(authentication: true)]
     [HttpGet]
     public IActionResult ActivationRequired(string? returnUrl = null, string? message = null)
     {
@@ -190,6 +195,7 @@ public class AccountController : Controller
         });
     }
 
+    [TrainingBillingRoute(authentication: true)]
     [HttpPost]
     [ValidateAntiForgeryToken]
     public IActionResult Logout()
@@ -207,6 +213,7 @@ public class AccountController : Controller
             OpenIdConnectDefaults.AuthenticationScheme);
     }
 
+    [TrainingBillingRoute(authentication: true)]
     [HttpGet]
     public IActionResult LoggedOut()
     {

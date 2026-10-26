@@ -4,6 +4,9 @@ namespace ClientApp.Models;
 
 public sealed class SubscriptionActivationPageViewModel
 {
+    public bool IsTraining { get; set; }
+    public string? TrainingPlanName { get; set; }
+    public string? TrainingBenefits { get; set; }
     public string Token { get; set; } = string.Empty;
     public string ReturnUrl { get; set; } = "/profile";
     public string ClientName { get; set; } = "Member";

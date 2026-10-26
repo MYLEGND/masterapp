@@ -12,12 +12,15 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
     private static readonly object Lock = new();
 
     private readonly ParfaitStoragePaths _storagePaths;
+    private readonly Infrastructure.Billing.ClientSubscriptionActivationPolicyOptions _rollout;
     private readonly MasterAppDbContext _db;
 
-    public ParfaitProductService(ParfaitStoragePaths storagePaths, MasterAppDbContext db)
+    public ParfaitProductService(ParfaitStoragePaths storagePaths, MasterAppDbContext db,
+        Infrastructure.Billing.ClientSubscriptionActivationPolicyOptions? rollout = null)
     {
         _storagePaths = storagePaths;
         _db = db;
+        _rollout = rollout ?? new();
     }
 
     private string UploadRoot => _storagePaths.UploadRoot;
@@ -52,7 +55,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
         var settings = GetCommerceSettings(businessId);
 
         return GetAllProducts(businessId)
-            .Where(product => product.IsActive)
+            .Where(product => product.IsActive && product.BillingKind == Domain.Billing.ClientSubscriptionScope.OneTimeProduct)
             .OrderBy(product => product.DisplayOrder)
             .ThenBy(product => product.Name)
             .Select(product => MapStoreProduct(product, settings))
@@ -84,7 +87,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
     {
         var settings = GetCommerceSettings(businessId);
         var products = GetAllProducts(businessId)
-            .Where(product => product.IsActive)
+            .Where(product => product.IsActive && product.BillingKind == Domain.Billing.ClientSubscriptionScope.OneTimeProduct)
             .ToDictionary(product => product.Id, StringComparer.OrdinalIgnoreCase);
 
         var quote = new ParfaitCartQuoteResponse
@@ -305,6 +308,9 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
     {
         lock (Lock)
         {
+            if (product.BillingKind == Domain.Billing.ClientSubscriptionScope.MonthlyTraining && product.IsActive &&
+                !_rollout.TrainingSubscriptionsEnabled)
+                throw new InvalidOperationException("Training plans must remain inactive until training enrollment is available.");
             var existing = _db.CommerceProducts
                 .Include(x => x.Images)
                 .Include(x => x.InventoryItems)
@@ -663,6 +669,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
         return new ParfaitProductEditorViewModel
         {
             Id = product.ExternalProductKey,
+            BillingKind = product.BillingKind,
             Name = product.Name,
             Slug = product.Slug,
             Description = product.Description,
@@ -724,6 +731,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
     private static void ApplyProduct(CommerceProduct entity, ParfaitProductEditorViewModel product)
     {
         entity.ExternalProductKey = product.Id;
+        entity.BillingKind = product.BillingKind;
         entity.Name = product.Name;
         entity.Slug = product.Slug;
         entity.Description = product.Description;
@@ -902,6 +910,11 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
 
     private static ParfaitProductEditorViewModel NormalizeProduct(ParfaitProductEditorViewModel product, IReadOnlyList<ParfaitProductImageEditorViewModel>? existingImages = null, string fallbackBadge = "Parfait")
     {
+        if (product.BillingKind is not (Domain.Billing.ClientSubscriptionScope.OneTimeProduct or Domain.Billing.ClientSubscriptionScope.MonthlyTraining))
+            throw new InvalidOperationException("Choose a supported product billing type.");
+        if (product.BillingKind == Domain.Billing.ClientSubscriptionScope.MonthlyTraining &&
+            (product.PriceCents <= 0 || product.PriceCents > Domain.Billing.ClientSubscriptionOfferPricing.CustomMaximumCents))
+            throw new InvalidOperationException("Enter a monthly training price between $0.01 and $2,500.");
         var slug = string.IsNullOrWhiteSpace(product.Slug) ? product.Name : product.Slug;
         slug = slug.Trim().ToLowerInvariant().Replace(" ", "-");
 
@@ -911,6 +924,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
         return new ParfaitProductEditorViewModel
         {
             Id = string.IsNullOrWhiteSpace(product.Id) ? Guid.NewGuid().ToString("N") : product.Id,
+            BillingKind = product.BillingKind,
             Name = product.Name.Trim(),
             Slug = slug,
             Description = product.Description.Trim(),

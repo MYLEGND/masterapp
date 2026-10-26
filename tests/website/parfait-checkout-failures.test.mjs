@@ -25,12 +25,8 @@ for(const [name,ok,body] of [['500 JSON',false,'{"error":"unavailable"}'],['500 
 }
 test('valid quote renders and permits checkout',async()=>{const r=await render(true,JSON.stringify(quote));assert.equal(r.writes,0);assert.equal(r.elements.get('spCartTotal').textContent,'2500');assert.equal(r.elements.get('spCheckoutLink').attrs['aria-disabled'],undefined)});
 test('valid stock adjustment changes quantity then renders fresh quote',async()=>{const r=await render(true,JSON.stringify(quote),2);assert.equal(r.writes,1);assert.equal(r.cart[0].quantity,1);assert.equal(r.elements.get('spCheckoutLink').attrs['aria-disabled'],undefined)});
-test('failed contact autosave can retry identical payload; success deduplicates',async()=>{
- const start=checkoutSource.indexOf('const captureLead = async () => {');
- const end=checkoutSource.indexOf('const queueLeadCapture',start);
- let ok=false,calls=0;
- const context=vm.createContext({buildLeadPayload:()=>({email:'fixture@example.invalid'}),leadEndpoint:'/fixture',tokenInput:null,fetch:async()=>{calls++;return {ok}}});
- vm.runInContext('let lastLeadSignature="";'+checkoutSource.slice(start,end)+'globalThis.capture=captureLead;',context);
- await context.capture();await context.capture();assert.equal(calls,2);
- ok=true;await context.capture();await context.capture();assert.equal(calls,3);
+test('checkout uses explicit shared inquiry and never silently autosaves contact fields', () => {
+ assert.match(checkoutSource, /data-legend-public-inquiry-form data-owner-label="@storeName"/);
+ assert.doesNotMatch(checkoutSource, /leadEndpoint|captureLead|queueLeadCapture|buildLeadPayload/);
+ assert.match(checkoutSource, /const payEndpoint = checkoutPath \+ "\/pay"/);
 });

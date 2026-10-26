@@ -31,6 +31,40 @@ namespace AgentPortal.Tests;
 public class ClientAppSubscriptionActivationTests
 {
     [Fact]
+    public async Task TrainingRolloutHeldDoesNotRenderPaymentOrCallBilling()
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "training-held@example.invalid");
+        var offer = await AddOfferAsync(db, profile.Id);
+        var business = new CommerceBusiness { Key = "training-held", IsActive = true, Status = "Active" };
+        var product = new CommerceProduct { CommerceBusinessId = business.Id, IsActive = true,
+            BillingKind = ClientSubscriptionScope.MonthlyTraining, Name = "Training", Description = "Coaching", PriceCents = 35000 };
+        db.AddRange(business, product);
+        offer.SubscriptionScope = ClientSubscriptionScope.Training(business.Id);
+        offer.CommerceBusinessId = business.Id;
+        offer.CommerceProductId = product.Id;
+        offer.TrainingPlanName = product.Name;
+        offer.TrainingBenefits = product.Description;
+        await db.SaveChangesAsync();
+        const string token = "held-training-link";
+        var invitation = await AddInvitationAsync(db, profile, offer, token,
+            SubscriptionActivationInvitationStatus.Pending, DateTime.UtcNow.AddDays(1));
+        var billing = new Mock<IBillingOrchestrator>(MockBehavior.Strict);
+        var policy = BuildActivationPolicyService();
+        var service = BuildActivationService(db, billing, policy);
+        var context = await service.GetContextAsync(token);
+        Assert.Equal(SubscriptionActivationAvailability.Unavailable, context.Availability);
+        Assert.Equal("Training activation is temporarily unavailable. No payment has been taken.", context.Message);
+        Assert.Null(context.Schedule);
+        var result = await service.ActivateAsync(token, BuildPaymentInput());
+        Assert.False(result.Success);
+        Assert.Equal("ACTIVATION_UNAVAILABLE", result.SafeErrorCode);
+        Assert.Equal(SubscriptionActivationInvitationStatus.Pending, invitation.Status);
+        billing.VerifyNoOtherCalls();
+        policy.Verify(x => x.ResolveActivationSchedule(It.IsAny<ClientSubscriptionOffer>(), It.IsAny<DateTime>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ContinuationService_ConsumedContinuation_CannotBeReused()
     {
         using var db = BuildDb();
@@ -1206,6 +1240,35 @@ public class ClientAppSubscriptionActivationTests
     }
 
     private static MasterAppDbContext BuildDb() => ControllerTestHelpers.BuildDb();
+
+    [Fact]
+    public async Task TrainingSessionUsesExactPaidHistoryAndNeverEmailRecoveryForFirstBinding()
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "training@example.com");
+        profile.ExternalIdentityObjectId = "training-oid";
+        var businessId = Guid.NewGuid();
+        var subscription = new ClientSubscription { ClientProfileId = profile.Id,
+            SubscriptionScope = ClientSubscriptionScope.Training(businessId), CommerceBusinessId = businessId,
+            CommerceProductId = Guid.NewGuid(), ActivatedUtc = DateTime.UtcNow,
+            Status = ClientSubscriptionStatus.Canceled };
+        db.ClientSubscriptions.Add(subscription);
+        await db.SaveChangesAsync();
+        var service = new ClientIdentityAccessService(db, BuildEntitlementService(ClientEntitlementStatus.NotGranted).Object,
+            BuildContinuationService(db), new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
+        var session = await service.ValidateAuthenticatedClientSessionAsync(BuildPrincipal("training-oid", profile.Email), "/profile");
+        Assert.True(session.Success);
+        Assert.Equal(ClientIdentityAccessService.TrainingBillingPath, session.ReturnUrl);
+        Assert.Equal(profile.Id, session.TrainingBillingProfileId);
+        var wrongOwner = await service.ValidateAuthenticatedClientSessionAsync(BuildPrincipal("another-oid", profile.Email), "/profile");
+        Assert.False(wrongOwner.Success);
+        var firstBinding = await service.CompleteClientSignInAsync(new DefaultHttpContext(), BuildPrincipal("another-oid", profile.Email));
+        Assert.False(firstBinding.Success);
+        Assert.Equal("training-oid", profile.ExternalIdentityObjectId);
+        subscription.ActivatedUtc = null;
+        await db.SaveChangesAsync();
+        Assert.False((await service.ValidateAuthenticatedClientSessionAsync(BuildPrincipal("training-oid", profile.Email))).Success);
+    }
 
     private static IClientEntraLifecycleService BuildIdentityLifecycle()
     {

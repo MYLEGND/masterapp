@@ -175,15 +175,12 @@ public sealed class StoreCheckoutController : Controller
         var store = await ResolveStoreAsync(businessKey, ct);
         if (store is null) return NotFound();
 
-        request ??= new ParfaitAutomationCheckoutLeadCaptureRequest();
-        request.Items ??= [];
-        var quote = _products.QuoteCart(store.CommerceBusinessId, request.Items, request.DiscountCode);
-
-        // The canonical automation engine is commerce-business scoped. Every storefront
-        // uses the same workflow authority without crossing tenant data.
-        _automations.CaptureCheckoutLead(store.CommerceBusinessId, request, quote);
-
-        return NoContent();
+        // Contact entry is not consent. Older cached checkout clients must not
+        // create file-backed leads or trigger abandoned-cart outreach.
+        return StatusCode(StatusCodes.Status410Gone, new
+        {
+            error = "Please use the inquiry form to request help with your order."
+        });
     }
 
     private async Task<IActionResult> PayCoreAsync(

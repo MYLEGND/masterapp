@@ -1078,7 +1078,7 @@ namespace AgentPortal.Controllers;
         string actorAgentUserId,
         CancellationToken cancellationToken = default)
     {
-        var latestOffer = await _db.ClientSubscriptionOffers
+        var latestOffer = await _db.ClientSubscriptionOffers.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership)
             .AsNoTracking()
             .Where(x => x.ClientProfileId == profile.Id)
             .OrderByDescending(x => x.CreatedUtc)
@@ -4366,7 +4366,7 @@ namespace AgentPortal.Controllers;
         if (string.IsNullOrWhiteSpace(subscriptionEmail))
             return BadRequest(new { message = "An email address is required before setting a subscription." });
 
-        var hasLiveSubscription = await _db.ClientSubscriptions
+        var hasLiveSubscription = await _db.ClientSubscriptions.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership)
             .AsNoTracking()
             .AnyAsync(x =>
                 x.ClientProfileId == profile.Id &&
@@ -4486,7 +4486,7 @@ namespace AgentPortal.Controllers;
             });
         }
 
-        var subscription = await _db.ClientSubscriptions
+        var subscription = await _db.ClientSubscriptions.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership)
             .AsNoTracking()
             .Where(x =>
                 x.ClientProfileId == profile.Id &&
@@ -4535,7 +4535,7 @@ namespace AgentPortal.Controllers;
         if (profile is null)
             return Forbid();
 
-        var latestOffer = await _db.ClientSubscriptionOffers
+        var latestOffer = await _db.ClientSubscriptionOffers.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership)
             .AsNoTracking()
             .Where(x => x.ClientProfileId == profile.Id && x.OwnerAgentUserId == agentOid)
             .OrderByDescending(x => x.CreatedUtc)
@@ -4642,7 +4642,7 @@ namespace AgentPortal.Controllers;
         var latestSubscription = await (
             from link in _db.AgentClients
             join profile in _db.ClientProfiles on link.ClientUserId equals profile.ClientUserId
-            join subscription in _db.ClientSubscriptions on profile.Id equals subscription.ClientProfileId
+            join subscription in _db.ClientSubscriptions.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership) on profile.Id equals subscription.ClientProfileId
             where link.AgentUserId == agentOid &&
                   profile.Id == request.ClientProfileId &&
                   subscription.OwnerAgentUserId == agentOid
@@ -5174,7 +5174,7 @@ namespace AgentPortal.Controllers;
         if (profile == null)
             return NotFound("Client profile not found.");
 
-        var latestOffer = await _db.ClientSubscriptionOffers
+        var latestOffer = await _db.ClientSubscriptionOffers.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership)
             .AsNoTracking()
             .Where(x => x.ClientProfileId == profile.Id)
             .OrderByDescending(x => x.CreatedUtc)

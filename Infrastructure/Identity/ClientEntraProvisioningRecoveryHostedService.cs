@@ -60,7 +60,7 @@ public sealed class ClientEntraProvisioningRecoveryHostedService(
             .AsNoTracking()
             .Where(profile =>
                 string.IsNullOrEmpty(profile.ExternalIdentityObjectId) &&
-                db.ClientSubscriptions.Any(subscription =>
+                db.ClientSubscriptions.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership).Any(subscription =>
                     subscription.ClientProfileId == profile.Id &&
                     subscription.Status == ClientSubscriptionStatus.Active))
             .OrderBy(profile => profile.UpdatedUtc)

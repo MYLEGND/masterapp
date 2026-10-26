@@ -20,7 +20,7 @@ public sealed class ClientBillingWorkspaceService
 
     public async Task<object?> BuildSnapshotAsync(Guid clientProfileId, string agentOid, CancellationToken cancellationToken = default)
     {
-        var latestOffer = await _db.ClientSubscriptionOffers
+        var latestOffer = await _db.ClientSubscriptionOffers.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership)
             .AsNoTracking()
             .Where(x => x.ClientProfileId == clientProfileId && x.OwnerAgentUserId == agentOid)
             .OrderByDescending(x => x.CreatedUtc)
@@ -36,7 +36,7 @@ public sealed class ClientBillingWorkspaceService
                 .FirstOrDefaultAsync(cancellationToken);
         }
 
-        var latestSubscription = await _db.ClientSubscriptions
+        var latestSubscription = await _db.ClientSubscriptions.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership)
             .AsNoTracking()
             .Where(x => x.ClientProfileId == clientProfileId && x.OwnerAgentUserId == agentOid)
             .OrderByDescending(x => x.CreatedUtc)

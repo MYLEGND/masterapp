@@ -163,6 +163,11 @@ internal sealed class ClientPaymentMethodService : IClientPaymentMethodService
         if (paymentMethod is null)
             return Failure("PAYMENT_METHOD_NOT_FOUND", "That payment method is not available for this membership.");
 
+        if (await _db.ClientSubscriptions.AnyAsync(x => x.Id != subscription.Id &&
+            x.DefaultPaymentMethodId == paymentMethod.Id && x.Status != ClientSubscriptionStatus.Canceled &&
+            x.Status != ClientSubscriptionStatus.ActivationFailed, cancellationToken))
+            return Failure("PAYMENT_METHOD_USED_BY_ANOTHER_SUBSCRIPTION", "Change the payment method on your other subscription before removing this card.");
+
         ClientPaymentMethod? replacement = null;
         if (subscription.DefaultPaymentMethodId == paymentMethod.Id)
         {

@@ -1,0 +1,96 @@
+@model ClientApp.Models.TrainingBillingViewModel
+@{ Layout = null; var subscription = Model.Subscription; }
+<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Training Billing</title><link rel="stylesheet" href="/css/site.css" /></head>
+<body><main class="container" style="max-width:760px;margin:2rem auto;padding:1rem">
+<h1>Training Billing</h1>
+<p>Your training subscription is separate from LEGEND membership.</p>
+@if (TempData["TrainingNotice"] is string notice) { <p role="status">@notice</p> }
+<h2>@Model.Offer.TrainingPlanName</h2><p>@Model.Offer.TrainingBenefits</p>
+<p>$@((subscription.MonthlyAmountCents / 100m).ToString("F2")) USD / month</p>
+<p>Status: @subscription.Status · Payment: @subscription.PaymentStanding</p>
+<p>Next billing date: @(subscription.NextBillingDateUtc?.ToString("yyyy-MM-dd 'UTC'") ?? "Not scheduled")</p>
+@if (subscription.CancelAtPeriodEnd) { <p>Cancellation is scheduled for @(subscription.CurrentPeriodEndUtc?.ToString("yyyy-MM-dd 'UTC'") ?? "the end of the paid period").</p> }
+else if (subscription.Status != Domain.Billing.ClientSubscriptionStatus.Canceled) {
+<form method="post" action="/subscription/training/@subscription.Id/cancel">@Html.AntiForgeryToken()<button type="submit">Cancel at the end of the paid period</button></form>
+}
+<h2>Payment methods</h2>
+@foreach (var method in Model.PaymentMethods) {
+<p>@method.DisplayName @method.CardBrand •••• @method.Last4 @if (subscription.DefaultPaymentMethodId == method.Id) { <strong>Default for this plan</strong> }</p>
+@if (subscription.DefaultPaymentMethodId != method.Id) { <form method="post" action="/subscription/training/@subscription.Id/payment-methods/@method.Id/default">@Html.AntiForgeryToken()<button type="submit">Use for this plan</button></form> }
+}
+@if (!string.IsNullOrWhiteSpace(Model.ApplicationId) && !string.IsNullOrWhiteSpace(Model.LocationId)) {
+<h3>Add a payment method</h3>
+<form action="/subscription/training/@Model.Subscription.Id/payment-methods"
+                                  method="post"
+                                  data-square-payment-form
+                                  data-square-app-id="@Model.ApplicationId"
+                                  data-square-location-id="@Model.LocationId"
+                                  novalidate>
+                                @Html.AntiForgeryToken()
+                                
+                                <input type="hidden" name="SourceId" data-square-source />
+
+                                <div class="membership-payment-form-grid">
+                                    <label>
+                                        Card label
+                                        <input name="DisplayName" maxlength="80" placeholder="e.g., Personal card" />
+                                    </label>
+                                    <label>
+                                        Name on card
+                                        <input name="CardholderName" autocomplete="cc-name" required />
+                                    </label>
+                                    <label class="is-wide">
+                                        Street address
+                                        <input name="BillingAddressLine1" autocomplete="address-line1" required />
+                                    </label>
+                                    <label>
+                                        Apartment or suite
+                                        <input name="BillingAddressLine2" autocomplete="address-line2" />
+                                    </label>
+                                    <label>
+                                        ZIP code
+                                        <input name="BillingPostalCode" autocomplete="postal-code" required />
+                                    </label>
+                                    <label>
+                                        City
+                                        <input name="BillingCity" autocomplete="address-level2" required />
+                                    </label>
+                                    <label>
+                                        State
+                                        <input name="BillingState" autocomplete="address-level1" required />
+                                    </label>
+                                    <label>
+                                        Country
+                                        <select name="BillingCountryCode" autocomplete="country-name" required>
+                                            <option value="US" selected>United States</option>
+                                        </select>
+                                    </label>
+                                    <label class="is-wide">
+                                        Card details
+                                        <span id="subscription-square-card" class="membership-square-card" data-square-card></span>
+                                    </label>
+                                </div>
+
+                                <label class="membership-payment-default-choice">
+                                    <input type="checkbox" name="MakeDefault" value="true" />
+                                    Make this my default payment method
+                                </label>
+                                <div class="membership-payment-form-actions">
+                                    <div class="dashboard-search-panel membership-billing-notice" role="alert" data-square-message hidden></div>
+                                    <button type="submit" class="membership-billing-button membership-billing-button-primary" data-square-submit>
+                                        Save payment method
+                                    </button>
+                                </div>
+                            </form>
+} else { <p>Card updates are temporarily unavailable. Contact Parfait for billing support.</p> }
+<form method="post" action="/subscription/training/@subscription.Id/retry">@Html.AntiForgeryToken()<button type="submit">Retry an eligible renewal payment</button></form>
+<h2>Payment history</h2><table><thead><tr><th>Date (UTC)</th><th>Amount</th><th>Status</th></tr></thead><tbody>
+@foreach (var payment in Model.Payments) { <tr><td>@payment.CreatedUtc.ToString("yyyy-MM-dd")</td><td>$@((payment.AmountCents / 100m).ToString("F2")) @payment.Currency</td><td>@payment.Status</td></tr> }
+</tbody></table>
+<form method="post" action="/Account/Logout">@Html.AntiForgeryToken()<button type="submit">Sign out</button></form>
+</main>
+@if (!string.IsNullOrWhiteSpace(Model.ApplicationId) && !string.IsNullOrWhiteSpace(Model.LocationId)) {
+<script src="@(Model.Environment == "Production" ? "https://web.squarecdn.com/v1/square.js" : "https://sandbox.web.squarecdn.com/v1/square.js")"></script>
+<script src="~/js/subscription-activation.js" asp-append-version="true"></script>
+}
+</body></html>

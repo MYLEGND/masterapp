@@ -9,6 +9,14 @@ public sealed class ClientSubscriptionOffer
     public Guid ClientProfileId { get; set; }
     public ClientProfile? ClientProfile { get; set; }
 
+    // Accepted training terms remain unchanged when the catalog or promotions change.
+    public string? TrainingPlanName { get; set; }
+    public string? TrainingBenefits { get; set; }
+    public string? TrainingPromotionCode { get; set; }
+    public string SubscriptionScope { get; set; } = ClientSubscriptionScope.LegendMembership;
+    public Guid? CommerceBusinessId { get; set; }
+    public Guid? CommerceProductId { get; set; }
+
     public string OwnerAgentUserId { get; set; } = string.Empty;
     public ClientSubscriptionOfferPriceType PriceType { get; set; } = ClientSubscriptionOfferPriceType.Fixed100;
     public int MonthlyAmountCents { get; set; }

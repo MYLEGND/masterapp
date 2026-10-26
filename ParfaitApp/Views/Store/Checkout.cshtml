@@ -137,6 +137,14 @@
                 <div id="spCheckoutError" class="sp-checkout-error"></div>
             </div>
         </section>
+        @if (commerce?.IsParfait == true)
+        {
+            <section class="sp-flow-card" aria-label="Checkout help">
+                <h2>Need help with your order?</h2>
+                <p>Send @storeName a message. Sending an inquiry does not place an order or sign you up for marketing.</p>
+                <div data-legend-public-inquiry-form data-owner-label="@storeName"></div>
+            </section>
+        }
     </div>
 </section>
 
@@ -148,7 +156,6 @@
             const commerce = store?.context || {};
             const checkoutPath = commerce.checkoutPath || "/store/checkout";
             const quoteEndpoint = checkoutPath + "/quote";
-            const leadEndpoint = checkoutPath + "/lead";
             const payEndpoint = checkoutPath + "/pay";
             const successPath = commerce.successPath || "/store/success";
             const storeRoot = commerce.storeRootPath || "/store";
@@ -170,8 +177,6 @@
             let card = null;
             let syncMessage = "";
             let isSubmitting = false;
-            let leadCaptureTimer = 0;
-            let lastLeadSignature = "";
             const checkoutAttemptStorageKey = store.storageKey === "parfaitCart"
                 ? "parfaitCheckoutAttemptId"
                 : store.storageKey + ":checkoutAttemptId";
@@ -349,7 +354,6 @@
                 );
 
                 setPayButtonAvailability(Boolean(quote.isValid));
-                queueLeadCapture();
             };
 
             const getCustomer = () => ({
@@ -363,56 +367,6 @@
                 state: fields.state.value.trim(),
                 postalCode: fields.postalCode.value.trim()
             });
-
-            const buildLeadPayload = () => {
-                const cart = store.readCart();
-                const customer = getCustomer();
-                const email = customer.email;
-
-                if (!cart.length || !isValidEmail(email)) {
-                    return null;
-                }
-
-                return {
-                    checkoutAttemptId: ensureCheckoutAttemptId(),
-                    discountCode: store.readDiscountCode(),
-                    customer,
-                    items: quoteItems(cart)
-                };
-            };
-
-            const captureLead = async () => {
-                const payload = buildLeadPayload();
-                if (!payload) {
-                    return;
-                }
-
-                const signature = JSON.stringify(payload);
-                if (signature === lastLeadSignature) {
-                    return;
-                }
-
-                try {
-                    const response = await fetch(leadEndpoint, {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "RequestVerificationToken": tokenInput?.value || ""
-                        },
-                        body: signature
-                    });
-                    if (response.ok) lastLeadSignature = signature;
-                } catch {
-                    // Lead capture should never interrupt checkout.
-                }
-            };
-
-            const queueLeadCapture = () => {
-                window.clearTimeout(leadCaptureTimer);
-                leadCaptureTimer = window.setTimeout(() => {
-                    captureLead();
-                }, 520);
-            };
 
             const validateCustomer = () => {
                 for (const key of requiredFields) {
@@ -485,7 +439,6 @@
                 await card.attach("#card-container");
                 } else { document.getElementById("card-container").textContent = "Continue to your secure payment provider to complete your purchase."; }
                 ensureCheckoutAttemptId();
-                window.setTimeout(queueLeadCapture, 650);
 
                 payButton.addEventListener("click", async () => {
                     if (isSubmitting) {
@@ -557,12 +510,6 @@
                     setPayButtonAvailability(false);
                 }
             }
-
-            Object.values(fields).forEach(field => {
-                field?.addEventListener("input", queueLeadCapture);
-                field?.addEventListener("change", queueLeadCapture);
-                field?.addEventListener("blur", queueLeadCapture);
-            });
 
             window.addEventListener("parfait-cart-updated", () => {
                 requestQuote();

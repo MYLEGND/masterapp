@@ -2076,6 +2076,12 @@ namespace Infrastructure.Migrations
                     b.Property<Guid>("ClientProfileId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("CommerceBusinessId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CommerceProductId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
@@ -2169,6 +2175,13 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
 
+                    b.Property<string>("SubscriptionScope")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasDefaultValue("LegendMembership");
+
                     b.Property<DateTime?>("TrialEndsUtc")
                         .HasColumnType("datetime2");
 
@@ -2179,11 +2192,15 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("AcceptedOfferId");
 
-                    b.HasIndex("ClientProfileId")
-                        .IsUnique()
-                        .HasFilter("[Status] <> 'Canceled' AND [Status] <> 'ActivationFailed'");
+                    b.HasIndex("CommerceBusinessId");
+
+                    b.HasIndex("CommerceProductId");
 
                     b.HasIndex("DefaultPaymentMethodId");
+
+                    b.HasIndex("ClientProfileId", "SubscriptionScope")
+                        .IsUnique()
+                        .HasFilter("[Status] <> 'Canceled' AND [Status] <> 'ActivationFailed'");
 
                     b.HasIndex("ClientProfileId", "UpdatedUtc");
 
@@ -2212,6 +2229,12 @@ namespace Infrastructure.Migrations
                         .HasColumnType("nvarchar(40)");
 
                     b.Property<Guid>("ClientProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CommerceBusinessId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CommerceProductId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("CreatedUtc")
@@ -2260,12 +2283,35 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<string>("SubscriptionScope")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasDefaultValue("LegendMembership");
+
+                    b.Property<string>("TrainingBenefits")
+                        .HasMaxLength(12000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TrainingPlanName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("TrainingPromotionCode")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
                     b.Property<DateTime>("UpdatedUtc")
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
 
                     b.HasIndex("ClientProfileId");
+
+                    b.HasIndex("CommerceBusinessId");
+
+                    b.HasIndex("CommerceProductId");
 
                     b.HasIndex("OwnerAgentUserId");
 
@@ -3340,6 +3386,13 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(80)
                         .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("BillingKind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .HasDefaultValue("OneTime");
 
                     b.Property<Guid>("CommerceBusinessId")
                         .HasColumnType("uniqueidentifier");
@@ -14941,6 +14994,16 @@ namespace Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Domain.Entities.CommerceBusiness", null)
+                        .WithMany()
+                        .HasForeignKey("CommerceBusinessId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Domain.Entities.CommerceProduct", null)
+                        .WithMany()
+                        .HasForeignKey("CommerceProductId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Domain.Entities.ClientPaymentMethod", "DefaultPaymentMethod")
                         .WithMany()
                         .HasForeignKey("DefaultPaymentMethodId")
@@ -14960,6 +15023,16 @@ namespace Infrastructure.Migrations
                         .HasForeignKey("ClientProfileId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Domain.Entities.CommerceBusiness", null)
+                        .WithMany()
+                        .HasForeignKey("CommerceBusinessId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Domain.Entities.CommerceProduct", null)
+                        .WithMany()
+                        .HasForeignKey("CommerceProductId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("ClientProfile");
                 });

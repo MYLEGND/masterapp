@@ -272,7 +272,10 @@ public sealed record CreateClientSubscriptionOfferCommand(
     bool AllowFounderZeroDollarCustomAmount = false,
     bool HasFreeTrial = false,
     int? FreeTrialDays = null,
-    bool AllowFounderFreeTrial = false);
+    bool AllowFounderFreeTrial = false,
+    Guid? TrainingBusinessId = null,
+    Guid? TrainingProductId = null,
+    string? TrainingPromotionCode = null);
 
 public sealed record CreateSubscriptionActivationInvitationCommand(
     Guid ClientProfileId,

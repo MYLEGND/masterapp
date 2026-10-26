@@ -32,7 +32,7 @@ public static class CommerceSharedHostCutoverGate
         var value = path.Value ?? "";
         if (HttpMethods.IsGet(method) || HttpMethods.IsHead(method))
         {
-            if (value is "/store" or "/store/" or "/store/cart" or "/store/checkout" or "/store/success" or "/store/privacy" or "/store/terms")
+            if (value is "/store/training" or "/store" or "/store/" or "/store/cart" or "/store/checkout" or "/store/success" or "/store/privacy" or "/store/terms")
                 return true;
             if (value.StartsWith("/store/product/", StringComparison.OrdinalIgnoreCase))
                 return value.Length > 15 && !value[15..].Contains('/') &&
@@ -42,7 +42,7 @@ public static class CommerceSharedHostCutoverGate
                 return CommerceSharedHostPreviewGate.MayRouteAssetsOnly(value);
         }
         if (HttpMethods.IsPost(method))
-            return value is "/store/cart/items" or "/store/checkout/quote" or
+            return value is "/store/training/request" or "/store/cart/items" or "/store/checkout/quote" or
                 "/store/checkout/lead" or "/store/checkout/pay";
         return false;
     }

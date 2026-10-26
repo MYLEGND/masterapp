@@ -923,7 +923,7 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
                     record.ProfileId == profile.Id &&
                     record.ParticipantType == MessagingParticipantTypes.Client &&
                     record.State == Domain.Accounts.AccountLifecycleStates.Closed) &&
-                _db.ClientSubscriptions.Any(subscription =>
+                _db.ClientSubscriptions.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership).Any(subscription =>
                     subscription.ClientProfileId == profile.Id &&
                     subscription.Status == ClientSubscriptionStatus.Active &&
                     subscription.PaymentStanding == ClientSubscriptionPaymentStanding.Current));

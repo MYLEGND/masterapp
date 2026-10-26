@@ -11,7 +11,7 @@ namespace ParfaitApp.Controllers;
 /// </summary>
 [Route("__parfait-preview")]
 public sealed class ParfaitPublicPreviewController(
-    CommerceStoreContextService stores, IWebHostEnvironment environment) : Controller
+    CommerceStoreContextService stores, IWebHostEnvironment environment, IConfiguration configuration) : Controller
 {
     [HttpGet("home")]
     public Task<IActionResult> Home(CancellationToken ct) => Page("Home", ct);
@@ -54,18 +54,7 @@ public sealed class ParfaitPublicPreviewController(
         if (viewName == "Training")
             ViewBag.Trainings = Array.Empty<object>();
 
-        if (viewName == "TrainingPackages")
-        {
-            // A visual-only preview must never expose payment links.
-            ViewBag.SquarePrelaunchLink = "#";
-            ViewBag.SquareTrainingLink = "#";
-            ViewBag.SquareFullLink = "#";
-            ViewBag.SquareGymLink = "#";
-            ViewBag.SquarePrelaunchLinkWealth = "#";
-            ViewBag.SquareTrainingLinkWealth = "#";
-            ViewBag.SquareFullLinkWealth = "#";
-            ViewBag.SquareGymLinkWealth = "#";
-        }
+        ViewData["TrainingEnrollmentAvailable"] = CommerceSharedHostCutoverGate.IsAdmitted(configuration, store.CommerceBusinessId, stores.ResolveEffectivePublicHost(HttpContext));
         return View("~/Views/ParfaitOriginal/" + viewName + ".cshtml");
     }
 }
