@@ -8448,6 +8448,11 @@ REVIEWED_CANONICAL_PAYMENT_ENTRY = '0c16fa4ce2197954982578e1cdbc4291f077d8660b65
 # Frozen recovered application closure. These pins do not promote the changed
 # observer: trusted tooling must first be legitimately promoted and inherited.
 REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS = frozenset({
+    # Live release 7dcfe753: same complete migration/model prefix as d726.
+    # Intervening accepted runtime behavior changes do not alter discovery or
+    # schema. This exact observation pair does not promote tools or admit apps.
+    ('f6ae0f4012706ad346d743fb69dfbff4cc46238aa46a9f60687aede0a8cc57eb',
+     'e097be398e774e6226b9a7cb72b41b7eec92eb8a3043af8e16e412381ca0051f'),
     ('3fbe9ce6512a2ebb7db43f0f45a5227786094ac6b287ccc3eca40c59da05f6e0',
      'e097be398e774e6226b9a7cb72b41b7eec92eb8a3043af8e16e412381ca0051f')
 })

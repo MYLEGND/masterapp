@@ -5682,7 +5682,7 @@ class ReviewedCanonicalPaymentContractTests(unittest.TestCase):
     def setUp(self):
         import copy
         self.copy = copy.deepcopy
-        before, after = next(iter(m.REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS))
+        before, after = sorted(m.REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS)[0]
         self.trusted = dict(runtimeIdentity=before, toolIdentity='c'*64, executionIdentity='d'*64)
         self.current = dict(self.trusted, runtimeIdentity=after)
         self.prior = dict(schemaVersion=3, migrations=[dict(id='20261020160000_AddReceptionistCoordination', supported=True)])
@@ -5700,7 +5700,17 @@ class ReviewedCanonicalPaymentContractTests(unittest.TestCase):
                 self.contract if contract is None else contract, self.prior if prior is None else prior)
 
     def test_exact_pair_and_inherited_tooling_prove_only_payment_suffix(self):
-        self.assertEqual('approved-prefix-reviewed-canonical-payment-entry', self.prove()['rule'])
+        for before,after in m.REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS:
+            self.trusted['runtimeIdentity']=before;self.current['runtimeIdentity']=after
+            with self.subTest(before=before):
+                self.assertEqual('approved-prefix-reviewed-canonical-payment-entry', self.prove()['rule'])
+
+    def test_only_independently_reviewed_live_and_prior_pairs_are_pinned(self):
+        candidate='e097be398e774e6226b9a7cb72b41b7eec92eb8a3043af8e16e412381ca0051f'
+        self.assertEqual({
+            ('f6ae0f4012706ad346d743fb69dfbff4cc46238aa46a9f60687aede0a8cc57eb',candidate),
+            ('3fbe9ce6512a2ebb7db43f0f45a5227786094ac6b287ccc3eca40c59da05f6e0',candidate),
+        },m.REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS)
 
     def test_changed_runtime_tool_execution_or_missing_identity_rejected(self):
         for target, key, value in [('current','runtimeIdentity','e'*64),('trusted','runtimeIdentity','e'*64),
@@ -5710,12 +5720,13 @@ class ReviewedCanonicalPaymentContractTests(unittest.TestCase):
             row[key]=old
 
     def test_missing_duplicate_changed_prefix_and_unknown_metadata_rejected(self):
-        for kind in ('missing','duplicate','prefix','metadata','key_length'):
+        for kind in ('missing','duplicate','prefix','metadata','key_length','reordered'):
             value=self.copy(self.contract)
             if kind=='missing': value=self.copy(self.prior)
             elif kind=='duplicate': value['migrations'].append(self.copy(self.entry))
             elif kind=='prefix': value['migrations'][0]['supported']=False
             elif kind=='metadata': value['migrations'][-1]['unknown']=True
+            elif kind=='reordered': value['migrations'].reverse()
             else: value['migrations'][-1]['columns']=[dict(type='nvarchar(159)')]
             with self.subTest(kind=kind),self.assertRaisesRegex(ValueError,'UNPROVEN'): self.prove(contract=value)
 
@@ -5723,6 +5734,15 @@ class ReviewedCanonicalPaymentContractTests(unittest.TestCase):
         prior=self.copy(self.prior);prior['migrations'][0]['id']='20260101000000_Other'
         value=self.copy(self.contract);value['migrations'][0]=prior['migrations'][0]
         with self.assertRaisesRegex(ValueError,'UNPROVEN'): self.prove(value,prior)
+
+    def test_live_pair_rejects_changed_base_candidate_tool_and_omitted_prior_migration(self):
+        self.trusted['runtimeIdentity']='f6ae0f4012706ad346d743fb69dfbff4cc46238aa46a9f60687aede0a8cc57eb'
+        for target,key in (('trusted','runtimeIdentity'),('current','runtimeIdentity'),('current','toolIdentity')):
+            row=getattr(self,target);original=row[key];row[key]='f'*64
+            with self.subTest(target=target,key=key),self.assertRaisesRegex(ValueError,'UNPROVEN'):self.prove()
+            row[key]=original
+        prior=self.copy(self.prior);prior['migrations'].insert(0,dict(id='20260101000000_Original',supported=True))
+        with self.assertRaisesRegex(ValueError,'UNPROVEN'):self.prove(prior=prior)
 
     def test_ancestry_and_control_source_changes_rejected(self):
         for values in ((1,0),(128,0),(0,1),(0,128)):
