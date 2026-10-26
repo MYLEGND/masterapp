@@ -382,6 +382,10 @@ def rehearse_fast_track(revision, directory, observation_path, probe_directory):
             raise ValueError('FAST_TRACK_BASE_UNPROVEN')
         impact_base = proof['baseline']
     subprocess.run(['git', 'merge-base', '--is-ancestor', base, revision], check=True)
+    # A tool-only successor still carries earlier unpublished migration scope.
+    # Reuse the release authority's authenticated operation reconciliation; an
+    # unresolved predecessor cannot be treated as a shipped schema boundary.
+    impact_base = AUTHORITY.fast_track_effective_baseline(impact_base, revision, repository=repository, token=token)
     changed = subprocess.check_output(['git', 'diff', '--name-only', impact_base, revision], text=True).splitlines()
     scope = AUTHORITY.fast_track_scope(changed)
     source = fast_track_observation_source(repository, revision, run_id, attempt, token)
