@@ -31,7 +31,9 @@ public sealed class ParfaitCanonicalCutoverSafetyTests
         var program = Read("ParfaitApp", "Program.cs");
         Assert.Contains("ExecuteCommerceOneTimePaymentAsync", checkout, StringComparison.Ordinal);
         Assert.Contains("BuildPaymentIdempotencyKey", checkout, StringComparison.Ordinal);
-        Assert.Contains("_orders.MarkPaymentCaptured", checkout, StringComparison.Ordinal);
+        var completion = Read("CommerceCore", "Services", "MerchantPaymentCompletionService.cs");
+        Assert.Contains("_completion.CompleteLegacyAsync(paymentResult.PaymentRecord!.Id, store.CommerceBusinessId, ct)", checkout, StringComparison.Ordinal);
+        Assert.Contains("orders.MarkPaymentCaptured(attempt.CommerceBusinessId", completion, StringComparison.Ordinal);
         Assert.Contains("commerceSignals.RecordAsync", Read("CommerceCore", "Controllers", "StoreCartController.cs"), StringComparison.Ordinal);
         Assert.Contains("AddMasterAppBilling", program, StringComparison.Ordinal);
         Assert.Contains("AddMasterAppFinancialIntelligence", program, StringComparison.Ordinal);

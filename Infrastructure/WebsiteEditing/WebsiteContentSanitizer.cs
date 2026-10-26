@@ -271,8 +271,12 @@ public static class WebsiteContentSanitizer
             var entry = entries.Single(item => ReferenceEquals(item.Node, candidate.Node));
             if (entry.PresentationSensitive || entry.IdentitySensitive)
                 throw new RecoveryReviewException("protected_runtime_projection", collisions.Count, evidence);
+            // PlanRuntimeAnchorRecovery admits only the existing paragraph tag.
+            // Retain that invariant explicitly across the recovery projection.
+            if (entry.Node.Tag is not string previousTag)
+                throw new RecoveryReviewException("protected_runtime_projection", collisions.Count, evidence);
             runtimeChanges.Add(new(candidate.PagePath, entry.Node.Id, entry.DiagnosticPath,
-                entry.Node.Type, entry.Node.Tag, "container", "div", candidate.SystemKey));
+                entry.Node.Type, previousTag, "container", "div", candidate.SystemKey));
             entry.Node.Type = "container";
             entry.Node.Tag = "div";
             entry.Node.SystemKey = candidate.SystemKey;
