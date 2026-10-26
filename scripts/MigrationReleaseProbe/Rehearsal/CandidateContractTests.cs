@@ -101,6 +101,7 @@ internal static class CandidateContractTests
         Check(!CandidateContract.Describe(id, operations).Supported, "training legacy default cannot change");
         scope.DefaultValue = "LegendMembership";
         Check(CandidateContract.Describe(id, operations).Supported, "test mutations restored");
+        Console.WriteLine("TRAINING_CONTRACT:PROVEN");
     }
 
     private static void CatalogPlans(CandidateContract.Contract contract)
