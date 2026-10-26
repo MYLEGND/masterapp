@@ -1561,6 +1561,43 @@ class PublishedCompilerBrandingTests(unittest.TestCase):
             self.assertEqual(0,result.returncode,result.stderr)
 
 
+class CanonicalPaymentImpactTests(unittest.TestCase):
+    payment_paths = ('Domain/Billing/BillingModels.cs', 'Domain/Entities/SubscriptionPayment.cs',
+        'Domain/Entities/SubscriptionPaymentCompletionEffect.cs', 'Domain/Entities/SubscriptionPaymentRefund.cs',
+        'Infrastructure/Billing/BillingReconciliationService.cs')
+
+    def test_exact_shared_payment_sources_select_four_managed_consumers(self):
+        for path in self.payment_paths:
+            with self.subTest(path=path):
+                scope=authority.fast_track_scope([path])
+                self.assertEqual({'portal','client','protect','parfait'},
+                    {row['key'] for row in scope['matrix']['include']})
+                self.assertTrue(scope['commerce'])
+                self.assertFalse(scope['schema']);self.assertFalse(scope['routing'])
+
+    def test_exact_test_and_control_paths_do_not_create_deployment_impact(self):
+        for path in ('Legend-Cloudflare/tests/runtime/runtime.test.mjs','scripts/recovery-replacement-admission.py'):
+            with self.subTest(path=path):
+                scope=authority.fast_track_scope([path])
+                self.assertEqual({'include':[]},scope['matrix'])
+                self.assertFalse(scope['selected']);self.assertFalse(scope['commerce'])
+                self.assertFalse(scope['schema']);self.assertFalse(scope['routing'])
+        for path in ('Domain/Billing/Unreviewed.cs','Domain/Entities/SubscriptionPaymentOther.cs',
+            'Infrastructure/Billing/Unreviewed.cs','Legend-Cloudflare/tests/runtime/other.mjs',
+            'scripts/recovery-replacement-other.py'):
+            with self.subTest(path=path),self.assertRaisesRegex(ValueError,'Unmapped'):
+                authority.fast_track_scope([path])
+
+    def test_payment_migration_and_shared_studio_preserve_full_combined_impact(self):
+        scope=authority.fast_track_scope([*self.payment_paths,
+            'Infrastructure/Migrations/20261026000134_AddCanonicalSubscriptionPaymentCompletion.cs',
+            'SHARED/WebsitePlatform/legend-public-cms.js'])
+        self.assertEqual({'portal','client','protect','parfait','website'},
+            {row['key'] for row in scope['matrix']['include']})
+        self.assertTrue(scope['schema']);self.assertTrue(scope['commerce'])
+        self.assertFalse(scope['routing'])
+
+
 class FastTrackNoSqlInputInventoryTests(unittest.TestCase):
     def test_no_sql_regression_is_control_only_not_unmapped_or_runtime_owned(self):
         path='scripts/test-fast-track-ready-no-sql.py'

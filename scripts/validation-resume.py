@@ -3893,6 +3893,11 @@ def fast_track_scope(paths):
     # Infrastructure/Domain/Shared ProjectReference dependencies. Keep exact
     # ownership: an unknown sibling is not silently admitted.
     shared_server = {
+        'Domain/Billing/BillingModels.cs',
+        'Domain/Entities/SubscriptionPayment.cs',
+        'Domain/Entities/SubscriptionPaymentCompletionEffect.cs',
+        'Domain/Entities/SubscriptionPaymentRefund.cs',
+        'Infrastructure/Billing/BillingReconciliationService.cs',
         'Domain/Entities/ClientSubscriptionOffer.cs',
         'Domain/Entities/MarketingConnection.cs',
         'Domain/Entities/ReceptionistCoordination.cs',
@@ -4030,6 +4035,8 @@ def fast_track_scope(paths):
             return direct
         if release_control_only_path(path) or path.startswith(('docs/',
             'diagnostics/MerchantPaymentCoreTests/', 'diagnostics/MerchantPaymentAdapterChecks/')) or path in {
+            'Legend-Cloudflare/tests/runtime/runtime.test.mjs',
+            'scripts/recovery-replacement-admission.py',
             'MASTERAPP.sln', 'MasterApp.slnx', 'scripts/test-migration-probe-package.py',
             'scripts/test-parfait-readonly-workflow.py'}:
             return set()
