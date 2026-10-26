@@ -1028,6 +1028,11 @@ RECOVERY_PREFLIGHT_PRODUCER_SHA256 = '15ba27c53564223cb41502bb5528949e6435f0e6bc
 
 def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
+    # Shared serializer preflight; exact paired generation, never arbitrary helpers.
+    if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) == (
+        'dd6c8154aadc3f829204bee307936630d6620e06c416681be65cce2d32fab487',
+        '95117a0cd4e1f21bf6407f5324107fdcdfeba582d9ce2123975d567b00664f73'):
+        return True
     return (hashlib.sha256(source.encode()).hexdigest() in (RECOVERY_PREFLIGHT_PRODUCER_SHA256, 'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850', 'e75833a3c3a4d8827f48b7395a8af7e61eeab9e5cfbb4e1f6a0ebb4af49901ed', 'ef930621e8c36e447fd884ef99bd03f5ce666bf1feda3431158af8e86d5ab6ab',
         # Reviewed supersession generation retains the existing recovery preflight path.
         '6bec907bd7048c7a0e221f9bcfd84a9546eb750f654075a02260f2c606679dbb',
@@ -11582,11 +11587,15 @@ def _historical_publication_failed_before_first_write(repository, release_job, a
         '9fd5781cd54c10c9a5fb74af4bb005f172480583c9da0396387309888e953e26',
         '3fa03ccdb9d20f8df43434e0059888415dd6d11b4d11d3d55872bd6b032c6691',
         # Accepted pre-supersession intent: unchanged intent-before-upload boundary.
-        'ba734241c9ae81a7184bd8c19980b9443ade2ae1d4bd8115d98153fbd0c68be2'}
+        'ba734241c9ae81a7184bd8c19980b9443ade2ae1d4bd8115d98153fbd0c68be2',
+        # Reviewed pre-builder extraction; exact unchanged write-ahead method.
+        '9614ad2b268bc2d55440c684340432c8ba0c95de7a11c7e8b153fee12741cebf'}
     if ((function_dump(historical_deploy, 'reconcile') != function_dump(current_deploy, 'reconcile')
          and not prior_reconcile) or
-            (method_dump(historical_evidence, 'OperationJournal', 'before_submit') !=
-             method_dump(current_evidence, 'OperationJournal', 'before_submit') and not prior_intent)):
+            ((method_dump(historical_evidence, 'OperationJournal', 'before_submit') !=
+              method_dump(current_evidence, 'OperationJournal', 'before_submit') or
+              method_dump(historical_evidence, 'OperationJournal', 'intent_record') !=
+              method_dump(current_evidence, 'OperationJournal', 'intent_record')) and not prior_intent)):
         return False
 
     # Authenticated retained logs are only execution evidence after source

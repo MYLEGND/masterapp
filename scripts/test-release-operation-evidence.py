@@ -542,6 +542,20 @@ class CanonicalHistoryTests(unittest.TestCase):
         self.legacy_fixture()
         self.assertIsNone(self.legacy_history())
 
+    def test_preupload_proof_rejects_refactored_intent_builder_drift(self):
+        self.legacy_fixture('a' * 40)
+        self.old_evidence = Path('scripts/release-operation-evidence.py').read_text().replace(
+            "baselineDeploymentIds=self._ids(baseline_ids), phase='intent',",
+            "baselineDeploymentIds=self._ids(baseline_ids), phase='success',", 1)
+        self.old_deployer = Path('scripts/deploy-approved-app.py').read_text()
+        self.old_workflow = self.old_workflow.replace('Publish selected head as one transaction', 'Publish canonical target (portal)')
+        self.job['id'] = 123
+        self.job['steps'][1]['name'] = 'Publish canonical target (portal)'
+        with patch.object(self.authority, '_release_job_log') as logs:
+            with self.assertRaisesRegex(RuntimeError, 'may have written'):
+                self.legacy_history()
+            logs.assert_not_called()
+
     def test_retained_rollback_identity_binds_checkout_without_translation(self):
         self.legacy_fixture()
         self.legacy_artifacts[1]['name'] = 'diagnostics-rollback-portal-' + 'd' * 40
@@ -1032,6 +1046,26 @@ class RetainedRecoveryJournalTests(DurableOperationProtocolTests):
             resumed=self.recovery(target=key)
             self.assertFalse(resumed.before_submit(['different']))
             self.assertEqual((self.path/('intent'+resumed.operation_id)).read_bytes(),original[key])
+
+    def test_contract_preview_is_pure_and_inherited_intent_remains_reconcile_only(self):
+        first = self.recovery()
+        records = []
+        first.validate_contract(['contract-preview'], validator=lambda name, record: records.append(record))
+        self.assertEqual(len(records), 5)
+        self.assertIsNone(first.intent)
+        self.assertFalse(first._new_intent_readback)
+        self.assertFalse(list(self.path.iterdir()))
+        first.before_submit(['old'], submission_kind='azure_onedeploy_windows_intent_v1')
+        before = (self.path/('intent'+first.operation_id)).read_bytes()
+        self.env['GITHUB_RUN_ID'] = '11'
+        resumed = self.recovery()
+        records.clear()
+        resumed.validate_contract(['ignored'], validator=lambda name, record: records.append(record))
+        self.assertEqual([r['phase'] for r in records], ['success'])
+        self.assertEqual(records[0]['producingRun'], 11)
+        self.assertEqual(records[0]['recoveryEvidence']['runId'], 11)
+        self.assertFalse(resumed.before_submit(['other']))
+        self.assertEqual((self.path/('intent'+first.operation_id)).read_bytes(), before)
 
     def test_wrong_actual_producer_rejected(self):
         with self.assertRaisesRegex(ValueError, 'producer/material'):

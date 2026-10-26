@@ -1529,6 +1529,14 @@ def recover_fast_track(original_run, revision, package_root, *, prepare_only=Fal
             return _recover_fast_track(original_run, revision, package_root, observer, deadline, prepare_only=prepare_only)
 
 
+def recovery_summary_record(original_run, original, revision, observer, records):
+    """One constructor for preflight shape validation and durable completion."""
+    return dict(schemaVersion=1, phase='success', originalRun=original_run,
+                originalAttempt=original['run']['run_attempt'], applicationRevision=revision,
+                producingRun=observer['runId'], producingAttempt=observer['runAttempt'],
+                observer=observer, targets=records)
+
+
 def _recover_fast_track(original_run, revision, package_root, observer, deadline, *, prepare_only=False):
     """Resume retained original materials under a separately promoted tool owner."""
     authority = _RELEASE_AUTHORITY
@@ -1613,7 +1621,14 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
                     raise journal.history_error
                 if prior is not None and journal.intent != prior:
                     raise DeploymentDrift('RECOVERY_EXISTING_INTENT_CHANGED')
+                journal.validate_contract(states[key]['deploymentIds'] if prior is None else prior['baselineDeploymentIds'],
+                    validator=lambda name, record: owner.validate_record(name, record,
+                        timeout=min(30, recovery_phase_remaining(publication_deadline))))
                 journals[key] = (azure, journal)
+            preview = {key: dict(row, deploymentIds=['contract-preview']) for key, row in inventory.items()}
+            owner.validate_record(authority.fast_track_recovery_summary_name(original_run, revision),
+                recovery_summary_record(original_run, original, revision, observer, preview),
+                timeout=min(30, recovery_phase_remaining(publication_deadline)))
     except Exception as failure:
         # No executor, provider preparation, intent or upload is reachable here.
         # Failed/ambiguous receipt publication also terminates; it never retries a write.
@@ -1653,9 +1668,7 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
                     raise DeploymentReconciliationRequired('RECOVERY_DURABLE_SUCCESS_UNPROVEN')
                 records[key] = dict(inventory[key], deploymentIds=success['deploymentIds'])
         authority.assert_fast_track_recovery_live_execution(original_run, revision, observer)
-    summary = dict(schemaVersion=1, phase='success', originalRun=original_run, originalAttempt=original['run']['run_attempt'],
-                   applicationRevision=revision, producingRun=observer['runId'], producingAttempt=observer['runAttempt'],
-                   observer=observer, targets=records)
+    summary = recovery_summary_record(original_run, original, revision, observer, records)
     owner.publish_record(authority.fast_track_recovery_summary_name(original_run, revision), summary,
         timeout=min(180, recovery_phase_remaining(deadline - 60)))
     return dict(state='RETAINED_RECOVERY_VERIFIED', results=results, summary=summary)

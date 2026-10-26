@@ -22,6 +22,25 @@ def _authority():
     return module
 
 
+class RecordContractError(RuntimeError):
+    """Local serializer disagreement; no artifact operation was attempted."""
+
+
+def validate_record(name, record, *, timeout=30):
+    """Use the publication validator without publishing or granting authority."""
+    try:
+        result = subprocess.run(
+            ['node', str(Path(__file__).with_name('release-artifacts') / 'transport.cjs')],
+            input=json.dumps(dict(mode='validate', name=name, record=record)),
+            capture_output=True, text=True, timeout=timeout, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        raise RecordContractError('RELEASE_RECORD_CONTRACT_UNAVAILABLE') from None
+    if result.returncode == 2 and result.stderr.strip() == 'LEGEND_RECORD_CONTRACT_INVALID':
+        raise RecordContractError('RELEASE_RECORD_CONTRACT_INVALID')
+    if result.returncode or result.stdout.strip() != 'LEGEND_RECORD_CONTRACT_VALID':
+        raise RecordContractError('RELEASE_RECORD_CONTRACT_UNAVAILABLE')
+
+
 def publish_record(name, record, *, timeout=180):
     result = subprocess.run(
         ['node', str(Path(__file__).with_name('release-artifacts') / 'transport.cjs')],
@@ -217,17 +236,10 @@ class OperationJournal:
             raise ValueError("Invalid Azure deployment identities")
         return sorted(set(values))
 
-    def before_submit(self, baseline_ids, *, allow_recovered_baseline=False, submission_kind='azure_onedeploy_deployment_tag_v1'):
+    def intent_record(self, baseline_ids, *, submission_kind='azure_onedeploy_deployment_tag_v1'):
+        """Pure record construction, shared by preflight and actual publication."""
         if submission_kind not in {'azure_onedeploy_deployment_tag_v1', 'azure_onedeploy_windows_intent_v1'}:
             raise ValueError('Unknown deployment submission contract')
-        if self.history_error is not None and not allow_recovered_baseline:
-            raise self.history_error
-        if self.intent is not None:
-            return False
-        if self.supersession is not None:
-            run = self.authority.assert_fast_track_release_execution(target='protect')
-            if run['head_sha'] != self.identity['applicationRevision'] or run['id'] != self.run:
-                raise ValueError('Replacement write authority changed')
         record = dict(self.identity, schemaVersion=1, operationId=self.operation_id,
                       baseline=self.baseline, packageProducerRun=self.producer,
                       producingRun=self.run, producingAttempt=self.attempt,
@@ -240,6 +252,29 @@ class OperationJournal:
             record.update(self.authorization, schemaVersion=2)
         if self.supersession is not None:
             record['supersession'] = dict(self.supersession)
+        return record
+
+    def submitted_record(self, intent, deployment_id):
+        return dict(intent, phase='submitted', producingRun=self.run,
+                    producingAttempt=self.attempt, deploymentId=deployment_id)
+
+    def success_record(self, intent, deployment_ids):
+        return dict(intent, operationId=self.operation_id, baseline=self.baseline,
+                    producingRun=self.run, producingAttempt=self.attempt,
+                    phase='success', deploymentIds=self._ids(deployment_ids))
+
+    def before_submit(self, baseline_ids, *, allow_recovered_baseline=False, submission_kind='azure_onedeploy_deployment_tag_v1'):
+        if submission_kind not in {'azure_onedeploy_deployment_tag_v1', 'azure_onedeploy_windows_intent_v1'}:
+            raise ValueError('Unknown deployment submission contract')
+        if self.history_error is not None and not allow_recovered_baseline:
+            raise self.history_error
+        if self.intent is not None:
+            return False
+        if self.supersession is not None:
+            run = self.authority.assert_fast_track_release_execution(target='protect')
+            if run['head_sha'] != self.identity['applicationRevision'] or run['id'] != self.run:
+                raise ValueError('Replacement write authority changed')
+        record = self.intent_record(baseline_ids, submission_kind=submission_kind)
         self.publisher('legend-release-operation-intent-' + self.operation_id, record)
         self.intent = record
         self._new_intent_readback = True
@@ -253,8 +288,7 @@ class OperationJournal:
     def record_submission_observation(self, deployment_id):
         if self.intent is None or self.intent.get('submissionContract') != self._windows_submission_contract():
             raise RuntimeError('Windows write-ahead intent required before provider observation')
-        record = dict(self.intent, phase='submitted', producingRun=self.run,
-                      producingAttempt=self.attempt, deploymentId=deployment_id)
+        record = self.submitted_record(self.intent, deployment_id)
         self._validate_submission_observation(record)
         if self.submission_observation is not None:
             if self.submission_observation['deploymentId'] != deployment_id:
@@ -291,11 +325,7 @@ class OperationJournal:
             return existing
         # Reconciliation preserves the original upload authority and byte producer,
         # even when a later authorized candidate reuses the same operation.
-        record = dict(self.intent,
-                      operationId=self.operation_id, baseline=self.baseline,
-                      producingRun=self.run,
-                      producingAttempt=self.attempt, phase='success',
-                      deploymentIds=observed)
+        record = self.success_record(self.intent, observed)
         return self.publisher('legend-release-operation-success-' + self.operation_id, record)
 
 
@@ -329,7 +359,7 @@ class RecoveryJournal(OperationJournal):
         actual_publisher = publisher or publish_record
         def publish(name, record):
             # Never mutate the original intent object or claim its producer.
-            value = dict(record, recoveryEvidence=dict(self.recovery_evidence))
+            value = self.publication_record(record)
             return actual_publisher(name, value)
         super().__init__(publisher=publish, **kwargs)
         if (self.recovery_evidence.get('runId') != self.run
@@ -337,6 +367,32 @@ class RecoveryJournal(OperationJournal):
             or self.recovery_evidence.get('originalRun') != self.producer
             or self.recovery_evidence.get('applicationRevision') != self.identity['applicationRevision']):
             raise ValueError('Recovery journal producer/material mismatch')
+
+    def publication_record(self, record):
+        return dict(record, recoveryEvidence=dict(self.recovery_evidence))
+
+    def validate_contract(self, baseline_ids, *, validator=validate_record):
+        """Preview every reachable receipt through the same publication validator.
+
+        Synthetic IDs are local shape probes only. No state, receipt, authority,
+        callback or provider operation is changed by this check.
+        """
+        intents = ([self.intent] if self.intent is not None else [
+            self.intent_record(baseline_ids, submission_kind=kind) for kind in
+            ('azure_onedeploy_deployment_tag_v1', 'azure_onedeploy_windows_intent_v1')])
+        for intent in intents:
+            sample = 'contract-preview'
+            while sample in intent['baselineDeploymentIds']:
+                sample += '-next'
+            records = []
+            if self.intent is None:
+                records.append(intent)
+                if 'submissionContract' in intent:
+                    records.append(self.submitted_record(intent, sample))
+            records.append(self.success_record(intent, [sample]))
+            for record in records:
+                validator('legend-release-operation-' + record['phase'] + '-' + self.operation_id,
+                          self.publication_record(record))
 
     def before_submit(self, baseline_ids, **kwargs):
         if self.intent is not None:

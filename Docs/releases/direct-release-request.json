@@ -1,32 +1,48 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1: complete remaining Protect deployment and preserve four successful apps. Promote reviewed recovery tools without application publication, then use canonical retained recovery under mandatory human Production approval.",
-  "purpose": "Correct the Protect baseline evidence transport contract and authenticate the exact serializer failure before safely resuming retained recovery. Preserve four successful apps, original bytes, historical UNKNOWN outcomes and disabled routing.",
-  "requestId": "protect-retained-serializer-tool-promotion-20261026-v1",
+  "authorization": "Founder requested hardening of the Protect deployment failure and one authoritative recovery contract for all apps. This candidate prepares nonpublishing tooling promotion; merge remains subject to separate Founder approval.",
+  "purpose": "Use the canonical artifact validator for all-target recovery preflight, preserve receipt authentication and reject serializer drift before any deployment worker starts.",
+  "requestId": "all-app-recovery-contract-hardening-20261026-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "6c21a702e28a0fb4379eb73cbc59c174636f1412",
-    "sourceRevision": "b01383d6480863afe34c0e25e1885eb9573d813e",
+    "baseRevision": "b77beb971c47b6b74b08505105ae07c45b3c5c77",
+    "sourceRevision": "ffb25afd8c29f3c794b4259e35cfa38d7cfc76ab",
     "files": {
-      "scripts/release-artifacts/transport.cjs": {
+      "scripts/deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "fb2bb1b8d7cda7ea8f4e57d03a8dacc6a5479df8"
+        "blob": "910d9ee7d02e341dad3bd9ea11df5296ec1c8a5b"
       },
       "scripts/release-artifacts/test-transport.cjs": {
         "mode": "100644",
-        "blob": "a2dc94b59d6b2c717812c30ce60b0fc5ffce30bb"
+        "blob": "095c7a8ff8bc065da2e8cf12de66e92798204a38"
       },
-      "scripts/validation-resume.py": {
+      "scripts/release-artifacts/transport.cjs": {
         "mode": "100644",
-        "blob": "b6aec41e6658055f07a379a55c753e40442b75f0"
+        "blob": "5bc45a7e611fcfd97cc3589198ae665c99de6b6f"
+      },
+      "scripts/release-operation-evidence.py": {
+        "mode": "100644",
+        "blob": "1df475ad283044c0830149692c9698bc936d9f63"
+      },
+      "scripts/test-deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "bd6eb4e638ead0a494aae79598bf5248f7768b81"
+      },
+      "scripts/test-release-operation-evidence.py": {
+        "mode": "100644",
+        "blob": "99171344b5ae90be142899761ec8395f5b3ea0df"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "fc3ca488187faadb2f2c08bd0062d186d3a04c67"
+        "blob": "e2be2e31f2a29c91ad86eb96ce331500fd680b14"
+      },
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "200f9089a41c9dc223b9869a5a988c72ad29a33e"
       }
     }
   }
