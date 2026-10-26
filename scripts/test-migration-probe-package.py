@@ -530,6 +530,28 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
             self.assertFalse(self.sql_entered)
 
+    def test_payment_only_baseline_and_broad_suffix_are_both_exercised_without_credentials(self):
+        with self.payment_fixture():
+            self.gate()
+        fixtures=[kw for cmd,kw in self.calls if cmd[-1]=='migration-test']
+        self.assertEqual(['payment-and-successors','canonical-payment-only'],
+            [kw['env']['LEGEND_REHEARSAL_PENDING_COUNT'] for kw in fixtures])
+        for kw in fixtures:
+            self.assertNotIn('AZURE_CLIENT_SECRET',kw['env'])
+            self.assertNotIn('LEGEND_RELEASE_DB_CONNECTION',kw['env'])
+            self.assertEqual(300,kw['timeout'])
+
+    def test_payment_only_failure_cannot_be_hidden_by_broad_suffix_success(self):
+        original=self.process
+        def fail_narrow(command,**kwargs):
+            if kwargs.get('env',{}).get('LEGEND_REHEARSAL_PENDING_COUNT')=='canonical-payment-only':
+                self.fixture_exit=1
+                self.fixture_stderr='LEGEND_ISOLATED_FIXTURE:UNPROVEN:precondition:PHYSICAL_SCHEMA_DRIFT'
+            return original(command,**kwargs)
+        self.process=fail_narrow
+        with self.payment_fixture(),self.assertRaisesRegex(RuntimeError,'precondition:PHYSICAL_SCHEMA_DRIFT'):
+            self.gate()
+
     def test_payment_source_cannot_be_omitted_or_changed_in_export(self):
         import copy
         with self.payment_fixture():

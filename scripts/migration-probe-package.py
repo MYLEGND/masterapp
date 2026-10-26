@@ -649,20 +649,24 @@ def test_schema_contract(directory):
     subprocess.run(['dotnet', 'publish', 'scripts/MigrationReleaseProbe/Rehearsal/MigrationRehearsal.csproj',
         '-c', 'Release', '--nologo', '-o', str(directory), '-m:1', '-nr:false',
         '-p:UseSharedCompilation=false'], check=True)
-    with isolated_sql() as connection:
-        env = {key: os.environ[key] for key in ('PATH', 'HOME', 'DOTNET_ROOT') if key in os.environ}
-        env.update(LEGEND_ISOLATED_SQL=connection, LEGEND_REHEARSAL_PENDING_COUNT='payment-and-successors')
-        result = subprocess.run(['dotnet', str(directory / 'MigrationRehearsal.dll'), 'migration-test'],
-            env=env, capture_output=True, text=True, timeout=300, check=False)
-        if result.returncode:
-            # Forward only a fixed stage and classification, never raw provider output.
-            allowed = r'LEGEND_ISOLATED_FIXTURE:UNPROVEN:(?:dispatch|initialize|precondition|migrate|verify|adversarial):(?:SQL:-?[0-9]{1,10}|INPUT_UNAVAILABLE|MIGRATION_COMPATIBILITY_UNPROVEN|PHYSICAL_SCHEMA_DRIFT|MERCHANT_CHECKOUT_DUPLICATE_IDENTITY_REQUIRES_REVIEW|TIMEOUT|INVALID_OPERATION|UNCLASSIFIED)'
-            exception_type = r'[A-Za-z_][A-Za-z0-9_.+]{0,159}'
-            allowed += r'(?::TYPES:' + exception_type + r'(?:>' + exception_type + r'){0,3})?'
-            allowed += r'(?::LOCATION:(?:UNKNOWN|(?:RehearsalFixture|CandidateContract|CandidateContract\.Structures)\.cs:[1-9][0-9]{0,4}))?'
-            reasons = [line for line in result.stderr.splitlines() if re.fullmatch(allowed, line)]
-            reason = reasons[0] if len(reasons) == 1 else 'LEGEND_ISOLATED_FIXTURE:UNPROVEN:dispatch:UNCLASSIFIED'
-            raise RuntimeError('Synthetic payment migration SQL contract failed: ' + reason)
+    scenarios = ['payment-and-successors']
+    if any(row.get('id') == reviewed[1][0] for row in migrations):
+        scenarios.append('canonical-payment-only')
+    for scenario in scenarios:
+        with isolated_sql() as connection:
+            env = {key: os.environ[key] for key in ('PATH', 'HOME', 'DOTNET_ROOT') if key in os.environ}
+            env.update(LEGEND_ISOLATED_SQL=connection, LEGEND_REHEARSAL_PENDING_COUNT=scenario)
+            result = subprocess.run(['dotnet', str(directory / 'MigrationRehearsal.dll'), 'migration-test'],
+                env=env, capture_output=True, text=True, timeout=300, check=False)
+            if result.returncode:
+                # Forward only a fixed stage and classification, never raw provider output.
+                allowed = r'LEGEND_ISOLATED_FIXTURE:UNPROVEN:(?:dispatch|initialize|precondition|migrate|verify|adversarial):(?:SQL:-?[0-9]{1,10}|INPUT_UNAVAILABLE|MIGRATION_COMPATIBILITY_UNPROVEN|PHYSICAL_SCHEMA_DRIFT|MERCHANT_CHECKOUT_DUPLICATE_IDENTITY_REQUIRES_REVIEW|TIMEOUT|INVALID_OPERATION|UNCLASSIFIED)'
+                exception_type = r'[A-Za-z_][A-Za-z0-9_.+]{0,159}'
+                allowed += r'(?::TYPES:' + exception_type + r'(?:>' + exception_type + r'){0,3})?'
+                allowed += r'(?::LOCATION:(?:UNKNOWN|(?:RehearsalFixture|CandidateContract|CandidateContract\.Structures)\.cs:[1-9][0-9]{0,4}))?'
+                reasons = [line for line in result.stderr.splitlines() if re.fullmatch(allowed, line)]
+                reason = reasons[0] if len(reasons) == 1 else 'LEGEND_ISOLATED_FIXTURE:UNPROVEN:dispatch:UNCLASSIFIED'
+                raise RuntimeError('Synthetic payment migration SQL contract failed: ' + reason)
     print('LEGEND_PAYMENT_SQL_CONTRACT:PASS:synthetic-only:not-release-admission')
 
 
