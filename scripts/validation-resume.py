@@ -168,7 +168,17 @@ FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS = ({
 },)
 
 
-def _fast_track_preupload_log_proven(log, revision, step):
+PROTECT_RECOVERY_RUN = 40336437677
+PROTECT_RECOVERY_REVISION = 'b41228e2f852c95b38890d3a8b16ec96a4c46dbd'
+PROTECT_BASELINE_REVISION = '924a03c0af22787e514e3b0560b98f79c376b55c'
+PROTECT_PREUPLOAD_SOURCE = {
+    '.github/workflows/legend-fast-track-ui.yml': 'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd',
+    'scripts/deploy-approved-app.py': '6bec907bd7048c7a0e221f9bcfd84a9546eb750f654075a02260f2c606679dbb',
+    'scripts/release-operation-evidence.py': 'cf73cff19073d290ddff5efe3fdd54f7a901d674f804821e2f0abf32474060c0',
+}
+
+
+def _fast_track_preupload_log_proven(log, revision, step, *, protect_baseline=False):
     """Interpret only the fixed exception from an independently pinned producer."""
     import datetime
     start, end = (_completion_time(step.get(key)) for key in ('started_at', 'completed_at'))
@@ -180,6 +190,8 @@ def _fast_track_preupload_log_proven(log, revision, step):
         return False
     marker = ('DeploymentStatusUnavailable: Azure deployment status remained unavailable for 3 consecutive reads '
               '(before any upload). No deployment or rollback write was replayed; resume by reconciling the exact revision.')
+    if protect_baseline:
+        marker = "DeploymentDrift: FAST_TRACK_SUPERSESSION_LIVE_BASELINE_CHANGED"
     events = []
     for line in log.splitlines():
         stamp, sep, text = line.partition(' ')
@@ -195,8 +207,9 @@ def _fast_track_preupload_log_proven(log, revision, step):
         and not any('Submitting the verified immutable ZIP once.' in line
                     or 'AZURE_TRACKED_DEPLOYMENT_REFERENCE:' in line for line in events)
         and any('in fast_track_deploy' in line for line in events)
-        and any('in reconcile' in line for line in events)
-        and any('in read_deployments_bounded' in line for line in events)
+        and (any('in prepare_protect_replacement' in line for line in events) if protect_baseline else
+             (any('in reconcile' in line for line in events)
+              and any('in read_deployments_bounded' in line for line in events)))
         and any('Process completed with exit code 1.' in line for line in events))
 
 
@@ -216,7 +229,9 @@ def attested_fast_track_preupload_failure(repository, run, job, attempt, target,
         step = _completion_step(job, 'Publish or reconcile exact application bytes', conclusions=('failure',))
         sources = {path: hashlib.sha256(_release_history_source(repository, revision, path, token).encode()).hexdigest()
                    for path in FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS[0]}
-        if sources not in FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS:
+        protect_baseline = (target == 'protect' and run['id'] == PROTECT_RECOVERY_RUN
+            and revision == PROTECT_RECOVERY_REVISION and sources == PROTECT_PREUPLOAD_SOURCE)
+        if sources not in FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS and not protect_baseline:
             return False
         inventory = _completion_inventory(api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token), 'artifacts')
         package = _completion_artifact(inventory, 'fast-track-package-' + revision + '-' + target, run)
@@ -235,7 +250,8 @@ def attested_fast_track_preupload_failure(repository, run, job, attempt, target,
         identity = dict(target=target, applicationRevision=revision, packageDigest=digest)
         if hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest() != operation_id:
             return False
-        return _fast_track_preupload_log_proven(_release_job_log(repository, job['id'], token), revision, step)
+        return _fast_track_preupload_log_proven(_release_job_log(repository, job['id'], token), revision, step,
+            protect_baseline=protect_baseline)
     except (KeyError, TypeError, ValueError, RuntimeError, OSError, UnicodeError, zipfile.BadZipFile, subprocess.SubprocessError):
         return False
 
@@ -346,6 +362,48 @@ def assert_fast_track_recovery_live_execution(original_run, application_revision
     return observer
 
 
+def protect_recovery_baseline_proof(repository, original, package, token):
+    """Correct one unused replacement's rollback anchor, never its old outcome."""
+    run = original['run']
+    if (repository.lower() != 'mylegnd/masterapp' or run['id'] != PROTECT_RECOVERY_RUN
+        or run['head_sha'] != PROTECT_RECOVERY_REVISION or package['id'] != 12661220624
+        or package['digest'] != 'sha256:d01034901695028c32960fdf1b55aff4b2e26ec65782db475bec524765e89122'):
+        raise ValueError('PROTECT_RECOVERY_ORIGINAL_MATERIAL_CHANGED')
+    request = json.loads(_release_history_source(repository, run['head_sha'], RELEASE_REQUEST_PATH, token))
+    authorization = fast_track_protect_supersession(run['head_sha'], request=request)
+    if authorization is None:
+        raise ValueError('PROTECT_RECOVERY_AUTHORIZATION_MISSING')
+    anchor = api_get(repository, 'actions/runs/40063411585', token)
+    if (not is_fast_track_producer(repository, anchor) or anchor.get('id') != 40063411585
+        or anchor.get('head_sha') != PROTECT_BASELINE_REVISION or anchor.get('status') != 'completed'):
+        raise ValueError('PROTECT_RECOVERY_BASELINE_PRODUCER_CHANGED')
+    artifacts = _completion_inventory(api_get(repository, 'actions/runs/40063411585/artifacts?per_page=100', token), 'artifacts')
+    rollback = _completion_artifact(artifacts, 'fast-track-package-' + PROTECT_BASELINE_REVISION + '-protect', anchor)
+    receipt = _completion_artifact(artifacts, 'legend-release-operation-success-eee55365520f03613d09d8deed68ea56e85e05da0a323737c5b562c415f455db', anchor)
+    if (rollback['id'] != 12548189496
+        or rollback['digest'] != 'sha256:e3df0d1cc7b3573aeae7883bc4e3810444a619a105e47d0fece3112a5c99eae2'
+        or receipt['id'] != 12548958892
+        or receipt['digest'] != 'sha256:ed43f4f504badd5d41eb5216a1c10550db2576fd3a7dc69017f6fc0af32b02a4'):
+        raise ValueError('PROTECT_RECOVERY_BASELINE_ARTIFACT_CHANGED')
+    context = dict(run=anchor, attempts=_completion_jobs(repository, anchor, token))
+    _completion_original_artifact_owner(context, 'protect', rollback, 'Preserve immutable application bytes before upload', ('success',))
+    _completion_original_artifact_owner(context, 'protect', receipt, 'Publish or reconcile exact application bytes', ('success',))
+    record = _release_history_json(repository, anchor['id'], receipt, 'operation.json', verify_digest=True)
+    expected = dict(target='protect', applicationRevision=PROTECT_BASELINE_REVISION,
+        packageDigest='fe81a03662c3657c7b9ae9012cc38198987b353acc44725d84f8a4f9d87bb584',
+        operationId='eee55365520f03613d09d8deed68ea56e85e05da0a323737c5b562c415f455db',
+        packageProducerRun=40063411585, producingRun=40063411585, producingAttempt=5,
+        phase='success', deploymentIds=['fcba568e391649b4aa08fa3dec82e156'])
+    if any(record.get(key) != value for key, value in expected.items()):
+        raise ValueError('PROTECT_RECOVERY_BASELINE_RECEIPT_CHANGED')
+    return dict(schemaVersion=1, authorization=authorization, baselineRevision=PROTECT_BASELINE_REVISION,
+        rollbackRun=anchor['id'], rollbackArtifactId=rollback['id'], rollbackArtifactName=rollback['name'],
+        rollbackArtifactDigest=rollback['digest'], rollbackPackageDigest=expected['packageDigest'],
+        baselineReceiptId=receipt['id'], baselineReceiptDigest=receipt['digest'],
+        originalRun=run['id'], applicationRevision=run['head_sha'], candidateArtifactId=package['id'],
+        candidateArtifactDigest=package['digest'])
+
+
 def fast_track_recovery_material(repository, original, key, token):
     """Original bytes are mandatory. No rebuild or newly labelled package exists."""
     if key not in original['targets']:
@@ -361,7 +419,13 @@ def fast_track_recovery_material(repository, original, key, token):
                 intents.append(value)
     if len(intents) > 1:
         raise ValueError('FAST_TRACK_RECOVERY_COMPETING_INTENT')
-    return dict(packageArtifact=package, originalIntent=intents[0] if intents else None)
+    material = dict(packageArtifact=package, originalIntent=intents[0] if intents else None)
+    if run['id'] == PROTECT_RECOVERY_RUN:
+        if key != 'protect' and not intents:
+            raise ValueError('PROTECT_RECOVERY_SUCCESSFUL_SIBLING_INTENT_MISSING')
+        if key == 'protect':
+            material['protectBaselineCorrection'] = protect_recovery_baseline_proof(repository, original, package, token)
+    return material
 
 
 _RECOVERY_PACKAGE_DIGESTS = contextvars.ContextVar('recovery_package_digests', default=None)
@@ -554,9 +618,11 @@ def _without_skipped_recovery_job(jobs, source):
 
 
 def fast_track_recovery_record_proof(original, material, observer):
+    correction = ({'protectBaselineCorrection': material['protectBaselineCorrection']}
+                  if 'protectBaselineCorrection' in material else {})
     return dict(schemaVersion=1, originalRun=original['run']['id'], originalAttempt=original['run']['run_attempt'],
                 applicationRevision=original['run']['head_sha'], packageArtifactId=material['packageArtifact']['id'],
-                packageArtifactDigest=material['packageArtifact']['digest'], **observer)
+                packageArtifactDigest=material['packageArtifact']['digest'], **observer, **correction)
 
 
 def validate_fast_track_recovery_record(repository, run, artifact, record, token):
@@ -581,6 +647,8 @@ def validate_fast_track_recovery_record(repository, run, artifact, record, token
         or record.get('packageProducerRun') != original['run']['id']
         or record.get('applicationRevision') != original['run']['head_sha']):
         raise ValueError('FAST_TRACK_RECOVERY_MATERIAL_IDENTITY_CHANGED')
+    if 'protectBaselineCorrection' in expected and record.get('baseline') != PROTECT_BASELINE_REVISION:
+        raise ValueError('PROTECT_RECOVERY_RECEIPT_BASELINE_CHANGED')
     jobs = _completion_rows(api_get(repository, f"actions/runs/{run['id']}/attempts/{observer['runAttempt']}/jobs?per_page=100", token), 'jobs')
     job = next(job for job in jobs if job['id'] == observer['jobId'])
     steps = [step for step in job.get('steps', []) if step.get('name') == 'Recover exact retained application bytes']
@@ -945,7 +1013,9 @@ def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
     return (hashlib.sha256(source.encode()).hexdigest() in (RECOVERY_PREFLIGHT_PRODUCER_SHA256, 'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850', 'e75833a3c3a4d8827f48b7395a8af7e61eeab9e5cfbb4e1f6a0ebb4af49901ed', 'ef930621e8c36e447fd884ef99bd03f5ce666bf1feda3431158af8e86d5ab6ab',
         # Reviewed supersession generation retains the existing recovery preflight path.
-        '6bec907bd7048c7a0e221f9bcfd84a9546eb750f654075a02260f2c606679dbb')
+        '6bec907bd7048c7a0e221f9bcfd84a9546eb750f654075a02260f2c606679dbb',
+        # Bounded retained Protect baseline correction; unchanged intent boundary.
+        '827b760af5db22e44fad4d5edbb46d0e1b4809213c4659d10eda29c77c0de750')
         and hashlib.sha256(journal_source.encode()).hexdigest() in (
             '506796abeadfd87f09236f74ca8c79a496a1c5b813f1191d0f0ce39cf5a9483d',
             '1d84e59c997e1f8b9111ab047277b93a78ae8e73d9e7a9f33c1bbc283eeb543c',
@@ -6700,12 +6770,19 @@ def fast_track_completion_original(repository, original_run, revision, token):
     parents = subprocess.check_output(['git', 'rev-list', '--parents', '-n', '1', revision], text=True).split()
     if len(parents) != 3 or parents[0] != revision:
         raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_BASELINE_UNPROVEN')
-    baseline = fast_track_effective_baseline(parents[1], revision, repository=repository, token=token)
-    if baseline != parents[1]:
-        raise ValueError('FAST_TRACK_COMPLETION_CARRIED_SCOPE_REQUIRES_ORIGINAL_BASELINE_PROOF')
-    paths = subprocess.check_output(['git', 'diff', '--name-only', baseline, revision], text=True).splitlines()
-    scope = fast_track_scope(paths)
     request = json.loads(_release_history_source(repository, revision, RELEASE_REQUEST_PATH, token))
+    if 'protectSupersession' in request:
+        supersession = fast_track_protect_supersession(revision, request=request)
+        if supersession['expectedReleaseParent'] != parents[1]:
+            raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_BASELINE_UNPROVEN')
+        selection_baseline = supersession['originalRevision']
+    else:
+        selection_baseline = fast_track_effective_baseline(parents[1], revision, repository=repository, token=token)
+        if selection_baseline != parents[1]:
+            raise ValueError('FAST_TRACK_COMPLETION_CARRIED_SCOPE_REQUIRES_ORIGINAL_BASELINE_PROOF')
+    baseline = parents[1]
+    paths = subprocess.check_output(['git', 'diff', '--name-only', selection_baseline, revision], text=True).splitlines()
+    scope = fast_track_scope(paths)
     selected = [row['key'] for row in scope['matrix']['include']]
     names = [RELEASE_TARGETS[key]['releaseName'] for key in selected]
     if (not selected or request.get('releaseMode') != 'approved-only' or request.get('requestedBy') != 'Founder'
