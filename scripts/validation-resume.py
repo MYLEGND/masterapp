@@ -944,7 +944,9 @@ RECOVERY_PREFLIGHT_PRODUCER_SHA256 = '15ba27c53564223cb41502bb5528949e6435f0e6bc
 def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
     return (hashlib.sha256(source.encode()).hexdigest() in (RECOVERY_PREFLIGHT_PRODUCER_SHA256, 'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850', 'e75833a3c3a4d8827f48b7395a8af7e61eeab9e5cfbb4e1f6a0ebb4af49901ed', 'ef930621e8c36e447fd884ef99bd03f5ce666bf1feda3431158af8e86d5ab6ab')
-        and hashlib.sha256(journal_source.encode()).hexdigest()=='506796abeadfd87f09236f74ca8c79a496a1c5b813f1191d0f0ce39cf5a9483d')
+        and hashlib.sha256(journal_source.encode()).hexdigest() in (
+            '506796abeadfd87f09236f74ca8c79a496a1c5b813f1191d0f0ce39cf5a9483d',
+            '1d84e59c997e1f8b9111ab047277b93a78ae8e73d9e7a9f33c1bbc283eeb543c'))
 
 
 def _recovery_receipt_source_closure(repository, revision, token):
@@ -3891,17 +3893,28 @@ def fast_track_scope(paths):
     # Infrastructure/Domain/Shared ProjectReference dependencies. Keep exact
     # ownership: an unknown sibling is not silently admitted.
     shared_server = {
+        'Domain/Billing/BillingModels.cs',
+        'Domain/Entities/SubscriptionPayment.cs',
+        'Domain/Entities/SubscriptionPaymentCompletionEffect.cs',
+        'Domain/Entities/SubscriptionPaymentRefund.cs',
+        'Infrastructure/Billing/BillingReconciliationService.cs',
         'Domain/Entities/ClientSubscriptionOffer.cs',
         'Domain/Entities/MarketingConnection.cs',
         'Domain/Entities/ReceptionistCoordination.cs',
         'Infrastructure/Billing/BillingEntitlementService.cs',
         'Infrastructure/Billing/BillingStateMapper.cs',
         'Infrastructure/Billing/MasterAppBillingOrchestrator.cs',
+        'Infrastructure/Bookings/BusinessBookingAccess.cs',
+        'Infrastructure/Bookings/MicrosoftCalendarConnectionAuthority.cs',
+        'Infrastructure/Bookings/ReceptionistBookingAuthority.cs',
+        'Infrastructure/Bookings/ReceptionistBookingContracts.cs',
+        'Infrastructure/Bookings/ReceptionistBookingReadinessReader.cs',
         'Infrastructure/Businesses/BusinessWorkspaceControllerBase.cs',
         'Infrastructure/Businesses/BusinessWorkspaceControllerBase.Receptionist.cs',
         'Infrastructure/Businesses/CommerceBusinessProvisioningService.cs',
         'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.cs',
         'Infrastructure/Households/HouseholdMembershipService.cs',
+        'Infrastructure/Identity/RestrictedAiAccessBoundary.cs',
         'Infrastructure/Infrastructure.csproj',
         'Infrastructure/Diagnostics/RoutineSqlPolling.cs',
         'Infrastructure/Messaging/LegendCallSignalDeliveryHostedService.cs',
@@ -3909,6 +3922,7 @@ def fast_track_scope(paths):
         'Infrastructure/Notifications/FirebasePushDeliveryHostedService.cs',
         'Infrastructure/Leads/IWebsiteLifeLeadCaptureService.cs',
         'Infrastructure/Leads/ReceptionistInquiryAuthority.cs',
+        'Infrastructure/Leads/ReceptionistInquiryAuthority.Outcomes.cs',
         'Infrastructure/Leads/ReceptionistInquiryContracts.cs',
         'Infrastructure/Leads/WebsiteInquiryAuthority.cs',
         'Infrastructure/Leads/WebsiteIntakeRecipientResolver.cs',
@@ -3924,11 +3938,14 @@ def fast_track_scope(paths):
         'Infrastructure/Reception/OpenAiReceptionistProtocol.cs',
         'Infrastructure/Reception/ReceptionistAdmissionService.cs',
         'Infrastructure/Reception/ReceptionistAdmissionService.Accounting.cs',
+        'Infrastructure/Reception/ReceptionistAdmissionService.Booking.cs',
         'Infrastructure/Reception/ReceptionistAdmissionService.Operator.cs',
+        'Infrastructure/Reception/ReceptionistAdmissionService.Projections.cs',
         'Infrastructure/Reception/ReceptionistAdmissionService.ProviderWork.cs',
         'Infrastructure/Reception/ReceptionistAdmissionService.Runtime.cs',
         'Infrastructure/Reception/ReceptionistApplicationContracts.cs',
         'Infrastructure/Reception/ReceptionistApplicationServices.cs',
+        'Infrastructure/Reception/ReceptionistApplicationSession.Booking.cs',
         'Infrastructure/Reception/ReceptionistContracts.cs',
         'Infrastructure/Reception/ReceptionistContentReview.cs',
         'Infrastructure/Reception/ReceptionistCredentialEnvelope.cs',
@@ -4018,6 +4035,8 @@ def fast_track_scope(paths):
             return direct
         if release_control_only_path(path) or path.startswith(('docs/',
             'diagnostics/MerchantPaymentCoreTests/', 'diagnostics/MerchantPaymentAdapterChecks/')) or path in {
+            'Legend-Cloudflare/tests/runtime/runtime.test.mjs',
+            'scripts/recovery-replacement-admission.py',
             'MASTERAPP.sln', 'MasterApp.slnx', 'scripts/test-migration-probe-package.py',
             'scripts/test-parfait-readonly-workflow.py'}:
             return set()
@@ -7042,6 +7061,59 @@ def fast_track_merged_source_proof(repository, revision, token):
     return dict(candidate=candidate, executionAuthority=revision, sourcePr=candidates[0]['number'], validation=evidence)
 
 
+def fast_track_inventory_merge_proof(repository, revision, token):
+    """Admit only the current trusted merge to its existing read-only inventory.
+
+    This is not a candidate ancestry exception or an approval flag. The protected
+    merge, exact reviewed source and canonical CI receipts remain the authority.
+    """
+    workflow = '.github/workflows/parfait-cutover-live-readonly.yml'
+    ref = 'refs/heads/' + FAST_TRACK_PR_BASE
+    if (not re.fullmatch('[a-f0-9]{40}', revision or '') or not token
+        or os.environ.get('GITHUB_SHA') != revision
+        or os.environ.get('GITHUB_REPOSITORY') != repository
+        or os.environ.get('GITHUB_REF') != ref
+        or os.environ.get('GITHUB_EVENT_NAME') != 'workflow_dispatch'
+        or os.environ.get('GITHUB_WORKFLOW_REF') != repository + '/' + workflow + '@' + ref
+        or subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() != revision):
+        raise RuntimeError('FAST_TRACK_INVENTORY_EXECUTION_CHANGED')
+    endpoint = 'git/ref/heads/' + FAST_TRACK_PR_BASE
+    if api_get(repository, endpoint, token).get('object', {}).get('sha') != revision:
+        raise RuntimeError('FAST_TRACK_INVENTORY_HEAD_CHANGED')
+    commit = api_get(repository, 'git/commits/' + revision, token)
+    parents = commit.get('parents')
+    if (commit.get('sha') != revision or not isinstance(parents, list) or len(parents) != 2
+        or any(not isinstance(p, dict) or not re.fullmatch('[a-f0-9]{40}', p.get('sha', '')) for p in parents)):
+        raise RuntimeError('FAST_TRACK_INVENTORY_PARENTS_UNPROVEN')
+    baseline, source = [p['sha'] for p in parents]
+    local = subprocess.check_output(['git', 'rev-list', '--parents', '-n', '1', revision], text=True).split()
+    if len({revision, baseline, source}) != 3 or local != [revision, baseline, source]:
+        raise RuntimeError('FAST_TRACK_INVENTORY_PARENTS_CHANGED')
+    pulls = api_get(repository, f'commits/{revision}/pulls?per_page=100', token)
+    if not isinstance(pulls, list) or len(pulls) >= 100:
+        raise RuntimeError('FAST_TRACK_INVENTORY_PR_INCOMPLETE')
+    matching = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == revision
+        and p.get('base', {}).get('ref') == FAST_TRACK_PR_BASE
+        and p.get('base', {}).get('repo', {}).get('full_name') == repository
+        and p.get('head', {}).get('repo', {}).get('full_name') == repository
+        and p.get('head', {}).get('sha') == source]
+    if len(matching) != 1:
+        raise RuntimeError('FAST_TRACK_INVENTORY_SOURCE_UNPROVEN')
+    trees = subprocess.check_output(['git', 'rev-parse', revision + '^{tree}', source + '^{tree}'], text=True).split()
+    tree = commit.get('tree', {}).get('sha')
+    if (not re.fullmatch('[a-f0-9]{40}', tree or '') or trees != [tree, tree]
+        or subprocess.run(['git', 'merge-base', '--is-ancestor', baseline, source], capture_output=True).returncode):
+        raise RuntimeError('FAST_TRACK_INVENTORY_TREE_OR_BASE_CHANGED')
+    proof = fast_track_merged_source_proof(repository, revision, token)
+    if (proof.get('candidate') != source or proof.get('executionAuthority') != revision
+        or proof.get('sourcePr') != matching[0]['number']):
+        raise RuntimeError('FAST_TRACK_INVENTORY_VALIDATED_SOURCE_CHANGED')
+    # Reject movement while CI/artifact receipts were being authenticated.
+    if api_get(repository, endpoint, token).get('object', {}).get('sha') != revision:
+        raise RuntimeError('FAST_TRACK_INVENTORY_HEAD_CHANGED')
+    return dict(proof, merge=revision, baseline=baseline, tree=tree, authorizesMutation=False)
+
+
 def approved_head_preflight(repository: str, current_sha: str, token: str, *, base_branch=TRUSTED_PR_BASE):
     """Prove the candidate already contains the exact current approved head.
 
@@ -8432,6 +8504,46 @@ def migration_contract_static_styles_only(candidate, approved):
 REVIEWED_RECEPTIONIST_BASE_RUNTIME = '22534ca70dc760d4c10e2c9726346c84315d2b7179c0acf87db49bf55372bedc'
 REVIEWED_RECEPTIONIST_RUNTIME = '4f6153929faff37fd4209636fa912c8e147adc2c96b6644ad084047e9a597a07'
 REVIEWED_RECEPTIONIST_ENTRY = 'c457b4d88db0b998b778b2a789e49412b6218e9b87b4f511de0746d739087c8b'
+REVIEWED_CANONICAL_PAYMENT_ENTRY = '0c16fa4ce2197954982578e1cdbc4291f077d8660b65b769799c58dfbcbc3a1d'
+# Frozen recovered application closure. These pins do not promote the changed
+# observer: trusted tooling must first be legitimately promoted and inherited.
+REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS = frozenset({
+    # Live release 7dcfe753: same complete migration/model prefix as d726.
+    # Intervening accepted runtime behavior changes do not alter discovery or
+    # schema. This exact observation pair does not promote tools or admit apps.
+    ('f6ae0f4012706ad346d743fb69dfbff4cc46238aa46a9f60687aede0a8cc57eb',
+     'e097be398e774e6226b9a7cb72b41b7eec92eb8a3043af8e16e412381ca0051f'),
+    ('3fbe9ce6512a2ebb7db43f0f45a5227786094ac6b287ccc3eca40c59da05f6e0',
+     'e097be398e774e6226b9a7cb72b41b7eec92eb8a3043af8e16e412381ca0051f')
+})
+
+
+def reviewed_canonical_payment_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
+    if ((trusted.get('runtimeIdentity'), current.get('runtimeIdentity')) not in REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS
+        or not current.get('toolIdentity') or current.get('toolIdentity') != trusted.get('toolIdentity')
+        or not current.get('executionIdentity') or current.get('executionIdentity') != trusted.get('executionIdentity')):
+        return False
+    if (not isinstance(contract, dict) or not isinstance(approved_contract, dict)
+        or set(contract) != {'schemaVersion', 'migrations'} or set(approved_contract) != set(contract)
+        or type(contract['schemaVersion']) is not int or contract['schemaVersion'] != 3
+        or type(approved_contract['schemaVersion']) is not int or approved_contract['schemaVersion'] != 3
+        or not isinstance(contract['migrations'], list) or not isinstance(approved_contract['migrations'], list)
+        or not 1 <= len(approved_contract['migrations']) < 10000
+        or len(contract['migrations']) != len(approved_contract['migrations']) + 1
+        or contract['migrations'][:-1] != approved_contract['migrations']):
+        return False
+    previous, entry = approved_contract['migrations'][-1], contract['migrations'][-1]
+    if (not isinstance(previous, dict) or previous.get('id') != '20261020160000_AddReceptionistCoordination'
+        or not isinstance(entry, dict) or entry.get('id') != '20261026000134_AddCanonicalSubscriptionPaymentCompletion'
+        or entry.get('supported') is not True
+        or hashlib.sha256(json.dumps(entry, sort_keys=True, separators=(',', ':'),
+            ensure_ascii=True, allow_nan=False).encode()).hexdigest() != REVIEWED_CANONICAL_PAYMENT_ENTRY):
+        return False
+    if subprocess.run(['git', 'merge-base', '--is-ancestor', approved, candidate], capture_output=True).returncode:
+        return False
+    if subprocess.run(['git', 'diff', '--quiet', approved, candidate, '--', 'scripts', '.github'], capture_output=True).returncode:
+        return False
+    return True
 
 
 def reviewed_receptionist_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
@@ -8483,6 +8595,10 @@ def candidate_migration_contract_proven(candidate, approved, contract, approved_
     trusted = migration_probe_identity(approved, approved)
     rule = 'approved-definitions-exact'
     if current['runtimeIdentity'] != trusted['runtimeIdentity']:
+        if reviewed_canonical_payment_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
+            return {'state': 'proven', 'rule': 'approved-prefix-reviewed-canonical-payment-entry',
+                    'runtimeIdentity': current['runtimeIdentity'],
+                    'approvedRuntimeIdentity': trusted['runtimeIdentity']}
         if reviewed_receptionist_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
             # This exact runtime pair must carry the reviewed suffix. It cannot
             # fall back to equality and silently omit the pending migration.
@@ -8879,6 +8995,77 @@ def fast_track_source_validation_scope(args, *, clock=time.monotonic, sleep=time
         raise ValueError('FAST_TRACK_BASE_CHANGED')
     return dict(phase='source-validation-only', releaseAdmission=False, baseBranch=FAST_TRACK_PR_BASE,
         baseSha=preflight['approvedHeadSha'], candidate=args.current_sha, pullRequest=pr['number'])
+
+
+def parfait_push_coverage(repository, revision, branch, event, token):
+    """Delegate redundant development work only to an observed exact-head PR lane.
+
+    This is scheduling evidence, never a validation receipt. The PR check must
+    still finish successfully under the existing release admission rules.
+    Missing, stale, malformed or unavailable evidence runs normal push checks.
+    """
+    result = dict(skip=False, reason='coverage_unproven', validationAccepted=False)
+    if event != 'push':
+        return dict(result, reason='not_push')
+    if (not token or not re.fullmatch('[a-f0-9]{40}', revision or '')
+        or not re.fullmatch(r'(?:fix|repair|isolation)/[^\s]+', branch or '')):
+        return result
+    def matches(pr):
+        return (pr.get('state') == 'open'
+            and pr.get('head', {}).get('sha') == revision
+            and pr.get('head', {}).get('ref') == branch
+            and pr.get('head', {}).get('repo', {}).get('full_name') == repository
+            and pr.get('base', {}).get('ref') == FAST_TRACK_PR_BASE
+            and pr.get('base', {}).get('repo', {}).get('full_name') == repository)
+    try:
+        pulls = api_get(repository, f'commits/{revision}/pulls?per_page=100', token)
+        candidates = [pr for pr in pulls if matches(pr)]
+        if len(candidates) != 1:
+            return result
+        number = candidates[0]['number']
+        base_sha = candidates[0]['base'].get('sha')
+        base = api_get(repository, 'git/ref/heads/' + FAST_TRACK_PR_BASE, token)
+        if not re.fullmatch('[a-f0-9]{40}', base_sha or '') or base['object']['sha'] != base_sha:
+            return result
+        workflow = 'parfait-isolated-validation.yml'
+        runs = api_get(repository, f'actions/workflows/{workflow}/runs?event=pull_request&head_sha={revision}&per_page=100', token)
+        matching = [run for run in runs['workflow_runs']
+            if run.get('event') == 'pull_request' and run.get('head_sha') == revision
+            and run.get('path') == '.github/workflows/' + workflow
+            and run.get('head_repository', {}).get('full_name') == repository
+            and any(pr.get('number') == number and pr.get('head', {}).get('sha') == revision
+                    and pr.get('base', {}).get('ref') == FAST_TRACK_PR_BASE
+                    and pr.get('base', {}).get('sha') == base_sha
+                    for pr in run.get('pull_requests', []))]
+        if not matching:
+            return result
+        run = max(matching, key=lambda row: (row['id'], row['run_attempt']))
+        def covered(row):
+            return (row.get('status') in {'queued', 'in_progress'} and row.get('conclusion') is None
+                or row.get('status') == 'completed' and row.get('conclusion') == 'success')
+        if not covered(run):
+            return result
+        jobs = api_get(repository, f"actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs?per_page=100", token)
+        owners = [job for job in jobs['jobs'] if job.get('name') == 'build-and-focused-tests']
+        if len(owners) != 1 or not covered(owners[0]):
+            return result
+        # Re-read mutable PR state after observing the replacement lane.
+        fresh = api_get(repository, f'pulls/{number}', token)
+        if not matches(fresh) or fresh.get('base', {}).get('sha') != base_sha:
+            return result
+        return dict(result, skip=True, reason='exact_head_pr_lane', pullRequest=number,
+            candidate=revision, baseSha=base_sha, sourceJob=owners[0]['id'],
+            sourceRun=run['id'], sourceAttempt=run['run_attempt'])
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError):
+        return dict(result, reason='coverage_lookup_unavailable')
+
+
+def cmd_parfait_push_coverage(args):
+    result = parfait_push_coverage(args.repository, args.revision, args.branch,
+        args.event, os.environ.get('GITHUB_TOKEN'))
+    Path(args.output).write_text(json.dumps(result, indent=2) + '\n')
+    with open(args.github_output, 'a') as output:
+        output.write('skip=' + str(result['skip']).lower() + '\n')
 
 
 def cmd_plan(args):
@@ -9759,6 +9946,63 @@ def cmd_package_canary_plan(args):
 
 def package_backfill_receipt_name(revision: str, package_identity: str) -> str:
     return f"validated-package-backfill-{revision}-{package_identity}"
+
+
+def compute_package_preparation_plan(repository, revision, current_sha, branch, *, preparation_only=False):
+    """Nonpublishing Protect bytes only; never an aggregate or release admission."""
+    if (preparation_only is not True or repository != 'MYLEGND/masterapp' or
+            branch != 'isolation/receptionist-quality-pro-20261024' or
+            not re.fullmatch('[0-9a-f]{40}', revision or '') or revision != current_sha):
+        raise ValueError('Exact isolated preparation dispatch required')
+    token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or ''
+    if not token:
+        raise ValueError('Authenticated preparation evidence required')
+    pr = api_get(repository, 'pulls/691', token)
+    def eligible(row):
+        return (row.get('number') == 691 and row.get('state') == 'open' and
+            row.get('merged_at') is None and row.get('draft') is True and
+            row.get('head', {}).get('sha') == revision and
+            row.get('head', {}).get('ref') == branch and
+            row.get('head', {}).get('repo', {}).get('full_name') == repository and
+            row.get('base', {}).get('ref') == FAST_TRACK_PR_BASE and
+            row.get('base', {}).get('repo', {}).get('full_name') == repository)
+    if not eligible(pr):
+        raise ValueError('Current preparation PR binding invalid')
+    baseline = approved_head_preflight(repository, revision, token, base_branch=FAST_TRACK_PR_BASE)
+    if baseline.get('current') is not True:
+        raise ValueError('Preparation candidate does not contain current release base')
+    evidence = []
+    for workflow in ('approved-release-security-validation.yml',
+                     'masterapp-platform-architecture-validation.yml', 'parfait-isolated-validation.yml'):
+        payload = api_get(repository, 'actions/workflows/' + workflow +
+            '/runs?head_sha=' + revision + '&event=pull_request&per_page=100', token)
+        # A truncated/uncertain listing cannot select a possibly superseded run.
+        runs = payload.get('workflow_runs', [])
+        if payload.get('total_count') != len(runs) or not runs:
+            raise ValueError('Complete bounded exact-head CI evidence required')
+        latest = max(runs, key=lambda row: (int(row.get('id', 0)), int(row.get('run_attempt', 0))))
+        associations = latest.get('pull_requests', [])
+        if (latest.get('head_sha') != revision or latest.get('event') != 'pull_request' or
+                latest.get('path') != '.github/workflows/' + workflow or
+                latest.get('head_repository', {}).get('full_name') != repository or
+                latest.get('status') != 'completed' or latest.get('conclusion') != 'success' or
+                len(associations) != 1 or associations[0].get('number') != 691 or
+                associations[0].get('head', {}).get('sha') != revision or
+                associations[0].get('base', {}).get('ref') != FAST_TRACK_PR_BASE):
+            raise ValueError('Latest exact-head preparation CI is not accepted')
+        evidence.append(dict(workflow=workflow, runId=latest['id'], runAttempt=latest['run_attempt']))
+    if not eligible(api_get(repository, 'pulls/691', token)):
+        raise ValueError('Preparation head changed during admission')
+    return dict(schema='legend-nonpublishing-package-preparation.v2', candidateRevision=revision,
+        controlRevision=current_sha, branch=branch, sourcePr=691, components=['protect', 'parfait'],
+        publicationAuthorized=False, releaseAdmission=False, validationRuns=evidence,
+        baseEvidence=baseline)
+
+
+def cmd_package_preparation_plan(args):
+    result = compute_package_preparation_plan(args.repository, args.revision, args.current_sha,
+        args.branch, preparation_only=args.preparation_only)
+    Path(args.output).write_text(json.dumps(result, sort_keys=True, indent=2) + '\n')
 
 
 def compute_package_backfill_plan(repository: str, revision: str, current_sha: str):
@@ -13069,6 +13313,20 @@ def build_parser():
     component_sources.add_argument('--output', required=True)
     component_sources.add_argument('--github-output')
     component_sources.set_defaults(func=cmd_component_sources)
+
+    push_coverage = sub.add_parser('parfait-push-coverage')
+    for flag in ('repository', 'revision', 'branch', 'event', 'output', 'github-output'):
+        push_coverage.add_argument('--' + flag, required=True)
+    push_coverage.set_defaults(func=cmd_parfait_push_coverage)
+
+    preparation = sub.add_parser('package-preparation-plan')
+    preparation.add_argument('--repository', required=True)
+    preparation.add_argument('--revision', required=True)
+    preparation.add_argument('--current-sha', required=True)
+    preparation.add_argument('--branch', required=True)
+    preparation.add_argument('--preparation-only', action='store_true')
+    preparation.add_argument('--output', required=True)
+    preparation.set_defaults(func=cmd_package_preparation_plan)
 
     package_backfill = sub.add_parser("package-backfill-plan")
     package_backfill.add_argument("--repository", required=True)

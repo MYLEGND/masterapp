@@ -673,14 +673,10 @@ def candidate_control_plane_integrity(api, pr, names):
         if not (isinstance(statement, (ast.Expr, ast.Assign)) and isinstance(statement.value, ast.Call) and
                 isinstance(statement.value.func, ast.Name) and statement.value.func.id == 'require_readiness'):
             return 'Candidate bypassed early readiness before validation or package planning'
-    lifecycle_jobs = VALIDATION_AUTHORITY._job_blocks(source['lifecycle_workflow'])
-    for job in ('readiness-observe', 'release-readiness'):
-        block = lifecycle_jobs.get(job, '')
-        if (block.count('uses: actions/checkout@v4') != 1 or
-            block.count('ref: ${{ github.event.pull_request.base.sha || github.sha }}') != 1 or
-            'persist-credentials: false' not in block or
-            'contents: write' in block or 'actions: write' in block):
-            return 'Candidate weakened trusted read-only readiness execution'
+    # Retirement is an exact reviewed no-authority contract, not a flag that
+    # lets arbitrary replacement workflow code bypass the old readiness guard.
+    if hashlib.sha256(source['lifecycle_workflow'].encode('utf-8')).hexdigest() != '5d7bfc8828b21398721aade20ba91fe10deb08013b6f990d422a372ca76e9807':
+        return 'Candidate reactivated or changed retired release lifecycle'
     rehearsal_job = VALIDATION_AUTHORITY._job_blocks(source['architecture_workflow']).get('migration-rehearsal', '')
     if (not rehearsal_job or 'secrets.' in rehearsal_job or 'azure/login@' in rehearsal_job or
         'environment: Production' in rehearsal_job or 'scripts/migration-probe-package.py rehearse' not in rehearsal_job):
@@ -1020,18 +1016,6 @@ def candidate_control_plane_integrity(api, pr, names):
     if 'git merge-base --is-ancestor "$LEGEND_VALIDATION_CANDIDATE_SHA" refs/remotes/origin/legend/approved-changes' not in source['production_readonly']:
         return 'Candidate production_readonly executes unapproved candidate code with production credentials'
 
-    lifecycle_workflow = source['lifecycle_workflow']
-    if not all(token in lifecycle_workflow for token in (
-        'pull_request_target:',
-        'ref: legend/approved-changes',
-        'contents: write',
-        'pull-requests: write',
-        'actions: write',
-        'statuses: write',
-        'python3 scripts/release-lifecycle.py integrate --pr "$PR_NUMBER"',
-    )):
-        return 'Candidate weakened trusted protected-branch lifecycle execution'
-
     direct_workflow = source['direct_workflow']
     for token in (
         'cancel-in-progress: false',
@@ -1115,6 +1099,26 @@ def candidate_control_plane_integrity(api, pr, names):
     # architecture/package work. Accept either original or proven new shape;
     # never waive the approved-head prerequisite on any entry path.
     blocks = VALIDATION_AUTHORITY._job_blocks(architecture)
+    # Retired definitions are frozen bytes, not executable YAML authorized by
+    # a flag. Pin complete blocks so quoted keys/scalars cannot forge nonentry.
+    retired_producers = {
+        'validated-release-package-plan': 'f1390a7415addd3b0b0539b342f8babfb2bccaa21200461d6850b8fc266b82a3',
+        'validated-release-package-components': '4d6257bcb45a6d0757d2c5c27ed2c7e92add5c280b27fe8b6fd7cf549c4cb0ff',
+        'validated-release-package': '10bf296c0650cbe50897b519b0876cc255df1904d665edcd549af443e8535322',
+        'migration-rehearsal-prepare': 'b59e6176ed8129a6d433b79360e46df496f51a2a334af7f1dcd72582b865f395',
+        'migration-rehearsal': 'ae88a5ff535e583a01452c25e23d22342f98264e24be5ff02c0d1e223f2ec1d2',
+    }
+    for job, expected in retired_producers.items():
+        if hashlib.sha256(blocks.get(job, '').encode('utf-8')).hexdigest() != expected:
+            return 'Candidate reactivated retired architecture producer: ' + job
+    wake = blocks.get('wake-release-lifecycle-after-package-backfill', '')
+    if wake != ("  wake-release-lifecycle-after-package-backfill:\n"
+        "    if: ${{ false && !inputs.preparation_only }}\n"
+        "    runs-on: ubuntu-24.04\n"
+        "    permissions: {}\n"
+        "    steps:\n"
+        "      - run: exit 1 # Retired; never dispatch the obsolete lifecycle.\n\n"):
+        return 'Candidate reactivated retired lifecycle wake'
     needs_probe = {
         'validate': 'needs: [approved-head-preflight, validated-migration-probe]',
         'validated-release-package-plan':
@@ -1126,8 +1130,8 @@ def candidate_control_plane_integrity(api, pr, names):
         and 'needs: approved-head-preflight' in probe
         and 'name: validated-migration-probe' in probe
         and all(
-            "needs.validated-migration-probe.result == 'success'"
-            in blocks.get(job, '')
+            "needs.validated-migration-probe.result == 'success'" in blocks.get(job, '')
+            or job == 'validated-release-package-plan'
             for job in needs_probe
         )
     )

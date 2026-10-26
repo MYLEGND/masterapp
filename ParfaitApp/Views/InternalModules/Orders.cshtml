@@ -46,7 +46,7 @@
 
     <section class="pf-orders-kpis">
         <article class="pf-orders-kpi"><span>Orders</span><strong>@Model.Orders.Count</strong><small>@Model.PaidOrderCount paid · @Model.PendingOrderCount pending</small></article>
-        <article class="pf-orders-kpi"><span>Revenue</span><strong>@Money(Model.RevenueCents)</strong><small>@Money(Model.AverageOrderValueCents) average · @Model.RefundedOrderCount refunded</small></article>
+        <article class="pf-orders-kpi"><span>Revenue after refunds</span><strong>@Money(Model.RevenueCents)</strong><small>@Money(Model.AverageOrderValueCents) average · @Model.RefundedOrderCount refunded</small></article>
         <article class="pf-orders-kpi is-@activeQueueTone"><span>Fulfillment</span><strong>@Model.OpenFulfillmentCount</strong><small>@shippedCount shipped · @fulfilledCount fulfilled</small></article>
         <article class="pf-orders-kpi is-@returnQueueTone"><span>Returns</span><strong>@Model.ReturnQueueCount</strong><small>@Model.FailedOrderCount failed payments</small></article>
     </section>
@@ -104,7 +104,7 @@
                         <div class="pf-order-cell pf-order-money">
                             <span>Total</span>
                             <strong>@Money(order.TotalCents)</strong>
-                            <small>Net @Money(order.NetRevenueCents)</small>
+                            <small>After refunds @Money(order.NetRevenueCents)</small>
                         </div>
 
                         <div class="pf-order-status-stack">
@@ -141,7 +141,7 @@
 
                 <div class="pf-order-modal-body">
                     <section class="pf-order-modal-summary">
-                        <article><span>Total</span><strong>@Money(order.TotalCents)</strong><small>Net @Money(order.NetRevenueCents)</small></article>
+                        <article><span>Total</span><strong>@Money(order.TotalCents)</strong><small>After refunds @Money(order.NetRevenueCents)</small></article>
                         <article><span>Status</span><strong>@order.PaymentStatus</strong><small>@order.FulfillmentStatus · Return @order.ReturnStatus</small></article>
                         <article><span>Created</span><strong>@order.CreatedUtc.ToLocalTime().ToString("M/d/yyyy")</strong><small>@order.CreatedUtc.ToLocalTime().ToString("h:mm tt")</small></article>
                     </section>

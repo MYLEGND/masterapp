@@ -9,12 +9,26 @@ namespace AgentPortal.Controllers;
 
 public sealed partial class FounderEngineeringController
 {
+    [HttpGet("receptionist/booking-recovery-preparation")]
+    [ReceptionistMetadataRead]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> ReceptionistBookingRecoveryPreparation(string expectedOwnerKey, Guid configurationId,
+        Guid? callId, CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(User); _ = ReceptionistMetadataAccess.Require(HttpContext);
+        try { return Json(await ReceptionistOperator.PrepareBookingRecoveryAsync(expectedOwnerKey, configurationId, callId, cancellationToken)); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or DbUpdateConcurrencyException)
+        { return BadRequest(new { state = "scoped_recovery_metadata_unavailable" }); }
+    }
     [HttpGet("receptionist/preparation")]
+    [ReceptionistMetadataRead]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> ReceptionistPreparation(string expectedOwnerKey, Guid configurationId,
         CancellationToken cancellationToken)
     {
         FounderGuard.EnsureFounderOrThrow(User);
+        _ = ReceptionistMetadataAccess.Require(HttpContext);
         try
         {
             var observation = await ReceptionistOperator.PrepareAsync(expectedOwnerKey, configurationId, cancellationToken);
@@ -26,6 +40,30 @@ public sealed partial class FounderEngineeringController
         {
             return BadRequest(new { error = "The exact current configuration and scoped metadata could not be verified. Reload the setup and check its owner and configuration identity." });
         }
+    }
+
+    [HttpGet("receptionist/booking-readiness")]
+    [ReceptionistMetadataRead]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> ReceptionistBookingReadiness(string expectedOwnerKey, Guid configurationId,
+        CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        _ = ReceptionistMetadataAccess.Require(HttpContext);
+        var parts = (expectedOwnerKey ?? "").Split(':');
+        Shared.Analytics.MarketingOwnerScope? owner = parts.Length == 1 && parts[0] == "founder"
+            ? Shared.Analytics.MarketingOwnerScope.Founder : null;
+        if (parts.Length == 2 && Guid.TryParseExact(parts[1], "N", out var id) && id != Guid.Empty)
+            owner = parts[0] switch { "agent" => Shared.Analytics.MarketingOwnerScope.Agent(id),
+                "business" => Shared.Analytics.MarketingOwnerScope.Business(id), _ => null };
+        if (owner is null || configurationId == Guid.Empty) return BadRequest(new { state = "invalid_scope" });
+        try
+        {
+            return Json(await HttpContext.RequestServices.GetRequiredService<Infrastructure.Bookings.ReceptionistBookingReadinessReader>()
+                .ReadAsync(owner, configurationId, cancellationToken));
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.Text.Json.JsonException or DbUpdateConcurrencyException)
+        { return BadRequest(new { state = "metadata_unavailable" }); }
     }
 
     [HttpGet("receptionist")]

@@ -330,8 +330,18 @@
                     });
 
                     const text = await response.text();
-                    const quote = text ? JSON.parse(text) : {};
-                    const changed = quote?.items ? syncCartWithQuote(quote) : false;
+                    if (!response.ok) throw new Error("Quote request failed");
+                    const quote = text ? JSON.parse(text) : null;
+                    const moneyFields = ["itemCount", "subtotalCents", "shippingCents", "taxCents", "discountCents", "totalCents"];
+                    if (!quote || quote.success !== true || typeof quote.isValid !== "boolean" || !Array.isArray(quote.items)
+                        || !moneyFields.every(key => Number.isSafeInteger(quote[key]) && quote[key] >= 0)
+                        || !quote.items.every(item => item && typeof item.key === "string" && item.key.length > 0 && typeof item.id === "string"
+                            && typeof item.size === "string" && Number.isSafeInteger(item.quantity) && item.quantity >= 0
+                            && Number.isSafeInteger(item.unitPriceCents) && item.unitPriceCents >= 0
+                            && Number.isSafeInteger(item.lineTotalCents) && item.lineTotalCents >= 0)) {
+                        throw new Error("Invalid quote response");
+                    }
+                    const changed = syncCartWithQuote(quote);
 
                     if (changed) {
                         statusMessage = "Cart adjusted to available stock.";

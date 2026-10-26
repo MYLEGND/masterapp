@@ -41,7 +41,8 @@ public sealed class MobileClientBookingTests
                 new HttpClientHandler(), new GraphServiceClient(Mock.Of<IRequestAdapter>()))) {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext {
                 User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim("oid", "agent-a") }, "test")),
-                RequestServices = new ServiceCollection().BuildServiceProvider()
+                RequestServices = new ServiceCollection().AddSingleton<Microsoft.Extensions.Configuration.IConfiguration>(
+                    new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()).BuildServiceProvider()
             } }
         };
         controller.Request.Headers[MobileApiAuthorization.ParticipantTypeHeader] = "Agent";

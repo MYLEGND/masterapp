@@ -17,7 +17,7 @@ namespace Infrastructure.Leads;
 /// Confirmed voice adapter into the existing inquiry, CRM intake and notification owners.
 /// It neither authenticates a customer account nor sends messages, claims deduplication or invents browser facts.
 /// </summary>
-internal sealed class ReceptionistInquiryAuthority(
+internal sealed partial class ReceptionistInquiryAuthority(
     DbContextOptions<MasterAppDbContext> options,
     ReceptionistAdmissionService admission,
     IConfiguration configuration,
@@ -119,7 +119,9 @@ internal sealed class ReceptionistInquiryAuthority(
         var envelope = new InquiryEnvelope(1, current.Owner.Key, current.CallId, actionId,
             current.Provider, current.ProviderProjectKey, current.ProviderSessionId, current.ConfigurationId,
             factsHash, confirmationReceipt, route.CrmBucket, actor, rules.NotifyOwner, facts, Counting(facts));
-        lead.FirstName = facts.FirstName ?? string.Empty;
+        // The canonical display name can retain the caller's unsplit name; provenance
+        // records CallerName separately and never asserts an inferred family name.
+        lead.FirstName = facts.FirstName ?? facts.CallerName ?? string.Empty;
         lead.LastName = facts.LastName;
         lead.Email = facts.Email ?? string.Empty;
         lead.Phone = facts.Phone;
@@ -264,7 +266,7 @@ internal sealed class ReceptionistInquiryAuthority(
             (!call.Owner.CommerceBusinessId.HasValue && string.IsNullOrWhiteSpace(value.AgentUserId)) ||
             (call.Owner.CommerceBusinessId.HasValue && value.AgentUserId != string.Empty) ||
             value.Counting != Counting(value.Facts) ||
-            lead.FirstName != (value.Facts.FirstName ?? "") || (lead.LastName ?? "") != (value.Facts.LastName ?? "") ||
+            lead.FirstName != (value.Facts.FirstName ?? value.Facts.CallerName ?? "") || (lead.LastName ?? "") != (value.Facts.LastName ?? "") ||
             lead.Email != (value.Facts.Email ?? "") || lead.Phone != value.Facts.Phone || lead.Notes != value.Facts.RequestSummary ||
             lead.PreferredContactMethod != value.Facts.RequestedContactMethod || lead.IsInternal ||
             lead.MarketingEmailConsent || lead.CallTextConsent || lead.TermsAccepted ||
@@ -295,13 +297,15 @@ internal sealed class ReceptionistInquiryAuthority(
         facts = facts with
         {
             ServiceKey = Clean(facts.ServiceKey, 80), RequestSummary = Clean(facts.RequestSummary, 1500, true),
-            FirstName = Clean(facts.FirstName, 120), LastName = Clean(facts.LastName, 120),
+            FirstName = Clean(facts.FirstName, 120), LastName = Clean(facts.LastName, 120), CallerName = Clean(facts.CallerName, 120),
             BusinessName = Clean(facts.BusinessName, 240), Email = Clean(facts.Email, 320), Phone = Clean(facts.Phone, 80),
             ContactPurpose = Clean(facts.ContactPurpose, 300), SourceStatement = Clean(facts.SourceStatement, 300),
             RequestedNextAction = Clean(facts.RequestedNextAction, 400), Timing = Clean(facts.Timing, 240)
         };
         if (facts.AcquisitionClass == Genuine && (facts.ServiceKey is null || facts.RequestSummary is null))
             throw new ArgumentException("A genuine inquiry requires an identifiable confirmed service and stated need.");
+        if (facts.CallerName is not null && (facts.FirstName is not null || facts.LastName is not null))
+            throw new ArgumentException("Use the caller's stated name or their explicit name parts, never an inferred combination.");
         if (facts.ContactStatus is not ("not_requested" or "declined" or "caller_confirmed_for_requested_purpose" or "uncertain") ||
             facts.RequestedContactMethod is not ("none" or "inbound_voice_only" or "callback_requested" or "email_requested" or "sms_requested" or "unknown") ||
             facts.ContactPermissionState is not ("not_requested" or "declined" or "caller_requested_purpose_only" or "uncertain"))

@@ -156,9 +156,10 @@ public sealed class ReceptionistRuntimeWorkerTests
         socket.Queue(Input("need", "I need a website to explain my services.", 100, 200));
         socket.Queue(Delegation("prepare-event", "prepare-request"));
         await EventuallyAsync(() => socket.Sent.Any(x => HasDelegation(x, "prepare-request") &&
-            x.GetProperty("content").GetString()!.Contains("or tell me what to correct.", StringComparison.Ordinal)));
+            x.GetProperty("content").GetString()!.Contains("May I save this request for review?", StringComparison.Ordinal)));
         var summary = socket.Sent.Where(x => HasDelegation(x, "prepare-request")).ToArray();
         Assert.NotEmpty(summary);
+        Assert.Contains(summary, x => x.GetProperty("content").GetString()!.Contains("Service: Website services. Request: I need a website to explain my services.", StringComparison.Ordinal));
         var oldLease = (await f.CallAsync(callId)).SidebandLeaseToken!.Value;
 
         await f.DisableOwnerAsync();
@@ -393,6 +394,8 @@ public sealed class ReceptionistRuntimeWorkerTests
             services.AddScoped<MasterAppDbContext>();
             services.AddScoped<MarketingConnectionStore>();
             services.AddScoped<ReceptionistAdmissionService>();
+            services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+            services.AddScoped<Infrastructure.Bookings.IReceptionistApplicationBooking, Infrastructure.Bookings.ReceptionistBookingAuthority>();
             services.AddReceptionistRuntime();
             services.Replace(ServiceDescriptor.Singleton<IOpenAiReceptionistClient>(f.Transport));
             f.provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });

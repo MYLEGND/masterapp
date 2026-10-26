@@ -33,6 +33,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - name: Require completed fast-track source validation for this exact candidate
         env:
@@ -47,6 +48,10 @@ jobs:
           token=os.environ['GITHUB_TOKEN']
           if not re.fullmatch('[a-f0-9]{40}',candidate):
               raise SystemExit('EXACT_SOURCE_CANDIDATE_INVALID')
+          if candidate == os.environ.get('GITHUB_SHA'):
+              authority.fast_track_inventory_merge_proof(repository,candidate,token)
+              print('EXACT_FAST_TRACK_MERGED_SOURCE_VALIDATION: PROVEN')
+              raise SystemExit(0)
           pulls=authority.api_get(repository,f'commits/{candidate}/pulls?per_page=100',token)
           if not isinstance(pulls,list) or len(pulls)>=100:
               raise SystemExit('EXACT_SOURCE_PR_HISTORY_INCOMPLETE')
@@ -179,10 +184,18 @@ jobs:
           proof=authority.candidate_migration_contract_proven(revision,approved,contract,trusted)
           # Only this immutable trusted DLL runs here. Candidate assemblies are
           # built and exercised exclusively in credential-free jobs.
+          rules={
+              'approved-definitions-exact':'approved-definitions-exact',
+              'approved-definitions-static-styles-only':'approved-definitions-exact',
+              'approved-prefix-reviewed-receptionist-entry':'approved-prefix-reviewed-receptionist-entry',
+              'approved-prefix-reviewed-canonical-payment-entry':'approved-prefix-reviewed-canonical-payment-entries',
+          }
+          expected=rules.get(proof.get('rule'))
+          if expected is None:
+              raise SystemExit('TRUSTED_SCHEMA_CONTRACT_COMPATIBILITY_UNPROVEN')
           result=subprocess.run(['dotnet',str(root/'parfait-trusted-observer/MigrationReleaseProbe.dll'),
               '--validate-contract',str(candidate)],capture_output=True,text=True,timeout=60,check=True)
           verified=json.loads(result.stdout)
-          expected='approved-prefix-reviewed-receptionist-entry' if proof['rule']=='approved-prefix-reviewed-receptionist-entry' else 'approved-definitions-exact'
           if (verified.get('schemaVersion')!=1 or verified.get('purpose')!='trusted-schema-contract-compatibility'
               or verified.get('authorizesMutation') is not False or verified.get('rule')!=expected
               or any(not re.fullmatch('[a-f0-9]{64}',str(verified.get(key,'')))
@@ -349,6 +362,19 @@ jobs:
           if report.get('sharedDatabase') is not True:
               raise SystemExit('RECOVERY_SHARED_DATABASE_UNPROVEN')
           proof=owner.production_recovery(report['applications']['masterapp-protect']['databaseIdentity'])
+          from datetime import datetime
+          fields={'databaseIdentity','observedUtc','restorePointUtc','earliestRestoreUtc',
+                  'retentionDays','restoreWindowVerified','restoreExecuted','authorizesMutation'}
+          if (not isinstance(proof,dict) or set(proof)!=fields
+              or proof['databaseIdentity']!=report['applications']['masterapp-protect']['databaseIdentity']
+              or proof['restoreWindowVerified'] is not True or proof['restoreExecuted'] is not False
+              or proof['authorizesMutation'] is not False
+              or type(proof['retentionDays']) is not int or proof['retentionDays']<7):
+              raise SystemExit('RECOVERY_METADATA_UNPROVEN')
+          times=[datetime.fromisoformat(proof[key].replace('Z','+00:00'))
+                 for key in ('earliestRestoreUtc','restorePointUtc','observedUtc')]
+          if any(value.utcoffset() is None for value in times) or not times[0]<=times[1]<times[2]:
+              raise SystemExit('RECOVERY_METADATA_UNPROVEN')
           (root/'sanitized-recovery.json').write_text(json.dumps(proof,sort_keys=True)+'\n')
           print('COMMERCE_READONLY_RECOVERY:VERIFIED_WITHOUT_MUTATION')
           PYRECOVERY
@@ -361,6 +387,7 @@ jobs:
           path: |
             ${{ runner.temp }}/parfait-proof/sanitized-azure.json
             ${{ runner.temp }}/parfait-proof/sanitized-schema.json
+            ${{ runner.temp }}/parfait-proof/sanitized-recovery.json
           retention-days: 30
           if-no-files-found: error
 

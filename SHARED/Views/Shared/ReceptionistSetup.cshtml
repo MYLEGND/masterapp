@@ -98,11 +98,32 @@
                         @foreach (var bucket in Model.CrmBuckets)
                         { <option value="@bucket" selected="@(service.CrmBucket == bucket)">@bucket</option> }
                     </select></label>
+                    <details><summary>Approved appointment mapping for this service</summary>
+                        <p>Use the existing calendar service approved for this workspace. Empty fields leave appointments unavailable for this service.</p>
+                        <label class="dashboard-form-field"><span>Approved calendar service ID</span><input class="form-control" name="Services[@i].BookingServiceId" value="@service.BookingServiceId" maxlength="200" autocomplete="off" /></label>
+                        <label class="dashboard-form-field"><span>Appointment timezone</span><input class="form-control" name="Services[@i].BookingTimeZoneId" value="@service.BookingTimeZoneId" maxlength="200" /></label>
+                        <label class="dashboard-form-field"><span>Appointment duration in minutes</span><input class="form-control" type="number" name="Services[@i].BookingDurationMinutes" value="@service.BookingDurationMinutes" min="5" max="240" /></label>
+                    </details>
                     @if (!string.IsNullOrEmpty(service.ServiceKey))
                     { <label class="client-create-record-option"><input type="checkbox" name="Services[@i].Remove" value="true" checked="@service.Remove" /> Remove this service when saving</label> }
                 </div>
             }
         </div></fieldset>
+        <fieldset class="dashboard-surface-panel p-3">
+            <legend class="dashboard-section-title mb-3">Appointment readiness</legend>
+            <input type="hidden" name="BookingFieldsPresent" value="true" />
+            <p>Saving these settings requests a reviewed capability. It does not enable booking, authorize calendar access or send an invitation. Service mappings above must match the existing connected calendar.</p>
+            <label><input type="checkbox" name="BookingEnabled" value="true" checked="@settings.BookingEnabled" /> Request appointment capability</label><input type="hidden" name="BookingEnabled" value="false" />
+            <label><input type="checkbox" name="BookingQaOnly" value="true" checked="@settings.BookingQaOnly" /> Synthetic QA only: no calendar appointment or invitation</label><input type="hidden" name="BookingQaOnly" value="false" />
+            <label><input type="checkbox" name="BookingAllowConsentedCustomerEmail" value="true" checked="@settings.BookingAllowConsentedCustomerEmail" /> Permit a customer email invitation only after the caller explicitly confirms it</label><input type="hidden" name="BookingAllowConsentedCustomerEmail" value="false" />
+            <p>Workspace inquiry notifications are separate. If the caller declines the invitation, Shayla does not create an external appointment.</p>
+            <label class="dashboard-form-field"><span>Reviewed calendar configuration fingerprint</span><input class="form-control" name="BookingCalendarConfigurationSha256" value="@settings.BookingCalendarConfigurationSha256" maxlength="64" autocomplete="off" /></label>
+            <label class="dashboard-form-field"><span>Reviewed calendar target fingerprint</span><input class="form-control" name="BookingCalendarTargetSha256" value="@settings.BookingCalendarTargetSha256" maxlength="64" autocomplete="off" /></label>
+            <label class="dashboard-form-field"><span>Approved booking privacy evidence reference</span><input class="form-control" name="BookingPrivacyAcceptanceReference" value="@settings.BookingPrivacyAcceptanceReference" maxlength="512" /></label>
+            <label class="dashboard-form-field"><span>Existing authorized booking agent profile ID</span><input class="form-control" name="BookingAgentProfileId" value="@settings.BookingAgentProfileId" maxlength="36" /></label>
+            <label class="dashboard-form-field"><span>Minimum notice in minutes</span><input class="form-control" type="number" name="BookingMinimumNoticeMinutes" value="@settings.BookingMinimumNoticeMinutes" min="0" max="43200" /></label>
+            <label class="dashboard-form-field"><span>Maximum days ahead</span><input class="form-control" type="number" name="BookingMaximumAdvanceDays" value="@settings.BookingMaximumAdvanceDays" min="1" max="90" /></label>
+        </fieldset>
         <fieldset class="dashboard-surface-panel p-3">
             <legend class="dashboard-section-title mb-3">Approved answers</legend>
             <div class="d-grid gap-3">

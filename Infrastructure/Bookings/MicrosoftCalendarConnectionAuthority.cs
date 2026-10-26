@@ -62,6 +62,9 @@ public interface IMicrosoftCalendarConnectionAuthority
     Task<GraphServiceClient> CreateGraphClientAsync(
         MarketingOwnerScope owner,
         CancellationToken cancellationToken = default);
+
+    Task<GraphServiceClient> CreateReviewedBookingClientAsync(MarketingOwnerScope owner,
+        string expectedConfigurationSha256, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -250,9 +253,11 @@ public sealed class MicrosoftCalendarConnectionAuthority : IMicrosoftCalendarCon
         return Snapshot(owner, row);
     }
 
-    public async Task<string> GetAccessTokenAsync(
+    public Task<string> GetAccessTokenAsync(
         MarketingOwnerScope owner,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) => GetAccessTokenCoreAsync(owner, true, cancellationToken);
+
+    private async Task<string> GetAccessTokenCoreAsync(MarketingOwnerScope owner, bool allowImport, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(owner);
 
@@ -261,7 +266,7 @@ public sealed class MicrosoftCalendarConnectionAuthority : IMicrosoftCalendarCon
                 x => x.OwnerKey == owner.Key && x.Provider == Provider,
                 cancellationToken);
 
-        if (row is null && owner == MarketingOwnerScope.Founder)
+        if (allowImport && row is null && owner == MarketingOwnerScope.Founder)
             row = await TryImportFounderApplicationConnectionAsync(cancellationToken);
 
         if (row is null || row.DisconnectedUtc.HasValue)
@@ -313,6 +318,19 @@ public sealed class MicrosoftCalendarConnectionAuthority : IMicrosoftCalendarCon
         var token = await GetAccessTokenAsync(owner, cancellationToken);
         var expires = DateTimeOffset.UtcNow.AddMinutes(45);
         return new GraphServiceClient(new StaticTokenCredential(token, expires));
+    }
+
+    public async Task<GraphServiceClient> CreateReviewedBookingClientAsync(MarketingOwnerScope owner,
+        string expectedConfigurationSha256, CancellationToken cancellationToken = default)
+    {
+        if (!ReceptionistBookingReadinessReader.Matches(await ReceptionistBookingReadinessReader.ReadCalendarAsync(_db, owner, cancellationToken), expectedConfigurationSha256))
+            throw new InvalidOperationException("The reviewed calendar connection is not current.");
+        var token = await GetAccessTokenCoreAsync(owner, false, cancellationToken);
+        // A refreshed grant can return changed scopes. Credential concurrency and
+        // Revision remain untouched; changed authority invalidates the booking.
+        if (!ReceptionistBookingReadinessReader.Matches(await ReceptionistBookingReadinessReader.ReadCalendarAsync(_db, owner, cancellationToken), expectedConfigurationSha256))
+            throw new InvalidOperationException("The reviewed calendar authorization changed.");
+        return new GraphServiceClient(new StaticTokenCredential(token, DateTimeOffset.UtcNow.AddMinutes(45)));
     }
 
     private async Task<MarketingConnection?> TryImportFounderApplicationConnectionAsync(

@@ -10,6 +10,10 @@ internal sealed record ConfirmedReceptionistInquiry
     public string? RequestSummary { get; init; }
     public string? FirstName { get; init; }
     public string? LastName { get; init; }
+    // Preserve an explicitly stated full name without guessing given/family-name boundaries.
+    // Omit when absent so historical confirmed-facts hashes remain unchanged.
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? CallerName { get; init; }
     public string? BusinessName { get; init; }
     public string? Email { get; init; }
     public string? Phone { get; init; }

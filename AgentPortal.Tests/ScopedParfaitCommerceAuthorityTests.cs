@@ -108,9 +108,12 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         var hosted = ReadSource("CommerceCore", "Services", "ParfaitCustomerAutomationHostedService.cs");
 
         Assert.Contains("_automations.CaptureCheckoutLead(store.CommerceBusinessId", checkout, StringComparison.Ordinal);
-        Assert.Contains("_automations.MarkOrderConverted(store.CommerceBusinessId", checkout, StringComparison.Ordinal);
+        var completion = ReadSource("CommerceCore", "Services", "MerchantPaymentCompletionService.cs");
+        Assert.Contains("_completion.CompleteLegacyAsync(paymentResult.PaymentRecord!.Id, store.CommerceBusinessId, ct)", checkout, StringComparison.Ordinal);
+        Assert.Contains("automations.MarkOrderConverted(attempt.CommerceBusinessId, order)", completion, StringComparison.Ordinal);
+        Assert.Contains("context.CommerceBusinessId != attempt.CommerceBusinessId", completion, StringComparison.Ordinal);
         Assert.Contains("\"InitiateCheckout\"", checkout, StringComparison.Ordinal);
-        Assert.Contains("\"Purchase\"", checkout, StringComparison.Ordinal);
+        Assert.Contains("signals.RecordAsync(\"Purchase\"", completion, StringComparison.Ordinal);
         Assert.Contains("commerceSignals.RecordAsync", analyticsController, StringComparison.Ordinal);
         Assert.Contains("GetDueDispatchCandidatesForAllBusinesses", automations, StringComparison.Ordinal);
         Assert.Contains("GetDueDispatchCandidatesForAllBusinesses", hosted, StringComparison.Ordinal);

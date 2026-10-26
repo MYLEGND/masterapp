@@ -667,20 +667,14 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('Reconcile complete immutable release transaction', workflow)
 
 
-    def test_trusted_lifecycle_binds_runtime_before_durable_recovery(self):
-        workflow=(ROOT.parent / '.github/workflows/legend-release-lifecycle.yml').read_text()
-        maintain=workflow.split('  maintain:',1)[1]
-        checkout=maintain.index('ref: legend/approved-changes')
-        install=maintain.index('name: Install canonical durable operation transport')
-        bind=maintain.index('name: Bind canonical lifecycle evidence runtime')
-        integrate=maintain.index('name: Integrate ready approved change and start direct release')
-        resume=maintain.index('name: Resume ready changes and corrections on retained branches')
-        self.assertLess(checkout, install)
-        self.assertLess(install, bind)
-        self.assertLess(bind, integrate)
-        self.assertLess(bind, resume)
-        self.assertEqual(1, maintain.count('uses: ./scripts/release-artifacts'))
-        self.assertNotIn('github.event.pull_request.head.sha', maintain[:bind])
+    def test_retired_lifecycle_exits_without_mutation(self):
+        import yaml, subprocess
+        workflow=yaml.safe_load((ROOT.parent / '.github/workflows/legend-release-lifecycle.yml').read_text())
+        script=workflow['jobs']['retired']['steps'][0]['run']
+        result=subprocess.run(['bash', '-c', script],capture_output=True,text=True)
+        self.assertEqual(1,result.returncode)
+        self.assertIn('LEGEND_RELEASE_LIFECYCLE_RETIRED',result.stdout)
+        self.assertEqual({},workflow['permissions'])
 
     def test_single_authenticated_probe_extracts_at_verified_root(self):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
@@ -781,7 +775,7 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('capture_output=True', migration_owner)
         self.assertNotIn("print(connection)", migration_owner)
 
-    def test_architecture_validation_publishes_one_canonical_package_from_parallel_components(self):
+    def test_retired_parallel_package_definitions_preserve_historical_contracts(self):
         workflow=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
         self.assertIn('validated-release-package-plan:', workflow)
         self.assertIn('validated-release-package-components:', workflow)
@@ -792,7 +786,7 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertNotIn("release_control_only_path", package_plan)
         self.assertNotIn('needs: validate\n    if: github.event_name', workflow)
         self.assertIn('component: ${{ fromJSON(needs.validated-release-package-plan.outputs.component_matrix) }}', workflow)
-        self.assertIn("needs.validated-release-package-plan.outputs.components_needed == 'true'", workflow)
+        self.assertEqual(5, workflow.count('if: ${{ false }} # Retired approved-branch producer.'))
         self.assertIn('scripts/validation-resume.py component-sources', workflow)
         self.assertIn('artifact-ids: ${{ steps.componentsources.outputs.portal_artifact_id }}', workflow)
         self.assertIn('Record immutable component source', workflow)
@@ -804,8 +798,7 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('retention-days: 90', workflow)
         self.assertIn('Run release web contract regressions', workflow)
         component_block = workflow.split('  validated-release-package-components:\n', 1)[1].split('  validated-release-package:\n', 1)[0]
-        self.assertIn("always() && !cancelled()", component_block)
-        self.assertIn("needs.validated-release-package-plan.result == 'success'", component_block)
+        self.assertIn('if: ${{ false }} # Retired approved-branch producer.', component_block)
         self.assertNotIn('scripts/release-package.py build \\', component_block)
         final_block = workflow.split('  validated-release-package:\n', 1)[1].split('  wake-release-lifecycle-after-package-backfill:\n', 1)[0]
         self.assertNotIn('dotnet publish', final_block)
@@ -1017,11 +1010,10 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         package_wake=architecture.split(
             '  wake-release-lifecycle-after-package-backfill:\n',1
         )[1].split('\n  validated-migration-probe:',1)[0]
-        self.assertIn("github.event_name == 'workflow_dispatch' && inputs.package_revision != ''", package_wake)
-        self.assertIn('actions: write', package_wake)
-        self.assertIn('contents: read', package_wake)
-        self.assertIn('scripts/wake-release-lifecycle.py', package_wake)
-        self.assertNotIn('deploy-approved-app.py', package_wake)
+        self.assertIn('if: ${{ false && !inputs.preparation_only }}', package_wake)
+        self.assertIn('permissions: {}', package_wake)
+        for forbidden in ('actions: write', 'checkout@', 'scripts/wake-release-lifecycle.py', 'legend/approved-changes'):
+            self.assertNotIn(forbidden, package_wake)
 
         self.assertIn('wake-release-lifecycle-after-terminal-release:', direct)
         release_wake=direct.split(
@@ -1034,8 +1026,8 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('scripts/wake-release-lifecycle.py', release_wake)
         self.assertNotIn('deploy-approved-app.py', release_wake)
 
-        self.assertIn('release_run:', lifecycle)
-        self.assertIn("github.event.workflow_run.id || inputs.release_run || ''", lifecycle)
+        self.assertNotIn('release_run:', lifecycle)
+        self.assertNotIn('workflow_run:', lifecycle)
         self.assertIn('actions/workflows/{LIFECYCLE}/dispatches', wake)
         self.assertIn('"inputs": {"release_run": RUN_ID}', wake)
         self.assertIn('APPROVED = "legend/approved-changes"', wake)
@@ -1045,20 +1037,73 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
 
     def test_release_mutation_authorities_remain_serialized(self):
         for name in (
-            'legend-release-lifecycle.yml',
             'all-intentional-direct-release-20260918.yml',
         ):
             workflow=(ROOT.parent / '.github/workflows' / name).read_text()
             self.assertIn('cancel-in-progress: false', workflow, name)
 
-    def test_release_orchestrator_contract_checks_are_receipt_reusable(self):
+    def test_retirement_does_not_reenable_orchestrator_receipt_reuse(self):
         lifecycle=(ROOT.parent / '.github/workflows/legend-release-lifecycle.yml').read_text()
-        self.assertIn('scripts/validation-resume.py lifecycle-evidence', lifecycle)
-        self.assertIn('REUSE_LIFECYCLE_CONTRACTS=', lifecycle)
-        self.assertNotIn('sha256sum               .github/workflows/legend-release-lifecycle.yml', lifecycle)
-        self.assertNotIn('actions/artifacts?name=$artifact_name', lifecycle)
-        self.assertIn('Recover authorized direct release when needed', lifecycle)
-        self.assertNotIn('production gates', lifecycle.lower())
+        for forbidden in ('REUSE_LIFECYCLE_CONTRACTS=', 'Recover authorized direct release', 'scripts/validation-resume.py lifecycle-evidence'):
+            self.assertNotIn(forbidden,lifecycle)
+
+
+class RetiredBranchConsumerTests(unittest.TestCase):
+    def workflow(self):
+        import yaml
+        return yaml.safe_load((ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text())
+
+    def allowed(self, expression, event, base, preparation):
+        from types import SimpleNamespace
+        expression=expression.strip().removeprefix('${{').removesuffix('}}').strip()
+        expression=expression.replace('&&',' and ').replace('||',' or ').replace('!',' not ')
+        return bool(eval(expression, {'__builtins__': {}}, {
+            'github':SimpleNamespace(event_name=event,base_ref=base),
+            'inputs':SimpleNamespace(preparation_only=preparation), 'false':False,'true':True}))
+
+    def test_event_matrix_never_reactivates_retired_producers(self):
+        workflow=self.workflow();jobs=workflow['jobs']
+        self.assertEqual({'pull_request','workflow_dispatch'},set(workflow[True]))
+        self.assertEqual(['Legend/fast-track-release'],workflow[True]['pull_request']['branches'])
+        retired=('validated-release-package-plan','validated-release-package-components',
+                 'validated-release-package','migration-rehearsal-prepare','migration-rehearsal',
+                 'wake-release-lifecycle-after-package-backfill')
+        for event in ('pull_request','pull_request_target','push','workflow_run','workflow_dispatch','schedule'):
+            for base in ('Legend/fast-track-release','legend/approved-changes','attacker'):
+                for prep in (False,True):
+                    with self.subTest(event=event,base=base,preparation=prep):
+                        for name in retired:
+                            self.assertFalse(self.allowed(jobs[name]['if'],event,base,prep),name)
+                        for name in ('approved-head-preflight','validated-migration-probe'):
+                            self.assertEqual(event=='pull_request' and base=='Legend/fast-track-release' and not prep,
+                                             self.allowed(jobs[name]['if'],event,base,prep))
+                        self.assertEqual(event=='workflow_dispatch' and prep,
+                            self.allowed(jobs['nonpublishing-protect-parfait-preparation']['if'],event,base,prep))
+
+    def test_architecture_wake_cannot_request_write_token_or_checkout(self):
+        job=self.workflow()['jobs']['wake-release-lifecycle-after-package-backfill']
+        self.assertEqual({},job['permissions'])
+        self.assertEqual([{'run':'exit 1'}],job['steps'])
+        self.assertNotIn('environment',job)
+
+    def test_renderer_failure_remains_failure_without_baseline_network_access(self):
+        import tempfile,subprocess,os
+        step=next(x for x in self.workflow()['jobs']['validate']['steps'] if x.get('id')=='gate_renderer_tests')
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/'Legend-Website').mkdir();(root/'bin').mkdir()
+            for name,body in {'python3':'exit 1','npm':'exit 23','git':'touch "'+str(root/'git-called')+'"; exit 0'}.items():
+                p=root/'bin'/name;p.write_text('#!/bin/sh\n'+body+'\n');p.chmod(0o700)
+            result=subprocess.run(['bash','-e','-c',step['run']],cwd=root,
+                                  env=dict(os.environ,PATH=str(root/'bin')+':'+os.environ['PATH']))
+            self.assertEqual(23,result.returncode)
+            self.assertFalse((root/'git-called').exists())
+
+    def test_lifecycle_validation_retains_synthetic_history_without_live_queries(self):
+        step=next(x for x in self.workflow()['jobs']['validate']['steps'] if x.get('id')=='gate_lifecycle')
+        self.assertIn('python3 scripts/test-release-migration-history-audit.py',step['run'])
+        self.assertIn('python3 scripts/test-release-retired-original-evidence.py',step['run'])
+        self.assertNotIn('authority.api_get',step['run'])
+        self.assertNotIn('python3 scripts/release-migration-history-audit.py',step['run'])
 
 
 class ReleasePolicy(unittest.TestCase):

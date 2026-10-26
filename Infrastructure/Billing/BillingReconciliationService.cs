@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Data;
 using Domain.Billing;
 using Domain.Entities;
 using Infrastructure.Billing.Square;
@@ -137,6 +138,7 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
 
     private async Task ReconcileProviderEventAsync(BillingProviderEvent providerEvent, CancellationToken cancellationToken)
     {
+        if (_db.Entry(providerEvent).State == EntityState.Detached) _db.Attach(providerEvent);
         var startedUtc = DateTime.UtcNow;
         providerEvent.AttemptCount += 1;
         providerEvent.ProcessingStatus = BillingProviderEventProcessingStatus.Processing;
@@ -222,7 +224,14 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
                 providerEvent,
                 subscription is null ? "PAYMENT_SUBSCRIPTION_NOT_FOUND" : "PAYMENT_ATTEMPT_NOT_FOUND");
 
-        if (payment.ClientSubscriptionId is null && subscription is not null)
+        var standaloneCommerce = payment.Kind == SubscriptionPaymentKind.CommerceOneTime && payment.ClientSubscriptionId is null;
+        if (standaloneCommerce) subscription = null;
+        // Preserve the original payment authority before considering provider references.
+        if ((standaloneCommerce || !string.IsNullOrWhiteSpace(payment.ProviderRefundId)) && (providerResult.AmountCents != payment.AmountCents ||
+            !string.Equals(providerResult.Currency, payment.Currency, StringComparison.OrdinalIgnoreCase)))
+            return CreateExpectedResolutionDecision(providerEvent, "COMMERCE_PAYMENT_EVIDENCE_MISMATCH");
+
+        if (!standaloneCommerce && payment.ClientSubscriptionId is null && subscription is not null)
         {
             payment.ClientSubscriptionId = subscription.Id;
             payment.ClientSubscription = subscription;
@@ -239,6 +248,9 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
             providerResult.ProviderOccurredUtc,
             DateTime.UtcNow);
 
+        if (standaloneCommerce && !string.IsNullOrWhiteSpace(payment.CommerceCompletionContextJson) &&
+            string.Equals(providerResult.NormalizedStatus, "COMPLETED", StringComparison.OrdinalIgnoreCase))
+            payment.CommerceCaptureVerifiedUtc ??= DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
         if (subscription is not null)
             await RefreshEntitlementAsync(subscription.ClientProfileId, "PROVIDER_EVENT_PAYMENT", cancellationToken);
@@ -261,41 +273,111 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
         if (!providerRefund.Success)
             return CreateRetryableFailureDecision(providerEvent, providerRefund.SafeErrorCode ?? "REFUND_LOOKUP_FAILED");
 
-        var payment = await FindSubscriptionPaymentAsync(
-            providerEvent.Provider,
-            providerEvent.ProviderEnvironment,
-            providerRefund.ExternalId ?? summary.PaymentId,
-            providerRefund.ProviderInvoiceId ?? summary.InvoiceId,
-            providerRefund.ProviderRefundId ?? providerRefundId,
-            cancellationToken);
+        // A successful lookup is not evidence that the refund completed.
+        if (!string.Equals(providerRefund.NormalizedStatus, "COMPLETED", StringComparison.OrdinalIgnoreCase))
+            return CreateExpectedResolutionDecision(providerEvent, "REFUND_NOT_COMPLETED");
+        if (string.IsNullOrWhiteSpace(providerRefund.ProviderRefundId) ||
+            !string.Equals(providerRefund.ProviderRefundId, providerRefundId, StringComparison.Ordinal) ||
+            string.IsNullOrWhiteSpace(providerRefund.ExternalId) ||
+            (!string.IsNullOrWhiteSpace(summary.PaymentId) &&
+             !string.Equals(summary.PaymentId, providerRefund.ExternalId, StringComparison.Ordinal)))
+            return CreateExpectedResolutionDecision(providerEvent, "REFUND_IDENTITY_MISMATCH");
+
+        // Invoice/refund fallbacks cannot authorize a different payment.
+        var payment = await _db.SubscriptionPayments
+            .Include(x => x.ClientSubscription)
+            .FirstOrDefaultAsync(x => x.Provider == providerEvent.Provider &&
+                x.ProviderEnvironment == providerEvent.ProviderEnvironment &&
+                x.ProviderPaymentId == providerRefund.ExternalId, cancellationToken);
         if (payment is null)
             return CreateExpectedResolutionDecision(providerEvent, "REFUND_PAYMENT_NOT_FOUND");
+        if (!string.Equals(payment.ProviderPaymentId, providerRefund.ExternalId, StringComparison.Ordinal) ||
+            providerRefund.AmountCents is not > 0 ||
+            providerRefund.AmountCents > payment.AmountCents ||
+            string.IsNullOrWhiteSpace(providerRefund.Currency) ||
+            !string.Equals(providerRefund.Currency, payment.Currency, StringComparison.OrdinalIgnoreCase))
+            return CreateExpectedResolutionDecision(providerEvent, "REFUND_FINANCIAL_EVIDENCE_MISMATCH");
 
-        var previousStatus = payment.Status.ToString();
-        var refundAmountCents = providerRefund.AmountCents ?? payment.AmountCents;
-        var isPartialRefund = payment.AmountCents > 0 && refundAmountCents < payment.AmountCents;
-        if (!IsStaleProviderTimestamp(payment.ProviderOccurredUtc, providerRefund.ProviderOccurredUtc ?? summary.ProviderOccurredUtc))
+        Guid? refreshProfileId = null;
+        var strategy = _db.Database.CreateExecutionStrategy();
+        var decision = await strategy.ExecuteAsync(async () =>
         {
-            payment.ProviderRefundId = providerRefund.ProviderRefundId ?? providerRefundId;
-            payment.ProviderInvoiceId = providerRefund.ProviderInvoiceId ?? summary.InvoiceId ?? payment.ProviderInvoiceId;
-            payment.ProviderOccurredUtc = MaxDate(payment.ProviderOccurredUtc, providerRefund.ProviderOccurredUtc ?? summary.ProviderOccurredUtc);
-            payment.Status = isPartialRefund ? SubscriptionPaymentStatus.PartiallyRefunded : SubscriptionPaymentStatus.Refunded;
-            payment.UpdatedUtc = DateTime.UtcNow;
-        }
-
-        var subscription = payment.ClientSubscription
-            ?? (payment.ClientSubscriptionId.HasValue
-                ? await _db.ClientSubscriptions.FirstOrDefaultAsync(x => x.Id == payment.ClientSubscriptionId.Value, cancellationToken)
-                : null);
-        if (subscription is not null && !isPartialRefund)
-            ApplyRefundOrDisputeOutcome(subscription, isDispute: false, DateTime.UtcNow);
-
-        AddAuditEntry("SubscriptionPayment", payment.Id, "refund_applied", previousStatus, payment.Status.ToString(), BillingActorType.Provider, null, "billing_reconciliation", null, providerEvent.ProviderEventId, summary.ToSanitizedJson());
-        await _db.SaveChangesAsync(cancellationToken);
-        if (subscription is not null)
-            await RefreshEntitlementAsync(subscription.ClientProfileId, "PROVIDER_EVENT_REFUND", cancellationToken);
-
-        return new ProviderEventDecision(BillingProviderEventProcessingStatus.Processed);
+            await using var transaction = _db.Database.IsRelational()
+                ? await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken) : null;
+            try
+            {
+                // Re-read under the serialization boundary. Provider calls remain outside SQL.
+                if (_db.Entry(payment).State == EntityState.Detached) _db.Attach(payment);
+                await _db.Entry(payment).ReloadAsync(cancellationToken);
+                if (payment.ProviderPaymentId != providerRefund.ExternalId ||
+                    providerRefund.AmountCents > payment.AmountCents ||
+                    !string.Equals(providerRefund.Currency, payment.Currency, StringComparison.OrdinalIgnoreCase))
+                    return new ProviderEventDecision(BillingProviderEventProcessingStatus.ReconciliationRequired, "REFUND_FINANCIAL_EVIDENCE_MISMATCH");
+                var ledger = await _db.SubscriptionPaymentRefunds
+                    .Where(x => x.SubscriptionPaymentId == payment.Id).ToListAsync(cancellationToken);
+                var known = ledger.SingleOrDefault(x => x.IdempotencyKey == providerRefundId);
+                if (known is not null && (known.State != "Succeeded" ||
+                    known.ProviderReference != providerRefundId || known.AmountMinor != providerRefund.AmountCents ||
+                    !string.Equals(known.Currency, providerRefund.Currency, StringComparison.OrdinalIgnoreCase)))
+                    return new ProviderEventDecision(BillingProviderEventProcessingStatus.ReconciliationRequired, "REFUND_CONFLICTING_EVIDENCE");
+                // Before this ledger, the last-ID pointer could overwrite earlier refunds.
+                // One lookup cannot establish complete history; never fabricate a total.
+                if ((!string.IsNullOrWhiteSpace(payment.ProviderRefundId) &&
+                    !ledger.Any(x => x.IdempotencyKey == payment.ProviderRefundId && x.State == "Succeeded")) ||
+                    (ledger.Count == 0 && payment.Status is SubscriptionPaymentStatus.PartiallyRefunded or SubscriptionPaymentStatus.Refunded))
+                    return new ProviderEventDecision(BillingProviderEventProcessingStatus.ReconciliationRequired, "REFUND_HISTORICAL_INVENTORY_REQUIRED");
+                if (ledger.Any(x => x.State != "Succeeded" || x.AmountMinor <= 0 ||
+                    !string.Equals(x.Currency, payment.Currency, StringComparison.OrdinalIgnoreCase)))
+                    return new ProviderEventDecision(BillingProviderEventProcessingStatus.ReconciliationRequired, "REFUND_LEDGER_INVALID");
+                var cumulative = ledger.Sum(x => x.AmountMinor);
+                if (known is null) cumulative = checked(cumulative + providerRefund.AmountCents.Value);
+                if (cumulative <= 0 || cumulative > payment.AmountCents)
+                    return new ProviderEventDecision(BillingProviderEventProcessingStatus.ReconciliationRequired, "REFUND_CUMULATIVE_AMOUNT_INVALID");
+                var subscription = payment.ClientSubscriptionId.HasValue
+                    ? await _db.ClientSubscriptions.SingleAsync(x => x.Id == payment.ClientSubscriptionId.Value, cancellationToken)
+                    : null;
+                if (subscription is not null) await _db.Entry(subscription).ReloadAsync(cancellationToken);
+                refreshProfileId = subscription?.ClientProfileId;
+                if (known is null)
+                {
+                    var previousStatus = payment.Status.ToString();
+                    _db.SubscriptionPaymentRefunds.Add(new SubscriptionPaymentRefund
+                    {
+                        SubscriptionPaymentId = payment.Id, IdempotencyKey = providerRefundId,
+                        ProviderReference = providerRefundId, AmountMinor = providerRefund.AmountCents.Value,
+                        Currency = payment.Currency, State = "Succeeded", CreatedUtc = DateTime.UtcNow
+                    });
+                    payment.ProviderRefundId = providerRefundId;
+                    payment.ProviderOccurredUtc = MaxDate(payment.ProviderOccurredUtc, providerRefund.ProviderOccurredUtc ?? summary.ProviderOccurredUtc);
+                    payment.Status = cumulative == payment.AmountCents ? SubscriptionPaymentStatus.Refunded : SubscriptionPaymentStatus.PartiallyRefunded;
+                    payment.UpdatedUtc = DateTime.UtcNow;
+                    if (subscription is not null && cumulative == payment.AmountCents)
+                        ApplyRefundOrDisputeOutcome(subscription, isDispute: false, DateTime.UtcNow);
+                    AddAuditEntry("SubscriptionPayment", payment.Id, "refund_applied", previousStatus, payment.Status.ToString(), BillingActorType.Provider, null, "billing_reconciliation", null, providerEvent.ProviderEventId, summary.ToSanitizedJson());
+                    await _db.SaveChangesAsync(cancellationToken);
+                }
+                if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+                return new ProviderEventDecision(BillingProviderEventProcessingStatus.Processed);
+            }
+            catch
+            {
+                try
+                {
+                    if (transaction is not null) await transaction.RollbackAsync(CancellationToken.None);
+                }
+                finally
+                {
+                    // Do not leak staged finances into the outer event-status save.
+                    // Each subsequent batch item reattaches at its own entry boundary.
+                    _db.ChangeTracker.Clear();
+                    _db.Attach(providerEvent);
+                }
+                throw;
+            }
+        });
+        if (decision.Status == BillingProviderEventProcessingStatus.Processed && refreshProfileId.HasValue)
+            await RefreshEntitlementAsync(refreshProfileId.Value, "PROVIDER_EVENT_REFUND", cancellationToken);
+        return decision;
     }
 
     private async Task<ProviderEventDecision> ProcessDisputeEventAsync(
@@ -416,7 +498,9 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
         payment.ProviderRefundId = providerRefundId ?? payment.ProviderRefundId;
         payment.AmountCents = amountCents ?? payment.AmountCents;
         payment.Currency = NormalizeCurrency(currency ?? payment.Currency);
-        payment.Status = ResolvePaymentStatus(normalizedStatus);
+        // Capture updates cannot erase independently verified refunds or disputes.
+        if (payment.Status is not (SubscriptionPaymentStatus.PartiallyRefunded or SubscriptionPaymentStatus.Refunded or SubscriptionPaymentStatus.Disputed))
+            payment.Status = ResolvePaymentStatus(normalizedStatus);
         payment.SafeFailureCode = payment.Status is SubscriptionPaymentStatus.Failed or SubscriptionPaymentStatus.Canceled
             ? BillingStateMapper.Normalize(normalizedStatus)
             : null;

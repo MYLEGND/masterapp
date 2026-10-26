@@ -33,12 +33,24 @@ public static class ReceptionistSetupForms
             AdmissionWindowSeconds = config.AdmissionWindowSeconds, MaximumCallsPerWindow = config.MaximumCallsPerWindow,
             RequestIntake = config.RequestedCapabilities.Contains(ReceptionistCapabilities.CanonicalIntake),
             NotifyOwner = intake["notifyOwner"]?.GetValue<bool>() ?? false, Hours = hours,
+            BookingFieldsPresent = true, BookingEnabled = config.BookingPolicy?.Enabled ?? false,
+            BookingQaOnly = config.BookingPolicy?.QaOnly ?? true,
+            BookingAllowConsentedCustomerEmail = config.BookingPolicy?.AllowConsentedCustomerEmail ?? false,
+            BookingCalendarConfigurationSha256 = config.BookingPolicy?.ExpectedCalendarConfigurationSha256,
+            BookingCalendarTargetSha256 = config.BookingPolicy?.ExpectedCalendarTargetSha256,
+            BookingPrivacyAcceptanceReference = config.BookingPolicy?.PrivacyAcceptanceReference,
+            BookingAgentProfileId = config.BookingPolicy?.BookingAgentProfileId,
+            BookingMinimumNoticeMinutes = config.BookingPolicy?.MinimumNoticeMinutes,
+            BookingMaximumAdvanceDays = config.BookingPolicy?.MaximumAdvanceDays,
             Services = services.Select(node => node as JsonObject ?? throw new ArgumentException("A saved service cannot be represented by this setup form."))
                 .Select(node => new ReceptionistServiceInput
                 {
                     ServiceKey = Text(node, "serviceKey"), DisplayName = Text(node, "displayName"),
                     Aliases = Lines(node["aliases"]), DiscoveryQuestion = Text(node, "discoveryQuestion"), PublicSummary = Text(node, "publicSummary"),
-                    CrmBucket = Text(routes.OfType<JsonObject>().SingleOrDefault(x => Text(x, "serviceKey") == Text(node, "serviceKey")), "crmBucket")
+                    CrmBucket = Text(routes.OfType<JsonObject>().SingleOrDefault(x => Text(x, "serviceKey") == Text(node, "serviceKey")), "crmBucket"),
+                    BookingServiceId = config.BookingPolicy?.Services.SingleOrDefault(x => x.ServiceKey == Text(node, "serviceKey"))?.BookingServiceId,
+                    BookingTimeZoneId = config.BookingPolicy?.Services.SingleOrDefault(x => x.ServiceKey == Text(node, "serviceKey"))?.TimeZoneId,
+                    BookingDurationMinutes = config.BookingPolicy?.Services.SingleOrDefault(x => x.ServiceKey == Text(node, "serviceKey"))?.DurationMinutes
                 }).Append(new ReceptionistServiceInput()).ToList(),
             Answers = answers.Select(node => node as JsonObject ?? throw new ArgumentException("A saved answer cannot be represented by this setup form."))
                 .Select(node => new ReceptionistAnswerInput
@@ -104,6 +116,28 @@ public static class ReceptionistSetupForms
         var contact = Object(previous.ContactAndRetentionPolicyJson); contact["policyText"] = input.ContactAndRetentionNotes ?? string.Empty;
         var capabilities = previous.RequestedCapabilities.Where(x => x != ReceptionistCapabilities.CanonicalIntake).ToList();
         if (input.RequestIntake) capabilities.Add(ReceptionistCapabilities.CanonicalIntake);
+        var booking = previous.BookingPolicy;
+        if (input.BookingFieldsPresent)
+        {
+            var mappings = services.Where(x => !string.IsNullOrWhiteSpace(x.BookingServiceId) ||
+                !string.IsNullOrWhiteSpace(x.BookingTimeZoneId) || x.BookingDurationMinutes.HasValue)
+                .Select(x => new ReceptionistBookingService { ServiceKey = x.ServiceKey!, BookingServiceId = x.BookingServiceId?.Trim() ?? "",
+                    TimeZoneId = x.BookingTimeZoneId?.Trim() ?? "", DurationMinutes = x.BookingDurationMinutes ?? 0 }).ToArray();
+            booking = previous.BookingPolicy is not null || input.BookingEnabled || mappings.Length > 0 ||
+                !string.IsNullOrWhiteSpace(input.BookingCalendarConfigurationSha256) || !string.IsNullOrWhiteSpace(input.BookingPrivacyAcceptanceReference) ||
+                !string.IsNullOrWhiteSpace(input.BookingCalendarTargetSha256) || input.BookingAgentProfileId.HasValue ||
+                input.BookingAllowConsentedCustomerEmail || input.BookingMinimumNoticeMinutes.HasValue || input.BookingMaximumAdvanceDays.HasValue
+                ? new ReceptionistBookingPolicy { Enabled = input.BookingEnabled, QaOnly = input.BookingQaOnly,
+                    AllowConsentedCustomerEmail = input.BookingAllowConsentedCustomerEmail,
+                    ExpectedCalendarConfigurationSha256 = input.BookingCalendarConfigurationSha256?.Trim() ?? "",
+                    ExpectedCalendarTargetSha256 = input.BookingCalendarTargetSha256?.Trim() ?? "",
+                    PrivacyAcceptanceReference = input.BookingPrivacyAcceptanceReference?.Trim() ?? "",
+                    BookingAgentProfileId = input.BookingAgentProfileId,
+                    MinimumNoticeMinutes = input.BookingMinimumNoticeMinutes ?? 0,
+                    MaximumAdvanceDays = input.BookingMaximumAdvanceDays ?? 0, Services = mappings } : null;
+            capabilities.RemoveAll(x => x == ReceptionistCapabilities.CanonicalBooking);
+            if (booking?.Enabled == true) capabilities.Add(ReceptionistCapabilities.CanonicalBooking);
+        }
         var configuration = previous with
         {
             BusinessName = input.BusinessName, ConversationInstructions = input.ConversationInstructions, BusinessPolicy = input.BusinessPolicy,
@@ -115,7 +149,7 @@ public static class ReceptionistSetupForms
             MonthlyConsumptionLimit = input.MonthlyConsumptionLimit, MonthlyVoiceSecondsLimit = checked((long)(input.MonthlyVoiceMinutesLimit * 60m)),
             MaximumConcurrentCalls = input.MaximumConcurrentCalls, MaximumCallSeconds = input.MaximumCallSeconds,
             AdmissionWindowSeconds = input.AdmissionWindowSeconds, MaximumCallsPerWindow = input.MaximumCallsPerWindow,
-            Hours = hours, RequestedCapabilities = capabilities
+            Hours = hours, RequestedCapabilities = capabilities, BookingPolicy = booking
         };
         // Inactive owner drafts remain editable. Provider acceptance separately validates the exact supported adapter payload and backend.
         ReceptionistConfigurationCodec.Validate(configuration);

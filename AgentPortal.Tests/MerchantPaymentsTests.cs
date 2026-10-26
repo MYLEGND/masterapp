@@ -70,9 +70,21 @@ public sealed class MerchantPaymentsTests
         f.Db.CommercePaymentRefunds.Add(new(){AttemptId=attempt.Id,IdempotencyKey="unknown-earlier",AmountMinor=300,State="Unknown",CreatedUtc=DateTime.UtcNow});await f.Db.SaveChangesAsync();
         await Assert.ThrowsAsync<MerchantPaymentException>(()=>f.Checkout.RefundAsync(f.Business,f.Order,400,"new-request"));Assert.Equal(0,f.Gateway.Refunds);
     }
-    [Fact] public async Task RepeatedCompletionCommitsInventoryPurchaseAndTenantMailOnce()
+    [Theory] [InlineData("USD", 0, true, false)] [InlineData("CAD", 0, false, false)]
+    [InlineData("USD", -1, false, false)] [InlineData("USD", 1001, false, false)]
+    [InlineData("USD", 0, true, true)] [InlineData("CAD", 0, false, true)]
+    [InlineData("USD", 1001, false, true)]
+    [InlineData("USD", 0, false, true, "historical")]
+    [InlineData("USD", 0, false, true, "wrong-business")]
+    [InlineData("USD", 0, false, true, "two-captures")]
+    [InlineData("USD", 0, false, true, "merchant-owner")]
+    [InlineData("USD", 0, false, true, "wrong-amount")]
+    [InlineData("USD", 0, true, true, "rollback")]
+    [InlineData("USD", 0, true, true, "mail-unknown")]
+    public async Task RepeatedCompletionCommitsInventoryPurchaseAndTenantMailOnce(string currency, long refunded, bool valid, bool legacy, string scenario = "")
     {
-        using var f=new Fixture(true);
+        var failure = new CompletionWriteFailure();
+        using var f=new Fixture(true, interceptor:failure);
         var root=Path.Combine(Path.GetTempPath(),"merchant-completion-tests",Guid.NewGuid().ToString("N"));
         try
         {
@@ -81,23 +93,84 @@ public sealed class MerchantPaymentsTests
             f.Db.CommerceOrderLines.Add(new(){CommerceOrderId=f.Order,ProductExternalKey="product",ProductName="Product",ProductSlug="product",Size="M",Quantity=1,UnitPriceCents=1000});
             await f.Db.SaveChangesAsync();
             var context=new CommerceSignalContext(f.Business,null,null,"business","independent","Independent","https://example.test/store",OrderId:f.Order);
-            await f.Checkout.BeginAsync(f.Business,f.Order,"https://example.test/return",JsonSerializer.Serialize(context));
+            Guid paymentId;
+            if (legacy)
+            {
+                var payment = new Domain.Entities.SubscriptionPayment { CommerceOrderId=f.Order,
+                    Kind=Domain.Billing.SubscriptionPaymentKind.CommerceOneTime, Status=Domain.Billing.SubscriptionPaymentStatus.Completed,
+                    AmountCents=1000, Currency=currency, ProviderPaymentId="verified-legacy-payment",
+                    CommerceCaptureVerifiedUtc=DateTime.UtcNow, CommerceCompletionContextJson=JsonSerializer.Serialize(context) };
+                if(scenario=="historical") payment.CommerceCompletionContextJson=null;
+                if(scenario=="wrong-amount") payment.AmountCents=999;
+                if(scenario=="two-captures") f.Db.SubscriptionPayments.Add(new(){CommerceOrderId=f.Order,AmountCents=1000,Currency="USD",Status=Domain.Billing.SubscriptionPaymentStatus.Completed,ProviderPaymentId="another-real-capture"});
+                if(scenario=="merchant-owner") await f.Checkout.BeginAsync(f.Business,f.Order,"https://example.test/return",JsonSerializer.Serialize(context));
+                f.Db.SubscriptionPayments.Add(payment); paymentId=payment.Id;
+                if(refunded!=0) f.Db.SubscriptionPaymentRefunds.Add(new(){SubscriptionPaymentId=paymentId,IdempotencyKey="verified-refund",ProviderReference="verified-refund",AmountMinor=refunded,Currency=currency,State="Succeeded"});
+                await f.Db.SaveChangesAsync();
+            }
+            else
+            {
+                await f.Checkout.BeginAsync(f.Business,f.Order,"https://example.test/return",JsonSerializer.Serialize(context));
+                var attempt=await f.Db.CommercePaymentAttempts.SingleAsync();
+                attempt.Currency=currency;attempt.RefundedMinor=refunded;await f.Db.SaveChangesAsync();
+                paymentId=attempt.Id;
+            }
             var environment=new Mock<IWebHostEnvironment>();environment.SetupGet(x=>x.ContentRootPath).Returns(root);environment.SetupGet(x=>x.WebRootPath).Returns(root);
             var configuration=new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?>{{"Parfait:StorageRoot",root}}).Build();
             var storage=new ParfaitStoragePaths(environment.Object,configuration);var orders=new ParfaitOrderService(f.Db);var products=new ParfaitProductService(storage,f.Db);
             var mail=new Mock<IGraphMailService>();
             mail.Setup(x=>x.SendOrderReceiptAsync(It.IsAny<ParfaitOrderRecord>(),It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             mail.Setup(x=>x.SendOrderNotificationAsync(It.IsAny<ParfaitOrderRecord>(),It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            if(scenario=="mail-unknown") mail.Setup(x=>x.SendOrderReceiptAsync(It.IsAny<ParfaitOrderRecord>(),It.IsAny<CancellationToken>())).ThrowsAsync(new IOException("Ambiguous delivery"));
             var completion=new MerchantPaymentCompletionService(f.Db,orders,products,new ParfaitCustomerAutomationService(storage,configuration,orders,products,f.Db),new CommerceSignalService(f.Db),mail.Object);
-            var attempt=await f.Db.CommercePaymentAttempts.SingleAsync();
-            await completion.CompleteAsync(attempt.Id);await completion.CompleteAsync(attempt.Id);
+            IQueryable<string> EffectStates() => legacy ? f.Db.SubscriptionPaymentCompletionEffects.Select(x=>x.State) : f.Db.CommercePaymentEffects.Select(x=>x.State);
+            Task Complete() => legacy ? completion.CompleteLegacyAsync(paymentId, scenario=="wrong-business" ? Guid.NewGuid() : f.Business) : completion.CompleteAsync(paymentId);
+            if (!valid)
+            {
+                await Assert.ThrowsAsync<InvalidOperationException>(()=>Complete());
+                Assert.Equal(5,(await f.Db.CommerceProductInventoryItems.SingleAsync()).StockQuantity);
+                Assert.Empty(await EffectStates().ToListAsync());
+                Assert.Empty(await f.Db.AnalyticsEvents.ToListAsync());
+                Assert.Equal("Pending",(await f.Db.CommerceOrders.SingleAsync()).PaymentStatus);
+                return;
+            }
+            if(scenario=="rollback")
+            {
+                failure.Armed=true;
+                await Assert.ThrowsAsync<InvalidOperationException>(()=>Complete());
+                f.Db.ChangeTracker.Clear();
+                Assert.Equal("Pending",(await f.Db.CommerceOrders.SingleAsync()).PaymentStatus);
+                Assert.Equal(5,(await f.Db.CommerceProductInventoryItems.SingleAsync()).StockQuantity);
+                Assert.Empty(await EffectStates().ToListAsync());
+            }
+            await Complete();await Complete();
             Assert.Equal(4,(await f.Db.CommerceProductInventoryItems.SingleAsync()).StockQuantity);
             Assert.Equal(1,await f.Db.AnalyticsEvents.CountAsync());
             var purchase=await f.Db.AnalyticsEvents.SingleAsync();Assert.Equal(f.Business,purchase.CommerceBusinessId);
             using var payload=JsonDocument.Parse(purchase.MetadataJson!);Assert.Equal(1000,payload.RootElement.GetProperty("valueCents").GetInt32());
-            Assert.Equal(5,await f.Db.CommercePaymentEffects.CountAsync(x=>x.State=="Completed"));
+            Assert.Equal(scenario=="mail-unknown" ? 4 : 5,await EffectStates().CountAsync(x=>x=="Completed"));
+            if(scenario=="mail-unknown") Assert.Equal("Unknown",await f.Db.SubscriptionPaymentCompletionEffects.Where(x=>x.Kind=="Receipt").Select(x=>x.State).SingleAsync());
             mail.Verify(x=>x.SendOrderReceiptAsync(It.Is<ParfaitOrderRecord>(o=>o.CommerceBusinessId==f.Business),It.IsAny<CancellationToken>()),Times.Once);
             mail.Verify(x=>x.SendOrderNotificationAsync(It.Is<ParfaitOrderRecord>(o=>o.CommerceBusinessId==f.Business),It.IsAny<CancellationToken>()),Times.Once);
+            if (legacy)
+            {
+                foreach (var amount in new long[] {250, 750})
+                {
+                    var payment=await f.Db.SubscriptionPayments.SingleAsync();
+                    payment.Status=amount==250 ? Domain.Billing.SubscriptionPaymentStatus.PartiallyRefunded : Domain.Billing.SubscriptionPaymentStatus.Refunded;
+                    payment.ProviderRefundId="refund-"+amount;
+                    f.Db.SubscriptionPaymentRefunds.Add(new(){SubscriptionPaymentId=paymentId,IdempotencyKey=payment.ProviderRefundId,ProviderReference=payment.ProviderRefundId,AmountMinor=amount,Currency="USD",State="Succeeded"});
+                    await f.Db.SaveChangesAsync();
+                    await Complete(); await Complete();
+                    Assert.Equal(amount==250 ? 250 : 1000,(await f.Db.CommerceOrders.SingleAsync()).RefundedCents);
+                    Assert.Equal(4,(await f.Db.CommerceProductInventoryItems.SingleAsync()).StockQuantity);
+                    Assert.Equal(1,await f.Db.AnalyticsEvents.CountAsync());
+                }
+                Assert.Equal("Refunded",(await f.Db.CommerceOrders.SingleAsync()).PaymentStatus);
+                Assert.Empty(await f.Db.CommercePaymentAttempts.ToListAsync());
+                mail.Verify(x=>x.SendOrderReceiptAsync(It.IsAny<ParfaitOrderRecord>(),It.IsAny<CancellationToken>()),Times.Once);
+                mail.Verify(x=>x.SendOrderNotificationAsync(It.IsAny<ParfaitOrderRecord>(),It.IsAny<CancellationToken>()),Times.Once);
+            }
         }
         finally {if(Directory.Exists(root))Directory.Delete(root,true);}
     }
@@ -322,18 +395,34 @@ public sealed class MerchantPaymentsTests
         Assert.Null(readiness.SettlementsEnabled);
     }
 
+    private sealed class CompletionWriteFailure : SaveChangesInterceptor
+    {
+        public bool Armed;
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken=default)
+        {
+            if(Armed && eventData.Context!.ChangeTracker.Entries<SubscriptionPaymentCompletionEffect>().Any(x=>x.State==EntityState.Added && x.Entity.Kind=="OrderAndInventory"))
+            {
+                Armed=false;
+                throw new InvalidOperationException("Injected completion commit failure.");
+            }
+            return ValueTask.FromResult(result);
+        }
+    }
+
     private sealed class Fixture:IDisposable
     {
         public readonly DbContextOptions<MasterAppDbContext> Options; public readonly IDataProtectionProvider Protection=new EphemeralDataProtectionProvider(); public readonly MasterAppDbContext Db; public readonly FakeGateway Gateway,OtherGateway=new("Other"); public readonly Guid Business=Guid.NewGuid(),Order=Guid.NewGuid();
         public readonly MerchantConnectionService Connections; public readonly MerchantCheckoutService Checkout;
         private readonly SqliteConnection? sqlite;
-        public Fixture(bool relational=false, string provider="Fake")
+        public Fixture(bool relational=false, string provider="Fake", IInterceptor? interceptor=null)
         {
             Gateway = new(provider);
             if(relational)
             {
                 sqlite=new SqliteConnection("Data Source=:memory:;Foreign Keys=False");sqlite.Open();
-                Options=new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(sqlite).Options;
+                var builder=new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(sqlite);
+                if(interceptor is not null) builder.AddInterceptors(interceptor);
+                Options=builder.Options;
             }
             else Options=new DbContextOptionsBuilder<MasterAppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).ConfigureWarnings(x=>x.Ignore(InMemoryEventId.TransactionIgnoredWarning)).Options;
             Db=new(Options);if(relational)Db.Database.EnsureCreated();

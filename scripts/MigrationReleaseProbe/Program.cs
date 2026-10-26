@@ -494,6 +494,9 @@ internal static class TrustedCandidateContract
     private const string ReviewedMigration = "20261020160000_AddReceptionistCoordination";
     private const string ReviewedEntrySha256 = "d2da70a25230e14bf520e4129ac95a9fc558e9316385cedfcb172a5d82564fd6";
 
+    private const string PaymentMigration = "20261026000134_AddCanonicalSubscriptionPaymentCompletion";
+    private const string PaymentEntrySha256 = "6fe5eaa7f0070c282a5219075d4efe101dca16a7dacae605c87b58f0f9027975";
+
     internal static string Digest<T>(T value) => Convert.ToHexStringLower(SHA256.HashData(
         JsonSerializer.SerializeToUtf8Bytes(value, CandidateContract.Json)));
 
@@ -539,15 +542,31 @@ internal static class TrustedCandidateContract
             throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
         if (JsonSerializer.Serialize(trusted, CandidateContract.Json) == JsonSerializer.Serialize(candidate, CandidateContract.Json))
             return "approved-definitions-exact";
-        if (candidate.Migrations.Length != trusted.Migrations.Length + 1 || candidate.Migrations.Length > 10000 ||
+        var added = candidate.Migrations.Length - trusted.Migrations.Length;
+        if (added is < 1 or > 2 || candidate.Migrations.Length > 10000 ||
             !candidate.Migrations.Take(trusted.Migrations.Length).Zip(trusted.Migrations).All(pair =>
                 JsonSerializer.Serialize(pair.First, CandidateContract.Json) == JsonSerializer.Serialize(pair.Second, CandidateContract.Json)))
             throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
-        var entry = candidate.Migrations[^1];
-        if (entry is null || !entry.Supported || entry.Id != ReviewedMigration ||
-            string.CompareOrdinal(trusted.Migrations[^1].Id, entry.Id) >= 0 || Digest(entry) != ReviewedEntrySha256)
+        var suffix = candidate.Migrations.Skip(trusted.Migrations.Length).ToArray();
+        var expected = added == 2
+            ? new[] { (ReviewedMigration, ReviewedEntrySha256), (PaymentMigration, PaymentEntrySha256) }
+            : suffix[0]?.Id == ReviewedMigration
+                ? new[] { (ReviewedMigration, ReviewedEntrySha256) }
+                : new[] { (PaymentMigration, PaymentEntrySha256) };
+        var previous = trusted.Migrations[^1].Id;
+        if (added == 1 && suffix[0]?.Id == PaymentMigration && previous != ReviewedMigration)
             throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
-        return "approved-prefix-reviewed-receptionist-entry";
+        for (var i = 0; i < suffix.Length; i++)
+        {
+            var entry = suffix[i];
+            if (entry is null || !entry.Supported || entry.Id != expected[i].Item1 ||
+                string.CompareOrdinal(previous, entry.Id) >= 0 || Digest(entry) != expected[i].Item2)
+                throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
+            previous = entry.Id;
+        }
+        return suffix[^1].Id == PaymentMigration
+            ? "approved-prefix-reviewed-canonical-payment-entries"
+            : "approved-prefix-reviewed-receptionist-entry";
     }
 
     // Invoked by the existing credential-free SQL contract gate. No connection
@@ -572,6 +591,10 @@ internal static class TrustedCandidateContract
         Reject(() => Prove(current, current with { Migrations = current.Migrations.Skip(1).ToArray() }));
         var unknown = new CandidateContract.Entry("29990101000000_Unreviewed", false, [], [], [], [], []);
         Reject(() => Prove(current, current with { Migrations = [.. current.Migrations, unknown] }));
+        var receptionistIndex = Array.FindIndex(current.Migrations, entry => entry.Id == ReviewedMigration);
+        var complete = current;
+        if (receptionistIndex >= 0)
+            current = current with { Migrations = current.Migrations.Take(receptionistIndex + 1).ToArray() };
         if (current.Migrations[^1].Id == ReviewedMigration)
         {
             Require(Digest(current.Migrations[^1]) == ReviewedEntrySha256);
@@ -589,6 +612,29 @@ internal static class TrustedCandidateContract
             Console.WriteLine("LEGEND_REVIEWED_APPEND_TEST:PROVEN");
         }
         else Console.WriteLine("LEGEND_REVIEWED_APPEND_TEST:NOT_PRESENT_IN_ASSEMBLY");
+        current = complete;
+        if (current.Migrations[^1].Id == PaymentMigration)
+        {
+            Require(Digest(current.Migrations[^1]) == PaymentEntrySha256);
+            foreach (var count in new[] { 1, 2 })
+            {
+                var prefix = current with { Migrations = current.Migrations[..^count] };
+                Require(Prove(prefix, current) == "approved-prefix-reviewed-canonical-payment-entries");
+                var altered = current.Migrations.ToArray();
+                altered[^1] = altered[^1] with { Indexes = [] };
+                Reject(() => Prove(prefix, current with { Migrations = altered }));
+                altered = current.Migrations.ToArray();
+                altered[0] = altered[0] with { Supported = !altered[0].Supported };
+                Reject(() => Prove(prefix, current with { Migrations = altered }));
+                Reject(() => Prove(prefix, current with { Migrations = [.. current.Migrations, unknown] }));
+            }
+            var beforeBoth = current with { Migrations = current.Migrations[..^2] };
+            Reject(() => Prove(beforeBoth, current with { Migrations = [.. current.Migrations[..^2], current.Migrations[^1]] }));
+            Reject(() => Prove(beforeBoth, current with { Migrations = [.. current.Migrations[..^2], current.Migrations[^1], current.Migrations[^2]] }));
+            Reject(() => Prove(beforeBoth, current with { Migrations = [.. current.Migrations[..^2], current.Migrations[^1], current.Migrations[^1]] }));
+            Console.WriteLine("LEGEND_CANONICAL_PAYMENT_APPEND_TEST:PROVEN");
+        }
+        else Console.WriteLine("LEGEND_CANONICAL_PAYMENT_APPEND_TEST:NOT_PRESENT_IN_ASSEMBLY");
         var path = Path.Combine(Path.GetTempPath(), "legend-contract-test-" + Guid.NewGuid().ToString("N") + ".json");
         try
         {

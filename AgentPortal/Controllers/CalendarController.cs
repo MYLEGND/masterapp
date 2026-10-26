@@ -25,7 +25,7 @@ namespace AgentPortal.Controllers;
 
 [Authorize]
 [Route("calendar")]
-public class CalendarController : Controller
+public partial class CalendarController : Controller
 {
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> CreateEventLocks = new(StringComparer.Ordinal);
     private static readonly LeadAppointmentStatus[] DuplicateProtectedAppointmentStatuses = new[]
@@ -999,6 +999,7 @@ public class CalendarController : Controller
         string? scopedBookingAgentUserId,
         CancellationToken cancellationToken)
     {
+        if (receptionistBooking is not null) return receptionistBooking.Target.Owner;
         if (scopedBusinessId is Guid businessId && businessId != Guid.Empty)
             return Shared.Analytics.MarketingOwnerScope.Business(businessId);
 
@@ -1033,6 +1034,7 @@ public class CalendarController : Controller
         Shared.Analytics.MarketingOwnerScope owner,
         CancellationToken cancellationToken)
     {
+        if (receptionistBooking is not null) return receptionistBooking.BusinessId;
         string? manualTarget = null;
         if (scopedBusinessId is Guid businessId && businessId != Guid.Empty)
         {
@@ -1057,6 +1059,7 @@ public class CalendarController : Controller
 
     private string GetAgentOidOrThrow()
     {
+        if (receptionistBooking is not null) return receptionistBooking.ActorId;
         var oid =
             User.FindFirstValue("oid") ??
             User.FindFirstValue("http://schemas.microsoft.com/identity/claims/objectidentifier");
@@ -1303,7 +1306,7 @@ public class CalendarController : Controller
                                                (x.NormalizedEmail ?? "").Trim().ToLower() == currentUpn.Trim().ToLower()));
             }
 
-            Guid? scopedBusinessId = null;
+            Guid? scopedBusinessId = receptionistBooking?.Target.Owner.CommerceBusinessId;
             if (Guid.TryParse(User.FindFirstValue("legend_business_id"), out var claimedBusinessId) &&
                 claimedBusinessId != Guid.Empty)
                 scopedBusinessId = claimedBusinessId;
@@ -1329,23 +1332,55 @@ public class CalendarController : Controller
                 });
             }
 
-            var graph = await _calendarConnections.CreateGraphClientAsync(
-                calendarOwner,
-                HttpContext.RequestAborted);
+            var graph = await CalendarGraphAsync(calendarOwner, HttpContext.RequestAborted);
             var services = await graph.Solutions.BookingBusinesses[bookingBusinessId]
                 .Services
                 .GetAsync(cancellationToken: HttpContext.RequestAborted);
 
-            var serviceStaffIds = (services?.Value ?? new List<BookingService>())
-                .Where(x => x.IsHiddenFromCustomers != true)
+            var allServices = (services?.Value ?? new List<BookingService>()).ToList();
+            if (receptionistBooking is not null)
+            {
+                var servicePage = services;
+                var pages = 0;
+                while (!string.IsNullOrWhiteSpace(servicePage?.OdataNextLink))
+                {
+                    if (++pages > 100) throw new InvalidOperationException("The service catalog could not be bounded.");
+                    servicePage = await graph.Solutions.BookingBusinesses[bookingBusinessId].Services.WithUrl(servicePage.OdataNextLink)
+                        .GetAsync(cancellationToken: HttpContext.RequestAborted);
+                    if (servicePage?.Value is null) throw new InvalidOperationException("The service catalog is incomplete.");
+                    allServices.AddRange(servicePage.Value);
+                }
+                if (allServices.Any(x => x.PreBuffer < TimeSpan.Zero || x.PostBuffer < TimeSpan.Zero ||
+                    x.PreBuffer > TimeSpan.FromHours(4) || x.PostBuffer > TimeSpan.FromHours(4) ||
+                    (x.PreBuffer ?? TimeSpan.Zero).TotalMinutes % 1 != 0 || (x.PostBuffer ?? TimeSpan.Zero).TotalMinutes % 1 != 0))
+                    throw new InvalidOperationException("The calendar buffer policy needs review.");
+            }
+
+            var serviceStaffIds = allServices
+                .Where(x => x.IsHiddenFromCustomers != true && (receptionistBooking is null || x.Id == receptionistBooking.Target.Service.BookingServiceId))
                 .SelectMany(x => x.StaffMemberIds ?? new List<string>())
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            var visibleServices = (services?.Value ?? new List<BookingService>())
-                .Where(x => x.IsHiddenFromCustomers != true)
+            var visibleServices = allServices
+                .Where(x => x.IsHiddenFromCustomers != true && (receptionistBooking is null || x.Id == receptionistBooking.Target.Service.BookingServiceId))
                 .ToList();
+
+            if (receptionistBooking is not null)
+            {
+                var selected = visibleServices.SingleOrDefault();
+                if (selected is null || selected.DefaultDuration != TimeSpan.FromMinutes(receptionistBooking.Target.Service.DurationMinutes))
+                    throw new InvalidOperationException("The approved service duration changed.");
+                var interval = selected.SchedulingPolicy?.TimeSlotInterval;
+                if (interval is null || interval <= TimeSpan.Zero || interval > TimeSpan.FromDays(1) || interval.Value.TotalMinutes % 1 != 0)
+                    throw new InvalidOperationException("The exact appointment interval needs review.");
+                var staff = receptionistBooking.StaffId ?? serviceStaffIds.FirstOrDefault();
+                if (staff is null || !serviceStaffIds.Contains(staff, StringComparer.Ordinal))
+                    throw new InvalidOperationException("The approved service staff is unavailable.");
+                receptionistBooking.StaffId = staff;
+                serviceStaffIds = [staff];
+            }
 
             var slotIntervalMinutes = visibleServices
                 .Select(x => x.SchedulingPolicy?.TimeSlotInterval)
@@ -1353,6 +1388,8 @@ public class CalendarController : Controller
                 .Select(x => (int)Math.Round(x!.Value.TotalMinutes))
                 .FirstOrDefault();
 
+            if (slotIntervalMinutes <= 0 && receptionistBooking is not null)
+                throw new InvalidOperationException("The service has no verified appointment interval.");
             if (slotIntervalMinutes <= 0)
                 slotIntervalMinutes = 30;
 
@@ -1381,7 +1418,7 @@ public class CalendarController : Controller
                 });
             }
 
-            var agentTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
+            var agentTimeZone = CalendarTimeZone();
             var localStart = localDate.Date;
             var localEnd = localStart.AddDays(1);
             var utcStart = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localStart, DateTimeKind.Unspecified), agentTimeZone);
@@ -1409,6 +1446,11 @@ public class CalendarController : Controller
 
             DateTime ParseAvailabilityWallClock(DateTimeTimeZone? value)
             {
+                if (receptionistBooking is not null)
+                {
+                    var instant = ProviderUtc(value) ?? throw new InvalidOperationException("The availability timezone is not verified.");
+                    return DateTime.SpecifyKind(TimeZoneInfo.ConvertTimeFromUtc(instant, agentTimeZone), DateTimeKind.Unspecified);
+                }
                 if (value == null || string.IsNullOrWhiteSpace(value.DateTime))
                     return DateTime.MinValue;
 
@@ -1429,6 +1471,11 @@ public class CalendarController : Controller
                 DateTimeTimeZone? value,
                 TimeZoneInfo targetTimeZone)
             {
+                if (receptionistBooking is not null)
+                {
+                    var instant = ProviderUtc(value) ?? throw new InvalidOperationException("The appointment timezone is not verified.");
+                    return DateTime.SpecifyKind(TimeZoneInfo.ConvertTimeFromUtc(instant, targetTimeZone), DateTimeKind.Unspecified);
+                }
                 if (value == null || string.IsNullOrWhiteSpace(value.DateTime))
                     return DateTime.MinValue;
 
@@ -1469,8 +1516,10 @@ public class CalendarController : Controller
             }
 
             var availabilityItems = (availability?.Value ?? new List<StaffAvailabilityItem>())
+                .Where(x => receptionistBooking is null || x.StaffId == receptionistBooking.StaffId)
                 .SelectMany(staff => staff.AvailabilityItems ?? new List<AvailabilityItem>())
                 .Where(x => x.Status == BookingsAvailabilityStatus.Available)
+                .Where(x => receptionistBooking is null || string.IsNullOrEmpty(x.ServiceId) || x.ServiceId == receptionistBooking.Target.Service.BookingServiceId)
                 .Select(x =>
                 {
                     var start = ParseAvailabilityWallClock(x.StartDateTime);
@@ -1481,29 +1530,51 @@ public class CalendarController : Controller
                 .OrderBy(x => x.Start)
                 .ToList();
 
-            var appointmentPage = await graph.Solutions.BookingBusinesses[bookingBusinessId]
+            // Bookings supports date ranges through calendarView, not the
+            // appointments start-date filter. Include the maximum recorded buffer
+            // on both sides so overnight appointments and adjacent-day buffers block.
+            var maximumBuffer = allServices.Select(x => new[] { x.PreBuffer ?? TimeSpan.Zero, x.PostBuffer ?? TimeSpan.Zero }.Max())
+                .DefaultIfEmpty(TimeSpan.Zero).Max();
+            var appointmentPage = receptionistBooking is not null
+                ? await graph.Solutions.BookingBusinesses[bookingBusinessId].CalendarView.GetAsync(config =>
+                {
+                    config.QueryParameters.Start = utcStart.Subtract(maximumBuffer).ToString("o", CultureInfo.InvariantCulture);
+                    config.QueryParameters.End = utcEnd.Add(maximumBuffer).ToString("o", CultureInfo.InvariantCulture);
+                    config.QueryParameters.Select = ["id", "startDateTime", "endDateTime", "serviceId", "staffMemberIds"];
+                }, HttpContext.RequestAborted)
+                : await graph.Solutions.BookingBusinesses[bookingBusinessId]
                 .Appointments
                 .GetAsync(config =>
                 {
                     config.QueryParameters.Top = 100;
-                    config.QueryParameters.Select = new[] { "id", "startDateTime", "endDateTime", "serviceId", "customerName" };
+                    config.QueryParameters.Select = new[] { "id", "startDateTime", "endDateTime", "serviceId" };
                     config.QueryParameters.Filter =
                         $"startDateTime/dateTime ge '{utcStart:yyyy-MM-ddTHH:mm:ss}' and startDateTime/dateTime lt '{utcEnd:yyyy-MM-ddTHH:mm:ss}'";
                 }, cancellationToken: HttpContext.RequestAborted);
 
             var allExistingAppointments = new List<BookingAppointment>();
+            if (receptionistBooking is not null && appointmentPage?.Value is null)
+                throw new InvalidOperationException("The calendar range response is incomplete.");
             if (appointmentPage?.Value != null)
                 allExistingAppointments.AddRange(appointmentPage.Value);
 
+            var appointmentPages = 0;
             while (!string.IsNullOrWhiteSpace(appointmentPage?.OdataNextLink))
             {
-                appointmentPage = await graph.Solutions.BookingBusinesses[bookingBusinessId]
+                if (receptionistBooking is not null && ++appointmentPages > 100)
+                    throw new InvalidOperationException("The calendar range could not be verified completely.");
+                appointmentPage = receptionistBooking is not null
+                    ? await graph.Solutions.BookingBusinesses[bookingBusinessId].CalendarView.WithUrl(appointmentPage.OdataNextLink)
+                        .GetAsync(cancellationToken: HttpContext.RequestAborted)
+                    : await graph.Solutions.BookingBusinesses[bookingBusinessId]
                     .Appointments
                     .WithUrl(appointmentPage.OdataNextLink)
                     .GetAsync(cancellationToken: HttpContext.RequestAborted);
 
                 if (appointmentPage?.Value != null)
                     allExistingAppointments.AddRange(appointmentPage.Value);
+                else if (receptionistBooking is not null)
+                    throw new InvalidOperationException("The calendar range page is incomplete.");
             }
 
             var excludedEventId = CleanOptional(excludeEventId);
@@ -1517,7 +1588,7 @@ public class CalendarController : Controller
                     .ToList();
             }
 
-            var serviceBufferMap = visibleServices
+            var serviceBufferMap = (receptionistBooking is null ? visibleServices : allServices)
                 .Where(x => !string.IsNullOrWhiteSpace(x.Id))
                 .ToDictionary(
                     x => x.Id!,
@@ -1529,6 +1600,8 @@ public class CalendarController : Controller
                     StringComparer.OrdinalIgnoreCase);
 
             var busyRanges = allExistingAppointments
+                .Where(x => receptionistBooking is null || x.StaffMemberIds is null || x.StaffMemberIds.Count == 0 ||
+                    x.StaffMemberIds.Contains(receptionistBooking.StaffId!, StringComparer.Ordinal))
                 .Select(x =>
                 {
                     var start = ParseAppointmentLocal(x.StartDateTime, agentTimeZone);
@@ -1536,6 +1609,8 @@ public class CalendarController : Controller
 
                     var pre = TimeSpan.Zero;
                     var post = TimeSpan.Zero;
+                    if (receptionistBooking is not null && (string.IsNullOrWhiteSpace(x.ServiceId) || !serviceBufferMap.ContainsKey(x.ServiceId)))
+                        throw new InvalidOperationException("An existing appointment buffer policy is unavailable.");
                     if (!string.IsNullOrWhiteSpace(x.ServiceId) &&
                         serviceBufferMap.TryGetValue(x.ServiceId, out var buffers))
                     {
@@ -1552,22 +1627,48 @@ public class CalendarController : Controller
                         ServiceId = x.ServiceId ?? ""
                     };
                 })
-                .Where(x => x.AppointmentStart.Date == localDate.Date &&
+                .Where(x => (receptionistBooking is null ? x.AppointmentStart.Date == localDate.Date : x.Start < localEnd && x.End > localStart) &&
                             x.Start != DateTime.MinValue &&
                             x.End != DateTime.MinValue &&
                             x.End > x.Start)
                 .Select(x => (x.Start, x.End))
                 .ToList();
 
+            var normalizedTarget = CalendarBookingLock.NormalizeTarget(bookingBusinessId);
+            var canonicalRangeStart = utcStart.Subtract(maximumBuffer);
+            var canonicalRangeEnd = utcEnd.Add(maximumBuffer);
             var canonicalBookings = await _db.LeadAppointments.AsNoTracking()
-                .Where(a => a.OwnerAgentUserId.ToLower() == agentOid && a.ScheduledStartUtc < utcEnd &&
-                    a.ScheduledEndUtc > utcStart &&
+                .Where(a => (((a.BookingPageIdOrMailbox == null || a.BookingPageIdOrMailbox.Trim() == "") && a.OwnerAgentUserId.ToLower() == agentOid) ||
+                    (a.BookingPageIdOrMailbox != null && a.BookingPageIdOrMailbox.Trim().ToLower() == normalizedTarget)) &&
+                    a.ScheduledStartUtc < canonicalRangeEnd && a.ScheduledEndUtc > canonicalRangeStart &&
                     (a.Status == LeadAppointmentStatus.Booked || a.Status == LeadAppointmentStatus.Confirmed || a.Status == LeadAppointmentStatus.Rescheduled) &&
                     (excludedEventId == null || a.CalendarEventId != excludedEventId))
-                .Select(a => new { a.ScheduledStartUtc, a.ScheduledEndUtc }).ToListAsync(HttpContext.RequestAborted);
-            busyRanges.AddRange(canonicalBookings.Select(a => (
-                TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(a.ScheduledStartUtc!.Value, DateTimeKind.Utc), agentTimeZone),
-                TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(a.ScheduledEndUtc!.Value, DateTimeKind.Utc), agentTimeZone))));
+                .Select(a => new { a.ScheduledStartUtc, a.ScheduledEndUtc, a.CalendarEventId, a.BookingPageIdOrMailbox })
+                .ToListAsync(HttpContext.RequestAborted);
+            foreach (var saved in canonicalBookings)
+            {
+                var pre = TimeSpan.Zero; var post = TimeSpan.Zero;
+                if (receptionistBooking is not null || !string.IsNullOrWhiteSpace(saved.BookingPageIdOrMailbox))
+                {
+                    // A delayed provider view is not evidence that a canonical
+                    // booking (including another actor's booking) has disappeared.
+                    // Without reconciled service buffers, refuse availability.
+                    var observed = allExistingAppointments.Where(x => !string.IsNullOrWhiteSpace(saved.CalendarEventId) &&
+                        string.Equals(x.Id, saved.CalendarEventId, StringComparison.OrdinalIgnoreCase)).ToArray();
+                    if (observed.Length != 1 || ProviderUtc(observed[0].StartDateTime) != UtcDate(saved.ScheduledStartUtc) ||
+                        ProviderUtc(observed[0].EndDateTime) != UtcDate(saved.ScheduledEndUtc))
+                        throw new InvalidOperationException("A saved booking has not reconciled with the calendar range.");
+                    var policies = allServices.Where(x => !string.IsNullOrWhiteSpace(observed[0].ServiceId) &&
+                        x.Id == observed[0].ServiceId).ToArray();
+                    if (policies.Length != 1) throw new InvalidOperationException("A saved booking buffer policy is unavailable.");
+                    pre = policies[0].PreBuffer ?? TimeSpan.Zero; post = policies[0].PostBuffer ?? TimeSpan.Zero;
+                    if (pre < TimeSpan.Zero || post < TimeSpan.Zero || pre > TimeSpan.FromHours(4) || post > TimeSpan.FromHours(4))
+                        throw new InvalidOperationException("A saved booking buffer policy needs review.");
+                }
+                busyRanges.Add((
+                    TimeZoneInfo.ConvertTimeFromUtc(UtcDate(saved.ScheduledStartUtc)!.Value, agentTimeZone).Subtract(pre),
+                    TimeZoneInfo.ConvertTimeFromUtc(UtcDate(saved.ScheduledEndUtc)!.Value, agentTimeZone).Add(post)));
+            }
 
             var freeRanges = SubtractBusyRanges(
                 availabilityItems.Select(x => (x.Start, x.End)),
@@ -1616,6 +1717,7 @@ public class CalendarController : Controller
         }
         catch (Exception ex)
         {
+            if (receptionistBooking is not null) return StatusCode(503, new { state = "availability_unverified" });
             _logger.LogWarning(ex, "Bookings day availability failed.");
             return Ok(new
             {
@@ -1669,7 +1771,7 @@ public class CalendarController : Controller
                     .FirstOrDefaultAsync(x => x.Id == clientProfileId.Value, cancellationToken);
             }
 
-            if (!isBusinessScope && profile == null && !string.IsNullOrWhiteSpace(clientUserId))
+            if (receptionistBooking is null && !isBusinessScope && profile == null && !string.IsNullOrWhiteSpace(clientUserId))
             {
                 var clientUserIdNorm = clientUserId.Trim().ToLowerInvariant();
                 profile = await _db.ClientProfiles
@@ -1716,7 +1818,7 @@ public class CalendarController : Controller
                            <div>{encodedBody}</div>
                            {(string.IsNullOrWhiteSpace(zoomJoinUrl) ? "" : $"<p><strong>Zoom:</strong> <a href=\"{System.Net.WebUtility.HtmlEncode(zoomJoinUrl)}\">Join Meeting</a></p>")}
                            """;
-            var agentTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
+            var agentTimeZone = CalendarTimeZone();
             var utcStart = TimeZoneInfo.ConvertTimeToUtc(
                 DateTime.SpecifyKind(localStart, DateTimeKind.Unspecified),
                 agentTimeZone);
@@ -1825,30 +1927,37 @@ public class CalendarController : Controller
             if (string.IsNullOrWhiteSpace(bookingBusinessId))
                 return BadRequest("Microsoft calendar target is not configured.");
 
-            var graph = await _calendarConnections.CreateGraphClientAsync(calendarOwner, cancellationToken);
+            await using var targetLease = await CalendarBookingLock.AcquireTargetAsync(_db, bookingBusinessId, cancellationToken);
+            var graph = await CalendarGraphAsync(calendarOwner, cancellationToken);
             var durationMinutes = MinutesBetween(localStart, localEnd);
-            var bookingService = await ResolveBookingServiceByDurationAsync(graph, bookingBusinessId, durationMinutes, HttpContext.RequestAborted, req.ServiceId);
+            var bookingService = receptionistBooking is not null
+                ? await graph.Solutions.BookingBusinesses[bookingBusinessId].Services[receptionistBooking.Target.Service.BookingServiceId]
+                    .GetAsync(cancellationToken: cancellationToken)
+                : await ResolveBookingServiceByDurationAsync(graph, bookingBusinessId, durationMinutes, HttpContext.RequestAborted, req.ServiceId);
             if (bookingService == null || string.IsNullOrWhiteSpace(bookingService.Id))
                 return BadRequest($"No Microsoft Bookings service matches {durationMinutes} minutes.");
+            if (receptionistBooking is not null && (bookingService.Id != receptionistBooking.Target.Service.BookingServiceId ||
+                bookingService.DefaultDuration != TimeSpan.FromMinutes(receptionistBooking.Target.Service.DurationMinutes)))
+                return Conflict("The approved service changed.");
 
             var unavailableSlot = await ValidateBookingSlotAsync(localStart, localEnd, bookingService, null);
             if (unavailableSlot != null) return unavailableSlot;
 
-            var customerName = profile != null
+            var customerName = receptionistBooking is not null ? receptionistBooking.Target.CustomerName : profile != null
                 ? $"{profile.FirstName} {profile.LastName}".Trim()
                 : $"{leadProfile?.FirstName} {leadProfile?.LastName}".Trim();
 
             if (string.IsNullOrWhiteSpace(customerName))
                 customerName = "Client";
 
-            var customerEmail = profile != null ? profile.Email : leadProfile?.Email;
-            var customerPhone = profile != null ? profile.Phone : leadProfile?.Phone;
+            var customerEmail = receptionistBooking is not null ? receptionistBooking.Target.InvitationEmail : profile != null ? profile.Email : leadProfile?.Email;
+            var customerPhone = receptionistBooking is not null ? null : profile != null ? profile.Phone : leadProfile?.Phone;
 
             var bookingAppointment = new BookingAppointment
             {
                 ServiceId = bookingService.Id,
                 ServiceName = bookingService.DisplayName,
-                StaffMemberIds = bookingService.StaffMemberIds?.Where(x => !string.IsNullOrWhiteSpace(x)).Take(1).ToList(),
+                StaffMemberIds = receptionistBooking is not null ? [receptionistBooking.StaffId!] : bookingService.StaffMemberIds?.Where(x => !string.IsNullOrWhiteSpace(x)).Take(1).ToList(),
                 StartDateTime = new DateTimeTimeZone
                 {
                     DateTime = utcStart.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture),
@@ -1875,14 +1984,30 @@ public class CalendarController : Controller
                 },
                 AdditionalInformation = htmlBody,
                 IsCustomerAllowedToManageBooking = true,
-                OptOutOfCustomerEmail = false
+                OptOutOfCustomerEmail = false,
+                SmsNotificationsEnabled = receptionistBooking is not null ? false : null
             };
+
+            if (receptionistBooking is not null && (!await RecheckReceptionistTargetAsync(receptionistBooking, cancellationToken) ||
+                receptionistBooking.Fence is null || !await receptionistBooking.Fence.TryStartProviderAsync(cancellationToken)))
+                return Conflict("The confirmed appointment is no longer authorized.");
 
             var bookingCreated = await graph
                 .Solutions
                 .BookingBusinesses[bookingBusinessId]
                 .Appointments
-                .PostAsync(bookingAppointment, cancellationToken: cancellationToken);
+                .PostAsync(bookingAppointment, request =>
+                {
+                    if (receptionistBooking is not null)
+                        request.Options.Add(new Microsoft.Kiota.Http.HttpClientLibrary.Middleware.Options.RetryHandlerOption { MaxRetry = 0 });
+                }, cancellationToken: cancellationToken);
+
+            if (receptionistBooking is not null)
+            {
+                if (string.IsNullOrWhiteSpace(bookingCreated?.Id) || bookingCreated.Id.Length > 400)
+                    return StatusCode(503, new { state = "booking_uncertain" });
+                await receptionistBooking.Fence!.ProviderCreatedAsync(new(bookingCreated.Id, receptionistBooking.TargetSha256), cancellationToken);
+            }
 
             var created = new CreatedCalendarLikeResponse
             {
@@ -2054,6 +2179,9 @@ public class CalendarController : Controller
                 clientPersistedAppointment.BookingProvider =
                     "microsoft_bookings";
 
+                clientPersistedAppointment.BookingPageIdOrMailbox =
+                    CalendarBookingLock.NormalizeTarget(bookingBusinessId);
+
                 clientPersistedAppointment.BookingSource =
                     LeadAppointmentBookingSources
                         .InternalCalendar;
@@ -2194,7 +2322,7 @@ public class CalendarController : Controller
             Guid? latestIntakeLinkId = null;
             try
             {
-                latestIntakeLinkId = await _db.WebsiteLeadIntakeLinks
+                latestIntakeLinkId = receptionistBooking?.Target.IntakeLinkId ?? await _db.WebsiteLeadIntakeLinks
                     .AsNoTracking()
                     .Where(x => x.WorkstationLeadId == resolvedLeadProfile.LeadId)
                     .OrderByDescending(x => x.SubmittedUtc)
@@ -2211,9 +2339,11 @@ public class CalendarController : Controller
             {
                 Id = Guid.NewGuid(),
                 WorkstationLeadId = resolvedLeadProfile.LeadId,
+                CommerceBusinessId = receptionistBooking?.Target.Owner.CommerceBusinessId,
                 OwnerAgentUserId = string.IsNullOrWhiteSpace(resolvedLeadProfile.AgentUserId) ? agentOid : resolvedLeadProfile.AgentUserId,
                 WebsiteLeadIntakeLinkId = latestIntakeLinkId,
                 BookingProvider = "microsoft_bookings",
+                BookingPageIdOrMailbox = CalendarBookingLock.NormalizeTarget(bookingBusinessId),
                 BookingSource = LeadAppointmentBookingSources.InternalCalendar,
                 RequestedBookingSource = LeadAppointmentBookingSources.InternalCalendar,
                 ConfirmationSource = LeadAppointmentBookingSources.InternalCalendar,
@@ -2241,6 +2371,7 @@ public class CalendarController : Controller
             }
             catch (Exception ex) when (IsLeadAppointmentPersistenceCompatibilityFailure(ex))
             {
+                if (receptionistBooking is not null) return StatusCode(503, new { state = "booking_uncertain" });
                 _logger.LogWarning(
                     ex,
                     "Lead CRM booking saved with compatibility fallback. LeadId: {LeadId}, OwnerAgentUserId: {OwnerAgentUserId}, CalendarEventId: {CalendarEventId}",
@@ -2287,6 +2418,7 @@ public class CalendarController : Controller
         }
         catch (Exception ex)
         {
+            if (receptionistBooking is not null) return StatusCode(503, new { state = "booking_uncertain" });
             _logger.LogError(ex, "Create calendar event failed.");
             return StatusCode(500, ex.Message);
         }
@@ -2371,6 +2503,7 @@ public class CalendarController : Controller
                     agentTimeZone);
 
             await using var calendarLease = await CalendarBookingLock.AcquireAsync(_db, context.CurrentAgentUserId, cancellationToken);
+            await using var targetLease = await CalendarBookingLock.AcquireTargetAsync(_db, bookingBusinessId, cancellationToken);
 
             var duplicateAppointment =
                 await FindExistingAppointmentForSameTimeAsync(
@@ -2537,7 +2670,7 @@ public class CalendarController : Controller
                     context.BookingAgentProfile
                         ?.AgentUpn);
             context.Appointment.BookingPageIdOrMailbox =
-                bookingBusinessId;
+                CalendarBookingLock.NormalizeTarget(bookingBusinessId);
             context.Appointment.CalendarEventWebLink =
                 CleanOptional(
                     patchedAppointment
@@ -2845,7 +2978,7 @@ public class CalendarController : Controller
     {
         // The same live availability projection drives both the web calendar and
         // the final submit check. A stale UI selection never authorizes a booking.
-        if (TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(start, DateTimeKind.Unspecified), _agentTimeZoneResolver.Resolve(HttpContext)) <= DateTime.UtcNow)
+        if (TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(start, DateTimeKind.Unspecified), CalendarTimeZone()) <= DateTime.UtcNow)
             return Conflict("Choose a future appointment time.");
         var availability = await DayAvailability(start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), excludedEventId);
         if (availability is not OkObjectResult { Value: not null } ok)
@@ -2856,6 +2989,16 @@ public class CalendarController : Controller
             return StatusCode(503, "Live calendar availability could not be verified. Refresh and try again.");
         var requiredStart = start.Subtract(service.PreBuffer ?? TimeSpan.Zero);
         var requiredEnd = end.Add(service.PostBuffer ?? TimeSpan.Zero);
+        if (receptionistBooking is not null)
+        {
+            // Validate with the selected service policy from this same fresh
+            // availability result, not an earlier catalog read.
+            var buffers = payload.GetProperty("buffers").EnumerateArray().Single();
+            var pre = buffers.GetProperty("preBufferMinutes").GetInt32();
+            var post = buffers.GetProperty("postBufferMinutes").GetInt32();
+            if (pre is < 0 or > 240 || post is < 0 or > 240) return StatusCode(503, new { state = "booking_policy_unverified" });
+            requiredStart = start.AddMinutes(-pre); requiredEnd = end.AddMinutes(post);
+        }
         foreach (var slot in slots.EnumerateArray())
         {
             if (DateTime.TryParse(slot.GetProperty("startIso").GetString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var freeStart) &&
@@ -2916,7 +3059,7 @@ public class CalendarController : Controller
     {
         var services = await graph.Solutions.BookingBusinesses[businessId].Services.GetAsync(cancellationToken: ct);
 
-        _logger.LogInformation(
+        if (receptionistBooking is null) _logger.LogInformation(
             "Bookings services: {Services}",
             JsonSerializer.Serialize(
                 services?.Value?.Select(x => new

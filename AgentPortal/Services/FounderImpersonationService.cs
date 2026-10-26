@@ -15,6 +15,7 @@ public record ImpersonationContext(string AgentUserId, string? AgentEmail, strin
 public class FounderImpersonationService
 {
     private const string CookieName = "legend.impersonation";
+    public static bool HasRequestedContext(HttpContext context) => context.Request.Cookies.ContainsKey(CookieName);
     private readonly IDataProtector _protector;
     private readonly MasterAppDbContext _db;
     private readonly ILogger<FounderImpersonationService> _logger;

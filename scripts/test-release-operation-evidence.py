@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+import datetime as dt
 import importlib.util
 import json
+import sys
 from pathlib import Path
 import tempfile
 import subprocess
@@ -1011,6 +1013,970 @@ class RetainedRecoveryJournalTests(DurableOperationProtocolTests):
         with self.assertRaisesRegex(ValueError, 'producer/material'):
             self.recovery(recovery_evidence=dict(runId=99, runAttempt=1, originalRun=8,
                                                 applicationRevision='a' * 40))
+
+
+
+class ReplacementRecoveryAdmissionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        replacement_spec = importlib.util.spec_from_file_location(
+            'replacement_recovery_admission',
+            Path(__file__).with_name('recovery-replacement-admission.py'))
+        cls.replacement = importlib.util.module_from_spec(replacement_spec)
+        sys.modules[replacement_spec.name] = cls.replacement
+        replacement_spec.loader.exec_module(cls.replacement)
+        cls.now = dt.datetime(2026, 10, 25, 16, 40, tzinfo=dt.timezone.utc)
+
+    def admission(self, **changes):
+        value = {
+            'schemaVersion': 1, 'phase': 'replacement-admission', 'admissionId': '0' * 64,
+            'target': 'protect', 'originalOperationId': '1' * 64,
+            'applicationRevision': 'a' * 40, 'packageDigest': '2' * 64,
+            'baselineRevision': 'b' * 40, 'expectedHead': 'a' * 40,
+            'controlRevision': 'c' * 40, 'rollbackPackageDigest': '3' * 64,
+            'terminalNonresumableEvidenceDigest': '4' * 64,
+            'serializationFenceEvidenceDigest': '5' * 64, 'noSqlEvidenceDigest': '6' * 64,
+            'rollbackEvidenceDigest': '7' * 64, 'independentReviewDigest': '8' * 64,
+            'contentMode': 'deterministic-full-replacement',
+            'serializationKey': 'legend-approved-release',
+            'observedAtUtc': '2026-10-25T16:39:00Z',
+            'expiresAtUtc': '2026-10-25T16:49:00Z', 'authorizesOneReplacement': True,
+        }
+        value.update(changes)
+        value['admissionId'] = self.replacement.recovery_admission_id(value)
+        return value
+
+    @staticmethod
+    def original_intent():
+        return {'operationId': '1' * 64, 'target': 'protect',
+                'applicationRevision': 'd' * 40, 'packageDigest': '9' * 64,
+                'baseline': 'b' * 40}
+
+    class Store:
+        def __init__(self):
+            import threading
+            self.rows, self.published = {}, []
+            self.lock = threading.Lock()
+            self.fail_claim_after_create = False
+            self.claim_mode = None
+            self.append_mode = None
+            self.claim_calls = 0
+
+        def lookup(self, phase, operation):
+            with self.lock:
+                row = self.rows.get((phase, operation))
+                return None if row is None else json.loads(json.dumps(row))
+
+        def claim(self, name, record):
+            frozen = json.loads(json.dumps(record, sort_keys=True))
+            key = ('intent', record['operationId'])
+            with self.lock:
+                self.claim_calls += 1
+                if key in self.rows:
+                    return {'status': 'existing',
+                            'record': json.loads(json.dumps(self.rows[key]))}
+                self.rows[key] = frozen
+                self.published.append((name, frozen))
+                if self.fail_claim_after_create or self.claim_mode == 'commit-timeout':
+                    raise TimeoutError('claim readback lost')
+                if self.claim_mode == 'malformed':
+                    return {'status': 'created', 'record': None}
+                if self.claim_mode == 'mismatch':
+                    wrong = json.loads(json.dumps(frozen))
+                    wrong['baseline'] = 'e' * 40
+                    return {'status': 'created', 'record': wrong}
+                return {'status': 'created', 'record': json.loads(json.dumps(frozen))}
+
+        def append(self, name, record):
+            frozen = json.loads(json.dumps(record, sort_keys=True))
+            key = (record['phase'], record['operationId'])
+            with self.lock:
+                if self.append_mode == 'no-commit-timeout':
+                    raise TimeoutError('append write unavailable')
+                if key in self.rows and self.rows[key] != frozen:
+                    raise AssertionError('conflicting durable record')
+                self.rows[key] = frozen
+                self.published.append((name, frozen))
+                if self.append_mode == 'commit-timeout':
+                    raise TimeoutError('append readback lost')
+                if self.append_mode == 'malformed':
+                    return {'unexpected': True}
+                if self.append_mode == 'mismatch':
+                    wrong = json.loads(json.dumps(frozen))
+                    wrong['producingAttempt'] = wrong['producingAttempt'] + 1
+                    return {'record': wrong}
+                return {'record': json.loads(json.dumps(frozen))}
+
+    def owner(self, store=None, admission=None, run=30, clock=None):
+        store = store or self.Store()
+        return self.replacement.ReplacementOperationJournal(
+            admission=admission or self.admission(), original_intent=self.original_intent(),
+            lookup=store.lookup, claim=store.claim, append=store.append,
+            package_producer_run=20, producing_run=run, producing_attempt=1,
+            clock=clock or (lambda: self.now)), store
+
+    def test_replacement_operation_is_distinct_and_binds_all_admission_evidence(self):
+        owner, _ = self.owner()
+        changed, _ = self.owner(admission=self.admission(noSqlEvidenceDigest='f' * 64))
+        self.assertNotEqual('1' * 64, owner.operation_id)
+        self.assertNotEqual(owner.operation_id, changed.operation_id)
+
+    def test_freshness_is_rechecked_at_claim_not_only_construction(self):
+        moment = [self.now]
+        owner, store = self.owner(clock=lambda: moment[0])
+        moment[0] = dt.datetime(2026, 10, 25, 16, 50, tzinfo=dt.timezone.utc)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'fresh'):
+            owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        self.assertEqual(0, store.claim_calls)
+
+    def test_expired_consumed_operation_loads_reconcile_only_without_renewed_authority(self):
+        store = self.Store()
+        first, _ = self.owner(store=store)
+        self.assertTrue(first.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1'))
+        expired = dt.datetime(2026, 10, 25, 16, 55, tzinfo=dt.timezone.utc)
+        resumed, _ = self.owner(store=store, admission=first.admission, run=31, clock=lambda: expired)
+        self.assertEqual('reconcile-only', resumed.state().state)
+        self.assertFalse(resumed.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1'))
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+            resumed.submission_correlation()
+
+    def test_preconstructed_journals_share_one_atomic_claim(self):
+        store = self.Store()
+        left, _ = self.owner(store=store)
+        right, _ = self.owner(store=store)
+        self.assertTrue(left.before_submit(['old'], submission_kind='azure_onedeploy_windows_intent_v1'))
+        self.assertFalse(right.before_submit(['old'], submission_kind='azure_onedeploy_windows_intent_v1'))
+        self.assertEqual(2, store.claim_calls)
+        self.assertEqual(1, len([x for x in store.published if x[1]['phase'] == 'intent']))
+        self.assertEqual(left.operation_id, left.submission_correlation()['value'])
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+            right.submission_correlation()
+
+    def test_concurrent_journals_cannot_both_obtain_submission_authority(self):
+        import concurrent.futures
+        import threading
+        store = self.Store()
+        owners = [self.owner(store=store)[0], self.owner(store=store)[0]]
+        barrier = threading.Barrier(2)
+        def claim(owner):
+            barrier.wait()
+            return owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(claim, owners))
+        self.assertEqual([False, True], sorted(results))
+        authority = 0
+        for owner in owners:
+            try:
+                owner.submission_correlation()
+                authority += 1
+            except self.replacement.RecoveryAdmissionError:
+                pass
+        self.assertEqual(1, authority)
+
+    def test_uncertain_claim_write_fails_closed_even_when_intent_committed(self):
+        store = self.Store()
+        store.fail_claim_after_create = True
+        owner, _ = self.owner(store=store)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'uncertain'):
+            owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        self.assertEqual('reconcile-only', owner.state().state)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+            owner.submission_correlation()
+        resumed, _ = self.owner(store=store, admission=owner.admission, run=31)
+        self.assertEqual('reconcile-only', resumed.state().state)
+        self.assertFalse(resumed.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1'))
+
+    def test_provider_observation_must_be_new_and_revokes_submission_authority(self):
+        owner, _ = self.owner()
+        owner.before_submit(['old'], submission_kind='azure_onedeploy_windows_intent_v1')
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'outside the baseline'):
+            owner.record_submission_observation('old')
+        owner.record_submission_observation('new-deployment')
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+            owner.submission_correlation()
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+            owner.record_submission_observation('different-deployment')
+
+    def test_malformed_terminal_success_is_rejected_on_resume(self):
+        owner, store = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        bad = dict(owner.intent, phase='success')
+        store.rows[('success', owner.operation_id)] = bad
+        with self.assertRaises(self.replacement.RecoveryAdmissionError):
+            self.owner(store=store, admission=owner.admission, run=31)
+
+    def test_runtime_provider_and_producer_conflicts_are_rejected_on_resume(self):
+        owner, store = self.owner()
+        owner.before_submit(['old'], submission_kind='azure_onedeploy_windows_intent_v1')
+        submitted = dict(owner.intent, phase='submitted', deploymentId='new')
+        submitted['producingRun'] = owner.intent['producingRun'] + 1
+        store.rows[('submitted', owner.operation_id)] = submitted
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'producer'):
+            self.owner(store=store, admission=owner.admission, run=31)
+        store.rows.pop(('submitted', owner.operation_id))
+        success = dict(owner.intent, phase='success', deploymentIds=['new'],
+            providerTerminalStatus=4, runtimeRevision='e' * 40,
+            liveAcceptanceDigest='a' * 64, contentVerificationDigest='b' * 64,
+            serializationReleaseDigest='c' * 64)
+        store.rows[('success', owner.operation_id)] = success
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'runtime'):
+            self.owner(store=store, admission=owner.admission, run=31)
+        success['runtimeRevision'] = 'a' * 40
+        success['deploymentIds'] = ['old']
+        store.rows[('success', owner.operation_id)] = success
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'new provider'):
+            self.owner(store=store, admission=owner.admission, run=31)
+
+    def test_submitted_and_success_provider_conflict_is_rejected(self):
+        owner, store = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        owner.record_submission_observation('submitted-id')
+        success = dict(owner.intent, phase='success', deploymentIds=['other-id'],
+            providerTerminalStatus=4, runtimeRevision='a' * 40,
+            liveAcceptanceDigest='a' * 64, contentVerificationDigest='b' * 64,
+            serializationReleaseDigest='c' * 64,
+            producingRun=31, producingAttempt=1)
+        store.rows[('success', owner.operation_id)] = success
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'conflicts'):
+            self.owner(store=store, admission=owner.admission, run=31)
+
+    def test_ambiguous_result_revokes_authority_and_can_only_resolve_append_only(self):
+        owner, store = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        owner.record_ambiguous(ambiguity_evidence_digest='a' * 64)
+        ambiguity = json.loads(json.dumps(owner.ambiguous))
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+            owner.submission_correlation()
+        resolution = owner.resolve_ambiguous_success(
+            deployment_id='new', runtime_revision='a' * 40,
+            live_acceptance_digest='b' * 64, content_verification_digest='c' * 64,
+            serialization_release_digest='d' * 64, reconciliation_evidence_digest='e' * 64)
+        self.assertEqual('terminal-success', owner.state().state)
+        self.assertEqual(ambiguity, store.rows[('ambiguous', owner.operation_id)])
+        self.assertEqual(self.replacement._record_digest(ambiguity), resolution['ambiguityRecordDigest'])
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'Conflicting'):
+            owner.resolve_ambiguous_failure(
+                failure_code='provider-terminal-failure',
+                terminal_evidence_digest='f' * 64,
+                serialization_release_digest='1' * 64,
+                reconciliation_evidence_digest='2' * 64)
+
+    def test_terminal_failure_revokes_authority_and_rejects_later_submission(self):
+        owner, _ = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        owner.record_terminal_failure(
+            failure_code='provider-terminal-failure',
+            terminal_evidence_digest='e' * 64, serialization_release_digest='f' * 64)
+        self.assertEqual('terminal-failure', owner.state().state)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+            owner.submission_correlation()
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+            owner.record_submission_observation('new')
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'terminal'):
+            owner.record_success(
+                deployment_id='new', runtime_revision='a' * 40,
+                live_acceptance_digest='a' * 64, content_verification_digest='b' * 64,
+                serialization_release_digest='c' * 64)
+
+    def test_repeated_authority_read_is_only_valid_before_any_later_phase(self):
+        owner, _ = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        first = owner.submission_correlation()
+        second = owner.submission_correlation()
+        self.assertEqual(first, second)
+        owner.record_ambiguous(ambiguity_evidence_digest='a' * 64)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+            owner.submission_correlation()
+
+    def test_success_commit_before_timeout_poison_blocks_opposite_terminal_until_reload(self):
+        owner, store = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        store.append_mode = 'commit-timeout'
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+            owner.record_success(
+                deployment_id='new', runtime_revision='a' * 40,
+                live_acceptance_digest='a' * 64, content_verification_digest='b' * 64,
+                serialization_release_digest='c' * 64)
+        self.assertIn(('success', owner.operation_id), store.rows)
+        self.assertEqual('reconcile-only', owner.state().state)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+            owner.record_terminal_failure(
+                failure_code='provider-terminal-failure',
+                terminal_evidence_digest='d' * 64, serialization_release_digest='e' * 64)
+        store.append_mode = None
+        resumed, _ = self.owner(store=store, admission=owner.admission, run=31)
+        self.assertEqual('terminal-success', resumed.state().state)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'cannot override'):
+            resumed.record_terminal_failure(
+                failure_code='provider-terminal-failure',
+                terminal_evidence_digest='d' * 64, serialization_release_digest='e' * 64)
+
+    def test_no_commit_timeout_poison_requires_reload_then_allows_same_evidence_append(self):
+        owner, store = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        store.append_mode = 'no-commit-timeout'
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+            owner.record_success(
+                deployment_id='new', runtime_revision='a' * 40,
+                live_acceptance_digest='a' * 64, content_verification_digest='b' * 64,
+                serialization_release_digest='c' * 64)
+        self.assertNotIn(('success', owner.operation_id), store.rows)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+            owner.record_ambiguous(ambiguity_evidence_digest='d' * 64)
+        store.append_mode = None
+        resumed, _ = self.owner(store=store, admission=owner.admission, run=31)
+        success = resumed.record_success(
+            deployment_id='new', runtime_revision='a' * 40,
+            live_acceptance_digest='a' * 64, content_verification_digest='b' * 64,
+            serialization_release_digest='c' * 64)
+        self.assertEqual(['new'], success['deploymentIds'])
+        self.assertEqual('terminal-success', resumed.state().state)
+
+    def test_malformed_append_readback_poison_blocks_all_later_mutation(self):
+        owner, store = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        store.append_mode = 'malformed'
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+            owner.record_ambiguous(ambiguity_evidence_digest='a' * 64)
+        self.assertIn(('ambiguous', owner.operation_id), store.rows)
+        for action in (
+            lambda: owner.record_terminal_failure(
+                failure_code='provider-terminal-failure',
+                terminal_evidence_digest='b' * 64, serialization_release_digest='c' * 64),
+            lambda: owner.submission_correlation(),
+        ):
+            with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+                action()
+        store.append_mode = None
+        resumed, _ = self.owner(store=store, admission=owner.admission, run=31)
+        self.assertEqual('reconcile-only', resumed.state().state)
+
+    def test_mismatched_append_readback_poison_then_valid_reload_uses_durable_record(self):
+        owner, store = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        store.append_mode = 'mismatch'
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+            owner.record_terminal_failure(
+                failure_code='provider-terminal-failure',
+                terminal_evidence_digest='a' * 64, serialization_release_digest='b' * 64)
+        self.assertIn(('failure', owner.operation_id), store.rows)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+            owner.record_success(
+                deployment_id='new', runtime_revision='a' * 40,
+                live_acceptance_digest='c' * 64, content_verification_digest='d' * 64,
+                serialization_release_digest='e' * 64)
+        store.append_mode = None
+        resumed, _ = self.owner(store=store, admission=owner.admission, run=31)
+        self.assertEqual('terminal-failure', resumed.state().state)
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'cannot override'):
+            resumed.record_success(
+                deployment_id='new', runtime_revision='a' * 40,
+                live_acceptance_digest='c' * 64, content_verification_digest='d' * 64,
+                serialization_release_digest='e' * 64)
+
+    def test_malformed_and_mismatched_claim_readback_poison_instance(self):
+        for mode in ('malformed', 'mismatch'):
+            with self.subTest(mode=mode):
+                store = self.Store()
+                store.claim_mode = mode
+                owner, _ = self.owner(store=store)
+                with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+                    owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+                self.assertEqual('reconcile-only', owner.state().state)
+                with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+                    owner.record_ambiguous(ambiguity_evidence_digest='a' * 64)
+                with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+                    owner.submission_correlation()
+
+    def test_nonstring_claim_status_poison_requires_reload_and_blocks_mutators(self):
+        for bad_status in ([], {}):
+            with self.subTest(status=type(bad_status).__name__):
+                store = self.Store()
+                original_claim = store.claim
+                def claim(name, record, status=bad_status):
+                    created = original_claim(name, record)
+                    self.assertEqual('created', created['status'])
+                    return {'status': status, 'record': created['record']}
+                store.claim = claim
+                owner, _ = self.owner(store=store)
+                with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+                    owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+                self.assertEqual('reconcile-only', owner.state().state)
+                self.assertIn(('intent', owner.operation_id), store.rows)
+                for action in (
+                    lambda: owner.submission_correlation(),
+                    lambda: owner.record_ambiguous(ambiguity_evidence_digest='a' * 64),
+                    lambda: owner.record_terminal_failure(
+                        failure_code='provider-terminal-failure',
+                        terminal_evidence_digest='b' * 64,
+                        serialization_release_digest='c' * 64),
+                ):
+                    with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'reload'):
+                        action()
+                resumed, _ = self.owner(store=store, admission=owner.admission, run=31)
+                self.assertEqual('reconcile-only', resumed.state().state)
+                self.assertFalse(resumed.before_submit(
+                    [], submission_kind='azure_onedeploy_windows_intent_v1'))
+                with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'authority'):
+                    resumed.submission_correlation()
+
+    def test_contradictory_durable_records_are_rejected_on_fresh_reload(self):
+        owner, store = self.owner()
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        store.append_mode = 'commit-timeout'
+        with self.assertRaises(self.replacement.RecoveryAdmissionError):
+            owner.record_success(
+                deployment_id='new', runtime_revision='a' * 40,
+                live_acceptance_digest='a' * 64, content_verification_digest='b' * 64,
+                serialization_release_digest='c' * 64)
+        store.append_mode = None
+        failure = dict(owner.intent, phase='failure',
+            failureCode='provider-terminal-failure',
+            terminalEvidenceDigest='d' * 64, serializationReleaseDigest='e' * 64,
+            replayAuthorized=False, producingRun=31, producingAttempt=1)
+        store.rows[('failure', owner.operation_id)] = failure
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'Competing direct terminal'):
+            self.owner(store=store, admission=owner.admission, run=31)
+
+    def test_admission_mutation_invalidates_identity(self):
+        value = self.admission()
+        value['rollbackPackageDigest'] = 'f' * 64
+        with self.assertRaisesRegex(self.replacement.RecoveryAdmissionError, 'identity mismatch'):
+            self.owner(admission=value)
+
+    def test_original_ambiguous_intent_is_preserved_not_reclassified(self):
+        original = self.original_intent()
+        before = json.dumps(original, sort_keys=True)
+        store = self.Store()
+        owner = self.replacement.ReplacementOperationJournal(
+            admission=self.admission(), original_intent=original, lookup=store.lookup,
+            claim=store.claim, append=store.append, package_producer_run=20,
+            producing_run=30, producing_attempt=1, clock=lambda: self.now)
+        owner.before_submit([], submission_kind='azure_onedeploy_windows_intent_v1')
+        self.assertEqual(before, json.dumps(original, sort_keys=True))
+        self.assertEqual('1' * 64, owner.intent['replacementOfOperationId'])
+
+
+
+class CanonicalReplacementAdapterTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        adapter_spec = importlib.util.spec_from_file_location(
+            'replacement_recovery_adapter',
+            Path(__file__).with_name('release-artifacts') / 'recovery-replacement-adapter.py')
+        cls.adapter = importlib.util.module_from_spec(adapter_spec)
+        sys.modules[adapter_spec.name] = cls.adapter
+        adapter_spec.loader.exec_module(cls.adapter)
+        cls.now = dt.datetime(2026, 10, 25, 18, 30, tzinfo=dt.timezone.utc)
+
+    def admission(self):
+        return {
+            'schemaVersion': 1, 'phase': 'replacement-admission', 'admissionId': '0' * 64,
+            'target': 'protect', 'originalOperationId': '1' * 64,
+            'applicationRevision': 'a' * 40, 'packageDigest': '2' * 64,
+            'baselineRevision': 'b' * 40, 'expectedHead': 'a' * 40,
+            'controlRevision': 'c' * 40, 'rollbackPackageDigest': '3' * 64,
+            'terminalNonresumableEvidenceDigest': '0' * 64,
+            'serializationFenceEvidenceDigest': '0' * 64, 'noSqlEvidenceDigest': '0' * 64,
+            'rollbackEvidenceDigest': '0' * 64, 'independentReviewDigest': '0' * 64,
+            'contentMode': 'deterministic-full-replacement',
+            'serializationKey': 'legend-approved-release',
+            'observedAtUtc': '2026-10-25T18:30:00Z',
+            'expiresAtUtc': '2026-10-25T18:39:00Z',
+            'authorizesOneReplacement': True,
+        }
+
+    @staticmethod
+    def original_intent():
+        return {'operationId': '1' * 64, 'target': 'protect',
+                'applicationRevision': 'd' * 40, 'packageDigest': '9' * 64,
+                'baseline': 'b' * 40, 'packageProducerRun': 20,
+                'producingRun': 20, 'producingAttempt': 1,
+                'baselineDeploymentIds': ['old'], 'phase': 'intent',
+                'schemaVersion': 1,
+                'submissionContract': {'kind': 'azure_onedeploy_windows_intent_v1',
+                                       'value': '1' * 64}}
+
+    class Fence:
+        def __init__(self, fail_on=None, run_id=30):
+            self.calls = 0; self.fail_on = fail_on; self.run_id = run_id
+            self.repository = 'MYLEGND/masterapp'; self.token = 'synthetic'
+        def verify(self):
+            self.calls += 1
+            if self.fail_on is not None and self.calls >= self.fail_on:
+                raise RuntimeError('synthetic fence loss')
+            return {'runId': self.run_id, 'runAttempt': 1, 'revision': 'c' * 40,
+                    'sourceDigest': 'd' * 64, 'group': 'legend-approved-release'}
+
+    class Store:
+        def __init__(self, fail_ambiguity=False):
+            self.rows = {}; self.claims = 0; self.fail_ambiguity = fail_ambiguity
+        def lookup(self, phase, operation):
+            value = self.rows.get((phase, operation))
+            return None if value is None else json.loads(json.dumps(value))
+        def claim(self, name, record):
+            self.claims += 1; key = ('intent', record['operationId'])
+            if key in self.rows:
+                return {'status': 'existing', 'record': json.loads(json.dumps(self.rows[key]))}
+            frozen = json.loads(json.dumps(record)); self.rows[key] = frozen
+            return {'status': 'created', 'record': frozen}
+        def append(self, name, record):
+            if self.fail_ambiguity and record['phase'] == 'ambiguous':
+                raise TimeoutError('synthetic ambiguity append loss')
+            frozen = json.loads(json.dumps(record))
+            self.rows[(record['phase'], record['operationId'])] = frozen
+            return {'record': frozen}
+
+    def evidence_entries(self, admission=None):
+        admission = admission or self.admission()
+        provenance = lambda run, artifact, source='c' * 40: {
+            'runId': run, 'runAttempt': 1, 'jobId': run * 10,
+            'stepName': 'Produce exact recovery evidence', 'sourceRevision': source,
+            'artifactId': artifact, 'artifactDigest': 'sha256:' + format(artifact, '064x')
+        }
+        terminal = {
+            'schemaVersion': 1, 'phase': 'terminal-nonresumable',
+            'target': 'protect', 'originalOperationId': admission['originalOperationId'],
+            'candidateRevision': admission['applicationRevision'],
+            'controlRevision': admission['controlRevision'], 'terminalNonresumable': True,
+            'baselineDeploymentIds': ['old'], 'observedAtUtc': '2026-10-25T18:29:00Z',
+            'producingRun': 1, 'producingAttempt': 1,
+        }
+        no_sql = {
+            'schemaVersion': 1, 'phase': 'observation', 'kind': 'current-schema-no-write',
+            'candidate': admission['applicationRevision'], 'pendingCount': 0,
+            'mutationActivity': 'settled', 'sqlExecutionAuthorized': False,
+            'historicalExecution': 'proven-completion',
+            'databaseIdentity': '4' * 64, 'schemaIdentity': '5' * 64,
+            'baselineIdentity': '6' * 64, 'bundleDigest': '7' * 64,
+            'observedUtc': '2026-10-25T18:29:10Z',
+            'producingRun': 2, 'producingAttempt': 1,
+        }
+        rollback = {
+            'schemaVersion': 1, 'phase': 'rollback-readiness', 'target': 'protect',
+            'baselineRevision': admission['baselineRevision'],
+            'packageDigest': admission['rollbackPackageDigest'],
+            'recoverable': True, 'packageAvailable': True,
+            'packageArtifactId': 99, 'packageArtifactDigest': 'sha256:' + '8' * 64,
+            'observedAtUtc': '2026-10-25T18:29:20Z',
+            'producingRun': 3, 'producingAttempt': 1,
+        }
+        entries = {
+            'terminalNonresumable': {'record': terminal, 'provenance': provenance(1, 11)},
+            'noSql': {'record': no_sql, 'provenance': provenance(2, 12)},
+            'rollback': {'record': rollback, 'provenance': provenance(3, 13)},
+        }
+        evidence_bundle = self.adapter._canonical_digest(entries)
+        review = {
+            'schemaVersion': 1, 'phase': 'independent-review', 'accepted': True,
+            'target': 'protect', 'originalOperationId': admission['originalOperationId'],
+            'applicationRevision': admission['applicationRevision'],
+            'packageDigest': admission['packageDigest'], 'controlRevision': admission['controlRevision'],
+            'evidenceBundleDigest': evidence_bundle,
+            'reviewerIdentity': '/root/review_protect_recovery_admission',
+            'observedAtUtc': '2026-10-25T18:29:30Z',
+            'producingRun': 4, 'producingAttempt': 1,
+        }
+        entries['independentReview'] = {
+            'record': review, 'provenance': provenance(4, 14, admission['controlRevision'])}
+        admission.update(
+            terminalNonresumableEvidenceDigest=self.adapter._canonical_digest(terminal),
+            noSqlEvidenceDigest=self.adapter._canonical_digest(no_sql),
+            rollbackEvidenceDigest=self.adapter._canonical_digest(rollback),
+            independentReviewDigest=self.adapter._canonical_digest(review))
+        return entries
+
+    def authenticated(self, admission):
+        entries = self.evidence_entries(admission)
+        verification = self.adapter._validate_bundle(admission, entries)
+        return self.adapter.AuthenticatedRecoveryEvidence(
+            terminal_nonresumable=dict(entries['terminalNonresumable']['record']),
+            no_sql=dict(entries['noSql']['record']),
+            rollback=dict(entries['rollback']['record']),
+            independent_review=dict(entries['independentReview']['record']),
+            entries=json.loads(json.dumps(entries)), verification_digest=verification,
+            _factory_token=self.adapter._VERIFIED_FACTORY_TOKEN)
+
+    def owner(self, *, fence=None, store=None):
+        admission = self.admission(); fence = fence or self.Fence(); store = store or self.Store()
+        admission['serializationFenceEvidenceDigest'] = self.adapter._canonical_digest(fence.verify())
+        evidence = self.authenticated(admission)
+        admission['admissionId'] = self.adapter.PRIMITIVE.recovery_admission_id(admission)
+        owner = self.adapter.CanonicalReplacementAdapter(
+            admission=admission, original_intent=self.original_intent(),
+            authenticated_evidence=evidence, fence=fence, store=store,
+            package_producer_run=20, producing_run=30, producing_attempt=1,
+            clock=lambda: self.now)
+        return owner, fence, store
+
+    def test_authenticated_bundle_cannot_be_constructed_without_verified_factory(self):
+        admission = self.admission(); entries = self.evidence_entries(admission)
+        with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'verified factory'):
+            self.adapter.AuthenticatedRecoveryEvidence(
+                terminal_nonresumable=entries['terminalNonresumable']['record'],
+                no_sql=entries['noSql']['record'], rollback=entries['rollback']['record'],
+                independent_review=entries['independentReview']['record'],
+                entries=entries, verification_digest='0' * 64, _factory_token=object())
+
+    def test_expiry_after_claim_or_final_fence_never_enters_provider(self):
+        for boundary in ('claim', 'final-fence'):
+            with self.subTest(boundary=boundary):
+                owner, fence, store = self.owner()
+                now = [self.now]
+                owner.journal.clock = lambda: now[0]
+                expired = self.now + dt.timedelta(minutes=10)
+                if boundary == 'claim':
+                    claim = store.claim
+                    def delayed_claim(name, record):
+                        result = claim(name, record)
+                        now[0] = expired
+                        return result
+                    owner.journal.claim = delayed_claim
+                else:
+                    verify = fence.verify
+                    calls = [0]
+                    def delayed_fence():
+                        result = verify()
+                        calls[0] += 1
+                        if calls[0] == 2:
+                            now[0] = expired
+                        return result
+                    fence.verify = delayed_fence
+                provider_calls = []
+                with self.assertRaisesRegex(self.adapter.PRIMITIVE.RecoveryAdmissionError, 'fresh'):
+                    owner.call_provider_once(lambda value: provider_calls.append(value) or 'new',
+                        baseline_deployment_ids=['old'], ambiguity_evidence_digest='a' * 64)
+                self.assertEqual([], provider_calls)
+                self.assertFalse(owner.provider_call_entered)
+                self.assertEqual(1, store.claims)
+                self.assertIsNotNone(store.lookup('intent', owner.journal.operation_id))
+                reloaded, _, _ = self.owner(store=store)
+                with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'consumed'):
+                    reloaded.call_provider_once(lambda value: provider_calls.append(value) or 'new',
+                        baseline_deployment_ids=['old'], ambiguity_evidence_digest='a' * 64)
+                self.assertEqual([], provider_calls)
+                self.assertEqual(1, store.claims)
+
+    def test_bundle_binds_candidate_fresh_no_sql_baseline_bytes_and_review(self):
+        admission = self.admission(); entries = self.evidence_entries(admission)
+        self.adapter._validate_bundle(admission, entries)
+        for key, mutate, message in [
+            ('noSql', lambda row: row.update(candidate='e' * 40), 'no-SQL'),
+            ('rollback', lambda row: row.update(baselineRevision='e' * 40), 'baseline'),
+            ('terminalNonresumable', lambda row: row.update(observedAtUtc='2026-10-25T17:00:00Z'), 'stale'),
+        ]:
+            broken = json.loads(json.dumps(entries)); mutate(broken[key]['record'])
+            with self.subTest(key=key), self.assertRaises(self.adapter.RecoveryAdapterError):
+                self.adapter._validate_bundle(admission, broken)
+
+    def test_review_binds_complete_evidence_provenance_and_control_revision(self):
+        admission = self.admission(); entries = self.evidence_entries(admission)
+        entries['terminalNonresumable']['provenance']['jobId'] += 1
+        with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'review'):
+            self.adapter._validate_bundle(admission, entries)
+        entries = self.evidence_entries(admission)
+        entries['independentReview']['provenance']['sourceRevision'] = 'e' * 40
+        with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'control revision'):
+            self.adapter._validate_bundle(admission, entries)
+
+    def test_structural_mutex_rejects_inert_or_duplicate_yaml_matches(self):
+        good = 'name: x\nconcurrency:\n  group: legend-approved-release\n  cancel-in-progress: false\njobs: {}\n'
+        self.adapter._canonical_mutex_source(good)
+        for bad in [
+            'name: x\n# concurrency:\n#   group: legend-approved-release\njobs: {}\n',
+            good + '\nconcurrency:\n  group: legend-approved-release\n  cancel-in-progress: false\n',
+            'name: x\njobs:\n  fake:\n    env:\n      concurrency: legend-approved-release\n',
+        ]:
+            with self.subTest(bad=bad), self.assertRaises(self.adapter.RecoveryAdapterError):
+                self.adapter._canonical_mutex_source(bad)
+
+    def test_consumed_record_mutation_before_construction_rejects(self):
+        for name in ('terminal_nonresumable', 'no_sql', 'rollback', 'independent_review'):
+            with self.subTest(record=name):
+                admission = self.admission(); fence = self.Fence(); store = self.Store()
+                admission['serializationFenceEvidenceDigest'] = self.adapter._canonical_digest(fence.verify())
+                evidence = self.authenticated(admission)
+                getattr(evidence, name)['unauthenticated'] = True
+                admission['admissionId'] = self.adapter.PRIMITIVE.recovery_admission_id(admission)
+                with self.assertRaises(self.adapter.RecoveryAdapterError):
+                    self.adapter.CanonicalReplacementAdapter(
+                        admission=admission, original_intent=self.original_intent(),
+                        authenticated_evidence=evidence, fence=fence, store=store,
+                        package_producer_run=20, producing_run=30, producing_attempt=1,
+                        clock=lambda: self.now)
+                self.assertEqual(0, store.claims); self.assertEqual({}, store.rows)
+
+    def test_consumed_record_mutation_after_construction_has_zero_effects(self):
+        for name in ('terminal_nonresumable', 'no_sql', 'rollback', 'independent_review'):
+            with self.subTest(record=name):
+                owner, _, store = self.owner(); calls = []
+                getattr(owner.evidence, name)['unauthenticated'] = True
+                with self.assertRaises(self.adapter.RecoveryAdapterError):
+                    owner.call_provider_once(lambda _: calls.append(True) or 'new',
+                        baseline_deployment_ids=['old'], ambiguity_evidence_digest='e' * 64)
+                self.assertEqual([], calls); self.assertFalse(owner.provider_call_entered)
+                self.assertEqual(0, store.claims); self.assertEqual({}, store.rows)
+
+    def test_tampered_nested_baseline_cannot_be_consumed_or_restored_during_fence(self):
+        for restore in (False, True):
+            with self.subTest(restore=restore):
+                owner, fence, store = self.owner(); calls = []
+                owner.evidence.terminal_nonresumable['baselineDeploymentIds'][:] = ['not-authenticated']
+                original_verify = fence.verify
+                def verify():
+                    if restore:
+                        owner.evidence.terminal_nonresumable['baselineDeploymentIds'][:] = ['old']
+                    return original_verify()
+                fence.verify = verify
+                with self.assertRaises(self.adapter.RecoveryAdapterError):
+                    owner.call_provider_once(lambda _: calls.append(True) or 'new',
+                        baseline_deployment_ids=['not-authenticated'], ambiguity_evidence_digest='e' * 64)
+                self.assertEqual([], calls); self.assertFalse(owner.provider_call_entered)
+                self.assertEqual(0, store.claims); self.assertEqual({}, store.rows)
+
+    def test_evidence_mutation_after_claim_cannot_enter_provider(self):
+        owner, fence, store = self.owner(); calls = []; original_verify = fence.verify
+        def verify():
+            result = original_verify()
+            if store.claims:
+                owner.evidence.terminal_nonresumable['baselineDeploymentIds'][:] = ['not-authenticated']
+            return result
+        fence.verify = verify
+        with self.assertRaises(self.adapter.RecoveryAdapterError):
+            owner.call_provider_once(lambda _: calls.append(True) or 'new',
+                baseline_deployment_ids=['old'], ambiguity_evidence_digest='e' * 64)
+        self.assertEqual([], calls); self.assertFalse(owner.provider_call_entered)
+        self.assertEqual(1, store.claims)
+        self.assertIn(('intent', owner.journal.operation_id), store.rows)
+        self.assertEqual('reconcile-only', owner.journal.state().state)
+
+    def test_exactly_one_fake_provider_call_and_reconcile_only_after_submission(self):
+        owner, fence, store = self.owner()
+        calls = []
+        result = owner.call_provider_once(
+            lambda correlation: calls.append(dict(correlation)) or 'new-deployment',
+            baseline_deployment_ids=['old'], ambiguity_evidence_digest='e' * 64)
+        self.assertEqual('new-deployment', result); self.assertEqual(1, len(calls))
+        self.assertEqual('reconcile-only', owner.journal.state().state)
+        self.assertIn(('submitted', owner.journal.operation_id), store.rows)
+        with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'already consumed'):
+            owner.call_provider_once(lambda _: self.fail('provider called twice'),
+                baseline_deployment_ids=['old'], ambiguity_evidence_digest='f' * 64)
+
+    def test_fence_loss_before_claim_makes_zero_provider_calls_and_zero_intents(self):
+        fence = self.Fence(fail_on=3)  # evidence digest + constructor verify + call pre-claim
+        owner, _, store = self.owner(fence=fence)
+        calls = []
+        with self.assertRaisesRegex(RuntimeError, 'fence loss'):
+            owner.call_provider_once(lambda _: calls.append(1),
+                baseline_deployment_ids=['old'], ambiguity_evidence_digest='e' * 64)
+        self.assertEqual([], calls); self.assertEqual({}, store.rows)
+
+    def test_fence_loss_immediately_before_provider_leaves_durable_intent_no_callback(self):
+        owner, fence, store = self.owner()
+        original = fence.verify; count = [0]
+        def verify():
+            count[0] += 1
+            if count[0] >= 2: raise RuntimeError('synthetic fence loss')
+            return original()
+        fence.verify = verify
+        # Reset threshold accounting after construction.
+        count[0] = 0
+        calls = []
+        with self.assertRaisesRegex(RuntimeError, 'fence loss'):
+            owner.call_provider_once(lambda _: calls.append(1),
+                baseline_deployment_ids=['old'], ambiguity_evidence_digest='e' * 64)
+        self.assertEqual([], calls)
+        self.assertIn(('intent', owner.journal.operation_id), store.rows)
+        self.assertEqual('reconcile-only', owner.journal.state().state)
+
+    def test_fence_loss_after_provider_calls_once_and_ambiguity_save_failure_never_replays(self):
+        owner, fence, store = self.owner(store=self.Store(fail_ambiguity=True))
+        original = fence.verify; checks = [0]; calls = [0]
+        def verify():
+            checks[0] += 1
+            if checks[0] >= 3: raise RuntimeError('synthetic fence loss')
+            return original()
+        fence.verify = verify; checks[0] = 0
+        def provider(_): calls[0] += 1; return 'new-deployment'
+        with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'ambiguity append'):
+            owner.call_provider_once(provider, baseline_deployment_ids=['old'],
+                                     ambiguity_evidence_digest='e' * 64)
+        self.assertEqual(1, calls[0])
+        self.assertIn(('intent', owner.journal.operation_id), store.rows)
+        self.assertNotIn(('ambiguous', owner.journal.operation_id), store.rows)
+        with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'already consumed'):
+            owner.call_provider_once(provider, baseline_deployment_ids=['old'],
+                                     ambiguity_evidence_digest='f' * 64)
+        self.assertEqual(1, calls[0])
+
+    def test_provider_exception_with_ambiguity_append_failure_still_has_one_call_and_intent(self):
+        store = self.Store(fail_ambiguity=True); owner, _, store = self.owner(store=store)
+        calls = [0]
+        def provider(_): calls[0] += 1; raise TimeoutError('synthetic provider timeout')
+        with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'ambiguity append'):
+            owner.call_provider_once(provider, baseline_deployment_ids=['old'],
+                                     ambiguity_evidence_digest='e' * 64)
+        self.assertEqual(1, calls[0]); self.assertIn(('intent', owner.journal.operation_id), store.rows)
+        self.assertNotIn(('ambiguous', owner.journal.operation_id), store.rows)
+
+    def test_global_store_rejects_incomplete_inventory_before_run_scoped_claim(self):
+        from types import SimpleNamespace
+        fence = self.Fence(); fence_digest = self.adapter._canonical_digest(fence.verify())
+        calls = [0]
+        authority = SimpleNamespace(api_get=lambda *args: {'total_count': 1, 'artifacts': []})
+        evidence = SimpleNamespace(claim_record=lambda *args: calls.__setitem__(0, calls[0] + 1))
+        store = self.adapter.CanonicalReplacementStore(
+            fence=fence, expected_fence_digest=fence_digest,
+            authority=authority, evidence_module=evidence, repository=fence.repository, token=fence.token)
+        with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'incomplete'):
+            store.claim('ignored', {'operationId': '1' * 64})
+        self.assertEqual(0, calls[0])
+
+    def test_global_store_cross_run_duplicate_is_existing_without_second_claim(self):
+        from types import SimpleNamespace
+        admission = self.admission(); admission['controlRevision'] = 'c' * 40
+        operation = 'f' * 64
+        record = {
+            'schemaVersion': 1, 'phase': 'intent', 'operationId': operation, 'target': 'protect',
+            'applicationRevision': 'a' * 40, 'packageDigest': '2' * 64, 'baseline': 'b' * 40,
+            'packageProducerRun': 20, 'producingRun': 30, 'producingAttempt': 1,
+            'baselineDeploymentIds': [], 'replacementOfOperationId': '1' * 64,
+            'recoveryAdmissionId': '9' * 64, 'recoveryAdmission': admission,
+            'submissionContract': {'kind': 'azure_onedeploy_windows_intent_v1', 'value': operation},
+        }
+        name = self.adapter._artifact_name('intent', operation)
+        artifact = {'id': 99, 'name': name, 'digest': 'sha256:' + 'a' * 64,
+                    'expired': False, 'workflow_run': {'id': 30}}
+        class Authority:
+            def api_get(self, repo, path, token):
+                if path.startswith('actions/artifacts?name='): return {'total_count': 1, 'artifacts': [artifact]}
+                if path == 'actions/runs/30': return {'path': self_path, 'head_sha': 'c' * 40,
+                    'head_repository': {'full_name': repo}}
+                raise AssertionError(path)
+            def _release_history_json(self, *args, **kwargs): return json.loads(json.dumps(record))
+        self_path = self.adapter._FAST_TRACK_PATH
+        claims = [0]
+        evidence = SimpleNamespace(claim_record=lambda *args: claims.__setitem__(0, claims[0] + 1))
+        fence = self.Fence(run_id=31); fence_digest = self.adapter._canonical_digest(fence.verify())
+        store = self.adapter.CanonicalReplacementStore(
+            fence=fence, expected_fence_digest=fence_digest, authority=Authority(),
+            evidence_module=evidence, repository=fence.repository, token=fence.token)
+        result = store.claim('ignored', record)
+        self.assertEqual('existing', result['status']); self.assertEqual(0, claims[0])
+
+    def test_global_store_same_run_rerun_and_cross_run_duplicates_never_claim_twice(self):
+        from types import SimpleNamespace
+        admission = self.admission(); operation = 'f' * 64
+        record = {
+            'schemaVersion': 1, 'phase': 'intent', 'operationId': operation, 'target': 'protect',
+            'applicationRevision': 'a' * 40, 'packageDigest': '2' * 64, 'baseline': 'b' * 40,
+            'packageProducerRun': 20, 'producingRun': 30, 'producingAttempt': 1,
+            'baselineDeploymentIds': [], 'replacementOfOperationId': '1' * 64,
+            'recoveryAdmissionId': '9' * 64, 'recoveryAdmission': admission,
+            'submissionContract': {'kind': 'azure_onedeploy_windows_intent_v1', 'value': operation},
+        }
+        name = self.adapter._artifact_name('intent', operation)
+        artifact = {'id': 99, 'name': name, 'digest': 'sha256:' + 'a' * 64,
+                    'expired': False, 'workflow_run': {'id': 30}}
+        class Authority:
+            def api_get(self, repo, path, token):
+                if path.startswith('actions/artifacts?name='): return {'total_count': 1, 'artifacts': [artifact]}
+                if path == 'actions/runs/30': return {'path': self.adapter_path, 'head_sha': 'c' * 40,
+                    'head_repository': {'full_name': repo}}
+                raise AssertionError(path)
+            def _release_history_json(self, *args, **kwargs): return json.loads(json.dumps(record))
+        authority = Authority(); authority.adapter_path = self.adapter._FAST_TRACK_PATH
+        claims = [0]
+        evidence = SimpleNamespace(claim_record=lambda *args: claims.__setitem__(0, claims[0] + 1))
+        for run_id, attempt in ((30, 1), (30, 2), (31, 1)):
+            with self.subTest(run_id=run_id, attempt=attempt):
+                class Fence:
+                    repository = 'MYLEGND/masterapp'; token = 'synthetic'
+                    def verify(self):
+                        return {'runId': run_id, 'runAttempt': attempt, 'revision': 'c' * 40,
+                                'sourceDigest': 'd' * 64, 'group': 'legend-approved-release'}
+                fence = Fence(); digest = self.adapter._canonical_digest(fence.verify())
+                store = self.adapter.CanonicalReplacementStore(
+                    fence=fence, expected_fence_digest=digest, authority=authority,
+                    evidence_module=evidence, repository=fence.repository, token=fence.token)
+                self.assertEqual('existing', store.claim('ignored', record)['status'])
+        self.assertEqual(0, claims[0])
+
+    def test_concrete_store_fence_loss_after_provider_keeps_global_intent_and_no_ambiguity_claim(self):
+        from types import SimpleNamespace
+        admission = self.admission(); fence = self.Fence()
+        admission['serializationFenceEvidenceDigest'] = self.adapter._canonical_digest(fence.verify())
+        evidence_bundle = self.authenticated(admission)
+        admission['admissionId'] = self.adapter.PRIMITIVE.recovery_admission_id(admission)
+        artifacts = {}; records = {}; next_id = [100]
+        class Authority:
+            def api_get(self, repo, path, token):
+                if path.startswith('actions/artifacts?name='):
+                    import urllib.parse
+                    name = urllib.parse.unquote(path.split('name=', 1)[1].split('&', 1)[0])
+                    rows = [row for row in artifacts.values() if row['name'] == name]
+                    return {'total_count': len(rows), 'artifacts': rows}
+                if path.startswith('actions/runs/'):
+                    run_id = int(path.rsplit('/', 1)[1])
+                    return {'path': self_path, 'head_sha': 'c' * 40,
+                            'run_attempt': 1, 'head_repository': {'full_name': repo}}
+                raise AssertionError(path)
+            def _release_history_json(self, repo, run_id, artifact, filename, **kwargs):
+                return json.loads(json.dumps(records[artifact['id']]))
+        self_path = self.adapter._FAST_TRACK_PATH
+        authority = Authority()
+        class Evidence:
+            def claim_record(self, name, record):
+                next_id[0] += 1; artifact_id = next_id[0]
+                artifacts[artifact_id] = {'id': artifact_id, 'name': name,
+                    'digest': 'sha256:' + format(artifact_id, '064x'), 'expired': False,
+                    'workflow_run': {'id': record['producingRun']}}
+                records[artifact_id] = json.loads(json.dumps(record))
+                return {'status': 'created', 'record': json.loads(json.dumps(record))}
+            def publish_record(self, name, record):
+                self.fail('append must be fenced before transport')
+        evidence_module = Evidence(); evidence_module.fail = self.fail
+        store = self.adapter.CanonicalReplacementStore(
+            fence=fence, expected_fence_digest=admission['serializationFenceEvidenceDigest'],
+            authority=authority, evidence_module=evidence_module,
+            repository=fence.repository, token=fence.token)
+        owner = self.adapter.CanonicalReplacementAdapter(
+            admission=admission, original_intent=self.original_intent(),
+            authenticated_evidence=evidence_bundle, fence=fence, store=store,
+            package_producer_run=20, producing_run=30, producing_attempt=1,
+            clock=lambda: self.now)
+        real_verify = fence.verify; checks = [0]
+        def verify():
+            checks[0] += 1
+            if checks[0] >= 7: raise RuntimeError('synthetic concrete fence loss')
+            return real_verify()
+        fence.verify = verify; checks[0] = 0
+        calls = [0]
+        def provider(_): calls[0] += 1; return 'new-deployment'
+        with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'ambiguity append'):
+            owner.call_provider_once(provider, baseline_deployment_ids=['old'],
+                                     ambiguity_evidence_digest='e' * 64)
+        self.assertEqual(1, calls[0])
+        operation = owner.journal.operation_id
+        self.assertIsNotNone(store.lookup('intent', operation))
+        self.assertIsNone(store.lookup('ambiguous', operation))
+        with self.assertRaisesRegex(self.adapter.RecoveryAdapterError, 'already consumed'):
+            owner.call_provider_once(provider, baseline_deployment_ids=['old'],
+                                     ambiguity_evidence_digest='f' * 64)
+        self.assertEqual(1, calls[0])
+
+    def test_missing_production_evidence_blocks_preparation_before_store_or_provider(self):
+        admission = self.admission(); admission['admissionId'] = self.adapter.PRIMITIVE.recovery_admission_id(admission)
+        class Fence(self.Fence):
+            repository = 'MYLEGND/masterapp'; token = 'synthetic'
+        from types import SimpleNamespace
+        authority = SimpleNamespace(release_operation_history=lambda *args, **kwargs: self.original_intent())
+        with self.assertRaises(self.adapter.MissingProductionEvidence):
+            self.adapter.prepare_canonical_adapter(
+                admission=admission, original_revision='d' * 40,
+                current_run=30, current_attempt=1, evidence_refs={},
+                fence=Fence(), authority=authority)
 
 if __name__ == '__main__':
     unittest.main()

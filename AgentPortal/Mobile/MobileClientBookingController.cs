@@ -159,6 +159,8 @@ public sealed class MobileClientBookingController(
         catch (Exception ex) when (ex is System.Security.Cryptography.CryptographicException or JsonException or ArgumentException)
         { return (null, Unauthorized()); }
         if (ticket == null) return (null, Unauthorized());
+        if (Infrastructure.Identity.RestrictedAiIdentity.RegisteredSubject(ticket.AgentId,
+            HttpContext.RequestServices.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>())) return (null, Forbid());
         // Re-resolve the active role and account lifecycle on every request, then
         // recheck the live assignment: old tickets cannot outlive reassignment.
         HttpContext.User = new ClaimsPrincipal(new ClaimsIdentity(new[] {

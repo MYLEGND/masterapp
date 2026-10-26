@@ -127,6 +127,7 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<IMobileHomeService, MobileHomeService>();
 builder.Services.AddScoped<MobileAgentCrmService>();
 builder.Services.AddScoped<AgentPortal.Controllers.CalendarController>();
+builder.Services.AddScoped<Infrastructure.Bookings.IReceptionistBookingGateway, ReceptionistCalendarBookingGateway>();
 builder.Services.AddScoped<AgentPortal.Controllers.ClientsController>();
 builder.Services.AddScoped<AgentPortal.Controllers.LeadsController>();
 builder.Services.AddMasterAppSocial(builder.Configuration);
@@ -514,6 +515,11 @@ builder.Services
     .AddMicrosoftGraph(builder.Configuration.GetSection("Graph"))
     .AddInMemoryTokenCaches();
 
+// The metadata surface must not renew a human or restricted operator session as
+// a side effect of observing readiness. Ordinary human routes retain their policy.
+builder.Services.PostConfigure<CookieAuthenticationOptions>(CookieAuthenticationDefaults.AuthenticationScheme, options =>
+    ReceptionistMetadataAccess.ConfigureCookieObservation(options, builder.Configuration));
+
 builder.Services
     .AddAuthentication()
     .AddJwtBearer(MobileApiAuthorization.BearerScheme, options =>
@@ -896,6 +902,8 @@ app.UseRateLimiter();
 
 app.UseCookiePolicy();
 app.UseAuthentication();
+app.UseMiddleware<Infrastructure.Identity.RestrictedAiAccessBoundary>();
+app.UseMiddleware<ReceptionistMetadataAccessMiddleware>();
 app.UseMiddleware<FounderImpersonationMiddleware>();
 app.UseMiddleware<AssistantResolutionMiddleware>();
 app.UseAuthorization();

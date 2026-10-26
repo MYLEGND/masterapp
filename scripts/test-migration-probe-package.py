@@ -75,6 +75,72 @@ class ObservedRehearsalReuseTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'ATTEMPT_MISMATCH'):self.prepare()
             restore.assert_not_called()
 
+    def same_merge(self):
+        import os
+        self.revision=self.run['head_sha']
+        os.environ['CANDIDATE_SHA']=self.revision
+        m.subprocess.check_output.return_value=self.revision
+
+    def test_same_merge_authentication_precedes_ready_or_reuse(self):
+        self.same_merge()
+        for pending in (0,2):
+            self.baseline.update(ready=not pending,pendingCount=pending)
+            with self.subTest(pending=pending), \
+                 patch.object(m.AUTHORITY,'fast_track_inventory_merge_proof',side_effect=RuntimeError('MERGE_UNPROVEN')), \
+                 patch.object(m,'restore_fast_track') as restore,patch.object(m,'rehearse_fast_track') as build, \
+                 patch.object(m,'verified_fast_track_observation') as observation:
+                with self.assertRaisesRegex(RuntimeError,'MERGE_UNPROVEN'):self.prepare()
+                observation.assert_not_called();restore.assert_not_called();build.assert_not_called()
+        self.baseline.update(ready=True,pendingCount=0)
+        with patch.object(m.AUTHORITY,'fast_track_inventory_merge_proof') as proof:
+            self.assertTrue(self.prepare())
+            proof.assert_called_once_with('owner/repo',self.revision,'fixture')
+
+    def test_same_merge_still_rejects_changed_observer_contract(self):
+        self.same_merge();self.baseline.update(ready=True,pendingCount=0)
+        with patch.object(m.AUTHORITY,'fast_track_inventory_merge_proof'), \
+             patch.object(m,'digest',return_value='d'*64),patch.object(m,'restore_fast_track') as restore:
+            with self.assertRaisesRegex(ValueError,'OBSERVER_CONTRACT_CHANGED'):self.prepare()
+            restore.assert_not_called()
+
+    def test_same_merge_rehearsal_uses_parent_impact_without_relabeling(self):
+        self.same_merge(); base='e'*40
+        self.observation.write_text(json.dumps(dict(producingAttempt=2,contractDigest='c'*64,observerArtifactId=42)))
+        calls=[]
+        def git(args,**kwargs):
+            calls.append(args)
+            if args==['git','rev-parse','HEAD']:return self.revision
+            if args==['git','diff','--name-only',base,self.revision]:return 'Infrastructure/Migrations/AddPayment.cs'
+            raise AssertionError(args)
+        package=SimpleNamespace(MIGRATION_BUNDLE='migration.bundle',build_component=lambda *args:dict(sha256='f'*64))
+        migration=SimpleNamespace(rehearse=lambda *args:dict(proven=True,bundleDigest='f'*64,
+            counts=dict(mutations=1,intents=1,successReceipts=2)))
+        import contextlib
+        for pending in (0,2):
+            self.baseline.update(pendingCount=pending)
+            directory=self.root/('bundle-'+str(pending))
+            with self.subTest(pending=pending), \
+                 patch.object(m,'trusted_fast_track_run',return_value=self.run), \
+                 patch.object(m.AUTHORITY,'api_get',return_value=dict(object=dict(sha=self.revision))), \
+                 patch.object(m.AUTHORITY,'fast_track_inventory_merge_proof',return_value=dict(baseline=base)) as proof, \
+                 patch.object(m.subprocess,'check_output',side_effect=git), \
+                 patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
+                 patch.object(m,'fast_track_observation_source',return_value=dict(attempt=2,artifactId=41)), \
+                 patch.object(m.importlib.util,'spec_from_file_location') as spec, \
+                 patch.object(m.importlib.util,'module_from_spec',side_effect=[package,migration]), \
+                 patch.object(m,'isolated_sql',return_value=contextlib.nullcontext('synthetic-local-only')):
+                m.rehearse_fast_track(self.revision,directory,self.observation,self.root/'probe')
+                proof.assert_called_once_with('owner/repo',self.revision,'fixture')
+                result=json.loads((directory/'rehearsal.json').read_text())
+                self.assertEqual(self.revision,result['candidate'])
+                self.assertEqual(self.revision,result['fastTrackHead'])
+                self.assertEqual(self.revision,result['toolRevision'])
+                self.assertFalse(result['authorizesMutation'])
+                if pending:self.assertTrue(result['proven'])
+                else:spec.assert_not_called()
+        self.assertEqual(2,calls.count(['git','diff','--name-only',base,self.revision]))
+
+
 
 class IsolatedSqlTests(unittest.TestCase):
     def command(self, args, **kwargs):
@@ -336,7 +402,7 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
         self.root=Path(self.temporary.name);self.calls=[];self.sql_entered=False
         self.test_stdout='LEGEND_REVIEWED_APPEND_TEST:NOT_PRESENT_IN_ASSEMBLY\nLEGEND_TRUSTED_CONTRACT_TESTS:PASS\n'
         self.current=dict(schemaVersion=3,migrations=[dict(id='20260101000000_Original')])
-        self.test_exit=0;self.source_present=False
+        self.test_exit=0;self.source_present=set()
         self.fixture_exit=0;self.fixture_stderr=''
 
     def process(self,command,**kwargs):
@@ -354,7 +420,7 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
             self.sql_entered=True
             yield 'Server=127.0.0.1,15433;Database=Synthetic'
         with patch.object(m.subprocess,'run',side_effect=self.process),patch.object(m,'isolated_sql',side_effect=sql), \
-             patch.object(Path,'is_file',return_value=self.source_present), \
+             patch.object(Path,'is_file',autospec=True,side_effect=lambda path: path.name in self.source_present), \
              patch.dict(os.environ,dict(PATH='/synthetic',HOME='/synthetic',AZURE_CLIENT_SECRET='synthetic-parent-only'),clear=True):
             m.test_schema_contract(self.root)
 
@@ -428,14 +494,14 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
             self.assertFalse(self.sql_entered)
 
     def test_present_migration_cannot_be_omitted_from_actual_export(self):
-        self.source_present=True
+        self.source_present={'20261020160000_AddReceptionistCoordination.cs'}
         with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
         self.assertFalse(self.sql_entered)
 
     def test_actual_generated_entry_must_match_python_pin_and_csharp_test(self):
         import hashlib
         entry=dict(id='20261020160000_AddReceptionistCoordination',supported=True)
-        self.current['migrations'].append(entry);self.source_present=True
+        self.current['migrations'].append(entry);self.source_present={'20261020160000_AddReceptionistCoordination.cs'}
         pin=hashlib.sha256(json.dumps(entry,sort_keys=True,separators=(',',':')).encode()).hexdigest()
         with patch.object(m.AUTHORITY,'REVIEWED_RECEPTIONIST_ENTRY',pin):
             with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
@@ -445,6 +511,49 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
         self.sql_entered=False
         with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
         self.assertFalse(self.sql_entered)
+
+    def payment_fixture(self):
+        import hashlib
+        receptionist=dict(id='20261020160000_AddReceptionistCoordination',supported=True)
+        payment=dict(id='20261026000134_AddCanonicalSubscriptionPaymentCompletion',supported=True)
+        self.current['migrations'] += [receptionist,payment]
+        self.source_present={row['id']+'.cs' for row in (receptionist,payment)}
+        self.test_stdout='LEGEND_REVIEWED_APPEND_TEST:PROVEN\nLEGEND_CANONICAL_PAYMENT_APPEND_TEST:PROVEN\nLEGEND_TRUSTED_CONTRACT_TESTS:PASS\n'
+        digest=lambda row:hashlib.sha256(json.dumps(row,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        return patch.multiple(m.AUTHORITY,REVIEWED_RECEPTIONIST_ENTRY=digest(receptionist),REVIEWED_CANONICAL_PAYMENT_ENTRY=digest(payment))
+
+    def test_reviewed_payment_pair_enters_sql_only_after_both_actual_markers(self):
+        with self.payment_fixture():
+            self.gate();self.assertTrue(self.sql_entered)
+            self.sql_entered=False
+            self.test_stdout=self.test_stdout.replace('LEGEND_CANONICAL_PAYMENT_APPEND_TEST:PROVEN\n','')
+            with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
+            self.assertFalse(self.sql_entered)
+
+    def test_payment_source_cannot_be_omitted_or_changed_in_export(self):
+        import copy
+        with self.payment_fixture():
+            original=copy.deepcopy(self.current)
+            for change in ('omit','digest'):
+                self.current=copy.deepcopy(original);self.sql_entered=False
+                if change=='omit':self.current['migrations'].pop()
+                else:self.current['migrations'][-1]['supported']=False
+                with self.subTest(change=change),self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
+                self.assertFalse(self.sql_entered)
+
+    def test_payment_suffix_cannot_skip_reorder_duplicate_or_append_unknown(self):
+        import copy
+        with self.payment_fixture():
+            original=copy.deepcopy(self.current)
+            for change in ('skip','reorder','duplicate','unknown'):
+                self.current=copy.deepcopy(original);self.sql_entered=False
+                rows=self.current['migrations']
+                if change=='skip':rows.pop(-2)
+                elif change=='reorder':rows[-2:]=rows[-2:][::-1]
+                elif change=='duplicate':rows.append(copy.deepcopy(rows[-1]))
+                else:rows.append(dict(id='29990101000000_Unknown'))
+                with self.subTest(change=change),self.assertRaisesRegex(RuntimeError,'Reviewed migration (entry|suffix|predecessor) contract failed'):self.gate()
+                self.assertFalse(self.sql_entered)
 
 
 if __name__ == '__main__':

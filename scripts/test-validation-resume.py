@@ -16,6 +16,190 @@ spec.loader.exec_module(m)
 
 
 
+class ParfaitPushCoverageTests(unittest.TestCase):
+    def setUp(self):
+        self.sha = 'a' * 40
+        self.repo = 'MYLEGND/masterapp'
+        self.branch = 'isolation/example'
+        self.pr = dict(number=691, state='open',
+            head=dict(sha=self.sha, ref=self.branch, repo=dict(full_name=self.repo)),
+            base=dict(ref=m.FAST_TRACK_PR_BASE, sha='b'*40, repo=dict(full_name=self.repo)))
+        self.run = dict(id=99, run_attempt=1, event='pull_request', head_sha=self.sha,
+            path='.github/workflows/parfait-isolated-validation.yml',
+            head_repository=dict(full_name=self.repo), pull_requests=[self.pr],
+            status='in_progress', conclusion=None)
+        self.job = dict(id=100, name='build-and-focused-tests', status='queued', conclusion=None)
+
+    def api(self, repository, path, token):
+        if path.startswith('git/ref/heads/'): return dict(object=dict(sha='b'*40))
+        if path.startswith('commits/'): return [self.pr]
+        if path.startswith('actions/workflows/'): return dict(workflow_runs=[self.run])
+        if '/jobs?' in path: return dict(jobs=[self.job])
+        if path == 'pulls/691': return self.pr
+        raise AssertionError(path)
+
+    def plan(self, event='push'):
+        with patch.object(m, 'api_get', side_effect=self.api):
+            return m.parfait_push_coverage(self.repo, self.sha, self.branch, event, 'fixture')
+
+    def test_exact_active_pr_lane_delegates_only_scheduling(self):
+        result = self.plan()
+        self.assertTrue(result['skip'])
+        self.assertFalse(result['validationAccepted'])
+        self.assertEqual(99, result['sourceRun'])
+        self.assertFalse(self.plan('pull_request')['skip'])
+
+    def test_no_pr_or_unavailable_lookup_runs_push(self):
+        for result in ([], None, [None], [dict(head=None)], [dict(state="open",head=dict(repo=None))]):
+            with patch.object(m, 'api_get', return_value=result):
+                self.assertFalse(m.parfait_push_coverage(self.repo,self.sha,self.branch,'push','fixture')['skip'])
+        with patch.object(m, 'api_get', side_effect=RuntimeError('unavailable')):
+            self.assertFalse(m.parfait_push_coverage(self.repo,self.sha,self.branch,'push','fixture')['skip'])
+
+    def test_wrong_identity_failed_cancelled_skipped_or_missing_job_runs_push(self):
+        for row, field, value in ((self.pr['head'],'sha','b'*40),
+            (self.pr['head']['repo'],'full_name','other/repo'),
+            (self.pr['base'],'ref','main'), (self.pr,'state','closed'),
+            (self.pr['base'],'sha','c'*40),
+            (self.run,'head_sha','b'*40),(self.run,'event','push'),
+            (self.run,'path','.github/workflows/other.yml'),
+            (self.job,'name','other')):
+            old=row[field]; row[field]=value
+            with self.subTest(field=field,value=value): self.assertFalse(self.plan()['skip'])
+            row[field]=old
+        for row in (self.run,self.job):
+            for conclusion in ('failure','cancelled','skipped','neutral'):
+                row.update(status='completed',conclusion=conclusion)
+                self.assertFalse(self.plan()['skip'])
+            row.update(status='in_progress',conclusion=None)
+
+    def test_newer_failed_run_prevents_reusing_older_success(self):
+        old=dict(self.run,id=98,status='completed',conclusion='success')
+        self.run.update(status='completed',conclusion='failure')
+        original=self.api
+        def api(repo,path,token):
+            if path.startswith('actions/workflows/'): return dict(workflow_runs=[old,self.run])
+            return original(repo,path,token)
+        with patch.object(m,'api_get',side_effect=api):
+            self.assertFalse(m.parfait_push_coverage(self.repo,self.sha,self.branch,'push','fixture')['skip'])
+
+    def test_workflow_keeps_required_pr_lane_and_separate_receipts(self):
+        import yaml
+        workflow=yaml.safe_load((ROOT/'.github/workflows/parfait-isolated-validation.yml').read_text())
+        steps=workflow['jobs']['build-and-focused-tests']['steps']
+        planner=next(s for s in steps if s.get('id')=='resume')
+        self.assertIn('push_coverage.outputs.skip',planner['if'])
+        for step in steps:
+            if step.get('id','').startswith('gate_'):
+                self.assertIn('push_coverage.outputs.skip',step['if'])
+        record=next(s for s in steps if s.get('name')=='Record canonical child execution evidence')
+        self.assertIn("steps.resume.outcome == 'success'",record['if'])
+
+
+class NonpublishingPreparationTests(unittest.TestCase):
+    def setUp(self):
+        self.sha = 'b' * 40
+        self.branch = 'isolation/receptionist-quality-pro-20261024'
+        self.pr = dict(number=691, state='open', merged_at=None, draft=True,
+            head=dict(sha=self.sha, ref=self.branch, repo=dict(full_name='MYLEGND/masterapp')),
+            base=dict(ref=m.FAST_TRACK_PR_BASE, repo=dict(full_name='MYLEGND/masterapp')))
+        self.mutate_run = lambda row: None
+        self.api_calls = 0
+
+    def api(self, repo, path, token):
+        if path == 'pulls/691':
+            self.api_calls += 1
+            return self.pr
+        workflow = path.split('/')[2]
+        run = dict(id=17, run_attempt=1, head_sha=self.sha, event='pull_request',
+            path='.github/workflows/' + workflow, head_repository=dict(full_name=repo),
+            status='completed', conclusion='success', pull_requests=[self.pr])
+        self.mutate_run(run)
+        return dict(total_count=1, workflow_runs=[run])
+
+    def plan(self, **changes):
+        args=dict(repository='MYLEGND/masterapp', revision=self.sha, current_sha=self.sha,
+            branch=self.branch, preparation_only=True)
+        args.update(changes)
+        with patch.dict(os.environ, {'GITHUB_TOKEN':'fixture'}), \
+             patch.object(m, 'api_get', side_effect=self.api), \
+             patch.object(m, 'approved_head_preflight', return_value=dict(current=True)):
+            return m.compute_package_preparation_plan(**args)
+
+    def test_exact_green_draft_prepares_fixed_combined_pair(self):
+        plan=self.plan()
+        self.assertEqual(['protect','parfait'], plan['components'])
+        self.assertEqual('legend-nonpublishing-package-preparation.v2',plan['schema'])
+        self.assertFalse(plan['publicationAuthorized'])
+        self.assertFalse(plan['releaseAdmission'])
+        self.assertEqual(3, len(plan['validationRuns']))
+        self.assertEqual(2, self.api_calls)
+        self.assertFalse(m.package_artifact_match('nonpublishing-protect-parfait-preparation-' + self.sha))
+
+    def test_rejects_invalid_dispatch_and_pr_binding(self):
+        for changes in ({'preparation_only':False}, {'revision':'bad'},
+                        {'current_sha':'c'*40}, {'branch':m.TRUSTED_PR_BASE},
+                        {'repository':'attacker/repo'}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError): self.plan(**changes)
+        for field,value in [('state','closed'),('merged_at','today'),('draft',False)]:
+            old=self.pr[field];self.pr[field]=value
+            with self.assertRaises(ValueError): self.plan()
+            self.pr[field]=old
+        self.pr['head']['repo']['full_name']='attacker/repo'
+        with self.assertRaises(ValueError): self.plan()
+
+    def test_failed_wrong_head_or_unbound_ci_never_prepares(self):
+        for change in (dict(conclusion='failure'), dict(status='in_progress'),
+                       dict(head_sha='c'*40), dict(pull_requests=[])):
+            self.mutate_run=lambda row: row.update(change)
+            with self.subTest(change=change), self.assertRaises(ValueError): self.plan()
+
+    def test_workflow_has_no_provider_or_promotion_in_preparation_lane(self):
+        import yaml
+        workflow=yaml.safe_load((ROOT / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text())
+        jobs=workflow['jobs'];lane=jobs['nonpublishing-protect-parfait-preparation']
+        self.assertTrue(all(value=='read' for value in lane['permissions'].values()))
+        text=json.dumps(lane)
+        for prohibited in ('azure/login', 'id-token', 'environment', 'wake-release', 'deploy-approved-app', 'secrets.'):
+            self.assertNotIn(prohibited,text)
+        self.assertIn('build-component --revision',text)
+        self.assertIn('--component protect',text)
+        self.assertIn('--component parfait',text)
+        for name in ('approved-head-preflight','validate',
+                     'wake-release-lifecycle-after-package-backfill','validated-migration-probe'):
+            self.assertIn('!inputs.preparation_only',jobs[name]['if'])
+
+    def test_combined_manifest_requires_both_verified_receipts(self):
+        import yaml
+        workflow=yaml.safe_load((ROOT / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text())
+        step=next(s for s in workflow['jobs']['nonpublishing-protect-parfait-preparation']['steps']
+                  if s.get('name')=='Bind verified bytes to nonpublishing preparation')
+        body=step['run']
+        code=body[body.index("root=pathlib.Path"):body.rindex('PYPREPARE')]
+        for fault in (None, 'missing', 'mismatch'):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)/'combined-preparation';root.mkdir()
+                original=self.plan();(root/'preparation.json').write_text(json.dumps(original))
+                for component in ('protect','parfait'):
+                    if component=='parfait' and fault=='missing': continue
+                    (root/(component+'.component.json')).write_text(json.dumps(dict(file=component+'.zip',sha256='a'*64)))
+                calls=[]
+                def verify(revision,component,directory):
+                    self.assertEqual(self.sha,revision);calls.append(component)
+                    if component=='parfait' and fault=='mismatch': raise ValueError('receipt mismatch')
+                context=dict(pathlib=__import__('pathlib'),json=json,os=os,package=SimpleNamespace(verify_component=verify))
+                with patch.dict(os.environ,dict(RUNNER_TEMP=tmp,GITHUB_SHA=self.sha,GITHUB_RUN_ID='1',GITHUB_RUN_ATTEMPT='1')):
+                    if fault:
+                        with self.assertRaises((ValueError,FileNotFoundError)): exec(code,context)
+                        self.assertEqual(original,json.loads((root/'preparation.json').read_text()))
+                    else:
+                        exec(code,context)
+                        result=json.loads((root/'preparation.json').read_text())
+                        self.assertEqual({'protect','parfait'},set(result['packages']))
+                        self.assertFalse(result['publicationAuthorized'])
+                self.assertEqual(['protect','parfait'],calls)
+
+
 class PackageDescriptorIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.identity='a'*64;self.revision='b'*40
@@ -1038,43 +1222,15 @@ class ArtifactEvidenceReadRetryTests(unittest.TestCase):
 
 
 class PackageJobSchedulingTests(unittest.TestCase):
-    def test_backfill_skipped_ancestors_do_not_skip_required_components(self):
-        import re
-        blocks = m._job_blocks((ROOT / m.PACKAGE_BUILD_WORKFLOW).read_text())
-        def admitted(job, required='true', components='success', plan='success', cancelled=False):
-            expression = re.search(r"    if: (.*?)\n    runs-on:", blocks[job], re.S).group(1).removeprefix('>-').strip()
-            # Model GitHub's implicit success() across the skipped backfill
-            # probe/rehearsal ancestors. Removing explicit status handling fails.
-            if not re.search(r'\b(always|cancelled|success|failure)\(', expression):
-                return False
-            fields = {
-                'needs.validated-release-package-plan.result': plan,
-                'needs.validated-release-package-plan.outputs.components_needed': required,
-                'needs.validated-release-package-components.result': components,
-                'github.event_name': 'workflow_dispatch',
-                'inputs.package_revision': 'a' * 40,
-            }
-            for key in sorted(fields, key=len, reverse=True):
-                expression = expression.replace(key, repr(fields[key]))
-            expression = expression.replace('always()', 'True').replace('cancelled()', repr(cancelled))
-            expression = expression.replace('&&', ' and ').replace('||', ' or ')
-            expression = re.sub(r'!(?!=)', ' not ', expression)
-            return bool(eval(' '.join(expression.split()), {'__builtins__': {}}, {}))
-        component = 'validated-release-package-components'
-        assembly = 'validated-release-package'
-        self.assertTrue(admitted(component))
-        self.assertTrue(admitted(assembly))
-        self.assertFalse(admitted(assembly, components='skipped'))
-        self.assertFalse(admitted(component, required='false'))
-        self.assertTrue(admitted(assembly, required='false', components='skipped'))
-        for job in (component, assembly):
-            for required in ('', 'unknown'):
-                self.assertFalse(admitted(job, required=required))
-            for plan in ('failed', 'skipped', 'cancelled'):
-                self.assertFalse(admitted(job, plan=plan))
-            self.assertFalse(admitted(job, cancelled=True))
-        for result in ('failure', 'cancelled', ''):
-            self.assertFalse(admitted(assembly, components=result))
+    def test_retired_backfill_jobs_cannot_be_scheduled_by_ancestor_results(self):
+        import yaml
+        jobs = yaml.safe_load((ROOT / m.PACKAGE_BUILD_WORKFLOW).read_text())['jobs']
+        # Inspect the real YAML condition, not an implicit-success simulator:
+        # even successful ancestors must never activate this retired producer.
+        for name in ('validated-release-package-plan', 'validated-release-package-components',
+                     'validated-release-package'):
+            with self.subTest(job=name):
+                self.assertEqual('${{ false }}', jobs[name]['if'])
 
 
 class Step5JobSchedulingTests(unittest.TestCase):
@@ -2005,6 +2161,30 @@ class ReceptionistReleaseImpactTests(unittest.TestCase):
         self.assertTrue(result['schema'])
         self.assertFalse(result['routing'])
         self.assertNotIn('releaseAdmission', result)
+
+    def test_bounded_booking_and_privacy_delta_preserves_all_managed_consumers(self):
+        paths = (
+            'Infrastructure/Bookings/BusinessBookingAccess.cs',
+            'Infrastructure/Bookings/MicrosoftCalendarConnectionAuthority.cs',
+            'Infrastructure/Bookings/ReceptionistBookingAuthority.cs',
+            'Infrastructure/Bookings/ReceptionistBookingContracts.cs',
+            'Infrastructure/Bookings/ReceptionistBookingReadinessReader.cs',
+            'Infrastructure/Identity/RestrictedAiAccessBoundary.cs',
+            'Infrastructure/Leads/ReceptionistInquiryAuthority.Outcomes.cs',
+            'Infrastructure/Reception/ReceptionistAdmissionService.Booking.cs',
+            'Infrastructure/Reception/ReceptionistAdmissionService.Projections.cs',
+            'Infrastructure/Reception/ReceptionistApplicationSession.Booking.cs',
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                result = m.fast_track_scope([path])
+                self.assertEqual(self.managed, set(result['impacts'][path]))
+                self.assertTrue(result['commerce'])
+                self.assertFalse(result['schema'])
+                self.assertFalse(result['routing'])
+                self.assertNotIn('releaseAdmission', result)
+        with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+            m.fast_track_scope(['Infrastructure/Bookings/UnreviewedAdapter.cs'])
 
     def test_shared_consumers_are_proven_by_actual_project_references(self):
         import posixpath
@@ -3361,10 +3541,8 @@ jobs:
 
     def test_lifecycle_and_release_evidence_lookup_are_canonicalized(self):
         lifecycle = (ROOT / ".github" / "workflows" / "legend-release-lifecycle.yml").read_text()
-        self.assertIn("scripts/validation-resume.py lifecycle-evidence", lifecycle)
-        identity_step = lifecycle.split("      - name: Resolve lifecycle validation authority identity\n", 1)[1].split("      - name:", 1)[0]
-        self.assertNotIn("gh api", identity_step)
-        self.assertNotIn("sha256sum", identity_step)
+        self.assertNotIn('scripts/validation-resume.py lifecycle-evidence', lifecycle)
+        self.assertIn('LEGEND_RELEASE_LIFECYCLE_RETIRED', lifecycle)
 
         release = (ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml").read_text()
         validated = release.split("      - name: Reuse exact successful validation package when available\n", 1)[1].split("      - name:", 1)[0]
@@ -5468,6 +5646,81 @@ class ReviewedReceptionistContractTests(unittest.TestCase):
                      original+'100644 blob '+'3'*40+'\tDirectory.Build.targets\0',
                      original+'100644 blob '+'3'*40+'\tSHARED/Unknown.cs\0'):
             with self.subTest(rows=rows):self.assertNotEqual(expected,identity(rows))
+
+
+class ReviewedCanonicalPaymentContractTests(unittest.TestCase):
+    def setUp(self):
+        import copy
+        self.copy = copy.deepcopy
+        before, after = sorted(m.REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS)[0]
+        self.trusted = dict(runtimeIdentity=before, toolIdentity='c'*64, executionIdentity='d'*64)
+        self.current = dict(self.trusted, runtimeIdentity=after)
+        self.prior = dict(schemaVersion=3, migrations=[dict(id='20261020160000_AddReceptionistCoordination', supported=True)])
+        self.entry = dict(id='20261026000134_AddCanonicalSubscriptionPaymentCompletion', supported=True, columns=[], tables=[], indexes=[], guards=[], foreignKeys=[])
+        self.contract = dict(schemaVersion=3, migrations=self.copy(self.prior['migrations'])+[self.entry])
+        pin = patch.object(m, 'REVIEWED_CANONICAL_PAYMENT_ENTRY', hashlib.sha256(json.dumps(self.entry,
+            sort_keys=True, separators=(',', ':')).encode()).hexdigest())
+        pin.start(); self.addCleanup(pin.stop)
+
+    def prove(self, contract=None, prior=None, returns=(0,0)):
+        with patch.object(m, 'migration_probe_identity', side_effect=[self.current,self.trusted]), \
+             patch.object(m, 'migration_contract_static_styles_only', return_value=False), \
+             patch.object(m.subprocess, 'run', side_effect=[SimpleNamespace(returncode=r) for r in returns]):
+            return m.candidate_migration_contract_proven('a'*40, 'b'*40,
+                self.contract if contract is None else contract, self.prior if prior is None else prior)
+
+    def test_exact_pair_and_inherited_tooling_prove_only_payment_suffix(self):
+        for before,after in m.REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS:
+            self.trusted['runtimeIdentity']=before;self.current['runtimeIdentity']=after
+            with self.subTest(before=before):
+                self.assertEqual('approved-prefix-reviewed-canonical-payment-entry', self.prove()['rule'])
+
+    def test_only_independently_reviewed_live_and_prior_pairs_are_pinned(self):
+        candidate='e097be398e774e6226b9a7cb72b41b7eec92eb8a3043af8e16e412381ca0051f'
+        self.assertEqual({
+            ('f6ae0f4012706ad346d743fb69dfbff4cc46238aa46a9f60687aede0a8cc57eb',candidate),
+            ('3fbe9ce6512a2ebb7db43f0f45a5227786094ac6b287ccc3eca40c59da05f6e0',candidate),
+        },m.REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS)
+
+    def test_changed_runtime_tool_execution_or_missing_identity_rejected(self):
+        for target, key, value in [('current','runtimeIdentity','e'*64),('trusted','runtimeIdentity','e'*64),
+            ('current','toolIdentity','e'*64),('current','executionIdentity','e'*64),('current','toolIdentity',None)]:
+            row=getattr(self,target); old=row[key]; row[key]=value
+            with self.subTest(key=key),self.assertRaisesRegex(ValueError,'UNPROVEN'): self.prove()
+            row[key]=old
+
+    def test_missing_duplicate_changed_prefix_and_unknown_metadata_rejected(self):
+        for kind in ('missing','duplicate','prefix','metadata','key_length','reordered'):
+            value=self.copy(self.contract)
+            if kind=='missing': value=self.copy(self.prior)
+            elif kind=='duplicate': value['migrations'].append(self.copy(self.entry))
+            elif kind=='prefix': value['migrations'][0]['supported']=False
+            elif kind=='metadata': value['migrations'][-1]['unknown']=True
+            elif kind=='reordered': value['migrations'].reverse()
+            else: value['migrations'][-1]['columns']=[dict(type='nvarchar(159)')]
+            with self.subTest(kind=kind),self.assertRaisesRegex(ValueError,'UNPROVEN'): self.prove(contract=value)
+
+    def test_missing_receptionist_even_with_equal_prefix_rejected(self):
+        prior=self.copy(self.prior);prior['migrations'][0]['id']='20260101000000_Other'
+        value=self.copy(self.contract);value['migrations'][0]=prior['migrations'][0]
+        with self.assertRaisesRegex(ValueError,'UNPROVEN'): self.prove(value,prior)
+
+    def test_live_pair_rejects_changed_base_candidate_tool_and_omitted_prior_migration(self):
+        self.trusted['runtimeIdentity']='f6ae0f4012706ad346d743fb69dfbff4cc46238aa46a9f60687aede0a8cc57eb'
+        for target,key in (('trusted','runtimeIdentity'),('current','runtimeIdentity'),('current','toolIdentity')):
+            row=getattr(self,target);original=row[key];row[key]='f'*64
+            with self.subTest(target=target,key=key),self.assertRaisesRegex(ValueError,'UNPROVEN'):self.prove()
+            row[key]=original
+        prior=self.copy(self.prior);prior['migrations'].insert(0,dict(id='20260101000000_Original',supported=True))
+        with self.assertRaisesRegex(ValueError,'UNPROVEN'):self.prove(prior=prior)
+
+    def test_ancestry_and_control_source_changes_rejected(self):
+        for values in ((1,0),(128,0),(0,1),(0,128)):
+            with self.subTest(values=values),self.assertRaisesRegex(ValueError,'UNPROVEN'): self.prove(returns=values)
+
+    def test_malformed_contract_rejected(self):
+        for value in (dict(self.contract,schemaVersion=True),dict(self.contract,migrations={}),dict(self.contract,extra=1),[]):
+            with self.subTest(value=value),self.assertRaisesRegex(ValueError,'UNPROVEN'): self.prove(contract=value)
 
 
 class HistoricalProducerInventoryTests(unittest.TestCase):

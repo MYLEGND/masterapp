@@ -19,6 +19,16 @@ public sealed record ReceptionistSetupInput
     public int MaximumCallsPerWindow { get; init; }
     public bool RequestIntake { get; init; }
     public bool NotifyOwner { get; init; }
+    public bool BookingFieldsPresent { get; init; }
+    public bool BookingEnabled { get; init; }
+    public bool BookingQaOnly { get; init; } = true;
+    public bool BookingAllowConsentedCustomerEmail { get; init; }
+    public string? BookingCalendarConfigurationSha256 { get; init; }
+    public string? BookingCalendarTargetSha256 { get; init; }
+    public string? BookingPrivacyAcceptanceReference { get; init; }
+    public Guid? BookingAgentProfileId { get; init; }
+    public int? BookingMinimumNoticeMinutes { get; init; }
+    public int? BookingMaximumAdvanceDays { get; init; }
     public List<ReceptionistHoursInput> Hours { get; init; } = [];
     public List<ReceptionistServiceInput> Services { get; init; } = [];
     public List<ReceptionistAnswerInput> Answers { get; init; } = [];
@@ -43,6 +53,9 @@ public sealed record ReceptionistServiceInput
     public string? DiscoveryQuestion { get; init; }
     public string? PublicSummary { get; init; }
     public string? CrmBucket { get; init; }
+    public string? BookingServiceId { get; init; }
+    public string? BookingTimeZoneId { get; init; }
+    public int? BookingDurationMinutes { get; init; }
 }
 
 public sealed record ReceptionistAnswerInput

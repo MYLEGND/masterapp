@@ -30,6 +30,9 @@ public sealed class AgentAccountLifecycleAuthorizeFilter : IAsyncAuthorizationFi
 
     public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
+        // Exact metadata requests already passed the same lifecycle state through
+        // a minimal read-only projection before human profile middleware.
+        if (ReceptionistMetadataAccess.Granted(context.HttpContext)) return;
         var endpoint = context.HttpContext.GetEndpoint();
         if (context.Filters.OfType<IAllowAnonymousFilter>().Any() ||
             endpoint?.Metadata.GetMetadata<IAllowAnonymous>() is not null ||

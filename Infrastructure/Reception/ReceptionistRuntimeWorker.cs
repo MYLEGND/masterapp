@@ -285,20 +285,27 @@ internal sealed class ReceptionistRuntimeWorker(IServiceScopeFactory scopes, Tim
             var token = state.Lease.Token;
             if (application is null || state.Lease.ObservationOnly) return;
             var updates = await application.HandleDelegationAsync(delegationId, ct);
-            await SendUpdatesAsync(state, application, token, updates, socket, sends, admission, ct);
+            var sent = await SendUpdatesAsync(state, application, token, updates, socket, sends, admission, ct);
+            logger.LogInformation("Receptionist application call {CallId} configuration {ConfigurationId} SHA {ConfigurationSha256} handled; context updates {Sent}/{Prepared}; state {SafeState}",
+                state.Context.CallId, state.Context.ConfigurationId,
+                ReceptionistConfigurationCodec.Hash(ReceptionistConfigurationCodec.Serialize(state.Context.Configuration)),
+                sent, updates.Count, JsonSerializer.Serialize(application.Diagnostic()));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception)
         {
+            logger.LogWarning("Receptionist application call {CallId} configuration {ConfigurationId} handler failed; state {SafeState}",
+                state.Context.CallId, state.Context.ConfigurationId, JsonSerializer.Serialize(state.Application?.Diagnostic()));
             await admission.RequestRuntimeStopAsync(state.Context.CallId, "backend_unavailable", ct);
             await StopAsync(state.Context.CallId, null, ct);
         }
     }
 
-    private static async Task SendUpdatesAsync(SessionState state, ReceptionistApplicationSession application, Guid token,
+    private static async Task<int> SendUpdatesAsync(SessionState state, ReceptionistApplicationSession application, Guid token,
         IReadOnlyList<ReceptionistApplicationUpdate> updates,
         WebSocket socket, SemaphoreSlim sends, ReceptionistAdmissionService admission, CancellationToken ct)
     {
+        var sent = 0;
         foreach (var update in updates)
         {
             var body = ReceptionistSidebandProtocol.Append(update.EventId, update.DelegationId, update.Type, update.Content);
@@ -306,11 +313,13 @@ internal sealed class ReceptionistRuntimeWorker(IServiceScopeFactory scopes, Tim
             try
             {
                 if (!ReferenceEquals(state.Application, application) || state.Lease.Token != token || state.Lease.ObservationOnly ||
-                    !await admission.ValidateSidebandLeaseAsync(state.Context.CallId, token, ct)) return;
+                    !await admission.ValidateSidebandLeaseAsync(state.Context.CallId, token, ct)) return sent;
                 await socket.SendAsync(body.AsMemory(), WebSocketMessageType.Text, true, ct);
+                sent++;
             }
             finally { sends.Release(); }
         }
+        return sent; // Transport send is not evidence that the caller heard it.
     }
 
     private async Task HeartbeatAsync(SessionState state, ReceptionistAdmissionService admission,

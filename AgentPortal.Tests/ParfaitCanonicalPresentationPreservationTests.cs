@@ -22,12 +22,14 @@ public sealed class ParfaitCanonicalPresentationPreservationTests
     [InlineData("Views/Shared/_ScopedWebsiteStoreLayout.cshtml", "64d65583c778f715af5bde408577a0fd7b155ffc")]
     [InlineData("Views/Home/Index.cshtml", "9abd970701d5f915d6f0431255869c68e479aed4")]
     [InlineData("Views/Store/Index.cshtml", "25ef81c066dd246e5b192b85bedd1381a3390ae5")]
-    [InlineData("Views/Store/Cart.cshtml", "a635fd5d545607201878271fd5697fd667e745be")]
+    // Reviewed script-only fix: failed or malformed quotes preserve cart state.
+    [InlineData("Views/Store/Cart.cshtml", "65113402884f536ddfbb7b76143e310541280360")]
     [InlineData("Views/Store/Product.cshtml", "d320b04f64562136f6cd0e2dee5855d7c67c541c")]
     // Reviewed payment-flow changes only: hosted-provider handoff retains the
     // original form/layout and legacy Square wording; cart clearing waits for
     // server-confirmed payment on success. All other visual pins stay unchanged.
-    [InlineData("Views/Store/Checkout.cshtml", "03b27c18a80995da240c3bbbacd86387cd183bf5")]
+    // Reviewed script-only fix: contact autosave deduplicates successful HTTP responses only.
+    [InlineData("Views/Store/Checkout.cshtml", "5d17e4797b29a63e10d58008c91ddf9a2aed7f52")]
     [InlineData("Views/Store/Success.cshtml", "7e56736764ae474b5a07ef21debea631df67c58d")]
     [InlineData("wwwroot/css/site.css", "10f00e83c8e9b8a9e7428efebe01a40a0072903d")]
     [InlineData("wwwroot/css/home.css", "00f32a42b0f2f1ea1324c6f8897abe91a130ec94")]

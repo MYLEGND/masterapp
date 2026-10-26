@@ -705,6 +705,7 @@
 
   function isDirectCanvasSelectable(el) {
     if (!(el instanceof HTMLElement)) return false;
+    if (nativeFormPresentationOwner(el)) return true;
     if (el.dataset.cmsSection) return true;
     return !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName);
   }
@@ -1668,9 +1669,10 @@
     else delete el.dataset.cmsPreserveWhitespace;
     if (!el.children.length || !document.createTreeWalker) { el.textContent = text; return; }
     const walker = document.createTreeWalker(el, 4); const nodes = []; let node;
-    while ((node = walker.nextNode())) if (node.textContent.trim() && !node.parentElement.closest('input,select,textarea,svg,i,[aria-hidden="true"]')) nodes.push(node);
-    if (nodes.length) { nodes[0].textContent = text; nodes.slice(1).forEach(node => { node.textContent = ''; }); }
-    else el.appendChild(document.createTextNode(text));
+    while ((node = walker.nextNode())) if (!node.parentElement.closest('input,select,textarea,svg,i,[aria-hidden="true"]')) nodes.push(node);
+    const target = nodes.find(node => node.textContent.trim());
+    nodes.forEach(node => { node.textContent = node === target ? text : ''; });
+    if (!target) el.appendChild(document.createTextNode(text));
   }
 
 
@@ -1699,8 +1701,62 @@
 
   function formFieldKey(el) {
     if(!el) return null;
-    const raw=el.dataset?.cmsFieldKey || el.getAttribute?.('name') || el.id || '';
+    const raw=el.dataset?.cmsPresentationKey || el.dataset?.cmsFieldKey || el.getAttribute?.('name') || el.id || '';
     return safeId(raw);
+  }
+
+  function nativeFormPresentationTargets(form,node) {
+    if(!String(node?.systemKey || '').startsWith('protect_runtime_form:')) return [];
+    const candidates=[];
+    const add=(element,key)=>{
+      // Runtime structure is not an editable graph. Bind only unambiguous copy
+      // leaves to the existing protected owner's typed presentation maps.
+      if(!element || element.children.length || !element.textContent.trim() ||
+         compositionNode(element.dataset.cmsCompositionId || element.dataset.cmsId)) return;
+      key=safeId(key);
+      if(key) candidates.push({element,key});
+    };
+    form.querySelectorAll('[role="radiogroup"][aria-labelledby]').forEach(group=>{
+      const id=group.getAttribute('aria-labelledby');
+      if(!id || /\s/.test(id)) return;
+      const labels=form.querySelectorAll('[id="'+CSS.escape(id)+'"]');
+      if(labels.length===1) add(labels[0],'presentation:question:'+id);
+    });
+    form.querySelectorAll('input[type="radio"][name],input[type="checkbox"][name]').forEach(control=>{
+      const label=control.labels?.[0] || control.closest('label');
+      if(!label) return;
+      for(const kind of ['title','kicker','helper']){
+        const leaves=label.querySelectorAll('.lq-card-'+kind);
+        if(leaves.length===1) add(leaves[0],'presentation:option:'+control.name+':'+control.value+':'+kind);
+      }
+    });
+    return candidates.filter(item=>candidates.filter(other=>other.key===item.key).length===1);
+  }
+
+  function nativeFormPresentationOwner(el) {
+    if(!el?.dataset?.cmsPresentationKey) return null;
+    const form=el.closest('form[data-cms-composition-id]');
+    const node=compositionNode(form?.dataset.cmsCompositionId);
+    const binding=nativeFormPresentationBindings.get(el);
+    return node && binding?.form===form && binding.ownerId===node.id &&
+      binding.key===el.dataset.cmsPresentationKey && String(node.systemKey || '').startsWith('protect_runtime_form:') ? node : null;
+  }
+
+  function writeInlineText(el,value,commit = false) {
+    const owner=nativeFormPresentationOwner(el);
+    if(owner){
+      if(commit) value=value.trim().slice(0,160) || owner.fieldLabels?.[el.dataset.cmsPresentationKey]?.trim() || nativeFormOriginalLabels.get(el) || '';
+      owner.fieldLabels ||= {};
+      if(value.trim()) owner.fieldLabels[el.dataset.cmsPresentationKey]=value.slice(0,160);
+      // Do not replace the text node or remove spaces while the user is typing.
+      if(commit && el.textContent!==value) setContentText(el,value,true);
+      formFieldPresentationLabels.set(el,el.textContent);
+      return true;
+    }
+    const model=editableCompositionNodeForElement(el);
+    if(!model) return false;
+    model.text=value;
+    return true;
   }
 
   function formFieldPresentationForElement(el, create = true) {
@@ -1729,6 +1785,7 @@
   }
 
   function isInlineEditable(el) {
+    if(nativeFormPresentationOwner(el)) return true;
     if (!el || el.dataset.cmsSignalOnly || el.dataset.cmsSection) return false;
     // Entity-owned names and commerce controls expose presentation editing only.
     // Their text/destination remains owned by the Business Profile / Store contract.
@@ -1751,11 +1808,9 @@
       inlineEditCheckpointed = false;
       return;
     }
-    const model = editableCompositionNodeForElement(el, false);
-    if (model) {
-      const value = inlineTextValue(el);
-      model.text = value;
-      setContentText(el, value, true);
+    const value = inlineTextValue(el);
+    if (writeInlineText(el,value,true)) {
+      if(!nativeFormPresentationOwner(el)) setContentText(el, value, true);
     }
     el.removeAttribute?.('contenteditable');
     el.classList.remove('legend-cms-inline-editing');
@@ -1781,10 +1836,8 @@
     el.addEventListener('input', () => {
       if (!inlineEditCheckpointed) checkpoint();
       inlineEditCheckpointed = false;
-      const model = editableCompositionNodeForElement(el);
-      if (!model) return;
       const value = inlineTextValue(el);
-      model.text = value;
+      if (!writeInlineText(el,value)) return;
       el.dataset.cmsPreserveWhitespace = 'true';
       markDirty();
       updateDirectCanvasUi();
@@ -2025,6 +2078,21 @@
     return id;
   }
 
+  function normalizeTemplateText(el, value) {
+    if (el.dataset.cmsPreserveWhitespace === 'true' || el.querySelector('br')) return value;
+    const whitespace = window.getComputedStyle(el).whiteSpace;
+    return !whitespace || whitespace === 'normal' || whitespace === 'nowrap'
+      ? value.replace(/[\t\n\f\r ]+/g, ' ').trim()
+      : value;
+  }
+
+  function materializedTextValue(el, model) {
+    // Capture rendered template copy, not HTML indentation. Authored text and
+    // explicitly preformatted content retain their exact whitespace contract.
+    if (model.text != null) return model.text;
+    return normalizeTemplateText(el, inlineTextValue(el));
+  }
+
   function materializeCompositionNode(el, fallbackId = null, identity = null) {
     return withFormStepPreviewRestored(() => withNativeFormContinuationsRestored(() => materializeCompositionNodeWithNativeControls(el, fallbackId, identity)));
   }
@@ -2194,17 +2262,16 @@
         const childNode = materializeCompositionNode(child, id + '.child.' + (++childIndex), identity);
         if (childNode) node.children.push(childNode);
       }
-      const directText = [...el.childNodes]
+      const directText = normalizeTemplateText(el, [...el.childNodes]
         .filter(child => child.nodeType === 3 && String(child.textContent || '').trim())
         .map(child => String(child.textContent || '').replace(/\r/g,''))
-        .join(' ')
-        .trim();
-      if (directText) node.children.unshift({
+        .join(' '));
+      if (directText.trim()) node.children.unshift({
         id:claimMaterializationId(id + '.text',identity),type:'text',tag:'span',text:directText,className:null,
         signals:[],style:{},breakpointStyles:{},layout:{},breakpointLayouts:{},animations:[],children:[]
       });
     } else if (!['image','video','section','container'].includes(type)) {
-      node.text = inlineTextValue(el);
+      node.text = materializedTextValue(el, model);
     }
 
     return node;
@@ -2249,6 +2316,9 @@
   // overwrite a later runtime visibility decision or its inline priority.
   const formFieldPresentationDisplays = new WeakMap();
   const formFieldPresentationLabels = new WeakMap();
+  const nativeFormOriginalLabels = new WeakMap();
+  const nativeFormPresentationBindings = new WeakMap();
+  const nativeFormPresentationStyles = new WeakMap();
   function applyFormFieldLabel(element,text) {
     const previous=formFieldPresentationLabels.get(element);
     // Submission runtimes own their busy/outcome copy. A pure visual refresh
@@ -2292,6 +2362,26 @@
       if(control.matches('button[type="submit"]') && labels[key]) applyFormFieldLabel(control,labels[key]);
       const label=control.labels?.[0] || control.closest('label');
       if(label && labels[key]) applyFormFieldLabel(label,labels[key]);
+    });
+    nativeFormPresentationTargets(form,node).forEach(({element,key})=>{
+      if(!nativeFormOriginalLabels.has(element)) nativeFormOriginalLabels.set(element,element.textContent);
+      nativeFormPresentationBindings.set(element,{form,ownerId:node.id,key});
+      element.dataset.cmsPresentationKey=key;
+      element.dataset.cmsSignalOnly='true';
+      element.dataset.cmsEditable='true';
+      const presentation=presentations[key];
+      const previousStyles=nativeFormPresentationStyles.get(element);
+      if(presentation || previousStyles){
+        const runtimeStyles=previousStyles ? Object.fromEntries(styleProperties
+          .filter(name=>element.style[name]!==previousStyles[name]).map(name=>[name,element.style[name]])) : {};
+        if(compiled) resetCompiledPresentationBaseline(element);
+        applyStyle(element,effectiveStyle(presentation));
+        applyLayout(element,effectiveLayout(presentation));
+        nativeFormPresentationStyles.set(element,Object.fromEntries(styleProperties.map(name=>[name,element.style[name]])));
+        for(const [name,value] of Object.entries(runtimeStyles)) element.style[name]=value;
+      }
+      if(labels[key]) applyFormFieldLabel(element,labels[key]);
+      else if(formFieldPresentationLabels.has(element)) applyFormFieldLabel(element,nativeFormOriginalLabels.get(element));
     });
   }
 
@@ -5958,8 +6048,8 @@
     const layoutJustify = document.getElementById('legend-cms-layout-justify'); if (layoutJustify) layoutJustify.value = editLayout?.justifyContent || '';
     const layoutWrap = document.getElementById('legend-cms-layout-wrap'); if (layoutWrap) layoutWrap.value = editLayout?.wrap || '';
     if (hidden) {
-      hidden.checked = ov.hidden === true || (formPreviewVisibility.get(selected)?.hidden ?? selected.hidden);
       hidden.disabled = !!selected.dataset.cmsSignalOnly || !!ov.systemKey || !!ov.systemBinding || protectedMappings || canonicalForm;
+      hidden.checked = ov.hidden === true || (!hidden.disabled && (formPreviewVisibility.get(selected)?.hidden ?? selected.hidden));
     }
     if (targetInput) targetInput.disabled = !!ov.actionKey;
   }
@@ -7272,7 +7362,7 @@
     const scope=document.getElementById('legend-cms-source-scope');
     const selectedNodeId=sourceSelectedNodeId();
     if(!textarea || textarea.readOnly || sourceEditorDirty || scope?.value!=='selection' || !selectedNodeId) return;
-    const current=editableCompositionNodeForElement(selected,false);
+    const current=nativeFormPresentationOwner(selected) || editableCompositionNodeForElement(selected,false);
     if(!current) return;
     let projected;
     try{ projected=JSON.parse(textarea.value); }
@@ -7282,7 +7372,7 @@
     // Keep Selected Source visually synchronized with Canvas presentation while
     // retaining the server-projected protected-authority omissions. This is a
     // view synchronization only; persistence still flows through canonical save.
-    for(const key of ['text','className','style','breakpointStyles','layout','breakpointLayouts','animations','hidden','alt','mediaAssetId','mediaUrl'])
+    for(const key of ['text','className','style','breakpointStyles','layout','breakpointLayouts','animations','hidden','alt','mediaAssetId','mediaUrl','fieldLabels','fieldPresentations'])
     {
       if(Object.hasOwn(current,key)) projected[key]=cloneCanonicalValue(current[key]);
       else delete projected[key];
@@ -7473,7 +7563,7 @@
         sourceEditorBaseFingerprint=snapshot.fingerprint || null;
         canonicalSourceRevision=snapshot.revision ?? revision;
         textarea.value=JSON.stringify(sourceEditorBaseNode,null,2);
-        if(label) label.textContent='Selected source · '+(snapshot.location?.pagePath || currentPageRoute())+' · #'+selectedId;
+        if(label) label.textContent='Selected source · '+(snapshot.location?.pagePath || currentPageRoute())+' · #'+selectedId+(selected?.dataset?.cmsPresentationKey ? ' · '+selected.dataset.cmsPresentationKey : '');
       }catch(error){
         clearCanonicalProtectionViolation();
         if(status) status.textContent=error?.message || 'Selected Source could not be loaded.';
@@ -9616,7 +9706,7 @@
       const alreadySelected = target === selected;
       if (!alreadySelected) setSelected(target,{openContent:true});
       else if (inlineEditNode !== target && event.detail === 1) showPanel('content');
-      if (target.tagName === 'A' || target.tagName === 'BUTTON') event.preventDefault();
+      if (target.tagName === 'A' || target.tagName === 'BUTTON' || nativeFormPresentationOwner(target)) event.preventDefault();
       event.stopPropagation();
     }, true);
     document.addEventListener('dblclick', event => {

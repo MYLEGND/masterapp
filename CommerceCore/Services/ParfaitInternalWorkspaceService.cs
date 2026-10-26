@@ -80,16 +80,6 @@ public sealed class ParfaitInternalWorkspaceService
             .ToList();
         var trackedPurchases = analytics.GetEventCount("Purchase");
         var trackedPurchaseSessions = analytics.GetUniqueSessions("Purchase");
-        if (trackedPurchases == 0)
-        {
-            trackedPurchases = paidOrders.Count;
-            trackedPurchaseSessions = paidOrders
-                .Where(order => !string.IsNullOrWhiteSpace(order.CheckoutAttemptId))
-                .Select(order => order.CheckoutAttemptId!.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Count();
-        }
-
         var trackedCheckoutSessions = analytics.GetUniqueSessions("CheckoutStarted");
 
         return new ParfaitInternalWorkspaceSnapshotViewModel

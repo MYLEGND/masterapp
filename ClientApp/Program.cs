@@ -369,7 +369,9 @@ builder.Services.AddAuthorization(options =>
         });
 });
 
-async Task CompleteClientSignInAsync(TokenValidatedContext context)
+Task CompleteClientSignInAsync(TokenValidatedContext context) =>
+    Infrastructure.Identity.RestrictedAiIdentity.ContinueHumanSignInAsync(context.Principal, builder.Configuration,
+    () => context.Fail("Restricted operator access is unavailable in this application."), async () =>
 {
     var identityAccess = context.HttpContext.RequestServices.GetRequiredService<ClientIdentityAccessService>();
     var returnUrlNormalizer = context.HttpContext.RequestServices.GetRequiredService<ClientAppReturnUrlNormalizer>();
@@ -391,7 +393,7 @@ async Task CompleteClientSignInAsync(TokenValidatedContext context)
     context.HandleResponse();
     context.Response.Redirect(
         $"/Account/ActivationRequired?returnUrl={Uri.EscapeDataString(returnUrlNormalizer.Normalize(completion.ReturnUrl))}&message={Uri.EscapeDataString(completion.SanitizedMessage ?? "The client sign-in could not be completed.")}");
-}
+});
 
 builder.Services.AddRuntimeDiagnostics(builder.Configuration, builder.Environment);
 
@@ -441,6 +443,7 @@ app.UseRateLimiter();
 
 app.UseCookiePolicy();
 app.UseAuthentication();
+app.UseMiddleware<Infrastructure.Identity.RestrictedAiAccessBoundary>();
 app.UseAuthorization();
 
 // Cache prevention

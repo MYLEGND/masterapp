@@ -11,14 +11,12 @@ namespace ParfaitApp.Services;
 public sealed class ParfaitInternalAnalyticsService
 {
     private const string SiteKey = "ParfaitApp";
-    private static readonly TimeSpan DashboardCacheDuration = TimeSpan.Zero;
-    private static readonly TimeSpan WorkspaceCacheDuration = TimeSpan.Zero;
     private static readonly string[] FunnelEventTypes =
     [
         "ViewContent",
         "ProductViewed",
         "AddToCart",
-        "CheckoutStarted",
+        "InitiateCheckout",
         "Purchase"
     ];
 
@@ -27,7 +25,6 @@ public sealed class ParfaitInternalAnalyticsService
     private readonly IParfaitBusinessProfileService _businessProfile;
     private readonly MarketingConnectionStore _marketingConnections;
     private readonly ParfaitOrderService _orders;
-    private readonly IMemoryCache _cache;
     private readonly ParfaitInternalAnalyticsCacheStamp _cacheStamp;
 
     public ParfaitInternalAnalyticsService(
@@ -44,7 +41,6 @@ public sealed class ParfaitInternalAnalyticsService
         _businessProfile = businessProfile;
         _marketingConnections = marketingConnections;
         _orders = orders;
-        _cache = cache;
         _cacheStamp = cacheStamp;
     }
 
@@ -96,15 +92,8 @@ public sealed class ParfaitInternalAnalyticsService
             viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
             qualityMode: qualityMode);
         var scope = analyticsScope;
-        var cacheKey = BuildWorkspaceCacheKey(businessId, marketingOwner.Key, scope, range);
-
-        var cachedSnapshot = await _cache.GetOrCreateAsync(cacheKey, async entry =>
-        {
-            entry.AbsoluteExpirationRelativeToNow = WorkspaceCacheDuration;
-            return await BuildWorkspaceSummaryAsync(businessId, marketingOwner, range, scope, ct);
-        });
-
-        return cachedSnapshot ?? new ParfaitInternalWorkspaceAnalyticsSnapshot();
+        // Fresh scoped queries deliberately bypass the cache; zero relative TTL is invalid.
+        return await BuildWorkspaceSummaryAsync(businessId, marketingOwner, range, scope, ct);
     }
 
     private async Task<ParfaitInternalWorkspaceAnalyticsSnapshot> BuildWorkspaceSummaryAsync(
@@ -126,8 +115,8 @@ public sealed class ParfaitInternalAnalyticsService
         summary.UniqueVisitors = bucketSummary.UniqueVisitors;
 
         var actionCounts = bucketEvents
-            .Where(x => FunnelEventTypes.Contains(x.EventType))
-            .GroupBy(x => x.EventType)
+            .Where(x => FunnelEventTypes.Contains(CanonicalEventName(x.EventType)))
+            .GroupBy(x => CanonicalEventName(x.EventType))
             .Select(group => new WorkspaceActionCountRow
             {
                 EventType = group.Key,
@@ -208,36 +197,8 @@ public sealed class ParfaitInternalAnalyticsService
             viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
             qualityMode: qualityMode);
         var scope = analyticsScope;
-        var cacheKey = BuildDashboardCacheKey(
-            businessId,
-            marketingOwner.Key,
-            scope,
-            range,
-            viewerTimeZoneId,
-            viewerTimeZoneOffsetMinutes,
-            fromUtc,
-            toUtc);
-
-        var cachedJson = await _cache.GetOrCreateAsync(cacheKey, async entry =>
-        {
-            entry.AbsoluteExpirationRelativeToNow = DashboardCacheDuration;
-            var dashboard = await BuildDashboardAsync(
-                businessId,
-                marketingOwner,
-                range,
-                scope,
-                fromUtc,
-                toUtc,
-                viewerTimeZoneId,
-                viewerTimeZoneOffsetMinutes,
-                ct);
-            return JsonSerializer.Serialize(dashboard);
-        });
-
-        return string.IsNullOrWhiteSpace(cachedJson)
-            ? new ParfaitInternalAnalyticsViewModel()
-            : JsonSerializer.Deserialize<ParfaitInternalAnalyticsViewModel>(cachedJson)
-                ?? new ParfaitInternalAnalyticsViewModel();
+        return await BuildDashboardAsync(businessId, marketingOwner, range, scope,
+            fromUtc, toUtc, viewerTimeZoneId, viewerTimeZoneOffsetMinutes, ct);
     }
 
     private async Task<ParfaitInternalAnalyticsViewModel> BuildDashboardAsync(
@@ -272,7 +233,7 @@ public sealed class ParfaitInternalAnalyticsService
         summary.TopPage = selectedBucketSummary.TopPage ?? summary.TopPage;
 
         var parsedFunnelEvents = bucketEvents
-            .Where(x => FunnelEventTypes.Contains(x.EventType))
+            .Where(x => FunnelEventTypes.Contains(CanonicalEventName(x.EventType)))
             .OrderByDescending(x => x.EventUtc)
             .Select(MapAnalyticsSnapshot)
             .Select(ParseEvent)
@@ -292,11 +253,11 @@ public sealed class ParfaitInternalAnalyticsService
         var selectedPaidOrdersInRange = range.QualityMode == TrafficQualityMode.AllTraffic
             ? paidOrdersInRange
             : FilterOrdersToBucket(paidOrdersInRange, parsedFunnelEvents);
-        var purchaseEvents = ResolvePurchaseEvents(parsedFunnelEvents, selectedPaidOrdersInRange);
+        var purchaseEvents = EventsFor(parsedFunnelEvents, "Purchase");
         var storeViewEvents = EventsFor(parsedFunnelEvents, "ViewContent");
         var productViewedEvents = EventsFor(parsedFunnelEvents, "ProductViewed");
         var addToCartEvents = EventsFor(parsedFunnelEvents, "AddToCart");
-        var checkoutEvents = EventsFor(parsedFunnelEvents, "CheckoutStarted");
+        var checkoutEvents = EventsFor(parsedFunnelEvents, "InitiateCheckout");
 
         var storeViewSessions = DistinctSessions(storeViewEvents);
         var productViewSessions = DistinctSessions(productViewedEvents);
@@ -304,14 +265,9 @@ public sealed class ParfaitInternalAnalyticsService
         var checkoutSessions = DistinctSessions(checkoutEvents);
         var purchaseSessions = DistinctSessions(purchaseEvents);
 
-        var revenueCents = selectedPaidOrdersInRange.Count > 0
-            ? _orders.SumNetRevenueCents(selectedPaidOrdersInRange)
-            : purchaseEvents.Sum(item => item.ValueCents ?? 0);
-        var averageOrderValueCents = selectedPaidOrdersInRange.Count > 0
-            ? _orders.CalculateAverageNetOrderValueCents(selectedPaidOrdersInRange)
-            : purchaseEvents.Count > 0
-                ? revenueCents / purchaseEvents.Count
-                : 0;
+        // Financial order evidence and tracked events are separate populations.
+        var revenueCents = _orders.SumNetRevenueCents(selectedPaidOrdersInRange);
+        var averageOrderValueCents = _orders.CalculateAverageNetOrderValueCents(selectedPaidOrdersInRange);
         var visitors = summary.UniqueVisitors;
         var sessions = summary.Sessions;
         var cartAbandonmentSessions = addToCartSessions.Except(purchaseSessions, StringComparer.OrdinalIgnoreCase).Count();
@@ -363,12 +319,11 @@ public sealed class ParfaitInternalAnalyticsService
                 label: "Purchase",
                 tone: purchaseEvents.Count > 0 ? "success" : "danger",
                 tileNote: purchaseEvents.Count > 0
-                    ? $"{Money(revenueCents)} tracked revenue"
+                    ? "Event-reported value; not verified payment or settlement."
                     : "No purchases tracked yet.",
                 conversionRate: Rate(purchaseSessions.Count, checkoutSessions.Count),
                 conversionLabel: "checkout sessions converted to purchase",
-                events: purchaseEvents,
-                revenueOverrideCents: revenueCents)
+                events: purchaseEvents)
         };
 
         var topProducts = BuildTopProducts(selectedPaidOrdersInRange, parsedFunnelEvents);
@@ -441,9 +396,13 @@ public sealed class ParfaitInternalAnalyticsService
             MetaSettings = metaSettings,
             Visitors = visitors,
             Sessions = sessions,
-            Orders = selectedPaidOrdersInRange.Count > 0 ? selectedPaidOrdersInRange.Count : purchaseEvents.Count,
+            Orders = selectedPaidOrdersInRange.Count,
             PaidOrders = selectedPaidOrdersInRange.Count,
             Purchases = purchaseEvents.Count,
+            PaidOrdersWithoutPurchaseEvent = selectedPaidOrdersInRange.Count(order => !purchaseEvents.Any(e =>
+                string.Equals(e.OrderNumber, order.OrderNumber, StringComparison.OrdinalIgnoreCase))),
+            PurchaseEventsWithoutPaidOrder = purchaseEvents.Count(e => string.IsNullOrWhiteSpace(e.OrderNumber)
+                || !selectedPaidOrdersInRange.Any(order => string.Equals(e.OrderNumber, order.OrderNumber, StringComparison.OrdinalIgnoreCase))),
             RevenueCents = revenueCents,
             AverageOrderValueCents = averageOrderValueCents,
             RevenuePerVisitor = visitors <= 0 ? 0 : Math.Round(revenueCents / 100m / visitors, 2),
@@ -499,77 +458,8 @@ public sealed class ParfaitInternalAnalyticsService
         };
     }
 
-    private string BuildWorkspaceCacheKey(Guid businessId, string marketingOwnerKey, ScopeContext scope, TimeRangeRequest range)
-    {
-        return string.Join('|',
-            "parfait-workspace",
-            businessId,
-            marketingOwnerKey,
-            scope.SiteKey ?? string.Empty,
-            scope.AgentTrackingProfileId?.ToString("N") ?? string.Empty,
-            _cacheStamp.Version,
-            range.Preset,
-            range.FromUtc.Ticks,
-            range.ToUtc.Ticks,
-            (int)range.QualityMode);
-    }
-
-    private string BuildDashboardCacheKey(
-        Guid businessId,
-        string marketingOwnerKey,
-        ScopeContext scope,
-        TimeRangeRequest range,
-        string? viewerTimeZoneId,
-        int? viewerTimeZoneOffsetMinutes,
-        DateTime? fromUtc,
-        DateTime? toUtc)
-    {
-        return string.Join('|',
-            "parfait-dashboard",
-            businessId,
-            marketingOwnerKey,
-            scope.SiteKey ?? string.Empty,
-            scope.AgentTrackingProfileId?.ToString("N") ?? string.Empty,
-            _cacheStamp.Version,
-            range.Preset,
-            range.FromUtc.Ticks,
-            range.ToUtc.Ticks,
-            (int)range.QualityMode,
-            viewerTimeZoneId ?? string.Empty,
-            viewerTimeZoneOffsetMinutes?.ToString() ?? string.Empty,
-            fromUtc?.Ticks.ToString() ?? string.Empty,
-            toUtc?.Ticks.ToString() ?? string.Empty);
-    }
-
-    private static List<AnalyticsEventSnapshot> ResolvePurchaseEvents(
-        IReadOnlyList<AnalyticsEventSnapshot> parsedEvents,
-        IReadOnlyList<ParfaitOrderRecord> paidOrdersInRange)
-    {
-        var purchaseEvents = EventsFor(parsedEvents, "Purchase");
-        if (purchaseEvents.Count > 0)
-            return purchaseEvents;
-
-        return paidOrdersInRange
-            .Select(order =>
-            {
-                var primaryItem = order.Items.FirstOrDefault();
-                return new AnalyticsEventSnapshot
-                {
-                    EventUtc = order.CreatedUtc,
-                    EventType = "Purchase",
-                    SessionId = order.CheckoutAttemptId,
-                    VisitorId = order.Email,
-                    ProductName = primaryItem?.Name,
-                    ProductSlug = primaryItem?.Slug,
-                    Size = primaryItem?.Size,
-                    Quantity = order.Items.Sum(item => item.Quantity),
-                    ValueCents = order.NetRevenueCents,
-                    OrderNumber = order.OrderNumber,
-                    Source = order.Source
-                };
-            })
-            .ToList();
-    }
+    private static string CanonicalEventName(string eventType) =>
+        AnalyticsEventCatalog.ResolveConversionEventName(eventType) ?? eventType;
 
     private static List<ParfaitOrderRecord> FilterOrdersToBucket(
         IReadOnlyList<ParfaitOrderRecord> orders,
@@ -608,7 +498,7 @@ public sealed class ParfaitInternalAnalyticsService
     {
         var productViewCounts = CountEventsByProduct(parsedEvents, "ProductViewed");
         var addToCartCounts = CountEventsByProduct(parsedEvents, "AddToCart");
-        var checkoutCounts = CountEventsByProduct(parsedEvents, "CheckoutStarted");
+        var checkoutCounts = CountEventsByProduct(parsedEvents, "InitiateCheckout");
 
         var purchasedProducts = paidOrdersInRange
             .SelectMany(order => order.Items.Select(item => new
@@ -758,7 +648,7 @@ public sealed class ParfaitInternalAnalyticsService
         return new AnalyticsEventSnapshot
         {
             EventUtc = item.EventUtc,
-            EventType = item.EventType,
+            EventType = CanonicalEventName(item.EventType),
             PageKey = item.PageKey,
             Path = item.Path,
             SessionId = item.SessionId,
@@ -845,7 +735,7 @@ public sealed class ParfaitInternalAnalyticsService
         return new ParfaitAnalyticsInspectorEventViewModel
         {
             EventUtc = item.EventUtc,
-            EventType = item.EventType,
+            EventType = CanonicalEventName(item.EventType),
             PageKey = item.PageKey,
             Path = item.Path,
             ProductName = item.ProductName,
@@ -1060,12 +950,12 @@ public sealed class ParfaitInternalAnalyticsService
 
         public int GetEventCount(string eventType)
         {
-            return ActionCounts.TryGetValue(eventType, out var action) ? action.Count : 0;
+            return ActionCounts.TryGetValue(CanonicalEventName(eventType), out var action) ? action.Count : 0;
         }
 
         public int GetUniqueSessions(string eventType)
         {
-            return ActionCounts.TryGetValue(eventType, out var action) ? action.UniqueSessions : 0;
+            return ActionCounts.TryGetValue(CanonicalEventName(eventType), out var action) ? action.UniqueSessions : 0;
         }
     }
 

@@ -14,6 +14,8 @@ public sealed class SubscriptionPayment
 
     public Guid? CommerceOrderId { get; set; }
     public CommerceOrder? CommerceOrder { get; set; }
+    public string? CommerceCompletionContextJson { get; set; }
+    public DateTime? CommerceCaptureVerifiedUtc { get; set; }
 
     public BillingProvider Provider { get; set; } = BillingProvider.Square;
     public BillingProviderEnvironment ProviderEnvironment { get; set; } = BillingProviderEnvironment.Sandbox;

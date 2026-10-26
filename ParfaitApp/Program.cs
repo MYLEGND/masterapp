@@ -206,7 +206,9 @@ builder.Services
         options.AccessDeniedPath = "/internal/denied";
         options.SlidingExpiration = true;
         options.ExpireTimeSpan = TimeSpan.FromHours(12);
-        options.Events.OnValidatePrincipal = async context =>
+        options.Events.OnValidatePrincipal = context =>
+            Infrastructure.Identity.RestrictedAiIdentity.ContinueHumanSignInAsync(context.Principal, builder.Configuration,
+            () => { context.RejectPrincipal(); context.ShouldRenew = false; }, async () =>
         {
             var teamAccess = context.HttpContext.RequestServices.GetRequiredService<IParfaitTeamAccessService>();
             if (await teamAccess.ValidatePrincipalAsync(context.Principal!, context.HttpContext.RequestAborted))
@@ -214,7 +216,7 @@ builder.Services
 
             context.RejectPrincipal();
             await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        };
+        });
     })
     .AddOpenIdConnect(options =>
     {
@@ -266,13 +268,15 @@ builder.Services
             return Task.CompletedTask;
         };
 
-        options.Events.OnTokenValidated = async context =>
+        options.Events.OnTokenValidated = context =>
+            Infrastructure.Identity.RestrictedAiIdentity.ContinueHumanSignInAsync(context.Principal, builder.Configuration,
+            () => context.Fail("Restricted operator access is unavailable in this application."), async () =>
         {
             var teamAccess = context.HttpContext.RequestServices.GetRequiredService<IParfaitTeamAccessService>();
             var result = await teamAccess.AuthorizeSignInAsync(context.Principal!, context.HttpContext.RequestAborted);
             if (!result.Allowed)
                 context.Fail(result.Message);
-        };
+        });
     });
 
 builder.Services.AddAuthorization();
@@ -364,6 +368,7 @@ app.UseRateLimiter();
 app.UseSession();
 
 app.UseAuthentication();
+app.UseMiddleware<Infrastructure.Identity.RestrictedAiAccessBoundary>();
 app.UseMiddleware<ParfaitInternalAccessMiddleware>();
 app.UseAuthorization();
 

@@ -133,6 +133,8 @@ public class MasterAppDbContext : DbContext
     public DbSet<CommerceMerchantAuthorization> CommerceMerchantAuthorizations => Set<CommerceMerchantAuthorization>();
     public DbSet<CommercePaymentAttempt> CommercePaymentAttempts => Set<CommercePaymentAttempt>();
     public DbSet<CommercePaymentReceipt> CommercePaymentReceipts => Set<CommercePaymentReceipt>();
+    public DbSet<SubscriptionPaymentCompletionEffect> SubscriptionPaymentCompletionEffects => Set<SubscriptionPaymentCompletionEffect>();
+    public DbSet<SubscriptionPaymentRefund> SubscriptionPaymentRefunds => Set<SubscriptionPaymentRefund>();
     public DbSet<CommercePaymentEffect> CommercePaymentEffects => Set<CommercePaymentEffect>();
     public DbSet<CommercePaymentRefund> CommercePaymentRefunds => Set<CommercePaymentRefund>();
     public DbSet<CommerceOrder> CommerceOrders => Set<CommerceOrder>();

@@ -18,36 +18,23 @@ public static class BusinessBookingAccess
             .SingleOrDefaultAsync(x => x.Id == agentProfileId, ct);
         if (agent is null || string.IsNullOrWhiteSpace(agent.AgentUserId)) return null;
 
-        var businessActive = await db.CommerceBusinesses.AsNoTracking()
-            .AnyAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", ct);
-        if (!businessActive) return null;
-
-        var memberProfileIds = await db.CommerceBusinessMembers.AsNoTracking()
-            .Where(x => x.CommerceBusinessId == businessId &&
-                        x.Status == "Active" &&
-                        x.ClientProfileId.HasValue)
-            .Select(x => x.ClientProfileId!.Value)
-            .Distinct()
-            .ToListAsync(ct);
-        if (memberProfileIds.Count == 0) return null;
-
-        var memberClientIds = await db.ClientProfiles.AsNoTracking()
-            .Where(x => memberProfileIds.Contains(x.Id))
-            .Select(x => x.ClientUserId)
-            .Where(x => x != null && x != "")
-            .ToListAsync(ct);
-        if (memberClientIds.Count == 0) return null;
-
-        var agentId = agent.AgentUserId.Trim().ToLower();
-        var agentUpn = (agent.AgentUpn ?? string.Empty).Trim().ToLower();
-        var attached = await db.AgentClients.AsNoTracking().AnyAsync(link =>
-            memberClientIds.Contains(link.ClientUserId) &&
-            (((link.AgentUserId ?? string.Empty).Trim().ToLower() == agentId) ||
-             (!string.IsNullOrWhiteSpace(agentUpn) &&
-              (link.AgentUpn ?? string.Empty).Trim().ToLower() == agentUpn)), ct);
-
-        return attached ? agent : null;
+        return await IsAttachedAgentAsync(db, businessId, agentProfileId, ct) ? agent : null;
     }
+
+    // Canonical authorization expressed as a server-side boolean. The metadata
+    // path never materializes a client/profile/contact or returns an identity.
+    public static Task<bool> IsAttachedAgentAsync(MasterAppDbContext db, Guid businessId,
+        Guid agentProfileId, CancellationToken ct = default) =>
+        db.AgentProfiles.AsNoTracking().Where(agent => agent.Id == agentProfileId &&
+            agent.AgentUserId != null && agent.AgentUserId.Trim() != "" &&
+            db.CommerceBusinesses.Any(business => business.Id == businessId && business.IsActive && business.Status == "Active"))
+        .AnyAsync(agent => db.CommerceBusinessMembers.Any(member => member.CommerceBusinessId == businessId &&
+            member.Status == "Active" && member.ClientProfileId.HasValue &&
+            db.ClientProfiles.Any(client => client.Id == member.ClientProfileId.Value && client.ClientUserId != null && client.ClientUserId != "" &&
+                db.AgentClients.Any(link => link.ClientUserId == client.ClientUserId &&
+                    ((link.AgentUserId ?? "").Trim().ToLower() == agent.AgentUserId.Trim().ToLower() ||
+                     (agent.AgentUpn != null && agent.AgentUpn.Trim() != "" &&
+                      (link.AgentUpn ?? "").Trim().ToLower() == agent.AgentUpn.Trim().ToLower()))))), ct);
 
     public static Task<WorkstationLeadProfile?> ResolveBusinessContactAsync(
         MasterAppDbContext db,

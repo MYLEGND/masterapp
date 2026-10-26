@@ -29,9 +29,9 @@ class ExactSourceProofTests(unittest.TestCase):
                 else dict(total_count=len(self.rows),workflow_runs=self.rows)),
             fast_track_validation_receipt=Mock(return_value=41))
 
-    def execute(self):
+    def execute(self, same_merge=False):
         with patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',CANDIDATE_SHA=self.sha,
-                GITHUB_SHA='b'*40,GITHUB_TOKEN='synthetic'),clear=True), \
+                GITHUB_SHA=self.sha if same_merge else 'b'*40,GITHUB_TOKEN='synthetic'),clear=True), \
              patch.object(importlib.util,'spec_from_file_location',return_value=Mock()), \
              patch.object(importlib.util,'module_from_spec',return_value=self.owner), \
              patch.object(time,'monotonic',side_effect=[0,1801]), \
@@ -68,6 +68,21 @@ class ExactSourceProofTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit,'HISTORY_INCOMPLETE'):self.execute()
         self.sha='branch-name'
         with self.assertRaisesRegex(SystemExit,'CANDIDATE_INVALID'):self.execute()
+
+    def test_same_merge_requires_trusted_merge_proof_before_candidate_build(self):
+        self.owner.fast_track_inventory_merge_proof=Mock()
+        with self.assertRaises(SystemExit) as result: self.execute(same_merge=True)
+        self.assertEqual(0,result.exception.code)
+        self.owner.fast_track_inventory_merge_proof.assert_called_once_with('owner/repo',self.sha,'synthetic')
+        self.owner.api_get.assert_not_called()
+        self.owner.fast_track_validation_receipt.assert_not_called()
+        self.owner.fast_track_inventory_merge_proof.side_effect=RuntimeError('MERGE_UNPROVEN')
+        with self.assertRaisesRegex(RuntimeError,'MERGE_UNPROVEN'): self.execute(same_merge=True)
+        job=text.split('  validated-observer:',1)[1].split('  production-readback:',1)[0]
+        checkout=job.split('uses: actions/checkout@v4',1)[1].split('      - ',1)[0]
+        self.assertIn('fetch-depth: 0',checkout)
+        self.assertLess(job.index('PYVALIDATE'),job.index('ref: ${{ env.CANDIDATE_SHA }}'))
+
 
 class CredentialBoundaryTests(unittest.TestCase):
     def test_only_trusted_job_has_production_or_oidc(self):
@@ -163,6 +178,24 @@ class TrustedContractExecutionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'UNPROVEN'):self.execute()
         self.assertEqual(1,len(self.commands))
 
+    def test_payment_rule_requires_exact_plural_observer_rule(self):
+        self.proof['rule']='approved-prefix-reviewed-canonical-payment-entry'
+        for wrong in ('approved-definitions-exact',self.proof['rule']):
+            self.verified['rule']=wrong
+            with self.assertRaisesRegex(SystemExit,'COMPATIBILITY_UNPROVEN'):self.execute()
+        self.verified['rule']='approved-prefix-reviewed-canonical-payment-entries'
+        self.execute()
+
+    def test_unknown_rule_cannot_fall_back_to_exact_definitions(self):
+        self.proof['rule']='unknown-reviewed-rule'
+        with self.assertRaisesRegex(SystemExit,'COMPATIBILITY_UNPROVEN'):self.execute()
+        self.assertEqual(1,len(self.commands))
+        self.assertFalse((self.root/'trusted-contract-proof.json').exists())
+
+    def test_existing_static_styles_rule_remains_explicit(self):
+        self.proof['rule']='approved-definitions-static-styles-only'
+        self.execute()
+
     def test_changed_checkout_current_head_or_ancestry_is_rejected(self):
         import subprocess
         self.checkout='c'*40
@@ -201,6 +234,49 @@ class TrustedContractExecutionTests(unittest.TestCase):
         self.owner.candidate_migration_contract_proven.assert_not_called()
 
 
+
+
+class RecoveryEvidenceTests(unittest.TestCase):
+    def execute(self, proof, *, missing=False):
+        import json,tempfile
+        source=text.split("python3 - <<'PYRECOVERY'\n",1)[1].split('          PYRECOVERY',1)[0]
+        source='\n'.join(line[10:] for line in source.splitlines())
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)/'parfait-proof';root.mkdir()
+            (root/'sanitized-schema.json').write_text(json.dumps(dict(sharedDatabase=True,
+                applications={'masterapp-protect':{'databaseIdentity':'a'*64}})))
+            owner=SimpleNamespace(production_recovery=Mock(return_value=proof,
+                side_effect=RuntimeError('RECOVERY_UNAVAILABLE') if missing else None))
+            with patch('importlib.util.spec_from_file_location',return_value=Mock()), \
+                 patch('importlib.util.module_from_spec',return_value=owner), \
+                 patch.dict(os.environ,{'RUNNER_TEMP':directory}),contextlib.redirect_stdout(io.StringIO()):
+                try:exec(compile(source,'recovery-evidence','exec'),{})
+                except BaseException:
+                    self.assertFalse((root/'sanitized-recovery.json').exists())
+                    raise
+            self.assertEqual(proof,json.loads((root/'sanitized-recovery.json').read_text()))
+
+    def proof(self):
+        return dict(databaseIdentity='a'*64,observedUtc='2026-10-26T01:00:00+00:00',
+            restorePointUtc='2026-10-26T00:45:00+00:00',earliestRestoreUtc='2026-10-20T00:00:00+00:00',
+            retentionDays=7,restoreWindowVerified=True,restoreExecuted=False,authorizesMutation=False)
+
+    def test_valid_sanitized_recovery_is_retained_without_retention_or_cleanup_change(self):
+        self.execute(self.proof())
+        upload=text.split('      - name: Preserve sanitized read-only evidence',1)[1].split('      - name:',1)[0]
+        self.assertIn('${{ runner.temp }}/parfait-proof/sanitized-recovery.json',upload)
+        self.assertIn('retention-days: 30',upload)
+        self.assertNotIn('settings.json',upload)
+        self.assertIn('Remove private temporary provider responses',text)
+
+    def test_absent_or_malformed_recovery_never_writes_receipt(self):
+        with self.assertRaisesRegex(RuntimeError,'RECOVERY_UNAVAILABLE'):self.execute(None,missing=True)
+        for change in ({'databaseIdentity':'b'*64},{'restoreExecuted':True},{'authorizesMutation':True},
+                       {'retentionDays':True},{'retentionDays':6},{'restoreWindowVerified':False},
+                       {'secret':'must-not-retain'},{'restorePointUtc':'2026-10-27T00:00:00+00:00'}):
+            with self.subTest(change=change),self.assertRaisesRegex(SystemExit,'RECOVERY_METADATA_UNPROVEN'):
+                self.execute(self.proof()|change)
+        with self.assertRaisesRegex(SystemExit,'RECOVERY_METADATA_UNPROVEN'):self.execute(None)
 
 
 class SchemaFailureClassificationTests(unittest.TestCase):

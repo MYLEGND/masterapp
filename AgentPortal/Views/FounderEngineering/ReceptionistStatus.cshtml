@@ -1,0 +1,35 @@
+@model AgentPortal.Controllers.ReceptionistOperationsStatus
+@{
+    // A full human layout may hydrate identity, notifications or client navigation.
+    Layout = null;
+}
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Receptionist status</title></head>
+<body><main>
+    <h1>Receptionist status</h1>
+    <p>Read-only status for this operator's approved workspace. Customer records and calendar events are unavailable here.</p>
+    <dl>
+        <dt>Configuration version</dt><dd>@Model.ConfigurationVersion</dd>
+        <dt>Call admission</dt><dd>@(Model.AdmissionEnabled ? "Owner permission enabled; runtime gates still apply" : "Paused")</dd>
+        <dt>Verified synthetic intake outcomes in this view</dt><dd>@Model.SyntheticOutcomes.Count(x => x.Kind == "Synthetic intake" && x.State == "Independently verified synthetic outcome")</dd>
+        <dt>Verified synthetic booking outcomes in this view</dt><dd>@Model.SyntheticOutcomes.Count(x => x.Kind == "Synthetic booking" && x.State == "Independently verified synthetic outcome")</dd>
+        <dt>Calendar connection</dt><dd>@(Model.Booking.CalendarConnectedRecorded ? "Recorded as connected; provider verification pending" : "Not recorded as connected")</dd>
+        <dt>Booking request</dt><dd>@(Model.Booking.Requested ? "Configured; independent acceptance required" : "Disabled")</dd>
+        <dt>Booking mode</dt><dd>@(Model.Booking.QaOnly ? "Synthetic QA only" : "Consented booking; runtime acceptance required")</dd>
+        <dt>Customer invitation</dt><dd>@Model.Booking.InvitationPolicy</dd>
+    </dl>
+    <h2>Synthetic test outcomes</h2>
+    <p>Up to 50 recent outcomes for the current configuration. A ticket readback checks the existing action journal; it does not create a lead, appointment or invitation.</p>
+    <form method="get"><label for="qa-ticket">Exact synthetic ticket ID</label><input id="qa-ticket" name="qaTicketId" maxlength="36" /><button type="submit">Read test outcome</button></form>
+    <table><thead><tr><th>Ticket</th><th>Test call</th><th>Kind</th><th>Readback</th><th>Updated UTC</th></tr></thead><tbody>
+        @foreach (var outcome in Model.SyntheticOutcomes)
+        { <tr><td>@outcome.TicketId</td><td>@outcome.CallId</td><td>@outcome.Kind</td><td>@outcome.State</td><td>@outcome.UpdatedUtc.ToString("O")</td></tr> }
+    </tbody></table>
+    @if (Model.SyntheticOutcomes.Count == 0) { <p>No matching synthetic outcome was found in this configuration.</p> }
+    <h2>Configured services</h2>
+    <table><thead><tr><th>Service</th><th>Timezone</th><th>Minutes</th></tr></thead><tbody>
+        @foreach (var service in Model.Booking.Services)
+        { <tr><td>@service.PublicLabel</td><td>@service.TimeZoneId</td><td>@service.DurationMinutes</td></tr> }
+    </tbody></table>
+    <p>A synthetic result does not create a customer inquiry, appointment, notification or revenue. Saved settings do not prove live call quality or authorize activation.</p>
+</main></body></html>
