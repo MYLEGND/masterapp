@@ -109,6 +109,75 @@ public sealed partial class ReceptionistRuntimeWorkerTests
         Assert.False((await db.Set<ReceptionistCostReservation>().SingleAsync()).CashFinal);
     }
 
+    [Theory]
+    [InlineData("actor")]
+    [InlineData("permission")]
+    [InlineData("revoked")]
+    [InlineData("revision")]
+    [InlineData("expired")]
+    [InlineData("duplicate")]
+    [InlineData("public_endpoint")]
+    public async Task RestrictedGrantRechecksActorPermissionAndExactPersistedWindow(string change)
+    {
+        await using var f = await Fixture.CreateAsync(browser: true, controlledBrowser: true);
+        using var scope = f.CreateScope(); var controller = BrowserController(scope.ServiceProvider);
+        controller.Request.Headers.Origin = "https://portal.mylegnd.com";
+        void Actor(string actor) => controller.HttpContext.User = new(new System.Security.Claims.ClaimsIdentity(
+            [new(System.Security.Claims.ClaimTypes.NameIdentifier, actor), new("oid", actor)], "synthetic-test"));
+        Actor("synthetic-owner");
+        var owner = Shared.Analytics.MarketingOwnerScope.Founder;
+        var grant = Field(await controller.GrantForOwnerAsync(owner, (_, _) => Task.FromResult(true), default), "grant");
+        if (change == "actor") Actor("different-owner");
+        if (change == "expired") f.Clock.Advance(TimeSpan.FromHours(1));
+        await using (var db = f.Database())
+        {
+            var window = await db.Set<ReceptionistAcceptanceWindow>().SingleAsync();
+            if (change == "revoked") window.RevokedUtc = f.Clock.GetUtcNow().UtcDateTime;
+            if (change == "revision") window.Revision = Guid.NewGuid();
+            if (change == "duplicate")
+            {
+                var binding = (await f.Admission.GetIngressBindingAsync("openai", "test_ingress", default))!;
+                await ReceptionistTestWindows.SeedAsync(db, binding.MarketingConnectionId, binding.ConfigurationId, binding.Binding, f.Clock.GetUtcNow().UtcDateTime);
+            }
+            await db.SaveChangesAsync();
+        }
+        var result = change == "public_endpoint" ? await controller.Start(new(grant, "v=0\r\n"), default) :
+            await controller.StartForOwnerAsync(owner, new(grant, "v=0\r\n"), (_, _) => Task.FromResult(change != "permission"), default);
+        Assert.IsNotType<OkObjectResult>(result); Assert.Equal(0, f.Transport.BrowserCreates);
+        await using var read = f.Database(); Assert.Empty(await read.Set<ReceptionistCall>().ToArrayAsync());
+    }
+
+    [Theory]
+    [InlineData("revoked")]
+    [InlineData("nonhex")]
+    [InlineData("space")]
+    public async Task RestrictedBrowserPinsWindowDeadlineAndRevocationFencesItsCall(string malformedEvidence)
+    {
+        await using var f = await Fixture.CreateAsync(browser: true, controlledBrowser: true);
+        using var scope = f.CreateScope(); var controller = BrowserController(scope.ServiceProvider);
+        controller.Request.Headers.Origin = "https://portal.mylegnd.com";
+        controller.HttpContext.User = new(new System.Security.Claims.ClaimsIdentity(
+            [new(System.Security.Claims.ClaimTypes.NameIdentifier, "synthetic-owner"), new("oid", "synthetic-owner")], "synthetic-test"));
+        var owner = Shared.Analytics.MarketingOwnerScope.Founder;
+        await using (var db = f.Database())
+        { (await db.Set<ReceptionistAcceptanceWindow>().SingleAsync()).ExpiresUtc = f.Clock.GetUtcNow().UtcDateTime.AddSeconds(20); await db.SaveChangesAsync(); }
+        var grant = Field(await controller.GrantForOwnerAsync(owner, (_, _) => Task.FromResult(true), default), "grant");
+        var handle = Field(await controller.StartForOwnerAsync(owner, new(grant, "v=0\r\n"), (_, _) => Task.FromResult(true), default), "handle");
+        Assert.Equal(1, f.Transport.BrowserCreates);
+        await using (var db = f.Database())
+        {
+            var call = await db.Set<ReceptionistCall>().SingleAsync(); var window = await db.Set<ReceptionistAcceptanceWindow>().SingleAsync();
+            Assert.True(call.ControlledTest); Assert.Equal(window.ConfigurationVersionId, call.ConfigurationVersionId); Assert.Equal(window.ExpiresUtc, call.MustStopUtc);
+            if (malformedEvidence == "nonhex") window.RestrictedRouteEvidenceSha256 = new string('z', 64);
+            else if (malformedEvidence == "space") window.RestrictedRouteEvidenceSha256 = new string('a', 31) + " " + new string('a', 32);
+            else window.RevokedUtc = f.Clock.GetUtcNow().UtcDateTime;
+            window.Revision = Guid.NewGuid(); await db.SaveChangesAsync();
+        }
+        Assert.Equal("ending", Field(await controller.Status(new(handle), default), "state"));
+        Assert.IsNotType<OkObjectResult>(await controller.StartForOwnerAsync(owner, new(grant, "v=0\r\n"), (_, _) => Task.FromResult(true), default));
+        Assert.Equal(1, f.Transport.BrowserCreates);
+    }
+
     private sealed class BrowserBindInterceptor(bool failBeforeSave = false, Action? afterSave = null) : SaveChangesInterceptor
     {
         private bool triggered;

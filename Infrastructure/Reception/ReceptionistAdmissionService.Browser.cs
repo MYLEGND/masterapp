@@ -40,7 +40,7 @@ public sealed partial class ReceptionistAdmissionService
     // Only a server-validated, expiring website grant may supply creationId. This is
     // not a provider event and never manufactures a signed ingress/session decision.
     internal async Task<ReceptionistBrowserClaim> ReserveBrowserAsync(ReceptionistIngressBinding expected,
-        Guid creationId, string offerSha256, bool controlledTest, CancellationToken ct)
+        Guid creationId, string offerSha256, bool controlledTest, CancellationToken ct, Guid? windowId = null, Guid? windowRevision = null)
     {
         if (creationId == Guid.Empty) throw new ArgumentException("A browser creation identity is required.");
         RequireSha256(offerSha256);
@@ -76,6 +76,12 @@ public sealed partial class ReceptionistAdmissionService
                 System.Text.Json.JsonSerializer.Serialize(binding, ReceptionistConfigurationCodec.Json) !=
                 System.Text.Json.JsonSerializer.Serialize(expected.Binding, ReceptionistConfigurationCodec.Json))
                 return new ReceptionistBrowserClaim(false, "website_binding_changed", null);
+            if (controlledTest)
+            {
+                var window = await ActiveAcceptanceWindowAsync(write, current.Id, version.Id, binding, now, ct);
+                if (window is null || window.Id != windowId || window.Revision != windowRevision)
+                    return new ReceptionistBrowserClaim(false, "acceptance_window_changed", null);
+            }
             var evaluation = await EvaluateAdmissionAsync(write, current, configuration, binding, ownerAccount,
                 accountIds, controlledTest, now, ct);
             foreach (var boundary in evaluation.BoundaryCalls) await HoldVoiceAllocationAsync(write, boundary, ct);

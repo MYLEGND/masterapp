@@ -385,7 +385,7 @@ public sealed class ReceptionistSetupAndAuthorityTests
             ProtectedWebhookSecret = ReceptionistCredentialEnvelope.Protect(protector, owner, "openai", "project_a", "voice-webhook", "synthetic-webhook")
         };
         var config = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
-        var authority = new ReceptionistRuntimeAuthority(config, protector, TimeProvider.System);
+        var authority = new ReceptionistRuntimeAuthority(config, protector);
         Assert.Equal(originalSecret, authority.Credential(owner, binding, false));
         Assert.Equal("synthetic-webhook", authority.Credential(owner, binding, true));
         Assert.Throws<System.Security.Cryptography.CryptographicException>(() => authority.Credential(MarketingOwnerScope.Business(Guid.NewGuid()), binding, false));
@@ -574,14 +574,18 @@ public sealed class ReceptionistSetupAndAuthorityTests
     public async Task MissingStaleOrMismatchedWindowNeverMeansRestrictedRouteReady(string state)
     {
         await using var f = await ReadinessFixture.CreateAsync();
-        const string prefix = "Receptionist:AcceptanceWindows:entry:";
-        if (state == "missing") f.RuntimeConfiguration[prefix + "AuthorizationReceipt"] = null;
-        if (state == "expired") f.RuntimeConfiguration[prefix + "ExpiresUtc"] = f.Now.ToString("O");
-        if (state == "future") f.RuntimeConfiguration[prefix + "StartsUtc"] = f.Now.AddMinutes(1).ToString("O");
-        if (state == "wrong-owner") f.RuntimeConfiguration[prefix + "OwnerKey"] = MarketingOwnerScope.Business(Guid.NewGuid()).Key;
-        if (state == "wrong-project") f.RuntimeConfiguration[prefix + "ProviderProjectKey"] = "different_project";
-        if (state == "not-restricted") f.RuntimeConfiguration[prefix + "VerifiedRestrictedTestRoute"] = "false";
-        if (state == "overlong") f.RuntimeConfiguration[prefix + "ExpiresUtc"] = f.Now.AddHours(2).ToString("O");
+        await using (var db = f.Database())
+        {
+            var window = await db.Set<ReceptionistAcceptanceWindow>().SingleAsync();
+            if (state == "missing") db.Remove(window);
+            if (state == "expired") { window.StartsUtc = f.Now.AddMinutes(-30); window.ExpiresUtc = f.Now; }
+            if (state == "future") window.StartsUtc = f.Now.AddMinutes(1);
+            if (state == "wrong-owner") window.ConfigurationSha256 = new string('b', 64);
+            if (state == "wrong-project") window.ProviderProjectKey = "different_project";
+            if (state == "not-restricted") window.RestrictedRouteEvidenceSha256 = new string('z', 64);
+            if (state == "overlong") window.ExpiresUtc = f.Now.AddHours(2);
+            await db.SaveChangesAsync();
+        }
         var projected = await f.Service.GetSetupReadinessAsync(await f.SnapshotAsync(), observeControlPlaneRuntime: true);
         Assert.Equal("not_verified", projected.ApplicationWindowState);
         Assert.Equal("Not ready", projected.CallReadiness);
@@ -888,14 +892,10 @@ public sealed class ReceptionistSetupAndAuthorityTests
                 db.AddRange(ownerPeriod, f.Period(f.FundingAccount.Id, ownerPeriod.StartUtc, ownerPeriod.EndUtc));
                 await db.SaveChangesAsync();
             }
-            const string prefix = "Receptionist:AcceptanceWindows:entry:";
+            await using (var db = f.Database())
+                await ReceptionistTestWindows.SeedAsync(db, f.Connection.Id, f.Version.Id, f.Binding, f.Now);
             f.RuntimeConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Receptionist:Enabled"] = "true", [prefix + "OwnerKey"] = MarketingOwnerScope.Founder.Key,
-                [prefix + "ProviderProjectKey"] = f.Binding.ProviderProjectKey, [prefix + "VerifiedRestrictedTestRoute"] = "true",
-                [prefix + "AuthorizationReceipt"] = "synthetic-authorization", [prefix + "StartsUtc"] = f.Now.AddMinutes(-1).ToString("O"),
-                [prefix + "ExpiresUtc"] = f.Now.AddMinutes(30).ToString("O")
-            }).Build();
+            { ["Receptionist:Enabled"] = "true" }).Build();
             f.protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
             var services = new ServiceCollection(); services.AddSingleton<IConfiguration>(f.RuntimeConfiguration);
             services.AddSingleton(f.protector); services.AddSingleton<TimeProvider>(new ReadinessClock(f.Now));
@@ -933,7 +933,10 @@ public sealed class ReceptionistSetupAndAuthorityTests
         {
             await using var db = Database(); var version = await db.Set<ReceptionistConfigurationVersion>().SingleAsync();
             version.ConfigurationJson = ReceptionistConfigurationCodec.Serialize(configuration);
-            version.ConfigurationSha256 = ReceptionistConfigurationCodec.Hash(version.ConfigurationJson); await db.SaveChangesAsync();
+            version.ConfigurationSha256 = ReceptionistConfigurationCodec.Hash(version.ConfigurationJson);
+            // This fixture configures synthetic initial state before observation/reservation.
+            (await db.Set<ReceptionistAcceptanceWindow>().SingleAsync()).ConfigurationSha256 = version.ConfigurationSha256;
+            await db.SaveChangesAsync();
         }
 
         internal async Task<ReceptionistConfigurationSnapshot> SnapshotAsync()

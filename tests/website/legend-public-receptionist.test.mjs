@@ -6,9 +6,15 @@ import {publicInquiryForm} from '../../SHARED/WebsitePlatform/public-inquiry-for
 
 const source = readFileSync(new URL('../../Legend-Design/legend-public-inquiry.js', import.meta.url), 'utf8');
 const settle = async () => { for (let i=0;i<5;i++) await new Promise(resolve=>setTimeout(resolve,0)); };
-function fixture({grantAvailable=true, microphone, uncertainStart=false, delayedIce=false, connects=true}={}) {
+function fixture({grantAvailable=true, microphone, uncertainStart=false, delayedIce=false, connects=true, restricted=false, foreignTestRoute=false}={}) {
   const dom = new JSDOM(publicInquiryForm(), {url:'https://www.mylegnd.com/contact',runScripts:'outside-only'});
   const w=dom.window, calls=[], peers=[], channels=[];
+  if (restricted) {
+    const host=w.document.querySelector('[data-website-receptionist]');
+    host.dataset.receptionistTestGrant=foreignTestRoute?'https://foreign.example.test/grant':'/settings/test/grant';
+    host.dataset.receptionistTestStart='/settings/test/start';
+    const token=w.document.createElement('input');token.name='__RequestVerificationToken';token.value='synthetic-antiforgery';host.append(token);
+  }
   let startupTimer;
   const nativeSetTimeout=w.setTimeout.bind(w), nativeClearTimeout=w.clearTimeout.bind(w);
   w.setTimeout=(callback,ms,...args)=>{
@@ -37,8 +43,10 @@ function fixture({grantAvailable=true, microphone, uncertainStart=false, delayed
   w.fetch=async(url,options)=>{
     const action=url.split('/').at(-1), body=JSON.parse(options.body);
     calls.push({action,body,options});
-    assert.equal(new URL(url).origin,'https://portal.mylegnd.com');
-    assert.equal(options.credentials,'omit');
+    assert.equal(new URL(url,w.location.href).origin,restricted?w.location.origin:'https://portal.mylegnd.com');
+    assert.equal(options.credentials,restricted?'same-origin':'omit');
+    if(restricted)assert.equal(options.headers.RequestVerificationToken,'synthetic-antiforgery');
+    else assert.equal(options.headers.RequestVerificationToken,undefined);
     if(action==='grant')return {ok:grantAvailable,json:async()=>({grant:'opaque-grant'})};
     if(action==='start'){
       if(uncertainStart)throw new Error('unknown provider outcome');
@@ -134,5 +142,19 @@ test('a peer that never connects retains startup deadline and releases its origi
     assert.equal(f.calls.filter(x=>x.action==='start').length,1);
     assert.equal(f.calls.filter(x=>x.action==='end').length,1);
     assert.match(f.status(),/could not connect/);
+  }finally{f.close();}
+});
+
+test('restricted management voice reuses media flow with same-origin authentication and antiforgery',async()=>{
+  const f=fixture({restricted:true});try{
+    f.start.click();await settle();assert.equal(f.microphoneRequests(),1);
+    assert.equal(f.calls.filter(x=>x.action==='start').length,1);
+    f.end.click();await settle();assert.equal(f.calls.filter(x=>x.action==='end').length,1);
+  }finally{f.close();}
+});
+
+test('restricted route cannot send cookies or antiforgery to another origin',async()=>{
+  const f=fixture({restricted:true,foreignTestRoute:true});try{
+    f.start.click();await settle();assert.equal(f.calls.length,0);assert.equal(f.microphoneRequests(),0);
   }finally{f.close();}
 });

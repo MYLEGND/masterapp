@@ -196,9 +196,17 @@
   // data-channel events. The existing server owns tenant selection and admission.
   let activeVoice = null;
   const voiceBase = 'https://portal.mylegnd.com/api/receptionist/browser/';
-  async function voiceRequest(action, body, signal, keepalive = false) {
-    const response = await fetch(voiceBase + action, {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, credentials: 'omit',
+  async function voiceRequest(action, body, signal, keepalive = false, host = null) {
+    const restricted = host?.dataset.receptionistTestGrant;
+    const route = restricted ? (action === 'grant' ? restricted : action === 'start' ? host.dataset.receptionistTestStart : '/api/receptionist/browser/' + action) : voiceBase + action;
+    const headers = {'Content-Type': 'application/json'};
+    if (restricted) {
+      const url = new URL(route, location.href);
+      if (url.origin !== location.origin) throw new Error('voice_unavailable');
+      headers.RequestVerificationToken = host.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+    }
+    const response = await fetch(route, {
+      method: 'POST', headers, credentials: restricted ? 'same-origin' : 'omit',
       body: JSON.stringify(body), signal, keepalive
     });
     if (!response.ok) throw new Error('voice_unavailable');
@@ -215,7 +223,7 @@
     call.end.hidden = true; call.start.disabled = false;
     call.status.textContent = message;
     if (activeVoice === call) activeVoice = null;
-    if (call.handle) void voiceRequest('end', {handle:call.handle}, undefined, true).catch(() => {});
+    if (call.handle) void voiceRequest('end', {handle:call.handle}, undefined, true, call.host).catch(() => {});
   }
   async function gatherVoiceCandidates(peer, signal) {
     if (peer.iceGatheringState === 'complete') return;
@@ -254,7 +262,7 @@
       status.textContent = 'Checking voice availability…';
       call.startup = setTimeout(() => endVoice(call, 'Voice could not connect. Please send an inquiry below.'), 45000);
       try {
-        const grant = await voiceRequest('grant', {sourcePath:location.pathname}, call.abort.signal);
+        const grant = await voiceRequest('grant', {sourcePath:location.pathname}, call.abort.signal, false, host);
         if (call.ended) return;
         if (typeof grant.grant !== 'string') throw new Error('voice_unavailable');
         status.textContent = 'Allow microphone access to speak, or send an inquiry below.';
@@ -281,10 +289,10 @@
         if (call.ended) return;
         status.textContent = 'Connecting to the AI receptionist…';
         // One start attempt only. An uncertain result is never automatically retried.
-        const result = await voiceRequest('start', {grant:grant.grant, offer:peer.localDescription.sdp}, call.abort.signal);
+        const result = await voiceRequest('start', {grant:grant.grant, offer:peer.localDescription.sdp}, call.abort.signal, false, host);
         if (typeof result.handle === 'string') call.handle = result.handle;
         if (call.ended) {
-          if (call.handle) void voiceRequest('end', {handle:call.handle}, undefined, true).catch(() => {});
+          if (call.handle) void voiceRequest('end', {handle:call.handle}, undefined, true, call.host).catch(() => {});
           return;
         }
         if (typeof result.answer !== 'string' || !call.handle || !Number.isInteger(result.maximumSeconds) || result.maximumSeconds <= 0)
@@ -294,7 +302,7 @@
         const poll = async () => {
           if (call.ended) return;
           try {
-            const observation = await voiceRequest('status', {handle:call.handle}, call.abort.signal);
+            const observation = await voiceRequest('status', {handle:call.handle}, call.abort.signal, false, host);
             if (call.ended) return;
             if (['ending','ended'].includes(observation.state)) { endVoice(call); return; }
             if (observation.state === 'active' && peer.connectionState === 'connected') {

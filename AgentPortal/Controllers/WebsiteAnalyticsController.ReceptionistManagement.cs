@@ -37,7 +37,30 @@ public partial class WebsiteAnalyticsController
             Url.Action(nameof(Receptionist), new { agentProfileId })!, message,
             Url.Action(nameof(PlanReceptionistOperation), new { agentProfileId })!,
             Url.Action(nameof(ApplyReceptionistOperation), new { agentProfileId })!,
-            Url.Action(nameof(ReviewReceptionistOperation), new { agentProfileId })!, review, Url.Action(nameof(PrepareReceptionistOperation), new { agentProfileId })!));
+            Url.Action(nameof(ReviewReceptionistOperation), new { agentProfileId })!, review, Url.Action(nameof(PrepareReceptionistOperation), new { agentProfileId })!,
+            Url.Action(nameof(GrantReceptionistTest), new { agentProfileId })!, Url.Action(nameof(StartReceptionistTest), new { agentProfileId })!));
+    }
+
+    private ReceptionistBrowserController ReceptionistMedia => new(HttpContext.RequestServices)
+        { ControllerContext = ControllerContext };
+
+    [HttpPost("receptionist/connections/test/grant"), ValidateAntiForgeryToken, RequestSizeLimit(4096)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> GrantReceptionistTest(Guid? agentProfileId = null, CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+        return await ReceptionistMedia.GrantForOwnerAsync(owner, AuthorizeReceptionistManagementAsync, cancellationToken);
+    }
+
+    [HttpPost("receptionist/connections/test/start"), ValidateAntiForgeryToken, RequestSizeLimit(73728)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> StartReceptionistTest([FromBody] ReceptionistBrowserController.StartRequest request,
+        Guid? agentProfileId = null, CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+        return await ReceptionistMedia.StartForOwnerAsync(owner, request, AuthorizeReceptionistManagementAsync, cancellationToken);
     }
 
     [HttpPost("receptionist/connections/prepare")]

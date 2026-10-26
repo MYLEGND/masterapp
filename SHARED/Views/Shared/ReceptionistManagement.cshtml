@@ -80,6 +80,42 @@
             }
             <button class="btn btn-primary" type="submit">Save proposal for review</button>
         </form>
+        @if (Model.Summary.CanRunVoiceTest)
+        {
+        <section data-website-receptionist data-receptionist-test-grant="@Model.TestGrantUrl" data-receptionist-test-start="@Model.TestStartUrl">
+            @Html.AntiForgeryToken()
+            <h2>Test website voice</h2>
+            <p>Requires an accepted restricted configuration, reviewed active test window and call permission. This uses real voice service and reserved budget; test inquiries are marked as QA.</p>
+            <button type="button" data-receptionist-start>Start restricted voice test</button>
+            <button type="button" data-receptionist-end hidden>End test</button>
+            <audio data-receptionist-audio controls autoplay hidden></audio>
+            <p data-receptionist-status aria-live="polite"></p>
+        </section>
+        }
+        else if (Model.TestControlPlaneUrl is not null)
+        {
+            <p><a href="@Model.TestControlPlaneUrl">Open restricted voice testing in the management portal</a>. Sign in there with your workspace identity; your settings permission is checked again before testing.</p>
+        }
+        <h2>Restricted acceptance window</h2>
+        <p>Each accepted test configuration can have one window of at most one hour. It cannot be extended or replaced, including after expiry or revocation. A new window requires a new accepted configuration. This proposal does not enable public calls.</p>
+        @foreach (var operation in new[] { "create_acceptance_window", "revoke_acceptance_window" })
+        {
+            <form action="@Model.PrepareUrl" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="ExpectedConnectionRevision" value="@Model.Summary.ConnectionRevision" />
+                <input type="hidden" name="Operation" value="@operation" />
+                <input type="hidden" name="Evidence[0].Kind" value="@operation" />
+                @if (operation == "create_acceptance_window")
+                {
+                    <label class="dashboard-form-field"><span>Starts at (UTC, ISO 8601 ending Z)</span><input name="WindowStartsUtc" required class="form-control" /></label>
+                    <label class="dashboard-form-field"><span>Expires at (UTC, within one hour of start)</span><input name="WindowExpiresUtc" required class="form-control" /></label>
+                }
+                <label class="dashboard-form-field"><span>@(operation == "create_acceptance_window" ? "Restricted-route verification evidence" : "Revocation evidence")</span><input name="Evidence[0].Reference" maxlength="200" required class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Evidence SHA-256</span><input name="Evidence[0].Sha256" pattern="[a-f0-9]{64}" required class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Observed at (UTC, ISO 8601 ending Z)</span><input name="Evidence[0].ObservedUtc" required class="form-control" /></label>
+                <button class="btn btn-outline-primary" type="submit">@(operation == "create_acceptance_window" ? "Propose test window" : "Propose permanent revocation")</button>
+            </form>
+        }
         <h2>Prepare call permission</h2>
         <form action="@Model.PrepareUrl" method="post">
             @Html.AntiForgeryToken()
@@ -145,3 +181,4 @@
         </section>
     }
 </main>
+<script src="~/js/legend-public-inquiry.js" asp-append-version="true" defer></script>

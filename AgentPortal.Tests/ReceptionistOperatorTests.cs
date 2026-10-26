@@ -549,6 +549,116 @@ public sealed partial class ReceptionistOperatorTests
     }
 
     [Fact]
+    public async Task AcceptanceWindowIsReviewedImmutableAndRevocationIsMonotonic()
+    {
+        await using var f = await Fixture.CreateAsync(); await f.AcceptAsync();
+        var snapshot = await f.Store.GetReceptionistConfigurationAsync(f.Owner, "openai");
+        ReceptionistOperationPreparationInput Input(string operation) => new()
+        {
+            Operation = operation, ExpectedConnectionRevision = snapshot.ConnectionRevision,
+            WindowStartsUtc = f.Clock.Now, WindowExpiresUtc = f.Clock.Now.AddMinutes(30),
+            Evidence = [new() { Kind = operation, Reference = "synthetic-restricted-route",
+                Sha256 = ReceptionistConfigurationCodec.Hash("synthetic-restricted-route"), ObservedUtc = f.Clock.Now }]
+        };
+        async Task<ReceptionistOperatorPlan> Review(string operation)
+        {
+            var id = await f.Operator.PrepareForOwnerAsync(f.Owner, Input(operation), (_, _) => Task.FromResult(true));
+            await using var db = f.Database(); var row = await db.Set<ReceptionistOperationPackage>().SingleAsync(x => x.Id == id);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => f.Operator.PlanForOwnerAsync(f.Owner, "saved-" + id.ToString("N"), row.PayloadSha256, (_, _) => Task.FromResult(true)));
+            await f.Operator.ReviewForOwnerAsync(f.Owner, id, row.Revision, row.PayloadSha256, true, (_, _) => Task.FromResult(true));
+            return await f.Operator.PlanForOwnerAsync(f.Owner, "saved-" + id.ToString("N"), row.PayloadSha256, (_, _) => Task.FromResult(true));
+        }
+        var plan = await Review("create_acceptance_window"); Assert.True(plan.CanApply);
+        Assert.True((await f.Operator.ApplyForOwnerAsync(f.Owner, f.Request(plan), (_, _) => Task.FromResult(true))).ReadBackVerified);
+        await using (var db = f.Database())
+        {
+            var row = await db.Set<ReceptionistAcceptanceWindow>().SingleAsync();
+            Assert.Equal(f.Clock.Now.AddMinutes(30), row.ExpiresUtc); Assert.Null(row.RevokedUtc);
+            Assert.False(string.IsNullOrWhiteSpace(row.ReviewedByActorId));
+        }
+        Assert.True((await f.Operator.ApplyForOwnerAsync(f.Owner, f.Request(plan), (_, _) => Task.FromResult(true))).ReadBackVerified);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Operator.PrepareForOwnerAsync(f.Owner, Input("create_acceptance_window"), (_, _) => Task.FromResult(true)));
+        var revoke = await Review("revoke_acceptance_window"); Assert.True(revoke.CanApply);
+        Assert.True((await f.Operator.ApplyForOwnerAsync(f.Owner, f.Request(revoke), (_, _) => Task.FromResult(true))).ReadBackVerified);
+        await using (var db = f.Database()) Assert.NotNull((await db.Set<ReceptionistAcceptanceWindow>().SingleAsync()).RevokedUtc);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Operator.PrepareForOwnerAsync(f.Owner, Input("create_acceptance_window"), (_, _) => Task.FromResult(true)));
+    }
+
+    [Fact]
+    public async Task CompletedWindowRemainsVerifiableAfterItsExpiryWithoutRecreation()
+    {
+        await using var f = await Fixture.CreateAsync(); await f.AcceptAsync();
+        var snapshot = await f.Store.GetReceptionistConfigurationAsync(f.Owner, "openai");
+        var input = new ReceptionistOperationPreparationInput
+        {
+            Operation = "create_acceptance_window", ExpectedConnectionRevision = snapshot.ConnectionRevision,
+            WindowStartsUtc = f.Clock.Now, WindowExpiresUtc = f.Clock.Now.AddMinutes(10),
+            Evidence = [new() { Kind = "create_acceptance_window", Reference = "synthetic-route",
+                Sha256 = new string('a', 64), ObservedUtc = f.Clock.Now }]
+        };
+        var id = await f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(true));
+        await using var db = f.Database(); var row = await db.Set<ReceptionistOperationPackage>().SingleAsync(x => x.Id == id);
+        await f.Operator.ReviewForOwnerAsync(f.Owner, id, row.Revision, row.PayloadSha256, true, (_, _) => Task.FromResult(true));
+        var key = "saved-" + id.ToString("N");
+        var plan = await f.Operator.PlanForOwnerAsync(f.Owner, key, row.PayloadSha256, (_, _) => Task.FromResult(true));
+        Assert.True((await f.Operator.ApplyForOwnerAsync(f.Owner, f.Request(plan), (_, _) => Task.FromResult(true))).ReadBackVerified);
+        f.Clock.Now = f.Clock.Now.AddMinutes(11);
+        var replay = await f.Operator.PlanForOwnerAsync(f.Owner, key, row.PayloadSha256, (_, _) => Task.FromResult(true));
+        Assert.True(replay.CanApply);
+        Assert.True((await f.Operator.ApplyForOwnerAsync(f.Owner, f.Request(replay), (_, _) => Task.FromResult(true))).ReadBackVerified);
+        Assert.Single(await db.Set<ReceptionistAcceptanceWindow>().ToArrayAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(true)));
+    }
+
+    [Fact]
+    public async Task ConcurrentReviewedWindowsCannotCreateTwoLifetimeIdentities()
+    {
+        await using var f = await Fixture.CreateAsync(); await f.AcceptAsync();
+        var snapshot = await f.Store.GetReceptionistConfigurationAsync(f.Owner, "openai");
+        var input = new ReceptionistOperationPreparationInput
+        {
+            Operation = "create_acceptance_window", ExpectedConnectionRevision = snapshot.ConnectionRevision,
+            WindowStartsUtc = f.Clock.Now, WindowExpiresUtc = f.Clock.Now.AddMinutes(10),
+            Evidence = [new() { Kind = "create_acceptance_window", Reference = "synthetic-route", Sha256 = new string('a', 64), ObservedUtc = f.Clock.Now }]
+        };
+        var plans = new List<ReceptionistOperatorPlan>();
+        for (var i = 0; i < 2; i++)
+        {
+            var id = await f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(true));
+            await using var db = f.Database(); var row = await db.Set<ReceptionistOperationPackage>().SingleAsync(x => x.Id == id);
+            await f.Operator.ReviewForOwnerAsync(f.Owner, id, row.Revision, row.PayloadSha256, true, (_, _) => Task.FromResult(true));
+            plans.Add(await f.Operator.PlanForOwnerAsync(f.Owner, "saved-" + id.ToString("N"), row.PayloadSha256, (_, _) => Task.FromResult(true)));
+        }
+        async Task<bool> Apply(ReceptionistOperatorPlan plan)
+        {
+            try { return (await f.Operator.ApplyForOwnerAsync(f.Owner, f.Request(plan), (_, _) => Task.FromResult(true))).ReadBackVerified; }
+            catch (Exception e) when (e is InvalidOperationException or DbUpdateConcurrencyException) { return false; }
+        }
+        var results = await Task.WhenAll(plans.Select(plan => Task.Run(() => Apply(plan))));
+        Assert.Single(results.Where(x => x));
+        await using var read = f.Database(); Assert.Single(await read.Set<ReceptionistAcceptanceWindow>().ToArrayAsync());
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(61)]
+    [InlineData(-1)]
+    public async Task AcceptanceWindowRejectsInvalidDuration(int minutes)
+    {
+        await using var f = await Fixture.CreateAsync(); await f.AcceptAsync();
+        var snapshot = await f.Store.GetReceptionistConfigurationAsync(f.Owner, "openai");
+        var input = new ReceptionistOperationPreparationInput
+        {
+            Operation = "create_acceptance_window", ExpectedConnectionRevision = snapshot.ConnectionRevision,
+            WindowStartsUtc = f.Clock.Now, WindowExpiresUtc = f.Clock.Now.AddMinutes(minutes),
+            Evidence = [new() { Kind = "create_acceptance_window", Reference = "synthetic-route",
+                Sha256 = ReceptionistConfigurationCodec.Hash("synthetic-route"), ObservedUtc = f.Clock.Now }]
+        };
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(true)));
+        await using var db = f.Database(); Assert.Empty(await db.Set<ReceptionistAcceptanceWindow>().ToArrayAsync());
+    }
+
+    [Fact]
     public async Task OwnerPermissionPreparationUsesCurrentAcceptedConfigurationAndSeparateReview()
     {
         await using var f = await Fixture.CreateAsync(); await f.AcceptAsync();
@@ -634,7 +744,7 @@ public sealed partial class ReceptionistOperatorTests
         internal ReceptionistAdmissionService Admission => new(Options, Clock);
         internal ReceptionistOperatorService Operator => new(Store, Admission, Host, Protector, Http, Clock,
             new ServiceCollection().AddSingleton(Options).BuildServiceProvider());
-        internal ReceptionistRuntimeAuthority Runtime => new(Host, Protector, Clock);
+        internal ReceptionistRuntimeAuthority Runtime => new(Host, Protector);
         internal MasterAppDbContext Database() => new(Options);
 
         internal static async Task<Fixture> CreateAsync(bool withBudgets = true, MarketingOwnerScope? owner = null)
@@ -772,7 +882,14 @@ public sealed partial class ReceptionistOperatorTests
             Assert.True(plan.CanApply); return await Operator.ApplyAsync(Request(plan));
         }
         internal async Task AcceptAsync() => Assert.True((await ApplyAsync(await BindingPackageAsync())).ReadBackVerified);
-        internal async Task EnableOwnerAsync() => Assert.True((await ApplyAsync((await ForAsync("set_owner_admission")) with { Enabled = true })).ReadBackVerified);
+        internal async Task EnableOwnerAsync()
+        {
+            Assert.True((await ApplyAsync((await ForAsync("set_owner_admission")) with { Enabled = true })).ReadBackVerified);
+            var binding = (await Admission.GetIngressBindingAsync("openai", Ingress))!;
+            await using var db = Database();
+            if (!await db.Set<ReceptionistAcceptanceWindow>().AnyAsync(x => x.ConfigurationVersionId == binding.ConfigurationId))
+                await ReceptionistTestWindows.SeedAsync(db, binding.MarketingConnectionId, binding.ConfigurationId, binding.Binding, Clock.Now);
+        }
         internal TrustedReceptionistIngress IngressFor(ReceptionistIngressBinding binding, string session) =>
             new("openai", Fixture.Ingress, Project, session, "synthetic-event:" + session, true,
                 binding.MarketingConnectionId, binding.ConfigurationId, binding.Owner.Key);

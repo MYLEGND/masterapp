@@ -25,9 +25,9 @@ public sealed partial class ReceptionistOperatorService
     private static IReadOnlyList<ReceptionistOperatorFact> TenantFacts(IReadOnlyList<ReceptionistOperatorFact> facts) =>
         facts.Where(x => x.Label is "Owner" or "Provider project" or "Configuration" or "Current owner admission" or
             "Accepted backend" or "Provider acceptance scope" or "Configured call duration maximum" or "Requested admission" or
-            "After binding acceptance").ToArray();
+            "After binding acceptance" or "Test window" or "Test window starts" or "Test window expires" or "Test window action").ToArray();
     private static ReceptionistOperatorPlan TenantPlan(ReceptionistOperatorPlan plan) => plan with
-        { Label = plan.Operation == "accept_binding" ? "Receptionist activation" : "Call permission", Facts = TenantFacts(plan.Facts) };
+        { Label = plan.Operation.Contains("acceptance_window", StringComparison.Ordinal) ? "Restricted test window" : plan.Operation == "accept_binding" ? "Receptionist activation" : "Call permission", Facts = TenantFacts(plan.Facts) };
     private static ReceptionistOperatorReceipt TenantReceipt(ReceptionistOperatorReceipt receipt) => receipt with { Facts = TenantFacts(receipt.Facts) };
 
     private static async Task GuardStoredCredentialsAsync(MasterAppDbContext write, ReceptionistOperatorPackage package, CancellationToken ct)
@@ -84,8 +84,10 @@ public sealed partial class ReceptionistOperatorService
                 package.ExpectedOwnerKey != connection.OwnerKey || package.Operation != row.Operation ||
                 package.ExpiresUtc != row.ExpiresUtc || package.ReviewedByFounderOid.Length != 0 || package.ReviewedUtc != default)
                 throw new InvalidOperationException("The saved operation no longer matches its review.");
-            if (owner is not null && package.Operation is not ("accept_binding" or "set_owner_admission"))
+            if (owner is not null && package.Operation is not ("accept_binding" or "set_owner_admission" or "create_acceptance_window" or "revoke_acceptance_window"))
                 throw new UnauthorizedAccessException("This operation requires platform accounting authority.");
+            if (package.Operation == "create_acceptance_window" && package.Window?.CreatedByActorId != row.CreatedByActorId)
+                throw new InvalidOperationException("The proposed window creator differs from its saved operation.");
             if (package.Operation == "accept_binding" && (package.Binding?.CredentialReference != StoredPrefix + row.ApiCredentialVersionId?.ToString("N") ||
                 (package.Binding?.Transport == "webrtc" ? row.WebhookCredentialVersionId is not null || !string.IsNullOrEmpty(package.Binding.WebhookSecretReference) :
                     package.Binding?.WebhookSecretReference != StoredPrefix + row.WebhookCredentialVersionId?.ToString("N"))))

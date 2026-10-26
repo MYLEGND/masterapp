@@ -7,11 +7,11 @@ public sealed record ReceptionistCredentialSummary(Guid Id, string ProviderProje
 public sealed record ReceptionistSavedOperationSummary(string Key, string Sha256, string Operation, string ReviewState,
     DateTime ExpiresUtc, Guid Revision);
 public sealed record ReceptionistManagementSummary(Guid ConnectionRevision,
-    IReadOnlyList<ReceptionistCredentialSummary> Credentials, IReadOnlyList<ReceptionistSavedOperationSummary> Operations, bool CanReview = false, IReadOnlyList<ReceptionistFundingChoice>? FundingChoices = null);
+    IReadOnlyList<ReceptionistCredentialSummary> Credentials, IReadOnlyList<ReceptionistSavedOperationSummary> Operations, bool CanReview = false, IReadOnlyList<ReceptionistFundingChoice>? FundingChoices = null, bool CanRunVoiceTest = false);
 
 public sealed record ReceptionistManagementPage(ReceptionistManagementSummary Summary,
     string SaveCredentialUrl, string RevokeCredentialUrl, string ReturnUrl, string? Message = null,
-    string? PlanUrl = null, string? ApplyUrl = null, string? ReviewUrl = null, ReceptionistOperationReview? Review = null, string? PrepareUrl = null);
+    string? PlanUrl = null, string? ApplyUrl = null, string? ReviewUrl = null, ReceptionistOperationReview? Review = null, string? PrepareUrl = null, string? TestGrantUrl = null, string? TestStartUrl = null, string? TestControlPlaneUrl = null);
 
 public sealed record ReceptionistOperationFact(string Label, string Value);
 public sealed record ReceptionistOperationReview(string Key, string Sha256, string Label, string Operation,
@@ -25,6 +25,8 @@ public sealed class ReceptionistOperationPreparationInput
     public string Operation { get; set; } = string.Empty;
     public bool Enabled { get; set; }
     public Guid ApiCredentialVersionId { get; set; }
+    public DateTime? WindowStartsUtc { get; set; }
+    public DateTime? WindowExpiresUtc { get; set; }
     public string? Model { get; set; }
     public string? Voice { get; set; }
     public bool ControlledTestOnly { get; set; } = true;

@@ -37,7 +37,31 @@ public abstract partial class BusinessWorkspaceControllerBase
             Url.Action(nameof(Receptionist), new { businessId })!, message,
             Url.Action(nameof(PlanReceptionistOperation), new { businessId })!,
             Url.Action(nameof(ApplyReceptionistOperation), new { businessId })!,
-            Url.Action(nameof(ReviewReceptionistOperation), new { businessId })!, review, Url.Action(nameof(PrepareReceptionistOperation), new { businessId })!));
+            Url.Action(nameof(ReviewReceptionistOperation), new { businessId })!, review, Url.Action(nameof(PrepareReceptionistOperation), new { businessId })!,
+            Url.Action(nameof(GrantReceptionistTest), new { businessId })!, Url.Action(nameof(StartReceptionistTest), new { businessId })!,
+            summary.CanRunVoiceTest ? null : $"https://portal.mylegnd.com/business/{businessId:D}/receptionist/connections"));
+    }
+
+    private ReceptionistBrowserController ReceptionistMedia => new(HttpContext.RequestServices)
+        { ControllerContext = ControllerContext };
+
+    [HttpPost("receptionist/connections/test/grant"), ValidateAntiForgeryToken, RequestSizeLimit(4096)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> GrantReceptionistTest(Guid businessId = default, CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+        var owner = MarketingOwnerScope.Business(businessId);
+        return await ReceptionistMedia.GrantForOwnerAsync(owner, AuthorizeReceptionistManagementAsync, cancellationToken);
+    }
+
+    [HttpPost("receptionist/connections/test/start"), ValidateAntiForgeryToken, RequestSizeLimit(73728)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> StartReceptionistTest([FromBody] ReceptionistBrowserController.StartRequest request,
+        Guid businessId = default, CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+        var owner = MarketingOwnerScope.Business(businessId);
+        return await ReceptionistMedia.StartForOwnerAsync(owner, request, AuthorizeReceptionistManagementAsync, cancellationToken);
     }
 
     [HttpPost("receptionist/connections/prepare")]

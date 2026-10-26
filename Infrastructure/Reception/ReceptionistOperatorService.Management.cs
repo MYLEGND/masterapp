@@ -2,6 +2,7 @@ using System.Text.Json;
 using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Shared.Analytics;
 
 namespace Infrastructure.Reception;
@@ -22,7 +23,7 @@ public sealed partial class ReceptionistOperatorService
         var canReview = false;
         try { _ = RequireFounder(); canReview = true; } catch (UnauthorizedAccessException) { }
         return new(connection.Revision, credentials, operations.Select(x => new ReceptionistSavedOperationSummary(StoredPrefix + x.Id.ToString("N"),
-            x.PayloadSha256, x.Operation, x.RevokedUtc is null ? x.ReviewState : "revoked", x.ExpiresUtc, x.Revision)).ToArray(), canReview, await FundingChoicesAsync(db, connection.Id, canReview, ct));
+            x.PayloadSha256, x.Operation, x.RevokedUtc is null ? x.ReviewState : "revoked", x.ExpiresUtc, x.Revision)).ToArray(), canReview, await FundingChoicesAsync(db, connection.Id, canReview, ct), services?.GetService<ReceptionistRuntimeAuthority>() is not null);
     }
 
     private static async Task<ReceptionistFundingChoice[]> FundingChoicesAsync(MasterAppDbContext db, Guid connectionId,
@@ -53,7 +54,7 @@ public sealed partial class ReceptionistOperatorService
         Func<MarketingOwnerScope, CancellationToken, Task<bool>> authorize, CancellationToken ct = default)
     {
         var actor = await RequireOwnerActorAsync(owner, authorize, ct);
-        if (input.Operation is not ("accept_binding" or "set_owner_admission") ||
+        if (input.Operation is not ("accept_binding" or "set_owner_admission" or "create_acceptance_window" or "revoke_acceptance_window") ||
             input.Evidence is null || input.Evidence.Count is < 1 or > 16 || input.Evidence.Any(x => x is null) ||
             input.Costs is null || input.Costs.Count > 16 || input.Costs.Any(x => x is null))
             throw new ArgumentException("Choose one bounded receptionist setup operation and its evidence.");
@@ -107,6 +108,33 @@ public sealed partial class ReceptionistOperatorService
             ReceptionistConfigurationCodec.ValidateBinding(binding, config);
             _ = ReceptionistRuntimeAuthority.Ready(connection.Provider, config, binding);
         }
+        ReceptionistWindowOperation? window = null;
+        if (input.Operation is "create_acceptance_window" or "revoke_acceptance_window")
+        {
+            var accepted = ReceptionistConfigurationCodec.ReadBinding(version.AcceptedBindingJson, config);
+            if (accepted?.ControlledTestOnly != true || accepted.ProviderProjectKey != connection.ReceptionistProviderProjectKey ||
+                accepted.IngressKey != connection.ReceptionistIngressKey)
+                throw new InvalidOperationException("An accepted restricted-test configuration is required.");
+            var existing = await db.Set<ReceptionistAcceptanceWindow>().AsNoTracking()
+                .Where(x => x.ConfigurationVersionId == version.Id).Take(2).ToArrayAsync(ct);
+            if (input.Operation == "create_acceptance_window")
+            {
+                if (existing.Length != 0) throw new InvalidOperationException("This configuration already has its lifetime test window. Accept a new configuration for another window.");
+                if (input.WindowExpiresUtc <= now) throw new ArgumentException("Choose a future expiry.");
+                window = new(Guid.NewGuid(), Guid.NewGuid(), accepted.IngressKey,
+                    evidence.Single(x => x.Kind == input.Operation).Sha256, actor,
+                    input.WindowStartsUtc ?? throw new ArgumentException("Choose the UTC start."),
+                    input.WindowExpiresUtc ?? throw new ArgumentException("Choose the UTC expiry."));
+            }
+            else
+            {
+                if (existing.Length != 1) throw new InvalidOperationException("Exactly one persisted test window is required.");
+                var current = existing[0];
+                window = new(current.Id, current.Revision, current.IngressKey, current.RestrictedRouteEvidenceSha256,
+                    current.CreatedByActorId, DateTime.SpecifyKind(current.StartsUtc, DateTimeKind.Utc),
+                    DateTime.SpecifyKind(current.ExpiresUtc, DateTimeKind.Utc));
+            }
+        }
         var fundingIds = binding?.Costs.Select(x => x.FundingBudgetAccountId).Distinct().ToArray() ?? [];
         var accounts = await db.Set<ReceptionistBudgetAccount>().AsNoTracking().Where(x =>
             x.Kind == "owner" && x.ScopeKey == owner.Key || fundingIds.Contains(x.Id)).ToArrayAsync(ct);
@@ -115,7 +143,7 @@ public sealed partial class ReceptionistOperatorService
             throw new InvalidOperationException("The proposed accounting dimensions do not match this configuration.");
         var package = new ReceptionistOperatorPackage
         {
-            Version = 1, Label = binding is null ? "Call permission" : "Website voice connection",
+            Version = 1, Label = window is not null ? "Restricted test window" : binding is null ? "Call permission" : "Website voice connection",
             Operation = input.Operation, ExpiresUtc = now.AddMinutes(30), MarketingConnectionId = connection.Id,
             ExpectedOwnerKey = owner.Key, Provider = connection.Provider,
             ProviderProjectKey = binding?.ProviderProjectKey ?? connection.ReceptionistProviderProjectKey ?? string.Empty,
@@ -123,7 +151,7 @@ public sealed partial class ReceptionistOperatorService
             ExpectedConnectionRevision = connection.Revision, ExpectedAccountRevisions = accounts.ToDictionary(x => x.Id, x => x.Revision),
             FundingScopes = accounts.Where(x => x.Kind == "funding").ToDictionary(x => x.Id, x => x.ScopeKey), Evidence = evidence,
             Binding = binding, ApiCredentialSha256 = credential?.ValueSha256,
-            Enabled = binding is null ? input.Enabled : null, ReceiptReference = binding is null ? Receipt(input.Operation) : string.Empty
+            Window = window, Enabled = input.Operation == "set_owner_admission" ? input.Enabled : null, ReceiptReference = binding is null ? Receipt(input.Operation) : string.Empty
         };
         // Validate proposed shape with temporary review metadata, never persist or claim a review.
         (package with { ReviewedByFounderOid = actor, ReviewedUtc = now }).Validate(actor, now);

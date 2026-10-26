@@ -96,6 +96,10 @@ public sealed partial class ReceptionistAdmissionService
     {
         switch (package.Operation)
         {
+            case "create_acceptance_window":
+            case "revoke_acceptance_window":
+                await ApplyAcceptanceWindowAsync(package, state, guard, ct);
+                break;
             case "open_budget_period":
                 await OpenBudgetPeriodCoreAsync(package.Opening!, guard, ct);
                 break;
@@ -127,6 +131,53 @@ public sealed partial class ReceptionistAdmissionService
                 throw new ArgumentException("Unsupported accounting operation.");
         }
     }
+
+    // A configuration has at most one lifetime window. Never delete, replace or extend it.
+    // Serializable owner locking makes that identity durable without a second call authority.
+    private Task<bool> ApplyAcceptanceWindowAsync(ReceptionistOperatorPackage package,
+        ReceptionistOperatorState state, Func<MasterAppDbContext, Task> guard, CancellationToken ct) =>
+        ReceptionistSql.TransactionAsync(options, state.Accounts.Select(x => x.Id).ToArray(), async write =>
+        {
+            await write.MarketingConnections.Where(x => x.Id == package.MarketingConnectionId)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.Revision, x => x.Revision), ct);
+            await guard(write);
+            var proposed = package.Window!;
+            var rows = await write.Set<ReceptionistAcceptanceWindow>()
+                .Where(x => x.ConfigurationVersionId == package.ConfigurationId).Take(2).ToArrayAsync(ct);
+            if (package.Operation == "create_acceptance_window")
+            {
+                if (rows.Length != 0 || proposed.ExpiresUtc <= clock.GetUtcNow().UtcDateTime)
+                    throw new InvalidOperationException("This configuration cannot receive another test window.");
+                write.Add(new ReceptionistAcceptanceWindow
+                {
+                    Id = proposed.Id, Revision = proposed.Revision, MarketingConnectionId = package.MarketingConnectionId,
+                    ConfigurationVersionId = package.ConfigurationId, ConfigurationSha256 = package.ConfigurationSha256,
+                    ProviderProjectKey = package.ProviderProjectKey, IngressKey = proposed.IngressKey,
+                    RestrictedRouteEvidenceSha256 = proposed.RestrictedRouteEvidenceSha256,
+                    CreatedByActorId = proposed.CreatedByActorId, ReviewedByActorId = package.ReviewedByFounderOid,
+                    StartsUtc = proposed.StartsUtc, ExpiresUtc = proposed.ExpiresUtc
+                });
+            }
+            else
+            {
+                if (rows.Length != 1 || !WindowMatches(rows[0], package) || rows[0].Revision != proposed.Revision)
+                    throw new DbUpdateConcurrencyException("The test window changed.");
+                var now = clock.GetUtcNow().UtcDateTime;
+                rows[0].RevokedUtc ??= now; rows[0].Revision = Guid.NewGuid();
+                var calls = await write.Set<ReceptionistCall>().Where(x => x.ConfigurationVersionId == package.ConfigurationId &&
+                    x.ControlledTest && x.ProviderClosedUtc == null && x.MustStopUtc > now).ToArrayAsync(ct);
+                foreach (var call in calls) { call.MustStopUtc = now; call.Revision = Guid.NewGuid(); }
+            }
+            return true;
+        }, ct);
+
+    private static bool WindowMatches(ReceptionistAcceptanceWindow row, ReceptionistOperatorPackage package) =>
+        package.Window is { } window && row.Id == window.Id && row.MarketingConnectionId == package.MarketingConnectionId &&
+        row.ConfigurationVersionId == package.ConfigurationId && row.ConfigurationSha256 == package.ConfigurationSha256 &&
+        row.ProviderProjectKey == package.ProviderProjectKey && row.IngressKey == window.IngressKey &&
+        row.RestrictedRouteEvidenceSha256 == window.RestrictedRouteEvidenceSha256 && row.CreatedByActorId == window.CreatedByActorId &&
+        row.StartsUtc == window.StartsUtc && row.ExpiresUtc == window.ExpiresUtc &&
+        (package.Operation != "create_acceptance_window" || row.ReviewedByActorId == package.ReviewedByFounderOid);
 
     internal async Task<ReceptionistOperatorState> ReadOperatorStateAsync(ReceptionistOperatorPackage package,
         string packageSha256, CancellationToken ct)
@@ -179,6 +230,13 @@ public sealed partial class ReceptionistAdmissionService
                     ReceptionistConfigurationCodec.ValidateBinding(package.Binding!, configuration);
                     if (ownerAccount is not null) ids.Add(ownerAccount.Id);
                     foreach (var cost in package.Binding!.Costs) ids.Add(cost.FundingBudgetAccountId);
+                    break;
+                case "create_acceptance_window":
+                case "revoke_acceptance_window":
+                    if (binding?.ControlledTestOnly != true || binding.IngressKey != package.Window!.IngressKey ||
+                        binding.ProviderProjectKey != package.ProviderProjectKey)
+                        throw new InvalidOperationException("The exact accepted restricted-test binding is required.");
+                    if (ownerAccount is not null) ids.Add(ownerAccount.Id);
                     break;
                 case "set_owner_admission":
                     if (ownerAccount is not null) ids.Add(ownerAccount.Id);
@@ -250,6 +308,12 @@ public sealed partial class ReceptionistAdmissionService
             accounts, periods, call, reservations, now, ct);
         var latestConfigurationId = await read.Set<ReceptionistConfigurationVersion>().Where(x => x.MarketingConnectionId == connection.Id)
             .OrderByDescending(x => x.Version).Select(x => x.Id).FirstAsync(ct);
+        var windows = package.Window is null ? [] : await read.Set<ReceptionistAcceptanceWindow>().AsNoTracking()
+            .Where(x => x.ConfigurationVersionId == version.Id).OrderBy(x => x.Id).Take(3).ToArrayAsync(ct);
+        if (package.Window is not null && (windows.Length > 1 || windows.Length == 1 &&
+            (!WindowMatches(windows[0], package) || package.Operation == "revoke_acceptance_window" &&
+                windows[0].RevokedUtc is null && windows[0].Revision != package.Window.Revision)))
+            throw new InvalidOperationException("The immutable test window changed or is ambiguous.");
         var stateHash = ReceptionistConfigurationCodec.Hash(JsonSerializer.Serialize(new
         {
             connection.Id, connection.OwnerKey, connection.Provider, connection.Revision,
@@ -257,7 +321,7 @@ public sealed partial class ReceptionistAdmissionService
             connection.ReceptionistAdmissionEnabled, connection.ReceptionistControlRevision,
             ConfigurationId = version.Id, version.ConfigurationSha256, latestConfigurationId,
             CallRevision = call?.Revision,
-            BookingActionRevision = bookingAction?.Revision,
+            BookingActionRevision = bookingAction?.Revision, Windows = windows,
             Accounts = accounts.OrderBy(x => x.Id), Periods = periods.OrderBy(x => x.Id),
             Reservations = reservations.OrderBy(x => x.Id), Charges = charges.OrderBy(x => x.Id), Voice = voice.OrderBy(x => x.Id),
             CurrentPeriods = periods.Where(x => x.StartUtc <= now && x.EndUtc > now).Select(x => x.Id).OrderBy(x => x)
@@ -275,6 +339,14 @@ public sealed partial class ReceptionistAdmissionService
     {
         switch (package.Operation)
         {
+            case "create_acceptance_window":
+            case "revoke_acceptance_window":
+                var windows = await read.Set<ReceptionistAcceptanceWindow>().AsNoTracking()
+                    .Where(x => x.ConfigurationVersionId == package.ConfigurationId).Take(2).ToArrayAsync(ct);
+                if (windows.Length > 1 || windows.Length == 1 && !WindowMatches(windows[0], package))
+                    throw new InvalidOperationException("The immutable test window is ambiguous or differs.");
+                return (windows.Length == 1 && (package.Operation == "create_acceptance_window" || windows[0].RevokedUtc is not null)
+                    ? "acceptance-window:" + windows[0].Id.ToString("D") : null, package.Operation == "revoke_acceptance_window");
             case "reconcile_booking_action":
                 var booking = await read.Set<ReceptionistActionIntent>().AsNoTracking().SingleAsync(x =>
                     x.Id == package.BookingActionId && x.CallId == package.CallId, ct);
@@ -377,6 +449,15 @@ public sealed partial class ReceptionistAdmissionService
             new("Configuration", version.Id.ToString("D")), new("Configuration fingerprint", version.ConfigurationSha256),
             new("Current owner admission", connection.ReceptionistAdmissionEnabled ? "Enabled" : "Disabled")
         };
+        if (package.Window is { } window)
+        {
+            facts.Add(new("Test window", window.Id.ToString("D")));
+            facts.Add(new("Test window starts", window.StartsUtc.ToString("O")));
+            facts.Add(new("Test window expires", window.ExpiresUtc.ToString("O")));
+            facts.Add(new("Test window action", package.Operation == "create_acceptance_window"
+                ? "Create the only lifetime window for this configuration; no public activation."
+                : "Permanently revoke this window and stop its controlled calls."));
+        }
         if (package.BookingActionId is { } bookingAction)
         {
             facts.Add(new("Original booking action", bookingAction.ToString("D")));
@@ -469,7 +550,7 @@ internal sealed record ReceptionistOperatorState(MarketingOwnerScope Owner, Mark
             Call is not null && Call.Revision != package.ExpectedCallRevision ||
             package.Operation == "reconcile_booking_action" && BookingActionRevision != package.ExpectedBookingActionRevision ||
             package.Operation == "accept_binding" && LatestConfigurationId != Version.Id ||
-            package.Operation == "set_owner_admission" && Connection.ReceptionistActiveConfigurationId != Version.Id)
+            (package.Operation is "set_owner_admission" or "create_acceptance_window" or "revoke_acceptance_window") && Connection.ReceptionistActiveConfigurationId != Version.Id)
             throw new DbUpdateConcurrencyException("The reviewed canonical revisions changed. A fresh scoped review is required.");
     }
 }

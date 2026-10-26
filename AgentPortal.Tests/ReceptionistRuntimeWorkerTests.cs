@@ -345,7 +345,7 @@ public sealed partial class ReceptionistRuntimeWorkerTests
         internal MasterAppDbContext Database() => new(Options);
         internal IServiceScope CreateScope() => provider.CreateScope();
 
-        internal static async Task<Fixture> CreateAsync(bool enabled = true, ReceptionistBusinessConfiguration? configuration = null, bool browser = false, IInterceptor? interceptor = null)
+        internal static async Task<Fixture> CreateAsync(bool enabled = true, ReceptionistBusinessConfiguration? configuration = null, bool browser = false, IInterceptor? interceptor = null, bool controlledBrowser = false)
         {
             var f = new Fixture();
             var connection = "Data Source=" + f.path + ";Pooling=False;Default Timeout=20";
@@ -383,12 +383,14 @@ public sealed partial class ReceptionistRuntimeWorkerTests
                 {
                     Transport = "webrtc", WebhookSecretReference = "", ProtectedWebhookSecret = null,
                     CarrierFallbackReceipt = "", WebsiteFallbackReceipt = "synthetic-website-fallback",
-                    ControlledTestOnly = false, PublicActivationReceipt = "synthetic-public-activation"
+                    ControlledTestOnly = controlledBrowser, PublicActivationReceipt = controlledBrowser ? null : "synthetic-public-activation"
                 };
                 saved = await store.AcceptReceptionistBindingAsync(owner, "openai", saved.ConnectionRevision, binding, "test-operator");
                 await store.SetReceptionistAdmissionAsync(owner, "openai", saved.ConnectionRevision, true);
             }
             var verified = (await f.Admission.GetIngressBindingAsync("openai", "test_ingress"))!;
+            await using (var db = f.Database())
+                await ReceptionistTestWindows.SeedAsync(db, verified.MarketingConnectionId, verified.ConfigurationId, verified.Binding, f.Clock.GetUtcNow().UtcDateTime);
             f.connectionId = verified.MarketingConnectionId;
             f.configurationId = verified.ConfigurationId;
             var settings = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>

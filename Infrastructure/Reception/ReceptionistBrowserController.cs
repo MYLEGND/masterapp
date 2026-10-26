@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Shared.Analytics;
+using Shared.Auth;
 
 namespace Infrastructure.Reception;
 
@@ -24,7 +25,8 @@ public sealed class ReceptionistBrowserController(IServiceProvider services) : C
     public sealed record StartRequest(string Grant, string Offer);
     public sealed record ControlRequest(string Handle);
     private sealed record Ticket(int Version, string Origin, string SourcePath, string OwnerKey,
-        Guid ConnectionId, Guid ConfigurationId, Guid CreationId, DateTime ExpiresUtc, Guid? CallId = null);
+        Guid ConnectionId, Guid ConfigurationId, Guid CreationId, DateTime ExpiresUtc, Guid? CallId = null,
+        string? ActorId = null, Guid? WindowId = null, Guid? WindowRevision = null);
     private IDataProtector Protector => services.GetRequiredService<IDataProtectionProvider>().CreateProtector("receptionist-browser-v1");
     private TimeProvider Clock => services.GetRequiredService<TimeProvider>();
     private ReceptionistAdmissionService Admission => services.GetRequiredService<ReceptionistAdmissionService>();
@@ -56,7 +58,7 @@ public sealed class ReceptionistBrowserController(IServiceProvider services) : C
         var runtime = services.GetService<ReceptionistRuntimeAuthority>();
         if (runtime?.Enabled != true) return Unavailable();
         var ticket = Unprotect(request.Grant);
-        if (ticket is null || ticket.CallId is not null) return BadRequest();
+        if (ticket is null || ticket.CallId is not null || ticket.ActorId is not null) return BadRequest();
         try { OpenAiReceptionistProtocol.ValidateSdp(request.Offer); }
         catch (ArgumentException) { return BadRequest(); }
         var scope = await services.GetRequiredService<PublicWebsiteRuntimeScopeResolver>().ResolveInquiryAsync(HttpContext, ticket.SourcePath, ct);
@@ -65,16 +67,63 @@ public sealed class ReceptionistBrowserController(IServiceProvider services) : C
         var current = await Admission.GetBrowserBindingAsync(owner!, ct);
         if (current is null || current.MarketingConnectionId != ticket.ConnectionId || current.ConfigurationId != ticket.ConfigurationId ||
             current.Binding.ControlledTestOnly) return Unavailable();
+        return await StartCoreAsync(ticket, current, request, runtime, ct);
+    }
+
+    // Called only from existing owner-authorized, antiforgery-protected management actions.
+    [NonAction]
+    public async Task<IActionResult> GrantForOwnerAsync(MarketingOwnerScope owner,
+        Func<MarketingOwnerScope, CancellationToken, Task<bool>> authorize, CancellationToken ct)
+    {
+        if (!await OwnerAuthorizedAsync(owner, authorize, ct)) return Forbid();
+        if (services.GetService<ReceptionistRuntimeAuthority>()?.Enabled != true) return Unavailable();
+        var binding = await Admission.GetBrowserBindingAsync(owner, ct);
+        if (binding is null || !binding.Binding.ControlledTestOnly) return Unavailable();
+        var window = await Admission.GetAcceptanceWindowAsync(binding, ct);
+        if (window is null || !ReceptionistConfigurationCodec.IsOpen(binding.Configuration, Clock.GetUtcNow().UtcDateTime)) return Unavailable();
+        var expires = new[] { Clock.GetUtcNow().UtcDateTime.AddSeconds(90), window.ExpiresUtc }.Min();
+        var ticket = new Ticket(1, Request.Headers.Origin.ToString(), "/", owner.Key, binding.MarketingConnectionId,
+            binding.ConfigurationId, Guid.NewGuid(), expires, ActorId: User.GetCanonicalUserId(), WindowId: window.Id, WindowRevision: window.Revision);
+        return Ok(new { grant = Protect(ticket), expiresInSeconds = Math.Max(1, (int)(expires - Clock.GetUtcNow().UtcDateTime).TotalSeconds) });
+    }
+
+    [NonAction]
+    public async Task<IActionResult> StartForOwnerAsync(MarketingOwnerScope owner, StartRequest request,
+        Func<MarketingOwnerScope, CancellationToken, Task<bool>> authorize, CancellationToken ct)
+    {
+        if (!await OwnerAuthorizedAsync(owner, authorize, ct)) return Forbid();
+        var ticket = Unprotect(request.Grant);
+        if (ticket is null || ticket.ActorId is null || ticket.OwnerKey != owner.Key || ticket.CallId is not null) return BadRequest();
+        var runtime = services.GetService<ReceptionistRuntimeAuthority>();
+        if (runtime?.Enabled != true) return Unavailable();
+        try { OpenAiReceptionistProtocol.ValidateSdp(request.Offer); } catch (ArgumentException) { return BadRequest(); }
+        var current = await Admission.GetBrowserBindingAsync(owner, ct);
+        if (current is null || !current.Binding.ControlledTestOnly || current.MarketingConnectionId != ticket.ConnectionId ||
+            current.ConfigurationId != ticket.ConfigurationId) return Unavailable();
+        var window = await Admission.GetAcceptanceWindowAsync(current, ct);
+        if (window is null || window.Id != ticket.WindowId || window.Revision != ticket.WindowRevision) return Unavailable();
+        return await StartCoreAsync(ticket, current, request, runtime, ct);
+    }
+
+    private async Task<bool> OwnerAuthorizedAsync(MarketingOwnerScope owner,
+        Func<MarketingOwnerScope, CancellationToken, Task<bool>> authorize, CancellationToken ct) =>
+        User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(User.GetCanonicalUserId()) &&
+        Request.Headers.Origin.ToString() == Request.Scheme + "://" + Request.Host && await authorize(owner, ct);
+
+    private async Task<IActionResult> StartCoreAsync(Ticket ticket, ReceptionistIngressBinding current,
+        StartRequest request, ReceptionistRuntimeAuthority runtime, CancellationToken ct)
+    {
+        var controlled = ticket.ActorId is not null;
         OpenAiReceptionistSessionSettings settings;
         string credential;
         try
         {
-            settings = ReceptionistRuntimeAuthority.Ready(current.Provider, current.Configuration, current.Binding, false);
+            settings = ReceptionistRuntimeAuthority.Ready(current.Provider, current.Configuration, current.Binding, controlled);
             credential = runtime.Credential(current.Owner, current.Binding, false);
         }
         catch (Exception e) when (e is ArgumentException or InvalidOperationException or JsonException or CryptographicException) { return Unavailable(); }
         var claim = await Admission.ReserveBrowserAsync(current, ticket.CreationId,
-            ReceptionistConfigurationCodec.Hash(request.Offer), false, ct);
+            ReceptionistConfigurationCodec.Hash(request.Offer), controlled, ct, ticket.WindowId, ticket.WindowRevision);
         if (!claim.MayCreate || claim.CallId is not { } callId) return Unavailable();
         // No request retries. The reservation commits before this one provider call.
         OpenAiReceptionistBrowserOutcome outcome;
@@ -193,7 +242,10 @@ public sealed class ReceptionistBrowserController(IServiceProvider services) : C
             var ticket = JsonSerializer.Deserialize<Ticket>(Protector.Unprotect(value));
             return ticket is { Version: 1 } && ticket.CreationId != Guid.Empty && ticket.ConnectionId != Guid.Empty &&
                 ticket.ConfigurationId != Guid.Empty && ticket.ExpiresUtc.Kind == DateTimeKind.Utc && ticket.ExpiresUtc > Clock.GetUtcNow().UtcDateTime &&
-                ticket.Origin == Request.Headers.Origin.ToString() && ValidPath(ticket.SourcePath) ? ticket : null;
+                ticket.Origin == Request.Headers.Origin.ToString() && ValidPath(ticket.SourcePath) &&
+                (ticket.ActorId is null ? ticket.WindowId is null && ticket.WindowRevision is null :
+                    ticket.WindowId is not null && ticket.WindowRevision is not null && User.Identity?.IsAuthenticated == true &&
+                    User.GetCanonicalUserId() == ticket.ActorId) ? ticket : null;
         }
         catch (Exception e) when (e is CryptographicException or JsonException or ArgumentException) { return null; }
     }

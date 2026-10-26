@@ -182,6 +182,8 @@ public sealed partial class ReceptionistOperatorService(MarketingConnectionStore
         ReceptionistOperatorState state, bool prepareBinding, string packageSha, CancellationToken ct)
     {
         if (state.CompletedReference is not null) return (null, string.Empty);
+        if (package.Operation == "create_acceptance_window" && package.Window!.ExpiresUtc <= clock.GetUtcNow().UtcDateTime)
+            throw new InvalidOperationException("The proposed acceptance window expired.");
         if (package.Operation == "accept_binding")
         {
             var binding = package.Binding!;
@@ -282,6 +284,8 @@ internal sealed record ReceptionistOperatorPackage
     public string? ApiCredentialSha256 { get; init; }
     public string? WebhookSecretSha256 { get; init; }
     public ReceptionistBudgetOpening? Opening { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public ReceptionistWindowOperation? Window { get; init; }
     public Guid? BudgetAccountId { get; init; }
     public decimal? CashLimit { get; init; }
     public decimal? ConsumptionLimit { get; init; }
@@ -330,11 +334,13 @@ internal sealed record ReceptionistOperatorPackage
         Supplied("callCost", CallCost is not null); Supplied("accountCharge", AccountCharge is not null);
         Supplied("voice", VoiceAllocations is not null); Supplied("finalVoice", FinalVoiceSeconds.HasValue);
         Supplied("closure", ObservedProviderClosedUtc.HasValue);
+        Supplied("window", Window is not null);
         Supplied("bookingAction", BookingActionId.HasValue || ExpectedBookingActionRevision.HasValue);
         string[] allowed = Operation switch
         {
             "accept_binding" => ["binding", "secrets"], "open_budget_period" => ["opening"],
             "approve_budget_ceilings" => ["budget", "limits"], "set_budget_admission" => ["budget", "enabled"],
+            "create_acceptance_window" or "revoke_acceptance_window" => ["window"],
             "set_owner_admission" => ["enabled"], "reconcile_call_cost" => ["call", "component", "callCost"],
             "reconcile_account_charge" => ["accountCharge"], "reconcile_dated_voice" => ["call", "voice", "finalVoice"],
             "record_provider_closure" => ["call", "closure", "finalVoice"],
@@ -375,6 +381,19 @@ internal sealed record ReceptionistOperatorPackage
             RequireEvidence(Operation, ReceiptReference);
             if (Opening is not null && Opening.ReconciliationReceipt != ReceiptReference || AccountCharge is not null && AccountCharge.ProviderReceiptKey != ReceiptReference)
                 throw new ArgumentException("The command receipt must match its reviewed evidence.");
+        }
+        if (Window is { } window)
+        {
+            if (window.Id == Guid.Empty || window.Revision == Guid.Empty ||
+                !OpenAiReceptionistProtocol.Token(window.IngressKey, 100) ||
+                !ReceptionistOperatorService.HashValue(window.RestrictedRouteEvidenceSha256) ||
+                string.IsNullOrWhiteSpace(window.CreatedByActorId) || window.CreatedByActorId.Length > 200 ||
+                window.StartsUtc.Kind != DateTimeKind.Utc || window.ExpiresUtc.Kind != DateTimeKind.Utc ||
+                window.ExpiresUtc <= window.StartsUtc || window.ExpiresUtc - window.StartsUtc > TimeSpan.FromHours(1))
+                throw new ArgumentException("One exact, bounded acceptance window is required.");
+            if (Operation == "create_acceptance_window" &&
+                Evidence.Single(x => x.Kind == Operation).Sha256 != window.RestrictedRouteEvidenceSha256)
+                throw new ArgumentException("Current restricted-route evidence is required.");
         }
         if (CashLimit is { } cash) ReceptionistConfigurationCodec.Money(cash);
         if (ConsumptionLimit is { } consumption) ReceptionistConfigurationCodec.Money(consumption);
@@ -433,3 +452,6 @@ internal sealed class ReceptionistOperatorReplayException(string reference, bool
     internal string Reference { get; } = reference;
     internal bool SatisfiedWithoutReceipt { get; } = satisfiedWithoutReceipt;
 }
+
+internal sealed record ReceptionistWindowOperation(Guid Id, Guid Revision, string IngressKey,
+    string RestrictedRouteEvidenceSha256, string CreatedByActorId, DateTime StartsUtc, DateTime ExpiresUtc);

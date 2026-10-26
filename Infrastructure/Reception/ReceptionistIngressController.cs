@@ -48,7 +48,7 @@ public sealed class ReceptionistIngressController : ControllerBase
         if (verified.State == "invalid_signature") return Unauthorized();
         if (verified.State == "invalid_payload") return BadRequest();
         if (verified.State == "ignored") return Ok();
-        var controlledTest = runtime.IsControlledTest(current.Owner, current.Binding);
+        var controlledTest = await admission.GetAcceptanceWindowAsync(current, ct) is not null;
         try { _ = ReceptionistRuntimeAuthority.Ready(current.Provider, current.Configuration, current.Binding, controlledTest); }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException or System.Text.Json.JsonException) { return StatusCode(503); }
         _ = await admission.ReserveAsync(new TrustedReceptionistIngress(current.Provider, ingressKey,

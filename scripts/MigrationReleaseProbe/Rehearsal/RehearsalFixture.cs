@@ -748,6 +748,21 @@ internal static partial class RehearsalFixture
             INSERT dbo.ReceptionistAcceptanceWindows(Id,MarketingConnectionId,ConfigurationVersionId,ConfigurationSha256,IngressKey,ProviderProjectKey,RestrictedRouteEvidenceSha256,CreatedByActorId,ReviewedByActorId,StartsUtc,ExpiresUtc,Revision)
             VALUES('00000000-0000-0000-0000-000000000801','00000000-0000-0000-0000-000000000101','00000000-0000-0000-0000-000000000301',REPLICATE('a',64),'synthetic-route','synthetic-a',REPLICATE('b',64),'synthetic-actor','synthetic-actor','20260101','2026-01-01T00:30:00',NEWID());
             """, ct);
+        // Execute the shipped EF predicate on real SQL Server, including its padded string-comparison semantics.
+        var windowPredicate = typeof(Infrastructure.Reception.ReceptionistAdmissionService).GetMethod("ValidCallWindows",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+            ?? throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        var validWindows = (IQueryable<Domain.Entities.ReceptionistAcceptanceWindow>)windowPredicate.Invoke(null,
+            [db, new DateTime(2026, 1, 1, 0, 10, 0, DateTimeKind.Utc)])!;
+        foreach (var (hash, expected) in new[] {
+            (new string('b', 64), true), (new string('a', 31) + " " + new string('a', 32), false),
+            (new string('A', 64), false), (new string('z', 64), false), (new string('a', 63) + " ", false) })
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE dbo.ReceptionistAcceptanceWindows SET RestrictedRouteEvidenceSha256={hash} WHERE Id='00000000-0000-0000-0000-000000000801'", ct);
+            if (await validWindows.AnyAsync(x => x.Id == Guid.Parse("00000000-0000-0000-0000-000000000801"), ct) != expected)
+                throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        }
+        await db.Database.ExecuteSqlRawAsync("UPDATE dbo.ReceptionistAcceptanceWindows SET RestrictedRouteEvidenceSha256=REPLICATE('b',64) WHERE Id='00000000-0000-0000-0000-000000000801'", ct);
         // A valid reviewed row must succeed before probing individual protections.
         await db.Database.ExecuteSqlRawAsync("UPDATE dbo.ReceptionistOperationPackages SET ReviewState='accepted', ReviewedByActorId='synthetic-actor', ReviewedUtc='20260101', ReviewedPayloadSha256=PayloadSha256", ct);
         foreach (var (sql, constraint) in new (string, string)[] {

@@ -7,7 +7,7 @@ namespace Infrastructure.Reception;
 
 /// <summary>Uses the exact call-pinned credentials protected by the existing marketing authority.</summary>
 internal sealed class ReceptionistRuntimeAuthority(
-    IConfiguration configuration, MarketingCredentialProtector protector, TimeProvider clock)
+    IConfiguration configuration, MarketingCredentialProtector protector)
 {
     internal bool Enabled => configuration.GetValue<bool>("Receptionist:Enabled");
 
@@ -21,19 +21,6 @@ internal sealed class ReceptionistRuntimeAuthority(
         // Host configuration is bootstrap input to explicit operator acceptance, never a runtime fallback.
         return ReceptionistCredentialEnvelope.Unprotect(protector, owner, MarketingDestinationKeys.OpenAi,
             binding.ProviderProjectKey, kind, protectedValue);
-    }
-
-    internal bool IsControlledTest(MarketingOwnerScope owner, ReceptionistProviderBinding binding)
-    {
-        if (!binding.ControlledTestOnly) return false;
-        var test = configuration.GetSection("Receptionist:AcceptanceWindows:" + binding.IngressKey);
-        return test["OwnerKey"] == owner.Key && test["ProviderProjectKey"] == binding.ProviderProjectKey &&
-            test.GetValue<bool>("VerifiedRestrictedTestRoute") &&
-            !string.IsNullOrWhiteSpace(test["AuthorizationReceipt"]) &&
-            DateTimeOffset.TryParse(test["StartsUtc"], out var start) &&
-            DateTimeOffset.TryParse(test["ExpiresUtc"], out var end) &&
-            start.Offset == TimeSpan.Zero && end.Offset == TimeSpan.Zero &&
-            start <= clock.GetUtcNow() && clock.GetUtcNow() < end && end - start <= TimeSpan.FromHours(1);
     }
 
     /// <summary>Configuration-only preflight. It grants no call classification and returns no sendable session.</summary>
