@@ -151,6 +151,6 @@ public partial class WebsiteAnalyticsController
             new ReceptionistSetupPage(snapshot, input ?? ReceptionistSetupForms.Read(snapshot),
                 Url.Action(nameof(SaveReceptionist), new { agentProfileId })!,
                 Url.Action(nameof(ReceptionistAdmission), new { agentProfileId })!,
-                Url.Action("Index", new { agentProfileId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness, Url.Action(nameof(ReviewReceptionistContent), new { agentProfileId })!, OperatingSnapshot: operating));
+                Url.Action("Index", new { agentProfileId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness, Url.Action(nameof(ReviewReceptionistContent), new { agentProfileId })!, OperatingSnapshot: operating, ManagementUrl: Url.Action(nameof(ReceptionistConnections), new { agentProfileId })));
     }
 }

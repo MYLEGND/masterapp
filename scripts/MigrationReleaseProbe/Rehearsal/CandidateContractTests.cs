@@ -52,6 +52,8 @@ internal static class CandidateContractTests
             else Console.WriteLine("RECEPTIONIST_CONTRACT:NOT_PRESENT_IN_ASSEMBLY");
             if (assembly.Migrations.TryGetValue(CandidateContract.TrainingMigration, out var training))
                 Training(assembly.CreateMigration(training, db.Database.ProviderName!).UpOperations);
+            if (assembly.Migrations.TryGetValue(RehearsalFixture.ManagementMigration, out var management))
+                Management(assembly.CreateMigration(management, db.Database.ProviderName!).UpOperations, path);
             PredicateBounds();
             DefaultDefinitions();
             CatalogPlans(CandidateContract.Current(db));
@@ -66,6 +68,24 @@ internal static class CandidateContractTests
         finally { File.Delete(path); }
         Console.WriteLine("LEGEND_MIGRATION_CONTRACT_TESTS:PASS");
     }
+    private static void Management(IReadOnlyList<MigrationOperation> operations, string path)
+    {
+        var entry = CandidateContract.Describe(RehearsalFixture.ManagementMigration, operations);
+        Check(entry.Supported && RehearsalFixture.IsManagementFixture(entry), "exact receptionist management shape");
+        Check(entry.Columns.Length == 0 && entry.Tables.Length == 3 && entry.Indexes.Length == 5 &&
+            entry.ForeignKeys.Length == 0 && entry.Guards.Length == 0, "additive management tables only");
+        File.WriteAllText(path, JsonSerializer.Serialize(new CandidateContract.Contract(3, [entry]), CandidateContract.Json));
+        Check(RehearsalFixture.IsManagementFixture(CandidateContract.Read(path).Migrations.Single()), "management shape roundtrip");
+        var table = entry.Tables[0];
+        foreach (var altered in new[]
+        {
+            entry with { Id = "29990101000000_Unreviewed" }, entry with { Tables = entry.Tables[..^1] },
+            entry with { Tables = [table with { ForeignKeys = [] }, ..entry.Tables.Skip(1)] },
+            entry with { Tables = [table with { Checks = [] }, ..entry.Tables.Skip(1)] },
+            entry with { Tables = [table with { Columns = table.Columns[..^1] }, ..entry.Tables.Skip(1)] }
+        }) Check(!RehearsalFixture.IsManagementFixture(altered), "altered management contract rejected");
+    }
+
     private static void Training(IReadOnlyList<MigrationOperation> operations)
     {
         var id = CandidateContract.TrainingMigration;

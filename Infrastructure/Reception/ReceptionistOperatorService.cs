@@ -13,7 +13,7 @@ using Shared.Auth;
 namespace Infrastructure.Reception;
 
 /// <summary>Authenticated operator entry; all persistence remains in the existing settings/accounting owners.</summary>
-public sealed class ReceptionistOperatorService(MarketingConnectionStore store,
+public sealed partial class ReceptionistOperatorService(MarketingConnectionStore store,
     ReceptionistAdmissionService admission, IConfiguration configuration, MarketingCredentialProtector protector,
     IHttpContextAccessor httpContext, TimeProvider clock, IServiceProvider? services = null)
 {
@@ -57,17 +57,19 @@ public sealed class ReceptionistOperatorService(MarketingConnectionStore store,
         return Task.FromResult<IReadOnlyList<ReceptionistOperatorPackageSummary>>(result.OrderBy(x => x.PackageKey, StringComparer.Ordinal).ToArray());
     }
 
-    public async Task<ReceptionistOperatorPlan> PlanAsync(string packageKey, string expectedPackageSha256,
-        CancellationToken ct = default)
+    public Task<ReceptionistOperatorPlan> PlanAsync(string packageKey, string expectedPackageSha256,
+        CancellationToken ct = default) => PlanCoreAsync(packageKey, expectedPackageSha256, RequireFounder(), null, null, ct);
+
+    private async Task<ReceptionistOperatorPlan> PlanCoreAsync(string packageKey, string expectedPackageSha256,
+        string actor, MarketingOwnerScope? owner, Func<MarketingOwnerScope, CancellationToken, Task<bool>>? authorize, CancellationToken ct)
     {
-        var actor = RequireFounder();
-        var package = ReadPackage(packageKey, expectedPackageSha256, actor);
+        var package = await ReadPackageAsync(packageKey, expectedPackageSha256, actor, owner, ct);
         ReceptionistOperatorState state;
         try
         {
             state = await admission.ReadOperatorStateAsync(package, expectedPackageSha256, ct);
             if (state.CompletedReference is null) state.RequirePackageRevisions(package);
-            var secretHash = Preflight(package, state, prepareBinding: false, expectedPackageSha256).SecretHash;
+            var secretHash = (await PreflightAsync(package, state, prepareBinding: false, expectedPackageSha256, ct)).SecretHash;
             var now = clock.GetUtcNow().UtcDateTime;
             var token = protector.Protect(state.Owner, PreviewPurpose, JsonSerializer.Serialize(new Preview(1, actor,
                 state.Owner.Key, packageKey, expectedPackageSha256, state.StateSha256, secretHash, now, now.Add(PreviewLifetime)), ReceptionistConfigurationCodec.Json))
@@ -85,11 +87,14 @@ public sealed class ReceptionistOperatorService(MarketingConnectionStore store,
         }
     }
 
-    public async Task<ReceptionistOperatorReceipt> ApplyAsync(ReceptionistOperatorApplyRequest request, CancellationToken ct = default)
+    public Task<ReceptionistOperatorReceipt> ApplyAsync(ReceptionistOperatorApplyRequest request, CancellationToken ct = default) =>
+        ApplyCoreAsync(request, RequireFounder(), null, null, ct);
+
+    private async Task<ReceptionistOperatorReceipt> ApplyCoreAsync(ReceptionistOperatorApplyRequest request, string actor,
+        MarketingOwnerScope? owner, Func<MarketingOwnerScope, CancellationToken, Task<bool>>? authorize, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var actor = RequireFounder();
-        var package = ReadPackage(request.PackageKey, request.PackageSha256, actor);
+        var package = await ReadPackageAsync(request.PackageKey, request.PackageSha256, actor, owner, ct);
         if (string.IsNullOrWhiteSpace(request.ExpectedStateToken) || request.ExpectedStateToken.Length > 4096)
             throw new ArgumentException("A bounded current operator preview is required.");
         var initial = await admission.ReadOperatorStateAsync(package, request.PackageSha256, ct);
@@ -104,18 +109,19 @@ public sealed class ReceptionistOperatorService(MarketingConnectionStore store,
             preview.IssuedUtc.Kind != DateTimeKind.Utc || preview.ExpiresUtc.Kind != DateTimeKind.Utc ||
             preview.IssuedUtc > now || preview.ExpiresUtc <= now || preview.ExpiresUtc - preview.IssuedUtc != PreviewLifetime)
             throw new InvalidOperationException("The operator preview is invalid or expired.");
-        var preflight = Preflight(package, initial, prepareBinding: true, request.PackageSha256);
+        var preflight = await PreflightAsync(package, initial, prepareBinding: true, request.PackageSha256, ct);
         var outcome = "applied";
         async Task Guard(MasterAppDbContext write)
         {
-            var currentActor = RequireFounder();
-            var currentPackage = ReadPackage(request.PackageKey, request.PackageSha256, currentActor);
+            var currentActor = owner is null ? RequireFounder() : await RequireOwnerActorAsync(owner, authorize!, ct);
+            var currentPackage = await ReadPackageAsync(request.PackageKey, request.PackageSha256, currentActor, owner, ct, write);
+            await GuardStoredCredentialsAsync(write, currentPackage, ct);
             var current = await admission.ReadOperatorStateAsync(write, currentPackage, request.PackageSha256, ct);
             if (current.CompletedReference is { } completed)
                 throw new ReceptionistOperatorReplayException(completed, current.SatisfiedWithoutReceipt);
             current.RequirePackageRevisions(currentPackage);
             if (current.StateSha256 != preview.StateSha256 || currentActor != preview.ActorOid ||
-                Preflight(currentPackage, current, false, request.PackageSha256).SecretHash != preview.SecretInputsSha256)
+                (await PreflightAsync(currentPackage, current, false, request.PackageSha256, ct)).SecretHash != preview.SecretInputsSha256)
                 throw new DbUpdateConcurrencyException("The operator preview changed. A fresh review is required.");
         }
         try
@@ -172,8 +178,8 @@ public sealed class ReceptionistOperatorService(MarketingConnectionStore store,
         new(request.PackageKey, request.PackageSha256, package.Operation, outcome, committed, verified,
             outcome == "already_satisfied" ? null : reference, facts);
 
-    private (ReceptionistProviderBinding? Binding, string SecretHash) Preflight(ReceptionistOperatorPackage package,
-        ReceptionistOperatorState state, bool prepareBinding, string packageSha)
+    private async Task<(ReceptionistProviderBinding? Binding, string SecretHash)> PreflightAsync(ReceptionistOperatorPackage package,
+        ReceptionistOperatorState state, bool prepareBinding, string packageSha, CancellationToken ct)
     {
         if (state.CompletedReference is not null) return (null, string.Empty);
         if (package.Operation == "accept_binding")
@@ -181,8 +187,8 @@ public sealed class ReceptionistOperatorService(MarketingConnectionStore store,
             var binding = package.Binding!;
             ReceptionistConfigurationCodec.ValidateBinding(binding, state.Configuration);
             _ = ReceptionistRuntimeAuthority.Ready(package.Provider, state.Configuration, binding);
-            var api = BootstrapSecret(package, binding.CredentialReference, "voice-api", package.ApiCredentialSha256!);
-            var webhook = BootstrapSecret(package, binding.WebhookSecretReference, "voice-webhook", package.WebhookSecretSha256!);
+            var api = await BootstrapSecretAsync(package, binding.CredentialReference, "voice-api", package.ApiCredentialSha256!, ct);
+            var webhook = await BootstrapSecretAsync(package, binding.WebhookSecretReference, "voice-webhook", package.WebhookSecretSha256!, ct);
             OpenAiReceptionistClient.ValidateCredentials(package.ProviderProjectKey, api);
             OpenAiReceptionistProtocol.ValidateSigningSecret(webhook);
             var secretHash = ReceptionistConfigurationCodec.Hash(JsonSerializer.Serialize(new

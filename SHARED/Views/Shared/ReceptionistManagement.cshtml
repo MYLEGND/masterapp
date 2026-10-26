@@ -1,0 +1,92 @@
+@model Shared.Analytics.ReceptionistManagementPage
+@{ ViewData["Title"] = "Receptionist connections"; }
+<main class="container py-4">
+    <a href="@Model.ReturnUrl">Back to receptionist settings</a>
+    <h1>Receptionist connections</h1>
+    <p>Connect the voice project dedicated to this workspace. Credentials are encrypted and never displayed after saving. Saving a connection does not accept the provider, enable calls or change your operating configuration.</p>
+    @if (Model.Message is not null) { <p role="status">@Model.Message</p> }
+    @if (Model.Summary.ConnectionRevision == Guid.Empty)
+    {
+        <p>Save your receptionist business settings before connecting a provider.</p>
+    }
+    else
+    {
+        <form action="@Model.SaveCredentialUrl" method="post" autocomplete="off">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="ExpectedConnectionRevision" value="@Model.Summary.ConnectionRevision" />
+            <label class="dashboard-form-field"><span>Dedicated OpenAI project ID</span><input class="form-control" name="ProviderProjectKey" required maxlength="200" placeholder="proj_…" /></label>
+            <label class="dashboard-form-field"><span>Credential type</span><select class="form-select" name="Purpose"><option value="voice-api">Voice API key</option><option value="voice-webhook">Webhook signing secret</option></select></label>
+            <label class="dashboard-form-field"><span>Credential</span><input class="form-control" type="password" name="Secret" required maxlength="16384" autocomplete="new-password" /></label>
+            <button class="btn btn-primary" type="submit">Save protected credential</button>
+        </form>
+    }
+    <h2>Saved credential versions</h2>
+    <p>Replacing a credential creates a new version for review. Withdrawing a saved version prevents future activation using it; accepted calls retain their pinned credentials. Pause calls before changing active service access.</p>
+    @foreach (var credential in Model.Summary.Credentials)
+    {
+        <section class="card p-3 my-2">
+            <h3>@(credential.Purpose == "voice-api" ? "Voice API key" : "Webhook signing secret")</h3>
+            <p>Project: @credential.ProviderProjectKey · Saved @credential.CreatedUtc.ToString("u") · @(credential.Revoked ? "Withdrawn" : "Saved; provider acceptance separate")</p>
+            @if (!credential.Revoked)
+            {
+                <form action="@Model.RevokeCredentialUrl" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="credentialId" value="@credential.Id" />
+                    <input type="hidden" name="expectedConnectionRevision" value="@Model.Summary.ConnectionRevision" />
+                    <button class="btn btn-outline-secondary" type="submit">Withdraw from future setup</button>
+                </form>
+            }
+        </section>
+    }
+    <h2>Operation reviews</h2>
+    @if (Model.Summary.Operations.Count == 0) { <p>No saved operation reviews are available. Provider setup, routing, cost and capability evidence must be verified before activation.</p> }
+    @foreach (var operation in Model.Summary.Operations)
+    {
+        <section class="card p-3 my-2">
+            <p>@operation.Operation · @operation.ReviewState · Expires @operation.ExpiresUtc.ToString("u")</p>
+            @if (operation.ReviewState == "accepted" || (operation.ReviewState == "pending" && Model.Summary.CanReview))
+            {
+                <form action="@Model.PlanUrl" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="key" value="@operation.Key" />
+                    <input type="hidden" name="sha256" value="@operation.Sha256" />
+                    <input type="hidden" name="pendingReview" value="@(operation.ReviewState == "pending" ? "true" : "false")" />
+                    <button class="btn btn-outline-primary" type="submit">Review exact change</button>
+                </form>
+            }
+        </section>
+    }
+    @if (Model.Review is { } review)
+    {
+        <section class="card p-3 my-3" aria-label="Exact operation review">
+            <h2>@review.Label</h2>
+            <p>Operation: @review.Operation</p>
+            @foreach (var blocker in review.Blockers) { <p role="status">@blocker</p> }
+            <dl>
+                @foreach (var fact in review.Facts) { <dt>@fact.Label</dt><dd>@fact.Value</dd> }
+            </dl>
+            @if (review.PendingReviewRevision is { } revision && Model.Summary.CanReview)
+            {
+                <p>Review the provider and capability evidence before accepting this operation. Acceptance does not execute it.</p>
+                <form action="@Model.ReviewUrl" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@Guid.ParseExact(review.Key.Substring(6), "N")" />
+                    <input type="hidden" name="expectedRevision" value="@revision" />
+                    <input type="hidden" name="sha256" value="@review.Sha256" />
+                    <button class="btn btn-primary" type="submit" name="accepted" value="true">Accept this exact review</button>
+                    <button class="btn btn-outline-secondary" type="submit" name="accepted" value="false">Reject this review</button>
+                </form>
+            }
+            @if (review.CanApply && review.ExpectedStateToken is not null)
+            {
+                <form action="@Model.ApplyUrl" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="PackageKey" value="@review.Key" />
+                    <input type="hidden" name="PackageSha256" value="@review.Sha256" />
+                    <input type="hidden" name="ExpectedStateToken" value="@review.ExpectedStateToken" />
+                    <button class="btn btn-primary" type="submit">Apply this exact change</button>
+                </form>
+            }
+        </section>
+    }
+</main>

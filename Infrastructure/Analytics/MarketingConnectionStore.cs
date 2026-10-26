@@ -642,6 +642,7 @@ public static class MarketingServiceRegistration
         services.AddScoped<MarketingConnectionStore>();
         services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         services.AddScoped<Infrastructure.Reception.ReceptionistAdmissionService>();
+        Infrastructure.Reception.ReceptionistServiceRegistration.AddReceptionistManagement(services);
         services.AddScoped<MarketingExternalAdsOAuthService>();
         services.AddScoped<IMarketingExternalAdsReportingService, MarketingExternalAdsReportingService>();
         services.AddHttpClient("MarketingExternalAds", client =>

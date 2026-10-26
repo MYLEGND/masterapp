@@ -13,8 +13,12 @@ using System.Security.Cryptography;
 // credential-free rehearsal job, against its disposable loopback SQL database.
 // It is deliberately bounded: an unrepresented pending migration needs a new
 // reviewed fixture before readiness can succeed.
-internal static class RehearsalFixture
+internal static partial class RehearsalFixture
 {
+    internal const string ManagementMigration = "20261026210738_AddReceptionistManagement";
+    internal static bool IsManagementFixture(CandidateContract.Entry entry) =>
+        entry.Id == ManagementMigration && entry.Supported &&
+        Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(entry, CandidateContract.Json))) == "4505723c4487d382bd8bcde553d5e5d835dec499564c2b308469a4e2861c3d3d";
     internal const string ReceptionistMigration = "20261020160000_AddReceptionistCoordination";
     internal const string CanonicalPaymentMigration = "20261026000134_AddCanonicalSubscriptionPaymentCompletion";
     internal static bool IsTrainingFixture(CandidateContract.Entry entry) =>
@@ -103,6 +107,13 @@ internal static class RehearsalFixture
                 throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
             requestedCount = requestedCount == "training-only" ? "1" : "2";
         }
+        if (requestedCount is "management-only" or "training-and-management" or "canonical-payment-training-management")
+        {
+            var expected = new[] { CanonicalPaymentMigration, CandidateContract.TrainingMigration, ManagementMigration };
+            if (!contract.Migrations.TakeLast(3).Select(m => m.Id).SequenceEqual(expected))
+                throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
+            requestedCount = requestedCount == "management-only" ? "1" : requestedCount == "training-and-management" ? "2" : "3";
+        }
         if (!int.TryParse(requestedCount, out var count) || count is < 1 or > 1000)
             throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
         var pending = contract.Migrations.TakeLast(count).ToArray();
@@ -113,6 +124,7 @@ internal static class RehearsalFixture
         const string retentionMigration = "20261011120000_AddWebsiteSnapshotRetirement";
         var payments = pending.Any(m => m.Id == paymentMigration);
         var retention = pending.Any(m => m.Id == retentionMigration);
+        var management = pending.Any(m => m.Id == ManagementMigration);
         var receptionist = pending.Any(m => m.Id == ReceptionistMigration);
         var training = pending.Any(m => m.Id == CandidateContract.TrainingMigration);
         var canonicalPayments = pending.Any(m => m.Id == CanonicalPaymentMigration);
@@ -122,9 +134,10 @@ internal static class RehearsalFixture
                     Schema: "dbo", Table: "WebsiteContentVersion", Name: "SnapshotRetiredUtc",
                     Type: "datetime2", Nullable: true } || m.Columns[0].Default.ValueKind != JsonValueKind.Null)) ||
             (m.Id == ReceptionistMigration && !IsReceptionistFixture(m)) ||
+            (m.Id == ManagementMigration && !IsManagementFixture(m)) ||
             (m.Id == CanonicalPaymentMigration && !IsCanonicalPaymentFixture(m)) ||
             (m.Id == CandidateContract.TrainingMigration && !IsTrainingFixture(m)) ||
-            (m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration && m.Id != CanonicalPaymentMigration && m.Id != CandidateContract.TrainingMigration &&
+            (m.Id != ManagementMigration && m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration && m.Id != CanonicalPaymentMigration && m.Id != CandidateContract.TrainingMigration &&
             (m.Tables.Length != 0 || m.Indexes.Length != 0 || m.Guards.Length != 0 || m.ForeignKeys.Length != 0 ||
             m.Columns.Any(c => c.Schema != "dbo" || c.Table != "MobileProfileSettings")))))
             throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
@@ -137,7 +150,7 @@ internal static class RehearsalFixture
                 throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             db.MobileProfileSettings.Add(new Domain.Entities.MobileProfileSettings {
                 ProfileId = Guid.NewGuid(), ParticipantType = "Agent", Bio = "synthetic migration fixture" });
-            if (receptionist) db.AddRange(MarketingRows());
+            if (receptionist || management) db.AddRange(MarketingRows());
             if (canonicalPayments) db.AddRange(CanonicalPaymentRows());
             if (training) db.AddRange(TrainingLegacyRows());
             if (retention)
@@ -197,6 +210,12 @@ internal static class RehearsalFixture
                     """, timeout.Token);
             var history = db.GetService<IHistoryRepository>();
             await db.Database.ExecuteSqlRawAsync(history.GetCreateScript(), timeout.Token);
+            if (management && !receptionist)
+            {
+                await db.Database.OpenConnectionAsync(timeout.Token);
+                await VerifyReceptionistData(db, timeout.Token, persist: true);
+                await SaveManagementPredecessor(db, sql.InitialCatalog, timeout.Token);
+            }
             // Synthetic baseline, never copied production history or rows.
             foreach (var id in db.Database.GetMigrations().Where(id => !pending.Any(m => m.Id == id)).Concat(new[] {
                 "20260213015339_FinanceToolStates_ByClientProfile", "20260321020000_AddAgentAssistants",
@@ -205,7 +224,7 @@ internal static class RehearsalFixture
         }
         else if (operation == "precondition")
         {
-            if (!payments && !receptionist && !canonicalPayments && !training) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+            if (!payments && !receptionist && !canonicalPayments && !training && !management) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             await VerifyCatalogBatchProtocol(db, timeout.Token);
             var applied = (await db.Database.GetAppliedMigrationsAsync(timeout.Token)).ToArray();
             await CandidateContract.Verify(db, contract, applied, timeout.Token);
@@ -246,7 +265,7 @@ internal static class RehearsalFixture
         }
         else if (operation == "adversarial")
         {
-            if (!payments && !receptionist && !canonicalPayments && !training) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+            if (!payments && !receptionist && !canonicalPayments && !training && !management) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             var applied = db.Database.GetMigrations().ToArray();
             var mutations = payments ? new[] {
                 "ALTER INDEX [IX_CommercePaymentReceipts_Provider_Environment_AccountId_EventId] ON [dbo].[CommercePaymentReceipts] DISABLE",
@@ -260,6 +279,7 @@ internal static class RehearsalFixture
                 "ALTER TABLE dbo.ClientSubscriptionOffers ALTER COLUMN TrainingPlanName nvarchar(255) NULL",
                 "CREATE UNIQUE INDEX IX_ClientSubscriptions_ClientProfileId ON dbo.ClientSubscriptions(ClientProfileId) WHERE [Status] <> 'Canceled' AND [Status] <> 'ActivationFailed'"
             }).ToArray();
+            if (management) mutations = mutations.Concat(ManagementDrift(pending.Single(m => m.Id == ManagementMigration))).ToArray();
             if (receptionist) mutations = mutations.Concat(ReceptionistDrift(pending.Single(m => m.Id == ReceptionistMigration))).ToArray();
             if (appliedReceptionist is not null && !receptionist)
                 mutations = mutations.Concat(new[] {
@@ -307,6 +327,7 @@ internal static class RehearsalFixture
             }
             await db.Database.OpenConnectionAsync(timeout.Token);
             if (canonicalPayments) await VerifyCanonicalPaymentData(db, timeout.Token);
+            if (management && !receptionist) await VerifyManagementPredecessor(db, sql.InitialCatalog, timeout.Token);
             if (receptionist)
             {
                 var expectedRows = MarketingRows();
@@ -327,8 +348,9 @@ internal static class RehearsalFixture
                 defaults.CommandTimeout = 30;
                 if (Convert.ToInt32(await defaults.ExecuteScalarAsync(timeout.Token)) != 0)
                     throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
-                await VerifyReceptionistData(db, timeout.Token);
+                await VerifyReceptionistData(db, timeout.Token, persist: management);
             }
+            if (management) await VerifyManagementData(db, timeout.Token);
             if (payments)
             {
                 var orders = await db.CommerceOrders.AsNoTracking().OrderBy(o => o.OrderNumber).ToArrayAsync(timeout.Token);
@@ -564,7 +586,7 @@ internal static class RehearsalFixture
         ];
     }
 
-    private static async Task VerifyReceptionistData(MasterAppDbContext db, CancellationToken cancellation)
+    private static async Task VerifyReceptionistData(MasterAppDbContext db, CancellationToken cancellation, bool persist = false)
     {
         // Fixed synthetic values only. This runs after the actual EF migration,
         // inside a rollbacked transaction in the existing loopback-only fixture.
@@ -643,8 +665,87 @@ internal static class RehearsalFixture
             finally { await transaction.RollbackToSavepointAsync("constraint_probe", cancellation); }
             if (!rejected) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
         }
-        await transaction.RollbackAsync(cancellation);
+        if (persist) await transaction.CommitAsync(cancellation);
+        else await transaction.RollbackAsync(cancellation);
     }
+    private static string ManagementSnapshotPath(string database) => Path.Combine(Path.GetTempPath(), database + ".receptionist-preservation.sha256");
+    private static async Task<string> ManagementPredecessorDigest(MasterAppDbContext db, CancellationToken ct)
+    {
+        await using var command = db.Database.GetDbConnection().CreateCommand();
+        command.CommandTimeout = 30;
+        command.CommandText = """
+            SELECT
+            (SELECT * FROM dbo.MarketingConnections WHERE Id IN ('00000000-0000-0000-0000-000000000101','00000000-0000-0000-0000-000000000102','00000000-0000-0000-0000-000000000103') ORDER BY Id FOR JSON PATH, INCLUDE_NULL_VALUES) AS connections,
+            (SELECT * FROM dbo.ReceptionistConfigurationVersions ORDER BY Id FOR JSON PATH, INCLUDE_NULL_VALUES) AS versions,
+            (SELECT * FROM dbo.ReceptionistBudgetAccounts ORDER BY Id FOR JSON PATH, INCLUDE_NULL_VALUES) AS accounts,
+            (SELECT * FROM dbo.ReceptionistBudgetPeriods ORDER BY Id FOR JSON PATH, INCLUDE_NULL_VALUES) AS periods,
+            (SELECT * FROM dbo.ReceptionistCalls ORDER BY Id FOR JSON PATH, INCLUDE_NULL_VALUES) AS calls
+            FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+            """;
+        var json = Convert.ToString(await command.ExecuteScalarAsync(ct)) ?? throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        return Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json)));
+    }
+    private static async Task SaveManagementPredecessor(MasterAppDbContext db, string database, CancellationToken ct)
+    {
+        await db.Database.ExecuteSqlRawAsync("UPDATE dbo.ReceptionistConfigurationVersions SET AcceptedBindingJson='{{\"syntheticAccepted\":true}}'", ct);
+        await File.WriteAllTextAsync(ManagementSnapshotPath(database), await ManagementPredecessorDigest(db, ct), ct);
+    }
+    private static async Task VerifyManagementPredecessor(MasterAppDbContext db, string database, CancellationToken ct)
+    {
+        if (!File.Exists(ManagementSnapshotPath(database)) ||
+            await File.ReadAllTextAsync(ManagementSnapshotPath(database), ct) != await ManagementPredecessorDigest(db, ct))
+            throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+    }
+    private static IEnumerable<string> ManagementDrift(CandidateContract.Entry entry)
+    {
+        foreach (var table in entry.Tables)
+        {
+            foreach (var key in table.ForeignKeys)
+                yield return $"ALTER TABLE dbo.[{table.Name}] NOCHECK CONSTRAINT [{key.Name}]";
+            foreach (var check in table.Checks)
+                yield return $"ALTER TABLE dbo.[{table.Name}] NOCHECK CONSTRAINT [{check.Name}]";
+        }
+        foreach (var index in entry.Indexes)
+            yield return $"DROP INDEX [{index.Name}] ON dbo.[{index.Table}]";
+        yield return "ALTER TABLE dbo.ReceptionistCredentialVersions ALTER COLUMN Provider nvarchar(50) COLLATE Latin1_General_100_CI_AS NOT NULL";
+    }
+    private static async Task VerifyManagementData(MasterAppDbContext db, CancellationToken ct)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT dbo.ReceptionistCredentialVersions(Id,MarketingConnectionId,Provider,ProviderProjectKey,Purpose,ProtectedValue,ValueSha256,CreatedByActorId,CreatedUtc,Revision)
+            VALUES('00000000-0000-0000-0000-000000000701','00000000-0000-0000-0000-000000000101','openai','synthetic-a','voice-api','synthetic-ciphertext',REPLICATE('a',64),'synthetic-actor','20260101',NEWID()),
+                  ('00000000-0000-0000-0000-000000000702','00000000-0000-0000-0000-000000000102','openai','synthetic-b','voice-api','synthetic-ciphertext',REPLICATE('b',64),'synthetic-actor','20260101',NEWID());
+            INSERT dbo.ReceptionistOperationPackages(Id,MarketingConnectionId,ConfigurationVersionId,Operation,PayloadJson,PayloadSha256,ApiCredentialVersionId,CreatedByActorId,CreatedUtc,ExpiresUtc,ReviewState,Revision)
+            VALUES('00000000-0000-0000-0000-000000000601','00000000-0000-0000-0000-000000000101','00000000-0000-0000-0000-000000000301','accept_binding','{{}}',REPLICATE('a',64),'00000000-0000-0000-0000-000000000701','synthetic-actor','20260101','20260102','pending',NEWID());
+            INSERT dbo.ReceptionistAcceptanceWindows(Id,MarketingConnectionId,ConfigurationVersionId,ConfigurationSha256,IngressKey,ProviderProjectKey,RestrictedRouteEvidenceSha256,CreatedByActorId,ReviewedByActorId,StartsUtc,ExpiresUtc,Revision)
+            VALUES('00000000-0000-0000-0000-000000000801','00000000-0000-0000-0000-000000000101','00000000-0000-0000-0000-000000000301',REPLICATE('a',64),'synthetic-route','synthetic-a',REPLICATE('b',64),'synthetic-actor','synthetic-actor','20260101','2026-01-01T00:30:00',NEWID());
+            """, ct);
+        // A valid reviewed row must succeed before probing individual protections.
+        await db.Database.ExecuteSqlRawAsync("UPDATE dbo.ReceptionistOperationPackages SET ReviewState='accepted', ReviewedByActorId='synthetic-actor', ReviewedUtc='20260101', ReviewedPayloadSha256=PayloadSha256", ct);
+        foreach (var (sql, constraint) in new (string, string)[] {
+            ("UPDATE dbo.ReceptionistOperationPackages SET ConfigurationVersionId='00000000-0000-0000-0000-000000000302'", "FK_ReceptionistOperationPackages_ReceptionistConfigurationVersions_MarketingConnectionId_ConfigurationVersionId"),
+            ("UPDATE dbo.ReceptionistOperationPackages SET ApiCredentialVersionId='00000000-0000-0000-0000-000000000702'", "FK_ReceptionistOperationPackages_ReceptionistCredentialVersions_MarketingConnectionId_ApiCredentialVersionId"),
+            ("UPDATE dbo.ReceptionistOperationPackages SET WebhookCredentialVersionId='00000000-0000-0000-0000-000000000702'", "FK_ReceptionistOperationPackages_ReceptionistCredentialVersions_MarketingConnectionId_WebhookCredentialVersionId"),
+            ("UPDATE dbo.ReceptionistOperationPackages SET ReviewedByActorId=NULL", "CK_ReceptionistOperationPackage_Review"),
+            ("UPDATE dbo.ReceptionistOperationPackages SET ReviewedPayloadSha256=NULL", "CK_ReceptionistOperationPackage_Review"),
+            ("UPDATE dbo.ReceptionistOperationPackages SET ReviewState='unknown'", "CK_ReceptionistOperationPackage_Review"),
+            ("UPDATE dbo.ReceptionistOperationPackages SET ExpiresUtc=CreatedUtc", "CK_ReceptionistOperationPackage_Lifetime"),
+            ("UPDATE dbo.ReceptionistAcceptanceWindows SET ConfigurationVersionId='00000000-0000-0000-0000-000000000302'", "FK_ReceptionistAcceptanceWindows_ReceptionistConfigurationVersions_MarketingConnectionId_ConfigurationVersionId"),
+            ("UPDATE dbo.ReceptionistAcceptanceWindows SET ExpiresUtc=StartsUtc", "CK_ReceptionistAcceptanceWindow_Lifetime"),
+            ("DELETE dbo.ReceptionistCredentialVersions WHERE Id='00000000-0000-0000-0000-000000000701'", "FK_ReceptionistOperationPackages_ReceptionistCredentialVersions_MarketingConnectionId_ApiCredentialVersionId")
+        })
+        {
+            await transaction.CreateSavepointAsync("management_probe", ct);
+            var rejected = false;
+            try { await db.Database.ExecuteSqlRawAsync(sql, ct); }
+            catch (SqlException error) when (error.Number == 547 && error.Message.Contains(constraint, StringComparison.Ordinal)) { rejected = true; }
+            finally { await transaction.RollbackToSavepointAsync("management_probe", ct); }
+            if (!rejected) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        }
+        await transaction.RollbackAsync(ct);
+    }
+
     private static readonly Guid TrainingBusiness = Guid.Parse("cfaf0000-0000-4000-8000-000000000001");
     private static readonly Guid TrainingProduct = Guid.Parse("cfaf0000-0000-4000-8000-000000000002");
     private static readonly Guid TrainingClient = Guid.Parse("cfaf0000-0000-4000-8000-000000000003");

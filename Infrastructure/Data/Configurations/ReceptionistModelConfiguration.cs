@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 namespace Infrastructure.Data.Configurations;
 
 /// <summary>Additive shared reception coordination; all evidence relationships restrict deletion.</summary>
-public static class ReceptionistModelConfiguration
+public static partial class ReceptionistModelConfiguration
 {
     public const string IdentityCollation = "Latin1_General_100_BIN2";
 
@@ -17,6 +17,7 @@ public static class ReceptionistModelConfiguration
         void Text(EntityTypeBuilder entity, string name, int maximum, bool required = true) =>
             entity.Property<string>(name).HasMaxLength(maximum).UseCollation(identityCollation).IsRequired(required);
 
+        ConfigureManagement(model, identityCollation);
         var connection = model.Entity<MarketingConnection>();
         connection.Property(x => x.ReceptionistIngressKey).HasMaxLength(200).UseCollation(identityCollation);
         connection.HasIndex(x => new { x.Provider, x.ReceptionistIngressKey }).IsUnique()

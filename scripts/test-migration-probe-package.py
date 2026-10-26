@@ -632,6 +632,24 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'): self.gate()
                 self.assertFalse(self.sql_entered)
 
+    def test_management_runs_each_recognized_baseline_and_requires_its_marker(self):
+        with self.payment_fixture():
+            training=dict(id='20261026063902_AddScopedTrainingSubscriptions',supported=True)
+            management=dict(id='20261026210738_AddReceptionistManagement',supported=True)
+            self.current['migrations'].extend([training,management])
+            self.source_present.update([training['id']+'.cs',management['id']+'.cs'])
+            self.test_stdout += 'LEGEND_TRAINING_APPEND_TEST:PROVEN\nLEGEND_MANAGEMENT_APPEND_TEST:PROVEN\n'
+            digest=lambda row:hashlib.sha256(json.dumps(row,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            with patch.multiple(m.AUTHORITY,REVIEWED_TRAINING_ENTRY=digest(training),REVIEWED_MANAGEMENT_ENTRY=digest(management)):
+                self.gate()
+                fixtures=[kw for cmd,kw in self.calls if cmd[-1]=='migration-test']
+                self.assertEqual(['payment-and-successors','canonical-payment-training-management','training-and-management','management-only'],
+                    [kw['env']['LEGEND_REHEARSAL_PENDING_COUNT'] for kw in fixtures])
+                self.sql_entered=False
+                self.test_stdout=self.test_stdout.replace('LEGEND_MANAGEMENT_APPEND_TEST:PROVEN\n','')
+                with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'): self.gate()
+                self.assertFalse(self.sql_entered)
+
     def test_payment_only_failure_cannot_be_hidden_by_broad_suffix_success(self):
         original=self.process
         def fail_narrow(command,**kwargs):

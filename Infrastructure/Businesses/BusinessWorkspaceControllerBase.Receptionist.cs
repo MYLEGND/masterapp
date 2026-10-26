@@ -145,6 +145,6 @@ public abstract partial class BusinessWorkspaceControllerBase
             new ReceptionistSetupPage(snapshot, input ?? ReceptionistSetupForms.Read(snapshot),
                 Url.Action(nameof(SaveReceptionist), new { businessId })!,
                 Url.Action(nameof(ReceptionistAdmission), new { businessId })!,
-                Url.Action(nameof(Settings), new { businessId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness, Url.Action(nameof(ReviewReceptionistContent), new { businessId })!, OperatingSnapshot: operating));
+                Url.Action(nameof(Settings), new { businessId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness, Url.Action(nameof(ReviewReceptionistContent), new { businessId })!, OperatingSnapshot: operating, ManagementUrl: Url.Action(nameof(ReceptionistConnections), new { businessId })));
     }
 }

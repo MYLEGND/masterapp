@@ -16,6 +16,7 @@
         <div class="dashboard-hero-copy">
             <div><a class="btn btn-clear-search dashboard-command-action" href="@Model.ReturnUrl">Back to your workspace</a></div>
             <h1 class="dashboard-hero-title mt-3">Receptionist settings</h1>
+    @if (Model.ManagementUrl is not null) { <p><a href="@Model.ManagementUrl">Manage provider connections and operation reviews</a></p> }
             <p class="dashboard-section-copy">Choose how your receptionist answers callers, which services it can discuss, and the limits it must respect.</p>
             @if (Model.Message is not null)
             { <p class="dashboard-section-copy" role="status">@Model.Message</p> }
