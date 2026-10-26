@@ -4121,6 +4121,7 @@ def fast_track_scope(paths):
         'Domain/Entities/ClientSubscriptionOffer.cs',
         'Domain/Entities/MarketingConnection.cs',
         'Domain/Entities/ReceptionistCoordination.cs',
+        'Domain/Entities/ReceptionistManagement.cs',
         'Infrastructure/Billing/BillingEntitlementService.cs',
         'Infrastructure/Billing/BillingStateMapper.cs',
         'Infrastructure/Billing/MasterAppBillingOrchestrator.cs',
@@ -4134,6 +4135,7 @@ def fast_track_scope(paths):
         'Infrastructure/Businesses/BusinessWorkspaceControllerBase.ReceptionistManagement.cs',
         'Infrastructure/Businesses/CommerceBusinessProvisioningService.cs',
         'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.cs',
+        'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Management.cs',
         'Infrastructure/Households/HouseholdMembershipService.cs',
         'Infrastructure/Identity/RestrictedAiAccessBoundary.cs',
         'Infrastructure/Infrastructure.csproj',
@@ -4282,7 +4284,8 @@ def fast_track_scope(paths):
     schema = any(path.startswith('Infrastructure/Migrations/') or path in {
         'Infrastructure/Infrastructure.csproj',
         'Infrastructure/Data/MasterAppDbContext.cs', 'Infrastructure/Data/Configurations/CommercePaymentModel.cs',
-        'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.cs'} for path in paths)
+        'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.cs',
+        'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Management.cs'} for path in paths)
     backend = schema or bool(shared_server.intersection(paths)) or any(path.startswith(('CommerceCore/', 'Infrastructure/Commerce/', 'Infrastructure/WebsiteRuntime/',
         'Infrastructure/Analytics/', 'Infrastructure/WebsitePublishing/', 'Infrastructure/WebsiteEditing/',
         'Domain/Entities/Commerce', 'Legend-Cloudflare/src/website-routing/')) or path in {

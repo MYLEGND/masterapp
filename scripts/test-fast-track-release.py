@@ -1680,6 +1680,16 @@ class ReleaseAdmissionScopeRegressionTests(unittest.TestCase):
             scope=authority.fast_track_scope(['Infrastructure/Infrastructure.csproj'])
         self.assertTrue(scope['schema'])
 
+    def test_management_entities_and_model_have_exact_shared_schema_ownership(self):
+        for path in ('Domain/Entities/ReceptionistManagement.cs',
+                     'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Management.cs'):
+            scope=authority.fast_track_scope([path])
+            self.assertEqual(set(scope['impacts'][path]), {'portal','client','protect','parfait'})
+            self.assertTrue(scope['commerce'])
+            self.assertEqual(scope['schema'], path.startswith('Infrastructure/'))
+            with self.assertRaisesRegex(ValueError, 'Unmapped'):
+                authority.fast_track_scope([path.replace('.cs','.Unreviewed.cs')])
+
     def test_browser_and_management_partials_have_exact_shared_ownership(self):
         paths = (
             'Infrastructure/Businesses/BusinessWorkspaceControllerBase.ReceptionistManagement.cs',
