@@ -86,6 +86,12 @@ internal static class RehearsalFixture
         var requestedCount = Environment.GetEnvironmentVariable("LEGEND_REHEARSAL_PENDING_COUNT");
         if (requestedCount == "payment-and-successors")
             requestedCount = contract.Migrations.SkipWhile(m => m.Id != "20261011064911_AddBusinessScopedMerchantPayments").Count().ToString();
+        if (requestedCount == "canonical-payment-only")
+        {
+            if (contract.Migrations.LastOrDefault()?.Id != CanonicalPaymentMigration)
+                throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
+            requestedCount = "1";
+        }
         if (!int.TryParse(requestedCount, out var count) || count is < 1 or > 1000)
             throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
         var pending = contract.Migrations.TakeLast(count).ToArray();
@@ -108,6 +114,9 @@ internal static class RehearsalFixture
             (m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration && m.Id != CanonicalPaymentMigration &&
             (m.Tables.Length != 0 || m.Indexes.Length != 0 || m.Guards.Length != 0 || m.ForeignKeys.Length != 0 ||
             m.Columns.Any(c => c.Schema != "dbo" || c.Table != "MobileProfileSettings")))))
+            throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
+        var appliedReceptionist = contract.Migrations.SingleOrDefault(m => m.Id == ReceptionistMigration);
+        if (appliedReceptionist is not null && !receptionist && !IsReceptionistFixture(appliedReceptionist))
             throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
         if (operation == "initialize")
         {
@@ -160,6 +169,16 @@ internal static class RehearsalFixture
                     Schema = c.Schema, Table = c.Table, Name = c.Name }))).ToArray();
             foreach (var command in db.GetService<IMigrationsSqlGenerator>().Generate(reverse))
                 await db.Database.ExecuteSqlRawAsync(command.CommandText, timeout.Token);
+            // EnsureCreated follows the model, which omits these migration-owned
+            // defaults. Reconstruct the pinned applied migration's physical shape
+            // before recording synthetic history; never repair an observed database.
+            if (appliedReceptionist is not null && !receptionist)
+                await db.Database.ExecuteSqlRawAsync("""
+                    ALTER TABLE dbo.MarketingConnections ADD CONSTRAINT DF_Rehearsal_ReceptionistAdmissionEnabled
+                        DEFAULT (0) FOR ReceptionistAdmissionEnabled;
+                    ALTER TABLE dbo.MarketingConnections ADD CONSTRAINT DF_Rehearsal_ReceptionistControlRevision
+                        DEFAULT ('00000000-0000-0000-0000-000000000000') FOR ReceptionistControlRevision;
+                    """, timeout.Token);
             var history = db.GetService<IHistoryRepository>();
             await db.Database.ExecuteSqlRawAsync(history.GetCreateScript(), timeout.Token);
             // Synthetic baseline, never copied production history or rows.
@@ -204,6 +223,13 @@ internal static class RehearsalFixture
                 "ALTER TABLE [dbo].[CommerceOrders] ALTER COLUMN [PaymentReference] nvarchar(199) NULL"
             } : Array.Empty<string>();
             if (receptionist) mutations = mutations.Concat(ReceptionistDrift(pending.Single(m => m.Id == ReceptionistMigration))).ToArray();
+            if (appliedReceptionist is not null && !receptionist)
+                mutations = mutations.Concat(new[] {
+                    "ALTER TABLE dbo.MarketingConnections DROP CONSTRAINT DF_Rehearsal_ReceptionistAdmissionEnabled",
+                    "ALTER TABLE dbo.MarketingConnections DROP CONSTRAINT DF_Rehearsal_ReceptionistControlRevision",
+                    "ALTER TABLE dbo.MarketingConnections DROP CONSTRAINT DF_Rehearsal_ReceptionistAdmissionEnabled; ALTER TABLE dbo.MarketingConnections ADD DEFAULT (1) FOR ReceptionistAdmissionEnabled",
+                    "ALTER TABLE dbo.MarketingConnections DROP CONSTRAINT DF_Rehearsal_ReceptionistControlRevision; ALTER TABLE dbo.MarketingConnections ADD DEFAULT ('00000000-0000-0000-0000-000000000001') FOR ReceptionistControlRevision"
+                }).ToArray();
             if (canonicalPayments) mutations = mutations.Concat(new[] {
                 "ALTER INDEX [IX_SubscriptionPaymentRefunds_SubscriptionPaymentId_IdempotencyKey] ON dbo.SubscriptionPaymentRefunds DISABLE",
                 "ALTER INDEX [IX_SubscriptionPaymentCompletionEffects_SubscriptionPaymentId_Kind] ON dbo.SubscriptionPaymentCompletionEffects DISABLE",

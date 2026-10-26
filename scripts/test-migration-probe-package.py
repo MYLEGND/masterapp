@@ -104,7 +104,7 @@ class ObservedRehearsalReuseTests(unittest.TestCase):
             restore.assert_not_called()
 
     def test_same_merge_rehearsal_uses_parent_impact_without_relabeling(self):
-        self.same_merge(); base='e'*40
+        self.same_merge(); parent='d'*40; base='e'*40
         self.observation.write_text(json.dumps(dict(producingAttempt=2,contractDigest='c'*64,observerArtifactId=42)))
         calls=[]
         def git(args,**kwargs):
@@ -122,7 +122,8 @@ class ObservedRehearsalReuseTests(unittest.TestCase):
             with self.subTest(pending=pending), \
                  patch.object(m,'trusted_fast_track_run',return_value=self.run), \
                  patch.object(m.AUTHORITY,'api_get',return_value=dict(object=dict(sha=self.revision))), \
-                 patch.object(m.AUTHORITY,'fast_track_inventory_merge_proof',return_value=dict(baseline=base)) as proof, \
+                 patch.object(m.AUTHORITY,'fast_track_inventory_merge_proof',return_value=dict(baseline=parent)) as proof, \
+                 patch.object(m.AUTHORITY,'fast_track_effective_baseline',return_value=base) as effective, \
                  patch.object(m.subprocess,'check_output',side_effect=git), \
                  patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
                  patch.object(m,'fast_track_observation_source',return_value=dict(attempt=2,artifactId=41)), \
@@ -131,6 +132,7 @@ class ObservedRehearsalReuseTests(unittest.TestCase):
                  patch.object(m,'isolated_sql',return_value=contextlib.nullcontext('synthetic-local-only')):
                 m.rehearse_fast_track(self.revision,directory,self.observation,self.root/'probe')
                 proof.assert_called_once_with('owner/repo',self.revision,'fixture')
+                effective.assert_called_once_with(parent,self.revision,repository='owner/repo',token='fixture')
                 result=json.loads((directory/'rehearsal.json').read_text())
                 self.assertEqual(self.revision,result['candidate'])
                 self.assertEqual(self.revision,result['fastTrackHead'])
@@ -139,6 +141,21 @@ class ObservedRehearsalReuseTests(unittest.TestCase):
                 if pending:self.assertTrue(result['proven'])
                 else:spec.assert_not_called()
         self.assertEqual(2,calls.count(['git','diff','--name-only',base,self.revision]))
+
+
+    def test_unresolved_predecessor_stops_before_observation_or_bundle(self):
+        self.same_merge()
+        with patch.object(m,'trusted_fast_track_run',return_value=self.run), \
+             patch.object(m.AUTHORITY,'api_get',return_value=dict(object=dict(sha=self.revision))), \
+             patch.object(m.AUTHORITY,'fast_track_inventory_merge_proof',return_value=dict(baseline='e'*40)), \
+             patch.object(m.AUTHORITY,'fast_track_effective_baseline',side_effect=RuntimeError('PREDECESSOR_REQUIRES_OPERATION_RECONCILIATION')), \
+             patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
+             patch.object(m,'fast_track_observation_source') as observation, \
+             patch.object(m,'isolated_sql') as sql:
+            with self.assertRaisesRegex(RuntimeError,'PREDECESSOR_REQUIRES_OPERATION_RECONCILIATION'):
+                m.rehearse_fast_track(self.revision,self.root/'blocked',self.observation,self.root/'probe')
+            observation.assert_not_called();sql.assert_not_called()
+            self.assertFalse((self.root/'blocked').exists())
 
 
 
@@ -529,6 +546,28 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
             self.test_stdout=self.test_stdout.replace('LEGEND_CANONICAL_PAYMENT_APPEND_TEST:PROVEN\n','')
             with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
             self.assertFalse(self.sql_entered)
+
+    def test_payment_only_baseline_and_broad_suffix_are_both_exercised_without_credentials(self):
+        with self.payment_fixture():
+            self.gate()
+        fixtures=[kw for cmd,kw in self.calls if cmd[-1]=='migration-test']
+        self.assertEqual(['payment-and-successors','canonical-payment-only'],
+            [kw['env']['LEGEND_REHEARSAL_PENDING_COUNT'] for kw in fixtures])
+        for kw in fixtures:
+            self.assertNotIn('AZURE_CLIENT_SECRET',kw['env'])
+            self.assertNotIn('LEGEND_RELEASE_DB_CONNECTION',kw['env'])
+            self.assertEqual(300,kw['timeout'])
+
+    def test_payment_only_failure_cannot_be_hidden_by_broad_suffix_success(self):
+        original=self.process
+        def fail_narrow(command,**kwargs):
+            if kwargs.get('env',{}).get('LEGEND_REHEARSAL_PENDING_COUNT')=='canonical-payment-only':
+                self.fixture_exit=1
+                self.fixture_stderr='LEGEND_ISOLATED_FIXTURE:UNPROVEN:precondition:PHYSICAL_SCHEMA_DRIFT'
+            return original(command,**kwargs)
+        self.process=fail_narrow
+        with self.payment_fixture(),self.assertRaisesRegex(RuntimeError,'precondition:PHYSICAL_SCHEMA_DRIFT'):
+            self.gate()
 
     def test_payment_source_cannot_be_omitted_or_changed_in_export(self):
         import copy
