@@ -336,7 +336,7 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
         self.root=Path(self.temporary.name);self.calls=[];self.sql_entered=False
         self.test_stdout='LEGEND_REVIEWED_APPEND_TEST:NOT_PRESENT_IN_ASSEMBLY\nLEGEND_TRUSTED_CONTRACT_TESTS:PASS\n'
         self.current=dict(schemaVersion=3,migrations=[dict(id='20260101000000_Original')])
-        self.test_exit=0;self.source_present=False
+        self.test_exit=0;self.source_present=set()
         self.fixture_exit=0;self.fixture_stderr=''
 
     def process(self,command,**kwargs):
@@ -354,7 +354,7 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
             self.sql_entered=True
             yield 'Server=127.0.0.1,15433;Database=Synthetic'
         with patch.object(m.subprocess,'run',side_effect=self.process),patch.object(m,'isolated_sql',side_effect=sql), \
-             patch.object(Path,'is_file',return_value=self.source_present), \
+             patch.object(Path,'is_file',autospec=True,side_effect=lambda path: path.name in self.source_present), \
              patch.dict(os.environ,dict(PATH='/synthetic',HOME='/synthetic',AZURE_CLIENT_SECRET='synthetic-parent-only'),clear=True):
             m.test_schema_contract(self.root)
 
@@ -428,14 +428,14 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
             self.assertFalse(self.sql_entered)
 
     def test_present_migration_cannot_be_omitted_from_actual_export(self):
-        self.source_present=True
+        self.source_present={'20261020160000_AddReceptionistCoordination.cs'}
         with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
         self.assertFalse(self.sql_entered)
 
     def test_actual_generated_entry_must_match_python_pin_and_csharp_test(self):
         import hashlib
         entry=dict(id='20261020160000_AddReceptionistCoordination',supported=True)
-        self.current['migrations'].append(entry);self.source_present=True
+        self.current['migrations'].append(entry);self.source_present={'20261020160000_AddReceptionistCoordination.cs'}
         pin=hashlib.sha256(json.dumps(entry,sort_keys=True,separators=(',',':')).encode()).hexdigest()
         with patch.object(m.AUTHORITY,'REVIEWED_RECEPTIONIST_ENTRY',pin):
             with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
@@ -445,6 +445,49 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
         self.sql_entered=False
         with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
         self.assertFalse(self.sql_entered)
+
+    def payment_fixture(self):
+        import hashlib
+        receptionist=dict(id='20261020160000_AddReceptionistCoordination',supported=True)
+        payment=dict(id='20261026000134_AddCanonicalSubscriptionPaymentCompletion',supported=True)
+        self.current['migrations'] += [receptionist,payment]
+        self.source_present={row['id']+'.cs' for row in (receptionist,payment)}
+        self.test_stdout='LEGEND_REVIEWED_APPEND_TEST:PROVEN\nLEGEND_CANONICAL_PAYMENT_APPEND_TEST:PROVEN\nLEGEND_TRUSTED_CONTRACT_TESTS:PASS\n'
+        digest=lambda row:hashlib.sha256(json.dumps(row,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        return patch.multiple(m.AUTHORITY,REVIEWED_RECEPTIONIST_ENTRY=digest(receptionist),REVIEWED_CANONICAL_PAYMENT_ENTRY=digest(payment))
+
+    def test_reviewed_payment_pair_enters_sql_only_after_both_actual_markers(self):
+        with self.payment_fixture():
+            self.gate();self.assertTrue(self.sql_entered)
+            self.sql_entered=False
+            self.test_stdout=self.test_stdout.replace('LEGEND_CANONICAL_PAYMENT_APPEND_TEST:PROVEN\n','')
+            with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
+            self.assertFalse(self.sql_entered)
+
+    def test_payment_source_cannot_be_omitted_or_changed_in_export(self):
+        import copy
+        with self.payment_fixture():
+            original=copy.deepcopy(self.current)
+            for change in ('omit','digest'):
+                self.current=copy.deepcopy(original);self.sql_entered=False
+                if change=='omit':self.current['migrations'].pop()
+                else:self.current['migrations'][-1]['supported']=False
+                with self.subTest(change=change),self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
+                self.assertFalse(self.sql_entered)
+
+    def test_payment_suffix_cannot_skip_reorder_duplicate_or_append_unknown(self):
+        import copy
+        with self.payment_fixture():
+            original=copy.deepcopy(self.current)
+            for change in ('skip','reorder','duplicate','unknown'):
+                self.current=copy.deepcopy(original);self.sql_entered=False
+                rows=self.current['migrations']
+                if change=='skip':rows.pop(-2)
+                elif change=='reorder':rows[-2:]=rows[-2:][::-1]
+                elif change=='duplicate':rows.append(copy.deepcopy(rows[-1]))
+                else:rows.append(dict(id='29990101000000_Unknown'))
+                with self.subTest(change=change),self.assertRaisesRegex(RuntimeError,'Reviewed migration (entry|suffix|predecessor) contract failed'):self.gate()
+                self.assertFalse(self.sql_entered)
 
 
 if __name__ == '__main__':
