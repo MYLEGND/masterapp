@@ -89,7 +89,7 @@ internal sealed class ReceptionistRuntimeWorker(IServiceScopeFactory scopes, Tim
             try
             {
                 // A broken business configuration must not prevent the accepted transport from observing closure.
-                if (context.Provider != Shared.Analytics.MarketingDestinationKeys.OpenAi || context.Binding.Transport != "sip" ||
+                if (context.Provider != Shared.Analytics.MarketingDestinationKeys.OpenAi || context.Binding.Transport is not ("sip" or "webrtc") ||
                     context.ProviderProjectKey != context.Binding.ProviderProjectKey ||
                     !OpenAiReceptionistProtocol.Token(context.ProviderProjectKey, 200) ||
                     !OpenAiReceptionistProtocol.Token(context.ProviderSessionId, 200))

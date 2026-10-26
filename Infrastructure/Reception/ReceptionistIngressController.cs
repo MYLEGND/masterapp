@@ -28,7 +28,7 @@ public sealed class ReceptionistIngressController : ControllerBase
         if (!OpenAiReceptionistProtocol.Token(ingressKey, 100)) return NotFound();
         var admission = _services.GetRequiredService<ReceptionistAdmissionService>();
         var current = await admission.GetIngressBindingAsync(MarketingDestinationKeys.OpenAi, ingressKey, ct);
-        if (current is null) return NotFound();
+        if (current is null || current.Binding.Transport != "sip") return NotFound();
         if (Request.ContentLength > OpenAiReceptionistProtocol.MaximumWebhookBytes) return StatusCode(413);
         string signingSecret;
         try { signingSecret = runtime.Credential(current.Owner, current.Binding, webhook: true); }

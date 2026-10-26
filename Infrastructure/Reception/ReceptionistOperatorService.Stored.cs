@@ -87,7 +87,8 @@ public sealed partial class ReceptionistOperatorService
             if (owner is not null && package.Operation is not ("accept_binding" or "set_owner_admission"))
                 throw new UnauthorizedAccessException("This operation requires platform accounting authority.");
             if (package.Operation == "accept_binding" && (package.Binding?.CredentialReference != StoredPrefix + row.ApiCredentialVersionId?.ToString("N") ||
-                package.Binding?.WebhookSecretReference != StoredPrefix + row.WebhookCredentialVersionId?.ToString("N")))
+                (package.Binding?.Transport == "webrtc" ? row.WebhookCredentialVersionId is not null || !string.IsNullOrEmpty(package.Binding.WebhookSecretReference) :
+                    package.Binding?.WebhookSecretReference != StoredPrefix + row.WebhookCredentialVersionId?.ToString("N"))))
                 throw new InvalidOperationException("The reviewed credential versions do not match.");
             package = package with { ReviewedByFounderOid = row.ReviewedByActorId, ReviewedUtc = DateTime.SpecifyKind(row.ReviewedUtc.Value, DateTimeKind.Utc) };
             package.Validate(row.ReviewedByActorId, now);

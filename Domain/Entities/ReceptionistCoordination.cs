@@ -63,7 +63,10 @@ public sealed class ReceptionistCall
     public string Provider { get; set; } = string.Empty;
     public string IngressKey { get; set; } = string.Empty;
     public string ProviderProjectKey { get; set; } = string.Empty;
-    public string ProviderSessionId { get; set; } = string.Empty;
+    // Null only while a browser creation attempt has no verified provider identity.
+    public string? ProviderSessionId { get; set; }
+    public Guid? BrowserCreationId { get; set; }
+    public string? BrowserOfferSha256 { get; set; }
     public string State { get; set; } = "reserved";
     public bool ControlledTest { get; set; }
     public Guid? ProviderAcceptAttemptId { get; set; }

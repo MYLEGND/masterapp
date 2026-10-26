@@ -20,6 +20,12 @@ public static class ReceptionistServiceRegistration
     {
         services.AddConfirmedInquiryPersistence();
         services.AddReceptionistManagement();
+        services.TryAddScoped<Infrastructure.WebsiteEditing.WebsiteDomainService>();
+        services.TryAddScoped<Infrastructure.WebsiteEditing.PublicWebsiteRuntimeScopeResolver>();
+        services.AddCors(options => options.AddPolicy(ReceptionistBrowserController.CorsPolicy, policy => policy
+            .WithOrigins("https://mylegnd.com", "https://www.mylegnd.com", "https://protect.mylegnd.com", "https://portal.mylegnd.com")
+            .AllowAnyHeader().WithMethods("POST")));
+        services.AddScoped<Microsoft.AspNetCore.Cors.Infrastructure.ICorsPolicyProvider, Infrastructure.WebsiteEditing.WebsiteCorsPolicyProvider>();
         services.AddScoped<ReceptionistRuntimeAuthority>();
         services.AddScoped<IOpenAiReceptionistClient, OpenAiReceptionistClient>();
         services.AddScoped<ReceptionistApplicationServices>();

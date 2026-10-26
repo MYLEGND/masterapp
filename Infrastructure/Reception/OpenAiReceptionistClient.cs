@@ -25,6 +25,8 @@ internal sealed class OpenAiReceptionistClient(IHttpClientFactory clients) : IOp
         request.Content = new ByteArrayContent(OpenAiReceptionistProtocol.BrowserBody(settings, offer));
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         string? observedSessionId = null;
+        string? observedReceipt = null;
+        int? observedStatus = null;
         try
         {
             using var client = clients.CreateClient(ClientName);
@@ -32,7 +34,8 @@ internal sealed class OpenAiReceptionistClient(IHttpClientFactory clients) : IOp
             lifetime.CancelAfter(client.Timeout > TimeSpan.Zero && client.Timeout < TimeSpan.FromSeconds(15)
                 ? client.Timeout : TimeSpan.FromSeconds(15));
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, lifetime.Token);
-            var receipt = Receipt(response, "create_browser");
+            var receipt = observedReceipt = Receipt(response, "create_browser");
+            observedStatus = (int)response.StatusCode;
             if (response.StatusCode != System.Net.HttpStatusCode.Created)
                 return new(false, null, null, (int)response.StatusCode, receipt);
             using var stream = await response.Content.ReadAsStreamAsync(lifetime.Token);
@@ -59,7 +62,7 @@ internal sealed class OpenAiReceptionistClient(IHttpClientFactory clients) : IOp
         }
         catch (Exception error) when (error is HttpRequestException or OperationCanceledException or JsonException or ArgumentException or IOException)
         {
-            return new(false, observedSessionId, null, null, "openai_http:create_browser:outcome_unknown");
+            return new(false, observedSessionId, null, observedStatus, (observedReceipt ?? "openai_http:create_browser") + ":outcome_unknown");
         }
     }
 

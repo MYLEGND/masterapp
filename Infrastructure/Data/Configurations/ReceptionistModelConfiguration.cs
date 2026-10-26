@@ -67,10 +67,12 @@ public static partial class ReceptionistModelConfiguration
         Text(period, nameof(ReceptionistBudgetPeriod.CeilingApprovalReceipt), 512, false);
         period.Property(x => x.Revision).IsConcurrencyToken();
 
+        var lengthFunction = providerName == "Microsoft.EntityFrameworkCore.Sqlite" ? "length" : "LEN";
         var call = model.Entity<ReceptionistCall>();
         call.ToTable("ReceptionistCalls", t =>
         {
             t.HasCheckConstraint("CK_ReceptionistCall_State", "[State] IN ('reserved','accepted','uncertain','closed','rejected') AND (([ProviderClosedUtc] IS NULL AND [State] IN ('reserved','accepted','uncertain')) OR ([ProviderClosedUtc] IS NOT NULL AND [State] IN ('closed','rejected'))) AND ([VoiceUsageFinal] = 0 OR ([ProviderClosedUtc] IS NOT NULL AND [VoiceAllocationUncertain] = 0))");
+            t.HasCheckConstraint("CK_ReceptionistCall_BrowserCreation", $"([BrowserCreationId] IS NULL AND [BrowserOfferSha256] IS NULL AND [ProviderSessionId] IS NOT NULL) OR ([BrowserCreationId] IS NOT NULL AND [BrowserOfferSha256] IS NOT NULL AND {lengthFunction}([BrowserOfferSha256]) = 64 AND [ProviderAcceptAttemptId] IS NOT NULL AND ([ProviderSessionId] IS NOT NULL OR ([State] = 'uncertain' AND [ProviderClosedUtc] IS NULL AND [SidebandLeaseToken] IS NULL)))");
             t.HasCheckConstraint("CK_ReceptionistCall_Duration", "[ReservedVoiceSeconds] > 0 AND [ObservedVoiceSeconds] >= 0 AND [MustStopUtc] >= [ReservedUtc]");
             t.HasCheckConstraint("CK_ReceptionistCall_WorkOwnership", "(([ProviderAcceptAttemptId] IS NULL AND [ProviderAcceptWorkerId] IS NULL AND [ProviderAcceptAttemptedUtc] IS NULL) OR ([ProviderAcceptAttemptId] IS NOT NULL AND [ProviderAcceptWorkerId] IS NOT NULL AND [ProviderAcceptAttemptedUtc] IS NOT NULL)) AND (([SidebandLeaseToken] IS NULL AND [SidebandWorkerId] IS NULL AND [SidebandLeaseExpiresUtc] IS NULL AND [SidebandFence] = 0 AND [SidebandObservationOnly] = 0) OR ([SidebandLeaseToken] IS NOT NULL AND [SidebandWorkerId] IS NOT NULL AND [SidebandLeaseExpiresUtc] IS NOT NULL AND [SidebandFence] > 0))");
         });
@@ -80,12 +82,14 @@ public static partial class ReceptionistModelConfiguration
         Text(call, nameof(ReceptionistCall.Provider), 20);
         Text(call, nameof(ReceptionistCall.IngressKey), 200);
         Text(call, nameof(ReceptionistCall.ProviderProjectKey), 200);
-        Text(call, nameof(ReceptionistCall.ProviderSessionId), 200);
+        Text(call, nameof(ReceptionistCall.ProviderSessionId), 200, false);
+        Text(call, nameof(ReceptionistCall.BrowserOfferSha256), 64, false);
+        call.HasIndex(x => x.BrowserCreationId).IsUnique().HasFilter("[BrowserCreationId] IS NOT NULL");
         Text(call, nameof(ReceptionistCall.State), 20);
         Text(call, nameof(ReceptionistCall.ProviderStateReceipt), 512, false);
         Text(call, nameof(ReceptionistCall.ProviderAcceptWorkerId), 100, false);
         Text(call, nameof(ReceptionistCall.SidebandWorkerId), 100, false);
-        call.HasIndex(x => new { x.Provider, x.ProviderProjectKey, x.ProviderSessionId }).IsUnique();
+        call.HasIndex(x => new { x.Provider, x.ProviderProjectKey, x.ProviderSessionId }).IsUnique().HasFilter("[ProviderSessionId] IS NOT NULL");
         call.HasIndex(x => new { x.OwnerBudgetAccountId, x.ProviderClosedUtc });
         call.HasIndex(x => new { x.OwnerBudgetAccountId, x.VoiceUsageFinal });
         call.HasIndex(x => new { x.OwnerBudgetAccountId, x.VoiceAllocationUncertain });

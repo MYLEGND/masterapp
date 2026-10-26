@@ -188,15 +188,15 @@ public sealed partial class ReceptionistOperatorService(MarketingConnectionStore
             ReceptionistConfigurationCodec.ValidateBinding(binding, state.Configuration);
             _ = ReceptionistRuntimeAuthority.Ready(package.Provider, state.Configuration, binding);
             var api = await BootstrapSecretAsync(package, binding.CredentialReference, "voice-api", package.ApiCredentialSha256!, ct);
-            var webhook = await BootstrapSecretAsync(package, binding.WebhookSecretReference, "voice-webhook", package.WebhookSecretSha256!, ct);
+            var webhook = binding.Transport == "webrtc" ? null : await BootstrapSecretAsync(package, binding.WebhookSecretReference, "voice-webhook", package.WebhookSecretSha256!, ct);
             OpenAiReceptionistClient.ValidateCredentials(package.ProviderProjectKey, api);
-            OpenAiReceptionistProtocol.ValidateSigningSecret(webhook);
+            if (webhook is not null) OpenAiReceptionistProtocol.ValidateSigningSecret(webhook);
             var secretHash = ReceptionistConfigurationCodec.Hash(JsonSerializer.Serialize(new
                 { binding.CredentialReference, package.ApiCredentialSha256, binding.WebhookSecretReference, package.WebhookSecretSha256 }));
             return (prepareBinding ? binding with
             {
                 ProtectedApiCredential = ReceptionistCredentialEnvelope.Protect(protector, state.Owner, package.Provider, package.ProviderProjectKey, "voice-api", api),
-                ProtectedWebhookSecret = ReceptionistCredentialEnvelope.Protect(protector, state.Owner, package.Provider, package.ProviderProjectKey, "voice-webhook", webhook),
+                ProtectedWebhookSecret = webhook is null ? null : ReceptionistCredentialEnvelope.Protect(protector, state.Owner, package.Provider, package.ProviderProjectKey, "voice-webhook", webhook),
                 OperatorAcceptancePackageSha256 = packageSha
             } : null, secretHash);
         }
@@ -206,10 +206,10 @@ public sealed partial class ReceptionistOperatorService(MarketingConnectionStore
             _ = ReceptionistRuntimeAuthority.Ready(package.Provider, state.Configuration, binding);
             var api = ReceptionistCredentialEnvelope.Unprotect(protector, state.Owner, package.Provider, package.ProviderProjectKey,
                 "voice-api", binding.ProtectedApiCredential ?? string.Empty);
-            var webhook = ReceptionistCredentialEnvelope.Unprotect(protector, state.Owner, package.Provider, package.ProviderProjectKey,
+            var webhook = binding.Transport == "webrtc" ? null : ReceptionistCredentialEnvelope.Unprotect(protector, state.Owner, package.Provider, package.ProviderProjectKey,
                 "voice-webhook", binding.ProtectedWebhookSecret ?? string.Empty);
             OpenAiReceptionistClient.ValidateCredentials(package.ProviderProjectKey, api);
-            OpenAiReceptionistProtocol.ValidateSigningSecret(webhook);
+            if (webhook is not null) OpenAiReceptionistProtocol.ValidateSigningSecret(webhook);
         }
         return (null, string.Empty);
     }
@@ -355,14 +355,16 @@ internal sealed record ReceptionistOperatorPackage
                 throw new ArgumentException("A bounded explicit capability map is required.");
             if (Binding!.ProviderProjectKey != ProviderProjectKey || ReceptionistConfigurationCodec.HasContentProvenance(Binding) || Binding.ProtectedApiCredential is not null ||
                 Binding.ProtectedWebhookSecret is not null || Binding.OperatorAcceptancePackageSha256 is not null ||
-                !ReceptionistOperatorService.HashValue(ApiCredentialSha256) || !ReceptionistOperatorService.HashValue(WebhookSecretSha256))
+                !ReceptionistOperatorService.HashValue(ApiCredentialSha256) ||
+                (Binding.Transport == "webrtc" ? WebhookSecretSha256 is not null : !ReceptionistOperatorService.HashValue(WebhookSecretSha256)))
                 throw new ArgumentException("Reviewed raw-source fingerprints and an unsealed private binding are required.");
             RequireEvidence("provider_setup", Binding.ProviderVerificationReceipt);
             RequireEvidence("exclusive_project", Binding.ExclusiveProjectVerificationReceipt);
             RequireEvidence("cost_bounds", Binding.CostVerificationReceipt);
             RequireEvidence("disclosure", Binding.DisclosureConfigurationReceipt);
             RequireEvidence("retention", Binding.RetentionConfigurationReceipt);
-            RequireEvidence("carrier_fallback", Binding.CarrierFallbackReceipt);
+            if (Binding.Transport == "webrtc") RequireEvidence("website_fallback", Binding.WebsiteFallbackReceipt ?? string.Empty);
+            else RequireEvidence("carrier_fallback", Binding.CarrierFallbackReceipt);
             foreach (var capability in (Binding.Capabilities ?? []).Where(x => x.State == ReceptionistCapabilityStates.Accepted))
                 RequireEvidence("capability." + capability.Key, capability.AcceptanceReceipt);
             if (!Binding.ControlledTestOnly) RequireEvidence("public_activation", Binding.PublicActivationReceipt ?? string.Empty);

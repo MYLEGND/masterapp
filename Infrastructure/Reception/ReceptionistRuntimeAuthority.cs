@@ -52,7 +52,7 @@ internal sealed class ReceptionistRuntimeAuthority(
             throw new InvalidOperationException("The actual call classification does not match its pinned reception binding.");
         if (!controlledTest)
             ReceptionistConfigurationCodec.Required(binding.PublicActivationReceipt, 512, "public activation acceptance");
-        if (provider != MarketingDestinationKeys.OpenAi || binding.Transport != "sip" ||
+        if (provider != MarketingDestinationKeys.OpenAi || binding.Transport is not ("sip" or "webrtc") ||
             !OpenAiReceptionistProtocol.Token(binding.IngressKey, 100) ||
             !OpenAiReceptionistProtocol.Token(binding.ProviderProjectKey, 200) ||
             !binding.Capabilities.Any(x => x.Key == ReceptionistCapabilities.CanonicalIntake &&

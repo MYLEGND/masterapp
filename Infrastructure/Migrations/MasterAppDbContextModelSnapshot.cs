@@ -12369,6 +12369,14 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("BrowserCreationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BrowserOfferSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
                     b.Property<Guid>("ConfigurationVersionId")
                         .HasColumnType("uniqueidentifier");
 
@@ -12429,7 +12437,6 @@ namespace Infrastructure.Migrations
                         .UseCollation("Latin1_General_100_BIN2");
 
                     b.Property<string>("ProviderSessionId")
-                        .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)")
                         .UseCollation("Latin1_General_100_BIN2");
@@ -12480,6 +12487,10 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BrowserCreationId")
+                        .IsUnique()
+                        .HasFilter("[BrowserCreationId] IS NOT NULL");
+
                     b.HasIndex("ProviderAcceptAttemptId")
                         .IsUnique()
                         .HasFilter("[ProviderAcceptAttemptId] IS NOT NULL");
@@ -12501,10 +12512,13 @@ namespace Infrastructure.Migrations
                     b.HasIndex("State", "SidebandLeaseExpiresUtc");
 
                     b.HasIndex("Provider", "ProviderProjectKey", "ProviderSessionId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[ProviderSessionId] IS NOT NULL");
 
                     b.ToTable("ReceptionistCalls", null, t =>
                         {
+                            t.HasCheckConstraint("CK_ReceptionistCall_BrowserCreation", "([BrowserCreationId] IS NULL AND [BrowserOfferSha256] IS NULL AND [ProviderSessionId] IS NOT NULL) OR ([BrowserCreationId] IS NOT NULL AND [BrowserOfferSha256] IS NOT NULL AND LEN([BrowserOfferSha256]) = 64 AND [ProviderAcceptAttemptId] IS NOT NULL AND ([ProviderSessionId] IS NOT NULL OR ([State] = 'uncertain' AND [ProviderClosedUtc] IS NULL AND [SidebandLeaseToken] IS NULL)))");
+
                             t.HasCheckConstraint("CK_ReceptionistCall_Duration", "[ReservedVoiceSeconds] > 0 AND [ObservedVoiceSeconds] >= 0 AND [MustStopUtc] >= [ReservedUtc]");
 
                             t.HasCheckConstraint("CK_ReceptionistCall_State", "[State] IN ('reserved','accepted','uncertain','closed','rejected') AND (([ProviderClosedUtc] IS NULL AND [State] IN ('reserved','accepted','uncertain')) OR ([ProviderClosedUtc] IS NOT NULL AND [State] IN ('closed','rejected'))) AND ([VoiceUsageFinal] = 0 OR ([ProviderClosedUtc] IS NOT NULL AND [VoiceAllocationUncertain] = 0))");

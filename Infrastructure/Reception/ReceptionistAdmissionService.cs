@@ -154,7 +154,7 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
                 // Check this before replay so an authenticated event cannot reveal or reserve another owner's call.
                 if (current is null || connection?.Id != current.Id || initialVersion?.Id != ingress.AuthenticatedConfigurationId)
                     return new(false, false, "authenticated_binding_changed", null);
-                if (configuration is null || binding is null) return new(false, false, "configuration_or_binding_unavailable", null);
+                if (configuration is null || binding is null || binding.Transport != "sip") return new(false, false, "configuration_or_binding_unavailable", null);
                 if (binding.ProviderProjectKey != ingress.ProviderProjectKey || binding.IngressKey != ingress.IngressKey)
                     return new(false, false, "provider_binding_mismatch", null);
                 var replay = await SessionDecisionAsync(write, ingress, ct);
@@ -166,23 +166,8 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
                 // Only the existing reservation transaction may persist boundary holds. Readiness never does.
                 foreach (var boundaryCall in evaluation.BoundaryCalls) await HoldVoiceAllocationAsync(write, boundaryCall, ct);
                 if (evaluation.Reason is { } reason) return Deny(reason);
-                var accounts = evaluation.Accounts;
-                var ownerPeriod = evaluation.OwnerPeriod!;
-                var costReservations = evaluation.Costs;
-                var deadline = evaluation.Deadline;
-                var call = new ReceptionistCall
-                {
-                    MarketingConnectionId = current.Id, ConfigurationVersionId = initialVersion.Id,
-                    OwnerBudgetAccountId = ownerAccount!.Id, OwnerBudgetPeriodId = ownerPeriod.Id,
-                    ConnectionControlRevision = current.ReceptionistControlRevision,
-                    OwnerControlRevision = accounts.Single(x => x.Id == ownerAccount!.Id).ControlRevision,
-                    Provider = ingress.Provider, IngressKey = ingress.IngressKey,
-                    ProviderProjectKey = ingress.ProviderProjectKey, ProviderSessionId = ingress.ProviderSessionId,
-                    ControlledTest = ingress.ControlledTest, ReservedUtc = now, MustStopUtc = deadline,
-                    ReservedVoiceSeconds = configuration.MaximumCallSeconds
-                };
-                write.Add(call);
-                foreach (var reservation in costReservations) { reservation.CallId = call.Id; write.Add(reservation); }
+                var call = AddReservation(write, current, initialVersion.Id, configuration, binding,
+                    ownerAccount!.Id, evaluation, ingress.ProviderSessionId, ingress.ControlledTest, now);
                 return SaveDecision(write, ingress, now, "reserved", call);
             }, ct);
         }
@@ -273,6 +258,26 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
         return new(null) { Accounts = accounts, OwnerPeriod = ownerPeriod, Costs = costReservations, Deadline = deadline };
     }
 
+    private static ReceptionistCall AddReservation(MasterAppDbContext write, MarketingConnection connection,
+        Guid configurationId, ReceptionistBusinessConfiguration configuration, ReceptionistProviderBinding binding,
+        Guid ownerAccountId, AdmissionEvaluation evaluation, string? providerSessionId, bool controlledTest, DateTime now)
+    {
+        var call = new ReceptionistCall
+        {
+            MarketingConnectionId = connection.Id, ConfigurationVersionId = configurationId,
+            OwnerBudgetAccountId = ownerAccountId, OwnerBudgetPeriodId = evaluation.OwnerPeriod!.Id,
+            ConnectionControlRevision = connection.ReceptionistControlRevision,
+            OwnerControlRevision = evaluation.Accounts.Single(x => x.Id == ownerAccountId).ControlRevision,
+            Provider = connection.Provider, IngressKey = binding.IngressKey,
+            ProviderProjectKey = binding.ProviderProjectKey, ProviderSessionId = providerSessionId,
+            ControlledTest = controlledTest, ReservedUtc = now, MustStopUtc = evaluation.Deadline,
+            ReservedVoiceSeconds = configuration.MaximumCallSeconds
+        };
+        write.Add(call);
+        foreach (var reservation in evaluation.Costs) { reservation.CallId = call.Id; write.Add(reservation); }
+        return call;
+    }
+
     private sealed record AdmissionEvaluation(string? Reason)
     {
         internal IReadOnlyList<ReceptionistCall> BoundaryCalls { get; init; } = [];
@@ -286,7 +291,7 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
     {
         await using var read = new MasterAppDbContext(options);
         var call = await read.Set<ReceptionistCall>().AsNoTracking().SingleOrDefaultAsync(x => x.Id == callId, ct);
-        if (call is null) return null;
+        if (call?.ProviderSessionId is null) return null;
         return await ContextAsync(read, call, ct);
     }
 
@@ -300,6 +305,7 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
             throw new ArgumentException("A verified terminal state requires its UTC provider closure time.");
         await WithCallAsync(callId, async (write, call) =>
         {
+            if (call.ProviderSessionId is null) throw new InvalidOperationException("Provider state requires a bound identity.");
             if (providerClosedUtc is { } closure && (closure < call.ReservedUtc || closure > clock.GetUtcNow().UtcDateTime))
                 throw new ArgumentException("The verified provider closure must fall between reservation and the current UTC time.");
             if (call.ProviderClosedUtc is not null)
@@ -420,14 +426,15 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
         var now = clock.GetUtcNow().UtcDateTime;
         await using var read = new MasterAppDbContext(options);
         var calls = await CallsRequiringStop(read, now).Where(call =>
-                !read.Set<ReceptionistActionIntent>().Any(action => action.CallId == call.Id && action.CapabilityKey == StopCapability))
+                !read.Set<ReceptionistActionIntent>().Any(action => action.CallId == call.Id && action.CapabilityKey == StopCapability &&
+                    !(action.ConfirmationReceipt == BrowserCleanupReceipt && action.State == "rejected" && action.VerificationReceipt == BrowserCleanupReleased)))
             .OrderBy(x => x.MustStopUtc).ThenBy(x => x.Id).Take(maximum).ToListAsync(ct);
-        return calls.Select(call => new ReceptionistStopRequest(call.Id, call.Provider, call.ProviderProjectKey, call.ProviderSessionId,
+        return calls.Select(call => new ReceptionistStopRequest(call.Id, call.Provider, call.ProviderProjectKey, call.ProviderSessionId!,
             call.ConfigurationVersionId, call.MustStopUtc <= now ? "deadline" : "kill_switch")).ToArray();
     }
 
     private static IQueryable<ReceptionistCall> CallsRequiringStop(MasterAppDbContext read, DateTime now) =>
-        read.Set<ReceptionistCall>().AsNoTracking().Where(call => call.ProviderClosedUtc == null &&
+        read.Set<ReceptionistCall>().AsNoTracking().Where(call => call.ProviderSessionId != null && call.ProviderClosedUtc == null &&
             (call.MustStopUtc <= now || read.MarketingConnections.Any(connection => connection.Id == call.MarketingConnectionId &&
                 (!connection.ReceptionistAdmissionEnabled || connection.ReceptionistControlRevision != call.ConnectionControlRevision ||
                     connection.ReceptionistProviderProjectKey != call.ProviderProjectKey)) ||
@@ -448,6 +455,7 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
 
     private static async Task<ReceptionistCallContext> ContextAsync(MasterAppDbContext read, ReceptionistCall call, CancellationToken ct)
     {
+        if (call.ProviderSessionId is null) throw new InvalidOperationException("Provider identity is not yet bound.");
         var connection = await read.MarketingConnections.AsNoTracking().SingleAsync(x => x.Id == call.MarketingConnectionId, ct);
         var version = await read.Set<ReceptionistConfigurationVersion>().AsNoTracking().SingleAsync(
             x => x.Id == call.ConfigurationVersionId && x.MarketingConnectionId == connection.Id, ct);

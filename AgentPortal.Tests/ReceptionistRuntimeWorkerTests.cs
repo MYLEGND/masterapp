@@ -19,6 +19,7 @@ using Infrastructure.Leads;
 using Infrastructure.Reception;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -29,7 +30,7 @@ using Xunit;
 namespace AgentPortal.Tests;
 
 /// <summary>Runs the shipped hosted worker, SQL authority and application router against a local scripted provider.</summary>
-public sealed class ReceptionistRuntimeWorkerTests
+public sealed partial class ReceptionistRuntimeWorkerTests
 {
     [Fact]
     public async Task DisabledRuntimeAfterRestartStillStopsAndReconcilesClosureAndFinalUsage()
@@ -342,14 +343,17 @@ public sealed class ReceptionistRuntimeWorkerTests
         internal readonly ScriptedProvider Transport = new();
         internal ReceptionistAdmissionService Admission => new(Options, Clock);
         internal MasterAppDbContext Database() => new(Options);
+        internal IServiceScope CreateScope() => provider.CreateScope();
 
-        internal static async Task<Fixture> CreateAsync(bool enabled = true, ReceptionistBusinessConfiguration? configuration = null)
+        internal static async Task<Fixture> CreateAsync(bool enabled = true, ReceptionistBusinessConfiguration? configuration = null, bool browser = false, IInterceptor? interceptor = null)
         {
             var f = new Fixture();
             var connection = "Data Source=" + f.path + ";Pooling=False;Default Timeout=20";
             await using (var schema = new ReceptionSchemaContext(new DbContextOptionsBuilder().UseSqlite(connection).Options))
             {
-                f.Options = new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).UseModel(schema.Model).Options;
+                var options = new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).UseModel(schema.Model);
+                if (interceptor is not null) options.AddInterceptors(interceptor);
+                f.Options = options.Options;
                 await schema.Database.EnsureCreatedAsync();
             }
             var owner = MarketingOwnerScope.Founder;
@@ -374,6 +378,12 @@ public sealed class ReceptionistRuntimeWorkerTests
                     Costs = [new("provider_cost", funding, 2m, 0m, 3m, 0m)],
                     Capabilities = [new(ReceptionistCapabilities.CanonicalIntake, ReceptionistInquiryAuthority.RouteKey,
                         ReceptionistCapabilityStates.Accepted, "synthetic-canonical-intake-acceptance")]
+                };
+                if (browser) binding = binding with
+                {
+                    Transport = "webrtc", WebhookSecretReference = "", ProtectedWebhookSecret = null,
+                    CarrierFallbackReceipt = "", WebsiteFallbackReceipt = "synthetic-website-fallback",
+                    ControlledTestOnly = false, PublicActivationReceipt = "synthetic-public-activation"
                 };
                 saved = await store.AcceptReceptionistBindingAsync(owner, "openai", saved.ConnectionRevision, binding, "test-operator");
                 await store.SetReceptionistAdmissionAsync(owner, "openai", saved.ConnectionRevision, true);
@@ -479,6 +489,15 @@ public sealed class ReceptionistRuntimeWorkerTests
         internal readonly ConcurrentQueue<ProviderRequest> Attaches = new();
         private readonly ConcurrentQueue<ScriptedSocket> sockets = new();
         internal bool FailAttach;
+        internal int BrowserCreates;
+        internal Func<CancellationToken, Task<OpenAiReceptionistBrowserOutcome>>? BrowserCreate;
+        public Task<OpenAiReceptionistBrowserOutcome> CreateBrowserAsync(string projectId, string credential,
+            OpenAiReceptionistSessionSettings settings, string offer, CancellationToken ct)
+        {
+            BrowserCreates++;
+            return BrowserCreate?.Invoke(ct) ?? Task.FromResult(new OpenAiReceptionistBrowserOutcome(
+                true, "live_browser_controller", "v=0\r\n", 201, "synthetic-browser-create"));
+        }
         public Task<OpenAiReceptionistHttpOutcome> AcceptAsync(string projectId, string sessionId, string credential,
             OpenAiReceptionistSessionSettings settings, CancellationToken ct)
         {
@@ -571,6 +590,7 @@ public sealed class ReceptionistRuntimeWorkerTests
         private readonly object gate = new();
         private readonly List<ScheduledTimer> timers = [];
         private DateTime current = now;
+        internal bool HasScheduledTimer { get { lock (gate) return timers.Any(t => !t.Disposed && t.Due is not null); } }
         public override DateTimeOffset GetUtcNow() { lock (gate) return new(current); }
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
@@ -631,9 +651,11 @@ public sealed class ReceptionistRuntimeWorkerTests
                 foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(x => x.Name != "Id")) entity.Ignore(property.Name);
                 entity.HasKey("Id");
             }
+            model.Entity<WebsiteContentState>().HasKey(x => x.Id);
+            model.Entity<WebsiteContentVersion>().HasKey(x => x.Id);
             var allowed = new HashSet<Type>(typeof(ReceptionistCall).Assembly.GetTypes().Where(x =>
                 x.Namespace == "Domain.Entities" && x.Name.StartsWith("Receptionist", StringComparison.Ordinal)))
-            { typeof(MarketingConnection), typeof(AgentTrackingProfile), typeof(CommerceBusiness) };
+            { typeof(MarketingConnection), typeof(AgentTrackingProfile), typeof(CommerceBusiness), typeof(WebsiteContentState), typeof(WebsiteContentVersion) };
             foreach (var entity in model.Model.GetEntityTypes().ToArray())
                 if (!allowed.Contains(entity.ClrType)) model.Ignore(entity.ClrType);
         }
