@@ -1,0 +1,92 @@
+{
+  "intent": {
+    "schemaVersion": 1,
+    "child": "migrations",
+    "dependencyIdentity": "07778a69e437eee4ba8204ac24968b1d0328898e5085057e9141ac25dd87d26d",
+    "materialIdentity": "6e1f354e1cf3958efe00cd65d04bd486ec3d283d89098c5fa71eea5e79645763",
+    "evidenceIdentity": "c01d183e2087cb0cdfd7dab4402bbd8dfac1719cc1eb1e99069737a5e7754786",
+    "partitionIdentity": "8470695e217fc16f1ac0006417f22309315d65e6d27a22a22913752fdf8f1c44",
+    "applicationRevision": "d77869f989b9dd141bb3f02f250e473f43eb607a",
+    "executionAuthority": "d77869f989b9dd141bb3f02f250e473f43eb607a",
+    "producingRun": 39502861878,
+    "producingAttempt": 1,
+    "phase": "intent",
+    "observation": {
+      "schemaIdentity": "978bc3150b19da4e1b07c629cba73aec0d67a2ec11a52da0dc69c69491d08428"
+    }
+  },
+  "intentArtifact": {
+    "id": 12302898536,
+    "name": "legend-release-child-intent-07778a69e437eee4ba8204ac24968b1d0328898e5085057e9141ac25dd87d26d",
+    "size_in_bytes": 545,
+    "url": "https://api.github.com/repos/MYLEGND/masterapp/actions/artifacts/12302898536",
+    "archive_download_url": "https://api.github.com/repos/MYLEGND/masterapp/actions/artifacts/12302898536/zip",
+    "expired": false,
+    "created_at": "2026-10-20T22:05:07Z",
+    "expires_at": "2027-01-18T21:45:00Z",
+    "updated_at": "2026-10-20T22:05:07Z",
+    "digest": "sha256:4cc0470265f0233749f4b1d52cbe444d0f76db8d164785571b8ff777f9c86ebd",
+    "workflow_run": {
+      "id": 39502861878,
+      "repository_id": 1209859492,
+      "head_repository_id": 1209859492,
+      "head_branch": "Legend/fast-track-release",
+      "head_sha": "d77869f989b9dd141bb3f02f250e473f43eb607a"
+    }
+  },
+  "bundleArtifact": {
+    "id": 12290486085,
+    "name": "parfait-fast-track-migration-86da37ad49b44b0de360102d89ba56793ffb2cac-1",
+    "digest": "sha256:3520e83c67c3a3fd0c50c36c1a8ecf302687b2be9e0b073a527cc02f6096c2dd",
+    "expired": false,
+    "workflow_run": {
+      "id": 39476906913,
+      "head_sha": "6ddf83d94a24b5f06c127a366031a9a1f3fba5c6"
+    }
+  },
+  "rehearsal": {
+    "authorizesMutation": false,
+    "baseline": {
+      "baselineIdentity": "e087f3239e5cb900b4b8c6d0ced2c48b6064e6261d14ba7f72b3bf6d30d9dce0",
+      "databaseIdentity": "3a055450807aeaa2c6465702b983dc99968329389d7c0ae480c3c72cc3a9ff3b",
+      "firstPendingMigrationId": "20261020160000_AddReceptionistCoordination",
+      "lastAppliedMigrationId": "20261011120000_AddWebsiteSnapshotRetirement",
+      "pendingCount": 1,
+      "ready": false,
+      "schemaIdentity": "978bc3150b19da4e1b07c629cba73aec0d67a2ec11a52da0dc69c69491d08428"
+    },
+    "baselineIdentity": "e087f3239e5cb900b4b8c6d0ced2c48b6064e6261d14ba7f72b3bf6d30d9dce0",
+    "bundleDigest": "313cfb90248ce5892483a8ab8cc026d4d1a56b327eac8920df87bc4032cf3761",
+    "candidate": "86da37ad49b44b0de360102d89ba56793ffb2cac",
+    "contractDigest": "1ae2c8a6db861c0b53639d0de51acfa1e3ece435afbdfb644b851079421859b3",
+    "counts": {
+      "intents": 1,
+      "mutations": 1,
+      "successReceipts": 2
+    },
+    "elapsedSeconds": 22.842,
+    "fastTrackHead": "6ddf83d94a24b5f06c127a366031a9a1f3fba5c6",
+    "isolated": true,
+    "observationArtifactId": 12291145282,
+    "observationAttempt": 1,
+    "observationRun": 39476906913,
+    "observerArtifactId": 12289444733,
+    "producingAttempt": 1,
+    "producingRun": 39476906913,
+    "proven": true,
+    "purpose": "fast-track-migration-rehearsal",
+    "releaseAdmission": false,
+    "schemaIdentity": "978bc3150b19da4e1b07c629cba73aec0d67a2ec11a52da0dc69c69491d08428",
+    "schemaVersion": 1,
+    "sqlImage": "mcr.microsoft.com/mssql/server@sha256:db9a8fe3098b7e8bbde41106bdc7caee942e97124e5fdb71b872ca208de3092d",
+    "syntheticDataOnly": true,
+    "targets": [
+      "masterapp-portal",
+      "masterapp-client",
+      "masterapp-protect",
+      "masterapp-parfait"
+    ],
+    "toolRevision": "6ddf83d94a24b5f06c127a366031a9a1f3fba5c6"
+  },
+  "log": "2026-10-20T21:46:16.8859748Z [command]/usr/bin/git log -1 --format=%H\n2026-10-20T21:46:16.8881998Z d77869f989b9dd141bb3f02f250e473f43eb607a\n2026-10-20T21:51:02.0587470Z FAST_TRACK_REHEARSAL_RESTORED:producer=86da37ad49b44b0de360102d89ba56793ffb2cac\n2026-10-20T22:07:18.5179189Z Migration stage unresolved: schema-verification; preserve prior evidence and reconcile without replay.\n2026-10-20T22:07:18.5512860Z ##[error]Process completed with exit code 1."
+}

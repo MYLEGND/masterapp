@@ -20,7 +20,7 @@
     "originalRun": 40095849719,
     "originalOperationId": "1618e118093e091b4eb6852d90514e0d156d8d53a6513d991ff8e4803d8bf1cd",
     "originalRevision": "7dcfe753f90ee559bc80a5350d6012779cb36426",
-    "expectedReleaseParent": "3c6b1822935806e46bb56d36d7d49f47f2fc72c2",
+    "expectedReleaseParent": "477a2d21630059a344fa0a0157f1cd67155402d5",
     "historicalOutcome": "UNKNOWN",
     "authorizeOneReplacement": true,
     "rollbackArtifactId": 12561256924,

@@ -3383,6 +3383,114 @@ def attested_fast_track_no_write_observation(repository, run, attempt, job, step
     return len(matches) == 1
 
 
+def _reconciled_retained_migration_intent(repository, run, job, step, attempt, record,
+                                         artifacts, token, observation, revision,
+                                         current_run, current_attempt):
+    """Separate the reviewed completed old bundle from a fresh pending suffix.
+
+    This is current physical reconciliation, not an old success receipt. The
+    original intent and UNKNOWN history remain immutable. No SQL is executed.
+    """
+    import datetime
+    import time
+    original = 'd77869f989b9dd141bb3f02f250e473f43eb607a'
+    producer = '86da37ad49b44b0de360102d89ba56793ffb2cac'
+    schema = '978bc3150b19da4e1b07c629cba73aec0d67a2ec11a52da0dc69c69491d08428'
+    bundle = '313cfb90248ce5892483a8ab8cc026d4d1a56b327eac8920df87bc4032cf3761'
+    database = '3a055450807aeaa2c6465702b983dc99968329389d7c0ae480c3c72cc3a9ff3b'
+    material = hashlib.sha256(json.dumps(dict(schemaIdentity=schema, bundleDigest=bundle), sort_keys=True).encode()).hexdigest()
+    if (not isinstance(observation, dict) or run.get('id') != 39502861878
+        or run.get('head_sha') != original or not is_fast_track_producer(repository, run)
+        or run.get('status') != 'completed' or run.get('conclusion') != 'failure'
+        or attempt != 1 or job.get('id') != 118904885770
+        or job.get('run_id') != run['id'] or job.get('head_sha') != original
+        or job.get('run_attempt') != attempt or job.get('status') != 'completed'
+        or job.get('conclusion') != 'failure'
+        or step.get('name') != FAST_TRACK_CHILD_STEPS['migrations'][1]
+        or step.get('status') != 'completed' or step.get('conclusion') != 'failure'
+        or record.get('producingRun') != run['id'] or record.get('producingAttempt') != attempt
+        or record.get('phase') != 'intent' or record.get('child') != 'migrations'
+        or record.get('applicationRevision') != original or record.get('executionAuthority') != original
+        or record.get('materialIdentity') != material
+        or record.get('dependencyIdentity') != '07778a69e437eee4ba8204ac24968b1d0328898e5085057e9141ac25dd87d26d'
+        or record.get('partitionIdentity') != '8470695e217fc16f1ac0006417f22309315d65e6d27a22a22913752fdf8f1c44'
+        or record.get('observation') != {'schemaIdentity': schema}
+        or observation.get('databaseIdentity') != database
+        or observation.get('historicalRunId') != current_run
+        or observation.get('historicalRunAttempt') != current_attempt
+        or observation.get('historicalApplicationRevision') != revision
+        or observation.get('historicalExecution') != 'outcome-unknown'
+        or observation.get('mutationActivity') != 'settled' or observation.get('ready') is not False
+        or type(observation.get('pendingCount')) is not int or observation['pendingCount'] < 1
+        or type(observation.get('historicalObservedAt')) not in (int, float)
+        or not 0 <= time.time() - observation['historicalObservedAt'] <= 900
+        or any(not re.fullmatch('[a-f0-9]{64}', str(observation.get(key, '')))
+               for key in ('historicalEvidenceIdentity', 'schemaIdentity', 'baselineIdentity'))):
+        return False
+    try:
+        # Full historical owners were reviewed: schema-verification is reached
+        # only after the synchronous bundle subprocess returns exit code zero.
+        sources = {
+            '.github/workflows/legend-fast-track-ui.yml': '4f551f6cda7b2161abe7d36d5dbba510f081b10fa92ab9a64eb2e3205f6081d2',
+            'scripts/release-migration.py': '9eb7a6893a9f83bf08b8f630007d4df6c62ea6cb840f3d1925cc1e4367f1453a',
+            'scripts/release-operation-evidence.py': 'd9076f87cf84c33077295d7b892725140fa6f8c33fa46d3cd4b6bf2299c87c30',
+            'scripts/migration-probe-package.py': 'ecf41255a13c8536967a3d863d15375a5629776bc3a136870da7b56c55ea95cb'}
+        if any(hashlib.sha256(_release_history_source(repository, original, path, token).encode()).hexdigest() != digest
+               for path, digest in sources.items()):
+            return False
+        matching = [a for a in artifacts if a.get('name', '').startswith('legend-release-child-')]
+        if (len(matching) != 1 or matching[0].get('id') != 12302898536
+            or matching[0].get('digest') != 'sha256:4cc0470265f0233749f4b1d52cbe444d0f76db8d164785571b8ff777f9c86ebd'
+            or _release_history_json(repository, run['id'], matching[0], 'operation.json', verify_digest=True) != record):
+            return False
+        log = _release_job_log(repository, job['id'], token)
+        clean = '\n'.join(re.sub(r'^\d{4}-\d\d-\d\dT[0-9:.]+Z ', '', line) for line in log.splitlines())
+        if set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', clean)) != {original}:
+            return False
+        if clean.splitlines().count('FAST_TRACK_REHEARSAL_RESTORED:producer=' + producer) != 1:
+            return False
+        start = datetime.datetime.fromisoformat(step['started_at'].replace('Z', '+00:00'))
+        end = datetime.datetime.fromisoformat(step['completed_at'].replace('Z', '+00:00'))
+        if start.tzinfo is None or end.tzinfo is None or end < start:
+            return False
+        bounded = []
+        for line in log.splitlines():
+            stamp, sep, message = line.partition(' ')
+            if sep and '\x1b[' not in message and re.fullmatch(r'\d{4}-\d\d-\d\dT[0-9:.]+Z', stamp):
+                when = datetime.datetime.fromisoformat(stamp.replace('Z', '+00:00'))
+                if start <= when <= end + datetime.timedelta(seconds=2):
+                    bounded.append(message)
+        terminal = [line for line in bounded if line.startswith('Migration stage unresolved:')]
+        if (terminal != ['Migration stage unresolved: schema-verification; preserve prior evidence and reconcile without replay.']
+            or bounded.count('##[error]Process completed with exit code 1.') != 1):
+            return False
+        # Exact immutable rehearsal bytes bind original bundle, SQL target and
+        # baseline. They authorize no write and are never executed here.
+        inventory = api_get(repository, 'actions/runs/39476906913/artifacts?per_page=100', token)
+        rows = inventory.get('artifacts')
+        if not isinstance(rows, list) or inventory.get('total_count') != len(rows):
+            return False
+        selected = [a for a in rows if a.get('id') == 12290486085]
+        if (len(selected) != 1 or selected[0].get('name') != 'parfait-fast-track-migration-' + producer + '-1'
+            or selected[0].get('workflow_run', {}).get('head_sha') != '6ddf83d94a24b5f06c127a366031a9a1f3fba5c6'
+            or selected[0].get('digest') != 'sha256:3520e83c67c3a3fd0c50c36c1a8ecf302687b2be9e0b073a527cc02f6096c2dd'):
+            return False
+        proof = _release_history_json(repository, 39476906913, selected[0], 'rehearsal.json', verify_digest=True)
+        baseline = proof.get('baseline', {})
+        if (proof.get('candidate') != producer or proof.get('producingRun') != 39476906913
+            or proof.get('producingAttempt') != 1 or proof.get('bundleDigest') != bundle
+            or proof.get('schemaIdentity') != schema or proof.get('proven') is not True
+            or proof.get('authorizesMutation') is not False
+            or baseline.get('databaseIdentity') != database or baseline.get('schemaIdentity') != schema
+            or baseline.get('pendingCount') != 1
+            or baseline.get('firstPendingMigrationId') != '20261020160000_AddReceptionistCoordination'):
+            return False
+        return _applied_migration_prefix_separate(producer, revision,
+            observation.get('firstPendingMigrationId'), observation.get('lastAppliedMigrationId'))
+    except (KeyError, TypeError, ValueError, RuntimeError, OSError, UnicodeError, subprocess.SubprocessError):
+        return False
+
+
 def release_child_first_write_proven(repository, child, dependency_identity, material_identity,
                                      current_run, current_attempt, token, *, partition_identity=None,
                                      first_pending_migration_id=None, last_applied_migration_id=None,
@@ -3415,7 +3523,7 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
             or type(current_run) is not int or current_run < 1
             or type(current_attempt) is not int or current_attempt < 1):
         raise ValueError("Invalid release child mutation identity")
-    def require_distinct_intent(record, run_id, attempt):
+    def require_distinct_intent(record, run_id, attempt, *, reconciled=False):
         generation = record['dependencyIdentity']
         if generation == dependency_identity:
             raise rejection('Release child physical operation already entered; reconcile without replay', run_id, attempt)
@@ -3424,8 +3532,8 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
             raise rejection('Release child historical partition unproven; no replay authorized', run_id, attempt)
         if partition == partition_identity:
             completed = release_child_history(repository, child, generation, token, 'success')
-            if (completed is None or completed.get('materialIdentity') != record.get('materialIdentity')
-                or completed.get('partitionIdentity') != partition):
+            if (completed is not None and (completed.get('materialIdentity') != record.get('materialIdentity')
+                    or completed.get('partitionIdentity') != partition)) or (completed is None and not reconciled):
                 raise rejection('Release child prior partition operation unresolved; no replay authorized', run_id, attempt)
 
     for run, attempt, job, step in fast_track_child_attempts(repository, child, token,
@@ -3456,7 +3564,13 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
             if original is not None:
                 intents.append(original)
         for record in intents:
-            require_distinct_intent(record, run['id'], attempt)
+            reconciled = (child == 'migrations' and len(intents) == 1 and not observations
+                and _reconciled_retained_migration_intent(repository, run, job, step, attempt,
+                    record, artifacts, token, historical_observation, current_application_revision,
+                    current_run, current_attempt))
+            require_distinct_intent(record, run['id'], attempt, reconciled=reconciled)
+            if reconciled:
+                print(f"LEGEND_MIGRATION_HISTORY:RETAINED_INTENT_APPLIED_PREFIX:run={run['id']}:attempt={attempt}:historical-outcome-unknown")
         if (not intents and not observations and child == 'migrations'
                 and attested_fast_track_no_write_observation(repository, run, attempt, job, step,
                                                             artifacts, token, historical_observation)):
@@ -5299,7 +5413,7 @@ def fast_track_protect_supersession(revision, *, request=None):
      'originalRun': 40095849719,
      'originalOperationId': '1618e118093e091b4eb6852d90514e0d156d8d53a6513d991ff8e4803d8bf1cd',
      'originalRevision': '7dcfe753f90ee559bc80a5350d6012779cb36426',
-     'expectedReleaseParent': '3c6b1822935806e46bb56d36d7d49f47f2fc72c2',
+     'expectedReleaseParent': '477a2d21630059a344fa0a0157f1cd67155402d5',
      'historicalOutcome': 'UNKNOWN',
      'authorizeOneReplacement': True,
      'rollbackArtifactId': 12561256924,
