@@ -494,9 +494,9 @@ class FastTrackArchitectureAdmissionTests(unittest.TestCase):
             step = authority.WORKFLOWS['masterapp-platform-architecture-validation.yml']['gates'][gate]['step']
             self.assertIn('      - name: ' + step + '\n', source)
         package = source.split('  validated-release-package-plan:',1)[1].split('    runs-on:',1)[0]
-        self.assertIn("github.event_name == 'pull_request' && github.base_ref == 'legend/approved-changes'", package)
+        self.assertIn('if: ${{ false }} # Retired approved-branch producer.', package)
         rehearsal = source.split('  migration-rehearsal-prepare:',1)[1].split('    runs-on:',1)[0]
-        self.assertIn("github.event_name == 'pull_request' && github.base_ref == 'legend/approved-changes'", rehearsal)
+        self.assertIn('if: ${{ false }} # Retired approved-branch producer.', rehearsal)
 
     def run_architecture_step(self, step, base, renderer_status=0, preserved=False):
         source = Path('.github/workflows/masterapp-platform-architecture-validation.yml').read_text()

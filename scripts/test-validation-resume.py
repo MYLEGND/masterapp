@@ -1222,43 +1222,15 @@ class ArtifactEvidenceReadRetryTests(unittest.TestCase):
 
 
 class PackageJobSchedulingTests(unittest.TestCase):
-    def test_backfill_skipped_ancestors_do_not_skip_required_components(self):
-        import re
-        blocks = m._job_blocks((ROOT / m.PACKAGE_BUILD_WORKFLOW).read_text())
-        def admitted(job, required='true', components='success', plan='success', cancelled=False):
-            expression = re.search(r"    if: (.*?)\n    runs-on:", blocks[job], re.S).group(1).removeprefix('>-').strip()
-            # Model GitHub's implicit success() across the skipped backfill
-            # probe/rehearsal ancestors. Removing explicit status handling fails.
-            if not re.search(r'\b(always|cancelled|success|failure)\(', expression):
-                return False
-            fields = {
-                'needs.validated-release-package-plan.result': plan,
-                'needs.validated-release-package-plan.outputs.components_needed': required,
-                'needs.validated-release-package-components.result': components,
-                'github.event_name': 'workflow_dispatch',
-                'inputs.package_revision': 'a' * 40,
-            }
-            for key in sorted(fields, key=len, reverse=True):
-                expression = expression.replace(key, repr(fields[key]))
-            expression = expression.replace('always()', 'True').replace('cancelled()', repr(cancelled))
-            expression = expression.replace('&&', ' and ').replace('||', ' or ')
-            expression = re.sub(r'!(?!=)', ' not ', expression)
-            return bool(eval(' '.join(expression.split()), {'__builtins__': {}}, {}))
-        component = 'validated-release-package-components'
-        assembly = 'validated-release-package'
-        self.assertTrue(admitted(component))
-        self.assertTrue(admitted(assembly))
-        self.assertFalse(admitted(assembly, components='skipped'))
-        self.assertFalse(admitted(component, required='false'))
-        self.assertTrue(admitted(assembly, required='false', components='skipped'))
-        for job in (component, assembly):
-            for required in ('', 'unknown'):
-                self.assertFalse(admitted(job, required=required))
-            for plan in ('failed', 'skipped', 'cancelled'):
-                self.assertFalse(admitted(job, plan=plan))
-            self.assertFalse(admitted(job, cancelled=True))
-        for result in ('failure', 'cancelled', ''):
-            self.assertFalse(admitted(assembly, components=result))
+    def test_retired_backfill_jobs_cannot_be_scheduled_by_ancestor_results(self):
+        import yaml
+        jobs = yaml.safe_load((ROOT / m.PACKAGE_BUILD_WORKFLOW).read_text())['jobs']
+        # Inspect the real YAML condition, not an implicit-success simulator:
+        # even successful ancestors must never activate this retired producer.
+        for name in ('validated-release-package-plan', 'validated-release-package-components',
+                     'validated-release-package'):
+            with self.subTest(job=name):
+                self.assertEqual('${{ false }}', jobs[name]['if'])
 
 
 class Step5JobSchedulingTests(unittest.TestCase):
