@@ -1,29 +1,33 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1 continuing combined release as new baseline. Codex sole implementer, Astra independent acceptance. Preserve mandatory human MYLEGND Production review, current-head checks, migration and recovery evidence, and candidate-specific writer fencing. No new spend or access changes. Superseding Founder instruction authorizes completely replacing the previous Protect release despite its UNKNOWN outcome; no further search for its missing receipt.",
-  "purpose": "Complete canonical checkout inquiry and scoped training through existing billing/payment owners; preserve all prior Studio/forms/receptionist changes. Training remains default-off until all affected consumers are compatible. Old Protect UNKNOWN history is retained without replay. Use candidate-bound one-time supersession admission; retain all other production gates.",
-  "requestId": "founder-training-checkout-forward-baseline-20261026-v1",
-  "releaseMode": "approved-only",
-  "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect",
-    "masterapp-parfait",
-    "masterapp-website"
-  ],
+  "authorization": "Continue ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1: complete remaining Protect deployment and preserve four successful apps. Promote reviewed recovery tools without application publication, then use canonical retained recovery under mandatory human Production approval.",
+  "purpose": "Correct the unused Protect replacement rollback anchor to its authenticated known-good baseline. Preserve original release packages, successful deployments, migration evidence, historical UNKNOWN outcomes, and routing disabled.",
+  "requestId": "protect-retained-baseline-tool-promotion-20261026-v1",
+  "releaseMode": "validate-only",
+  "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
-  "protectSupersession": {
-    "authorizationId": "ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1:protect-replacement-20261026",
-    "authorizedBy": "Founder",
-    "target": "protect",
-    "originalRun": 40095849719,
-    "originalOperationId": "1618e118093e091b4eb6852d90514e0d156d8d53a6513d991ff8e4803d8bf1cd",
-    "originalRevision": "7dcfe753f90ee559bc80a5350d6012779cb36426",
-    "expectedReleaseParent": "95d534023a59fda7d231fca69cafe84d10038520",
-    "historicalOutcome": "UNKNOWN",
-    "authorizeOneReplacement": true,
-    "rollbackArtifactId": 12561256924,
-    "rollbackArtifactDigest": "sha256:03321a68f9e5f39ff237c93def0d683b633f938710bf35053c2ade48db0803ca"
+  "trustedToolPromotion": {
+    "schemaVersion": 1,
+    "baseRevision": "b41228e2f852c95b38890d3a8b16ec96a4c46dbd",
+    "sourceRevision": "e0cb9be2cba0ac707568a366288b5dc2e7d846ce",
+    "files": {
+      "scripts/deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "b9e3f39d38659460344bb3e940a035ab68e2a6a8"
+      },
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "13ca20849f970073a155bc4d56f7288254a7b75d"
+      },
+      "scripts/test-deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "c352f34dc501c9296fcc4881337cda293518da7e"
+      },
+      "scripts/test-validation-resume.py": {
+        "mode": "100644",
+        "blob": "3635829f6c7851d24c2429bb7f8985574561186f"
+      }
+    }
   }
 }
