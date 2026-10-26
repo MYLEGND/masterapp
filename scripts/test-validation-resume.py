@@ -7146,6 +7146,60 @@ class ProtectBaselineRecoveryTests(unittest.TestCase):
                 api.assert_not_called()
 
 
+class ProtectCorrectionSerializerNonentryTests(unittest.TestCase):
+    def setUp(self):
+        f=RecoveryTransportNonentryTests();f.setUp();self.f=f
+        f.tool='6c21a702e28a0fb4379eb73cbc59c174636f1412';f.revision=m.PROTECT_RECOVERY_REVISION
+        f.observer.update(runId=40356096191,jobId=121688862786,toolRevision=f.tool)
+        f.run.update(id=40356096191,head_sha=f.tool,display_title='LEGEND retained recovery original='+str(m.PROTECT_RECOVERY_RUN)+' application='+f.revision)
+        f.job.update(id=121688862786,run_id=f.run['id'],head_sha=f.tool)
+        f.original['run'].update(id=m.PROTECT_RECOVERY_RUN,head_sha=f.revision,run_attempt=2);f.original['artifacts']=[]
+        for key in f.targets:
+            digest='21965d54a0641bb7e720b1314ddd45a1f3894c3b5d7044edb6c19b78e6d9e3a4' if key=='protect' else 'd'*64
+            identity=dict(target=key,applicationRevision=f.revision,packageDigest=digest)
+            operation=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            f.targets[key].update(operationId=operation,packageDigest=digest)
+            f.materials[key]['originalIntent']=None if key=='protect' else dict(identity,operationId=operation,packageProducerRun=m.PROTECT_RECOVERY_RUN)
+        f.materials['protect']['protectBaselineCorrection']={'authenticated':'fixture'}
+        f.proof.update(originalRun=m.PROTECT_RECOVERY_RUN,originalAttempt=2,applicationRevision=f.revision)
+    def invoke(self, *, target='protect', operation=None, log=None, late=False, drift=False):
+        f=self.f;reads=[]
+        def api(repo,path,token):
+            if path==f"actions/runs/{m.PROTECT_RECOVERY_RUN}/artifacts?per_page=100":return dict(total_count=1 if drift else 0,artifacts=[dict(id=99)] if drift else [])
+            reads.append(path)
+            return dict(total_count=1,artifacts=[dict(id=99)]) if late and len(reads)>1 else f.inventory
+        with patch.object(m,'FAST_TRACK_RECOVERY_PROTECT_SERIALIZER_GENERATIONS',f.generations), \
+             patch.object(m,'fast_track_recovery_producer',return_value=f.observer), \
+             patch.object(m,'_release_history_source',side_effect=lambda r,s,p,t:f.source[p]), \
+             patch.object(m,'api_get',side_effect=api),patch.object(m,'_release_job_log',return_value=log or f.log()), \
+             patch.object(m,'fast_track_completion_original',return_value=f.original), \
+             patch.object(m,'fast_track_recovery_material',side_effect=lambda r,o,k,t:f.materials[k]), \
+             patch.object(m,'fast_track_completion_material',side_effect=lambda r,o,k,t:dict(intent=f.materials[k]['originalIntent'])), \
+             patch.object(m,'protect_recovery_baseline_proof',return_value={'authenticated':'fixture'}), \
+             patch.object(m,'fast_track_recovery_package_digest',return_value=f.targets['protect']['packageDigest']), \
+             patch.object(m,'_completion_original_unchanged'):
+            return m.attested_recovery_preintent_failure('MYLEGND/masterapp',f.run,f.job,1,f.revision,'token',target=target,operation_id=operation or f.targets['protect']['operationId'])
+    def test_exact_protect_nonentry_with_original_sibling_intents(self):self.assertTrue(self.invoke())
+    def test_no_global_sibling_or_different_operation_exception(self):
+        for target in [None,'portal','client','website','parfait']:self.assertFalse(self.invoke(target=target))
+        self.assertFalse(self.invoke(operation='f'*64))
+    def test_exact_execution_and_original_snapshot_required(self):
+        for obj,key,value in [('run','id',99),('run','run_attempt',2),('job','id',99),('run','head_sha','f'*40),('proof','originalAttempt',1)]:
+            self.setUp();getattr(self.f,obj)[key]=value
+            with self.subTest(key=key):self.assertFalse(self.invoke())
+    def test_original_intents_correction_and_materials_must_survive(self):
+        self.f.materials['website']['originalIntent']=None;self.assertFalse(self.invoke())
+        self.setUp();self.f.materials['protect']['protectBaselineCorrection']={};self.assertFalse(self.invoke())
+        self.setUp();self.f.targets['protect']['packageArtifactId']=999;self.assertFalse(self.invoke())
+        self.setUp();self.assertFalse(self.invoke(drift=True))
+    def test_source_log_and_empty_inventory_are_required(self):
+        self.assertFalse(self.invoke(late=True))
+        self.assertFalse(self.invoke(log=self.f.log()+'\n2026-10-23T10:02:00Z Submitting the verified immutable ZIP once.'))
+        self.assertFalse(self.invoke(log=self.f.log().replace('in publish_phase_record','in unrelated')))
+        self.f.inventory=dict(total_count=1,artifacts=[dict(id=99)]);self.assertFalse(self.invoke())
+        self.setUp();self.f.source['scripts/release-artifacts/transport.cjs']='unknown';self.assertFalse(self.invoke())
+
+
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.
     # Synthetic planner revisions must never query the real CI repository.

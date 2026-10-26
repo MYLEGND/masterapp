@@ -464,13 +464,14 @@ test('completion success transport preserves original operation and names the re
 
 // Exercise the actual Python producers through the actual JS serialization gate.
 // Only external authority/artifact I/O is injected; producer payloads are not hand-copied.
-function retainedProducerPayloads() {
+function retainedProducerPayloads(corrected = false) {
   const {spawnSync} = require('node:child_process');
   const script = String.raw`
 import ast,importlib.util,json,sys
 from pathlib import Path
 from types import SimpleNamespace
 root=Path(sys.argv[1])
+corrected=sys.argv[2]=='true'
 def load(name,path):
  spec=importlib.util.spec_from_file_location(name,path);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
 owner=load('journal',root/'release-operation-evidence.py')
@@ -482,6 +483,17 @@ fake=SimpleNamespace(RELEASE_TARGETS=authority.RELEASE_TARGETS,ReleaseOperationH
 rows=[];records={}
 for n,target in enumerate(['portal','client','protect','parfait','website']):
  material=dict(packageArtifact=dict(id=40+n,digest='sha256:'+'c'*64))
+ if corrected and target=='protect':
+  module=ast.parse((root/'validation-resume.py').read_text())
+  authfn=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='fast_track_protect_supersession')
+  authassign=next(n for n in authfn.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='expected' for t in n.targets))
+  authorization=dict(ast.literal_eval(authassign.value),candidateRevision='a'*40)
+  baselinefn=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='protect_recovery_baseline_proof')
+  returned=next(n for n in baselinefn.body if isinstance(n,ast.Return))
+  context=dict(authorization=authorization,PROTECT_BASELINE_REVISION='e'*40,anchor=dict(id=50),
+   rollback=dict(id=51,name='fast-track-package-'+'e'*40+'-protect',digest='sha256:'+'f'*64),
+   receipt=dict(id=52,digest='sha256:'+'1'*64),expected=dict(packageDigest='2'*64),run=original['run'],package=material['packageArtifact'])
+  material['protectBaselineCorrection']=eval(compile(ast.Expression(returned.value),'actual-baseline-proof','eval'),context)
  proof=authority.fast_track_recovery_record_proof(original,material,observer)
  journal=owner.RecoveryJournal(target=target,application_revision='a'*40,package_digest='d'*64,baseline='e'*40,
   recovery_evidence=proof,before_new_intent=lambda ids:None,authority=fake,environment=env,
@@ -505,7 +517,7 @@ exec(compile(ast.Module(body=[assignment],type_ignores=[]),'actual-consumer-summ
 rows.append(dict(name=authority.fast_track_recovery_summary_name(10,'a'*40),record=context['summary']))
 print(json.dumps(rows))
 `;
-  const result = spawnSync('python3', ['-c', script, path.resolve(__dirname, '..')], {encoding:'utf8', timeout:10000});
+  const result = spawnSync('python3', ['-c', script, path.resolve(__dirname, '..'), String(corrected)], {encoding:'utf8', timeout:10000});
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout);
 }
@@ -748,4 +760,29 @@ test('concurrent replacement claims expose one created owner and one existing ob
   assert.deepEqual(results.map(x => x.created).sort(), [false, true]);
   assert.equal(accepted, 1);
   assert.equal(client.state.uploads, 1);
+});
+
+// The correction's real Python return shape must cross the JS gate intact.
+test('Protect baseline correction actual producer crosses every journal phase', async () => {
+  for (const row of retainedProducerPayloads(true)) await retainedRoundTrip(row);
+});
+test('Protect correction rejects malformed fields and inconsistent bindings before I/O', async () => {
+  const rows = retainedProducerPayloads(true).filter(x => x.record.target === 'protect');
+  const mutations = [r => r.target = 'portal', r => r.baseline = '0'.repeat(40),
+    r => r.recoveryEvidence.protectBaselineCorrection = null];
+  const correction = rows[0].record.recoveryEvidence.protectBaselineCorrection;
+  for (const key of Object.keys(correction)) mutations.push(r => {delete r.recoveryEvidence.protectBaselineCorrection[key]});
+  for (const key of Object.keys(correction.authorization)) mutations.push(r => {delete r.recoveryEvidence.protectBaselineCorrection.authorization[key]});
+  for (const [key,value] of Object.entries({extra:1,schemaVersion:2,originalRun:99,applicationRevision:'f'.repeat(40),candidateArtifactId:99,
+      candidateArtifactDigest:'sha256:'+'0'.repeat(64),rollbackRun:0,rollbackArtifactId:true,rollbackArtifactName:'wrong',
+      rollbackArtifactDigest:'bad',rollbackPackageDigest:'bad',baselineReceiptId:0,baselineReceiptDigest:'bad'}))
+    mutations.push(r => r.recoveryEvidence.protectBaselineCorrection[key] = value);
+  for (const [key,value] of Object.entries({extra:1,historicalOutcome:'SUCCESS',authorizeOneReplacement:false,target:'portal',
+      authorizedBy:'other',authorizationId:'other',candidateRevision:'f'.repeat(40),originalRun:0,originalOperationId:'bad',
+      originalRevision:'bad',expectedReleaseParent:'bad',rollbackArtifactId:0,rollbackArtifactDigest:'bad'}))
+    mutations.push(r => r.recoveryEvidence.protectBaselineCorrection.authorization[key] = value);
+  for (const row of rows) for (const mutate of mutations) {
+    const bad = structuredClone(row); mutate(bad.record);
+    await assert.rejects(publish({}, bad.name, bad.record), /Invalid/);
+  }
 });
