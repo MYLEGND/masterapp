@@ -40,6 +40,8 @@ function recoveryObserver(value, run, attempt) {
 }
 function recoveryEvidence(record) {
   const proof = record.recoveryEvidence;
+  const correction = proof?.protectBaselineCorrection;
+  if (correction !== undefined) protectBaselineCorrection(record, correction);
   const keys = ['schemaVersion', 'operationId', 'target', 'applicationRevision', 'packageDigest', 'baseline',
     'packageProducerRun', 'producingRun', 'producingAttempt', 'baselineDeploymentIds', 'phase', 'recoveryEvidence'];
   for (const key of ['providerRequestCorrelation', 'submissionContract']) if (record[key] !== undefined) keys.push(key);
@@ -50,7 +52,7 @@ function recoveryEvidence(record) {
       (record.phase === 'success' && (!Array.isArray(record.deploymentIds) || record.deploymentIds.length !== 1 ||
         record.baselineDeploymentIds.includes(record.deploymentIds[0]))))
     throw new Error('Invalid retained recovery phase fields');
-  if (!exactKeys(proof, 'schemaVersion,originalRun,originalAttempt,applicationRevision,packageArtifactId,packageArtifactDigest,jobId,promotionRunId,runAttempt,runId,toolRevision') ||
+  if (!exactKeys(proof, 'schemaVersion,originalRun,originalAttempt,applicationRevision,packageArtifactId,packageArtifactDigest,jobId,promotionRunId,runAttempt,runId,toolRevision' + (correction === undefined ? '' : ',protectBaselineCorrection')) ||
       proof.schemaVersion !== 1 || record.schemaVersion !== 1 || record.completionEvidence !== undefined ||
       !['originalRun', 'originalAttempt', 'packageArtifactId'].every(key => positive(proof[key])) ||
       !digest(proof.packageArtifactDigest) || proof.originalRun !== record.packageProducerRun ||
@@ -58,6 +60,25 @@ function recoveryEvidence(record) {
       !targets.includes(record.target) || record.operationId !== operationIdentity(record.target, record.applicationRevision, record.packageDigest) ||
       !recoveryObserver(Object.fromEntries(['jobId', 'promotionRunId', 'runAttempt', 'runId', 'toolRevision'].map(key => [key, proof[key]])), record.producingRun, record.producingAttempt))
     throw new Error('Invalid retained recovery operation evidence');
+}
+function protectBaselineCorrection(record, value) {
+  const proof = record.recoveryEvidence;
+  const keys = 'schemaVersion,authorization,baselineRevision,rollbackRun,rollbackArtifactId,rollbackArtifactName,rollbackArtifactDigest,rollbackPackageDigest,baselineReceiptId,baselineReceiptDigest,originalRun,applicationRevision,candidateArtifactId,candidateArtifactDigest';
+  const auth = value?.authorization;
+  if (!exactKeys(value, keys) || value.schemaVersion !== 1 || record.target !== 'protect' ||
+      value.baselineRevision !== record.baseline || !sha(value.baselineRevision, 40) ||
+      value.applicationRevision !== record.applicationRevision || value.originalRun !== proof.originalRun ||
+      value.candidateArtifactId !== proof.packageArtifactId || value.candidateArtifactDigest !== proof.packageArtifactDigest ||
+      !['rollbackRun','rollbackArtifactId','baselineReceiptId','originalRun','candidateArtifactId'].every(k => positive(value[k])) ||
+      !['rollbackArtifactDigest','baselineReceiptDigest','candidateArtifactDigest'].every(k => digest(value[k])) ||
+      !sha(value.rollbackPackageDigest,64) || value.rollbackArtifactName !== `fast-track-package-${value.baselineRevision}-protect` ||
+      !exactKeys(auth,'authorizationId,authorizedBy,target,originalRun,originalOperationId,originalRevision,expectedReleaseParent,historicalOutcome,authorizeOneReplacement,rollbackArtifactId,rollbackArtifactDigest,candidateRevision') ||
+      auth.authorizationId !== 'ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1:protect-replacement-20261026' ||
+      auth.authorizedBy !== 'Founder' || auth.target !== 'protect' || auth.historicalOutcome !== 'UNKNOWN' ||
+      auth.authorizeOneReplacement !== true || auth.candidateRevision !== record.applicationRevision ||
+      !positive(auth.originalRun) || !positive(auth.rollbackArtifactId) || !digest(auth.rollbackArtifactDigest) ||
+      !sha(auth.originalOperationId,64) || !sha(auth.originalRevision,40) || !sha(auth.expectedReleaseParent,40))
+    throw new Error('Invalid Protect baseline correction');
 }
 function retainedSummary(name, record) {
   if (!exactKeys(record, 'schemaVersion,phase,originalRun,originalAttempt,applicationRevision,producingRun,producingAttempt,observer,targets') ||

@@ -1,36 +1,32 @@
 {
   "requestedBy": "Founder",
   "authorization": "Continue ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1: complete remaining Protect deployment and preserve four successful apps. Promote reviewed recovery tools without application publication, then use canonical retained recovery under mandatory human Production approval.",
-  "purpose": "Correct the unused Protect replacement rollback anchor to its authenticated known-good baseline. Preserve original release packages, successful deployments, migration evidence, historical UNKNOWN outcomes, and routing disabled.",
-  "requestId": "protect-retained-baseline-tool-promotion-20261026-v1",
+  "purpose": "Correct the Protect baseline evidence transport contract and authenticate the exact serializer failure before safely resuming retained recovery. Preserve four successful apps, original bytes, historical UNKNOWN outcomes and disabled routing.",
+  "requestId": "protect-retained-serializer-tool-promotion-20261026-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "b41228e2f852c95b38890d3a8b16ec96a4c46dbd",
-    "sourceRevision": "e9c79527b98e1787bff98fae87157ba8ec063a6d",
+    "baseRevision": "6c21a702e28a0fb4379eb73cbc59c174636f1412",
+    "sourceRevision": "b01383d6480863afe34c0e25e1885eb9573d813e",
     "files": {
-      "scripts/deploy-approved-app.py": {
+      "scripts/release-artifacts/transport.cjs": {
         "mode": "100644",
-        "blob": "b9e3f39d38659460344bb3e940a035ab68e2a6a8"
+        "blob": "fb2bb1b8d7cda7ea8f4e57d03a8dacc6a5479df8"
+      },
+      "scripts/release-artifacts/test-transport.cjs": {
+        "mode": "100644",
+        "blob": "a2dc94b59d6b2c717812c30ce60b0fc5ffce30bb"
       },
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "13ca20849f970073a155bc4d56f7288254a7b75d"
-      },
-      "scripts/test-deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "c352f34dc501c9296fcc4881337cda293518da7e"
+        "blob": "b6aec41e6658055f07a379a55c753e40442b75f0"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "3635829f6c7851d24c2429bb7f8985574561186f"
-      },
-      "scripts/test-fast-track-release.py": {
-        "mode": "100644",
-        "blob": "8a28c7ca30378f216697499f5f0bf44f571b3e52"
+        "blob": "fc3ca488187faadb2f2c08bd0062d186d3a04c67"
       }
     }
   }

@@ -731,6 +731,10 @@ FAST_TRACK_RECOVERY_TARGET_READ_GENERATIONS = ({
 },)
 
 
+# Only Protect carried the rejected extension; siblings remain reconcile-only.
+FAST_TRACK_RECOVERY_PROTECT_SERIALIZER_GENERATIONS = ({'.github/workflows/legend-fast-track-ui.yml': 'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd', 'scripts/deploy-approved-app.py': '827b760af5db22e44fad4d5edbb46d0e1b4809213c4659d10eda29c77c0de750', 'scripts/release-operation-evidence.py': 'cf73cff19073d290ddff5efe3fdd54f7a901d674f804821e2f0abf32474060c0', 'scripts/validation-resume.py': '5441d151391f8ca60d4b5fa889d1549eecec34b5daef7405b1e5b4b8d2b40572', 'scripts/release-artifacts/transport.cjs': 'a307995fd926511e35a48f2877e4bef580d4cbf61752c34b2282c62a0f774aef'},)
+
+
 def _recovery_preintent_log_proof(log, run, job, observer, *, kind='serializer'):
     """Only authenticated full logs of the pinned pre-transport rejection flow."""
     import datetime
@@ -898,10 +902,17 @@ def attested_recovery_preintent_failure(repository, run, job, attempt, revision,
             return False
         source = {path: hashlib.sha256(_release_history_source(repository,run['head_sha'],path,token).encode()).hexdigest()
                   for path in FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS[0]}
-        if source not in FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS + FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS + FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS + FAST_TRACK_RECOVERY_TARGET_READ_GENERATIONS:
+        if source not in FAST_TRACK_RECOVERY_PREINTENT_GENERATIONS + FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS + FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS + FAST_TRACK_RECOVERY_TARGET_READ_GENERATIONS + FAST_TRACK_RECOVERY_PROTECT_SERIALIZER_GENERATIONS:
+            return False
+        protect_serializer = source in FAST_TRACK_RECOVERY_PROTECT_SERIALIZER_GENERATIONS
+        if protect_serializer and (repository != 'MYLEGND/masterapp' or run['id'] != 40356096191 or attempt != 1
+            or run['run_attempt'] != 1 or job['id'] != 121688862786
+            or run['head_sha'] != '6c21a702e28a0fb4379eb73cbc59c174636f1412' or target != 'protect'
+            or revision != PROTECT_RECOVERY_REVISION
+            or operation_id != '266170544c4702529f9db56d7af347bc9fc1b0e803a432f149b99f9905a32cb0'):
             return False
         target_read = source in FAST_TRACK_RECOVERY_TARGET_READ_GENERATIONS
-        target_scoped = target_read or source in FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS
+        target_scoped = protect_serializer or target_read or source in FAST_TRACK_RECOVERY_TARGET_DEADLINE_GENERATIONS
         if target_read and (repository != 'MYLEGND/masterapp' or run['id'] != 40012751935 or attempt != 1
             or run['run_attempt'] != 1 or job['id'] != 120617015463
             or run['head_sha'] != '3460c10cebf9e0aa247604991a607eafaa047014' or target != 'website'
@@ -911,7 +922,7 @@ def attested_recovery_preintent_failure(repository, run, job, attempt, revision,
         if _completion_inventory(api_get(repository,f"actions/runs/{run['id']}/artifacts?per_page=100",token),'artifacts'):
             return False
         proof = _recovery_preintent_log_proof(_release_job_log(repository,job['id'],token),run,job,observer,
-            kind='target-read' if target_read else 'target-deadline' if target_scoped else 'preflight' if source in FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS else 'serializer')
+            kind='serializer' if protect_serializer else 'target-read' if target_read else 'target-deadline' if target_scoped else 'preflight' if source in FAST_TRACK_RECOVERY_PREFLIGHT_GENERATIONS else 'serializer')
         if proof['applicationRevision'] != revision:
             return False
         original = fast_track_completion_original(repository,proof['originalRun'],revision,token)
@@ -919,6 +930,9 @@ def attested_recovery_preintent_failure(repository, run, job, attempt, revision,
             return False
         if (not isinstance(proof['targets'],dict) or not 1 <= proof['originalAttempt'] <= original['run']['run_attempt']
             or set(proof['targets']) != set(original['targets'])):
+            return False
+        if protect_serializer and (proof['originalRun'] != PROTECT_RECOVERY_RUN or proof['originalAttempt'] != 2
+            or set(proof['targets']) != set(RELEASE_TARGETS)):
             return False
         held=[]
         for key, row in proof['targets'].items():
@@ -931,6 +945,9 @@ def attested_recovery_preintent_failure(repository, run, job, attempt, revision,
             # Existing authenticated original intents bind their package digest;
             # otherwise independently restore/check the original immutable ZIP.
             intent = material['originalIntent']
+            if protect_serializer and key == 'protect':
+                if material.get('protectBaselineCorrection') != protect_recovery_baseline_proof(repository, original, material['packageArtifact'], token):
+                    return False
             if target_scoped:
                 if intent is None:held.append(key)
                 elif fast_track_completion_material(repository,original,key,token)['intent'] != intent:return False
