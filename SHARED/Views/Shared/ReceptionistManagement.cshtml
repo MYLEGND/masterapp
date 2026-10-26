@@ -38,6 +38,61 @@
             }
         </section>
     }
+    @if (Model.Summary.ConnectionRevision != Guid.Empty && Model.PrepareUrl is not null)
+    {
+        <h2>Prepare website voice</h2>
+        <p>Submit the observed provider, privacy, fallback and cost evidence for review. These entries are proposed facts, not automatic provider verification. Funding choices come from existing accounting; preparing this proposal neither adds funds nor enables calls. This proposal enables inquiry intake only. Replacing a binding removes any prior appointment acceptance; review the existing booking mapping separately before enabling appointments.</p>
+        <form action="@Model.PrepareUrl" method="post">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="ExpectedConnectionRevision" value="@Model.Summary.ConnectionRevision" />
+            <input type="hidden" name="Operation" value="accept_binding" />
+            <label class="dashboard-form-field"><span>Saved voice credential</span><select name="ApiCredentialVersionId" class="form-select" required>
+                <option value="">Choose a saved credential</option>
+                @foreach (var credential in Model.Summary.Credentials.Where(x => !x.Revoked && x.Purpose == "voice-api"))
+                { <option value="@credential.Id">@credential.ProviderProjectKey · @credential.CreatedUtc.ToString("u")</option> }
+            </select></label>
+            <label class="dashboard-form-field"><span>Verified voice model</span><input name="Model" class="form-control" required maxlength="100" /></label>
+            <label class="dashboard-form-field"><span>Verified voice</span><input name="Voice" class="form-control" required maxlength="100" /></label>
+            <label class="dashboard-form-field"><span>Call mode</span><select name="ControlledTestOnly" class="form-select"><option value="true">Restricted acceptance testing</option><option value="false">Public, with separate activation evidence</option></select></label>
+            <label class="dashboard-form-field"><span>Provider-enforced maximum call seconds</span><input name="MaximumSupportedCallSeconds" type="number" min="1" required class="form-control" /></label>
+            <fieldset><legend>Verified maximum cost for each call</legend>
+                <p>Include all provider exposure, including uncertain creation and cleanup. An alert-only project budget does not establish a hard limit.</p>
+                <input type="hidden" name="Costs[0].Key" value="provider_voice" />
+                <label class="dashboard-form-field"><span>Existing funding account</span><select name="Costs[0].FundingAccountId" class="form-select" required>
+                    <option value="">Choose existing funding</option>
+                    @foreach (var choice in Model.Summary.FundingChoices ?? []) { <option value="@choice.Id">@choice.Label</option> }
+                </select></label>
+                <label class="dashboard-form-field"><span>Maximum fixed cash exposure</span><input name="Costs[0].CashFixedMaximum" type="number" min="0" step="0.000001" required class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Maximum cash per second</span><input name="Costs[0].CashPerSecondMaximum" type="number" min="0" step="0.000001" required class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Maximum fixed service consumption</span><input name="Costs[0].ConsumptionFixedMaximum" type="number" min="0" step="0.000001" required class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Maximum service consumption per second</span><input name="Costs[0].ConsumptionPerSecondMaximum" type="number" min="0" step="0.000001" required class="form-control" /></label>
+            </fieldset>
+            @{ var kinds = new[] { "provider_setup", "exclusive_project", "cost_bounds", "disclosure", "retention", "website_fallback", "capability.canonical_intake", "public_activation" };
+               var labels = new[] { "Provider setup", "Exclusive project", "Enforced exposure and cost bounds", "AI and recording disclosures", "Retention and privacy", "Website contact fallback", "Caller-confirmed inquiry route", "Public activation (public mode only)" }; }
+            @for (var i = 0; i < kinds.Length; i++)
+            {
+                <fieldset><legend>@labels[i]</legend>
+                    <input type="hidden" name="Evidence[@i].Kind" value="@kinds[i]" />
+                    <label class="dashboard-form-field"><span>Evidence reference</span><input name="Evidence[@i].Reference" maxlength="512" class="form-control" /></label>
+                    <label class="dashboard-form-field"><span>Evidence SHA-256</span><input name="Evidence[@i].Sha256" pattern="[a-f0-9]{64}" maxlength="64" class="form-control" /></label>
+                    <label class="dashboard-form-field"><span>Observed at (UTC, ISO 8601 ending Z)</span><input name="Evidence[@i].ObservedUtc" placeholder="2026-10-26T12:00:00Z" class="form-control" /></label>
+                </fieldset>
+            }
+            <button class="btn btn-primary" type="submit">Save proposal for review</button>
+        </form>
+        <h2>Prepare call permission</h2>
+        <form action="@Model.PrepareUrl" method="post">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="ExpectedConnectionRevision" value="@Model.Summary.ConnectionRevision" />
+            <input type="hidden" name="Operation" value="set_owner_admission" />
+            <input type="hidden" name="Evidence[0].Kind" value="set_owner_admission" />
+            <label class="dashboard-form-field"><span>Requested permission</span><select name="Enabled" class="form-select"><option value="false">Pause calls</option><option value="true">Allow calls when ready</option></select></label>
+            <label class="dashboard-form-field"><span>Authorization evidence reference</span><input name="Evidence[0].Reference" maxlength="200" required class="form-control" /></label>
+            <label class="dashboard-form-field"><span>Evidence SHA-256</span><input name="Evidence[0].Sha256" pattern="[a-f0-9]{64}" required class="form-control" /></label>
+            <label class="dashboard-form-field"><span>Observed at (UTC, ISO 8601 ending Z)</span><input name="Evidence[0].ObservedUtc" required class="form-control" /></label>
+            <button class="btn btn-outline-primary" type="submit">Save permission proposal for review</button>
+        </form>
+    }
     <h2>Operation reviews</h2>
     @if (Model.Summary.Operations.Count == 0) { <p>No saved operation reviews are available. Provider setup, routing, cost and capability evidence must be verified before activation.</p> }
     @foreach (var operation in Model.Summary.Operations)

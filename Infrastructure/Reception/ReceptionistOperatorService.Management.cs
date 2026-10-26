@@ -22,7 +22,125 @@ public sealed partial class ReceptionistOperatorService
         var canReview = false;
         try { _ = RequireFounder(); canReview = true; } catch (UnauthorizedAccessException) { }
         return new(connection.Revision, credentials, operations.Select(x => new ReceptionistSavedOperationSummary(StoredPrefix + x.Id.ToString("N"),
-            x.PayloadSha256, x.Operation, x.RevokedUtc is null ? x.ReviewState : "revoked", x.ExpiresUtc, x.Revision)).ToArray(), canReview);
+            x.PayloadSha256, x.Operation, x.RevokedUtc is null ? x.ReviewState : "revoked", x.ExpiresUtc, x.Revision)).ToArray(), canReview, await FundingChoicesAsync(db, connection.Id, canReview, ct));
+    }
+
+    private static async Task<ReceptionistFundingChoice[]> FundingChoicesAsync(MasterAppDbContext db, Guid connectionId,
+        bool founder, CancellationToken ct)
+    {
+        var allowed = new HashSet<Guid>();
+        if (!founder)
+        {
+            var version = await db.Set<ReceptionistConfigurationVersion>().AsNoTracking()
+                .Where(x => x.MarketingConnectionId == connectionId && x.AcceptedBindingJson != null)
+                .OrderByDescending(x => x.Version).FirstOrDefaultAsync(ct);
+            if (version is not null)
+            {
+                var config = ReceptionistConfigurationCodec.Read(version.ConfigurationJson, version.ConfigurationSha256);
+                var binding = ReceptionistConfigurationCodec.ReadBinding(version.AcceptedBindingJson, config);
+                foreach (var cost in binding?.Costs ?? []) allowed.Add(cost.FundingBudgetAccountId);
+            }
+        }
+        var accounts = await db.Set<ReceptionistBudgetAccount>().AsNoTracking()
+            .Where(x => x.Kind == "funding" && (founder || allowed.Contains(x.Id)))
+            .OrderBy(x => x.Id).Take(65).ToArrayAsync(ct);
+        if (accounts.Length > 64) throw new InvalidOperationException("The funding choices exceed the supported bound.");
+        return accounts.Select((x, i) => new ReceptionistFundingChoice(x.Id,
+            founder ? x.ScopeKey + " (" + x.Currency + ")" : "Existing voice funding " + (i + 1))).ToArray();
+    }
+
+    public async Task<Guid> PrepareForOwnerAsync(MarketingOwnerScope owner, ReceptionistOperationPreparationInput input,
+        Func<MarketingOwnerScope, CancellationToken, Task<bool>> authorize, CancellationToken ct = default)
+    {
+        var actor = await RequireOwnerActorAsync(owner, authorize, ct);
+        if (input.Operation is not ("accept_binding" or "set_owner_admission") ||
+            input.Evidence is null || input.Evidence.Count is < 1 or > 16 || input.Evidence.Any(x => x is null) ||
+            input.Costs is null || input.Costs.Count > 16 || input.Costs.Any(x => x is null))
+            throw new ArgumentException("Choose one bounded receptionist setup operation and its evidence.");
+        await using var db = new MasterAppDbContext(DatabaseOptions);
+        await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        var connection = await db.MarketingConnections.SingleOrDefaultAsync(x => x.OwnerKey == owner.Key &&
+            x.Provider == MarketingDestinationKeys.OpenAi, ct)
+            ?? throw new InvalidOperationException("Save receptionist settings first.");
+        if (connection.Revision != input.ExpectedConnectionRevision) throw new DbUpdateConcurrencyException("The setup changed.");
+        var version = input.Operation == "accept_binding"
+            ? await db.Set<ReceptionistConfigurationVersion>().Where(x => x.MarketingConnectionId == connection.Id)
+                .OrderByDescending(x => x.Version).FirstAsync(ct)
+            : await db.Set<ReceptionistConfigurationVersion>().SingleAsync(x => x.MarketingConnectionId == connection.Id &&
+                x.Id == connection.ReceptionistActiveConfigurationId, ct);
+        var config = ReceptionistConfigurationCodec.Read(version.ConfigurationJson, version.ConfigurationSha256);
+        var now = clock.GetUtcNow().UtcDateTime;
+        var evidence = input.Evidence.Where(x => !string.IsNullOrWhiteSpace(x.Reference) || !string.IsNullOrWhiteSpace(x.Sha256) || x.ObservedUtc is not null)
+            .Select(x => new ReceptionistOperatorEvidence(x.Kind, x.Reference ?? string.Empty, x.Sha256 ?? string.Empty,
+                x.ObservedUtc ?? throw new ArgumentException("Each evidence item needs its observation date."))).ToArray();
+        string Receipt(string kind) => evidence.SingleOrDefault(x => x.Kind == kind)?.Reference
+            ?? throw new ArgumentException("Supply the evidence for " + kind + ".");
+        ReceptionistCredentialVersion? credential = null;
+        ReceptionistProviderBinding? binding = null;
+        if (input.Operation == "accept_binding")
+        {
+            credential = await db.Set<ReceptionistCredentialVersion>().SingleOrDefaultAsync(x => x.Id == input.ApiCredentialVersionId &&
+                x.MarketingConnectionId == connection.Id && x.Provider == MarketingDestinationKeys.OpenAi &&
+                x.Purpose == "voice-api" && x.RevokedUtc == null, ct)
+                ?? throw new InvalidOperationException("Choose a saved voice credential for this workspace.");
+            var founder = false;
+            try { _ = RequireFounder(); founder = true; } catch (UnauthorizedAccessException) { }
+            var allowed = (await FundingChoicesAsync(db, connection.Id, founder, ct)).Select(x => x.Id).ToHashSet();
+            if (input.Costs.Count == 0 || input.Costs.Any(x => !allowed.Contains(x.FundingAccountId)))
+                throw new UnauthorizedAccessException("The proposed funding is not available to this workspace.");
+            // Preserve an established route identity; a new identity is generated only by this authority.
+            binding = new ReceptionistProviderBinding
+            {
+                IngressKey = connection.ReceptionistIngressKey ?? "website-" + Guid.NewGuid().ToString("N"),
+                ProviderProjectKey = credential.ProviderProjectKey, Model = input.Model ?? string.Empty, Voice = input.Voice ?? string.Empty,
+                BackendMode = "application_services", Transport = "webrtc", ControlledTestOnly = input.ControlledTestOnly,
+                CredentialReference = StoredPrefix + credential.Id.ToString("N"), MaximumSupportedCallSeconds = input.MaximumSupportedCallSeconds,
+                ProviderVerificationReceipt = Receipt("provider_setup"), ExclusiveProjectVerificationReceipt = Receipt("exclusive_project"),
+                CostVerificationReceipt = Receipt("cost_bounds"), DisclosureConfigurationReceipt = Receipt("disclosure"),
+                RetentionConfigurationReceipt = Receipt("retention"), WebsiteFallbackReceipt = Receipt("website_fallback"),
+                PublicActivationReceipt = input.ControlledTestOnly ? null : Receipt("public_activation"),
+                Costs = input.Costs.Select(x => new ReceptionistCostComponent(x.Key, x.FundingAccountId,
+                    x.CashFixedMaximum, x.CashPerSecondMaximum, x.ConsumptionFixedMaximum, x.ConsumptionPerSecondMaximum)).ToArray(),
+                Capabilities = [new(ReceptionistCapabilities.CanonicalIntake, Infrastructure.Leads.ReceptionistInquiryAuthority.RouteKey,
+                    ReceptionistCapabilityStates.Accepted, Receipt("capability." + ReceptionistCapabilities.CanonicalIntake))]
+            };
+            ReceptionistConfigurationCodec.ValidateBinding(binding, config);
+            _ = ReceptionistRuntimeAuthority.Ready(connection.Provider, config, binding);
+        }
+        var fundingIds = binding?.Costs.Select(x => x.FundingBudgetAccountId).Distinct().ToArray() ?? [];
+        var accounts = await db.Set<ReceptionistBudgetAccount>().AsNoTracking().Where(x =>
+            x.Kind == "owner" && x.ScopeKey == owner.Key || fundingIds.Contains(x.Id)).ToArrayAsync(ct);
+        if (accounts.Any(x => x.Currency != config.Currency || x.Kind == "owner" && x.TimeZoneId != config.TimeZoneId) ||
+            fundingIds.Any(id => accounts.All(x => x.Id != id || x.Kind != "funding")))
+            throw new InvalidOperationException("The proposed accounting dimensions do not match this configuration.");
+        var package = new ReceptionistOperatorPackage
+        {
+            Version = 1, Label = binding is null ? "Call permission" : "Website voice connection",
+            Operation = input.Operation, ExpiresUtc = now.AddMinutes(30), MarketingConnectionId = connection.Id,
+            ExpectedOwnerKey = owner.Key, Provider = connection.Provider,
+            ProviderProjectKey = binding?.ProviderProjectKey ?? connection.ReceptionistProviderProjectKey ?? string.Empty,
+            ConfigurationId = version.Id, ConfigurationSha256 = version.ConfigurationSha256,
+            ExpectedConnectionRevision = connection.Revision, ExpectedAccountRevisions = accounts.ToDictionary(x => x.Id, x => x.Revision),
+            FundingScopes = accounts.Where(x => x.Kind == "funding").ToDictionary(x => x.Id, x => x.ScopeKey), Evidence = evidence,
+            Binding = binding, ApiCredentialSha256 = credential?.ValueSha256,
+            Enabled = binding is null ? input.Enabled : null, ReceiptReference = binding is null ? Receipt(input.Operation) : string.Empty
+        };
+        // Validate proposed shape with temporary review metadata, never persist or claim a review.
+        (package with { ReviewedByFounderOid = actor, ReviewedUtc = now }).Validate(actor, now);
+        var json = JsonSerializer.Serialize(package, ReceptionistConfigurationCodec.Json);
+        if (json.Length > 262144) throw new ArgumentException("The proposed operation is too large.");
+        var row = new ReceptionistOperationPackage
+        {
+            MarketingConnectionId = connection.Id, ConfigurationVersionId = version.Id, Operation = package.Operation,
+            PayloadJson = json, PayloadSha256 = ReceptionistConfigurationCodec.Hash(json), ApiCredentialVersionId = credential?.Id,
+            CreatedByActorId = actor, CreatedUtc = now, ExpiresUtc = package.ExpiresUtc
+        };
+        db.Add(row);
+        // Serialize preparation against settings/credential changes without changing the package's expected revision.
+        db.Entry(connection).Property(x => x.Revision).IsModified = true;
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return row.Id;
     }
 
     public async Task<ReceptionistOperationReview> PreviewPendingForOwnerAsync(MarketingOwnerScope owner, Guid id,
@@ -51,7 +169,16 @@ public sealed partial class ReceptionistOperatorService
         _ = await PreflightAsync(package, state, false, expectedHash, ct);
         return new(StoredPrefix + id.ToString("N"), expectedHash, package.Label, package.Operation, false,
             ["Review verifies this exact saved operation. It does not itself apply the change or verify live calls."],
-            state.Facts.Select(x => new ReceptionistOperationFact(x.Label, x.Value)).ToArray(), null, row.Revision);
+            state.Facts.Select(x => new ReceptionistOperationFact(x.Label, x.Value))
+                .Concat(package.Evidence.Select(x => new ReceptionistOperationFact("Proposed evidence: " + x.Kind,
+                    x.Reference + " · SHA-256 " + x.Sha256 + " · observed " + x.ObservedUtc.ToString("O"))))
+                .Concat(package.Binding is { } proposed ? new[] {
+                    new ReceptionistOperationFact("Proposed voice", proposed.Model + " / " + proposed.Voice),
+                    new ReceptionistOperationFact("Proposed mode", proposed.ControlledTestOnly ? "Restricted testing" : "Public"),
+                    new ReceptionistOperationFact("Proposed duration bound", proposed.MaximumSupportedCallSeconds.ToString()) }
+                    .Concat(proposed.Costs.Select(x => new ReceptionistOperationFact("Proposed maximum cost: " + x.Key,
+                        FormattableString.Invariant($"Cash {x.CashFixedMaximum} + {x.CashPerSecondMaximum}/s; consumption {x.ConsumptionFixedMaximum} + {x.ConsumptionPerSecondMaximum}/s")))) : [])
+                .ToArray(), null, row.Revision);
     }
 
     public async Task ReviewForOwnerAsync(MarketingOwnerScope owner, Guid id, Guid expectedRevision, string expectedHash,

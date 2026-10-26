@@ -22,6 +22,7 @@ public abstract partial class BusinessWorkspaceControllerBase
         return await ReceptionistManagementPageAsync(owner, businessId,
             notice == "saved" ? "Credential saved securely for review. Calls and accepted configuration were not changed."
                 : notice == "revoked" ? "The saved credential was withdrawn from future setup. Existing accepted operation was not changed."
+                : notice == "prepared" ? "The proposed operation was saved for review. Calls and provider settings were not changed."
                 : notice == "reviewed" ? "The exact operation review was saved. Review and apply the operation separately." : null,
             null, cancellationToken);
     }
@@ -36,7 +37,28 @@ public abstract partial class BusinessWorkspaceControllerBase
             Url.Action(nameof(Receptionist), new { businessId })!, message,
             Url.Action(nameof(PlanReceptionistOperation), new { businessId })!,
             Url.Action(nameof(ApplyReceptionistOperation), new { businessId })!,
-            Url.Action(nameof(ReviewReceptionistOperation), new { businessId })!, review));
+            Url.Action(nameof(ReviewReceptionistOperation), new { businessId })!, review, Url.Action(nameof(PrepareReceptionistOperation), new { businessId })!));
+    }
+
+    [HttpPost("receptionist/connections/prepare")]
+    [ValidateAntiForgeryToken]
+    [RequestSizeLimit(65536)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> PrepareReceptionistOperation([FromForm] ReceptionistOperationPreparationInput input,
+        Guid businessId = default, CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+        var owner = MarketingOwnerScope.Business(businessId);
+        if (!ModelState.IsValid) return BadRequest("Choose valid setup fields and dated evidence.");
+        try
+        {
+            await ReceptionistManagement.PrepareForOwnerAsync(owner, input, AuthorizeReceptionistManagementAsync, cancellationToken);
+            return RedirectToAction(nameof(ReceptionistConnections), new { businessId, notice = "prepared" });
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (DbUpdateConcurrencyException) { return Conflict("Setup changed. Reload before preparing a new operation."); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        { return BadRequest("The proposed setup is incomplete or inconsistent. Check its credential, funding and dated evidence, then reload."); }
     }
 
     [HttpPost("receptionist/connections/plan")]

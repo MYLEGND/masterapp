@@ -298,7 +298,7 @@ internal static partial class RehearsalFixture
             }).ToArray();
             if (browser) mutations = mutations.Concat(BrowserDrift()).ToArray();
             if (management) mutations = mutations.Concat(ManagementDrift(pending.Single(m => m.Id == ManagementMigration))).ToArray();
-            if (receptionist) mutations = mutations.Concat(ReceptionistDrift(pending.Single(m => m.Id == ReceptionistMigration))).ToArray();
+            if (receptionist) mutations = mutations.Concat(ReceptionistDrift(pending.Single(m => m.Id == ReceptionistMigration), applied.Contains(ManagementMigration))).ToArray();
             if (appliedReceptionist is not null && !receptionist)
                 mutations = mutations.Concat(new[] {
                     "ALTER TABLE dbo.MarketingConnections DROP CONSTRAINT DF_Rehearsal_ReceptionistAdmissionEnabled",
@@ -552,7 +552,7 @@ internal static partial class RehearsalFixture
         }
     }
 
-    private static string[] ReceptionistDrift(CandidateContract.Entry entry)
+    private static string[] ReceptionistDrift(CandidateContract.Entry entry, bool hasManagement)
     {
         var amounts = entry.Tables.Single(t => t.Name == "ReceptionistBudgetPeriods").Checks
             .Single(c => c.Name == "CK_ReceptionistBudgetPeriod_Amounts").Sql;
@@ -565,6 +565,9 @@ internal static partial class RehearsalFixture
             Precision("decimal(19,6)"), Precision("decimal(20,5)"),
             """
             DROP INDEX IX_MarketingConnections_Provider_ReceptionistIngressKey ON dbo.MarketingConnections;
+            -- Keep this schema-only adversary constructible with the persisted case-distinct synthetic rows.
+            -- The enclosing transaction rolls back this fixture-only data adjustment with the schema drift.
+            UPDATE dbo.MarketingConnections SET ReceptionistIngressKey=CONVERT(nvarchar(36),Id) WHERE ReceptionistIngressKey IS NOT NULL;
             ALTER TABLE dbo.MarketingConnections ALTER COLUMN ReceptionistIngressKey nvarchar(200) COLLATE Latin1_General_100_CI_AS NULL;
             CREATE UNIQUE INDEX IX_MarketingConnections_Provider_ReceptionistIngressKey ON dbo.MarketingConnections(Provider,ReceptionistIngressKey)
                 WHERE ReceptionistIngressKey IS NOT NULL;
@@ -591,6 +594,7 @@ internal static partial class RehearsalFixture
                 ON dbo.MarketingConnections(Provider,ReceptionistProviderProjectKey)
                 WHERE ReceptionistProviderProjectKey IS NOT NULL AND ReceptionistAdmissionEnabled=1;
             """,
+            (hasManagement ? "ALTER TABLE dbo.ReceptionistOperationPackages DROP CONSTRAINT FK_ReceptionistOperationPackages_ReceptionistConfigurationVersions_MarketingConnectionId_ConfigurationVersionId; ALTER TABLE dbo.ReceptionistAcceptanceWindows DROP CONSTRAINT FK_ReceptionistAcceptanceWindows_ReceptionistConfigurationVersions_MarketingConnectionId_ConfigurationVersionId;" : "") +
             """
             ALTER TABLE dbo.MarketingConnections DROP CONSTRAINT FK_MarketingConnections_ReceptionistConfigurationVersions_Id_ReceptionistActiveConfigurationId;
             ALTER TABLE dbo.ReceptionistCalls DROP CONSTRAINT FK_ReceptionistCalls_ReceptionistConfigurationVersions_MarketingConnectionId_ConfigurationVersionId;
@@ -601,7 +605,7 @@ internal static partial class RehearsalFixture
                 FOREIGN KEY(Id,ReceptionistActiveConfigurationId) REFERENCES dbo.ReceptionistConfigurationVersions(MarketingConnectionId,Id);
             ALTER TABLE dbo.ReceptionistCalls ADD CONSTRAINT FK_ReceptionistCalls_ReceptionistConfigurationVersions_MarketingConnectionId_ConfigurationVersionId
                 FOREIGN KEY(MarketingConnectionId,ConfigurationVersionId) REFERENCES dbo.ReceptionistConfigurationVersions(MarketingConnectionId,Id);
-            """
+            """ + (hasManagement ? "ALTER TABLE dbo.ReceptionistOperationPackages ADD CONSTRAINT FK_ReceptionistOperationPackages_ReceptionistConfigurationVersions_MarketingConnectionId_ConfigurationVersionId FOREIGN KEY(MarketingConnectionId,ConfigurationVersionId) REFERENCES dbo.ReceptionistConfigurationVersions(MarketingConnectionId,Id); ALTER TABLE dbo.ReceptionistAcceptanceWindows ADD CONSTRAINT FK_ReceptionistAcceptanceWindows_ReceptionistConfigurationVersions_MarketingConnectionId_ConfigurationVersionId FOREIGN KEY(MarketingConnectionId,ConfigurationVersionId) REFERENCES dbo.ReceptionistConfigurationVersions(MarketingConnectionId,Id);" : "")
         ];
     }
 

@@ -16,9 +16,15 @@ using Infrastructure.Data.Configurations;
 using Infrastructure.Reception;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
+using Microsoft.Extensions.Primitives;
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Shared.Analytics;
 using Xunit;
 
@@ -454,6 +460,151 @@ public sealed partial class ReceptionistOperatorTests
         await using var db = f.Database(); Assert.Equal(2, await db.Set<ReceptionistConfigurationVersion>().CountAsync());
     }
 
+    [Fact]
+    public async Task FrontendPreparationPersistsUnreviewedWebsiteProposalAndUsesCanonicalState()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var input = await f.WebsiteProposalAsync();
+        var id = await f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(true));
+        await using var db = f.Database();
+        var row = await db.Set<ReceptionistOperationPackage>().SingleAsync(x => x.Id == id);
+        var package = JsonSerializer.Deserialize<ReceptionistOperatorPackage>(row.PayloadJson, ReceptionistConfigurationCodec.Json)!;
+        Assert.Equal("pending", row.ReviewState); Assert.Null(row.ReviewedByActorId); Assert.Null(row.ReviewedUtc);
+        Assert.Empty(package.ReviewedByFounderOid); Assert.Equal(default, package.ReviewedUtc);
+        Assert.Equal(f.Owner.Key, package.ExpectedOwnerKey); Assert.Equal(input.ExpectedConnectionRevision, package.ExpectedConnectionRevision);
+        Assert.Equal(f.FundingId, Assert.Single(package.Binding!.Costs).FundingBudgetAccountId);
+        Assert.Equal("webrtc", package.Binding.Transport); Assert.Empty(package.Binding.WebhookSecretReference);
+        Assert.Null(package.Binding.ProtectedApiCredential); Assert.Null(package.Binding.PublicActivationReceipt);
+        Assert.False((await db.MarketingConnections.SingleAsync()).ReceptionistAdmissionEnabled);
+        Assert.Null((await db.Set<ReceptionistConfigurationVersion>().SingleAsync()).AcceptedBindingJson);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Operator.PlanForOwnerAsync(f.Owner, "saved-" + id.ToString("N"),
+            row.PayloadSha256, (_, _) => Task.FromResult(true)));
+        var preview = await f.Operator.PreviewPendingForOwnerAsync(f.Owner, id, row.PayloadSha256, (_, _) => Task.FromResult(true));
+        Assert.False(preview.CanApply); Assert.Equal(row.Revision, preview.PendingReviewRevision);
+        Assert.Contains(preview.Facts, x => x.Label == "Proposed evidence: exclusive_project");
+        await f.Operator.ReviewForOwnerAsync(f.Owner, id, row.Revision, row.PayloadSha256, true, (_, _) => Task.FromResult(true));
+        var plan = await f.Operator.PlanForOwnerAsync(f.Owner, "saved-" + id.ToString("N"), row.PayloadSha256, (_, _) => Task.FromResult(true));
+        Assert.True(plan.CanApply);
+        var receipt = await f.Operator.ApplyForOwnerAsync(f.Owner, f.Request(plan), (_, _) => Task.FromResult(true));
+        Assert.True(receipt.ReadBackVerified);
+        Assert.False((await f.Store.GetReceptionistConfigurationAsync(f.Owner, "openai")).AdmissionEnabled);
+    }
+
+    [Fact]
+    public async Task FrontendPreparationRejectsWrongOwnerStaleStateUnverifiedEvidenceAndUnrelatedFunding()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var input = await f.WebsiteProposalAsync();
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(false)));
+        var original = input.ExpectedConnectionRevision; input.ExpectedConnectionRevision = Guid.NewGuid();
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(true)));
+        input.ExpectedConnectionRevision = original;
+        input.Evidence[0].ObservedUtc = f.Clock.Now.AddMinutes(1);
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(true)));
+        input.Evidence[0].ObservedUtc = f.Clock.Now;
+        input.Costs[0].FundingAccountId = Guid.NewGuid();
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(true)));
+        await using var db = f.Database(); Assert.Empty(await db.Set<ReceptionistOperationPackage>().ToListAsync());
+    }
+
+    [Fact]
+    public async Task TenantCannotUseFounderFundingChoicesOrReviewItsOwnProposal()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var input = await f.WebsiteProposalAsync();
+        f.Http.HttpContext!.User = new ClaimsPrincipal(new ClaimsIdentity([new("oid", "00000000-0000-0000-0000-000000000022")], "test"));
+        var summary = await f.Operator.ManagementAsync(f.Owner, (_, _) => Task.FromResult(true));
+        Assert.False(summary.CanReview); Assert.Empty(summary.FundingChoices!);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(true)));
+    }
+
+    [Fact]
+    public async Task TenantPreparesWithItsExistingFundingButCannotReviewOrEnableWithoutAcceptance()
+    {
+        await using var f = await Fixture.CreateAsync(owner: MarketingOwnerScope.Business(Guid.NewGuid()));
+        await f.AcceptAsync();
+        var input = await f.WebsiteProposalAsync();
+        f.Http.HttpContext!.User = new ClaimsPrincipal(new ClaimsIdentity([new("oid", "00000000-0000-0000-0000-000000000022")], "test"));
+        var summary = await f.Operator.ManagementAsync(f.Owner, (_, _) => Task.FromResult(true));
+        Assert.Equal(f.FundingId, Assert.Single(summary.FundingChoices!).Id);
+        var id = await f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(true));
+        await using var db = f.Database(); var row = await db.Set<ReceptionistOperationPackage>().SingleAsync(x => x.Id == id);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Operator.PreviewPendingForOwnerAsync(f.Owner, id, row.PayloadSha256, (_, _) => Task.FromResult(true)));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Operator.ReviewForOwnerAsync(f.Owner, id, row.Revision, row.PayloadSha256, true, (_, _) => Task.FromResult(true)));
+        Assert.False((await db.MarketingConnections.SingleAsync()).ReceptionistAdmissionEnabled);
+    }
+
+    [Fact]
+    public async Task PublicPreparationRequiresActivationEvidenceAndRevocationInvalidatesPendingCredential()
+    {
+        await using var f = await Fixture.CreateAsync(); var input = await f.WebsiteProposalAsync();
+        input.ControlledTestOnly = false;
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(true)));
+        input.ControlledTestOnly = true;
+        var id = await f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(true));
+        await using var db = f.Database(); var row = await db.Set<ReceptionistOperationPackage>().SingleAsync(x => x.Id == id);
+        await f.Operator.RevokeCredentialAsync(f.Owner, input.ApiCredentialVersionId, input.ExpectedConnectionRevision, (_, _) => Task.FromResult(true));
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => f.Operator.ReviewForOwnerAsync(f.Owner, id, row.Revision,
+            row.PayloadSha256, true, (_, _) => Task.FromResult(true)));
+    }
+
+    [Fact]
+    public async Task OwnerPermissionPreparationUsesCurrentAcceptedConfigurationAndSeparateReview()
+    {
+        await using var f = await Fixture.CreateAsync(); await f.AcceptAsync();
+        var snapshot = await f.Store.GetReceptionistConfigurationAsync(f.Owner, "openai");
+        var input = new ReceptionistOperationPreparationInput
+        {
+            Operation = "set_owner_admission", Enabled = true, ExpectedConnectionRevision = snapshot.ConnectionRevision,
+            Evidence = [new() { Kind = "set_owner_admission", Reference = "synthetic-permission",
+                Sha256 = ReceptionistConfigurationCodec.Hash("synthetic-permission"), ObservedUtc = f.Clock.Now }]
+        };
+        var id = await f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(true));
+        await using var db = f.Database(); var row = await db.Set<ReceptionistOperationPackage>().SingleAsync(x => x.Id == id);
+        Assert.False((await f.Store.GetReceptionistConfigurationAsync(f.Owner, "openai")).AdmissionEnabled);
+        await f.Operator.ReviewForOwnerAsync(f.Owner, id, row.Revision, row.PayloadSha256, true, (_, _) => Task.FromResult(true));
+        var plan = await f.Operator.PlanForOwnerAsync(f.Owner, "saved-" + id.ToString("N"), row.PayloadSha256, (_, _) => Task.FromResult(true));
+        Assert.True(plan.CanApply); Assert.True((await f.Operator.ApplyForOwnerAsync(f.Owner, f.Request(plan), (_, _) => Task.FromResult(true))).ReadBackVerified);
+        Assert.True((await f.Store.GetReceptionistConfigurationAsync(f.Owner, "openai")).AdmissionEnabled);
+    }
+
+    [Theory]
+    [InlineData("accept_binding")]
+    [InlineData("set_owner_admission")]
+    public async Task PreparationFormBindingAcceptsOnlyConditionallyRequiredFields(string operation)
+    {
+        var collection = new ServiceCollection(); collection.AddLogging(); collection.AddMvcCore().AddDataAnnotations();
+        using var services = collection.BuildServiceProvider();
+        var controller = new PreparationBindingController
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { RequestServices = services } },
+            MetadataProvider = services.GetRequiredService<IModelMetadataProvider>(),
+            ModelBinderFactory = services.GetRequiredService<IModelBinderFactory>(),
+            ObjectValidator = services.GetRequiredService<IObjectModelValidator>()
+        };
+        var fields = new Dictionary<string, StringValues>
+        {
+            ["Operation"] = operation, ["ExpectedConnectionRevision"] = Guid.NewGuid().ToString(),
+            ["Evidence[0].Kind"] = operation, ["Evidence[0].Reference"] = "synthetic-evidence",
+            ["Evidence[0].Sha256"] = new string('a', 64), ["Evidence[0].ObservedUtc"] = "2026-10-26T12:00:00Z"
+        };
+        if (operation == "accept_binding")
+        {
+            fields["Model"] = "gpt-live-1"; fields["Voice"] = "marin";
+            fields["Evidence[1].Kind"] = "public_activation"; fields["Evidence[1].Reference"] = "";
+            fields["Evidence[1].Sha256"] = ""; fields["Evidence[1].ObservedUtc"] = "";
+        }
+        var input = new ReceptionistOperationPreparationInput();
+        Assert.True(await controller.TryUpdateModelAsync(input, "", new FormValueProvider(BindingSource.Form,
+            new FormCollection(fields), CultureInfo.InvariantCulture)),
+            string.Join("; ", controller.ModelState.SelectMany(x => x.Value!.Errors.Select(e => x.Key + ":" + e.ErrorMessage))));
+        Assert.Equal(DateTimeKind.Utc, input.Evidence[0].ObservedUtc!.Value.Kind);
+        if (operation == "accept_binding") Assert.Null(input.Evidence[1].Reference);
+        else { Assert.Null(input.Model); Assert.Null(input.Voice); }
+    }
+
+    private sealed class PreparationBindingController : Controller { }
+
     private sealed class TestClock(DateTime now) : TimeProvider
     {
         internal DateTime Now { get; set; } = now;
@@ -463,13 +614,13 @@ public sealed partial class ReceptionistOperatorTests
     private sealed class Fixture : IAsyncDisposable
     {
         internal const string FounderOid = "00000000-0000-0000-0000-000000000011";
-        internal const string Project = "operator_test_project";
+        internal const string Project = "proj_operator_test_project";
         internal const string Ingress = "operator_test_ingress";
         internal const string ApiSecret = "synthetic-operator-api-key";
         internal const string WebhookSecret = "synthetic-operator-webhook-key";
         private readonly string path = Path.Combine(Path.GetTempPath(), "reception-operator-" + Guid.NewGuid().ToString("N") + ".sqlite");
         private MasterAppDbContext storeContext = null!;
-        internal readonly MarketingOwnerScope Owner = MarketingOwnerScope.Founder;
+        internal MarketingOwnerScope Owner = MarketingOwnerScope.Founder;
         internal readonly TestClock Clock = new(new DateTime(2026, 2, 3, 12, 0, 0, DateTimeKind.Utc));
         internal readonly CommandProbe Commands = new();
         internal readonly TransactionProbe Transactions = new();
@@ -481,13 +632,15 @@ public sealed partial class ReceptionistOperatorTests
         internal Guid FundingId { get; private set; }
         internal MarketingConnectionStore Store { get; private set; } = null!;
         internal ReceptionistAdmissionService Admission => new(Options, Clock);
-        internal ReceptionistOperatorService Operator => new(Store, Admission, Host, Protector, Http, Clock);
+        internal ReceptionistOperatorService Operator => new(Store, Admission, Host, Protector, Http, Clock,
+            new ServiceCollection().AddSingleton(Options).BuildServiceProvider());
         internal ReceptionistRuntimeAuthority Runtime => new(Host, Protector, Clock);
         internal MasterAppDbContext Database() => new(Options);
 
-        internal static async Task<Fixture> CreateAsync(bool withBudgets = true)
+        internal static async Task<Fixture> CreateAsync(bool withBudgets = true, MarketingOwnerScope? owner = null)
         {
             var f = new Fixture();
+            if (owner is not null) f.Owner = owner;
             var connection = "Data Source=" + f.path + ";Pooling=False;Default Timeout=20";
             await using (var schema = new ReceptionSchemaContext(new DbContextOptionsBuilder().UseSqlite(connection).Options))
             {
@@ -496,6 +649,8 @@ public sealed partial class ReceptionistOperatorTests
                 await schema.Database.EnsureCreatedAsync();
             }
             f.storeContext = f.Database(); f.Store = new(f.storeContext, f.Protector);
+            if (f.Owner.CommerceBusinessId is { } businessId)
+            { f.storeContext.Add(new CommerceBusiness { Id = businessId }); await f.storeContext.SaveChangesAsync(); }
             f.Host["FOUNDER_OID"] = FounderOid;
             f.Http.HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new("oid", FounderOid)], "test")) };
             await f.Store.SaveReceptionistConfigurationAsync(f.Owner, "openai", Guid.Empty, Configuration(), "synthetic-owner");
@@ -524,6 +679,23 @@ public sealed partial class ReceptionistOperatorTests
                 Host[root + "OwnerKey"] = Owner.Key; Host[root + "Provider"] = "openai";
                 Host[root + "ProviderProjectKey"] = Project; Host[root + "Kind"] = kind; Host[root + "Value"] = value;
             }
+        }
+
+        internal async Task<ReceptionistOperationPreparationInput> WebsiteProposalAsync()
+        {
+            var snapshot = await Store.GetReceptionistConfigurationAsync(Owner, "openai");
+            var credential = await Operator.SaveCredentialAsync(Owner, new(snapshot.ConnectionRevision, Project, "voice-api", ApiSecret),
+                (_, _) => Task.FromResult(true));
+            snapshot = await Store.GetReceptionistConfigurationAsync(Owner, "openai");
+            return new()
+            {
+                ExpectedConnectionRevision = snapshot.ConnectionRevision, Operation = "accept_binding", ApiCredentialVersionId = credential,
+                Model = "gpt-live-1", Voice = "marin", MaximumSupportedCallSeconds = 120, ControlledTestOnly = true,
+                Costs = [new() { Key = "provider_voice", FundingAccountId = FundingId, CashFixedMaximum = 2m, ConsumptionFixedMaximum = 3m }],
+                Evidence = new[] { "provider_setup", "exclusive_project", "cost_bounds", "disclosure", "retention", "website_fallback", "capability.canonical_intake" }
+                    .Select(x => new ReceptionistPreparationEvidenceInput { Kind = x, Reference = "synthetic-" + x,
+                        Sha256 = ReceptionistConfigurationCodec.Hash("synthetic-" + x), ObservedUtc = Clock.Now }).ToList()
+            };
         }
 
         internal async Task<ReceptionistOperatorPackage> ForAsync(string operation, Guid? callId = null, Guid? budgetId = null)

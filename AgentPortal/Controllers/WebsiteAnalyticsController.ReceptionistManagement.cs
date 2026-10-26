@@ -22,6 +22,7 @@ public partial class WebsiteAnalyticsController
         return await ReceptionistManagementPageAsync(owner, agentProfileId,
             notice == "saved" ? "Credential saved securely for review. Calls and accepted configuration were not changed."
                 : notice == "revoked" ? "The saved credential was withdrawn from future setup. Existing accepted operation was not changed."
+                : notice == "prepared" ? "The proposed operation was saved for review. Calls and provider settings were not changed."
                 : notice == "reviewed" ? "The exact operation review was saved. Review and apply the operation separately." : null,
             null, cancellationToken);
     }
@@ -36,7 +37,28 @@ public partial class WebsiteAnalyticsController
             Url.Action(nameof(Receptionist), new { agentProfileId })!, message,
             Url.Action(nameof(PlanReceptionistOperation), new { agentProfileId })!,
             Url.Action(nameof(ApplyReceptionistOperation), new { agentProfileId })!,
-            Url.Action(nameof(ReviewReceptionistOperation), new { agentProfileId })!, review));
+            Url.Action(nameof(ReviewReceptionistOperation), new { agentProfileId })!, review, Url.Action(nameof(PrepareReceptionistOperation), new { agentProfileId })!));
+    }
+
+    [HttpPost("receptionist/connections/prepare")]
+    [ValidateAntiForgeryToken]
+    [RequestSizeLimit(65536)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> PrepareReceptionistOperation([FromForm] ReceptionistOperationPreparationInput input,
+        Guid? agentProfileId = null, CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
+        if (owner is null) return Forbid();
+        if (!ModelState.IsValid) return BadRequest("Choose valid setup fields and dated evidence.");
+        try
+        {
+            await ReceptionistManagement.PrepareForOwnerAsync(owner, input, AuthorizeReceptionistManagementAsync, cancellationToken);
+            return RedirectToAction(nameof(ReceptionistConnections), new { agentProfileId, notice = "prepared" });
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (DbUpdateConcurrencyException) { return Conflict("Setup changed. Reload before preparing a new operation."); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        { return BadRequest("The proposed setup is incomplete or inconsistent. Check its credential, funding and dated evidence, then reload."); }
     }
 
     [HttpPost("receptionist/connections/plan")]
