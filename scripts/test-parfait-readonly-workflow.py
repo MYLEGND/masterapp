@@ -29,9 +29,9 @@ class ExactSourceProofTests(unittest.TestCase):
                 else dict(total_count=len(self.rows),workflow_runs=self.rows)),
             fast_track_validation_receipt=Mock(return_value=41))
 
-    def execute(self):
+    def execute(self, same_merge=False):
         with patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',CANDIDATE_SHA=self.sha,
-                GITHUB_SHA='b'*40,GITHUB_TOKEN='synthetic'),clear=True), \
+                GITHUB_SHA=self.sha if same_merge else 'b'*40,GITHUB_TOKEN='synthetic'),clear=True), \
              patch.object(importlib.util,'spec_from_file_location',return_value=Mock()), \
              patch.object(importlib.util,'module_from_spec',return_value=self.owner), \
              patch.object(time,'monotonic',side_effect=[0,1801]), \
@@ -68,6 +68,21 @@ class ExactSourceProofTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit,'HISTORY_INCOMPLETE'):self.execute()
         self.sha='branch-name'
         with self.assertRaisesRegex(SystemExit,'CANDIDATE_INVALID'):self.execute()
+
+    def test_same_merge_requires_trusted_merge_proof_before_candidate_build(self):
+        self.owner.fast_track_inventory_merge_proof=Mock()
+        with self.assertRaises(SystemExit) as result: self.execute(same_merge=True)
+        self.assertEqual(0,result.exception.code)
+        self.owner.fast_track_inventory_merge_proof.assert_called_once_with('owner/repo',self.sha,'synthetic')
+        self.owner.api_get.assert_not_called()
+        self.owner.fast_track_validation_receipt.assert_not_called()
+        self.owner.fast_track_inventory_merge_proof.side_effect=RuntimeError('MERGE_UNPROVEN')
+        with self.assertRaisesRegex(RuntimeError,'MERGE_UNPROVEN'): self.execute(same_merge=True)
+        job=text.split('  validated-observer:',1)[1].split('  production-readback:',1)[0]
+        checkout=job.split('uses: actions/checkout@v4',1)[1].split('      - ',1)[0]
+        self.assertIn('fetch-depth: 0',checkout)
+        self.assertLess(job.index('PYVALIDATE'),job.index('ref: ${{ env.CANDIDATE_SHA }}'))
+
 
 class CredentialBoundaryTests(unittest.TestCase):
     def test_only_trusted_job_has_production_or_oidc(self):

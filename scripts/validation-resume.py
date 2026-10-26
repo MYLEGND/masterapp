@@ -7054,6 +7054,59 @@ def fast_track_merged_source_proof(repository, revision, token):
     return dict(candidate=candidate, executionAuthority=revision, sourcePr=candidates[0]['number'], validation=evidence)
 
 
+def fast_track_inventory_merge_proof(repository, revision, token):
+    """Admit only the current trusted merge to its existing read-only inventory.
+
+    This is not a candidate ancestry exception or an approval flag. The protected
+    merge, exact reviewed source and canonical CI receipts remain the authority.
+    """
+    workflow = '.github/workflows/parfait-cutover-live-readonly.yml'
+    ref = 'refs/heads/' + FAST_TRACK_PR_BASE
+    if (not re.fullmatch('[a-f0-9]{40}', revision or '') or not token
+        or os.environ.get('GITHUB_SHA') != revision
+        or os.environ.get('GITHUB_REPOSITORY') != repository
+        or os.environ.get('GITHUB_REF') != ref
+        or os.environ.get('GITHUB_EVENT_NAME') != 'workflow_dispatch'
+        or os.environ.get('GITHUB_WORKFLOW_REF') != repository + '/' + workflow + '@' + ref
+        or subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() != revision):
+        raise RuntimeError('FAST_TRACK_INVENTORY_EXECUTION_CHANGED')
+    endpoint = 'git/ref/heads/' + FAST_TRACK_PR_BASE
+    if api_get(repository, endpoint, token).get('object', {}).get('sha') != revision:
+        raise RuntimeError('FAST_TRACK_INVENTORY_HEAD_CHANGED')
+    commit = api_get(repository, 'git/commits/' + revision, token)
+    parents = commit.get('parents')
+    if (commit.get('sha') != revision or not isinstance(parents, list) or len(parents) != 2
+        or any(not isinstance(p, dict) or not re.fullmatch('[a-f0-9]{40}', p.get('sha', '')) for p in parents)):
+        raise RuntimeError('FAST_TRACK_INVENTORY_PARENTS_UNPROVEN')
+    baseline, source = [p['sha'] for p in parents]
+    local = subprocess.check_output(['git', 'rev-list', '--parents', '-n', '1', revision], text=True).split()
+    if len({revision, baseline, source}) != 3 or local != [revision, baseline, source]:
+        raise RuntimeError('FAST_TRACK_INVENTORY_PARENTS_CHANGED')
+    pulls = api_get(repository, f'commits/{revision}/pulls?per_page=100', token)
+    if not isinstance(pulls, list) or len(pulls) >= 100:
+        raise RuntimeError('FAST_TRACK_INVENTORY_PR_INCOMPLETE')
+    matching = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == revision
+        and p.get('base', {}).get('ref') == FAST_TRACK_PR_BASE
+        and p.get('base', {}).get('repo', {}).get('full_name') == repository
+        and p.get('head', {}).get('repo', {}).get('full_name') == repository
+        and p.get('head', {}).get('sha') == source]
+    if len(matching) != 1:
+        raise RuntimeError('FAST_TRACK_INVENTORY_SOURCE_UNPROVEN')
+    trees = subprocess.check_output(['git', 'rev-parse', revision + '^{tree}', source + '^{tree}'], text=True).split()
+    tree = commit.get('tree', {}).get('sha')
+    if (not re.fullmatch('[a-f0-9]{40}', tree or '') or trees != [tree, tree]
+        or subprocess.run(['git', 'merge-base', '--is-ancestor', baseline, source], capture_output=True).returncode):
+        raise RuntimeError('FAST_TRACK_INVENTORY_TREE_OR_BASE_CHANGED')
+    proof = fast_track_merged_source_proof(repository, revision, token)
+    if (proof.get('candidate') != source or proof.get('executionAuthority') != revision
+        or proof.get('sourcePr') != matching[0]['number']):
+        raise RuntimeError('FAST_TRACK_INVENTORY_VALIDATED_SOURCE_CHANGED')
+    # Reject movement while CI/artifact receipts were being authenticated.
+    if api_get(repository, endpoint, token).get('object', {}).get('sha') != revision:
+        raise RuntimeError('FAST_TRACK_INVENTORY_HEAD_CHANGED')
+    return dict(proof, merge=revision, baseline=baseline, tree=tree, authorizesMutation=False)
+
+
 def approved_head_preflight(repository: str, current_sha: str, token: str, *, base_branch=TRUSTED_PR_BASE):
     """Prove the candidate already contains the exact current approved head.
 

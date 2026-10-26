@@ -375,8 +375,14 @@ def rehearse_fast_track(revision, directory, observation_path, probe_directory):
     base = branch.get('object', {}).get('sha', '')
     if not re.fullmatch('[a-f0-9]{40}', base):
         raise ValueError('FAST_TRACK_BASE_UNPROVEN')
+    impact_base = base
+    if revision == run['head_sha']:
+        proof = AUTHORITY.fast_track_inventory_merge_proof(repository, revision, token)
+        if base != revision:
+            raise ValueError('FAST_TRACK_BASE_UNPROVEN')
+        impact_base = proof['baseline']
     subprocess.run(['git', 'merge-base', '--is-ancestor', base, revision], check=True)
-    changed = subprocess.check_output(['git', 'diff', '--name-only', base, revision], text=True).splitlines()
+    changed = subprocess.check_output(['git', 'diff', '--name-only', impact_base, revision], text=True).splitlines()
     scope = AUTHORITY.fast_track_scope(changed)
     source = fast_track_observation_source(repository, revision, run_id, attempt, token)
     report = verified_fast_track_observation(repository, run_id, source, observation_path)
@@ -576,6 +582,8 @@ def prepare_observed_fast_track(revision, directory, observation_path, probe_dir
     run = trusted_fast_track_run(repository, run_id, attempt, token, active=True)
     if os.environ.get('GITHUB_SHA') != run['head_sha']:
         raise ValueError('FAST_TRACK_TRUSTED_WORKFLOW_REVISION_CHANGED')
+    if revision == run['head_sha']:
+        AUTHORITY.fast_track_inventory_merge_proof(repository, revision, token)
     source = fast_track_observation_source(repository, revision, run_id, attempt, token)
     report = verified_fast_track_observation(repository, run_id, source, observation_path)
     baseline = fast_track_baseline(report, revision, run_id, source)

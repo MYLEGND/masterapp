@@ -453,6 +453,117 @@ class FastTrackHistoryTests(unittest.TestCase):
                 authority.release_child_first_write_proven('owner/repo','migrations','b'*64,'c'*64,11,1,'fixture')
 
 
+class FastTrackInventoryMergeTests(unittest.TestCase):
+    def setUp(self):
+        self.merge, self.base, self.head, self.tree = [c * 40 for c in 'abcd']
+        self.branch = self.merge
+        self.local = self.merge
+        self.parents = [self.base, self.head]
+        self.local_parents = [self.merge, self.base, self.head]
+        self.trees = [self.tree, self.tree]
+        self.ancestor = True
+        self.pull = dict(number=691, merged_at='2026-10-26T00:00:00Z', merge_commit_sha=self.merge,
+            base=dict(ref=authority.FAST_TRACK_PR_BASE, repo=dict(full_name='owner/repo')),
+            head=dict(sha=self.head, ref='isolation/task', repo=dict(full_name='owner/repo')))
+        self.pulls = [self.pull]
+        self.rows = [dict(id=i, run_attempt=1, path='.github/workflows/' + name,
+            event='pull_request', head_sha=self.head, head_branch='isolation/task',
+            head_repository=dict(full_name='owner/repo'), status='completed', conclusion='success')
+            for i, name in enumerate(('approved-release-security-validation.yml',
+                'masterapp-platform-architecture-validation.yml', 'parfait-isolated-validation.yml'), 1)]
+        self.count = 3
+        self.env = dict(GITHUB_SHA=self.merge, GITHUB_REPOSITORY='owner/repo',
+            GITHUB_REF='refs/heads/' + authority.FAST_TRACK_PR_BASE, GITHUB_EVENT_NAME='workflow_dispatch',
+            GITHUB_WORKFLOW_REF='owner/repo/.github/workflows/parfait-cutover-live-readonly.yml@refs/heads/' + authority.FAST_TRACK_PR_BASE)
+        self.branch_reads = 0
+        self.move_at_end = False
+
+    def api(self, repo, path, token):
+        self.assertEqual(('owner/repo', 'fixture'), (repo, token))
+        if path.startswith('git/ref/'):
+            self.branch_reads += 1
+            return dict(object=dict(sha='f'*40 if self.move_at_end and self.branch_reads > 1 else self.branch))
+        if path == 'git/commits/' + self.merge:
+            return dict(sha=self.merge, tree=dict(sha=self.tree), parents=[dict(sha=p) for p in self.parents])
+        if path.startswith('commits/'):
+            return self.pulls
+        if path.startswith('actions/runs?'):
+            return dict(total_count=self.count, workflow_runs=self.rows)
+        raise AssertionError(path)
+
+    def git(self, command, **kwargs):
+        if command == ['git', 'rev-parse', 'HEAD']: return self.local
+        if command == ['git', 'rev-list', '--parents', '-n', '1', self.merge]: return ' '.join(self.local_parents)
+        if command == ['git', 'rev-parse', self.merge+'^{tree}', self.head+'^{tree}']: return '\n'.join(self.trees)
+        raise AssertionError(command)
+
+    def invoke(self, receipt_error=None):
+        with patch.dict(os.environ, self.env, clear=True), \
+             patch.object(authority, 'api_get', side_effect=self.api), \
+             patch.object(authority.subprocess, 'check_output', side_effect=self.git), \
+             patch.object(authority.subprocess, 'run', side_effect=lambda args, **kw:
+                SimpleNamespace(returncode=0 if args[1]=='diff' or self.ancestor else 1)), \
+             patch.object(authority, 'fast_track_validation_receipt', side_effect=receipt_error, return_value=81) as receipts:
+            result = authority.fast_track_inventory_merge_proof('owner/repo', self.merge, 'fixture')
+            self.assertEqual(3, receipts.call_count)
+            self.assertEqual({self.head}, {call.args[3] for call in receipts.call_args_list})
+            return result
+
+    def test_exact_current_two_parent_merge_and_three_receipts(self):
+        result = self.invoke()
+        self.assertEqual((self.base, self.head, self.tree), (result['baseline'], result['candidate'], result['tree']))
+        self.assertFalse(result['authorizesMutation'])
+
+    def test_execution_identity_and_manual_replay_rejected(self):
+        for field in self.env:
+            with self.subTest(field=field):
+                old=self.env[field]; self.env[field]='other'
+                with self.assertRaisesRegex(RuntimeError, 'EXECUTION_CHANGED'): self.invoke()
+                self.env[field]=old
+        self.local='e'*40
+        with self.assertRaisesRegex(RuntimeError, 'EXECUTION_CHANGED'): self.invoke()
+
+    def test_branch_movement_before_or_during_receipt_verification(self):
+        self.branch='e'*40
+        with self.assertRaisesRegex(RuntimeError, 'HEAD_CHANGED'): self.invoke()
+        self.branch=self.merge; self.branch_reads=0; self.move_at_end=True
+        with self.assertRaisesRegex(RuntimeError, 'HEAD_CHANGED'): self.invoke()
+
+    def test_missing_extra_reordered_substituted_or_duplicate_parents(self):
+        for parents in ([self.base], [self.base,self.head,'e'*40], [self.head,self.base],
+                        ['e'*40,self.head], [self.base,self.base]):
+            with self.subTest(parents=parents):
+                self.parents=parents
+                with self.assertRaisesRegex(RuntimeError, 'PARENTS_'): self.invoke()
+
+    def test_changed_tree_or_unrelated_base(self):
+        self.trees=[self.tree,'e'*40]
+        with self.assertRaisesRegex(RuntimeError, 'TREE_OR_BASE_CHANGED'): self.invoke()
+        self.trees=[self.tree,self.tree]; self.ancestor=False
+        with self.assertRaisesRegex(RuntimeError, 'TREE_OR_BASE_CHANGED'): self.invoke()
+
+    def test_foreign_base_or_changed_reviewed_source_rejected(self):
+        self.pull['base']['repo']['full_name']='foreign/repo'
+        with self.assertRaisesRegex(RuntimeError, 'SOURCE_UNPROVEN'): self.invoke()
+        self.pull['base']['repo']['full_name']='owner/repo'; self.pull['head']['sha']='e'*40
+        with self.assertRaisesRegex(RuntimeError, 'SOURCE_UNPROVEN'): self.invoke()
+
+    def test_incomplete_pr_or_ci_inventory_rejected(self):
+        self.pulls=[self.pull]*100
+        with self.assertRaisesRegex(RuntimeError, 'PR_INCOMPLETE'): self.invoke()
+        self.pulls=[self.pull]; self.count=4
+        with self.assertRaisesRegex(RuntimeError, 'INVENTORY_INCOMPLETE'): self.invoke()
+
+    def test_wrong_head_stale_failed_or_forged_ci_receipts_rejected(self):
+        self.rows[0]['head_sha']='e'*40
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRED_VALIDATION_UNPROVEN'): self.invoke()
+        self.rows[0]['head_sha']=self.head
+        self.rows.append(dict(self.rows[0],id=99,conclusion='failure')); self.count=4
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRED_VALIDATION_UNPROVEN'): self.invoke()
+        self.rows.pop(); self.count=3
+        with self.assertRaisesRegex(RuntimeError, 'FORGED_RECEIPT'): self.invoke(RuntimeError('FORGED_RECEIPT'))
+
+
 class FastTrackArchitectureAdmissionTests(unittest.TestCase):
     def admission(self, architecture=True, isolated_event="pull_request"):
         candidate, revision = 'a' * 40, 'b' * 40

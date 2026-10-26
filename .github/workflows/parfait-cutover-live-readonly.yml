@@ -33,6 +33,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - name: Require completed fast-track source validation for this exact candidate
         env:
@@ -47,6 +48,10 @@ jobs:
           token=os.environ['GITHUB_TOKEN']
           if not re.fullmatch('[a-f0-9]{40}',candidate):
               raise SystemExit('EXACT_SOURCE_CANDIDATE_INVALID')
+          if candidate == os.environ.get('GITHUB_SHA'):
+              authority.fast_track_inventory_merge_proof(repository,candidate,token)
+              print('EXACT_FAST_TRACK_MERGED_SOURCE_VALIDATION: PROVEN')
+              raise SystemExit(0)
           pulls=authority.api_get(repository,f'commits/{candidate}/pulls?per_page=100',token)
           if not isinstance(pulls,list) or len(pulls)>=100:
               raise SystemExit('EXACT_SOURCE_PR_HISTORY_INCOMPLETE')

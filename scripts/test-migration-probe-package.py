@@ -75,6 +75,72 @@ class ObservedRehearsalReuseTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'ATTEMPT_MISMATCH'):self.prepare()
             restore.assert_not_called()
 
+    def same_merge(self):
+        import os
+        self.revision=self.run['head_sha']
+        os.environ['CANDIDATE_SHA']=self.revision
+        m.subprocess.check_output.return_value=self.revision
+
+    def test_same_merge_authentication_precedes_ready_or_reuse(self):
+        self.same_merge()
+        for pending in (0,2):
+            self.baseline.update(ready=not pending,pendingCount=pending)
+            with self.subTest(pending=pending), \
+                 patch.object(m.AUTHORITY,'fast_track_inventory_merge_proof',side_effect=RuntimeError('MERGE_UNPROVEN')), \
+                 patch.object(m,'restore_fast_track') as restore,patch.object(m,'rehearse_fast_track') as build, \
+                 patch.object(m,'verified_fast_track_observation') as observation:
+                with self.assertRaisesRegex(RuntimeError,'MERGE_UNPROVEN'):self.prepare()
+                observation.assert_not_called();restore.assert_not_called();build.assert_not_called()
+        self.baseline.update(ready=True,pendingCount=0)
+        with patch.object(m.AUTHORITY,'fast_track_inventory_merge_proof') as proof:
+            self.assertTrue(self.prepare())
+            proof.assert_called_once_with('owner/repo',self.revision,'fixture')
+
+    def test_same_merge_still_rejects_changed_observer_contract(self):
+        self.same_merge();self.baseline.update(ready=True,pendingCount=0)
+        with patch.object(m.AUTHORITY,'fast_track_inventory_merge_proof'), \
+             patch.object(m,'digest',return_value='d'*64),patch.object(m,'restore_fast_track') as restore:
+            with self.assertRaisesRegex(ValueError,'OBSERVER_CONTRACT_CHANGED'):self.prepare()
+            restore.assert_not_called()
+
+    def test_same_merge_rehearsal_uses_parent_impact_without_relabeling(self):
+        self.same_merge(); base='e'*40
+        self.observation.write_text(json.dumps(dict(producingAttempt=2,contractDigest='c'*64,observerArtifactId=42)))
+        calls=[]
+        def git(args,**kwargs):
+            calls.append(args)
+            if args==['git','rev-parse','HEAD']:return self.revision
+            if args==['git','diff','--name-only',base,self.revision]:return 'Infrastructure/Migrations/AddPayment.cs'
+            raise AssertionError(args)
+        package=SimpleNamespace(MIGRATION_BUNDLE='migration.bundle',build_component=lambda *args:dict(sha256='f'*64))
+        migration=SimpleNamespace(rehearse=lambda *args:dict(proven=True,bundleDigest='f'*64,
+            counts=dict(mutations=1,intents=1,successReceipts=2)))
+        import contextlib
+        for pending in (0,2):
+            self.baseline.update(pendingCount=pending)
+            directory=self.root/('bundle-'+str(pending))
+            with self.subTest(pending=pending), \
+                 patch.object(m,'trusted_fast_track_run',return_value=self.run), \
+                 patch.object(m.AUTHORITY,'api_get',return_value=dict(object=dict(sha=self.revision))), \
+                 patch.object(m.AUTHORITY,'fast_track_inventory_merge_proof',return_value=dict(baseline=base)) as proof, \
+                 patch.object(m.subprocess,'check_output',side_effect=git), \
+                 patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
+                 patch.object(m,'fast_track_observation_source',return_value=dict(attempt=2,artifactId=41)), \
+                 patch.object(m.importlib.util,'spec_from_file_location') as spec, \
+                 patch.object(m.importlib.util,'module_from_spec',side_effect=[package,migration]), \
+                 patch.object(m,'isolated_sql',return_value=contextlib.nullcontext('synthetic-local-only')):
+                m.rehearse_fast_track(self.revision,directory,self.observation,self.root/'probe')
+                proof.assert_called_once_with('owner/repo',self.revision,'fixture')
+                result=json.loads((directory/'rehearsal.json').read_text())
+                self.assertEqual(self.revision,result['candidate'])
+                self.assertEqual(self.revision,result['fastTrackHead'])
+                self.assertEqual(self.revision,result['toolRevision'])
+                self.assertFalse(result['authorizesMutation'])
+                if pending:self.assertTrue(result['proven'])
+                else:spec.assert_not_called()
+        self.assertEqual(2,calls.count(['git','diff','--name-only',base,self.revision]))
+
+
 
 class IsolatedSqlTests(unittest.TestCase):
     def command(self, args, **kwargs):
