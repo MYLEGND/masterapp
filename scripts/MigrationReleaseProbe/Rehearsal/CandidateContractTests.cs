@@ -54,6 +54,8 @@ internal static class CandidateContractTests
                 Training(assembly.CreateMigration(training, db.Database.ProviderName!).UpOperations);
             if (assembly.Migrations.TryGetValue(RehearsalFixture.ManagementMigration, out var management))
                 Management(assembly.CreateMigration(management, db.Database.ProviderName!).UpOperations, path);
+            if (assembly.Migrations.TryGetValue(CandidateContract.BrowserMigration, out var browser))
+                Browser(assembly.CreateMigration(browser, db.Database.ProviderName!).UpOperations, path, CandidateContract.Current(db));
             PredicateBounds();
             DefaultDefinitions();
             CatalogPlans(CandidateContract.Current(db));
@@ -68,6 +70,145 @@ internal static class CandidateContractTests
         finally { File.Delete(path); }
         Console.WriteLine("LEGEND_MIGRATION_CONTRACT_TESTS:PASS");
     }
+    private static void Browser(IReadOnlyList<MigrationOperation> operations, string path, CandidateContract.Contract contract)
+    {
+        var id = CandidateContract.BrowserMigration;
+        var entry = CandidateContract.Describe(id, operations);
+        Check(entry.Supported && entry.Columns.Length == 2 && entry.Indexes.Length == 2 &&
+            entry.Guards.SequenceEqual(new[] { CandidateContract.BrowserTransition }), "exact seven-operation browser transition");
+        File.WriteAllText(path, JsonSerializer.Serialize(new CandidateContract.Contract(3, [entry]), CandidateContract.Json));
+        Check(CandidateContract.Read(path).Migrations.Single().Supported, "browser roundtrip");
+        for (var i = 0; i < operations.Count; i++)
+        {
+            Check(!CandidateContract.Describe(id, operations.Where((_, n) => n != i).ToArray()).Supported, "omitted operation rejected");
+            var changed = operations.ToArray();
+            (changed[i], changed[(i + 1) % changed.Length]) = (changed[(i + 1) % changed.Length], changed[i]);
+            Check(!CandidateContract.Describe(id, changed).Supported, "reordered operations rejected");
+            operations[i].AddAnnotation("Unreviewed", true);
+            Check(!CandidateContract.Describe(id, operations).Supported, "annotated operation rejected");
+            operations[i].RemoveAnnotation("Unreviewed");
+        }
+        Check(!CandidateContract.Describe(id, [..operations, operations[0]]).Supported, "appended operation rejected");
+        var alter = operations.OfType<AlterColumnOperation>().Single();
+        alter.OldColumn.IsNullable = true;
+        Check(!CandidateContract.Describe(id, operations).Supported, "old column drift rejected");
+        alter.OldColumn.IsNullable = false;
+        alter.OldColumn.AddAnnotation("Unreviewed", true);
+        Check(!CandidateContract.Describe(id, operations).Supported, "old column annotations rejected");
+        alter.OldColumn.RemoveAnnotation("Unreviewed");
+        alter.MaxLength = 199;
+        Check(!CandidateContract.Describe(id, operations).Supported, "new metadata drift rejected");
+        alter.MaxLength = 200;
+        var check = operations.OfType<AddCheckConstraintOperation>().Single();
+        var original = check.Sql; check.Sql = original.Replace("64", "63");
+        Check(!CandidateContract.Describe(id, operations).Supported, "check drift rejected"); check.Sql = original;
+        Check(CandidateContract.Describe(id, operations).Supported, "mutations restored");
+        var source = contract.Migrations.Single(m => m.Id == RehearsalFixture.ReceptionistMigration);
+        var originalJson = JsonSerializer.Serialize(source, CandidateContract.Json);
+        var pending = CandidateContract.Plan([source, entry], [], CancellationToken.None);
+        Check(!pending.Commands.Any(c => c.Parameters.Any(p => p.Name == "@table" && Equals(p.Value, "ReceptionistCalls")) &&
+            c.Kind != CandidateContract.CatalogKind.Table), "absent coordination table has no child queries");
+        var before = CandidateContract.Plan([source, entry], [source.Id], CancellationToken.None);
+        var after = CandidateContract.Plan([source, entry], [source.Id, entry.Id], CancellationToken.None);
+        Check(before.Commands.Count > 0 && after.Commands.Count > 0, "both applied schema states planned");
+        Check(originalJson == JsonSerializer.Serialize(source, CandidateContract.Json), "predecessor serialization unchanged");
+        try { CandidateContract.Plan([source, entry], [entry.Id], CancellationToken.None); throw new Exception("Invalid browser history accepted"); }
+        catch (ProbeObservationFailure) { }
+        var columns = source.Tables.Single(t => t.Name == "ReceptionistCalls").Columns.Concat(entry.Columns).ToArray();
+        Same(CandidateContract.BrowserCheckSql, CandidateContract.BrowserCheckSql.Replace("LEN([BrowserOfferSha256]) = 64", "len([BrowserOfferSha256])=(64)"), columns);
+        foreach (var invalid in new[] { "LEN([State], 1)=64", "LEN('literal')=64", "LEN([BrowserCreationId])=64",
+            "LEN([Missing])=64", "LEN(LEN([State]))=64", "DATALENGTH([State])=64" })
+            Check(CandidateContract.CheckCanonical(invalid, columns) is null, "bounded string LEN only");
+        Check(CandidateContract.CheckCanonical("LEN([State])=64", columns) !=
+            CandidateContract.CheckCanonical("LEN([BrowserOfferSha256])=64", columns), "LEN retains column identity");
+        BrowserCatalog(source, entry, before, after);
+        foreach (var bad in new[] { entry with { Guards = [] }, entry with { Indexes = [] },
+            entry with { Columns = [entry.Columns[0] with { Nullable = false }, entry.Columns[1]] } })
+        {
+            File.WriteAllText(path, JsonSerializer.Serialize(new CandidateContract.Contract(3, [bad]), CandidateContract.Json));
+            try { CandidateContract.Read(path); throw new Exception("Mutated browser descriptor accepted"); }
+            catch (InvalidOperationException) { }
+        }
+        try { CandidateContract.Plan([source with { Columns = [] }, entry], [source.Id, entry.Id], CancellationToken.None);
+            throw new Exception("Mutated predecessor accepted"); } catch (ProbeObservationFailure) { }
+        Console.WriteLine("BROWSER_CONTRACT:PROVEN:" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
+            JsonSerializer.SerializeToUtf8Bytes(entry, CandidateContract.Json))));
+    }
+
+    private static void BrowserCatalog(CandidateContract.Entry source, CandidateContract.Entry browser,
+        CandidateContract.CatalogBatch before, CandidateContract.CatalogBatch after)
+    {
+        var original = source.Tables.Single(t => t.Name == "ReceptionistCalls");
+        const string providerIndex = "IX_ReceptionistCalls_Provider_ProviderProjectKey_ProviderSessionId";
+        foreach (var applied in new[] { false, true })
+        {
+            var columns = original.Columns.Select(c => c.Name == "ProviderSessionId" ? c with { Nullable = applied } : c)
+                .Concat(applied ? browser.Columns : []).ToArray();
+            var snapshots = new Dictionary<CandidateContract.CatalogKind, System.Data.DataTable>();
+            foreach (var kind in new[] { CandidateContract.CatalogKind.Columns, CandidateContract.CatalogKind.Index, CandidateContract.CatalogKind.Checks })
+            {
+                var data = new System.Data.DataTable();
+                foreach (var type in CandidateContract.CatalogBatch.Types(kind)) data.Columns.Add("c" + data.Columns.Count, type);
+                snapshots.Add(kind, data);
+            }
+            var columnData = snapshots[CandidateContract.CatalogKind.Columns];
+            foreach (var c in columns)
+            {
+                var type = c.Type.Split('(')[0];
+                var length = type == "nvarchar" ? (c.Type.Contains("max") ? -1 : int.Parse(c.Type.Split('(')[1].TrimEnd(')')) * 2) : 16;
+                columnData.Rows.Add("dbo", original.Name, c.Name, type, (short)length, c.Nullable, DBNull.Value,
+                    (byte)(type == "datetime2" ? 7 : c.Scale ?? 0), false, false, (byte)(c.Precision ?? 0), (object?)c.Collation ?? DBNull.Value);
+            }
+            var indexData = snapshots[CandidateContract.CatalogKind.Index];
+            foreach (var name in new[] { "Provider", "ProviderProjectKey", "ProviderSessionId" })
+                indexData.Rows.Add("dbo", original.Name, providerIndex, name, true, false,
+                    applied ? "([ProviderSessionId] IS NOT NULL)" : DBNull.Value, false, false, false, false, false);
+            if (applied) indexData.Rows.Add("dbo", original.Name, "IX_ReceptionistCalls_BrowserCreationId", "BrowserCreationId", true, false,
+                "([BrowserCreationId] IS NOT NULL)", false, false, false, false, false);
+            var checkData = snapshots[CandidateContract.CatalogKind.Checks];
+            foreach (var c in original.Checks.Concat(applied ? new[] { new CandidateContract.CheckConstraint("CK_ReceptionistCall_BrowserCreation", CandidateContract.BrowserCheckSql) } : []))
+                checkData.Rows.Add("dbo", original.Name, c.Name, c.Sql, false, false, false);
+            var commands = (applied ? after : before).Commands.Where(c => snapshots.ContainsKey(c.Kind ?? CandidateContract.CatalogKind.Table) &&
+                c.Parameters.Any(p => p.Name == "@table" && Equals(p.Value, original.Name)) &&
+                (c.Kind != CandidateContract.CatalogKind.Index || c.Parameters.Any(p => p.Name == "@name" &&
+                    (Equals(p.Value, providerIndex) || Equals(p.Value, "IX_ReceptionistCalls_BrowserCreationId"))))).ToArray();
+            void Verify()
+            {
+                foreach (var command in commands)
+                {
+                    using var selected = CandidateContract.CatalogBatch.Select(snapshots[command.Kind!.Value], command, CancellationToken.None);
+                    using var reader = selected.CreateDataReader();
+                    CandidateContract.CatalogBatch.VerifyResults(reader, [command.Validate], CancellationToken.None).GetAwaiter().GetResult();
+                }
+            }
+            void Drift(System.Data.DataRow row, int field, object value)
+            {
+                var saved = row[field]; row[field] = value;
+                try { Verify(); throw new Exception("Browser catalog drift accepted"); }
+                catch (ProbeObservationFailure) { }
+                finally { row[field] = saved; }
+            }
+            Verify();
+            Drift(columnData.Rows.Cast<System.Data.DataRow>().Single(r => Equals(r[2], "ProviderSessionId")), 5, !applied);
+            Drift(indexData.Rows[0], 6, applied ? DBNull.Value : "([ProviderSessionId] IS NOT NULL)");
+            foreach (var field in new[] { 4, 5, 6 }) Drift(checkData.Rows[0], field, true);
+            if (applied)
+            {
+                Drift(columnData.Rows.Cast<System.Data.DataRow>().Single(r => Equals(r[2], "BrowserOfferSha256")), 4, (short)126);
+                Drift(checkData.Rows[checkData.Rows.Count - 1], 3, CandidateContract.BrowserCheckSql.Replace("64", "63"));
+                Drift(checkData.Rows[checkData.Rows.Count - 1], 2, "UnexpectedCheck");
+                Drift(indexData.Rows[indexData.Rows.Count - 1], 4, false);
+            }
+            else
+            {
+                checkData.Rows.Add("dbo", original.Name, "CK_ReceptionistCall_BrowserCreation", CandidateContract.BrowserCheckSql, false, false, false);
+                try { Verify(); throw new Exception("Premature browser check accepted"); } catch (ProbeObservationFailure) { }
+            }
+            foreach (var data in snapshots.Values) data.Dispose();
+        }
+        Console.WriteLine("BROWSER_CATALOG_STATES_AND_DRIFT:PASS");
+    }
+
     private static void Management(IReadOnlyList<MigrationOperation> operations, string path)
     {
         var entry = CandidateContract.Describe(RehearsalFixture.ManagementMigration, operations);

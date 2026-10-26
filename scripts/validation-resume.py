@@ -4131,6 +4131,7 @@ def fast_track_scope(paths):
         'Infrastructure/Bookings/ReceptionistBookingReadinessReader.cs',
         'Infrastructure/Businesses/BusinessWorkspaceControllerBase.cs',
         'Infrastructure/Businesses/BusinessWorkspaceControllerBase.Receptionist.cs',
+        'Infrastructure/Businesses/BusinessWorkspaceControllerBase.ReceptionistManagement.cs',
         'Infrastructure/Businesses/CommerceBusinessProvisioningService.cs',
         'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.cs',
         'Infrastructure/Households/HouseholdMembershipService.cs',
@@ -4159,6 +4160,7 @@ def fast_track_scope(paths):
         'Infrastructure/Reception/ReceptionistAdmissionService.cs',
         'Infrastructure/Reception/ReceptionistAdmissionService.Accounting.cs',
         'Infrastructure/Reception/ReceptionistAdmissionService.Booking.cs',
+        'Infrastructure/Reception/ReceptionistAdmissionService.Browser.cs',
         'Infrastructure/Reception/ReceptionistAdmissionService.Operator.cs',
         'Infrastructure/Reception/ReceptionistAdmissionService.Projections.cs',
         'Infrastructure/Reception/ReceptionistAdmissionService.ProviderWork.cs',
@@ -4170,8 +4172,11 @@ def fast_track_scope(paths):
         'Infrastructure/Reception/ReceptionistContentReview.cs',
         'Infrastructure/Reception/ReceptionistCredentialEnvelope.cs',
         'Infrastructure/Reception/ReceptionistIngressController.cs',
+        'Infrastructure/Reception/ReceptionistBrowserController.cs',
         'Infrastructure/Reception/ReceptionistOperatorContracts.cs',
         'Infrastructure/Reception/ReceptionistOperatorService.cs',
+        'Infrastructure/Reception/ReceptionistOperatorService.Management.cs',
+        'Infrastructure/Reception/ReceptionistOperatorService.Stored.cs',
         'Infrastructure/Reception/ReceptionistRuntimeAuthority.cs',
         'Infrastructure/Reception/ReceptionistRuntimeWorker.cs',
         'Infrastructure/Reception/ReceptionistServiceRegistration.cs',
@@ -4182,6 +4187,7 @@ def fast_track_scope(paths):
         'SHARED/Analytics/GrowthEconomicsAndOpenAiFeedContracts.cs',
         'SHARED/Analytics/MarketingManagerContracts.cs',
         'SHARED/Analytics/ReceptionistConfiguration.cs',
+        'SHARED/Analytics/ReceptionistManagement.cs',
         'SHARED/Analytics/ReceptionistContentReview.cs',
         'SHARED/Analytics/ReceptionistSetup.cs',
     }
@@ -8774,6 +8780,9 @@ REVIEWED_RECEPTIONIST_BASE_RUNTIME = '22534ca70dc760d4c10e2c9726346c84315d2b7179
 REVIEWED_RECEPTIONIST_RUNTIME = '4f6153929faff37fd4209636fa912c8e147adc2c96b6644ad084047e9a597a07'
 REVIEWED_RECEPTIONIST_ENTRY = 'c457b4d88db0b998b778b2a789e49412b6218e9b87b4f511de0746d739087c8b'
 REVIEWED_MANAGEMENT_ENTRY = '5578b38e0ed342ffd24b958f8d2395e13c4933d5ad477fc58ed714393a86a897'
+REVIEWED_BROWSER_ENTRY = '19163c8f4ecf7fecb275ed0052dfa6fc161d586e989360b7c2f51c983b7353d8'
+# Remains closed until independent acceptance pins the complete candidate closure.
+REVIEWED_BROWSER_RUNTIME_PAIRS = frozenset()
 
 REVIEWED_TRAINING_ENTRY = '49ef5a95c19084b799e9a92a5d0c496792dbdcab367e4360795d55e443338434'
 # Empty until independent acceptance freezes the exact application dependency closure.
@@ -8791,6 +8800,45 @@ REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS = frozenset({
     ('3fbe9ce6512a2ebb7db43f0f45a5227786094ac6b287ccc3eca40c59da05f6e0',
      'e097be398e774e6226b9a7cb72b41b7eec92eb8a3043af8e16e412381ca0051f')
 })
+
+
+def reviewed_browser_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
+    if ((trusted.get('runtimeIdentity'), current.get('runtimeIdentity')) not in REVIEWED_BROWSER_RUNTIME_PAIRS
+        or not current.get('toolIdentity') or current.get('toolIdentity') != trusted.get('toolIdentity')
+        or not current.get('executionIdentity') or current.get('executionIdentity') != trusted.get('executionIdentity')):
+        return False
+    if (not isinstance(contract, dict) or not isinstance(approved_contract, dict)
+        or set(contract) != {'schemaVersion', 'migrations'} or set(approved_contract) != set(contract)
+        or type(contract['schemaVersion']) is not int or contract['schemaVersion'] != 3
+        or type(approved_contract['schemaVersion']) is not int or approved_contract['schemaVersion'] != 3
+        or not isinstance(contract['migrations'], list) or not isinstance(approved_contract['migrations'], list)
+        or not 1 <= len(approved_contract['migrations']) < len(contract['migrations']) <= 10000
+        or contract['migrations'][:len(approved_contract['migrations'])] != approved_contract['migrations']):
+        return False
+    reviewed = [('20261020160000_AddReceptionistCoordination', REVIEWED_RECEPTIONIST_ENTRY),
+        ('20261026000134_AddCanonicalSubscriptionPaymentCompletion', REVIEWED_CANONICAL_PAYMENT_ENTRY),
+        ('20261026063902_AddScopedTrainingSubscriptions', REVIEWED_TRAINING_ENTRY),
+        ('20261026210738_AddReceptionistManagement', REVIEWED_MANAGEMENT_ENTRY),
+        ('20261026223148_ReceptionistBrowserCreation', REVIEWED_BROWSER_ENTRY)]
+    suffix = contract['migrations'][len(approved_contract['migrations']):]
+    if not 1 <= len(suffix) <= len(reviewed):
+        return False
+    expected = reviewed[-len(suffix):]
+    if len(suffix) < len(reviewed) and approved_contract['migrations'][-1].get('id') != reviewed[-len(suffix)-1][0]:
+        return False
+    previous = approved_contract['migrations'][-1].get('id')
+    for entry, (migration_id, digest) in zip(suffix, expected):
+        if (not isinstance(entry, dict) or entry.get('id') != migration_id or entry.get('supported') is not True
+            or not isinstance(previous, str) or previous >= migration_id
+            or hashlib.sha256(json.dumps(entry, sort_keys=True, separators=(',', ':'),
+                ensure_ascii=True, allow_nan=False).encode()).hexdigest() != digest):
+            return False
+        previous = migration_id
+    if subprocess.run(['git', 'merge-base', '--is-ancestor', approved, candidate], capture_output=True).returncode:
+        return False
+    if subprocess.run(['git', 'diff', '--quiet', approved, candidate, '--', 'scripts', '.github'], capture_output=True).returncode:
+        return False
+    return True
 
 
 def reviewed_training_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
@@ -8898,6 +8946,10 @@ def candidate_migration_contract_proven(candidate, approved, contract, approved_
     trusted = migration_probe_identity(approved, approved)
     rule = 'approved-definitions-exact'
     if current['runtimeIdentity'] != trusted['runtimeIdentity']:
+        if reviewed_browser_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
+            return {'state': 'proven', 'rule': 'approved-prefix-reviewed-browser-entry',
+                    'runtimeIdentity': current['runtimeIdentity'],
+                    'approvedRuntimeIdentity': trusted['runtimeIdentity']}
         if reviewed_training_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
             return {'state': 'proven', 'rule': 'approved-prefix-reviewed-training-entry',
                     'runtimeIdentity': current['runtimeIdentity'],

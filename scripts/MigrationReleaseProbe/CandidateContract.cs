@@ -65,9 +65,17 @@ internal static partial class CandidateContract
     internal static CatalogBatch Plan(IEnumerable<Entry> relevant, string[] applied, CancellationToken cancellation)
     {
         var batch = new CatalogBatch();
-        foreach (var migration in relevant)
+        var original = relevant.ToArray();
+        if (original.Any(m => !ValidStructures(m))) throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
+        var entries = EffectiveBrowserSchema(original, applied);
+        foreach (var migration in entries)
         {
             var isApplied = applied.Contains(migration.Id, StringComparer.Ordinal);
+            if (migration.Id == BrowserMigration)
+            {
+                PlanBrowser(batch, migration, isApplied, applied.Contains(CoordinationMigration), cancellation);
+                continue;
+            }
             PlanStructures(batch, migration, isApplied, cancellation);
             // Pending new tables were proven absent as whole objects. Querying
             // every column of a nonexistent table adds no evidence. Applied

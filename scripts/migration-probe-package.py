@@ -662,7 +662,8 @@ def test_schema_contract(directory):
          'LEGEND_CANONICAL_PAYMENT_APPEND_TEST:PROVEN'),
         ('20261026063902_AddScopedTrainingSubscriptions', AUTHORITY.REVIEWED_TRAINING_ENTRY,
          'LEGEND_TRAINING_APPEND_TEST:PROVEN'),
-        ('20261026210738_AddReceptionistManagement', AUTHORITY.REVIEWED_MANAGEMENT_ENTRY, 'LEGEND_MANAGEMENT_APPEND_TEST:PROVEN')]
+        ('20261026210738_AddReceptionistManagement', AUTHORITY.REVIEWED_MANAGEMENT_ENTRY, 'LEGEND_MANAGEMENT_APPEND_TEST:PROVEN'),
+        ('20261026223148_ReceptionistBrowserCreation', AUTHORITY.REVIEWED_BROWSER_ENTRY, 'LEGEND_BROWSER_APPEND_TEST:PROVEN')]
     migrations = current['migrations']
     for index, (migration_id, digest, marker) in enumerate(reviewed):
         entries = [row for row in migrations if row.get('id') == migration_id]
@@ -682,7 +683,9 @@ def test_schema_contract(directory):
         '-c', 'Release', '--nologo', '-o', str(directory), '-m:1', '-nr:false',
         '-p:UseSharedCompilation=false'], check=True)
     scenarios = ['payment-and-successors']
-    if any(row.get('id') == reviewed[3][0] for row in migrations):
+    if any(row.get('id') == reviewed[4][0] for row in migrations):
+        scenarios.extend(['canonical-payment-training-management-browser', 'training-management-browser', 'management-and-browser', 'browser-only'])
+    elif any(row.get('id') == reviewed[3][0] for row in migrations):
         scenarios.extend(['canonical-payment-training-management', 'training-and-management', 'management-only'])
     elif any(row.get('id') == reviewed[2][0] for row in migrations):
         scenarios.extend(['canonical-payment-and-training', 'training-only'])
