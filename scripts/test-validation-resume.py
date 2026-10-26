@@ -165,7 +165,7 @@ class NonpublishingPreparationTests(unittest.TestCase):
         self.assertIn('build-component --revision',text)
         self.assertIn('--component protect',text)
         self.assertIn('--component parfait',text)
-        for name in ('approved-head-preflight','validate','validated-release-package-plan',
+        for name in ('approved-head-preflight','validate',
                      'wake-release-lifecycle-after-package-backfill','validated-migration-probe'):
             self.assertIn('!inputs.preparation_only',jobs[name]['if'])
 
@@ -3569,10 +3569,8 @@ jobs:
 
     def test_lifecycle_and_release_evidence_lookup_are_canonicalized(self):
         lifecycle = (ROOT / ".github" / "workflows" / "legend-release-lifecycle.yml").read_text()
-        self.assertIn("scripts/validation-resume.py lifecycle-evidence", lifecycle)
-        identity_step = lifecycle.split("      - name: Resolve lifecycle validation authority identity\n", 1)[1].split("      - name:", 1)[0]
-        self.assertNotIn("gh api", identity_step)
-        self.assertNotIn("sha256sum", identity_step)
+        self.assertNotIn('scripts/validation-resume.py lifecycle-evidence', lifecycle)
+        self.assertIn('LEGEND_RELEASE_LIFECYCLE_RETIRED', lifecycle)
 
         release = (ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml").read_text()
         validated = release.split("      - name: Reuse exact successful validation package when available\n", 1)[1].split("      - name:", 1)[0]

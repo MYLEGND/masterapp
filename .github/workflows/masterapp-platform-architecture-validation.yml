@@ -4,26 +4,8 @@ name: MasterApp platform architecture validation
 # repaired booking harness validation trigger: d5db695
 
 on:
-  push:
-    branches:
-      - architecture/masterapp-platform-ownership-20260925
-      - architecture/masterapp-authority-completion-20260925
-      - architecture/consolidated-platform-domain-release-20260925
-      - architecture/protect-domain-proof-20260925
-      - architecture/analytics-meta-scope-completion-20260925
-      - repair/analytics-canonical-reconciliation-20260926
-      - repair/scoped-website-analytics-canonical-20260926
-      - architecture/meta-test-events-seo-20260926
-      - architecture/provider-neutral-marketing-destinations-20260926
-      - feature/openai-ads-direct-connect-ui-20260926
-      - fix/openai-ads-account-readiness-20260926
-      - fix/openai-measurement-refresh-failsoft-20260926
-      - fix/openai-pixel-provisioning-outcome-20260927
-    paths-ignore:
-      - 'Docs/**'
   pull_request:
     branches:
-      - legend/approved-changes
       - Legend/fast-track-release
   workflow_dispatch:
     inputs:
@@ -105,7 +87,7 @@ jobs:
 
   approved-head-preflight:
     name: approved-head-preflight
-    if: ${{ !inputs.preparation_only }}
+    if: ${{ github.event_name == 'pull_request' && github.base_ref == 'Legend/fast-track-release' && !inputs.preparation_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -123,7 +105,7 @@ jobs:
             --repository "${{ github.repository }}" \
             --current-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
             --event "${{ github.event_name }}" \
-            --base-branch "${{ github.base_ref || 'legend/approved-changes' }}" \
+            --base-branch "${{ github.base_ref || 'Legend/fast-track-release' }}" \
             --output "$RUNNER_TEMP/approved-head-preflight.json"
 
   validate:
@@ -165,7 +147,7 @@ jobs:
           plan="$RUNNER_TEMP/validation-resume.json"
           python3 scripts/validation-resume.py plan \
             --workflow masterapp-platform-architecture-validation.yml \
-            --validation-base "${{ github.base_ref || 'legend/approved-changes' }}" \
+            --validation-base "${{ github.base_ref || 'Legend/fast-track-release' }}" \
             --current-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
             --current-run-id "${{ github.run_id }}" \
             --run-attempt "${{ github.run_attempt }}" \
@@ -213,78 +195,11 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          VALIDATION_BASE: ${{ github.base_ref || 'legend/approved-changes' }}
+          VALIDATION_BASE: ${{ github.base_ref || 'Legend/fast-track-release' }}
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate lifecycle; then exit 0; fi
-          # Historical live attestation is not fast-track source admission.
-          if [ "$VALIDATION_BASE" = 'legend/approved-changes' ]; then
-          # Execute the canonical, strictly read-only historical EF no-write
-          # attestor with ACTUAL immutable Actions history BEFORE release.
-          # Prevents another expensive deployment from discovering a false
-          # historical no-write denial that tests with mocks could not catch.
-          python3 - <<'PYLEGACY'
-          import importlib.util, os
-          spec = importlib.util.spec_from_file_location('authority', 'scripts/validation-resume.py')
-          authority = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(authority)
-          repo, token = os.environ['GITHUB_REPOSITORY'], os.environ['GH_TOKEN']
-          run_id = 37129696534
-          run = authority.api_get(repo, f'actions/runs/{run_id}', token)
-          jobs = authority.api_get(repo, f'actions/runs/{run_id}/attempts/1/jobs?per_page=100', token)
-          found = [job for job in jobs.get('jobs', []) if job.get('name') == 'release']
-          if len(found) != 1:
-              raise SystemExit('LEGEND_EF_NONENTRY:ORIGINAL_JOB_UNPROVEN')
-          job = found[0]
-          matching = [step for step in job.get('steps', [])
-                      if step.get('name') == 'Apply additive diagnostics migrations before restarting apps']
-          if len(matching) != 1 or not authority._attested_legacy_ef_factory_nonentry(
-                  repo, run, job, matching[0], 1, token):
-              raise SystemExit('LEGEND_EF_NONENTRY:ORIGINAL_PROOF_REJECTED')
-          print('LEGEND_EF_NONENTRY:AUTHENTICATED_READ_ONLY')
-          # Positively exercise the SAME canonical historical migration proof
-          # against the next original October 3 no-SQL baseline rejection.
-          # No Azure connection, migration write or independent receipt.
-          run_id = 37102199040
-          run = authority.api_get(repo, f'actions/runs/{run_id}', token)
-          jobs = authority.api_get(repo, f'actions/runs/{run_id}/attempts/1/jobs?per_page=100', token)
-          found = [job for job in jobs.get('jobs', []) if job.get('name') == 'release']
-          if len(found) != 1:
-              raise SystemExit('LEGEND_BASELINE_NONENTRY:ORIGINAL_JOB_UNPROVEN')
-          job = found[0]
-          matches = [step for step in job.get('steps', [])
-                     if step.get('name') == 'Apply additive diagnostics migrations before restarting apps']
-          source = authority._release_history_source(
-              repo, run['head_sha'],
-              '.github/workflows/' + authority.DIRECT_RELEASE_WORKFLOW, token)
-          if len(matches) != 1 or not authority._legacy_migration_noop(
-                  repo, run, job, matches[0], source, token):
-              raise SystemExit('LEGEND_BASELINE_NONENTRY:ORIGINAL_PROOF_REJECTED')
-          print('LEGEND_BASELINE_NONENTRY:AUTHENTICATED_READ_ONLY')
-          # Read-only ORIGINAL cancelled parent; its successful migration
-          # no-change step is unrelated to later cancelled app publication.
-          run_id = 37091277402
-          run = authority.api_get(repo, f'actions/runs/{run_id}', token)
-          jobs = authority.api_get(repo, f'actions/runs/{run_id}/attempts/1/jobs?per_page=100', token)
-          found = [job for job in jobs.get('jobs', []) if job.get('name') == 'release']
-          if len(found) != 1:
-              raise SystemExit('LEGEND_CANCELLED_NOOP:JOB_UNPROVEN')
-          job = found[0]
-          matches = [step for step in job.get('steps', [])
-                     if step.get('name') == 'Apply additive diagnostics migrations before restarting apps']
-          original = authority._release_history_source(
-              repo, run['head_sha'],
-              '.github/workflows/' + authority.DIRECT_RELEASE_WORKFLOW, token)
-          if len(matches) != 1 or not authority._legacy_migration_noop(
-                  repo, run, job, matches[0], original, token):
-              raise SystemExit('LEGEND_CANCELLED_NOOP:PROOF_REJECTED')
-          print('LEGEND_CANCELLED_NOOP:AUTHENTICATED_READ_ONLY')
-          PYLEGACY
-          # Enumerate ALL retained historical release attempts before publishing;
-          # do not repeatedly discover only the first failing historical record
-          # during a costly production migration preflight.
-          LEGEND_MIGRATION_AUDIT_OUTPUT="$RUNNER_TEMP/legend-migration-history-audit.json" \
-            python3 scripts/release-migration-history-audit.py
-          fi
+          # Retain synthetic historical-proof contracts, without querying retired
+          # live workflow history as a prerequisite to fast-track validation.
           python3 scripts/test-release-migration-history-audit.py
           python3 scripts/test-release-retired-original-evidence.py
           python3 scripts/test-release-lifecycle.py
@@ -294,15 +209,6 @@ jobs:
           python3 scripts/release-workflow.py --check
           npm ci --ignore-scripts --prefix scripts/release-artifacts
           node --test scripts/release-artifacts/test-transport.cjs
-
-      - name: Retain complete read-only migration history audit
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: legend-migration-history-audit-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/legend-migration-history-audit.json
-          retention-days: 30
-          if-no-files-found: warn
 
       - name: Run authenticated mobile authority tests
         id: gate_mobile
@@ -388,33 +294,11 @@ jobs:
         id: gate_renderer_tests
         shell: bash
         env:
-          VALIDATION_BASE: ${{ github.base_ref || 'legend/approved-changes' }}
+          VALIDATION_BASE: ${{ github.base_ref || 'Legend/fast-track-release' }}
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-tests; then exit 0; fi
-          set +e
+          # Every renderer failure fails this gate; no retired-baseline exception.
           (cd Legend-Website && npm run test:renderer)
-          renderer_rc=$?
-          set -e
-          if [ "$renderer_rc" -eq 0 ]; then
-            exit 0
-          fi
-
-          # A failed fast-track renderer test is a failed gate.
-          if [ "$VALIDATION_BASE" != 'legend/approved-changes' ]; then
-            exit "$renderer_rc"
-          fi
-          git fetch --no-tags origin legend/approved-changes
-          base=origin/legend/approved-changes
-
-          # Only excuse an approved-baseline failure when every renderer input,
-          # its tests, and the shared runtime are byte-identical to that baseline.
-          git diff --quiet "$base" -- Legend-Website/scripts/render-business.mjs Legend-Website/scripts/render-business.test.mjs Legend-Website/package-lock.json
-          git diff --quiet "$base" -- SHARED/WebsitePlatform/legend-public-cms.js SHARED/WebsitePlatform/legend-public-web.js SHARED/WebsitePlatform/legend-public-web.css
-          git diff --quiet "$base" -- tests/website ':!tests/website/legend-public-cms.test.mjs'
-          git diff --quiet "$base" -- tests/website/legend-public-cms.test.mjs
-          cmp -s SHARED/WebsitePlatform/tracking.js <(git show "$base:SHARED/WebsitePlatform/tracking.js")
-          cmp -s SHARED/WebsitePlatform/meta-signal-intelligence.js <(git show "$base:SHARED/WebsitePlatform/meta-signal-intelligence.js")
-          echo "Renderer suite failure also exists with byte-identical approved renderer inputs."
 
       - name: Install canonical shared CMS test dependencies
         id: gate_cms_install
@@ -755,12 +639,7 @@ jobs:
   validated-release-package-plan:
     needs: [approved-head-preflight, validated-migration-probe]
     name: validated-release-package-plan
-    if: >-
-      always() &&
-      needs.approved-head-preflight.result == 'success' &&
-      (github.event_name != 'pull_request' || needs.validated-migration-probe.result == 'success') &&
-      !inputs.preparation_only &&
-      ((github.event_name == 'pull_request' && github.base_ref == 'legend/approved-changes') || (github.event_name == 'workflow_dispatch' && inputs.package_revision != ''))
+    if: ${{ false }} # Retired approved-branch producer.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
@@ -873,10 +752,7 @@ jobs:
   validated-release-package-components:
     needs: validated-release-package-plan
     name: validated-release-package-components (${{ matrix.component }})
-    if: >-
-      always() && !cancelled() &&
-      needs.validated-release-package-plan.result == 'success' &&
-      needs.validated-release-package-plan.outputs.components_needed == 'true'
+    if: ${{ false }} # Retired approved-branch producer.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
@@ -971,14 +847,7 @@ jobs:
       - validated-release-package-plan
       - validated-release-package-components
     name: validated-release-package
-    if: >-
-      always() && !cancelled() &&
-      ((github.event_name == 'pull_request' && github.base_ref == 'legend/approved-changes') || (github.event_name == 'workflow_dispatch' && inputs.package_revision != '')) &&
-      needs.validated-release-package-plan.result == 'success' &&
-      ((needs.validated-release-package-components.result == 'success' &&
-        needs.validated-release-package-plan.outputs.components_needed == 'true') ||
-       (needs.validated-release-package-components.result == 'skipped' &&
-        needs.validated-release-package-plan.outputs.components_needed == 'false'))
+    if: ${{ false }} # Retired approved-branch producer.
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -1162,29 +1031,16 @@ jobs:
           overwrite: true
 
   wake-release-lifecycle-after-package-backfill:
-    needs: validated-release-package
-    if: always() && !inputs.preparation_only && github.event_name == 'workflow_dispatch' && inputs.package_revision != ''
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    permissions:
-      contents: read
-      actions: write
+    if: ${{ false && !inputs.preparation_only }}
+    runs-on: ubuntu-24.04
+    permissions: {}
     steps:
-      - name: Checkout protected lifecycle wake authority
-        uses: actions/checkout@v4
-        with:
-          ref: legend/approved-changes
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Wake protected lifecycle after terminal package backfill
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/wake-release-lifecycle.py
+      - run: exit 1 # Retired; never dispatch the obsolete lifecycle.
 
   validated-migration-probe:
     needs: approved-head-preflight
     name: validated-migration-probe
-    if: github.event_name == 'pull_request' && !inputs.preparation_only
+    if: github.event_name == 'pull_request' && github.base_ref == 'Legend/fast-track-release' && !inputs.preparation_only
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -1231,7 +1087,7 @@ jobs:
 
   migration-rehearsal-prepare:
     needs: [approved-head-preflight, validated-migration-probe]
-    if: github.event_name == 'pull_request' && github.base_ref == 'legend/approved-changes'
+    if: ${{ false }} # Retired approved-branch producer.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
@@ -1267,7 +1123,7 @@ jobs:
 
   migration-rehearsal:
     needs: migration-rehearsal-prepare
-    if: needs.migration-rehearsal-prepare.outputs.artifact != ''
+    if: ${{ false }} # Retired approved-branch producer.
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:

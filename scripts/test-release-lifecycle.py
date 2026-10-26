@@ -507,13 +507,77 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
         reason = m.candidate_control_plane_integrity(Drift(), {'head': {'sha': 'b' * 40}}, ['scripts/validation-resume.py'])
         self.assertIn('removed the activated early readiness', reason)
 
-    def test_untrusted_candidate_checkout_in_readiness_is_rejected(self):
+    def test_retired_lifecycle_rejects_every_added_authority(self):
+        path = '.github/workflows/legend-release-lifecycle.yml'
+        original = Api().text('b' * 40, path)
+        mutations = [
+            original.replace('  workflow_dispatch:', '  push:\n  workflow_dispatch:'),
+            original.replace('permissions: {}', 'permissions: {contents: write}'),
+            original.replace('    steps:', '    environment: Production\n    steps:'),
+            original.replace('    steps:', '    permissions: {id-token: write}\n    steps:'),
+            original.replace('    steps:', '    steps:\n      - uses: actions/checkout@v4'),
+            original.replace('          exit 1', '          exit 0'),
+            original + '\n  another:\n    runs-on: ubuntu-latest\n    steps: [{run: echo injected}]\n',
+        ]
+        for changed in mutations:
+            with self.subTest(change=changed):
+                class Drift(Api):
+                    def text(self, revision, requested):
+                        return changed if requested == path else super().text(revision, requested)
+                reason = m.candidate_control_plane_integrity(Drift(), {'head': {'sha': 'b' * 40}}, [path])
+                self.assertIn('reactivated or changed retired release lifecycle', reason)
+
+    def test_retired_producer_false_comments_and_duplicate_fields_cannot_self_admit(self):
+        path = '.github/workflows/masterapp-platform-architecture-validation.yml'
+        original = Api().text('b' * 40, path)
+        for job in ('validated-release-package-plan','validated-release-package-components',
+                    'validated-release-package','migration-rehearsal-prepare','migration-rehearsal'):
+            block=m.VALIDATION_AUTHORITY._job_blocks(original)[job]
+            gate='    if: ${{ false }} # Retired approved-branch producer.'
+            for replacement in ('    if: ${{ true }}\n    # '+gate.strip(),gate+'\n    if: ${{ true }}', '    if: ${{ true }}\n    env:\n      DECOY: '+repr(gate)):
+                changed=original.replace(block,block.replace(gate,replacement))
+                with self.subTest(job=job,replacement=replacement):
+                    class Drift(Api):
+                        def text(self, revision, requested):
+                            return changed if requested == path else super().text(revision, requested)
+                    reason=m.candidate_control_plane_integrity(Drift(),{'head':{'sha':'b'*40}},[path])
+                    self.assertIn('reactivated retired architecture producer',reason)
+
+    def test_retired_producer_valid_yaml_quoted_if_cannot_forge_nonentry(self):
+        import yaml
+        path = '.github/workflows/masterapp-platform-architecture-validation.yml'
+        original = Api().text('b' * 40, path)
+        job = 'validated-release-package-plan'
+        block=m.VALIDATION_AUTHORITY._job_blocks(original)[job]
+        gate='    if: ${{ false }} # Retired approved-branch producer.'
+        changed_block=block.replace('    name: validated-release-package-plan',
+            '    name: "decoy\n'+gate+'\n      "',1).replace(gate+'\n    runs-on:',
+            '    "if": ${{ true }}\n    runs-on:')
+        changed=original.replace(block,changed_block)
+        self.assertEqual('${{ true }}',yaml.safe_load(changed)['jobs'][job]['if'])
         class Drift(Api):
-            def text(self, revision, path):
-                source = super().text(revision, path)
-                return source.replace('ref: ${{ github.event.pull_request.base.sha || github.sha }}', 'ref: ${{ github.event.pull_request.head.sha }}', 1) if path == '.github/workflows/legend-release-lifecycle.yml' else source
-        reason = m.candidate_control_plane_integrity(Drift(), {'head': {'sha': 'b' * 40}}, ['.github/workflows/legend-release-lifecycle.yml'])
-        self.assertIn('trusted read-only readiness', reason)
+            def text(self, revision, requested):
+                return changed if requested == path else super().text(revision, requested)
+        reason=m.candidate_control_plane_integrity(Drift(),{'head':{'sha':'b'*40}},[path])
+        self.assertIn('reactivated retired architecture producer',reason)
+
+    def test_retired_wake_rejects_added_execution_and_credentials(self):
+        path = '.github/workflows/masterapp-platform-architecture-validation.yml'
+        original = Api().text('b' * 40, path)
+        block=m.VALIDATION_AUTHORITY._job_blocks(original)['wake-release-lifecycle-after-package-backfill']
+        mutations=[block.replace('permissions: {}','permissions: {actions: write}'),
+            block.replace('    steps:', '    environment: Production\n    steps:'),
+            block.replace('    steps:', '    steps:\n      - uses: actions/checkout@v4'),
+            block.replace('exit 1', 'python3 scripts/wake-release-lifecycle.py'),
+            block.replace('false && !inputs.preparation_only', 'true')]
+        for changed_block in mutations:
+            changed=original.replace(block,changed_block)
+            with self.subTest(block=changed_block):
+                class Drift(Api):
+                    def text(self, revision, requested):
+                        return changed if requested == path else super().text(revision, requested)
+                reason=m.candidate_control_plane_integrity(Drift(),{'head':{'sha':'b'*40}},[path])
+                self.assertIn('reactivated retired lifecycle wake',reason)
 
     def test_non_control_change_still_requires_repository_safety_rails_only(self):
         api = Api()
@@ -3870,37 +3934,28 @@ class SingleBranchTopology(unittest.TestCase):
         self.assertNotIn("base=production", source)
         self.assertNotIn("refs/heads/production", source)
 
-    def test_lifecycle_workflow_uses_only_approved_release_authorities(self):
-        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/legend-release-lifecycle.yml").read_text()
-        self.assertIn("LEGEND approved direct release", workflow)
-        self.assertIn("LEGEND approved release security validation", workflow)
-        self.assertNotIn("Validate, merge, and deploy AgentPortal to production", workflow)
-        self.assertNotIn("production gates", workflow.lower())
+    def test_lifecycle_workflow_has_no_executable_legacy_authority(self):
+        import yaml
+        workflow = yaml.safe_load((Path(__file__).resolve().parents[1] / '.github/workflows/legend-release-lifecycle.yml').read_text())
+        self.assertEqual({'workflow_dispatch': None}, workflow[True])
+        self.assertEqual({}, workflow['permissions'])
+        self.assertEqual(['retired'], list(workflow['jobs']))
+        job = workflow['jobs']['retired']
+        self.assertEqual({'runs-on', 'timeout-minutes', 'steps'}, set(job))
+        self.assertEqual(1, len(job['steps']))
+        self.assertEqual({'name', 'run'}, set(job['steps'][0]))
 
 
-    def test_validation_completions_do_not_run_full_branch_cleanup(self):
-        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/legend-release-lifecycle.yml").read_text()
-        cleanup = workflow.split(
-            "      - name: Retire only preserved successfully deployed branches\n", 1
-        )[1].split("      - name:", 1)[0]
-        self.assertIn("github.event.workflow_run.name == 'LEGEND approved direct release'", cleanup)
-        self.assertIn("github.event.workflow_run.conclusion == 'success'", cleanup)
-        self.assertIn("github.event_name == 'schedule'", cleanup)
-        self.assertIn("github.event_name == 'workflow_dispatch'", cleanup)
-        self.assertNotIn("github.event_name != 'workflow_run'", cleanup)
+    def test_validation_completions_cannot_wake_retired_lifecycle(self):
+        import yaml
+        workflow = yaml.safe_load((Path(__file__).resolve().parents[1] / '.github/workflows/legend-release-lifecycle.yml').read_text())
+        for event in ('workflow_run', 'push', 'pull_request_target', 'schedule'):
+            self.assertNotIn(event, workflow[True])
 
-    def test_lifecycle_refreshes_to_newly_merged_approved_code_before_recovery(self):
-        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/legend-release-lifecycle.yml").read_text()
-        refresh = workflow.split(
-            "      - name: Refresh after automatically integrated corrections\n", 1
-        )[1].split("      - name:", 1)[0]
-        self.assertIn("github.event.repository.default_branch", refresh)
-        self.assertIn("module.TRUSTED_PR_BASE", refresh)
-        self.assertIn('git reset --hard "origin/$APPROVED_REF"', refresh)
-        self.assertLess(
-            workflow.index("Refresh after automatically integrated corrections"),
-            workflow.index("Recover authorized direct release when needed"),
-        )
+    def test_retired_lifecycle_never_checks_out_or_resets_any_branch(self):
+        workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/legend-release-lifecycle.yml').read_text()
+        for forbidden in ('uses:', 'git ', 'secrets.', 'id-token', 'environment:', 'legend/approved-changes'):
+            self.assertNotIn(forbidden, workflow)
 
 
 
@@ -3994,14 +4049,11 @@ class ValidationToProductionDiagnosticTests(unittest.TestCase):
         self.assertEqual([], self.report()['failures'])
         self.assertTrue(all(call[0] in {'GET', 'PAGES'} for call in self.calls))
 
-    def test_existing_lifecycle_is_sole_observer(self):
-        workflow = (Path(__file__).resolve().parents[1] /
-                    '.github/workflows/legend-release-lifecycle.yml').read_text()
-        self.assertIn('Diagnose completed validation-to-publication failures', workflow)
-        self.assertIn("github.event_name == 'workflow_run'", workflow)
-        self.assertIn('scripts/release-lifecycle.py diagnose-run', workflow)
-        self.assertNotIn('workflow_dispatch:', workflow.split(
-            'Diagnose completed validation-to-publication failures', 1)[1])
+    def test_retired_lifecycle_does_not_launch_automatic_diagnostics(self):
+        workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/legend-release-lifecycle.yml').read_text()
+        self.assertNotIn('diagnose-run', workflow)
+        self.assertNotIn('workflow_run:', workflow)
+        self.assertIn('LEGEND_RELEASE_LIFECYCLE_RETIRED', workflow)
 
 
 class StagingSafety(unittest.TestCase):
