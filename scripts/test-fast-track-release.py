@@ -2325,7 +2325,38 @@ class UnpublishedAppsWithMigrationIntentTests(unittest.TestCase):
 
 class FounderProtectSupersessionTests(unittest.TestCase):
     def setUp(self):
-        self.request=json.loads(Path('Docs/releases/direct-release-request.json').read_text())
+        # Fixed original request: tool-only promotions must not change this fixture.
+        self.request=json.loads(r'''
+{
+  "requestedBy": "Founder",
+  "authorization": "Founder ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1 continuing combined release as new baseline. Codex sole implementer, Astra independent acceptance. Preserve mandatory human MYLEGND Production review, current-head checks, migration and recovery evidence, and candidate-specific writer fencing. No new spend or access changes. Superseding Founder instruction authorizes completely replacing the previous Protect release despite its UNKNOWN outcome; no further search for its missing receipt.",
+  "purpose": "Complete canonical checkout inquiry and scoped training through existing billing/payment owners; preserve all prior Studio/forms/receptionist changes. Training remains default-off until all affected consumers are compatible. Old Protect UNKNOWN history is retained without replay. Use candidate-bound one-time supersession admission; retain all other production gates.",
+  "requestId": "founder-training-checkout-forward-baseline-20261026-v1",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait",
+    "masterapp-website"
+  ],
+  "cloudflareWebsiteRouting": false,
+  "preserveLiveTargets": false,
+  "protectSupersession": {
+    "authorizationId": "ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1:protect-replacement-20261026",
+    "authorizedBy": "Founder",
+    "target": "protect",
+    "originalRun": 40095849719,
+    "originalOperationId": "1618e118093e091b4eb6852d90514e0d156d8d53a6513d991ff8e4803d8bf1cd",
+    "originalRevision": "7dcfe753f90ee559bc80a5350d6012779cb36426",
+    "expectedReleaseParent": "95d534023a59fda7d231fca69cafe84d10038520",
+    "historicalOutcome": "UNKNOWN",
+    "authorizeOneReplacement": true,
+    "rollbackArtifactId": 12561256924,
+    "rollbackArtifactDigest": "sha256:03321a68f9e5f39ff237c93def0d683b633f938710bf35053c2ade48db0803ca"
+  }
+}
+''')
         self.revision='a'*40
         self.parent=self.request['protectSupersession']['expectedReleaseParent']
 
