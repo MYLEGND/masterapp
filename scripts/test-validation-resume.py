@@ -16,6 +16,86 @@ spec.loader.exec_module(m)
 
 
 
+class ParfaitPushCoverageTests(unittest.TestCase):
+    def setUp(self):
+        self.sha = 'a' * 40
+        self.repo = 'MYLEGND/masterapp'
+        self.branch = 'isolation/example'
+        self.pr = dict(number=691, state='open',
+            head=dict(sha=self.sha, ref=self.branch, repo=dict(full_name=self.repo)),
+            base=dict(ref=m.FAST_TRACK_PR_BASE, sha='b'*40, repo=dict(full_name=self.repo)))
+        self.run = dict(id=99, run_attempt=1, event='pull_request', head_sha=self.sha,
+            path='.github/workflows/parfait-isolated-validation.yml',
+            head_repository=dict(full_name=self.repo), pull_requests=[self.pr],
+            status='in_progress', conclusion=None)
+        self.job = dict(id=100, name='build-and-focused-tests', status='queued', conclusion=None)
+
+    def api(self, repository, path, token):
+        if path.startswith('git/ref/heads/'): return dict(object=dict(sha='b'*40))
+        if path.startswith('commits/'): return [self.pr]
+        if path.startswith('actions/workflows/'): return dict(workflow_runs=[self.run])
+        if '/jobs?' in path: return dict(jobs=[self.job])
+        if path == 'pulls/691': return self.pr
+        raise AssertionError(path)
+
+    def plan(self, event='push'):
+        with patch.object(m, 'api_get', side_effect=self.api):
+            return m.parfait_push_coverage(self.repo, self.sha, self.branch, event, 'fixture')
+
+    def test_exact_active_pr_lane_delegates_only_scheduling(self):
+        result = self.plan()
+        self.assertTrue(result['skip'])
+        self.assertFalse(result['validationAccepted'])
+        self.assertEqual(99, result['sourceRun'])
+        self.assertFalse(self.plan('pull_request')['skip'])
+
+    def test_no_pr_or_unavailable_lookup_runs_push(self):
+        for result in ([], None, [None], [dict(head=None)], [dict(state="open",head=dict(repo=None))]):
+            with patch.object(m, 'api_get', return_value=result):
+                self.assertFalse(m.parfait_push_coverage(self.repo,self.sha,self.branch,'push','fixture')['skip'])
+        with patch.object(m, 'api_get', side_effect=RuntimeError('unavailable')):
+            self.assertFalse(m.parfait_push_coverage(self.repo,self.sha,self.branch,'push','fixture')['skip'])
+
+    def test_wrong_identity_failed_cancelled_skipped_or_missing_job_runs_push(self):
+        for row, field, value in ((self.pr['head'],'sha','b'*40),
+            (self.pr['head']['repo'],'full_name','other/repo'),
+            (self.pr['base'],'ref','main'), (self.pr,'state','closed'),
+            (self.pr['base'],'sha','c'*40),
+            (self.run,'head_sha','b'*40),(self.run,'event','push'),
+            (self.run,'path','.github/workflows/other.yml'),
+            (self.job,'name','other')):
+            old=row[field]; row[field]=value
+            with self.subTest(field=field,value=value): self.assertFalse(self.plan()['skip'])
+            row[field]=old
+        for row in (self.run,self.job):
+            for conclusion in ('failure','cancelled','skipped','neutral'):
+                row.update(status='completed',conclusion=conclusion)
+                self.assertFalse(self.plan()['skip'])
+            row.update(status='in_progress',conclusion=None)
+
+    def test_newer_failed_run_prevents_reusing_older_success(self):
+        old=dict(self.run,id=98,status='completed',conclusion='success')
+        self.run.update(status='completed',conclusion='failure')
+        original=self.api
+        def api(repo,path,token):
+            if path.startswith('actions/workflows/'): return dict(workflow_runs=[old,self.run])
+            return original(repo,path,token)
+        with patch.object(m,'api_get',side_effect=api):
+            self.assertFalse(m.parfait_push_coverage(self.repo,self.sha,self.branch,'push','fixture')['skip'])
+
+    def test_workflow_keeps_required_pr_lane_and_separate_receipts(self):
+        import yaml
+        workflow=yaml.safe_load((ROOT/'.github/workflows/parfait-isolated-validation.yml').read_text())
+        steps=workflow['jobs']['build-and-focused-tests']['steps']
+        planner=next(s for s in steps if s.get('id')=='resume')
+        self.assertIn('push_coverage.outputs.skip',planner['if'])
+        for step in steps:
+            if step.get('id','').startswith('gate_'):
+                self.assertIn('push_coverage.outputs.skip',step['if'])
+        record=next(s for s in steps if s.get('name')=='Record canonical child execution evidence')
+        self.assertIn("steps.resume.outcome == 'success'",record['if'])
+
+
 class NonpublishingPreparationTests(unittest.TestCase):
     def setUp(self):
         self.sha = 'b' * 40
@@ -5596,6 +5676,61 @@ class ReviewedReceptionistContractTests(unittest.TestCase):
                      original+'100644 blob '+'3'*40+'\tDirectory.Build.targets\0',
                      original+'100644 blob '+'3'*40+'\tSHARED/Unknown.cs\0'):
             with self.subTest(rows=rows):self.assertNotEqual(expected,identity(rows))
+
+
+class ReviewedCanonicalPaymentContractTests(unittest.TestCase):
+    def setUp(self):
+        import copy
+        self.copy = copy.deepcopy
+        before, after = next(iter(m.REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS))
+        self.trusted = dict(runtimeIdentity=before, toolIdentity='c'*64, executionIdentity='d'*64)
+        self.current = dict(self.trusted, runtimeIdentity=after)
+        self.prior = dict(schemaVersion=3, migrations=[dict(id='20261020160000_AddReceptionistCoordination', supported=True)])
+        self.entry = dict(id='20261026000134_AddCanonicalSubscriptionPaymentCompletion', supported=True, columns=[], tables=[], indexes=[], guards=[], foreignKeys=[])
+        self.contract = dict(schemaVersion=3, migrations=self.copy(self.prior['migrations'])+[self.entry])
+        pin = patch.object(m, 'REVIEWED_CANONICAL_PAYMENT_ENTRY', hashlib.sha256(json.dumps(self.entry,
+            sort_keys=True, separators=(',', ':')).encode()).hexdigest())
+        pin.start(); self.addCleanup(pin.stop)
+
+    def prove(self, contract=None, prior=None, returns=(0,0)):
+        with patch.object(m, 'migration_probe_identity', side_effect=[self.current,self.trusted]), \
+             patch.object(m, 'migration_contract_static_styles_only', return_value=False), \
+             patch.object(m.subprocess, 'run', side_effect=[SimpleNamespace(returncode=r) for r in returns]):
+            return m.candidate_migration_contract_proven('a'*40, 'b'*40,
+                self.contract if contract is None else contract, self.prior if prior is None else prior)
+
+    def test_exact_pair_and_inherited_tooling_prove_only_payment_suffix(self):
+        self.assertEqual('approved-prefix-reviewed-canonical-payment-entry', self.prove()['rule'])
+
+    def test_changed_runtime_tool_execution_or_missing_identity_rejected(self):
+        for target, key, value in [('current','runtimeIdentity','e'*64),('trusted','runtimeIdentity','e'*64),
+            ('current','toolIdentity','e'*64),('current','executionIdentity','e'*64),('current','toolIdentity',None)]:
+            row=getattr(self,target); old=row[key]; row[key]=value
+            with self.subTest(key=key),self.assertRaisesRegex(ValueError,'UNPROVEN'): self.prove()
+            row[key]=old
+
+    def test_missing_duplicate_changed_prefix_and_unknown_metadata_rejected(self):
+        for kind in ('missing','duplicate','prefix','metadata','key_length'):
+            value=self.copy(self.contract)
+            if kind=='missing': value=self.copy(self.prior)
+            elif kind=='duplicate': value['migrations'].append(self.copy(self.entry))
+            elif kind=='prefix': value['migrations'][0]['supported']=False
+            elif kind=='metadata': value['migrations'][-1]['unknown']=True
+            else: value['migrations'][-1]['columns']=[dict(type='nvarchar(159)')]
+            with self.subTest(kind=kind),self.assertRaisesRegex(ValueError,'UNPROVEN'): self.prove(contract=value)
+
+    def test_missing_receptionist_even_with_equal_prefix_rejected(self):
+        prior=self.copy(self.prior);prior['migrations'][0]['id']='20260101000000_Other'
+        value=self.copy(self.contract);value['migrations'][0]=prior['migrations'][0]
+        with self.assertRaisesRegex(ValueError,'UNPROVEN'): self.prove(value,prior)
+
+    def test_ancestry_and_control_source_changes_rejected(self):
+        for values in ((1,0),(128,0),(0,1),(0,128)):
+            with self.subTest(values=values),self.assertRaisesRegex(ValueError,'UNPROVEN'): self.prove(returns=values)
+
+    def test_malformed_contract_rejected(self):
+        for value in (dict(self.contract,schemaVersion=True),dict(self.contract,migrations={}),dict(self.contract,extra=1),[]):
+            with self.subTest(value=value),self.assertRaisesRegex(ValueError,'UNPROVEN'): self.prove(contract=value)
 
 
 class HistoricalProducerInventoryTests(unittest.TestCase):

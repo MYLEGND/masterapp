@@ -63,7 +63,8 @@ public sealed class StoreCheckoutController : Controller
         ParfaitCustomerAutomationService automations,
         IBillingOrchestrator billingOrchestrator,
         IGraphMailService mail,
-        CommerceSignalService commerceSignals)
+        CommerceSignalService commerceSignals,
+        MerchantPaymentCompletionService? completion = null)
     {
         _squareOptions = squareOptions;
         _products = products;
@@ -72,6 +73,7 @@ public sealed class StoreCheckoutController : Controller
         _billingOrchestrator = billingOrchestrator;
         _mail = mail;
         _commerceSignals = commerceSignals;
+        _completion = completion;
     }
 
     [NonAction]
@@ -235,6 +237,8 @@ public sealed class StoreCheckoutController : Controller
 
         if (paymentStart.State == CheckoutPaymentStartState.AlreadyPaid)
         {
+            if (!UseMerchantCheckout(store) && _completion is not null)
+                await _completion.ResumeLegacyOrderAsync(store.CommerceBusinessId, paymentStart.Order.CommerceOrderId, ct);
             return Ok(new ParfaitCheckoutPayResponse
             {
                 Success = true,
@@ -246,8 +250,15 @@ public sealed class StoreCheckoutController : Controller
         if (UseMerchantCheckout(store))
             return await BeginMerchantAsync(store, paymentStart.Order, ct);
 
+        if (_completion is null)
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ParfaitCheckoutPayResponse
+            { Success = false, OrderNumber = paymentStart.Order.OrderNumber, Error = "Payment completion is unavailable. No charge was started." });
+
         if (paymentStart.State == CheckoutPaymentStartState.AlreadyProcessing)
         {
+            if (await _completion.ResumeLegacyOrderAsync(store.CommerceBusinessId, paymentStart.Order.CommerceOrderId, ct))
+                return Ok(new ParfaitCheckoutPayResponse { Success = true, OrderNumber = paymentStart.Order.OrderNumber,
+                    RedirectUrl = SuccessUrl(store, paymentStart.Order.OrderNumber) });
             return Conflict(new ParfaitCheckoutPayResponse
             {
                 Success = false,
@@ -289,7 +300,8 @@ public sealed class StoreCheckoutController : Controller
                     note,
                     BuildPaymentIdempotencyKey(store, order),
                     order.CommerceOrderId,
-                    BuildPaymentCorrelationId(store, order)),
+                    BuildPaymentCorrelationId(store, order),
+                    CommerceCompletionContextJson: JsonSerializer.Serialize(signalContext)),
                 ct);
         }
         catch
@@ -319,39 +331,9 @@ public sealed class StoreCheckoutController : Controller
             });
         }
 
-        _orders.MarkPaymentCaptured(store.CommerceBusinessId, order.OrderNumber, paymentResult.ProviderResult.ExternalId);
-        _products.CommitPaidInventory(store.CommerceBusinessId, validatedItems);
-
-        var paidOrder = _orders.GetOrder(store.CommerceBusinessId, order.OrderNumber) ?? order;
-
-        _automations.MarkOrderConverted(store.CommerceBusinessId, paidOrder);
-
-        try
-        {
-            await _commerceSignals!.RecordAsync(
-                "Purchase",
-                paidOrder.OrderNumber,
-                signalContext with
-                {
-                    EventUtc = paidOrder.PaidUtc ?? paidOrder.UpdatedUtc ?? paidOrder.CreatedUtc,
-                    PurchaseId = paidOrder.PaymentReferenceId, OrderValueCents = paidOrder.TotalCents
-                },
-                firstItem is null ? null : ProductSignal(firstItem),
-                CustomerSignal(request.Customer),
-                paidOrder.OrderNumber,
-                validatedItems.Select(ProductSignal).ToArray(),
-                ct);
-        }
-        catch
-        {
-            // Payment authority is independent from downstream Meta delivery.
-        }
-
-        if (store.IsParfait)
-        {
-            try { await _mail.SendOrderReceiptAsync(paidOrder, ct); } catch { }
-            try { await _mail.SendOrderNotificationAsync(paidOrder, ct); } catch { }
-        }
+        // The genuine SubscriptionPayment owns the SAME durable completion effects
+        // as merchant captures; never manufacture a merchant attempt or send twice.
+        await _completion.CompleteLegacyAsync(paymentResult.PaymentRecord!.Id, store.CommerceBusinessId, ct);
 
         return Ok(new ParfaitCheckoutPayResponse
         {

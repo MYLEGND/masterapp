@@ -328,7 +328,8 @@ public sealed record ExecuteCommerceOneTimePaymentCommand(
     string IdempotencyKey,
     Guid? CommerceOrderId = null,
     string? CorrelationId = null,
-    string? ExistingProviderCustomerId = null);
+    string? ExistingProviderCustomerId = null,
+    string? CommerceCompletionContextJson = null);
 
 public sealed record CancelClientSubscriptionCommand(
     Guid ClientSubscriptionId,

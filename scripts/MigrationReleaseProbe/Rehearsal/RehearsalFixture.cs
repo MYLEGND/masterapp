@@ -16,6 +16,11 @@ using System.Security.Cryptography;
 internal static class RehearsalFixture
 {
     internal const string ReceptionistMigration = "20261020160000_AddReceptionistCoordination";
+    internal const string CanonicalPaymentMigration = "20261026000134_AddCanonicalSubscriptionPaymentCompletion";
+    internal static bool IsCanonicalPaymentFixture(CandidateContract.Entry entry) =>
+        entry.Id == CanonicalPaymentMigration && entry.Supported &&
+        Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(entry, CandidateContract.Json))) ==
+            "6fe5eaa7f0070c282a5219075d4efe101dca16a7dacae605c87b58f0f9027975";
     // Pins the complete declarative shape, including every CHECK, collation,
     // key and default. A same-id edited migration requires a reviewed fixture.
     internal static bool IsReceptionistFixture(CandidateContract.Entry entry) =>
@@ -92,13 +97,15 @@ internal static class RehearsalFixture
         var payments = pending.Any(m => m.Id == paymentMigration);
         var retention = pending.Any(m => m.Id == retentionMigration);
         var receptionist = pending.Any(m => m.Id == ReceptionistMigration);
+        var canonicalPayments = pending.Any(m => m.Id == CanonicalPaymentMigration);
         if (pending.Length != count || pending.Any(m => !m.Supported ||
             (m.Id == retentionMigration && (m.Columns.Length != 1 || m.Tables.Length != 0 ||
                 m.Indexes.Length != 0 || m.Guards.Length != 0 || m.ForeignKeys.Length != 0 || m.Columns[0] is not {
                     Schema: "dbo", Table: "WebsiteContentVersion", Name: "SnapshotRetiredUtc",
                     Type: "datetime2", Nullable: true } || m.Columns[0].Default.ValueKind != JsonValueKind.Null)) ||
             (m.Id == ReceptionistMigration && !IsReceptionistFixture(m)) ||
-            (m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration &&
+            (m.Id == CanonicalPaymentMigration && !IsCanonicalPaymentFixture(m)) ||
+            (m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration && m.Id != CanonicalPaymentMigration &&
             (m.Tables.Length != 0 || m.Indexes.Length != 0 || m.Guards.Length != 0 || m.ForeignKeys.Length != 0 ||
             m.Columns.Any(c => c.Schema != "dbo" || c.Table != "MobileProfileSettings")))))
             throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
@@ -109,6 +116,7 @@ internal static class RehearsalFixture
             db.MobileProfileSettings.Add(new Domain.Entities.MobileProfileSettings {
                 ProfileId = Guid.NewGuid(), ParticipantType = "Agent", Bio = "synthetic migration fixture" });
             if (receptionist) db.AddRange(MarketingRows());
+            if (canonicalPayments) db.AddRange(CanonicalPaymentRows());
             if (retention)
             {
                 var state = new Domain.Entities.WebsiteContentState { OwnerKey = "synthetic-owner", SiteKey = "legend", Revision = 2 };
@@ -162,7 +170,7 @@ internal static class RehearsalFixture
         }
         else if (operation == "precondition")
         {
-            if (!payments && !receptionist) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+            if (!payments && !receptionist && !canonicalPayments) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             await VerifyCatalogBatchProtocol(db, timeout.Token);
             var applied = (await db.Database.GetAppliedMigrationsAsync(timeout.Token)).ToArray();
             await CandidateContract.Verify(db, contract, applied, timeout.Token);
@@ -188,7 +196,7 @@ internal static class RehearsalFixture
         }
         else if (operation == "adversarial")
         {
-            if (!payments && !receptionist) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+            if (!payments && !receptionist && !canonicalPayments) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             var applied = db.Database.GetMigrations().ToArray();
             var mutations = payments ? new[] {
                 "ALTER INDEX [IX_CommercePaymentReceipts_Provider_Environment_AccountId_EventId] ON [dbo].[CommercePaymentReceipts] DISABLE",
@@ -196,6 +204,14 @@ internal static class RehearsalFixture
                 "ALTER TABLE [dbo].[CommerceOrders] ALTER COLUMN [PaymentReference] nvarchar(199) NULL"
             } : Array.Empty<string>();
             if (receptionist) mutations = mutations.Concat(ReceptionistDrift(pending.Single(m => m.Id == ReceptionistMigration))).ToArray();
+            if (canonicalPayments) mutations = mutations.Concat(new[] {
+                "ALTER INDEX [IX_SubscriptionPaymentRefunds_SubscriptionPaymentId_IdempotencyKey] ON dbo.SubscriptionPaymentRefunds DISABLE",
+                "ALTER INDEX [IX_SubscriptionPaymentCompletionEffects_SubscriptionPaymentId_Kind] ON dbo.SubscriptionPaymentCompletionEffects DISABLE",
+                "ALTER TABLE dbo.SubscriptionPaymentRefunds NOCHECK CONSTRAINT [FK_SubscriptionPaymentRefunds_SubscriptionPayments_SubscriptionPaymentId]",
+                "ALTER TABLE dbo.SubscriptionPaymentCompletionEffects NOCHECK CONSTRAINT [FK_SubscriptionPaymentCompletionEffects_SubscriptionPayments_SubscriptionPaymentId]",
+                "ALTER TABLE dbo.SubscriptionPaymentRefunds NOCHECK CONSTRAINT [CK_SubscriptionPaymentRefunds_PositiveAmount]",
+                "ALTER TABLE dbo.SubscriptionPaymentRefunds ALTER COLUMN Currency nvarchar(2) NOT NULL"
+            }).ToArray();
             foreach (var mutation in mutations)
             {
                 await using var transaction = await db.Database.BeginTransactionAsync(timeout.Token);
@@ -226,6 +242,7 @@ internal static class RehearsalFixture
                     throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
             }
             await db.Database.OpenConnectionAsync(timeout.Token);
+            if (canonicalPayments) await VerifyCanonicalPaymentData(db, timeout.Token);
             if (receptionist)
             {
                 var expectedRows = MarketingRows();
@@ -275,6 +292,84 @@ internal static class RehearsalFixture
         }
         else throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
         Console.WriteLine("LEGEND_ISOLATED_FIXTURE:PROVEN");
+    }
+
+    private static Domain.Entities.SubscriptionPayment[] CanonicalPaymentRows() => new[] {
+        new Domain.Entities.SubscriptionPayment { Id = Guid.Parse("00000000-0000-0000-0000-000000000201"),
+            ProviderPaymentId = "synthetic-payment-a", AmountCents = 1234, IdempotencyKey = "synthetic-key-a",
+            CreatedUtc = new DateTime(2026, 1, 1), UpdatedUtc = new DateTime(2026, 1, 2) },
+        new Domain.Entities.SubscriptionPayment { Id = Guid.Parse("00000000-0000-0000-0000-000000000202"),
+            ProviderPaymentId = "synthetic-payment-b", AmountCents = 5678, IdempotencyKey = "synthetic-key-b",
+            CreatedUtc = new DateTime(2026, 1, 3), UpdatedUtc = new DateTime(2026, 1, 4) }
+    };
+
+    private static JsonNode LegacyPayment(Domain.Entities.SubscriptionPayment row)
+    {
+        var value = JsonSerializer.SerializeToNode(row)!.AsObject();
+        value.Remove(nameof(row.RowVersion)); // SQL-generated; excluded from the deterministic synthetic value comparison.
+        return value;
+    }
+
+    private static async Task VerifyCanonicalPaymentData(MasterAppDbContext db, CancellationToken cancellation)
+    {
+        var expected = CanonicalPaymentRows();
+        var actual = await db.Set<Domain.Entities.SubscriptionPayment>().AsNoTracking().OrderBy(x => x.Id).ToArrayAsync(cancellation);
+        if (actual.Length != expected.Length || actual.Where((row, i) =>
+            !JsonNode.DeepEquals(LegacyPayment(row), LegacyPayment(expected[i]))).Any())
+            throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        var assembly = db.GetService<IMigrationsAssembly>();
+        var migration = assembly.CreateMigration(assembly.Migrations[CanonicalPaymentMigration], db.Database.ProviderName!);
+        var down = db.GetService<IMigrationsSqlGenerator>().Generate(migration.DownOperations);
+        const string payment = "'00000000-0000-0000-0000-000000000201'";
+        var refund = "INSERT dbo.SubscriptionPaymentRefunds (Id,SubscriptionPaymentId,Currency,IdempotencyKey,AmountMinor,State,ProviderReference,CreatedUtc,Version) VALUES (NEWID()," + payment + ",'USD',REPLICATE('r',160),100,'Completed','synthetic-refund',SYSUTCDATETIME(),1)";
+        var effect = "INSERT dbo.SubscriptionPaymentCompletionEffects (Id,SubscriptionPaymentId,Kind,State,RetryCount,CreatedUtc,Version) VALUES (NEWID()," + payment + ",'Complete','Pending',0,SYSUTCDATETIME(),1)";
+        // Exercise only the pinned migration in a rolled-back disposable transaction.
+        await using (var transaction = await db.Database.BeginTransactionAsync(cancellation))
+        {
+            foreach (var command in down) await db.Database.ExecuteSqlRawAsync(command.CommandText, cancellation);
+            await transaction.RollbackAsync(cancellation);
+        }
+        foreach (var history in new[] { refund, effect,
+            "UPDATE dbo.SubscriptionPayments SET CommerceCaptureVerifiedUtc=SYSUTCDATETIME() WHERE Id=" + payment,
+            "UPDATE dbo.SubscriptionPayments SET CommerceCompletionContextJson=N'{{}}' WHERE Id=" + payment })
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellation);
+            await db.Database.ExecuteSqlRawAsync(history, cancellation);
+            var rejected = false;
+            try { foreach (var command in down) await db.Database.ExecuteSqlRawAsync(command.CommandText, cancellation); }
+            catch (SqlException error) when (error.Number == 51000) { rejected = true; }
+            if (!rejected) throw new InvalidOperationException("History-bearing rollback was accepted");
+            await transaction.RollbackAsync(cancellation);
+        }
+        await using (var transaction = await db.Database.BeginTransactionAsync(cancellation))
+        {
+            await db.Database.ExecuteSqlRawAsync(refund, cancellation);
+            await db.Database.ExecuteSqlRawAsync(refund.Replace("REPLICATE('r',160)", "'second-refund'"), cancellation);
+            await db.Database.ExecuteSqlRawAsync(effect, cancellation);
+            var rows = await db.Set<Domain.Entities.SubscriptionPaymentRefund>().AsNoTracking().ToArrayAsync(cancellation);
+            if (rows.Length != 2 || rows.Sum(x => x.AmountMinor) != 200 || !rows.Any(x => x.IdempotencyKey == new string('r', 160)))
+                throw new InvalidOperationException("Canonical refund storage did not round trip");
+            await transaction.RollbackAsync(cancellation);
+        }
+        foreach (var scenario in new[] {
+            (Setup: refund, Invalid: refund, Errors: new[] { 2601, 2627 }),
+            (Setup: effect, Invalid: effect, Errors: new[] { 2601, 2627 }),
+            (Setup: "", Invalid: refund.Replace(",100,'Completed'", ",0,'Completed'"), Errors: new[] { 547 }),
+            (Setup: "", Invalid: refund.Replace(payment, "'00000000-0000-0000-0000-000000000299'"), Errors: new[] { 547 }),
+            (Setup: "", Invalid: effect.Replace(payment, "'00000000-0000-0000-0000-000000000299'"), Errors: new[] { 547 }),
+            (Setup: "", Invalid: refund.Replace("REPLICATE('r',160)", "REPLICATE('r',161)"), Errors: new[] { 2628, 8152 }),
+            (Setup: refund, Invalid: "DELETE dbo.SubscriptionPayments WHERE Id=" + payment, Errors: new[] { 547 }),
+            (Setup: effect, Invalid: "DELETE dbo.SubscriptionPayments WHERE Id=" + payment, Errors: new[] { 547 }) })
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellation);
+            if (scenario.Setup.Length != 0) await db.Database.ExecuteSqlRawAsync(scenario.Setup, cancellation);
+            var rejected = false;
+            try { await db.Database.ExecuteSqlRawAsync(scenario.Invalid, cancellation); }
+            catch (SqlException error) when (scenario.Errors.Contains(error.Number)) { rejected = true; }
+            if (!rejected) throw new InvalidOperationException("Canonical payment constraint was not enforced");
+            await transaction.RollbackAsync(cancellation);
+        }
+        await CandidateContract.Verify(db, CandidateContract.Current(db), db.Database.GetMigrations().ToArray(), cancellation);
     }
 
     private static Domain.Entities.MarketingConnection[] MarketingRows() => new[]

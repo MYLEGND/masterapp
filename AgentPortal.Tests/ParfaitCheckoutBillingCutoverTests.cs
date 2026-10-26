@@ -104,6 +104,20 @@ public sealed class ParfaitCheckoutBillingCutoverTests
         Assert.Equal("pay_123", loadedOrder.PaymentReferenceId);
         Assert.Null(loadedOrder.PaymentFailureSummary);
         Assert.Equal("Paid", loadedOrder.PaymentStatus);
+        Assert.NotNull(payment.CommerceCaptureVerifiedUtc);
+        Assert.NotNull(payment.CommerceCompletionContextJson);
+        Assert.Empty(harness.Db.CommercePaymentAttempts);
+        Assert.Equal(5, System.Linq.Enumerable.Count(harness.Db.SubscriptionPaymentCompletionEffects));
+
+        // A customer retry resumes the same genuine payment; no second charge,
+        // inventory decrement, purchase event or email is permitted.
+        var replay = ReadResponse(await harness.Controller.Pay(harness.BuildPayRequest(), CancellationToken.None), StatusCodes.Status200OK);
+        Assert.True(replay.Success);
+        Assert.Equal(2, Assert.Single(harness.Db.CommerceProductInventoryItems).StockQuantity);
+        Assert.Single(harness.Db.SubscriptionPayments);
+        harness.Gateway.Verify(x => x.CreateOneTimePaymentAsync(It.IsAny<BillingOneTimePaymentRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+        harness.Mail.Verify(x => x.SendOrderReceiptAsync(It.IsAny<ParfaitOrderRecord>(), It.IsAny<CancellationToken>()), Times.Once);
+        harness.Mail.Verify(x => x.SendOrderNotificationAsync(It.IsAny<ParfaitOrderRecord>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -365,7 +379,8 @@ public sealed class ParfaitCheckoutBillingCutoverTests
                 Automations,
                 BillingOrchestrator,
                 Mail.Object,
-                CommerceSignals)
+                CommerceSignals,
+                new MerchantPaymentCompletionService(Db, Orders, Products, Automations, CommerceSignals, Mail.Object))
             {
                 ControllerContext = new ControllerContext
                 {

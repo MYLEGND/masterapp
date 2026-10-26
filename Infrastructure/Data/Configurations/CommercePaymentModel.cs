@@ -102,6 +102,27 @@ public static class CommercePaymentModel
             e.HasIndex(x => new { x.Provider, x.Environment, x.AccountId, x.EventId }).IsUnique();
             e.HasOne<CommercePaymentAttempt>().WithMany().HasForeignKey(x=>x.AttemptId).OnDelete(DeleteBehavior.Restrict);
         });
+        modelBuilder.Entity<SubscriptionPaymentCompletionEffect>(e =>
+        {
+            e.ToTable("SubscriptionPaymentCompletionEffects"); e.HasKey(x => x.Id);
+            e.Property(x => x.Kind).HasMaxLength(100).IsRequired();
+            e.Property(x => x.State).HasMaxLength(100).IsRequired();
+            e.Property(x => x.SafeErrorCode).HasMaxLength(100);
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasIndex(x => new { x.SubscriptionPaymentId, x.Kind }).IsUnique();
+            e.HasOne<SubscriptionPayment>().WithMany().HasForeignKey(x => x.SubscriptionPaymentId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<SubscriptionPaymentRefund>(e =>
+        {
+            e.ToTable("SubscriptionPaymentRefunds", t => t.HasCheckConstraint("CK_SubscriptionPaymentRefunds_PositiveAmount", "[AmountMinor] > 0")); e.HasKey(x => x.Id);
+            e.Property(x => x.IdempotencyKey).HasMaxLength(160).IsRequired();
+            e.Property(x => x.State).HasMaxLength(100).IsRequired();
+            e.Property(x => x.ProviderReference).HasMaxLength(300);
+            e.Property(x => x.Currency).HasMaxLength(3).IsRequired();
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasIndex(x => new { x.SubscriptionPaymentId, x.IdempotencyKey }).IsUnique();
+            e.HasOne<SubscriptionPayment>().WithMany().HasForeignKey(x => x.SubscriptionPaymentId).OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<CommercePaymentEffect>(e =>
         {
             e.ToTable("CommercePaymentEffects");

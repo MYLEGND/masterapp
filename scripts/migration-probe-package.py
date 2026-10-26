@@ -618,15 +618,26 @@ def test_schema_contract(directory):
     exported = subprocess.run(['dotnet', str(observer / 'MigrationReleaseProbe.dll'), '--export-contract'],
         env=env, capture_output=True, text=True, timeout=120, check=True)
     current = json.loads(exported.stdout)
-    reviewed_id = '20261020160000_AddReceptionistCoordination'
-    entries = [row for row in current['migrations'] if row.get('id') == reviewed_id]
-    present = Path('Infrastructure/Migrations/' + reviewed_id + '.cs').is_file()
-    if present or entries:
-        if (len(entries) != 1 or current['migrations'][-1] != entries[0]
-            or hashlib.sha256(json.dumps(entries[0], sort_keys=True, separators=(',', ':'),
-                ensure_ascii=True, allow_nan=False).encode()).hexdigest() != AUTHORITY.REVIEWED_RECEPTIONIST_ENTRY
-            or 'LEGEND_REVIEWED_APPEND_TEST:PROVEN' not in tested.stdout.splitlines()):
-            raise RuntimeError('Reviewed migration entry contract failed')
+    reviewed = [
+        ('20261020160000_AddReceptionistCoordination', AUTHORITY.REVIEWED_RECEPTIONIST_ENTRY,
+         'LEGEND_REVIEWED_APPEND_TEST:PROVEN'),
+        ('20261026000134_AddCanonicalSubscriptionPaymentCompletion', AUTHORITY.REVIEWED_CANONICAL_PAYMENT_ENTRY,
+         'LEGEND_CANONICAL_PAYMENT_APPEND_TEST:PROVEN')]
+    migrations = current['migrations']
+    for index, (migration_id, digest, marker) in enumerate(reviewed):
+        entries = [row for row in migrations if row.get('id') == migration_id]
+        present = Path('Infrastructure/Migrations/' + migration_id + '.cs').is_file()
+        if present or entries:
+            if (len(entries) != 1 or hashlib.sha256(json.dumps(entries[0], sort_keys=True,
+                separators=(',', ':'), ensure_ascii=True, allow_nan=False).encode()).hexdigest() != digest
+                or marker not in tested.stdout.splitlines()):
+                raise RuntimeError('Reviewed migration entry contract failed')
+            tail = migrations[migrations.index(entries[0]):]
+            if [row.get('id') for row in tail] != [row[0] for row in reviewed[index:index + len(tail)]]:
+                raise RuntimeError('Reviewed migration suffix contract failed')
+            if index and (migrations.index(entries[0]) == 0 or
+                migrations[migrations.index(entries[0]) - 1].get('id') != reviewed[index - 1][0]):
+                raise RuntimeError('Reviewed migration predecessor contract failed')
     subprocess.run(['dotnet', 'publish', 'scripts/MigrationReleaseProbe/Rehearsal/MigrationRehearsal.csproj',
         '-c', 'Release', '--nologo', '-o', str(directory), '-m:1', '-nr:false',
         '-p:UseSharedCompilation=false'], check=True)

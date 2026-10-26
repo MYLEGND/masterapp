@@ -257,6 +257,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         var paymentRecord = new SubscriptionPayment
         {
             CommerceOrderId = command.CommerceOrderId,
+            CommerceCompletionContextJson = command.CommerceCompletionContextJson,
             Provider = _gateway.Provider,
             ProviderEnvironment = _gateway.Environment,
             AmountCents = command.AmountCents,
@@ -331,6 +332,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         }
 
         paymentRecord.ProviderPaymentId = providerResult.ExternalId;
+        if (verifiedCapture) paymentRecord.CommerceCaptureVerifiedUtc = DateTime.UtcNow;
         paymentRecord.ProviderRequestId = providerResult.ProviderRequestId;
         paymentRecord.ProviderOccurredUtc = providerResult.ProviderOccurredUtc;
         paymentRecord.Status = providerResult.SafeErrorCode == "PAYMENT_RECONCILIATION_REQUIRED"

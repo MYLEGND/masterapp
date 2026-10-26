@@ -6618,3 +6618,78 @@ test('responsive audit clones never reserve a nonexistent Studio sidebar',async(
     }finally{audit.window.close();}
   }finally{f.close();}
 });
+
+
+test('recovered native insurance questions persist through protected presentation maps',async()=>{
+  const doc=canonicalDocument();
+  const id='signal:quote_life.form.lifewizardform.0';
+  doc.pages['/quote/life']={title:'Life',systemTemplateKey:'protect_template:life_wizard',navigation:{isDeleted:false},composition:[
+    canonicalNode(id,'container','div',{systemKey:'protect_runtime_form:quote_life',text:'Historical flattened text',fieldPresentations:{},fieldLabels:{}})
+  ]};
+  const html='<!doctype html><html><body><main><form id="lifeWizardForm" data-form-key="quote_life"><div role="radiogroup" aria-labelledby="goal"><div id="goal">What should this protect?</div><label><input name="Goal" value="family" type="radio" required><svg aria-hidden="true"></svg><span class="lq-card-title">Family</span></label><label><input name="Goal" value="home" type="radio" required><span class="lq-card-title">Home</span></label></div></form></main></body></html>';
+  const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Life',html});
+  let saved;
+  try{
+    const input=f.w.document.querySelector('input');let changes=0;input.addEventListener('change',()=>changes++);
+    f.click('#goal');
+    assert.equal(f.w.document.querySelector('.legend-cms-selected').id,'goal');
+    assert.equal(f.w.document.querySelector('#legend-cms-hidden').disabled,true);
+    assert.equal(f.w.document.querySelector('#legend-cms-hidden').checked,false);
+    assert.equal(f.w.document.querySelector('#legend-cms-duplicate').disabled,true);
+    assert.equal(f.w.document.querySelector('#legend-cms-remove').disabled,true);
+    assert.deepEqual(canonicalNodeById(f.serverDocument(),id,'/quote/life').fieldLabels,{});
+    f.editSelected('What matters most to your family?');
+    f.input('[data-style-key="fontSize"]','26');
+    f.click('label .lq-card-title');f.editSelected('Family income');
+    saved=await f.save();
+    const owner=canonicalNodeById(saved,id,'/quote/life');
+    assert.equal(owner.text,'Historical flattened text');
+    assert.deepEqual(owner.children,[]);
+    assert.equal(owner.fieldLabels['presentation:question:goal'],'What matters most to your family?');
+    assert.equal(owner.fieldLabels['presentation:option:goal:family:title'],'Family income');
+    assert.equal(input.name,'Goal');assert.equal(input.value,'family');assert.equal(input.required,true);
+    assert.ok(f.w.document.querySelector('label svg'));
+    input.dispatchEvent(new f.w.Event('change'));assert.equal(changes,1);
+  }finally{f.close();}
+  const reloaded=await domFixture({siteKey:'protect',doc:saved,pathname:'/Quote/Life',html});
+  try{
+    assert.equal(reloaded.w.document.querySelector('#goal').textContent,'What matters most to your family?');
+    assert.deepEqual([...reloaded.w.document.querySelectorAll('.lq-card-title')].map(x=>x.textContent),['Family income','Home']);
+    assert.ok(reloaded.w.document.querySelector('input[required]'));
+  }finally{reloaded.close();}
+});
+
+test('native capture collapses template indentation while preserving authored and preformatted whitespace',async()=>{
+  const path='/quote/life',doc=canonicalDocument();
+  doc.pages[path]={systemTemplateKey:'protect_template:life_wizard',composition:[],navigation:{isDeleted:false}};
+  const html=`<!doctype html><html><body data-page-key="quote_life"><main><section>
+    <div class="proof"><span class="pill" style="white-space:normal">
+      <svg aria-hidden="true"><path d="M0 0"></path></svg>
+      25+ carriers
+    </span></div>
+    <p class="authored" data-cms-preserve-whitespace="true">Line one\n\tLine two  with  spaces</p>
+    <p class="preformatted" style="white-space:pre-wrap">Keep\n  these spaces</p>
+    <p class="breaks">First<br>Second</p>
+  </section></main></body></html>`;
+  let snapshot;
+  const f=await domFixture({siteKey:'protect',doc,legacyMigration:{},pathname:path,html,search:'?legendEdit=ticket&legendMaterialize=1',beforeEval:w=>{w.postMessage=payload=>snapshot=payload;}});
+  try{
+    doc.pages[path].composition=snapshot.composition;
+    const nodes=canonicalNodes(doc,path);
+    assert.equal(nodes.find(n=>n.className==='pill').text,'25+ carriers');
+    assert.equal(nodes.find(n=>n.className==='authored').text,'Line one\n\tLine two  with  spaces');
+    assert.equal(nodes.find(n=>n.className==='preformatted').text,'Keep\n  these spaces');
+  }finally{f.close();}
+  for(const search of ['', '?legendEdit=ticket']){
+    const replay=await domFixture({siteKey:'protect',doc,pathname:path,html,search});
+    try{
+      const pill=replay.w.document.querySelector('.pill');
+      assert.ok(pill.querySelector('svg'));
+      assert.equal(pill.textContent,'25+ carriers');
+      const visibleText=[...pill.childNodes].filter(n=>n.nodeType===3&&n.textContent.trim()).map(n=>n.textContent);
+      assert.deepEqual(visibleText,['25+ carriers']);
+      assert.equal(replay.w.document.querySelector('.authored').textContent,'Line one\n\tLine two  with  spaces');
+      if(search) assert.deepEqual(await replay.save(),replay.serverDocument());
+    }finally{replay.close();}
+  }
+});
