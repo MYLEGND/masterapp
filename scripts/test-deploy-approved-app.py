@@ -3508,5 +3508,34 @@ class TargetPreintentProducerTests(unittest.TestCase):
     def test_hold_publication_failure_cannot_fall_through(self):target_hold_five_target_payload(publication_failure=True)
     def test_callback_success_then_ambiguous_intent_publisher_never_emits_hold(self):target_hold_five_target_payload(callback_failure=False)
 
+class ProtectRetainedBaselineTests(unittest.TestCase):
+    def invoke(self, *, baseline='c'*40, digest='d'*64, flags_error=False):
+        from types import SimpleNamespace
+        proof=dict(originalRun=10, applicationRevision='a'*40, baselineRevision='c'*40,
+            rollbackRun=8, rollbackArtifactId=9, rollbackArtifactName='retained-baseline',
+            rollbackArtifactDigest='sha256:'+'e'*64, rollbackPackageDigest='d'*64)
+        provider=SimpleNamespace()
+        azure=deploy.RecoveryDeadlineAzure(provider,deploy.time.monotonic()+1000)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo'), \
+             patch.object(deploy._RELEASE_AUTHORITY,'_download_run_artifact') as download, \
+             patch.object(deploy,'verify_package',return_value=digest), \
+             patch.object(deploy,'recovery_host_flags',side_effect=ValueError('flags enabled') if flags_error else None):
+            if baseline!='c'*40 or digest!='d'*64 or flags_error:
+                with self.assertRaises((deploy.DeploymentDrift,ValueError)):
+                    deploy.prepare_protect_retained_replacement(azure,dict(run=dict(id=10,head_sha='a'*40)),
+                        dict(protectBaselineCorrection=proof),dict(revision=baseline),Path(root))
+                self.assertFalse(getattr(provider,'authorized_replacement',False))
+                if baseline!='c'*40:download.assert_not_called()
+            else:
+                deploy.prepare_protect_retained_replacement(azure,dict(run=dict(id=10,head_sha='a'*40)),
+                    dict(protectBaselineCorrection=proof),dict(revision=baseline),Path(root))
+                self.assertTrue(provider.authorized_replacement)
+                self.assertEqual(download.call_args.kwargs,dict(artifact_id=9,expected_digest='sha256:'+'e'*64))
+    def test_exact_retained_rollback_and_idle_baseline_enable_tracked_submit(self):self.invoke()
+    def test_changed_live_baseline_cannot_enable_write(self):self.invoke(baseline='b'*40)
+    def test_changed_rollback_bytes_cannot_enable_write(self):self.invoke(digest='f'*64)
+    def test_enabled_host_flag_cannot_enable_write(self):self.invoke(flags_error=True)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -7068,6 +7068,84 @@ class ReviewedTrainingContractTests(unittest.TestCase):
                     self.assertFalse(m.reviewed_training_contract_extension('e'*40,'f'*40,self.contract,self.prior,self.current,self.trusted))
 
 
+class ProtectBaselineRecoveryTests(unittest.TestCase):
+    def log(self):
+        rows = ['[command]/usr/bin/git log -1 --format=%H', m.PROTECT_RECOVERY_REVISION,
+                'in fast_track_deploy', 'in prepare_protect_replacement',
+                'DeploymentDrift: FAST_TRACK_SUPERSESSION_LIVE_BASELINE_CHANGED',
+                'Process completed with exit code 1.']
+        return '\n'.join('2026-10-26T14:58:37Z ' + row for row in rows)
+    def proven(self, log, **kwargs):
+        return m._fast_track_preupload_log_proven(log, m.PROTECT_RECOVERY_REVISION,
+            dict(started_at='2026-10-26T14:57:00Z', completed_at='2026-10-26T14:59:00Z'), **kwargs)
+    def test_positive_fixed_baseline_failure_requires_specific_classifier(self):
+        self.assertTrue(self.proven(self.log(), protect_baseline=True))
+        self.assertFalse(self.proven(self.log()))
+    def test_missing_stack_wrong_head_or_any_submission_rejected(self):
+        for text in ['in fast_track_deploy', 'in prepare_protect_replacement', m.PROTECT_RECOVERY_REVISION,
+                     'DeploymentDrift: FAST_TRACK_SUPERSESSION_LIVE_BASELINE_CHANGED', 'Process completed with exit code 1.']:
+            with self.subTest(text=text):
+                self.assertFalse(self.proven(self.log().replace(text, 'unproven'), protect_baseline=True))
+        for text in ['Submitting the verified immutable ZIP once.', 'AZURE_TRACKED_DEPLOYMENT_REFERENCE:any']:
+            self.assertFalse(self.proven(self.log()+'\n2026-10-26T14:58:37Z '+text, protect_baseline=True))
+    def test_exact_correction_is_bound_inside_recovery_receipt(self):
+        original = dict(run=dict(id=m.PROTECT_RECOVERY_RUN, run_attempt=2, head_sha=m.PROTECT_RECOVERY_REVISION))
+        material = dict(packageArtifact=dict(id=12661220624, digest='sha256:'+'a'*64),
+                        protectBaselineCorrection=dict(baselineRevision=m.PROTECT_BASELINE_REVISION, historicalOutcome='UNKNOWN'))
+        proof = m.fast_track_recovery_record_proof(original, material, dict(runId=99))
+        self.assertEqual(proof['protectBaselineCorrection'], material['protectBaselineCorrection'])
+        self.assertEqual(proof['originalRun'], m.PROTECT_RECOVERY_RUN)
+    def test_baseline_receipt_and_both_artifact_digests_are_authenticated(self):
+        original=dict(run=dict(id=m.PROTECT_RECOVERY_RUN,head_sha=m.PROTECT_RECOVERY_REVISION))
+        package=dict(id=12661220624,digest='sha256:d01034901695028c32960fdf1b55aff4b2e26ec65782db475bec524765e89122')
+        anchor=dict(id=40063411585,head_sha=m.PROTECT_BASELINE_REVISION,status='completed')
+        rollback=dict(id=12548189496,name='fast-track-package-'+m.PROTECT_BASELINE_REVISION+'-protect',
+            digest='sha256:e3df0d1cc7b3573aeae7883bc4e3810444a619a105e47d0fece3112a5c99eae2',expired=False,workflow_run=anchor)
+        receipt=dict(id=12548958892,name='legend-release-operation-success-eee55365520f03613d09d8deed68ea56e85e05da0a323737c5b562c415f455db',
+            digest='sha256:ed43f4f504badd5d41eb5216a1c10550db2576fd3a7dc69017f6fc0af32b02a4',expired=False,workflow_run=anchor)
+        record=dict(target='protect', applicationRevision=m.PROTECT_BASELINE_REVISION,
+            packageDigest='fe81a03662c3657c7b9ae9012cc38198987b353acc44725d84f8a4f9d87bb584',
+            operationId='eee55365520f03613d09d8deed68ea56e85e05da0a323737c5b562c415f455db',
+            packageProducerRun=40063411585,producingRun=40063411585,producingAttempt=5,
+            phase='success',deploymentIds=['fcba568e391649b4aa08fa3dec82e156'])
+        def invoke():
+            with patch.object(m,'_release_history_source',return_value='{}'), \
+                 patch.object(m,'fast_track_protect_supersession',return_value=dict(historicalOutcome='UNKNOWN')), \
+                 patch.object(m,'api_get',side_effect=[anchor,dict(total_count=2,artifacts=[rollback,receipt])]), \
+                 patch.object(m,'is_fast_track_producer',return_value=True), \
+                 patch.object(m,'_completion_jobs',return_value={1:[],5:[]}), \
+                 patch.object(m,'_completion_original_artifact_owner') as owner, \
+                 patch.object(m,'_release_history_json',return_value=record) as read:
+                result=m.protect_recovery_baseline_proof('MYLEGND/masterapp',original,package,'token')
+                self.assertEqual(owner.call_count,2)
+                self.assertEqual(owner.call_args.args[0]['attempts'],{1:[],5:[]})
+                self.assertTrue(read.call_args.kwargs['verify_digest'])
+                return result
+        self.assertEqual(invoke()['authorization']['historicalOutcome'],'UNKNOWN')
+        for obj,key,value in [(rollback,'digest','sha256:'+'a'*64),(receipt,'digest','sha256:'+'a'*64),
+                              (rollback,'expired',True),(record,'packageDigest','b'*64),
+                              (record,'deploymentIds',['different']),(record,'producingAttempt',4),
+                              (anchor,'head_sha','c'*40)]:
+            old=obj[key];obj[key]=value
+            try:
+                with self.subTest(key=key),self.assertRaises(ValueError):invoke()
+            finally:obj[key]=old
+
+    def test_correction_rejects_other_run_revision_package_and_repository(self):
+        original = dict(run=dict(id=m.PROTECT_RECOVERY_RUN, head_sha=m.PROTECT_RECOVERY_REVISION))
+        package = dict(id=12661220624, digest='sha256:d01034901695028c32960fdf1b55aff4b2e26ec65782db475bec524765e89122')
+        cases = [('other/repo', original, package),
+                 ('MYLEGND/masterapp', dict(run=dict(original['run'], id=1)), package),
+                 ('MYLEGND/masterapp', dict(run=dict(original['run'], head_sha='b'*40)), package),
+                 ('MYLEGND/masterapp', original, dict(package,id=1)),
+                 ('MYLEGND/masterapp', original, dict(package,digest='sha256:'+'b'*64))]
+        for repo, context, artifact in cases:
+            with self.subTest(repo=repo,context=context,artifact=artifact), patch.object(m,'api_get') as api:
+                with self.assertRaisesRegex(ValueError,'ORIGINAL_MATERIAL_CHANGED'):
+                    m.protect_recovery_baseline_proof(repo,context,artifact,'token')
+                api.assert_not_called()
+
+
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.
     # Synthetic planner revisions must never query the real CI repository.

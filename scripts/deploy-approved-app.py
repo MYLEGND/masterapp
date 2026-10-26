@@ -1422,6 +1422,30 @@ def recovery_preupload_baseline(azure, original, key, *, expected=None):
     return state
 
 
+def prepare_protect_retained_replacement(azure, original, material, state, package_root):
+    """Validate retained rollback bytes and the corrected live baseline before intent."""
+    proof = material.get('protectBaselineCorrection')
+    if proof is None:
+        return
+    if (original['run']['id'] != proof['originalRun']
+        or original['run']['head_sha'] != proof['applicationRevision']
+        or state['revision'] != proof['baselineRevision']):
+        raise DeploymentDrift('PROTECT_RECOVERY_LIVE_BASELINE_CHANGED')
+    directory = package_root / 'protect-rollback'
+    directory.mkdir(exist_ok=True)
+    if not (directory / 'deploy.zip').is_file():
+        _RELEASE_AUTHORITY._download_run_artifact(os.environ['GITHUB_REPOSITORY'], proof['rollbackRun'],
+            proof['rollbackArtifactName'], directory, artifact_id=proof['rollbackArtifactId'],
+            expected_digest=proof['rollbackArtifactDigest'])
+    if verify_package(directory / 'deploy.zip', proof['baselineRevision'], False) != proof['rollbackPackageDigest']:
+        raise DeploymentDrift('PROTECT_RECOVERY_ROLLBACK_BYTES_CHANGED')
+    recovery_host_flags('protect')
+    provider = azure
+    while isinstance(provider, RecoveryDeadlineAzure):
+        provider = provider.azure
+    provider.authorized_replacement = True
+
+
 def recovery_host_flags(key):
     # Same immutable-business-host gate as ordinary publication. Never change it.
     if key not in {'protect', 'parfait'}:
@@ -1551,6 +1575,7 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
                     observer['runId'], observer['runAttempt'], token)
                 if prior is None:
                     states[key] = recovery_preupload_baseline(azure, original, key)
+                    prepare_protect_retained_replacement(azure, original, material, states[key], package_root)
                     baseline = states[key]['revision']
                 else:
                     baseline = prior['baseline']
@@ -1573,6 +1598,7 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
                         fresh = recovery_preupload_baseline(azure, original, key, expected=states[key])
                         if sorted(ids) != fresh['deploymentIds']:
                             raise DeploymentDrift('RECOVERY_PROVIDER_BASELINE_CHANGED_BEFORE_INTENT')
+                        prepare_protect_retained_replacement(azure, original, materials[key], fresh, package_root)
                         recovery_host_flags(key)
                         recovery_phase_remaining(publication_deadline, RECOVERY_WRITE_RESERVE_SECONDS)
                     except Exception as failure:
