@@ -5,11 +5,63 @@ using System.Text.Json;
 namespace Infrastructure.Reception;
 
 internal sealed record OpenAiReceptionistHttpOutcome(bool Confirmed, int? StatusCode, string Receipt);
+internal sealed record OpenAiReceptionistBrowserOutcome(bool Confirmed, string? SessionId, string? Answer,
+    int? StatusCode, string Receipt);
 
 /// <summary>Single-attempt provider controls. A 200 accepts a command; it does not prove call closure, billing or inquiry success.</summary>
 internal sealed class OpenAiReceptionistClient(IHttpClientFactory clients) : IOpenAiReceptionistClient
 {
     internal const string ClientName = "Receptionist.OpenAi";
+
+    // Caller must commit its durable one-use creation claim and full cost reservation
+    // before this single attempt. Even a rejected/malformed response is not a refund.
+    public async Task<OpenAiReceptionistBrowserOutcome> CreateBrowserAsync(string projectId, string credential,
+        OpenAiReceptionistSessionSettings settings, string offer, CancellationToken ct)
+    {
+        ValidateCredentials(projectId, credential);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/live/sessions");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+        request.Headers.Add("OpenAI-Project", projectId);
+        request.Content = new ByteArrayContent(OpenAiReceptionistProtocol.BrowserBody(settings, offer));
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        string? observedSessionId = null;
+        try
+        {
+            using var client = clients.CreateClient(ClientName);
+            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            lifetime.CancelAfter(client.Timeout > TimeSpan.Zero && client.Timeout < TimeSpan.FromSeconds(15)
+                ? client.Timeout : TimeSpan.FromSeconds(15));
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, lifetime.Token);
+            var receipt = Receipt(response, "create_browser");
+            if (response.StatusCode != System.Net.HttpStatusCode.Created)
+                return new(false, null, null, (int)response.StatusCode, receipt);
+            using var stream = await response.Content.ReadAsStreamAsync(lifetime.Token);
+            using var body = new MemoryStream();
+            var buffer = new byte[4096];
+            int read;
+            while ((read = await stream.ReadAsync(buffer, lifetime.Token)) > 0)
+            {
+                if (body.Length + read > 131072) return new(false, null, null, 201, receipt + ":invalid_response");
+                await body.WriteAsync(buffer.AsMemory(0, read), lifetime.Token);
+            }
+            using var json = JsonDocument.Parse(body.ToArray(), new JsonDocumentOptions { MaxDepth = 32 });
+            var root = json.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("session", out var session) ||
+                !OpenAiReceptionistProtocol.String(session, "id", out var id) || !OpenAiReceptionistProtocol.Token(id, 200))
+                return new(false, null, null, 201, receipt + ":invalid_response");
+            observedSessionId = id;
+            if (!root.TryGetProperty("transport", out var transport) ||
+                !OpenAiReceptionistProtocol.String(transport, "type", out var type) || type != "webrtc" ||
+                !OpenAiReceptionistProtocol.String(transport, "sdp", out var answer))
+                return new(false, id, null, 201, receipt + ":invalid_response");
+            OpenAiReceptionistProtocol.ValidateSdp(answer);
+            return new(true, id, answer, 201, receipt);
+        }
+        catch (Exception error) when (error is HttpRequestException or OperationCanceledException or JsonException or ArgumentException or IOException)
+        {
+            return new(false, observedSessionId, null, null, "openai_http:create_browser:outcome_unknown");
+        }
+    }
 
     public Task<OpenAiReceptionistHttpOutcome> AcceptAsync(string projectId, string sessionId, string credential,
         OpenAiReceptionistSessionSettings settings, CancellationToken ct) =>
@@ -35,10 +87,7 @@ internal sealed class OpenAiReceptionistClient(IHttpClientFactory clients) : IOp
         {
             using var client = clients.CreateClient(ClientName);
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-            var ids = response.Headers.TryGetValues("x-request-id", out var values) ? values.Take(2).ToArray() : [];
-            var id = ids.Length == 1 ? ids[0] : null;
-            var receipt = "openai_http:" + operation + ":" + (int)response.StatusCode + ":" +
-                (OpenAiReceptionistProtocol.Token(id, 200) ? id : "request_id_unavailable");
+            var receipt = Receipt(response, operation);
             return new(response.StatusCode == System.Net.HttpStatusCode.OK, (int)response.StatusCode, receipt);
         }
         catch (Exception error) when (error is HttpRequestException or OperationCanceledException)
@@ -47,6 +96,14 @@ internal sealed class OpenAiReceptionistClient(IHttpClientFactory clients) : IOp
             // Durable coordination must reconcile that session, never resubmit acceptance.
             return new(false, null, "openai_http:" + operation + ":outcome_unknown");
         }
+    }
+
+    private static string Receipt(HttpResponseMessage response, string operation)
+    {
+        var ids = response.Headers.TryGetValues("x-request-id", out var values) ? values.Take(2).ToArray() : [];
+        var id = ids.Length == 1 ? ids[0] : null;
+        return "openai_http:" + operation + ":" + (int)response.StatusCode + ":" +
+            (OpenAiReceptionistProtocol.Token(id, 200) ? id : "request_id_unavailable");
     }
 
     public async Task<WebSocket> AttachAsync(string projectId, string sessionId, string credential,

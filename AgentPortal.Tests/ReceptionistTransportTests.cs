@@ -169,6 +169,121 @@ public sealed class ReceptionistTransportTests
         Assert.Equal(1, handler.Calls);
     }
 
+    [Fact]
+    public void BrowserSessionKeepsPolicyPrivateAndDeniesAllPeerControlAndEvents()
+    {
+        using var body = JsonDocument.Parse(OpenAiReceptionistProtocol.BrowserBody(
+            new("gpt-live-1", "marin", "Pinned policy", "application_services"), "v=0\r\n"));
+        var session = body.RootElement.GetProperty("session");
+        Assert.Equal("Pinned policy", session.GetProperty("instructions").GetString());
+        Assert.False(session.GetProperty("store").GetBoolean());
+        Assert.Equal("client", session.GetProperty("delegation").GetProperty("type").GetString());
+        var permissions = session.GetProperty("client").GetProperty("data_channel");
+        Assert.Empty(permissions.GetProperty("allowed_client_events").EnumerateArray());
+        Assert.Empty(permissions.GetProperty("allowed_server_events").EnumerateArray());
+        Assert.Equal("webrtc", body.RootElement.GetProperty("transport").GetProperty("type").GetString());
+    }
+
+    [Theory]
+    [InlineData("provider_timeout")]
+    [InlineData("malformed")]
+    [InlineData("too_large")]
+    [InlineData("bad_answer")]
+    [InlineData("foreign_transport")]
+    [InlineData("array")]
+    [InlineData("null")]
+    [InlineData("scalar")]
+    public async Task BrowserCreationFailureNeverRetriesAndKeepsObservedSessionForReconciliation(string failure)
+    {
+        var handler = new Handler(_ => failure == "provider_timeout" ? throw new HttpRequestException("do-not-log-secret") :
+            new HttpResponseMessage(HttpStatusCode.Created) { Content = new StringContent(failure switch
+            {
+                "malformed" => "not-json",
+                "array" => "[]",
+                "null" => "null",
+                "scalar" => "\"value\"",
+                "too_large" => new string('x', 131073),
+                "bad_answer" => "{\"session\":{\"id\":\"live_observed\"},\"transport\":{\"type\":\"webrtc\",\"sdp\":\"invalid\"}}",
+                _ => "{\"session\":{\"id\":\"live_observed\"},\"transport\":{\"type\":\"sip\"}}"
+            }) });
+        var result = await new OpenAiReceptionistClient(new Factory(handler)).CreateBrowserAsync("proj_fixture", "fixture-server-credential",
+            new("gpt-live-1", "marin", "Pinned policy", "application_services"), "v=0\r\n", default);
+        Assert.False(result.Confirmed); Assert.Null(result.Answer); Assert.Equal(1, handler.Calls);
+        Assert.Equal(failure is "bad_answer" or "foreign_transport" ? "live_observed" : null, result.SessionId);
+        Assert.DoesNotContain("do-not-log-secret", result.Receipt);
+    }
+
+    [Fact]
+    public async Task BrowserCreationProjectsOnlyOriginalIdAndSdpWithoutPrivateResponseProperties()
+    {
+        var handler = new Handler(request =>
+        {
+            Assert.Equal("https://api.openai.com/v1/live/sessions", request.RequestUri!.AbsoluteUri);
+            Assert.Equal("proj_fixture", Assert.Single(request.Headers.GetValues("OpenAI-Project")));
+            return new(HttpStatusCode.Created) { Content = new StringContent(
+                "{\"session\":{\"id\":\"live_original\",\"instructions\":\"PRIVATE\"},\"transport\":{\"type\":\"webrtc\",\"sdp\":\"v=0\\r\\n\"}}") };
+        });
+        var result = await new OpenAiReceptionistClient(new Factory(handler)).CreateBrowserAsync("proj_fixture", "fixture-server-credential",
+            new("gpt-live-1", "marin", "Pinned policy", "application_services"), "v=0\r\n", default);
+        Assert.True(result.Confirmed); Assert.Equal("live_original", result.SessionId); Assert.Equal("v=0\r\n", result.Answer);
+        Assert.DoesNotContain("PRIVATE", JsonSerializer.Serialize(result)); Assert.Equal(1, handler.Calls);
+    }
+
+    [Fact]
+    public async Task InvalidBrowserOfferCannotReachProvider()
+    {
+        var handler = new Handler(_ => throw new InvalidOperationException("must not execute"));
+        var client = new OpenAiReceptionistClient(new Factory(handler));
+        foreach (var offer in new[] { "", "invalid", "v=0\0", "v=0" + new string('x', 65536) })
+            await Assert.ThrowsAsync<ArgumentException>(() => client.CreateBrowserAsync("proj_fixture", "fixture-server-credential",
+                new("gpt-live-1", "marin", "Pinned policy", "application_services"), offer, default));
+        Assert.Equal(0, handler.Calls);
+    }
+
+    [Fact]
+    public async Task StalledBrowserBodyRemainsBoundedAfterHeadersAndNeverRetries()
+    {
+        var stream = new StalledStream();
+        var handler = new Handler(_ => new(HttpStatusCode.Created) { Content = new StreamContent(stream) });
+        var client = new OpenAiReceptionistClient(new Factory(handler, TimeSpan.FromMilliseconds(100)));
+        var result = await client.CreateBrowserAsync("proj_fixture", "fixture-credential",
+            new("gpt-live-1", "marin", "Policy", "application_services"), "v=0\r\n", default)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(result.Confirmed);
+        Assert.True(stream.Cancelled);
+        Assert.Equal(1, handler.Calls);
+    }
+
+    [Theory]
+    [InlineData("req_original", "req_original")]
+    [InlineData("invalid secret", "request_id_unavailable")]
+    public async Task BrowserCreationRetainsOnlySafeRequestReceipt(string requestId, string expected)
+    {
+        var handler = new Handler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+            response.Headers.TryAddWithoutValidation("x-request-id", requestId);
+            return response;
+        });
+        var result = await new OpenAiReceptionistClient(new Factory(handler)).CreateBrowserAsync(
+            "proj_fixture", "fixture-credential", new("gpt-live-1", "marin", "Policy", "application_services"),
+            "v=0\r\n", default);
+        Assert.Equal("openai_http:create_browser:503:" + expected, result.Receipt);
+        Assert.False(result.Confirmed);
+        Assert.Equal(1, handler.Calls);
+    }
+
+    private sealed class StalledStream : MemoryStream
+    {
+        internal bool Cancelled;
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
+            catch (OperationCanceledException) { Cancelled = true; throw; }
+            return 0;
+        }
+    }
+
     private sealed class Handler(Func<HttpRequestMessage, HttpResponseMessage> send) : HttpMessageHandler
     {
         internal int Calls;
@@ -179,8 +294,8 @@ public sealed class ReceptionistTransportTests
         }
     }
 
-    private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory
+    private sealed class Factory(HttpMessageHandler handler, TimeSpan? timeout = null) : IHttpClientFactory
     {
-        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false) { Timeout = timeout ?? TimeSpan.FromSeconds(15) };
     }
 }
