@@ -2184,6 +2184,109 @@ class MigrationProbeDeadlineTests(unittest.TestCase):
         self.assertEqual([2,2],[call.args[0] for call in sleep.call_args_list])
 
 
+class RetainedMigrationIntentReconciliationTests(unittest.TestCase):
+    def setUp(self):
+        import time, subprocess
+        self.auth = load('validation-resume')
+        self.fixture = json.loads((Path(__file__).parent / 'test-fixtures/retained-migration-intent-39502861878.json').read_text())
+        self.record = self.fixture['intent']
+        self.revision = '477a2d21630059a344fa0a0157f1cd67155402d5'
+        self.run = dict(id=39502861878, head_sha=self.record['executionAuthority'], run_attempt=3,
+            head_branch='Legend/fast-track-release', event='push',
+            path='.github/workflows/legend-fast-track-ui.yml', head_repository={'full_name':'owner/repo'},
+            status='completed', conclusion='failure')
+        self.step = dict(name=self.auth.FAST_TRACK_CHILD_STEPS['migrations'][1],status='completed',conclusion='failure',
+                         started_at='2026-10-20T21:58:18Z',completed_at='2026-10-20T22:07:19Z')
+        self.job = dict(id=118904885770,run_id=self.run['id'],head_sha=self.run['head_sha'],run_attempt=1,
+                        status='completed',conclusion='failure')
+        self.obs = dict(historicalRunId=9,historicalRunAttempt=1,historicalApplicationRevision=self.revision,
+            historicalExecution='outcome-unknown',historicalObservedAt=time.time(),mutationActivity='settled',
+            ready=False,pendingCount=2,historicalEvidenceIdentity='a'*64,schemaIdentity='b'*64,baselineIdentity='c'*64,
+            databaseIdentity=self.fixture['rehearsal']['baseline']['databaseIdentity'],
+            firstPendingMigrationId='20261026000134_AddCanonicalSubscriptionPaymentCompletion',
+            lastAppliedMigrationId='20261020160000_AddReceptionistCoordination')
+        self.artifacts=[self.fixture['intentArtifact']]
+        def api(repo,path,token):
+            if path=='actions/runs/39476906913/artifacts?per_page=100':
+                return dict(total_count=1,artifacts=[self.fixture['bundleArtifact']])
+            if path==f"actions/runs/{self.run['id']}/artifacts?per_page=100":
+                return dict(total_count=len(self.artifacts),artifacts=self.artifacts)
+            return dict(total_count=0,workflow_runs=[])
+        def receipt(repo,run,artifact,name,**kwargs):
+            self.assertTrue(kwargs.get('verify_digest') or name=='operation.json')
+            return self.record if name=='operation.json' else self.fixture['rehearsal']
+        for p in (patch.object(self.auth,'api_get',side_effect=api),
+                  patch.object(self.auth,'_release_history_source',side_effect=lambda repo,sha,path,token:
+                      subprocess.check_output(['git','show',sha+':'+path],text=True)),
+                  patch.object(self.auth,'_release_history_json',side_effect=receipt),
+                  patch.object(self.auth,'_release_job_log',side_effect=lambda *args:self.fixture['log'])):
+            p.start();self.addCleanup(p.stop)
+
+    def proven(self):
+        return self.auth._reconciled_retained_migration_intent('owner/repo',self.run,self.job,self.step,1,
+            self.record,self.artifacts,'fixture',self.obs,self.revision,9,1)
+
+    def test_real_source_and_original_intent_reconcile_without_rewriting_receipt(self):
+        before=json.dumps(self.record,sort_keys=True)
+        self.assertTrue(self.proven())
+        self.assertEqual(before,json.dumps(self.record,sort_keys=True))
+        self.assertEqual('outcome-unknown',self.obs['historicalExecution'])
+
+    def test_wrong_operation_and_incomplete_fresh_physical_proof_deny(self):
+        import time
+        for target,key,value in [(self.run,'id',8),(self.job,'run_attempt',3),
+                (self.record,'materialIdentity','f'*64),(self.record,'partitionIdentity','f'*64),
+                (self.obs,'databaseIdentity','f'*64),(self.obs,'historicalObservedAt',time.time()-901),
+                (self.obs,'historicalObservedAt',time.time()+60),(self.obs,'historicalRunId',8),(self.obs,'historicalRunAttempt',2),
+                (self.obs,'historicalApplicationRevision','f'*40),(self.obs,'mutationActivity','active'),
+                (self.obs,'baselineIdentity',None),(self.obs,'schemaIdentity',None),
+                (self.obs,'historicalEvidenceIdentity',None),(self.obs,'pendingCount',0),
+                (self.obs,'firstPendingMigrationId','20261020160000_AddReceptionistCoordination'),
+                (self.obs,'lastAppliedMigrationId','20261011120000_AddWebsiteSnapshotRetirement'),
+                (self.fixture['intentArtifact'],'digest','sha256:'+'f'*64),
+                (self.fixture['bundleArtifact'],'id',1),(self.fixture['bundleArtifact'],'digest','sha256:'+'f'*64),
+                (self.fixture['rehearsal'],'bundleDigest','f'*64),
+                (self.fixture['rehearsal']['baseline'],'databaseIdentity','f'*64)]:
+            with self.subTest(key=key):
+                old=target[key];target[key]=value
+                self.assertFalse(self.proven());target[key]=old
+
+    def test_ambiguous_bundle_wrong_step_or_competing_record_deny(self):
+        self.fixture['log']=self.fixture['log'].replace('schema-verification','bundle-execution')
+        self.assertFalse(self.proven())
+        self.fixture['log']=self.fixture['log'].replace('bundle-execution','schema-verification')
+        self.step['started_at']='2026-10-20T22:08:00Z'
+        self.assertFalse(self.proven())
+        self.step['started_at']='2026-10-20T21:58:18Z'
+        self.artifacts.append(dict(self.artifacts[0]))
+        self.assertFalse(self.proven())
+
+    def test_changed_original_sql_or_source_cannot_be_reconciled(self):
+        with patch.object(self.auth,'_applied_migration_prefix_separate',return_value=False):
+            self.assertFalse(self.proven())
+        with patch.object(self.auth,'_release_history_source',return_value='unreviewed writer'):
+            self.assertFalse(self.proven())
+
+    def test_successor_admission_preserves_same_operation_and_partition_guards(self):
+        with patch.object(self.auth,'fast_track_child_attempts',return_value=[(self.run,1,self.job,self.step)]), \
+             patch.object(self.auth,'_validate_child_generation',return_value=self.record['dependencyIdentity']), \
+             patch.object(self.auth,'release_child_history',return_value=None):
+            args=('owner/repo','migrations','e'*64,'d'*64,9,1,'fixture')
+            kw=dict(partition_identity=self.record['partitionIdentity'],current_application_revision=self.revision,
+                    historical_observation=self.obs)
+            self.assertTrue(self.auth.release_child_first_write_proven(*args,**kw))
+            with self.assertRaisesRegex(RuntimeError,'physical operation already entered'):
+                self.auth.release_child_first_write_proven(*args[:2],self.record['dependencyIdentity'],*args[3:],**kw)
+            for contradictory in (dict(materialIdentity='f'*64,partitionIdentity=self.record['partitionIdentity']),
+                    dict(materialIdentity=self.record['materialIdentity'],partitionIdentity='f'*64)):
+                with patch.object(self.auth,'release_child_history',return_value=contradictory), \
+                     self.assertRaisesRegex(RuntimeError,'prior partition operation unresolved'):
+                    self.auth.release_child_first_write_proven(*args,**kw)
+            self.obs['databaseIdentity']='f'*64
+            with self.assertRaisesRegex(RuntimeError,'prior partition operation unresolved'):
+                self.auth.release_child_first_write_proven(*args,**kw)
+
+
 class OlderMigrationGenerationReconciliationTests(unittest.TestCase):
     def setUp(self):
         import time, subprocess
