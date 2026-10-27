@@ -1,4 +1,5 @@
 using System;
+using System.Data.Common;
 using System.Linq;
 using System.Net.WebSockets;
 using System.Text.Json;
@@ -107,22 +108,60 @@ public sealed partial class ReceptionistRuntimeWorkerTests
     [Fact]
     public async Task BrowserLostObservationOwnershipCannotSendClose()
     {
-        await using var f = await Fixture.CreateAsync(browser: true);
+        var rejections = new BrowserLeaseRejectionInterceptor();
+        await using var f = await Fixture.CreateAsync(browser: true, interceptor: rejections);
         var id = await BrowserCallAsync(f, "live_lease_lost");
         await using var host = await f.StartAsync(); var socket = await f.Transport.SocketAsync(0);
-        await EventuallyAsync(() => socket.Sent.Any());
+        // The first heartbeat rotates the concurrency token. Wait for its completed
+        // iteration before injecting the adversarial owner, not merely its first send.
+        await EventuallyAsync(() => socket.Sent.Any() && f.Clock.HasScheduledDelay(TimeSpan.FromSeconds(2)));
+        Assert.Equal(WebSocketState.Open, socket.State);
+        var original = await f.CallAsync(id);
+        var oldToken = original.SidebandLeaseToken!.Value;
+        Assert.True(await f.Admission.ValidateSidebandLeaseAsync(id, oldToken));
+        var replacementToken = Guid.NewGuid();
+        var replacementRevision = Guid.NewGuid();
+        var replacementExpiry = f.Clock.GetUtcNow().UtcDateTime.AddSeconds(20);
         await using (var db = f.Database())
         {
-            var call = await db.Set<ReceptionistCall>().SingleAsync(x => x.Id == id);
-            call.SidebandWorkerId = "new-owner"; call.SidebandLeaseToken = Guid.NewGuid();
-            call.SidebandLeaseExpiresUtc = f.Clock.GetUtcNow().UtcDateTime.AddSeconds(20);
-            call.SidebandObservationOnly = true; await db.SaveChangesAsync();
+            // One atomic fixture takeover, not tracked SELECT/SaveChanges against a
+            // heartbeat's stale Revision. Keep the real model's concurrency protection.
+            Assert.Equal(1, await db.Set<ReceptionistCall>()
+                .Where(x => x.Id == id && x.SidebandLeaseToken == oldToken && x.ProviderClosedUtc == null)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.SidebandWorkerId, "new-owner")
+                    .SetProperty(x => x.SidebandLeaseToken, replacementToken)
+                    .SetProperty(x => x.SidebandLeaseExpiresUtc, replacementExpiry)
+                    .SetProperty(x => x.SidebandObservationOnly, true)
+                    .SetProperty(x => x.SidebandFence, x => x.SidebandFence + 1)
+                    .SetProperty(x => x.Revision, replacementRevision)));
         }
+        Assert.False(await f.Admission.ValidateSidebandLeaseAsync(id, oldToken));
+        Assert.False(await f.Admission.ValidateObservationLeaseAsync(id, oldToken));
+        Assert.True(await f.Admission.ValidateObservationLeaseAsync(id, replacementToken));
         await f.Admission.RequestRuntimeStopAsync(id, "browser_ended", default);
+        rejections.Arm(id, replacementToken, socket);
         f.Clock.Advance(TimeSpan.FromSeconds(2));
+        // Renewal and failed conversion each commit a no-op ownership rejection.
+        // Both must complete while this socket is open; a caught heartbeat exception
+        // or teardown alone cannot satisfy the no-close/aborted assertions.
+        await EventuallyAsync(() => rejections.CommitsWhileOpen == 2);
         await EventuallyAsync(() => socket.State == WebSocketState.Aborted);
+        Assert.Equal(2, rejections.CommitsWhileOpen);
         Assert.DoesNotContain(socket.Sent, IsClose); Assert.Empty(f.Transport.Hangups);
-        Assert.Null((await f.CallAsync(id)).ProviderClosedUtc); await host.StopAsync();
+        var stolen = await f.CallAsync(id);
+        Assert.Equal("new-owner", stolen.SidebandWorkerId);
+        Assert.Equal(replacementToken, stolen.SidebandLeaseToken);
+        Assert.Equal(original.SidebandFence + 1, stolen.SidebandFence);
+        Assert.True(stolen.SidebandObservationOnly); Assert.Null(stolen.ProviderClosedUtc);
+
+        Assert.True(await f.Admission.ValidateObservationLeaseAsync(id, replacementToken));
+        await using (var db = f.Database())
+        {
+            var cost = await db.Set<ReceptionistCostReservation>().SingleAsync(x => x.CallId == id);
+            Assert.False(cost.CashFinal); Assert.False(cost.ConsumptionFinal);
+        }
+        await host.StopAsync();
     }
 
     [Fact]
@@ -268,6 +307,32 @@ public sealed partial class ReceptionistRuntimeWorkerTests
         await using var db = f.Database();
         Assert.DoesNotContain(await db.Set<ReceptionistActionIntent>().ToListAsync(), x =>
             x.CapabilityKey == "__provider_stop" && x.ConfirmationReceipt != "browser-create-cleanup");
+    }
+
+    private sealed class BrowserLeaseRejectionInterceptor : DbTransactionInterceptor
+    {
+        private Guid callId;
+        private Guid replacementToken;
+        private ScriptedSocket? socket;
+        private int armed;
+        private int commitsWhileOpen;
+        internal int CommitsWhileOpen => Volatile.Read(ref commitsWhileOpen);
+        internal void Arm(Guid id, Guid token, ScriptedSocket currentSocket)
+        {
+            callId = id; replacementToken = token; socket = currentSocket;
+            Volatile.Write(ref armed, 1);
+        }
+        public override Task TransactionCommittedAsync(DbTransaction transaction, TransactionEndEventData eventData,
+            CancellationToken cancellationToken = default)
+        {
+            if (Volatile.Read(ref armed) == 1 && socket?.State == WebSocketState.Open &&
+                eventData.Context?.ChangeTracker.Entries<ReceptionistCall>().Any(x =>
+                    x.State == EntityState.Unchanged && x.Entity.Id == callId &&
+                    x.Entity.SidebandWorkerId == "new-owner" && x.Entity.SidebandLeaseToken == replacementToken &&
+                    x.Entity.SidebandObservationOnly && x.Entity.ProviderClosedUtc is null) == true)
+                Interlocked.Increment(ref commitsWhileOpen);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class BrowserStopClaimInterceptor : SaveChangesInterceptor
