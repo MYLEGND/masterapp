@@ -1,19 +1,25 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly approved the narrow completion-only inherited tooling authority correction in Sentinel_474d2b05a7448191bd6ba71f77d3f7a1, replying to Sentinel_1781632e43648191b719452b4533b85c. Promote only the independently reviewed canonical completion observer correction and its existing policy regression tests. Preserve all original source, CI, artifact, provider, runtime, ownership and summary proofs. This validate-only promotion authorizes no application upload, SQL change, restart, routing, provider call, credential, access or spending change, and does not broaden write-capable retained recovery.",
-  "purpose": "Admit completion-only authority inheritance for a freshly validated request-only protected merge directly above authentic promoted tooling, with full repository closure equality and unchanged deployment proofs.",
-  "requestId": "shayla-completion-inherited-tool-promotion-20261027-v1",
+  "authorization": "Continue the approved release-completion recovery without repeating deployments. Promote only the independently reviewed canonical immutable receipt-byte reuse correction and its regression tests. Preserve the exact 100-entry cap, every caller byte limit, deadlines, fresh authority and provider proof checks. No overflow, eviction, broader access, app uploads, SQL, restarts, routing or spending changes.",
+  "purpose": "Avoid duplicate retention of completed authenticated receipt bytes across fitting caller size limits while preserving all original proof and cache boundaries.",
+  "requestId": "shayla-completion-receipt-reuse-promotion-20261027-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "8f94550fdcb0dfbe1b1b1c71aa43171a60661096",
-    "sourceRevision": "dcd47f92514d2a88ecb04ba362ca9a8ae54fc7a6",
+    "baseRevision": "b7d666f1b737b1ba2485d9c0157ff059637c42d5",
+    "sourceRevision": "bd6f8691fcfd49bf32b75e2183050b2adab6a66e",
     "files": {
-      "scripts/validation-resume.py": {"mode": "100644", "blob": "c2275f90520ea6f1882ce22d4dcf92671c71d64b"},
-      "scripts/test-release-policy.py": {"mode": "100644", "blob": "29b1eade0d522c722ef014d68bd1a61c0b6acfc3"}
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "d64d66912b79d68f1ee4897a7471e26eb9f77081"
+      },
+      "scripts/test-validation-resume.py": {
+        "mode": "100644",
+        "blob": "1481fc6669d2307f1ba934a4e0310b68e69e0d6f"
+      }
     }
   }
 }
