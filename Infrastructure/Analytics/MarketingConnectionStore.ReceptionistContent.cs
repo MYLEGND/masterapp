@@ -24,8 +24,10 @@ public sealed partial class MarketingConnectionStore
     {
         if (ReceptionistSql.Owner(connection) != owner) throw new InvalidOperationException("The configuration owner does not match.");
         var versions = read.Set<ReceptionistConfigurationVersion>().AsNoTracking().Where(x => x.MarketingConnectionId == connection.Id);
-        var current = await versions.SingleAsync(x => x.Id == connection.ReceptionistActiveConfigurationId, ct);
-        var baseline = await versions.Where(x => x.AcceptedBindingJson != null).OrderByDescending(x => x.Version).FirstOrDefaultAsync(ct);
+        var current = await versions.OrderByDescending(x => x.Version).FirstAsync(ct);
+        var baseline = await versions.SingleOrDefaultAsync(x => x.Id == connection.ReceptionistActiveConfigurationId && x.AcceptedBindingJson != null, ct);
+        var recovering = baseline is null;
+        baseline ??= await versions.Where(x => x.AcceptedBindingJson != null).OrderByDescending(x => x.Version).FirstOrDefaultAsync(ct);
         var history = await versions.OrderByDescending(x => x.Version).Take(20)
             .Select(x => new ReceptionistContentVersion(x.Id, x.Version, x.AcceptedBindingJson != null)).ToArrayAsync(ct);
         var draft = ReceptionistConfigurationCodec.Read(current.ConfigurationJson, current.ConfigurationSha256);
@@ -51,7 +53,7 @@ public sealed partial class MarketingConnectionStore
             current.ConfigurationSha256, baseline?.Id ?? Guid.Empty,
             ReceptionistConfigurationCodec.Hash(baseline?.AcceptedBindingJson ?? ""));
         return new(connection.Revision, current.Id, current.Version, baseline?.Id ?? Guid.Empty, baseline?.Version ?? 0,
-            hash, draft, prior, block is null, block, history);
+            hash, draft, prior, block is null, block, history, recovering);
     }
 
     public async Task<ReceptionistContentApplyResult> ApplyReceptionistContentAsync(MarketingOwnerScope owner,
@@ -72,7 +74,8 @@ public sealed partial class MarketingConnectionStore
                 .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Revision, x => x.Revision), ct);
             var connection = await write.MarketingConnections.SingleAsync(x => x.OwnerKey == owner.Key && x.Provider == key, ct);
             if (ReceptionistSql.Owner(connection) != owner) throw new InvalidOperationException("The configuration owner does not match.");
-            var active = await write.Set<ReceptionistConfigurationVersion>().SingleAsync(x => x.Id == connection.ReceptionistActiveConfigurationId && x.MarketingConnectionId == connection.Id, ct);
+            var active = await write.Set<ReceptionistConfigurationVersion>()
+                .Where(x => x.MarketingConnectionId == connection.Id).OrderByDescending(x => x.Version).FirstAsync(ct);
             var activeConfiguration = ReceptionistConfigurationCodec.Read(active.ConfigurationJson, active.ConfigurationSha256);
             var priorCandidates = await write.Set<ReceptionistConfigurationVersion>().AsNoTracking()
                 .Where(x => x.MarketingConnectionId == connection.Id && x.CreatedByActorId == authorizedActorId &&
@@ -134,6 +137,19 @@ public sealed partial class MarketingConnectionStore
         var snapshot = await ReceptionistSnapshotAsync(read, owner, connection, ct);
         var historical = ReceptionistConfigurationCodec.Read(source.ConfigurationJson, source.ConfigurationSha256);
         var current = snapshot.Configuration ?? throw new InvalidOperationException("Current configuration is required.");
+        if (input.RestoreOperatingConfiguration)
+        {
+            // Restore a reviewable draft, never a historical permission or live binding.
+            var accepted = ReceptionistConfigurationCodec.ReadBinding(source.AcceptedBindingJson, historical)
+                ?? throw new InvalidOperationException("Choose an independently accepted operating configuration.");
+            if (connection.ReceptionistProviderProjectKey != accepted.ProviderProjectKey)
+                throw new InvalidOperationException("The accepted provider identity no longer matches.");
+            if (historical.BookingPolicy?.Enabled == true)
+                throw new InvalidOperationException("Calls-only recovery requires an accepted configuration with booking disabled.");
+            ReceptionistRuntimeAuthority.Ready(key, historical, accepted);
+            return await SaveReceptionistConfigurationAsync(owner, key, input.ExpectedRevision, historical, authorizedActorId, ct);
+        }
+
         var restored = current with
         {
             BusinessName = historical.BusinessName, ConversationInstructions = historical.ConversationInstructions,

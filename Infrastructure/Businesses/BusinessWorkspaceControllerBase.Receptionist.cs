@@ -15,7 +15,7 @@ public abstract partial class BusinessWorkspaceControllerBase
     {
         if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
         var snapshot = await ReceptionistStore.GetReceptionistConfigurationAsync(MarketingOwnerScope.Business(businessId), MarketingDestinationKeys.OpenAi, cancellationToken);
-        return await ReceptionistPageAsync(snapshot, businessId, message: notice == "saved" ? "Your settings were saved as an inactive version. Verification is required before calls can use this version."
+        return await ReceptionistPageAsync(snapshot, businessId, message: notice == "saved" ? "Your settings were saved as an inactive version. Your operating configuration and call permission were not changed. Review and apply this version before calls can use it."
             : notice == "content-replayed" ? "This content review was already applied. Its prior result was reused; the current settings and call permission are shown below and were not changed."
             : notice == "content-applied" ? "The reviewed content was applied. Calls remain paused; readiness and call-quality acceptance are separate."
             : notice == "admission" ? "Your receptionist permission was saved. This does not verify that calls are ready." : null, cancellationToken: cancellationToken);
@@ -122,7 +122,9 @@ public abstract partial class BusinessWorkspaceControllerBase
         {
             await ReceptionistStore.RestoreReceptionistContentDraftAsync(owner, MarketingDestinationKeys.OpenAi, input,
                 User.GetCanonicalUserId(), cancellationToken);
-            return RedirectToAction(nameof(Receptionist), new { businessId, notice = "saved" });
+            return input.RestoreOperatingConfiguration
+                ? RedirectToAction(nameof(ReviewReceptionistContent), new { businessId })
+                : RedirectToAction(nameof(Receptionist), new { businessId, notice = "saved" });
         }
         catch (DbUpdateConcurrencyException) { return Conflict("The settings changed. Reload before restoring content."); }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Text.Json.JsonException)
@@ -134,12 +136,15 @@ public abstract partial class BusinessWorkspaceControllerBase
     private async Task<IActionResult> ReceptionistPageAsync(ReceptionistConfigurationSnapshot snapshot, Guid businessId,
         ReceptionistSetupInput? input = null, string? message = null, CancellationToken cancellationToken = default)
     {
+        var operating = await ReceptionistStore.GetReceptionistConfigurationAsync(snapshot.Owner, snapshot.Provider, cancellationToken, operating: true);
         var readiness = await HttpContext.RequestServices.GetRequiredService<ReceptionistAdmissionService>()
-            .GetSetupReadinessAsync(snapshot, observeControlPlaneRuntime: false, ct: cancellationToken);
+            .GetSetupReadinessAsync(operating, observeControlPlaneRuntime: false, ct: cancellationToken);
+        if (operating.ConnectionRevision != snapshot.ConnectionRevision)
+            readiness = new ReceptionistReadinessProjection { AdmissionReason = "snapshot_changed" };
         return View("~/Views/Shared/ReceptionistSetup.cshtml",
             new ReceptionistSetupPage(snapshot, input ?? ReceptionistSetupForms.Read(snapshot),
                 Url.Action(nameof(SaveReceptionist), new { businessId })!,
                 Url.Action(nameof(ReceptionistAdmission), new { businessId })!,
-                Url.Action(nameof(Settings), new { businessId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness, Url.Action(nameof(ReviewReceptionistContent), new { businessId })!));
+                Url.Action(nameof(Settings), new { businessId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness, Url.Action(nameof(ReviewReceptionistContent), new { businessId })!, OperatingSnapshot: operating, ManagementUrl: Url.Action(nameof(ReceptionistConnections), new { businessId })));
     }
 }

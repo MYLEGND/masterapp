@@ -31,7 +31,7 @@ public sealed partial class ReceptionistAdmissionService
         var earliestDeadline = now.Subtract(observationWindow);
         await using var read = new MasterAppDbContext(options);
         var stopRequiredIds = CallsRequiringStop(read, now).Select(x => x.Id);
-        return await read.Set<ReceptionistCall>().AsNoTracking().Where(call => call.ProviderClosedUtc == null &&
+        return await read.Set<ReceptionistCall>().AsNoTracking().Where(call => call.ProviderSessionId != null && call.ProviderClosedUtc == null &&
             call.MustStopUtc >= earliestDeadline && (call.SidebandLeaseExpiresUtc == null || call.SidebandLeaseExpiresUtc <= now) &&
             (call.State == "uncertain" || stopRequiredIds.Contains(call.Id)))
             .OrderByDescending(x => x.MustStopUtc).ThenBy(x => x.Id).Take(maximum)
@@ -44,7 +44,7 @@ public sealed partial class ReceptionistAdmissionService
         ReceptionistConfigurationCodec.Required(workerId, 100, nameof(workerId));
         return await WithCallAsync(callId, async (write, call) =>
         {
-            if (call.ProviderAcceptAttemptId is not null || call.State != "reserved" || call.ProviderClosedUtc is not null)
+            if (call.ProviderSessionId is null || call.BrowserCreationId is not null || call.ProviderAcceptAttemptId is not null || call.State != "reserved" || call.ProviderClosedUtc is not null)
                 return new ReceptionistProviderAcceptClaim(false, call.State, call.Id, call.ProviderAcceptAttemptId);
             if (clock.GetUtcNow().UtcDateTime >= call.MustStopUtc || !await AdmissionStillEnabledAsync(write, call, ct))
                 return new ReceptionistProviderAcceptClaim(false, "admission_disabled_or_expired", call.Id, null);
@@ -65,7 +65,7 @@ public sealed partial class ReceptionistAdmissionService
         return await WithCallAsync<ReceptionistSidebandLease?>(callId, async (write, call) =>
         {
             var now = clock.GetUtcNow().UtcDateTime;
-            if (call.State != "accepted" || call.ProviderClosedUtc is not null || call.MustStopUtc <= now ||
+            if (call.ProviderSessionId is null || call.State != "accepted" || call.ProviderClosedUtc is not null || call.MustStopUtc <= now ||
                 (call.SidebandLeaseExpiresUtc is { } expires && expires > now) || !await AdmissionStillEnabledAsync(write, call, ct)) return null;
             call.SidebandWorkerId = workerId; call.SidebandLeaseToken = Guid.NewGuid();
             call.SidebandFence = checked(call.SidebandFence + 1);
@@ -108,7 +108,7 @@ public sealed partial class ReceptionistAdmissionService
         return await WithCallAsync<ReceptionistSidebandLease?>(callId, async (write, call) =>
         {
             var now = clock.GetUtcNow().UtcDateTime;
-            if (call.ProviderClosedUtc is not null || (call.SidebandLeaseExpiresUtc is { } expires && expires > now) ||
+            if (call.ProviderSessionId is null || call.ProviderClosedUtc is not null || (call.SidebandLeaseExpiresUtc is { } expires && expires > now) ||
                 (call.State == "reserved" && now < call.MustStopUtc && await AdmissionStillEnabledAsync(write, call, ct))) return null;
             call.SidebandWorkerId = workerId; call.SidebandLeaseToken = Guid.NewGuid();
             call.SidebandFence = checked(call.SidebandFence + 1); call.SidebandObservationOnly = true;
@@ -187,13 +187,20 @@ public sealed partial class ReceptionistAdmissionService
         }
         return await WithCallAsync(callId, async (write, call) =>
         {
+            if (call.ProviderSessionId is null) return new ReceptionistActionClaim(false, "provider_identity_unbound", null);
             if (call.ProviderClosedUtc is not null) return new ReceptionistActionClaim(false, "provider_closed", null);
             var now = clock.GetUtcNow().UtcDateTime;
             var reason = now >= call.MustStopUtc ? "deadline" : !await AdmissionStillEnabledAsync(write, call, ct) ? "kill_switch" : null;
             if (reason is null) return new ReceptionistActionClaim(false, "stop_not_required", null);
             var previous = await write.Set<ReceptionistActionIntent>().Where(x => x.CallId == callId && x.CapabilityKey == StopCapability)
                 .OrderByDescending(x => x.AttemptNumber).FirstOrDefaultAsync(ct);
-            if (previous is not null && (previous.State == "verified" || observation is null || !observation.Active ||
+            var unusedBrowserCleanup = previous?.ConfirmationReceipt == BrowserCleanupReceipt &&
+                previous.State == "rejected" && previous.VerificationReceipt == BrowserCleanupReleased;
+            if (previous?.ConfirmationReceipt == BrowserCleanupReceipt && !unusedBrowserCleanup &&
+                (now < previous.CreatedUtc.Add(BrowserCleanupLifetime) || observation is null ||
+                    observation.ObservedUtc < previous.CreatedUtc.Add(BrowserCleanupLifetime)))
+                return new ReceptionistActionClaim(false, "browser_cleanup_owned", previous.Id);
+            if (previous is not null && !unusedBrowserCleanup && (previous.State == "verified" || observation is null || !observation.Active ||
                 observation.ObservedUtc <= previous.UpdatedUtc || observation.Receipt == previous.ConfirmationReceipt || observation.Receipt == previous.VerificationReceipt))
                 return new ReceptionistActionClaim(false, previous.State, previous.Id, previous.RouteKey,
                     previous.ActualRecordReference, previous.VerificationReceipt, previous.AttemptId);
@@ -215,7 +222,7 @@ public sealed partial class ReceptionistAdmissionService
         if (maximum is < 1 or > 1000) throw new ArgumentOutOfRangeException(nameof(maximum));
         var now = clock.GetUtcNow().UtcDateTime;
         await using var read = new MasterAppDbContext(options);
-        return await read.Set<ReceptionistCall>().AsNoTracking().Where(call => call.State == state && call.ProviderClosedUtc == null &&
+        return await read.Set<ReceptionistCall>().AsNoTracking().Where(call => call.ProviderSessionId != null && call.State == state && call.ProviderClosedUtc == null &&
             call.MustStopUtc > now && (state != "reserved" || call.ProviderAcceptAttemptId == null) &&
             (call.SidebandLeaseExpiresUtc == null || call.SidebandLeaseExpiresUtc <= now))
             .OrderBy(x => x.ReservedUtc).ThenBy(x => x.Id).Take(maximum)
@@ -223,11 +230,11 @@ public sealed partial class ReceptionistAdmissionService
     }
 
     private static bool OwnsLease(ReceptionistCall call, Guid leaseToken, DateTime now) =>
-        leaseToken != Guid.Empty && call.SidebandLeaseToken == leaseToken && call.SidebandLeaseExpiresUtc > now &&
+        call.ProviderSessionId != null && leaseToken != Guid.Empty && call.SidebandLeaseToken == leaseToken && call.SidebandLeaseExpiresUtc > now &&
         !call.SidebandObservationOnly && call.State == "accepted" && call.ProviderClosedUtc is null && call.MustStopUtc > now;
 
     private static bool OwnsObservationLease(ReceptionistCall call, Guid leaseToken, DateTime now) =>
-        leaseToken != Guid.Empty && call.SidebandLeaseToken == leaseToken && call.SidebandLeaseExpiresUtc > now &&
+        call.ProviderSessionId != null && leaseToken != Guid.Empty && call.SidebandLeaseToken == leaseToken && call.SidebandLeaseExpiresUtc > now &&
         call.SidebandObservationOnly && call.ProviderClosedUtc is null;
 
     private static ReceptionistSidebandLease Lease(ReceptionistCall call) =>

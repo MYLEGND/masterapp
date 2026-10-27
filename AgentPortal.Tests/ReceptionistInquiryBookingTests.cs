@@ -300,7 +300,7 @@ public sealed partial class ReceptionistInquiryTests
         internal bool RejectBeforeStart, FailAfterStart, Verify = true;
         internal ReceptionistCalendarSlot? Original;
         public Task<IReadOnlyList<ReceptionistCalendarSlot>> SlotsAsync(ReceptionistTrustedBookingTarget target, DateOnly date,
-            int notice, int advance, CancellationToken ct)
+            int notice, int advance, CancellationToken ct, Func<DateTime, bool>? eligibleStart = null)
         {
             var start = DateTime.SpecifyKind(date.ToDateTime(new TimeOnly(12, 0)), DateTimeKind.Utc);
             return Task.FromResult<IReadOnlyList<ReceptionistCalendarSlot>>([new(start, start.AddMinutes(target.Service.DurationMinutes), "synthetic-staff", target.CalendarTargetSha256)]);

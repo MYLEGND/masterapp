@@ -91,7 +91,7 @@ public sealed class ReceptionistCoordinationTests
         var store = new MarketingConnectionStore(storeDb, null!);
         var edited = await store.SaveReceptionistConfigurationAsync(a.Owner, a.Provider, before.ConnectionRevision,
             before.Configuration! with { BusinessPolicy = "Updated private owner policy", MaximumCallSeconds = before.Configuration!.MaximumCallSeconds + 60 }, "authorized-actor");
-        Assert.False(edited.AdmissionEnabled);
+        Assert.Equal(before.AdmissionEnabled, edited.AdmissionEnabled);
         Assert.False(edited.BindingAccepted);
         Assert.NotEqual(before.ConfigurationId, edited.ConfigurationId);
         Assert.Equal(before.ConfigurationVersion + 1, edited.ConfigurationVersion);
@@ -110,7 +110,7 @@ public sealed class ReceptionistCoordinationTests
         Assert.Equal("independent-ads-ciphertext", ads.AdsAccessTokenCiphertext);
         Assert.Equal("{\"ads\":true}", ads.ProviderPermissionsJson);
         Assert.Equal(f.Clock.Now.AddDays(-1), ads.DisconnectedUtc);
-        Assert.Single(await f.Service.FindStopRequestsAsync(10));
+        Assert.Empty(await f.Service.FindStopRequestsAsync(10));
     }
 
     [Fact]
@@ -168,14 +168,14 @@ public sealed class ReceptionistCoordinationTests
         settings = await store.SaveReceptionistConfigurationAsync(a.Owner, a.Provider, settings.ConnectionRevision,
             settings.Configuration! with { BusinessPolicy = "New inactive owner policy" }, "authorized-actor");
         Assert.False(settings.BindingAccepted); Assert.False(settings.AdmissionEnabled);
-        Assert.Null(await f.Service.GetIngressBindingAsync(a.Provider, a.Ingress));
+        Assert.Equal(original.ConfigurationId, (await f.Service.GetIngressBindingAsync(a.Provider, a.Ingress))!.ConfigurationId);
         await Assert.ThrowsAsync<InvalidOperationException>(() => f.AcceptDraftAsync(b, funding));
         await Assert.ThrowsAsync<InvalidOperationException>(() => store.AcceptReceptionistBindingAsync(a.Owner, a.Provider,
             settings.ConnectionRevision, original.Binding with { ProviderProjectKey = "replacement-project" }, "verified-operator"));
         await Assert.ThrowsAsync<ArgumentException>(() => store.AcceptReceptionistBindingAsync(a.Owner, a.Provider,
             settings.ConnectionRevision, original.Binding with { ExclusiveProjectVerificationReceipt = "" }, "verified-operator"));
         var unchanged = await db.MarketingConnections.AsNoTracking().SingleAsync(x => x.Id == a.ConnectionId);
-        Assert.Equal(a.ProjectKey, unchanged.ReceptionistProviderProjectKey); Assert.Equal(settings.ConfigurationId, unchanged.ReceptionistActiveConfigurationId);
+        Assert.Equal(a.ProjectKey, unchanged.ReceptionistProviderProjectKey); Assert.Equal(original.ConfigurationId, unchanged.ReceptionistActiveConfigurationId);
         settings = await store.AcceptReceptionistBindingAsync(a.Owner, a.Provider, settings.ConnectionRevision,
             original.Binding with { IngressKey = "rotated-owner-route", WebhookSecretReference = "secret-store:rotated-owner-webhook" }, "verified-operator");
         Assert.True(settings.BindingAccepted); Assert.False(settings.AdmissionEnabled);
@@ -495,6 +495,7 @@ public sealed class ReceptionistCoordinationTests
         f.Clock.Now = new DateTime(2026, 2, 1, 12, 0, 0, DateTimeKind.Utc);
         await f.OpenAsync("funding", "shared-provider-account", 2m, 3m);
         await f.OpenAsync("owner", a.Owner.Key, 2m, 3m);
+        a = await f.RebindAsync(a, a.Ingress);
         var blocked = await restarted.ReserveAsync(f.Ingress(a, "new-month-blocked"));
         Assert.False(blocked.Reserved); Assert.Contains("cash_limit", blocked.Reason);
         await restarted.ReconcileCostAsync(call, "provider_cost", "actual-zero-cost", new(null, 0m, null, 0m, 0m, 0m));
@@ -1193,6 +1194,7 @@ public sealed class ReceptionistCoordinationTests
             snapshot = await store.AcceptReceptionistBindingAsync(draft.Owner, draft.Provider, snapshot.ConnectionRevision, binding, "verified-operator");
             await store.SetReceptionistAdmissionAsync(draft.Owner, draft.Provider, snapshot.ConnectionRevision, true);
             var verified = (await Service.GetIngressBindingAsync(draft.Provider, draft.Ingress))!;
+            await ReceptionistTestWindows.SeedAsync(db, verified.MarketingConnectionId, verified.ConfigurationId, verified.Binding, Clock.Now);
             return draft with { ConnectionId = verified.MarketingConnectionId, ConfigurationId = verified.ConfigurationId };
         }
 
@@ -1210,6 +1212,7 @@ public sealed class ReceptionistCoordinationTests
                 verified.Binding with { IngressKey = ingress, WebhookSecretReference = webhookReference ?? verified.Binding.WebhookSecretReference }, "verified-operator");
             await store.SetReceptionistAdmissionAsync(owner.Owner, owner.Provider, settings.ConnectionRevision, true);
             var rebound = (await Service.GetIngressBindingAsync(owner.Provider, ingress))!;
+            await ReceptionistTestWindows.SeedAsync(db, rebound.MarketingConnectionId, rebound.ConfigurationId, rebound.Binding, Clock.Now);
             return owner with { Ingress = ingress, ConnectionId = rebound.MarketingConnectionId, ConfigurationId = rebound.ConfigurationId };
         }
 
@@ -1237,5 +1240,23 @@ public sealed class ReceptionistCoordinationTests
             foreach (var entity in model.Model.GetEntityTypes().ToArray())
                 if (!allowed.Contains(entity.ClrType)) model.Ignore(entity.ClrType);
         }
+    }
+}
+
+internal static class ReceptionistTestWindows
+{
+    internal static async Task SeedAsync(MasterAppDbContext db, Guid connection, Guid configuration,
+        ReceptionistProviderBinding binding, DateTime now)
+    {
+        if (!binding.ControlledTestOnly) return;
+        var version = await db.Set<ReceptionistConfigurationVersion>().AsNoTracking().SingleAsync(x => x.Id == configuration);
+        db.Add(new ReceptionistAcceptanceWindow
+        {
+            MarketingConnectionId = connection, ConfigurationVersionId = configuration, ConfigurationSha256 = version.ConfigurationSha256,
+            IngressKey = binding.IngressKey, ProviderProjectKey = binding.ProviderProjectKey,
+            RestrictedRouteEvidenceSha256 = new string('a', 64), CreatedByActorId = "synthetic-owner", ReviewedByActorId = "synthetic-reviewer",
+            StartsUtc = now, ExpiresUtc = now.AddHours(1)
+        });
+        await db.SaveChangesAsync();
     }
 }

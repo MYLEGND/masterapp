@@ -5,7 +5,9 @@
     var preview = Model.Preview;
 }
 <h1>Review receptionist content</h1>
-<p>Saved version @preview.DraftVersion; most recent applied version @preview.BaselineVersion.</p>
+<p>Saved version @preview.DraftVersion; accepted baseline version @preview.BaselineVersion.</p>
+@if (preview.IsRecovery)
+{ <p role="status">Recovery review: there is no accepted operating configuration selected. This comparison uses historical acceptance. Applying requires the protected settings to match that acceptance and keeps calls paused.</p> }
 <p>Review the AI introduction, approved answers, qualification wording and every service destination. Applying content keeps calls paused. It does not verify call quality, extend a test window, enable a provider, or authorize public routing.</p>
 @if (preview.BlockReason is not null) { <p role="status">@preview.BlockReason</p> }
 @foreach (var item in new[] { (Title: "Saved draft", Content: preview.Draft), (Title: "Previously applied content", Content: preview.Baseline) })
@@ -79,3 +81,16 @@
     <button type="submit">Create inactive draft from this content</button>
 </form>
 <p><a href="@Model.ReturnUrl">Return to receptionist settings</a></p>
+
+@if (preview.BaselineId != Guid.Empty)
+{
+    <h2>Recover accepted calls-only settings</h2>
+    <p>Create a draft of accepted version @preview.BaselineVersion, including its operating settings. This does not restore permission or acceptance. Review the resulting comparison before applying; current calls remain unchanged until application. Recovery is unavailable if that version enabled booking or its provider identity changed.</p>
+    <form method="post" action="@Model.RollbackUrl">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="ExpectedRevision" value="@preview.ExpectedRevision" />
+        <input type="hidden" name="SourceVersionId" value="@preview.BaselineId" />
+        <input type="hidden" name="RestoreOperatingConfiguration" value="true" />
+        <button type="submit">Prepare accepted calls-only settings for review</button>
+    </form>
+}

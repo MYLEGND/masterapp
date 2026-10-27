@@ -7,7 +7,7 @@ const runtime=readFileSync(new URL('../../Legend-Design/legend-public-inquiry.js
 const css=readFileSync(new URL('../../SHARED/WebsitePlatform/public-inquiry-form.css',import.meta.url),'utf8');
 
 function fixture(transport) {
-  const listeners=new Map(), calls=[];
+  const listeners=new Map(), documentListeners=new Map(), calls=[];
   let html='<span>Get a quote</span>', label='Get a quote', resetCount=0;
   const button={
     dataset:{},disabled:false,
@@ -31,7 +31,7 @@ function fixture(transport) {
   class FormFields {get(k){return values[k]??null;}}
   runInNewContext(runtime,{
     window:{LEGEND_PUBLIC_CMS_CONTEXT:{apiBase:'https://masterapp-protect.azurewebsites.net'},addEventListener(){}},
-    document:{cookie:'',querySelectorAll(q){return q.includes('[data-website-inquiry]')?[form]:[];}},
+    document:{cookie:'',hidden:false,addEventListener(k,v){documentListeners.set(k,v);},querySelectorAll(q){return q.includes('[data-website-inquiry]')?[form]:[];}},
     location:{search:'',pathname:'/contact',origin:'https://business.example'},
     URL,URLSearchParams,AbortController,setTimeout,clearTimeout,FormData:FormFields,CSS:{escape:x=>x},
     crypto:{randomUUID:()=> '11111111-1111-4111-8111-111111111111'},
@@ -39,12 +39,14 @@ function fixture(transport) {
     fetch:(url,options)=>{calls.push({url,options});return transport(url,options);}
   });
   return {button,status,calls,submit:()=>listeners.get('submit')({preventDefault(){}}),
+    visibility:()=>documentListeners.get('visibilitychange')(),
     edit:()=>listeners.get('input')(),get resets(){return resetCount;}};
 }
 
 test('same submit button displays sending then green saved confirmation, without duplicate POST',async()=>{
   let complete;
   const f=fixture(()=>new Promise(resolve=>{complete=resolve;}));
+  f.visibility(); // Voice lifecycle listener must coexist with the contact-only page.
   const pending=f.submit();
   assert.equal(f.button.textContent,'Sending inquiry…');
   assert.equal(f.button.dataset.legendInquiryState,'sending');

@@ -38,6 +38,9 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
         if (ReceptionistSql.Owner(connection) != snapshot.Owner || connection.Revision != snapshot.ConnectionRevision ||
             connection.ReceptionistActiveConfigurationId != snapshot.ConfigurationId)
             return Unavailable("snapshot_changed");
+        if (connection.ReceptionistActiveConfigurationId is null)
+            return new() { ObservedUtc = observed, OwnerPermissionEnabled = connection.ReceptionistAdmissionEnabled,
+                BindingScope = "unaccepted", AdmissionReason = "configuration_or_binding_unavailable", CallReadiness = "Not ready" };
         var version = await read.Set<ReceptionistConfigurationVersion>().SingleOrDefaultAsync(
             x => x.MarketingConnectionId == connection.Id && x.Id == connection.ReceptionistActiveConfigurationId, ct);
         if (version is null || version.ConfigurationSha256 != snapshot.ConfigurationSha256 || version.Version != snapshot.ConfigurationVersion)
@@ -72,7 +75,7 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
         var runtime = observeControlPlaneRuntime ? services?.GetService<ReceptionistRuntimeAuthority>() : null;
         var enabled = runtime?.Enabled;
         var window = !bound ? "unknown" : !binding!.ControlledTestOnly ? "not_applicable" : runtime is null ? "unknown"
-            : runtime.IsControlledTest(snapshot.Owner, binding) ? "valid_application_window" : "not_verified";
+            : await ActiveAcceptanceWindowAsync(read, connection.Id, version.Id, binding, observed.UtcDateTime, ct) is not null ? "valid_application_window" : "not_verified";
         var closing = enabled is null ? (int?)null : enabled == false ? openCalls : stopCalls;
         // Revision drift invalidates the combined projection, rather than reusing stale affirmative facts.
         if (!await read.MarketingConnections.AnyAsync(x => x.Id == connection.Id && x.OwnerKey == snapshot.Owner.Key &&
@@ -82,7 +85,7 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
             return Unavailable("snapshot_changed");
         return new()
         {
-            ObservedUtc = observed, OwnerPermissionEnabled = connection.ReceptionistAdmissionEnabled,
+            ObservedUtc = observed, OperatingConfigurationVersion = bound ? version.Version : null, OwnerPermissionEnabled = connection.ReceptionistAdmissionEnabled,
             CanAllowOwnerPermission = bound && ReceptionistConfigurationCodec.HasRequiredIntake(configuration, binding!) &&
                 ReceptionistSetupForms.CanAllowOwnerPermission(snapshot),
             RuntimeState = enabled is null ? "unknown" : enabled.Value ? "enabled" : "disabled",
@@ -151,7 +154,7 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
                 // Check this before replay so an authenticated event cannot reveal or reserve another owner's call.
                 if (current is null || connection?.Id != current.Id || initialVersion?.Id != ingress.AuthenticatedConfigurationId)
                     return new(false, false, "authenticated_binding_changed", null);
-                if (configuration is null || binding is null) return new(false, false, "configuration_or_binding_unavailable", null);
+                if (configuration is null || binding is null || binding.Transport != "sip") return new(false, false, "configuration_or_binding_unavailable", null);
                 if (binding.ProviderProjectKey != ingress.ProviderProjectKey || binding.IngressKey != ingress.IngressKey)
                     return new(false, false, "provider_binding_mismatch", null);
                 var replay = await SessionDecisionAsync(write, ingress, ct);
@@ -163,23 +166,8 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
                 // Only the existing reservation transaction may persist boundary holds. Readiness never does.
                 foreach (var boundaryCall in evaluation.BoundaryCalls) await HoldVoiceAllocationAsync(write, boundaryCall, ct);
                 if (evaluation.Reason is { } reason) return Deny(reason);
-                var accounts = evaluation.Accounts;
-                var ownerPeriod = evaluation.OwnerPeriod!;
-                var costReservations = evaluation.Costs;
-                var deadline = evaluation.Deadline;
-                var call = new ReceptionistCall
-                {
-                    MarketingConnectionId = current.Id, ConfigurationVersionId = initialVersion.Id,
-                    OwnerBudgetAccountId = ownerAccount!.Id, OwnerBudgetPeriodId = ownerPeriod.Id,
-                    ConnectionControlRevision = current.ReceptionistControlRevision,
-                    OwnerControlRevision = accounts.Single(x => x.Id == ownerAccount!.Id).ControlRevision,
-                    Provider = ingress.Provider, IngressKey = ingress.IngressKey,
-                    ProviderProjectKey = ingress.ProviderProjectKey, ProviderSessionId = ingress.ProviderSessionId,
-                    ControlledTest = ingress.ControlledTest, ReservedUtc = now, MustStopUtc = deadline,
-                    ReservedVoiceSeconds = configuration.MaximumCallSeconds
-                };
-                write.Add(call);
-                foreach (var reservation in costReservations) { reservation.CallId = call.Id; write.Add(reservation); }
+                var call = AddReservation(write, current, initialVersion.Id, configuration, binding,
+                    ownerAccount!.Id, evaluation, ingress.ProviderSessionId, ingress.ControlledTest, now);
                 return SaveDecision(write, ingress, now, "reserved", call);
             }, ct);
         }
@@ -206,9 +194,13 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
     {
         if (ownerAccount is null || accountIds.Length == 0) return new("accounting_unavailable");
         if (!current.ReceptionistAdmissionEnabled) return new("admission_disabled");
-        if (binding.ControlledTestOnly && !controlledTest) return new("controlled_acceptance_only");
+        if (binding.ControlledTestOnly != controlledTest) return new("controlled_acceptance_only");
         if (!ReceptionistConfigurationCodec.HasRequiredIntake(configuration, binding)) return new("canonical_intake_unaccepted");
         if (!ReceptionistConfigurationCodec.IsOpen(configuration, now)) return new("outside_reception_hours");
+        var acceptanceWindow = controlledTest ? await ActiveAcceptanceWindowAsync(read, current.Id,
+            current.ReceptionistActiveConfigurationId ?? Guid.Empty, binding, now, ct) : null;
+        if (controlledTest && acceptanceWindow is null) return new("acceptance_window_unavailable");
+
         var accounts = await read.Set<ReceptionistBudgetAccount>().Where(x => accountIds.Contains(x.Id)).ToListAsync(ct);
         if (accounts.Count != accountIds.Length || accounts.Any(x => !x.AdmissionEnabled || x.Currency != configuration.Currency) ||
             accounts.Any(x => x.Id == ownerAccount.Id ? x.Kind != "owner" || x.ScopeKey != current.OwnerKey : x.Kind != "funding"))
@@ -266,8 +258,29 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
             configuration.MaximumCallsPerWindow) return new("owner_admission_rate_limit");
         var deadline = new[] { now.AddSeconds(configuration.MaximumCallSeconds), periods.Min(x => x.EndUtc),
             ReceptionistConfigurationCodec.CurrentWindowEnd(configuration, now) }.Min();
+        if (acceptanceWindow is not null && acceptanceWindow.ExpiresUtc < deadline) deadline = acceptanceWindow.ExpiresUtc;
         if (deadline <= now) return new("reception_window_ended");
         return new(null) { Accounts = accounts, OwnerPeriod = ownerPeriod, Costs = costReservations, Deadline = deadline };
+    }
+
+    private static ReceptionistCall AddReservation(MasterAppDbContext write, MarketingConnection connection,
+        Guid configurationId, ReceptionistBusinessConfiguration configuration, ReceptionistProviderBinding binding,
+        Guid ownerAccountId, AdmissionEvaluation evaluation, string? providerSessionId, bool controlledTest, DateTime now)
+    {
+        var call = new ReceptionistCall
+        {
+            MarketingConnectionId = connection.Id, ConfigurationVersionId = configurationId,
+            OwnerBudgetAccountId = ownerAccountId, OwnerBudgetPeriodId = evaluation.OwnerPeriod!.Id,
+            ConnectionControlRevision = connection.ReceptionistControlRevision,
+            OwnerControlRevision = evaluation.Accounts.Single(x => x.Id == ownerAccountId).ControlRevision,
+            Provider = connection.Provider, IngressKey = binding.IngressKey,
+            ProviderProjectKey = binding.ProviderProjectKey, ProviderSessionId = providerSessionId,
+            ControlledTest = controlledTest, ReservedUtc = now, MustStopUtc = evaluation.Deadline,
+            ReservedVoiceSeconds = configuration.MaximumCallSeconds
+        };
+        write.Add(call);
+        foreach (var reservation in evaluation.Costs) { reservation.CallId = call.Id; write.Add(reservation); }
+        return call;
     }
 
     private sealed record AdmissionEvaluation(string? Reason)
@@ -283,7 +296,7 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
     {
         await using var read = new MasterAppDbContext(options);
         var call = await read.Set<ReceptionistCall>().AsNoTracking().SingleOrDefaultAsync(x => x.Id == callId, ct);
-        if (call is null) return null;
+        if (call?.ProviderSessionId is null) return null;
         return await ContextAsync(read, call, ct);
     }
 
@@ -297,6 +310,7 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
             throw new ArgumentException("A verified terminal state requires its UTC provider closure time.");
         await WithCallAsync(callId, async (write, call) =>
         {
+            if (call.ProviderSessionId is null) throw new InvalidOperationException("Provider state requires a bound identity.");
             if (providerClosedUtc is { } closure && (closure < call.ReservedUtc || closure > clock.GetUtcNow().UtcDateTime))
                 throw new ArgumentException("The verified provider closure must fall between reservation and the current UTC time.");
             if (call.ProviderClosedUtc is not null)
@@ -417,15 +431,19 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
         var now = clock.GetUtcNow().UtcDateTime;
         await using var read = new MasterAppDbContext(options);
         var calls = await CallsRequiringStop(read, now).Where(call =>
-                !read.Set<ReceptionistActionIntent>().Any(action => action.CallId == call.Id && action.CapabilityKey == StopCapability))
+                !read.Set<ReceptionistActionIntent>().Any(action => action.CallId == call.Id && action.CapabilityKey == StopCapability &&
+                    !(action.ConfirmationReceipt == BrowserCleanupReceipt && action.State == "rejected" && action.VerificationReceipt == BrowserCleanupReleased)))
             .OrderBy(x => x.MustStopUtc).ThenBy(x => x.Id).Take(maximum).ToListAsync(ct);
-        return calls.Select(call => new ReceptionistStopRequest(call.Id, call.Provider, call.ProviderProjectKey, call.ProviderSessionId,
+        return calls.Select(call => new ReceptionistStopRequest(call.Id, call.Provider, call.ProviderProjectKey, call.ProviderSessionId!,
             call.ConfigurationVersionId, call.MustStopUtc <= now ? "deadline" : "kill_switch")).ToArray();
     }
 
     private static IQueryable<ReceptionistCall> CallsRequiringStop(MasterAppDbContext read, DateTime now) =>
-        read.Set<ReceptionistCall>().AsNoTracking().Where(call => call.ProviderClosedUtc == null &&
-            (call.MustStopUtc <= now || read.MarketingConnections.Any(connection => connection.Id == call.MarketingConnectionId &&
+        read.Set<ReceptionistCall>().AsNoTracking().Where(call => call.ProviderSessionId != null && call.ProviderClosedUtc == null &&
+            (call.MustStopUtc <= now || call.ControlledTest &&
+                (read.Set<ReceptionistAcceptanceWindow>().Count(x => x.ConfigurationVersionId == call.ConfigurationVersionId) != 1 ||
+                 !ValidCallWindows(read, now).Any(x => x.ConfigurationVersionId == call.ConfigurationVersionId &&
+                    x.MarketingConnectionId == call.MarketingConnectionId && x.IngressKey == call.IngressKey && x.ProviderProjectKey == call.ProviderProjectKey)) || read.MarketingConnections.Any(connection => connection.Id == call.MarketingConnectionId &&
                 (!connection.ReceptionistAdmissionEnabled || connection.ReceptionistControlRevision != call.ConnectionControlRevision ||
                     connection.ReceptionistProviderProjectKey != call.ProviderProjectKey)) ||
              read.Set<ReceptionistBudgetAccount>().Any(account => account.Id == call.OwnerBudgetAccountId &&
@@ -433,6 +451,39 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
              read.Set<ReceptionistCostReservation>().Any(cost => cost.CallId == call.Id &&
                  read.Set<ReceptionistBudgetAccount>().Any(account => account.Id == cost.FundingBudgetAccountId &&
                      (!account.AdmissionEnabled || account.ControlRevision != cost.FundingControlRevision)))));
+
+    // All windows for the configuration count, including expired/revoked rows. Duplicates fail closed.
+    private static IQueryable<ReceptionistAcceptanceWindow> ValidCallWindows(MasterAppDbContext db, DateTime now) =>
+        db.Set<ReceptionistAcceptanceWindow>().Where(x => x.RevokedUtc == null && x.StartsUtc <= now && x.ExpiresUtc > now &&
+            x.ExpiresUtc <= x.StartsUtc.AddHours(1) && x.CreatedByActorId != "" && x.ReviewedByActorId != "" &&
+            x.RestrictedRouteEvidenceSha256.Length == 64 &&
+            x.RestrictedRouteEvidenceSha256.Replace("0", "").Replace("1", "").Replace("2", "").Replace("3", "").Replace("4", "").Replace("5", "").Replace("6", "").Replace("7", "").Replace("8", "").Replace("9", "").Replace("a", "").Replace("b", "").Replace("c", "").Replace("d", "").Replace("e", "").Replace("f", "") + "#" == "#" && x.Revision != Guid.Empty &&
+            db.Set<ReceptionistConfigurationVersion>().Any(v => v.Id == x.ConfigurationVersionId &&
+                v.MarketingConnectionId == x.MarketingConnectionId && v.ConfigurationSha256 == x.ConfigurationSha256));
+
+    private static async Task<ReceptionistAcceptanceWindow?> ActiveAcceptanceWindowAsync(MasterAppDbContext db,
+        Guid connectionId, Guid configurationId, ReceptionistProviderBinding binding, DateTime now, CancellationToken ct)
+    {
+        if (!binding.ControlledTestOnly || await db.Set<ReceptionistAcceptanceWindow>()
+            .CountAsync(x => x.ConfigurationVersionId == configurationId, ct) != 1) return null;
+        var row = await ValidCallWindows(db, now).AsNoTracking().SingleOrDefaultAsync(x =>
+            x.ConfigurationVersionId == configurationId && x.MarketingConnectionId == connectionId &&
+            x.IngressKey == binding.IngressKey && x.ProviderProjectKey == binding.ProviderProjectKey, ct);
+        if (row is null || !ReceptionistOperatorService.HashValue(row.RestrictedRouteEvidenceSha256)) return null;
+        row.StartsUtc = DateTime.SpecifyKind(row.StartsUtc, DateTimeKind.Utc);
+        row.ExpiresUtc = DateTime.SpecifyKind(row.ExpiresUtc, DateTimeKind.Utc);
+        return row;
+    }
+
+    internal async Task<ReceptionistAcceptanceWindow?> GetAcceptanceWindowAsync(ReceptionistIngressBinding binding, CancellationToken ct)
+    {
+        await using var read = new MasterAppDbContext(options);
+        if (!await read.MarketingConnections.AnyAsync(x => x.Id == binding.MarketingConnectionId &&
+            x.OwnerKey == binding.Owner.Key && x.ReceptionistActiveConfigurationId == binding.ConfigurationId &&
+            x.ReceptionistIngressKey == binding.Binding.IngressKey && x.ReceptionistProviderProjectKey == binding.Binding.ProviderProjectKey, ct)) return null;
+        return await ActiveAcceptanceWindowAsync(read, binding.MarketingConnectionId, binding.ConfigurationId,
+            binding.Binding, clock.GetUtcNow().UtcDateTime, ct);
+    }
 
     private async Task<T> WithCallAsync<T>(Guid callId, Func<MasterAppDbContext, ReceptionistCall, Task<T>> operation, CancellationToken ct)
     {
@@ -445,6 +496,7 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
 
     private static async Task<ReceptionistCallContext> ContextAsync(MasterAppDbContext read, ReceptionistCall call, CancellationToken ct)
     {
+        if (call.ProviderSessionId is null) throw new InvalidOperationException("Provider identity is not yet bound.");
         var connection = await read.MarketingConnections.AsNoTracking().SingleAsync(x => x.Id == call.MarketingConnectionId, ct);
         var version = await read.Set<ReceptionistConfigurationVersion>().AsNoTracking().SingleAsync(
             x => x.Id == call.ConfigurationVersionId && x.MarketingConnectionId == connection.Id, ct);
@@ -462,7 +514,10 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
             configuration, binding, call.MustStopUtc, call.State, call.ControlledTest);
     }
 
-    private static async Task<bool> AdmissionStillEnabledAsync(MasterAppDbContext read, ReceptionistCall call, CancellationToken ct) =>
+    private async Task<bool> AdmissionStillEnabledAsync(MasterAppDbContext read, ReceptionistCall call, CancellationToken ct) =>
+        (!call.ControlledTest || await read.Set<ReceptionistAcceptanceWindow>().CountAsync(x => x.ConfigurationVersionId == call.ConfigurationVersionId, ct) == 1 &&
+            await ValidCallWindows(read, clock.GetUtcNow().UtcDateTime).AnyAsync(x => x.ConfigurationVersionId == call.ConfigurationVersionId &&
+                x.MarketingConnectionId == call.MarketingConnectionId && x.IngressKey == call.IngressKey && x.ProviderProjectKey == call.ProviderProjectKey, ct)) &&
         await read.MarketingConnections.AnyAsync(x => x.Id == call.MarketingConnectionId && x.ReceptionistAdmissionEnabled &&
             x.ReceptionistControlRevision == call.ConnectionControlRevision && x.ReceptionistProviderProjectKey == call.ProviderProjectKey, ct) &&
         await read.Set<ReceptionistBudgetAccount>().AnyAsync(x => x.Id == call.OwnerBudgetAccountId && x.AdmissionEnabled && x.ControlRevision == call.OwnerControlRevision, ct) &&

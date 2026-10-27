@@ -8,7 +8,7 @@ public sealed partial class ReceptionistAdmissionService
     /// <summary>A server-observed runtime failure may shorten a call deadline; it cannot enable or extend a call.</summary>
     internal Task RequestRuntimeStopAsync(Guid callId, string reason, CancellationToken ct = default)
     {
-        if (reason is not ("backend_unavailable" or "invalid_provider_session" or "protocol_limit" or "transport_lost" or "runtime_disabled" or "accounting_unresolved"))
+        if (reason is not ("backend_unavailable" or "invalid_provider_session" or "protocol_limit" or "transport_lost" or "runtime_disabled" or "accounting_unresolved" or "browser_ended"))
             throw new ArgumentException("Unsupported runtime stop reason.");
         return WithCallAsync(callId, async (write, call) =>
         {

@@ -11972,6 +11972,77 @@ namespace Infrastructure.Migrations
                     b.ToTable("Proposals", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.Entities.ReceptionistAcceptanceWindow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ConfigurationSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<Guid>("ConfigurationVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedByActorId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("IngressKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<Guid>("MarketingConnectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProviderProjectKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("RestrictedRouteEvidenceSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("ReviewedByActorId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<Guid>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("RevokedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("StartsUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MarketingConnectionId", "ConfigurationVersionId", "ExpiresUtc");
+
+                    b.ToTable("ReceptionistAcceptanceWindows", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ReceptionistAcceptanceWindow_Lifetime", "[StartsUtc] < [ExpiresUtc]");
+                        });
+                });
+
             modelBuilder.Entity("Domain.Entities.ReceptionistAccountCharge", b =>
                 {
                     b.Property<Guid>("Id")
@@ -12298,6 +12369,14 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("BrowserCreationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BrowserOfferSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
                     b.Property<Guid>("ConfigurationVersionId")
                         .HasColumnType("uniqueidentifier");
 
@@ -12358,7 +12437,6 @@ namespace Infrastructure.Migrations
                         .UseCollation("Latin1_General_100_BIN2");
 
                     b.Property<string>("ProviderSessionId")
-                        .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)")
                         .UseCollation("Latin1_General_100_BIN2");
@@ -12409,6 +12487,10 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BrowserCreationId")
+                        .IsUnique()
+                        .HasFilter("[BrowserCreationId] IS NOT NULL");
+
                     b.HasIndex("ProviderAcceptAttemptId")
                         .IsUnique()
                         .HasFilter("[ProviderAcceptAttemptId] IS NOT NULL");
@@ -12430,10 +12512,13 @@ namespace Infrastructure.Migrations
                     b.HasIndex("State", "SidebandLeaseExpiresUtc");
 
                     b.HasIndex("Provider", "ProviderProjectKey", "ProviderSessionId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[ProviderSessionId] IS NOT NULL");
 
                     b.ToTable("ReceptionistCalls", null, t =>
                         {
+                            t.HasCheckConstraint("CK_ReceptionistCall_BrowserCreation", "([BrowserCreationId] IS NULL AND [BrowserOfferSha256] IS NULL AND [ProviderSessionId] IS NOT NULL) OR ([BrowserCreationId] IS NOT NULL AND [BrowserOfferSha256] IS NOT NULL AND LEN([BrowserOfferSha256]) = 64 AND [ProviderAcceptAttemptId] IS NOT NULL AND ([ProviderSessionId] IS NOT NULL OR ([State] = 'uncertain' AND [ProviderClosedUtc] IS NULL AND [SidebandLeaseToken] IS NULL)))");
+
                             t.HasCheckConstraint("CK_ReceptionistCall_Duration", "[ReservedVoiceSeconds] > 0 AND [ObservedVoiceSeconds] >= 0 AND [MustStopUtc] >= [ReservedUtc]");
 
                             t.HasCheckConstraint("CK_ReceptionistCall_State", "[State] IN ('reserved','accepted','uncertain','closed','rejected') AND (([ProviderClosedUtc] IS NULL AND [State] IN ('reserved','accepted','uncertain')) OR ([ProviderClosedUtc] IS NOT NULL AND [State] IN ('closed','rejected'))) AND ([VoiceUsageFinal] = 0 OR ([ProviderClosedUtc] IS NOT NULL AND [VoiceAllocationUncertain] = 0))");
@@ -12617,6 +12702,66 @@ namespace Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Domain.Entities.ReceptionistCredentialVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedByActorId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("MarketingConnectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProtectedValue")
+                        .IsRequired()
+                        .HasMaxLength(32768)
+                        .HasColumnType("nvarchar(max)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("ProviderProjectKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<Guid>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("RevokedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ValueSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ReceptionistCredentialVersions", (string)null);
+                });
+
             modelBuilder.Entity("Domain.Entities.ReceptionistIngressEvent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -12655,6 +12800,98 @@ namespace Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("ReceptionistIngressEvents", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.Entities.ReceptionistOperationPackage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ApiCredentialVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ConfigurationVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedByActorId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("MarketingConnectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasMaxLength(262144)
+                        .HasColumnType("nvarchar(max)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("PayloadSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("ReviewState")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("ReviewedByActorId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("ReviewedPayloadSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<DateTime?>("ReviewedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("RevokedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("WebhookCredentialVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MarketingConnectionId", "ApiCredentialVersionId");
+
+                    b.HasIndex("MarketingConnectionId", "ConfigurationVersionId");
+
+                    b.HasIndex("MarketingConnectionId", "CreatedUtc");
+
+                    b.HasIndex("MarketingConnectionId", "WebhookCredentialVersionId");
+
+                    b.ToTable("ReceptionistOperationPackages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ReceptionistOperationPackage_Lifetime", "[CreatedUtc] < [ExpiresUtc]");
+
+                            t.HasCheckConstraint("CK_ReceptionistOperationPackage_Review", "[ReviewState] IN ('pending','accepted','rejected') AND ([ReviewState] = 'pending' OR ([ReviewedByActorId] IS NOT NULL AND [ReviewedUtc] IS NOT NULL AND [ReviewedPayloadSha256] IS NOT NULL AND [ReviewedPayloadSha256] = [PayloadSha256]))");
+                        });
                 });
 
             modelBuilder.Entity("Domain.Entities.ReceptionistSessionDecision", b =>
@@ -16127,6 +16364,16 @@ namespace Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Domain.Entities.ReceptionistAcceptanceWindow", b =>
+                {
+                    b.HasOne("Domain.Entities.ReceptionistConfigurationVersion", null)
+                        .WithMany()
+                        .HasForeignKey("MarketingConnectionId", "ConfigurationVersionId")
+                        .HasPrincipalKey("MarketingConnectionId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Domain.Entities.ReceptionistAccountCharge", b =>
                 {
                     b.HasOne("Domain.Entities.ReceptionistBudgetAccount", null)
@@ -16251,6 +16498,15 @@ namespace Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Domain.Entities.ReceptionistCredentialVersion", b =>
+                {
+                    b.HasOne("Domain.Entities.MarketingConnection", null)
+                        .WithMany()
+                        .HasForeignKey("MarketingConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Domain.Entities.ReceptionistIngressEvent", b =>
                 {
                     b.HasOne("Domain.Entities.ReceptionistSessionDecision", null)
@@ -16258,6 +16514,28 @@ namespace Infrastructure.Migrations
                         .HasForeignKey("DecisionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Domain.Entities.ReceptionistOperationPackage", b =>
+                {
+                    b.HasOne("Domain.Entities.ReceptionistCredentialVersion", null)
+                        .WithMany()
+                        .HasForeignKey("MarketingConnectionId", "ApiCredentialVersionId")
+                        .HasPrincipalKey("MarketingConnectionId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Domain.Entities.ReceptionistConfigurationVersion", null)
+                        .WithMany()
+                        .HasForeignKey("MarketingConnectionId", "ConfigurationVersionId")
+                        .HasPrincipalKey("MarketingConnectionId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Entities.ReceptionistCredentialVersion", null)
+                        .WithMany()
+                        .HasForeignKey("MarketingConnectionId", "WebhookCredentialVersionId")
+                        .HasPrincipalKey("MarketingConnectionId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Domain.Entities.ReceptionistSessionDecision", b =>

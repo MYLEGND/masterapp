@@ -13,7 +13,7 @@ using Shared.Auth;
 namespace Infrastructure.Reception;
 
 /// <summary>Authenticated operator entry; all persistence remains in the existing settings/accounting owners.</summary>
-public sealed class ReceptionistOperatorService(MarketingConnectionStore store,
+public sealed partial class ReceptionistOperatorService(MarketingConnectionStore store,
     ReceptionistAdmissionService admission, IConfiguration configuration, MarketingCredentialProtector protector,
     IHttpContextAccessor httpContext, TimeProvider clock, IServiceProvider? services = null)
 {
@@ -57,17 +57,19 @@ public sealed class ReceptionistOperatorService(MarketingConnectionStore store,
         return Task.FromResult<IReadOnlyList<ReceptionistOperatorPackageSummary>>(result.OrderBy(x => x.PackageKey, StringComparer.Ordinal).ToArray());
     }
 
-    public async Task<ReceptionistOperatorPlan> PlanAsync(string packageKey, string expectedPackageSha256,
-        CancellationToken ct = default)
+    public Task<ReceptionistOperatorPlan> PlanAsync(string packageKey, string expectedPackageSha256,
+        CancellationToken ct = default) => PlanCoreAsync(packageKey, expectedPackageSha256, RequireFounder(), null, null, ct);
+
+    private async Task<ReceptionistOperatorPlan> PlanCoreAsync(string packageKey, string expectedPackageSha256,
+        string actor, MarketingOwnerScope? owner, Func<MarketingOwnerScope, CancellationToken, Task<bool>>? authorize, CancellationToken ct)
     {
-        var actor = RequireFounder();
-        var package = ReadPackage(packageKey, expectedPackageSha256, actor);
+        var package = await ReadPackageAsync(packageKey, expectedPackageSha256, actor, owner, ct);
         ReceptionistOperatorState state;
         try
         {
             state = await admission.ReadOperatorStateAsync(package, expectedPackageSha256, ct);
             if (state.CompletedReference is null) state.RequirePackageRevisions(package);
-            var secretHash = Preflight(package, state, prepareBinding: false, expectedPackageSha256).SecretHash;
+            var secretHash = (await PreflightAsync(package, state, prepareBinding: false, expectedPackageSha256, ct)).SecretHash;
             var now = clock.GetUtcNow().UtcDateTime;
             var token = protector.Protect(state.Owner, PreviewPurpose, JsonSerializer.Serialize(new Preview(1, actor,
                 state.Owner.Key, packageKey, expectedPackageSha256, state.StateSha256, secretHash, now, now.Add(PreviewLifetime)), ReceptionistConfigurationCodec.Json))
@@ -85,11 +87,14 @@ public sealed class ReceptionistOperatorService(MarketingConnectionStore store,
         }
     }
 
-    public async Task<ReceptionistOperatorReceipt> ApplyAsync(ReceptionistOperatorApplyRequest request, CancellationToken ct = default)
+    public Task<ReceptionistOperatorReceipt> ApplyAsync(ReceptionistOperatorApplyRequest request, CancellationToken ct = default) =>
+        ApplyCoreAsync(request, RequireFounder(), null, null, ct);
+
+    private async Task<ReceptionistOperatorReceipt> ApplyCoreAsync(ReceptionistOperatorApplyRequest request, string actor,
+        MarketingOwnerScope? owner, Func<MarketingOwnerScope, CancellationToken, Task<bool>>? authorize, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var actor = RequireFounder();
-        var package = ReadPackage(request.PackageKey, request.PackageSha256, actor);
+        var package = await ReadPackageAsync(request.PackageKey, request.PackageSha256, actor, owner, ct);
         if (string.IsNullOrWhiteSpace(request.ExpectedStateToken) || request.ExpectedStateToken.Length > 4096)
             throw new ArgumentException("A bounded current operator preview is required.");
         var initial = await admission.ReadOperatorStateAsync(package, request.PackageSha256, ct);
@@ -104,18 +109,19 @@ public sealed class ReceptionistOperatorService(MarketingConnectionStore store,
             preview.IssuedUtc.Kind != DateTimeKind.Utc || preview.ExpiresUtc.Kind != DateTimeKind.Utc ||
             preview.IssuedUtc > now || preview.ExpiresUtc <= now || preview.ExpiresUtc - preview.IssuedUtc != PreviewLifetime)
             throw new InvalidOperationException("The operator preview is invalid or expired.");
-        var preflight = Preflight(package, initial, prepareBinding: true, request.PackageSha256);
+        var preflight = await PreflightAsync(package, initial, prepareBinding: true, request.PackageSha256, ct);
         var outcome = "applied";
         async Task Guard(MasterAppDbContext write)
         {
-            var currentActor = RequireFounder();
-            var currentPackage = ReadPackage(request.PackageKey, request.PackageSha256, currentActor);
+            var currentActor = owner is null ? RequireFounder() : await RequireOwnerActorAsync(owner, authorize!, ct);
+            var currentPackage = await ReadPackageAsync(request.PackageKey, request.PackageSha256, currentActor, owner, ct, write);
+            await GuardStoredCredentialsAsync(write, currentPackage, ct);
             var current = await admission.ReadOperatorStateAsync(write, currentPackage, request.PackageSha256, ct);
             if (current.CompletedReference is { } completed)
                 throw new ReceptionistOperatorReplayException(completed, current.SatisfiedWithoutReceipt);
             current.RequirePackageRevisions(currentPackage);
             if (current.StateSha256 != preview.StateSha256 || currentActor != preview.ActorOid ||
-                Preflight(currentPackage, current, false, request.PackageSha256).SecretHash != preview.SecretInputsSha256)
+                (await PreflightAsync(currentPackage, current, false, request.PackageSha256, ct)).SecretHash != preview.SecretInputsSha256)
                 throw new DbUpdateConcurrencyException("The operator preview changed. A fresh review is required.");
         }
         try
@@ -172,25 +178,27 @@ public sealed class ReceptionistOperatorService(MarketingConnectionStore store,
         new(request.PackageKey, request.PackageSha256, package.Operation, outcome, committed, verified,
             outcome == "already_satisfied" ? null : reference, facts);
 
-    private (ReceptionistProviderBinding? Binding, string SecretHash) Preflight(ReceptionistOperatorPackage package,
-        ReceptionistOperatorState state, bool prepareBinding, string packageSha)
+    private async Task<(ReceptionistProviderBinding? Binding, string SecretHash)> PreflightAsync(ReceptionistOperatorPackage package,
+        ReceptionistOperatorState state, bool prepareBinding, string packageSha, CancellationToken ct)
     {
         if (state.CompletedReference is not null) return (null, string.Empty);
+        if (package.Operation == "create_acceptance_window" && package.Window!.ExpiresUtc <= clock.GetUtcNow().UtcDateTime)
+            throw new InvalidOperationException("The proposed acceptance window expired.");
         if (package.Operation == "accept_binding")
         {
             var binding = package.Binding!;
             ReceptionistConfigurationCodec.ValidateBinding(binding, state.Configuration);
             _ = ReceptionistRuntimeAuthority.Ready(package.Provider, state.Configuration, binding);
-            var api = BootstrapSecret(package, binding.CredentialReference, "voice-api", package.ApiCredentialSha256!);
-            var webhook = BootstrapSecret(package, binding.WebhookSecretReference, "voice-webhook", package.WebhookSecretSha256!);
+            var api = await BootstrapSecretAsync(package, binding.CredentialReference, "voice-api", package.ApiCredentialSha256!, ct);
+            var webhook = binding.Transport == "webrtc" ? null : await BootstrapSecretAsync(package, binding.WebhookSecretReference, "voice-webhook", package.WebhookSecretSha256!, ct);
             OpenAiReceptionistClient.ValidateCredentials(package.ProviderProjectKey, api);
-            OpenAiReceptionistProtocol.ValidateSigningSecret(webhook);
+            if (webhook is not null) OpenAiReceptionistProtocol.ValidateSigningSecret(webhook);
             var secretHash = ReceptionistConfigurationCodec.Hash(JsonSerializer.Serialize(new
                 { binding.CredentialReference, package.ApiCredentialSha256, binding.WebhookSecretReference, package.WebhookSecretSha256 }));
             return (prepareBinding ? binding with
             {
                 ProtectedApiCredential = ReceptionistCredentialEnvelope.Protect(protector, state.Owner, package.Provider, package.ProviderProjectKey, "voice-api", api),
-                ProtectedWebhookSecret = ReceptionistCredentialEnvelope.Protect(protector, state.Owner, package.Provider, package.ProviderProjectKey, "voice-webhook", webhook),
+                ProtectedWebhookSecret = webhook is null ? null : ReceptionistCredentialEnvelope.Protect(protector, state.Owner, package.Provider, package.ProviderProjectKey, "voice-webhook", webhook),
                 OperatorAcceptancePackageSha256 = packageSha
             } : null, secretHash);
         }
@@ -200,10 +208,10 @@ public sealed class ReceptionistOperatorService(MarketingConnectionStore store,
             _ = ReceptionistRuntimeAuthority.Ready(package.Provider, state.Configuration, binding);
             var api = ReceptionistCredentialEnvelope.Unprotect(protector, state.Owner, package.Provider, package.ProviderProjectKey,
                 "voice-api", binding.ProtectedApiCredential ?? string.Empty);
-            var webhook = ReceptionistCredentialEnvelope.Unprotect(protector, state.Owner, package.Provider, package.ProviderProjectKey,
+            var webhook = binding.Transport == "webrtc" ? null : ReceptionistCredentialEnvelope.Unprotect(protector, state.Owner, package.Provider, package.ProviderProjectKey,
                 "voice-webhook", binding.ProtectedWebhookSecret ?? string.Empty);
             OpenAiReceptionistClient.ValidateCredentials(package.ProviderProjectKey, api);
-            OpenAiReceptionistProtocol.ValidateSigningSecret(webhook);
+            if (webhook is not null) OpenAiReceptionistProtocol.ValidateSigningSecret(webhook);
         }
         return (null, string.Empty);
     }
@@ -276,6 +284,8 @@ internal sealed record ReceptionistOperatorPackage
     public string? ApiCredentialSha256 { get; init; }
     public string? WebhookSecretSha256 { get; init; }
     public ReceptionistBudgetOpening? Opening { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public ReceptionistWindowOperation? Window { get; init; }
     public Guid? BudgetAccountId { get; init; }
     public decimal? CashLimit { get; init; }
     public decimal? ConsumptionLimit { get; init; }
@@ -324,11 +334,13 @@ internal sealed record ReceptionistOperatorPackage
         Supplied("callCost", CallCost is not null); Supplied("accountCharge", AccountCharge is not null);
         Supplied("voice", VoiceAllocations is not null); Supplied("finalVoice", FinalVoiceSeconds.HasValue);
         Supplied("closure", ObservedProviderClosedUtc.HasValue);
+        Supplied("window", Window is not null);
         Supplied("bookingAction", BookingActionId.HasValue || ExpectedBookingActionRevision.HasValue);
         string[] allowed = Operation switch
         {
             "accept_binding" => ["binding", "secrets"], "open_budget_period" => ["opening"],
             "approve_budget_ceilings" => ["budget", "limits"], "set_budget_admission" => ["budget", "enabled"],
+            "create_acceptance_window" or "revoke_acceptance_window" => ["window"],
             "set_owner_admission" => ["enabled"], "reconcile_call_cost" => ["call", "component", "callCost"],
             "reconcile_account_charge" => ["accountCharge"], "reconcile_dated_voice" => ["call", "voice", "finalVoice"],
             "record_provider_closure" => ["call", "closure", "finalVoice"],
@@ -349,14 +361,16 @@ internal sealed record ReceptionistOperatorPackage
                 throw new ArgumentException("A bounded explicit capability map is required.");
             if (Binding!.ProviderProjectKey != ProviderProjectKey || ReceptionistConfigurationCodec.HasContentProvenance(Binding) || Binding.ProtectedApiCredential is not null ||
                 Binding.ProtectedWebhookSecret is not null || Binding.OperatorAcceptancePackageSha256 is not null ||
-                !ReceptionistOperatorService.HashValue(ApiCredentialSha256) || !ReceptionistOperatorService.HashValue(WebhookSecretSha256))
+                !ReceptionistOperatorService.HashValue(ApiCredentialSha256) ||
+                (Binding.Transport == "webrtc" ? WebhookSecretSha256 is not null : !ReceptionistOperatorService.HashValue(WebhookSecretSha256)))
                 throw new ArgumentException("Reviewed raw-source fingerprints and an unsealed private binding are required.");
             RequireEvidence("provider_setup", Binding.ProviderVerificationReceipt);
             RequireEvidence("exclusive_project", Binding.ExclusiveProjectVerificationReceipt);
             RequireEvidence("cost_bounds", Binding.CostVerificationReceipt);
             RequireEvidence("disclosure", Binding.DisclosureConfigurationReceipt);
             RequireEvidence("retention", Binding.RetentionConfigurationReceipt);
-            RequireEvidence("carrier_fallback", Binding.CarrierFallbackReceipt);
+            if (Binding.Transport == "webrtc") RequireEvidence("website_fallback", Binding.WebsiteFallbackReceipt ?? string.Empty);
+            else RequireEvidence("carrier_fallback", Binding.CarrierFallbackReceipt);
             foreach (var capability in (Binding.Capabilities ?? []).Where(x => x.State == ReceptionistCapabilityStates.Accepted))
                 RequireEvidence("capability." + capability.Key, capability.AcceptanceReceipt);
             if (!Binding.ControlledTestOnly) RequireEvidence("public_activation", Binding.PublicActivationReceipt ?? string.Empty);
@@ -367,6 +381,19 @@ internal sealed record ReceptionistOperatorPackage
             RequireEvidence(Operation, ReceiptReference);
             if (Opening is not null && Opening.ReconciliationReceipt != ReceiptReference || AccountCharge is not null && AccountCharge.ProviderReceiptKey != ReceiptReference)
                 throw new ArgumentException("The command receipt must match its reviewed evidence.");
+        }
+        if (Window is { } window)
+        {
+            if (window.Id == Guid.Empty || window.Revision == Guid.Empty ||
+                !OpenAiReceptionistProtocol.Token(window.IngressKey, 100) ||
+                !ReceptionistOperatorService.HashValue(window.RestrictedRouteEvidenceSha256) ||
+                string.IsNullOrWhiteSpace(window.CreatedByActorId) || window.CreatedByActorId.Length > 200 ||
+                window.StartsUtc.Kind != DateTimeKind.Utc || window.ExpiresUtc.Kind != DateTimeKind.Utc ||
+                window.ExpiresUtc <= window.StartsUtc || window.ExpiresUtc - window.StartsUtc > TimeSpan.FromHours(1))
+                throw new ArgumentException("One exact, bounded acceptance window is required.");
+            if (Operation == "create_acceptance_window" &&
+                Evidence.Single(x => x.Kind == Operation).Sha256 != window.RestrictedRouteEvidenceSha256)
+                throw new ArgumentException("Current restricted-route evidence is required.");
         }
         if (CashLimit is { } cash) ReceptionistConfigurationCodec.Money(cash);
         if (ConsumptionLimit is { } consumption) ReceptionistConfigurationCodec.Money(consumption);
@@ -425,3 +452,6 @@ internal sealed class ReceptionistOperatorReplayException(string reference, bool
     internal string Reference { get; } = reference;
     internal bool SatisfiedWithoutReceipt { get; } = satisfiedWithoutReceipt;
 }
+
+internal sealed record ReceptionistWindowOperation(Guid Id, Guid Revision, string IngressKey,
+    string RestrictedRouteEvidenceSha256, string CreatedByActorId, DateTime StartsUtc, DateTime ExpiresUtc);

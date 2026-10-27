@@ -10,7 +10,7 @@ public sealed class WebsiteCorsPolicyProvider(IOptions<CorsOptions> options, Web
     public async Task<CorsPolicy?> GetPolicyAsync(HttpContext context, string? policyName)
     {
         var policy = options.Value.GetPolicy(policyName ?? options.Value.DefaultPolicyName);
-        if (policyName != "PublicWebsiteEditor" || policy is null) return policy;
+        if (policyName is not ("PublicWebsiteEditor" or "PublicWebsiteReceptionist") || policy is null) return policy;
         var origin = context.Request.Headers.Origin.ToString();
         if (policy.Origins.Contains(origin, StringComparer.OrdinalIgnoreCase)) return policy;
         if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri) || uri.Scheme != "https" || !uri.IsDefaultPort || uri.AbsolutePath != "/") return policy;

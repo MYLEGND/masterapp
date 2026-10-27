@@ -33,6 +33,25 @@ namespace AgentPortal.Tests;
 public sealed class ReceptionistCalendarGatewayTests
 {
     [Fact]
+    public async Task NoticeFilterRunsBeforeThreeSlotLimit()
+    {
+        using var f = await CalendarFixture.CreateAsync();
+        var cutoff = DateTime.SpecifyKind(f.Date.ToDateTime(new TimeOnly(11, 30)), DateTimeKind.Utc);
+        var configuration = new ReceptionistBusinessConfiguration
+        {
+            TimeZoneId = "UTC",
+            Hours = Enum.GetValues<DayOfWeek>().Select(day => new ReceptionistHoursWindow(day, new TimeOnly(6, 0), new TimeOnly(21, 0))).ToArray(),
+            BookingPolicy = new() { MinimumNoticeBusinessDays = 1 }
+        };
+        var slots = await f.Controller().ReadReceptionistSlotsAsync(f.Target, f.Date, 0, 30, default,
+            start => ReceptionistBookingAuthority.NoticeAllows(start, cutoff.AddDays(-1), configuration));
+        Assert.NotEmpty(slots);
+        Assert.Equal(cutoff, slots[0].StartUtc);
+        Assert.All(slots, slot => Assert.True(slot.StartUtc >= cutoff));
+        Assert.InRange(slots.Count, 1, 3);
+    }
+
+    [Fact]
     public async Task CanonicalEngineUsesExactServiceFullBusyBuffersAndConfirmedRecipientWithOneNonRetriedPost()
     {
         using var f = await CalendarFixture.CreateAsync();

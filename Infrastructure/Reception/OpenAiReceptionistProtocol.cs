@@ -121,6 +121,34 @@ internal static class OpenAiReceptionistProtocol
         }, Json);
     }
 
+    // The public peer carries audio only. Private instructions, delegation, tool results
+    // and session commands stay on the existing authenticated server sideband.
+    internal static byte[] BrowserBody(OpenAiReceptionistSessionSettings settings, string offer)
+    {
+        ValidateSdp(offer);
+        using var accepted = JsonDocument.Parse(AcceptBody(settings));
+        var session = System.Text.Json.Nodes.JsonNode.Parse(accepted.RootElement.GetProperty("session").GetRawText())!;
+        session["client"] = new System.Text.Json.Nodes.JsonObject
+        {
+            ["data_channel"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["allowed_client_events"] = new System.Text.Json.Nodes.JsonArray(),
+                ["allowed_server_events"] = new System.Text.Json.Nodes.JsonArray()
+            }
+        };
+        return JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            session, transport = new { type = "webrtc", sdp = offer }
+        }, Json);
+    }
+
+    internal static void ValidateSdp(string sdp)
+    {
+        if (string.IsNullOrWhiteSpace(sdp) || sdp.Length > MaximumWebhookBytes ||
+            !sdp.StartsWith("v=0", StringComparison.Ordinal) || sdp.Contains('\0'))
+            throw new ArgumentException("A bounded WebRTC session description is required.");
+    }
+
     internal static Uri SessionUri(string sessionId, string operation, bool sideband = false)
     {
         if (!Token(sessionId, 200) || operation is not ("accept" or "reject" or "hangup" or "attach"))

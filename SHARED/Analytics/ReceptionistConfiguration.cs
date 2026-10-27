@@ -76,6 +76,9 @@ public sealed record ReceptionistBookingPolicy
     public string PrivacyAcceptanceReference { get; init; } = string.Empty;
     public Guid? BookingAgentProfileId { get; init; }
     public int MinimumNoticeMinutes { get; init; }
+    // Omit the default to preserve historical configuration fingerprints.
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public int MinimumNoticeBusinessDays { get; init; }
     public int MaximumAdvanceDays { get; init; }
     public IReadOnlyList<ReceptionistBookingService> Services { get; init; } = [];
 }

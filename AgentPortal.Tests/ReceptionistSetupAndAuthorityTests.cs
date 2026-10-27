@@ -38,7 +38,7 @@ public sealed class ReceptionistSetupAndAuthorityTests
             BookingPolicy = new() { Enabled = true, QaOnly = true, AllowConsentedCustomerEmail = true,
                 ExpectedCalendarConfigurationSha256 = new string('a', 64), ExpectedCalendarTargetSha256 = new string('b', 64),
                 BookingAgentProfileId = Guid.NewGuid(), PrivacyAcceptanceReference = "synthetic-reviewed-privacy",
-                MinimumNoticeMinutes = 75, MaximumAdvanceDays = 21,
+                MinimumNoticeMinutes = 75, MinimumNoticeBusinessDays = 1, MaximumAdvanceDays = 21,
                 Services = [new() { ServiceKey = "service_a", BookingServiceId = "approved-service", TimeZoneId = "America/Phoenix", DurationMinutes = 45 }] }
         };
         var snapshot = Snapshot(config); var input = ReceptionistSetupForms.Read(snapshot);
@@ -47,6 +47,7 @@ public sealed class ReceptionistSetupAndAuthorityTests
         var saved = ReceptionistSetupForms.Apply(snapshot, input);
         Assert.Equal(expected, JsonSerializer.Serialize(saved.BookingPolicy));
         Assert.Equal(config.BusinessPolicy, saved.BusinessPolicy); Assert.Equal(config.ConversationInstructions, saved.ConversationInstructions);
+        Assert.Equal(1, ReceptionistSetupForms.Apply(snapshot, input with { BookingMinimumNoticeBusinessDays = null }).BookingPolicy!.MinimumNoticeBusinessDays);
         input = input with { BookingFieldsPresent = false, BookingEnabled = false };
         Assert.Equal(expected, JsonSerializer.Serialize(ReceptionistSetupForms.Apply(snapshot, input).BookingPolicy));
         var old = Snapshot(Configuration()); var oldInput = ReceptionistSetupForms.Read(old);
@@ -73,6 +74,56 @@ public sealed class ReceptionistSetupAndAuthorityTests
         Assert.Contains("independent record readback", settings.ConversationInstructions);
         Assert.Throws<ArgumentException>(() => ReceptionistRuntimeAuthority.Ready("openai", compact with { BusinessPolicy = "Changed source." }, RuntimeBinding(), true));
         Assert.Null(original.CompactVoicePolicy);
+    }
+
+    [Fact]
+    public async Task SavingOptionalDraftPreservesOperatingVersionPermissionAndCallFence()
+    {
+        await using var f = await ReadinessFixture.CreateAsync();
+        await using var db = f.Database(); var store = f.Store(db);
+        var owner = MarketingOwnerScope.Founder;
+        var original = await store.GetReceptionistConfigurationAsync(owner, "openai");
+        var enabled = await store.SetReceptionistAdmissionAsync(owner, "openai", original.ConnectionRevision, true);
+        await using var before = f.Database();
+        var prior = await before.MarketingConnections.AsNoTracking().SingleAsync(x => x.OwnerKey == owner.Key);
+        var draft = await store.SaveReceptionistConfigurationAsync(owner, "openai", enabled.ConnectionRevision,
+            original.Configuration! with { ConversationInstructions = "Unaccepted optional changes." }, "actor-a");
+        var next = await store.SaveReceptionistConfigurationAsync(owner, "openai", draft.ConnectionRevision,
+            draft.Configuration! with { ConversationInstructions = "Another unaccepted draft." }, "actor-a");
+        Assert.Equal(draft.ConfigurationVersion + 1, next.ConfigurationVersion);
+        Assert.True(next.AdmissionEnabled); Assert.False(next.BindingAccepted);
+        var operating = await store.GetReceptionistConfigurationAsync(owner, "openai", operating: true);
+        Assert.Equal(original.ConfigurationId, operating.ConfigurationId);
+        Assert.True(operating.BindingAccepted); Assert.True(operating.AdmissionEnabled);
+        await using var after = f.Database();
+        var actual = await after.MarketingConnections.AsNoTracking().SingleAsync(x => x.Id == prior.Id);
+        Assert.Equal(prior.ReceptionistControlRevision, actual.ReceptionistControlRevision);
+        Assert.Equal(prior.ReceptionistActiveConfigurationId, actual.ReceptionistActiveConfigurationId);
+        Assert.NotEqual(prior.Revision, actual.Revision);
+    }
+
+    [Fact]
+    public async Task AcceptedCallsOnlyRecoveryRequiresReviewAndDoesNotRestorePermission()
+    {
+        await using var f = await ReadinessFixture.CreateAsync();
+        await using var db = f.Database(); var store = f.Store(db);
+        var owner = MarketingOwnerScope.Founder;
+        var current = await store.GetReceptionistConfigurationAsync(owner, "openai");
+        var draft = await store.SaveReceptionistConfigurationAsync(owner, "openai", current.ConnectionRevision,
+            current.Configuration! with { MonthlyCashLimit = 50m }, "actor-a");
+        var recovery = await store.RestoreReceptionistContentDraftAsync(owner, "openai",
+            new(draft.ConnectionRevision, f.Version.Id, true), "actor-a");
+        Assert.Equal(current.Configuration!.MonthlyCashLimit, recovery.Configuration!.MonthlyCashLimit);
+        Assert.False(recovery.BindingAccepted); Assert.Equal(current.AdmissionEnabled, recovery.AdmissionEnabled);
+        var review = await store.PreviewReceptionistContentAsync(owner, "openai", "actor-a");
+        Assert.True(review.CanApply, review.BlockReason);
+        var applied = await store.ApplyReceptionistContentAsync(owner, "openai",
+            new(recovery.ConnectionRevision, review.ReviewHash, true), "actor-a");
+        Assert.True(applied.Current.BindingAccepted); Assert.False(applied.Current.AdmissionEnabled);
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => store.RestoreReceptionistContentDraftAsync(owner,
+            "openai", new(recovery.ConnectionRevision, f.Version.Id, true), "actor-a"));
+        await Assert.ThrowsAnyAsync<Exception>(() => store.RestoreReceptionistContentDraftAsync(
+            MarketingOwnerScope.Business(Guid.NewGuid()), "openai", new(Guid.NewGuid(), f.Version.Id, true), "actor-a"));
     }
 
     [Fact]
@@ -125,7 +176,7 @@ public sealed class ReceptionistSetupAndAuthorityTests
         await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => store.ApplyReceptionistContentAsync(owner, "openai", input, "actor-a"));
         var blocked = await store.PreviewReceptionistContentAsync(owner, "openai", "actor-a"); Assert.False(blocked.CanApply);
         var actual = await store.GetReceptionistConfigurationAsync(owner, "openai"); Assert.Equal(newer.ConfigurationId, actual.ConfigurationId);
-        Assert.False(actual.AdmissionEnabled);
+        Assert.Equal(current.AdmissionEnabled, actual.AdmissionEnabled);
     }
 
     [Fact]
@@ -138,7 +189,7 @@ public sealed class ReceptionistSetupAndAuthorityTests
         var restored = await store.RestoreReceptionistContentDraftAsync(owner, "openai", new(changed.ConnectionRevision, f.Version.Id), "actor-a");
         Assert.Equal(Configuration().ConversationInstructions, restored.Configuration!.ConversationInstructions);
         Assert.Null(restored.Configuration.CompactVoicePolicy); Assert.Null(restored.Configuration.CompactVoicePolicySourceSha256);
-        Assert.Equal(12m, restored.Configuration.MonthlyCashLimit); Assert.False(restored.BindingAccepted); Assert.False(restored.AdmissionEnabled);
+        Assert.Equal(12m, restored.Configuration.MonthlyCashLimit); Assert.False(restored.BindingAccepted); Assert.Equal(current.AdmissionEnabled, restored.AdmissionEnabled);
         Assert.NotEqual(f.Version.Id, restored.ConfigurationId);
     }
 
@@ -334,7 +385,7 @@ public sealed class ReceptionistSetupAndAuthorityTests
             ProtectedWebhookSecret = ReceptionistCredentialEnvelope.Protect(protector, owner, "openai", "project_a", "voice-webhook", "synthetic-webhook")
         };
         var config = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
-        var authority = new ReceptionistRuntimeAuthority(config, protector, TimeProvider.System);
+        var authority = new ReceptionistRuntimeAuthority(config, protector);
         Assert.Equal(originalSecret, authority.Credential(owner, binding, false));
         Assert.Equal("synthetic-webhook", authority.Credential(owner, binding, true));
         Assert.Throws<System.Security.Cryptography.CryptographicException>(() => authority.Credential(MarketingOwnerScope.Business(Guid.NewGuid()), binding, false));
@@ -523,14 +574,18 @@ public sealed class ReceptionistSetupAndAuthorityTests
     public async Task MissingStaleOrMismatchedWindowNeverMeansRestrictedRouteReady(string state)
     {
         await using var f = await ReadinessFixture.CreateAsync();
-        const string prefix = "Receptionist:AcceptanceWindows:entry:";
-        if (state == "missing") f.RuntimeConfiguration[prefix + "AuthorizationReceipt"] = null;
-        if (state == "expired") f.RuntimeConfiguration[prefix + "ExpiresUtc"] = f.Now.ToString("O");
-        if (state == "future") f.RuntimeConfiguration[prefix + "StartsUtc"] = f.Now.AddMinutes(1).ToString("O");
-        if (state == "wrong-owner") f.RuntimeConfiguration[prefix + "OwnerKey"] = MarketingOwnerScope.Business(Guid.NewGuid()).Key;
-        if (state == "wrong-project") f.RuntimeConfiguration[prefix + "ProviderProjectKey"] = "different_project";
-        if (state == "not-restricted") f.RuntimeConfiguration[prefix + "VerifiedRestrictedTestRoute"] = "false";
-        if (state == "overlong") f.RuntimeConfiguration[prefix + "ExpiresUtc"] = f.Now.AddHours(2).ToString("O");
+        await using (var db = f.Database())
+        {
+            var window = await db.Set<ReceptionistAcceptanceWindow>().SingleAsync();
+            if (state == "missing") db.Remove(window);
+            if (state == "expired") { window.StartsUtc = f.Now.AddMinutes(-30); window.ExpiresUtc = f.Now; }
+            if (state == "future") window.StartsUtc = f.Now.AddMinutes(1);
+            if (state == "wrong-owner") window.ConfigurationSha256 = new string('b', 64);
+            if (state == "wrong-project") window.ProviderProjectKey = "different_project";
+            if (state == "not-restricted") window.RestrictedRouteEvidenceSha256 = new string('z', 64);
+            if (state == "overlong") window.ExpiresUtc = f.Now.AddHours(2);
+            await db.SaveChangesAsync();
+        }
         var projected = await f.Service.GetSetupReadinessAsync(await f.SnapshotAsync(), observeControlPlaneRuntime: true);
         Assert.Equal("not_verified", projected.ApplicationWindowState);
         Assert.Equal("Not ready", projected.CallReadiness);
@@ -837,14 +892,10 @@ public sealed class ReceptionistSetupAndAuthorityTests
                 db.AddRange(ownerPeriod, f.Period(f.FundingAccount.Id, ownerPeriod.StartUtc, ownerPeriod.EndUtc));
                 await db.SaveChangesAsync();
             }
-            const string prefix = "Receptionist:AcceptanceWindows:entry:";
+            await using (var db = f.Database())
+                await ReceptionistTestWindows.SeedAsync(db, f.Connection.Id, f.Version.Id, f.Binding, f.Now);
             f.RuntimeConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Receptionist:Enabled"] = "true", [prefix + "OwnerKey"] = MarketingOwnerScope.Founder.Key,
-                [prefix + "ProviderProjectKey"] = f.Binding.ProviderProjectKey, [prefix + "VerifiedRestrictedTestRoute"] = "true",
-                [prefix + "AuthorizationReceipt"] = "synthetic-authorization", [prefix + "StartsUtc"] = f.Now.AddMinutes(-1).ToString("O"),
-                [prefix + "ExpiresUtc"] = f.Now.AddMinutes(30).ToString("O")
-            }).Build();
+            { ["Receptionist:Enabled"] = "true" }).Build();
             f.protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
             var services = new ServiceCollection(); services.AddSingleton<IConfiguration>(f.RuntimeConfiguration);
             services.AddSingleton(f.protector); services.AddSingleton<TimeProvider>(new ReadinessClock(f.Now));
@@ -882,7 +933,10 @@ public sealed class ReceptionistSetupAndAuthorityTests
         {
             await using var db = Database(); var version = await db.Set<ReceptionistConfigurationVersion>().SingleAsync();
             version.ConfigurationJson = ReceptionistConfigurationCodec.Serialize(configuration);
-            version.ConfigurationSha256 = ReceptionistConfigurationCodec.Hash(version.ConfigurationJson); await db.SaveChangesAsync();
+            version.ConfigurationSha256 = ReceptionistConfigurationCodec.Hash(version.ConfigurationJson);
+            // This fixture configures synthetic initial state before observation/reservation.
+            (await db.Set<ReceptionistAcceptanceWindow>().SingleAsync()).ConfigurationSha256 = version.ConfigurationSha256;
+            await db.SaveChangesAsync();
         }
 
         internal async Task<ReceptionistConfigurationSnapshot> SnapshotAsync()

@@ -263,3 +263,8 @@ main:has(> [data-protect-form-shell]){width:100%;max-width:none;margin:0;padding
 }
 /* No fixed-height clipping or hidden essential overflow: small windows, larger
    text and zoom retain the browser's ordinary accessible scrolling fallback. */
+
+.public-receptionist{box-sizing:border-box;width:100%;max-width:var(--web-form-max-width);margin:0 auto var(--web-form-step-gap);padding:var(--web-form-panel-padding);border:var(--web-border-width,1px) solid var(--web-border-color,#d8dee5);border-radius:var(--web-card-radius,var(--web-radius,22px));background:var(--web-surface-elevated,#fff);color:var(--web-ink,#152638)}
+.public-receptionist h2{margin:0 0 var(--web-form-label-gap);font-size:var(--web-h3-size,1.25rem)}
+.public-receptionist audio{display:block;max-width:100%;margin-block:var(--web-form-label-gap)}
+.public-receptionist [hidden]{display:none}

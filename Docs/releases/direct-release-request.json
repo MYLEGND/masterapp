@@ -1,25 +1,16 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder requested the final fix and deployment of the existing Shayla implementation. This reviewed prerequisite promotes only the canonical read-only schema compatibility mapping and its regression test. It authorizes no production SQL mutation, application publication, routing, calls or booking activation. Required source validations and canonical merge admission remain mandatory.",
-  "purpose": "Promote the missing reviewed browser migration rule mapping in the trusted read-only workflow for subsequent paused Shayla deployment.",
-  "requestId": "shayla-browser-rule-mapping-promotion-20261027-v1",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "Founder instructed full completion and deployment of the existing Shayla integration. Publish the independently reviewed application changes through the canonical selective release with calls paused, telephone disabled and booking unaccepted; this request does not authorize activation or new provider grants.",
+  "purpose": "Deploy the accepted website voice transport, protected management controls, booking notice constraints and shared inquiry fallback, including the two reviewed additive receptionist migrations.",
+  "requestId": "shayla-paused-web-deployment-20261027-v2",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait",
+    "masterapp-website"
+  ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "7db0aa37c4a2a6007e31b86d6d01ca178abcddf2",
-    "sourceRevision": "5433cbcfaad57c6add0ee23fb2b9406f6c773fab",
-    "files": {
-      ".github/workflows/parfait-cutover-live-readonly.yml": {
-        "mode": "100644",
-        "blob": "e120ff5f7b8e17cb8397b5dfd4fd14f1abd6f00e"
-      },
-      "scripts/test-parfait-readonly-workflow.py": {
-        "mode": "100644",
-        "blob": "f66bff6794473bedc5706f274d855ba660ae2231"
-      }
-    }
-  }
+  "preserveLiveTargets": false
 }

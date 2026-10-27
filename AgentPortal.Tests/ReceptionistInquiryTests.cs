@@ -612,6 +612,24 @@ public sealed partial class ReceptionistInquiryTests
             var session = Guid.NewGuid().ToString("N");
             var binding = await Admission.GetIngressBindingAsync("openai", "synthetic-ingress");
             Assert.NotNull(binding);
+            if (binding.Binding.ControlledTestOnly != controlledTest)
+            {
+                await using var db = Database();
+                var connection = await db.MarketingConnections.SingleAsync(x => x.Id == binding.MarketingConnectionId);
+                var original = await db.Set<ReceptionistConfigurationVersion>().AsNoTracking().SingleAsync(x => x.Id == binding.ConfigurationId);
+                var changed = binding.Binding with { ControlledTestOnly = controlledTest,
+                    PublicActivationReceipt = controlledTest ? null : "synthetic-test-only-activation" };
+                var version = new ReceptionistConfigurationVersion
+                {
+                    MarketingConnectionId = original.MarketingConnectionId, Version = original.Version + 1,
+                    ConfigurationJson = original.ConfigurationJson, ConfigurationSha256 = original.ConfigurationSha256,
+                    AcceptedBindingJson = JsonSerializer.Serialize(changed, ReceptionistConfigurationCodec.Json),
+                    CreatedByActorId = "synthetic-owner", CreatedUtc = Clock.Now
+                };
+                db.Add(version); await db.SaveChangesAsync(); connection.ReceptionistActiveConfigurationId = version.Id; await db.SaveChangesAsync();
+                await ReceptionistTestWindows.SeedAsync(db, connection.Id, version.Id, changed, Clock.Now);
+                binding = (await Admission.GetIngressBindingAsync("openai", "synthetic-ingress"))!;
+            }
             var admission = await Admission.ReserveAsync(new("openai", "synthetic-ingress", "synthetic-project", session, "synthetic-event:" + session, controlledTest,
                 binding.MarketingConnectionId, binding.ConfigurationId, binding.Owner.Key));
             Assert.Equal("reserved", admission.Reason);

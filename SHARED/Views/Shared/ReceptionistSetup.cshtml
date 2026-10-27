@@ -6,8 +6,8 @@
     ViewData["Title"] = "Receptionist settings";
     var settings = Model.Input;
     var snapshot = Model.Snapshot;
-    var accounting = snapshot.Accounting;
-    var recordedCurrency = snapshot.Configuration?.Currency ?? "currency unknown";
+    var accounting = Model.OperatingSnapshot?.Accounting;
+    var recordedCurrency = Model.OperatingSnapshot?.Configuration?.Currency ?? "currency unknown";
     var readiness = Model.Readiness ?? new Shared.Analytics.ReceptionistReadinessProjection();
     string Amount(decimal value) => value.ToString(CultureInfo.InvariantCulture);
 }
@@ -16,6 +16,7 @@
         <div class="dashboard-hero-copy">
             <div><a class="btn btn-clear-search dashboard-command-action" href="@Model.ReturnUrl">Back to your workspace</a></div>
             <h1 class="dashboard-hero-title mt-3">Receptionist settings</h1>
+    @if (Model.ManagementUrl is not null) { <p><a href="@Model.ManagementUrl">Manage provider connections and operation reviews</a></p> }
             <p class="dashboard-section-copy">Choose how your receptionist answers callers, which services it can discuss, and the limits it must respect.</p>
             @if (Model.Message is not null)
             { <p class="dashboard-section-copy" role="status">@Model.Message</p> }
@@ -27,7 +28,8 @@
             <dt class="dashboard-stat-label col-sm-4">Owner permission</dt><dd class="col-sm-8">@(readiness.OwnerPermissionEnabled is true ? "Allowed when ready" : readiness.OwnerPermissionEnabled is false ? "Paused" : "Unknown — reload to verify")</dd>
             <dt class="dashboard-stat-label col-sm-4">Call readiness</dt><dd class="col-sm-8">@readiness.CallReadiness</dd>
             <dt class="dashboard-stat-label col-sm-4">Control-plane runtime</dt><dd class="col-sm-8">@readiness.RuntimeState</dd>
-            <dt class="dashboard-stat-label col-sm-4">Settings version shown</dt><dd class="col-sm-8">@(snapshot.ConfigurationId.HasValue ? $"Version {snapshot.ConfigurationVersion}" : "No saved version")</dd>
+            <dt class="dashboard-stat-label col-sm-4">Editable settings version</dt><dd class="col-sm-8">@(snapshot.ConfigurationId.HasValue ? $"Version {snapshot.ConfigurationVersion}" : "No saved version")</dd>
+            <dt class="dashboard-stat-label col-sm-4">Operating version</dt><dd class="col-sm-8">@(readiness.OperatingConfigurationVersion is { } operatingVersion ? $"Version {operatingVersion}" : readiness.BindingScope == "unaccepted" ? "No accepted operating configuration" : "Unknown — reload to verify")</dd>
             <dt class="dashboard-stat-label col-sm-4">Accepted binding scope</dt><dd class="col-sm-8">@readiness.BindingScope.Replace('_', ' ')</dd>
             <dt class="dashboard-stat-label col-sm-4">Application test window</dt><dd class="col-sm-8">@readiness.ApplicationWindowState.Replace('_', ' ')</dd>
             <dt class="dashboard-stat-label col-sm-4">Observed admission check</dt><dd class="col-sm-8">@readiness.AdmissionReason.Replace('_', ' ')</dd>
@@ -122,6 +124,8 @@
             <label class="dashboard-form-field"><span>Approved booking privacy evidence reference</span><input class="form-control" name="BookingPrivacyAcceptanceReference" value="@settings.BookingPrivacyAcceptanceReference" maxlength="512" /></label>
             <label class="dashboard-form-field"><span>Existing authorized booking agent profile ID</span><input class="form-control" name="BookingAgentProfileId" value="@settings.BookingAgentProfileId" maxlength="36" /></label>
             <label class="dashboard-form-field"><span>Minimum notice in minutes</span><input class="form-control" type="number" name="BookingMinimumNoticeMinutes" value="@settings.BookingMinimumNoticeMinutes" min="0" max="43200" /></label>
+            <label class="dashboard-form-field"><span>Minimum business days of notice</span><input class="form-control" type="number" name="BookingMinimumNoticeBusinessDays" value="@settings.BookingMinimumNoticeBusinessDays" min="0" max="30" /></label>
+            <p>Business days follow the open weekdays in your reception hours. Notice runs to the same local time on the counted day, skipping closed weekdays. Appointments are also restricted to those open weekdays when business-day notice is enabled. Both notice limits apply. Calendar availability can impose stricter limits.</p>
             <label class="dashboard-form-field"><span>Maximum days ahead</span><input class="form-control" type="number" name="BookingMaximumAdvanceDays" value="@settings.BookingMaximumAdvanceDays" min="1" max="90" /></label>
         </fieldset>
         <fieldset class="dashboard-surface-panel p-3">

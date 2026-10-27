@@ -39,6 +39,8 @@ internal sealed record ReceptionistProviderBinding
     public string DisclosureConfigurationReceipt { get; init; } = string.Empty;
     public string RetentionConfigurationReceipt { get; init; } = string.Empty;
     public string CarrierFallbackReceipt { get; init; } = string.Empty;
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? WebsiteFallbackReceipt { get; init; }
     public int MaximumSupportedCallSeconds { get; init; }
     public bool ControlledTestOnly { get; init; } = true;
     public string? PublicActivationReceipt { get; init; }
@@ -185,7 +187,8 @@ internal static class ReceptionistConfigurationCodec
         {
             if (booking.Services is null || booking.Services.Count > 100 || booking.Services.Any(x => x is null) ||
                 booking.Services.Select(x => x.ServiceKey).Distinct(StringComparer.Ordinal).Count() != booking.Services.Count ||
-                booking.MinimumNoticeMinutes is < 0 or > 43200 || booking.MaximumAdvanceDays is < 1 or > 90)
+                booking.MinimumNoticeMinutes is < 0 or > 43200 || booking.MinimumNoticeBusinessDays is < 0 or > 30 ||
+                (booking.MinimumNoticeBusinessDays > 0 && value.Hours.Count == 0) || booking.MaximumAdvanceDays is < 1 or > 90)
                 throw new ArgumentException("Booking requires bounded, distinct service mappings and an explicit advance limit.");
             using var services = JsonDocument.Parse(value.ServiceDefinitionsJson);
             var serviceKeys = services.RootElement.EnumerateArray().Select(x => x.GetProperty("serviceKey").GetString()).ToHashSet(StringComparer.Ordinal);
@@ -231,13 +234,20 @@ internal static class ReceptionistConfigurationCodec
         Identifier(value.BackendMode, 100, nameof(value.BackendMode));
         Identifier(value.Transport, 40, nameof(value.Transport));
         Required(value.CredentialReference, 512, nameof(value.CredentialReference));
-        Required(value.WebhookSecretReference, 512, nameof(value.WebhookSecretReference));
+        if (value.Transport == "webrtc")
+        {
+            if (!string.IsNullOrEmpty(value.WebhookSecretReference) || value.ProtectedWebhookSecret is not null ||
+                !string.IsNullOrEmpty(value.CarrierFallbackReceipt))
+                throw new ArgumentException("Website voice cannot carry a telephone ingress binding.");
+            Required(value.WebsiteFallbackReceipt, 512, nameof(value.WebsiteFallbackReceipt));
+        }
+        else Required(value.WebhookSecretReference, 512, nameof(value.WebhookSecretReference));
         Required(value.ProviderVerificationReceipt, 512, nameof(value.ProviderVerificationReceipt));
         Required(value.ExclusiveProjectVerificationReceipt, 512, nameof(value.ExclusiveProjectVerificationReceipt));
         Required(value.CostVerificationReceipt, 512, nameof(value.CostVerificationReceipt));
         Required(value.DisclosureConfigurationReceipt, 512, nameof(value.DisclosureConfigurationReceipt));
         Required(value.RetentionConfigurationReceipt, 512, nameof(value.RetentionConfigurationReceipt));
-        Required(value.CarrierFallbackReceipt, 512, nameof(value.CarrierFallbackReceipt));
+        if (value.Transport != "webrtc") Required(value.CarrierFallbackReceipt, 512, nameof(value.CarrierFallbackReceipt));
         if (!value.ControlledTestOnly) Required(value.PublicActivationReceipt, 512, nameof(value.PublicActivationReceipt));
         if (value.MaximumSupportedCallSeconds < configuration.MaximumCallSeconds)
             throw new ArgumentException("The requested duration exceeds the verified provider capability.");

@@ -198,7 +198,7 @@ public sealed class MicrosoftCalendarConnectionAuthority : IMicrosoftCalendarCon
         if (string.IsNullOrWhiteSpace(account.Id) || string.IsNullOrWhiteSpace(email))
             throw new InvalidOperationException("Microsoft calendar authorization did not resolve a mailbox identity.");
 
-        var scopes = NormalizePermissions(token.Scope?.Split(' ', StringSplitOptions.RemoveEmptyEntries) ?? ResolveScopes());
+        var scopes = NormalizePermissions(token.Scope?.Split(' ', StringSplitOptions.RemoveEmptyEntries) ?? []);
         var expiresUtc = DateTime.UtcNow.AddSeconds(Math.Max(60, token.ExpiresIn));
 
         var row = await _db.MarketingConnections

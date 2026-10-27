@@ -19,7 +19,7 @@ public sealed partial class ReceptionistAdmissionService
             join call in db.Set<ReceptionistCall>().AsNoTracking() on action.CallId equals call.Id
             join connection in db.MarketingConnections.AsNoTracking() on call.MarketingConnectionId equals connection.Id
             where connection.OwnerKey == ownerKey && connection.Provider == "openai" && call.ConfigurationVersionId == configurationId &&
-                call.ControlledTest && (!ticketId.HasValue || action.Id == ticketId) &&
+                call.ProviderSessionId != null && call.ControlledTest && (!ticketId.HasValue || action.Id == ticketId) &&
                 (action.CapabilityKey == ReceptionistCapabilities.CanonicalIntake || action.CapabilityKey == ReceptionistCapabilities.CanonicalBooking)
             orderby action.UpdatedUtc descending, action.Id
             select new { Action = action, call.Provider, call.ProviderProjectKey, call.ProviderSessionId, call.ConfigurationVersionId })
@@ -29,7 +29,7 @@ public sealed partial class ReceptionistAdmissionService
             var action = row.Action;
             var intake = action.CapabilityKey == ReceptionistCapabilities.CanonicalIntake;
             var scope = new ReceptionistQaScope(ownerKey, action.CallId, row.ConfigurationVersionId,
-                row.Provider, row.ProviderProjectKey, row.ProviderSessionId);
+                row.Provider, row.ProviderProjectKey, row.ProviderSessionId!);
             var verified = intake ? ReceptionistInquiryAuthority.VerifiedQaOutcome(scope, action)
                 : ReceptionistBookingAuthority.VerifiedQaAction(scope, action);
             return new ReceptionistQaOutcomeStatus(action.Id, action.CallId, intake ? "Synthetic intake" : "Synthetic booking",

@@ -41,6 +41,7 @@ public static class ReceptionistSetupForms
             BookingPrivacyAcceptanceReference = config.BookingPolicy?.PrivacyAcceptanceReference,
             BookingAgentProfileId = config.BookingPolicy?.BookingAgentProfileId,
             BookingMinimumNoticeMinutes = config.BookingPolicy?.MinimumNoticeMinutes,
+            BookingMinimumNoticeBusinessDays = config.BookingPolicy?.MinimumNoticeBusinessDays,
             BookingMaximumAdvanceDays = config.BookingPolicy?.MaximumAdvanceDays,
             Services = services.Select(node => node as JsonObject ?? throw new ArgumentException("A saved service cannot be represented by this setup form."))
                 .Select(node => new ReceptionistServiceInput
@@ -126,7 +127,7 @@ public static class ReceptionistSetupForms
             booking = previous.BookingPolicy is not null || input.BookingEnabled || mappings.Length > 0 ||
                 !string.IsNullOrWhiteSpace(input.BookingCalendarConfigurationSha256) || !string.IsNullOrWhiteSpace(input.BookingPrivacyAcceptanceReference) ||
                 !string.IsNullOrWhiteSpace(input.BookingCalendarTargetSha256) || input.BookingAgentProfileId.HasValue ||
-                input.BookingAllowConsentedCustomerEmail || input.BookingMinimumNoticeMinutes.HasValue || input.BookingMaximumAdvanceDays.HasValue
+                input.BookingAllowConsentedCustomerEmail || input.BookingMinimumNoticeMinutes.HasValue || input.BookingMinimumNoticeBusinessDays.HasValue || input.BookingMaximumAdvanceDays.HasValue
                 ? new ReceptionistBookingPolicy { Enabled = input.BookingEnabled, QaOnly = input.BookingQaOnly,
                     AllowConsentedCustomerEmail = input.BookingAllowConsentedCustomerEmail,
                     ExpectedCalendarConfigurationSha256 = input.BookingCalendarConfigurationSha256?.Trim() ?? "",
@@ -134,6 +135,7 @@ public static class ReceptionistSetupForms
                     PrivacyAcceptanceReference = input.BookingPrivacyAcceptanceReference?.Trim() ?? "",
                     BookingAgentProfileId = input.BookingAgentProfileId,
                     MinimumNoticeMinutes = input.BookingMinimumNoticeMinutes ?? 0,
+                    MinimumNoticeBusinessDays = input.BookingMinimumNoticeBusinessDays ?? previous.BookingPolicy?.MinimumNoticeBusinessDays ?? 0,
                     MaximumAdvanceDays = input.BookingMaximumAdvanceDays ?? 0, Services = mappings } : null;
             capabilities.RemoveAll(x => x == ReceptionistCapabilities.CanonicalBooking);
             if (booking?.Enabled == true) capabilities.Add(ReceptionistCapabilities.CanonicalBooking);

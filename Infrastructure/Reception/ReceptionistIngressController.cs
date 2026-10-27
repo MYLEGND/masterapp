@@ -28,7 +28,7 @@ public sealed class ReceptionistIngressController : ControllerBase
         if (!OpenAiReceptionistProtocol.Token(ingressKey, 100)) return NotFound();
         var admission = _services.GetRequiredService<ReceptionistAdmissionService>();
         var current = await admission.GetIngressBindingAsync(MarketingDestinationKeys.OpenAi, ingressKey, ct);
-        if (current is null) return NotFound();
+        if (current is null || current.Binding.Transport != "sip") return NotFound();
         if (Request.ContentLength > OpenAiReceptionistProtocol.MaximumWebhookBytes) return StatusCode(413);
         string signingSecret;
         try { signingSecret = runtime.Credential(current.Owner, current.Binding, webhook: true); }
@@ -48,7 +48,7 @@ public sealed class ReceptionistIngressController : ControllerBase
         if (verified.State == "invalid_signature") return Unauthorized();
         if (verified.State == "invalid_payload") return BadRequest();
         if (verified.State == "ignored") return Ok();
-        var controlledTest = runtime.IsControlledTest(current.Owner, current.Binding);
+        var controlledTest = await admission.GetAcceptanceWindowAsync(current, ct) is not null;
         try { _ = ReceptionistRuntimeAuthority.Ready(current.Provider, current.Configuration, current.Binding, controlledTest); }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException or System.Text.Json.JsonException) { return StatusCode(503); }
         _ = await admission.ReserveAsync(new TrustedReceptionistIngress(current.Provider, ingressKey,
