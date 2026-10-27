@@ -2053,5 +2053,294 @@ class CompletionObserverTests(unittest.TestCase):
     def test_v4_dirty_checked_source_never_authenticates(self):
         with self.assertRaisesRegex(ValueError,'CHECKED_SOURCE_UNPROVEN'):self.execute(dirty=True)
 
+class CompletionInheritedPromotionTests(unittest.TestCase):
+    """Real synthetic Git objects; no historical objects or provider calls."""
+    def setUp(self):
+        import contextlib
+        spec=importlib.util.spec_from_file_location('completion_inheritance_tests',ROOT/'validation-resume.py')
+        self.a=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.a)
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.directory=Path(self.temp.name);self.real_run=subprocess.run
+        self.git('init','-q');self.git('config','user.name','Completion fixture')
+        self.git('config','user.email','fixture@example.invalid')
+        self.prior=dict(requestedBy='Founder',authorization='fixture promotion',requestId='promotion',
+                        releaseMode='validate-only',targets=[],cloudflareWebsiteRouting=False,
+                        preserveLiveTargets=False,trustedToolPromotion=dict(schemaVersion=1))
+        self.request=dict(requestedBy='Founder',authorization='fixture application',requestId='application',
+                          releaseMode='approved-only',targets=['masterapp-portal'],
+                          cloudflareWebsiteRouting=False,preserveLiveTargets=False)
+        for path in ['scripts/validation-resume.py','.github/workflows/deployment-diagnostics.yml',
+                     'scripts/release-artifacts/package-lock.json','.config/tool.json','App/source.cs']:
+            self.write(path,'fixture\n')
+        self.write(self.a.RELEASE_REQUEST_PATH,json.dumps(self.prior));self.git('add','.')
+        self.git('commit','-qm','synthetic promoted parent');self.parent=self.git('rev-parse','HEAD').strip()
+        self.make_child()
+        self.repo='owner/repo';self.calls=[];self.raw_reads=[];self.head=self.revision
+        self.source_error=None;self.promotion_error=None;self.git_error=None;self.raw_override=None
+        self.fresh_mutation=None;self.commit_mutation=None;self.admission_mutation=None
+        self.history_mutation=None;self.direct=False
+        self.workflow=(ROOT.parent/'.github/workflows/deployment-diagnostics.yml').read_text()
+        self.policy=self.a._fast_track_policy()
+        self.stack=contextlib.ExitStack();self.addCleanup(self.stack.close)
+        self.refresh_rows()
+
+    def git(self,*args):
+        return self.real_run(['git',*args],cwd=self.directory,text=True,stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE,check=True).stdout
+
+    def write(self,path,value):
+        p=self.directory/path;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(value)
+
+    def make_child(self,stage=True):
+        self.write(self.a.RELEASE_REQUEST_PATH,json.dumps(self.request))
+        if stage:self.git('add','-A')
+        self.git('commit','-qm','synthetic reviewed request')
+        self.candidate=self.git('rev-parse','HEAD').strip()
+        tree=self.git('rev-parse','HEAD^{tree}').strip()
+        self.revision=self.git('commit-tree',tree,'-p',self.parent,'-p',self.candidate,
+                               '-m','synthetic protected merge').strip()
+
+    def refresh_rows(self):
+        self.producer=dict(id=10,run_attempt=1,head_sha=self.revision,status='completed',conclusion='failure',
+            event='push',path='.github/workflows/'+self.a.FAST_TRACK_RELEASE_WORKFLOW,
+            head_branch=self.a.FAST_TRACK_PR_BASE,head_repository=dict(full_name=self.repo))
+        self.promotion=dict(self.producer,id=9,head_sha=self.parent,conclusion='success')
+        self.run=dict(self.producer,id=20,event='workflow_dispatch',status='in_progress',conclusion=None,
+                      path='.github/workflows/'+self.a.FAST_TRACK_COMPLETION_WORKFLOW)
+        self.job=dict(id=30,run_id=20,run_attempt=1,head_sha=self.revision,name=self.a.FAST_TRACK_COMPLETION_JOB,
+                      status='in_progress',conclusion=None,runner_name='fixture-runner')
+        self.head=self.revision
+
+    def history(self,repository,revision,token):
+        self.assertEqual((repository,token),(self.repo,'fixture'))
+        rows=[self.producer] if revision==self.revision else [self.promotion] if revision==self.parent else []
+        return self.history_mutation(revision,rows) if self.history_mutation else rows
+
+    def promote(self,repository,run,token):
+        self.calls.append(('promotion',run['id']))
+        if run['head_sha']==self.revision:
+            if self.promotion_error:raise self.promotion_error
+            return 'f'*40 if self.direct else None
+        self.assertEqual(run,self.promotion)
+        if self.promotion_error:raise self.promotion_error
+        return 'f'*40
+
+    def admission(self,repository,revision,token):
+        self.calls.append(('source',revision))
+        if self.source_error:raise self.source_error
+        value=dict(candidate=self.candidate,executionAuthority=self.revision,sourcePr=7,validation={})
+        return self.admission_mutation(value) if self.admission_mutation else value
+
+    def api(self,repository,path,token):
+        self.assertEqual((repository,token),(self.repo,'fixture'))
+        if path=='git/commits/'+self.revision:
+            value=dict(sha=self.revision,parents=[dict(sha=self.parent),dict(sha=self.candidate)])
+            return self.commit_mutation(value) if self.commit_mutation else value
+        if path=='git/ref/heads/'+self.a.FAST_TRACK_PR_BASE:return dict(object=dict(sha=self.head))
+        if path=='actions/runs/20/attempts/1/jobs?per_page=100':return dict(total_count=1,jobs=[self.job])
+        raise AssertionError(path)
+
+    def fresh(self,repository,path,token):
+        self.assertEqual((repository,token),(self.repo,'fixture'));self.raw_reads.append(path)
+        value=dict(self.producer if path=='actions/runs/10' else self.promotion if path=='actions/runs/9' else {})
+        self.assertTrue(value)
+        return self.fresh_mutation(path,value) if self.fresh_mutation else value
+
+    def git_run(self,args,**kwargs):
+        self.calls.append(('git',args))
+        if self.git_error and self.git_error in args:
+            return SimpleNamespace(returncode=128,stdout='',stderr='fixture unavailable')
+        return self.real_run(args,cwd=self.directory,**kwargs)
+
+    def git_output(self,args,**kwargs):
+        self.calls.append(('git',args))
+        if self.git_error and self.git_error in args:raise subprocess.CalledProcessError(128,args)
+        if '--raw' in args and self.raw_override is not None:return self.raw_override
+        return self.real_run(args,cwd=self.directory,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+                             check=True,**kwargs).stdout
+
+    def environment(self):
+        import contextlib
+        stack=contextlib.ExitStack()
+        for name,value in [('fast_track_historical_producers',self.history),('fast_track_promotion_parent',self.promote),
+                           ('fast_track_merged_source_proof',self.admission),('api_get',self.api),('_api_get_uncached',self.fresh)]:
+            stack.enter_context(patch.object(self.a,name,side_effect=value))
+        stack.enter_context(patch.object(self.a,'_release_history_source',return_value=self.workflow))
+        stack.enter_context(patch.object(self.a,'_fast_track_policy',return_value=self.policy))
+        stack.enter_context(patch.object(self.a.subprocess,'run',side_effect=self.git_run))
+        stack.enter_context(patch.object(self.a.subprocess,'check_output',side_effect=self.git_output))
+        stack.enter_context(patch.dict(os.environ,{'RUNNER_NAME':'fixture-runner'}))
+        return stack
+
+    def observe(self,live=True):
+        with self.environment():
+            return self.a.fast_track_completion_observer(self.repo,self.run,'fixture',live=live,attempt=1)
+
+    def test_exact_request_only_merge_keeps_current_tool_and_original_promotion(self):
+        self.assertEqual(self.observe(),dict(runId=20,runAttempt=1,jobId=30,
+                         toolRevision=self.revision,promotionRunId=9))
+        self.assertEqual(self.raw_reads,['actions/runs/10','actions/runs/9'])
+        self.assertIn(('source',self.revision),self.calls)
+        diffs=[args for kind,args in self.calls if kind=='git' and 'diff' in args]
+        for args in diffs:
+            for flag in ['--no-ext-diff','--no-textconv','--ignore-submodules=none']:self.assertIn(flag,args)
+        self.assertTrue(any(':(top)' in args for args in diffs))
+
+    def test_direct_promoted_path_does_not_enter_new_inheritance(self):
+        self.direct=True
+        with patch.object(self.a,'_completion_inherited_promotion',side_effect=AssertionError('not inherited')):
+            self.assertEqual(self.observe()['promotionRunId'],10)
+        self.assertFalse(self.raw_reads);self.assertNotIn(('source',self.revision),self.calls)
+
+    def test_missing_duplicate_wrong_current_or_parent_producer_rejected(self):
+        for ref in [self.revision,self.parent]:
+            for change in [lambda rows:[],lambda rows:rows*2,lambda rows:[dict(rows[0],head_sha='f'*40)]]:
+                self.history_mutation=lambda revision,rows,ref=ref,change=change:change(rows) if revision==ref else rows
+                with self.subTest(ref=ref,change=change),self.assertRaises(ValueError):self.observe()
+
+    def test_noncanonical_or_active_current_producer_rejected(self):
+        for key,value in [('event','workflow_dispatch'),('path','other'),('head_branch','other'),
+                          ('head_repository',dict(full_name='other/repo')),('status','in_progress'),('conclusion',None)]:
+            old=self.producer[key];self.producer[key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):self.observe()
+            self.producer[key]=old
+
+    def test_failed_claimed_promotion_never_falls_back(self):
+        self.promotion_error=ValueError('promotion receipt/source/nonentry unproven')
+        with patch.object(self.a,'_completion_inherited_promotion',side_effect=AssertionError('no fallback')):
+            with self.assertRaisesRegex(ValueError,'receipt/source/nonentry'):self.observe()
+
+    def test_missing_or_malformed_current_attempt_never_inherits(self):
+        for value in [None,True,0,-1,'1']:
+            self.producer['run_attempt']=value
+            with self.subTest(value=value),self.assertRaisesRegex(ValueError,'INHERITED_PRODUCER_UNPROVEN'):
+                self.observe()
+        self.producer.pop('run_attempt')
+        with self.assertRaisesRegex(ValueError,'INHERITED_PRODUCER_UNPROVEN'):self.observe()
+
+    def test_ancestor_promotion_failure_remains_fatal(self):
+        original=self.promote
+        def promote(repository,run,token):
+            if run['head_sha']==self.parent:raise ValueError('ancestor receipt invalid')
+            return original(repository,run,token)
+        with patch.object(self,'promote',side_effect=promote):
+            with self.assertRaisesRegex(ValueError,'ancestor receipt invalid'):self.observe()
+
+    def test_current_merged_source_required_ci_and_candidate_binding(self):
+        self.source_error=RuntimeError('required CI unavailable')
+        with self.assertRaisesRegex(RuntimeError,'required CI'):self.observe()
+        self.source_error=None
+        for field in ['candidate','executionAuthority']:
+            self.admission_mutation=lambda value,field=field:dict(value,**{field:'f'*40})
+            with self.subTest(field=field),self.assertRaisesRegex(ValueError,'SOURCE_UNPROVEN'):self.observe()
+
+    def test_abnormal_reordered_missing_or_forged_parent_binding(self):
+        for change in [lambda x:dict(x,sha='f'*40),lambda x:dict(x,parents=x['parents'][:1]),
+                       lambda x:dict(x,parents=x['parents']*2),lambda x:dict(x,parents=list(reversed(x['parents']))),
+                       lambda x:dict(x,parents=[dict(sha='f'*40),x['parents'][1]])]:
+            self.commit_mutation=change
+            with self.subTest(change=change),self.assertRaises(ValueError):self.observe()
+
+    def test_fresh_founder_request_transition_is_not_duplicated_or_relaxed(self):
+        original=dict(self.request)
+        for key,value in [('requestedBy','other'),('requestId','promotion'),('requestId',''),
+                          ('authorization',''),('releaseMode','validate-only'),('targets',[]),
+                          ('targets','masterapp-portal'),('cloudflareWebsiteRouting',None),('trustedToolPromotion',{})]:
+            self.request=dict(original,**{key:value});self.make_child();self.refresh_rows()
+            with self.subTest(key=key,value=value),self.assertRaises(ValueError):self.observe()
+
+    def test_any_other_blob_inventory_mode_or_type_change_rejected_by_real_git(self):
+        cases=['script','workflow','lock','hidden','app','add','delete','rename','mode','symlink','gitlink']
+        for case in cases:
+            self.git('reset','--hard',self.candidate);self.git('clean','-fdq')
+            path={'script':'scripts/validation-resume.py','workflow':'.github/workflows/deployment-diagnostics.yml',
+                  'lock':'scripts/release-artifacts/package-lock.json','hidden':'.config/tool.json','app':'App/source.cs'}.get(case)
+            if path:self.write(path,'changed\n')
+            elif case=='add':self.write('.hidden-dependency','new\n')
+            elif case=='delete':(self.directory/'App/source.cs').unlink()
+            elif case=='rename':(self.directory/'App/source.cs').rename(self.directory/'App/renamed.cs')
+            elif case=='mode':(self.directory/'App/source.cs').chmod(0o755)
+            elif case=='symlink':(self.directory/'outside-link').symlink_to('/outside-fixture')
+            elif case=='gitlink':
+                self.git('update-index','--add','--cacheinfo','160000,'+self.parent+',hidden-module')
+                self.git('config','diff.ignoreSubmodules','all')
+            self.make_child(stage=case!='gitlink');self.refresh_rows()
+            with self.subTest(case=case),self.assertRaisesRegex(ValueError,'CLOSURE_CHANGED'):self.observe()
+            # Reset to the genuine request-only candidate, not the last negative tree.
+            self.git('reset','--hard',self.parent);self.git('clean','-fdq');self.make_child();self.refresh_rows()
+
+    def test_request_mode_and_absent_change_rejected(self):
+        (self.directory/self.a.RELEASE_REQUEST_PATH).chmod(0o755);self.make_child();self.refresh_rows()
+        with self.assertRaisesRegex(ValueError,'REQUEST_DIFF'):self.observe()
+        self.raw_override=''
+        with self.assertRaisesRegex(ValueError,'REQUEST_DIFF'):self.observe()
+
+    def test_git_failures_and_malformed_or_truncated_raw_inventory_fail_closed(self):
+        for command in ['rev-list','merge-base','--quiet','--raw']:
+            self.git_error=command
+            with self.subTest(command=command),self.assertRaises((ValueError,subprocess.CalledProcessError)):self.observe()
+        self.git_error=None
+        valid=':100644 100644 '+'a'*40+' '+'b'*40+' M\0'+self.a.RELEASE_REQUEST_PATH+'\0'
+        for raw in [valid[:-1],valid+'extra\0',valid*2,valid.replace('100644','120000',1),
+                    valid.replace('a'*40,'short'),valid.replace(' M\0',' A\0'),valid.replace('b'*40,'a'*40)]:
+            self.raw_override=raw
+            with self.subTest(raw=raw),self.assertRaisesRegex(ValueError,'REQUEST_DIFF'):self.observe()
+
+    def test_fresh_uncached_boundary_rejects_producer_rerun_drift_or_late_response(self):
+        for path in ['actions/runs/10','actions/runs/9']:
+            for key,value in [('run_attempt',2),('status','in_progress'),('conclusion','failure'),
+                              ('head_sha','f'*40),('head_repository',dict(full_name='other/repo'))]:
+                if path.endswith('/10') and key=='conclusion':value='success'
+                self.fresh_mutation=lambda p,row,path=path,key=key,value=value:dict(row,**{key:value}) if p==path else row
+                with self.subTest(path=path,key=key),self.assertRaisesRegex(ValueError,'PRODUCER_CHANGED'):self.observe()
+        now=[0]
+        def late(path,row):now[0]=31;return row
+        self.fresh_mutation=late
+        with self.a.evidence_lookup_budget(30,clock=lambda:now[0]):
+            with self.assertRaises(self.a.EvidenceLookupUnavailable):self.observe()
+
+    def test_live_ref_and_job_fences_still_apply_after_inheritance(self):
+        self.head=self.parent
+        with self.assertRaisesRegex(ValueError,'HEAD_CHANGED'):self.observe()
+        self.head=self.revision
+        for key,value in [('run_id',99),('run_attempt',2),('head_sha',self.parent),('runner_name','other')]:
+            old=self.job[key];self.job[key]=value
+            with self.subTest(key=key),self.assertRaisesRegex(ValueError,'JOB_UNPROVEN'):self.observe()
+            self.job[key]=old
+
+    def test_historical_summary_reauthenticates_inherited_identity_and_success_owner(self):
+        self.run.update(status='completed',conclusion='success');self.job.update(status='completed',conclusion='success')
+        self.job['steps']=[dict(name='Reconcile original bytes and record only missing success receipts',
+            status='completed',conclusion='success',started_at='2026-10-21T13:00:00Z',completed_at='2026-10-21T13:06:00Z')]
+        original=dict(id=10,head_sha=self.revision);targets={'portal':dict(operationId='a'*64)}
+        name=self.a.fast_track_completion_summary_name(10,self.revision)
+        artifact=dict(id=40,name=name,expired=False,digest='sha256:'+'b'*64,workflow_run=dict(id=20),created_at='2026-10-21T13:05:00Z')
+        observer=dict(runId=20,runAttempt=1,jobId=30,toolRevision=self.revision,promotionRunId=9)
+        record=dict(schemaVersion=1,phase='success',originalRun=10,applicationRevision=self.revision,
+                    producingRun=20,producingAttempt=1,observer=observer,targets=targets)
+        api=self.api
+        def history_api(repository,path,token):
+            if path.startswith('actions/artifacts?'):return dict(artifacts=[artifact],total_count=1)
+            if path=='actions/runs/20':return self.run
+            return api(repository,path,token)
+        with self.environment(),patch.object(self.a,'api_get',side_effect=history_api), \
+             patch.object(self.a,'_release_history_json',return_value=record) as read:
+            self.assertTrue(self.a.fast_track_completion_summary(self.repo,original,'fixture',targets))
+            self.assertTrue(read.call_args.kwargs['verify_digest'])
+            for key,value in [('toolRevision',self.parent),('promotionRunId',10)]:
+                record['observer']=dict(observer,**{key:value})
+                with self.subTest(key=key),self.assertRaisesRegex(ValueError,'SUMMARY_IDENTITY'):
+                    self.a.fast_track_completion_summary(self.repo,original,'fixture',targets)
+            record['observer']=observer;self.job['conclusion']='failure'
+            self.assertFalse(self.a.fast_track_completion_summary(self.repo,original,'fixture',targets))
+
+    def test_write_capable_retained_recovery_cannot_inherit(self):
+        self.run['path']='.github/workflows/'+self.a.FAST_TRACK_RELEASE_WORKFLOW
+        with self.environment(),patch.object(self.a,'_release_history_source',return_value=(ROOT.parent/self.run['path']).read_text()), \
+             patch.object(self.a,'_completion_inherited_promotion',side_effect=AssertionError('write owner must not inherit')):
+            with self.assertRaisesRegex(ValueError,'TOOL_NOT_PROMOTED'):
+                self.a.fast_track_recovery_producer(self.repo,self.run,'fixture',attempt=1)
+
+
 if __name__ == '__main__':
     unittest.main()

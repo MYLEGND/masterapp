@@ -7020,6 +7020,66 @@ def _completion_workflow_source(repository, revision, token):
     return source
 
 
+def _completion_inherited_promotion(repository, producer, token):
+    """Completion only: one fresh request-only merge above an actual promotion.
+
+    Compare the entire repository, not a guessed script/import dependency list.
+    No ancestor search, new publication authority, or failed-promotion fallback.
+    """
+    revision = producer.get('head_sha', '')
+    policy = _fast_track_policy()
+    if (not is_fast_track_producer(repository, producer)
+        or producer.get('status') != 'completed'
+        or type(producer.get('run_attempt')) is not int or producer['run_attempt'] < 1
+        or producer.get('conclusion') not in {'success', 'failure', 'cancelled'}):
+        raise ValueError('FAST_TRACK_COMPLETION_INHERITED_PRODUCER_UNPROVEN')
+    commit = api_get(repository, 'git/commits/' + revision, token)
+    parents = commit.get('parents')
+    if (commit.get('sha') != revision or not isinstance(parents, list) or len(parents) != 2
+        or any(not isinstance(p, dict) or not re.fullmatch('[a-f0-9]{40}', p.get('sha', '')) for p in parents)):
+        raise ValueError('FAST_TRACK_COMPLETION_INHERITED_PARENTS_UNPROVEN')
+    parent, candidate = [p['sha'] for p in parents]
+    local = subprocess.check_output(['git', 'rev-list', '--parents', '-n', '1', revision], text=True).split()
+    if len({revision, parent, candidate}) != 3 or local != [revision, parent, candidate]:
+        raise ValueError('FAST_TRACK_COMPLETION_INHERITED_PARENTS_CHANGED')
+    if subprocess.run(['git', 'merge-base', '--is-ancestor', parent, revision], capture_output=True).returncode:
+        raise ValueError('FAST_TRACK_COMPLETION_INHERITED_ANCESTRY_UNPROVEN')
+    # Native Git compares every tracked path/type/mode/blob, including hidden
+    # files, root configuration and dependencies outside scripts/.github.
+    if subprocess.run(['git', 'diff', '--quiet', '--no-ext-diff', '--no-textconv', '--ignore-submodules=none',
+                       parent, revision, '--', ':(top)',
+                       ':(top,exclude)' + RELEASE_REQUEST_PATH], capture_output=True).returncode:
+        raise ValueError('FAST_TRACK_COMPLETION_INHERITED_CLOSURE_CHANGED')
+    raw = subprocess.check_output(['git', 'diff', '--raw', '--no-abbrev', '--no-renames', '--no-ext-diff',
+                                   '--no-textconv', '--ignore-submodules=none', '-z',
+                                   parent, revision, '--'], text=True).split('\0')
+    if (len(raw) != 3 or raw[1] != RELEASE_REQUEST_PATH or raw[2]
+        or not re.fullmatch(r':100644 100644 [a-f0-9]{40} [a-f0-9]{40} M', raw[0])
+        or raw[0].split()[2] == raw[0].split()[3]):
+        raise ValueError('FAST_TRACK_COMPLETION_INHERITED_REQUEST_DIFF_UNPROVEN')
+    admission = fast_track_merged_source_proof(repository, revision, token)
+    if admission.get('candidate') != candidate or admission.get('executionAuthority') != revision:
+        raise ValueError('FAST_TRACK_COMPLETION_INHERITED_SOURCE_UNPROVEN')
+    if policy.tool_promotion_requested(revision):
+        raise ValueError('FAST_TRACK_COMPLETION_INHERITED_PRODUCER_UNPROVEN')
+    policy.release_after_tool_promotion(parent, revision, admission)
+    promotions = fast_track_historical_producers(repository, parent, token)
+    if (len(promotions) != 1 or promotions[0].get('head_sha') != parent
+        or fast_track_promotion_parent(repository, promotions[0], token) is None):
+        raise ValueError('FAST_TRACK_COMPLETION_INHERITED_TOOL_NOT_PROMOTED')
+    # Do not reuse optional request-scoped metadata at this new boundary.
+    # Both original producer identities must survive the complete proof.
+    keys = ('id', 'head_sha', 'head_branch', 'path', 'event', 'run_attempt',
+            'status', 'conclusion', 'head_repository')
+    for expected in (producer, promotions[0]):
+        evidence_remaining(1)
+        fresh = _api_get_uncached(repository, 'actions/runs/' + str(expected['id']), token)
+        evidence_remaining(1)
+        if any(fresh.get(key) != expected.get(key) for key in keys):
+            raise ValueError('FAST_TRACK_COMPLETION_INHERITED_PRODUCER_CHANGED')
+    return promotions[0]
+
+
 def fast_track_completion_observer(repository, run, token, *, live=False, attempt=None, job_id=None):
     """Verify real observer provenance plus successful nonpublishing promotion."""
     revision = run.get('head_sha', '')
@@ -7032,9 +7092,11 @@ def fast_track_completion_observer(repository, run, token, *, live=False, attemp
         raise ValueError('FAST_TRACK_COMPLETION_OBSERVER_UNPROVEN')
     _completion_workflow_source(repository, revision, token)
     promotions = fast_track_historical_producers(repository, revision, token)
-    if (len(promotions) != 1 or promotions[0].get('head_sha') != revision
-        or fast_track_promotion_parent(repository, promotions[0], token) is None):
+    if len(promotions) != 1 or promotions[0].get('head_sha') != revision:
         raise ValueError('FAST_TRACK_COMPLETION_TOOL_NOT_PROMOTED')
+    promotion = promotions[0]
+    if fast_track_promotion_parent(repository, promotion, token) is None:
+        promotion = _completion_inherited_promotion(repository, promotion, token)
     jobs = _completion_rows(api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token), 'jobs')
     owners = [j for j in jobs if j.get('name') == FAST_TRACK_COMPLETION_JOB]
     if (len(owners) != 1 or type(owners[0].get('id')) is not int
@@ -7048,7 +7110,7 @@ def fast_track_completion_observer(repository, run, token, *, live=False, attemp
         if current.get('object',{}).get('sha') != revision:
             raise ValueError('FAST_TRACK_COMPLETION_TOOL_HEAD_CHANGED')
     return dict(runId=run['id'], runAttempt=attempt, jobId=owners[0]['id'], toolRevision=revision,
-                promotionRunId=promotions[0]['id'])
+                promotionRunId=promotion['id'])
 
 
 def assert_fast_track_completion_execution(original_run, application_revision, *, clock=time.monotonic, sleep=time.sleep):
