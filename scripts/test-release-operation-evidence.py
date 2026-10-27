@@ -905,6 +905,8 @@ class CompletionJournalTests(unittest.TestCase):
         self.observer=dict(runId=2,runAttempt=1,jobId=20,toolRevision='f'*40,promotionRunId=3)
         self.success=None;self.submitted=None
         self.authority=SimpleNamespace(_completion_original_unchanged=Mock(),validate_original_completion_success=Mock(),assert_fast_track_completion_execution=Mock(return_value=self.observer),release_operation_history=Mock(side_effect=lambda *args,**kw:self.submitted if kw.get('phase')=='submitted' else self.success))
+        from contextlib import nullcontext
+        self.authority.recovery_admission_proof=nullcontext
         self.publish=Mock(return_value=dict(artifactId=42));self.env=dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')
     def owner(self):
         import os
@@ -952,6 +954,35 @@ class CompletionJournalTests(unittest.TestCase):
         self.publish.side_effect=TimeoutError()
         with self.assertRaises(TimeoutError):self.owner().record_success(['new'])
         self.publish.assert_called_once()
+
+    def test_mutable_proof_closes_before_live_authority_and_publish(self):
+        from contextlib import contextmanager
+        timeline=[]
+        @contextmanager
+        def boundary():
+            timeline.append('proof-enter')
+            yield
+            timeline.append('proof-rechecked')
+        self.authority.recovery_admission_proof=boundary
+        self.authority.assert_fast_track_completion_execution.side_effect=lambda *args:(timeline.append('live'),self.observer)[1]
+        self.publish.side_effect=lambda *args:timeline.append('publish')
+        self.owner().record_success(['new'])
+        self.assertEqual(timeline,['proof-enter','proof-rechecked','live','publish'])
+
+    def test_changed_metadata_at_proof_exit_never_publishes_or_accepts_existing(self):
+        from contextlib import contextmanager
+        @contextmanager
+        def boundary():
+            yield
+            raise RuntimeError('fresh proof changed')
+        self.authority.recovery_admission_proof=boundary
+        for existing in [None,dict(self.intent,phase='success',deploymentIds=['new'])]:
+            self.success=existing
+            with self.subTest(existing=existing),self.assertRaisesRegex(RuntimeError,'fresh proof changed'):
+                self.owner().record_success(['new'])
+        self.publish.assert_not_called()
+        self.authority.assert_fast_track_completion_execution.assert_not_called()
+
 
 class RetainedRecoveryJournalTests(DurableOperationProtocolTests):
     def recovery(self, **kwargs):
