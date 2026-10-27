@@ -1912,6 +1912,156 @@ class FastTrackCompletionAuthorityTests(unittest.TestCase):
         self.observer_job_changes=dict(status='in_progress',conclusion=None)
         with self.assertRaises(ValueError):self.validate(self.receipt())
 
+class CompletionScopedDiscoveryTests(unittest.TestCase):
+    def setUp(self):
+        import copy
+        spec=importlib.util.spec_from_file_location('completion_discovery_tests',ROOT/'validation-resume.py')
+        self.a=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.a)
+        self.repo='owner/repo';self.sha='a'*40;self.operation='b'*64
+        self.original=dict(id=10,head_sha=self.sha,run_attempt=1,status='completed',conclusion='failure',
+            event='push',path='.github/workflows/legend-fast-track-ui.yml',head_branch='Legend/fast-track-release',head_repository=dict(full_name=self.repo))
+        self.current=copy.deepcopy(self.original)
+        self.intent=dict(id=11,name='legend-release-operation-intent-'+self.operation,expired=False,
+            digest='sha256:'+'c'*64,workflow_run=dict(id=10,head_sha=self.sha))
+        self.originals=dict(total_count=1,artifacts=[self.intent])
+        self.run=dict(id=20,head_branch='Legend/fast-track-release',path='.github/workflows/deployment-diagnostics.yml',status='completed',conclusion='failure')
+        self.runs=dict(total_count=1,workflow_runs=[self.run])
+        self.success=dict(id=21,name='legend-release-operation-success-'+self.operation)
+        self.artifacts={20:dict(total_count=1,artifacts=[self.success])}
+        self.records={21:dict(applicationRevision=self.sha)}
+        self.recovery=dict(total_count=0,artifacts=[])
+        self.calls=[];self.reads=[];self.closes=[]
+    def api(self,repo,path,token):
+        self.assertEqual(repo,self.repo);self.calls.append(path)
+        if path.startswith('actions/artifacts?'):return self.recovery
+        if path==f"actions/runs/{self.original['id']}":return self.original
+        if path==f"actions/runs/{self.original['id']}/artifacts?per_page=100":return self.originals
+        if path.startswith('actions/workflows/'):return self.runs
+        if path.endswith('/jobs?filter=latest&per_page=100'):return dict(total_count=0,jobs=[])
+        if path.endswith('/artifacts?per_page=100'):return self.artifacts[int(path.split('/')[2])]
+        raise AssertionError(path)
+    def read(self,repo,run,artifact,filename,**kwargs):
+        self.assertEqual((filename,kwargs),('operation.json',dict(verify_digest=True)))
+        self.reads.append(artifact['id']);return self.records[artifact['id']]
+    def close(self,repo,path,token):
+        self.closes.append(path);return self.current
+    def check(self,*,scoped=True):
+        with patch.object(self.a,'api_get',side_effect=self.api),patch.object(self.a,'_api_get_uncached',side_effect=self.close),patch.object(self.a,'_release_history_json',side_effect=self.read):
+            return self.a.fast_track_completion_present(self.repo,self.sha,'test-only',**({'original_run':self.original['id']} if scoped else {}))
+    def test_scoped_partial_failed_and_live_receipts_remain_discoverable(self):
+        for status,conclusion in [('completed','failure'),('completed','cancelled'),('in_progress',None),('completed','success')]:
+            self.run.update(status=status,conclusion=conclusion)
+            with self.subTest(status=status,conclusion=conclusion):self.assertTrue(self.check())
+        self.assertEqual(self.reads,[21]*4);self.assertEqual(len(self.closes),4)
+    def test_only_exact_original_summary_name_is_a_candidate(self):
+        self.originals=dict(total_count=0,artifacts=[])
+        self.success['name']=self.a.fast_track_completion_summary_name(99,self.sha)
+        self.assertFalse(self.check());self.assertEqual(self.reads,[])
+        self.success['name']=self.a.fast_track_completion_summary_name(10,self.sha)
+        self.assertTrue(self.check());self.assertEqual(self.reads,[21])
+        self.records[21]['applicationRevision']='d'*40
+        self.assertFalse(self.check())
+    def test_actual_cbc_empty_intent_scope_scans_all_metadata_not_unrelated_bodies(self):
+        import copy
+        self.sha='cbc94de2f33baeecce331f0184522686b658c58f'
+        self.original.update(id=40506653784,head_sha=self.sha);self.current=copy.deepcopy(self.original)
+        self.originals=dict(total_count=1,artifacts=[dict(id=12736991325,name='fast-track-admission-40506653784-1',workflow_run=dict(id=40506653784,head_sha=self.sha))])
+        current=dict(self.run,id=40563368913);prior=dict(self.run,id=40463688877)
+        self.runs=dict(total_count=2,workflow_runs=[current,prior])
+        self.artifacts={current['id']:dict(total_count=1,artifacts=[dict(id=12760978926,name='legend-release-operation-success-85ba96e6a5dca05d83949e0c1854783518177cd99928996f82ddade432cc4704')]),
+            prior['id']:dict(total_count=1,artifacts=[dict(id=12715727916,name='legend-release-completion-91ce77b99c4d692ba3bf963e73b8c3b1014d4b6834971c2e3b40fe6afec45537')])}
+        self.assertFalse(self.check());self.assertEqual(self.reads,[])
+        for run in [current,prior]:self.assertIn(f"actions/runs/{run['id']}/artifacts?per_page=100",self.calls)
+        self.assertEqual(self.closes,['actions/runs/40506653784'])
+    def test_actual_a459_summary38_remains_discoverable(self):
+        import copy
+        self.sha='a459eafddbbbda3b599209d28f82135fbc108605'
+        self.original.update(id=40444074972,head_sha=self.sha);self.current=copy.deepcopy(self.original)
+        self.intent['workflow_run']=dict(id=self.original['id'],head_sha=self.sha)
+        name=self.a.fast_track_completion_summary_name(self.original['id'],self.sha)
+        self.assertEqual(name,'legend-release-completion-91ce77b99c4d692ba3bf963e73b8c3b1014d4b6834971c2e3b40fe6afec45537')
+        self.success.update(id=12715727916,name=name);self.records={12715727916:dict(applicationRevision=self.sha)}
+        self.assertTrue(self.check());self.assertEqual(self.reads,[12715727916])
+    def test_unscoped_legacy_discovery_keeps_original_broad_behavior(self):
+        self.success['name']='legend-release-operation-success-'+'f'*64
+        self.assertFalse(self.check());self.assertEqual(self.reads,[])
+        self.calls=[];self.assertTrue(self.check(scoped=False));self.assertEqual(self.reads,[21])
+        self.assertFalse(any(path.startswith('actions/runs/10') for path in self.calls))
+        self.assertEqual(len(self.closes),1)
+    def test_retained_recovery_positive_path_is_unchanged(self):
+        name=self.a.fast_track_recovery_summary_name(10,self.sha)
+        self.recovery=dict(total_count=1,artifacts=[dict(id=30,name=name,expired=False)])
+        self.assertTrue(self.check());self.assertEqual(len(self.calls),1)
+        self.assertEqual((self.reads,self.closes),([],[]))
+    def test_incomplete_duplicate_or_malformed_original_inventory_fails_closed(self):
+        import copy
+        good=copy.deepcopy(self.originals)
+        cases=[{},dict(total_count=True,artifacts=[]),dict(total_count=2,artifacts=[self.intent]),dict(total_count=2,artifacts=[self.intent,self.intent]),dict(total_count=1,artifacts=[None])]
+        for payload in cases:
+            self.originals=payload
+            with self.subTest(payload=payload),self.assertRaises(ValueError):self.check()
+        self.originals=good;self.assertEqual(self.reads,[])
+    def test_foreign_expired_duplicate_or_malformed_original_intent_fails_closed(self):
+        import copy
+        good=copy.deepcopy(self.intent)
+        cases=[dict(name=None),dict(name='legend-release-operation-intent-invalid'),dict(expired=True),dict(expired=None),dict(digest='bad'),
+            dict(workflow_run=dict(id=99,head_sha=self.sha)),dict(workflow_run=dict(id=10,head_sha='e'*40)),dict(workflow_run=None)]
+        for changes in cases:
+            self.intent.clear();self.intent.update(copy.deepcopy(good));self.intent.update(changes)
+            with self.subTest(changes=changes),self.assertRaises(ValueError):self.check()
+        self.intent.clear();self.intent.update(good)
+        self.originals=dict(total_count=2,artifacts=[self.intent,dict(self.intent,id=12)])
+        with self.assertRaises(ValueError):self.check()
+        self.assertEqual(self.reads,[])
+    def test_original_producer_must_bind_terminal_revision_and_attempt(self):
+        import copy
+        good=copy.deepcopy(self.original)
+        cases=[dict(head_sha='e'*40),dict(status='in_progress'),dict(conclusion=None),dict(run_attempt=None),dict(run_attempt=True),dict(run_attempt=0),dict(run_attempt='1'),dict(event='workflow_dispatch'),dict(head_branch='other'),dict(path='other'),dict(head_repository=dict(full_name='foreign/repo'))]
+        for changes in cases:
+            self.original.clear();self.original.update(copy.deepcopy(good));self.original.update(changes)
+            with self.subTest(changes=changes),self.assertRaises(ValueError):self.check()
+        self.assertEqual(self.reads,[])
+    def test_diagnostics_inventory_still_must_be_complete_even_for_empty_scope(self):
+        self.originals=dict(total_count=0,artifacts=[])
+        self.runs['total_count']=2
+        with self.assertRaises(ValueError):self.check()
+        self.runs['total_count']=1;self.artifacts[20]['total_count']=2
+        with self.assertRaises(ValueError):self.check()
+        self.assertEqual(self.reads,[])
+    def test_closing_identity_is_uncached_and_rejects_drift_for_both_results(self):
+        import copy
+        good=copy.deepcopy(self.current)
+        changes=[dict(id=99),dict(head_sha='e'*40),dict(run_attempt=2),dict(run_attempt=True),dict(status='in_progress'),dict(conclusion='success'),dict(event='workflow_dispatch'),dict(path='other'),dict(head_branch='other'),dict(head_repository=dict(full_name='foreign/repo'))]
+        for matching in [True,False]:
+            self.success['name']='legend-release-operation-success-'+(self.operation if matching else 'f'*64)
+            for change in changes:
+                self.current=copy.deepcopy(good);self.current.update(change)
+                with self.subTest(matching=matching,change=change),self.assertRaisesRegex(ValueError,'DISCOVERY_ORIGINAL_CHANGED'):self.check()
+        self.assertEqual(len(self.closes),len(changes)*2)
+    def test_closing_transport_failure_and_late_deadline_fail_closed(self):
+        for error in [RuntimeError('unavailable'),self.a.EvidenceLookupUnavailable('expired')]:
+            with patch.object(self,'close',side_effect=error),self.assertRaises(type(error)):self.check()
+        with patch.object(self.a,'evidence_remaining',side_effect=[30,self.a.EvidenceLookupUnavailable('late')]),self.assertRaises(self.a.EvidenceLookupUnavailable):self.check()
+    def test_scope_discovery_never_replaces_effective_baseline_authentication(self):
+        import contextlib
+        summary=CompletionSummaryTests();summary.setUp()
+        for forged in [True,False]:
+            summary.record['originalRun']=99 if forged else 1
+            summary.producer['conclusion']='success' if forged else 'failure'
+            with contextlib.ExitStack() as stack:
+                stack.enter_context(patch.object(self.a,'api_get',side_effect=self.api))
+                stack.enter_context(patch.object(self.a,'_api_get_uncached',side_effect=self.close))
+                stack.enter_context(patch.object(self.a,'_release_history_json',side_effect=self.read))
+                stack.enter_context(patch.object(self.a,'fast_track_historical_producers',return_value=[self.original]))
+                stack.enter_context(patch.object(self.a.subprocess,'run',return_value=SimpleNamespace(returncode=0)))
+                proof=stack.enter_context(patch.object(self.a,'fast_track_completed_operation_receipts',side_effect=lambda *args:summary.check()))
+                for name in ['fast_track_completed_apps_pending_routing','attested_fast_track_manual_dns_proxy_completion','attested_fast_track_brand_preupload','fast_track_completed_sql_unpublished','fast_track_unpublished_apps_with_migration_intent']:
+                    stack.enter_context(patch.object(self.a,name,return_value=False))
+                with self.assertRaises(ValueError if forged else RuntimeError):
+                    self.a.fast_track_effective_baseline(self.sha,'d'*40,repository=self.repo,token='test-only')
+                proof.assert_called_once()
+
+
 class CompletionSummaryTests(unittest.TestCase):
     def setUp(self):
         spec=importlib.util.spec_from_file_location('completion_summary_tests',ROOT/'validation-resume.py')
