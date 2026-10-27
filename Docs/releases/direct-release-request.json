@@ -1,72 +1,24 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly instructed completion and deployment of the existing Shayla implementation. This reviewed prerequisite promotes only canonical validation tools; it authorizes no production SQL, application publication, routing, calls or booking activation. Required source validations and canonical merge admission remain mandatory.",
-  "purpose": "Promote the exact reviewed browser migration observer, rehearsal and release authority for subsequent paused Shayla deployment.",
-  "requestId": "shayla-browser-observer-promotion-20261026-v1",
+  "authorization": "Founder requested the final fix and deployment of the existing Shayla implementation. This reviewed prerequisite promotes only the canonical read-only schema compatibility mapping and its regression test. It authorizes no production SQL mutation, application publication, routing, calls or booking activation. Required source validations and canonical merge admission remain mandatory.",
+  "purpose": "Promote the missing reviewed browser migration rule mapping in the trusted read-only workflow for subsequent paused Shayla deployment.",
+  "requestId": "shayla-browser-rule-mapping-promotion-20261027-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "76d4735496c5dc62fed17b98b3e5f15d04a399b6",
-    "sourceRevision": "0278fcc06cfb490bfe70ed59cbefcc044678b4f3",
+    "baseRevision": "7db0aa37c4a2a6007e31b86d6d01ca178abcddf2",
+    "sourceRevision": "5433cbcfaad57c6add0ee23fb2b9406f6c773fab",
     "files": {
-      "scripts/MigrationReleaseProbe/CandidateContract.Browser.cs": {
+      ".github/workflows/parfait-cutover-live-readonly.yml": {
         "mode": "100644",
-        "blob": "77c8e718cf57f2a452e7173be7d4a8d73f33b3e2"
+        "blob": "e120ff5f7b8e17cb8397b5dfd4fd14f1abd6f00e"
       },
-      "scripts/MigrationReleaseProbe/CandidateContract.Structures.cs": {
+      "scripts/test-parfait-readonly-workflow.py": {
         "mode": "100644",
-        "blob": "462d61528c5f36f42cdabb7dbb4b6b5744f59f75"
-      },
-      "scripts/MigrationReleaseProbe/CandidateContract.cs": {
-        "mode": "100644",
-        "blob": "5451e71e63e5dafbae4644f546a5d6355d421b5c"
-      },
-      "scripts/MigrationReleaseProbe/Program.cs": {
-        "mode": "100644",
-        "blob": "3d5306170f3e1d1e92b29af3f765662896d6d9f2"
-      },
-      "scripts/MigrationReleaseProbe/Rehearsal/CandidateContractTests.cs": {
-        "mode": "100644",
-        "blob": "d7912e85f9b6fd5d5673126422da9ab90f36500b"
-      },
-      "scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.Browser.cs": {
-        "mode": "100644",
-        "blob": "3d9513f1e46e6f95dc1ab65b4e939693e3288d56"
-      },
-      "scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.cs": {
-        "mode": "100644",
-        "blob": "de9e52ad1e5c51b151521c9a1e91f58e2175fa59"
-      },
-      "scripts/migration-probe-package.py": {
-        "mode": "100644",
-        "blob": "51a4061f9f79ee54fd7b90e1655bd0e02fe1e936"
-      },
-      "scripts/release_policy.py": {
-        "mode": "100644",
-        "blob": "1554f0d9d90e59e8662707b733c927ded25ac397"
-      },
-      "scripts/test-fast-track-release.py": {
-        "mode": "100644",
-        "blob": "bc7b5478bdddc2f13312d5ac5c31bc7d0170ab46"
-      },
-      "scripts/test-migration-probe-package.py": {
-        "mode": "100644",
-        "blob": "7f0b9c398d26994d1611fe77b59bf3acb11a95f9"
-      },
-      "scripts/test-release-policy.py": {
-        "mode": "100644",
-        "blob": "bab022c28a925f2a8e383ad0b2d190ec8acb9533"
-      },
-      "scripts/test-validation-resume.py": {
-        "mode": "100644",
-        "blob": "155b875c5af906c3caa76f1b849e5eef836c5d40"
-      },
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "6bf31768940986ce99177d05bcc3a4d615c57bb9"
+        "blob": "f66bff6794473bedc5706f274d855ba660ae2231"
       }
     }
   }
