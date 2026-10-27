@@ -70,6 +70,14 @@ public sealed partial class ReceptionistOperatorService
             : await db.Set<ReceptionistConfigurationVersion>().SingleAsync(x => x.MarketingConnectionId == connection.Id &&
                 x.Id == connection.ReceptionistActiveConfigurationId, ct);
         var config = ReceptionistConfigurationCodec.Read(version.ConfigurationJson, version.ConfigurationSha256);
+        var riskMode = input.BudgetPolicyMode == ReceptionistOwnerBudgetPolicy.SupportedMode;
+        if (input.BudgetPolicyMode is not (null or "") && !riskMode ||
+            input.Operation != "accept_binding" && (riskMode || input.AcceptDelayedBudgetOverrun) ||
+            !riskMode && (input.AcceptDelayedBudgetOverrun || input.ObservedProviderMonthlyBudget is not null ||
+                input.ProviderBudgetPeriodStartUtc is not null || input.ProviderBudgetPeriodEndUtc is not null || input.BudgetPolicyExpiresUtc is not null ||
+                input.Costs.Any(x => x.CashFixedEstimate is not null || x.CashPerSecondEstimate is not null ||
+                    x.ConsumptionFixedEstimate is not null || x.ConsumptionPerSecondEstimate is not null)))
+            throw new ArgumentException("Choose one explicit budget contract; legacy guarantees and risk estimates cannot be mixed.");
         var now = clock.GetUtcNow().UtcDateTime;
         var evidence = input.Evidence.Where(x => !string.IsNullOrWhiteSpace(x.Reference) || !string.IsNullOrWhiteSpace(x.Sha256) || x.ObservedUtc is not null)
             .Select(x => new ReceptionistOperatorEvidence(x.Kind, x.Reference ?? string.Empty, x.Sha256 ?? string.Empty,
@@ -89,19 +97,52 @@ public sealed partial class ReceptionistOperatorService
             var allowed = (await FundingChoicesAsync(db, connection.Id, founder, ct)).Select(x => x.Id).ToHashSet();
             if (input.Costs.Count == 0 || input.Costs.Any(x => !allowed.Contains(x.FundingAccountId)))
                 throw new UnauthorizedAccessException("The proposed funding is not available to this workspace.");
+            ReceptionistOwnerBudgetPolicy? budgetPolicy = null;
+            if (riskMode)
+            {
+                if (!input.AcceptDelayedBudgetOverrun || input.MaximumSupportedCallSeconds is not null ||
+                    input.Costs.Any(x => x.CashFixedMaximum is not null || x.CashPerSecondMaximum is not null ||
+                        x.ConsumptionFixedMaximum is not null || x.ConsumptionPerSecondMaximum is not null))
+                    throw new ArgumentException("Explicit owner risk consent is required; leave provider-guarantee fields empty.");
+                ReceptionistOperatorEvidence Evidence(string kind) => evidence.SingleOrDefault(x => x.Kind == kind)
+                    ?? throw new ArgumentException("Supply the evidence for " + kind + ".");
+                var observation = Evidence("provider_budget_observation");
+                var consent = Evidence("owner_budget_risk");
+                var rates = Evidence("cost_estimates");
+                var estimates = input.Costs.Select(x => new ReceptionistBudgetEstimate(x.Key, x.FundingAccountId,
+                    x.CashFixedEstimate ?? throw new ArgumentException("Explicit fixed cash estimate is required."),
+                    x.CashPerSecondEstimate ?? throw new ArgumentException("Explicit cash rate is required."),
+                    x.ConsumptionFixedEstimate ?? throw new ArgumentException("Explicit fixed consumption estimate is required."),
+                    x.ConsumptionPerSecondEstimate ?? throw new ArgumentException("Explicit consumption rate is required."),
+                    x.ZeroCashJustification ?? "", x.ZeroConsumptionJustification ?? "")).ToArray();
+                budgetPolicy = new(ReceptionistOwnerBudgetPolicy.SupportedMode, connection.Id, owner.Key,
+                    credential.ProviderProjectKey, version.Id, Guid.NewGuid(), version.ConfigurationSha256,
+                    config.Currency, config.MonthlyCashLimit, config.MonthlyConsumptionLimit,
+                    input.ObservedProviderMonthlyBudget ?? throw new ArgumentException("Observed provider budget is required."),
+                    input.ProviderBudgetPeriodStartUtc ?? throw new ArgumentException("Provider budget period start is required."),
+                    input.ProviderBudgetPeriodEndUtc ?? throw new ArgumentException("Provider budget period end is required."),
+                    observation.ObservedUtc, observation.Reference, observation.Sha256, actor, now,
+                    consent.Reference, consent.Sha256, rates.Reference, rates.Sha256,
+                    input.BudgetPolicyExpiresUtc ?? throw new ArgumentException("Explicit policy expiry is required."), estimates);
+            }
             // Preserve an established route identity; a new identity is generated only by this authority.
             binding = new ReceptionistProviderBinding
             {
                 IngressKey = connection.ReceptionistIngressKey ?? "website-" + Guid.NewGuid().ToString("N"),
                 ProviderProjectKey = credential.ProviderProjectKey, Model = input.Model ?? string.Empty, Voice = input.Voice ?? string.Empty,
                 BackendMode = "application_services", Transport = "webrtc", ControlledTestOnly = input.ControlledTestOnly,
-                CredentialReference = StoredPrefix + credential.Id.ToString("N"), MaximumSupportedCallSeconds = input.MaximumSupportedCallSeconds,
+                CredentialReference = StoredPrefix + credential.Id.ToString("N"), MaximumSupportedCallSeconds = riskMode ? 0 : (input.MaximumSupportedCallSeconds
+                    ?? throw new ArgumentException("An explicit verified provider duration is required in guaranteed mode.")),
                 ProviderVerificationReceipt = Receipt("provider_setup"), ExclusiveProjectVerificationReceipt = Receipt("exclusive_project"),
-                CostVerificationReceipt = Receipt("cost_bounds"), DisclosureConfigurationReceipt = Receipt("disclosure"),
+                BudgetPolicy = budgetPolicy,
+                CostVerificationReceipt = Receipt(riskMode ? "cost_estimates" : "cost_bounds"), DisclosureConfigurationReceipt = Receipt("disclosure"),
                 RetentionConfigurationReceipt = Receipt("retention"), WebsiteFallbackReceipt = Receipt("website_fallback"),
                 PublicActivationReceipt = input.ControlledTestOnly ? null : Receipt("public_activation"),
-                Costs = input.Costs.Select(x => new ReceptionistCostComponent(x.Key, x.FundingAccountId,
-                    x.CashFixedMaximum, x.CashPerSecondMaximum, x.ConsumptionFixedMaximum, x.ConsumptionPerSecondMaximum)).ToArray(),
+                Costs = budgetPolicy?.Estimates.Select(x => x.ToReservation()).ToArray() ?? input.Costs.Select(x => new ReceptionistCostComponent(x.Key, x.FundingAccountId,
+                    x.CashFixedMaximum ?? throw new ArgumentException("An explicit guaranteed fixed cash amount is required."),
+                    x.CashPerSecondMaximum ?? throw new ArgumentException("An explicit guaranteed cash rate is required."),
+                    x.ConsumptionFixedMaximum ?? throw new ArgumentException("An explicit guaranteed fixed consumption amount is required."),
+                    x.ConsumptionPerSecondMaximum ?? throw new ArgumentException("An explicit guaranteed consumption rate is required."))).ToArray(),
                 Capabilities = [new(ReceptionistCapabilities.CanonicalIntake, Infrastructure.Leads.ReceptionistInquiryAuthority.RouteKey,
                     ReceptionistCapabilityStates.Accepted, Receipt("capability." + ReceptionistCapabilities.CanonicalIntake))]
             };
@@ -190,6 +231,7 @@ public sealed partial class ReceptionistOperatorService
             package.ConfigurationId != row.ConfigurationVersionId || package.Operation != row.Operation ||
             package.ReviewedByFounderOid.Length != 0 || package.ReviewedUtc != default)
             throw new InvalidOperationException("The pending operation has inconsistent ownership or review metadata.");
+        RequireSavedBudgetConsentCreator(package, row);
         package = package with { ReviewedByFounderOid = actor, ReviewedUtc = now };
         package.Validate(actor, now);
         var state = await admission.ReadOperatorStateAsync(package, expectedHash, ct);
@@ -203,8 +245,8 @@ public sealed partial class ReceptionistOperatorService
                 .Concat(package.Binding is { } proposed ? new[] {
                     new ReceptionistOperationFact("Proposed voice", proposed.Model + " / " + proposed.Voice),
                     new ReceptionistOperationFact("Proposed mode", proposed.ControlledTestOnly ? "Restricted testing" : "Public"),
-                    new ReceptionistOperationFact("Proposed duration bound", proposed.MaximumSupportedCallSeconds.ToString()) }
-                    .Concat(proposed.Costs.Select(x => new ReceptionistOperationFact("Proposed maximum cost: " + x.Key,
+                    new ReceptionistOperationFact("Provider duration guarantee", proposed.BudgetPolicy is null ? proposed.MaximumSupportedCallSeconds.ToString() : "Unknown; application deadline is not provider enforcement") }
+                    .Concat(proposed.Costs.Select(x => new ReceptionistOperationFact((proposed.BudgetPolicy is null ? "Proposed maximum cost: " : "Proposed reservation estimate: ") + x.Key,
                         FormattableString.Invariant($"Cash {x.CashFixedMaximum} + {x.CashPerSecondMaximum}/s; consumption {x.ConsumptionFixedMaximum} + {x.ConsumptionPerSecondMaximum}/s")))) : [])
                 .ToArray(), null, row.Revision);
     }
@@ -270,6 +312,7 @@ public sealed partial class ReceptionistOperatorService
         var package = JsonSerializer.Deserialize<ReceptionistOperatorPackage>(row.PayloadJson, ReceptionistConfigurationCodec.Json)
             ?? throw new InvalidOperationException("The operation is invalid.");
         if (package.ReviewedByFounderOid.Length != 0 || package.ReviewedUtc != default) throw new InvalidOperationException("Review identity must be server-derived.");
+        RequireSavedBudgetConsentCreator(package, row);
         package = package with { ReviewedByFounderOid = actor, ReviewedUtc = now };
         package.Validate(actor, now);
         if (accepted)

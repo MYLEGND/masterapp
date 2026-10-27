@@ -66,15 +66,15 @@ public partial class WebsiteAnalyticsController
     {
         var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
         if (owner is null) return Forbid();
-        if (!ModelState.IsValid) return BadRequest("Choose a valid call admission setting.");
+        if (!ModelState.IsValid) return await ReceptionistSetupFailureAsync(owner, agentProfileId, ReceptionistPlanFailure.InvalidAdmission, 400, cancellationToken, admission: input);
         try
         {
             await ReceptionistStore.SetReceptionistAdmissionAsync(owner, MarketingDestinationKeys.OpenAi,
                 input.ExpectedRevision, input.Enabled, cancellationToken);
             return RedirectToAction(nameof(Receptionist), new { agentProfileId, notice = "admission" });
         }
-        catch (DbUpdateConcurrencyException) { return Conflict("These settings changed. Reload before changing call admission."); }
-        catch (InvalidOperationException) { return BadRequest("Verified provider and inquiry acceptance are required before allowing receptionist permission."); }
+        catch (DbUpdateConcurrencyException) { return await ReceptionistSetupFailureAsync(owner, agentProfileId, ReceptionistPlanFailure.StaleAdmission, 409, cancellationToken, admission: input); }
+        catch (InvalidOperationException) { return await ReceptionistSetupFailureAsync(owner, agentProfileId, ReceptionistPlanFailure.InvalidAdmission, 400, cancellationToken, admission: input); }
     }
 
     [HttpGet("receptionist/content")]
@@ -92,7 +92,7 @@ public partial class WebsiteAnalyticsController
                 Url.Action(nameof(RestoreReceptionistContent), new { agentProfileId })!,
                 Url.Action(nameof(Receptionist), new { agentProfileId })!));
         }
-        catch (InvalidOperationException) { return BadRequest("Save a valid receptionist draft before content review."); }
+        catch (InvalidOperationException) { return await ReceptionistSetupFailureAsync(owner, agentProfileId, ReceptionistPlanFailure.MissingContent, 400, cancellationToken); }
     }
 
     [HttpPost("receptionist/content/apply")]
@@ -103,16 +103,16 @@ public partial class WebsiteAnalyticsController
     {
         var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
         if (owner is null) return Forbid();
-        if (!ModelState.IsValid) return BadRequest("Review the saved draft before applying it.");
+        if (!ModelState.IsValid) return await ReceptionistContentFailureAsync(owner, agentProfileId, ReceptionistPlanFailure.InvalidContent, 400, cancellationToken, apply: input);
         try
         {
             var applied = await ReceptionistStore.ApplyReceptionistContentAsync(owner, MarketingDestinationKeys.OpenAi, input,
                 User.GetCanonicalUserId(), cancellationToken);
             return RedirectToAction(nameof(Receptionist), new { agentProfileId, notice = applied.Replayed ? "content-replayed" : "content-applied" });
         }
-        catch (DbUpdateConcurrencyException) { return Conflict("The settings changed. Reload and review the current draft."); }
+        catch (DbUpdateConcurrencyException) { return await ReceptionistContentFailureAsync(owner, agentProfileId, ReceptionistPlanFailure.StaleContent, 409, cancellationToken, apply: input); }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Text.Json.JsonException)
-        { return BadRequest("This draft could not be applied. Reload its review; protected changes require full operator acceptance."); }
+        { return await ReceptionistContentFailureAsync(owner, agentProfileId, ReceptionistPlanFailure.InvalidContent, 400, cancellationToken, apply: input); }
     }
 
     [HttpPost("receptionist/content/restore")]
@@ -123,7 +123,7 @@ public partial class WebsiteAnalyticsController
     {
         var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
         if (owner is null) return Forbid();
-        if (!ModelState.IsValid) return BadRequest("Choose a saved content version.");
+        if (!ModelState.IsValid) return await ReceptionistContentFailureAsync(owner, agentProfileId, ReceptionistPlanFailure.InvalidContent, 400, cancellationToken, rollback: input);
         try
         {
             await ReceptionistStore.RestoreReceptionistContentDraftAsync(owner, MarketingDestinationKeys.OpenAi, input,
@@ -132,15 +132,42 @@ public partial class WebsiteAnalyticsController
                 ? RedirectToAction(nameof(ReviewReceptionistContent), new { agentProfileId })
                 : RedirectToAction(nameof(Receptionist), new { agentProfileId, notice = "saved" });
         }
-        catch (DbUpdateConcurrencyException) { return Conflict("The settings changed. Reload before restoring content."); }
+        catch (DbUpdateConcurrencyException) { return await ReceptionistContentFailureAsync(owner, agentProfileId, ReceptionistPlanFailure.StaleContent, 409, cancellationToken, rollback: input); }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Text.Json.JsonException)
-        { return BadRequest("This content cannot be restored with the current service routes. Review the existing setup form."); }
+        { return await ReceptionistContentFailureAsync(owner, agentProfileId, ReceptionistPlanFailure.InvalidContent, 400, cancellationToken, rollback: input); }
+    }
+
+    private async Task<IActionResult> ReceptionistContentFailureAsync(MarketingOwnerScope owner, Guid? scope,
+        ReceptionistPlanFailure failure, int status, CancellationToken ct,
+        ReceptionistContentApplyInput? apply = null, ReceptionistContentRollbackInput? rollback = null)
+    {
+        if (!await AuthorizeReceptionistManagementAsync(owner, ct)) return Forbid();
+        Response.StatusCode = status;
+        ReceptionistContentPreview? preview = null;
+        try { preview = await ReceptionistStore.PreviewReceptionistContentAsync(owner, MarketingDestinationKeys.OpenAi, User.GetCanonicalUserId(), ct); }
+        catch (InvalidOperationException) { } // Missing draft/baseline: retain the submitted choices without inventing a preview.
+        return View("~/Views/Shared/ReceptionistContentReview.cshtml", new ReceptionistContentReviewPage(preview,
+            Url.Action(nameof(ApplyReceptionistContent), new { agentProfileId = scope })!,
+            Url.Action(nameof(RestoreReceptionistContent), new { agentProfileId = scope })!,
+            Url.Action(nameof(Receptionist), new { agentProfileId = scope })!, apply, rollback, failure,
+            Url.Action(nameof(ReviewReceptionistContent), new { agentProfileId = scope })));
+    }
+
+    private async Task<IActionResult> ReceptionistSetupFailureAsync(MarketingOwnerScope owner, Guid? scope,
+        ReceptionistPlanFailure failure, int status, CancellationToken ct, ReceptionistAdmissionInput? admission = null)
+    {
+        // Retain the submitted choice and original revision; do not rebase stale requests.
+        if (!await AuthorizeReceptionistManagementAsync(owner, ct)) return Forbid();
+        Response.StatusCode = status;
+        ViewData["ReceptionistSetupFailure"] = failure;
+        var snapshot = await ReceptionistStore.GetReceptionistConfigurationAsync(owner, MarketingDestinationKeys.OpenAi, ct);
+        return await ReceptionistPageAsync(snapshot, scope, cancellationToken: ct, admission: admission);
     }
 
     private MarketingConnectionStore ReceptionistStore => HttpContext.RequestServices.GetRequiredService<MarketingConnectionStore>();
 
     private async Task<IActionResult> ReceptionistPageAsync(ReceptionistConfigurationSnapshot snapshot, Guid? agentProfileId,
-        ReceptionistSetupInput? input = null, string? message = null, CancellationToken cancellationToken = default)
+        ReceptionistSetupInput? input = null, string? message = null, CancellationToken cancellationToken = default, ReceptionistAdmissionInput? admission = null)
     {
         var operating = await ReceptionistStore.GetReceptionistConfigurationAsync(snapshot.Owner, snapshot.Provider, cancellationToken, operating: true);
         var readiness = await HttpContext.RequestServices.GetRequiredService<ReceptionistAdmissionService>()
@@ -151,6 +178,7 @@ public partial class WebsiteAnalyticsController
             new ReceptionistSetupPage(snapshot, input ?? ReceptionistSetupForms.Read(snapshot),
                 Url.Action(nameof(SaveReceptionist), new { agentProfileId })!,
                 Url.Action(nameof(ReceptionistAdmission), new { agentProfileId })!,
-                Url.Action("Index", new { agentProfileId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness, Url.Action(nameof(ReviewReceptionistContent), new { agentProfileId })!, OperatingSnapshot: operating, ManagementUrl: Url.Action(nameof(ReceptionistConnections), new { agentProfileId })));
+                Url.Action("Index", new { agentProfileId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness, Url.Action(nameof(ReviewReceptionistContent), new { agentProfileId })!, OperatingSnapshot: operating, ManagementUrl: Url.Action(nameof(ReceptionistConnections), new { agentProfileId }),
+                SubmittedAdmission: admission, CalendarSetupUrl: Url.Action("Index", new { agentProfileId }) is { } calendarUrl ? calendarUrl + "#receptionist-calendar" : null));
     }
 }

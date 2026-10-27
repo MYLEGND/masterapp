@@ -141,7 +141,7 @@ public sealed class ReceptionistBrowserController(IServiceProvider services) : C
             // Recheck after persistence; the browser may have left during the commit.
             if (!usable || ct.IsCancellationRequested || outcome.Answer is null)
             {
-                await CleanupOriginalAsync(current, ticket, claim, outcome, credential);
+                await CleanupOriginalAsync(ticket, claim, outcome);
                 return Unavailable();
             }
             handoffAttempted = true;
@@ -162,7 +162,7 @@ public sealed class ReceptionistBrowserController(IServiceProvider services) : C
         }
         catch (Exception)
         {
-            if (!handoffAttempted) await CleanupOriginalAsync(current, ticket, claim, outcome, credential);
+            if (!handoffAttempted) await CleanupOriginalAsync(ticket, claim, outcome);
             else
             {
                 // Handoff may have committed: the creator must not compete with the watchdog.
@@ -177,33 +177,24 @@ public sealed class ReceptionistBrowserController(IServiceProvider services) : C
         }
     }
 
-    private async Task CleanupOriginalAsync(ReceptionistIngressBinding current, Ticket ticket,
-        ReceptionistBrowserClaim claim, OpenAiReceptionistBrowserOutcome outcome, string credential)
+    private async Task CleanupOriginalAsync(Ticket ticket,
+        ReceptionistBrowserClaim claim, OpenAiReceptionistBrowserOutcome outcome)
     {
         if (outcome.SessionId is null) return; // Unknown original outcome retains its entire reservation.
-        var receipt = "browser_cleanup:ownership_expired";
-        if (claim.CleanupExpiresUtc > Clock.GetUtcNow().UtcDateTime.AddSeconds(6))
-        {
-            // The original request alone owns this precommitted conditional action.
-            // Stop claimants require newer active evidence after this ownership expires.
-            try
-            {
-                var remaining = claim.CleanupExpiresUtc!.Value - Clock.GetUtcNow().UtcDateTime;
-                if (remaining <= TimeSpan.Zero) throw new OperationCanceledException();
-                using var stop = new CancellationTokenSource(remaining > TimeSpan.FromSeconds(5) ? TimeSpan.FromSeconds(5) :
-                    remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero);
-                stop.Token.ThrowIfCancellationRequested();
-                var result = await services.GetRequiredService<IOpenAiReceptionistClient>().HangupAsync(
-                    current.Binding.ProviderProjectKey, outcome.SessionId, credential, stop.Token);
-                receipt = result.Receipt;
-            }
-            catch (Exception) { receipt = "browser_cleanup:outcome_unknown"; }
-        }
         try
         {
+            // No provider stop was attempted by this request. Persist the original identity and
+            // transfer the provably unused cleanup through the existing durable handoff. Only the
+            // worker holding an observation lease may attach and send WebRTC session.close.
             using var recovery = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             await Admission.BindBrowserOutcomeAsync(claim.CallId!.Value, ticket.CreationId, outcome, false, recovery.Token);
-            await Admission.RecordActionOutcomeAsync(claim.CleanupActionId!.Value, "uncertain", null, receipt, recovery.Token);
+            if (!await Admission.ReleaseBrowserCleanupAsync(claim.CallId.Value, ticket.CreationId,
+                claim.CleanupActionId!.Value, recovery.Token))
+            {
+                LogRecovery(claim.CallId.Value, outcome);
+                return; // Expired/uncertain ownership is not permission to retry a provider effect.
+            }
+            await Admission.RequestRuntimeStopAsync(claim.CallId.Value, "browser_ended", recovery.Token);
         }
         catch (Exception) { LogRecovery(claim.CallId!.Value, outcome); }
     }

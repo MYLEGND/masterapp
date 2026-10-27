@@ -81,14 +81,16 @@ public sealed partial class ReceptionistRuntimeWorkerTests
         var grant = Field(await controller.Grant(new("/contact"), default), "grant");
         Assert.IsNotType<OkObjectResult>(await controller.Start(new(grant, "v=0\r\n"), browserAbort.Token));
         Assert.Equal(1, f.Transport.BrowserCreates);
-        Assert.Equal("live_browser_controller", Assert.Single(f.Transport.Hangups).Session);
+        Assert.Empty(f.Transport.Hangups); Assert.Empty(f.Transport.Attaches);
         await using var db = f.Database();
         var call = await db.Set<ReceptionistCall>().SingleAsync();
         Assert.Equal("live_browser_controller", call.ProviderSessionId);
         Assert.Equal(call.ReservedUtc, call.MustStopUtc); Assert.Null(call.ProviderClosedUtc);
         var cleanup = await db.Set<ReceptionistActionIntent>().SingleAsync(x => x.CapabilityKey == "__provider_stop");
-        Assert.Equal("uncertain", cleanup.State);
+        Assert.Equal("rejected", cleanup.State);
+        Assert.Equal("browser-cleanup-unused", cleanup.VerificationReceipt);
         Assert.False((await db.Set<ReceptionistCostReservation>().SingleAsync()).CashFinal);
+        await AssertOrphanBrowserCleanupAfterControllerReturnAsync(f, call.Id);
     }
 
     [Fact]
@@ -100,13 +102,14 @@ public sealed partial class ReceptionistRuntimeWorkerTests
         var grant = Field(await controller.Grant(new("/contact"), default), "grant");
         Assert.IsNotType<OkObjectResult>(await controller.Start(new(grant, "v=0\r\n"), default));
         Assert.Equal(1, f.Transport.BrowserCreates);
-        Assert.Equal("live_browser_controller", Assert.Single(f.Transport.Hangups).Session);
+        Assert.Empty(f.Transport.Hangups); Assert.Empty(f.Transport.Attaches);
         await using var db = f.Database();
         var call = await db.Set<ReceptionistCall>().SingleAsync();
         Assert.Equal("live_browser_controller", call.ProviderSessionId); Assert.Equal("uncertain", call.State);
-        Assert.Equal("uncertain", (await db.Set<ReceptionistActionIntent>().SingleAsync(x => x.CapabilityKey == "__provider_stop")).State);
-        Assert.False((await f.Admission.ClaimProviderStopAsync(call.Id, "competing-worker")).MayExecute);
+        Assert.Equal("rejected", (await db.Set<ReceptionistActionIntent>().SingleAsync(x => x.CapabilityKey == "__provider_stop")).State);
+        Assert.Equal(call.Id, Assert.Single(await f.Admission.FindStopRequestsAsync(100)).CallId);
         Assert.False((await db.Set<ReceptionistCostReservation>().SingleAsync()).CashFinal);
+        await AssertOrphanBrowserCleanupAfterControllerReturnAsync(f, call.Id);
     }
 
     [Theory]
@@ -176,6 +179,24 @@ public sealed partial class ReceptionistRuntimeWorkerTests
         Assert.Equal("ending", Field(await controller.Status(new(handle), default), "state"));
         Assert.IsNotType<OkObjectResult>(await controller.StartForOwnerAsync(owner, new(grant, "v=0\r\n"), (_, _) => Task.FromResult(true), default));
         Assert.Equal(1, f.Transport.BrowserCreates);
+    }
+
+    private static async Task AssertOrphanBrowserCleanupAfterControllerReturnAsync(Fixture f, Guid id)
+    {
+        // The creator has returned and no controller-owned provider operation remains.
+        // A restarted/disabled worker discovers the same durable identity, never creates again.
+        f.SetRuntimeEnabled(false);
+        Assert.Equal(id, Assert.Single(await f.Admission.FindObservationCandidatesAsync(100, TimeSpan.FromMinutes(2))).CallId);
+        await using var host = await f.StartAsync();
+        var socket = await f.Transport.SocketAsync(0);
+        await EventuallyAsync(() => socket.Sent.Any(IsClose));
+        Assert.Equal("live_browser_controller", Assert.Single(f.Transport.Attaches).Session);
+        Assert.Single(socket.Sent.Where(IsClose)); Assert.Empty(f.Transport.Hangups);
+        Assert.Equal(1, f.Transport.BrowserCreates);
+        socket.Queue(Closed("live_browser_controller", "closed-orphan", 2m));
+        await EventuallyAsync(async () => (await f.CallAsync(id)).ProviderClosedUtc is not null);
+        await host.StopAsync();
+        await AssertFinalUsageWithMoneyStillReservedAsync(f, id, 2);
     }
 
     private sealed class BrowserBindInterceptor(bool failBeforeSave = false, Action? afterSave = null) : SaveChangesInterceptor

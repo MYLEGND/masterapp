@@ -1,5 +1,7 @@
 using Infrastructure.Reception;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Controllers;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shared.Analytics;
@@ -28,9 +30,22 @@ public abstract partial class BusinessWorkspaceControllerBase
     }
 
     private async Task<IActionResult> ReceptionistManagementPageAsync(MarketingOwnerScope owner, Guid businessId,
-        string? message, ReceptionistOperationReview? review, CancellationToken ct)
+        string? message, ReceptionistOperationReview? review, CancellationToken ct,
+        ReceptionistOperationPreparationInput? preparation = null, ReceptionistCredentialDraft? credential = null,
+        ReceptionistOperationReconciliation? reconciliation = null, bool allowUnverifiedReceiptFallback = false)
     {
-        var summary = await ReceptionistManagement.ManagementAsync(owner, AuthorizeReceptionistManagementAsync, ct);
+        ViewData["ReceptionistBusinessId"] = businessId;
+        ReceptionistManagementSummary summary;
+        try { summary = await ReceptionistManagement.ManagementAsync(owner, AuthorizeReceptionistManagementAsync, ct); }
+        catch (Exception error) when (allowUnverifiedReceiptFallback && reconciliation is not null &&
+            error is TimeoutException or System.Data.Common.DbException or DbUpdateException)
+        {
+            // An unavailable summary cannot erase the exact unresolved receipt. No protected
+            // data or enabled controls are fabricated; authorization denials are not caught.
+            summary = new(Guid.Empty, [], []);
+        }
+        var founderRouteAvailable = HttpContext.RequestServices.GetService<IActionDescriptorCollectionProvider>()?.ActionDescriptors.Items
+            .OfType<ControllerActionDescriptor>().Any(x => x.ControllerName == "FounderEngineering" && x.ActionName == "Receptionist") == true;
         return View("~/Views/Shared/ReceptionistManagement.cshtml", new ReceptionistManagementPage(summary,
             Url.Action(nameof(SaveReceptionistCredential), new { businessId })!,
             Url.Action(nameof(RevokeReceptionistCredential), new { businessId })!,
@@ -39,7 +54,23 @@ public abstract partial class BusinessWorkspaceControllerBase
             Url.Action(nameof(ApplyReceptionistOperation), new { businessId })!,
             Url.Action(nameof(ReviewReceptionistOperation), new { businessId })!, review, Url.Action(nameof(PrepareReceptionistOperation), new { businessId })!,
             Url.Action(nameof(GrantReceptionistTest), new { businessId })!, Url.Action(nameof(StartReceptionistTest), new { businessId })!,
-            summary.CanRunVoiceTest ? null : $"https://portal.mylegnd.com/business/{businessId:D}/receptionist/connections"));
+            summary.CanRunVoiceTest ? null : $"https://portal.mylegnd.com/business/{businessId:D}/receptionist/connections",
+            SubmittedPreparation: preparation, SubmittedCredential: credential, Reconciliation: reconciliation, SelfUrl: Url.Action(nameof(ReceptionistConnections), new { businessId }),
+            AdvancedUrl: summary.CanReview && founderRouteAvailable ? Url.Action("Receptionist", "FounderEngineering") : null));
+    }
+
+    private async Task<IActionResult> ReceptionistManagementFailureAsync(MarketingOwnerScope owner, Guid scope,
+        ReceptionistPlanFailure failure, int status, CancellationToken ct,
+        ReceptionistOperationPreparationInput? preparation = null, ReceptionistCredentialDraft? credential = null,
+        ReceptionistOperationReconciliation? reconciliation = null)
+    {
+        foreach (var key in ModelState.Keys.Where(k => k.Equals("Secret", StringComparison.OrdinalIgnoreCase) ||
+            k.EndsWith(".Secret", StringComparison.OrdinalIgnoreCase)).ToArray()) ModelState.Remove(key);
+        if (!await AuthorizeReceptionistManagementAsync(owner, ct)) return Forbid();
+        Response.StatusCode = status;
+        ViewData["ReceptionistPlanFailure"] = failure;
+        try { return await ReceptionistManagementPageAsync(owner, scope, null, null, ct, preparation, credential, reconciliation); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
     }
 
     private ReceptionistBrowserController ReceptionistMedia => new(HttpContext.RequestServices)
@@ -73,46 +104,58 @@ public abstract partial class BusinessWorkspaceControllerBase
     {
         if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
         var owner = MarketingOwnerScope.Business(businessId);
-        if (!ModelState.IsValid) return BadRequest("Choose valid setup fields and dated evidence.");
+        if (!ModelState.IsValid) return await ReceptionistManagementFailureAsync(owner, businessId, ReceptionistPlanFailure.InvalidPreparation, 400, cancellationToken, preparation: input);
         try
         {
             await ReceptionistManagement.PrepareForOwnerAsync(owner, input, AuthorizeReceptionistManagementAsync, cancellationToken);
             return RedirectToAction(nameof(ReceptionistConnections), new { businessId, notice = "prepared" });
         }
         catch (UnauthorizedAccessException) { return Forbid(); }
-        catch (DbUpdateConcurrencyException) { return Conflict("Setup changed. Reload before preparing a new operation."); }
+        catch (DbUpdateConcurrencyException) { return await ReceptionistManagementFailureAsync(owner, businessId, ReceptionistPlanFailure.StalePreparation, 409, cancellationToken, preparation: input); }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException)
-        { return BadRequest("The proposed setup is incomplete or inconsistent. Check its credential, funding and dated evidence, then reload."); }
+        { return await ReceptionistManagementFailureAsync(owner, businessId, ReceptionistPlanFailure.InvalidPreparation, 400, cancellationToken, preparation: input); }
     }
 
     [HttpPost("receptionist/connections/plan")]
     [ValidateAntiForgeryToken]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> PlanReceptionistOperation(string key, string sha256, bool pendingReview = false,
-        Guid businessId = default, CancellationToken cancellationToken = default)
+        Guid businessId = default, CancellationToken cancellationToken = default, bool reconcile = false)
     {
         if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
         var owner = MarketingOwnerScope.Business(businessId);
-        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(sha256)) return BadRequest("Choose a saved operation.");
+        if (!ModelState.IsValid || !ReceptionistOperationReview.IsSavedIdentity(key, sha256)) return await ReceptionistManagementFailureAsync(owner, businessId, ReceptionistPlanFailure.ChooseOperation, 400, cancellationToken);
+        var reconciliation = reconcile ? new ReceptionistOperationReconciliation(key, sha256) : null;
         try
         {
             ReceptionistOperationReview review;
             if (pendingReview)
             {
-                if (!key.StartsWith("saved-", StringComparison.Ordinal) || !Guid.TryParseExact(key[6..], "N", out var id)) return BadRequest("Choose a saved operation.");
+                if (!key.StartsWith("saved-", StringComparison.Ordinal) || !Guid.TryParseExact(key[6..], "N", out var id)) return await ReceptionistManagementFailureAsync(owner, businessId, ReceptionistPlanFailure.ChooseOperation, 400, cancellationToken);
                 review = await ReceptionistManagement.PreviewPendingForOwnerAsync(owner, id, sha256, AuthorizeReceptionistManagementAsync, cancellationToken);
             }
             else
             {
                 var plan = await ReceptionistManagement.PlanForOwnerAsync(owner, key, sha256, AuthorizeReceptionistManagementAsync, cancellationToken);
+                if (!plan.CanApply && plan.Blockers.Contains(ReceptionistPlanFailure.CurrentProjectRequired.Message, StringComparer.Ordinal))
+                {
+                    Response.StatusCode = 400;
+                    ViewData["ReceptionistPlanFailure"] = ReceptionistPlanFailure.CurrentProjectRequired;
+                }
                 review = new(plan.PackageKey, plan.PackageSha256, plan.Label, plan.Operation, plan.CanApply, plan.Blockers,
                     plan.Facts.Select(x => new ReceptionistOperationFact(x.Label, x.Value)).ToArray(), plan.ExpectedStateToken);
             }
-            return await ReceptionistManagementPageAsync(owner, businessId, null, review, cancellationToken);
+            return await ReceptionistManagementPageAsync(owner, businessId, null, review, cancellationToken, reconciliation: reconciliation);
         }
         catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (ReceptionistCurrentProjectRequiredException)
+        {
+            return await ReceptionistManagementFailureAsync(owner, businessId, ReceptionistPlanFailure.CurrentProjectRequired, 400, cancellationToken, reconciliation: reconciliation);
+        }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException or DbUpdateConcurrencyException)
-        { return BadRequest("This operation is unavailable, expired or no longer matches the saved configuration, credentials or accounting state. Reload setup and prepare a current review."); }
+        {
+            return await ReceptionistManagementFailureAsync(owner, businessId, reconciliation is null ? ReceptionistPlanFailure.StaleOrUnavailable : ReceptionistPlanFailure.UnconfirmedOperation, 409, cancellationToken, reconciliation: reconciliation);
+        }
     }
 
     [HttpPost("receptionist/connections/review")]
@@ -123,14 +166,22 @@ public abstract partial class BusinessWorkspaceControllerBase
     {
         if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
         var owner = MarketingOwnerScope.Business(businessId);
+        if (!ModelState.IsValid || expectedRevision == Guid.Empty || !ReceptionistOperationReview.IsSavedIdentity("saved-" + id.ToString("N"), sha256))
+            return await ReceptionistManagementFailureAsync(owner, businessId, ReceptionistPlanFailure.ChooseOperation, 400, cancellationToken);
         try
         {
             await ReceptionistManagement.ReviewForOwnerAsync(owner, id, expectedRevision, sha256, accepted, AuthorizeReceptionistManagementAsync, cancellationToken);
             return RedirectToAction(nameof(ReceptionistConnections), new { businessId, notice = "reviewed" });
         }
         catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (ReceptionistCurrentProjectRequiredException)
+        {
+            return await ReceptionistManagementFailureAsync(owner, businessId, ReceptionistPlanFailure.CurrentProjectRequired, 400, cancellationToken);
+        }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException or DbUpdateConcurrencyException)
-        { return Conflict("The exact review is no longer current. Reload and review again."); }
+        {
+            return await ReceptionistManagementFailureAsync(owner, businessId, ReceptionistPlanFailure.StaleOrUnavailable, 409, cancellationToken);
+        }
     }
 
     [HttpPost("receptionist/connections/apply")]
@@ -142,17 +193,20 @@ public abstract partial class BusinessWorkspaceControllerBase
     {
         if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
         var owner = MarketingOwnerScope.Business(businessId);
-        if (!ModelState.IsValid) return BadRequest("A current exact-change preview is required.");
+        if (!ModelState.IsValid || !ReceptionistOperationReview.IsSavedIdentity(input.PackageKey, input.PackageSha256) ||
+            string.IsNullOrWhiteSpace(input.ExpectedStateToken) || input.ExpectedStateToken.Length > 4096) return await ReceptionistManagementFailureAsync(owner, businessId, ReceptionistPlanFailure.InvalidApply, 400, cancellationToken);
         try
         {
             var receipt = await ReceptionistManagement.ApplyForOwnerAsync(owner, input, AuthorizeReceptionistManagementAsync, cancellationToken);
             return await ReceptionistManagementPageAsync(owner, businessId,
                 receipt.ReadBackVerified ? "The operation was verified by persisted readback. Live provider and conversational acceptance remain separate."
-                    : "The result is not yet verified. Keep the same operation and reconcile its existing result before retrying.", null, cancellationToken);
+                    : "The result is not yet verified. Keep the same operation and reconcile its existing result before retrying.", null, cancellationToken,
+                reconciliation: receipt.ReadBackVerified ? null : new(receipt.PackageKey, receipt.PackageSha256),
+                allowUnverifiedReceiptFallback: !receipt.ReadBackVerified);
         }
         catch (UnauthorizedAccessException) { return Forbid(); }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException or DbUpdateConcurrencyException)
-        { return Conflict("The preview or its authorization changed. Reload and review the exact operation again."); }
+        { return await ReceptionistManagementFailureAsync(owner, businessId, ReceptionistPlanFailure.StaleApply, 409, cancellationToken); }
     }
 
     [HttpPost("receptionist/connections/credential")]
@@ -164,14 +218,16 @@ public abstract partial class BusinessWorkspaceControllerBase
     {
         if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
         var owner = MarketingOwnerScope.Business(businessId);
-        if (!ModelState.IsValid) return BadRequest("Choose a valid project and credential type.");
+        var draft = new ReceptionistCredentialDraft(input.ExpectedConnectionRevision, input.ProviderProjectKey, input.Purpose);
+        if (!ModelState.IsValid) return await ReceptionistManagementFailureAsync(owner, businessId, ReceptionistPlanFailure.InvalidCredential, 400, cancellationToken, credential: draft);
         try
         {
             await ReceptionistManagement.SaveCredentialAsync(owner, input, AuthorizeReceptionistManagementAsync, cancellationToken);
             return RedirectToAction(nameof(ReceptionistConnections), new { businessId, notice = "saved" });
         }
-        catch (DbUpdateConcurrencyException) { return Conflict("Setup changed. Reload the connections page before saving."); }
-        catch (Exception error) when (error is ArgumentException or InvalidOperationException) { return BadRequest("The project or credential is invalid, or receptionist settings have not been saved."); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (DbUpdateConcurrencyException) { return await ReceptionistManagementFailureAsync(owner, businessId, ReceptionistPlanFailure.StaleCredential, 409, cancellationToken, credential: draft); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException) { return await ReceptionistManagementFailureAsync(owner, businessId, ReceptionistPlanFailure.InvalidCredential, 400, cancellationToken, credential: draft); }
     }
 
     [HttpPost("receptionist/connections/withdraw")]
@@ -182,12 +238,15 @@ public abstract partial class BusinessWorkspaceControllerBase
     {
         if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
         var owner = MarketingOwnerScope.Business(businessId);
+        if (!ModelState.IsValid || credentialId == Guid.Empty || expectedConnectionRevision == Guid.Empty)
+            return await ReceptionistManagementFailureAsync(owner, businessId, ReceptionistPlanFailure.InvalidWithdrawal, 400, cancellationToken);
         try
         {
             await ReceptionistManagement.RevokeCredentialAsync(owner, credentialId, expectedConnectionRevision, AuthorizeReceptionistManagementAsync, cancellationToken);
             return RedirectToAction(nameof(ReceptionistConnections), new { businessId, notice = "revoked" });
         }
-        catch (DbUpdateConcurrencyException) { return Conflict("Setup changed. Reload before withdrawing a credential."); }
-        catch (InvalidOperationException) { return BadRequest("The saved credential is unavailable in this workspace."); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (DbUpdateConcurrencyException) { return await ReceptionistManagementFailureAsync(owner, businessId, ReceptionistPlanFailure.StaleWithdrawal, 409, cancellationToken); }
+        catch (InvalidOperationException) { return await ReceptionistManagementFailureAsync(owner, businessId, ReceptionistPlanFailure.InvalidWithdrawal, 400, cancellationToken); }
     }
 }

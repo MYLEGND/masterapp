@@ -15,11 +15,13 @@ function fixture({grantAvailable=true, microphone, uncertainStart=false, delayed
     host.dataset.receptionistTestStart='/settings/test/start';
     const token=w.document.createElement('input');token.name='__RequestVerificationToken';token.value='synthetic-antiforgery';host.append(token);
   }
-  let startupTimer;
+  let startupTimer, closeTimer, pollTimer, providerState = "active";
   const nativeSetTimeout=w.setTimeout.bind(w), nativeClearTimeout=w.clearTimeout.bind(w);
   w.setTimeout=(callback,ms,...args)=>{
     const id=nativeSetTimeout(callback,ms,...args);
     if(ms===45000)startupTimer={id,callback,cleared:false};
+    if(ms===15000)closeTimer={id,callback};
+    if(ms===2000)pollTimer={id,callback};
     return id;
   };
   w.clearTimeout=id=>{if(startupTimer?.id===id)startupTimer.cleared=true;nativeClearTimeout(id);};
@@ -52,12 +54,14 @@ function fixture({grantAvailable=true, microphone, uncertainStart=false, delayed
       if(uncertainStart)throw new Error('unknown provider outcome');
       return {ok:true,json:async()=>({answer:'v=0\r\nfixture-answer',handle:'opaque-handle',maximumSeconds:300})};
     }
-    return {ok:true,json:async()=>({state:action==='status'?'active':'ending'})};
+    return {ok:true,json:async()=>({state:action==='status'?providerState:'ending'})};
   };
   w.eval(source);
   const start=w.document.querySelector('[data-receptionist-start]'), end=w.document.querySelector('[data-receptionist-end]');
   return {w,calls,start,end,peers,channels,startup:()=>startupTimer,status:()=>w.document.querySelector('[data-receptionist-status]').textContent,
     microphoneRequests:()=>microphoneRequests,stopped:()=>stopped,closed:()=>closed,
+    providerEnded(){providerState='ended';nativeClearTimeout(pollTimer.id);pollTimer.callback();},
+    closeFallback(){nativeClearTimeout(closeTimer.id);closeTimer.callback();},
     close(){end.click();w.close();}};
 }
 
@@ -72,9 +76,11 @@ test('website voice starts once with media only and preserves the contact fallba
     assert.equal(f.channels[0].label,'oai-events');assert.equal(f.startup().cleared,true);
     assert.match(f.status(),/Connected to the AI receptionist/);
     f.end.click();await settle();
-    assert.equal(f.stopped(),1);assert.equal(f.closed(),1);
+    assert.equal(f.stopped(),1);assert.equal(f.closed(),0);
     assert.equal(f.calls.filter(x=>x.action==='end').length,1);
-    assert.equal(f.start.disabled,false);
+    assert.equal(f.start.disabled,true);
+    f.providerEnded();await settle();
+    assert.equal(f.closed(),1);assert.equal(f.start.disabled,false);
   }finally{f.close();}
 });
 
@@ -138,7 +144,8 @@ test('a peer that never connects retains startup deadline and releases its origi
     f.start.click();await settle();
     assert.equal(f.startup().cleared,false);
     f.startup().callback();await settle();
-    assert.equal(f.stopped(),1);assert.equal(f.closed(),1);
+    assert.equal(f.stopped(),1);assert.equal(f.closed(),0);
+    f.closeFallback();assert.equal(f.closed(),1);
     assert.equal(f.calls.filter(x=>x.action==='start').length,1);
     assert.equal(f.calls.filter(x=>x.action==='end').length,1);
     assert.match(f.status(),/could not connect/);

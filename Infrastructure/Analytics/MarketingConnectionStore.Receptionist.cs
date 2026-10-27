@@ -128,6 +128,10 @@ public sealed partial class MarketingConnectionStore
                 ?? throw new InvalidOperationException("Owner-authored configuration is required before provider acceptance.");
             var configuration = ReceptionistConfigurationCodec.Read(previous.ConfigurationJson, previous.ConfigurationSha256);
             ReceptionistConfigurationCodec.ValidateBinding(binding, configuration);
+            if (binding.BudgetPolicy is { } policy && (guard is null || binding.OperatorAcceptancePackageSha256 is null ||
+                policy.OwnerKey != owner.Key || policy.MarketingConnectionId != connection.Id ||
+                policy.SourceConfigurationId != previous.Id || policy.ConfigurationSha256 != previous.ConfigurationSha256))
+                throw new InvalidOperationException("Budget policy acceptance requires the exact guarded reviewed source configuration.");
             if (connection.ReceptionistProviderProjectKey is { } existingProject && existingProject != binding.ProviderProjectKey)
                 throw new InvalidOperationException("An existing exclusive provider project cannot be changed through ordinary binding acceptance; a separately reviewed project-transfer lifecycle is required.");
             if (await write.MarketingConnections.AsNoTracking().AnyAsync(x => x.Id != connection.Id &&
@@ -141,6 +145,7 @@ public sealed partial class MarketingConnectionStore
                 throw new InvalidOperationException("Every provider component requires an existing matching-currency funding authority.");
             var version = new ReceptionistConfigurationVersion
             {
+                Id = binding.BudgetPolicy?.AcceptedConfigurationId ?? Guid.NewGuid(),
                 MarketingConnectionId = connection.Id,
                 Version = checked(previous.Version + 1),
                 ConfigurationJson = previous.ConfigurationJson,

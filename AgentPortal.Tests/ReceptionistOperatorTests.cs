@@ -461,6 +461,43 @@ public sealed partial class ReceptionistOperatorTests
     }
 
     [Fact]
+    public async Task MissingCurrentProjectIsTypedAndDoesNotChangePermissionOrInventAcceptance()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var binding = await f.BindingPackageAsync();
+        var request = binding with { Operation = "set_owner_admission", Enabled = true };
+        var writes = f.Commands.Writes;
+        await Assert.ThrowsAsync<ReceptionistCurrentProjectRequiredException>(() =>
+            f.Admission.ReadOperatorStateAsync(request, ReceptionistConfigurationCodec.Hash("synthetic-plan"), CancellationToken.None));
+        Assert.Equal(writes, f.Commands.Writes);
+        await using var db = f.Database();
+        Assert.Null((await db.Set<ReceptionistConfigurationVersion>().SingleAsync()).AcceptedBindingJson);
+        Assert.False((await db.MarketingConnections.SingleAsync()).ReceptionistAdmissionEnabled);
+        Assert.Contains("voice connection", ReceptionistPlanFailure.CurrentProjectRequired.Message);
+        Assert.Equal("voice-connection", ReceptionistPlanFailure.CurrentProjectRequired.TargetFragment);
+        Assert.Equal("operation-reviews", ReceptionistPlanFailure.StaleOrUnavailable.TargetFragment);
+    }
+
+    [Fact]
+    public async Task AcceptedPlanWithMissingCurrentProjectRemainsInspectableAndBlocked()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var row = await StoreUnboundAdmission(f);
+        await using (var write = f.Database())
+        {
+            var saved = await write.Set<ReceptionistOperationPackage>().SingleAsync(x => x.Id == row.Id);
+            saved.ReviewState = "accepted"; saved.ReviewedByActorId = Fixture.FounderOid;
+            saved.ReviewedUtc = f.Clock.Now; saved.ReviewedPayloadSha256 = row.PayloadSha256;
+            await write.SaveChangesAsync();
+        }
+        var writes = f.Commands.Writes;
+        var plan = await f.Operator.PlanForOwnerAsync(f.Owner, "saved-" + row.Id.ToString("N"), row.PayloadSha256, (_, _) => Task.FromResult(true));
+        Assert.False(plan.CanApply); Assert.Null(plan.ExpectedStateToken);
+        Assert.Equal(ReceptionistPlanFailure.CurrentProjectRequired.Message, Assert.Single(plan.Blockers));
+        Assert.Equal(writes, f.Commands.Writes);
+    }
+
+    [Fact]
     public async Task FrontendPreparationPersistsUnreviewedWebsiteProposalAndUsesCanonicalState()
     {
         await using var f = await Fixture.CreateAsync();
@@ -713,6 +750,318 @@ public sealed partial class ReceptionistOperatorTests
         else { Assert.Null(input.Model); Assert.Null(input.Voice); }
     }
 
+    [Fact]
+    public async Task LegacyBindingSerializationAndGuaranteeRequirementRemainUnchanged()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var package = await f.BindingPackageAsync();
+        var json = JsonSerializer.Serialize(package.Binding, ReceptionistConfigurationCodec.Json);
+        Assert.DoesNotContain("budgetPolicy", json);
+        const string legacyEmptyBinding = """{"ingressKey":"","providerProjectKey":"","model":"","voice":"","backendMode":"","transport":"","credentialReference":"","webhookSecretReference":"","protectedApiCredential":null,"protectedWebhookSecret":null,"operatorAcceptancePackageSha256":null,"contentReviewHash":null,"contentSourceConfigurationId":null,"contentSourceConfigurationSha256":null,"contentSourceBindingSha256":null,"contentSourceOperatorAcceptanceSha256":null,"contentSourceDisclosureReceipt":null,"contentReviewedConfigurationSha256":null,"providerVerificationReceipt":"","exclusiveProjectVerificationReceipt":"","costVerificationReceipt":"","disclosureConfigurationReceipt":"","retentionConfigurationReceipt":"","carrierFallbackReceipt":"","maximumSupportedCallSeconds":0,"controlledTestOnly":true,"publicActivationReceipt":null,"costs":[],"capabilities":[]}""";
+        Assert.Equal(legacyEmptyBinding, JsonSerializer.Serialize(new ReceptionistProviderBinding(), ReceptionistConfigurationCodec.Json));
+        var restored = JsonSerializer.Deserialize<ReceptionistProviderBinding>(json, ReceptionistConfigurationCodec.Json)!;
+        Assert.Null(restored.BudgetPolicy);
+        Assert.Equal(json, JsonSerializer.Serialize(restored, ReceptionistConfigurationCodec.Json));
+        ReceptionistConfigurationCodec.ValidateBinding(restored, Fixture.Configuration());
+        Assert.Throws<ArgumentException>(() => ReceptionistConfigurationCodec.ValidateBinding(
+            restored with { MaximumSupportedCallSeconds = 0 }, Fixture.Configuration()));
+        Assert.Equal(JsonSerializer.Serialize(package, ReceptionistConfigurationCodec.Json),
+            JsonSerializer.Serialize(package with { Binding = restored }, ReceptionistConfigurationCodec.Json));
+    }
+
+    [Theory]
+    [InlineData("missing_consent")]
+    [InlineData("missing_amount")]
+    [InlineData("missing_rate")]
+    [InlineData("missing_evidence")]
+    [InlineData("future_observation")]
+    [InlineData("expired")]
+    [InlineData("wrong_mode")]
+    [InlineData("mixed_guarantee")]
+    [InlineData("unjustified_zero")]
+    [InlineData("rollover")]
+    public async Task BudgetRiskProposalFailsClosedWithoutExplicitCompleteEvidence(string failure)
+    {
+        await using var f = await Fixture.CreateAsync(budgetRisk: true);
+        var input = await f.BudgetProposalAsync();
+        switch (failure)
+        {
+            case "missing_consent": input.AcceptDelayedBudgetOverrun = false; break;
+            case "missing_amount": input.ObservedProviderMonthlyBudget = null; break;
+            case "missing_rate": input.Costs[0].CashPerSecondEstimate = null; break;
+            case "missing_evidence": input.Evidence.RemoveAll(x => x.Kind == "owner_budget_risk"); break;
+            case "future_observation": input.Evidence.Single(x => x.Kind == "provider_budget_observation").ObservedUtc = f.Clock.Now.AddMinutes(1); break;
+            case "expired": input.BudgetPolicyExpiresUtc = f.Clock.Now; break;
+            case "wrong_mode": input.BudgetPolicyMode = "unlimited"; break;
+            case "mixed_guarantee": input.MaximumSupportedCallSeconds = 360; break;
+            case "unjustified_zero": input.Costs[0].CashFixedEstimate = 0; input.Costs[0].CashPerSecondEstimate = 0; break;
+            case "rollover": input.BudgetPolicyExpiresUtc = input.ProviderBudgetPeriodEndUtc!.Value.AddSeconds(1); break;
+        }
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(true)));
+        await using var db = f.Database();
+        Assert.Empty(await db.Set<ReceptionistOperationPackage>().ToListAsync());
+        Assert.False((await db.MarketingConnections.SingleAsync()).ReceptionistAdmissionEnabled);
+    }
+
+    [Fact]
+    public async Task RiskProposalRequiresRealOwnerAuthorizationAndCannotChooseAnotherFundingAccount()
+    {
+        await using var f = await Fixture.CreateAsync(budgetRisk: true);
+        var input = await f.BudgetProposalAsync();
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(false)));
+        input.Costs[0].FundingAccountId = Guid.NewGuid();
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(true)));
+        await using var db = f.Database(); Assert.Empty(await db.Set<ReceptionistOperationPackage>().ToListAsync());
+    }
+
+    [Fact]
+    public async Task ReviewedRiskPolicyPinsNewAcceptedIdentityAndCannotCreateBeforeWindow()
+    {
+        await using var f = await Fixture.CreateAsync(budgetRisk: true);
+        var binding = await f.AcceptBudgetAsync(seedWindow: false);
+        var policy = binding.Binding.BudgetPolicy!;
+        Assert.Equal(binding.ConfigurationId, policy.AcceptedConfigurationId);
+        Assert.NotEqual(policy.SourceConfigurationId, policy.AcceptedConfigurationId);
+        Assert.Equal(25m, policy.MonthlyCashLimit); Assert.Equal(25m, policy.MonthlyConsumptionLimit);
+        Assert.Equal(0, binding.Binding.MaximumSupportedCallSeconds);
+        Assert.False(ReceptionistConfigurationCodec.BudgetPolicyCurrent(binding.Binding, "another-owner", binding.MarketingConnectionId, binding.ConfigurationId, f.Clock.Now));
+        Assert.False(ReceptionistConfigurationCodec.BudgetPolicyCurrent(binding.Binding, f.Owner.Key, binding.MarketingConnectionId, policy.SourceConfigurationId, f.Clock.Now));
+        var denied = await f.ReserveBudgetAsync(binding, Guid.NewGuid());
+        Assert.False(denied.MayCreate); Assert.Equal("acceptance_window_changed", denied.Reason);
+        await using var db = f.Database(); Assert.Empty(await db.Set<ReceptionistCall>().ToListAsync());
+    }
+
+    [Fact]
+    public async Task RiskAdmissionRemainsAtomicWithExactReservationsAndUnknownCreationHold()
+    {
+        await using var f = await Fixture.CreateAsync(budgetRisk: true);
+        var binding = await f.AcceptBudgetAsync(); var creation = Guid.NewGuid();
+        var claims = await Task.WhenAll(f.ReserveBudgetAsync(binding, creation), f.ReserveBudgetAsync(binding, Guid.NewGuid()));
+        var accepted = Assert.Single(claims.Where(x => x.MayCreate));
+        Assert.Contains(claims, x => !x.MayCreate && x.Reason == "owner_concurrency_limit");
+        await using var db = f.Database();
+        var call = await db.Set<ReceptionistCall>().SingleAsync();
+        var reservation = await db.Set<ReceptionistCostReservation>().SingleAsync();
+        Assert.Equal("uncertain", call.State); Assert.Null(call.ProviderSessionId); Assert.Null(call.ProviderClosedUtc);
+        Assert.Equal(.56m, reservation.CashReserved); Assert.Equal(.92m, reservation.ConsumptionReserved);
+        Assert.Equal(f.Clock.Now.AddSeconds(360), call.MustStopUtc);
+        var replay = await f.ReserveBudgetAsync(binding, call.BrowserCreationId!.Value);
+        Assert.False(replay.MayCreate); Assert.Equal("creation_already_claimed", replay.Reason);
+        f.Clock.Now = call.MustStopUtc.AddSeconds(1);
+        var later = await f.ReserveBudgetAsync(binding, Guid.NewGuid());
+        Assert.False(later.MayCreate); Assert.Equal("owner_concurrency_limit", later.Reason);
+        await db.Entry(reservation).ReloadAsync(); Assert.Equal(.56m, reservation.CashReserved);
+        Assert.False(reservation.CashFinal); Assert.False(reservation.ConsumptionFinal);
+    }
+
+    [Fact]
+    public async Task RiskActualOverrunIsFullyPostedExactlyOnceAndBothAccountsRemainFenced()
+    {
+        await using var f = await Fixture.CreateAsync(budgetRisk: true);
+        var binding = await f.AcceptBudgetAsync(); var creation = Guid.NewGuid();
+        var claim = await f.ReserveBudgetAsync(binding, creation); Assert.True(claim.MayCreate);
+        var call = claim.CallId!.Value;
+        Assert.True(await f.Admission.BindBrowserOutcomeAsync(call, creation,
+            new(true, "live_synthetic", "v=0\r\n", 201, "synthetic-provider-create"), true, default));
+        var actual = new ReceptionistDatedCostObservation(f.Clock.Now, 26m, f.Clock.Now, 27m, 26m, 27m);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Admission.ReconcileCostAsync(call, "provider_voice", "synthetic-final", actual));
+        await f.Admission.RecordProviderStateAsync(call, "closed", "synthetic-provider-closure", f.Clock.Now);
+        await f.Admission.ReconcileCostAsync(call, "provider_voice", "synthetic-final", actual);
+        await f.Admission.ReconcileCostAsync(call, "provider_voice", "synthetic-final", actual);
+        await using var db = f.Database();
+        Assert.All(await db.Set<ReceptionistBudgetPeriod>().ToListAsync(), x =>
+        { Assert.Equal(26m, x.CashCommitted); Assert.Equal(27m, x.ConsumptionCommitted); });
+        var accounts = await db.Set<ReceptionistBudgetAccount>().ToListAsync();
+        Assert.All(accounts, x => Assert.False(x.AdmissionEnabled));
+        Assert.Single(await db.Set<ReceptionistUsageReceipt>().Where(x => x.ProviderReceiptKey == "synthetic-final").ToListAsync());
+        // A later provider correction reopens finality and still records the entire higher total.
+        await f.Admission.ReconcileCostAsync(call, "provider_voice", "synthetic-revision", new(f.Clock.Now, 28m, f.Clock.Now, 29m));
+        var cost = await db.Set<ReceptionistCostReservation>().AsNoTracking().SingleAsync();
+        Assert.Equal(28m, cost.CashObserved); Assert.Equal(29m, cost.ConsumptionObserved);
+        Assert.False(cost.CashFinal); Assert.False(cost.ConsumptionFinal);
+        foreach (var account in accounts)
+        {
+            var current = (await f.Admission.GetBudgetAccountAsync(account.Id))!;
+            await Assert.ThrowsAsync<InvalidOperationException>(() => f.Admission.SetBudgetAdmissionAsync(account.Id, current.Revision, true));
+        }
+    }
+
+    [Fact]
+    public async Task RiskExpiryCapsDeadlineAndBlocksFreshAdmissionWithoutReleasingHolds()
+    {
+        await using var f = await Fixture.CreateAsync(budgetRisk: true);
+        var binding = await f.AcceptBudgetAsync();
+        f.Clock.Now = binding.Binding.BudgetPolicy!.ExpiresUtc.AddSeconds(-10);
+        var claim = await f.ReserveBudgetAsync(binding, Guid.NewGuid()); Assert.True(claim.MayCreate);
+        await using var db = f.Database(); var call = await db.Set<ReceptionistCall>().SingleAsync();
+        Assert.Equal(binding.Binding.BudgetPolicy.ExpiresUtc, call.MustStopUtc);
+        f.Clock.Now = binding.Binding.BudgetPolicy.ExpiresUtc;
+        var denied = await f.ReserveBudgetAsync(binding, Guid.NewGuid());
+        Assert.False(denied.MayCreate); Assert.Equal("budget_policy_unavailable", denied.Reason);
+        Assert.False((await db.Set<ReceptionistCostReservation>().SingleAsync()).CashFinal);
+    }
+
+    [Fact]
+    public void BudgetEstimateJsonCannotSupplyOmittedAmountsAsZero()
+    {
+        const string omitted = """{"key":"provider_voice","fundingBudgetAccountId":"00000000-0000-0000-0000-000000000001","cashFixed":0.2,"consumptionFixed":0.2,"consumptionPerSecond":0.002,"zeroCashJustification":"","zeroConsumptionJustification":""}""";
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<ReceptionistBudgetEstimate>(omitted, ReceptionistConfigurationCodec.Json));
+    }
+
+    [Theory]
+    [InlineData("owner")]
+    [InlineData("connection")]
+    [InlineData("source_configuration")]
+    [InlineData("project")]
+    [InlineData("fingerprint")]
+    [InlineData("observation_hash")]
+    public async Task ReviewedBudgetPolicyRejectsScopeAndEvidenceSubstitution(string mismatch)
+    {
+        await using var f = await Fixture.CreateAsync(budgetRisk: true);
+        var input = await f.BudgetProposalAsync();
+        var id = await f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(true));
+        await using var db = f.Database();
+        var row = await db.Set<ReceptionistOperationPackage>().SingleAsync(x => x.Id == id);
+        var package = JsonSerializer.Deserialize<ReceptionistOperatorPackage>(row.PayloadJson, ReceptionistConfigurationCodec.Json)!;
+        var policy = package.Binding!.BudgetPolicy!;
+        policy = mismatch switch
+        {
+            "owner" => policy with { OwnerKey = "another-owner" },
+            "connection" => policy with { MarketingConnectionId = Guid.NewGuid() },
+            "source_configuration" => policy with { SourceConfigurationId = Guid.NewGuid() },
+            "project" => policy with { ProviderProjectKey = "proj_other" },
+            "fingerprint" => policy with { ConfigurationSha256 = new string('b', 64) },
+            _ => policy with { ProviderBudgetSha256 = new string('c', 64) }
+        };
+        var changed = package with { ReviewedByFounderOid = Fixture.FounderOid, ReviewedUtc = f.Clock.Now,
+            Binding = package.Binding with { BudgetPolicy = policy } };
+        Assert.Throws<ArgumentException>(() => changed.Validate(Fixture.FounderOid, f.Clock.Now));
+        Assert.Null((await db.Set<ReceptionistConfigurationVersion>().SingleAsync()).AcceptedBindingJson);
+    }
+
+    [Fact]
+    public async Task TenantRiskProposalUsesItsExistingFundingButCannotSelfReview()
+    {
+        await using var f = await Fixture.CreateAsync(owner: MarketingOwnerScope.Business(Guid.NewGuid()), budgetRisk: true);
+        var baseline = await f.BindingPackageAsync();
+        Assert.True((await f.ApplyAsync(baseline with { Binding = baseline.Binding! with { MaximumSupportedCallSeconds = 360 } })).ReadBackVerified);
+        var input = await f.BudgetProposalAsync();
+        f.Http.HttpContext!.User = new ClaimsPrincipal(new ClaimsIdentity([new("oid", "00000000-0000-0000-0000-000000000022")], "test"));
+        var id = await f.Operator.PrepareForOwnerAsync(f.Owner, input, (_, _) => Task.FromResult(true));
+        await using var db = f.Database(); var row = await db.Set<ReceptionistOperationPackage>().SingleAsync(x => x.Id == id);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Operator.ReviewForOwnerAsync(f.Owner, id, row.Revision,
+            row.PayloadSha256, true, (_, _) => Task.FromResult(true)));
+        Assert.Equal("pending", row.ReviewState);
+        Assert.False((await f.Store.GetReceptionistConfigurationAsync(f.Owner, "openai")).AdmissionEnabled);
+    }
+
+    [Fact]
+    public async Task RiskBudgetEditAndContentEditCannotReusePriorAcceptance()
+    {
+        await using var f = await Fixture.CreateAsync(budgetRisk: true);
+        var accepted = await f.AcceptBudgetAsync();
+        var before = await f.Store.GetReceptionistConfigurationAsync(f.Owner, "openai");
+        var changed = accepted.Configuration with { MonthlyCashLimit = 26m };
+        Assert.Throws<ArgumentException>(() => ReceptionistConfigurationCodec.ValidateBinding(accepted.Binding, changed));
+        await f.Store.SaveReceptionistConfigurationAsync(f.Owner, "openai", before.ConnectionRevision,
+            accepted.Configuration with { ConversationInstructions = "New synthetic approved instructions." }, Fixture.FounderOid);
+        var preview = await f.Store.PreviewReceptionistContentAsync(f.Owner, "openai", Fixture.FounderOid);
+        Assert.False(preview.CanApply);
+        await using var db = f.Database();
+        Assert.Single(await db.Set<ReceptionistConfigurationVersion>().Where(x => x.AcceptedBindingJson != null).ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("legacy")]
+    [InlineData("risk")]
+    [InlineData("legacy_missing_rate")]
+    [InlineData("risk_missing_rate")]
+    [InlineData("legacy_malformed")]
+    [InlineData("risk_malformed")]
+    public async Task ManagementFormPostsBlankInactiveNumbersThroughMvcAndCanonicalPreparation(string scenario)
+    {
+        var risk = scenario.StartsWith("risk", StringComparison.Ordinal);
+        await using var f = await Fixture.CreateAsync(budgetRisk: risk);
+        var source = risk ? await f.BudgetProposalAsync() : await f.WebsiteProposalAsync();
+        var collection = new ServiceCollection(); collection.AddLogging(); collection.AddMvcCore().AddDataAnnotations();
+        using var services = collection.BuildServiceProvider();
+        var controller = new PreparationBindingController
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { RequestServices = services } },
+            MetadataProvider = services.GetRequiredService<IModelMetadataProvider>(),
+            ModelBinderFactory = services.GetRequiredService<IModelBinderFactory>(),
+            ObjectValidator = services.GetRequiredService<IObjectModelValidator>()
+        };
+        // These are the actual named controls in ReceptionistManagement.cshtml. Browsers POST
+        // empty strings for blank, enabled number inputs: omitting those keys misses this regression.
+        var fields = new Dictionary<string, StringValues>
+        {
+            ["ExpectedConnectionRevision"] = source.ExpectedConnectionRevision.ToString(),
+            ["Operation"] = "accept_binding", ["ApiCredentialVersionId"] = source.ApiCredentialVersionId.ToString(),
+            ["Model"] = source.Model!, ["Voice"] = source.Voice!, ["ControlledTestOnly"] = "true",
+            ["BudgetPolicyMode"] = source.BudgetPolicyMode ?? "",
+            ["MaximumSupportedCallSeconds"] = source.MaximumSupportedCallSeconds?.ToString(CultureInfo.InvariantCulture) ?? "",
+            ["ObservedProviderMonthlyBudget"] = source.ObservedProviderMonthlyBudget?.ToString(CultureInfo.InvariantCulture) ?? "",
+            ["ProviderBudgetPeriodStartUtc"] = source.ProviderBudgetPeriodStartUtc?.ToString("O") ?? "",
+            ["ProviderBudgetPeriodEndUtc"] = source.ProviderBudgetPeriodEndUtc?.ToString("O") ?? "",
+            ["BudgetPolicyExpiresUtc"] = source.BudgetPolicyExpiresUtc?.ToString("O") ?? "",
+            ["Costs[0].Key"] = source.Costs[0].Key, ["Costs[0].FundingAccountId"] = source.Costs[0].FundingAccountId.ToString(),
+            ["Costs[0].ZeroCashJustification"] = "", ["Costs[0].ZeroConsumptionJustification"] = ""
+        };
+        if (risk) fields["AcceptDelayedBudgetOverrun"] = "true"; // unchecked boxes are absent, not false-string inputs
+        var numericNames = new[] { "CashFixedMaximum", "CashPerSecondMaximum", "ConsumptionFixedMaximum", "ConsumptionPerSecondMaximum",
+            "CashFixedEstimate", "CashPerSecondEstimate", "ConsumptionFixedEstimate", "ConsumptionPerSecondEstimate" };
+        foreach (var name in numericNames)
+        {
+            var value = (decimal?)typeof(ReceptionistPreparationCostInput).GetProperty(name)!.GetValue(source.Costs[0]);
+            fields["Costs[0]." + name] = value?.ToString(CultureInfo.InvariantCulture) ?? "";
+        }
+        var evidenceKinds = new[] { "provider_setup", "exclusive_project", "cost_bounds", "disclosure", "retention", "website_fallback",
+            "capability.canonical_intake", "public_activation", "provider_budget_observation", "owner_budget_risk", "cost_estimates" };
+        for (var i = 0; i < evidenceKinds.Length; i++)
+        {
+            var item = source.Evidence.SingleOrDefault(x => x.Kind == evidenceKinds[i]);
+            fields[$"Evidence[{i}].Kind"] = evidenceKinds[i]; fields[$"Evidence[{i}].Reference"] = item?.Reference ?? "";
+            fields[$"Evidence[{i}].Sha256"] = item?.Sha256 ?? ""; fields[$"Evidence[{i}].ObservedUtc"] = item?.ObservedUtc?.ToString("O") ?? "";
+        }
+        var viewPath = "SHARED/Views/Shared/ReceptionistManagement.cshtml";
+        var root = new DirectoryInfo(Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") ?? AppContext.BaseDirectory);
+        while (!File.Exists(Path.Combine(root.FullName, viewPath)) && root.Parent is not null) root = root.Parent;
+        var view = await File.ReadAllTextAsync(Path.Combine(root.FullName, viewPath));
+        foreach (var name in fields.Keys.Where(x => !x.StartsWith("Evidence[", StringComparison.Ordinal)))
+            Assert.Contains("name=\"" + name + "\"", view);
+        foreach (var name in numericNames.Where(x => x.EndsWith(risk ? "Maximum" : "Estimate", StringComparison.Ordinal)))
+            Assert.Equal("", fields["Costs[0]." + name].ToString());
+        var selectedRate = "Costs[0]." + (risk ? "CashPerSecondEstimate" : "CashPerSecondMaximum");
+        if (scenario.EndsWith("missing_rate", StringComparison.Ordinal)) fields[selectedRate] = "";
+        if (scenario.EndsWith("malformed", StringComparison.Ordinal)) fields[selectedRate] = "not-a-number";
+        var bound = new ReceptionistOperationPreparationInput();
+        var validModel = await controller.TryUpdateModelAsync(bound, "", new FormValueProvider(BindingSource.Form,
+            new FormCollection(fields), CultureInfo.InvariantCulture));
+        if (scenario.EndsWith("malformed", StringComparison.Ordinal))
+        {
+            Assert.False(validModel); Assert.False(controller.ModelState.IsValid);
+            await using var failedDb = f.Database(); Assert.Empty(await failedDb.Set<ReceptionistOperationPackage>().ToListAsync());
+            return; // exactly like the real controller: never ignore binding errors to call the service
+        }
+        Assert.True(validModel, string.Join("; ", controller.ModelState.SelectMany(x => x.Value!.Errors.Select(e => x.Key + ":" + e.ErrorMessage))));
+        if (risk) Assert.Null(bound.MaximumSupportedCallSeconds);
+        if (scenario.EndsWith("missing_rate", StringComparison.Ordinal))
+        {
+            await Assert.ThrowsAsync<ArgumentException>(() => f.Operator.PrepareForOwnerAsync(f.Owner, bound, (_, _) => Task.FromResult(true)));
+            await using var failedDb = f.Database(); Assert.Empty(await failedDb.Set<ReceptionistOperationPackage>().ToListAsync());
+            return;
+        }
+        var id = await f.Operator.PrepareForOwnerAsync(f.Owner, bound, (_, _) => Task.FromResult(true));
+        await using var db = f.Database(); var row = await db.Set<ReceptionistOperationPackage>().SingleAsync(x => x.Id == id);
+        Assert.Equal("pending", row.ReviewState); Assert.Null(row.ReviewedUtc);
+        var package = JsonSerializer.Deserialize<ReceptionistOperatorPackage>(row.PayloadJson, ReceptionistConfigurationCodec.Json)!;
+        Assert.Equal(risk, package.Binding!.BudgetPolicy is not null);
+        Assert.Equal(risk ? 0 : 120, package.Binding.MaximumSupportedCallSeconds);
+        Assert.Equal(risk ? .001m : 0m, Assert.Single(package.Binding.Costs).CashPerSecondMaximum);
+        Assert.False((await db.MarketingConnections.SingleAsync()).ReceptionistAdmissionEnabled);
+    }
+
     private sealed class PreparationBindingController : Controller { }
 
     private sealed class TestClock(DateTime now) : TimeProvider
@@ -747,7 +1096,7 @@ public sealed partial class ReceptionistOperatorTests
         internal ReceptionistRuntimeAuthority Runtime => new(Host, Protector);
         internal MasterAppDbContext Database() => new(Options);
 
-        internal static async Task<Fixture> CreateAsync(bool withBudgets = true, MarketingOwnerScope? owner = null)
+        internal static async Task<Fixture> CreateAsync(bool withBudgets = true, MarketingOwnerScope? owner = null, bool budgetRisk = false)
         {
             var f = new Fixture();
             if (owner is not null) f.Owner = owner;
@@ -763,7 +1112,9 @@ public sealed partial class ReceptionistOperatorTests
             { f.storeContext.Add(new CommerceBusiness { Id = businessId }); await f.storeContext.SaveChangesAsync(); }
             f.Host["FOUNDER_OID"] = FounderOid;
             f.Http.HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new("oid", FounderOid)], "test")) };
-            await f.Store.SaveReceptionistConfigurationAsync(f.Owner, "openai", Guid.Empty, Configuration(), "synthetic-owner");
+            await f.Store.SaveReceptionistConfigurationAsync(f.Owner, "openai", Guid.Empty,
+                budgetRisk ? Configuration() with { MaximumConcurrentCalls = 1, MaximumCallSeconds = 360,
+                    MonthlyCashLimit = 25m, MonthlyConsumptionLimit = 25m } : Configuration(), "synthetic-owner");
             if (withBudgets)
             {
                 f.OwnerBudgetId = await f.OpenAsync("owner", f.Owner.Key);
@@ -801,11 +1152,65 @@ public sealed partial class ReceptionistOperatorTests
             {
                 ExpectedConnectionRevision = snapshot.ConnectionRevision, Operation = "accept_binding", ApiCredentialVersionId = credential,
                 Model = "gpt-live-1", Voice = "marin", MaximumSupportedCallSeconds = 120, ControlledTestOnly = true,
-                Costs = [new() { Key = "provider_voice", FundingAccountId = FundingId, CashFixedMaximum = 2m, ConsumptionFixedMaximum = 3m }],
+                Costs = [new() { Key = "provider_voice", FundingAccountId = FundingId, CashFixedMaximum = 2m, CashPerSecondMaximum = 0m, ConsumptionFixedMaximum = 3m, ConsumptionPerSecondMaximum = 0m }],
                 Evidence = new[] { "provider_setup", "exclusive_project", "cost_bounds", "disclosure", "retention", "website_fallback", "capability.canonical_intake" }
                     .Select(x => new ReceptionistPreparationEvidenceInput { Kind = x, Reference = "synthetic-" + x,
                         Sha256 = ReceptionistConfigurationCodec.Hash("synthetic-" + x), ObservedUtc = Clock.Now }).ToList()
             };
+        }
+
+        internal async Task<ReceptionistOperationPreparationInput> BudgetProposalAsync()
+        {
+            var input = await WebsiteProposalAsync();
+            input.BudgetPolicyMode = ReceptionistOwnerBudgetPolicy.SupportedMode;
+            input.MaximumSupportedCallSeconds = null; input.AcceptDelayedBudgetOverrun = true;
+            input.ObservedProviderMonthlyBudget = 25m;
+            input.ProviderBudgetPeriodStartUtc = new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc);
+            input.ProviderBudgetPeriodEndUtc = new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc);
+            input.BudgetPolicyExpiresUtc = Clock.Now.AddMinutes(20);
+            input.Costs = [new() { Key = "provider_voice", FundingAccountId = FundingId,
+                CashFixedEstimate = .2m, CashPerSecondEstimate = .001m,
+                ConsumptionFixedEstimate = .2m, ConsumptionPerSecondEstimate = .002m }];
+            input.Evidence.RemoveAll(x => x.Kind == "cost_bounds");
+            foreach (var kind in new[] { "provider_budget_observation", "owner_budget_risk", "cost_estimates" })
+                input.Evidence.Add(new() { Kind = kind, Reference = "synthetic-" + kind,
+                    Sha256 = ReceptionistConfigurationCodec.Hash("synthetic-" + kind), ObservedUtc = Clock.Now });
+            return input;
+        }
+
+        internal async Task<ReceptionistIngressBinding> AcceptBudgetAsync(bool seedWindow = true)
+        {
+            var input = await BudgetProposalAsync();
+            var id = await Operator.PrepareForOwnerAsync(Owner, input, (_, _) => Task.FromResult(true));
+            await using var db = Database();
+            var row = await db.Set<ReceptionistOperationPackage>().SingleAsync(x => x.Id == id);
+            var pending = await Operator.PreviewPendingForOwnerAsync(Owner, id, row.PayloadSha256, (_, _) => Task.FromResult(true));
+            Assert.False(pending.CanApply);
+            Assert.Contains(pending.Facts, x => x.Label == "Budget contract" && x.Value.Contains("delayed"));
+            Assert.Contains(pending.Facts, x => x.Label == "Owner cash / consumption limits" && x.Value == "25 / 25");
+            Assert.Contains(pending.Facts, x => x.Label == "Provider observation period");
+            Assert.Contains(pending.Facts, x => x.Label == "Owner risk consent / policy expiry");
+            await Operator.ReviewForOwnerAsync(Owner, id, row.Revision, row.PayloadSha256, true, (_, _) => Task.FromResult(true));
+            var plan = await Operator.PlanForOwnerAsync(Owner, "saved-" + id.ToString("N"), row.PayloadSha256, (_, _) => Task.FromResult(true));
+            Assert.Contains(plan.Facts, x => x.Label == "Budget contract" && x.Value.Contains("delayed"));
+            Assert.Contains(plan.Facts, x => x.Label == "Owner cash / consumption limits" && x.Value == "25 / 25");
+            Assert.Contains(plan.Facts, x => x.Label == "Provider observation period");
+            Assert.Contains(plan.Facts, x => x.Label == "Owner risk consent / policy expiry");
+            Assert.True((await Operator.ApplyForOwnerAsync(Owner, Request(plan), (_, _) => Task.FromResult(true))).ReadBackVerified);
+            Assert.False((await Store.GetReceptionistConfigurationAsync(Owner, "openai")).AdmissionEnabled);
+            Assert.True((await ApplyAsync((await ForAsync("set_owner_admission")) with { Enabled = true })).ReadBackVerified);
+            var binding = (await Admission.GetBrowserBindingAsync(Owner, default))!;
+            if (seedWindow) await ReceptionistTestWindows.SeedAsync(db, binding.MarketingConnectionId,
+                binding.ConfigurationId, binding.Binding, Clock.Now);
+            return binding;
+        }
+
+        internal async Task<ReceptionistBrowserClaim> ReserveBudgetAsync(ReceptionistIngressBinding binding, Guid creation)
+        {
+            await using var db = Database();
+            var window = await db.Set<ReceptionistAcceptanceWindow>().SingleOrDefaultAsync(x => x.ConfigurationVersionId == binding.ConfigurationId);
+            return await Admission.ReserveBrowserAsync(binding, creation, ReceptionistConfigurationCodec.Hash("synthetic-offer"),
+                true, default, window?.Id, window?.Revision);
         }
 
         internal async Task<ReceptionistOperatorPackage> ForAsync(string operation, Guid? callId = null, Guid? budgetId = null)

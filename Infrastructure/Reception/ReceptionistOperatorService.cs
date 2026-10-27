@@ -77,6 +77,11 @@ public sealed partial class ReceptionistOperatorService(MarketingConnectionStore
             if (token.Length > 4096) throw new InvalidOperationException("The operator preview exceeds its supported bound.");
             return new(packageKey, expectedPackageSha256, package.Label, package.Operation, true, [], state.Facts, token);
         }
+        catch (ReceptionistCurrentProjectRequiredException)
+        {
+            return new(packageKey, expectedPackageSha256, package.Label, package.Operation, false,
+                [ReceptionistPlanFailure.CurrentProjectRequired.Message], [], null);
+        }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or JsonException or
             CryptographicException or DbUpdateConcurrencyException)
         {
@@ -206,6 +211,9 @@ public sealed partial class ReceptionistOperatorService(MarketingConnectionStore
         {
             var binding = state.PinnedBinding ?? throw new InvalidOperationException("Accepted provider configuration is required.");
             _ = ReceptionistRuntimeAuthority.Ready(package.Provider, state.Configuration, binding);
+            if (!ReceptionistConfigurationCodec.BudgetPolicyCurrent(binding, package.ExpectedOwnerKey,
+                package.MarketingConnectionId, package.ConfigurationId, clock.GetUtcNow().UtcDateTime))
+                throw new InvalidOperationException("The exact owner budget policy expired or changed; new review is required.");
             var api = ReceptionistCredentialEnvelope.Unprotect(protector, state.Owner, package.Provider, package.ProviderProjectKey,
                 "voice-api", binding.ProtectedApiCredential ?? string.Empty);
             var webhook = binding.Transport == "webrtc" ? null : ReceptionistCredentialEnvelope.Unprotect(protector, state.Owner, package.Provider, package.ProviderProjectKey,
@@ -366,7 +374,31 @@ internal sealed record ReceptionistOperatorPackage
                 throw new ArgumentException("Reviewed raw-source fingerprints and an unsealed private binding are required.");
             RequireEvidence("provider_setup", Binding.ProviderVerificationReceipt);
             RequireEvidence("exclusive_project", Binding.ExclusiveProjectVerificationReceipt);
-            RequireEvidence("cost_bounds", Binding.CostVerificationReceipt);
+            if (Binding.BudgetPolicy is { } policy)
+            {
+                if (policy.Mode != ReceptionistOwnerBudgetPolicy.SupportedMode ||
+                    policy.MarketingConnectionId != MarketingConnectionId || policy.OwnerKey != ExpectedOwnerKey ||
+                    policy.SourceConfigurationId != ConfigurationId || policy.ConfigurationSha256 != ConfigurationSha256 ||
+                    policy.ProviderProjectKey != ProviderProjectKey || policy.OwnerAcceptedUtc > ReviewedUtc ||
+                    policy.ExpiresUtc <= now || Evidence.Any(x => x.Kind == "cost_bounds"))
+                    throw new ArgumentException("Budget risk acceptance must match this exact reviewed operation.");
+                void ExactEvidence(string kind, string reference, string hash, DateTime? observed = null)
+                {
+                    RequireEvidence(kind, reference);
+                    var item = Evidence.Single(x => x.Kind == kind);
+                    if (item.Sha256 != hash || observed is { } utc && item.ObservedUtc != utc || item.ObservedUtc > policy.OwnerAcceptedUtc)
+                        throw new ArgumentException("Budget policy evidence changed after owner acceptance.");
+                }
+                ExactEvidence("provider_budget_observation", policy.ProviderBudgetReceipt, policy.ProviderBudgetSha256, policy.ObservedUtc);
+                ExactEvidence("owner_budget_risk", policy.OwnerAcceptanceReceipt, policy.OwnerAcceptanceSha256);
+                ExactEvidence("cost_estimates", policy.EstimateReceipt, policy.EstimateSha256);
+            }
+            else
+            {
+                if (Evidence.Any(x => x.Kind is "provider_budget_observation" or "owner_budget_risk" or "cost_estimates"))
+                    throw new ArgumentException("Budget risk evidence requires its explicit policy; it cannot replace legacy guarantees.");
+                RequireEvidence("cost_bounds", Binding.CostVerificationReceipt);
+            }
             RequireEvidence("disclosure", Binding.DisclosureConfigurationReceipt);
             RequireEvidence("retention", Binding.RetentionConfigurationReceipt);
             if (Binding.Transport == "webrtc") RequireEvidence("website_fallback", Binding.WebsiteFallbackReceipt ?? string.Empty);

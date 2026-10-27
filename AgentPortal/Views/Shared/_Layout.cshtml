@@ -276,6 +276,10 @@
             {
                 @await Html.PartialAsync("~/Views/Shared/_BusinessWorkspaceQuickFind.cshtml", await BusinessWorkspace.NavigationForBusinessAsync(selectedBusinessWorkspace.BusinessId, User.GetCanonicalUserId(), User.FindFirstValue("preferred_username") ?? User.FindFirstValue(ClaimTypes.Email), Context.RequestAborted))
             }
+            else if (ViewData["ReceptionistBusinessId"] is Guid receptionistBusinessId)
+            {
+                @await Html.PartialAsync("~/Views/Shared/_BusinessWorkspaceQuickFind.cshtml", await BusinessWorkspace.NavigationForBusinessAsync(receptionistBusinessId, User.GetCanonicalUserId(), User.FindFirstValue("preferred_username") ?? User.FindFirstValue(ClaimTypes.Email), Context.RequestAborted))
+            }
             <div class="explore-group-label">Pages</div>
             <a class="explore-item" data-tone="forms" asp-controller="AgentDocuments" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Agent Documents</span>
@@ -312,6 +316,10 @@
          <a class="explore-item" data-tone="ops" asp-controller="WebsiteAnalytics" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Website Analytics</span>
                 <small>Ops</small>
+            </a>
+
+            <a class="explore-item" data-tone="ops" asp-controller="WebsiteAnalytics" asp-action="Receptionist" asp-route-agentProfileId="@(Context.Request.Query["agentProfileId"].ToString())">
+                <span>Receptionist</span><small>Setup and readiness</small>
             </a>
 
             @if (isFounder)

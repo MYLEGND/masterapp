@@ -1,33 +1,16 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized completion of the existing Shayla canonical repair and its bounded release prerequisites. Promote only the four independently reviewed equal-contract compatibility authority, workflow and regression-test files for the exact reviewed runtime pair. This nonpublishing tooling promotion authorizes no production SQL mutation, application upload, restart, routing, provider call, credential change, activation, access or spending change. Preserve canonical source validation, immutable evidence, trusted contract equality and protected merge admission.",
-  "purpose": "Promote the bounded reviewed-runtime equality path for the accepted Shayla runtime while retaining unchanged actual migration definitions and mandatory fresh trusted C# verification.",
-  "requestId": "shayla-equal-contract-runtime-pair-promotion-20261027-v1",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "Founder instructed completion of the existing Shayla website receptionist and canonical management experience. Preserve and validate the independently reviewed continuation on the existing task branch; any subsequent application deployment must pass current protected admission and keep calls paused, telephone fallback disabled and booking unaccepted. This release request does not activate calls, apply operating settings, accept a voice connection, change provider grants or increase configured spending.",
+  "purpose": "Deploy the reviewed canonical receptionist UI, owner-adjustable budget-policy and browser-stop continuation to the five affected applications only after exact-source CI, compiled contract proof, independent acceptance and protected release admission. No new schema migration or routing change is proposed.",
+  "requestId": "shayla-canonical-ui-paused-deployment-20261027-v5",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait",
+    "masterapp-website"
+  ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "e5a3cbc82aa9c8d6a2b0b988d49a0b9b20017e74",
-    "sourceRevision": "7dd8aca9e521db12dbd8c27311e22bb646c81f80",
-    "files": {
-      ".github/workflows/parfait-cutover-live-readonly.yml": {
-        "mode": "100644",
-        "blob": "fde365252cf3d41e8a96e3ba888be10669256c32"
-      },
-      "scripts/test-parfait-readonly-workflow.py": {
-        "mode": "100644",
-        "blob": "ded3f05bbe58a97007beb68ba8acad471ef45d12"
-      },
-      "scripts/test-validation-resume.py": {
-        "mode": "100644",
-        "blob": "87f83d773053bfb0f2cca2a770b4c27a31d1a41c"
-      },
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "229d48cc2c79be158a660a245378d21e461f865c"
-      }
-    }
-  }
+  "preserveLiveTargets": false
 }

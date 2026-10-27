@@ -60,15 +60,15 @@ public abstract partial class BusinessWorkspaceControllerBase
         CancellationToken cancellationToken = default)
     {
         if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
-        if (!ModelState.IsValid) return BadRequest("Choose a valid call admission setting.");
+        if (!ModelState.IsValid) return await ReceptionistSetupFailureAsync(MarketingOwnerScope.Business(businessId), businessId, ReceptionistPlanFailure.InvalidAdmission, 400, cancellationToken, admission: input);
         try
         {
             await ReceptionistStore.SetReceptionistAdmissionAsync(MarketingOwnerScope.Business(businessId), MarketingDestinationKeys.OpenAi,
                 input.ExpectedRevision, input.Enabled, cancellationToken);
             return RedirectToAction(nameof(Receptionist), new { businessId, notice = "admission" });
         }
-        catch (DbUpdateConcurrencyException) { return Conflict("These settings changed. Reload before changing call admission."); }
-        catch (InvalidOperationException) { return BadRequest("Verified provider and inquiry acceptance are required before allowing receptionist permission."); }
+        catch (DbUpdateConcurrencyException) { return await ReceptionistSetupFailureAsync(MarketingOwnerScope.Business(businessId), businessId, ReceptionistPlanFailure.StaleAdmission, 409, cancellationToken, admission: input); }
+        catch (InvalidOperationException) { return await ReceptionistSetupFailureAsync(MarketingOwnerScope.Business(businessId), businessId, ReceptionistPlanFailure.InvalidAdmission, 400, cancellationToken, admission: input); }
     }
 
     [HttpGet("receptionist/content")]
@@ -81,12 +81,13 @@ public abstract partial class BusinessWorkspaceControllerBase
         {
             var preview = await ReceptionistStore.PreviewReceptionistContentAsync(owner, MarketingDestinationKeys.OpenAi,
                 User.GetCanonicalUserId(), cancellationToken);
+            ViewData["ReceptionistBusinessId"] = businessId;
             return View("~/Views/Shared/ReceptionistContentReview.cshtml", new ReceptionistContentReviewPage(preview,
                 Url.Action(nameof(ApplyReceptionistContent), new { businessId })!,
                 Url.Action(nameof(RestoreReceptionistContent), new { businessId })!,
                 Url.Action(nameof(Receptionist), new { businessId })!));
         }
-        catch (InvalidOperationException) { return BadRequest("Save a valid receptionist draft before content review."); }
+        catch (InvalidOperationException) { return await ReceptionistSetupFailureAsync(owner, businessId, ReceptionistPlanFailure.MissingContent, 400, cancellationToken); }
     }
 
     [HttpPost("receptionist/content/apply")]
@@ -97,16 +98,16 @@ public abstract partial class BusinessWorkspaceControllerBase
     {
         if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
         var owner = MarketingOwnerScope.Business(businessId);
-        if (!ModelState.IsValid) return BadRequest("Review the saved draft before applying it.");
+        if (!ModelState.IsValid) return await ReceptionistContentFailureAsync(owner, businessId, ReceptionistPlanFailure.InvalidContent, 400, cancellationToken, apply: input);
         try
         {
             var applied = await ReceptionistStore.ApplyReceptionistContentAsync(owner, MarketingDestinationKeys.OpenAi, input,
                 User.GetCanonicalUserId(), cancellationToken);
             return RedirectToAction(nameof(Receptionist), new { businessId, notice = applied.Replayed ? "content-replayed" : "content-applied" });
         }
-        catch (DbUpdateConcurrencyException) { return Conflict("The settings changed. Reload and review the current draft."); }
+        catch (DbUpdateConcurrencyException) { return await ReceptionistContentFailureAsync(owner, businessId, ReceptionistPlanFailure.StaleContent, 409, cancellationToken, apply: input); }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Text.Json.JsonException)
-        { return BadRequest("This draft could not be applied. Reload its review; protected changes require full operator acceptance."); }
+        { return await ReceptionistContentFailureAsync(owner, businessId, ReceptionistPlanFailure.InvalidContent, 400, cancellationToken, apply: input); }
     }
 
     [HttpPost("receptionist/content/restore")]
@@ -117,7 +118,7 @@ public abstract partial class BusinessWorkspaceControllerBase
     {
         if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
         var owner = MarketingOwnerScope.Business(businessId);
-        if (!ModelState.IsValid) return BadRequest("Choose a saved content version.");
+        if (!ModelState.IsValid) return await ReceptionistContentFailureAsync(owner, businessId, ReceptionistPlanFailure.InvalidContent, 400, cancellationToken, rollback: input);
         try
         {
             await ReceptionistStore.RestoreReceptionistContentDraftAsync(owner, MarketingDestinationKeys.OpenAi, input,
@@ -126,16 +127,45 @@ public abstract partial class BusinessWorkspaceControllerBase
                 ? RedirectToAction(nameof(ReviewReceptionistContent), new { businessId })
                 : RedirectToAction(nameof(Receptionist), new { businessId, notice = "saved" });
         }
-        catch (DbUpdateConcurrencyException) { return Conflict("The settings changed. Reload before restoring content."); }
+        catch (DbUpdateConcurrencyException) { return await ReceptionistContentFailureAsync(owner, businessId, ReceptionistPlanFailure.StaleContent, 409, cancellationToken, rollback: input); }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Text.Json.JsonException)
-        { return BadRequest("This content cannot be restored with the current service routes. Review the existing setup form."); }
+        { return await ReceptionistContentFailureAsync(owner, businessId, ReceptionistPlanFailure.InvalidContent, 400, cancellationToken, rollback: input); }
+    }
+
+    private async Task<IActionResult> ReceptionistContentFailureAsync(MarketingOwnerScope owner, Guid scope,
+        ReceptionistPlanFailure failure, int status, CancellationToken ct,
+        ReceptionistContentApplyInput? apply = null, ReceptionistContentRollbackInput? rollback = null)
+    {
+        if (!await AuthorizeReceptionistManagementAsync(owner, ct)) return Forbid();
+        Response.StatusCode = status;
+        ReceptionistContentPreview? preview = null;
+        try { preview = await ReceptionistStore.PreviewReceptionistContentAsync(owner, MarketingDestinationKeys.OpenAi, User.GetCanonicalUserId(), ct); }
+        catch (InvalidOperationException) { } // Missing draft/baseline: retain the submitted choices without inventing a preview.
+        ViewData["ReceptionistBusinessId"] = scope;
+        return View("~/Views/Shared/ReceptionistContentReview.cshtml", new ReceptionistContentReviewPage(preview,
+            Url.Action(nameof(ApplyReceptionistContent), new { businessId = scope })!,
+            Url.Action(nameof(RestoreReceptionistContent), new { businessId = scope })!,
+            Url.Action(nameof(Receptionist), new { businessId = scope })!, apply, rollback, failure,
+            Url.Action(nameof(ReviewReceptionistContent), new { businessId = scope })));
+    }
+
+    private async Task<IActionResult> ReceptionistSetupFailureAsync(MarketingOwnerScope owner, Guid scope,
+        ReceptionistPlanFailure failure, int status, CancellationToken ct, ReceptionistAdmissionInput? admission = null)
+    {
+        // Retain the submitted choice and original revision; do not rebase stale requests.
+        if (!await AuthorizeReceptionistManagementAsync(owner, ct)) return Forbid();
+        Response.StatusCode = status;
+        ViewData["ReceptionistSetupFailure"] = failure;
+        var snapshot = await ReceptionistStore.GetReceptionistConfigurationAsync(owner, MarketingDestinationKeys.OpenAi, ct);
+        return await ReceptionistPageAsync(snapshot, scope, cancellationToken: ct, admission: admission);
     }
 
     private MarketingConnectionStore ReceptionistStore => HttpContext.RequestServices.GetRequiredService<MarketingConnectionStore>();
 
     private async Task<IActionResult> ReceptionistPageAsync(ReceptionistConfigurationSnapshot snapshot, Guid businessId,
-        ReceptionistSetupInput? input = null, string? message = null, CancellationToken cancellationToken = default)
+        ReceptionistSetupInput? input = null, string? message = null, CancellationToken cancellationToken = default, ReceptionistAdmissionInput? admission = null)
     {
+        ViewData["ReceptionistBusinessId"] = businessId;
         var operating = await ReceptionistStore.GetReceptionistConfigurationAsync(snapshot.Owner, snapshot.Provider, cancellationToken, operating: true);
         var readiness = await HttpContext.RequestServices.GetRequiredService<ReceptionistAdmissionService>()
             .GetSetupReadinessAsync(operating, observeControlPlaneRuntime: false, ct: cancellationToken);
@@ -145,6 +175,6 @@ public abstract partial class BusinessWorkspaceControllerBase
             new ReceptionistSetupPage(snapshot, input ?? ReceptionistSetupForms.Read(snapshot),
                 Url.Action(nameof(SaveReceptionist), new { businessId })!,
                 Url.Action(nameof(ReceptionistAdmission), new { businessId })!,
-                Url.Action(nameof(Settings), new { businessId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness, Url.Action(nameof(ReviewReceptionistContent), new { businessId })!, OperatingSnapshot: operating, ManagementUrl: Url.Action(nameof(ReceptionistConnections), new { businessId })));
+                Url.Action(nameof(Settings), new { businessId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness, Url.Action(nameof(ReviewReceptionistContent), new { businessId })!, OperatingSnapshot: operating, ManagementUrl: Url.Action(nameof(ReceptionistConnections), new { businessId }), SubmittedAdmission: admission));
     }
 }

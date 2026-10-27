@@ -194,6 +194,8 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
     {
         if (ownerAccount is null || accountIds.Length == 0) return new("accounting_unavailable");
         if (!current.ReceptionistAdmissionEnabled) return new("admission_disabled");
+        if (!ReceptionistConfigurationCodec.BudgetPolicyCurrent(binding, current.OwnerKey, current.Id,
+            current.ReceptionistActiveConfigurationId ?? Guid.Empty, now)) return new("budget_policy_unavailable");
         if (binding.ControlledTestOnly != controlledTest) return new("controlled_acceptance_only");
         if (!ReceptionistConfigurationCodec.HasRequiredIntake(configuration, binding)) return new("canonical_intake_unaccepted");
         if (!ReceptionistConfigurationCodec.IsOpen(configuration, now)) return new("outside_reception_hours");
@@ -258,6 +260,7 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
             configuration.MaximumCallsPerWindow) return new("owner_admission_rate_limit");
         var deadline = new[] { now.AddSeconds(configuration.MaximumCallSeconds), periods.Min(x => x.EndUtc),
             ReceptionistConfigurationCodec.CurrentWindowEnd(configuration, now) }.Min();
+        if (binding.BudgetPolicy is { } policy && policy.ExpiresUtc < deadline) deadline = policy.ExpiresUtc;
         if (acceptanceWindow is not null && acceptanceWindow.ExpiresUtc < deadline) deadline = acceptanceWindow.ExpiresUtc;
         if (deadline <= now) return new("reception_window_ended");
         return new(null) { Accounts = accounts, OwnerPeriod = ownerPeriod, Costs = costReservations, Deadline = deadline };

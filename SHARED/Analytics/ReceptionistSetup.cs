@@ -71,7 +71,7 @@ public sealed record ReceptionistAnswerInput
 }
 
 public sealed record ReceptionistSetupPage(ReceptionistConfigurationSnapshot Snapshot, ReceptionistSetupInput Input,
-    string PostUrl, string AdmissionUrl, string ReturnUrl, IReadOnlyList<string> CrmBuckets, string? Message = null, ReceptionistReadinessProjection? Readiness = null, string? ContentReviewUrl = null, ReceptionistConfigurationSnapshot? OperatingSnapshot = null, string? ManagementUrl = null);
+    string PostUrl, string AdmissionUrl, string ReturnUrl, IReadOnlyList<string> CrmBuckets, string? Message = null, ReceptionistReadinessProjection? Readiness = null, string? ContentReviewUrl = null, ReceptionistConfigurationSnapshot? OperatingSnapshot = null, string? ManagementUrl = null, string? CalendarSetupUrl = null, ReceptionistAdmissionInput? SubmittedAdmission = null);
 
 public sealed record ReceptionistAdmissionInput(Guid ExpectedRevision, bool Enabled);
 
