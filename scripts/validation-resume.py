@@ -11588,7 +11588,16 @@ def _recovery_receipt_json(repository, run_id, artifact, filename, max_bytes):
     identity = (repository, run_id, artifact['id'], artifact['name'], digest, filename, max_bytes)
     lock, entries = _RECOVERY_RECEIPT_BYTES.get()
     with lock:
-        future = entries.get(identity); owns = future is None
+        future = entries.get(identity)
+        if future is None:
+            # Borrow only completed authenticated bytes that satisfy this caller.
+            # Pending reads and failures keep their original size-qualified key.
+            for key, donor in entries.items():
+                if (key[:-1] == identity[:-1] and donor.done() and not donor.cancelled()
+                    and donor.exception() is None and len(donor.result()) <= max_bytes):
+                    future = donor
+                    break
+        owns = future is None
         if owns:
             if len(entries) >= 100:raise ValueError('RECOVERY_RECEIPT_CACHE_BOUND')
             future = concurrent.futures.Future(); entries[identity] = future

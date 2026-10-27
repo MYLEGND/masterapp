@@ -6714,7 +6714,7 @@ class RecoveryReceiptReuseTests(unittest.TestCase):
             with m.recovery_material_reuse():self.get()
             self.assertEqual(download.call_count,2)
         self.assertIsNone(m._RECOVERY_RECEIPT_BYTES.get())
-    def test_every_identity_dimension_and_size_policy_is_distinct(self):
+    def test_every_artifact_identity_dimension_is_distinct_and_size_is_per_caller(self):
         with patch.object(m,'_download_run_artifact',side_effect=self.download) as download,m.recovery_material_reuse():
             self.get();self.get(repository='other/repo')
             self.artifact['workflow_run']['id']=11;self.get(run=11)
@@ -6722,7 +6722,105 @@ class RecoveryReceiptReuseTests(unittest.TestCase):
             self.artifact['digest']='sha256:'+'f'*64;self.get()
             self.artifact['name']='other-receipt';self.get()
             self.get(filename='validation-resume.json');self.get(size=131072)
-            self.assertEqual(download.call_count,8)
+            # A different size policy may borrow completed bytes, not authority.
+            self.assertEqual(download.call_count,7)
+            self.assertEqual(len(m._RECOVERY_RECEIPT_BYTES.get()[1]),7)
+    def test_completed_cross_limit_reuse_in_both_orders_has_no_alias(self):
+        for limits in [(32768,131072),(131072,32768)]:
+            with self.subTest(limits=limits),patch.object(m,'_download_run_artifact',side_effect=self.download) as downloads,m.recovery_material_reuse():
+                self.get(size=limits[0])['items'].append(9)
+                self.assertEqual(self.get(size=limits[1]),dict(items=[1]))
+                self.assertEqual(downloads.call_count,1)
+                entries=m._RECOVERY_RECEIPT_BYTES.get()[1]
+                self.assertEqual(len(entries),1)
+                self.assertEqual(next(iter(entries))[-1],limits[0])
+    def test_mixed_limit_receipts_preserve_exact_distinct_capacity_bound(self):
+        with patch.object(m,'_download_run_artifact',side_effect=self.download) as downloads,m.recovery_material_reuse():
+            for identity in range(1,101):
+                self.artifact['id']=identity
+                self.get(size=131072);self.get(size=32768)
+            self.assertEqual(downloads.call_count,100)
+            self.assertEqual(len(m._RECOVERY_RECEIPT_BYTES.get()[1]),100)
+            self.get(size=32768)  # Existing fitting bytes remain usable at capacity.
+            self.artifact['id']=101
+            with self.assertRaisesRegex(ValueError,'RECOVERY_RECEIPT_CACHE_BOUND'):self.get()
+            self.assertEqual(downloads.call_count,100)
+            self.assertEqual(len(m._RECOVERY_RECEIPT_BYTES.get()[1]),100)
+    def test_failed_cancelled_and_pending_cross_limit_donors_are_not_borrowed(self):
+        import concurrent.futures
+        for state in ['failed','cancelled','pending']:
+            with self.subTest(state=state),patch.object(m,'_download_run_artifact',side_effect=self.download) as downloads,m.recovery_material_reuse():
+                donor=concurrent.futures.Future()
+                if state=='failed':donor.set_exception(RuntimeError('original failed read'))
+                elif state=='cancelled':donor.cancel()
+                entries=m._RECOVERY_RECEIPT_BYTES.get()[1]
+                key=('owner/repo',10,self.artifact['id'],self.artifact['name'],self.artifact['digest'],'operation.json',131072)
+                entries[key]=donor
+                self.assertEqual(self.get(),dict(items=[1]))
+                self.assertEqual(downloads.call_count,1)
+                self.assertEqual(len(entries),2)
+                self.assertIs(entries[key],donor)
+    def test_exact_qualified_future_keeps_priority_over_fitting_donor(self):
+        import concurrent.futures
+        with patch.object(m,'_download_run_artifact',side_effect=self.download) as downloads,m.recovery_material_reuse():
+            self.get(size=131072)
+            exact=concurrent.futures.Future()
+            key=('owner/repo',10,self.artifact['id'],self.artifact['name'],self.artifact['digest'],'operation.json',32768)
+            m._RECOVERY_RECEIPT_BYTES.get()[1][key]=exact
+            with patch.object(m,'evidence_remaining',return_value=.001):
+                with self.assertRaises(concurrent.futures.TimeoutError):self.get()
+            exact.set_exception(RuntimeError('exact-key failure'))
+            with self.assertRaisesRegex(RuntimeError,'exact-key failure'):self.get()
+            self.assertEqual(downloads.call_count,1)
+    def test_tight_inflight_failure_cannot_poison_permissive_read(self):
+        import concurrent.futures,contextvars,threading
+        self.raw=b'{"items":[]}' + b' '*32768
+        entered=threading.Event();release=threading.Event();calls=[]
+        def download(*args,**kwargs):
+            calls.append(1)
+            if len(calls)==1:
+                entered.set()
+                if not release.wait(2):raise AssertionError('fixture release was not signalled')
+            self.download(*args,**kwargs)
+        with patch.object(m,'_download_run_artifact',side_effect=download),m.recovery_material_reuse(),concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            tight=pool.submit(contextvars.copy_context().run,self.get)
+            try:
+                self.assertTrue(entered.wait(2))
+                self.assertEqual(self.get(size=131072),dict(items=[]))
+            finally:release.set()
+            with self.assertRaisesRegex(RuntimeError,'oversized'):tight.result(timeout=2)
+            entries=m._RECOVERY_RECEIPT_BYTES.get()[1]
+            self.assertEqual(len(entries),1)
+            self.assertEqual(next(iter(entries))[-1],131072)
+            self.assertEqual(len(calls),2)
+    def test_cross_limit_hit_still_honors_deadline_and_invalid_limits(self):
+        with patch.object(m,'_download_run_artifact',side_effect=self.download) as downloads,m.recovery_material_reuse():
+            self.get(size=131072)
+            self.assertEqual(self.get(size=32*1024*1024),dict(items=[1]))
+            with patch.object(m,'evidence_remaining',side_effect=m.EvidenceLookupUnavailable('fixture expired')):
+                with self.assertRaises(m.EvidenceLookupUnavailable):self.get()
+            for limit in [None,True,0,-1,'32768',32*1024*1024+1]:
+                with self.subTest(limit=limit),self.assertRaises(m.ReleaseOperationHistoryUnproven):self.get(size=limit)
+            self.assertEqual(downloads.call_count,1)
+    def test_cross_limit_operation_read_still_checks_fresh_inventory_and_owner(self):
+        operation='b'*64;revision='a'*40;self.artifact['name']='legend-release-operation-intent-'+operation
+        self.raw=json.dumps(dict(operationId=operation,target='website',applicationRevision=revision,
+            producingRun=10,producingAttempt=1,phase='intent')).encode()
+        inventory=dict(total_count=1,artifacts=[self.artifact]);run=dict(id=10,head_sha=revision,run_attempt=1)
+        def api(repository,path,token):return inventory if path.startswith('actions/artifacts?') else run
+        with patch.object(m,'_release_history_api',side_effect=api) as reads,patch.object(m,'is_fast_track_producer',return_value=True),patch.object(m,'_download_run_artifact',side_effect=self.download) as downloads,m.recovery_material_reuse():
+            self.get(size=131072)
+            def get():return m.release_operation_history('owner/repo',operation,revision,'website',20,1,'token')
+            self.assertEqual(get()['operationId'],operation)
+            self.assertEqual(downloads.call_count,1)
+            run['run_attempt']=0
+            with self.assertRaisesRegex(RuntimeError,'unbound revision or attempt'):get()
+            run['run_attempt']=1;inventory['total_count']=2
+            with self.assertRaises(m.ReleaseOperationHistoryUnproven):get()
+            inventory['total_count']=1;self.artifact['expired']=True
+            with self.assertRaises(m.ReleaseOperationHistoryUnproven):get()
+            self.assertEqual(downloads.call_count,1)
+            self.assertGreaterEqual(reads.call_count,6)
     def test_invalid_metadata_fails_after_prior_hit(self):
         for change in [dict(expired=True),dict(expired=None),dict(id=True),dict(digest='bad'),dict(name=''),dict(workflow_run=dict(id=99))]:
             self.setUp()
