@@ -1680,6 +1680,36 @@ class ReleaseAdmissionScopeRegressionTests(unittest.TestCase):
             scope=authority.fast_track_scope(['Infrastructure/Infrastructure.csproj'])
         self.assertTrue(scope['schema'])
 
+    def test_management_entities_and_model_have_exact_shared_schema_ownership(self):
+        for path in ('Domain/Entities/ReceptionistManagement.cs',
+                     'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Management.cs'):
+            scope=authority.fast_track_scope([path])
+            self.assertEqual(set(scope['impacts'][path]), {'portal','client','protect','parfait'})
+            self.assertTrue(scope['commerce'])
+            self.assertEqual(scope['schema'], path.startswith('Infrastructure/'))
+            with self.assertRaisesRegex(ValueError, 'Unmapped'):
+                authority.fast_track_scope([path.replace('.cs','.Unreviewed.cs')])
+
+    def test_browser_and_management_partials_have_exact_shared_ownership(self):
+        paths = (
+            'Infrastructure/Businesses/BusinessWorkspaceControllerBase.ReceptionistManagement.cs',
+            'Infrastructure/Reception/ReceptionistAdmissionService.Browser.cs',
+            'Infrastructure/Reception/ReceptionistBrowserController.cs',
+            'Infrastructure/Reception/ReceptionistOperatorService.Management.cs',
+            'Infrastructure/Reception/ReceptionistOperatorService.Stored.cs',
+            'SHARED/Analytics/ReceptionistManagement.cs')
+        for path in paths:
+            with self.subTest(path=path):
+                scope = authority.fast_track_scope([path])
+                self.assertEqual(set(scope['impacts'][path]), {'portal', 'client', 'protect', 'parfait'})
+                self.assertTrue(scope['commerce'])
+                self.assertFalse(scope['schema']); self.assertFalse(scope['routing'])
+                with self.assertRaisesRegex(ValueError, 'Unmapped'):
+                    authority.fast_track_scope([path.replace('.cs', '.Unreviewed.cs')])
+        scope = authority.fast_track_scope([*paths, 'Legend-Design/legend-public-inquiry.js'])
+        self.assertEqual({r['key'] for r in scope['matrix']['include']},
+                         {'portal', 'client', 'protect', 'parfait', 'website'})
+
     def test_receptionist_content_candidate_selects_only_four_managed_hosts(self):
         paths = ('AgentPortal/Controllers/WebsiteAnalyticsController.Receptionist.cs', 'AgentPortal.Tests/ReceptionistApplicationServicesTests.cs', 'AgentPortal.Tests/ReceptionistContentReviewTests.cs', 'AgentPortal.Tests/ReceptionistSetupAndAuthorityTests.cs', 'Infrastructure/Analytics/MarketingConnectionStore.ReceptionistContent.cs', 'Infrastructure/Businesses/BusinessWorkspaceControllerBase.Receptionist.cs', 'Infrastructure/Reception/ReceptionistApplicationServices.cs', 'Infrastructure/Reception/ReceptionistContentReview.cs', 'Infrastructure/Reception/ReceptionistContracts.cs', 'Infrastructure/Reception/ReceptionistOperatorService.cs', 'Infrastructure/Reception/ReceptionistRuntimeAuthority.cs', 'Infrastructure/Reception/ReceptionistSetupForms.cs', 'SHARED/Analytics/ReceptionistConfiguration.cs', 'SHARED/Analytics/ReceptionistContentReview.cs', 'SHARED/Analytics/ReceptionistSetup.cs', 'SHARED/Views/Shared/ReceptionistContentReview.cshtml', 'SHARED/Views/Shared/ReceptionistSetup.cshtml')
         scope = authority.fast_track_scope(paths)

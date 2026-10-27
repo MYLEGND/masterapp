@@ -500,6 +500,11 @@ internal static class TrustedCandidateContract
     private const string TrainingMigration = CandidateContract.TrainingMigration;
     private const string TrainingEntrySha256 = "5a543b02a2a1ae2f2bb35d5e2a8fb51f41e9601b1ef4de2707ec6db51029be10";
 
+    private const string ManagementMigration = "20261026210738_AddReceptionistManagement";
+    private const string ManagementEntrySha256 = "4505723c4487d382bd8bcde553d5e5d835dec499564c2b308469a4e2861c3d3d";
+
+    private const string BrowserEntrySha256 = "da3529bf9f9a13b41ad6b342a2fc65d293f2e75a1fa282123bd1812bf6a4c4af";
+
     internal static string Digest<T>(T value) => Convert.ToHexStringLower(SHA256.HashData(
         JsonSerializer.SerializeToUtf8Bytes(value, CandidateContract.Json)));
 
@@ -546,13 +551,13 @@ internal static class TrustedCandidateContract
         if (JsonSerializer.Serialize(trusted, CandidateContract.Json) == JsonSerializer.Serialize(candidate, CandidateContract.Json))
             return "approved-definitions-exact";
         var added = candidate.Migrations.Length - trusted.Migrations.Length;
-        if (added is < 1 or > 3 || candidate.Migrations.Length > 10000 ||
+        if (added is < 1 or > 5 || candidate.Migrations.Length > 10000 ||
             !candidate.Migrations.Take(trusted.Migrations.Length).Zip(trusted.Migrations).All(pair =>
                 JsonSerializer.Serialize(pair.First, CandidateContract.Json) == JsonSerializer.Serialize(pair.Second, CandidateContract.Json)))
             throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
         var suffix = candidate.Migrations.Skip(trusted.Migrations.Length).ToArray();
         var reviewed = new[] { (ReviewedMigration, ReviewedEntrySha256), (PaymentMigration, PaymentEntrySha256),
-            (TrainingMigration, TrainingEntrySha256) };
+            (TrainingMigration, TrainingEntrySha256), (ManagementMigration, ManagementEntrySha256), (CandidateContract.BrowserMigration, BrowserEntrySha256) };
         var start = Array.FindIndex(reviewed, x => x.Item1 == suffix[0]?.Id);
         if (start < 0 || start + added > reviewed.Length)
             throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
@@ -568,6 +573,8 @@ internal static class TrustedCandidateContract
                 throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
             previous = entry.Id;
         }
+        if (suffix[^1].Id == CandidateContract.BrowserMigration) return "approved-prefix-reviewed-browser-entry";
+        if (suffix[^1].Id == ManagementMigration) return "approved-prefix-reviewed-management-entry";
         if (suffix[^1].Id == TrainingMigration) return "approved-prefix-reviewed-training-entries";
         return suffix[^1].Id == PaymentMigration
             ? "approved-prefix-reviewed-canonical-payment-entries"
@@ -643,6 +650,8 @@ internal static class TrustedCandidateContract
         }
         else Console.WriteLine("LEGEND_CANONICAL_PAYMENT_APPEND_TEST:NOT_PRESENT_IN_ASSEMBLY");
         current = complete;
+        var trainingIndex = Array.FindIndex(current.Migrations, entry => entry.Id == TrainingMigration);
+        if (trainingIndex >= 0) current = current with { Migrations = current.Migrations.Take(trainingIndex + 1).ToArray() };
         if (current.Migrations[^1].Id == TrainingMigration)
         {
             Require(Digest(current.Migrations[^1]) == TrainingEntrySha256);
@@ -656,6 +665,40 @@ internal static class TrustedCandidateContract
                     Reject(() => Prove(prefix, current with { Migrations = [.. current.Migrations[..^1], bad] }));
             }
             Console.WriteLine("LEGEND_TRAINING_APPEND_TEST:PROVEN");
+        }
+        current = complete;
+        var managementIndex = Array.FindIndex(current.Migrations, entry => entry.Id == ManagementMigration);
+        if (managementIndex >= 0) current = current with { Migrations = current.Migrations.Take(managementIndex + 1).ToArray() };
+        if (current.Migrations[^1].Id == ManagementMigration)
+        {
+            Require(Digest(current.Migrations[^1]) == ManagementEntrySha256);
+            foreach (var count in new[] { 1, 2, 3, 4 })
+            {
+                var prefix = current with { Migrations = current.Migrations[..^count] };
+                Require(Prove(prefix, current) == "approved-prefix-reviewed-management-entry");
+                var entry = current.Migrations[^1];
+                foreach (var bad in new[] { entry with { Tables = entry.Tables[..^1] }, entry with { Indexes = [] },
+                    entry with { Supported = false }, entry with { Id = "29990101000000_Unreviewed" } })
+                    Reject(() => Prove(prefix, current with { Migrations = [.. current.Migrations[..^1], bad] }));
+                if (count > 1) Reject(() => Prove(prefix, current with { Migrations = [.. prefix.Migrations, entry] }));
+            }
+            Console.WriteLine("LEGEND_MANAGEMENT_APPEND_TEST:PROVEN");
+        }
+        current = complete;
+        if (current.Migrations[^1].Id == CandidateContract.BrowserMigration)
+        {
+            Require(Digest(current.Migrations[^1]) == BrowserEntrySha256);
+            foreach (var count in new[] { 1, 2, 3, 4, 5 })
+            {
+                var prefix = current with { Migrations = current.Migrations[..^count] };
+                Require(Prove(prefix, current) == "approved-prefix-reviewed-browser-entry");
+                var entry = current.Migrations[^1];
+                foreach (var bad in new[] { entry with { Guards = [] }, entry with { Indexes = [] },
+                    entry with { Columns = entry.Columns[..^1] }, entry with { Supported = false } })
+                    Reject(() => Prove(prefix, current with { Migrations = [..current.Migrations[..^1], bad] }));
+                if (count > 1) Reject(() => Prove(prefix, current with { Migrations = [..prefix.Migrations, entry] }));
+            }
+            Console.WriteLine("LEGEND_BROWSER_APPEND_TEST:PROVEN");
         }
         var path = Path.Combine(Path.GetTempPath(), "legend-contract-test-" + Guid.NewGuid().ToString("N") + ".json");
         try

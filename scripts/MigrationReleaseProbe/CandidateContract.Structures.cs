@@ -45,6 +45,7 @@ internal static partial class CandidateContract
 
     internal static Entry Describe(string id, IReadOnlyList<MigrationOperation> operations)
     {
+        if (id == BrowserMigration) return BrowserEntry(ExactBrowserOperations(operations));
         var columns = operations.OfType<AddColumnOperation>().Select(DescribeColumn).ToArray();
         var tables = operations.OfType<CreateTableOperation>().Select(t => new Table(t.Schema ?? "dbo", t.Name,
             t.Columns.Select(DescribeColumn).ToArray(), new Key(t.PrimaryKey?.Name ?? "", t.PrimaryKey?.Columns ?? []),
@@ -120,6 +121,7 @@ internal static partial class CandidateContract
             m.Tables.Length > 1000 || m.Indexes.Length > 10000 || m.Guards.Length > 10000 || m.ForeignKeys.Length > 1000) return false;
         if (m.Supported && m.Id == TrainingMigration && Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(m, Json))) !=
             "5a543b02a2a1ae2f2bb35d5e2a8fb51f41e9601b1ef4de2707ec6db51029be10") return false;
+        if (m.Id == BrowserMigration && m.Supported) return ExactBrowserEntry(m);
         // Unsupported historical migrations remain opaque and cannot become pending supported operations.
         if (!m.Supported) return true;
         if (m.Guards.Length > 1 || m.Columns.Any(c => !ValidColumn(c)) || m.Guards.Any(g => g != CheckoutGuard && !(g == TrainingIndexTransition && m.Id == TrainingMigration)) ||
@@ -422,7 +424,7 @@ internal static partial class CandidateContract
     }
     private static void PlanStructures(CatalogBatch batch, Entry m, bool applied, CancellationToken cancellation)
     {
-        if (!ValidStructures(m)) throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
+        // Plan validates original descriptors before deriving any reviewed schema overlay.
         if (!applied && m.Guards.Contains(CheckoutGuard))
         {
             batch.Add("""
@@ -687,6 +689,13 @@ internal static partial class CandidateContract
             try
             {
                 if (Take("(")) { var value = Or(); Require(")"); return value; }
+                if (Take("LEN"))
+                {
+                    Require("("); var value = Primary(); Require(")");
+                    if (value.Kind != "column" || !(columns[value.Value].Type.StartsWith("nvarchar(", StringComparison.Ordinal) ||
+                        columns[value.Value].Type.StartsWith("varchar(", StringComparison.Ordinal))) throw new InvalidOperationException();
+                    return new("len", "", [value]);
+                }
                 if (Take("CAST"))
                 {
                     Require("("); var value = Modulo(); Require("AS"); DecimalType(); Require(")");
