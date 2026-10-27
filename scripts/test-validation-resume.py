@@ -7238,8 +7238,88 @@ class ProtectCorrectionSerializerNonentryTests(unittest.TestCase):
         self.setUp();self.f.source['scripts/release-artifacts/transport.cjs']='unknown';self.assertFalse(self.invoke())
 
 
+class FastTrackCarriedMigrationTests(unittest.TestCase):
+    def setUp(self):
+        self.run = dict(id=10, run_attempt=2, workflow_id=30, head_sha='a'*40,
+            path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,
+            head_branch=m.FAST_TRACK_PR_BASE, event='push', status='completed',
+            head_repository=dict(full_name='owner/repo'))
+        self.details = {i: dict(self.run, run_attempt=i,
+            run_started_at=f'2026-10-26T{hour}:00:00Z') for i,hour in [(1,'14'),(2,'15')]}
+        self.step = dict(name=m.FAST_TRACK_CHILD_STEPS['migrations'][1], status='completed',
+            conclusion='success', started_at='2026-10-26T14:20:00Z', completed_at='2026-10-26T14:40:00Z')
+        self.original = dict(id=100, run_id=10, run_attempt=1, head_sha='a'*40,
+            name=m.FAST_TRACK_CHILD_STEPS['migrations'][0], status='completed', conclusion='success',
+            runner_id=40, runner_name='fixture-runner', created_at='2026-10-26T14:01:00Z',
+            started_at='2026-10-26T14:20:00Z', completed_at='2026-10-26T14:41:00Z', steps=[self.step])
+        self.carried = json.loads(json.dumps(dict(self.original,id=101,run_attempt=2,
+            created_at='2026-10-26T15:00:03Z')))
+        self.jobs = {1:[self.original],2:[self.carried]}
+        self.logs = {100:'2026-10-26T14:40:00Z Schema ready; validated migration child applied.',
+                     101:'2026-10-26T14:40:00Z Schema ready; validated migration child applied.'}
+        self.artifacts=[]; self.incomplete=False
+    def api(self,repo,path,token):
+        if '/jobs?' in path:
+            rows=self.jobs[int(path.split('/attempts/')[1].split('/')[0])]
+            return dict(jobs=rows,total_count=len(rows)+int(self.incomplete))
+        if '/attempts/' in path:return self.details[int(path.rsplit('/',1)[1])]
+        if '/artifacts?' in path:return dict(total_count=len(self.artifacts),artifacts=self.artifacts)
+        if path.startswith('actions/runs?'):return dict(total_count=0,workflow_runs=[])
+        raise AssertionError(path)
+    def environment(self):
+        import contextlib
+        stack=contextlib.ExitStack()
+        stack.enter_context(patch.object(m,'fast_track_execution_history',return_value=[self.run]))
+        stack.enter_context(patch.object(m,'_release_history_source',return_value='fixture'))
+        stack.enter_context(patch.object(m,'named_step_blocks',return_value={self.step['name']:'fixture'}))
+        stack.enter_context(patch.object(m,'attested_fast_track_migration_prewrite',return_value=False))
+        stack.enter_context(patch.object(m,'api_get',side_effect=self.api))
+        stack.enter_context(patch.object(m,'_release_job_log',side_effect=lambda repo,job,token:self.logs[job]))
+        return stack
+    def inventory(self):
+        with self.environment():return m.fast_track_child_attempts('owner/repo','migrations','fixture')
+    def test_carried_row_keeps_only_original_execution(self):
+        rows=self.inventory()
+        self.assertEqual([(attempt,job['id']) for _,attempt,job,_ in rows],[(1,100)])
+    def test_original_intent_is_still_required(self):
+        with self.environment(), patch.object(m,'attested_fast_track_no_write_observation',return_value=False):
+            with self.assertRaisesRegex(RuntimeError,r'missing intent.*run=10;attempt=1'):
+                m.release_child_first_write_proven('owner/repo','migrations','b'*64,'c'*64,99,1,'fixture')
+    def test_original_intent_is_authenticated_not_reissued(self):
+        self.artifacts=[dict(name='legend-release-child-intent-'+'d'*64,expired=False)]
+        record=dict(child='migrations',producingAttempt=1,dependencyIdentity='d'*64,partitionIdentity='e'*64)
+        with self.environment(), patch.object(m,'_release_history_json',return_value=record), \
+                patch.object(m,'_validate_child_generation',return_value='d'*64) as validate, \
+                patch.object(m,'_reconciled_retained_migration_intent',return_value=False):
+            m.release_child_first_write_proven('owner/repo','migrations','b'*64,'c'*64,99,1,'fixture')
+            validate.assert_called_once_with('owner/repo',self.run,self.artifacts[0],record,'migrations','fixture','intent')
+    def test_mismatches_are_not_collapsed(self):
+        cases=[('head_sha','f'*40),('runner_id',41),('created_at','2026-10-26T14:00:00Z'),
+               ('started_at','2026-10-26T15:00:04Z'),('run_attempt',1)]
+        for key,value in cases:
+            self.setUp();self.carried[key]=value
+            with self.subTest(key=key):self.assertEqual(len(self.inventory()),2)
+        self.setUp();self.logs[101]+=' changed';self.assertEqual(len(self.inventory()),2)
+        self.setUp();self.logs={100:'',101:''};self.assertEqual(len(self.inventory()),2)
+        self.setUp();self.carried['steps'][0]['completed_at']='2026-10-26T14:39:00Z'
+        self.assertEqual(len(self.inventory()),2)
+    def test_changed_attempt_provenance_is_not_collapsed(self):
+        for key,value in [('head_sha','f'*40),('event','pull_request'),('status','in_progress'),
+                          ('head_repository',dict(full_name='fork/repo')),('workflow_id',31)]:
+            self.setUp();self.details[2][key]=value
+            with self.subTest(key=key):self.assertEqual(len(self.inventory()),2)
+    def test_incomplete_inventory_remains_denied(self):
+        self.incomplete=True
+        with self.assertRaisesRegex(RuntimeError,'JOBS_INCOMPLETE'):self.inventory()
+    def test_ambiguous_original_is_not_collapsed(self):
+        with self.environment():
+            prior=[(self.run,1,self.original,self.step)]*2
+            self.assertFalse(m._fast_track_child_carried_forward('owner/repo',self.run,2,self.carried,prior,'fixture'))
+
+
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.
     # Synthetic planner revisions must never query the real CI repository.
     with patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}):
         unittest.main()
+
