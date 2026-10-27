@@ -2,7 +2,7 @@
   "requestedBy": "Founder",
   "authorization": "Continue the approved completion recovery and paused application source-validation work. Promote only the independently reviewed scoped completion-receipt discovery correction, its regression coverage, and the exact a34-to-dde0 reviewed-runtime pair. Preserve bounded caches, deadlines, fresh authority/provider verification, and actual trusted/candidate compiled-contract equality. No app uploads, SQL, restart, activation, phone or routing changes, access changes or new costs.",
   "purpose": "Scope completion discovery to relevant authenticated receipts and admit only the reviewed runtime pair subject to unchanged fresh equal-contract checks.",
-  "requestId": "shayla-scoped-discovery-runtime-pair-promotion-20261027-v1",
+  "requestId": "shayla-scoped-discovery-runtime-pair-promotion-20261027-v2",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -10,7 +10,7 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "c6102c492398ea75b57bee37e9b4aee9a7e52dee",
-    "sourceRevision": "843af9d5c4c085bd2469604b4571b1a05c64e4ef",
+    "sourceRevision": "9bf30a7e39d5842ed9d4904def15cdb49dfed4c1",
     "files": {
       "scripts/test-release-policy.py": {
         "mode": "100644",
@@ -18,11 +18,15 @@
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "3d10e355a52890681e197a5658d7abc53b3f6071"
+        "blob": "8e7726bce4d053a1e1a46cfb5a1fa3deef0957cb"
       },
       "scripts/validation-resume.py": {
         "mode": "100644",
         "blob": "06e10e78edd903f3b4da394870454e89d9e10fe0"
+      },
+      "scripts/test-fast-track-release.py": {
+        "mode": "100644",
+        "blob": "2206e79c4ee5b36582e3ff81899c50b5ff27cc95"
       }
     }
   }
