@@ -7322,4 +7322,3 @@ if __name__ == "__main__":
     # Synthetic planner revisions must never query the real CI repository.
     with patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}):
         unittest.main()
-
