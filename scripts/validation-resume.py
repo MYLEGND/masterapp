@@ -6846,8 +6846,14 @@ def _completion_original_unchanged(repository, run, token):
         raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_RUN_CHANGED')
 
 
+_COMPLETION_BASELINE_PROVING = contextvars.ContextVar("completion_baseline_proving", default=frozenset())
+
+
 def fast_track_completion_original(repository, original_run, revision, token):
     """Derive all original obligations; caller target lists have no authority."""
+    proof_key = (repository.lower(), original_run, revision)
+    if proof_key in _COMPLETION_BASELINE_PROVING.get():
+        raise ValueError("FAST_TRACK_COMPLETION_CARRIED_BASELINE_PROOF_CYCLE")
     run = api_get(repository, f'actions/runs/{original_run}', token)
     if (not is_fast_track_producer(repository, run) or run.get('id') != original_run
         or run.get('head_sha') != revision or run.get('status') != 'completed'
@@ -6868,8 +6874,6 @@ def fast_track_completion_original(repository, original_run, revision, token):
         selection_baseline = supersession['originalRevision']
     else:
         selection_baseline = fast_track_effective_baseline(parents[1], revision, repository=repository, token=token)
-        if selection_baseline != parents[1]:
-            raise ValueError('FAST_TRACK_COMPLETION_CARRIED_SCOPE_REQUIRES_ORIGINAL_BASELINE_PROOF')
     baseline = parents[1]
     paths = subprocess.check_output(['git', 'diff', '--name-only', selection_baseline, revision], text=True).splitlines()
     scope = fast_track_scope(paths)
@@ -6935,6 +6939,20 @@ def fast_track_completion_original(repository, original_run, revision, token):
     elif any(next(job for job in jobs if job['name'] == router['name']).get('conclusion') != 'skipped'
              for jobs in attempts.values()):
         raise ValueError('FAST_TRACK_COMPLETION_UNEXPECTED_ROUTING_EXECUTION')
+    if 'protectSupersession' not in request and selection_baseline != parents[1]:
+        # History proves why intermediate merges never became the app baseline;
+        # original successful selector/admission and every genuine upload intent
+        # must independently bind that same baseline before it can be returned.
+        original = dict(context, targets=selected, baseRevision=selection_baseline)
+        mark = _COMPLETION_BASELINE_PROVING.set(_COMPLETION_BASELINE_PROVING.get() | {proof_key})
+        try:
+            for key in selected:
+                material = fast_track_completion_material(repository, original, key, token)
+                if material['intent']['baseline'] != selection_baseline:
+                    raise ValueError('FAST_TRACK_COMPLETION_CARRIED_BASELINE_INTENT_MISMATCH')
+        finally:
+            _COMPLETION_BASELINE_PROVING.reset(mark)
+        baseline = selection_baseline
     _completion_original_unchanged(repository, run, token)
     return dict(context, targets=selected, baseRevision=baseline)
 

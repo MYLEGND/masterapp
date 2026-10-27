@@ -1641,13 +1641,14 @@ class FastTrackCompletionAuthorityTests(unittest.TestCase):
         for jobs in [[],[self.job,self.job],[dict(self.job,run_attempt=2)],[dict(self.job,head_sha=self.tool)]]:
             with self.subTest(jobs=jobs),self.assertRaises(ValueError):self.material(jobs=jobs)
         with self.assertRaises(ValueError):self.material(retained=dict(self.intent,baseline='f'*40))
-    def original_call(self,jobs=None,request=None):
-        scope=dict(matrix=dict(include=[dict(key='portal',azure_app='masterapp-portal')]),commerce=True,routing=False)
+    def original_call(self,jobs=None,request=None,*,baseline=None,targets=None):
+        targets = targets or ['portal']
+        scope=dict(matrix=dict(include=[dict(key=key,azure_app=self.a.RELEASE_TARGETS[key]['releaseName']) for key in targets]),commerce=True,routing=False)
         names=['Select exact affected applications','Admit exact validated fast-track source','Reconcile production schema before publication','Publish verified website routing']
-        rows=[dict(self.job,id=600+i,name=n,conclusion='skipped' if n==names[-1] else 'success') for i,n in enumerate(names)]+[self.job]
+        rows=[dict(self.job,id=600+i,name=n,conclusion='skipped' if n==names[-1] else 'success') for i,n in enumerate(names)]+[dict(self.job,id=456+i,name='Affected App Deploy — '+self.a.fast_track_target_label(key)) for i,key in enumerate(targets)]
         for row,step_names in zip(rows,[['Derive application impact exclusively from changed paths'],['Authenticate merged source and preserved required validation'],['Apply or reconcile the exact rehearsed migration bundle','Reconcile fresh already-ready schema without SQL bundle or mutation']]):
             row['steps']=[dict(name=n,status='completed',conclusion='skipped' if i else 'success') for i,n in enumerate(step_names)]
-        req=dict(releaseMode='approved-only',requestedBy='Founder',preserveLiveTargets=False,targets=['masterapp-portal'],cloudflareWebsiteRouting=False) if request is None else request
+        req=dict(releaseMode='approved-only',requestedBy='Founder',preserveLiveTargets=False,targets=[self.a.RELEASE_TARGETS[key]['releaseName'] for key in targets],cloudflareWebsiteRouting=False) if request is None else request
         def api(r,p,t):
             if p.startswith('actions/runs?'):return dict(workflow_runs=[self.run],total_count=1)
             if '/artifacts?' in p:return dict(artifacts=[self.ia,self.pa],total_count=2)
@@ -1656,7 +1657,7 @@ class FastTrackCompletionAuthorityTests(unittest.TestCase):
                 return dict(jobs=selected,total_count=len(selected))
             return self.run
         def git(*args,**kwargs):return self.sha+' '+'a'*40+' '+'d'*40 if 'rev-list' in args[0] else self.a.RELEASE_REQUEST_PATH+'\n'
-        with patch.object(self.a,'api_get',side_effect=api),patch.object(self.a,'fast_track_merged_source_proof'),patch.object(self.a,'fast_track_effective_baseline',return_value='a'*40),patch.object(self.a.subprocess,'check_output',side_effect=git),patch.object(self.a,'fast_track_scope',return_value=scope),patch.object(self.a,'_release_history_source',return_value=json.dumps(req)):
+        with patch.object(self.a,'api_get',side_effect=api),patch.object(self.a,'fast_track_merged_source_proof'),patch.object(self.a,'fast_track_effective_baseline',return_value=baseline or 'a'*40),patch.object(self.a.subprocess,'check_output',side_effect=git),patch.object(self.a,'fast_track_scope',return_value=scope),patch.object(self.a,'_release_history_source',return_value=json.dumps(req)):
             return self.a.fast_track_completion_original(self.repo,123,self.sha,'test-only')
     def test_original_requires_all_obligations_and_selected_targets(self):
         self.assertEqual(self.original_call()['targets'],['portal'])
@@ -1667,6 +1668,94 @@ class FastTrackCompletionAuthorityTests(unittest.TestCase):
             old=self.run[key];self.run[key]=value
             with self.subTest(key=key),self.assertRaises(ValueError):self.original_call()
             self.run[key]=old
+    def test_carried_baseline_requires_all_original_intents_and_returns_actual_base(self):
+        baseline='f'*40
+        targets=['portal','client','website','protect','parfait']
+        calls=[]
+        def material(repo,original,key,token):
+            self.assertEqual((repo,token),(self.repo,'test-only'))
+            self.assertEqual(original['baseRevision'],baseline)
+            self.assertEqual(original['targets'],targets)
+            calls.append(key)
+            return dict(intent=dict(self.intent,baseline=baseline,target=key))
+        with patch.object(self.a,'fast_track_completion_material',side_effect=material):
+            result=self.original_call(baseline=baseline,targets=targets)
+        self.assertEqual(result['baseRevision'],baseline)
+        self.assertEqual(calls,targets)
+        self.assertFalse(self.a._COMPLETION_BASELINE_PROVING.get())
+
+    def test_carried_baseline_uses_real_original_material_reader(self):
+        self.run['run_attempt']=1
+        self.intent['baseline']='f'*40
+        real=self.a.fast_track_completion_material
+        with patch.object(self.a,'_release_history_json',return_value=self.intent),patch.object(self.a,'component_upload_proven'),patch.object(self.a,'_release_job_log',return_value='fixture'),patch.object(self.a,'release_operation_history',side_effect=lambda *args,**kw:None if kw.get('phase')=='submitted' else self.intent),patch.object(self.a,'fast_track_completion_material',wraps=real) as material:
+            self.assertEqual(self.original_call(baseline='f'*40)['baseRevision'],'f'*40)
+            material.assert_called_once()
+            self.intent['baseline']='a'*40
+            with self.assertRaisesRegex(ValueError,'CARRIED_BASELINE_INTENT_MISMATCH'):
+                self.original_call(baseline='f'*40)
+        self.intent['baseline']='f'*40
+        with patch.object(self.a,'_release_history_json',return_value=self.intent),patch.object(self.a,'component_upload_proven'),patch.object(self.a,'_release_job_log',return_value='fixture'),patch.object(self.a,'release_operation_history',return_value=dict(self.intent,baseline='a'*40)):
+            with self.assertRaisesRegex(ValueError,'COMPETING_ORIGINAL_INTENT'):
+                self.original_call(baseline='f'*40)
+        self.assertFalse(self.a._COMPLETION_BASELINE_PROVING.get())
+
+    def test_carried_baseline_missing_expired_competing_or_mismatched_material_holds(self):
+        for problem in ['missing package','expired intent','competing original intent']:
+            with self.subTest(problem=problem), patch.object(self.a,'fast_track_completion_material',side_effect=ValueError(problem)):
+                with self.assertRaisesRegex(ValueError,problem):self.original_call(baseline='f'*40)
+            self.assertFalse(self.a._COMPLETION_BASELINE_PROVING.get())
+        with patch.object(self.a,'fast_track_completion_material',return_value=self.material_value):
+            with self.assertRaisesRegex(ValueError,'CARRIED_BASELINE_INTENT_MISMATCH'):
+                self.original_call(baseline='f'*40)
+
+    def test_carried_baseline_later_sibling_mismatch_is_not_partial_admission(self):
+        def material(repo,original,key,token):
+            return dict(intent=dict(self.intent,baseline='a'*40 if key=='website' else 'f'*40))
+        with patch.object(self.a,'fast_track_completion_material',side_effect=material):
+            with self.assertRaisesRegex(ValueError,'CARRIED_BASELINE_INTENT_MISMATCH'):
+                self.original_call(baseline='f'*40,targets=['portal','website'])
+
+    def test_carried_baseline_recursive_receipt_proof_fails_closed_and_resets(self):
+        def recursive(repo,original,key,token):
+            return self.a.fast_track_completion_original(repo,123,self.sha,token)
+        with patch.object(self.a,'fast_track_completion_material',side_effect=recursive):
+            with self.assertRaisesRegex(ValueError,'CARRIED_BASELINE_PROOF_CYCLE'):
+                self.original_call(baseline='f'*40)
+        self.assertFalse(self.a._COMPLETION_BASELINE_PROVING.get())
+        with patch.object(self.a,'fast_track_completion_material',return_value=dict(intent=dict(baseline='f'*40))):
+            self.assertEqual(self.original_call(baseline='f'*40)['baseRevision'],'f'*40)
+
+    def test_noncarried_baseline_preserves_existing_material_admission_order(self):
+        with patch.object(self.a,'fast_track_completion_material') as material:
+            self.assertEqual(self.original_call()['baseRevision'],'a'*40)
+        material.assert_not_called()
+
+    def test_carried_baseline_still_requires_original_selector_admission_and_schema(self):
+        for label in ['Select exact affected applications','Admit exact validated fast-track source',
+                      'Reconcile production schema before publication']:
+            real=self.a._completion_step
+            def step(job,*args,**kwargs):
+                if job['name']==label:raise ValueError('original prerequisite missing')
+                return real(job,*args,**kwargs)
+            with self.subTest(label=label),patch.object(self.a,'_completion_step',side_effect=step),patch.object(self.a,'fast_track_completion_material') as material:
+                with self.assertRaisesRegex(ValueError,'original prerequisite missing'):
+                    self.original_call(baseline='f'*40)
+                material.assert_not_called()
+
+    def test_supersession_keeps_its_separate_parent_baseline_contract(self):
+        request=dict(releaseMode='approved-only',requestedBy='Founder',preserveLiveTargets=False,
+            targets=['masterapp-portal'],cloudflareWebsiteRouting=False,protectSupersession={})
+        proof=dict(expectedReleaseParent='a'*40,originalRevision='f'*40)
+        with patch.object(self.a,'fast_track_protect_supersession',return_value=proof),patch.object(self.a,'fast_track_completion_material') as material:
+            self.assertEqual(self.original_call(request=request)['baseRevision'],'a'*40)
+            material.assert_not_called()
+
+    def test_carried_baseline_original_run_change_after_material_still_holds(self):
+        with patch.object(self.a,'fast_track_completion_material',return_value=dict(intent=dict(baseline='f'*40))),patch.object(self.a,'_completion_original_unchanged',side_effect=ValueError('original changed')):
+            with self.assertRaisesRegex(ValueError,'original changed'):self.original_call(baseline='f'*40)
+
+
     def receipt(self):
         proof=dict(originalRun=123,originalRunAttempt=3,originalPackageJobId=456,originalPackageAttempt=1,intentArtifactId=10,intentArtifactDigest=self.ia['digest'],packageArtifactId=11,
             packageArtifactDigest=self.pa['digest'],originalJobId=456,observer=self.observer,
