@@ -1,24 +1,32 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder requested activation and clean deployment checks after verification timeouts. This prerequisite promotes only reviewed completion-baseline proof and tests. No production SQL, app upload, restart, routing, voice activation or new grant is authorized by this tooling promotion.",
-  "purpose": "Allow the existing completion-only reconciler to authenticate original carried-baseline materials and record missing success receipts without repeating deployed work.",
-  "requestId": "shayla-completion-baseline-promotion-20261027-v1",
+  "authorization": "Founder requested completion of deployment verification. Promote only the reviewed completion-proof read reuse and tests; this tooling promotion authorizes no SQL, application upload, restart, routing, activation, access or spending change.",
+  "purpose": "Complete existing deployment receipts using bounded request-local evidence reuse, fresh authority checks and stage diagnostics, without repeating deployed work.",
+  "requestId": "shayla-completion-proof-reuse-promotion-20261027-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "a459eafddbbbda3b599209d28f82135fbc108605",
-    "sourceRevision": "c15539ce159c86c7d7bac092a841a795b27b16d5",
+    "baseRevision": "90ed2c5f7eebe049abbfc839864aa45719e32bbc",
+    "sourceRevision": "0d0b6374fada12bfbc6d842a6acd4bba4e76e1a9",
     "files": {
-      "scripts/validation-resume.py": {
+      "scripts/deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "a4d9faf397190df0299e5763baa34dc00a6442a4"
+        "blob": "4c6ea20cb70400ececd528da00404efb58fabb68"
       },
-      "scripts/test-release-policy.py": {
+      "scripts/release-operation-evidence.py": {
         "mode": "100644",
-        "blob": "95c32c50d4e793b3530cd8afc59aa161634e991a"
+        "blob": "c36c0564058a6f9cd68d2e10d9585db3da6e29f4"
+      },
+      "scripts/test-deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "b94fda702752effe2979f95ee941f2f6ded50497"
+      },
+      "scripts/test-release-operation-evidence.py": {
+        "mode": "100644",
+        "blob": "35f463c6a6493e55f17f0ba29f3334172e2a0fb1"
       }
     }
   }
