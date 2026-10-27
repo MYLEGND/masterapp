@@ -7279,7 +7279,9 @@ class RecoveryCompleteHistoryTests(unittest.TestCase):
 class RetainedRecoveryDiscoveryTests(unittest.TestCase):
     def setUp(self):
         self.before='a'*40; self.revision='b'*40; self.parent='c'*40
-        self.prior=dict(id=71,head_sha=self.before,status='completed',conclusion='failure',run_attempt=1)
+        self.prior=dict(id=71,head_sha=self.before,status='completed',conclusion='failure',run_attempt=1,
+            head_branch=m.FAST_TRACK_PR_BASE,event='push',
+            path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,head_repository=dict(full_name='owner/repo'))
         self.name=m.fast_track_recovery_summary_name(71,self.before)
         self.artifacts=[dict(id=101,name=self.name,expired=False)]
         self.jobs=[dict(name='Select exact affected applications',status='completed',conclusion='success'),
@@ -7293,6 +7295,10 @@ class RetainedRecoveryDiscoveryTests(unittest.TestCase):
             return dict(total_count=len(self.artifacts) if self.count is None else self.count,artifacts=self.artifacts)
         if path.startswith('actions/workflows/'):
             return dict(total_count=0,workflow_runs=[])
+        if path=='actions/runs/71':
+            return dict(self.prior)
+        if path=='actions/runs/71/artifacts?per_page=100':
+            return dict(total_count=0,artifacts=[])
         if path=='actions/runs/71/jobs?filter=latest&per_page=100':
             return dict(total_count=len(self.jobs),jobs=self.jobs)
         if path==f'commits/{self.before}/pulls?per_page=100':
@@ -7303,6 +7309,7 @@ class RetainedRecoveryDiscoveryTests(unittest.TestCase):
         from contextlib import ExitStack
         with ExitStack() as stack:
             stack.enter_context(patch.object(m,'api_get',side_effect=self.api))
+            stack.enter_context(patch.object(m,'_api_get_uncached',side_effect=self.api))
             stack.enter_context(patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)))
             stack.enter_context(patch.object(m.subprocess,'check_output',return_value=f'{self.before} {self.parent} {self.revision}'))
             stack.enter_context(patch.object(m,'fast_track_historical_producers',side_effect=lambda repo,head,token:[self.prior] if head==self.before else []))
@@ -7329,6 +7336,33 @@ class RetainedRecoveryDiscoveryTests(unittest.TestCase):
         for job in self.jobs[1:]:job['conclusion']='skipped'
         self.assertEqual(self.invoke(),self.parent)
         self.validator.assert_not_called()
+        self.assertEqual(self.calls.count('actions/runs/71'),2)
+        self.assertIn('actions/runs/71/artifacts?per_page=100',self.calls)
+    def test_original_inventory_gap_or_foreign_owner_cannot_clear_prewrite_baseline(self):
+        original=self.api
+        for inventory in (dict(total_count=1,artifacts=[]),
+            dict(total_count=1,artifacts=[dict(id=102,name='unrelated',expired=False,
+                workflow_run=dict(id=72,head_sha=self.before))])):
+            with self.subTest(inventory=inventory):
+                self.setUp();self.artifacts=[]
+                def api(repo,path,token):
+                    if path=='actions/runs/71/artifacts?per_page=100':return inventory
+                    return original(repo,path,token)
+                self.api=api
+                with self.assertRaisesRegex(ValueError,'INVENTORY_INCOMPLETE|DISCOVERY_SCOPE_UNPROVEN'):
+                    self.invoke()
+                self.validator.assert_not_called()
+    def test_original_rerun_during_discovery_cannot_clear_prewrite_baseline(self):
+        self.artifacts=[];original=self.api
+        def api(repo,path,token):
+            result=original(repo,path,token)
+            if path=='actions/runs/71' and self.calls.count(path)==2:
+                return dict(result,run_attempt=2,status='in_progress',conclusion=None)
+            return result
+        self.api=api
+        with self.assertRaisesRegex(ValueError,'DISCOVERY_ORIGINAL_CHANGED'):self.invoke()
+        self.validator.assert_not_called()
+        self.assertEqual(self.calls.count('actions/runs/71'),2)
     def test_malformed_inventory_fails_closed(self):
         for rows,count in (([None],1),([self.artifacts[0]]*2,2),(self.artifacts,2)):
             with self.subTest(rows=rows,count=count):
@@ -7348,7 +7382,7 @@ class RetainedRecoveryDiscoveryTests(unittest.TestCase):
                 return dict(total_count=1,workflow_runs=[dict(id=81,head_branch=m.FAST_TRACK_PR_BASE,
                     path='.github/workflows/'+m.FAST_TRACK_COMPLETION_WORKFLOW)])
             if path=='actions/runs/81/artifacts?per_page=100':
-                return dict(total_count=1,artifacts=[dict(id=102,name='legend-release-completion-fixture')])
+                return dict(total_count=1,artifacts=[dict(id=102,name=m.fast_track_completion_summary_name(71,self.before))])
             return original(repo,path,token)
         self.api=api
         with patch.object(m,'_release_history_json',return_value=dict(applicationRevision=self.before)):

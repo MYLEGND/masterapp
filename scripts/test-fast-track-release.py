@@ -887,6 +887,10 @@ class AdmissionRepairScopeTests(unittest.TestCase):
                 return dict(total_count=0, artifacts=[])
             if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
                 return dict(total_count=0, workflow_runs=[])
+            if path == 'actions/runs/7':
+                return dict(prior)
+            if path == 'actions/runs/7/artifacts?per_page=100':
+                return dict(total_count=0, artifacts=[])
             if path.startswith('actions/runs?'):
                 runs=[prior,dict(prior,id=8)] if duplicate else [prior]
                 return dict(total_count=len(runs),workflow_runs=runs)
@@ -896,6 +900,7 @@ class AdmissionRepairScopeTests(unittest.TestCase):
             raise AssertionError(path)
         with patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='fixture'), \
              patch.object(authority,'api_get',side_effect=get), \
+             patch.object(authority,'_api_get_uncached',side_effect=get), \
              patch.object(authority,'fast_track_unpublished_apps_with_migration_intent',return_value=False), \
              patch.object(authority.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
              patch.object(authority.subprocess,'check_output',return_value=before+' '+original+' '+head):
@@ -917,6 +922,11 @@ class AdmissionRepairScopeTests(unittest.TestCase):
               dict(name='Reconcile production schema before publication',conclusion='skipped'),
               dict(name='Affected App Deploy — target',conclusion='skipped'),
               dict(name='Publish verified website routing',conclusion='skipped')]
+        rows=[dict(id=index+1,run_attempt=1,
+            head_sha=candidate,head_branch=authority.FAST_TRACK_PR_BASE,event='push',
+            path='.github/workflows/'+authority.FAST_TRACK_RELEASE_WORKFLOW,
+            head_repository={'full_name':'owner/repo'},status='completed',conclusion='failure')
+            for index,candidate in enumerate(heads)]
         def get(repo,path,token):
             # This predecessor fixture has no completion-observer runs.
             summaries = {authority.fast_track_recovery_summary_name(index + 1, candidate)
@@ -925,17 +935,19 @@ class AdmissionRepairScopeTests(unittest.TestCase):
                 return dict(total_count=0, artifacts=[])
             if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
                 return dict(total_count=0, workflow_runs=[])
+            for row in rows:
+                if path == f"actions/runs/{row['id']}":
+                    return dict(row)
+                if path == f"actions/runs/{row['id']}/artifacts?per_page=100":
+                    return dict(total_count=0, artifacts=[])
             if path.startswith('actions/runs?'):
-                rows=[dict(id=index+1,run_attempt=1,
-                    head_sha=candidate,head_branch=authority.FAST_TRACK_PR_BASE,event='push',
-                    path='.github/workflows/'+authority.FAST_TRACK_RELEASE_WORKFLOW,
-                    head_repository={'full_name':'owner/repo'},status='completed',conclusion='failure')
-                    for index,candidate in enumerate(heads)]
                 return dict(total_count=len(rows),workflow_runs=rows)
             if '/jobs?' in path:return dict(total_count=len(jobs),jobs=jobs)
-            candidate=path.split('/')[1]
-            return [dict(merged_at='time',merge_commit_sha=candidate,base=dict(ref=authority.FAST_TRACK_PR_BASE),
-                head=dict(repo=dict(full_name='owner/repo')))]
+            if path.startswith('commits/'):
+                candidate=path.split('/')[1]
+                return [dict(merged_at='time',merge_commit_sha=candidate,base=dict(ref=authority.FAST_TRACK_PR_BASE),
+                    head=dict(repo=dict(full_name='owner/repo')))]
+            raise AssertionError(path)
         def parents(args,**kwargs):
             candidate=args[-1]
             if candidate==original:return original
@@ -943,6 +955,7 @@ class AdmissionRepairScopeTests(unittest.TestCase):
             return candidate+' '+(heads[i+1] if i+1<len(heads) else original)+' '+head
         with patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='fixture'), \
              patch.object(authority,'api_get',side_effect=get), \
+             patch.object(authority,'_api_get_uncached',side_effect=get), \
              patch.object(authority.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
              patch.object(authority.subprocess,'check_output',side_effect=parents):
             self.assertEqual(original,authority.fast_track_effective_baseline(heads[0],head))
@@ -1937,6 +1950,8 @@ class AllAttemptPrewriteScopeTests(unittest.TestCase):
             # This predecessor fixture has no completion-observer runs.
             if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
                 return dict(total_count=0, workflow_runs=[])
+            if path == f"actions/runs/{self.run['id']}":
+                return dict(self.run)
             if path.startswith('actions/runs?'):
                 rows = [self.run]
                 return dict(total_count=len(rows), workflow_runs=rows)
@@ -1952,6 +1967,7 @@ class AllAttemptPrewriteScopeTests(unittest.TestCase):
             raise AssertionError(path)
         with patch.dict(os.environ, GITHUB_REPOSITORY='owner/repo', GITHUB_TOKEN='fixture'), \
              patch.object(authority, 'api_get', side_effect=get), \
+             patch.object(authority, '_api_get_uncached', side_effect=get), \
              patch.object(authority, '_release_history_source', return_value='canonical'), \
              patch.object(authority, 'git_show_file', return_value='canonical'), \
              patch.object(authority, 'named_step_blocks', return_value={s['name']: 'body' for s in self.steps}), \
@@ -2211,6 +2227,10 @@ class CurrentObservationPrewriteTests(unittest.TestCase):
                 return dict(total_count=0, artifacts=[])
             if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
                 return dict(total_count=0, workflow_runs=[])
+            if path == f"actions/runs/{self.run['id']}":
+                return dict(self.run)
+            if path == f"actions/runs/{self.run['id']}/artifacts?per_page=100":
+                return dict(total_count=0, artifacts=[])
             if path.startswith('actions/runs?'):
                 rows=[self.run]
                 return dict(total_count=len(rows),workflow_runs=rows)
@@ -2221,6 +2241,7 @@ class CurrentObservationPrewriteTests(unittest.TestCase):
             raise AssertionError(path)
         with patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='fixture'), \
              patch.object(authority,'api_get',side_effect=api), \
+             patch.object(authority,'_api_get_uncached',side_effect=api), \
              patch.object(authority,'fast_track_unpublished_apps_with_migration_intent',return_value=False), \
              patch.object(authority,'_release_history_source',side_effect=lambda repo,sha,path,token:self.sources[path]), \
              patch.object(authority,'_release_job_log',side_effect=lambda *args:self.log()), \
@@ -2252,7 +2273,8 @@ class UnpublishedAppsWithMigrationIntentTests(unittest.TestCase):
             rows[2]['steps'] = [dict(name=self.mutation,status='completed',conclusion='failure' if attempt==1 else 'skipped'),
                                dict(name=self.no_sql,status='completed',conclusion='skipped')]
             self.jobs[attempt] = dict(jobs=rows,total_count=5)
-        self.artifact = dict(id=801,name='legend-release-child-intent-'+'b'*64,expired=False)
+        self.artifact = dict(id=801,name='legend-release-child-intent-'+'b'*64,expired=False,
+            workflow_run=dict(id=self.run['id'],head_sha=self.run['head_sha']))
         self.inventory = dict(artifacts=[self.artifact],total_count=1)
         self.record = dict(child='migrations',producingAttempt=1,producingRun=701,phase='intent',
             executionAuthority='a'*40,applicationRevision='a'*40,partitionIdentity='c'*64)
@@ -2264,6 +2286,7 @@ class UnpublishedAppsWithMigrationIntentTests(unittest.TestCase):
             return dict(total_count=0, artifacts=[])
         if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
             return dict(total_count=0, workflow_runs=[])
+        if path == f"actions/runs/{self.run['id']}":return dict(self.run)
         if '/attempts/' in path:return self.jobs[int(path.split('/attempts/')[1].split('/')[0])]
         if '/artifacts?' in path:return self.inventory
         if path == 'actions/runs?branch=Legend%2Ffast-track-release&per_page=100':
@@ -2283,6 +2306,7 @@ class UnpublishedAppsWithMigrationIntentTests(unittest.TestCase):
             ('git_show_file',dict(return_value='immutable workflow')),
             ('named_step_blocks',dict(return_value={self.mutation:'block',self.no_sql:'block'})),
             ('api_get',dict(side_effect=self.api)),
+            ('_api_get_uncached',dict(side_effect=self.api)),
             ('_release_history_json',dict(return_value=self.record)),
             ('_validate_child_generation',dict(return_value='b'*64))]:
             stack.enter_context(patch.object(authority,name,**kwargs))
