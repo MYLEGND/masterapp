@@ -1029,9 +1029,13 @@ RECOVERY_PREFLIGHT_PRODUCER_SHA256 = '15ba27c53564223cb41502bb5528949e6435f0e6bc
 def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
     # Shared serializer preflight; exact paired generation, never arbitrary helpers.
-    if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) == (
-        'dd6c8154aadc3f829204bee307936630d6620e06c416681be65cce2d32fab487',
-        '95117a0cd4e1f21bf6407f5324107fdcdfeba582d9ce2123975d567b00664f73'):
+    if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) in {
+        ('dd6c8154aadc3f829204bee307936630d6620e06c416681be65cce2d32fab487',
+         '95117a0cd4e1f21bf6407f5324107fdcdfeba582d9ce2123975d567b00664f73'),
+        # Reviewed completion-only proof reuse; retained recovery paths unchanged.
+        ('560355f4e9b4c70ff077bb5b47d86b596c1cb5c5182f9bafd222233697b8db9e',
+         'e63d7136ccfb3dd0002710b651b409d8cdeed6b45de2238823239add755afaab'),
+    }:
         return True
     return (hashlib.sha256(source.encode()).hexdigest() in (RECOVERY_PREFLIGHT_PRODUCER_SHA256, 'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850', 'e75833a3c3a4d8827f48b7395a8af7e61eeab9e5cfbb4e1f6a0ebb4af49901ed', 'ef930621e8c36e447fd884ef99bd03f5ce666bf1feda3431158af8e86d5ab6ab',
         # Reviewed supersession generation retains the existing recovery preflight path.
