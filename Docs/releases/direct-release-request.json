@@ -1,25 +1,16 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized completion and deployment of the existing Shayla canonical repair. Promote only the two independently reviewed migration-history lookup and regression-test files. This nonpublishing tool promotion authorizes no production SQL mutation, application upload, restart, routing, provider call, credential change, activation, access or spending change. Preserve complete evidence, original attempt classification, current execution fences, the unchanged lookup deadline and protected merge admission.",
-  "purpose": "Remove proven redundant terminal multi-attempt job-inventory reads within the canonical migration-history lookup, preserving fail-closed completeness and fresh producer identity verification.",
-  "requestId": "shayla-migration-history-lookup-promotion-20261027-v1",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "Founder explicitly authorized deployment of the reviewed Shayla candidate with calls paused, followed by frontend journey verification before activation. Preserve the accepted application source and successful checks. This is a fresh forward release after the original prewrite evidence-lookup failure, not a retry of completed SQL or application operations. It does not apply operating configuration, activate calls, change credentials, privacy, provider permissions or spending.",
+  "purpose": "Deploy the unchanged accepted canonical receptionist application bytes through the existing protected release path using the independently promoted history-lookup correction. Recompute affected scope and obtain fresh source admission, database, recovery and publication evidence. Preserve original failed and successful receipts under their original identities.",
+  "requestId": "shayla-canonical-ui-paused-forward-deployment-20261027-v6",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait",
+    "masterapp-website"
+  ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "cbc94de2f33baeecce331f0184522686b658c58f",
-    "sourceRevision": "95dbb4b63b557d2f03b1ef2eb47f5f4ddd914125",
-    "files": {
-      "scripts/test-validation-resume.py": {
-        "mode": "100644",
-        "blob": "dc41cddde2d956c6d36df11780d4eaa14db0fa2d"
-      },
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "0fdbbee1db4db88fa14167541ea5534e4d61dedf"
-      }
-    }
-  }
+  "preserveLiveTargets": false
 }
