@@ -1257,6 +1257,40 @@ class TrustedToolPromotionPolicyTests(unittest.TestCase):
             with self.subTest(path=path),self.assertRaisesRegex(ValueError,'SCOPE_UNPROVEN'):
                 self.invoke(fixture_kw=dict(path=path))
 
+    def test_browser_observer_additions_require_exact_absence_and_source_binding(self):
+        paths = ('scripts/MigrationReleaseProbe/CandidateContract.Browser.cs',
+                 'scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.Browser.cs')
+        def added(args, result):
+            if args[1] == 'diff': result.stdout = result.stdout.replace('M\0', 'A\0', 1)
+            if args[1] == 'ls-tree' and args[3] == 'a'*40 and args[-1] in paths: result.stdout = ''
+            return result
+        for path in paths:
+            with self.subTest(path=path):
+                proof = self.invoke(fixture_kw=dict(path=path), git_mutate=added)
+                self.assertFalse(proof['productionEligible']); self.assertFalse(proof['authorizesMutation'])
+                self.assertEqual(set(proof['files']), {path})
+            for defect, expected in (('present', 'ADDITION_UNPROVEN'), ('executable', 'ADDITION_UNPROVEN'),
+                                     ('source', 'BLOB_UNPROVEN'), ('delete', 'SCOPE_UNPROVEN'),
+                                     ('rename', 'SCOPE_UNPROVEN'), ('failed_absence', 'IMMUTABLE_SOURCE_UNAVAILABLE')):
+                def mutate(args, result):
+                    result = added(args, result)
+                    if defect == 'present' and args[1] == 'ls-tree' and args[3] == 'a'*40 and args[-1] == path:
+                        result.stdout = '100644 blob ' + 'd'*40 + '\t' + path + '\0'
+                    if defect == 'executable' and args[1] == 'ls-tree': result.stdout = result.stdout.replace('100644', '100755')
+                    if defect == 'source' and args[1] == 'ls-tree' and args[3] == 'c'*40: result.stdout = result.stdout.replace('d'*40, 'e'*40)
+                    if defect in ('delete', 'rename') and args[1] == 'diff': result.stdout = result.stdout.replace('A\0', ('D' if defect == 'delete' else 'R100') + '\0', 1)
+                    if defect == 'failed_absence' and args[1] == 'ls-tree' and args[3] == 'a'*40 and args[-1] == path: result.returncode = 1
+                    return result
+                def request(req, admission, previous):
+                    if defect == 'executable': req['trustedToolPromotion']['files'][path]['mode'] = '100755'
+                with self.subTest(path=path, defect=defect), self.assertRaisesRegex(ValueError, expected):
+                    self.invoke(fixture_kw=dict(path=path), git_mutate=mutate, mutate=request)
+        for neighbor in ('scripts/MigrationReleaseProbe/CandidateContract.BrowserExtra.cs',
+                         'scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.Unreviewed.cs',
+                         'Infrastructure/Migrations/UnreviewedBrowser.cs'):
+            with self.subTest(path=neighbor), self.assertRaisesRegex(ValueError, 'SCOPE_UNPROVEN'):
+                self.invoke(fixture_kw=dict(path=neighbor), git_mutate=added)
+
     def test_schema_tool_promotion_still_rejects_added_path_and_unbound_source(self):
         def added(args,result):
             if args[1]=='diff':result.stdout=result.stdout.replace('M\0','A\0',1)

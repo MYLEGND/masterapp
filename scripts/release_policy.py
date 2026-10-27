@@ -79,6 +79,15 @@ TRUSTED_TOOL_PATHS = frozenset({
 })
 
 
+# The browser observer splits exact reviewed transition and rehearsal owners into
+# two new source files. Only these additions may cross the nonpublishing boundary;
+# candidate application/migration files and arbitrary neighboring tools remain excluded.
+TRUSTED_ADDED_TOOL_PATHS = frozenset({
+    'scripts/MigrationReleaseProbe/CandidateContract.Browser.cs',
+    'scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.Browser.cs',
+})
+
+
 def tool_promotion_requested(sha):
     # Presence, including null/malformed/stale values, must never fall through
     # into normal publication. The exact validator owns positive admission.
@@ -121,8 +130,8 @@ def trusted_tool_promotion(before, revision, admission):
         raise ValueError('TRUSTED_TOOL_PROMOTION_DIFF_UNPROVEN')
     rows = list(zip(changed[:-1:2], changed[1:-1:2]))
     files = value.get('files')
-    if (not isinstance(files, dict) or not files or not set(files) <= TRUSTED_TOOL_PATHS
-        or any(status != 'M' for status, path in rows)
+    if (not isinstance(files, dict) or not files or not set(files) <= TRUSTED_TOOL_PATHS | TRUSTED_ADDED_TOOL_PATHS
+        or any(status != 'M' and not (status == 'A' and path in TRUSTED_ADDED_TOOL_PATHS) for status, path in rows)
         or len({path for status, path in rows}) != len(rows)
         or {path for status, path in rows} != set(files) | {REQUEST}):
         raise ValueError('TRUSTED_TOOL_PROMOTION_SCOPE_UNPROVEN')
@@ -137,8 +146,14 @@ def trusted_tool_promotion(before, revision, admission):
         return dict(mode=mode, blob=blob)
     for path, expected in files.items():
         if (not isinstance(expected, dict) or set(expected) != {'mode', 'blob'}
-            or expected != entry(revision, path) or expected != entry(value['sourceRevision'], path)
-            or expected['mode'] != entry(before, path)['mode']):
+            or expected != entry(revision, path) or expected != entry(value['sourceRevision'], path)):
+            raise ValueError('TRUSTED_TOOL_PROMOTION_BLOB_UNPROVEN')
+        if dict((path, status) for status, path in rows)[path] == 'A':
+            # Positive absence at the exact first parent, not a failed tree read.
+            # No executable, symlink, rename, overwrite or mode change is an addition.
+            if expected['mode'] != '100644' or git('ls-tree', '-z', before, '--', path) != '':
+                raise ValueError('TRUSTED_TOOL_PROMOTION_ADDITION_UNPROVEN')
+        elif expected['mode'] != entry(before, path)['mode']:
             raise ValueError('TRUSTED_TOOL_PROMOTION_BLOB_UNPROVEN')
     # Even this shared application project has a single permitted tool-build
     # prerequisite. No runtime/source/project graph change is hidden as tooling.

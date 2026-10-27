@@ -1,48 +1,72 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder requested hardening of the Protect deployment failure and one authoritative recovery contract for all apps. This candidate prepares nonpublishing tooling promotion; merge remains subject to separate Founder approval.",
-  "purpose": "Use the canonical artifact validator for all-target recovery preflight, preserve receipt authentication and reject serializer drift before any deployment worker starts.",
-  "requestId": "all-app-recovery-contract-hardening-20261026-v1",
+  "authorization": "Founder explicitly instructed completion and deployment of the existing Shayla implementation. This reviewed prerequisite promotes only canonical validation tools; it authorizes no production SQL, application publication, routing, calls or booking activation. Required source validations and canonical merge admission remain mandatory.",
+  "purpose": "Promote the exact reviewed browser migration observer, rehearsal and release authority for subsequent paused Shayla deployment.",
+  "requestId": "shayla-browser-observer-promotion-20261026-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "b77beb971c47b6b74b08505105ae07c45b3c5c77",
-    "sourceRevision": "ffb25afd8c29f3c794b4259e35cfa38d7cfc76ab",
+    "baseRevision": "76d4735496c5dc62fed17b98b3e5f15d04a399b6",
+    "sourceRevision": "0278fcc06cfb490bfe70ed59cbefcc044678b4f3",
     "files": {
-      "scripts/deploy-approved-app.py": {
+      "scripts/MigrationReleaseProbe/CandidateContract.Browser.cs": {
         "mode": "100644",
-        "blob": "910d9ee7d02e341dad3bd9ea11df5296ec1c8a5b"
+        "blob": "77c8e718cf57f2a452e7173be7d4a8d73f33b3e2"
       },
-      "scripts/release-artifacts/test-transport.cjs": {
+      "scripts/MigrationReleaseProbe/CandidateContract.Structures.cs": {
         "mode": "100644",
-        "blob": "095c7a8ff8bc065da2e8cf12de66e92798204a38"
+        "blob": "462d61528c5f36f42cdabb7dbb4b6b5744f59f75"
       },
-      "scripts/release-artifacts/transport.cjs": {
+      "scripts/MigrationReleaseProbe/CandidateContract.cs": {
         "mode": "100644",
-        "blob": "5bc45a7e611fcfd97cc3589198ae665c99de6b6f"
+        "blob": "5451e71e63e5dafbae4644f546a5d6355d421b5c"
       },
-      "scripts/release-operation-evidence.py": {
+      "scripts/MigrationReleaseProbe/Program.cs": {
         "mode": "100644",
-        "blob": "1df475ad283044c0830149692c9698bc936d9f63"
+        "blob": "3d5306170f3e1d1e92b29af3f765662896d6d9f2"
       },
-      "scripts/test-deploy-approved-app.py": {
+      "scripts/MigrationReleaseProbe/Rehearsal/CandidateContractTests.cs": {
         "mode": "100644",
-        "blob": "bd6eb4e638ead0a494aae79598bf5248f7768b81"
+        "blob": "d7912e85f9b6fd5d5673126422da9ab90f36500b"
       },
-      "scripts/test-release-operation-evidence.py": {
+      "scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.Browser.cs": {
         "mode": "100644",
-        "blob": "99171344b5ae90be142899761ec8395f5b3ea0df"
+        "blob": "3d9513f1e46e6f95dc1ab65b4e939693e3288d56"
+      },
+      "scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.cs": {
+        "mode": "100644",
+        "blob": "de9e52ad1e5c51b151521c9a1e91f58e2175fa59"
+      },
+      "scripts/migration-probe-package.py": {
+        "mode": "100644",
+        "blob": "51a4061f9f79ee54fd7b90e1655bd0e02fe1e936"
+      },
+      "scripts/release_policy.py": {
+        "mode": "100644",
+        "blob": "1554f0d9d90e59e8662707b733c927ded25ac397"
+      },
+      "scripts/test-fast-track-release.py": {
+        "mode": "100644",
+        "blob": "bc7b5478bdddc2f13312d5ac5c31bc7d0170ab46"
+      },
+      "scripts/test-migration-probe-package.py": {
+        "mode": "100644",
+        "blob": "7f0b9c398d26994d1611fe77b59bf3acb11a95f9"
+      },
+      "scripts/test-release-policy.py": {
+        "mode": "100644",
+        "blob": "bab022c28a925f2a8e383ad0b2d190ec8acb9533"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "e2be2e31f2a29c91ad86eb96ce331500fd680b14"
+        "blob": "155b875c5af906c3caa76f1b849e5eef836c5d40"
       },
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "200f9089a41c9dc223b9869a5a988c72ad29a33e"
+        "blob": "6bf31768940986ce99177d05bcc3a4d615c57bb9"
       }
     }
   }

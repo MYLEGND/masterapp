@@ -5551,6 +5551,35 @@ class HistoricalParallelVerifierTests(unittest.TestCase):
             self.prove(workflow=self.workflow.replace('scripts/release-package.py verify', 'scripts/release-package.py inspect'))
 
 
+class ReviewedBrowserContractTests(unittest.TestCase):
+    def test_browser_extension_requires_reviewed_closure_and_inherited_tools(self):
+        import copy
+        prior = dict(schemaVersion=3, migrations=[dict(id='20261026210738_AddReceptionistManagement', supported=True)])
+        entry = dict(id='20261026223148_ReceptionistBrowserCreation', supported=True)
+        contract = dict(schemaVersion=3, migrations=[*prior['migrations'], entry])
+        trusted = dict(runtimeIdentity='a'*64, toolIdentity='c'*64, executionIdentity='d'*64)
+        current = dict(trusted, runtimeIdentity='b'*64)
+        def prove(value=contract, base=prior):
+            return m.reviewed_browser_contract_extension('e'*40, 'f'*40, value, base, current, trusted)
+        self.assertFalse(prove())  # Unreviewed closure remains closed in production.
+        digest=hashlib.sha256(json.dumps(entry,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        with patch.multiple(m, REVIEWED_BROWSER_RUNTIME_PAIRS=frozenset({('a'*64,'b'*64)}), REVIEWED_BROWSER_ENTRY=digest), \
+             patch.object(m.subprocess, 'run', return_value=SimpleNamespace(returncode=0)):
+            self.assertTrue(prove())
+            for field in ('toolIdentity','executionIdentity','runtimeIdentity'):
+                saved=current[field]; current[field]='0'*64
+                self.assertFalse(prove()); current[field]=saved
+            for field in ('supported','id'):
+                bad=copy.deepcopy(contract); bad['migrations'][-1][field]=False
+                self.assertFalse(prove(bad))
+            bad=copy.deepcopy(contract); bad['migrations'][0]['supported']=False
+            self.assertFalse(prove(bad))
+            self.assertFalse(prove(dict(contract, migrations=contract['migrations'][:-1])))
+            self.assertFalse(prove(dict(contract, migrations=contract['migrations'][::-1])))
+            with patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=1)):
+                self.assertFalse(prove())
+
+
 class ReviewedReceptionistContractTests(unittest.TestCase):
     def setUp(self):
         import copy
