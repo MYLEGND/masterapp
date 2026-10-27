@@ -1695,6 +1695,63 @@ def attested_fast_track_router_prewrite(repository, run, jobs, token):
         return False
 
 
+def _fast_track_child_carried_forward(repository, run, attempt, job, prior, token):
+    """Recognize an API-carried successful child, never infer nonentry from time alone.
+
+    Only earlier executions already retained by this inventory are candidates.
+    Their original receipts remain mandatory in release_child_first_write_proven.
+    A new job ID or run_attempt on a copied row does not create a new SQL write.
+    """
+    if type(run.get('workflow_id')) is not int or run['workflow_id'] < 1:
+        return False
+    if attempt <= 1 or job.get('status') != 'completed' or job.get('conclusion') != 'success':
+        return False
+    matches = [(old_attempt, old_job) for _, old_attempt, old_job, _ in prior
+               if old_attempt < attempt and all(old_job.get(key) == job.get(key)
+                   for key in ('name', 'head_sha', 'run_id', 'status', 'conclusion',
+                               'started_at', 'completed_at', 'steps', 'runner_id', 'runner_name'))]
+    if len(matches) != 1:
+        return False
+    original_attempt, original = matches[0]
+    for row, expected in ((original, original_attempt), (job, attempt)):
+        if (type(row.get('id')) is not int or row['id'] < 1
+                or row.get('run_id') != run['id'] or row.get('head_sha') != run['head_sha']
+                or type(row.get('run_attempt')) is not int or row['run_attempt'] != expected):
+            return False
+    if (type(job.get('runner_id')) is not int or job['runner_id'] < 1
+            or not isinstance(job.get('runner_name'), str) or not job['runner_name']
+            or not isinstance(job.get('steps'), list) or not job['steps']
+            or any(not isinstance(step, dict) or step.get('status') != 'completed'
+                   for step in job['steps'])):
+        return False
+    if original['id'] == job['id']:
+        return False
+    details = []
+    for expected in (original_attempt, attempt):
+        detail = api_get(repository, f"actions/runs/{run['id']}/attempts/{expected}", token)
+        if (not is_fast_track_producer(repository, detail)
+                or detail.get('id') != run['id'] or detail.get('head_sha') != run['head_sha']
+                or detail.get('workflow_id') != run.get('workflow_id')
+                or type(detail.get('run_attempt')) is not int or detail['run_attempt'] != expected
+                or detail.get('status') != 'completed'):
+            return False
+        details.append(detail)
+    try:
+        original_start, later_start = (_completion_time(row['run_started_at']) for row in details)
+        started, completed, created = (_completion_time(job[key])
+                                      for key in ('started_at', 'completed_at', 'created_at'))
+        original_created = _completion_time(original['created_at'])
+        if not original_start <= original_created <= started <= completed < later_start <= created:
+            return False
+        if any(not started <= _completion_time(step['started_at'])
+               <= _completion_time(step['completed_at']) <= completed for step in job['steps']):
+            return False
+    except (KeyError, TypeError, ValueError):
+        return False
+    original_log = _release_job_log(repository, original['id'], token)
+    return bool(original_log) and original_log == _release_job_log(repository, job['id'], token)
+
+
 def fast_track_child_attempts(repository, child, token, *, current_run=None, current_attempt=None):
     if child not in FAST_TRACK_CHILD_STEPS:
         return []
@@ -1738,6 +1795,8 @@ def fast_track_child_attempts(repository, child, token, *, current_run=None, cur
                 raise RuntimeError('FAST_TRACK_CHILD_STEP_UNPROVEN')
             if steps[0].get('conclusion') == 'skipped' or steps[0].get('status') == 'queued':
                 continue
+            if child == 'migrations' and _fast_track_child_carried_forward(repository, run, attempt, job, attempts, token):
+                continue  # Original execution and its mandatory receipt checks are retained.
             if child == 'migrations' and attested_fast_track_migration_prewrite(
                     repository, run, jobs, token, attempt=attempt,
                     current_run=current_run, current_attempt=current_attempt):
