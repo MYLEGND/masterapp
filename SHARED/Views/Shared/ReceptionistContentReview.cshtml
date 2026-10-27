@@ -40,9 +40,9 @@
 }
 @if (preview is not null)
 {
-<p>Saved version @preview.DraftVersion; accepted baseline version @preview.BaselineVersion.</p>
+<p>Saved version @preview.DraftVersion. The reference content below is for comparison and does not establish current acceptance.</p>
 @if (preview.IsRecovery)
-{ <p role="status">Recovery review: there is no accepted operating configuration selected. This comparison uses historical acceptance. Applying requires the protected settings to match that acceptance and keeps calls paused.</p> }
+{ <p role="status">Recovery review: there is no accepted operating configuration selected. Applying still requires an accepted baseline, matching protected settings and content review, and keeps calls paused.</p> }
 <p>Review the AI introduction, approved answers, qualification wording and every service destination. Applying content keeps calls paused. It does not verify call quality, extend a test window, enable a provider, or authorize public routing.</p>
 @if (preview.BlockReason is not null) { <p role="status">@preview.BlockReason</p> }
 }
@@ -50,7 +50,7 @@
 @if (preview is not null)
 {
 <section class="dashboard-surface-panel p-3 mb-4">
-@foreach (var item in new[] { (Title: "Saved draft", Content: preview.Draft), (Title: "Previously applied content", Content: preview.Baseline) })
+@foreach (var item in new[] { (Title: "Saved draft", Content: preview.Draft), (Title: "Reference content", Content: preview.Baseline) })
 {
     <details class="dashboard-data-surface p-3 mb-3" open="@(item.Title == "Saved draft")">
         <summary>@item.Title</summary>
