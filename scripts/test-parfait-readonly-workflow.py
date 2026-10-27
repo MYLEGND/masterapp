@@ -192,6 +192,22 @@ class TrustedContractExecutionTests(unittest.TestCase):
         self.assertEqual(1,len(self.commands))
         self.assertFalse((self.root/'trusted-contract-proof.json').exists())
 
+    def test_browser_rule_requires_exact_independent_observer_rule(self):
+        import json
+        self.proof['rule']='approved-prefix-reviewed-browser-entry'
+        for wrong in ('approved-definitions-exact', 'approved-prefix-reviewed-receptionist-entry',
+                      'approved-prefix-reviewed-management-entry', 'approved-prefix-reviewed-browser-entries'):
+            self.verified['rule']=wrong
+            with self.subTest(rule=wrong),self.assertRaisesRegex(SystemExit,'COMPATIBILITY_UNPROVEN'):
+                self.execute()
+            self.assertFalse((self.root/'trusted-contract-proof.json').exists())
+        self.verified['rule']='approved-prefix-reviewed-browser-entry'
+        self.execute()
+        receipt=json.loads((self.root/'trusted-contract-proof.json').read_text())
+        self.assertEqual(self.proof['rule'],receipt['rule'])
+        self.assertEqual(self.verified,receipt['observer'])
+        self.assertFalse(receipt['observer']['authorizesMutation'])
+
     def test_existing_static_styles_rule_remains_explicit(self):
         self.proof['rule']='approved-definitions-static-styles-only'
         self.execute()
