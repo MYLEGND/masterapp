@@ -1,25 +1,16 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested completion of the final fix and deployment of the existing Shayla implementation. This prerequisite promotes only reviewed migration execution provenance normalization and regression tests; it authorizes no production mutation, application publication, routing, calls or booking activation.",
-  "purpose": "Recognize strictly authenticated carried-forward migration jobs without fabricating intent or repeating SQL.",
-  "requestId": "shayla-carried-attempt-promotion-20261027-v1",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "Founder instructed full completion and deployment of the existing Shayla integration. Publish the independently reviewed application changes through the canonical selective release with calls paused, telephone disabled and booking unaccepted; this request does not authorize activation or new provider grants.",
+  "purpose": "Deploy the accepted website voice transport, protected management controls, booking notice constraints and shared inquiry fallback, including the two reviewed additive receptionist migrations.",
+  "requestId": "shayla-paused-web-deployment-20261027-v3",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait",
+    "masterapp-website"
+  ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "64a92ce12058802440b2682be42bbc41f35e3ce6",
-    "sourceRevision": "c9c21f274d95aee47022a459b9ced3d28dcf72cc",
-    "files": {
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "a61e355453074f65329a0511e4f16dce4f23d4c6"
-      },
-      "scripts/test-validation-resume.py": {
-        "mode": "100644",
-        "blob": "e4900f1fad5910153a826aee88f736150eb6787a"
-      }
-    }
-  }
+  "preserveLiveTargets": false
 }
