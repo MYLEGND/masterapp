@@ -696,6 +696,13 @@ public sealed class ReceptionistPrivacyHttpTests
                         // A foreign business is real and active, but this actor has no member link.
                         db.CommerceBusinesses.Add(new CommerceBusiness { Id = f.ForeignBusinessId,
                             Key = "foreign-http", DisplayName = "foreign-business-canary" });
+                        // Canonical provisioning creates one settings aggregate per business.
+                        // Keep the foreign aggregate complete without granting this actor membership.
+                        db.CommerceBusinessStorefrontSettings.AddRange(
+                            new CommerceBusinessStorefrontSettings { CommerceBusinessId = f.BusinessId,
+                                BrandHeadline = "Synthetic business", BrandSubheadline = "Synthetic business storefront." },
+                            new CommerceBusinessStorefrontSettings { CommerceBusinessId = f.ForeignBusinessId,
+                                BrandHeadline = "foreign-business-canary", BrandSubheadline = "foreign-business-canary storefront." });
                         var businessConnection = new MarketingConnection { OwnerType = "business",
                             OwnerKey = MarketingOwnerScope.Business(f.BusinessId).Key, CommerceBusinessId = f.BusinessId, Provider = "openai" };
                         var businessJson = ReceptionistConfigurationCodec.Serialize(configuration with { BusinessName = "Synthetic business" });
@@ -868,6 +875,15 @@ public sealed class ReceptionistPrivacyHttpTests
             Assert.Equal(2, await db.Set<ReceptionistOperationPackage>().CountAsync());
             Assert.Empty(await db.Set<ReceptionistCall>().ToListAsync());
             Assert.All(await db.MarketingConnections.ToListAsync(), x => Assert.False(x.ReceptionistAdmissionEnabled));
+            var storefronts = await db.CommerceBusinessStorefrontSettings.AsNoTracking().ToListAsync();
+            Assert.Equal(new[] { BusinessId, ForeignBusinessId }.OrderBy(x => x),
+                storefronts.Select(x => x.CommerceBusinessId).OrderBy(x => x));
+            Assert.All(storefronts, x =>
+            {
+                Assert.Equal("Draft", x.StorefrontStatus); Assert.Equal("#926950", x.AccentColor);
+                Assert.Equal("{}", x.WorkspacePreferencesJson);
+            });
+            Assert.DoesNotContain(await db.CommerceBusinessMembers.ToListAsync(), x => x.CommerceBusinessId == ForeignBusinessId);
         }
 
         // TestServer does not emulate a browser cookie jar. Retain the actual auth and

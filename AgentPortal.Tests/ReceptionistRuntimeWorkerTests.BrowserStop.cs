@@ -50,14 +50,28 @@ public sealed partial class ReceptionistRuntimeWorkerTests
         await EventuallyAsync(() => socket.Sent.Any());
         f.Clock.Advance(TimeSpan.FromSeconds(121)); // No provider event wakes the stop path.
         await EventuallyAsync(() => socket.Sent.Any(IsClose));
+        var closeEventId = Assert.Single(socket.Sent.Where(IsClose)).GetProperty("event_id").GetString()!;
+        Assert.StartsWith("stop_", closeEventId);
+        var closeId = Guid.ParseExact(closeEventId["stop_".Length..], "N");
+        // Send visibility precedes the worker's committed observation receipt.
+        // Require that exact action to persist uncertainty before injecting closure.
+        await EventuallyAsync(async () =>
+        {
+            await using var read = f.Database();
+            return await read.Set<ReceptionistActionIntent>().AnyAsync(x => x.Id == closeId && x.CallId == id &&
+                x.CapabilityKey == "__provider_stop" && x.State == "uncertain" &&
+                x.VerificationReceipt == "openai_sideband:session.close:sent");
+        });
         Assert.Single(socket.Sent.Where(IsClose)); Assert.Empty(f.Transport.Hangups); Assert.Empty(f.Transport.Accepts);
         Assert.Equal(WebSocketState.Open, socket.State);
         Assert.Null((await f.CallAsync(id)).ProviderClosedUtc);
         await using (var db = f.Database())
         {
             Assert.False((await db.Set<ReceptionistCostReservation>().SingleAsync()).CashFinal);
-            Assert.Equal("uncertain", (await db.Set<ReceptionistActionIntent>().SingleAsync(x =>
-                x.CapabilityKey == "__provider_stop" && x.State != "rejected")).State);
+            var stop = await db.Set<ReceptionistActionIntent>().SingleAsync(x =>
+                x.CallId == id && x.CapabilityKey == "__provider_stop" && x.State != "rejected");
+            Assert.Equal(closeId, stop.Id); Assert.Equal("uncertain", stop.State);
+            Assert.Equal("openai_sideband:session.close:sent", stop.VerificationReceipt);
         }
         socket.Queue(Closed("live_deadline", "closed-deadline", 19.25m));
         await EventuallyAsync(async () => (await f.CallAsync(id)).ProviderClosedUtc is not null);
