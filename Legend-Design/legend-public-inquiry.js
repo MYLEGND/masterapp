@@ -212,18 +212,30 @@
     if (!response.ok) throw new Error('voice_unavailable');
     return response.json();
   }
+  function finishVoice(call) {
+    if (!call || call.finished) return;
+    call.finished = true;
+    clearTimeout(call.poll); clearTimeout(call.closeDeadline);
+    call.observationAbort.abort();
+    call.peer?.close();
+    call.start.disabled = false;
+    if (activeVoice === call) activeVoice = null;
+  }
   function endVoice(call, message = 'Conversation ended on this page. You can send an inquiry below.') {
     if (!call || call.ended) return;
     call.ended = true;
     call.abort.abort();
-    clearTimeout(call.poll); clearTimeout(call.deadline); clearTimeout(call.startup);
+    clearTimeout(call.deadline); clearTimeout(call.startup);
     call.stream?.getTracks().forEach(track => track.stop());
-    call.peer?.close();
     call.audio.pause(); call.audio.srcObject = null; call.audio.hidden = true;
-    call.end.hidden = true; call.start.disabled = false;
+    call.end.hidden = true;
     call.status.textContent = message;
-    if (activeVoice === call) activeVoice = null;
-    if (call.handle) void voiceRequest('end', {handle:call.handle}, undefined, true, call.host).catch(() => {});
+    if (!call.handle) { finishVoice(call); return; }
+    // Stop local recording/playback immediately, but keep media/data transports alive
+    // for the server's authenticated session.closed/final usage observation. This
+    // bounded UI cleanup is not evidence of provider closure or a spending guarantee.
+    call.closeDeadline = setTimeout(() => finishVoice(call), 15000);
+    void voiceRequest('end', {handle:call.handle}, undefined, true, call.host).catch(() => {});
   }
   async function gatherVoiceCandidates(peer, signal) {
     if (peer.iceGatheringState === 'complete') return;
@@ -257,7 +269,7 @@
         status.textContent = 'Voice is unavailable in this browser. Please send an inquiry below.';
         return;
       }
-      const call = {host, start, end, status, audio, abort:new AbortController(), ended:false};
+      const call = {host, start, end, status, audio, abort:new AbortController(), observationAbort:new AbortController(), ended:false, finished:false};
       activeVoice = call; start.disabled = true; end.hidden = false;
       status.textContent = 'Checking voice availability…';
       call.startup = setTimeout(() => endVoice(call, 'Voice could not connect. Please send an inquiry below.'), 45000);
@@ -298,19 +310,25 @@
         if (typeof result.answer !== 'string' || !call.handle || !Number.isInteger(result.maximumSeconds) || result.maximumSeconds <= 0)
           throw new Error('voice_unavailable');
         await peer.setRemoteDescription({type:'answer', sdp:result.answer});
-        call.deadline = setTimeout(() => endVoice(call), result.maximumSeconds * 1000);
+        if (call.finished) return;
+        if (!call.ended) call.deadline = setTimeout(() => endVoice(call), result.maximumSeconds * 1000);
         const poll = async () => {
-          if (call.ended) return;
+          if (call.finished) return;
           try {
-            const observation = await voiceRequest('status', {handle:call.handle}, call.abort.signal, false, host);
-            if (call.ended) return;
-            if (['ending','ended'].includes(observation.state)) { endVoice(call); return; }
-            if (observation.state === 'active' && peer.connectionState === 'connected') {
+            const observation = await voiceRequest('status', {handle:call.handle}, call.observationAbort.signal, false, host);
+            if (call.finished) return;
+            if (observation.state === 'ended') { endVoice(call); finishVoice(call); return; }
+            if (observation.state === 'ending') endVoice(call);
+            if (!call.ended && observation.state === 'active' && peer.connectionState === 'connected') {
               clearTimeout(call.startup);
               status.textContent = 'Connected to the AI receptionist. Keep this page open while speaking.';
             }
             call.poll = setTimeout(poll, 2000);
-          } catch { if (!call.ended) endVoice(call, 'The voice connection could not be confirmed. Please send an inquiry below.'); }
+          } catch {
+            if (call.finished) return;
+            if (!call.ended) endVoice(call, 'The voice connection could not be confirmed. Please send an inquiry below.');
+            call.poll = setTimeout(poll, 2000);
+          }
         };
         void poll();
       } catch {

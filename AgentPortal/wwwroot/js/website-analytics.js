@@ -4323,6 +4323,7 @@ function escapeHtml(value) {
   }
 
   function restoreOpenModalFromSession() {
+    if (window.location.hash === '#receptionist-calendar') return;
     let modalId = null;
     try {
       modalId = window.sessionStorage.getItem(OPEN_MODAL_STORAGE_KEY);
@@ -6060,6 +6061,17 @@ function escapeHtml(value) {
   marketingSetupModal?.addEventListener('show.bs.modal', () => {
     if (!marketingSetupLoaded) void loadMarketingSetup();
   });
+  // A scoped receptionist-home link opens the existing connection UI only;
+  // the normal owner resolution and explicit provider authorization remain unchanged.
+  function openReceptionistCalendarSetup() {
+    if (window.location.hash !== '#receptionist-calendar' || !marketingSetupModal || typeof window.bootstrap?.Modal?.getOrCreateInstance !== 'function') return;
+    marketingSetupModal.addEventListener('shown.bs.modal', () => {
+      document.getElementById('marketing-setup-calendar-connection')?.scrollIntoView({ block: 'center' });
+    }, { once: true });
+    window.bootstrap.Modal.getOrCreateInstance(marketingSetupModal).show();
+  }
+  window.addEventListener('hashchange', openReceptionistCalendarSetup);
+  openReceptionistCalendarSetup();
   marketingSetupRetry?.addEventListener('click', () => { void loadMarketingSetup(); });
   marketingSetupForm?.addEventListener('submit', saveMarketingSetup);
 

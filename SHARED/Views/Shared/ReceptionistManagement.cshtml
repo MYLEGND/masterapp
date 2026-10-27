@@ -1,30 +1,68 @@
 @model Shared.Analytics.ReceptionistManagementPage
-@{ ViewData["Title"] = "Receptionist connections"; }
-<main class="container py-4">
-    <a href="@Model.ReturnUrl">Back to receptionist settings</a>
-    <h1>Receptionist connections</h1>
+@{
+    ViewData["Title"] = "Receptionist connections";
+    var failure = ViewData["ReceptionistPlanFailure"] as Shared.Analytics.ReceptionistPlanFailure;
+    var submitted = Model.SubmittedPreparation;
+    var credentialDraft = Model.SubmittedCredential;
+    var detailsUnavailable = Model.Reconciliation is not null && Model.Summary.ConnectionRevision == Guid.Empty;
+    string Attempt(string operation, string name, object? fallback = null)
+    {
+        if (submitted?.Operation != operation) return string.Empty;
+        return ViewData.ModelState.TryGetValue(name, out var entry) && entry.AttemptedValue is not null
+            ? entry.AttemptedValue : Convert.ToString(fallback, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+    }
+    string CredentialAttempt(string name, string? fallback = null) => credentialDraft is null ? string.Empty :
+        ViewData.ModelState.TryGetValue(name, out var entry) && entry.AttemptedValue is not null ? entry.AttemptedValue : fallback ?? string.Empty;
+    string Expected(string operation) => submitted?.Operation == operation
+        ? Attempt(operation, "ExpectedConnectionRevision", submitted.ExpectedConnectionRevision) : Model.Summary.ConnectionRevision.ToString();
+    var cost = submitted?.Costs?.FirstOrDefault();
+    var selectedCredential = Attempt("accept_binding", "ApiCredentialVersionId", submitted?.ApiCredentialVersionId);
+    var selectedFunding = Attempt("accept_binding", "Costs[0].FundingAccountId", cost?.FundingAccountId);
+    string? FieldLabel(string key) => key switch
+    {
+        "ProviderProjectKey" => "project ID", "Purpose" => "credential type", "ExpectedConnectionRevision" => "setup revision",
+        "Model" => "voice model", "Voice" => "voice", "ApiCredentialVersionId" => "saved voice credential",
+        "MaximumSupportedCallSeconds" => "provider call duration", "ObservedProviderMonthlyBudget" => "provider budget",
+        "ProviderBudgetPeriodStartUtc" or "ProviderBudgetPeriodEndUtc" or "BudgetPolicyExpiresUtc" => "budget dates",
+        "WindowStartsUtc" or "WindowExpiresUtc" => "test window dates", "Enabled" => "permission choice",
+        _ when key.StartsWith("Costs[", StringComparison.Ordinal) => "call cost or funding",
+        _ when key.StartsWith("Evidence[", StringComparison.Ordinal) => "dated review evidence",
+        _ => null
+    };
+    var invalidFields = ViewData.ModelState.Where(x => x.Value.Errors.Count > 0).Select(x => FieldLabel(x.Key))
+        .Where(x => x is not null).Distinct().ToArray();
+}
+<section class="dashboard-page-shell py-4">
+    <header class="dashboard-surface-panel p-3 mb-4">
+    <a class="btn btn-clear-search dashboard-command-action" href="@Model.ReturnUrl">Back to receptionist home</a>
+    <h1 class="dashboard-hero-title mt-3">Receptionist connections</h1>
     <p>Connect the voice project dedicated to this workspace. Credentials are encrypted and never displayed after saving. Saving a connection does not accept the provider, enable calls or change your operating configuration.</p>
     @if (Model.Message is not null) { <p role="status">@Model.Message</p> }
-    @if (Model.Summary.ConnectionRevision == Guid.Empty)
+    @if (detailsUnavailable) { <p role="status">Current setup, credential and operation details are unavailable. This does not mean they are missing. Preserve the exact unverified operation below; do not create replacement setup.</p> }
+    @if (Model.Summary.CanReview && Model.AdvancedUrl is not null) { <p><a href="@Model.AdvancedUrl">Founder advanced operations and accounting</a></p> }
+    @if (failure is not null) { <div class="dashboard-data-surface p-3" role="alert"><p>@failure.Message</p>@if (invalidFields.Length > 0) { <p>Check these fields: @string.Join(", ", invalidFields).</p> }<a href="#@failure.TargetFragment">@failure.ActionLabel</a>@if (failure == Shared.Analytics.ReceptionistPlanFailure.StalePreparation || failure == Shared.Analytics.ReceptionistPlanFailure.StaleCredential || failure == Shared.Analytics.ReceptionistPlanFailure.StaleWithdrawal) { <span> · </span><a href="@Model.SelfUrl">Reload connections after saving a copy of your entries</a> }</div> }
+    </header>
+    <section id="voice-connection" class="dashboard-surface-panel p-3 mb-4">
+    @if (Model.Summary.ConnectionRevision == Guid.Empty && !detailsUnavailable)
     {
-        <p>Save your receptionist business settings before connecting a provider.</p>
+        <p>Save your receptionist business settings before connecting a provider or starting a voice test. <a href="@Model.ReturnUrl">Open receptionist settings</a>.</p>
     }
-    else
+    @if (Model.Summary.ConnectionRevision != Guid.Empty || credentialDraft is not null)
     {
-        <form action="@Model.SaveCredentialUrl" method="post" autocomplete="off">
+        <form action="@Model.SaveCredentialUrl" method="post" autocomplete="off" class="d-grid gap-3">
             @Html.AntiForgeryToken()
-            <input type="hidden" name="ExpectedConnectionRevision" value="@Model.Summary.ConnectionRevision" />
-            <label class="dashboard-form-field"><span>Dedicated OpenAI project ID</span><input class="form-control" name="ProviderProjectKey" required maxlength="200" placeholder="proj_…" /></label>
-            <label class="dashboard-form-field"><span>Credential type</span><select class="form-select" name="Purpose"><option value="voice-api">Voice API key</option><option value="voice-webhook">Webhook signing secret</option></select></label>
+            <input type="hidden" name="ExpectedConnectionRevision" value="@(credentialDraft?.ExpectedConnectionRevision ?? Model.Summary.ConnectionRevision)" />
+            <label class="dashboard-form-field"><span>Dedicated OpenAI project ID</span><input class="form-control" name="ProviderProjectKey" value="@CredentialAttempt("ProviderProjectKey", credentialDraft?.ProviderProjectKey)" required maxlength="200" placeholder="proj_…" /></label>
+            <label class="dashboard-form-field"><span>Credential type</span><select class="form-select" name="Purpose"><option value="voice-api" selected="@(CredentialAttempt("Purpose", credentialDraft?.Purpose) != "voice-webhook")">Voice API key</option><option value="voice-webhook" selected="@(CredentialAttempt("Purpose", credentialDraft?.Purpose) == "voice-webhook")">Webhook signing secret</option></select></label>
             <label class="dashboard-form-field"><span>Credential</span><input class="form-control" type="password" name="Secret" required maxlength="16384" autocomplete="new-password" /></label>
-            <button class="btn btn-primary" type="submit">Save protected credential</button>
+            <button class="btn btn-carrier-settings dashboard-command-action" type="submit">Save protected credential</button>
         </form>
     }
     <h2>Saved credential versions</h2>
     <p>Replacing a credential creates a new version for review. Withdrawing a saved version prevents future activation using it; accepted calls retain their pinned credentials. Pause calls before changing active service access.</p>
     @foreach (var credential in Model.Summary.Credentials)
     {
-        <section class="card p-3 my-2">
+        <section class="dashboard-data-surface p-3 my-2">
             <h3>@(credential.Purpose == "voice-api" ? "Voice API key" : "Webhook signing secret")</h3>
             <p>Project: @credential.ProviderProjectKey · Saved @credential.CreatedUtc.ToString("u") · @(credential.Revoked ? "Withdrawn" : "Saved; provider acceptance separate")</p>
             @if (!credential.Revoked)
@@ -33,53 +71,83 @@
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="credentialId" value="@credential.Id" />
                     <input type="hidden" name="expectedConnectionRevision" value="@Model.Summary.ConnectionRevision" />
-                    <button class="btn btn-outline-secondary" type="submit">Withdraw from future setup</button>
+                    <button class="btn btn-clear-search dashboard-command-action" type="submit" disabled="@(failure == Shared.Analytics.ReceptionistPlanFailure.StaleWithdrawal)">Withdraw from future setup</button>
                 </form>
             }
         </section>
     }
-    @if (Model.Summary.ConnectionRevision != Guid.Empty && Model.PrepareUrl is not null)
+    @if ((Model.Summary.ConnectionRevision != Guid.Empty || submitted is not null) && Model.PrepareUrl is not null)
     {
         <h2>Prepare website voice</h2>
         <p>Submit the observed provider, privacy, fallback and cost evidence for review. These entries are proposed facts, not automatic provider verification. Funding choices come from existing accounting; preparing this proposal neither adds funds nor enables calls. This proposal enables inquiry intake only. Replacing a binding removes any prior appointment acceptance; review the existing booking mapping separately before enabling appointments.</p>
-        <form action="@Model.PrepareUrl" method="post">
+        <details open="@(submitted?.Operation == "accept_binding")"><summary>Advanced reviewed website voice setup</summary>
+        <p>These are proposed facts. Independent review is required; saving does not verify the provider or enable calls.</p>
+        <form action="@Model.PrepareUrl" method="post" class="d-grid gap-3">
             @Html.AntiForgeryToken()
-            <input type="hidden" name="ExpectedConnectionRevision" value="@Model.Summary.ConnectionRevision" />
+            <input type="hidden" name="ExpectedConnectionRevision" value="@Expected("accept_binding")" />
             <input type="hidden" name="Operation" value="accept_binding" />
             <label class="dashboard-form-field"><span>Saved voice credential</span><select name="ApiCredentialVersionId" class="form-select" required>
                 <option value="">Choose a saved credential</option>
+                @if (!string.IsNullOrEmpty(selectedCredential) && !Model.Summary.Credentials.Any(x => !x.Revoked && x.Purpose == "voice-api" && x.Id.ToString() == selectedCredential))
+                { <option value="@selectedCredential" selected>Previously selected credential (currently unavailable)</option> }
                 @foreach (var credential in Model.Summary.Credentials.Where(x => !x.Revoked && x.Purpose == "voice-api"))
-                { <option value="@credential.Id">@credential.ProviderProjectKey · @credential.CreatedUtc.ToString("u")</option> }
+                { <option value="@credential.Id" selected="@(Attempt("accept_binding", "ApiCredentialVersionId", submitted?.ApiCredentialVersionId) == credential.Id.ToString())">@credential.ProviderProjectKey · @credential.CreatedUtc.ToString("u")</option> }
             </select></label>
-            <label class="dashboard-form-field"><span>Verified voice model</span><input name="Model" class="form-control" required maxlength="100" /></label>
-            <label class="dashboard-form-field"><span>Verified voice</span><input name="Voice" class="form-control" required maxlength="100" /></label>
-            <label class="dashboard-form-field"><span>Call mode</span><select name="ControlledTestOnly" class="form-select"><option value="true">Restricted acceptance testing</option><option value="false">Public, with separate activation evidence</option></select></label>
-            <label class="dashboard-form-field"><span>Provider-enforced maximum call seconds</span><input name="MaximumSupportedCallSeconds" type="number" min="1" required class="form-control" /></label>
+            <label class="dashboard-form-field"><span>Verified voice model</span><input name="Model" value="@Attempt("accept_binding", "Model", submitted?.Model)" class="form-control" required maxlength="100" /></label>
+            <label class="dashboard-form-field"><span>Verified voice</span><input name="Voice" value="@Attempt("accept_binding", "Voice", submitted?.Voice)" class="form-control" required maxlength="100" /></label>
+            <label class="dashboard-form-field"><span>Call mode</span><select name="ControlledTestOnly" class="form-select"><option value="true" selected="@(submitted?.Operation != "accept_binding" || Attempt("accept_binding", "ControlledTestOnly", submitted?.ControlledTestOnly).Equals("true", StringComparison.OrdinalIgnoreCase))">Restricted acceptance testing</option><option value="false" selected="@(submitted?.Operation == "accept_binding" && Attempt("accept_binding", "ControlledTestOnly", submitted?.ControlledTestOnly).Equals("false", StringComparison.OrdinalIgnoreCase))">Public, with separate activation evidence</option></select></label>
+            <label class="dashboard-form-field"><span>Budget contract</span><select name="BudgetPolicyMode" class="form-select">
+                <option value="">Verified provider duration and cost bounds (existing contract)</option>
+                <option value="owner_budget_delayed_enforcement_v1" selected="@(Attempt("accept_binding", "BudgetPolicyMode", submitted?.BudgetPolicyMode) == "owner_budget_delayed_enforcement_v1")">Owner-reviewed monthly budget with delayed-overrun risk</option>
+            </select></label>
+            <p>Choose only one contract. Budget-risk mode requires fresh scoped evidence and separate review; it does not enable calls. Leave the other contract's amount fields empty. Existing monthly cash and service limits remain in Receptionist Settings; saving a budget edit does not change the provider's budget.</p>
+            <label class="dashboard-form-field"><span>Verified provider-enforced maximum call seconds (guaranteed mode only)</span><input value="@Attempt("accept_binding", "MaximumSupportedCallSeconds", submitted?.MaximumSupportedCallSeconds)" name="MaximumSupportedCallSeconds" type="number" min="1" class="form-control" /></label>
+            <fieldset><legend>Owner-reviewed budget policy (risk mode only)</legend>
+                <p>The configured application stop deadline is not a provider-enforced duration guarantee. Provider budget enforcement can be delayed; actual charges may exceed both the monthly budget and reservation estimates. Unknown creation or closure retains its full hold. The application requests stopping within 360 seconds and admits at most one concurrent call. A provider budget can reject new requests without terminating an already-active or unknown session; it is not an absolute exposure guarantee.</p>
+                <label class="dashboard-form-field"><span>Observed provider monthly budget</span><input value="@Attempt("accept_binding", "ObservedProviderMonthlyBudget", submitted?.ObservedProviderMonthlyBudget)" name="ObservedProviderMonthlyBudget" type="number" min="0.000001" step="0.000001" class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Observed provider period starts (UTC, ending Z)</span><input value="@Attempt("accept_binding", "ProviderBudgetPeriodStartUtc", submitted?.ProviderBudgetPeriodStartUtc)" name="ProviderBudgetPeriodStartUtc" class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Observed provider period ends (UTC, ending Z)</span><input value="@Attempt("accept_binding", "ProviderBudgetPeriodEndUtc", submitted?.ProviderBudgetPeriodEndUtc)" name="ProviderBudgetPeriodEndUtc" class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Risk policy expires (UTC, ending Z; within both accounting periods)</span><input value="@Attempt("accept_binding", "BudgetPolicyExpiresUtc", submitted?.BudgetPolicyExpiresUtc)" name="BudgetPolicyExpiresUtc" class="form-control" /></label>
+                <label><input type="checkbox" name="AcceptDelayedBudgetOverrun" value="true" checked="@(submitted?.Operation == "accept_binding" && submitted.AcceptDelayedBudgetOverrun)" /> I accept delayed enforcement and actual cost exceeding estimates or the monthly budget for this exact owner, project and configuration, subject to the existing finite admission controls. This is not unlimited-spend authorization.</label>
+            </fieldset>
             <fieldset><legend>Verified maximum cost for each call</legend>
                 <p>Include all provider exposure, including uncertain creation and cleanup. An alert-only project budget does not establish a hard limit.</p>
                 <input type="hidden" name="Costs[0].Key" value="provider_voice" />
                 <label class="dashboard-form-field"><span>Existing funding account</span><select name="Costs[0].FundingAccountId" class="form-select" required>
                     <option value="">Choose existing funding</option>
-                    @foreach (var choice in Model.Summary.FundingChoices ?? []) { <option value="@choice.Id">@choice.Label</option> }
+                    @if (!string.IsNullOrEmpty(selectedFunding) && !(Model.Summary.FundingChoices ?? []).Any(x => x.Id.ToString() == selectedFunding))
+                { <option value="@selectedFunding" selected>Previously selected funding (currently unavailable)</option> }
+                @foreach (var choice in Model.Summary.FundingChoices ?? []) { <option value="@choice.Id" selected="@(Attempt("accept_binding", "Costs[0].FundingAccountId", cost?.FundingAccountId) == choice.Id.ToString())">@choice.Label</option> }
                 </select></label>
-                <label class="dashboard-form-field"><span>Maximum fixed cash exposure</span><input name="Costs[0].CashFixedMaximum" type="number" min="0" step="0.000001" required class="form-control" /></label>
-                <label class="dashboard-form-field"><span>Maximum cash per second</span><input name="Costs[0].CashPerSecondMaximum" type="number" min="0" step="0.000001" required class="form-control" /></label>
-                <label class="dashboard-form-field"><span>Maximum fixed service consumption</span><input name="Costs[0].ConsumptionFixedMaximum" type="number" min="0" step="0.000001" required class="form-control" /></label>
-                <label class="dashboard-form-field"><span>Maximum service consumption per second</span><input name="Costs[0].ConsumptionPerSecondMaximum" type="number" min="0" step="0.000001" required class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Maximum fixed cash exposure</span><input value="@Attempt("accept_binding", "Costs[0].CashFixedMaximum", cost?.CashFixedMaximum)" name="Costs[0].CashFixedMaximum" type="number" min="0" step="0.000001" class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Maximum cash per second</span><input value="@Attempt("accept_binding", "Costs[0].CashPerSecondMaximum", cost?.CashPerSecondMaximum)" name="Costs[0].CashPerSecondMaximum" type="number" min="0" step="0.000001" class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Maximum fixed service consumption</span><input value="@Attempt("accept_binding", "Costs[0].ConsumptionFixedMaximum", cost?.ConsumptionFixedMaximum)" name="Costs[0].ConsumptionFixedMaximum" type="number" min="0" step="0.000001" class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Maximum service consumption per second</span><input value="@Attempt("accept_binding", "Costs[0].ConsumptionPerSecondMaximum", cost?.ConsumptionPerSecondMaximum)" name="Costs[0].ConsumptionPerSecondMaximum" type="number" min="0" step="0.000001" class="form-control" /></label>
             </fieldset>
-            @{ var kinds = new[] { "provider_setup", "exclusive_project", "cost_bounds", "disclosure", "retention", "website_fallback", "capability.canonical_intake", "public_activation" };
-               var labels = new[] { "Provider setup", "Exclusive project", "Enforced exposure and cost bounds", "AI and recording disclosures", "Retention and privacy", "Website contact fallback", "Caller-confirmed inquiry route", "Public activation (public mode only)" }; }
+            <fieldset><legend>Reservation estimates (risk mode only)</legend>
+                <p>Enter every component explicitly, including zero. Evidence must cover model rates, initialization, backend services and uncertain creation/cleanup; these are estimates, never guaranteed maxima. Use the existing funding account selected above.</p>
+                <label class="dashboard-form-field"><span>Estimated fixed cash</span><input value="@Attempt("accept_binding", "Costs[0].CashFixedEstimate", cost?.CashFixedEstimate)" name="Costs[0].CashFixedEstimate" type="number" min="0" step="0.000001" class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Estimated cash per second</span><input value="@Attempt("accept_binding", "Costs[0].CashPerSecondEstimate", cost?.CashPerSecondEstimate)" name="Costs[0].CashPerSecondEstimate" type="number" min="0" step="0.000001" class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Estimated fixed service consumption</span><input value="@Attempt("accept_binding", "Costs[0].ConsumptionFixedEstimate", cost?.ConsumptionFixedEstimate)" name="Costs[0].ConsumptionFixedEstimate" type="number" min="0" step="0.000001" class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Estimated service consumption per second</span><input value="@Attempt("accept_binding", "Costs[0].ConsumptionPerSecondEstimate", cost?.ConsumptionPerSecondEstimate)" name="Costs[0].ConsumptionPerSecondEstimate" type="number" min="0" step="0.000001" class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Evidence basis if cash is zero (for example, already funded prepaid usage)</span><input value="@Attempt("accept_binding", "Costs[0].ZeroCashJustification", cost?.ZeroCashJustification)" name="Costs[0].ZeroCashJustification" maxlength="512" class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Evidence basis if service consumption is zero</span><input value="@Attempt("accept_binding", "Costs[0].ZeroConsumptionJustification", cost?.ZeroConsumptionJustification)" name="Costs[0].ZeroConsumptionJustification" maxlength="512" class="form-control" /></label>
+            </fieldset>
+            @{ var kinds = new[] { "provider_setup", "exclusive_project", "cost_bounds", "disclosure", "retention", "website_fallback", "capability.canonical_intake", "public_activation", "provider_budget_observation", "owner_budget_risk", "cost_estimates" };
+               var labels = new[] { "Provider setup", "Exclusive project", "Enforced exposure and cost bounds (guaranteed mode only)", "AI and recording disclosures", "Retention and privacy", "Website contact fallback", "Caller-confirmed inquiry route", "Public activation (public mode only)", "Actual provider budget observation (risk mode only)", "Exact owner risk acceptance evidence (risk mode only)", "Complete rate and reservation estimate evidence (risk mode only)" }; }
             @for (var i = 0; i < kinds.Length; i++)
             {
                 <fieldset><legend>@labels[i]</legend>
                     <input type="hidden" name="Evidence[@i].Kind" value="@kinds[i]" />
-                    <label class="dashboard-form-field"><span>Evidence reference</span><input name="Evidence[@i].Reference" maxlength="512" class="form-control" /></label>
-                    <label class="dashboard-form-field"><span>Evidence SHA-256</span><input name="Evidence[@i].Sha256" pattern="[a-f0-9]{64}" maxlength="64" class="form-control" /></label>
-                    <label class="dashboard-form-field"><span>Observed at (UTC, ISO 8601 ending Z)</span><input name="Evidence[@i].ObservedUtc" placeholder="2026-10-26T12:00:00Z" class="form-control" /></label>
+                    <label class="dashboard-form-field"><span>Evidence reference</span><input value="@Attempt("accept_binding", $"Evidence[{i}].Reference", submitted?.Evidence?.ElementAtOrDefault(i)?.Reference)" name="Evidence[@i].Reference" maxlength="512" class="form-control" /></label>
+                    <label class="dashboard-form-field"><span>Evidence SHA-256</span><input value="@Attempt("accept_binding", $"Evidence[{i}].Sha256", submitted?.Evidence?.ElementAtOrDefault(i)?.Sha256)" name="Evidence[@i].Sha256" pattern="[a-f0-9]{64}" maxlength="64" class="form-control" /></label>
+                    <label class="dashboard-form-field"><span>Observed at (UTC, ISO 8601 ending Z)</span><input value="@Attempt("accept_binding", $"Evidence[{i}].ObservedUtc", submitted?.Evidence?.ElementAtOrDefault(i)?.ObservedUtc)" name="Evidence[@i].ObservedUtc" placeholder="2026-10-26T12:00:00Z" class="form-control" /></label>
                 </fieldset>
             }
-            <button class="btn btn-primary" type="submit">Save proposal for review</button>
+            <button class="btn btn-carrier-settings dashboard-command-action" type="submit">Save proposal for review</button>
         </form>
+        </details>
+        <div id="voice-test">
         @if (Model.Summary.CanRunVoiceTest)
         {
         <section data-website-receptionist data-receptionist-test-grant="@Model.TestGrantUrl" data-receptionist-test-start="@Model.TestStartUrl">
@@ -96,44 +164,59 @@
         {
             <p><a href="@Model.TestControlPlaneUrl">Open restricted voice testing in the management portal</a>. Sign in there with your workspace identity; your settings permission is checked again before testing.</p>
         }
+        else
+        {
+            <p>Voice testing is not available in this workspace yet. Review the connection and test requirements below.</p>
+        }
+        </div>
         <h2>Restricted acceptance window</h2>
         <p>Each accepted test configuration can have one window of at most one hour. It cannot be extended or replaced, including after expiry or revocation. A new window requires a new accepted configuration. This proposal does not enable public calls.</p>
         @foreach (var operation in new[] { "create_acceptance_window", "revoke_acceptance_window" })
         {
-            <form action="@Model.PrepareUrl" method="post">
+            <form action="@Model.PrepareUrl" method="post" class="d-grid gap-3">
                 @Html.AntiForgeryToken()
-                <input type="hidden" name="ExpectedConnectionRevision" value="@Model.Summary.ConnectionRevision" />
+                <input type="hidden" name="ExpectedConnectionRevision" value="@Expected(operation)" />
                 <input type="hidden" name="Operation" value="@operation" />
                 <input type="hidden" name="Evidence[0].Kind" value="@operation" />
                 @if (operation == "create_acceptance_window")
                 {
-                    <label class="dashboard-form-field"><span>Starts at (UTC, ISO 8601 ending Z)</span><input name="WindowStartsUtc" required class="form-control" /></label>
-                    <label class="dashboard-form-field"><span>Expires at (UTC, within one hour of start)</span><input name="WindowExpiresUtc" required class="form-control" /></label>
+                    <label class="dashboard-form-field"><span>Starts at (UTC, ISO 8601 ending Z)</span><input value="@Attempt(operation, "WindowStartsUtc", submitted?.WindowStartsUtc)" name="WindowStartsUtc" required class="form-control" /></label>
+                    <label class="dashboard-form-field"><span>Expires at (UTC, within one hour of start)</span><input value="@Attempt(operation, "WindowExpiresUtc", submitted?.WindowExpiresUtc)" name="WindowExpiresUtc" required class="form-control" /></label>
                 }
-                <label class="dashboard-form-field"><span>@(operation == "create_acceptance_window" ? "Restricted-route verification evidence" : "Revocation evidence")</span><input name="Evidence[0].Reference" maxlength="200" required class="form-control" /></label>
-                <label class="dashboard-form-field"><span>Evidence SHA-256</span><input name="Evidence[0].Sha256" pattern="[a-f0-9]{64}" required class="form-control" /></label>
-                <label class="dashboard-form-field"><span>Observed at (UTC, ISO 8601 ending Z)</span><input name="Evidence[0].ObservedUtc" required class="form-control" /></label>
-                <button class="btn btn-outline-primary" type="submit">@(operation == "create_acceptance_window" ? "Propose test window" : "Propose permanent revocation")</button>
+                <label class="dashboard-form-field"><span>@(operation == "create_acceptance_window" ? "Restricted-route verification evidence" : "Revocation evidence")</span><input value="@Attempt(operation, "Evidence[0].Reference", submitted?.Evidence?.FirstOrDefault()?.Reference)" name="Evidence[0].Reference" maxlength="200" required class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Evidence SHA-256</span><input value="@Attempt(operation, "Evidence[0].Sha256", submitted?.Evidence?.FirstOrDefault()?.Sha256)" name="Evidence[0].Sha256" pattern="[a-f0-9]{64}" required class="form-control" /></label>
+                <label class="dashboard-form-field"><span>Observed at (UTC, ISO 8601 ending Z)</span><input value="@Attempt(operation, "Evidence[0].ObservedUtc", submitted?.Evidence?.FirstOrDefault()?.ObservedUtc)" name="Evidence[0].ObservedUtc" required class="form-control" /></label>
+                <button class="btn btn-clear-search dashboard-command-action" type="submit">@(operation == "create_acceptance_window" ? "Propose test window" : "Propose permanent revocation")</button>
             </form>
         }
-        <h2>Prepare call permission</h2>
-        <form action="@Model.PrepareUrl" method="post">
+        <h2>Call permission</h2>
+        <p>Use the existing permission control on the <a href="@(Model.ReturnUrl + "#receptionist-call-status")">receptionist home</a>. Permission remains separate from readiness and provider acceptance.</p>
+        <details open="@(submitted?.Operation == "set_owner_admission")"><summary>Advanced reviewed permission proposal</summary>
+        <form action="@Model.PrepareUrl" method="post" class="d-grid gap-3">
             @Html.AntiForgeryToken()
-            <input type="hidden" name="ExpectedConnectionRevision" value="@Model.Summary.ConnectionRevision" />
+            <input type="hidden" name="ExpectedConnectionRevision" value="@Expected("set_owner_admission")" />
             <input type="hidden" name="Operation" value="set_owner_admission" />
             <input type="hidden" name="Evidence[0].Kind" value="set_owner_admission" />
-            <label class="dashboard-form-field"><span>Requested permission</span><select name="Enabled" class="form-select"><option value="false">Pause calls</option><option value="true">Allow calls when ready</option></select></label>
-            <label class="dashboard-form-field"><span>Authorization evidence reference</span><input name="Evidence[0].Reference" maxlength="200" required class="form-control" /></label>
-            <label class="dashboard-form-field"><span>Evidence SHA-256</span><input name="Evidence[0].Sha256" pattern="[a-f0-9]{64}" required class="form-control" /></label>
-            <label class="dashboard-form-field"><span>Observed at (UTC, ISO 8601 ending Z)</span><input name="Evidence[0].ObservedUtc" required class="form-control" /></label>
-            <button class="btn btn-outline-primary" type="submit">Save permission proposal for review</button>
+            <label class="dashboard-form-field"><span>Requested permission</span><select name="Enabled" class="form-select"><option value="false" selected="@(submitted?.Operation != "set_owner_admission" || !submitted.Enabled)">Pause calls</option><option value="true" selected="@(submitted?.Operation == "set_owner_admission" && submitted.Enabled)">Allow calls when ready</option></select></label>
+            <label class="dashboard-form-field"><span>Authorization evidence reference</span><input value="@Attempt("set_owner_admission", "Evidence[0].Reference", submitted?.Evidence?.FirstOrDefault()?.Reference)" name="Evidence[0].Reference" maxlength="200" required class="form-control" /></label>
+            <label class="dashboard-form-field"><span>Evidence SHA-256</span><input value="@Attempt("set_owner_admission", "Evidence[0].Sha256", submitted?.Evidence?.FirstOrDefault()?.Sha256)" name="Evidence[0].Sha256" pattern="[a-f0-9]{64}" required class="form-control" /></label>
+            <label class="dashboard-form-field"><span>Observed at (UTC, ISO 8601 ending Z)</span><input value="@Attempt("set_owner_admission", "Evidence[0].ObservedUtc", submitted?.Evidence?.FirstOrDefault()?.ObservedUtc)" name="Evidence[0].ObservedUtc" required class="form-control" /></label>
+            <button class="btn btn-clear-search dashboard-command-action" type="submit">Save permission proposal for review</button>
         </form>
+        </details>
     }
-    <h2>Operation reviews</h2>
-    @if (Model.Summary.Operations.Count == 0) { <p>No saved operation reviews are available. Provider setup, routing, cost and capability evidence must be verified before activation.</p> }
+    else
+    {
+        @if (detailsUnavailable) { <p id="voice-test">Current voice testing details are unavailable. Preserve the exact operation below.</p> }
+        else { <p id="voice-test">Voice testing and preparation are unavailable here. Return to the receptionist home to check the current setup.</p> }
+    }
+    </section>
+    <section id="operation-reviews" class="dashboard-surface-panel p-3 mb-4">
+    <h2 class="dashboard-section-title">Operation reviews</h2>
+    @if (Model.Summary.Operations.Count == 0 && !detailsUnavailable) { <p>No saved operation reviews are available. Provider setup, routing, cost and capability evidence must be verified before activation.</p> }
     @foreach (var operation in Model.Summary.Operations)
     {
-        <section class="card p-3 my-2">
+        <section class="dashboard-data-surface p-3 my-2">
             <p>@operation.Operation · @operation.ReviewState · Expires @operation.ExpiresUtc.ToString("u")</p>
             @if (operation.ReviewState == "accepted" || (operation.ReviewState == "pending" && Model.Summary.CanReview))
             {
@@ -142,14 +225,29 @@
                     <input type="hidden" name="key" value="@operation.Key" />
                     <input type="hidden" name="sha256" value="@operation.Sha256" />
                     <input type="hidden" name="pendingReview" value="@(operation.ReviewState == "pending" ? "true" : "false")" />
-                    <button class="btn btn-outline-primary" type="submit">Review exact change</button>
+                    <button class="btn btn-clear-search dashboard-command-action" type="submit">Review exact change</button>
                 </form>
             }
         </section>
     }
+    @if (Model.Reconciliation is { } unresolved)
+    {
+        <section class="dashboard-data-surface p-3 my-3" aria-label="Unconfirmed operation result">
+            <h2>Check the same operation</h2>
+            <p role="status">The earlier result remains unverified. Reviewing the same operation does not confirm completion or apply it. Do not prepare a replacement or repeat an uncertain change. If its review has expired or is unavailable, retain these details for authorized operator reconciliation.</p>
+            <form action="@Model.PlanUrl" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="key" value="@unresolved.Key" />
+                <input type="hidden" name="sha256" value="@unresolved.Sha256" />
+                <input type="hidden" name="reconcile" value="true" />
+                <button class="btn btn-clear-search dashboard-command-action" type="submit">Review this same operation and result</button>
+            </form>
+            <details><summary>Operation details for authorized support</summary><dl><dt>Saved operation</dt><dd>@unresolved.Key</dd><dt>Exact review</dt><dd>@unresolved.Sha256</dd></dl></details>
+        </section>
+    }
     @if (Model.Review is { } review)
     {
-        <section class="card p-3 my-3" aria-label="Exact operation review">
+        <section class="dashboard-data-surface p-3 my-3" aria-label="Exact operation review">
             <h2>@review.Label</h2>
             <p>Operation: @review.Operation</p>
             @foreach (var blocker in review.Blockers) { <p role="status">@blocker</p> }
@@ -164,21 +262,22 @@
                     <input type="hidden" name="id" value="@Guid.ParseExact(review.Key.Substring(6), "N")" />
                     <input type="hidden" name="expectedRevision" value="@revision" />
                     <input type="hidden" name="sha256" value="@review.Sha256" />
-                    <button class="btn btn-primary" type="submit" name="accepted" value="true">Accept this exact review</button>
-                    <button class="btn btn-outline-secondary" type="submit" name="accepted" value="false">Reject this review</button>
+                    <button class="btn btn-carrier-settings dashboard-command-action" type="submit" name="accepted" value="true">Accept this exact review</button>
+                    <button class="btn btn-clear-search dashboard-command-action" type="submit" name="accepted" value="false">Reject this review</button>
                 </form>
             }
-            @if (review.CanApply && review.ExpectedStateToken is not null)
+            @if (review.CanApply && review.ExpectedStateToken is not null && Model.Reconciliation is null)
             {
                 <form action="@Model.ApplyUrl" method="post">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="PackageKey" value="@review.Key" />
                     <input type="hidden" name="PackageSha256" value="@review.Sha256" />
                     <input type="hidden" name="ExpectedStateToken" value="@review.ExpectedStateToken" />
-                    <button class="btn btn-primary" type="submit">Apply this exact change</button>
+                    <button class="btn btn-carrier-settings dashboard-command-action" type="submit">Apply this exact change</button>
                 </form>
             }
         </section>
     }
-</main>
+    </section>
+</section>
 <script src="~/js/legend-public-inquiry.js" asp-append-version="true" defer></script>

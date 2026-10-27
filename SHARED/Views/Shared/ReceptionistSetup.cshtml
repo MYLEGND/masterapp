@@ -9,6 +9,8 @@
     var accounting = Model.OperatingSnapshot?.Accounting;
     var recordedCurrency = Model.OperatingSnapshot?.Configuration?.Currency ?? "currency unknown";
     var readiness = Model.Readiness ?? new Shared.Analytics.ReceptionistReadinessProjection();
+    var admission = Model.SubmittedAdmission;
+    var setupFailure = ViewData["ReceptionistSetupFailure"] as Shared.Analytics.ReceptionistPlanFailure;
     string Amount(decimal value) => value.ToString(CultureInfo.InvariantCulture);
 }
 <section class="dashboard-page-shell py-4">
@@ -16,17 +18,42 @@
         <div class="dashboard-hero-copy">
             <div><a class="btn btn-clear-search dashboard-command-action" href="@Model.ReturnUrl">Back to your workspace</a></div>
             <h1 class="dashboard-hero-title mt-3">Receptionist settings</h1>
-    @if (Model.ManagementUrl is not null) { <p><a href="@Model.ManagementUrl">Manage provider connections and operation reviews</a></p> }
+    <nav aria-label="Receptionist tasks" class="d-flex flex-wrap gap-2 my-3">
+                <a class="btn btn-clear-search dashboard-command-action" href="#receptionist-call-status">Overview and readiness</a>
+                <a class="btn btn-clear-search dashboard-command-action" href="#conversation">Conversation and services</a>
+                <a class="btn btn-clear-search dashboard-command-action" href="#hours-limits">Hours and budget</a>
+                <a class="btn btn-clear-search dashboard-command-action" href="#appointments">Optional appointments</a>
+                @if (Model.ManagementUrl is not null) { <a class="btn btn-clear-search dashboard-command-action" href="@(Model.ManagementUrl + "#voice-connection")">Voice connection</a><a class="btn btn-clear-search dashboard-command-action" href="@(Model.ManagementUrl + "#operation-reviews")">Review and activation</a><a class="btn btn-clear-search dashboard-command-action" href="@(Model.ManagementUrl + "#voice-test")">Voice testing and help</a> }
+                @if (Model.ContentReviewUrl is not null && Model.Snapshot.ConfigurationId is not null) { <a class="btn btn-clear-search dashboard-command-action" href="@Model.ContentReviewUrl">Review content and recovery</a> }
+            </nav>
             <p class="dashboard-section-copy">Choose how your receptionist answers callers, which services it can discuss, and the limits it must respect.</p>
             @if (Model.Message is not null)
             { <p class="dashboard-section-copy" role="status">@Model.Message</p> }
+            @if (setupFailure is not null)
+            {
+                <div class="dashboard-data-surface p-3" role="alert">
+                    <p>@setupFailure.Message</p>
+                    @if (admission is not null)
+                    {
+                        <p>Submitted permission: @(admission.Enabled ? "Allow calls when ready" : "Pause calls"). Reload before making another change.</p>
+                        @if (!ViewData.ModelState.IsValid) { <p>Check the permission choice and original setup revision.</p> }
+                    }
+                    @if (setupFailure.TargetFragment == "voice-connection" && Model.ManagementUrl is not null)
+                    { <a href="@(Model.ManagementUrl + "#voice-connection")">@setupFailure.ActionLabel</a> }
+                    else if (setupFailure.TargetFragment == "content-review" && Model.ContentReviewUrl is not null && snapshot.ConfigurationId is not null)
+                    { <a href="@Model.ContentReviewUrl">@setupFailure.ActionLabel</a> }
+                    else if (setupFailure.TargetFragment == "reload")
+                    { <a href="@Model.PostUrl">@setupFailure.ActionLabel</a> }
+                    else { <a href="#conversation">Open conversation settings</a> }
+                </div>
+            }
         </div>
     </header>
     <section class="dashboard-surface-panel p-3 mb-4" aria-labelledby="receptionist-call-status">
         <h2 class="dashboard-section-title mb-3" id="receptionist-call-status">Call status</h2>
         <dl class="row mb-2">
             <dt class="dashboard-stat-label col-sm-4">Owner permission</dt><dd class="col-sm-8">@(readiness.OwnerPermissionEnabled is true ? "Allowed when ready" : readiness.OwnerPermissionEnabled is false ? "Paused" : "Unknown — reload to verify")</dd>
-            <dt class="dashboard-stat-label col-sm-4">Call readiness</dt><dd class="col-sm-8">@readiness.CallReadiness</dd>
+            <dt class="dashboard-stat-label col-sm-4">Call readiness</dt><dd class="col-sm-8">@(readiness.AdmissionReason == "outside_reception_hours" ? "Closed according to reception hours" : readiness.CallReadiness)</dd>
             <dt class="dashboard-stat-label col-sm-4">Control-plane runtime</dt><dd class="col-sm-8">@readiness.RuntimeState</dd>
             <dt class="dashboard-stat-label col-sm-4">Editable settings version</dt><dd class="col-sm-8">@(snapshot.ConfigurationId.HasValue ? $"Version {snapshot.ConfigurationVersion}" : "No saved version")</dd>
             <dt class="dashboard-stat-label col-sm-4">Operating version</dt><dd class="col-sm-8">@(readiness.OperatingConfigurationVersion is { } operatingVersion ? $"Version {operatingVersion}" : readiness.BindingScope == "unaccepted" ? "No accepted operating configuration" : "Unknown — reload to verify")</dd>
@@ -41,6 +68,8 @@
             <dt class="dashboard-stat-label col-sm-4">Awaiting stop or provider closure</dt><dd class="col-sm-8">@(readiness.AwaitingStopOrClosure?.ToString() ?? "unknown")</dd>
             <dt class="dashboard-stat-label col-sm-4">Observed at (UTC)</dt><dd class="col-sm-8">@(readiness.ObservedUtc?.ToString("u") ?? "unknown")</dd>
         </dl>
+        @if (readiness.AdmissionReason == "outside_reception_hours") { <p class="dashboard-section-copy" role="status">Outside scheduled reception hours. This does not by itself establish permission, provider acceptance, or readiness during open hours.</p> }
+        @if (!readiness.CanAllowOwnerPermission && Model.ManagementUrl is not null) { <p class="dashboard-section-copy">If permission cannot be enabled, verify the current voice connection and required inquiry acceptance. <a href="@(Model.ManagementUrl + "#voice-connection")">Review voice connection</a>.</p> }
         <p class="dashboard-section-copy mb-3">Owner permission is not runtime readiness. A valid application test window is not proof of a restricted carrier route or successful two-way AI audio. These read-only observations do not reserve capacity; every incoming call is checked again.</p>
         @if (accounting is not null && readiness.OwnerPermissionEnabled is not null)
         {
@@ -52,9 +81,9 @@
         {
             <form action="@Model.AdmissionUrl" method="post">
                 @Html.AntiForgeryToken()
-                <input type="hidden" name="ExpectedRevision" value="@snapshot.ConnectionRevision" />
-                <input type="hidden" name="Enabled" value="@(!snapshot.AdmissionEnabled ? "true" : "false")" />
-                <button class="btn dashboard-command-action @(snapshot.AdmissionEnabled ? "btn-clear-search" : "btn-carrier-settings")" type="submit" disabled="@(!snapshot.AdmissionEnabled && !readiness.CanAllowOwnerPermission)">@(snapshot.AdmissionEnabled ? "Pause receptionist permission" : "Allow calls when ready")</button>
+                <input type="hidden" name="ExpectedRevision" value="@(admission?.ExpectedRevision ?? snapshot.ConnectionRevision)" />
+                <input type="hidden" name="Enabled" value="@((admission?.Enabled ?? !snapshot.AdmissionEnabled) ? "true" : "false")" />
+                <button class="btn dashboard-command-action @(snapshot.AdmissionEnabled ? "btn-clear-search" : "btn-carrier-settings")" type="submit" disabled="@(setupFailure is not null || (!snapshot.AdmissionEnabled && !readiness.CanAllowOwnerPermission))">@(snapshot.AdmissionEnabled ? "Pause receptionist permission" : "Allow calls when ready")</button>
                 <p class="dashboard-section-copy mt-2 mb-0">Pausing permission fences further dialogue and business actions through the existing stop handling; it does not promise an instantaneous provider hangup.</p>
             </form>
         }
@@ -66,7 +95,7 @@
         {
             <div asp-validation-summary="All" class="dashboard-data-surface p-3" role="alert"></div>
         }
-        <fieldset class="dashboard-surface-panel p-3">
+        <fieldset id="conversation" class="dashboard-surface-panel p-3">
             <legend class="dashboard-section-title mb-3">Business and conversation</legend>
             <div class="d-grid gap-3">
             <label class="dashboard-form-field"><span>Business name</span><input class="form-control" name="BusinessName" value="@settings.BusinessName" maxlength="200" required /></label>
@@ -111,22 +140,30 @@
                 </div>
             }
         </div></fieldset>
-        <fieldset class="dashboard-surface-panel p-3">
+        <fieldset id="appointments" class="dashboard-surface-panel p-3">
             <legend class="dashboard-section-title mb-3">Appointment readiness</legend>
             <input type="hidden" name="BookingFieldsPresent" value="true" />
+            <p>Appointments are optional: an unavailable calendar does not itself block approved calls and caller-confirmed inquiries.
+            @if (Model.CalendarSetupUrl is not null)
+            { <a href="@Model.CalendarSetupUrl">Open this owner's calendar connection setup</a><span> in Marketing Setup.</span> }
+            else { <span>Calendar connection setup is not available from this business page; ask an authorized workspace operator to review the existing connection.</span> }</p>
             <p>Saving these settings requests a reviewed capability. It does not enable booking, authorize calendar access or send an invitation. Service mappings above must match the existing connected calendar.</p>
             <label><input type="checkbox" name="BookingEnabled" value="true" checked="@settings.BookingEnabled" /> Request appointment capability</label><input type="hidden" name="BookingEnabled" value="false" />
             <label><input type="checkbox" name="BookingQaOnly" value="true" checked="@settings.BookingQaOnly" /> Synthetic QA only: no calendar appointment or invitation</label><input type="hidden" name="BookingQaOnly" value="false" />
             <label><input type="checkbox" name="BookingAllowConsentedCustomerEmail" value="true" checked="@settings.BookingAllowConsentedCustomerEmail" /> Permit a customer email invitation only after the caller explicitly confirms it</label><input type="hidden" name="BookingAllowConsentedCustomerEmail" value="false" />
             <p>Workspace inquiry notifications are separate. If the caller declines the invitation, Shayla does not create an external appointment.</p>
-            <label class="dashboard-form-field"><span>Reviewed calendar configuration fingerprint</span><input class="form-control" name="BookingCalendarConfigurationSha256" value="@settings.BookingCalendarConfigurationSha256" maxlength="64" autocomplete="off" /></label>
-            <label class="dashboard-form-field"><span>Reviewed calendar target fingerprint</span><input class="form-control" name="BookingCalendarTargetSha256" value="@settings.BookingCalendarTargetSha256" maxlength="64" autocomplete="off" /></label>
-            <label class="dashboard-form-field"><span>Approved booking privacy evidence reference</span><input class="form-control" name="BookingPrivacyAcceptanceReference" value="@settings.BookingPrivacyAcceptanceReference" maxlength="512" /></label>
-            <label class="dashboard-form-field"><span>Existing authorized booking agent profile ID</span><input class="form-control" name="BookingAgentProfileId" value="@settings.BookingAgentProfileId" maxlength="36" /></label>
             <label class="dashboard-form-field"><span>Minimum notice in minutes</span><input class="form-control" type="number" name="BookingMinimumNoticeMinutes" value="@settings.BookingMinimumNoticeMinutes" min="0" max="43200" /></label>
             <label class="dashboard-form-field"><span>Minimum business days of notice</span><input class="form-control" type="number" name="BookingMinimumNoticeBusinessDays" value="@settings.BookingMinimumNoticeBusinessDays" min="0" max="30" /></label>
             <p>Business days follow the open weekdays in your reception hours. Notice runs to the same local time on the counted day, skipping closed weekdays. Appointments are also restricted to those open weekdays when business-day notice is enabled. Both notice limits apply. Calendar availability can impose stricter limits.</p>
             <label class="dashboard-form-field"><span>Maximum days ahead</span><input class="form-control" type="number" name="BookingMaximumAdvanceDays" value="@settings.BookingMaximumAdvanceDays" min="1" max="90" /></label>
+            <details id="appointment-review-details" class="dashboard-data-surface p-3" open="@(new[] { "BookingCalendarConfigurationSha256", "BookingCalendarTargetSha256", "BookingPrivacyAcceptanceReference", "BookingAgentProfileId" }.Any(key => ViewData.ModelState.TryGetValue(key, out var entry) && entry.Errors.Count > 0))">
+                <summary>Advanced reviewed appointment mapping</summary>
+                <p>For authorized reviewed setup: use the exact reviewed calendar configuration and target, genuine booking privacy evidence, and an explicitly authorized booking agent profile. These values do not automatically follow calendar changes; review any change before replacing them. Do not substitute a tracking profile or guess an identity from an email address.</p>
+            <label class="dashboard-form-field"><span>Reviewed calendar configuration fingerprint</span><input class="form-control" name="BookingCalendarConfigurationSha256" value="@settings.BookingCalendarConfigurationSha256" maxlength="64" autocomplete="off" /></label>
+            <label class="dashboard-form-field"><span>Reviewed calendar target fingerprint</span><input class="form-control" name="BookingCalendarTargetSha256" value="@settings.BookingCalendarTargetSha256" maxlength="64" autocomplete="off" /></label>
+            <label class="dashboard-form-field"><span>Approved booking privacy evidence reference</span><input class="form-control" name="BookingPrivacyAcceptanceReference" value="@settings.BookingPrivacyAcceptanceReference" maxlength="512" /></label>
+            <label class="dashboard-form-field"><span>Existing authorized booking agent profile ID</span><input class="form-control" name="BookingAgentProfileId" value="@settings.BookingAgentProfileId" maxlength="36" /></label>
+            </details>
         </fieldset>
         <fieldset class="dashboard-surface-panel p-3">
             <legend class="dashboard-section-title mb-3">Approved answers</legend>
@@ -156,7 +193,7 @@
                 </div>
             }
         </div></fieldset>
-        <fieldset class="dashboard-surface-panel p-3">
+        <fieldset id="hours-limits" class="dashboard-surface-panel p-3">
             <legend class="dashboard-section-title mb-3">Hours and limits</legend>
             <div class="d-grid gap-3">
             <label class="dashboard-form-field"><span>Business time zone</span><input class="form-control" name="TimeZoneId" value="@settings.TimeZoneId" maxlength="100" placeholder="Area/City" required /></label>
@@ -183,13 +220,10 @@
             <p class="dashboard-section-copy mb-0">Cash and service consumption are tracked separately. Unresolved provider charges remain reserved. Changing these limits requires verification and does not add provider funds.</p>
         </div></fieldset>
         <div class="dashboard-surface-panel p-3">
-            <p class="dashboard-section-copy mb-3">Saving creates an inactive version and pauses new calls until that version is verified. Existing charges and reservations remain accounted for.</p>
+            <p class="dashboard-section-copy mb-3">Saving creates an inactive draft. It does not change the operating configuration or call permission. Review and apply the draft before calls can use it; existing charges and reservations remain accounted for.</p>
             <button class="btn btn-carrier-settings dashboard-command-action" type="submit">Save receptionist settings</button>
         </div>
     </form>
+    @if (Model.ContentReviewUrl is not null && Model.Snapshot.ConfigurationId is not null)
+    { <p class="dashboard-section-copy"><a href="@Model.ContentReviewUrl">Review saved content, apply it while paused, or restore an earlier draft</a></p> }
 </section>
-
-@if (Model.ContentReviewUrl is not null && Model.Snapshot.ConfigurationId is not null)
-{
-    <p><a href="@Model.ContentReviewUrl">Review saved content, apply it while paused, or restore an earlier draft</a></p>
-}

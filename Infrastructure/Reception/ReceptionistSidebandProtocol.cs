@@ -10,6 +10,13 @@ internal static class ReceptionistSidebandProtocol
     // including text whose characters consume multiple tokens. The application chunks complete facts.
     internal const int MaximumAppendBytes = 480;
 
+    internal static byte[] Close(string eventId)
+    {
+        if (!OpenAiReceptionistProtocol.Token(eventId, 200))
+            throw new ArgumentException("A valid close event identity is required.");
+        return JsonSerializer.SerializeToUtf8Bytes(new { type = "session.close", event_id = eventId });
+    }
+
     internal static byte[] Append(string eventId, string? delegationId, string type, string content)
     {
         if (!OpenAiReceptionistProtocol.Token(eventId, 200) ||

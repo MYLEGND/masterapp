@@ -7,8 +7,10 @@ public sealed record ReceptionistContentPreview(Guid ExpectedRevision, Guid Draf
     IReadOnlyList<ReceptionistContentVersion> History, bool IsRecovery = false);
 public sealed record ReceptionistContentApplyInput(Guid ExpectedRevision, string ReviewHash, bool ConfirmContentReview);
 public sealed record ReceptionistContentRollbackInput(Guid ExpectedRevision, Guid SourceVersionId, bool RestoreOperatingConfiguration = false);
-public sealed record ReceptionistContentReviewPage(ReceptionistContentPreview Preview, string ApplyUrl,
-    string RollbackUrl, string ReturnUrl);
+public sealed record ReceptionistContentReviewPage(ReceptionistContentPreview? Preview, string ApplyUrl,
+    string RollbackUrl, string ReturnUrl, ReceptionistContentApplyInput? SubmittedApply = null,
+    ReceptionistContentRollbackInput? SubmittedRollback = null, ReceptionistPlanFailure? Failure = null,
+    string? ReviewUrl = null);
 
 public sealed record ReceptionistContentApplyResult(ReceptionistConfigurationSnapshot Current,
     Guid AppliedConfigurationId, long AppliedVersion, string ReviewHash, bool Replayed);

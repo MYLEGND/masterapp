@@ -74,6 +74,11 @@ public sealed class ReceptionistPrivacyHttpTests
         var body = await response.Content.ReadAsStringAsync();
         Assert.True(response.StatusCode == HttpStatusCode.OK, string.Join("\n", f.Counts.Failures)); Assert.Contains("Paused", body);
         Assert.Contains("Verified synthetic intake outcomes", body);
+        Assert.Contains("dashboard-page-shell", body);
+        Assert.Contains("/design/legend-web-foundation.css", body);
+        Assert.Contains("/design/legend-app-shell.css", body);
+        Assert.Contains("/_content/Shared/css/dashboard-home-shared.css", body);
+        Assert.DoesNotContain("<script", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("canary", body, StringComparison.OrdinalIgnoreCase);
         Assert.False(response.Headers.Contains("Set-Cookie"));
         f.AssertNoEffects();

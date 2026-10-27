@@ -12,7 +12,11 @@ public sealed record ReceptionistHistoricalBindingEvidence(string Status, string
     IReadOnlyList<ReceptionistOperatorFact> ReceiptReferences, IReadOnlyList<ReceptionistPreparationCost> Costs,
     IReadOnlyList<ReceptionistPreparationCapability> Capabilities,
     IReadOnlyList<ReceptionistPreparationAccount> CurrentlyObservedReferencedFundingAccounts,
-    bool OwnerCurrencyAndProjectCompatible);
+    bool OwnerCurrencyAndProjectCompatible,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? HistoricalBudgetPolicyMode = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    DateTime? HistoricalBudgetPolicyExpiresUtc = null);
 public sealed record ReceptionistPreparationHistory(Guid ConfigurationId, long Version, string ConfigurationSha256,
     DateTime RecordedCreatedUtc, string RecordedCreatedByActorId, ReceptionistHistoricalBindingEvidence BindingEvidence);
 public sealed record ReceptionistOperatorPreparation(DateTime ObservedUtc, string Status,

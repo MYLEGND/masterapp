@@ -147,16 +147,24 @@ internal sealed class ReceptionistRuntimeWorker(IServiceScopeFactory scopes, Tim
             }
             using var socket = attached;
             using var sends = new SemaphoreSlim(1, 1);
-            var state = new SessionState(context, lease, observedUntil);
+            var state = new SessionState(context, lease, observedUntil, socket, sends);
             var backendTasks = new List<Task>();
-            var heartbeat = HeartbeatAsync(state, admission, runtime, lifetime);
+            var heartbeat = Task.CompletedTask;
+            var heartbeatStarted = false;
             try
             {
                 if (!state.Lease.ObservationOnly)
                     backendTasks.Add(StartApplicationAsync(state, services, socket, sends, admission, lifetime.Token));
                 while (!lifetime.IsCancellationRequested && socket.State == WebSocketState.Open)
                 {
-                    using var message = await ReceptionistSidebandProtocol.ReceiveAsync(socket, lifetime.Token);
+                    // Install the final-event receiver before the watchdog may send session.close.
+                    var incoming = ReceptionistSidebandProtocol.ReceiveAsync(socket, lifetime.Token);
+                    if (!heartbeatStarted)
+                    {
+                        heartbeatStarted = true;
+                        heartbeat = HeartbeatAsync(state, admission, runtime, lifetime);
+                    }
+                    using var message = await incoming;
                     if (message is null) break;
                     var data = message.RootElement;
                     if (data.ValueKind != JsonValueKind.Object || !OpenAiReceptionistProtocol.String(data, "type", out var type) ||
@@ -329,7 +337,6 @@ internal sealed class ReceptionistRuntimeWorker(IServiceScopeFactory scopes, Tim
         {
             while (!lifetime.IsCancellationRequested)
             {
-                await Task.Delay(TimeSpan.FromSeconds(2), clock, lifetime.Token);
                 if (clock.GetUtcNow().UtcDateTime >= state.ObserveUntil) { lifetime.Cancel(); break; }
                 if (!runtime.Enabled && !state.Lease.ObservationOnly)
                 {
@@ -349,7 +356,10 @@ internal sealed class ReceptionistRuntimeWorker(IServiceScopeFactory scopes, Tim
                 }
                 finally { state.LeaseChanges.Release(); }
                 if (!owns) { lifetime.Cancel(); break; }
-                if (state.Lease.ObservationOnly) await StopAsync(state.Context.CallId, null, lifetime.Token);
+                // Runs independently of provider events, business readiness and runtime enablement.
+                // The existing durable stop claim, not this timer, grants the one outbound effect.
+                await StopAsync(state.Context.CallId, null, lifetime.Token, state);
+                await Task.Delay(TimeSpan.FromSeconds(2), clock, lifetime.Token);
             }
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
@@ -390,7 +400,7 @@ internal sealed class ReceptionistRuntimeWorker(IServiceScopeFactory scopes, Tim
         finally { state.LeaseChanges.Release(); }
     }
 
-    private async Task StopAsync(Guid callId, ReceptionistVerifiedProviderObservation? observation, CancellationToken ct)
+    private async Task StopAsync(Guid callId, ReceptionistVerifiedProviderObservation? observation, CancellationToken ct, SessionState? sideband = null)
     {
         try
         {
@@ -398,6 +408,32 @@ internal sealed class ReceptionistRuntimeWorker(IServiceScopeFactory scopes, Tim
             var admission = scope.ServiceProvider.GetRequiredService<ReceptionistAdmissionService>();
             var context = await admission.GetCallContextAsync(callId, ct);
             if (context is null || context.State is "closed" or "rejected") return;
+            if (context.Binding.Transport == "webrtc")
+            {
+                // No SIP hangup fallback. The existing call task attaches under the SQL observation
+                // fence; a missing/broken socket leaves the durable request and reservation intact.
+                if (sideband is null || sideband.Closed || sideband.Socket.State != WebSocketState.Open) return;
+                using var send = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                send.CancelAfter(TimeSpan.FromSeconds(5));
+                await sideband.Sends.WaitAsync(send.Token);
+                try
+                {
+                    if (!await ConvertToObservationAsync(sideband, admission, send.Token) ||
+                        !sideband.Lease.ObservationOnly || sideband.Socket.State != WebSocketState.Open ||
+                        !await admission.ValidateObservationLeaseAsync(callId, sideband.Lease.Token, send.Token)) return;
+                    var close = await admission.ClaimProviderStopAsync(callId, _workerId, observation, send.Token);
+                    if (!close.MayExecute || close.ActionId is not { } closeId) return;
+                    if (clock.GetUtcNow().UtcDateTime >= sideband.Lease.ExpiresUtc ||
+                        !await admission.ValidateObservationLeaseAsync(callId, sideband.Lease.Token, send.Token)) return;
+                    await sideband.Socket.SendAsync(ReceptionistSidebandProtocol.Close("stop_" + closeId.ToString("N")).AsMemory(),
+                        WebSocketMessageType.Text, true, send.Token);
+                    // Sending does not establish closure or final usage. Only the receiver may do that.
+                    await admission.RecordActionOutcomeAsync(closeId, "uncertain", null, "openai_sideband:session.close:sent", ct);
+                }
+                finally { sideband.Sends.Release(); }
+                return;
+            }
+            if (context.Binding.Transport != "sip") return;
             var runtime = scope.ServiceProvider.GetRequiredService<ReceptionistRuntimeAuthority>();
             var credential = runtime.Credential(context.Owner, context.Binding, webhook: false);
             var claim = await admission.ClaimProviderStopAsync(callId, _workerId, observation, ct);
@@ -410,12 +446,15 @@ internal sealed class ReceptionistRuntimeWorker(IServiceScopeFactory scopes, Tim
         catch (Exception) { logger.LogWarning("Receptionist stop for call {CallId} remains unverified.", callId); }
     }
 
-    private sealed class SessionState(ReceptionistCallContext context, ReceptionistSidebandLease lease, DateTime observeUntil)
+    private sealed class SessionState(ReceptionistCallContext context, ReceptionistSidebandLease lease, DateTime observeUntil,
+        WebSocket socket, SemaphoreSlim sends)
     {
         internal ReceptionistCallContext Context { get; set; } = context;
         internal ReceptionistSidebandLease Lease = lease;
         internal readonly SemaphoreSlim LeaseChanges = new(1, 1);
         internal DateTime ObserveUntil { get; } = observeUntil;
+        internal WebSocket Socket { get; } = socket;
+        internal SemaphoreSlim Sends { get; } = sends;
         internal ReceptionistApplicationSession? Application;
         internal bool Closed;
     }

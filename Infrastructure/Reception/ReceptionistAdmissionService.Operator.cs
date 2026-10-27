@@ -7,6 +7,11 @@ using Shared.Analytics;
 
 namespace Infrastructure.Reception;
 
+public sealed class ReceptionistCurrentProjectRequiredException : InvalidOperationException
+{
+    public ReceptionistCurrentProjectRequiredException() : base("The accepted current project is required before enabling admission.") { }
+}
+
 public sealed partial class ReceptionistAdmissionService
 {
     internal async Task<ReceptionistOperatorPreparation> ReadOperatorPreparationAsync(
@@ -62,7 +67,7 @@ public sealed partial class ReceptionistAdmissionService
                     oldBinding.CredentialReference, oldBinding.WebhookSecretReference, oldBinding.OperatorAcceptancePackageSha256,
                     [new("provider_setup", oldBinding.ProviderVerificationReceipt),
                      new("exclusive_project", oldBinding.ExclusiveProjectVerificationReceipt),
-                     new("cost_bounds", oldBinding.CostVerificationReceipt),
+                     new(oldBinding.BudgetPolicy is null ? "cost_bounds" : "cost_estimates", oldBinding.CostVerificationReceipt),
                      new("disclosure", oldBinding.DisclosureConfigurationReceipt),
                      new("retention", oldBinding.RetentionConfigurationReceipt),
                      new("carrier_fallback", oldBinding.CarrierFallbackReceipt)],
@@ -73,7 +78,8 @@ public sealed partial class ReceptionistAdmissionService
                     oldFunding.Select(x => new ReceptionistPreparationAccount(x.Id, x.Revision, x.Kind,
                         x.ScopeKey, x.Currency, x.TimeZoneId)).ToArray(),
                     oldConfig.Currency == config.Currency && oldConfig.TimeZoneId == config.TimeZoneId &&
-                        oldBinding.ProviderProjectKey == connection.ReceptionistProviderProjectKey);
+                        oldBinding.ProviderProjectKey == connection.ReceptionistProviderProjectKey,
+                    oldBinding.BudgetPolicy?.Mode, oldBinding.BudgetPolicy?.ExpiresUtc);
                 prior = new(historical.Id, historical.Version, historical.ConfigurationSha256,
                     historical.CreatedUtc, historical.CreatedByActorId, evidence);
             }
@@ -242,7 +248,7 @@ public sealed partial class ReceptionistAdmissionService
                     if (ownerAccount is not null) ids.Add(ownerAccount.Id);
                     if (package.Enabled == true && (binding is null || connection.ReceptionistProviderProjectKey != binding.ProviderProjectKey ||
                         binding.ProviderProjectKey != package.ProviderProjectKey))
-                        throw new InvalidOperationException("The accepted current project is required before enabling admission.");
+                        throw new ReceptionistCurrentProjectRequiredException();
                     break;
                 case "open_budget_period":
                     var opening = package.Opening!;
@@ -490,12 +496,24 @@ public sealed partial class ReceptionistAdmissionService
             facts.Add(new("After binding acceptance", "Inactive; a separate reviewed admission command is required."));
             facts.Add(new("Provider acceptance scope", binding.ControlledTestOnly ? "Controlled tests only" : "Reviewed public activation evidence"));
             facts.Add(new("Configured call duration maximum", configuration.MaximumCallSeconds.ToString(CultureInfo.InvariantCulture) + " seconds"));
+            facts.Add(new("Budget contract", binding.BudgetPolicy is null ? "Verified provider bounds (legacy)" :
+                "Owner-reviewed monthly budget; enforcement can be delayed and actual cost can exceed the budget or estimate"));
+            if (binding.BudgetPolicy is { } policy)
+            {
+                facts.Add(new("Provider duration guarantee", "Unknown; application stop deadlines and provider budgets do not prove termination of an active or unknown session"));
+                facts.Add(new("Owner cash / consumption limits", Amount(policy.MonthlyCashLimit) + " / " + Amount(policy.MonthlyConsumptionLimit)));
+                facts.Add(new("Observed provider budget / observed UTC", Amount(policy.ProviderMonthlyBudget) + " / " + Date(policy.ObservedUtc)));
+                facts.Add(new("Provider observation period", Date(policy.ProviderPeriodStartUtc) + " / " + Date(policy.ProviderPeriodEndUtc)));
+                facts.Add(new("Owner risk consent / policy expiry", policy.OwnerAcceptanceReceipt + " / " + Date(policy.ExpiresUtc)));
+                facts.Add(new("Accepted configuration identity", policy.AcceptedConfigurationId.ToString("D")));
+                facts.Add(new("Budget side effects", "No provider limit synchronization, reservation release, call permission, test window or public activation"));
+            }
             foreach (var bound in binding.Costs)
             {
                 facts.Add(new("Cost component / shared funding", bound.Key + " / " + bound.FundingBudgetAccountId.ToString("D")));
-                facts.Add(new("Cash bound: fixed / per second / per call", Amount(bound.CashFixedMaximum) + " / " + Amount(bound.CashPerSecondMaximum) + " / " +
+                facts.Add(new(binding.BudgetPolicy is null ? "Cash bound: fixed / per second / per call" : "Cash estimate: fixed / per second / per call", Amount(bound.CashFixedMaximum) + " / " + Amount(bound.CashPerSecondMaximum) + " / " +
                     Amount(ReceptionistConfigurationCodec.Maximum(bound.CashFixedMaximum, bound.CashPerSecondMaximum, configuration.MaximumCallSeconds))));
-                facts.Add(new("Consumption bound: fixed / per second / per call", Amount(bound.ConsumptionFixedMaximum) + " / " + Amount(bound.ConsumptionPerSecondMaximum) + " / " +
+                facts.Add(new(binding.BudgetPolicy is null ? "Consumption bound: fixed / per second / per call" : "Consumption estimate: fixed / per second / per call", Amount(bound.ConsumptionFixedMaximum) + " / " + Amount(bound.ConsumptionPerSecondMaximum) + " / " +
                     Amount(ReceptionistConfigurationCodec.Maximum(bound.ConsumptionFixedMaximum, bound.ConsumptionPerSecondMaximum, configuration.MaximumCallSeconds))));
             }
         }

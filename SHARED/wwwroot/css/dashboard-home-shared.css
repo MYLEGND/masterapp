@@ -9796,3 +9796,7 @@ header .legend-global-nav .container-fluid {
     .note-self-doc { grid-template-columns: 1fr; }
     .note-self-col:first-child { border-right: 0; border-bottom: 1px solid var(--legend-app-control-line); }
 }
+
+
+/* Preserve user-authored review text while allowing long tokens to wrap. */
+.dashboard-preserved-copy { white-space: pre-wrap; overflow-wrap: anywhere; }

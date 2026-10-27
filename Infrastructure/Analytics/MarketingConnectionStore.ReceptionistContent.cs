@@ -42,6 +42,8 @@ public sealed partial class MarketingConnectionStore
                 ReceptionistContentReview.Validate(owner, prior, draft);
                 var binding = ReceptionistConfigurationCodec.ReadBinding(baseline.AcceptedBindingJson, prior)
                     ?? throw new InvalidOperationException("The prior binding is unavailable.");
+                if (binding.BudgetPolicy is not null)
+                    throw new InvalidOperationException("A new configuration requires new owner budget risk acceptance and full operator review.");
                 if (connection.ReceptionistProviderProjectKey != binding.ProviderProjectKey)
                     throw new InvalidOperationException("The provider identity changed; full operator review is required.");
                 ReceptionistRuntimeAuthority.Ready(connection.Provider, draft, binding);

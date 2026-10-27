@@ -41,11 +41,41 @@ internal sealed record ReceptionistProviderBinding
     public string CarrierFallbackReceipt { get; init; } = string.Empty;
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? WebsiteFallbackReceipt { get; init; }
+    // Absent means the unchanged verified-bound contract. Never serialize a null policy into legacy hashes.
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public ReceptionistOwnerBudgetPolicy? BudgetPolicy { get; init; }
     public int MaximumSupportedCallSeconds { get; init; }
     public bool ControlledTestOnly { get; init; } = true;
     public string? PublicActivationReceipt { get; init; }
     public IReadOnlyList<ReceptionistCostComponent> Costs { get; init; } = [];
     public IReadOnlyList<ReceptionistAcceptedCapability> Capabilities { get; init; } = [];
+}
+
+// These private legacy numeric field names remain stable. In explicit budget-policy mode they
+// are reservation estimates, NOT provider maxima; the immutable policy records that distinction.
+internal sealed record ReceptionistOwnerBudgetPolicy(
+    string Mode, Guid MarketingConnectionId, string OwnerKey, string ProviderProjectKey,
+    Guid SourceConfigurationId, Guid AcceptedConfigurationId, string ConfigurationSha256,
+    string Currency, decimal MonthlyCashLimit, decimal MonthlyConsumptionLimit,
+    decimal ProviderMonthlyBudget, DateTime ProviderPeriodStartUtc, DateTime ProviderPeriodEndUtc,
+    DateTime ObservedUtc, string ProviderBudgetReceipt, string ProviderBudgetSha256,
+    string OwnerAcceptedByActorId, DateTime OwnerAcceptedUtc, string OwnerAcceptanceReceipt,
+    string OwnerAcceptanceSha256, string EstimateReceipt, string EstimateSha256,
+    DateTime ExpiresUtc, IReadOnlyList<ReceptionistBudgetEstimate> Estimates)
+{
+    internal const string SupportedMode = "owner_budget_delayed_enforcement_v1";
+}
+
+internal sealed record ReceptionistBudgetEstimate(
+    string Key, Guid FundingBudgetAccountId,
+    [property: System.Text.Json.Serialization.JsonRequired] decimal CashFixed,
+    [property: System.Text.Json.Serialization.JsonRequired] decimal CashPerSecond,
+    [property: System.Text.Json.Serialization.JsonRequired] decimal ConsumptionFixed,
+    [property: System.Text.Json.Serialization.JsonRequired] decimal ConsumptionPerSecond,
+    string ZeroCashJustification, string ZeroConsumptionJustification)
+{
+    internal ReceptionistCostComponent ToReservation() =>
+        new(Key, FundingBudgetAccountId, CashFixed, CashPerSecond, ConsumptionFixed, ConsumptionPerSecond);
 }
 
 internal sealed record ReceptionistCostComponent(
@@ -249,7 +279,7 @@ internal static class ReceptionistConfigurationCodec
         Required(value.RetentionConfigurationReceipt, 512, nameof(value.RetentionConfigurationReceipt));
         if (value.Transport != "webrtc") Required(value.CarrierFallbackReceipt, 512, nameof(value.CarrierFallbackReceipt));
         if (!value.ControlledTestOnly) Required(value.PublicActivationReceipt, 512, nameof(value.PublicActivationReceipt));
-        if (value.MaximumSupportedCallSeconds < configuration.MaximumCallSeconds)
+        if (value.BudgetPolicy is null && value.MaximumSupportedCallSeconds < configuration.MaximumCallSeconds)
             throw new ArgumentException("The requested duration exceeds the verified provider capability.");
         if (value.Costs is null || value.Costs.Count == 0 || value.Costs.Count > 32 || value.Costs.Any(x => x is null) ||
             value.Costs.Select(x => x.Key).Distinct(StringComparer.Ordinal).Count() != value.Costs.Count)
@@ -263,6 +293,7 @@ internal static class ReceptionistConfigurationCodec
             Maximum(component.CashFixedMaximum, component.CashPerSecondMaximum, configuration.MaximumCallSeconds);
             Maximum(component.ConsumptionFixedMaximum, component.ConsumptionPerSecondMaximum, configuration.MaximumCallSeconds);
         }
+        if (value.BudgetPolicy is { } policy) ValidateBudgetPolicy(value, configuration, policy);
         if (value.Capabilities is null || value.Capabilities.Count > 100 || value.Capabilities.Any(x => x is null) ||
             value.Capabilities.Select(x => x.Key).Distinct(StringComparer.Ordinal).Count() != value.Capabilities.Count)
             throw new ArgumentException("Accepted capability bindings must be unique.");
@@ -278,6 +309,59 @@ internal static class ReceptionistConfigurationCodec
             }
         }
     }
+
+    private static void ValidateBudgetPolicy(ReceptionistProviderBinding binding,
+        ReceptionistBusinessConfiguration configuration, ReceptionistOwnerBudgetPolicy policy)
+    {
+        static bool Sha(string? value) => value is { Length: 64 } && value.All(c => char.IsAsciiHexDigit(c) && !char.IsUpper(c));
+        if (policy.Mode != ReceptionistOwnerBudgetPolicy.SupportedMode || binding.Transport != "webrtc" ||
+            binding.MaximumSupportedCallSeconds != 0 || HasContentProvenance(binding) ||
+            configuration.MaximumCallSeconds > 360 || configuration.MaximumConcurrentCalls != 1 ||
+            policy.MarketingConnectionId == Guid.Empty || policy.SourceConfigurationId == Guid.Empty ||
+            policy.AcceptedConfigurationId == Guid.Empty || policy.AcceptedConfigurationId == policy.SourceConfigurationId ||
+            policy.ProviderProjectKey != binding.ProviderProjectKey ||
+            policy.ConfigurationSha256 != Hash(Serialize(configuration)) ||
+            policy.Currency != configuration.Currency || policy.MonthlyCashLimit != configuration.MonthlyCashLimit ||
+            policy.MonthlyConsumptionLimit != configuration.MonthlyConsumptionLimit ||
+            policy.ProviderMonthlyBudget <= 0m || !Sha(policy.ProviderBudgetSha256) ||
+            !Sha(policy.OwnerAcceptanceSha256) || !Sha(policy.EstimateSha256) ||
+            policy.EstimateReceipt != binding.CostVerificationReceipt)
+            throw new ArgumentException("A complete exact owner budget policy is required; estimated exposure is not a provider guarantee.");
+        Money(policy.ProviderMonthlyBudget);
+        Required(policy.OwnerKey, 160, "budget policy owner");
+        Required(policy.OwnerAcceptedByActorId, 450, "budget risk accepting actor");
+        Required(policy.ProviderBudgetReceipt, 512, "provider budget observation");
+        Required(policy.OwnerAcceptanceReceipt, 512, "owner budget risk acceptance");
+        Required(policy.EstimateReceipt, 512, "reservation estimate basis");
+        var dates = new[] { policy.ProviderPeriodStartUtc, policy.ProviderPeriodEndUtc, policy.ObservedUtc,
+            policy.OwnerAcceptedUtc, policy.ExpiresUtc };
+        if (dates.Any(x => x.Kind != DateTimeKind.Utc) ||
+            policy.ProviderPeriodStartUtc >= policy.ProviderPeriodEndUtc ||
+            policy.ObservedUtc < policy.ProviderPeriodStartUtc || policy.ObservedUtc >= policy.ProviderPeriodEndUtc ||
+            policy.OwnerAcceptedUtc < policy.ObservedUtc || policy.ExpiresUtc <= policy.OwnerAcceptedUtc ||
+            policy.ExpiresUtc > policy.ProviderPeriodEndUtc ||
+            policy.Estimates is null || policy.Estimates.Count != binding.Costs.Count || policy.Estimates.Any(x => x is null) ||
+            !policy.Estimates.Select(x => x.ToReservation()).SequenceEqual(binding.Costs))
+            throw new ArgumentException("Dated budget observation, explicit estimates and risk acceptance must match exactly.");
+        var acceptedLocal = TimeZoneInfo.ConvertTimeFromUtc(policy.OwnerAcceptedUtc,
+            TimeZoneInfo.FindSystemTimeZoneById(configuration.TimeZoneId));
+        if (policy.ExpiresUtc > Month(configuration.TimeZoneId, acceptedLocal.Year, acceptedLocal.Month).End)
+            throw new ArgumentException("Owner budget risk acceptance cannot cross its accounting month.");
+        foreach (var estimate in policy.Estimates)
+        {
+            if (estimate.CashFixed == 0m && estimate.CashPerSecond == 0m)
+                Required(estimate.ZeroCashJustification, 512, "explicit zero cash basis");
+            if (estimate.ConsumptionFixed == 0m && estimate.ConsumptionPerSecond == 0m)
+                Required(estimate.ZeroConsumptionJustification, 512, "explicit zero consumption basis");
+        }
+    }
+
+    internal static bool BudgetPolicyCurrent(ReceptionistProviderBinding binding, string ownerKey,
+        Guid connectionId, Guid acceptedConfigurationId, DateTime now) => binding.BudgetPolicy is not { } policy ||
+        (policy.OwnerKey == ownerKey && policy.MarketingConnectionId == connectionId &&
+         policy.AcceptedConfigurationId == acceptedConfigurationId && policy.ProviderProjectKey == binding.ProviderProjectKey &&
+         policy.OwnerAcceptedUtc <= now && now < policy.ExpiresUtc && now >= policy.ProviderPeriodStartUtc &&
+         now < policy.ProviderPeriodEndUtc && binding.OperatorAcceptancePackageSha256 is not null);
 
     internal static bool HasContentProvenance(ReceptionistProviderBinding value) =>
         value.ContentReviewHash is not null || value.ContentSourceConfigurationId is not null ||

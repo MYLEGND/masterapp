@@ -344,6 +344,7 @@ public sealed partial class ReceptionistRuntimeWorkerTests
         internal ReceptionistAdmissionService Admission => new(Options, Clock);
         internal MasterAppDbContext Database() => new(Options);
         internal IServiceScope CreateScope() => provider.CreateScope();
+        internal void SetRuntimeEnabled(bool enabled) => provider.GetRequiredService<IConfiguration>()["Receptionist:Enabled"] = enabled.ToString();
 
         internal static async Task<Fixture> CreateAsync(bool enabled = true, ReceptionistBusinessConfiguration? configuration = null, bool browser = false, IInterceptor? interceptor = null, bool controlledBrowser = false)
         {
@@ -491,6 +492,7 @@ public sealed partial class ReceptionistRuntimeWorkerTests
         internal readonly ConcurrentQueue<ProviderRequest> Attaches = new();
         private readonly ConcurrentQueue<ScriptedSocket> sockets = new();
         internal bool FailAttach;
+        internal Action<ScriptedSocket>? ConfigureSocket;
         internal int BrowserCreates;
         internal Func<CancellationToken, Task<OpenAiReceptionistBrowserOutcome>>? BrowserCreate;
         public Task<OpenAiReceptionistBrowserOutcome> CreateBrowserAsync(string projectId, string credential,
@@ -521,6 +523,7 @@ public sealed partial class ReceptionistRuntimeWorkerTests
             Attaches.Enqueue(new(projectId, sessionId, credential));
             if (FailAttach) throw new WebSocketException("Synthetic attach failure.");
             var socket = new ScriptedSocket();
+            ConfigureSocket?.Invoke(socket);
             sockets.Enqueue(socket);
             return Task.FromResult<WebSocket>(socket);
         }
@@ -545,6 +548,8 @@ public sealed partial class ReceptionistRuntimeWorkerTests
         private byte[]? frame;
         private int offset;
         internal readonly ConcurrentQueue<JsonElement> Sent = new();
+        internal Func<JsonElement, CancellationToken, Task>? Sending;
+        private int sending;
         internal void Queue(object value) => Assert.True(incoming.Writer.TryWrite(JsonSerializer.SerializeToUtf8Bytes(value)));
         public override WebSocketCloseStatus? CloseStatus => null;
         public override string? CloseStatusDescription => null;
@@ -573,15 +578,20 @@ public sealed partial class ReceptionistRuntimeWorkerTests
         }
         public override Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken) =>
             SendAsync(buffer.AsMemory(), messageType, endOfMessage, cancellationToken).AsTask();
-        public override ValueTask SendAsync(ReadOnlyMemory<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken = default)
+        public override async ValueTask SendAsync(ReadOnlyMemory<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (State != WebSocketState.Open) throw new WebSocketException("Synthetic socket is no longer open.");
             Assert.Equal(WebSocketMessageType.Text, messageType);
             Assert.True(endOfMessage);
             using var document = JsonDocument.Parse(buffer);
-            Sent.Enqueue(document.RootElement.Clone());
-            return ValueTask.CompletedTask;
+            Assert.Equal(1, Interlocked.Increment(ref sending));
+            try
+            {
+                if (Sending is not null) await Sending(document.RootElement, cancellationToken);
+                Sent.Enqueue(document.RootElement.Clone());
+            }
+            finally { Interlocked.Decrement(ref sending); }
         }
         public override void Dispose() { Abort(); }
     }
@@ -593,6 +603,10 @@ public sealed partial class ReceptionistRuntimeWorkerTests
         private readonly List<ScheduledTimer> timers = [];
         private DateTime current = now;
         internal bool HasScheduledTimer { get { lock (gate) return timers.Any(t => !t.Disposed && t.Due is not null); } }
+        internal bool HasScheduledDelay(TimeSpan delay)
+        {
+            lock (gate) return timers.Any(t => !t.Disposed && t.Due == current.Add(delay));
+        }
         public override DateTimeOffset GetUtcNow() { lock (gate) return new(current); }
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {

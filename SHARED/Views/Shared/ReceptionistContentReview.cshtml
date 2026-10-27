@@ -3,25 +3,65 @@
 @{
     ViewData["Title"] = "Review receptionist content";
     var preview = Model.Preview;
+    string Attempt(string name, object? fallback) => ViewData.ModelState.TryGetValue(name, out var entry) && entry.AttemptedValue is not null
+        ? entry.AttemptedValue : Convert.ToString(fallback, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+    var submittedRevision = Model.SubmittedApply?.ExpectedRevision ?? Model.SubmittedRollback?.ExpectedRevision;
+    var selectedVersion = Model.SubmittedRollback is null ? null : Attempt("SourceVersionId", Model.SubmittedRollback.SourceVersionId);
+    var invalidFields = ViewData.ModelState.Where(x => x.Value.Errors.Count > 0).Select(x => x.Key switch
+    {
+        "ExpectedRevision" => "review revision", "ReviewHash" => "content review", "ConfirmContentReview" => "review confirmation",
+        "SourceVersionId" => "saved version", "RestoreOperatingConfiguration" => "recovery choice", _ => null
+    }).Where(x => x is not null).Distinct().ToArray();
 }
-<h1>Review receptionist content</h1>
+<section class="dashboard-page-shell py-4">
+<header class="dashboard-surface-panel p-3 mb-4">
+<a class="btn btn-clear-search dashboard-command-action" href="@Model.ReturnUrl">Back to receptionist home</a>
+<h1 class="dashboard-hero-title mt-3">Review receptionist content</h1>
+@if (Model.Failure is { } failure)
+{
+    <div class="dashboard-data-surface p-3" role="alert">
+        <p>@failure.Message Your submitted choices remain below. The current comparison is for reference only; reload and review it before making another change.</p>
+        @if (invalidFields.Length > 0) { <p>Check these fields: @string.Join(", ", invalidFields).</p> }
+        <a href="@Model.ReviewUrl">Reload content review</a>
+        <details><summary>Submitted review and recovery choices</summary><dl>
+            <dt>Original revision</dt><dd>@Attempt("ExpectedRevision", submittedRevision)</dd>
+            @if (Model.SubmittedApply is { } applied)
+            {
+                <dt>Original content review</dt><dd>@Attempt("ReviewHash", applied.ReviewHash)</dd>
+                <dt>Content review confirmed</dt><dd>@Attempt("ConfirmContentReview", applied.ConfirmContentReview)</dd>
+            }
+            @if (Model.SubmittedRollback is { } restored)
+            {
+                <dt>Selected saved version</dt><dd>@selectedVersion</dd>
+                <dt>Recover calls-only operating settings</dt><dd>@Attempt("RestoreOperatingConfiguration", restored.RestoreOperatingConfiguration)</dd>
+            }
+        </dl></details>
+    </div>
+}
+@if (preview is not null)
+{
 <p>Saved version @preview.DraftVersion; accepted baseline version @preview.BaselineVersion.</p>
 @if (preview.IsRecovery)
 { <p role="status">Recovery review: there is no accepted operating configuration selected. This comparison uses historical acceptance. Applying requires the protected settings to match that acceptance and keeps calls paused.</p> }
 <p>Review the AI introduction, approved answers, qualification wording and every service destination. Applying content keeps calls paused. It does not verify call quality, extend a test window, enable a provider, or authorize public routing.</p>
 @if (preview.BlockReason is not null) { <p role="status">@preview.BlockReason</p> }
+}
+</header>
+@if (preview is not null)
+{
+<section class="dashboard-surface-panel p-3 mb-4">
 @foreach (var item in new[] { (Title: "Saved draft", Content: preview.Draft), (Title: "Previously applied content", Content: preview.Baseline) })
 {
-    <details open="@(item.Title == "Saved draft")">
+    <details class="dashboard-data-surface p-3 mb-3" open="@(item.Title == "Saved draft")">
         <summary>@item.Title</summary>
         <h2>@item.Content.BusinessName</h2>
         <h3>Greeting and conversation guidance</h3>
-        <p style="white-space:pre-wrap">@item.Content.ConversationInstructions</p>
+        <p class="dashboard-preserved-copy">@item.Content.ConversationInstructions</p>
         <h3>Voice policy</h3>
-        <p style="white-space:pre-wrap">@(item.Content.CompactVoicePolicy ?? item.Content.BusinessPolicy)</p>
+        <p class="dashboard-preserved-copy">@(item.Content.CompactVoicePolicy ?? item.Content.BusinessPolicy)</p>
         @if (item.Content.CompactVoicePolicy is not null)
         {
-            <details><summary>Full policy to compare with the concise guidance</summary><p style="white-space:pre-wrap">@item.Content.BusinessPolicy</p></details>
+            <details><summary>Full policy to compare with the concise guidance</summary><p class="dashboard-preserved-copy">@item.Content.BusinessPolicy</p></details>
         }
         <h3>Services and qualification</h3>
         @using (var services = JsonDocument.Parse(item.Content.ServiceDefinitionsJson))
@@ -56,29 +96,33 @@
         }
     </details>
 }
-@if (preview.CanApply)
+@if (preview.CanApply || Model.SubmittedApply is not null)
 {
-    <form method="post" action="@Model.ApplyUrl">
+    <form class="d-grid gap-3" method="post" action="@Model.ApplyUrl">
         @Html.AntiForgeryToken()
-        <input type="hidden" name="ExpectedRevision" value="@preview.ExpectedRevision" />
-        <input type="hidden" name="ReviewHash" value="@preview.ReviewHash" />
-        <label><input type="checkbox" name="ConfirmContentReview" value="true" required /> I reviewed the AI disclosure, approved content and service destinations shown above.</label>
-        <button type="submit">Apply reviewed content and keep calls paused</button>
+        <input type="hidden" name="ExpectedRevision" value="@(submittedRevision is null ? preview.ExpectedRevision.ToString() : Attempt("ExpectedRevision", submittedRevision))" />
+        <input type="hidden" name="ReviewHash" value="@(Model.SubmittedApply is null ? preview.ReviewHash : Attempt("ReviewHash", Model.SubmittedApply.ReviewHash))" />
+        <label><input type="checkbox" name="ConfirmContentReview" value="true" checked="@(Model.SubmittedApply?.ConfirmContentReview == true)" required /> I reviewed the AI disclosure, approved content and service destinations shown above.</label>
+        <button class="btn btn-carrier-settings dashboard-command-action" type="submit" disabled="@(Model.Failure is not null)">Apply reviewed content and keep calls paused</button>
     </form>
 }
-<h2>Restore content as a new draft</h2>
+</section>
+<section class="dashboard-surface-panel p-3 mb-4">
+<h2 class="dashboard-section-title">Restore content as a new draft</h2>
 <p>This copies greeting, compatible concise voice guidance, service descriptions and approved answers. Current permissions, budgets, privacy policy, provider settings and service routes remain in force. Review the new draft before applying it.</p>
-<form method="post" action="@Model.RollbackUrl">
+<form class="d-grid gap-3" method="post" action="@Model.RollbackUrl">
     @Html.AntiForgeryToken()
-    <input type="hidden" name="ExpectedRevision" value="@preview.ExpectedRevision" />
+    <input type="hidden" name="ExpectedRevision" value="@(submittedRevision is null ? preview.ExpectedRevision.ToString() : Attempt("ExpectedRevision", submittedRevision))" />
     <label for="source-version">Saved version</label>
-    <select id="source-version" name="SourceVersionId">
+    <select class="form-select" id="source-version" name="SourceVersionId">
+    @if (selectedVersion is not null && !preview.History.Any(x => x.Id.ToString() == selectedVersion))
+    { <option value="@selectedVersion" selected>Previously selected version (currently unavailable)</option> }
     @foreach (var item in preview.History)
     {
-        <option value="@item.Id">Version @item.Version — @(item.WasApplied ? "previously applied" : "draft")</option>
+        <option value="@item.Id" selected="@(selectedVersion == item.Id.ToString())">Version @item.Version — @(item.WasApplied ? "previously applied" : "draft")</option>
     }
     </select>
-    <button type="submit">Create inactive draft from this content</button>
+    <button class="btn btn-carrier-settings dashboard-command-action" type="submit" disabled="@(Model.Failure is not null)">Create inactive draft from this content</button>
 </form>
 <p><a href="@Model.ReturnUrl">Return to receptionist settings</a></p>
 
@@ -86,11 +130,16 @@
 {
     <h2>Recover accepted calls-only settings</h2>
     <p>Create a draft of accepted version @preview.BaselineVersion, including its operating settings. This does not restore permission or acceptance. Review the resulting comparison before applying; current calls remain unchanged until application. Recovery is unavailable if that version enabled booking or its provider identity changed.</p>
-    <form method="post" action="@Model.RollbackUrl">
+    <form class="d-grid gap-3" method="post" action="@Model.RollbackUrl">
         @Html.AntiForgeryToken()
-        <input type="hidden" name="ExpectedRevision" value="@preview.ExpectedRevision" />
-        <input type="hidden" name="SourceVersionId" value="@preview.BaselineId" />
+        <input type="hidden" name="ExpectedRevision" value="@(submittedRevision is null ? preview.ExpectedRevision.ToString() : Attempt("ExpectedRevision", submittedRevision))" />
+        <input type="hidden" name="SourceVersionId" value="@(Model.SubmittedRollback?.RestoreOperatingConfiguration == true ? selectedVersion : preview.BaselineId.ToString())" />
         <input type="hidden" name="RestoreOperatingConfiguration" value="true" />
-        <button type="submit">Prepare accepted calls-only settings for review</button>
+        <button class="btn btn-carrier-settings dashboard-command-action" type="submit" disabled="@(Model.Failure is not null)">Prepare accepted calls-only settings for review</button>
     </form>
 }
+
+
+</section>
+}
+</section>
