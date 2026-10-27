@@ -189,6 +189,7 @@ jobs:
               'approved-definitions-static-styles-only':'approved-definitions-exact',
               'approved-prefix-reviewed-receptionist-entry':'approved-prefix-reviewed-receptionist-entry',
               'approved-prefix-reviewed-canonical-payment-entry':'approved-prefix-reviewed-canonical-payment-entries',
+              'approved-prefix-reviewed-browser-entry':'approved-prefix-reviewed-browser-entry',
           }
           expected=rules.get(proof.get('rule'))
           if expected is None:

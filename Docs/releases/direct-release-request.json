@@ -2,7 +2,7 @@
   "requestedBy": "Founder",
   "authorization": "Founder instructed full completion and deployment of the existing Shayla integration. Publish the independently reviewed application changes through the canonical selective release with calls paused, telephone disabled and booking unaccepted; this request does not authorize activation or new provider grants.",
   "purpose": "Deploy the accepted website voice transport, protected management controls, booking notice constraints and shared inquiry fallback, including the two reviewed additive receptionist migrations.",
-  "requestId": "shayla-paused-web-deployment-20261027-v1",
+  "requestId": "shayla-paused-web-deployment-20261027-v2",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
