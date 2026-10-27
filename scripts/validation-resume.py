@@ -8784,8 +8784,12 @@ REVIEWED_RECEPTIONIST_RUNTIME = '4f6153929faff37fd4209636fa912c8e147adc2c96b6644
 REVIEWED_RECEPTIONIST_ENTRY = 'c457b4d88db0b998b778b2a789e49412b6218e9b87b4f511de0746d739087c8b'
 REVIEWED_MANAGEMENT_ENTRY = '5578b38e0ed342ffd24b958f8d2395e13c4933d5ad477fc58ed714393a86a897'
 REVIEWED_BROWSER_ENTRY = '19163c8f4ecf7fecb275ed0052dfa6fc161d586e989360b7c2f51c983b7353d8'
-# Remains closed until independent acceptance pins the complete candidate closure.
-REVIEWED_BROWSER_RUNTIME_PAIRS = frozenset()
+# Independently accepted exact closure for schema observation and paused deployment.
+# This does not authorize provider calls, booking activation or tool self-promotion.
+REVIEWED_BROWSER_RUNTIME_PAIRS = frozenset({
+    ('45dc15fc6385dd202f9302c8e9ab41e3153b8cc981521a5d4cf5bb7f5bc1354a',
+     'b7cd7a413410db1d64dee03063ef487f94c106b581a58bf1c805873219ebc1dd')
+})
 
 REVIEWED_TRAINING_ENTRY = '49ef5a95c19084b799e9a92a5d0c496792dbdcab367e4360795d55e443338434'
 # Empty until independent acceptance freezes the exact application dependency closure.
