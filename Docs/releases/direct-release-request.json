@@ -1,24 +1,32 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue the approved release-completion recovery without repeating deployments. Promote only the independently reviewed canonical immutable receipt-byte reuse correction and its regression tests. Preserve the exact 100-entry cap, every caller byte limit, deadlines, fresh authority and provider proof checks. No overflow, eviction, broader access, app uploads, SQL, restarts, routing or spending changes.",
-  "purpose": "Avoid duplicate retention of completed authenticated receipt bytes across fitting caller size limits while preserving all original proof and cache boundaries.",
-  "requestId": "shayla-completion-receipt-reuse-promotion-20261027-v1",
+  "authorization": "Continue the approved completion recovery and paused application source-validation work. Promote only the independently reviewed scoped completion-receipt discovery correction, its regression coverage, and the exact a34-to-dde0 reviewed-runtime pair. Preserve bounded caches, deadlines, fresh authority/provider verification, and actual trusted/candidate compiled-contract equality. No app uploads, SQL, restart, activation, phone or routing changes, access changes or new costs.",
+  "purpose": "Scope completion discovery to relevant authenticated receipts and admit only the reviewed runtime pair subject to unchanged fresh equal-contract checks.",
+  "requestId": "shayla-scoped-discovery-runtime-pair-promotion-20261027-v2",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "b7d666f1b737b1ba2485d9c0157ff059637c42d5",
-    "sourceRevision": "bd6f8691fcfd49bf32b75e2183050b2adab6a66e",
+    "baseRevision": "c6102c492398ea75b57bee37e9b4aee9a7e52dee",
+    "sourceRevision": "9bf30a7e39d5842ed9d4904def15cdb49dfed4c1",
     "files": {
-      "scripts/validation-resume.py": {
+      "scripts/test-release-policy.py": {
         "mode": "100644",
-        "blob": "d64d66912b79d68f1ee4897a7471e26eb9f77081"
+        "blob": "ec13b3d226e11cda51e7d9bebd174265478f5458"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "1481fc6669d2307f1ba934a4e0310b68e69e0d6f"
+        "blob": "8e7726bce4d053a1e1a46cfb5a1fa3deef0957cb"
+      },
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "06e10e78edd903f3b4da394870454e89d9e10fe0"
+      },
+      "scripts/test-fast-track-release.py": {
+        "mode": "100644",
+        "blob": "2206e79c4ee5b36582e3ff81899c50b5ff27cc95"
       }
     }
   }
