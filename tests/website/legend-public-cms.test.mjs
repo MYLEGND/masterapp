@@ -3217,6 +3217,138 @@ test('media library inserts existing video as canonical composition with MediaAs
 });
 
 
+async function selectFixtureMediaFile(f,selector) {
+  const input=f.w.document.querySelector(selector);
+  assert.ok(input,selector);
+  Object.defineProperty(input,'files',{configurable:true,value:[new f.w.File(['synthetic image'],'photo.png',{type:'image/png'})]});
+  input.dispatchEvent(new f.w.Event('change',{bubbles:true}));
+  await new Promise(resolve=>setTimeout(resolve,0));
+}
+
+test('custom-domain Studio normalizes authenticated media results without retargeting saved external URLs',async()=>{
+  const origin='https://protect.example.test',assetId='11111111-1111-1111-1111-111111111111';
+  const canonical=origin+'/api/website-content/media/'+assetId;
+  const asset={id:assetId,name:'Owned image',url:'https://delivery.example.test/api/website-content/media/'+assetId,contentType:'image/png',sizeBytes:2048};
+  const doc=canonicalDocument(),external='https://external.example/api/website-content/media/55555555-5555-5555-5555-555555555555';
+  canonicalNodeById(doc,'home.section.1').children.push(canonicalNode('media.external','image','img',{mediaUrl:external,alt:'External remains external'}));
+  const f=await domFixture({siteKey:'protect',origin,apiBase:'',doc,mediaPayload:{assets:[asset],nextCursor:42}});
+  try{
+    const agent=f.w.LEGEND_WEBSITE_STUDIO_AGENT;
+    const before=f.serverDocument();
+    const listed=await agent.listMedia();
+    assert.equal(listed.assets[0].url,canonical);assert.equal(listed.nextCursor,42);
+    assert.equal(listed.assets[0].url.includes('ticket='),false);
+    const imported=await agent.importImage('https://public.example/art.png');
+    assert.equal(imported.url,origin+'/api/website-content/media/44444444-4444-4444-4444-444444444444');
+    assert.equal(imported.url.includes('ticket='),false);
+    assert.deepEqual(f.serverDocument(),before,'listing/import results do not change document placement');
+    const untouched=f.w.document.querySelector('[data-cms-id="media.external"]');
+    assert.equal(untouched.src,external);assert.equal(new URL(untouched.src).search,'');
+    f.click('main img');f.click('[data-open="media"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const preview=new URL(f.w.document.querySelector('.legend-cms-media-card img').src);
+    assert.equal(preview.origin,origin);assert.equal(preview.pathname,new URL(canonical).pathname);
+    assert.equal(preview.searchParams.get('ticket'),'ticket');
+    f.click('.legend-cms-media-card button');
+    const saved=await f.save();
+    assert.equal(canonicalNodeById(saved,'home.img.node.1').mediaAssetId,assetId);
+    assert.equal(canonicalNodeById(saved,'home.img.node.1').mediaUrl,undefined);
+    assert.equal(canonicalNodeById(saved,'media.external').mediaUrl,external);
+    assert.equal(JSON.stringify(saved).includes('ticket='),false);
+    for(const search of ['?legendEdit=ticket','']){
+      const reloaded=await domFixture({siteKey:'protect',origin,apiBase:'',doc:saved,search});
+      try{
+        const image=new URL(reloaded.w.document.querySelector('[data-cms-id="home.img.node.1"]').src);
+        assert.equal(image.origin,origin);assert.equal(image.pathname,new URL(canonical).pathname);
+        assert.equal(image.searchParams.has('ticket'),!!search);
+        assert.equal(reloaded.w.document.querySelector('[data-cms-id="media.external"]').src,external);
+        assert.equal(reloaded.calls.some(call=>call.method==='POST'),false);
+      }finally{reloaded.close();}
+    }
+  }finally{f.close();}
+});
+
+test('custom-domain upload and favicon save reopen retain canonical HTTPS identities without preview tickets',async()=>{
+  const origin='https://protect.example.test',id='33333333-3333-3333-3333-333333333333';
+  const canonical=origin+'/api/website-content/media/'+id;
+  const asset={id,name:'Uploaded image',url:'https://delivery.example.test/api/website-content/media/'+id,contentType:'image/png',sizeBytes:2048};
+  const f=await domFixture({siteKey:'protect',origin,apiBase:'',mediaUploadPayload:asset});
+  try{
+    f.click('main img');
+    const selected=f.w.LEGEND_WEBSITE_STUDIO_AGENT.current().selectedId;
+    await selectFixtureMediaFile(f,'#legend-cms-image');
+    assert.equal(f.w.LEGEND_WEBSITE_STUDIO_AGENT.current().selectedId,selected);
+    const image=new URL(f.w.document.querySelector('[data-cms-id="home.img.node.1"]').src);
+    assert.equal(image.origin,origin);assert.equal(image.searchParams.get('ticket'),'ticket');
+    await selectFixtureMediaFile(f,'#legend-cms-favicon');
+    const favicon=new URL(f.w.document.querySelector('#legend-cms-favicon-preview').src);
+    assert.equal(favicon.origin,origin);assert.equal(favicon.searchParams.get('ticket'),'ticket');
+    const saved=await f.save();
+    assert.equal(saved.faviconImageDataUrl,canonical);assert.equal(new URL(saved.faviconImageDataUrl).protocol,'https:');
+    assert.equal(canonicalNodeById(saved,'home.img.node.1').mediaAssetId,id);
+    assert.equal(canonicalNodeById(saved,'home.img.node.1').mediaUrl,undefined);
+    assert.equal(JSON.stringify(saved).includes('ticket='),false);
+    const reloaded=await domFixture({siteKey:'protect',origin,apiBase:'',doc:saved});
+    try{
+      const preview=new URL(reloaded.w.document.querySelector('#legend-cms-favicon-preview').src);
+      assert.equal(preview.origin,origin);assert.equal(preview.pathname,new URL(canonical).pathname);
+      assert.equal(preview.searchParams.get('ticket'),'ticket');
+      assert.equal((await reloaded.save()).faviconImageDataUrl,canonical);
+    }finally{reloaded.close();}
+  }finally{f.close();}
+});
+
+for(const [label,fields] of [['missing',{id:undefined}],['empty',{id:''}],['nonstring',{id:true}],['invalid',{id:'not-a-guid'}],['path-injection',{id:'../foreign'}],['empty-guid',{id:'00000000-0000-0000-0000-000000000000'}],['missing-url',{url:null}],['missing-type',{contentType:''}]])
+  test('malformed managed media response cannot change preview or saved selection: '+label,async()=>{
+    const asset={id:'33333333-3333-3333-3333-333333333333',url:'https://delivery.example.test/image.png',contentType:'image/png',...fields};
+    const f=await domFixture({siteKey:'protect',origin:'https://protect.example.test',mediaPayload:{assets:[asset]},mediaUploadPayload:asset});
+    try{
+      f.click('main img');const agent=f.w.LEGEND_WEBSITE_STUDIO_AGENT;
+      const selected=agent.current().selectedId,before=f.serverDocument(),image=f.w.document.querySelector('main img'),src=image.src;
+      await assert.rejects(agent.listMedia(),/media response was invalid/);
+      f.click('[data-open="media"]');await new Promise(resolve=>setTimeout(resolve,0));
+      assert.equal(f.w.document.querySelector('.legend-cms-media-card'),null);
+      assert.match(f.w.document.querySelector('#legend-cms-media-status').textContent,/media response was invalid/);
+      await selectFixtureMediaFile(f,'#legend-cms-image');
+      assert.equal(agent.current().selectedId,selected);assert.equal(image.src,src);
+      assert.match(f.w.document.querySelector('#legend-cms-status').textContent,/media response was invalid|Upload failed/);
+      assert.deepEqual(await f.save(),before);
+    }finally{f.close();}
+  });
+
+test('denied management media responses cannot become valid normalized assets or change content',async()=>{
+  const f=await domFixture({siteKey:'protect',origin:'https://protect.example.test',beforeEval:w=>{
+    const original=w.fetch;
+    w.fetch=async(url,init={})=>{
+      const result=await original(url,init);
+      return /\/manage\/media(?:\/import)?$/.test(new URL(url).pathname)
+        ? {ok:false,status:401,json:async()=>({error:'media access denied'})} : result;
+    };
+  }});
+  try{
+    f.click('main img');const agent=f.w.LEGEND_WEBSITE_STUDIO_AGENT;
+    const selected=agent.current().selectedId,before=f.serverDocument(),image=f.w.document.querySelector('main img'),src=image.src;
+    await assert.rejects(agent.listMedia(),/media access denied/);
+    await assert.rejects(agent.importImage('https://public.example/art.png'),/media access denied/);
+    await assert.rejects(agent.uploadMedia(new f.w.File(['synthetic'],'image.png',{type:'image/png'})),/Website media upload failed/);
+    assert.equal(agent.current().selectedId,selected);assert.equal(image.src,src);
+    assert.deepEqual(await f.save(),before);
+  }finally{f.close();}
+});
+
+test('managed media normalization rejects an insecure preview authority without changing the document',async()=>{
+  const id='11111111-1111-1111-1111-111111111111';
+  const asset={id,url:'https://delivery.example.test/api/website-content/media/'+id,contentType:'image/png'};
+  const f=await domFixture({siteKey:'protect',origin:'https://protect.example.test',apiBase:'http://insecure.example',mediaPayload:{assets:[asset]},mediaUploadPayload:asset});
+  try{
+    const before=f.serverDocument(),agent=f.w.LEGEND_WEBSITE_STUDIO_AGENT;
+    await assert.rejects(agent.listMedia(),/secure website authority/);
+    await assert.rejects(agent.uploadMedia(new f.w.File(['synthetic'],'image.png',{type:'image/png'})),/Website media upload failed/);
+    assert.match(f.w.document.querySelector('#legend-cms-status').textContent,/secure website authority/);
+    assert.deepEqual(f.serverDocument(),before);
+  }finally{f.close();}
+});
+
 test('media upload has one multipart transport and bypasses inferred ApiController form binding', ()=>{
   const uploadStart=source.indexOf('async function uploadMedia(file)');
   const uploadEnd=source.indexOf('async function uploadImageAsset',uploadStart);

@@ -3757,7 +3757,7 @@
         }),
       getSignalHealth:({pagePath=currentPageRoute(),elementId,bindingId,fieldKey=null}={})=>
         creativeWorkspaceRequest('manage/signals/health',{query:{pagePath,elementId,bindingId,fieldKey}}),
-      listMedia:(query={})=>creativeWorkspaceRequest('manage/media',{query:{...query,designMetadata:query.designMetadata!==false}}),
+      listMedia:(query={})=>creativeWorkspaceRequest('manage/media',{query:{...query,designMetadata:query.designMetadata!==false}}).then(normalizeManagedMediaLibrary),
       uploadMedia:async file=>{
         const asset=await uploadMedia(file);
         if(!asset) throw new Error('Website media upload failed.');
@@ -3766,7 +3766,7 @@
       importImage:url=>creativeWorkspaceRequest('manage/media/import',{
         method:'POST',
         body:{ticket:editorTicket,sourceUrl:String(url || '')}
-      }),
+      }).then(normalizeManagedMediaAsset),
       listBusinessData:async()=>{await ensureBusinessDataCatalog();return {dataCatalog:managementPayload?.dataCatalog || [],collections:[...collectionData.values()]};},
       applyMutationBatch:creativeApplyMutationBatch,
       applyDesignPlan:creativeApplyDesignPlan,
@@ -6158,6 +6158,26 @@
     syncSelectedSourcePresentationFromCanvas();
   }
 
+  // Only authenticated management responses enter this boundary. Their GUID is
+  // the canonical resource identity; a public delivery origin is not the Studio
+  // preview authority. Never retarget arbitrary saved URLs or forward tickets.
+  function normalizeManagedMediaAsset(asset) {
+    if(!asset || typeof asset.id!=='string' ||
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(asset.id) ||
+      asset.id==='00000000-0000-0000-0000-000000000000' ||
+      typeof asset.url!=='string' || !asset.url.trim() ||
+      typeof asset.contentType!=='string' || !asset.contentType.trim())
+      throw new Error('Website media response was invalid.');
+    const url=new URL(API_BASE+'/api/website-content/media/'+asset.id);
+    if(url.protocol!=='https:') throw new Error('Website media preview requires the secure website authority.');
+    return {...asset,url:url.toString()};
+  }
+
+  function normalizeManagedMediaLibrary(payload) {
+    if(!Array.isArray(payload?.assets)) throw new Error('Media library response was invalid.');
+    return {...payload,assets:payload.assets.map(normalizeManagedMediaAsset)};
+  }
+
   async function uploadMedia(file) {
     if (!file) return null;
     const status = document.getElementById('legend-cms-status');
@@ -6177,8 +6197,9 @@
       const asset = await response.json();
       if (!response.ok || !asset?.id || !asset?.url || !asset?.contentType)
         throw new Error(asset?.message || asset?.error || 'Upload failed.');
+      const normalized=normalizeManagedMediaAsset(asset);
       if (status) status.textContent = 'Media uploaded; save your draft to retain placement';
-      return asset;
+      return normalized;
     } catch (error) { if (status) status.textContent = error.message; return null; }
   }
 
@@ -7883,8 +7904,7 @@
       url.searchParams.set('kind',kind);
       const response=await fetch(url,{cache:'no-store'});
       if(!response.ok) throw new Error(`Media library failed (${response.status})`);
-      const payload=await response.json();
-      if(!Array.isArray(payload.assets)) throw new Error('Media library response was invalid.');
+      const payload=normalizeManagedMediaLibrary(await response.json());
       grid.replaceChildren();
       for(const asset of payload.assets){
         const card=document.createElement('article'); card.className='legend-cms-media-card';
