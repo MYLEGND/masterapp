@@ -1,25 +1,16 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue the approved release-completion recovery without repeating deployments. Promote only the independently reviewed canonical immutable receipt-byte reuse correction and its regression tests. Preserve the exact 100-entry cap, every caller byte limit, deadlines, fresh authority and provider proof checks. No overflow, eviction, broader access, app uploads, SQL, restarts, routing or spending changes.",
-  "purpose": "Avoid duplicate retention of completed authenticated receipt bytes across fitting caller size limits while preserving all original proof and cache boundaries.",
-  "requestId": "shayla-completion-receipt-reuse-promotion-20261027-v1",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "Zac explicitly authorized continuing the existing Shayla Website Studio integration through implementation, selective deployment, Studio configuration/publication and verified activation in Sentinel_f53b29e3d30c8191aa6c63418d89d401. This request covers only the independently reviewed canonical Studio/inquiry integration and its proven shared dependencies. Calls remain paused through deployment; current WebRTC readiness and live acceptance remain separate. No credentials, privacy, access, provider budgets, new spending or unrelated code changes.",
+  "purpose": "Deploy the canonical configurable inquiry voice presentation through Studio controls, persisted document, strict validation/sanitization, published compiler and existing voice handler. All five listed hosts are affected by actual shared Infrastructure/WebsiteEditing runtime and public rendering dependencies, not default blanket selection. Retain current documents, successful prior deployments and all historical receipts. Fresh exact-source CI, actual compiled contracts, runtime compatibility, database/recovery and deployment evidence are required before integration; no old runtime pin or failed observer receipt is relabelled.",
+  "requestId": "shayla-studio-native-integration-20261027-v1",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait",
+    "masterapp-website"
+  ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "b7d666f1b737b1ba2485d9c0157ff059637c42d5",
-    "sourceRevision": "bd6f8691fcfd49bf32b75e2183050b2adab6a66e",
-    "files": {
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "d64d66912b79d68f1ee4897a7471e26eb9f77081"
-      },
-      "scripts/test-validation-resume.py": {
-        "mode": "100644",
-        "blob": "1481fc6669d2307f1ba934a4e0310b68e69e0d6f"
-      }
-    }
-  }
+  "preserveLiveTargets": false
 }
