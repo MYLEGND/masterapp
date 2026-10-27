@@ -10,15 +10,15 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "64a92ce12058802440b2682be42bbc41f35e3ce6",
-    "sourceRevision": "83a25ddd5644888a5e7d0e02eb4196b4f718fe1c",
+    "sourceRevision": "c9c21f274d95aee47022a459b9ced3d28dcf72cc",
     "files": {
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "5047b3739692cadc5878ad4aef9df23f5b5799f7"
+        "blob": "a61e355453074f65329a0511e4f16dce4f23d4c6"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "1e6a8b3460533197d42e5b5af6aaf9f05a320bfd"
+        "blob": "e4900f1fad5910153a826aee88f736150eb6787a"
       }
     }
   }
