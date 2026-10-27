@@ -384,12 +384,14 @@ public sealed class WebsiteCreativeWorkspaceTests
         var proposed = new WebsiteCompositionNode
         {
             Id = form.Id, Type = "form", Tag = "form", Title = form.Title, Text = form.Text,
+            ClassName = form.ClassName,
             Receptionist = new WebsiteReceptionistPresentation { Enabled = true, Label = "Speak with our team", Placement = "after" }
         };
         var changed = WebsiteDocumentMutationService.Apply(inserted, WebsiteEditorSiteKeys.Business, Actions(), Capabilities(inserted),
             [new WebsiteMutationOperation { Type = "replaceNode", NodeId = form.Id, ExpectedFingerprint = original, Node = proposed }]).Document;
         var saved = changed.Pages["/"].Composition[0].Children.Single(value => value.Id == form.Id);
         Assert.Equal("canonical_inquiry", saved.SystemKey);
+        Assert.Equal(form.ClassName, saved.ClassName);
         Assert.True(saved.Receptionist!.Enabled);
         Assert.Equal("after", saved.Receptionist.Placement);
         Assert.NotEqual(original, WebsiteCreativeFingerprint.Node(saved));
@@ -398,6 +400,10 @@ public sealed class WebsiteCreativeWorkspaceTests
             [new WebsiteMutationOperation { Type = "replaceNode", NodeId = form.Id, ExpectedFingerprint = original, Node = proposed }]));
         Assert.Throws<WebsiteSiteSourceProtectionException>(() => WebsiteDocumentMutationService.Apply(document, WebsiteEditorSiteKeys.Business, Actions(), Capabilities(document),
             [new WebsiteMutationOperation { Type = "insertNode", Scope = "page", PagePath = "/", ParentId = "home.hero", Node = proposed }]));
+        proposed.ClassName = null;
+        var removal = Assert.Throws<WebsiteSiteSourceProtectionException>(() => WebsiteDocumentMutationService.Apply(inserted, WebsiteEditorSiteKeys.Business, Actions(), Capabilities(inserted),
+            [new WebsiteMutationOperation { Type = "replaceNode", NodeId = form.Id, ExpectedFingerprint = original, Node = proposed }]));
+        Assert.Contains("cannot remove platform runtime class 'public-form'", removal.Message, StringComparison.Ordinal);
     }
 
     [Fact]

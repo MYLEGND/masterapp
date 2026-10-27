@@ -81,6 +81,8 @@ test('published canonical inquiry renders optional voice from the shared package
     assert.equal(form.querySelector('[data-website-receptionist] with'),null);
     assert.equal(form.querySelector('[name="Message"]').closest('label').textContent,'Keep the question');
     assert.equal(form.querySelector('[name="consent"]').hasAttribute('required'),true);
+    for(const name of ['FirstName','LastName','Phone','Email','Message','consent'])
+      assert.equal(form.querySelector(`[name="${name}"]`).hasAttribute('required'),true,`${placement}: ${name} remains required in serialized HTML`);
     assert.equal((placement==='before'?form.firstElementChild:form.lastElementChild).hasAttribute('data-legend-receptionist-entry'),true);
     assert.equal(doc.querySelectorAll('script[type="module"][src^="/public-inquiry-form.mjs"]').length,1);
     assert.equal(doc.querySelectorAll('script[src^="/legend-public-inquiry.js"]').length,0);
@@ -92,5 +94,7 @@ test('published canonical inquiry renders optional voice from the shared package
     const result=await compileWebsite(input);const doc=parseHTML(result.pages['/contact'].html).document;
     assert.equal(doc.querySelector('[data-website-receptionist]'),null);
     assert.ok(doc.querySelector('form[data-website-inquiry] [type="submit"]'));
+    for(const name of ['FirstName','LastName','Phone','Email','Message','consent'])
+      assert.equal(doc.querySelector(`form[data-website-inquiry] [name="${name}"]`).hasAttribute('required'),true,`voice off/absent: ${name} remains required in serialized HTML`);
   }
 });

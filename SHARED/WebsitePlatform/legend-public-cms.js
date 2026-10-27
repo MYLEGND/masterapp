@@ -2749,6 +2749,7 @@
       if(name!=='Message') input.type=type;
       input.name=name;
       input.required=true;
+      input.setAttribute('required','');
       if(name==='Message') input.rows=5;
       Object.entries(attrs).forEach(([key,value])=>input.setAttribute(key,value));
       label.appendChild(input);
@@ -2772,6 +2773,7 @@
     consent.name='consent';
     consent.dataset.cmsFieldKey='consent';
     consent.required=true;
+    consent.setAttribute('required','');
     const consentText=document.createElement('span');
     consentText.textContent=node.fieldLabels?.consent || 'I agree to share this inquiry with this website.';
     consentLabel.append(consent,consentText);
