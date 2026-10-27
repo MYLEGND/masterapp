@@ -2833,6 +2833,105 @@ class RedactedPrepublicationDiagnosticsTests(unittest.TestCase):
                 self.assertEqual('', output.getvalue())
 
 
+class CompletionProofReuseTests(unittest.TestCase):
+    def fixture(self):
+        a=deploy._RELEASE_AUTHORITY
+        revision='a'*40
+        run=dict(id=1,run_attempt=1,head_sha=revision,status='completed',conclusion='failure',
+            path='.github/workflows/legend-fast-track-ui.yml',head_branch='Legend/fast-track-release',
+            event='push',head_repository=dict(full_name='owner/repo'))
+        job=dict(id=11,run_id=1,run_attempt=1,head_sha=revision,status='completed',conclusion='failure',
+            started_at='2026-10-27T03:00:00Z',completed_at='2026-10-27T03:01:00Z')
+        record=dict(operationId='b'*64,target='portal',applicationRevision=revision,
+            producingRun=1,producingAttempt=1,phase='intent')
+        artifact=dict(id=10,name='legend-release-operation-intent-'+'b'*64,expired=False,
+            workflow_run=dict(id=1),digest='sha256:'+'c'*64)
+        counts=dict(download=0,log=0,metadata=0)
+        def api(repo,path,token):
+            counts['metadata']+=1
+            if path=='actions/runs/1':return dict(run)
+            if path=='actions/jobs/11':return dict(job)
+            if path.startswith('actions/artifacts?'):return dict(artifacts=[dict(artifact)],total_count=1)
+            raise AssertionError(path)
+        def download(repo,run_id,name,directory,**kwargs):
+            counts['download']+=1
+            (directory/'operation.json').write_text(json.dumps(record))
+        def log(*args):counts['log']+=1;return 'authenticated original log'
+        def read():
+            value=a.release_operation_history('owner/repo','b'*64,revision,'portal',2,1,'test-only')
+            self.assertEqual(value,record)
+            self.assertEqual(a._release_job_log('owner/repo',11,'test-only'),'authenticated original log')
+        return a,run,job,artifact,counts,api,download,log,read
+
+    def test_counted_immutable_bytes_reused_but_metadata_decisions_are_fresh(self):
+        a,run,job,artifact,counts,api,download,log,read=self.fixture()
+        with patch.dict(os.environ,dict(GITHUB_RUN_ID='2')),patch.object(a,'_api_get_uncached',side_effect=api),patch.object(a,'_download_run_artifact',side_effect=download),patch.object(a,'_release_job_log_uncached',side_effect=log):
+            a._RELEASE_HISTORY_API.clear()
+            # Count the same real history/log transports without reuse.
+            for _ in range(68):read()
+            self.assertEqual((counts['download'],counts['log']),(68,68))
+            counts.update(download=0,log=0,metadata=0)
+            def body(*args,**kwargs):
+                for _ in range(2):
+                    with a.recovery_admission_proof():
+                        for _ in range(34):read()
+                return dict(counts)
+            with patch.object(deploy,'_complete_fast_track',side_effect=body):
+                first=deploy.complete_fast_track(1,'a'*40,Path('/unused'))
+                self.assertEqual((first['download'],first['log']),(1,1))
+                self.assertGreaterEqual(first['metadata'],12) # each decision + raw exit readback
+                second=deploy.complete_fast_track(1,'a'*40,Path('/unused'))
+                self.assertEqual((second['download'],second['log']),(2,2)) # no cross-invocation cache
+            self.assertIsNone(a._RECOVERY_RECEIPT_BYTES.get())
+            self.assertIsNone(a._RECOVERY_LOG_BYTES.get())
+            self.assertIsNone(a._RECOVERY_PROOF_VIEW.get())
+
+    def test_current_observer_and_ref_never_reuse_mutable_metadata(self):
+        a=deploy._RELEASE_AUTHORITY; calls=[]
+        def api(repo,path,token):
+            calls.append(path)
+            return dict(id=2,status='in_progress',run_attempt=len(calls)) if path=='actions/runs/2' else dict(object=dict(sha=str(len(calls))))
+        def body(*args,**kwargs):
+            with a.recovery_admission_proof():
+                for path in ['actions/runs/2','git/ref/heads/Legend/fast-track-release']:
+                    self.assertNotEqual(a.api_get('owner/repo',path,'test-only'),a.api_get('owner/repo',path,'test-only'))
+        with patch.dict(os.environ,dict(GITHUB_RUN_ID='2')),patch.object(a,'_api_get_uncached',side_effect=api),patch.object(deploy,'_complete_fast_track',side_effect=body):
+            deploy.complete_fast_track(1,'a'*40,Path('/unused'))
+        self.assertEqual(len(calls),4)
+
+    def test_terminal_identity_change_between_decisions_revokes_cached_log(self):
+        a,run,job,artifact,counts,api,download,log,read=self.fixture()
+        def body(*args,**kwargs):
+            with a.recovery_admission_proof():read()
+            job['status']='in_progress'
+            with a.recovery_admission_proof():
+                with self.assertRaisesRegex(a.ReleaseOperationHistoryUnproven,'TERMINAL_IDENTITY'):
+                    read()
+        with patch.dict(os.environ,dict(GITHUB_RUN_ID='2')),patch.object(a,'_api_get_uncached',side_effect=api),patch.object(a,'_download_run_artifact',side_effect=download),patch.object(a,'_release_job_log_uncached',side_effect=log),patch.object(deploy,'_complete_fast_track',side_effect=body):
+            deploy.complete_fast_track(1,'a'*40,Path('/unused'))
+        self.assertEqual(counts['log'],1)
+
+    def test_artifact_expiry_and_digest_change_do_not_use_stale_bytes(self):
+        a,run,job,artifact,counts,api,download,log,read=self.fixture()
+        def body(*args,**kwargs):
+            with a.recovery_admission_proof():read()
+            artifact['expired']=True
+            with a.recovery_admission_proof(),self.assertRaises(a.ReleaseOperationHistoryUnproven):read()
+            artifact['expired']=False;artifact['digest']='sha256:'+'d'*64
+            with a.recovery_admission_proof():read()
+        with patch.dict(os.environ,dict(GITHUB_RUN_ID='2')),patch.object(a,'_api_get_uncached',side_effect=api),patch.object(a,'_download_run_artifact',side_effect=download),patch.object(a,'_release_job_log_uncached',side_effect=log),patch.object(deploy,'_complete_fast_track',side_effect=body):
+            deploy.complete_fast_track(1,'a'*40,Path('/unused'))
+        self.assertEqual(counts['download'],2)
+
+    def test_invocation_exception_discards_all_byte_caches(self):
+        a=deploy._RELEASE_AUTHORITY
+        with patch.object(deploy,'_complete_fast_track',side_effect=ValueError('hold')):
+            with self.assertRaisesRegex(ValueError,'hold'):deploy.complete_fast_track(1,'a'*40,Path('/unused'))
+        self.assertIsNone(a._RECOVERY_RECEIPT_BYTES.get())
+        self.assertIsNone(a._RECOVERY_LOG_BYTES.get())
+        self.assertIsNone(a._RECOVERY_PROOF_VIEW.get())
+
+
 class CompletionOnlyTests(unittest.TestCase):
     def test_readonly_facade_never_submits(self):
         from types import SimpleNamespace
@@ -3011,7 +3110,7 @@ class CompletionPublicMetadataTests(unittest.TestCase):
 
 
 class CompletionAdapterTests(unittest.TestCase):
-    def run_adapter(self,*,probe_failure=False,observer_change=False,probe_failure_at=4,metadata_error=None):
+    def run_adapter(self,*,probe_failure=False,observer_change=False,probe_failure_at=4,metadata_error=None,proof_change=False):
         from types import SimpleNamespace
         a=deploy._RELEASE_AUTHORITY;revision='a'*40
         observer=dict(runId=2,runAttempt=1,jobId=20,toolRevision='b'*40,promotionRunId=3)
@@ -3026,9 +3125,23 @@ class CompletionAdapterTests(unittest.TestCase):
             if probe_failure and count[0]==probe_failure_at:raise metadata_error or ValueError('mock public metadata failure')
         def verify(*args):timeline.append('package');return 'e'*64
         def provider(*args):timeline.append('provider');return SimpleNamespace(revision=revision)
-        with patch.object(Path,'is_file',return_value=True),patch.object(Path,'is_symlink',return_value=False),patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',side_effect=[observer,dict(observer,jobId=99) if observer_change else observer]),patch.object(a,'fast_track_completion_original',return_value=original),patch.object(a,'fast_track_completion_material',return_value=material),patch.object(a,'fast_track_completed_operation_receipts',return_value=completed),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact'),patch.object(deploy,'verify_package',side_effect=verify),patch.object(deploy,'target_azure',side_effect=provider),patch.object(deploy,'reconcile',return_value='preserved') as reconcile,patch.object(deploy,'verify_fast_track_public_metadata',side_effect=metadata),patch.object(deploy.importlib.util,'spec_from_file_location',return_value=spec),patch.object(deploy.importlib.util,'module_from_spec',return_value=owner):
-            if probe_failure or observer_change:
-                with self.assertRaises(type(metadata_error) if metadata_error else ValueError):deploy.complete_fast_track(1,revision,Path('/unused'))
+        auth_calls=[0]
+        def auth(*args):
+            self.assertIsNone(a._RECOVERY_PROOF_VIEW.get())
+            auth_calls[0]+=1
+            return dict(observer,jobId=99) if observer_change and auth_calls[0]>1 else observer
+        reads=[0]
+        def metadata_api(*args):
+            reads[0]+=1
+            return dict(id=999,status='completed',run_attempt=2 if reads[0]>1 else 1)
+        def completed_proof(*args,**kwargs):
+            if proof_change:
+                a.api_get('owner/repo','actions/runs/999','test-only')
+                a.api_get('owner/repo','actions/runs/999','test-only')
+            return completed
+        with patch.object(Path,'is_file',return_value=True),patch.object(Path,'is_symlink',return_value=False),patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',side_effect=auth),patch.object(a,'_api_get_uncached',side_effect=metadata_api),patch.object(a,'fast_track_completion_original',return_value=original),patch.object(a,'fast_track_completion_material',return_value=material),patch.object(a,'fast_track_completed_operation_receipts',side_effect=completed_proof),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact'),patch.object(deploy,'verify_package',side_effect=verify),patch.object(deploy,'target_azure',side_effect=provider),patch.object(deploy,'reconcile',return_value='preserved') as reconcile,patch.object(deploy,'verify_fast_track_public_metadata',side_effect=metadata),patch.object(deploy.importlib.util,'spec_from_file_location',return_value=spec),patch.object(deploy.importlib.util,'module_from_spec',return_value=owner):
+            if probe_failure or observer_change or proof_change:
+                with self.assertRaises(a.ReleaseOperationHistoryUnproven if proof_change else type(metadata_error) if metadata_error else ValueError):deploy.complete_fast_track(1,revision,Path('/unused'))
                 publish.assert_not_called()
                 if probe_failure:self.assertEqual(reconcile.call_count,probe_failure_at//2)
             else:
@@ -3048,6 +3161,7 @@ class CompletionAdapterTests(unittest.TestCase):
             with self.subTest(probe=probe):
                 self.run_adapter(probe_failure=True,probe_failure_at=probe,metadata_error=deploy.urllib.error.HTTPError('https://www.mylegnd.com/sitemap.xml',403,'Forbidden',{},None))
     def test_changed_observer_never_emits_aggregate(self):self.run_adapter(observer_change=True)
+    def test_final_summary_metadata_drift_never_emits_aggregate(self):self.run_adapter(proof_change=True)
 
 class CompletionBoundaryTests(unittest.TestCase):
     def test_completion_cli_routes_only_to_completion_owner(self):

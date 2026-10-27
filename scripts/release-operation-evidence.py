@@ -424,23 +424,29 @@ class CompletionJournal:
         if (len(observed)!=1 or observed[0] in self.intent['baselineDeploymentIds']
             or self.provider is None or self.provider['deploymentId']!=observed[0]):
             raise RuntimeError('Completion requires correlated original provider success')
-        submitted=self.authority.release_operation_history(self.repository,self.operation_id,
-            self.intent['applicationRevision'],self.intent['target'],self.original['run']['id'],
-            self.original['run']['run_attempt'],self.token,phase='submitted')
-        validate_original_submission_observation(self.intent,submitted,self.original['run'])
-        if submitted is not None and observed!=[submitted['deploymentId']]:
-            raise RuntimeError('Completion differs from retained original provider observation')
-        # Ref/real executing job is reauthenticated at the last journal boundary.
+        print('FAST_TRACK_COMPLETION_STAGE:receipt:'+self.intent['target']+':proof-start', flush=True)
+        # Only this read-only decision shares metadata; raw boundary rechecks
+        # complete before live authority validation or any receipt publication.
+        with self.authority.recovery_admission_proof():
+            submitted=self.authority.release_operation_history(self.repository,self.operation_id,
+                self.intent['applicationRevision'],self.intent['target'],self.original['run']['id'],
+                self.original['run']['run_attempt'],self.token,phase='submitted')
+            validate_original_submission_observation(self.intent,submitted,self.original['run'])
+            if submitted is not None and observed!=[submitted['deploymentId']]:
+                raise RuntimeError('Completion differs from retained original provider observation')
+            existing=self.authority.release_operation_history(self.repository,self.operation_id,
+                self.intent['applicationRevision'],self.intent['target'],self.observer['runId'],
+                self.observer['runAttempt'],self.token,phase='success')
+            if existing is not None:
+                self.authority.validate_original_completion_success(self.repository,self.original,self.material,existing,self.token)
+                if (existing.get('deploymentIds')!=observed
+                    or any(existing.get(k)!=v for k,v in self.intent.items() if k not in {'phase','producingRun','producingAttempt'})):
+                    raise RuntimeError('Existing success differs from original operation')
+        print('FAST_TRACK_COMPLETION_STAGE:receipt:'+self.intent['target']+':proof-verified', flush=True)
+        # Ref/real executing job remains uncached at the last journal boundary.
         if self.authority.assert_fast_track_completion_execution(self.original['run']['id'],self.intent['applicationRevision'])!=self.observer:
             raise RuntimeError('Completion observer changed before recording')
-        existing=self.authority.release_operation_history(self.repository,self.operation_id,
-            self.intent['applicationRevision'],self.intent['target'],self.observer['runId'],
-            self.observer['runAttempt'],self.token,phase='success')
         if existing is not None:
-            self.authority.validate_original_completion_success(self.repository,self.original,self.material,existing,self.token)
-            if (existing.get('deploymentIds')!=observed
-                or any(existing.get(k)!=v for k,v in self.intent.items() if k not in {'phase','producingRun','producingAttempt'})):
-                raise RuntimeError('Existing success differs from original operation')
             return existing
         self.authority._completion_original_unchanged(self.repository,self.original['run'],self.token)
         proof=dict(originalRun=self.original['run']['id'],originalRunAttempt=self.original['run']['run_attempt'],

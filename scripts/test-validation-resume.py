@@ -6314,6 +6314,32 @@ class RecoveryPreflightHistoricalTests(RecoveryTransportNonentryTests):
         for value in variants:
             with self.subTest(log=value):self.assertFalse(self.invoke(log=value))
 
+class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
+    def test_reviewed_current_bytes_are_one_exact_paired_generation(self):
+        root=Path(__file__).parent
+        source=(root/'deploy-approved-app.py').read_text()
+        journal=(root/'release-operation-evidence.py').read_text()
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'560355f4e9b4c70ff077bb5b47d86b596c1cb5c5182f9bafd222233697b8db9e')
+        self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'e63d7136ccfb3dd0002710b651b409d8cdeed6b45de2238823239add755afaab')
+        self.assertTrue(m._recovery_preflight_source_contract(source,journal))
+        for changed in [source+'# unreviewed helper\n',source.replace('reconcile_only=journal.intent is not None','reconcile_only=False')]:
+            self.assertNotEqual(changed,source)
+            self.assertFalse(m._recovery_preflight_source_contract(changed,journal))
+        self.assertFalse(m._recovery_preflight_source_contract(source,journal+'# unreviewed helper\n'))
+
+    def test_new_and_previous_paired_generations_cannot_be_crossed(self):
+        from types import SimpleNamespace
+        old=('dd6c8154aadc3f829204bee307936630d6620e06c416681be65cce2d32fab487',
+             '95117a0cd4e1f21bf6407f5324107fdcdfeba582d9ce2123975d567b00664f73')
+        new=('560355f4e9b4c70ff077bb5b47d86b596c1cb5c5182f9bafd222233697b8db9e',
+             'e63d7136ccfb3dd0002710b651b409d8cdeed6b45de2238823239add755afaab')
+        for source,journal,accepted in [(old[0],old[1],True),(new[0],new[1],True),
+                (old[0],new[1],False),(new[0],old[1],False),('f'*64,new[1],False),(new[0],'f'*64,False)]:
+            values={b'source':source,b'journal':journal}
+            with self.subTest(source=source,journal=journal),patch.object(m.hashlib,'sha256',side_effect=lambda value:SimpleNamespace(hexdigest=lambda:values[value])):
+                self.assertEqual(m._recovery_preflight_source_contract('source','journal'),accepted)
+
+
 class RecoveryPreflightRecordTests(unittest.TestCase):
     def setUp(self):
         path=Path(__file__).with_name('deploy-approved-app.py')
