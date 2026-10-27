@@ -187,6 +187,7 @@ jobs:
           rules={
               'approved-definitions-exact':'approved-definitions-exact',
               'approved-definitions-static-styles-only':'approved-definitions-exact',
+              'approved-definitions-reviewed-runtime-pair':'approved-definitions-exact',
               'approved-prefix-reviewed-receptionist-entry':'approved-prefix-reviewed-receptionist-entry',
               'approved-prefix-reviewed-canonical-payment-entry':'approved-prefix-reviewed-canonical-payment-entries',
               'approved-prefix-reviewed-browser-entry':'approved-prefix-reviewed-browser-entry',

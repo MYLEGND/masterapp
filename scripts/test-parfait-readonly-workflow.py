@@ -212,6 +212,32 @@ class TrustedContractExecutionTests(unittest.TestCase):
         self.proof['rule']='approved-definitions-static-styles-only'
         self.execute()
 
+    def test_reviewed_runtime_pair_requires_unchanged_exact_observer_rule(self):
+        import json
+        self.proof['rule']='approved-definitions-reviewed-runtime-pair'
+        for wrong in (self.proof['rule'], 'approved-prefix-reviewed-browser-entry',
+                      'approved-prefix-reviewed-receptionist-entry'):
+            self.verified['rule']=wrong
+            with self.subTest(rule=wrong),self.assertRaisesRegex(SystemExit,'COMPATIBILITY_UNPROVEN'):
+                self.execute()
+            self.assertFalse((self.root/'trusted-contract-proof.json').exists())
+        self.verified['rule']='approved-definitions-exact'
+        self.execute()
+        receipt=json.loads((self.root/'trusted-contract-proof.json').read_text())
+        self.assertEqual(self.proof['rule'],receipt['rule'])
+        self.assertEqual(self.verified,receipt['observer'])
+        self.assertFalse(receipt['observer']['authorizesMutation'])
+
+    def test_reviewed_runtime_pair_still_requires_fresh_export_and_successful_trusted_cli(self):
+        import subprocess
+        self.proof['rule']='approved-definitions-reviewed-runtime-pair'
+        self.cli_error=True
+        with self.assertRaises(subprocess.CalledProcessError):self.execute()
+        self.assertFalse((self.root/'trusted-contract-proof.json').exists())
+        production=text.split('  production-readback:',1)[1].split('  migration-rehearsal:',1)[0]
+        self.assertLess(production.index('--export-contract'),production.index("python3 - <<'PYCONTRACT'"))
+        self.assertLess(production.index("'--validate-contract'"),production.index('azure/login@v2'))
+
     def test_changed_checkout_current_head_or_ancestry_is_rejected(self):
         import subprocess
         self.checkout='c'*40
