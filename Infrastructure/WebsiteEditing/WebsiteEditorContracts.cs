@@ -324,6 +324,16 @@ public sealed class WebsitePageDocument
     public List<WebsiteCompositionNode> Composition { get; set; } = new();
 }
 
+// Website presentation only; live call permission and owner resolution remain server-owned.
+public sealed class WebsiteReceptionistPresentation
+{
+    [JsonExtensionData]
+    public Dictionary<string, System.Text.Json.JsonElement>? UnexpectedFields { get; set; }
+    public bool Enabled { get; set; }
+    public string? Label { get; set; }
+    public string Placement { get; set; } = "before";
+}
+
 public sealed class WebsiteCompositionNode
 {
     [JsonExtensionData]
@@ -360,6 +370,9 @@ public sealed class WebsiteCompositionNode
     // calculations, and presentation only; backend capabilities and event authority
     // are resolved separately by the server.
     public WebsiteExperienceDefinition? Experience { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public WebsiteReceptionistPresentation? Receptionist { get; set; }
 
     // Presentation-only records keyed by the existing server/runtime field identity.
     // These never create, rename, reorder, validate, route, or submit a form field.

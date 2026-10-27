@@ -221,7 +221,7 @@
     call.start.disabled = false;
     if (activeVoice === call) activeVoice = null;
   }
-  function endVoice(call, message = 'Conversation ended on this page. You can send an inquiry below.') {
+  function endVoice(call, message = 'Conversation ended on this page. You can send an inquiry on this page.') {
     if (!call || call.ended) return;
     call.ended = true;
     call.abort.abort();
@@ -266,18 +266,18 @@
     start.addEventListener('click', async () => {
       if (activeVoice) return;
       if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
-        status.textContent = 'Voice is unavailable in this browser. Please send an inquiry below.';
+        status.textContent = 'Voice is unavailable in this browser. Please send an inquiry on this page.';
         return;
       }
       const call = {host, start, end, status, audio, abort:new AbortController(), observationAbort:new AbortController(), ended:false, finished:false};
       activeVoice = call; start.disabled = true; end.hidden = false;
       status.textContent = 'Checking voice availability…';
-      call.startup = setTimeout(() => endVoice(call, 'Voice could not connect. Please send an inquiry below.'), 45000);
+      call.startup = setTimeout(() => endVoice(call, 'Voice could not connect. Please send an inquiry on this page.'), 45000);
       try {
         const grant = await voiceRequest('grant', {sourcePath:location.pathname}, call.abort.signal, false, host);
         if (call.ended) return;
         if (typeof grant.grant !== 'string') throw new Error('voice_unavailable');
-        status.textContent = 'Allow microphone access to speak, or send an inquiry below.';
+        status.textContent = 'Allow microphone access to speak, or send an inquiry on this page.';
         const stream = await navigator.mediaDevices.getUserMedia({audio:true});
         if (call.ended) { stream.getTracks().forEach(track => track.stop()); return; }
         call.stream = stream;
@@ -290,7 +290,7 @@
         };
         peer.onconnectionstatechange = () => {
           if (['failed','disconnected','closed'].includes(peer.connectionState))
-            endVoice(call, 'The voice connection ended. You can send an inquiry below.');
+            endVoice(call, 'The voice connection ended. You can send an inquiry on this page.');
         };
         // Negotiate the documented channel, but neither send nor interpret events.
         // The server additionally enforces empty client/server event allowlists.
@@ -326,19 +326,19 @@
             call.poll = setTimeout(poll, 2000);
           } catch {
             if (call.finished) return;
-            if (!call.ended) endVoice(call, 'The voice connection could not be confirmed. Please send an inquiry below.');
+            if (!call.ended) endVoice(call, 'The voice connection could not be confirmed. Please send an inquiry on this page.');
             call.poll = setTimeout(poll, 2000);
           }
         };
         void poll();
       } catch {
-        endVoice(call, 'Voice is unavailable or microphone access was declined. Please send an inquiry below.');
+        endVoice(call, 'Voice is unavailable or microphone access was declined. Please send an inquiry on this page.');
       }
     });
   }
   window.addEventListener('pagehide', () => endVoice(activeVoice));
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) endVoice(activeVoice, 'Voice stopped when this page moved to the background. You can send an inquiry below.');
+    if (document.hidden) endVoice(activeVoice, 'Voice stopped when this page moved to the background. You can send an inquiry on this page.');
   });
 
   function bindInquiryForms() {

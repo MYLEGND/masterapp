@@ -369,6 +369,38 @@ public sealed class WebsiteCreativeWorkspaceTests
     }
 
     [Fact]
+    public void Mutation_CanonicalInquiryVoice_UsesExistingCapabilityAndStaleFingerprintFence()
+    {
+        var document = Baseline();
+        var inserted = WebsiteDocumentMutationService.Apply(document, WebsiteEditorSiteKeys.Business, Actions(), Capabilities(document),
+            [new WebsiteMutationOperation
+            {
+                Type = "insertCapability", Scope = "page", PagePath = "/", ParentId = "home.hero",
+                CapabilityKey = "contact.inquiry.submit", InstanceKey = "home.hero.inquiry"
+            }]).Document;
+        var form = inserted.Pages["/"].Composition[0].Children.Single(value => value.Id == "home.hero.inquiry");
+        Assert.Null(form.Receptionist);
+        var original = WebsiteCreativeFingerprint.Node(form);
+        var proposed = new WebsiteCompositionNode
+        {
+            Id = form.Id, Type = "form", Tag = "form", Title = form.Title, Text = form.Text,
+            Receptionist = new WebsiteReceptionistPresentation { Enabled = true, Label = "Speak with our team", Placement = "after" }
+        };
+        var changed = WebsiteDocumentMutationService.Apply(inserted, WebsiteEditorSiteKeys.Business, Actions(), Capabilities(inserted),
+            [new WebsiteMutationOperation { Type = "replaceNode", NodeId = form.Id, ExpectedFingerprint = original, Node = proposed }]).Document;
+        var saved = changed.Pages["/"].Composition[0].Children.Single(value => value.Id == form.Id);
+        Assert.Equal("canonical_inquiry", saved.SystemKey);
+        Assert.True(saved.Receptionist!.Enabled);
+        Assert.Equal("after", saved.Receptionist.Placement);
+        Assert.NotEqual(original, WebsiteCreativeFingerprint.Node(saved));
+        Assert.Empty(saved.Signals);
+        Assert.Throws<WebsiteMutationConflictException>(() => WebsiteDocumentMutationService.Apply(changed, WebsiteEditorSiteKeys.Business, Actions(), Capabilities(changed),
+            [new WebsiteMutationOperation { Type = "replaceNode", NodeId = form.Id, ExpectedFingerprint = original, Node = proposed }]));
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() => WebsiteDocumentMutationService.Apply(document, WebsiteEditorSiteKeys.Business, Actions(), Capabilities(document),
+            [new WebsiteMutationOperation { Type = "insertNode", Scope = "page", PagePath = "/", ParentId = "home.hero", Node = proposed }]));
+    }
+
+    [Fact]
     public void Mutation_NativeLeadCapture_RequiresCapabilitySelection()
     {
         var document = Baseline();

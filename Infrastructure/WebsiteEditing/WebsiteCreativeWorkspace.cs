@@ -55,7 +55,7 @@ public static class WebsiteCreativeCapabilityResolver
                 "contact.inquiry.submit",
                 "protected_form",
                 "Canonical inquiry",
-                "Collect contact details through the canonical website inquiry authority.",
+                "Collect contact details through the canonical website inquiry authority, with optional website voice presentation; live call availability remains server-controlled.",
                 true,
                 AllowedPlacements: ["section", "container"]));
         }
@@ -489,6 +489,7 @@ public static class WebsiteCreativeProjection
         node.Animations,
         node.DataBinding,
         node.Experience,
+        node.Receptionist,
         node.FieldPresentations,
         node.FieldLabels,
         Children = node.Children.Select(Node).ToArray()
@@ -1281,6 +1282,7 @@ public static class WebsiteDocumentMutationService
         next.Animations = proposed.Animations ?? [];
         next.FieldPresentations = proposed.FieldPresentations ?? new(StringComparer.Ordinal);
         next.FieldLabels = proposed.FieldLabels ?? new(StringComparer.Ordinal);
+        next.Receptionist = proposed.Receptionist;
 
         if (!protectedIdentity || authorableMappedExperience)
         {

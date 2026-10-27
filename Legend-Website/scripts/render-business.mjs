@@ -3,6 +3,7 @@
 import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import vm from 'node:vm';
+import {pathToFileURL} from 'node:url';
 import {parseHTML} from 'linkedom';
 import {businessPages} from '../src/business-content.mjs';
 import {pages as legendPages} from '../src/content.mjs';
@@ -24,6 +25,7 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
   // Parse the single canonical CMS runtime once per publication, not once per
   // page. Each page still executes in its own isolated fresh DOM context.
   const compiledCms=new vm.Script(cms,{filename:'legend-public-cms.js'});
+  const {mountWebsiteReceptionists}=await import(pathToFileURL(resolve(root,'dist/public-inquiry-form.mjs')).href);
   const result={};
   const documents=input.document.pages||{};
   const canonicalV3=Number(input.document?.version)===3;
@@ -152,6 +154,7 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
       CSS:{escape:value=>String(value).replace(/[^a-zA-Z0-9_-]/g,c=>'\\'+c)},
       getComputedStyle:el=>new Proxy(el.style,{get:(style,name)=>name==='fontSize'?'16px':style[name]||''}),
       requestAnimationFrame:()=>0,cancelAnimationFrame(){},setTimeout:()=>0,clearTimeout(){}};
+    window.LegendPublicInquiryForm={mountWebsiteReceptionists};
     window.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:publicApiBase,businessId:input.business?.id};
     const currentDocument={...input.document,pages:page&&Object.keys(page).length?{[route]:page}:{}};
     window.LEGEND_PUBLIC_CMS_RENDER_INPUT={
@@ -195,7 +198,7 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
     structured.textContent=JSON.stringify(schema).replace(/</g,'\\u003c');
     doc.querySelectorAll('script').forEach(script=>{
       const src=script.getAttribute('src')||'';
-      const runtime=['/legend-public-web.js','/legend-public-cms.js','/legend-public-inquiry.js'];
+      const runtime=['/legend-public-web.js','/legend-public-cms.js','/legend-public-inquiry.js','/public-inquiry-form.mjs'];
       if(company)runtime.push('/js/page-health.js','/js/legend-site-tools.js');
       if(!runtime.some(path=>src.split('?')[0]===path) && !(company && script.type==='application/ld+json'))script.remove();
     });

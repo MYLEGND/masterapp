@@ -119,7 +119,7 @@ test('canonical v3 business publication renders only the composition graph and k
         dynamicBinding:null,
         composition:[
           baseNode('contact.section','section','section',{className:'section',children:[
-            baseNode('contact.form','form','form',{text:'Send inquiry',title:'Contact us',systemKey:'canonical_inquiry'})
+            baseNode('contact.form','form','form',{text:'Send inquiry',title:'Contact us',systemKey:'canonical_inquiry',receptionist:{enabled:true,label:'Speak with our team',placement:'before'}})
           ]})
         ]
       }
@@ -143,10 +143,16 @@ test('canonical v3 business publication renders only the composition graph and k
   assert.equal(cta.getAttribute('href'),'/contact');
   const contact=parseHTML(result.pages['/contact'].html).document;
   assert.ok(contact.querySelector('form[data-website-inquiry]'));
-  assert.equal(contact.querySelectorAll('script[src^="/legend-public-inquiry.js"]').length,1,
+  assert.equal(contact.querySelectorAll('script[type="module"][src^="/public-inquiry-form.mjs"]').length,1,
     'Compiled customer contact forms must retain the canonical JSON transport');
   const contactEmbedded=JSON.parse(contact.querySelector('#legend-cms-published-document').textContent);
   assert.equal(contactEmbedded.pageKey,'contact');
+  assert.equal(contactEmbedded.business.id,business.id);
+  assert.equal(contact.querySelectorAll('form[data-website-inquiry]').length,1);
+  assert.equal(contact.querySelectorAll('form[data-website-inquiry] [data-website-receptionist]').length,1);
+  assert.equal(contact.querySelector('[data-receptionist-start]').textContent,'Speak with our team');
+  assert.equal(contact.querySelector('[data-website-receptionist]').hasAttribute('data-business-id'),false);
+  assert.equal(contact.querySelector('[data-receptionist-start]').hasAttribute('disabled'),false);
   const embedded=JSON.parse(home.querySelector('#legend-cms-published-document').textContent);
   assert.equal(embedded.document.version,3);
   assert.equal(embedded.legacyMigration,null);

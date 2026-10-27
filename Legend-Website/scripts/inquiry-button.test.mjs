@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
+import {websiteReceptionist,publicInquiryForm} from '../../SHARED/WebsitePlatform/public-inquiry-form.mjs';
 
 const runtime=readFileSync(new URL('../../Legend-Design/legend-public-inquiry.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../../SHARED/WebsitePlatform/public-inquiry-form.css',import.meta.url),'utf8');
@@ -82,4 +83,16 @@ test('failed request keeps visitor data, visibly offers retry and uses original 
   assert.equal(attempts,2);
   assert.equal(JSON.parse(f.calls[0].options.body).submissionId,JSON.parse(f.calls[1].options.body).submissionId);
   assert.equal(f.button.dataset.legendInquiryState,'sent');
+});
+
+test('one shared voice component escapes bounded labels and keeps preview inert without owning inquiry routing',()=>{
+  const voice=websiteReceptionist({preview:true,label:'<img src=x onerror=unsafe()> & "Talk"'});
+  assert.match(voice,/data-website-receptionist data-preview/);
+  assert.match(voice,/data-receptionist-start[^>]* disabled/);
+  assert.match(voice,/&lt;img src=x onerror=unsafe\(\)&gt; &amp; &quot;Talk&quot;/);
+  assert.doesNotMatch(voice,/<img|<form|data-receptionist-test|ownerId|businessId|providerId/);
+  assert.match(voice,/Voice availability is checked/);
+  assert.equal((publicInquiryForm().match(/data-website-receptionist/g)||[]).length,1);
+  assert.equal((publicInquiryForm().match(/<form /g)||[]).length,1);
+  assert.match(websiteReceptionist({label:'x'.repeat(200)}),new RegExp('>'+ 'x'.repeat(160) +'</button>'));
 });

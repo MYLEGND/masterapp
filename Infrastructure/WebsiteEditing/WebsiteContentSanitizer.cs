@@ -354,7 +354,7 @@ public static class WebsiteContentSanitizer
         var schemaNames = new HashSet<string>(("version shell header footer pages reusableComponents collections theme store breakpoints " +
             "composition children navigation label title description systemTemplateKey dynamicBinding type tag className text style layout " +
             "href target alt imageDataUrl videoUrl backgroundImageDataUrl actionKey signals fieldLabels fieldPresentations fieldSignals " +
-            "systemKey systemBinding dataBinding experience syncSourceId responsiveStyles responsiveLayouts breakpointStyles breakpointLayouts " +
+            "systemKey systemBinding dataBinding experience receptionist placement syncSourceId responsiveStyles responsiveLayouts breakpointStyles breakpointLayouts " +
             "desktop tablet mobile key minWidth maxWidth width height minHeight maxHeight display position order hidden enabled " +
             "color backgroundColor fontSize fontWeight fontFamily textAlign alignItems justifyContent flexDirection flexWrap gap padding margin " +
             "border borderRadius opacity overflow objectFit objectPosition aspectRatio zIndex animation updatedUtc faviconImageDataUrl " +
@@ -635,6 +635,8 @@ public static class WebsiteContentSanitizer
         if (node.UnexpectedFields is { Count: > 0 })
             throw new ArgumentException(
                 $"Unsupported website field(s) at {location}: {string.Join(", ", node.UnexpectedFields.Keys.OrderBy(value => value, StringComparer.Ordinal))}");
+        if (node.Receptionist?.UnexpectedFields is { Count: > 0 })
+            throw new ArgumentException("Unsupported website receptionist presentation field.");
         foreach (var child in node.Children ?? [])
             RejectUnexpectedMutationNodeFields(child, location + "/" + child.Id);
     }
@@ -655,6 +657,7 @@ public static class WebsiteContentSanitizer
             foreach (var node in nodes ?? [])
             {
                 Reject(node.UnexpectedFields, location + "/" + node.Id);
+                Reject(node.Receptionist?.UnexpectedFields, location + "/" + node.Id + "/receptionist");
                 Visit(node.Children, location + "/" + node.Id);
             }
         }
@@ -954,6 +957,7 @@ public static class WebsiteContentSanitizer
                 Animations = SanitizeAnimations(node.Animations),
                 DataBinding = SanitizeDataBinding(node.DataBinding),
                 Experience = type == "experience" ? WebsiteExperiencePolicy.Sanitize(node.Experience) : null,
+                Receptionist = SanitizeReceptionist(node.Receptionist, type, systemKey),
                 FieldPresentations = SanitizeFieldPresentations(node.FieldPresentations, breakpointKeys),
                 FieldLabels = SanitizeFieldLabels(node.FieldLabels),
                 FieldSignals = SanitizeFieldSignals(node.FieldSignals)
@@ -1299,6 +1303,22 @@ public static class WebsiteContentSanitizer
             result[key] = SanitizeControlPresentation(pair.Value, breakpointKeys);
         }
         return result;
+    }
+
+    private static WebsiteReceptionistPresentation? SanitizeReceptionist(
+        WebsiteReceptionistPresentation? source, string type, string? systemKey)
+    {
+        if (source is null) return null;
+        if (type != "form" || systemKey != "canonical_inquiry" ||
+            source.UnexpectedFields is { Count: > 0 } || source.Placement is not ("before" or "after"))
+            throw new ArgumentException("Website voice presentation requires a canonical inquiry and a valid placement.");
+        var label = ClampText(source.Label);
+        return new WebsiteReceptionistPresentation
+        {
+            Enabled = source.Enabled,
+            Label = string.IsNullOrWhiteSpace(label) ? null : label[..Math.Min(label.Length, 160)],
+            Placement = source.Placement
+        };
     }
 
     private static Dictionary<string, string> SanitizeFieldLabels(IDictionary<string, string>? source)

@@ -88,7 +88,7 @@ test('unavailable admission never requests microphone or creates a provider sess
   const f=fixture({grantAvailable:false});try{
     f.start.click();await settle();
     assert.equal(f.microphoneRequests(),0);assert.equal(f.calls.length,1);
-    assert.match(f.status(),/send an inquiry below/);
+    assert.match(f.status(),/send an inquiry on this page/);
     assert.equal(f.w.document.querySelector('form [type=submit]').disabled,false);
   }finally{f.close();}
 });
@@ -107,7 +107,7 @@ test('uncertain creation is not retried and local microphone is released',async(
     assert.equal(f.calls.filter(x=>x.action==='start').length,1);
     assert.equal(f.calls.filter(x=>x.action==='end').length,0);
     assert.equal(f.stopped(),1);assert.equal(f.closed(),1);
-    assert.match(f.status(),/send an inquiry below/);
+    assert.match(f.status(),/send an inquiry on this page/);
   }finally{f.close();}
 });
 
@@ -163,5 +163,34 @@ test('restricted management voice reuses media flow with same-origin authenticat
 test('restricted route cannot send cookies or antiforgery to another origin',async()=>{
   const f=fixture({restricted:true,foreignTestRoute:true});try{
     f.start.click();await settle();assert.equal(f.calls.length,0);assert.equal(f.microphoneRequests(),0);
+  }finally{f.close();}
+});
+
+test('historical classic handler owns a late canonical module mount and stops its one active call when removed',async()=>{
+  const f=fixture();
+  try{
+    f.w.document.querySelector('[data-website-receptionist]').remove();
+    const classic=f.w.document.createElement('script');classic.src='/legend-public-inquiry.js?v=historical';f.w.document.head.append(classic);
+    const form=f.w.document.querySelector('[data-website-inquiry]');
+    const message=form.querySelector('[name="Message"]');message.value='Preserve my written question';
+    const host=f.w.document.createElement('div');host.dataset.legendReceptionistEntry='';host.dataset.receptionistLabel='Speak with us';form.prepend(host);
+    const moduleSource=readFileSync(new URL('../../SHARED/WebsitePlatform/public-inquiry-form.mjs',import.meta.url),'utf8');
+    // Execute the shipped module body in the existing JSDOM realm, changing only
+    // ESM syntax boundaries. A second dynamic import is not supplied or mocked.
+    f.w.eval(moduleSource.replace(/^export /gm,'').replaceAll('import.meta.url',JSON.stringify('https://www.mylegnd.com/public-inquiry-form.mjs')));
+    f.w.document.dispatchEvent(new f.w.Event('DOMContentLoaded'));await settle();
+    assert.equal(f.calls.length,0);assert.equal(f.microphoneRequests(),0);
+    const start=host.querySelector('[data-receptionist-start]');
+    assert.equal(start.textContent,'Speak with us');
+    start.click();start.click();await settle();
+    assert.equal(f.calls.filter(call=>call.action==='grant').length,1);
+    assert.equal(f.calls.filter(call=>call.action==='start').length,1);
+    assert.equal(f.microphoneRequests(),1);
+    f.w.dispatchEvent(new f.w.Event('legend:website-content-rendered'));await settle();
+    assert.equal(form.querySelectorAll('[data-website-receptionist]').length,1);
+    assert.equal(form.querySelector('[name="Message"]'),message);assert.equal(message.value,'Preserve my written question');
+    host.remove();f.w.dispatchEvent(new f.w.Event('legend:website-content-rendered'));await settle();
+    assert.equal(f.calls.filter(call=>call.action==='end').length,1);assert.equal(f.stopped(),1);
+    f.closeFallback();assert.equal(f.closed(),1);
   }finally{f.close();}
 });

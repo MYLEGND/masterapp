@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { Script } from 'node:vm';
 import { webcrypto } from 'node:crypto';
 import { TextEncoder } from 'node:util';
+import {mountWebsiteReceptionists} from '../../SHARED/WebsitePlatform/public-inquiry-form.mjs';
 
 const source = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-cms.js', import.meta.url), 'utf8');
 const publicCss = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-web.css', import.meta.url), 'utf8');
@@ -1899,7 +1900,7 @@ test('Founder and business websites use one shared inquiry runtime with no hard-
   assert.ok(publicInquiryFormSource.includes('data-website-inquiry data-form-key="website_inquiry"'));
   assert.ok(businessBuildSource.includes('${publicInquiryForm({ownerLabel:brandRegistry.registeredUpper})}</section>'));
   assert.ok(businessBuildSource.includes('publicInquiryForm({preview:true,business:true})'));
-  assert.ok(businessBuildSource.includes('/legend-public-inquiry.js?v='));
+  assert.ok(businessBuildSource.includes('/public-inquiry-form.mjs?v='));
   assert.ok(publicInquiryFormSource.includes('name="FirstName"'));
   assert.ok(publicInquiryFormSource.includes('name="LastName"'));
   assert.ok(publicInquiryFormSource.includes('name="Phone"'));
@@ -1914,6 +1915,9 @@ test('Founder and business websites use one shared inquiry runtime with no hard-
   assert.ok(protectLayoutSource.includes('~/css/public-inquiry-form.css'));
   assert.ok(parfaitLayoutSource.includes('~/js/public-inquiry-form.mjs'));
   assert.ok(parfaitLayoutSource.includes('~/css/public-inquiry-form.css'));
+  assert.ok(businessBuildSource.includes("resolve(dist,'public-inquiry-form.mjs')"));
+  assert.ok(businessMiddlewareSource.includes('or \"/public-inquiry-form.mjs\" or'));
+  assert.ok(businessMiddlewareSource.includes('!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method)'));
   assert.equal(protectContactSource.includes('public-inquiry-form.mjs'),false);
   assert.equal(parfaitContactSource.includes('public-inquiry-form.mjs'),false);
   assert.equal(protectContactSource.includes('mailto:'),false);
@@ -1956,7 +1960,7 @@ test('historical scoped form gets the shared runtime once and never falls back t
     const form=f.w.document.querySelector('form[data-website-inquiry]');
     assert.ok(form);
     assert.equal(form.dataset.legendInquiryGuard,'true');
-    const scripts=[...f.w.document.scripts].filter(script=>script.getAttribute('src') && new URL(script.src).pathname==='/legend-public-inquiry.js');
+    const scripts=[...f.w.document.scripts].filter(script=>script.getAttribute('src') && new URL(script.src).pathname==='/public-inquiry-form.mjs');
     assert.equal(scripts.length,1);
     const submit=new f.w.Event('submit',{bubbles:true,cancelable:true});
     form.dispatchEvent(submit);
@@ -6692,4 +6696,119 @@ test('native capture collapses template indentation while preserving authored an
       if(search) assert.deepEqual(await replay.save(),replay.serverDocument());
     }finally{replay.close();}
   }
+});
+
+test('canonical inquiry voice controls save and reopen one original form with theme presentation and no preview effects',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition=[canonicalNode('contact.inquiry','form','form',{
+    systemKey:'canonical_inquiry',title:'Your question',text:'Send my question',
+    fieldLabels:{message:'Details for our team',consent:'I agree to share my inquiry.'},
+    signals:[{id:'11111111111111111111111111111111',eventName:'form_start',trigger:'form_started',deliveryMode:'analytics'}],
+    fieldSignals:{phone:[{id:'22222222222222222222222222222222',eventName:'PhoneFieldCompleted',trigger:'field_completed',deliveryMode:'analytics'}]},
+    fieldPresentations:{receptionist_start:{style:{color:'#123456',widthPercent:75}}}
+  })];
+  const prepare=w=>{w.LegendPublicInquiryForm={mountWebsiteReceptionists};};
+  const f=await domFixture({doc,captureNativePage:true});let saved;
+  try{
+    assert.equal(f.w.document.querySelector('[data-website-receptionist]'),null);
+    f.click('form[data-website-inquiry]');
+    assert.equal(f.w.document.querySelector('#legend-cms-receptionist').hidden,false);
+    const toggle=f.w.document.querySelector('#legend-cms-receptionist-enabled');
+    toggle.checked=true;toggle.dispatchEvent(new f.w.Event('change',{bubbles:true}));
+    assert.equal(f.w.document.querySelector('#legend-cms-receptionist-appearance').disabled,true);
+    assert.equal(f.w.document.querySelector('[data-receptionist-start]'),null);
+    prepare(f.w);
+    assert.equal(mountWebsiteReceptionists(f.w.document),1);
+    f.w.dispatchEvent(new f.w.Event('legend:public-inquiry-mounted'));
+    assert.equal(f.w.document.querySelector('#legend-cms-receptionist-appearance').disabled,false);
+    assert.equal(f.w.document.querySelector('.legend-cms-selected'),f.w.document.querySelector('form[data-website-inquiry]'));
+    f.change('#legend-cms-receptionist-label','Ask our team');
+    f.change('#legend-cms-receptionist-placement','after');
+    const form=f.w.document.querySelector('form[data-website-inquiry]');
+    assert.equal(form.id,'website_inquiry_contact.inquiry');
+    assert.equal(f.w.document.querySelectorAll('form[data-website-inquiry]').length,1);
+    assert.equal(form.querySelectorAll('form').length,0);
+    assert.equal(form.lastElementChild.dataset.legendReceptionistEntry,'');
+    const start=form.querySelector('[data-receptionist-start]');
+    assert.equal(start.textContent,'Ask our team');assert.equal(start.disabled,true);
+    assert.equal(start.style.color,'rgb(18, 52, 86)');assert.equal(start.style.width,'75%');
+    assert.equal(form.querySelector('[name="consent"]').required,true);
+    assert.equal(form.querySelector('[name="Message"]').closest('label').textContent,'Details for our team');
+    start.click();
+    assert.equal(f.calls.some(call=>/receptionist.*\/(grant|start)/.test(call.url)),false);
+    const appearance=f.w.document.querySelector('#legend-cms-receptionist-appearance');
+    assert.equal(appearance.disabled,false);appearance.click();
+    assert.equal(f.w.document.querySelector('.legend-cms-selected'),start);
+    assert.equal(start.disabled,true);
+    f.input('#legend-cms-width','61');
+    assert.equal(form.querySelector('[data-receptionist-start]').style.width,'61%');
+    saved=await f.save();
+    const node=canonicalNodeById(saved,'contact.inquiry');
+    assert.deepEqual(node.receptionist,{enabled:true,label:'Ask our team',placement:'after'});
+    assert.equal(node.systemKey,'canonical_inquiry');
+    assert.equal(node.fieldLabels.consent,'I agree to share my inquiry.');
+    assert.equal(node.fieldPresentations.receptionist_start.style.color,'#123456');
+    assert.equal(node.fieldPresentations.receptionist_start.style.widthPercent,61);
+    assert.deepEqual(node.signals,doc.pages['/'].composition[0].signals);
+    assert.deepEqual(node.fieldSignals,doc.pages['/'].composition[0].fieldSignals);
+    const captured=JSON.parse(JSON.stringify(f.w.__captureNativePage())).composition;
+    const capturedForm=captured.find(node=>node.type==='form');
+    assert.ok(capturedForm);
+    assert.deepEqual(capturedForm.receptionist,node.receptionist);
+    assert.deepEqual(capturedForm.signals,node.signals);assert.deepEqual(capturedForm.fieldSignals,node.fieldSignals);
+    assert.deepEqual(capturedForm.fieldLabels,node.fieldLabels);
+  }finally{f.close();}
+  const reopened=await domFixture({doc:saved,beforeEval:prepare});
+  try{
+    reopened.click('form[data-website-inquiry]');
+    assert.equal(reopened.w.document.querySelector('#legend-cms-receptionist-enabled').checked,true);
+    assert.equal(reopened.w.document.querySelector('[data-receptionist-start]').textContent,'Ask our team');
+    assert.equal(reopened.w.document.querySelector('[data-receptionist-start]').style.width,'61%');
+    const appearance=reopened.w.document.querySelector('#legend-cms-receptionist-appearance');
+    assert.equal(appearance.disabled,false);appearance.click();
+    assert.equal(reopened.w.document.querySelector('.legend-cms-selected'),reopened.w.document.querySelector('[data-receptionist-start]'));
+    assert.equal(reopened.w.document.querySelector('[data-receptionist-start]').disabled,true);
+    reopened.input('#legend-cms-width','62');await reopened.save();
+    reopened.click('#legend-cms-undo');
+    await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(reopened.w.document.querySelector('[data-receptionist-start]').style.width,'61%');
+    reopened.click('#legend-cms-redo');
+    await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(reopened.w.document.querySelector('[data-receptionist-start]').style.width,'62%');
+    reopened.click('form[data-website-inquiry]');
+    const toggle=reopened.w.document.querySelector('#legend-cms-receptionist-enabled');
+    toggle.checked=false;toggle.dispatchEvent(new reopened.w.Event('change',{bubbles:true}));
+    assert.equal(reopened.w.document.querySelector('[data-website-receptionist]'),null);
+    assert.equal(reopened.w.document.querySelector('#legend-cms-receptionist-appearance').disabled,true);
+    reopened.w.document.querySelector('#legend-cms-receptionist-appearance').click();
+    assert.equal(reopened.w.document.querySelector('.legend-cms-selected'),reopened.w.document.querySelector('form[data-website-inquiry]'));
+    assert.equal(reopened.calls.some(call=>/receptionist.*\/(grant|start)/.test(call.url)),false);
+    assert.equal(reopened.w.document.querySelectorAll('form[data-website-inquiry]').length,1);
+    assert.equal(reopened.w.document.querySelector('[name="Message"]').closest('label').textContent,'Details for our team');
+  }finally{reopened.close();}
+});
+
+test('late public voice mounting styles the actual shared button without replacing customized inquiry input or duplicating forms',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition=[canonicalNode('contact.inquiry','form','form',{
+    systemKey:'canonical_inquiry',receptionist:{enabled:true,label:'Speak <safely>',placement:'before'},
+    fieldLabels:{consent:'Keep this consent'},fieldPresentations:{receptionist_start:{style:{color:'#123456'}}}
+  })];
+  const f=await domFixture({doc,search:'',html:'<!doctype html><html><body><main></main><script src="/legend-public-inquiry.js?v=historical"></script></body></html>'});
+  try{
+    const form=f.w.document.querySelector('form[data-website-inquiry]');
+    const message=form.querySelector('[name="Message"]');message.value='Keep the visitor draft';
+    assert.equal([...f.w.document.scripts].filter(script=>script.src.includes('public-inquiry-form.mjs')).length,1);
+    assert.equal(mountWebsiteReceptionists(f.w.document),1);
+    f.w.dispatchEvent(new f.w.Event('legend:public-inquiry-mounted'));
+    assert.equal(mountWebsiteReceptionists(f.w.document),0);
+    assert.equal(form.querySelector('[data-receptionist-start]').textContent,'Speak <safely>');
+    assert.equal(form.querySelector('[data-receptionist-start]').style.color,'rgb(18, 52, 86)');
+    assert.equal(form.querySelector('[name="Message"]'),message);assert.equal(message.value,'Keep the visitor draft');
+    assert.equal(form.querySelector('[data-website-receptionist] s'),null);
+    assert.equal(form.querySelectorAll('[data-website-receptionist]').length,1);
+    assert.equal(form.querySelectorAll('form').length,0);
+    assert.equal(form.firstElementChild.dataset.legendReceptionistEntry,'');
+    assert.equal(form.querySelector('[name="consent"]').closest('label').textContent,'Keep this consent');
+  }finally{f.close();}
 });
