@@ -5580,7 +5580,12 @@ class ReviewedEqualContractRuntimeTests(unittest.TestCase):
             return result
 
     def test_exact_ordered_pair_inherits_tools_but_only_selects_common_equality(self):
-        self.assertEqual(frozenset({(self.before, self.after)}), m.REVIEWED_EQUAL_CONTRACT_RUNTIME_PAIRS)
+        self.assertEqual(frozenset({
+            ('b7cd7a413410db1d64dee03063ef487f94c106b581a58bf1c805873219ebc1dd',
+             'a34e572bb44103afa50e13f9c58c624057b8a5b8d9a7215c27369db707024c36'),
+            ('a34e572bb44103afa50e13f9c58c624057b8a5b8d9a7215c27369db707024c36',
+             'dde0b179a337f9a039559b3186e405e42a005d5b9e06c7c84016f7918ade63b4')
+        }), m.REVIEWED_EQUAL_CONTRACT_RUNTIME_PAIRS)
         proof = self.prove()
         self.assertEqual('approved-definitions-reviewed-runtime-pair', proof['rule'])
         self.assertEqual('proven', proof['state'])
@@ -5684,6 +5689,28 @@ class ReviewedEqualContractRuntimeTests(unittest.TestCase):
                 self.assertNotEqual(expected, self.current['runtimeIdentity'])
                 with self.subTest(changed=changed), self.assertRaisesRegex(ValueError, 'UNPROVEN'):
                     self.prove(git_results=[])
+
+
+class ReviewedStudioMediaEqualContractRuntimeTests(ReviewedEqualContractRuntimeTests):
+    # Run every existing equality/identity/ancestry/Git-failure/definition negative
+    # against the newly reviewed pair as well as the retained historical pair.
+    def setUp(self):
+        super().setUp()
+        self.before = 'a34e572bb44103afa50e13f9c58c624057b8a5b8d9a7215c27369db707024c36'
+        self.after = 'dde0b179a337f9a039559b3186e405e42a005d5b9e06c7c84016f7918ade63b4'
+        self.trusted['runtimeIdentity'] = self.before
+        self.current['runtimeIdentity'] = self.after
+
+    def test_historical_base_and_superseded_studio_closures_are_not_new_authority(self):
+        for before, after in [
+            ('b7cd7a413410db1d64dee03063ef487f94c106b581a58bf1c805873219ebc1dd', self.after),
+            (self.before, '48a666a64388194341ae312c0742a1d784b5d97f771bd4366d7c9a0ecfe3b4bf'),
+            (self.before, 'facb9ea689dea4f09c3da283bf01b042d7b0d3e0a94ca893d8d552baab1410fd'),
+            ('facb9ea689dea4f09c3da283bf01b042d7b0d3e0a94ca893d8d552baab1410fd', self.after)]:
+            self.trusted['runtimeIdentity'] = before
+            self.current['runtimeIdentity'] = after
+            with self.subTest(before=before, after=after), self.assertRaisesRegex(ValueError, 'UNPROVEN'):
+                self.prove(git_results=[])
 
 
 class ReviewedBrowserContractTests(unittest.TestCase):

@@ -7294,6 +7294,8 @@ def validate_fast_track_completion_record(repository, run, artifact, record, tok
 
 def fast_track_completion_present(repository, revision, token, *, original_run=None):
     # Discovery only: the caller must still authenticate every operation receipt.
+    original = None
+    candidate_names = None
     if original_run is not None:
         name = fast_track_recovery_summary_name(original_run, revision)
         artifacts = _completion_inventory(api_get(repository,
@@ -7302,6 +7304,42 @@ def fast_track_completion_present(repository, revision, token, *, original_run=N
             raise ValueError('RECOVERY_SUMMARY_ARTIFACT_UNPROVEN')
         if artifacts:
             return True
+        if (type(original_run) is not int or original_run < 1
+            or not isinstance(revision, str) or not re.fullmatch('[a-f0-9]{40}', revision)):
+            raise ValueError('FAST_TRACK_COMPLETION_DISCOVERY_SCOPE_UNPROVEN')
+        original = api_get(repository, f'actions/runs/{original_run}', token)
+        if (not isinstance(original, dict) or not is_fast_track_producer(repository, original)
+            or type(original.get('id')) is not int or original['id'] != original_run
+            or original.get('head_sha') != revision or original.get('status') != 'completed'
+            or original.get('conclusion') not in {'success', 'failure', 'cancelled'}
+            or type(original.get('run_attempt')) is not int or original['run_attempt'] < 1):
+            raise ValueError('FAST_TRACK_COMPLETION_DISCOVERY_SCOPE_UNPROVEN')
+        originals = _completion_inventory(api_get(repository,
+            f'actions/runs/{original_run}/artifacts?per_page=100', token), 'artifacts')
+        candidate_names = {fast_track_completion_summary_name(original_run, revision)}
+        for artifact in originals:
+            name = artifact.get('name'); owner = artifact.get('workflow_run')
+            if (not isinstance(name, str) or not name or not isinstance(owner, dict)
+                or type(owner.get('id')) is not int or owner['id'] != original_run
+                or owner.get('head_sha') != revision):
+                raise ValueError('FAST_TRACK_COMPLETION_DISCOVERY_SCOPE_UNPROVEN')
+            if name.startswith('legend-release-operation-intent-'):
+                match = re.fullmatch('legend-release-operation-intent-([a-f0-9]{64})', name)
+                if match is None:
+                    raise ValueError('FAST_TRACK_COMPLETION_DISCOVERY_SCOPE_UNPROVEN')
+                _completion_artifact(originals, name, original)
+                candidate_names.add('legend-release-operation-success-' + match[1])
+    def result(present):
+        if original is not None:
+            evidence_remaining(30)
+            current = _api_get_uncached(repository, f'actions/runs/{original_run}', token)
+            evidence_remaining(30)
+            keys = ('id', 'head_sha', 'head_branch', 'path', 'event', 'run_attempt', 'status', 'conclusion', 'head_repository')
+            if (not isinstance(current, dict) or type(current.get('id')) is not int
+                or type(current.get('run_attempt')) is not int
+                or any(current.get(key) != original.get(key) for key in keys)):
+                raise ValueError('FAST_TRACK_COMPLETION_DISCOVERY_ORIGINAL_CHANGED')
+        return present
     runs=_completion_rows(api_get(repository,
         f'actions/workflows/{FAST_TRACK_COMPLETION_WORKFLOW}/runs?event=workflow_dispatch&per_page=100',token),'workflow_runs')
     for run in runs:
@@ -7311,10 +7349,14 @@ def fast_track_completion_present(repository, revision, token, *, original_run=N
         for artifact in artifacts:
             if not artifact.get('name','').startswith(('legend-release-operation-success-','legend-release-completion-')):
                 continue
+            # Every admissible success must bind an exact original intent. Names
+            # only narrow discovery; the caller still authenticates full proof.
+            if candidate_names is not None and artifact['name'] not in candidate_names:
+                continue
             record=_release_history_json(repository,run['id'],artifact,'operation.json',verify_digest=True)
             if record.get('applicationRevision')==revision:
-                return True
-    return False
+                return result(True)
+    return result(False)
 
 
 def fast_track_completion_summary_name(original_run, revision):
@@ -8986,7 +9028,9 @@ REVIEWED_BROWSER_RUNTIME_PAIRS = frozenset({
 # actual-contract equality check below remains mandatory for this exact closure.
 REVIEWED_EQUAL_CONTRACT_RUNTIME_PAIRS = frozenset({
     ('b7cd7a413410db1d64dee03063ef487f94c106b581a58bf1c805873219ebc1dd',
-     'a34e572bb44103afa50e13f9c58c624057b8a5b8d9a7215c27369db707024c36')
+     'a34e572bb44103afa50e13f9c58c624057b8a5b8d9a7215c27369db707024c36'),
+    ('a34e572bb44103afa50e13f9c58c624057b8a5b8d9a7215c27369db707024c36',
+     'dde0b179a337f9a039559b3186e405e42a005d5b9e06c7c84016f7918ade63b4')
 })
 
 REVIEWED_TRAINING_ENTRY = '49ef5a95c19084b799e9a92a5d0c496792dbdcab367e4360795d55e443338434'
