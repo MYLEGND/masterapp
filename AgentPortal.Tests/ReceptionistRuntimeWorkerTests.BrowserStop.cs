@@ -47,7 +47,8 @@ public sealed partial class ReceptionistRuntimeWorkerTests
         var id = await BrowserCallAsync(f, "live_deadline");
         await using var host = await f.StartAsync();
         var socket = await f.Transport.SocketAsync(0);
-        await EventuallyAsync(() => socket.Sent.Any());
+        // A visible application send does not prove the heartbeat timer is armed.
+        await EventuallyAsync(() => socket.Sent.Any() && f.Clock.HasScheduledDelay(TimeSpan.FromSeconds(2)));
         f.Clock.Advance(TimeSpan.FromSeconds(121)); // No provider event wakes the stop path.
         await EventuallyAsync(() => socket.Sent.Any(IsClose));
         var closeEventId = Assert.Single(socket.Sent.Where(IsClose)).GetProperty("event_id").GetString()!;
@@ -258,10 +259,15 @@ public sealed partial class ReceptionistRuntimeWorkerTests
         Assert.Equal("pending", cleanup.State); Assert.Null(cleanup.VerificationReceipt);
         Assert.False((await f.Admission.ClaimProviderStopAsync(call.Id, "unauthorized-retry")).MayExecute);
         f.SetRuntimeEnabled(false); await using var host = await f.StartAsync();
-        var socket = await f.Transport.SocketAsync(0); f.Clock.Advance(TimeSpan.FromSeconds(2));
-        await host.StopAsync(); Assert.DoesNotContain(socket.Sent, IsClose); Assert.Empty(f.Transport.Hangups);
+        var socket = await f.Transport.SocketAsync(0);
+        // Only this call schedules a two-second delay, after renewal and StopAsync.
+        // Observe that completed iteration while live, not cancellation during teardown.
+        await EventuallyAsync(() => f.Clock.HasScheduledDelay(TimeSpan.FromSeconds(2)));
+        Assert.Equal(WebSocketState.Open, socket.State);
+        Assert.DoesNotContain(socket.Sent, IsClose); Assert.Empty(f.Transport.Hangups);
         Assert.False((await db.Set<ReceptionistCostReservation>().SingleAsync()).CashFinal);
         Assert.Null((await f.CallAsync(call.Id)).ProviderClosedUtc);
+        await host.StopAsync();
     }
 
     [Fact]
@@ -311,7 +317,8 @@ public sealed partial class ReceptionistRuntimeWorkerTests
         await using var f = await Fixture.CreateAsync(browser: true);
         var id = await BrowserCallAsync(f, "live_still_active");
         await using var host = await f.StartAsync(); var socket = await f.Transport.SocketAsync(0);
-        await EventuallyAsync(() => socket.Sent.Any());
+        // A visible application send does not prove the heartbeat timer is armed.
+        await EventuallyAsync(() => socket.Sent.Any() && f.Clock.HasScheduledDelay(TimeSpan.FromSeconds(2)));
         var original = await f.CallAsync(id); f.Clock.Advance(TimeSpan.FromSeconds(2));
         await EventuallyAsync(async () => (await f.CallAsync(id)).SidebandLeaseExpiresUtc > original.SidebandLeaseExpiresUtc);
         var active = await f.CallAsync(id); Assert.False(active.SidebandObservationOnly);
