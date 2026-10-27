@@ -1,49 +1,16 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder requested hardening of the Protect deployment failure and one authoritative recovery contract for all apps. This candidate prepares nonpublishing tooling promotion; merge remains subject to separate Founder approval.",
-  "purpose": "Use the canonical artifact validator for all-target recovery preflight, preserve receipt authentication and reject serializer drift before any deployment worker starts.",
-  "requestId": "all-app-recovery-contract-hardening-20261026-v1",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "Founder instructed full completion and deployment of the existing Shayla integration. Publish the independently reviewed application changes through the canonical selective release with calls paused, telephone disabled and booking unaccepted; this request does not authorize activation or new provider grants.",
+  "purpose": "Deploy the accepted website voice transport, protected management controls, booking notice constraints and shared inquiry fallback, including the two reviewed additive receptionist migrations.",
+  "requestId": "shayla-paused-web-deployment-20261027-v1",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait",
+    "masterapp-website"
+  ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "b77beb971c47b6b74b08505105ae07c45b3c5c77",
-    "sourceRevision": "ffb25afd8c29f3c794b4259e35cfa38d7cfc76ab",
-    "files": {
-      "scripts/deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "910d9ee7d02e341dad3bd9ea11df5296ec1c8a5b"
-      },
-      "scripts/release-artifacts/test-transport.cjs": {
-        "mode": "100644",
-        "blob": "095c7a8ff8bc065da2e8cf12de66e92798204a38"
-      },
-      "scripts/release-artifacts/transport.cjs": {
-        "mode": "100644",
-        "blob": "5bc45a7e611fcfd97cc3589198ae665c99de6b6f"
-      },
-      "scripts/release-operation-evidence.py": {
-        "mode": "100644",
-        "blob": "1df475ad283044c0830149692c9698bc936d9f63"
-      },
-      "scripts/test-deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "bd6eb4e638ead0a494aae79598bf5248f7768b81"
-      },
-      "scripts/test-release-operation-evidence.py": {
-        "mode": "100644",
-        "blob": "99171344b5ae90be142899761ec8395f5b3ea0df"
-      },
-      "scripts/test-validation-resume.py": {
-        "mode": "100644",
-        "blob": "e2be2e31f2a29c91ad86eb96ce331500fd680b14"
-      },
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "200f9089a41c9dc223b9869a5a988c72ad29a33e"
-      }
-    }
-  }
+  "preserveLiveTargets": false
 }
