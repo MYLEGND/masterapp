@@ -7420,6 +7420,10 @@ class FastTrackCarriedMigrationTests(unittest.TestCase):
                      101:'2026-10-26T14:40:00Z Schema ready; validated migration child applied.'}
         self.artifacts=[]; self.incomplete=False
     def api(self,repo,path,token):
+        if path == 'actions/runs/10/jobs?filter=all&per_page=100':
+            rows=[job for attempt in sorted(self.jobs) for job in self.jobs[attempt]]
+            return dict(jobs=rows,total_count=len(rows)+int(self.incomplete))
+        if path == 'actions/runs/10':return self.run
         if '/jobs?' in path:
             rows=self.jobs[int(path.split('/attempts/')[1].split('/')[0])]
             return dict(jobs=rows,total_count=len(rows)+int(self.incomplete))
@@ -7435,6 +7439,7 @@ class FastTrackCarriedMigrationTests(unittest.TestCase):
         stack.enter_context(patch.object(m,'named_step_blocks',return_value={self.step['name']:'fixture'}))
         stack.enter_context(patch.object(m,'attested_fast_track_migration_prewrite',return_value=False))
         stack.enter_context(patch.object(m,'api_get',side_effect=self.api))
+        stack.enter_context(patch.object(m,'_api_get_uncached',side_effect=self.api))
         stack.enter_context(patch.object(m,'_release_job_log',side_effect=lambda repo,job,token:self.logs[job]))
         return stack
     def inventory(self):
@@ -7476,6 +7481,297 @@ class FastTrackCarriedMigrationTests(unittest.TestCase):
         with self.environment():
             prior=[(self.run,1,self.original,self.step)]*2
             self.assertFalse(m._fast_track_child_carried_forward('owner/repo',self.run,2,self.carried,prior,'fixture'))
+
+
+class FastTrackCompleteRunJobsTests(unittest.TestCase):
+    def setUp(self):
+        self.fixture = FastTrackCarriedMigrationTests()
+        self.fixture.setUp()
+        self.calls = []
+        self.fresh_calls = []
+        self.now = 0
+        self.expand(3)
+
+    def expand(self, count):
+        f = self.fixture
+        f.run['run_attempt'] = count
+        for attempt in range(3, count + 1):
+            hour = 13 + attempt
+            f.details[attempt] = dict(f.run, run_attempt=attempt,
+                run_started_at=f'2026-10-26T{hour}:00:00Z')
+            row = json.loads(json.dumps(dict(f.original, id=99 + attempt,
+                run_attempt=attempt, created_at=f'2026-10-26T{hour}:00:03Z')))
+            f.jobs[attempt] = [row]
+            f.logs[row['id']] = f.logs[100]
+
+    def api(self, repo, path, token):
+        self.calls.append(path)
+        return self.fixture.api(repo, path, token)
+
+    def fresh(self, repo, path, token):
+        self.fresh_calls.append(path)
+        return json.loads(json.dumps(self.fixture.run))
+
+    def invoke(self, *, api=None, fresh=None, canonical=False, **kwargs):
+        import contextlib
+        with self.fixture.environment(), contextlib.ExitStack() as stack:
+            stack.enter_context(patch.object(m, 'api_get', side_effect=api or self.api))
+            stack.enter_context(patch.object(m, '_api_get_uncached', side_effect=fresh or self.fresh))
+            if canonical:
+                stack.enter_context(patch.object(m, '_fast_track_complete_run_jobs', return_value=None))
+            return m.fast_track_child_attempts('owner/repo', 'migrations', 'fixture', **kwargs)
+
+    def test_five_and_eight_attempts_preserve_exact_rows_and_receipts_with_fewer_reads(self):
+        for count in (5, 8):
+            self.setUp(); self.expand(count)
+            with self.subTest(count=count):
+                original = self.invoke(canonical=True)
+                original_reads = len([p for p in self.calls if '/jobs?' in p])
+                self.calls.clear(); self.fresh_calls.clear()
+                actual = self.invoke()
+                self.assertEqual(original, actual)
+                self.assertEqual([(1, 100)], [(a, j['id']) for _, a, j, _ in actual])
+                self.assertEqual(count, original_reads)
+                self.assertEqual(1, len([p for p in self.calls if '/jobs?' in p]))
+                self.assertEqual(['actions/runs/10'], self.fresh_calls)
+                # Every copied row still authenticates both exact original/later attempts.
+                self.assertEqual(2 * (count - 1), len([p for p in self.calls
+                    if '/attempts/' in p and '/jobs?' not in p]))
+
+    def test_empty_attempt_falls_back_without_inventing_an_execution(self):
+        self.fixture.jobs[2] = []
+        self.assertEqual(self.invoke(canonical=True), self.invoke())
+        self.assertIn('actions/runs/10/attempts/2/jobs?per_page=100', self.calls)
+        self.assertEqual([], self.fresh_calls)
+
+    def test_large_valid_page_is_discarded_and_every_attempt_is_read(self):
+        f = self.fixture
+        for attempt, size in ((1, 51), (2, 49), (3, 1)):
+            f.jobs[attempt] += [dict(id=1000 + attempt * 100 + n, run_id=10,
+                head_sha=f.run['head_sha'], run_attempt=attempt, name='unrelated')
+                for n in range(size - 1)]
+        def api(repo, path, token):
+            value = self.api(repo, path, token)
+            if 'filter=all' in path:
+                value['jobs'] = value['jobs'][:100]
+            return value
+        original = self.invoke(canonical=True)
+        self.calls.clear()
+        self.assertEqual(original, self.invoke(api=api))
+        self.assertEqual(4, len([p for p in self.calls if '/jobs?' in p]))
+        self.assertEqual([], self.fresh_calls)
+
+    def test_current_prior_attempt_and_single_attempt_keep_original_reader(self):
+        f = self.fixture
+        f.run.update(status='in_progress', run_attempt=2)
+        rows = self.invoke(current_run=10, current_attempt=2)
+        self.assertEqual([1], [a for _, a, _, _ in rows])
+        self.assertEqual(['actions/runs/10/attempts/1/jobs?per_page=100'], self.calls)
+        self.assertEqual([], self.fresh_calls)
+        self.setUp(); self.fixture.run['run_attempt'] = 1
+        self.invoke()
+        self.assertEqual(['actions/runs/10/attempts/1/jobs?per_page=100'], self.calls)
+        self.assertEqual([], self.fresh_calls)
+
+    def test_routing_keeps_original_attempt_reader_and_prewrite_classifier(self):
+        f = self.fixture
+        owner, step = m.FAST_TRACK_CHILD_STEPS['routing-cloudflare']
+        for rows in f.jobs.values():
+            for job in rows:
+                job['name'] = owner
+                job['steps'][0]['name'] = step
+        with f.environment(), patch.object(m, 'api_get', side_effect=self.api), \
+                patch.object(m, '_api_get_uncached', side_effect=self.fresh), \
+                patch.object(m, 'attested_fast_track_router_prewrite', return_value=False) as proof:
+            result = m.fast_track_child_attempts('owner/repo', 'routing-cloudflare', 'fixture')
+        self.assertEqual([1, 2, 3], [attempt for _, attempt, _, _ in result])
+        self.assertEqual(3, proof.call_count)
+        self.assertEqual([f'actions/runs/10/attempts/{a}/jobs?per_page=100' for a in (1, 2, 3)], self.calls)
+        self.assertEqual([], self.fresh_calls)
+
+    def test_active_foreign_invalid_count_and_known_old_source_never_fetch_aggregate(self):
+        self.fixture.run['status'] = 'in_progress'
+        with self.assertRaisesRegex(RuntimeError, 'WORKER_ACTIVE'): self.invoke()
+        self.assertEqual([], self.calls)
+        for count in (True, 0, 101, '2'):
+            self.setUp(); self.fixture.run['run_attempt'] = count
+            with self.subTest(count=count), self.assertRaisesRegex(RuntimeError, 'ATTEMPTS_INCOMPLETE'):
+                self.invoke()
+            self.assertEqual([], self.calls)
+        self.setUp()
+        raw = b'fixture'
+        blob = hashlib.sha1(b'blob 7\0' + raw).hexdigest()
+        with patch.object(m, 'FAST_TRACK_PRE_MIGRATION_SOURCES', {blob}):
+            self.assertEqual([], self.invoke())
+        self.assertEqual([], self.calls)
+
+    def test_malformed_or_incomplete_aggregate_never_uses_partial_or_fallback(self):
+        good = self.fixture.api('', 'actions/runs/10/jobs?filter=all&per_page=100', '')
+        cases = [None, [], {}, dict(good, total_count=True), dict(good, total_count=-1),
+                 dict(good, total_count='2'), dict(good, total_count=4),
+                 dict(good, total_count=301), dict(good, jobs={}),
+                 dict(good, jobs=good['jobs'][:1]), dict(total_count=101, jobs=good['jobs'])]
+        for payload in cases:
+            self.calls.clear()
+            def api(repo, path, token):
+                self.calls.append(path)
+                if 'filter=all' not in path: self.fail('Partial aggregate fell back')
+                return payload
+            with self.subTest(payload=payload), self.assertRaisesRegex(RuntimeError, 'JOBS_INCOMPLETE'):
+                self.invoke(api=api)
+            self.assertEqual(1, len(self.calls))
+            self.assertEqual([], self.fresh_calls)
+
+    def test_ambiguous_foreign_missing_and_unexpected_job_identity_rejected(self):
+        changes = [('id', None), ('id', True), ('id', 0), ('id', 101),
+                   ('run_id', 11), ('run_id', True), ('head_sha', 'b' * 40),
+                   ('run_attempt', None), ('run_attempt', True), ('run_attempt', 0),
+                   ('run_attempt', 4)]
+        for key, value in changes:
+            self.setUp(); self.fixture.original[key] = value
+            with self.subTest(key=key, value=value), self.assertRaisesRegex(RuntimeError, 'JOBS_INCOMPLETE'):
+                self.invoke()
+            self.assertEqual(1, len(self.calls))
+            self.assertEqual([], self.fresh_calls)
+        self.setUp(); self.fixture.jobs[1] = [None]
+        with self.assertRaisesRegex(RuntimeError, 'JOBS_INCOMPLETE'): self.invoke()
+
+    def test_aggregate_failure_and_late_success_preserve_parent_deadline(self):
+        def failed(*args): raise m.EvidenceLookupUnavailable('fixture transport unavailable')
+        with self.assertRaises(m.EvidenceLookupUnavailable): self.invoke(api=failed)
+        self.assertEqual([], self.fresh_calls)
+        def late(*args):
+            result = self.api(*args); self.now = 7; return result
+        with m.evidence_lookup_budget(7, clock=lambda: self.now):
+            with self.assertRaises(m.EvidenceLookupUnavailable): self.invoke(api=late)
+        self.assertEqual([], self.fresh_calls)
+        self.assertIsNone(m._EVIDENCE_BUDGET.get())
+
+    def test_fresh_boundary_bypasses_cached_run_and_rejects_changed_identity(self):
+        changes = [('id', 11), ('workflow_id', 31), ('head_sha', 'b' * 40),
+                   ('head_branch', 'other'), ('event', 'workflow_dispatch'), ('path', 'other.yml'),
+                   ('run_attempt', 4), ('status', 'in_progress'), ('conclusion', 'cancelled'),
+                   ('head_repository', {'full_name': 'foreign/repo'}), ('head_repository', None)]
+        for key, value in changes:
+            self.setUp()
+            def fresh(repo, path, token):
+                result = self.fresh(repo, path, token); result[key] = value; return result
+            # A stale proof cache could return the original run; the fresh endpoint must not use it.
+            with patch.object(m, '_recovery_proof_read', return_value=self.fixture.run):
+                with self.subTest(key=key), self.assertRaisesRegex(RuntimeError, 'RUN_CHANGED_AT_BOUNDARY'):
+                    self.invoke(fresh=fresh)
+            self.assertEqual(['actions/runs/10'], self.fresh_calls)
+            self.assertNotIn('actions/runs/10', self.calls)
+
+    def test_boundary_transport_and_late_response_fail_without_partial_rows(self):
+        def failed(*args): raise m.EvidenceLookupUnavailable('fixture boundary unavailable')
+        with self.assertRaises(m.EvidenceLookupUnavailable): self.invoke(fresh=failed)
+        def late(*args):
+            value = self.fresh(*args); self.now = 7; return value
+        with m.evidence_lookup_budget(7, clock=lambda: self.now):
+            with self.assertRaises(m.EvidenceLookupUnavailable): self.invoke(fresh=late)
+        self.assertIsNone(m._EVIDENCE_BUDGET.get())
+
+    def test_changed_carried_receipt_and_duplicate_owner_still_fail_original_guards(self):
+        self.fixture.logs[101] += ' changed'
+        self.assertEqual([1, 2, 3], [a for _, a, _, _ in self.invoke()])
+        self.setUp()
+        self.fixture.jobs[2].append(dict(self.fixture.carried, id=999))
+        with self.assertRaisesRegex(RuntimeError, 'CHILD_OWNER_UNPROVEN'): self.invoke()
+        self.assertEqual([], self.fresh_calls)
+
+
+    def production_fixture(self, *, canonical=False, expire_direct=False, corrupt_late_page=False):
+        import contextlib
+        def load(name):
+            spec = importlib.util.spec_from_file_location('fixture_' + name,
+                ROOT / 'scripts' / (name + '.py'))
+            module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+            return module
+        production = load('release-migration')
+        audit = load('release-migration-history-audit')
+        f = self.fixture
+        current = dict(f.run, id=99, status='in_progress', run_attempt=1)
+        legacy = dict(f.run, id=20, run_attempt=1, head_branch=m.TRUSTED_PR_BASE,
+            event='workflow_dispatch', path='.github/workflows/' + m.DIRECT_RELEASE_WORKFLOW)
+        legacy_job = dict(id=200, name='release', status='completed', conclusion='success',
+            steps=[dict(name=audit.LEGACY_STEP, status='completed', conclusion='success')])
+        rows = [dict(f.run, id=1000 + n, path='.github/workflows/diagnostics.yml') for n in range(100)] + [f.run]
+        observed = dict(databaseIdentity='database', schemaIdentity='schema', baselineIdentity='baseline',
+                        ready=True, pendingCount=0)
+        start = m.time.monotonic()
+        now = [start]
+        budget_owner = m.evidence_lookup_budget
+        def budget(deadline, **kwargs):
+            return budget_owner(deadline, clock=lambda: now[0])
+        budgets = []
+        def api(repo, path, token):
+            self.calls.append(path)
+            budgets.append(m.evidence_remaining(120))
+            if 'branch=legend%2Fapproved-changes' in path:
+                return dict(total_count=1, workflow_runs=[legacy])
+            if 'branch=Legend%2Ffast-track-release' in path:
+                page = rows[100:] if '&page=2' in path else rows[:100]
+                if corrupt_late_page and '&page=2' in path: page = []
+                return dict(total_count=101, workflow_runs=page)
+            if path == 'actions/runs/20/attempts/1/jobs?per_page=100':
+                if expire_direct: now[0] = start + 120
+                return dict(total_count=1, jobs=[legacy_job])
+            return f.api(repo, path, token)
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(patch.dict(os.environ, dict(GITHUB_REPOSITORY='owner/repo', GH_TOKEN='fixture',
+                GITHUB_RUN_ATTEMPT='1', APPLICATION_RELEASE_SHA='a' * 40)))
+            stack.enter_context(patch.object(m, 'evidence_lookup_budget', side_effect=budget))
+            stack.enter_context(patch.object(production, 'release_authority', return_value=m))
+            stack.enter_context(patch.object(production, 'history_audit', return_value=audit))
+            stack.enter_context(patch.object(m, 'assert_release_execution', return_value=current))
+            stack.enter_context(patch.object(m, 'api_get', side_effect=api))
+            stack.enter_context(patch.object(m, '_api_get_uncached', side_effect=self.fresh))
+            stack.enter_context(patch.object(m, '_trusted_child_producer', return_value=None))
+            stack.enter_context(patch.object(m, '_attested_retired_unscheduled_release', return_value=False))
+            stack.enter_context(patch.object(m, 'release_attempt_never_entered', return_value=False))
+            stack.enter_context(patch.object(m, 'legacy_migration_step_recognized', return_value=True))
+            stack.enter_context(patch.object(m, '_legacy_migration_noop', return_value=True))
+            stack.enter_context(patch.object(m, '_release_history_source', return_value='fixture'))
+            stack.enter_context(patch.object(m, 'named_step_blocks', return_value={f.step['name']: 'fixture'}))
+            stack.enter_context(patch.object(m, 'attested_fast_track_migration_prewrite', return_value=False))
+            stack.enter_context(patch.object(m, '_release_job_log', side_effect=lambda repo, job, token: f.logs[job]))
+            if canonical:
+                stack.enter_context(patch.object(m, '_fast_track_complete_run_jobs', return_value=None))
+            observe = stack.enter_context(patch.object(production, 'observe', side_effect=lambda *a, **k: dict(observed)))
+            # The real production caller nests its120s context under this exact same deadline.
+            stack.enter_context(budget_owner(start + 120, clock=lambda: now[0]))
+            try:
+                result = production.production_observation('fixture-probe', 'fixture-connection', schema_only=True)
+            except Exception:
+                observe.assert_not_called()
+                raise
+            self.assertEqual(2, observe.call_count)
+            self.assertTrue(all(c.kwargs.get('schema_only_activity') is True for c in observe.call_args_list))
+            self.assertTrue(all(0 < value <= 120 for value in budgets))
+            result.pop('historicalObservedAt')
+            return result
+
+    def test_real_production_audit_and_paged_fast_history_preserve_physical_result(self):
+        self.expand(5)
+        original = self.production_fixture(canonical=True)
+        self.calls.clear(); self.fresh_calls.clear()
+        actual = self.production_fixture()
+        self.assertEqual(original, actual)
+        self.assertEqual('outcome-unknown', actual['historicalExecution'])
+        self.assertEqual(1, len(actual['historicalReconciliationSources']))
+        self.assertTrue(any('&page=2' in path for path in self.calls))
+        self.assertEqual(['actions/runs/10'], self.fresh_calls)
+        self.assertIsNone(m._EVIDENCE_BUDGET.get())
+
+    def test_direct_phase_exhaustion_and_missing_late_page_never_reach_physical_probe(self):
+        with self.assertRaises(m.EvidenceLookupUnavailable): self.production_fixture(expire_direct=True)
+        self.assertIsNone(m._EVIDENCE_BUDGET.get())
+        self.setUp()
+        with self.assertRaisesRegex(RuntimeError, 'HISTORY_INCOMPLETE'):
+            self.production_fixture(corrupt_late_page=True)
+        self.assertEqual([], self.fresh_calls)
+        self.assertIsNone(m._EVIDENCE_BUDGET.get())
 
 
 if __name__ == "__main__":

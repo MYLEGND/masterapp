@@ -1756,6 +1756,35 @@ def _fast_track_child_carried_forward(repository, run, attempt, job, prior, toke
     return bool(original_log) and original_log == _release_job_log(repository, job['id'], token)
 
 
+def _fast_track_complete_run_jobs(repository, run, token):
+    """Use one complete terminal inventory, never a partial page or cached proof."""
+    evidence_remaining(120)
+    payload = api_get(repository, f"actions/runs/{run['id']}/jobs?filter=all&per_page=100", token)
+    evidence_remaining(120)
+    if not isinstance(payload, dict):
+        raise RuntimeError('FAST_TRACK_JOBS_INCOMPLETE')
+    jobs, total = payload.get('jobs'), payload.get('total_count')
+    count = run['run_attempt']
+    if (not isinstance(jobs, list) or type(total) is not int
+            or not 0 <= total <= count * 100 or len(jobs) != min(total, 100)):
+        raise RuntimeError('FAST_TRACK_JOBS_INCOMPLETE')
+    groups = {attempt: [] for attempt in range(1, count + 1)}
+    seen = set()
+    for job in jobs:
+        if (not isinstance(job, dict) or type(job.get('id')) is not int or job['id'] < 1
+                or job['id'] in seen or type(job.get('run_id')) is not int or job['run_id'] != run['id']
+                or job.get('head_sha') != run['head_sha']
+                or type(job.get('run_attempt')) is not int or job['run_attempt'] not in groups):
+            raise RuntimeError('FAST_TRACK_JOBS_INCOMPLETE')
+        seen.add(job['id'])
+        groups[job['run_attempt']].append(job)
+    # Larger inventories and empty groups retain the exact per-attempt reader.
+    # No partial aggregate is used to infer that a child did not execute.
+    if total > 100 or any(not rows for rows in groups.values()):
+        return None
+    return groups
+
+
 def fast_track_child_attempts(repository, child, token, *, current_run=None, current_attempt=None):
     if child not in FAST_TRACK_CHILD_STEPS:
         return []
@@ -1775,11 +1804,17 @@ def fast_track_child_attempts(repository, child, token, *, current_run=None, cur
         count = run.get('run_attempt')
         if type(count) is not int or not 1 <= count <= 100:
             raise RuntimeError('FAST_TRACK_ATTEMPTS_INCOMPLETE')
+        # Two reads (complete jobs + fresh producer) only save work above two attempts.
+        grouped = (_fast_track_complete_run_jobs(repository, run, token)
+                   if child == 'migrations' and count > 2 and run['id'] != current_run
+                   and run.get('status') == 'completed'
+                   else None)
         saw_owner = False
         for attempt in range(1, count + 1):
             if run['id'] == current_run and attempt == current_attempt:
                 continue
-            payload = api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token)
+            payload = (dict(jobs=grouped[attempt], total_count=len(grouped[attempt])) if grouped is not None
+                       else api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token))
             jobs = payload.get('jobs')
             if not isinstance(jobs, list) or payload.get('total_count') != len(jobs):
                 raise RuntimeError('FAST_TRACK_JOBS_INCOMPLETE')
@@ -1808,6 +1843,18 @@ def fast_track_child_attempts(repository, child, token, *, current_run=None, cur
             if child == 'routing-cloudflare' and attested_fast_track_router_prewrite(repository, run, jobs, token):
                 continue
             attempts.append((run, attempt, job, steps[0]))
+        if grouped is not None:
+            # A rerun while the complete inventory was classified invalidates it.
+            # Revalidate mutable producer identity after every original receipt check.
+            evidence_remaining(120)
+            current = _api_get_uncached(repository, f"actions/runs/{run['id']}", token)
+            evidence_remaining(120)
+            if (not isinstance(current, dict) or not isinstance(current.get('head_repository'), dict)
+                    or not is_fast_track_producer(repository, current)
+                    or any(current.get(key) != run.get(key) for key in
+                           ('id', 'workflow_id', 'head_sha', 'head_branch', 'event', 'path',
+                            'run_attempt', 'status', 'conclusion'))):
+                raise RuntimeError('FAST_TRACK_RUN_CHANGED_AT_BOUNDARY')
         return attempts
 
     # Each worker inherits the caller's single evidence deadline. Historical
