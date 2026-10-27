@@ -2,7 +2,7 @@
   "requestedBy": "Founder",
   "authorization": "Founder instructed completion of the existing Shayla website receptionist and canonical management experience. Preserve and validate the independently reviewed continuation on the existing task branch; any subsequent application deployment must pass current protected admission and keep calls paused, telephone fallback disabled and booking unaccepted. This release request does not activate calls, apply operating settings, accept a voice connection, change provider grants or increase configured spending.",
   "purpose": "Deploy the reviewed canonical receptionist UI, owner-adjustable budget-policy and browser-stop continuation to the five affected applications only after exact-source CI, compiled contract proof, independent acceptance and protected release admission. No new schema migration or routing change is proposed.",
-  "requestId": "shayla-canonical-ui-paused-deployment-20261027-v4",
+  "requestId": "shayla-canonical-ui-paused-deployment-20261027-v5",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",

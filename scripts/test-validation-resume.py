@@ -5551,6 +5551,141 @@ class HistoricalParallelVerifierTests(unittest.TestCase):
             self.prove(workflow=self.workflow.replace('scripts/release-package.py verify', 'scripts/release-package.py inspect'))
 
 
+class ReviewedEqualContractRuntimeTests(unittest.TestCase):
+    def setUp(self):
+        import copy
+        self.copy = copy.deepcopy
+        self.candidate = 'a' * 40
+        self.approved = 'b' * 40
+        self.before = 'b7cd7a413410db1d64dee03063ef487f94c106b581a58bf1c805873219ebc1dd'
+        self.after = 'a34e572bb44103afa50e13f9c58c624057b8a5b8d9a7215c27369db707024c36'
+        self.trusted = dict(runtimeIdentity=self.before, toolIdentity='c'*64, executionIdentity='d'*64)
+        self.current = dict(self.trusted, runtimeIdentity=self.after)
+        self.contract = dict(schemaVersion=3, migrations=[
+            dict(id='20260101000000_First', supported=True,
+                 columns=[dict(name='Synthetic', type='nvarchar(100)', nullable=True)]),
+            dict(id='20260201000000_Second', supported=False)])
+        self.prior = self.copy(self.contract)
+
+    def prove(self, contract=None, prior=None, git_results=None):
+        if git_results is None:
+            git_results = [SimpleNamespace(returncode=0), SimpleNamespace(returncode=0)]
+        with patch.object(m, 'migration_probe_identity', side_effect=[self.current, self.trusted]), \
+             patch.object(m, 'migration_contract_static_styles_only', return_value=False) as styles, \
+             patch.object(m.subprocess, 'run', side_effect=git_results) as run:
+            result = m.candidate_migration_contract_proven(self.candidate, self.approved,
+                self.contract if contract is None else contract, self.prior if prior is None else prior)
+            self.calls = [(c.args[0], c.kwargs) for c in run.call_args_list]
+            self.styles_called = styles.called
+            return result
+
+    def test_exact_ordered_pair_inherits_tools_but_only_selects_common_equality(self):
+        self.assertEqual(frozenset({(self.before, self.after)}), m.REVIEWED_EQUAL_CONTRACT_RUNTIME_PAIRS)
+        proof = self.prove()
+        self.assertEqual('approved-definitions-reviewed-runtime-pair', proof['rule'])
+        self.assertEqual('proven', proof['state'])
+        self.assertEqual(self.after, proof['runtimeIdentity'])
+        self.assertEqual(self.before, proof['approvedRuntimeIdentity'])
+        self.assertFalse(self.styles_called)
+        self.assertEqual([
+            (['git', 'merge-base', '--is-ancestor', self.approved, self.candidate], {'capture_output': True}),
+            (['git', 'diff', '--quiet', self.approved, self.candidate, '--', 'scripts', '.github'],
+             {'capture_output': True})], self.calls)
+
+    def test_unknown_reversed_obsolete_and_changed_trusted_runtime_pairs_fail(self):
+        for before, after in [
+            (self.after, self.before), ('e'*64, self.after), (self.before, 'e'*64),
+            (self.before, 'f9c0b316ebfb8b65b8a9fc2baf5fd03fa84f968600f8321f20cdcab9ac9cd062'),
+            (self.before, '048c93b0f365d3bdbceec9b056b412008a4dfdeea8afbeb4a429697b0a358bc9'),
+            ('f9c0b316ebfb8b65b8a9fc2baf5fd03fa84f968600f8321f20cdcab9ac9cd062', self.after)]:
+            self.trusted['runtimeIdentity'] = before
+            self.current['runtimeIdentity'] = after
+            with self.subTest(before=before, after=after), self.assertRaisesRegex(ValueError, 'UNPROVEN'):
+                self.prove(git_results=[])
+
+    def test_missing_empty_or_changed_tool_and_execution_identities_fail(self):
+        for key in ('toolIdentity', 'executionIdentity'):
+            for target in (self.current, self.trusted):
+                for value in (None, '', 'e'*64, 'missing'):
+                    old = target.copy()
+                    if value == 'missing':
+                        target.pop(key)
+                    else:
+                        target[key] = value
+                    with self.subTest(key=key, target=target, value=value), self.assertRaisesRegex(ValueError, 'UNPROVEN'):
+                        self.prove(git_results=[])
+                    target.clear(); target.update(old)
+            for value in (None, '', 'missing'):
+                current, trusted = self.current.copy(), self.trusted.copy()
+                for row in (self.current, self.trusted):
+                    if value == 'missing':
+                        row.pop(key)
+                    else:
+                        row[key] = value
+                with self.subTest(key=key, both=value), self.assertRaisesRegex(ValueError, 'UNPROVEN'):
+                    self.prove(git_results=[])
+                self.current, self.trusted = current, trusted
+
+    def test_failed_ancestry_or_authority_diff_never_proves_equal_contracts(self):
+        for results in ((1,), (128,), (0, 1), (0, 128)):
+            with self.subTest(results=results), self.assertRaisesRegex(ValueError, 'UNPROVEN'):
+                self.prove(git_results=[SimpleNamespace(returncode=x) for x in results])
+
+    def test_git_exceptions_fail_closed_at_either_read_only_check(self):
+        for error in (OSError('synthetic git unavailable'),
+                      m.subprocess.CalledProcessError(128, ['git']),
+                      m.subprocess.TimeoutExpired(['git'], 1)):
+            for prefix in ([], [SimpleNamespace(returncode=0)]):
+                with self.subTest(error=type(error).__name__, check=len(prefix)), \
+                     self.assertRaisesRegex(ValueError, 'UNPROVEN'):
+                    self.prove(git_results=[*prefix, error])
+
+    def test_reviewed_pair_cannot_omit_append_reorder_or_modify_actual_definitions(self):
+        for kind in ('omit', 'append', 'reorder', 'id', 'supported', 'column', 'schema', 'extra'):
+            contract = self.copy(self.contract)
+            if kind == 'omit':
+                contract['migrations'].pop()
+            elif kind == 'append':
+                contract['migrations'].append(dict(id='20260301000000_Invented', supported=True))
+            elif kind == 'reorder':
+                contract['migrations'].reverse()
+            elif kind == 'id':
+                contract['migrations'][0]['id'] = '20260101000000_Changed'
+            elif kind == 'supported':
+                contract['migrations'][0]['supported'] = False
+            elif kind == 'column':
+                contract['migrations'][0]['columns'][0]['type'] = 'nvarchar(max)'
+            elif kind == 'schema':
+                contract['schemaVersion'] = 4
+            else:
+                contract['claimedSafe'] = True
+            with self.subTest(kind=kind), self.assertRaisesRegex(ValueError, 'metadata differs'):
+                self.prove(contract=contract)
+        with self.assertRaisesRegex(ValueError, 'metadata differs'):
+            self.prove(contract=[])
+
+    def test_equal_object_property_order_still_uses_existing_equality(self):
+        contract = dict(migrations=self.copy(self.prior['migrations']), schemaVersion=3)
+        self.assertEqual('approved-definitions-reviewed-runtime-pair', self.prove(contract=contract)['rule'])
+
+    def test_canonical_runtime_hash_change_for_blob_or_mode_invalidates_pair(self):
+        original = '100644 blob ' + '1'*40 + '\tSHARED/Views/Shared/ReceptionistContentReview.cshtml\0'
+        workflow = 'jobs:\n  validated-migration-probe:\n    runs-on: ubuntu-latest\n    steps: []\n'
+        def runtime(rows):
+            with patch.object(m.subprocess, 'check_output', return_value=rows), \
+                 patch.object(m, 'git_show_file', return_value=workflow):
+                return m.migration_probe_identity(self.candidate, self.candidate)['runtimeIdentity']
+        expected = runtime(original)
+        self.current['runtimeIdentity'] = expected
+        with patch.object(m, 'REVIEWED_EQUAL_CONTRACT_RUNTIME_PAIRS', frozenset({(self.before, expected)})):
+            self.assertEqual('proven', self.prove()['state'])
+            for changed in (original.replace('1'*40, '2'*40), original.replace('100644', '120000')):
+                self.current['runtimeIdentity'] = runtime(changed)
+                self.assertNotEqual(expected, self.current['runtimeIdentity'])
+                with self.subTest(changed=changed), self.assertRaisesRegex(ValueError, 'UNPROVEN'):
+                    self.prove(git_results=[])
+
+
 class ReviewedBrowserContractTests(unittest.TestCase):
     def test_browser_extension_requires_reviewed_closure_and_inherited_tools(self):
         import copy

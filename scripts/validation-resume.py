@@ -8872,6 +8872,14 @@ REVIEWED_BROWSER_RUNTIME_PAIRS = frozenset({
      'b7cd7a413410db1d64dee03063ef487f94c106b581a58bf1c805873219ebc1dd')
 })
 
+# Eligibility for unchanged definitions only, not an append or metadata waiver.
+# Trusted tooling must be promoted first and inherited byte-for-byte. The common
+# actual-contract equality check below remains mandatory for this exact closure.
+REVIEWED_EQUAL_CONTRACT_RUNTIME_PAIRS = frozenset({
+    ('b7cd7a413410db1d64dee03063ef487f94c106b581a58bf1c805873219ebc1dd',
+     'a34e572bb44103afa50e13f9c58c624057b8a5b8d9a7215c27369db707024c36')
+})
+
 REVIEWED_TRAINING_ENTRY = '49ef5a95c19084b799e9a92a5d0c496792dbdcab367e4360795d55e443338434'
 # Empty until independent acceptance freezes the exact application dependency closure.
 REVIEWED_TRAINING_RUNTIME_PAIRS = frozenset()
@@ -9023,6 +9031,21 @@ def reviewed_receptionist_contract_extension(candidate, approved, contract, appr
     return True
 
 
+def reviewed_equal_contract_runtime_pair(candidate, approved, current, trusted):
+    """Select a reviewed equality path; this predicate never proves a contract."""
+    if ((trusted.get('runtimeIdentity'), current.get('runtimeIdentity')) not in REVIEWED_EQUAL_CONTRACT_RUNTIME_PAIRS
+        or not current.get('toolIdentity') or current.get('toolIdentity') != trusted.get('toolIdentity')
+        or not current.get('executionIdentity') or current.get('executionIdentity') != trusted.get('executionIdentity')):
+        return False
+    try:
+        if subprocess.run(['git', 'merge-base', '--is-ancestor', approved, candidate], capture_output=True).returncode:
+            return False
+        return subprocess.run(['git', 'diff', '--quiet', approved, candidate, '--', 'scripts', '.github'],
+                              capture_output=True).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def candidate_migration_contract_proven(candidate, approved, contract, approved_contract):
     """Candidate metadata cannot declare its own completeness or safety.
 
@@ -9052,11 +9075,14 @@ def candidate_migration_contract_proven(candidate, approved, contract, approved_
             return {'state': 'proven', 'rule': 'approved-prefix-reviewed-receptionist-entry',
                     'runtimeIdentity': current['runtimeIdentity'],
                     'approvedRuntimeIdentity': trusted['runtimeIdentity']}
-        if (current.get('toolIdentity') != trusted.get('toolIdentity') or
+        if reviewed_equal_contract_runtime_pair(candidate, approved, current, trusted):
+            rule = 'approved-definitions-reviewed-runtime-pair'
+        elif (current.get('toolIdentity') != trusted.get('toolIdentity') or
             current.get('executionIdentity') != trusted.get('executionIdentity') or
             not migration_contract_static_styles_only(candidate, approved)):
             raise ValueError('CANDIDATE_MIGRATION_CONTRACT_UNPROVEN: migration/runtime dependency content changed; reviewed extraction rule required')
-        rule = 'approved-definitions-static-styles-only'
+        else:
+            rule = 'approved-definitions-static-styles-only'
     if not isinstance(contract, dict) or contract != approved_contract:
         raise ValueError('CANDIDATE_MIGRATION_CONTRACT_UNPROVEN: candidate metadata differs from approved definitions')
     return {'state': 'proven', 'rule': rule,
