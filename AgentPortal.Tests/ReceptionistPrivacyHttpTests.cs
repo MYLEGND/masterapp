@@ -763,7 +763,7 @@ public sealed class ReceptionistPrivacyHttpTests
                             });
                         services.AddAuthorization();
                         if (humanJourney) f.AddHumanServices(services);
-                        services.AddControllersWithViews(o =>
+                        var mvc = services.AddControllersWithViews(o =>
                         {
                             o.Filters.Add<AgentTrackingProvisioningFilter>(); o.Filters.Add<AgentAccountLifecycleAuthorizeFilter>();
                         }).AddApplicationPart(typeof(ReceptionistOperationsController).Assembly)
@@ -773,6 +773,8 @@ public sealed class ReceptionistPrivacyHttpTests
                             foreach (var provider in manager.FeatureProviders.OfType<ControllerFeatureProvider>().ToArray()) manager.FeatureProviders.Remove(provider);
                             manager.FeatureProviders.Add(new OnlyControllers(humanJourney));
                         });
+                        if (humanJourney)
+                            mvc.AddApplicationPart(typeof(Shared.Messaging.MessagingHub).Assembly);
                     }).Configure(app =>
                     {
                         app.UseLegendFailureDiagnostics("SyntheticReceptionistHttp");
