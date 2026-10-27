@@ -2,7 +2,7 @@
   "requestedBy": "Founder",
   "authorization": "Founder requested completion of deployment verification. Promote only the reviewed completion-proof read reuse and tests; this tooling promotion authorizes no SQL, application upload, restart, routing, activation, access or spending change.",
   "purpose": "Complete existing deployment receipts using bounded request-local evidence reuse, fresh authority checks and stage diagnostics, without repeating deployed work.",
-  "requestId": "shayla-completion-proof-reuse-promotion-20261027-v1",
+  "requestId": "shayla-completion-proof-reuse-promotion-20261027-v2",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -10,7 +10,7 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "90ed2c5f7eebe049abbfc839864aa45719e32bbc",
-    "sourceRevision": "0d0b6374fada12bfbc6d842a6acd4bba4e76e1a9",
+    "sourceRevision": "3fa1b9eebb36d8d0535d30871cafb7aeb03230f2",
     "files": {
       "scripts/deploy-approved-app.py": {
         "mode": "100644",
@@ -27,6 +27,14 @@
       "scripts/test-release-operation-evidence.py": {
         "mode": "100644",
         "blob": "35f463c6a6493e55f17f0ba29f3334172e2a0fb1"
+      },
+      "scripts/test-validation-resume.py": {
+        "mode": "100644",
+        "blob": "10cd74e8351ab40fec41b7eb53bc789e621a6053"
+      },
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "33b20b974a7cb3a7779cd8315a92c63ddc9492cf"
       }
     }
   }
