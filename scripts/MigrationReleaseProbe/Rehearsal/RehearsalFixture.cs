@@ -752,14 +752,25 @@ internal static partial class RehearsalFixture
         var windowPredicate = typeof(Infrastructure.Reception.ReceptionistAdmissionService).GetMethod("ValidCallWindows",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
             ?? throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
-        var validWindows = (IQueryable<Domain.Entities.ReceptionistAcceptanceWindow>)windowPredicate.Invoke(null,
+        var validWindows = (System.Linq.IQueryable)windowPredicate.Invoke(null,
             [db, new DateTime(2026, 1, 1, 0, 10, 0, DateTimeKind.Utc)])!;
         foreach (var (hash, expected) in new[] {
             (new string('b', 64), true), (new string('a', 31) + " " + new string('a', 32), false),
             (new string('A', 64), false), (new string('z', 64), false), (new string('a', 63) + " ", false) })
         {
             await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE dbo.ReceptionistAcceptanceWindows SET RestrictedRouteEvidenceSha256={hash} WHERE Id='00000000-0000-0000-0000-000000000801'", ct);
-            if (await validWindows.AnyAsync(x => x.Id == Guid.Parse("00000000-0000-0000-0000-000000000801"), ct) != expected)
+            // Resolve the candidate-only entity through the returned query. The trusted
+            // tooling must also compile against the pre-management release runtime.
+            var parameter = System.Linq.Expressions.Expression.Parameter(validWindows.ElementType, "window");
+            var predicate = System.Linq.Expressions.Expression.Lambda(
+                System.Linq.Expressions.Expression.Equal(System.Linq.Expressions.Expression.Property(parameter, "Id"),
+                    System.Linq.Expressions.Expression.Constant(Guid.Parse("00000000-0000-0000-0000-000000000801"))), parameter);
+            var filtered = System.Linq.Expressions.Expression.Call(typeof(Queryable), nameof(Queryable.Where),
+                [validWindows.ElementType], validWindows.Expression, System.Linq.Expressions.Expression.Quote(predicate));
+            var any = System.Linq.Expressions.Expression.Call(typeof(Queryable), nameof(Queryable.Any),
+                [validWindows.ElementType], filtered);
+            if (validWindows.Provider is not Microsoft.EntityFrameworkCore.Query.IAsyncQueryProvider provider ||
+                await provider.ExecuteAsync<Task<bool>>(any, ct) != expected)
                 throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
         }
         await db.Database.ExecuteSqlRawAsync("UPDATE dbo.ReceptionistAcceptanceWindows SET RestrictedRouteEvidenceSha256=REPLICATE('b',64) WHERE Id='00000000-0000-0000-0000-000000000801'", ct);
