@@ -1,40 +1,32 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder requested completion of deployment verification. Promote only the reviewed completion-proof read reuse and tests; this tooling promotion authorizes no SQL, application upload, restart, routing, activation, access or spending change.",
-  "purpose": "Complete existing deployment receipts using bounded request-local evidence reuse, fresh authority checks and stage diagnostics, without repeating deployed work.",
-  "requestId": "shayla-completion-proof-reuse-promotion-20261027-v2",
+  "authorization": "Founder authorized completion of the existing Shayla canonical repair and its bounded release prerequisites. Promote only the four independently reviewed equal-contract compatibility authority, workflow and regression-test files for the exact reviewed runtime pair. This nonpublishing tooling promotion authorizes no production SQL mutation, application upload, restart, routing, provider call, credential change, activation, access or spending change. Preserve canonical source validation, immutable evidence, trusted contract equality and protected merge admission.",
+  "purpose": "Promote the bounded reviewed-runtime equality path for the accepted Shayla runtime while retaining unchanged actual migration definitions and mandatory fresh trusted C# verification.",
+  "requestId": "shayla-equal-contract-runtime-pair-promotion-20261027-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "90ed2c5f7eebe049abbfc839864aa45719e32bbc",
-    "sourceRevision": "3fa1b9eebb36d8d0535d30871cafb7aeb03230f2",
+    "baseRevision": "e5a3cbc82aa9c8d6a2b0b988d49a0b9b20017e74",
+    "sourceRevision": "7dd8aca9e521db12dbd8c27311e22bb646c81f80",
     "files": {
-      "scripts/deploy-approved-app.py": {
+      ".github/workflows/parfait-cutover-live-readonly.yml": {
         "mode": "100644",
-        "blob": "4c6ea20cb70400ececd528da00404efb58fabb68"
+        "blob": "fde365252cf3d41e8a96e3ba888be10669256c32"
       },
-      "scripts/release-operation-evidence.py": {
+      "scripts/test-parfait-readonly-workflow.py": {
         "mode": "100644",
-        "blob": "c36c0564058a6f9cd68d2e10d9585db3da6e29f4"
-      },
-      "scripts/test-deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "b94fda702752effe2979f95ee941f2f6ded50497"
-      },
-      "scripts/test-release-operation-evidence.py": {
-        "mode": "100644",
-        "blob": "35f463c6a6493e55f17f0ba29f3334172e2a0fb1"
+        "blob": "ded3f05bbe58a97007beb68ba8acad471ef45d12"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "10cd74e8351ab40fec41b7eb53bc789e621a6053"
+        "blob": "87f83d773053bfb0f2cca2a770b4c27a31d1a41c"
       },
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "33b20b974a7cb3a7779cd8315a92c63ddc9492cf"
+        "blob": "229d48cc2c79be158a660a245378d21e461f865c"
       }
     }
   }
