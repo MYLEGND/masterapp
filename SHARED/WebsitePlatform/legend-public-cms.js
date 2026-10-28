@@ -6024,6 +6024,7 @@
     const url = new URL(`${API_BASE}/api/website-content/public/${encodeURIComponent(SITE_KEY)}`);
     if (AGENT_SLUG) url.searchParams.set('agentSlug', AGENT_SLUG);
     if (BUSINESS_ID) url.searchParams.set('businessId', BUSINESS_ID);
+    if (SITE_KEY === 'protect') url.searchParams.set('pagePath', currentPageRoute());
     try {
       const { response, payload } = await readInitialWebsite(url, 'publication');
       if (!response.ok)

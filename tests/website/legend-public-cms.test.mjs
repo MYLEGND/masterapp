@@ -7600,3 +7600,38 @@ for(const editor of [false,true]) for(const body of [false,true]) test(`canonica
     assert.equal(f.w.document.querySelector('#legend-cms-save'),null);
   }finally{f.close();}
 });
+
+test('Protect public read requests only the canonical route while Studio retains full draft reads',async()=>{
+  for(const [pathname,agentSlug,pagePrefix,search,expected] of [
+    ['/Quote/Life/','','','', '/quote/life'],
+    ['/a/synthetic-agent/Quote/Life/','synthetic-agent','/a/synthetic-agent','', '/quote/life'],
+    ['/Quote/Life','','','?legendEdit=ticket',null]
+  ]){
+    const f=await domFixture({siteKey:'protect',pathname,agentSlug,pagePrefix,search});
+    try{
+      const reads=f.calls.map(call=>new URL(call.url));
+      if(expected) assert.equal(reads.find(url=>url.pathname==='/api/website-content/public/protect')?.searchParams.get('pagePath'),expected);
+      else {assert.ok(reads.some(url=>url.pathname==='/api/website-content/manage'));assert.ok(reads.every(url=>!url.searchParams.has('pagePath')));}
+    }finally{f.close();}
+  }
+});
+
+test('Protect page-only publication renders identical native form controls and preserves their existing listeners',async()=>{
+  const fixture=nativeContinuationFixture('life');
+  fixture.doc.pages['/']=canonicalDocument().pages['/'];
+  const projected=structuredClone(fixture.doc);projected.pages['/'].composition=[];
+  const results=[];
+  for(const doc of [fixture.doc,projected]){
+    let original,clicks=0;
+    const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Auto',search:'',html:fixture.html,beforeEval:w=>{
+      original=w.document.getElementById(fixture.buttonId);original.addEventListener('click',()=>clicks++);
+    }});
+    try{
+      assert.equal(f.w.document.getElementById(fixture.buttonId),original);
+      original.click();assert.equal(clicks,1);
+      results.push([...f.w.document.querySelectorAll('input,select,button')].map(n=>({tag:n.tagName,id:n.id,name:n.name,type:n.type,value:n.value,text:n.textContent.trim()})));
+      assert.ok(f.calls.every(call=>!call.method || call.method==='GET'));
+    }finally{f.close();}
+  }
+  assert.deepEqual(results[1],results[0]);
+});

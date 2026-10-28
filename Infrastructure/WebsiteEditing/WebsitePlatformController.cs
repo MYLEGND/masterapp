@@ -111,7 +111,8 @@ public class WebsitePlatformController : ControllerBase
         string siteKey,
         [FromQuery] string? agentSlug = null,
         [FromQuery] Guid? businessId = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        [FromQuery] string? pagePath = null)
     {
         siteKey = NormalizeSiteKey(siteKey);
         if (siteKey.Length == 0) return NotFound();
@@ -163,6 +164,27 @@ public class WebsitePlatformController : ControllerBase
             publicFacts,
             cancellationToken,
             document);
+        var publicStore = await StorePayloadAsync(siteKey, document, publicStoreScope, ticket: null, cancellationToken);
+        // Protect keeps its native Razor forms, but needs only this route's body
+        // for public composition. Resolve all derived capabilities first, and
+        // retain the complete navigation catalog and shared document authority.
+        // This is a response-local projection, never an authored document write.
+        var publicRoute = NormalizeCollaborationPagePath(pagePath);
+        var agentPrefix = "/a/" + (agentSlug ?? string.Empty).Trim().ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(agentSlug) && publicRoute is not null)
+        {
+            if (publicRoute == agentPrefix) publicRoute = "/";
+            else if (publicRoute.StartsWith(agentPrefix + "/", StringComparison.Ordinal))
+                publicRoute = publicRoute[agentPrefix.Length..];
+        }
+        if (siteKey == WebsiteEditorSiteKeys.Protect && document.Version == 3 &&
+            document.LegacyMigration is null && publicRoute is not null &&
+            document.Pages.Keys.Any(route => NormalizeCollaborationPagePath(route) == publicRoute))
+        {
+            foreach (var (route, page) in document.Pages)
+                if (NormalizeCollaborationPagePath(route) != publicRoute && page.DynamicBinding is null)
+                    page.Composition = [];
+        }
         return Ok(new
         {
             siteKey,
@@ -171,7 +193,7 @@ public class WebsitePlatformController : ControllerBase
             businessName = business?.DisplayName,
             facts = publicFacts,
             collections = publicCollections.Values,
-            store = await StorePayloadAsync(siteKey, document, publicStoreScope, ticket: null, cancellationToken),
+            store = publicStore,
             ctaCatalog = new { options = publicActions },
             document,
             legacyMigration = document.LegacyMigration
