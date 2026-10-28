@@ -7082,6 +7082,8 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
   assert.equal(page.includes('@'),false);
   const modal=coverageModalView.replace(/^@model string\s*/, '').replaceAll('@Model',prefix);
   const markup=branch=>'<!doctype html><html><body data-page-key="quote_index"><header class="site-header"><a>Native header</a></header><main>'+style+page.replace('BOOKING_PARTIAL',bookingDebug+({embed:bookingFrame,fallback:bookingFallback,disabled:bookingDisabled}[branch]))+modal+'</main><footer class="site-footer"><p>Native footer</p></footer></body></html>';
+  // The canonical server compiler uses the document route, not its external agent-prefixed URL.
+  const canonicalCompilerFixture=markup=>new JSDOM(markup,{url:'https://protect.example.test/quote',runScripts:'outside-only'});
   const html=markup('embed');
   const doc=canonicalDocument(),pathname=prefix+'/Quote';
   doc.pages['/quote']={title:'Coverage',systemTemplateKey:'protect_template:quote_index',composition:[],navigation:{isDeleted:false}};
@@ -7163,8 +7165,7 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
       assert.equal(f.calls.some(call=>call.method==='POST' && !call.url.includes('/manage/')),false);
     }finally{f.close();}
   }
-  // The canonical server compiler uses the document route, not its external agent-prefixed URL.
-  const compiler=new JSDOM(html,{url:'https://protect.example.test/quote',runScripts:'outside-only'});
+  const compiler=canonicalCompilerFixture(html);
   try{
     const w=compiler.window;w.CSS={escape:value=>String(value)};
     const modalBefore=w.document.getElementById('lifeModal'),styleBefore=w.document.querySelector('main style');
@@ -7202,7 +7203,7 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
       parent.children.push(canonicalNode('authored.coverage.note','text','p',{text:'An ordinary new note'}));
     }
     const changedHtml=change==='extra-native-root'?markup('disabled').replace('</main>','<aside><p>An unexpected native root</p></aside></main>'):markup('disabled');
-    const compiler=new JSDOM(changedHtml,{url:'https://protect.example.test'+pathname,runScripts:'outside-only'});
+    const compiler=canonicalCompilerFixture(changedHtml);
     try{
       const w=compiler.window;w.CSS={escape:value=>String(value)};
       const originalModal=w.document.getElementById('lifeModal'),originalPage=w.document.querySelector('.quote-page');
