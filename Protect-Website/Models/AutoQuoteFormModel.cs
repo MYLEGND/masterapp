@@ -22,9 +22,9 @@ namespace Protect_Website.Models
 
         [Required] public string MaritalStatus { get; set; } = "";
 
-        [Required] public string DriversLicenseNumber { get; set; } = "";
+        [RequiredWhenLicensed] public string? DriversLicenseNumber { get; set; } = "";
         [Required] public string DLStatus { get; set; } = "";
-        [Required] public string DLState { get; set; } = ""; // dropdown state
+        [RequiredWhenLicensed] public string? DLState { get; set; } = ""; // dropdown state
 
         // Not required
         public string? Education { get; set; } = "";
@@ -141,10 +141,10 @@ namespace Protect_Website.Models
         [Required] public string OccupationTitle { get; set; } = "";
 
         [Required] public string DLStatus { get; set; } = "";
-        [Required] public string AgeLicensed { get; set; } = "";
+        [RequiredWhenLicensed] public string? AgeLicensed { get; set; } = "";
 
-        [Required] public string DLNumber { get; set; } = "";
-        [Required] public string DLState { get; set; } = "";
+        [RequiredWhenLicensed] public string? DLNumber { get; set; } = "";
+        [RequiredWhenLicensed] public string? DLState { get; set; } = "";
 
         // not required (HTML has no required)
         [DataType(DataType.Date)] public DateTime? DefensiveDriverCourseDate { get; set; }

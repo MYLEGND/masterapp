@@ -31,13 +31,13 @@ namespace Protect_Website.Models
         [Required]
         public string? MaritalStatus { get; set; }
 
-        [Required]
+        [RequiredWhenLicensed]
         public string? DriversLicenseNumber { get; set; }
 
         [Required]
         public string? DLStatus { get; set; }
 
-        [Required]
+        [RequiredWhenLicensed]
         public string? DLState { get; set; }
 
         public string? Education { get; set; }

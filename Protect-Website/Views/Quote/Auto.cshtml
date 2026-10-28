@@ -202,7 +202,7 @@
 
                 <div class="col-md-4">
                     <label for="Applicant_DriversLicenseNumber">Driver’s License #<span class="text-danger">*</span></label>
-                    <input asp-for="DriversLicenseNumber" class="form-control" required data-original-required="1" id="Applicant_DriversLicenseNumber" />
+                    <input asp-for="DriversLicenseNumber" class="form-control" required data-original-required="1" id="Applicant_DriversLicenseNumber" data-license-detail />
                     <span asp-validation-for="DriversLicenseNumber" class="text-danger"></span>
                 </div>
             </div>
@@ -225,7 +225,7 @@
 
                 <div class="col-md-4">
                     <label for="Applicant_DLState">DL State<span class="text-danger">*</span></label>
-                    <select asp-for="DLState" class="form-select" required data-original-required="1" id="Applicant_DLState">
+                    <select asp-for="DLState" class="form-select" required data-original-required="1" id="Applicant_DLState" data-license-detail>
                         <option value="">--Select--</option>
                         <option>AZ</option><option>CA</option><option>IA</option><option>KS</option><option>LA</option><option>MD</option><option>MS</option><option>OH</option><option>SC</option><option>SD</option><option>TX</option><option>WA</option>
                     </select>
@@ -743,12 +743,13 @@
                             <option>Suspended</option>
                             <option>Cancelled</option>
                             <option>Permanently Revoked</option>
+                            <option>Not Licensed</option>
                         </select>
                         <span asp-validation-for="Drivers[0].DLStatus" class="text-danger"></span>
                     </div>
                     <div class="col-md-3">
                         <label asp-for="Drivers[0].AgeLicensed">Age Licensed<span class="text-danger">*</span></label>
-                        <select asp-for="Drivers[0].AgeLicensed" class="form-select" required data-original-required="1">
+                        <select asp-for="Drivers[0].AgeLicensed" class="form-select" required data-original-required="1" data-license-detail>
                             <option value="">--Select--</option>
                             <option>16</option><option>17</option><option>18</option><option>19</option><option>20</option><option>21+</option>
                         </select>
@@ -759,12 +760,12 @@
                 <div class="row">
                     <div class="col-md-4">
                         <label for="Driver0_DLNumber">DL #<span class="text-danger">*</span></label>
-                        <input asp-for="Drivers[0].DLNumber" class="form-control" required data-original-required="1" id="Driver0_DLNumber" />
+                        <input asp-for="Drivers[0].DLNumber" class="form-control" required data-original-required="1" id="Driver0_DLNumber" data-license-detail />
                         <span asp-validation-for="Drivers[0].DLNumber" class="text-danger"></span>
                     </div>
                     <div class="col-md-4">
                         <label for="Driver0_DLState">DL State<span class="text-danger">*</span></label>
-                        <input asp-for="Drivers[0].DLState" class="form-control" required data-original-required="1" id="Driver0_DLState" />
+                        <input asp-for="Drivers[0].DLState" class="form-control" required data-original-required="1" id="Driver0_DLState" data-license-detail />
                         <span asp-validation-for="Drivers[0].DLState" class="text-danger"></span>
                     </div>
                     <div class="col-md-4">
@@ -850,7 +851,7 @@
                     <div class="col-md-4">
                         <label>Marital Status<span class="text-danger">*</span></label>
                         <select name="Drivers[__i__].MaritalStatus" class="form-select" required data-original-required="1">
-                            <option value="">--Select--</option><option>Domestic Partner</option><option>Widowed</option><option>Separated</option><option>Divorced</option>
+                            <option value="">--Select--</option><option>Single</option><option>Married</option><option>Domestic Partner</option><option>Widowed</option><option>Separated</option><option>Divorced</option>
                         </select>
                     </div>
                     <div class="col-md-4">
@@ -882,20 +883,20 @@
                     <div class="col-md-3">
                         <label>DL Status<span class="text-danger">*</span></label>
                         <select name="Drivers[__i__].DLStatus" class="form-select" required data-original-required="1">
-                            <option value="">--Select--</option><option>Valid</option><option>Permit</option><option>Expired</option><option>Suspended</option><option>Cancelled</option><option>Permanently Revoked</option>
+                            <option value="">--Select--</option><option>Valid</option><option>Permit</option><option>Expired</option><option>Not Licensed</option><option>Suspended</option><option>Cancelled</option><option>Permanently Revoked</option>
                         </select>
                     </div>
                     <div class="col-md-3">
                         <label>Age Licensed<span class="text-danger">*</span></label>
-                        <select name="Drivers[__i__].AgeLicensed" class="form-select" required data-original-required="1">
+                        <select name="Drivers[__i__].AgeLicensed" class="form-select" required data-original-required="1" data-license-detail>
                             <option value="">--Select--</option><option>16</option><option>17</option><option>18</option><option>19</option><option>20</option><option>21+</option>
                         </select>
                     </div>
                 </div>
 
                 <div class="row">
-                    <div class="col-md-4"><label>DL #<span class="text-danger">*</span></label><input name="Drivers[__i__].DLNumber" class="form-control" required data-original-required="1" /></div>
-                    <div class="col-md-4"><label>DL State<span class="text-danger">*</span></label><input name="Drivers[__i__].DLState" class="form-control" required data-original-required="1" /></div>
+                    <div class="col-md-4"><label>DL #<span class="text-danger">*</span></label><input name="Drivers[__i__].DLNumber" class="form-control" required data-original-required="1" data-license-detail /></div>
+                    <div class="col-md-4"><label>DL State<span class="text-danger">*</span></label><input name="Drivers[__i__].DLState" class="form-control" required data-original-required="1" data-license-detail /></div>
                     <div class="col-md-4"><label>Defensive Driver Course Date</label><input name="Drivers[__i__].DefensiveDriverCourseDate" type="date" class="form-control" /></div>
                 </div>
 
@@ -1225,6 +1226,7 @@
                             <option value="">--Select Vehicle--</option>
                         </select>
                         <small class="text-muted">If the vehicle isn’t listed, type it below.</small>
+                        <label>Vehicle description if not listed</label>
                         <input type="text" name="Accidents[__i__].VehicleInvolvedText" class="form-control" placeholder="Optional text override" />
                     </div>
                 </div>
@@ -1412,6 +1414,7 @@
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+    <partial name="_QuoteLicenseApplicability" />
 
 	    <script>
 	    let currentStep = 1;
@@ -1592,6 +1595,25 @@
         buildVehicleCoverageCards();
     }
 
+    function associateDynamicLabels(card) {
+        card.querySelectorAll("input, select, textarea").forEach(el => {
+            if (!el.name || el.type === "hidden") return;
+            let label = el.labels?.[0];
+            for (let sibling = el.previousElementSibling; !label && sibling; sibling = sibling.previousElementSibling) {
+                if (sibling.tagName === "LABEL") label = sibling;
+            }
+            if (!label) return;
+            // Keep canonical primary IDs used by applicant autofill. Dynamic
+            // identifiers follow the final indexed name, not the former row.
+            if (!el.id || el.dataset.dynamicLabel === "1") {
+                el.id = "auto-field-" + el.name.replace(/[^a-zA-Z0-9_-]/g, "_");
+                el.dataset.dynamicLabel = "1";
+            }
+            label.htmlFor = el.id;
+        });
+        window.LegendQuoteLicenseRequirements?.refresh(card);
+    }
+
     function reindexCards(containerId, cardClass, prefix, dataAttr) {
         const container = document.getElementById(containerId);
         if (!container) return;
@@ -1610,6 +1632,7 @@
                 if (!el.name) return;
                 el.name = el.name.replace(new RegExp(prefix + "\\[\\d+\\]", "g"), prefix + "[" + index + "]");
             });
+            associateDynamicLabels(card);
         });
     }
 
@@ -1623,6 +1646,7 @@
                 if (!el.name) return;
                 el.name = el.name.replace(new RegExp(prefix + "\\[\\d+\\]", "g"), prefix + "[" + index + "]");
             });
+            associateDynamicLabels(card);
         });
     }
 
@@ -2044,7 +2068,7 @@
         // Driver dropdown list is Male/Female/Not Specified. Applicant is Female/Male/Not Specified.
         safeSet(document.getElementById("Driver0_Gender"), aGender);
 
-        // Driver marital list in your HTML is missing Single/Married; we only set if option exists.
+        // Preserve a supported applicant answer without overwriting a manual driver answer.
         const maritalEl = document.getElementById("Driver0_MaritalStatus");
         if (maritalEl) {
             const option = Array.from(maritalEl.options).find(o => o.value === aMarital || o.text === aMarital);
