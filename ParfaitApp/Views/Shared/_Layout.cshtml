@@ -1,4 +1,5 @@
-﻿@{
+﻿@inject Microsoft.AspNetCore.Mvc.ViewFeatures.IFileVersionProvider WebsiteFileVersions
+@{
     var bodyClass = ViewData["BodyClass"] as string ?? "";
     var contentContainerClass = ViewData["ContentContainerClass"] as string ?? "container";
     var layoutContentClass = ViewData["LayoutContentClass"] as string ?? "";
@@ -211,7 +212,7 @@
 
     }());
 </script>
-<script type="module" src="~/js/public-inquiry-form.mjs" asp-append-version="true"></script>
+<script type="module" src="~/js/public-inquiry-form.mjs" asp-append-version="true" data-inquiry-runtime="@WebsiteFileVersions.AddFileVersionToPath(Context.Request.PathBase, Url.Content("~/js/legend-public-inquiry.js"))"></script>
 @await RenderSectionAsync("Scripts", required:false)
 <script>
     (() => {

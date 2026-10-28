@@ -12,6 +12,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Xunit;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Hosting;
+using Infrastructure.WebsitePublishing;
+using Moq;
 
 namespace AgentPortal.Tests;
 
@@ -320,7 +324,9 @@ public sealed class WebsitePublishingAuthorityTests
         var controller = fixture.Controller;
         controller.ControllerContext = new ControllerContext
         {
-            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = new ServiceCollection()
+                .AddSingleton(new WebsitePageCompiler(Mock.Of<IWebHostEnvironment>(), new ConfigurationBuilder().Build()))
+                .BuildServiceProvider() }
         };
         Assert.IsType<NotFoundResult>(await controller.LegendPage(path));
     }
@@ -358,7 +364,9 @@ public sealed class WebsitePublishingAuthorityTests
         var controller = fixture.Controller;
         controller.ControllerContext = new ControllerContext
         {
-            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = new ServiceCollection()
+                .AddSingleton(new WebsitePageCompiler(Mock.Of<IWebHostEnvironment>(), new ConfigurationBuilder().Build()))
+                .BuildServiceProvider() }
         };
         var firstPage = Assert.IsType<ContentResult>(await controller.LegendPage("/"));
         Assert.Contains("<h1>First</h1>", firstPage.Content, StringComparison.Ordinal);

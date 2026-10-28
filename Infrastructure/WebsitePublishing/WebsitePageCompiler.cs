@@ -11,7 +11,7 @@ using Infrastructure.WebsiteEditing;
 namespace Infrastructure.WebsitePublishing;
 
 /// <summary>Compiles immutable public pages through the same JavaScript renderer used by the editor.</summary>
-public sealed class WebsitePageCompiler(IWebHostEnvironment environment, IConfiguration configuration,
+public sealed partial class WebsitePageCompiler(IWebHostEnvironment environment, IConfiguration configuration,
     ILogger<WebsitePageCompiler>? logger = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);

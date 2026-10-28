@@ -261,13 +261,16 @@ public class WebsitePlatformController : ControllerBase
             if (!compiled.RootElement.GetProperty("pages").TryGetProperty(route, out var rendered)) return NotFound();
             var html = (rendered.GetProperty("html").GetString() ?? "")
                 .Replace("__LEGEND_CANONICAL_URL__", "https://www.mylegnd.com" + route, StringComparison.Ordinal);
+            html = await HttpContext.RequestServices
+                .GetRequiredService<Infrastructure.WebsitePublishing.WebsitePageCompiler>()
+                .BindRuntimeAssetsAsync(html, cancellationToken);
             Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
             Response.Headers.XContentTypeOptions = "nosniff";
             Response.Headers["X-Legend-Publication-Id"] = publication.Id.ToString("D");
             return Content(HttpMethods.IsHead(Request.Method) ? "" : html, "text/html; charset=utf-8");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception exception) when (exception is InvalidOperationException or OperationCanceledException or JsonException)
+        catch (Exception exception) when (exception is InvalidOperationException or OperationCanceledException or JsonException or System.Text.RegularExpressions.RegexMatchTimeoutException)
         {
             // Never turn a failed publication read/render into a successful old homepage.
             Response.Headers.CacheControl = "no-store";

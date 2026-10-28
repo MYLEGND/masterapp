@@ -8,6 +8,7 @@
 @inject Microsoft.Extensions.Configuration.IConfiguration Config
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
 @inject Infrastructure.Data.MasterAppDbContext WebsiteSeoDb
+@inject Microsoft.AspNetCore.Mvc.ViewFeatures.IFileVersionProvider WebsiteFileVersions
 @{
     var requestPath = HttpContextAccessor.HttpContext?.Request?.Path.Value ?? string.Empty;
     var trackingProfileId = ViewData["TrackingProfileId"]?.ToString();
@@ -627,7 +628,7 @@
 </script>
 <script src="~/design/legend-public-web.js" asp-append-version="true" defer></script>
 <script src="~/design/legend-public-cms.js" asp-append-version="true" defer></script>
-<script type="module" src="~/js/public-inquiry-form.mjs" asp-append-version="true"></script>
+<script type="module" src="~/js/public-inquiry-form.mjs" asp-append-version="true" data-inquiry-runtime="@WebsiteFileVersions.AddFileVersionToPath(Context.Request.PathBase, Url.Content("~/js/legend-public-inquiry.js"))"></script>
 @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>
