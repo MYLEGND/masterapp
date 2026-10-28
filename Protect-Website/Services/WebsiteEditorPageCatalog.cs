@@ -21,6 +21,10 @@ public static class WebsiteEditorPageCatalog
         foreach (var action in actions.ActionDescriptors.Items.OfType<ControllerActionDescriptor>())
         {
             if (!typeof(Controller).IsAssignableFrom(action.ControllerTypeInfo)) continue;
+            // An explicitly redirect-only action has no editable page. Do not
+            // infer this from conditional IActionResult bodies or source text.
+            if (action.MethodInfo is not null &&
+                typeof(LocalRedirectResult).IsAssignableFrom(action.MethodInfo.ReturnType)) continue;
             var methods = action.ActionConstraints?.OfType<HttpMethodActionConstraint>().SelectMany(c => c.HttpMethods).ToArray();
             if (methods is { Length: > 0 } && !methods.Contains("GET", StringComparer.OrdinalIgnoreCase)) continue;
             if (!views.GetView(null, $"~/Views/{action.ControllerName}/{action.ActionName}.cshtml", false).Success) continue;

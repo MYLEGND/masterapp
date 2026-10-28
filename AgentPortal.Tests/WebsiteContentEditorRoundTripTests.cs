@@ -89,6 +89,59 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Equal(69, saved.Revision);
     }
 
+    [Theory]
+    [InlineData(WebsiteEditorSiteKeys.Legend)]
+    [InlineData(WebsiteEditorSiteKeys.Protect)]
+    public async Task CanonicalInquiryVoice_SaveReopenPublishPreservesFormAndRejectsStaleOrUnauthorizedChanges(string siteKey)
+    {
+        using var fixture = new Fixture(siteKey);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var document = CanonicalDocument();
+        document.Pages["/"].Composition.Add(new WebsiteCompositionNode
+        {
+            Id = "contact.inquiry", Type = "form", Tag = "form", SystemKey = "canonical_inquiry",
+            Title = "Tell us what you need", Text = "Send my question",
+            FieldLabels = new() { ["message"] = "My question" },
+            Signals = [new WebsiteSignalBinding { Id = Guid.NewGuid().ToString("N"), EventName = "form_start", Trigger = "form_started", DeliveryMode = "analytics" }],
+            FieldSignals = new() { ["phone"] = [new WebsiteSignalBinding { Id = Guid.NewGuid().ToString("N"), EventName = "PhoneFieldCompleted", Trigger = "field_completed", DeliveryMode = "analytics" }] }
+        });
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
+        var initial = ReadDocument(await fixture.CreateController().Manage(ticket));
+        var originalForm = initial.Pages["/"].Composition.Single(node => node.Id == "contact.inquiry");
+        Assert.Null(originalForm.Receptionist);
+        var replacement = JsonSerializer.Deserialize<WebsiteCompositionNode>(JsonSerializer.Serialize(originalForm, JsonOptions), JsonOptions)!;
+        replacement.Receptionist = new WebsiteReceptionistPresentation { Enabled = true, Label = "Ask us a question", Placement = "after" };
+        replacement.FieldPresentations["receptionist_start"] = new WebsiteControlPresentation { Style = new WebsiteVisualStyle { Color = "#123456" } };
+        var operation = new WebsiteMutationOperation
+        {
+            Type = "replaceNode", NodeId = originalForm.Id, ExpectedFingerprint = WebsiteCreativeFingerprint.Node(originalForm), Node = replacement
+        };
+        var saved = await ApplyMutationsAndReadAsync(fixture, ticket, 1, [operation]);
+        var savedForm = saved.Pages["/"].Composition.Single(node => node.Id == originalForm.Id);
+        Assert.True(savedForm.Receptionist!.Enabled);
+        Assert.Equal("after", savedForm.Receptionist.Placement);
+        Assert.Equal("My question", savedForm.FieldLabels["message"]);
+        Assert.Equal("Send my question", savedForm.Text);
+        Assert.Equal("canonical_inquiry", savedForm.SystemKey);
+        Assert.Equal(JsonSerializer.Serialize(originalForm.Signals, JsonOptions), JsonSerializer.Serialize(savedForm.Signals, JsonOptions));
+        Assert.Equal(JsonSerializer.Serialize(originalForm.FieldSignals, JsonOptions), JsonSerializer.Serialize(savedForm.FieldSignals, JsonOptions));
+        var beforeRejected = (await fixture.Db.Set<WebsiteContentState>().SingleAsync()).DraftJson;
+        Assert.IsType<ConflictObjectResult>(await fixture.CreateController().ApplyMutations(new WebsitePlatformController.WebsiteMutationRequest(ticket, 1, [operation])));
+        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().ApplyMutations(new WebsitePlatformController.WebsiteMutationRequest("invalid-ticket", 2, [operation])));
+        fixture.Db.ChangeTracker.Clear();
+        Assert.Equal(beforeRejected, (await fixture.Db.Set<WebsiteContentState>().SingleAsync()).DraftJson);
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().Publish(new(ticket, 2)));
+        fixture.Db.ChangeTracker.Clear();
+        var published = ReadDocument(await fixture.CreateController().Public(siteKey, siteKey == WebsiteEditorSiteKeys.Protect ? Fixture.AgentSlug : null, fixture.BusinessId));
+        var publishedForm = published.Pages["/"].Composition.Single(node => node.Id == originalForm.Id);
+        Assert.Equal("Ask us a question", publishedForm.Receptionist!.Label);
+        Assert.Equal("#123456", publishedForm.FieldPresentations["receptionist_start"].Style.Color);
+        Assert.Equal(savedForm.FieldLabels["message"], publishedForm.FieldLabels["message"]);
+        Assert.Equal(JsonSerializer.Serialize(savedForm.Signals, JsonOptions), JsonSerializer.Serialize(publishedForm.Signals, JsonOptions));
+        Assert.Equal(JsonSerializer.Serialize(savedForm.FieldSignals, JsonOptions), JsonSerializer.Serialize(publishedForm.FieldSignals, JsonOptions));
+        Assert.Empty(await fixture.Db.AgentFinanceToolStates.ToListAsync());
+    }
+
     private const string ElementId = "home.h1.title";
 
     private static WebsiteContentDocument CanonicalDocument(string text = "Heading")

@@ -1,33 +1,29 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Layla admits implementation of reviewed bounded same-context diagnostics under Founder task-specific delegation for the existing PR713 release repair. Draft nonpublishing tooling candidate and native CI only; no merge, promotion, observation, provider/settings/credentials/cost changes, application upload, SQL or restart; no formal GitHub approval as Founder.",
-  "purpose": "Add bounded unknown-stderr shape, canonical command/context, installed CLI-package version and nonsecret equality diagnostics at actual completion checkpoints. Preserve strict classification, failed-producer receipt eligibility, authority, success/failure and read deadlines; diagnostics consume existing read allowance. Register only independently reviewed exact adapter/journal generation; preserve old pairs and crossed/unknown rejection. Extend bounded multiline recognition with finite CLI/provider/status/authentication-reported shapes; whole-input ambiguity, 8192-character and 32-line bounds; no raw details or inferred causes.",
-  "requestId": "completion-context-diagnostics-20261028-v1",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "Zac explicitly authorized continuing the existing Shayla Website Studio integration through implementation, selective deployment, Studio configuration/publication and verified activation in Sentinel_f53b29e3d30c8191aa6c63418d89d401. This request covers only the independently reviewed canonical Studio/inquiry integration and its proven shared dependencies. Calls remain paused through deployment; current WebRTC readiness and live acceptance remain separate. No credentials, privacy, access, provider budgets, new spending or unrelated code changes. Zac also explicitly requested preserving live Studio changes while fixing broken uploaded-media links and missing form artwork in Sentinel_98a58cf4d7788191864b52ff4ab92cbb. This source release includes only the reviewed authenticated-media-response URL correction; existing saved documents and owned artwork are not overwritten. Zac subsequently authorized the existing Protect Coverage, Studio navigation, footer and applicable-agent public-profile recoveries in Sentinel_bcab3e00af98819190e94f8fb5671199, Sentinel_822a19a4ba30819186f05ea4bc8e7022, Sentinel_12192be8ac348191abf6023dd3e4062d and Sentinel_d448f4b5952c8191b15f82e13829dfc9, and one consolidated release rather than silo deployments in Sentinel_e005a05c4c4481919cb3d14b9b5086bd. Inherit only the actual nonpublishing PR715 promotion and preserve the independently accepted application source. No saved document, named draft, artwork, public-profile privacy boundary or live operation is overwritten by source integration; unresolved data or live acceptance remains separate. Founder Sentinel_a02bdde3b10c819190532f7a29fb8ad6 at 2026-10-28 13:18:39 UTC explicitly authorizes a fresh Protect deployment of this final combined candidate instead of another old-release completion observation. Action ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1:fresh-protect-20261028. Routine steps delegated by Sentinel_fc7d4767eb1c8191a14c2f815d950d0b. Preserve original unknown/failed records and separate Azure success evidence; no old completion claim. Exact current source, live writer/selector fence, migration compatibility, rollback and all mandatory personal/privacy/security/cost controls remain required.",
+  "purpose": "Deliver the one reviewed consolidated application candidate on existing PR713: canonical configurable inquiry voice presentation through Studio controls, persisted document, strict validation/sanitization, published compiler and existing handler; authenticated Studio media response URL normalization; bounded Protect Coverage template/alias/progress repairs; removal of proven unused Studio-only reads; normal-flow Protect footer sizing and exact-owner public agent-card presentation. These are the accepted application bytes, not a blanket public-latency or activation claim. The same five hosts remain selected because of actual shared Infrastructure/WebsiteEditing, authoring API, compiler, rendering and asset dependencies. Preserve current documents, named drafts, restored owned artwork, pills, tenant identity, successful original uploads and historical receipts. Exact integration CI and authenticated compatible probe reuse precede protected integration; fresh trusted compiled-contract equality, current database/recovery readiness and the existing protected release/deployment-proof gates remain mandatory before any new application upload. Calls stay paused until separate current readiness and live acceptance; no old runtime, failed observer or prior operation is relabelled or replayed. Inherit reviewed PR720 promotion c030 once, preserving proof/cache/diagnostic improvements. Include accepted five-file Protect brand patch and stable native form-frame height correction; preserve newer Studio content. Deliver the same complete dependency-scoped five-app application candidate with a new Protect operation. No old-completion observation, blanket unaffected redeployment or unnecessary SQL replay.",
+  "requestId": "shayla-consolidated-fresh-protect-20261028-v4",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait",
+    "masterapp-website"
+  ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "182c51907c7c8f58077ea00b33a9582b5ebdda08",
-    "sourceRevision": "7e709750277f3aed40d9eb48874511127b24257a",
-    "files": {
-      "scripts/deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "5d93fa548f51fc3658a6aacd706708e1d45880d4"
-      },
-      "scripts/test-deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "c563f2750d3ebe08946e703589e409d4f3bf9bc8"
-      },
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "976904ba6d1bd5c27c95c9947ad8face18916376"
-      },
-      "scripts/test-validation-resume.py": {
-        "mode": "100644",
-        "blob": "ba7b4a731b1efab667548f6f7bc339c9a98659af"
-      }
-    }
+  "protectSupersession": {
+    "authorizationId": "ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1:fresh-protect-20261028",
+    "authorizedBy": "Founder",
+    "target": "protect",
+    "originalRun": 40529707342,
+    "originalOperationId": "b7362baa94857c1e58085badd0068218374e954b963c7fcb5d79638ba2c290fc",
+    "originalRevision": "8f94550fdcb0dfbe1b1b1c71aa43171a60661096",
+    "expectedReleaseParent": "c030b8a9b56ae12e4f2589f6a5119fec2b1e6624",
+    "historicalOutcome": "UNKNOWN",
+    "authorizeOneReplacement": true,
+    "rollbackArtifactId": 12749425188,
+    "rollbackArtifactDigest": "sha256:59af04b03aa6d815144cd253ed6cb8594b22d930e8420289de7a0b6a6562acee"
   }
 }

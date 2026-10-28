@@ -20,6 +20,7 @@ public static class WebsiteSystemTemplateAuthority
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["/RiskAssessment"] = Prefix + "risk_assessment",
+            ["/Quote"] = Prefix + "quote_index",
             ["/Quote/Life"] = Prefix + "life_wizard",
             ["/Quote/Whole-Life"] = Prefix + "life_wizard",
             ["/Quote/Term-Life"] = Prefix + "life_wizard",
@@ -277,7 +278,8 @@ public static class WebsiteSystemTemplateAuthority
     public static string? RuntimeFormKey(string? pagePath)
     {
         var path = NormalizeProtectPath(pagePath);
-        if (!TemplatesByRoute.TryGetValue(path, out var template) || template == Prefix + "quote_thank_you")
+        if (!TemplatesByRoute.TryGetValue(path, out var template) ||
+            template == Prefix + "quote_thank_you" || template == Prefix + "quote_index")
             return null;
         var route = ProtectRouteCatalog.Routes.Single(route => route.Path == path);
         var landing = route.HasPaidLanding &&

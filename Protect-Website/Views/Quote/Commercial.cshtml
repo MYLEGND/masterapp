@@ -106,16 +106,18 @@
 	                </p>
 
 	                <div class="wizard-top">
-	                    <div class="wizard-steptext" id="stepLabel"></div>
+	                    <div class="wizard-steptext" id="stepLabel" data-cms-preview-for="commercialQuoteForm"></div>
 	                    <div class="wizard-progress">
-	                        <div class="wizard-progress-fill" id="progressFill"></div>
+	                        <div class="wizard-progress-fill" id="progressFill" data-cms-preview-for="commercialQuoteForm"></div>
 	                    </div>
 	                </div>
 
 	<form action="/Quote/Commercial"
 	      method="post"
 	      id="commercialQuoteForm"
-	      data-form-key="@formKey">
+	      data-form-key="@formKey"
+              data-cms-preview-progress-id="stepLabel"
+              data-cms-preview-progress-fill-id="progressFill">
 
 
         @Html.AntiForgeryToken()

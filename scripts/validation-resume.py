@@ -5834,6 +5834,10 @@ def fast_track_protect_supersession(revision, *, request=None):
      'authorizeOneReplacement': True,
      'rollbackArtifactId': 12561256924,
      'rollbackArtifactDigest': 'sha256:03321a68f9e5f39ff237c93def0d683b633f938710bf35053c2ade48db0803ca'}
+    # The separately authorized fresh PR713 replacement retains the old record.
+    # Exact first-parent binding admits one new operation, never old completion.
+    if isinstance(record, dict) and record.get('authorizationId') == 'ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1:fresh-protect-20261028':
+        expected = {'authorizationId': 'ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1:fresh-protect-20261028', 'authorizedBy': 'Founder', 'target': 'protect', 'originalRun': 40529707342, 'originalOperationId': 'b7362baa94857c1e58085badd0068218374e954b963c7fcb5d79638ba2c290fc', 'originalRevision': '8f94550fdcb0dfbe1b1b1c71aa43171a60661096', 'expectedReleaseParent': 'c030b8a9b56ae12e4f2589f6a5119fec2b1e6624', 'historicalOutcome': 'UNKNOWN', 'authorizeOneReplacement': True, 'rollbackArtifactId': 12749425188, 'rollbackArtifactDigest': 'sha256:59af04b03aa6d815144cd253ed6cb8594b22d930e8420289de7a0b6a6562acee'}
     if (record != expected or request.get('requestedBy') != 'Founder'
         or request.get('releaseMode') != 'approved-only'
         or request.get('cloudflareWebsiteRouting') is not False

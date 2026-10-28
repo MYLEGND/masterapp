@@ -130,6 +130,131 @@
     }
   }
 
+  // Keep the visible native card stable across steps, never a spacer beneath
+  // it. Bind original nodes once; authored lookalikes are not runtime owners.
+  const nativeFormFrames = SITE_KEY === 'protect' ? nativeFormSequences.flatMap(group => {
+    if (!['autoQuoteForm','homeQuoteForm','commercialQuoteForm','riskAssessmentForm'].includes(group.form.id)) return [];
+    const cards = group.steps.map(step => {
+      if (step.classList.contains('section-card')) return step;
+      const direct = [...step.children].filter(node => node.classList.contains('section-card'));
+      return direct.length === 1 ? direct[0] : null;
+    });
+    if (cards.some(card => !card)) return [];
+    return [{group, cards, width:0, height:0, declarations:new Map()}];
+  }) : [];
+  let nativeFrameObserver = null, nativeFrameContentObserver = null, nativeFrameQueued = false, nativeFrameCaptureDepth = 0;
+  const nativeFrameObservedChildren = new Set();
+
+  function restoreNativeFormFrames(reset = false) {
+    for (const frame of nativeFormFrames) {
+      for (const [card, saved] of frame.declarations) {
+        // A canonical/editor write takes precedence over our last projection.
+        if (card.style.getPropertyValue('min-height') === saved.projected &&
+            card.style.getPropertyPriority('min-height') === saved.priority) {
+          if (saved.value) card.style.setProperty('min-height', saved.value, saved.priority);
+          else card.style.removeProperty('min-height');
+        }
+      }
+      frame.declarations.clear();
+      if (reset) { frame.width = 0; frame.height = 0; }
+    }
+  }
+
+  function withNativeFormFramesRestored(capture) {
+    if (nativeFrameCaptureDepth++ === 0) restoreNativeFormFrames();
+    try { return capture(); }
+    finally { if (--nativeFrameCaptureDepth === 0) scheduleNativeFormFrames(); }
+  }
+
+  function measureNativeFormFrames() {
+    nativeFrameQueued = false;
+    if (nativeFrameCaptureDepth) return;
+    if (nativeFrameObserver) {
+      const children = new Set(nativeFormFrames.flatMap(frame => frame.cards.flatMap(card => [...card.children])));
+      for (const node of nativeFrameObservedChildren) if (!children.has(node)) {
+        nativeFrameObserver.unobserve(node);
+        nativeFrameObservedChildren.delete(node);
+      }
+      for (const node of children) if (!nativeFrameObservedChildren.has(node)) {
+        nativeFrameObserver.observe(node);
+        nativeFrameObservedChildren.add(node);
+      }
+    }
+    for (const frame of nativeFormFrames) {
+      const {group, cards} = frame;
+      if (!group.parent.isConnected || group.steps.some((step, i) =>
+          step.parentElement !== group.parent || (cards[i] !== step && cards[i].parentElement !== step))) continue;
+      const width = group.parent.clientWidth;
+      if (!width || !cards.some(card => card.offsetHeight > 0)) continue;
+      if (frame.width && Math.abs(width - frame.width) >= 2) {
+        // Real layout width changes start a new sizing epoch. Height-only
+        // viewport changes (including the mobile keyboard) do not.
+        for (const [card, saved] of frame.declarations) {
+          if (card.style.getPropertyValue('min-height') === saved.projected &&
+              card.style.getPropertyPriority('min-height') === saved.priority) {
+            if (saved.value) card.style.setProperty('min-height', saved.value, saved.priority);
+            else card.style.removeProperty('min-height');
+          }
+        }
+        frame.declarations.clear();
+        frame.height = 0;
+      }
+      frame.width = width;
+      // offsetHeight is in layout pixels, unaffected by Studio canvas zoom.
+      frame.height = Math.max(frame.height, ...cards.map(card => {
+        if (!card.offsetHeight) return 0;
+        const style = getComputedStyle(card);
+        const border = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0);
+        // Authored height can constrain the border box while its content grows.
+        // Preserve that declaration, but let the minimum contain the content.
+        return Math.max(card.offsetHeight, card.scrollHeight + border);
+      }));
+      for (const card of cards) {
+        let saved = frame.declarations.get(card);
+        if (saved && (card.style.getPropertyValue('min-height') !== saved.projected ||
+            card.style.getPropertyPriority('min-height') !== saved.priority)) {
+          saved = null;
+        }
+        const style = getComputedStyle(card);
+        if (!saved) {
+          saved = {value:card.style.getPropertyValue('min-height'), priority:card.style.getPropertyPriority('min-height'),
+            minimum:style.minHeight === 'auto' ? '0px' : style.minHeight || '0px'};
+          frame.declarations.set(card, saved);
+        }
+        const inset = style.boxSizing === 'border-box' ? 0 :
+          ['paddingTop','paddingBottom','borderTopWidth','borderBottomWidth'].reduce((sum, key) => sum + (parseFloat(style[key]) || 0), 0);
+        const projected = `max(${saved.minimum}, ${Math.max(0, frame.height - inset)}px)`;
+        // CSSOM may round fractional lengths. Compare both the request and
+        // its last serialization, avoiding equivalent writes/observer loops.
+        if (saved.requested !== projected || card.style.getPropertyValue('min-height') !== saved.projected ||
+            card.style.getPropertyPriority('min-height') !== saved.priority)
+          card.style.setProperty('min-height', projected, saved.priority);
+        saved.requested = projected;
+        saved.projected = card.style.getPropertyValue('min-height');
+      }
+    }
+  }
+
+  function scheduleNativeFormFrames() {
+    if (!nativeFormFrames.length || renderInput?.server || materializeMode) return;
+    if (!nativeFrameObserver && typeof ResizeObserver === 'function') {
+      nativeFrameObserver = new ResizeObserver(scheduleNativeFormFrames);
+      for (const {group, cards} of nativeFormFrames) {
+        nativeFrameObserver.observe(group.parent);
+        for (const node of new Set([...group.steps, ...cards])) nativeFrameObserver.observe(node);
+      }
+    }
+    if (!nativeFrameContentObserver && typeof MutationObserver === 'function') {
+      nativeFrameContentObserver = new MutationObserver(scheduleNativeFormFrames);
+      for (const {cards} of nativeFormFrames) for (const card of cards)
+        nativeFrameContentObserver.observe(card, {subtree:true, childList:true, characterData:true,
+          attributes:true, attributeFilter:['class','hidden','style']});
+    }
+    if (nativeFrameQueued || nativeFrameCaptureDepth) return;
+    nativeFrameQueued = true;
+    window.requestAnimationFrame(measureNativeFormFrames);
+  }
+
   function restoreNativeFormContinuations() {
     for (const group of nativeFormSequences) for (const {control, parent, next} of group.continuations) {
       if (control.parentElement !== parent)
@@ -320,6 +445,8 @@
   const styleProperties = ['textAlign','fontSize','width','maxWidth','height','minHeight','maxHeight','position','left','top','overflow','paddingTop','paddingBottom','objectPosition','color','backgroundColor','backgroundImage','fontFamily','fontWeight','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius','objectFit','gridColumn','minWidth','overflowWrap','display','flexDirection','gap','gridTemplateColumns','alignItems','justifyContent','flexWrap','marginTop','marginBottom','marginLeft','marginRight','borderWidth','borderColor','borderStyle','opacity','textTransform','textDecoration','aspectRatio','boxShadow'];
 
   function rememberOriginal(el) {
+    if (!originals.has(el) && nativeFormFrames.some(frame => frame.declarations.has(el)))
+      return withNativeFormFramesRestored(() => rememberOriginal(el));
     if (!originals.has(el)) originals.set(el, {
       text: el.textContent, markup: el.innerHTML, src: el.getAttribute('src'), href: el.getAttribute('href'), alt: el.getAttribute('alt'), hidden: el.hidden,
       style: Object.fromEntries(styleProperties.map(key => [key, el.style[key] || '']))
@@ -587,15 +714,137 @@
     boundNativeTemplateRoots.add(main);
   }
 
-  function applyTemplateBackedCompositionPage() {
+  // The Coverage booking partial is server-owned and has conditional markup.
+  // Its optional DIV/H3/P must not retarget the static chooser's saved identities.
+  // This is deliberately one template contract, not a general class remapper.
+  const coverageNativeSnapshots = new WeakMap();
+  const coverageBookingProjections = new WeakMap();
+  function planCoverageTemplateIdentities(page) {
+    if (SITE_KEY!=='protect' || !pageUsesSystemTemplate(page) || page.systemTemplateKey !== 'protect_template:quote_index') return;
+    const main=document.querySelector('main');
+    let snapshot=coverageNativeSnapshots.get(main);
+    const fail=()=>{throw new Error('The saved Coverage layout needs identity review before it can be rendered. Your saved content was preserved.');};
+    const classes=node=>{const tokens=String(node?.className || '').split(/\s+/).filter(Boolean);return tokens.filter(token=>!(token==='show' && tokens.includes('reveal')) && !(token==='open' && (tokens.includes('life-modal') || tokens.includes('life-tile'))));};
+    const hasClass=(node,name)=>classes(node).includes(name);
+    if(!snapshot){
+      const roots=materializeCurrentPageComposition();
+      const elements=new Map();
+      for(const el of main.querySelectorAll('[data-cms-id]')){
+        if(elements.has(el.dataset.cmsId))fail();
+        elements.set(el.dataset.cmsId,el);
+      }
+      const nativePage=roots.filter(node=>hasClass(node,'quote-page'));
+      const modal=roots.filter(node=>hasClass(node,'life-modal'));
+      if(roots.length!==2 || nativePage.length!==1 || modal.length!==1 || elements.get(modal[0].id)?.id!=='lifeModal')fail();
+      const calendar=nativePage[0].children.filter(node=>hasClass(node,'calendar-section'));
+      const shell=nativePage[0].children.filter(node=>hasClass(node,'quote-shell'));
+      const prayer=nativePage[0].children.filter(node=>hasClass(node,'prayer-section'));
+      if(calendar.length!==1 || shell.length!==1 || prayer.length!==1 || elements.get(calendar[0].id)?.id!=='calendar')fail();
+      const booking=calendar[0].children.filter(node=>hasClass(node,'calendar-container'));
+      if(booking.length!==1)fail();
+      snapshot={roots,elements,page:nativePage[0],modal:modal[0],calendar:calendar[0],shell:shell[0],prayer:prayer[0],booking:booking[0]};
+      coverageNativeSnapshots.set(main,snapshot);
+    }
+    const saved=[];walkComposition(page.composition,node=>saved.push(node));
+    const ids=new Set();for(const node of saved){if(!node.id || ids.has(node.id))fail();ids.add(node.id);}
+    const roots=page.composition || [];
+    const pick=(nodes,name)=>{const matches=nodes.filter(node=>hasClass(node,name));if(matches.length>1)fail();return matches[0];};
+    const savedPage=pick(roots,'quote-page'),savedModal=pick(roots,'life-modal');
+    const pairs=[],omitted=[],rebound=new Set();
+    const markRebound=native=>walkComposition([native],node=>{const el=snapshot.elements.get(node.id);if(el)rebound.add(el);});
+    markRebound(snapshot.prayer);markRebound(snapshot.modal);markRebound(snapshot.booking);
+    let bookingPair=null;
+    const compatible=(native,node)=>native.type===node.type && native.tag===node.tag &&
+      classes(native).every(token=>classes(node).includes(token));
+    const empty=value=>value==null || value===false || value==='' ||
+      (Array.isArray(value)?value.every(empty):typeof value==='object' && Object.values(value).every(empty));
+    const safeBookingProjection=node=>{
+      const children=node.children || [];
+      // The historical safe projection contains a hidden diagnostic DIV and a
+      // non-executable whitespace frame placeholder. Never turn saved markup or
+      // a modified child into a runtime iframe, nor silently discard authored data.
+      if(children.length!==2 || children[0].type!=='container' || children[0].tag!=='div' ||
+        classes(children[0]).length || children[1].type!=='text' || children[1].tag!=='p' ||
+        classes(children[1]).join(' ')!=='booking-frame')fail();
+      for(const child of children){
+        for(const [key,value] of Object.entries(child)){
+          if(['id','type','tag','className'].includes(key))continue;
+          if(key==='text' && (value==null || typeof value==='string' && !value.trim()))continue;
+          if(key==='style' && value && Object.entries(value).every(([name,item])=>empty(item) || name==='offsetXPercent' && item===0))continue;
+          if(key==='layout' && value && Object.entries(value).every(([name,item])=>empty(item) || name==='mode' && item==='free' || name==='direction' && item==='column'))continue;
+          if(!empty(value))fail();
+        }
+      }
+    };
+    const bindStatic=(native,node)=>{
+      if(!compatible(native,node))fail();
+      const el=snapshot.elements.get(native.id);if(!el)fail();
+      pairs.push([el,node]);
+      if(native===snapshot.booking){
+        if(node.id!==native.id)fail(); // unchanged pre-booking anchor
+        safeBookingProjection(node);bookingPair=[el,node];return;
+      }
+      const a=native.children || [],b=node.children || [];
+      if(a.length!==b.length)fail();
+      // Complete static structure is required; an authored deletion/reorder must
+      // not make a different interactive child inherit a previous child's ID.
+      for(let i=0;i<a.length;i++)bindStatic(a[i],b[i]);
+    };
+    const omittedRoot=native=>{
+      if(saved.some(node=>node.id===native.id || hasClass(node,classes(native)[0])))fail();
+      omitted.push(snapshot.elements.get(native.id));
+    };
+    const bindAnchor=(native,node)=>{
+      if(node.id!==native.id || !compatible(native,node))fail();
+      pairs.push([snapshot.elements.get(native.id),node]);
+    };
+    if(savedPage){
+      bindAnchor(snapshot.page,savedPage);
+      const children=savedPage.children || [];
+      const shell=pick(children,'quote-shell');
+      // Before the conditional partial, original identities have not shifted.
+      // Preserve ordinary ID-based editing/additions/omissions in this region.
+      if(shell)bindAnchor(snapshot.shell,shell);else omittedRoot(snapshot.shell);
+      const calendar=pick(children,'calendar-section');
+      if(calendar){
+        bindAnchor(snapshot.calendar,calendar);
+        const booking=pick(calendar.children || [],'calendar-container');
+        if(booking)bindStatic(snapshot.booking,booking);else omittedRoot(snapshot.booking);
+      }else omittedRoot(snapshot.calendar);
+      const prayer=pick(children,'prayer-section');
+      if(prayer)bindStatic(snapshot.prayer,prayer);else omittedRoot(snapshot.prayer);
+    }else{
+      if(savedModal)fail();
+      omittedRoot(snapshot.page);
+    }
+    if(savedModal)bindStatic(snapshot.modal,savedModal);else omittedRoot(snapshot.modal);
+    const pairedElements=new Set(),pairedIds=new Set();
+    for(const [el,node] of pairs){
+      if(!el || el.ownerDocument!==document || pairedElements.has(el) || pairedIds.has(node.id))fail();
+      pairedElements.add(el);pairedIds.add(node.id);
+    }
+    // Validate the entire correspondence before touching IDs or removing nodes.
+    // Commit both lookup and materialization identity, not only a render-time map.
+    return ()=>{
+      for(const el of rebound){
+        delete el.dataset.cmsId;delete el.dataset.cmsCompositionId;
+      }
+      for(const [el,node] of pairs)el.dataset.cmsId=node.id;
+      if(bookingPair)coverageBookingProjections.set(bookingPair[0],bookingPair[1]);
+      for(const el of omitted)el?.remove();
+      return new Map(pairs.map(([el,node])=>[node.id,el]));
+    };
+  }
+
+  function applyTemplateBackedCompositionPage(coveragePlan = null) {
     const page=pageState();
     bindNativeTemplateIdentities();
-    const mounted=new Map();
+    const mounted=(coveragePlan || planCoverageTemplateIdentities(page))?.() || new Map();
     walkComposition(page.composition || [],node=>{
       const runtimeKey=String(node.systemKey || '');
-      const el=runtimeKey.startsWith('protect_runtime_form:')
+      const el=mounted.get(node.id) || (runtimeKey.startsWith('protect_runtime_form:')
         ? document.querySelector('form[data-cms-system-form="'+CSS.escape(runtimeKey)+'"]')
-        : findEditableElement(node.id);
+        : findEditableElement(node.id));
       if(el){
         // The server-owned form key mounts the existing native form. Its saved
         // canonical node ID remains stable even after historical materialization.
@@ -621,7 +870,7 @@
         // Move the original nodes, retaining native controls, state and listeners.
         // Unrepresented runtime inputs remain in their native parent.
         if(parent && el!==parent) parent.appendChild(el);
-        reconcile(node.children,el);
+        if(!coverageBookingProjections.has(el)) reconcile(node.children,el);
       }
     };
     reconcile(page.composition,document.querySelector('main'));
@@ -1600,6 +1849,10 @@
   }
   function applyStyle(el, style) {
     if (!el) return;
+    if (nativeFormFrames.some(frame => frame.cards.includes(el))) {
+      restoreNativeFormFrames(true);
+      scheduleNativeFormFrames();
+    }
     const original = rememberOriginal(el);
     styleProperties.forEach(key => { el.style[key] = original.style[key]; });
     scaledElements.delete(el);
@@ -2094,7 +2347,7 @@
   }
 
   function materializeCompositionNode(el, fallbackId = null, identity = null) {
-    return withFormStepPreviewRestored(() => withNativeFormContinuationsRestored(() => materializeCompositionNodeWithNativeControls(el, fallbackId, identity)));
+    return withNativeFormFramesRestored(() => withFormStepPreviewRestored(() => withNativeFormContinuationsRestored(() => materializeCompositionNodeWithNativeControls(el, fallbackId, identity))));
   }
 
   function materializeCompositionNodeWithNativeControls(el, fallbackId = null, identity = null) {
@@ -2110,6 +2363,16 @@
     if (el.matches?.('[data-public-nav-toggle],.nav-toggle')) return null;
     const tag = el.tagName.toLowerCase();
     if (['script','style','noscript','input','select','textarea'].includes(tag)) return null;
+    if(coverageBookingProjections.has(el)) {
+      const projection=cloneCanonicalValue(coverageBookingProjections.get(el));
+      walkComposition([projection],node=>{
+        if(identity.used.has(node.id)) throw new Error('The saved Coverage layout has conflicting identities. Your saved content was preserved.');
+        identity.used.add(node.id);
+        const remaining=(identity.pending.get(node.id)||0)-1;
+        if(remaining>0)identity.pending.set(node.id,remaining);else identity.pending.delete(node.id);
+      });
+      return projection;
+    }
 
     const id = materializedNodeId(el, fallbackId, identity);
     const model = legacyMigrationRecordForElement(el) || {};
@@ -2122,7 +2385,11 @@
         id, type:'form', tag:'form', className:cleanCompositionClassName(el),
         title:el.querySelector?.('legend')?.textContent || extra?.title || 'Send an inquiry',
         text:el.querySelector?.('button[type="submit"]')?.textContent || extra?.text || 'Send inquiry',
-        systemKey:'canonical_inquiry', signals:cloneCanonicalValue(model.signals || extra?.signals || []),
+        systemKey:'canonical_inquiry', signals:cloneCanonicalValue(compositionNode(el.dataset.cmsCompositionId)?.signals || model.signals || extra?.signals || []),
+        fieldSignals:cloneCanonicalValue(compositionNode(el.dataset.cmsCompositionId)?.fieldSignals || model.fieldSignals || {}),
+        receptionist:cloneCanonicalValue(compositionNode(el.dataset.cmsCompositionId)?.receptionist || model.receptionist || null),
+        fieldLabels:cloneCanonicalValue(compositionNode(el.dataset.cmsCompositionId)?.fieldLabels || model.fieldLabels || {}),
+        fieldPresentations:cloneCanonicalValue(compositionNode(el.dataset.cmsCompositionId)?.fieldPresentations || model.fieldPresentations || {}),
         style:cloneCanonicalValue(model.style || extra?.style || {}),
         breakpointStyles:cloneCanonicalValue(model.breakpointStyles || extra?.breakpointStyles || {}),
         layout:cloneCanonicalValue(model.layout || extra?.layout || {}),
@@ -2692,6 +2959,34 @@
     return form;
   }
 
+  function canonicalReceptionist(node) {
+    const value=node?.receptionist;
+    return node?.type==='form' && node.systemKey==='canonical_inquiry' && value?.enabled===true &&
+      ['before','after'].includes(value.placement || 'before') ? value : null;
+  }
+
+  function mountCanonicalReceptionist(form,node) {
+    const value=canonicalReceptionist(node);
+    if(!value) return;
+    const host=document.createElement('div');
+    host.dataset.legendReceptionistEntry='';
+    host.dataset.receptionistLabel=typeof value.label==='string' ? value.label.slice(0,160) : '';
+    if(editorMode || studioIsolationMode) host.dataset.preview='';
+    if(value.placement==='after') form.appendChild(host);
+    else form.insertBefore(host,form.firstChild);
+    window.LegendPublicInquiryForm?.mountWebsiteReceptionists(form);
+  }
+
+  // A late-loading module fills only the canonical placeholders. Apply the same
+  // existing control presentation after mounting; do not rerender/reset forms.
+  window.addEventListener('legend:public-inquiry-mounted',()=>{
+    document.querySelectorAll('form[data-cms-composition-id]').forEach(form=>{
+      const node=compositionNode(form.dataset.cmsCompositionId);
+      if(node) applyFormFieldPresentations(form,node);
+    });
+    if(editorMode && selected?.matches('form[data-website-inquiry]')) syncEditorControls();
+  });
+
   function buildCanonicalInquiryForm(node) {
     const el=document.createElement('form');
     el.id='website_inquiry_'+node.id;
@@ -2717,6 +3012,7 @@
       if(name!=='Message') input.type=type;
       input.name=name;
       input.required=true;
+      input.setAttribute('required','');
       if(name==='Message') input.rows=5;
       Object.entries(attrs).forEach(([key,value])=>input.setAttribute(key,value));
       label.appendChild(input);
@@ -2740,6 +3036,7 @@
     consent.name='consent';
     consent.dataset.cmsFieldKey='consent';
     consent.required=true;
+    consent.setAttribute('required','');
     const consentText=document.createElement('span');
     consentText.textContent=node.fieldLabels?.consent || 'I agree to share this inquiry with this website.';
     consentLabel.append(consent,consentText);
@@ -2756,6 +3053,7 @@
 
     fieldset.append(legend,grid,submit);
     el.append(fieldset,status);
+    mountCanonicalReceptionist(el,node);
     return el;
   }
 
@@ -3722,7 +4020,7 @@
         }),
       getSignalHealth:({pagePath=currentPageRoute(),elementId,bindingId,fieldKey=null}={})=>
         creativeWorkspaceRequest('manage/signals/health',{query:{pagePath,elementId,bindingId,fieldKey}}),
-      listMedia:(query={})=>creativeWorkspaceRequest('manage/media',{query:{...query,designMetadata:query.designMetadata!==false}}),
+      listMedia:(query={})=>creativeWorkspaceRequest('manage/media',{query:{...query,designMetadata:query.designMetadata!==false}}).then(normalizeManagedMediaLibrary),
       uploadMedia:async file=>{
         const asset=await uploadMedia(file);
         if(!asset) throw new Error('Website media upload failed.');
@@ -3731,7 +4029,7 @@
       importImage:url=>creativeWorkspaceRequest('manage/media/import',{
         method:'POST',
         body:{ticket:editorTicket,sourceUrl:String(url || '')}
-      }),
+      }).then(normalizeManagedMediaAsset),
       listBusinessData:async()=>{await ensureBusinessDataCatalog();return {dataCatalog:managementPayload?.dataCatalog || [],collections:[...collectionData.values()]};},
       applyMutationBatch:creativeApplyMutationBatch,
       applyDesignPlan:creativeApplyDesignPlan,
@@ -3841,7 +4139,21 @@
     const original = rememberOriginal(el);
     const entityBound = el.hasAttribute?.('data-business-name') || el.hasAttribute?.('data-business-field');
     const commerceControl = !!el.dataset.legendStoreNav;
-    if (el instanceof HTMLImageElement) {
+    // Only the original native Life view can attach this non-serialized record.
+    // Saved classes/attributes, cloned nodes and other site templates cannot
+    // claim public identity ownership. Appearance remains ordinary authoring.
+    const profileField = SITE_KEY==='protect' && pageState().systemTemplateKey==='protect_template:life_wizard'
+      ? el[Symbol.for('legend.protect.public-profile-field')] : null;
+    const nativeProfileField = profileField && profileField.shell===document.querySelector('[data-protect-form-shell]') &&
+      profileField.root?.isConnected && profileField.shell?.contains(profileField.root) && profileField.root.contains(el)
+      ? profileField : null;
+    const failedProfileImage=nativeProfileField?.kind==='image' && el.getAttribute('src')===nativeProfileField.value && el.style.display==='none';
+    if(nativeProfileField?.kind==='text' || nativeProfileField?.kind==='initials') {
+      el.textContent=nativeProfileField.value;
+    }else if(nativeProfileField?.kind==='image' && el instanceof HTMLImageElement) {
+      if(el.getAttribute('src')!==nativeProfileField.value)el.setAttribute('src',nativeProfileField.value);
+      el.setAttribute('alt',nativeProfileField.alt);
+    }else if (el instanceof HTMLImageElement) {
       const media = model.mediaAssetId ? API_BASE + '/api/website-content/media/' + model.mediaAssetId : model.mediaUrl;
       el.src = media ? mediaUrl(media) : (original.src || '');
     } else if (!entityBound && !commerceControl && !el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName) && !isNativeTemplateFigure(el)) {
@@ -3854,7 +4166,7 @@
       if (href) el.setAttribute('href', href); else el.removeAttribute('href');
       el.target = model.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer';
     }
-    if (model.alt != null && el.tagName === 'IMG') el.alt = model.alt;
+    if (model.alt != null && el.tagName === 'IMG' && !nativeProfileField) el.alt = model.alt;
     if (el.tagName === 'VIDEO') {
       const media = model.mediaAssetId ? API_BASE + '/api/website-content/media/' + model.mediaAssetId : model.mediaUrl;
       if (media && safeUrl(media, true)) el.src = mediaUrl(media);
@@ -3869,10 +4181,15 @@
       el.muted=false;
       el.preload=looped ? 'auto' : 'metadata';
     }
-    applyDataBinding(el, model.dataBinding);
+    if(!nativeProfileField) applyDataBinding(el, model.dataBinding);
     applyCanonicalResponsiveAttributes(el,model);
     applyStyle(el, effectiveStyle(model,el));
     applyLayout(el, effectiveLayout(model,el));
+    if(failedProfileImage)el.style.display='none';
+    if(nativeProfileField?.kind==='initials'){
+      const photo=el.parentElement?.querySelector('img');
+      el.hidden=!!photo && photo.style.display!=='none';
+    }
     if (el.tagName === 'FORM') applyFormFieldPresentations(el,model);
     applyAnimations(el, model.animations);
   }
@@ -4337,19 +4654,28 @@
       const source = script.getAttribute('src');
       if (!source) return false;
       const pathname = new URL(source, location.href).pathname;
-      return pathname === '/legend-public-inquiry.js' || pathname === '/js/public-inquiry-form.mjs';
+      return pathname === '/public-inquiry-form.mjs' || pathname === '/js/public-inquiry-form.mjs' ||
+        (pathname === '/legend-public-inquiry.js' && !document.querySelector('[data-legend-receptionist-entry]'));
     });
     if (loaded) return;
     const script = document.createElement('script');
-    script.src = '/legend-public-inquiry.js';
-    script.defer = true;
+    script.src = '/public-inquiry-form.mjs';
+    script.type = 'module';
     document.body.appendChild(script);
   }
 
   function applyDocument(doc) {
+    restoreNativeFormFrames(true);
     restoreNativeFormContinuations();
     restoreFormStepPreview();
     documentState=normalizeDocument(doc);
+    // Prove Coverage correspondence before applying theme, shell, metadata or
+    // page mutations. Preparing native IDs alone does not claim readiness.
+    let coveragePlan=null;
+    if(SITE_KEY==='protect' && pageUsesSystemTemplate(pageState()) && pageState().systemTemplateKey==='protect_template:quote_index'){
+      bindNativeTemplateIdentities();
+      coveragePlan=planCoverageTemplateIdentities(pageState());
+    }
     applyTheme(documentState.theme);
     applyFavicon(documentState.faviconImageDataUrl);
 
@@ -4365,7 +4691,7 @@
       renderCanonicalShell();
       const page=pageState();
       if(pageUsesSystemTemplate(page)){
-        applyTemplateBackedCompositionPage();
+        applyTemplateBackedCompositionPage(coveragePlan);
       }else{
         renderCanonicalCompositionPage();
       }
@@ -4379,6 +4705,7 @@
     syncNativeFormSequences();
     syncNativeFormPresentation();
     if (editorMode && document.getElementById('legend-cms-form-navigator')) previewFormStep(formPreviewIndex);
+    scheduleNativeFormFrames();
     try {
       window.dispatchEvent(new CustomEvent('legend:website-content-rendered', {
         detail:{siteKey:SITE_KEY,page:currentPageRoute(),editor:editorMode,materialize:materializeMode}
@@ -4387,6 +4714,7 @@
   }
 
   function refreshResponsiveComposition() {
+    restoreNativeFormFrames(true);
     restoreFormStepPreview();
     if(legacyMigration){
       const page=legacyMigrationPageState();
@@ -4411,6 +4739,7 @@
     refreshScaledElements();
     syncNativeFormPresentation();
     if (editorMode && document.getElementById('legend-cms-form-navigator')) previewFormStep(formPreviewIndex);
+    scheduleNativeFormFrames();
     updateDirectCanvasUi();
   }
 
@@ -5980,6 +6309,15 @@
     const targetInput = document.getElementById('legend-cms-target'); if (targetInput) targetInput.checked = (ov.target ?? selected.getAttribute('target')) === '_blank';
     const serviceCard = businessServiceCardFor(selected);
     const canonicalForm = ov.type === 'form' || String(ov.systemKey || '').startsWith('protect_runtime_form:');
+    const voiceGroup=document.getElementById('legend-cms-receptionist');
+    const voiceNode=ov.type==='form' && ov.systemKey==='canonical_inquiry' ? ov : null;
+    if(voiceGroup) voiceGroup.hidden=!voiceNode;
+    if(voiceNode){
+      document.getElementById('legend-cms-receptionist-enabled').checked=voiceNode.receptionist?.enabled===true;
+      document.getElementById('legend-cms-receptionist-label').value=voiceNode.receptionist?.label || '';
+      document.getElementById('legend-cms-receptionist-placement').value=voiceNode.receptionist?.placement || 'before';
+      document.getElementById('legend-cms-receptionist-appearance').disabled=!canonicalReceptionist(voiceNode) || !selected.querySelector('[data-website-receptionist] [data-receptionist-start]');
+    }
     const protectedMappings = (Array.isArray(ov.signals) && ov.signals.length > 0) ||
       Object.values(ov.fieldSignals || {}).some(bindings=>Array.isArray(bindings) && bindings.length > 0);
     const duplicateButton = document.getElementById('legend-cms-duplicate');
@@ -6113,6 +6451,26 @@
     syncSelectedSourcePresentationFromCanvas();
   }
 
+  // Only authenticated management responses enter this boundary. Their GUID is
+  // the canonical resource identity; a public delivery origin is not the Studio
+  // preview authority. Never retarget arbitrary saved URLs or forward tickets.
+  function normalizeManagedMediaAsset(asset) {
+    if(!asset || typeof asset.id!=='string' ||
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(asset.id) ||
+      asset.id==='00000000-0000-0000-0000-000000000000' ||
+      typeof asset.url!=='string' || !asset.url.trim() ||
+      typeof asset.contentType!=='string' || !asset.contentType.trim())
+      throw new Error('Website media response was invalid.');
+    const url=new URL(API_BASE+'/api/website-content/media/'+asset.id);
+    if(url.protocol!=='https:') throw new Error('Website media preview requires the secure website authority.');
+    return {...asset,url:url.toString()};
+  }
+
+  function normalizeManagedMediaLibrary(payload) {
+    if(!Array.isArray(payload?.assets)) throw new Error('Media library response was invalid.');
+    return {...payload,assets:payload.assets.map(normalizeManagedMediaAsset)};
+  }
+
   async function uploadMedia(file) {
     if (!file) return null;
     const status = document.getElementById('legend-cms-status');
@@ -6132,8 +6490,9 @@
       const asset = await response.json();
       if (!response.ok || !asset?.id || !asset?.url || !asset?.contentType)
         throw new Error(asset?.message || asset?.error || 'Upload failed.');
+      const normalized=normalizeManagedMediaAsset(asset);
       if (status) status.textContent = 'Media uploaded; save your draft to retain placement';
-      return asset;
+      return normalized;
     } catch (error) { if (status) status.textContent = error.message; return null; }
   }
 
@@ -7372,7 +7731,7 @@
     // Keep Selected Source visually synchronized with Canvas presentation while
     // retaining the server-projected protected-authority omissions. This is a
     // view synchronization only; persistence still flows through canonical save.
-    for(const key of ['text','className','style','breakpointStyles','layout','breakpointLayouts','animations','hidden','alt','mediaAssetId','mediaUrl','fieldLabels','fieldPresentations'])
+    for(const key of ['text','className','style','breakpointStyles','layout','breakpointLayouts','animations','hidden','alt','mediaAssetId','mediaUrl','fieldLabels','fieldPresentations','receptionist'])
     {
       if(Object.hasOwn(current,key)) projected[key]=cloneCanonicalValue(current[key]);
       else delete projected[key];
@@ -7838,8 +8197,7 @@
       url.searchParams.set('kind',kind);
       const response=await fetch(url,{cache:'no-store'});
       if(!response.ok) throw new Error(`Media library failed (${response.status})`);
-      const payload=await response.json();
-      if(!Array.isArray(payload.assets)) throw new Error('Media library response was invalid.');
+      const payload=normalizeManagedMediaLibrary(await response.json());
       grid.replaceChildren();
       for(const asset of payload.assets){
         const card=document.createElement('article'); card.className='legend-cms-media-card';
@@ -8707,6 +9065,35 @@
     const content = document.createElement('div'); content.dataset.cmsView = 'content';
     Array.from(panel.children).filter(el => !el.classList.contains('legend-cms-bar')).forEach(el => content.appendChild(el));
     panel.appendChild(content);
+    const voiceControls=document.createElement('section');
+    voiceControls.id='legend-cms-receptionist'; voiceControls.hidden=true;
+    voiceControls.innerHTML='<h2>Website voice entry</h2><label class="legend-cms-group"><input id="legend-cms-receptionist-enabled" type="checkbox">Show the website voice option</label><p>This changes the page only. Calls remain subject to the current receptionist permission and readiness. Preview never starts a call.</p><label class="legend-cms-group">Button label<input id="legend-cms-receptionist-label" type="text" maxlength="160" placeholder="Speak inside the website"></label><label class="legend-cms-group">Placement<select id="legend-cms-receptionist-placement"><option value="before">Before written inquiry</option><option value="after">After written inquiry</option></select></label><button id="legend-cms-receptionist-appearance" type="button" disabled>Edit voice button appearance</button><p>Use the existing Appearance controls without starting a preview call.</p>';
+    content.appendChild(voiceControls);
+    document.getElementById('legend-cms-receptionist-appearance').addEventListener('click',()=>{
+      const form=selected;
+      const node=compositionNode(form?.dataset?.cmsCompositionId);
+      if(!form?.matches('form[data-website-inquiry]') || !canonicalReceptionist(node)) return;
+      const control=form.querySelector('[data-website-receptionist] [data-receptionist-start]');
+      if(!control) return;
+      setSelected(control);
+      showPanel('appearance');
+    });
+    voiceControls.addEventListener('change',()=>{
+      const node=selectedWebsiteModel(false);
+      if(node?.type!=='form' || node.systemKey!=='canonical_inquiry') return;
+      checkpoint();
+      node.receptionist={
+        enabled:document.getElementById('legend-cms-receptionist-enabled').checked,
+        label:document.getElementById('legend-cms-receptionist-label').value.trim().slice(0,160) || null,
+        placement:document.getElementById('legend-cms-receptionist-placement').value==='after'?'after':'before'
+      };
+      const previous=selected;
+      const replacement=buildCompositionNode(node);
+      previous.replaceWith(replacement);
+      setSelected(replacement);
+      markDirty();
+      syncSelectedSourcePresentationFromCanvas();
+    });
     const navigation = document.createElement('nav');
     navigation.className = 'legend-cms-navigation'; navigation.setAttribute('aria-label', 'Website editing tools');
     navigation.innerHTML = `<div class="legend-cms-device-switch" role="group" aria-label="Editing viewport"><button type="button" data-editor-viewport="desktop" aria-pressed="false">Desktop</button><button type="button" data-editor-viewport="mobile" aria-pressed="false">Mobile</button></div><small class="legend-cms-device-note">Desktop and Mobile styling stay separate; content is shared. Base applies styling to all sizes.</small><div class="legend-cms-tabs legend-cms-primary-tabs"><button type="button" data-open="gpt" data-agent-action="open-workspace">GPT Workspace</button><button type="button" data-open="source" data-agent-action="open-source">Source</button><button type="button" data-open="media" data-agent-action="open-media">Media</button><button type="button" data-open="publish" data-agent-action="open-publish">Publish</button><button type="button" data-open="advanced">Advanced</button></div>`;
@@ -9072,6 +9459,7 @@
       .legend-cms-editor [hidden]{display:none}
 
       body.legend-cms-editing .legend-cms-preview{container:legend-studio / inline-size}
+      body.legend-public--protect.legend-cms-editing .legend-cms-preview{display:flex;flex-direction:column}
       /* Editor canvas counterpart of legend-public-web.css's 980px header.
          Public media rules and authored Base styles remain unchanged. */
       @container legend-studio (max-width:980px){
@@ -9334,6 +9722,7 @@
   function previewFormStep(index) {
     if (!editorMode) return;
     restoreFormStepPreview();
+    scheduleNativeFormFrames();
     const entries = formPreviewEntries();
     if (!Number.isInteger(index) || index < 0 || index >= entries.length) {
       formPreviewIndex = -1;
@@ -9345,6 +9734,23 @@
     const remember=rememberFormPreview;
     if(selectedStep.phase)
       nativeFormPresentation(selectedStep.form,{phase:selectedStep.phase,step:selectedStep.nativeStep},formPreviewProjection);
+    else if(SITE_KEY==='protect' && pageState().systemTemplateKey==='protect_template:commercial_quote' &&
+        selectedStep.form.id==='commercialQuoteForm') {
+      // The native form owns these progress targets. Project display only;
+      // never call its validation/navigation handler or alter CurrentStep.
+      const form=selectedStep.form, main=form.closest('main');
+      const ownEntries=entries.filter(entry=>entry.form===form);
+      const position=ownEntries.indexOf(selectedStep)+1;
+      const target=key=>{
+        const id=form.dataset[key];
+        if(!id || !main) return null;
+        const matches=[...main.querySelectorAll('[data-cms-preview-for]')]
+          .filter(element=>element.id===id && element.dataset.cmsPreviewFor===form.id);
+        return matches.length===1 ? matches[0] : null;
+      };
+      formPreviewProjection.text(target('cmsPreviewProgressId'),'Step '+position+' of '+ownEntries.length);
+      formPreviewProjection.style(target('cmsPreviewProgressFillId'),'width',Math.round(position/ownEntries.length*100)+'%');
+    }
     for (const entry of entries) {
       if (entry.form !== selectedStep.form || entry.step === selectedStep.step) continue;
       remember(entry.step);
@@ -10017,6 +10423,7 @@
   // The same canonical model drives the editor and the immutable public DOM.
   // Re-evaluate at the real visitor width without ever remounting the page.
   function refreshCompiledResponsivePresentation() {
+    restoreNativeFormFrames(true);
     const canonicalNodes=new Map();
     for(const root of allCanonicalRootSets())
       walkComposition(root.nodes,node=>canonicalNodes.set(node.id,node));
@@ -10032,6 +10439,7 @@
       if(el && model) applyCompiledResponsivePresentation(el,model);
     }
     refreshScaledElements();
+    scheduleNativeFormFrames();
   }
 
   // The canonical compiler has already composed this immutable published

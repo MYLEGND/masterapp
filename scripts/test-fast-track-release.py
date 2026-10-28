@@ -2470,4 +2470,54 @@ class FounderProtectSupersessionTests(unittest.TestCase):
                 deploy.prepare_protect_replacement(self.revision,'c'*40,Mock())
             read.assert_not_called()
 
+class FreshFounderProtectSupersessionTests(FounderProtectSupersessionTests):
+    def setUp(self):
+        super().setUp()
+        self.previous = json.loads(json.dumps(self.request['protectSupersession']))
+        self.request['protectSupersession'] = {'authorizationId': 'ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1:fresh-protect-20261028', 'authorizedBy': 'Founder', 'target': 'protect', 'originalRun': 40529707342, 'originalOperationId': 'b7362baa94857c1e58085badd0068218374e954b963c7fcb5d79638ba2c290fc', 'originalRevision': '8f94550fdcb0dfbe1b1b1c71aa43171a60661096', 'expectedReleaseParent': 'c030b8a9b56ae12e4f2589f6a5119fec2b1e6624', 'historicalOutcome': 'UNKNOWN', 'authorizeOneReplacement': True, 'rollbackArtifactId': 12749425188, 'rollbackArtifactDigest': 'sha256:59af04b03aa6d815144cd253ed6cb8594b22d930e8420289de7a0b6a6562acee'}
+        self.parent = self.request['protectSupersession']['expectedReleaseParent']
+
+    def test_crossed_generations_and_changed_rollback_are_rejected(self):
+        for key in ('authorizationId', 'originalRun', 'originalOperationId', 'originalRevision',
+                    'expectedReleaseParent', 'rollbackArtifactId', 'rollbackArtifactDigest'):
+            request = json.loads(json.dumps(self.request))
+            request['protectSupersession'][key] = self.previous[key]
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'AUTHORIZATION_CHANGED'):
+                self.invoke(request)
+        request = json.loads(json.dumps(self.request))
+        request['protectSupersession']['rollbackArtifactDigest'] = 'sha256:'+'f'*64
+        with self.assertRaisesRegex(ValueError, 'AUTHORIZATION_CHANGED'):
+            self.invoke(request)
+
+    def test_changed_control_scope_cannot_admit_fresh_replacement(self):
+        for key, value in [('requestedBy', 'Other'), ('releaseMode', 'validate-only'),
+                           ('cloudflareWebsiteRouting', True), ('preserveLiveTargets', True),
+                           ('targets', ['masterapp-protect'])]:
+            request = json.loads(json.dumps(self.request)); request[key] = value
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'AUTHORIZATION_CHANGED'):
+                self.invoke(request)
+
+    def test_original_ancestry_and_exact_merge_parent_required(self):
+        with patch.object(authority.subprocess, 'check_output', return_value=f'{self.revision} {self.parent} '+'b'*40), \
+                patch.object(authority.subprocess, 'run', return_value=SimpleNamespace(returncode=1)):
+            with self.assertRaisesRegex(ValueError, 'CANDIDATE_CHANGED'):
+                authority.fast_track_protect_supersession(self.revision, request=self.request)
+        with patch.object(authority.subprocess, 'check_output', return_value=f'{self.revision} {self.parent}'), \
+                patch.object(authority.subprocess, 'run', return_value=SimpleNamespace(returncode=0)):
+            with self.assertRaisesRegex(ValueError, 'CANDIDATE_CHANGED'):
+                authority.fast_track_protect_supersession(self.revision, request=self.request)
+
+    def test_pinned_rollback_failure_does_not_authorize_replacement(self):
+        proof = self.invoke(); azure = SimpleNamespace(authorized_replacement=False)
+        with patch.object(deploy._RELEASE_AUTHORITY, 'fast_track_protect_supersession', return_value=proof), \
+                patch.object(deploy, 'read_deployments_bounded', return_value=[{'status': 4}]), \
+                patch.dict(os.environ, {'GITHUB_REPOSITORY':'MYLEGND/masterapp'}), \
+                patch.object(deploy._RELEASE_AUTHORITY, '_download_run_artifact', side_effect=ValueError('artifact unavailable')) as download:
+            with self.assertRaisesRegex(ValueError, 'artifact unavailable'):
+                deploy.prepare_protect_replacement(self.revision, proof['originalRevision'], azure)
+            self.assertEqual(download.call_args.args[1], 40529707342)
+            self.assertEqual(download.call_args.kwargs['artifact_id'], 12749425188)
+            self.assertEqual(download.call_args.kwargs['expected_digest'], proof['rollbackArtifactDigest'])
+            self.assertFalse(azure.authorized_replacement)
+
 if __name__ == '__main__':unittest.main()

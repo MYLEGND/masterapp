@@ -15,8 +15,16 @@ public sealed class TrackingViewDataFilter(IHttpContextAccessor http, AgentTrack
         {
             var request = http.HttpContext ?? context.HttpContext;
             var resolved = await ProtectWebsiteOwnerResolver.ResolveAsync(request, profiles, configuration["Founder:Upn"], ct: request.RequestAborted);
-            var owner = resolved is null ? null : await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, resolved.Profile, request.RequestAborted);
-            var browser = await marketing.GetAsync(owner, request.RequestAborted);
+            // Match the layout's existing isolation boundary. Studio still
+            // resolves the real website owner, but does not render advertising.
+            var websiteStudioMode = request.Request.Query.ContainsKey("legendEdit") ||
+                request.Request.Query.ContainsKey("legendMaterialize");
+            var browser = new MarketingBrowserConfiguration();
+            if (!websiteStudioMode)
+            {
+                var owner = resolved is null ? null : await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, resolved.Profile, request.RequestAborted);
+                browser = await marketing.GetAsync(owner, request.RequestAborted);
+            }
             controller.ViewData["TrackingProfileId"] = resolved?.Profile.Id;
             controller.ViewData["TrackingSlug"] = resolved?.Slug;
             controller.ViewData["IsFounderPath"] = resolved?.IsFounder == true;

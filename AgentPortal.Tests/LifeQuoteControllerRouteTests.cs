@@ -71,4 +71,33 @@ public class LifeQuoteControllerRouteTests
             })
             .Build();
     }
+
+    [Theory]
+    [InlineData(null, true, "", "/Quote/Dental-Vision-Hearing")]
+    [InlineData("founder-slug", true, "/protect", "/protect/Quote/Dental-Vision-Hearing")]
+    [InlineData("agent-one", false, "", "/a/agent-one/Quote/Dental-Vision-Hearing")]
+    [InlineData("agent-two", false, "/protect", "/protect/a/agent-two/Quote/Dental-Vision-Hearing")]
+    public void DvhLegacyGetUsesCanonicalSameOriginOwnerScopeAndPreservesStudioQuery(
+        string? slug, bool founder, string pathBase, string expectedPath)
+    {
+        var http = new DefaultHttpContext();
+        http.Request.PathBase = pathBase;
+        http.Request.Path = "/Quote/DentalVisionHearing";
+        http.Request.QueryString = new QueryString("?legendEdit=synthetic-ticket&utm_source=synthetic&returnUrl=https%3A%2F%2Fforeign.invalid");
+        http.Items["TrackingSlug"] = slug;
+        http.Items["IsFounderPath"] = founder;
+        var controller = new QuoteController(BuildConfig())
+        {
+            ControllerContext = new ControllerContext { HttpContext = http }
+        };
+        var result = controller.DentalVisionHearing();
+        Assert.IsType<LocalRedirectResult>(result);
+        Assert.Equal(expectedPath + http.Request.QueryString, result.Url);
+        Assert.False(result.Permanent);
+        Assert.False(result.PreserveMethod);
+        Assert.Single(typeof(QuoteController).GetMethod(nameof(QuoteController.DentalVisionHearing))!
+            .GetCustomAttributes(typeof(HttpGetAttribute), false));
+        Assert.Equal("Dental-Vision-Hearing", new Uri("https://protect.example.test" + result.Url).Segments[^1]);
+    }
+
 }

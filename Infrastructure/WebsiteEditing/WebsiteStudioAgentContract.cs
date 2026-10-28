@@ -386,7 +386,18 @@ If a visual request conflicts with protected behavior, preserve the backend cont
             allowedTagsByType = WebsiteCompositionSchema.AllowedTagsByType,
             idRule = "globally_unique_stable_role_based",
             responsiveRule = "one_semantic_node_with_breakpoint_overrides",
-            validationRule = "repair_authorable_failure_without_weakening_protected_semantics"
+            validationRule = "repair_authorable_failure_without_weakening_protected_semantics",
+            canonicalInquiryVoice = new
+            {
+                nodeType = "form",
+                capability = "contact.inquiry.submit",
+                field = "receptionist",
+                enabled = "boolean; show the entry only, not permission to accept calls; absent means off",
+                label = "plain text, maximum 160 characters",
+                placement = new[] { "before", "after" },
+                appearance = "existing fieldPresentations.receptionist_start and shared website theme",
+                authority = "The existing runtime resolves the site owner and checks admission on an explicit click before microphone access. Never write owner, provider, endpoint or readiness fields."
+            }
         },
         writable = new[]
         {

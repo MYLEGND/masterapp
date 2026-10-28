@@ -886,7 +886,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     return value - 10000;
   };
   let manifest,chromeVersion,driverVersion,checked,driverBindings,versionProbeFailure,scrollDiagnostic,localeDiagnostic,placementDiagnostic,lifecycleDiagnostic,quoteDiagnostic;
-  const requiredScenarios=[...hosts.flatMap(host=>widths.map(width=>'viewport:'+host+':'+width)),'modal-order-and-wrap','locale-month-rollover','long-profile-and-offset','live-mobile-boundary','client-home-focus',...['life','disability','dental-vision-hearing'].map(route=>'quote-source:'+route),'quote-responsive-studio','protect-scripture-keyboard','studio-header-projection'];
+  const requiredScenarios=[...hosts.flatMap(host=>widths.map(width=>'viewport:'+host+':'+width)),'modal-order-and-wrap','locale-month-rollover','long-profile-and-offset','live-mobile-boundary','client-home-focus',...['life','disability','dental-vision-hearing'].map(route=>'quote-source:'+route),'quote-responsive-studio','protect-scripture-keyboard','studio-header-projection','protect-footer-component-flow'];
   const completedScenarios=new Set();
   const quoteRecords=[];
   const records=[]; let acceptanceComplete=false; let failure; let server,driver,session,driverOrigin; let serverHost; let driverLog='';
@@ -1479,6 +1479,56 @@ test('actual canonical frontend components render in the existing sandboxed CI b
       assert.deepEqual(await execute('return window.__quoteErrors'),[]);
     }
     completedScenarios.add('studio-header-projection');
+
+    // Finite shell-component geometry, not a full Razor/live-route proof. All
+    // original quote assertions above have finished. Only ordinary shell/content
+    // nodes and authorable dimensions are supplied; layout comes from shipped CSS.
+    for(const studio of [false,true]){
+      await quoteGo('/quote/disability',studio?'?legendEdit=ticket':'?public=1');
+      await execute(`
+        const main=document.querySelector('main.layout-content');
+        if(!main)throw new Error('Existing Protect main missing');
+        const parent=main.parentElement;
+        const header=document.createElement('header');header.className='site-header';header.textContent='Authored header';header.dataset.geometryHeader='';
+        const content=document.createElement('div');content.textContent='Ordinary component content';content.dataset.geometryContent='';main.replaceChildren(content);
+        const footer=document.createElement('footer');footer.className='site-footer';footer.textContent='Authored footer';footer.dataset.geometryFooter='';
+        parent.insertBefore(header,main);main.after(footer);
+      `);
+      for(const width of [1188,390]){
+        await metrics(width,932);
+        for(const headerHeight of [null,width<500?96:112]){
+        for(const contentHeight of [180,1200]){
+          let previousTop;
+          for(const footerHeight of [96,520.856]){
+            const result=await execute(`
+              const main=document.querySelector('main.layout-content'),header=document.querySelector('[data-geometry-header]'),footer=document.querySelector('[data-geometry-footer]'),content=document.querySelector('[data-geometry-content]');
+              header.style.height=arguments[0]===null?'':arguments[0]+'px';content.style.height=arguments[1]+'px';footer.style.height=arguments[2]+'px';footer.style.paddingTop='31px';footer.style.paddingBottom='27px';
+              window.scrollTo({top:0,left:0,behavior:'instant'});
+              const preview=document.querySelector('.legend-cms-preview');if(preview)preview.scrollTop=0;
+              const rect=e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height};};
+              const css=getComputedStyle(footer),mainCss=getComputedStyle(main),parentCss=getComputedStyle(main.parentElement);
+              return {main:rect(main),content:rect(content),footer:rect(footer),header:rect(header),canvasTop:preview?preview.getBoundingClientRect().top:0,viewport:innerHeight,position:css.position,paddingTop:css.paddingTop,paddingBottom:css.paddingBottom,footerHeight:footer.style.height,headerHeight:header.style.height,mainMinimum:parseFloat(mainCss.minHeight),parentDisplay:parentCss.display,parentDirection:parentCss.flexDirection,unchanged:JSON.stringify(window.__quoteDocumentObject)===window.__quoteDocument,errors:window.__quoteErrors,requests:window.__quoteRequests};
+            `,[headerHeight,contentHeight,footerHeight]);
+            quoteDiagnostic={scenario:'protect-footer-component-flow',studio,width,headerHeight,contentHeight,footerHeight,...result};
+            assert.equal(result.parentDisplay,'flex');assert.equal(result.parentDirection,'column');
+            assert.ok(result.mainMinimum>700,'Shipped Protect content minimum must reserve the short-step viewport');
+            assert.ok(result.footer.top>=result.canvasTop+result.viewport*.95,'Short content must keep the footer near or beyond the viewport floor, including the native narrow header');
+            assert.ok(result.footer.top>=result.main.bottom-1&&result.main.bottom>=result.content.bottom-1,'Footer must follow natural main content without overlap');
+            assert.ok(!['fixed','absolute'].includes(result.position),'Footer must stay in normal document flow');
+            assert.ok(Math.abs(result.footer.height-footerHeight)<1,'Authored footer height remains adjustable');
+            assert.equal(result.footerHeight,footerHeight+'px');assert.equal(result.headerHeight,headerHeight===null?'':headerHeight+'px');
+            assert.equal(result.paddingTop,'31px');assert.equal(result.paddingBottom,'27px');
+            if(previousTop!==undefined)assert.ok(Math.abs(result.footer.top-previousTop)<1,'Changing footer bulk must not move its top upward');
+            previousTop=result.footer.top;
+            assert.ok(result.unchanged,'Geometry observation must not save or mutate the canonical document');
+            assert.deepEqual(result.errors,[]);assert.ok(result.requests.every(r=>r.method==='GET'));
+          }
+        }
+      }
+    }
+    }
+    assert.deepEqual(rejected,[],'Unexpected HTTP in footer component fixture');
+    completedScenarios.add('protect-footer-component-flow');
 
     requireCompleteScenarios(requiredScenarios,completedScenarios);
     acceptanceComplete=true;

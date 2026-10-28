@@ -1,3 +1,14 @@
+using System.Collections.Generic;
+using Domain.Entities;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
+using Protect_Website.Controllers;
+using ProtectWebsite.Services.Tracking;
 using System;
 using System.Text.Json;
 using System.Threading;
@@ -52,4 +63,64 @@ public sealed class MarketingBrowserConfigurationTests
         meta.VerifyAll();
         openAi.VerifyAll();
     }
+
+    [Theory]
+    [InlineData("?legendEdit=synthetic-ticket", true)]
+    [InlineData("?legendEdit=expired-or-invalid", true)]
+    [InlineData("?legendMaterialize=1", true)]
+    [InlineData("?legendMaterialize=", true)]
+    [InlineData("?unrelated=legendEdit", false)]
+    [InlineData("", false)]
+    public async Task ProtectTrackingFilter_StudioSkipsDiscardedAdvertisingButPreservesResolvedOwner(string query, bool studio)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var profile = new AgentTrackingProfile
+        {
+            AgentUserId = "synthetic-agent", AgentUpn = "agent@example.test", Slug = "synthetic-agent", Status = "Active"
+        };
+        db.AgentTrackingProfiles.Add(profile);
+        await db.SaveChangesAsync();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Founder:Upn"] = "founder@example.test"
+        }).Build();
+        var http = new DefaultHttpContext();
+        http.Request.Path = "/a/synthetic-agent/Quote/Auto";
+        http.Request.QueryString = new QueryString(query);
+        var owner = MarketingOwnerScope.Agent(profile.Id);
+        var meta = new Mock<IMetaPixelResolutionService>(MockBehavior.Strict);
+        var openAi = new Mock<IOpenAiAdsAccountConnectionAuthority>(MockBehavior.Strict);
+        if (!studio)
+        {
+            meta.Setup(x => x.ResolveForOwnerAsync(owner, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ResolvedMetaPixelContext { PixelId = "public-meta", PixelOwnerType = MetaPixelOwnerTypes.Agent });
+            openAi.Setup(x => x.GetAsync(owner, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new OpenAiAdsConnectionSnapshot(owner, true, true, Guid.NewGuid(), "account", "Account",
+                    "admin", "approved", "api_key", null, null, Array.Empty<string>(), "public-openai", "datasource", true, true,
+                    DateTime.UtcNow, null, DateTime.UtcNow));
+        }
+        var controller = new QuoteController(configuration);
+        var action = new ActionContext(http, new RouteData(), new ActionDescriptor(), new ModelStateDictionary());
+        var context = new ActionExecutingContext(action, new List<IFilterMetadata>(), new Dictionary<string, object?>(), controller);
+        var filter = new TrackingViewDataFilter(new HttpContextAccessor { HttpContext = http },
+            new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance), configuration, db,
+            new MarketingBrowserConfigurationService(meta.Object, openAi.Object, NullLogger<MarketingBrowserConfigurationService>.Instance));
+        var invoked = 0;
+        await filter.OnActionExecutionAsync(context, () =>
+        {
+            invoked++;
+            return Task.FromResult(new ActionExecutedContext(action, new List<IFilterMetadata>(), controller));
+        });
+        Assert.Equal(1, invoked);
+        Assert.Equal(profile.Id, controller.ViewData["TrackingProfileId"]);
+        Assert.Equal("synthetic-agent", controller.ViewData["TrackingSlug"]);
+        Assert.Equal(false, controller.ViewData["IsFounderPath"]);
+        Assert.Equal(studio ? null : "public-meta", controller.ViewData["ResolvedMetaPixelId"]);
+        Assert.Equal(studio ? null : "public-openai", controller.ViewData["ResolvedOpenAiPixelId"]);
+        meta.VerifyAll(); openAi.VerifyAll();
+        meta.VerifyNoOtherCalls(); openAi.VerifyNoOtherCalls();
+        // Query presence changes presentation only; it never issues editor authority.
+        Assert.Empty(http.Response.Headers);
+    }
+
 }

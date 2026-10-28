@@ -1454,4 +1454,32 @@ public sealed class WebsiteSiteSourceV3Tests
         Assert.False(PublishedWebsiteBindingResolver.ObservedEventMatches("website_lead_submitted", binding));
     }
 
+
+    [Theory]
+    [InlineData("/Quote")]
+    [InlineData("/quote/")]
+    [InlineData("/a/agent-one/Quote")]
+    public void CoverageIndex_IsPresentationTemplateWithoutRuntimeFormAuthority(string path)
+    {
+        Assert.Equal("protect_template:quote_index",
+            WebsiteSystemTemplateAuthority.Resolve(WebsiteEditorSiteKeys.Protect, path));
+        Assert.True(WebsiteSystemTemplateAuthority.IsKnownTemplateKey("protect_template:quote_index"));
+        Assert.Null(WebsiteSystemTemplateAuthority.RuntimeFormKey(path));
+        Assert.Null(WebsiteSystemTemplateAuthority.Resolve(WebsiteEditorSiteKeys.Business, path));
+        Assert.Null(WebsiteSystemTemplateAuthority.Resolve(WebsiteEditorSiteKeys.Legend, path));
+        const string storedPath = "/quote";
+        var document = CanonicalDocument();
+        document.Pages[storedPath] = new WebsitePageDocument
+        {
+            Composition = [new WebsiteCompositionNode { Id = "coverage.tile", Type = "text", Tag = "span", Text = "Life" }]
+        };
+        WebsiteSystemTemplateAuthority.Apply(WebsiteEditorSiteKeys.Protect, document);
+        Assert.Equal("protect_template:quote_index", document.Pages[storedPath].SystemTemplateKey);
+        Assert.Null(document.Pages[storedPath].Composition.Single().SystemKey);
+        var source = WebsiteSiteSource.Serialize(document);
+        Assert.DoesNotContain("protect_template:quote_index", source, StringComparison.Ordinal);
+        Assert.Equal("protect_template:quote_index",
+            WebsiteSiteSource.Parse(source, document, BusinessActions()).Document.Pages[storedPath].SystemTemplateKey);
+    }
+
 }

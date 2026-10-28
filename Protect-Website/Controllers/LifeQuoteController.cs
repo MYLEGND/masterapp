@@ -2,6 +2,7 @@ using Infrastructure.Analytics;
 using Infrastructure.Bookings;
 using Microsoft.AspNetCore.Mvc;
 using Domain.Entities;
+using Domain.Messaging;
 using Infrastructure.Data;
 using Protect_Website.Models;
 using static Protect_Website.Models.LifeOfferResolver;
@@ -155,7 +156,7 @@ namespace Protect_Website.Controllers
                 Phone = "",
                 OfferKey = cfg.OfferKey,
                 ProductType = cfg.ProductType
-            }, mode);
+            }, mode, includeFounderPublicCard: true);
             ApplyWizardViewData(vm);
             return View("~/Views/Quote/Life.cshtml", vm);
         }
@@ -1680,34 +1681,6 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
             model.AgeRange = Clean(model.AgeRange) ?? (model.Age.HasValue ? model.Age.Value.ToString(CultureInfo.InvariantCulture) : null);
         }
 
-private static string ResolveAgentDisplayName(AgentProfile? agentProfile, AgentTrackingProfile trackingProfile)
-        {
-            if (!string.IsNullOrWhiteSpace(agentProfile?.FullName))
-            {
-                return agentProfile.FullName.Trim();
-            }
-
-            if (!string.IsNullOrWhiteSpace(trackingProfile.DisplayName))
-            {
-                return trackingProfile.DisplayName.Trim();
-            }
-
-            if (!string.IsNullOrWhiteSpace(trackingProfile.AgentUpn))
-            {
-                var emailName = trackingProfile.AgentUpn.Split('@', 2)[0]
-                    .Replace('.', ' ')
-                    .Replace('-', ' ')
-                    .Replace('_', ' ')
-                    .Trim();
-                if (!string.IsNullOrWhiteSpace(emailName))
-                {
-                    return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(emailName);
-                }
-            }
-
-            return trackingProfile.Slug;
-        }
-
         private static string ResolveAgentFirstName(string displayName)
         {
             if (string.IsNullOrWhiteSpace(displayName))
@@ -1729,41 +1702,32 @@ private static string ResolveAgentDisplayName(AgentProfile? agentProfile, AgentT
             return $"{trackingApiBase}/avatar/agent/{safeSlug}";
         }
 
-        private async Task<AgentProfile?> ResolveAgentProfileAsync(AgentTrackingProfile trackingProfile, CancellationToken ct)
+        // Only the existing prospect-facing Public Card fields. Identity follows
+        // the same active, typed exact-one rule as the public avatar authority.
+        private sealed record PublicAgentCard(string UserId, string? FullName, string? Npn, string? ShortBio);
+
+        private async Task<PublicAgentCard?> ResolveAgentProfileAsync(AgentTrackingProfile trackingProfile, CancellationToken ct)
         {
-            var hasAgentUserId = !string.IsNullOrWhiteSpace(trackingProfile.AgentUserId);
-            var hasAgentUpn = !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn);
-            var normalizedUpn = hasAgentUpn ? trackingProfile.AgentUpn.Trim().ToUpperInvariant() : string.Empty;
-
-            if (!hasAgentUserId && !hasAgentUpn)
-            {
-                return null;
-            }
-
+            var key = MessagingParticipantIdentityKey.Create(trackingProfile.AgentUserId, MessagingParticipantTypes.Agent);
+            if (string.IsNullOrWhiteSpace(key.UserId)) return null;
             var candidates = await _db.AgentProfiles.AsNoTracking()
-                .Where(x =>
-                    (hasAgentUserId && x.AgentUserId == trackingProfile.AgentUserId) ||
-                    (hasAgentUpn && (x.NormalizedEmail == normalizedUpn || x.AgentUpn == trackingProfile.AgentUpn)))
+                .Where(profile => profile.IsActive && profile.AgentUserId.ToLower() == key.UserId)
+                .Select(profile => new PublicAgentCard(profile.AgentUserId, profile.FullName, profile.Npn, profile.ShortBio))
                 .ToListAsync(ct);
-
-            return candidates
-                .OrderByDescending(x => !string.IsNullOrWhiteSpace(x.Npn))
-                .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.ShortBio))
-                .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.FullName))
-                .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.Title))
-                .ThenByDescending(x => hasAgentUserId && x.AgentUserId == trackingProfile.AgentUserId)
-                .ThenByDescending(x => x.UpdatedUtc)
-                .FirstOrDefault();
+            var matches = candidates.Where(profile => string.Equals(
+                MessagingParticipantIdentityKey.Create(profile.UserId, MessagingParticipantTypes.Agent).UserId,
+                key.UserId, StringComparison.Ordinal)).ToArray();
+            return matches.Length == 1 ? matches[0] : null;
         }
 
-        private async Task<LifeWizardAgentTrustProfile?> BuildAgentTrustProfileAsync(CancellationToken ct)
+        private async Task<LifeWizardAgentTrustProfile?> BuildAgentTrustProfileAsync(CancellationToken ct, bool includeFounderPublicCard = false)
         {
             var owner = await ProtectWebsiteOwnerResolver.ResolveAsync(
                 HttpContext,
                 _resolver,
                 founderUpn,
                 ct: ct);
-            if (owner is null || owner.IsFounder)
+            if (owner is null || (owner.IsFounder && !includeFounderPublicCard))
                 return null;
 
             var trackingProfile = owner.Profile;
@@ -1773,26 +1737,33 @@ private static string ResolveAgentDisplayName(AgentProfile? agentProfile, AgentT
 
             var agentProfile = await ResolveAgentProfileAsync(trackingProfile, ct);
 
-            var displayName = ResolveAgentDisplayName(agentProfile, trackingProfile);
-            var resolvedBooking = await _publicBookingResolver.ResolveAsync(
-                new PublicBookingResolveContext(
-                    AgentTrackingProfileId: trackingProfile.Id,
-                    AgentUserId: trackingProfile.AgentUserId,
-                    AgentSlug: agentSlug),
-                ct);
-            var schedulingLink = resolvedBooking.HasFallback
-                ? resolvedBooking.FallbackUrl
-                : resolvedBooking.EmbedUrl;
+            var displayName = agentProfile?.FullName?.Trim() ?? string.Empty;
+            // Public-card eligibility must not remove the existing non-Founder
+            // owner/booking envelope. Founder presentation does not opt into new
+            // booking work, and the summary-email caller keeps its prior null path.
+            string? schedulingLink = null;
+            if (!owner.IsFounder)
+            {
+                var resolvedBooking = await _publicBookingResolver.ResolveAsync(
+                    new PublicBookingResolveContext(
+                        AgentTrackingProfileId: trackingProfile.Id,
+                        AgentUserId: trackingProfile.AgentUserId,
+                        AgentSlug: agentSlug),
+                    ct);
+                schedulingLink = resolvedBooking.HasFallback
+                    ? resolvedBooking.FallbackUrl
+                    : resolvedBooking.EmbedUrl;
+            }
 
             return new LifeWizardAgentTrustProfile
             {
                 AgentTrackingProfileId = trackingProfile.Id,
                 AgentSlug = agentSlug,
                 DisplayName = displayName,
-                FirstName = ResolveAgentFirstName(displayName),
+                FirstName = string.IsNullOrWhiteSpace(displayName) ? string.Empty : ResolveAgentFirstName(displayName),
                 Npn = string.IsNullOrWhiteSpace(agentProfile?.Npn) ? null : agentProfile.Npn.Trim(),
                 ShortBio = string.IsNullOrWhiteSpace(agentProfile?.ShortBio) ? null : agentProfile.ShortBio.Trim(),
-                ProfileImageUrl = BuildAgentAvatarUrl(agentSlug),
+                ProfileImageUrl = agentProfile is null ? null : BuildAgentAvatarUrl(agentSlug),
                 SchedulingLink = schedulingLink
             };
         }
@@ -2098,7 +2069,7 @@ private async Task TryWriteLeadPipelineEventAsync(
             }
         }
 
-        private async Task<LifeWizardViewModel> BuildWizardViewModelAsync(LifeWizardConfig cfg, LifeQuoteFormModel model, WizardPageMode pageMode)
+        private async Task<LifeWizardViewModel> BuildWizardViewModelAsync(LifeWizardConfig cfg, LifeQuoteFormModel model, WizardPageMode pageMode, bool includeFounderPublicCard = false)
         {
             model.OfferKey = string.IsNullOrWhiteSpace(model.OfferKey) ? cfg.OfferKey : model.OfferKey;
             model.ProductType = string.IsNullOrWhiteSpace(model.ProductType) ? cfg.ProductType : model.ProductType;
@@ -2114,7 +2085,7 @@ private async Task TryWriteLeadPipelineEventAsync(
                 PageVariant = pageMode.PageVariant,
                 PageMode = pageMode.PageMode,
                 EffectivePageKey = pageMode.EffectivePageKey,
-                AgentTrustProfile = await BuildAgentTrustProfileAsync(HttpContext?.RequestAborted ?? CancellationToken.None)
+                AgentTrustProfile = await BuildAgentTrustProfileAsync(HttpContext?.RequestAborted ?? CancellationToken.None, includeFounderPublicCard)
             };
         }
 

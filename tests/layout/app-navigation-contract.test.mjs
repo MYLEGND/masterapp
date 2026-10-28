@@ -88,22 +88,40 @@ function attrs(tag) {
   return map;
 }
 
-function controllerActions(appDir) {
+function controllerActions(appDir, files) {
   const controllers=join(ROOT,appDir,'Controllers');
   const index=new Map();
   if(!existsSync(controllers)) return index;
-  for(const file of walk(controllers,'.cs')) {
+  for(const file of files ?? walk(controllers,'.cs')) {
     const src=readFileSync(file,'utf8');
     const classMatch=src.match(/class\s+(\w+)Controller\b/);
     if(!classMatch) continue;
     const name=classMatch[1];
-    const actions=new Set();
+    const actions=index.get(name) ?? new Set();
     for(const m of src.matchAll(/(?:public|internal)\s+(?:async\s+)?(?:Task<\s*)?(?:IActionResult|ActionResult(?:<[^>]+>)?|Task|JsonResult|ContentResult|FileResult|RedirectResult)[^\n{]*?\s+(\w+)\s*\(/g)) actions.add(m[1]);
     for(const m of src.matchAll(/\[(?:HttpGet|HttpPost|HttpPut|HttpDelete|HttpPatch)\s*\([^\]]*Name\s*=\s*"([^"]+)"/g)) actions.add(m[1]);
     index.set(name,actions);
   }
   return index;
 }
+
+test('controller action discovery unions actual partials independent of file order without inventing targets',()=>{
+  const names=['WebsiteAnalyticsController.cs','WebsiteAnalyticsController.Receptionist.cs','WebsiteAnalyticsController.ReceptionistManagement.cs'];
+  const files=names.map(name=>join(ROOT,'AgentPortal','Controllers',name));
+  let expected;
+  for(const order of [[0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0]]){
+    const index=controllerActions('AgentPortal',order.map(i=>files[i]));
+    assert.equal(index.size,1,'All three files belong to the same controller');
+    const actions=index.get('WebsiteAnalytics');
+    assert.ok(actions,'The real partial controller exists');
+    for(const action of ['Index','Receptionist','ReceptionistConnections']) assert.equal(actions.has(action),true,action);
+    assert.equal(actions.has('MissingReceptionistAction'),false,'Unknown actions still fail the existing Razor target lookup');
+    assert.equal(index.has('MissingWebsiteAnalytics'),false,'Unknown controllers are not manufactured');
+    const current=[...actions].sort();
+    if(expected) assert.deepEqual(current,expected,'The full discovered action set must not depend on file order');
+    else expected=current;
+  }
+});
 
 const apps=['AgentPortal','ClientApp'];
 

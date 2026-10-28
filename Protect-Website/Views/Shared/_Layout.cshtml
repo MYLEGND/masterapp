@@ -79,7 +79,7 @@
         if (seoDocumentRoute.StartsWith(agentPrefix + "/", StringComparison.OrdinalIgnoreCase))
             seoDocumentRoute = seoDocumentRoute[agentPrefix.Length..];
     }
-    if (Guid.TryParse(trackingProfileId, out var seoProfileId))
+    if (!websiteStudioMode && Guid.TryParse(trackingProfileId, out var seoProfileId))
     {
         var seoOwner = await WebsiteSeoDb.AgentTrackingProfiles.AsNoTracking()
             .Where(profile => profile.Id == seoProfileId)

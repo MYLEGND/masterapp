@@ -10,6 +10,72 @@ namespace AgentPortal.Tests;
 public sealed class WebsiteStudioV3ContractTests
 {
     [Fact]
+    public void CanonicalInquiryVoice_IsOptionalTypedPresentationAndSurvivesSanitizedJson()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var form = new WebsiteCompositionNode { Id = "contact.inquiry", Type = "form", Tag = "form", SystemKey = "canonical_inquiry" };
+        Assert.DoesNotContain("receptionist", JsonSerializer.Serialize(form, options));
+        form.Receptionist = new WebsiteReceptionistPresentation
+        {
+            Enabled = true, Label = "  Ask about our services  ", Placement = "after"
+        };
+        form.FieldLabels["message"] = "Your question";
+        form.FieldPresentations["receptionist_start"] = new WebsiteControlPresentation
+        {
+            Style = new WebsiteVisualStyle { Color = "#123456", WidthPercent = 75 }
+        };
+        var clean = WebsiteContentSanitizer.SanitizeMutationNode(form, WebsiteStudioContract.DefaultBreakpoints());
+        var reloaded = JsonSerializer.Deserialize<WebsiteCompositionNode>(JsonSerializer.Serialize(clean, options), options)!;
+        Assert.True(reloaded.Receptionist!.Enabled);
+        Assert.Equal("Ask about our services", reloaded.Receptionist.Label);
+        Assert.Equal("after", reloaded.Receptionist.Placement);
+        Assert.Equal(form.Id, reloaded.Id);
+        Assert.Equal("canonical_inquiry", reloaded.SystemKey);
+        Assert.Equal("Your question", reloaded.FieldLabels["message"]);
+        Assert.Equal("#123456", reloaded.FieldPresentations["receptionist_start"].Style.Color);
+        reloaded.Receptionist.Enabled = false;
+        Assert.False(WebsiteContentSanitizer.SanitizeMutationNode(reloaded, WebsiteStudioContract.DefaultBreakpoints()).Receptionist!.Enabled);
+    }
+
+    [Theory]
+    [InlineData("before", "text", "canonical_inquiry")]
+    [InlineData("before", "form", "other")]
+    [InlineData("overlay", "form", "canonical_inquiry")]
+    public void CanonicalInquiryVoice_RejectsInvalidPlacementAndOtherNodeOwners(string placement, string type, string systemKey)
+    {
+        var form = new WebsiteCompositionNode
+        {
+            Id = "contact.inquiry", Type = type, Tag = type == "form" ? "form" : "p", SystemKey = systemKey,
+            Receptionist = new WebsiteReceptionistPresentation { Enabled = true, Placement = placement }
+        };
+        Assert.Throws<ArgumentException>(() => WebsiteContentSanitizer.SanitizeMutationNode(form, WebsiteStudioContract.DefaultBreakpoints()));
+    }
+
+    [Theory]
+    [InlineData("ownerId")]
+    [InlineData("provider")]
+    [InlineData("endpoint")]
+    [InlineData("ready")]
+    public void CanonicalInquiryVoice_RejectsUnexpectedAuthorityInBothSavedAndMutationPaths(string key)
+    {
+        var form = new WebsiteCompositionNode
+        {
+            Id = "contact.inquiry", Type = "form", Tag = "form", SystemKey = "canonical_inquiry",
+            Receptionist = new WebsiteReceptionistPresentation
+            {
+                Enabled = true, UnexpectedFields = new() { [key] = JsonSerializer.SerializeToElement("untrusted") }
+            }
+        };
+        Assert.Throws<ArgumentException>(() => WebsiteContentSanitizer.SanitizeMutationNode(form, WebsiteStudioContract.DefaultBreakpoints()));
+        Assert.Throws<ArgumentException>(() => WebsiteContentSanitizer.Sanitize(new WebsiteContentDocument
+        {
+            Pages = new() { ["/"] = new WebsitePageDocument { Composition = [form] } }
+        }));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<WebsiteReceptionistPresentation>(
+            "{\"enabled\":\"true\"}", new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+    }
+
+    [Fact]
     public void Sanitize_PreservesTypedResponsiveCompositionNavigationReuseAndBusinessFactBindings()
     {
         var animationId = Guid.NewGuid().ToString("N");

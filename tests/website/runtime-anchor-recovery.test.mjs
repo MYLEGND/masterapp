@@ -44,7 +44,8 @@ test('native form retains original text and controls when saved placeholder has 
   const presentationCalls=[];
   const form={dataset:{cmsSignalOnly:'true'},tagName:'FORM',hasAttribute:()=>false};
   const model={type:'container',tag:'div',text:'historical flattened text'};
-  const context=vm.createContext({HTMLImageElement:Image,rememberOriginal:()=>({text:'native'}),
+  const context=vm.createContext({SITE_KEY:'protect',pageState:()=>({systemTemplateKey:'protect_template:life_wizard'}),
+    HTMLImageElement:Image,rememberOriginal:()=>({text:'native'}),
     setContentText(){textWrites++},applyDataBinding(){},applyCanonicalResponsiveAttributes(){},applyStyle(){},
     applyFormFieldPresentations(element,model){presentationCalls.push({element,model})},
     effectiveStyle(){},applyLayout(){},effectiveLayout(){},applyAnimations(){}});
