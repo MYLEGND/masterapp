@@ -883,7 +883,8 @@ class AdmissionRepairScopeTests(unittest.TestCase):
         def get(repo,path,token):
             # This predecessor fixture has no completion-observer runs.
             summary = authority.fast_track_recovery_summary_name(prior['id'], before)
-            if path == f'actions/artifacts?name={summary}&per_page=100':
+            completion = authority.fast_track_completion_summary_name(prior['id'], before)
+            if path in {f'actions/artifacts?name={name}&per_page=100' for name in (summary,completion)}:
                 return dict(total_count=0, artifacts=[])
             if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
                 return dict(total_count=0, workflow_runs=[])
@@ -929,8 +930,9 @@ class AdmissionRepairScopeTests(unittest.TestCase):
             for index,candidate in enumerate(heads)]
         def get(repo,path,token):
             # This predecessor fixture has no completion-observer runs.
-            summaries = {authority.fast_track_recovery_summary_name(index + 1, candidate)
-                         for index, candidate in enumerate(heads)}
+            summaries = {name for index, candidate in enumerate(heads) for name in (
+                authority.fast_track_recovery_summary_name(index + 1, candidate),
+                authority.fast_track_completion_summary_name(index + 1, candidate))}
             if path in {f'actions/artifacts?name={name}&per_page=100' for name in summaries}:
                 return dict(total_count=0, artifacts=[])
             if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
@@ -2223,7 +2225,8 @@ class CurrentObservationPrewriteTests(unittest.TestCase):
         def api(repo,path,token):
             # This predecessor fixture has no completion-observer runs.
             summary = authority.fast_track_recovery_summary_name(self.run['id'], self.revision)
-            if path == f'actions/artifacts?name={summary}&per_page=100':
+            completion = authority.fast_track_completion_summary_name(self.run['id'], self.revision)
+            if path in {f'actions/artifacts?name={name}&per_page=100' for name in (summary,completion)}:
                 return dict(total_count=0, artifacts=[])
             if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
                 return dict(total_count=0, workflow_runs=[])
@@ -2282,7 +2285,8 @@ class UnpublishedAppsWithMigrationIntentTests(unittest.TestCase):
     def api(self, repository, path, token):
         # This predecessor fixture has no completion-observer runs.
         summary = authority.fast_track_recovery_summary_name(self.run['id'], self.run['head_sha'])
-        if path == f'actions/artifacts?name={summary}&per_page=100':
+        completion = authority.fast_track_completion_summary_name(self.run['id'], self.run['head_sha'])
+        if path in {f'actions/artifacts?name={name}&per_page=100' for name in (summary,completion)}:
             return dict(total_count=0, artifacts=[])
         if path == 'actions/workflows/deployment-diagnostics.yml/runs?event=workflow_dispatch&per_page=100':
             return dict(total_count=0, workflow_runs=[])
