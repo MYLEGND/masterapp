@@ -5094,6 +5094,15 @@
     });
   }
 
+  function responsiveAuditRouteMatches(requested, reported) {
+    const actual = normalizePageRoute(reported);
+    if (actual === requested) return true;
+    // QuoteController owns this same-origin legacy GET redirect. Do not rename
+    // authored pages or accept arbitrary redirect destinations as audit proof.
+    return SITE_KEY === 'protect' && requested === '/quote/dentalvisionhearing' &&
+      actual === '/quote/dental-vision-hearing';
+  }
+
   async function requestResponsiveAuditPage(route) {
     const url=editorUrlForRoute(route);
     if(!url) throw new Error('Unable to resolve page '+route+' for responsive quality.');
@@ -5108,9 +5117,10 @@
       const onMessage=event=>{
         if(event.origin!==location.origin || event.source!==frame.contentWindow) return;
         if(event.data?.type!=='legend-site-responsive-audit') return;
-        if(normalizePageRoute(event.data.route)!==route) return;
+        if(!responsiveAuditRouteMatches(route,event.data.route)) return;
         finish(null,{
           route,
+          resolvedRoute:normalizePageRoute(event.data.route),
           revision:event.data.revision ?? null,
           results:Array.isArray(event.data.results)?event.data.results:[]
         });

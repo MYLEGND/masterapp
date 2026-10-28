@@ -7692,3 +7692,27 @@ for(const siteKey of ['legend','protect']) for(const editor of [false,true]) {
     }finally{reopened.close();}
   });
 }
+
+
+for(const siteKey of ['protect','legend']) test(`responsive audit reconciles only the established Protect alias: ${siteKey}`,async()=>{
+  const dom=new JSDOM('<body></body>',{url:'https://example.test/',runScripts:'outside-only'}),w=dom.window;
+  try{
+    w.SITE_KEY=siteKey;w.editorUrlForRoute=route=>new w.URL(route,w.location.href);
+    for(const name of ['normalizePageRoute','responsiveAuditRouteMatches'])w.eval(nativeFunction(source,name));
+    w.eval(source.slice(source.indexOf('  async function requestResponsiveAuditPage('),source.indexOf('  async function runSiteResponsiveQualityAudit(')));
+    const requested='/quote/dentalvisionhearing',resolved='/quote/dental-vision-hearing';
+    let settled=false;const promise=w.requestResponsiveAuditPage(requested).then(value=>{settled=true;return value;});
+    const frame=w.document.querySelector('iframe'),sender=frame.contentWindow;
+    const emit=(route,origin=w.location.origin,source=sender)=>w.dispatchEvent(new w.MessageEvent('message',{origin,source,data:{type:'legend-site-responsive-audit',route,revision:382,results:[{key:'mobile',checks:[]}]}}));
+    emit(resolved,'https://foreign.test');emit(resolved,w.location.origin,w);emit('/quote/home');
+    await Promise.resolve();assert.equal(settled,false,'wrong origin, sender and route cannot satisfy the audit');
+    if(siteKey==='legend'){emit(resolved);await Promise.resolve();assert.equal(settled,false,'Protect alias is not a general website redirect rule');}
+    emit(siteKey==='protect'?resolved:requested);
+    const result=await promise;
+    assert.equal(result.route,requested);assert.equal(result.resolvedRoute,siteKey==='protect'?resolved:requested);
+    assert.equal(result.revision,382);assert.equal(result.results[0].key,'mobile');
+    assert.equal(w.document.querySelector('iframe'),null,'completed audit removes its frame');
+    assert.equal(w.responsiveAuditRouteMatches('/quote/home',resolved),false);
+    assert.equal(w.responsiveAuditRouteMatches('/quote/dentalvisionhearing/landing',resolved),false);
+  }finally{w.close();}
+});
