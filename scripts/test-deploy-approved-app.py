@@ -3460,6 +3460,91 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
     def test_preflight_failure_publishes_terminal_receipt_without_worker_or_intent(self):self.run_case(preflight_failure=True)
     def test_terminal_receipt_failure_cannot_fall_through_to_worker(self):self.run_case(preflight_failure=True,publication_failure=True)
 
+class DeploymentReadErrorMetadataTests(unittest.TestCase):
+    def metadata(self, text, code=1):
+        return deploy.deployment_read_error_metadata(subprocess.CompletedProcess([], code, '', text))
+
+    def test_reported_provider_codes_do_not_infer_http_status(self):
+        for code, category in [('AuthenticationFailed', 'authentication'),
+                               ('AuthorizationFailed', 'authorization'),
+                               ('ResourceNotFound', 'not_found'), ('TooManyRequests', 'throttling'),
+                               ('ServiceUnavailable', 'service_error'), ('BadRequest', 'invalid_request')]:
+            with self.subTest(code=code):
+                result = self.metadata(f'ERROR: ({code}) synthetic detail\r\n')
+                self.assertEqual((result['providerCode'], result['category']), (code, category))
+                self.assertIsNone(result['httpStatus'])
+
+    def test_reported_http_status_does_not_infer_provider_code_or_timeout(self):
+        for phrase, status in [('Unauthorized', 401), ('Forbidden', 403), ('Not Found', 404),
+                               ('Too Many Requests', 429), ('Service Unavailable', 503),
+                               ('Gateway Timeout', 504)]:
+            with self.subTest(status=status):
+                result = self.metadata(f"ERROR: Operation returned an invalid status '{phrase}'")
+                self.assertEqual(result['httpStatus'], status)
+                self.assertIsNone(result['providerCode'])
+                self.assertNotEqual(result['category'], 'timeout')
+
+    def test_unrecognized_multiple_conflicting_and_embedded_errors_stay_unknown(self):
+        for text in ['', 'ERROR: unknown', 'customer AuthenticationFailed 403',
+                     'prefix ERROR: (Forbidden) detail', 'ERROR: (NewProviderCode) detail',
+                     'ERROR: (Forbidden) detail\nERROR: (AuthenticationFailed) detail',
+                     'ERROR: (Forbidden) detail\nERROR: unknown',
+                     'ERROR: (Forbidden) detail ERROR: (AuthenticationFailed) detail',
+                     "ERROR: (Forbidden) Operation returned an invalid status 'Unauthorized'",
+                     'ERROR: (Forbidden) Code: AuthenticationFailed',
+                     'ERROR: (Forbidden) HTTP/1.1 401', 'ERROR: (Forbidden) detail\n\n']:
+            with self.subTest(text=text):
+                result = self.metadata(text)
+                self.assertEqual(result['category'], 'unknown')
+                self.assertIsNone(result['providerCode']); self.assertIsNone(result['httpStatus'])
+
+    def test_oversized_and_malformed_inputs_never_classify_or_stringify(self):
+        class Unprintable:
+            def __str__(self):
+                raise AssertionError('must not stringify')
+        for text in [None, b'ERROR: (Forbidden)', Unprintable(), 'ERROR: (Forbidden) ' + 'x' * 8192]:
+            result = self.metadata(text)
+            self.assertEqual(result['category'], 'unknown')
+            self.assertEqual(result['inputTooLarge'], type(text) is str)
+        for code in [True, '1', Unprintable(), 256, -256]:
+            result = self.metadata('ERROR: (Forbidden) detail', code)
+            self.assertIsNone(result['returnCode']); self.assertEqual(result['category'], 'unknown')
+
+    def test_only_allowlisted_metadata_reaches_output_and_failure_is_unchanged(self):
+        secret = 'SYNTHETIC_SECRET_DO_NOT_LOG'
+        stderr = 'ERROR: (Forbidden) Authorization: Bearer ' + secret + ' https://example.invalid/?token=' + secret
+        azure = deploy.Azure('app', Path('/immutable'), 'https://example.invalid', 'a' * 40)
+        output = io.StringIO()
+        with patch.object(deploy, 'deployment_read_process', return_value=
+                          subprocess.CompletedProcess([], 1, secret, stderr)) as process, \
+                patch('sys.stdout', output):
+            with self.assertRaisesRegex(RuntimeError, '^Azure deployment status unavailable$'):
+                azure.deployments()
+        self.assertNotIn(secret, output.getvalue()); self.assertNotIn('https:', output.getvalue())
+        self.assertNotIn('Bearer', output.getvalue()); self.assertNotIn('Authorization:', output.getvalue())
+        payload = json.loads(output.getvalue().split(':', 1)[1])
+        self.assertEqual(payload, dict(schemaVersion=1, source='azure-cli-reported', category='authorization',
+                         returnCode=1, providerCode='Forbidden', httpStatus=None, inputTooLarge=False))
+        self.assertEqual(process.call_args.args[0], ['az', 'webapp', 'log', 'deployment', 'list',
+                         '-g', deploy._RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP, '-n', 'app', '--only-show-errors', '-o', 'json'])
+        self.assertEqual(process.call_args.kwargs, {'timeout': 40})
+
+    def test_diagnostic_failure_cannot_replace_original_failure(self):
+        azure = deploy.Azure('app', Path('/immutable'), 'https://example.invalid', 'a' * 40)
+        with patch.object(deploy, 'deployment_read_process', return_value=subprocess.CompletedProcess([], 1, '', '')), \
+                patch.object(deploy, 'deployment_read_error_metadata', side_effect=ValueError('synthetic secret')):
+            with self.assertRaisesRegex(RuntimeError, '^Azure deployment status unavailable$'):
+                azure.deployments()
+
+    def test_success_does_not_classify_or_log_stderr(self):
+        azure = deploy.Azure('app', Path('/immutable'), 'https://example.invalid', 'a' * 40)
+        with patch.object(deploy, 'deployment_read_process', return_value=
+                          subprocess.CompletedProcess([], 0, '[{"id":"old","status":4}]', 'ERROR: (Forbidden) detail')), \
+                patch.object(deploy, 'deployment_read_error_metadata') as classify:
+            self.assertEqual(azure.deployments(), [row('old', 4)])
+        classify.assert_not_called()
+
+
 class DeploymentReadWallBudgetTests(unittest.TestCase):
     def run_read(self,durations,*,deadline=None,fail=True):
         from types import SimpleNamespace
