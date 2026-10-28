@@ -7340,6 +7340,38 @@ def fast_track_completion_present(repository, revision, token, *, original_run=N
                 or any(current.get(key) != original.get(key) for key in keys)):
                 raise ValueError('FAST_TRACK_COMPLETION_DISCOVERY_ORIGINAL_CHANGED')
         return present
+    if candidate_names is not None:
+        # Query the complete exact-name inventories instead of opening every
+        # unrelated diagnostics run. A name is only a discovery constraint;
+        # genuine success still requires the caller's complete receipt proof.
+        summary = fast_track_completion_summary_name(original_run, revision)
+        present = False
+        for name in [summary, *sorted(candidate_names - {summary})]:
+            artifacts = _completion_inventory(api_get(repository,
+                'actions/artifacts?name=' + urllib.parse.quote(name, safe='') + '&per_page=100', token), 'artifacts')
+            for artifact in artifacts:
+                owner = artifact.get('workflow_run')
+                if (artifact.get('name') != name or artifact.get('expired') is not False
+                    or not isinstance(owner, dict) or type(owner.get('id')) is not int or owner['id'] < 1
+                    or not re.fullmatch('[a-f0-9]{40}', str(owner.get('head_sha', '')))
+                    or not re.fullmatch('sha256:[a-f0-9]{64}', str(artifact.get('digest', '')))):
+                    raise ValueError('FAST_TRACK_COMPLETION_DISCOVERY_ARTIFACT_UNPROVEN')
+                run = api_get(repository, f"actions/runs/{owner['id']}", token)
+                if (not isinstance(run, dict) or type(run.get('id')) is not int or run['id'] != owner['id']
+                    or run.get('head_sha') != owner['head_sha']
+                    or run.get('head_repository', {}).get('full_name', '').lower() != repository.lower()):
+                    raise ValueError('FAST_TRACK_COMPLETION_DISCOVERY_PRODUCER_UNPROVEN')
+                # The previous workflow-run query supplied these exact filters.
+                # Other valid producers with the same name cannot prove this path.
+                if (run.get('event') != 'workflow_dispatch' or run.get('head_branch') != FAST_TRACK_PR_BASE
+                    or run.get('path') != '.github/workflows/' + FAST_TRACK_COMPLETION_WORKFLOW):
+                    continue
+                record = _release_history_json(repository, run['id'], artifact, 'operation.json', verify_digest=True)
+                if record.get('applicationRevision') == revision:
+                    present = True
+        # A positive must not hide malformed matching evidence in another name
+        # inventory. Full operation/summary authentication remains downstream.
+        return result(present)
     runs=_completion_rows(api_get(repository,
         f'actions/workflows/{FAST_TRACK_COMPLETION_WORKFLOW}/runs?event=workflow_dispatch&per_page=100',token),'workflow_runs')
     for run in runs:
@@ -9030,7 +9062,9 @@ REVIEWED_EQUAL_CONTRACT_RUNTIME_PAIRS = frozenset({
     ('b7cd7a413410db1d64dee03063ef487f94c106b581a58bf1c805873219ebc1dd',
      'a34e572bb44103afa50e13f9c58c624057b8a5b8d9a7215c27369db707024c36'),
     ('a34e572bb44103afa50e13f9c58c624057b8a5b8d9a7215c27369db707024c36',
-     'dde0b179a337f9a039559b3186e405e42a005d5b9e06c7c84016f7918ade63b4')
+     'dde0b179a337f9a039559b3186e405e42a005d5b9e06c7c84016f7918ade63b4'),
+    ('a34e572bb44103afa50e13f9c58c624057b8a5b8d9a7215c27369db707024c36',
+     'eb93ec6a6dac28258c41a8cc729bcc0cafbe52812af58cbda414959f9a90423e')
 })
 
 REVIEWED_TRAINING_ENTRY = '49ef5a95c19084b799e9a92a5d0c496792dbdcab367e4360795d55e443338434'
