@@ -5741,6 +5741,20 @@ test('invalid authored native order fails navigation and publish visibly instead
   }finally{f.close();}
 });
 
+test('failed whole-site preflight marks both inspector evidence sources incomplete',async()=>{
+  const f=await domFixture({siteKey:'protect',doc:nativeOrderingDocument([1,3,2,4]),pathname:'/Quote/Auto',html:nativeOrderingHtml()});
+  try{
+    const before=f.calls.length;
+    f.click('#legend-cms-quality-refresh');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(f.w.document.getElementById('legend-cms-quality-saved-meta').textContent,'Whole-site preflight unavailable');
+    assert.equal(f.w.document.getElementById('legend-cms-quality-live-meta').textContent,'Rendered checks incomplete; whole-site preflight failed.');
+    assert.match(f.w.document.getElementById('legend-cms-quality-saved').textContent,/Question 3 must stay after Question 2/);
+    assert.equal(f.calls.slice(before).some(call=>call.method==='POST'),false);
+    assert.equal(f.w.document.getElementById('field2').value,'answer2');
+  }finally{f.close();}
+});
+
 test('native step ownership rejects moving a question into a different conditional group',async()=>{
   const doc=nativeOrderingDocument();
   const group=canonicalNodeById(doc,'native.steps','/quote/auto');

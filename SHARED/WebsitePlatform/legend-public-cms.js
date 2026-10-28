@@ -3868,6 +3868,7 @@
       renderQualityChecks(document.getElementById('legend-cms-quality-saved'),
         [{severity:'error',message:error?.payload?.message || error?.message || 'Whole-site preflight failed.'}],'');
       if(savedMeta) savedMeta.textContent='Whole-site preflight unavailable';
+      if(liveMeta) liveMeta.textContent='Rendered checks incomplete; whole-site preflight failed.';
       throw error;
     }
   }
