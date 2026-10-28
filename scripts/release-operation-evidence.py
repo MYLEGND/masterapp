@@ -428,6 +428,8 @@ class CompletionJournal:
         # Only this read-only decision shares metadata; raw boundary rechecks
         # complete before live authority validation or any receipt publication.
         with self.authority.recovery_admission_proof():
+            if self.authority.assert_fast_track_completion_execution(self.original['run']['id'],self.intent['applicationRevision'])!=self.observer:
+                raise RuntimeError('Completion observer changed during historical proof')
             submitted=self.authority.release_operation_history(self.repository,self.operation_id,
                 self.intent['applicationRevision'],self.intent['target'],self.original['run']['id'],
                 self.original['run']['run_attempt'],self.token,phase='submitted')
@@ -443,10 +445,8 @@ class CompletionJournal:
                     or any(existing.get(k)!=v for k,v in self.intent.items() if k not in {'phase','producingRun','producingAttempt'})):
                     raise RuntimeError('Existing success differs from original operation')
         print('FAST_TRACK_COMPLETION_STAGE:receipt:'+self.intent['target']+':proof-verified', flush=True)
-        # Ref/real executing job remains uncached at the last journal boundary.
-        if self.authority.assert_fast_track_completion_execution(self.original['run']['id'],self.intent['applicationRevision'])!=self.observer:
-            raise RuntimeError('Completion observer changed before recording')
         if existing is not None:
+            self.authority.assert_fast_track_completion_live_execution(self.original['run']['id'],self.intent['applicationRevision'],self.observer)
             return existing
         self.authority._completion_original_unchanged(self.repository,self.original['run'],self.token)
         proof=dict(originalRun=self.original['run']['id'],originalRunAttempt=self.original['run']['run_attempt'],
@@ -456,6 +456,8 @@ class CompletionJournal:
             observer=dict(self.observer),provider=dict(self.provider))
         record=dict(self.intent,phase='success',producingRun=self.observer['runId'],
             producingAttempt=self.observer['runAttempt'],deploymentIds=observed,completionEvidence=proof)
+        # This non-settling, uncached guard is the last operation before publish.
+        self.authority.assert_fast_track_completion_live_execution(self.original['run']['id'],self.intent['applicationRevision'],self.observer)
         return self.publisher('legend-release-operation-success-'+self.operation_id,record)
 
 

@@ -25,7 +25,7 @@
 
     .ra-shell .step-pill {
         border: 1.35px solid var(--pcq-border-strong);
-        color: rgba(247, 236, 208, 0.76);
+        color: color-mix(in srgb, var(--web-surface) 76%, transparent);
         background: var(--pcq-pill-bg);
         cursor: pointer;
         transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
@@ -37,16 +37,16 @@
 
     .ra-shell .step-pill:hover {
         transform: translateY(-1px);
-        border-color: rgba(255, 244, 211, 0.75);
+        border-color: color-mix(in srgb, var(--web-gold-strong) 75%, transparent);
         box-shadow:
             0 14px 30px rgba(0, 0, 0, 0.18),
             inset 0 1px 0 rgba(255, 255, 255, 0.05);
     }
 
     .ra-shell .step-pill.active {
-        border-color: rgba(255, 244, 211, 0.85);
-        color: var(--pcq-ink-contrast);
-        background: linear-gradient(180deg, #f7da7a 0%, #deb04a 100%);
+        border-color: var(--web-gold);
+        color: var(--web-navy-deep);
+        background: var(--web-gold);
         box-shadow:
             0 14px 30px rgba(0, 0, 0, 0.22),
             inset 0 1px 0 rgba(255, 255, 255, 0.34);

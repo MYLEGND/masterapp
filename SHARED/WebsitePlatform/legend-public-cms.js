@@ -130,6 +130,131 @@
     }
   }
 
+  // Keep the visible native card stable across steps, never a spacer beneath
+  // it. Bind original nodes once; authored lookalikes are not runtime owners.
+  const nativeFormFrames = SITE_KEY === 'protect' ? nativeFormSequences.flatMap(group => {
+    if (!['autoQuoteForm','homeQuoteForm','commercialQuoteForm','riskAssessmentForm'].includes(group.form.id)) return [];
+    const cards = group.steps.map(step => {
+      if (step.classList.contains('section-card')) return step;
+      const direct = [...step.children].filter(node => node.classList.contains('section-card'));
+      return direct.length === 1 ? direct[0] : null;
+    });
+    if (cards.some(card => !card)) return [];
+    return [{group, cards, width:0, height:0, declarations:new Map()}];
+  }) : [];
+  let nativeFrameObserver = null, nativeFrameContentObserver = null, nativeFrameQueued = false, nativeFrameCaptureDepth = 0;
+  const nativeFrameObservedChildren = new Set();
+
+  function restoreNativeFormFrames(reset = false) {
+    for (const frame of nativeFormFrames) {
+      for (const [card, saved] of frame.declarations) {
+        // A canonical/editor write takes precedence over our last projection.
+        if (card.style.getPropertyValue('min-height') === saved.projected &&
+            card.style.getPropertyPriority('min-height') === saved.priority) {
+          if (saved.value) card.style.setProperty('min-height', saved.value, saved.priority);
+          else card.style.removeProperty('min-height');
+        }
+      }
+      frame.declarations.clear();
+      if (reset) { frame.width = 0; frame.height = 0; }
+    }
+  }
+
+  function withNativeFormFramesRestored(capture) {
+    if (nativeFrameCaptureDepth++ === 0) restoreNativeFormFrames();
+    try { return capture(); }
+    finally { if (--nativeFrameCaptureDepth === 0) scheduleNativeFormFrames(); }
+  }
+
+  function measureNativeFormFrames() {
+    nativeFrameQueued = false;
+    if (nativeFrameCaptureDepth) return;
+    if (nativeFrameObserver) {
+      const children = new Set(nativeFormFrames.flatMap(frame => frame.cards.flatMap(card => [...card.children])));
+      for (const node of nativeFrameObservedChildren) if (!children.has(node)) {
+        nativeFrameObserver.unobserve(node);
+        nativeFrameObservedChildren.delete(node);
+      }
+      for (const node of children) if (!nativeFrameObservedChildren.has(node)) {
+        nativeFrameObserver.observe(node);
+        nativeFrameObservedChildren.add(node);
+      }
+    }
+    for (const frame of nativeFormFrames) {
+      const {group, cards} = frame;
+      if (!group.parent.isConnected || group.steps.some((step, i) =>
+          step.parentElement !== group.parent || (cards[i] !== step && cards[i].parentElement !== step))) continue;
+      const width = group.parent.clientWidth;
+      if (!width || !cards.some(card => card.offsetHeight > 0)) continue;
+      if (frame.width && Math.abs(width - frame.width) >= 2) {
+        // Real layout width changes start a new sizing epoch. Height-only
+        // viewport changes (including the mobile keyboard) do not.
+        for (const [card, saved] of frame.declarations) {
+          if (card.style.getPropertyValue('min-height') === saved.projected &&
+              card.style.getPropertyPriority('min-height') === saved.priority) {
+            if (saved.value) card.style.setProperty('min-height', saved.value, saved.priority);
+            else card.style.removeProperty('min-height');
+          }
+        }
+        frame.declarations.clear();
+        frame.height = 0;
+      }
+      frame.width = width;
+      // offsetHeight is in layout pixels, unaffected by Studio canvas zoom.
+      frame.height = Math.max(frame.height, ...cards.map(card => {
+        if (!card.offsetHeight) return 0;
+        const style = getComputedStyle(card);
+        const border = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0);
+        // Authored height can constrain the border box while its content grows.
+        // Preserve that declaration, but let the minimum contain the content.
+        return Math.max(card.offsetHeight, card.scrollHeight + border);
+      }));
+      for (const card of cards) {
+        let saved = frame.declarations.get(card);
+        if (saved && (card.style.getPropertyValue('min-height') !== saved.projected ||
+            card.style.getPropertyPriority('min-height') !== saved.priority)) {
+          saved = null;
+        }
+        const style = getComputedStyle(card);
+        if (!saved) {
+          saved = {value:card.style.getPropertyValue('min-height'), priority:card.style.getPropertyPriority('min-height'),
+            minimum:style.minHeight === 'auto' ? '0px' : style.minHeight || '0px'};
+          frame.declarations.set(card, saved);
+        }
+        const inset = style.boxSizing === 'border-box' ? 0 :
+          ['paddingTop','paddingBottom','borderTopWidth','borderBottomWidth'].reduce((sum, key) => sum + (parseFloat(style[key]) || 0), 0);
+        const projected = `max(${saved.minimum}, ${Math.max(0, frame.height - inset)}px)`;
+        // CSSOM may round fractional lengths. Compare both the request and
+        // its last serialization, avoiding equivalent writes/observer loops.
+        if (saved.requested !== projected || card.style.getPropertyValue('min-height') !== saved.projected ||
+            card.style.getPropertyPriority('min-height') !== saved.priority)
+          card.style.setProperty('min-height', projected, saved.priority);
+        saved.requested = projected;
+        saved.projected = card.style.getPropertyValue('min-height');
+      }
+    }
+  }
+
+  function scheduleNativeFormFrames() {
+    if (!nativeFormFrames.length || renderInput?.server || materializeMode) return;
+    if (!nativeFrameObserver && typeof ResizeObserver === 'function') {
+      nativeFrameObserver = new ResizeObserver(scheduleNativeFormFrames);
+      for (const {group, cards} of nativeFormFrames) {
+        nativeFrameObserver.observe(group.parent);
+        for (const node of new Set([...group.steps, ...cards])) nativeFrameObserver.observe(node);
+      }
+    }
+    if (!nativeFrameContentObserver && typeof MutationObserver === 'function') {
+      nativeFrameContentObserver = new MutationObserver(scheduleNativeFormFrames);
+      for (const {cards} of nativeFormFrames) for (const card of cards)
+        nativeFrameContentObserver.observe(card, {subtree:true, childList:true, characterData:true,
+          attributes:true, attributeFilter:['class','hidden','style']});
+    }
+    if (nativeFrameQueued || nativeFrameCaptureDepth) return;
+    nativeFrameQueued = true;
+    window.requestAnimationFrame(measureNativeFormFrames);
+  }
+
   function restoreNativeFormContinuations() {
     for (const group of nativeFormSequences) for (const {control, parent, next} of group.continuations) {
       if (control.parentElement !== parent)
@@ -320,6 +445,8 @@
   const styleProperties = ['textAlign','fontSize','width','maxWidth','height','minHeight','maxHeight','position','left','top','overflow','paddingTop','paddingBottom','objectPosition','color','backgroundColor','backgroundImage','fontFamily','fontWeight','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius','objectFit','gridColumn','minWidth','overflowWrap','display','flexDirection','gap','gridTemplateColumns','alignItems','justifyContent','flexWrap','marginTop','marginBottom','marginLeft','marginRight','borderWidth','borderColor','borderStyle','opacity','textTransform','textDecoration','aspectRatio','boxShadow'];
 
   function rememberOriginal(el) {
+    if (!originals.has(el) && nativeFormFrames.some(frame => frame.declarations.has(el)))
+      return withNativeFormFramesRestored(() => rememberOriginal(el));
     if (!originals.has(el)) originals.set(el, {
       text: el.textContent, markup: el.innerHTML, src: el.getAttribute('src'), href: el.getAttribute('href'), alt: el.getAttribute('alt'), hidden: el.hidden,
       style: Object.fromEntries(styleProperties.map(key => [key, el.style[key] || '']))
@@ -1722,6 +1849,10 @@
   }
   function applyStyle(el, style) {
     if (!el) return;
+    if (nativeFormFrames.some(frame => frame.cards.includes(el))) {
+      restoreNativeFormFrames(true);
+      scheduleNativeFormFrames();
+    }
     const original = rememberOriginal(el);
     styleProperties.forEach(key => { el.style[key] = original.style[key]; });
     scaledElements.delete(el);
@@ -2216,7 +2347,7 @@
   }
 
   function materializeCompositionNode(el, fallbackId = null, identity = null) {
-    return withFormStepPreviewRestored(() => withNativeFormContinuationsRestored(() => materializeCompositionNodeWithNativeControls(el, fallbackId, identity)));
+    return withNativeFormFramesRestored(() => withFormStepPreviewRestored(() => withNativeFormContinuationsRestored(() => materializeCompositionNodeWithNativeControls(el, fallbackId, identity))));
   }
 
   function materializeCompositionNodeWithNativeControls(el, fallbackId = null, identity = null) {
@@ -4534,6 +4665,7 @@
   }
 
   function applyDocument(doc) {
+    restoreNativeFormFrames(true);
     restoreNativeFormContinuations();
     restoreFormStepPreview();
     documentState=normalizeDocument(doc);
@@ -4573,6 +4705,7 @@
     syncNativeFormSequences();
     syncNativeFormPresentation();
     if (editorMode && document.getElementById('legend-cms-form-navigator')) previewFormStep(formPreviewIndex);
+    scheduleNativeFormFrames();
     try {
       window.dispatchEvent(new CustomEvent('legend:website-content-rendered', {
         detail:{siteKey:SITE_KEY,page:currentPageRoute(),editor:editorMode,materialize:materializeMode}
@@ -4581,6 +4714,7 @@
   }
 
   function refreshResponsiveComposition() {
+    restoreNativeFormFrames(true);
     restoreFormStepPreview();
     if(legacyMigration){
       const page=legacyMigrationPageState();
@@ -4605,6 +4739,7 @@
     refreshScaledElements();
     syncNativeFormPresentation();
     if (editorMode && document.getElementById('legend-cms-form-navigator')) previewFormStep(formPreviewIndex);
+    scheduleNativeFormFrames();
     updateDirectCanvasUi();
   }
 
@@ -9587,6 +9722,7 @@
   function previewFormStep(index) {
     if (!editorMode) return;
     restoreFormStepPreview();
+    scheduleNativeFormFrames();
     const entries = formPreviewEntries();
     if (!Number.isInteger(index) || index < 0 || index >= entries.length) {
       formPreviewIndex = -1;
@@ -10287,6 +10423,7 @@
   // The same canonical model drives the editor and the immutable public DOM.
   // Re-evaluate at the real visitor width without ever remounting the page.
   function refreshCompiledResponsivePresentation() {
+    restoreNativeFormFrames(true);
     const canonicalNodes=new Map();
     for(const root of allCanonicalRootSets())
       walkComposition(root.nodes,node=>canonicalNodes.set(node.id,node));
@@ -10302,6 +10439,7 @@
       if(el && model) applyCompiledResponsivePresentation(el,model);
     }
     refreshScaledElements();
+    scheduleNativeFormFrames();
   }
 
   // The canonical compiler has already composed this immutable published

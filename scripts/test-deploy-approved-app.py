@@ -2834,6 +2834,15 @@ class RedactedPrepublicationDiagnosticsTests(unittest.TestCase):
 
 
 class CompletionProofReuseTests(unittest.TestCase):
+    def test_efficiency_reporting_failure_never_replaces_outcome(self):
+        a=deploy._RELEASE_AUTHORITY
+        with patch.object(a,'report_recovery_efficiency',side_effect=RuntimeError('report failed')), \
+             patch.object(deploy,'_complete_fast_track',side_effect=ValueError('original failure')):
+            with self.assertRaisesRegex(ValueError,'original failure'):
+                deploy.complete_fast_track(1,'a'*40,Path('/unused'))
+        with patch.object(a,'report_recovery_efficiency',side_effect=RuntimeError('report failed')), \
+             patch.object(deploy,'_complete_fast_track',return_value={'state':'ok'}):
+            self.assertEqual(deploy.complete_fast_track(1,'a'*40,Path('/unused'))['state'],'ok')
     def fixture(self):
         a=deploy._RELEASE_AUTHORITY
         revision='a'*40
@@ -3026,13 +3035,13 @@ class CompletionOnlyTests(unittest.TestCase):
     def test_prelogin_validation_verifies_package_without_provider_effect(self):
         from types import SimpleNamespace
         a=deploy._RELEASE_AUTHORITY
-        with patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',return_value=dict(toolRevision='b'*40)),patch.object(a,'fast_track_completion_original',return_value=dict(targets=['portal'])),patch.object(a,'fast_track_completion_material',return_value=dict(packageArtifact=dict(id=10,name='package',digest='sha256:'+'d'*64),intent=dict(packageDigest='e'*64))),patch.object(deploy,'verify_package',return_value='e'*64),patch.object(Path,'is_file',return_value=True),patch.object(Path,'is_symlink',return_value=False),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact') as download,patch.object(deploy,'target_azure') as provider:
+        with patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',return_value=dict(toolRevision='b'*40)),patch.object(a,'assert_fast_track_completion_live_execution'),patch.object(a,'fast_track_completion_original',return_value=dict(targets=['portal'])),patch.object(a,'fast_track_completion_material',return_value=dict(packageArtifact=dict(id=10,name='package',digest='sha256:'+'d'*64),intent=dict(packageDigest='e'*64))),patch.object(deploy,'verify_package',return_value='e'*64),patch.object(Path,'is_file',return_value=True),patch.object(Path,'is_symlink',return_value=False),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact') as download,patch.object(deploy,'target_azure') as provider:
             self.assertEqual(deploy.complete_fast_track(1,'a'*40,Path('/unused'),validate_only=True)['state'],'COMPLETION_PACKAGES_VERIFIED')
             download.assert_called_once();provider.assert_not_called()
     def test_bad_original_package_blocks_all_provider_observation(self):
         from types import SimpleNamespace
         a=deploy._RELEASE_AUTHORITY;material=dict(packageArtifact=dict(name='package',id=10,digest='sha256:'+'d'*64),intent=dict(packageDigest='e'*64))
-        with patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',return_value=dict(toolRevision='b'*40)),patch.object(a,'fast_track_completion_original',return_value=dict(targets=['portal'])),patch.object(a,'fast_track_completion_material',return_value=material),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact') as download,patch.object(deploy,'verify_package',return_value='wrong'),patch.object(deploy,'target_azure') as provider:
+        with patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',return_value=dict(toolRevision='b'*40)),patch.object(a,'assert_fast_track_completion_live_execution'),patch.object(a,'fast_track_completion_original',return_value=dict(targets=['portal'])),patch.object(a,'fast_track_completion_material',return_value=material),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact') as download,patch.object(deploy,'verify_package',return_value='wrong'),patch.object(deploy,'target_azure') as provider:
             with patch.object(Path,'is_file',return_value=True),patch.object(Path,'is_symlink',return_value=False):
                 with self.assertRaisesRegex(ValueError,'PACKAGE_CHANGED'):deploy.complete_fast_track(1,'a'*40,Path('/unused'),validate_only=True)
             download.assert_called_once();provider.assert_not_called()
@@ -3110,7 +3119,7 @@ class CompletionPublicMetadataTests(unittest.TestCase):
 
 
 class CompletionAdapterTests(unittest.TestCase):
-    def run_adapter(self,*,probe_failure=False,observer_change=False,probe_failure_at=4,metadata_error=None,proof_change=False):
+    def run_adapter(self,*,probe_failure=False,observer_change=False,probe_failure_at=4,metadata_error=None,proof_change=False,live_failure_at=0):
         from types import SimpleNamespace
         a=deploy._RELEASE_AUTHORITY;revision='a'*40
         observer=dict(runId=2,runAttempt=1,jobId=20,toolRevision='b'*40,promotionRunId=3)
@@ -3127,7 +3136,7 @@ class CompletionAdapterTests(unittest.TestCase):
         def provider(*args):timeline.append('provider');return SimpleNamespace(revision=revision)
         auth_calls=[0]
         def auth(*args):
-            self.assertIsNone(a._RECOVERY_PROOF_VIEW.get())
+            self.assertIsNotNone(a._RECOVERY_PROOF_VIEW.get())
             auth_calls[0]+=1
             return dict(observer,jobId=99) if observer_change and auth_calls[0]>1 else observer
         reads=[0]
@@ -3139,8 +3148,12 @@ class CompletionAdapterTests(unittest.TestCase):
                 a.api_get('owner/repo','actions/runs/999','test-only')
                 a.api_get('owner/repo','actions/runs/999','test-only')
             return completed
-        with patch.object(Path,'is_file',return_value=True),patch.object(Path,'is_symlink',return_value=False),patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',side_effect=auth),patch.object(a,'_api_get_uncached',side_effect=metadata_api),patch.object(a,'fast_track_completion_original',return_value=original),patch.object(a,'fast_track_completion_material',return_value=material),patch.object(a,'fast_track_completed_operation_receipts',side_effect=completed_proof),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact'),patch.object(deploy,'verify_package',side_effect=verify),patch.object(deploy,'target_azure',side_effect=provider),patch.object(deploy,'reconcile',return_value='preserved') as reconcile,patch.object(deploy,'verify_fast_track_public_metadata',side_effect=metadata),patch.object(deploy.importlib.util,'spec_from_file_location',return_value=spec),patch.object(deploy.importlib.util,'module_from_spec',return_value=owner):
-            if probe_failure or observer_change or proof_change:
+        live_calls=[0]
+        def live(*args):
+            self.assertIsNone(a._RECOVERY_PROOF_VIEW.get());live_calls[0]+=1
+            if live_calls[0]==live_failure_at:raise ValueError('live changed')
+        with patch.object(Path,'is_file',return_value=True),patch.object(Path,'is_symlink',return_value=False),patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',side_effect=auth),patch.object(a,'assert_fast_track_completion_live_execution',side_effect=live),patch.object(a,'_api_get_uncached',side_effect=metadata_api),patch.object(a,'fast_track_completion_original',return_value=original),patch.object(a,'fast_track_completion_material',return_value=material),patch.object(a,'fast_track_completed_operation_receipts',side_effect=completed_proof),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact'),patch.object(deploy,'verify_package',side_effect=verify),patch.object(deploy,'target_azure',side_effect=provider),patch.object(deploy,'reconcile',return_value='preserved') as reconcile,patch.object(deploy,'verify_fast_track_public_metadata',side_effect=metadata),patch.object(deploy.importlib.util,'spec_from_file_location',return_value=spec),patch.object(deploy.importlib.util,'module_from_spec',return_value=owner):
+            if probe_failure or observer_change or proof_change or live_failure_at:
                 with self.assertRaises(a.ReleaseOperationHistoryUnproven if proof_change else type(metadata_error) if metadata_error else ValueError):deploy.complete_fast_track(1,revision,Path('/unused'))
                 publish.assert_not_called()
                 if probe_failure:self.assertEqual(reconcile.call_count,probe_failure_at//2)
@@ -3155,6 +3168,7 @@ class CompletionAdapterTests(unittest.TestCase):
                     self.assertTrue(call.kwargs['reconcile_only']);self.assertTrue(call.kwargs['require_receipt'])
             self.assertEqual(timeline[:2],['package','package'])
     def test_all_bytes_before_observation_and_aggregate_only_after_all_probes(self):self.run_adapter()
+    def test_summary_live_guard_failure_never_publishes(self):self.run_adapter(live_failure_at=2)
     def test_last_public_probe_failure_never_emits_aggregate(self):self.run_adapter(probe_failure=True)
     def test_http403_before_or_after_website_reconciliation_never_emits_aggregate(self):
         for probe in [3,4]:
@@ -3189,6 +3203,7 @@ class CompletionPackagePhaseV4Tests(unittest.TestCase):
         material=dict(packageArtifact=dict(name='original',id=10,digest='sha256:'+'d'*64),intent=dict(packageDigest=self.digest))
         stack.enter_context(patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')))
         for name,value in [('assert_fast_track_completion_execution',dict(toolRevision='b'*40)),('fast_track_completion_original',dict(targets=['portal'])),('fast_track_completion_material',material)]:stack.enter_context(patch.object(a,name,return_value=value))
+        stack.enter_context(patch.object(a,'assert_fast_track_completion_live_execution'))
         stack.enter_context(patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)))
         self.download=stack.enter_context(patch.object(a,'_download_run_artifact',side_effect=download))
         self.provider=stack.enter_context(patch.object(deploy,'target_azure',side_effect=AssertionError('provider reached')))
@@ -3444,6 +3459,149 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
 
     def test_preflight_failure_publishes_terminal_receipt_without_worker_or_intent(self):self.run_case(preflight_failure=True)
     def test_terminal_receipt_failure_cannot_fall_through_to_worker(self):self.run_case(preflight_failure=True,publication_failure=True)
+
+class DeploymentReadErrorMetadataTests(unittest.TestCase):
+    def metadata(self, text, code=1):
+        return deploy.deployment_read_error_metadata(subprocess.CompletedProcess([], code, '', text))
+
+    def test_reported_provider_codes_do_not_infer_http_status(self):
+        for code, category in [('AuthenticationFailed', 'authentication'),
+                               ('AuthorizationFailed', 'authorization'),
+                               ('ResourceNotFound', 'not_found'), ('TooManyRequests', 'throttling'),
+                               ('ServiceUnavailable', 'service_error'), ('BadRequest', 'invalid_request')]:
+            with self.subTest(code=code):
+                result = self.metadata(f'ERROR: ({code}) synthetic detail\r\n')
+                self.assertEqual((result['providerCode'], result['category']), (code, category))
+                self.assertIsNone(result['httpStatus'])
+
+    def test_reported_http_status_does_not_infer_provider_code_or_timeout(self):
+        for phrase, status in [('Unauthorized', 401), ('Forbidden', 403), ('Not Found', 404),
+                               ('Too Many Requests', 429), ('Service Unavailable', 503),
+                               ('Gateway Timeout', 504)]:
+            with self.subTest(status=status):
+                result = self.metadata(f"ERROR: Operation returned an invalid status '{phrase}'")
+                self.assertEqual(result['httpStatus'], status)
+                self.assertIsNone(result['providerCode'])
+                self.assertNotEqual(result['category'], 'timeout')
+
+    def test_unrecognized_multiple_conflicting_and_embedded_errors_stay_unknown(self):
+        for text in ['', 'ERROR: unknown', 'customer AuthenticationFailed 403',
+                     'prefix ERROR: (Forbidden) detail', 'ERROR: (NewProviderCode) detail',
+                     'ERROR: (Forbidden) detail\nERROR: (AuthenticationFailed) detail',
+                     'ERROR: (Forbidden) detail\nERROR: unknown',
+                     'ERROR: (Forbidden) detail ERROR: (AuthenticationFailed) detail',
+                     "ERROR: (Forbidden) Operation returned an invalid status 'Unauthorized'",
+                     'ERROR: (Forbidden) Code: AuthenticationFailed',
+                     'ERROR: (Forbidden) HTTP/1.1 401']:
+            with self.subTest(text=text):
+                result = self.metadata(text)
+                self.assertEqual(result['category'], 'unknown')
+                self.assertIsNone(result['providerCode']); self.assertIsNone(result['httpStatus'])
+
+    def test_oversized_and_malformed_inputs_never_classify_or_stringify(self):
+        class Unprintable:
+            def __str__(self):
+                raise AssertionError('must not stringify')
+        for text in [None, b'ERROR: (Forbidden)', Unprintable(), 'ERROR: (Forbidden) ' + 'x' * 8192]:
+            result = self.metadata(text)
+            self.assertEqual(result['category'], 'unknown')
+            self.assertEqual(result['inputTooLarge'], type(text) is str)
+        for code in [True, '1', Unprintable(), 256, -256]:
+            result = self.metadata('ERROR: (Forbidden) detail', code)
+            self.assertIsNone(result['returnCode']); self.assertEqual(result['category'], 'unknown')
+
+    def test_only_allowlisted_metadata_reaches_output_and_failure_is_unchanged(self):
+        secret = 'SYNTHETIC_SECRET_DO_NOT_LOG'
+        stderr = 'ERROR: (Forbidden) Authorization: Bearer ' + secret + ' https://example.invalid/?token=' + secret
+        azure = deploy.Azure('app', Path('/immutable'), 'https://example.invalid', 'a' * 40)
+        output = io.StringIO()
+        with patch.object(deploy, 'deployment_read_process', return_value=
+                          subprocess.CompletedProcess([], 1, secret, stderr)) as process, \
+                patch('sys.stdout', output):
+            with self.assertRaisesRegex(RuntimeError, '^Azure deployment status unavailable$'):
+                azure.deployments()
+        self.assertNotIn(secret, output.getvalue()); self.assertNotIn('https:', output.getvalue())
+        self.assertNotIn('Bearer', output.getvalue()); self.assertNotIn('Authorization:', output.getvalue())
+        payload = json.loads(output.getvalue().split(':', 1)[1])
+        self.assertEqual(payload, dict(schemaVersion=1, source='azure-cli-reported', category='authorization',
+                         returnCode=1, providerCode='Forbidden', httpStatus=None, inputTooLarge=False,
+                         unknownReason=None, stderrLineCount=1))
+        self.assertEqual(process.call_args.args[0], ['az', 'webapp', 'log', 'deployment', 'list',
+                         '-g', deploy._RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP, '-n', 'app', '--only-show-errors', '-o', 'json'])
+        self.assertEqual(process.call_args.kwargs, {'timeout': 40})
+
+    def test_multiline_finite_shapes_never_emit_secret_details(self):
+        secret = 'SYNTHETIC_SECRET_DO_NOT_LOG'
+        cases = [('ERROR: (Forbidden) '+secret, 'authorization', None),
+                 ("ERROR: Operation returned an invalid status 'Unauthorized'", 'authentication', None),
+                 ('ERROR: unrecognized arguments: --'+secret, 'cli_argument', 'UNRECOGNIZED_ARGUMENTS'),
+                 ('ERROR: argument --secret: expected one argument', 'cli_argument', 'EXPECTED_ONE_ARGUMENT'),
+                 ('ERROR: the following arguments are required: --'+secret, 'cli_argument', 'REQUIRED_ARGUMENTS')]
+        for code in ('AADSTS700016', 'AADSTS7000215', 'AADSTS7000222'):
+            cases.append(('ERROR: '+code+': '+secret, 'authentication_reported', None))
+        for ending in ('\n', '\r\n'):
+            for line, category, kind in cases:
+                with self.subTest(line=line, ending=ending):
+                    result = self.metadata(ending.join([line, 'Trace: '+secret,
+                        'https://example.invalid/?token='+secret])+ending)
+                    self.assertEqual(result['category'], category)
+                    self.assertEqual(result.get('cliArgumentKind'), kind)
+                    self.assertEqual(result['stderrLineCount'], 3)
+                    self.assertIsNone(result['unknownReason'])
+                    for value in (secret, 'https:', '--secret', 'token='):
+                        self.assertNotIn(value, json.dumps(result))
+                    if category in ('cli_argument', 'authentication_reported'):
+                        self.assertIsNone(result['providerCode']); self.assertIsNone(result['httpStatus'])
+
+    def test_multiline_conflicts_and_malformed_shapes_stay_unknown(self):
+        first = 'ERROR: (Forbidden) safe'
+        markers = ('ERROR: (Forbidden) same', ' error: unknown', 'Code: AuthenticationFailed',
+                   'HTTP/1.1 401', 'Operation returned an invalid status', 'AADSTS999999: detail',
+                   'HTTP status: 401', 'Status: 401', 'StatusCode: 401',
+                   'AuthenticationError: detail', 'authentication error: detail', 'AuthError: detail')
+        cases = [first+'\n'+marker for marker in markers]
+        cases += [first+' '+marker for marker in markers]
+        cases += [first+ending for ending in ('\r', '\x1b[0m', '\u2028detail', '\vdetail', '\x85detail')]
+        cases += ['ERROR: argument --x: expected one arguments',
+                  'ERROR: unrecognized arguments:', 'ERROR: the following arguments are required:',
+                  'ERROR: AADSTS999999: detail', 'prefix ERROR: (Forbidden) detail',
+                  'ERROR: AADSTS700016:evil', first+'\n'+'detail\n'*31+'ERROR: other']
+        for text in cases:
+            with self.subTest(text=text):
+                result = self.metadata(text)
+                self.assertEqual(result['category'], 'unknown')
+                self.assertIsNone(result['providerCode']); self.assertIsNone(result['httpStatus'])
+                self.assertNotIn('authenticationCode', result)
+                self.assertNotIn('cliArgumentKind', result)
+
+    def test_multiline_bounds_never_classify_truncated_prefix(self):
+        first = 'ERROR: (Forbidden) safe'
+        result = self.metadata(first+'\n'+'detail\n'*31)
+        self.assertEqual(result['category'], 'authorization')
+        self.assertEqual(result['stderrLineCount'], 32)
+        for tail in ('detail', 'ERROR: other'):
+            result = self.metadata(first+'\n'+'detail\n'*31+tail)
+            self.assertEqual(result['unknownReason'], 'LINE_LIMIT')
+            self.assertEqual(result['stderrLineCount'], 33)
+        exact = 'ERROR: (Forbidden) '+'x'*(8192-len('ERROR: (Forbidden) '))
+        self.assertEqual(self.metadata(exact)['category'], 'authorization')
+        self.assertEqual(self.metadata(exact+'x')['unknownReason'], 'OVERSIZED')
+
+    def test_diagnostic_failure_cannot_replace_original_failure(self):
+        azure = deploy.Azure('app', Path('/immutable'), 'https://example.invalid', 'a' * 40)
+        with patch.object(deploy, 'deployment_read_process', return_value=subprocess.CompletedProcess([], 1, '', '')), \
+                patch.object(deploy, 'deployment_read_error_metadata', side_effect=ValueError('synthetic secret')):
+            with self.assertRaisesRegex(RuntimeError, '^Azure deployment status unavailable$'):
+                azure.deployments()
+
+    def test_success_does_not_classify_or_log_stderr(self):
+        azure = deploy.Azure('app', Path('/immutable'), 'https://example.invalid', 'a' * 40)
+        with patch.object(deploy, 'deployment_read_process', return_value=
+                          subprocess.CompletedProcess([], 0, '[{"id":"old","status":4}]', 'ERROR: (Forbidden) detail')), \
+                patch.object(deploy, 'deployment_read_error_metadata') as classify:
+            self.assertEqual(azure.deployments(), [row('old', 4)])
+        classify.assert_not_called()
+
 
 class DeploymentReadWallBudgetTests(unittest.TestCase):
     def run_read(self,durations,*,deadline=None,fail=True):
@@ -3708,6 +3866,148 @@ class RecoveryContractBarrierTests(unittest.TestCase):
             self.assertEqual(failure['phase'],'preflight-nonentry')
             self.assertEqual(failure['failedTarget'],keys[-1])
             self.assertFalse(failure['writePhaseEntered'])
+
+
+class CompletionDiagnosticContextTests(unittest.TestCase):
+    def state(self):
+        return dict(started=100.0,baseline=deploy._diagnostic_snapshot(),executable='OPT_AZ',
+                    packageVersion='2.80.0',imageVersion='20261025.353.1',count=0)
+
+    def test_unknown_shapes_are_bounded_and_never_copy_untrusted_text(self):
+        secret='SYNTHETIC_SECRET_HTTPS_TOKEN'
+        cases=[('', 'EMPTY'),('ERROR: '+secret,'UNRECOGNIZED_FORMAT'),
+               ('ERROR: (UnknownProvider) '+secret,'UNKNOWN_PROVIDER_CODE'),
+               ('ERROR: (Forbidden) '+secret+'\nERROR: '+secret,'CONFLICTING_MARKERS'),
+               ('ERROR: (Forbidden) '+secret+' HTTP/1.1 401','CONFLICTING_MARKERS'),
+               ('ERROR: (Forbidden) '+secret+' ERROR: second','CONFLICTING_MARKERS'),
+               (secret*1000,'OVERSIZED'),(b'ERROR: '+secret.encode(),'INVALID_TYPE')]
+        for stderr,reason in cases:
+            with self.subTest(reason=reason):
+                result=deploy.deployment_read_error_metadata(subprocess.CompletedProcess([],1,secret,stderr))
+                self.assertEqual(result['unknownReason'],reason)
+                self.assertEqual(result['category'],'unknown')
+                self.assertIsNone(result['providerCode']);self.assertIsNone(result['httpStatus'])
+                self.assertNotIn(secret,json.dumps(result))
+                self.assertTrue(result['stderrLineCount'] is None or result['stderrLineCount']<=33)
+        result=deploy.deployment_read_error_metadata(subprocess.CompletedProcess([],True,'','ERROR: (Forbidden)'))
+        self.assertEqual(result['unknownReason'],'INVALID_RETURN_CODE')
+
+    def test_context_redaction_equality_unknown_and_event_cap(self):
+        secret='SYNTHETIC_SECRET_DO_NOT_EMIT'
+        env={'PATH':'/usr/bin','AZURE_CONFIG_DIR':'/private/'+secret,'AZURE_CLOUD_NAME':'azurecloud',
+             'GH_TOKEN':secret,'ACTIONS_RUNTIME_TOKEN':secret,'ImageVersion':'20261025.353.1'}
+        output=io.StringIO()
+        with patch.dict(os.environ,env,clear=True),patch.object(deploy,'_diagnostic_executable',return_value='OPT_AZ'), \
+             patch.object(deploy.time,'monotonic',return_value=110.0),patch('sys.stdout',output):
+            state=self.state();token=deploy._COMPLETION_DIAGNOSTICS.set(state)
+            try:
+                deploy.completion_diagnostic('completion-entry')
+                os.environ['AZURE_CONFIG_DIR']='/changed/'+secret
+                os.environ['PATH']='x'*8193
+                for _ in range(30):deploy.completion_diagnostic('target-entry','protect')
+            finally:deploy._COMPLETION_DIAGNOSTICS.reset(token)
+        self.assertNotIn(secret,output.getvalue());self.assertNotIn('/private/',output.getvalue())
+        rows=[json.loads(line.split(':',1)[1]) for line in output.getvalue().splitlines()]
+        self.assertEqual(len(rows),24)
+        self.assertTrue(rows[0]['contextEqualsEntry']['AZURE_CONFIG_DIR'])
+        self.assertFalse(rows[1]['contextEqualsEntry']['AZURE_CONFIG_DIR'])
+        self.assertIsNone(rows[1]['contextEqualsEntry']['PATH'])
+        self.assertEqual(rows[0]['elapsedSinceEntrySeconds'],10.0)
+        self.assertFalse(rows[0]['contextIsAuthorizationProof'])
+        self.assertEqual(rows[1]['target'],'protect')
+
+    def test_no_credential_variables_are_read_and_absence_is_not_equality(self):
+        class RestrictedEnv(dict):
+            def get(self,key,*args):
+                if key not in {'PATH','AZURE_CONFIG_DIR','AZURE_CLOUD_NAME','ImageVersion'}:
+                    raise AssertionError('unexpected environment access')
+                return super().get(key,*args)
+        with patch.object(deploy.os,'environ',RestrictedEnv(PATH='/usr/bin')), \
+             patch.object(deploy,'_diagnostic_executable',return_value=None), \
+             patch.object(deploy,'_diagnostic_package_version',return_value=None),patch('sys.stdout',new_callable=io.StringIO) as output:
+            state=deploy._start_completion_diagnostics();self.assertIsNotNone(state)
+            token=deploy._COMPLETION_DIAGNOSTICS.set(state)
+            try:deploy.completion_diagnostic('completion-entry')
+            finally:deploy._COMPLETION_DIAGNOSTICS.reset(token)
+            report=json.loads(output.getvalue().split(':',1)[1])
+            self.assertIsNone(report['contextEqualsEntry']['AZURE_CONFIG_DIR'])
+            self.assertIsNone(report['executableEqualsEntry'])
+
+    def test_noncompletion_has_no_context_events_or_metadata_reads(self):
+        with patch.object(deploy,'_diagnostic_snapshot') as snapshot,patch('sys.stdout',new_callable=io.StringIO) as output:
+            deploy.completion_diagnostic('deployment-read','protect')
+            snapshot.assert_not_called();self.assertEqual(output.getvalue(),'')
+
+    def test_context_resets_after_success_and_original_failure(self):
+        from contextlib import nullcontext
+        for error in [None,RuntimeError('original failure')]:
+            with patch.object(deploy,'_start_completion_diagnostics',return_value=self.state()), \
+                 patch.object(deploy._RELEASE_AUTHORITY,'recovery_material_reuse',return_value=nullcontext()), \
+                 patch.object(deploy._RELEASE_AUTHORITY,'report_recovery_efficiency'), \
+                 patch.object(deploy,'_complete_fast_track',side_effect=error,return_value={'original':'result'}), \
+                 patch.object(deploy,'_diagnostic_snapshot',side_effect=ValueError('diagnostic secret')):
+                if error:
+                    with self.assertRaisesRegex(RuntimeError,'original failure'):deploy.complete_fast_track(1,'a'*40,Path('/x'))
+                else:self.assertEqual(deploy.complete_fast_track(1,'a'*40,Path('/x')),{'original':'result'})
+                self.assertIsNone(deploy._COMPLETION_DIAGNOSTICS.get())
+
+    def test_diagnostic_errors_do_not_change_read_command_cap_or_result(self):
+        azure=deploy.target_azure('protect',None,'a'*40)
+        for code in [0,1]:
+            with patch.object(deploy,'completion_diagnostic',side_effect=RuntimeError('secret')), \
+                 patch.object(deploy,'deployment_read_process',return_value=subprocess.CompletedProcess([],code,'[]','')) as process, \
+                 patch('sys.stdout',new_callable=io.StringIO):
+                if code:
+                    with self.assertRaisesRegex(RuntimeError,'^Azure deployment status unavailable$'):azure.deployments()
+                else:self.assertEqual(azure.deployments(),[])
+                self.assertEqual(process.call_args.args[0],['az','webapp','log','deployment','list','-g',
+                    'masterapp-rg','-n','masterapp-protect','--only-show-errors','-o','json'])
+                self.assertEqual(process.call_args.kwargs,{'timeout':40})
+
+    def test_executable_resolution_rejects_unbounded_or_unknown_path(self):
+        for path in ['x'*8193,':'.join(['x']*65)]:
+            with patch.dict(os.environ,{'PATH':path}),patch.object(deploy.shutil,'which') as which:
+                self.assertIsNone(deploy._diagnostic_executable());which.assert_not_called()
+        with patch.dict(os.environ,{'PATH':'/usr/bin'}),patch.object(deploy.shutil,'which',return_value='/untrusted/az'):
+            self.assertIsNone(deploy._diagnostic_executable())
+
+    def test_diagnostic_elapsed_time_consumes_read_cap_and_exhaustion_starts_no_child(self):
+        azure=deploy.target_azure('protect',None,'a'*40)
+        token=deploy._COMPLETION_DIAGNOSTICS.set({})
+        try:
+            with patch.object(deploy.time,'monotonic',side_effect=[100.0,103.0]), \
+                 patch.object(deploy,'completion_diagnostic'), \
+                 patch.object(deploy,'deployment_read_process',return_value=subprocess.CompletedProcess([],0,'[]','')) as read:
+                self.assertEqual(azure.deployments(),[])
+                self.assertEqual(read.call_args.kwargs,{'timeout':37.0})
+            with patch.object(deploy.time,'monotonic',side_effect=[100.0,140.0]), \
+                 patch.object(deploy,'completion_diagnostic',side_effect=RuntimeError('diagnostic failed')), \
+                 patch.object(deploy.subprocess,'Popen') as child:
+                with self.assertRaises(subprocess.TimeoutExpired):azure.deployments()
+                child.assert_not_called()
+        finally:deploy._COMPLETION_DIAGNOSTICS.reset(token)
+
+    def test_package_metadata_identity_and_ambiguity_redaction(self):
+        real_scandir=os.scandir
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);packages=root/'python3.13/site-packages';packages.mkdir(parents=True)
+            dist=packages/'azure_cli-2.80.0.dist-info';dist.mkdir();metadata=dist/'METADATA'
+            def scan(path):return real_scandir(root if str(path)=='/opt/az/lib' else path)
+            with patch.object(deploy.os,'scandir',side_effect=scan), \
+                 patch.object(deploy.subprocess,'Popen',side_effect=AssertionError('no diagnostic process')):
+                for content,expected in [('Name: azure-cli\nVersion: 2.80.0\n','2.80.0'),
+                    ('Name: other\nVersion: 2.80.0\n',None),
+                    ('Name: azure-cli\nVersion: 2.80.0\nVersion: 2.80.0\n',None),
+                    ('Name: azure-cli\nVersion: 2.79.0\n',None),('x'*8193,None)]:
+                    metadata.write_text(content)
+                    self.assertEqual(deploy._diagnostic_package_version('OPT_AZ'),expected)
+                metadata.write_text('Name: azure-cli\nVersion: 2.80.0\n')
+                other=packages/'azure_cli-2.79.0.dist-info';other.mkdir()
+                (other/'METADATA').write_text('Name: azure-cli\nVersion: 2.79.0\n')
+                self.assertIsNone(deploy._diagnostic_package_version('OPT_AZ'))
+                shutil.rmtree(other);metadata.unlink();metadata.symlink_to(root/'secret')
+                (root/'secret').write_text('Name: azure-cli\nVersion: 2.80.0\n')
+                with self.assertRaises(OSError):deploy._diagnostic_package_version('OPT_AZ')
 
 
 if __name__ == '__main__':
