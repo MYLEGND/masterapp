@@ -6936,6 +6936,177 @@ class RecoveryReceiptReuseTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'CACHE_BOUND'):self.get()
             self.assertEqual(downloads.call_count,100)
 
+class RecoveryReceiptCacheDiagnosticTests(unittest.TestCase):
+    def setUp(self):
+        self.fixture = RecoveryReceiptReuseTests()
+        self.fixture.setUp()
+        self.fixture.artifact['id'] = 999
+
+    def key(self, number, *, size=32768, filename='operation.json'):
+        return ('PRIVATE_REPOSITORY_SENTINEL', 10, number, 'PRIVATE_NAME_SENTINEL',
+                'sha256:' + 'e'*64, filename, size)
+
+    def future(self, state='completed'):
+        import concurrent.futures
+        future = concurrent.futures.Future()
+        if state == 'completed':future.set_result(b'{"private":"PRIVATE_BODY_SENTINEL"}')
+        elif state == 'failed':future.set_exception(RuntimeError('PRIVATE_PROVIDER_ERROR_SENTINEL'))
+        elif state == 'cancelled':future.cancel()
+        return future
+
+    def fill(self, entries):
+        entries.update((self.key(i), self.future()) for i in range(1, 101))
+
+    def read_bound(self):
+        import contextlib, io
+        output = io.StringIO()
+        with patch.object(m, '_download_run_artifact', side_effect=AssertionError('unexpected download')) as download, \
+             patch.object(m, 'api_get', side_effect=AssertionError('unexpected API')) as api, \
+             contextlib.redirect_stdout(output):
+            with self.assertRaisesRegex(ValueError, '^RECOVERY_RECEIPT_CACHE_BOUND$') as raised:
+                self.fixture.get()
+        download.assert_not_called(); api.assert_not_called()
+        self.assertIsNone(raised.exception.__context__)
+        return output.getvalue()
+
+    def test_cap_snapshot_does_not_insert_or_retain_requested_identity(self):
+        with m.recovery_material_reuse():
+            entries = m._RECOVERY_RECEIPT_BYTES.get()[1]; self.fill(entries)
+            before = list(entries.items()); output = self.read_bound()
+            self.assertEqual(list(entries.items()), before)
+            self.assertEqual(len(entries), 100)
+            self.assertEqual(len(output.splitlines()), 1)
+            prefix = 'LEGEND_RECOVERY_RECEIPT_CACHE_BOUND:'
+            self.assertTrue(output.startswith(prefix))
+            body = json.loads(output[len(prefix):])
+            self.assertEqual(body['retainedEntries'], 100)
+            self.assertEqual(body['sampledEntries'], 100)
+            self.assertEqual(body['sampledImmutableIdentities'], 100)
+            self.assertTrue(body['complete'])
+            self.assertEqual(body['limit'], 100)
+            self.assertEqual(body['requested']['artifactId'], 999)
+            self.assertEqual([r['artifactId'] for r in body['entries']], list(range(1, 101)))
+            self.assertTrue(all(r['state'] == 'completed' for r in body['entries']))
+        self.assertIsNone(m._RECOVERY_RECEIPT_BYTES.get())
+
+    def test_output_is_allowlisted_and_never_contains_private_strings(self):
+        with m.recovery_material_reuse():
+            entries = m._RECOVERY_RECEIPT_BYTES.get()[1]; self.fill(entries)
+            entries[self.key(1)] = self.future('failed')
+            entries[self.key(2, filename='https://PRIVATE_URL_SENTINEL/token=PRIVATE_TOKEN_SENTINEL')] = entries.pop(self.key(2))
+            output = self.read_bound()
+        for private in ['PRIVATE_REPOSITORY_SENTINEL', 'PRIVATE_NAME_SENTINEL', 'PRIVATE_BODY_SENTINEL',
+                        'PRIVATE_PROVIDER_ERROR_SENTINEL', 'PRIVATE_URL_SENTINEL', 'PRIVATE_TOKEN_SENTINEL', 'sha256:'+'e'*64]:
+            self.assertNotIn(private, output)
+        body = json.loads(output.split(':', 1)[1])
+        self.assertEqual(set(body), {'schemaVersion','reason','limit','retainedEntries','sampledEntries',
+                                    'complete','sampledImmutableIdentities','categoryCounts','requested','entries'})
+        self.assertEqual(set(body['requested']), {'category','runId','artifactId','maxBytes','identitySha256'})
+        for row in body['entries']:
+            self.assertEqual(set(row), {'category','runId','artifactId','maxBytes','identitySha256','index','state'}
+                             | ({'rawBytes'} if row['state'] == 'completed' else set()))
+        self.assertEqual(body['categoryCounts'], dict(operation=99, validation=0, promotion=0, other=1))
+        self.assertLess(len(output), 40000)
+
+    def test_pending_failed_cancelled_futures_never_wait_or_read_error_text(self):
+        import concurrent.futures
+        class GuardedFuture(concurrent.futures.Future):
+            def result(inner, timeout=None):
+                self.assertTrue(inner.done()); self.assertEqual(timeout, 0)
+                return super().result(timeout=timeout)
+            def exception(inner, timeout=None):
+                self.assertTrue(inner.done()); self.assertEqual(timeout, 0)
+                return super().exception(timeout=timeout)
+        entries = {}
+        for i, state in enumerate(['completed', 'pending', 'failed', 'cancelled'], 1):
+            future = GuardedFuture()
+            if state == 'completed':future.set_result(b'{}')
+            elif state == 'failed':future.set_exception(RuntimeError('PRIVATE_PROVIDER_ERROR_SENTINEL'))
+            elif state == 'cancelled':future.cancel()
+            entries[self.key(i)] = future
+        body = m._recovery_receipt_cache_bound_diagnostic(entries, self.key(999))
+        self.assertEqual([r['state'] for r in body['entries']], ['completed','pending','failed','cancelled'])
+        self.assertEqual(body['entries'][0]['rawBytes'], 2)
+        self.assertTrue(all('rawBytes' not in row for row in body['entries'][1:]))
+
+    def test_size_qualified_count_and_category_do_not_hide_duplicate_identity(self):
+        entries = {self.key(i, size=size): self.future() for i in range(1, 51) for size in (32768, 131072)}
+        body = m._recovery_receipt_cache_bound_diagnostic(entries, self.key(1, size=1024))
+        self.assertEqual(body['retainedEntries'], 100)
+        self.assertEqual(body['sampledImmutableIdentities'], 50)
+        self.assertEqual(body['requested']['identitySha256'], body['entries'][0]['identitySha256'])
+        self.assertEqual(body['entries'][0]['identitySha256'], body['entries'][1]['identitySha256'])
+        self.assertNotEqual(body['entries'][0]['maxBytes'], body['entries'][1]['maxBytes'])
+        self.assertEqual(body, m._recovery_receipt_cache_bound_diagnostic(entries, self.key(1, size=1024)))
+
+    def test_identity_fingerprint_binds_every_immutable_dimension(self):
+        key = self.key(1)
+        expected = hashlib.sha256(json.dumps(key[:-1], ensure_ascii=True, separators=(',', ':')).encode()).hexdigest()
+        self.assertEqual(m._recovery_receipt_cache_bound_diagnostic({}, key)['requested']['identitySha256'], expected)
+        for index, value in enumerate(['other/repository',11,2,'other-name','sha256:'+'f'*64,'validation-resume.json']):
+            changed = list(key); changed[index] = value
+            self.assertNotEqual(m._recovery_receipt_cache_bound_diagnostic({}, tuple(changed))['requested']['identitySha256'], expected)
+        for filename, category in [('operation.json','operation'),('validation-resume.json','validation'),
+                                   ('fast-track-admission.json','promotion'),('unrecognized','other')]:
+            self.assertEqual(m._recovery_receipt_cache_bound_diagnostic({}, self.key(1,filename=filename))['requested']['category'], category)
+
+    def test_formatter_has_a_hard_100_row_output_bound(self):
+        entries = {self.key(i): self.future() for i in range(1, 102)}
+        body = m._recovery_receipt_cache_bound_diagnostic(entries, self.key(999))
+        self.assertEqual(body['retainedEntries'], 101)
+        self.assertEqual(body['sampledEntries'], 100)
+        self.assertEqual(len(body['entries']), 100)
+        self.assertFalse(body['complete'])
+        self.assertEqual(len(entries), 101)  # Formatter does not repair or mutate its input.
+
+    def test_formatter_logging_and_serialization_errors_cannot_replace_bound(self):
+        import contextlib, io
+        for owner, name, failure in [(m, '_recovery_receipt_cache_bound_diagnostic', RuntimeError('PRIVATE_FORMAT_ERROR')),
+                                     (m.json, 'dumps', RuntimeError('PRIVATE_JSON_ERROR')),
+                                     ('builtins', 'print', OSError('PRIVATE_OUTPUT_ERROR'))]:
+            with self.subTest(name=name), m.recovery_material_reuse():
+                entries = m._RECOVERY_RECEIPT_BYTES.get()[1]; self.fill(entries)
+                before = list(entries.items()); output = io.StringIO()
+                patched = patch(owner+'.'+name, side_effect=failure) if isinstance(owner,str) else patch.object(owner,name,side_effect=failure)
+                with patched, contextlib.redirect_stdout(output):
+                    self.read_bound()
+                self.assertEqual(list(entries.items()), before)
+                self.assertEqual(output.getvalue(), '')
+
+    def test_malformed_internal_snapshot_does_not_expose_or_mask_bound(self):
+        for invalid in [True, 0, -1, 'PRIVATE_ID_SENTINEL']:
+            with self.subTest(invalid=invalid), m.recovery_material_reuse():
+                entries = m._RECOVERY_RECEIPT_BYTES.get()[1]; self.fill(entries)
+                key = list(self.key(1)); key[1] = invalid
+                entries[tuple(key)] = entries.pop(self.key(1))
+                self.assertEqual(self.read_bound(), '')
+                self.assertEqual(len(entries), 100)
+
+    def test_success_and_fitting_donor_at_capacity_remain_quiet(self):
+        import contextlib, io
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), patch.object(m, '_download_run_artifact', side_effect=self.fixture.download), \
+             patch.object(m, '_recovery_receipt_cache_bound_diagnostic', side_effect=AssertionError('success must not log')) as diagnostic, \
+             m.recovery_material_reuse():
+            self.assertEqual(self.fixture.get(), dict(items=[1]))
+            entries = m._RECOVERY_RECEIPT_BYTES.get()[1]
+            entries.update((self.key(i), self.future()) for i in range(1, 100))
+            self.assertEqual(len(entries), 100)
+            self.assertEqual(self.fixture.get(size=131072), dict(items=[1]))
+            self.assertEqual(len(entries), 100)
+            diagnostic.assert_not_called()
+        self.assertEqual(output.getvalue(), '')
+
+    def test_invalid_requested_identity_still_fails_before_diagnostics(self):
+        with m.recovery_material_reuse(), patch.object(m, '_recovery_receipt_cache_bound_diagnostic') as diagnostic:
+            entries = m._RECOVERY_RECEIPT_BYTES.get()[1]; self.fill(entries)
+            for limit in [0, True, 32*1024*1024+1]:
+                with self.assertRaises(m.ReleaseOperationHistoryUnproven):self.fixture.get(size=limit)
+            self.fixture.artifact['expired'] = True
+            with self.assertRaises(m.ReleaseOperationHistoryUnproven):self.fixture.get()
+            diagnostic.assert_not_called(); self.assertEqual(len(entries), 100)
+
+
 class RecoveryAdmissionProofTests(unittest.TestCase):
     def test_promotion_receipt_download_reuse_preserves_exact_acceptance(self):
         import contextlib

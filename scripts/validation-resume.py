@@ -11652,6 +11652,45 @@ def _release_history_source(repository, revision, path, token):
     return source
 
 
+def _recovery_receipt_cache_bound_diagnostic(entries, requested):
+    """Bounded failure-only snapshot. Caller holds the existing receipt lock."""
+    import itertools
+    categories = {'operation.json': 'operation', 'validation-resume.json': 'validation',
+                  'fast-track-admission.json': 'promotion'}
+    def describe(key):
+        if (not isinstance(key, tuple) or len(key) != 7
+            or any(type(key[i]) is not int or not 0 < key[i] < 2**63 for i in (1, 2))
+            or type(key[6]) is not int or not 0 < key[6] <= 32 * 1024 * 1024
+            or any(not isinstance(key[i], str) or not 0 < len(key[i]) <= 4096 for i in (0, 3, 4, 5))):
+            raise ValueError('Receipt diagnostic identity unavailable')
+        return dict(category=categories.get(key[5], 'other'), runId=key[1], artifactId=key[2],
+            maxBytes=key[6], identitySha256=hashlib.sha256(json.dumps(key[:-1],
+                ensure_ascii=True, separators=(',', ':')).encode()).hexdigest())
+    rows = []; identities = set()
+    counts = dict(operation=0, validation=0, promotion=0, other=0)
+    for index, (key, future) in enumerate(itertools.islice(entries.items(), 100), 1):
+        row = describe(key)
+        if future.cancelled():
+            state = 'cancelled'
+        elif not future.done():
+            state = 'pending'
+        elif future.exception(timeout=0) is not None:
+            state = 'failed'
+        else:
+            raw = future.result(timeout=0)
+            if not isinstance(raw, bytes):
+                raise ValueError('Receipt diagnostic bytes unavailable')
+            state = 'completed'
+            row['rawBytes'] = len(raw)
+        row.update(index=index, state=state)
+        identities.add(row['identitySha256']); counts[row['category']] += 1
+        rows.append(row)
+    return dict(schemaVersion=1, reason='RECOVERY_RECEIPT_CACHE_BOUND', limit=100,
+        retainedEntries=len(entries), sampledEntries=len(rows), complete=len(rows) == len(entries),
+        sampledImmutableIdentities=len(identities), categoryCounts=counts,
+        requested=describe(requested), entries=rows)
+
+
 def _recovery_receipt_json(repository, run_id, artifact, filename, max_bytes):
     """Reuse authenticated bytes only; every caller still checks fresh authority."""
     import tempfile
@@ -11677,7 +11716,14 @@ def _recovery_receipt_json(repository, run_id, artifact, filename, max_bytes):
                     break
         owns = future is None
         if owns:
-            if len(entries) >= 100:raise ValueError('RECOVERY_RECEIPT_CACHE_BOUND')
+            if len(entries) >= 100:
+                try:
+                    diagnostic = _recovery_receipt_cache_bound_diagnostic(entries, identity)
+                    print('LEGEND_RECOVERY_RECEIPT_CACHE_BOUND:' + json.dumps(diagnostic,
+                        sort_keys=True, separators=(',', ':')), flush=True)
+                except BaseException:
+                    pass  # Diagnostics must never replace the original fail-closed outcome.
+                raise ValueError('RECOVERY_RECEIPT_CACHE_BOUND')
             future = concurrent.futures.Future(); entries[identity] = future
     if not owns:
         raw = future.result(timeout=evidence_remaining(180))
