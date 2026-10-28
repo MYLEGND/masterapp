@@ -178,7 +178,15 @@ PROTECT_PREUPLOAD_SOURCE = {
 }
 
 
-def _fast_track_preupload_log_proven(log, revision, step, *, protect_baseline=False):
+FRESH_PROTECT_PREINTENT_SOURCE = {
+    '.github/workflows/legend-fast-track-ui.yml': 'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd',
+    'scripts/deploy-approved-app.py': '49e6b1caae18705fa91898d794c6d27e34be5ba8bda60693e5f1e65284a0caa8',
+    'scripts/release-operation-evidence.py': '5b42fcbed0ac4a331ff5c706ef5a6a3ce96eb32d556ef4051c65ee4cf99e881e',
+    'scripts/release-artifacts/transport.cjs': '7735ecb6aa40f8259b3f65d6eacbf5f9b09a27bebef4a5ec65aca72b6b99705d',
+}
+
+
+def _fast_track_preupload_log_proven(log, revision, step, *, protect_baseline=False, fresh_serializer=False):
     """Interpret only the fixed exception from an independently pinned producer."""
     import datetime
     start, end = (_completion_time(step.get(key)) for key in ('started_at', 'completed_at'))
@@ -200,6 +208,27 @@ def _fast_track_preupload_log_proven(log, revision, step, *, protect_baseline=Fa
         observed = _completion_time(stamp)
         if start <= observed <= end + datetime.timedelta(seconds=1):
             events.append(text)
+    if fresh_serializer:
+        rejected = 'RuntimeError: Durable operation publication/readback unavailable; reconcile without writing'
+        terminal = 'DeploymentSubmissionNotEntered: Durable upload intent could not be proven; no write authorized'
+        cause = 'The above exception was the direct cause of the following exception:'
+        error = '##[error]Process completed with exit code 1.'
+        if (any(events.count(value) != 1 or clean.count(value) != 1 for value in (rejected, terminal, cause, error))
+            or events.count('Traceback (most recent call last):') != 2
+            or clean.count('Traceback (most recent call last):') != 2
+            or any(value in clean for value in ('Submitting the verified immutable ZIP once.', 'AZURE_TRACKED_DEPLOYMENT_REFERENCE:'))):
+            return False
+        traces = [i for i, value in enumerate(events) if value == 'Traceback (most recent call last):']
+        if not traces[0] < events.index(rejected) < events.index(cause) < traces[1] < events.index(terminal) < events.index(error):
+            return False
+        frames = re.findall(r'  File "[^"\n]*/scripts/([^"/]+)", line ([0-9]+), in ([^\n]+)', '\n'.join(events))
+        expected = [('deploy-approved-app.py','814','reconcile'), ('release-operation-evidence.py','278','before_submit'),
+                    ('release-operation-evidence.py','53','publish_record'), ('deploy-approved-app.py','2064','<module>'),
+                    ('deploy-approved-app.py','2008','main'), ('deploy-approved-app.py','1451','fast_track_deploy'),
+                    ('deploy-approved-app.py','822','reconcile')]
+        return (frames == expected and sum(value.startswith('  File ') for value in events) == len(expected)
+            and clean.count('Cleaning up orphan processes') == 1
+            and clean.index('Cleaning up orphan processes') > clean.index(terminal))
     # Positive terminal control-flow evidence, not an absence-of-intent shortcut.
     # In this pinned generation submitted is set BEFORE submit and never reset;
     # the literal before-upload phase is impossible after entering that write.
@@ -227,14 +256,23 @@ def attested_fast_track_preupload_failure(repository, run, job, attempt, target,
             or job.get('status') != 'completed' or job.get('conclusion') != 'failure'):
             return False
         step = _completion_step(job, 'Publish or reconcile exact application bytes', conclusions=('failure',))
+        fresh_serializer = (repository.lower() == 'mylegnd/masterapp' and target == 'protect'
+            and run['id'] == 40703908687 and run['run_attempt'] == attempt == 1
+            and revision == '9af32d2e6bf608cb790eed59a43e90cdd9d877e6' and job['id'] == 122875752175)
+        if fresh_serializer and run.get('conclusion') != 'failure':
+            return False
         sources = {path: hashlib.sha256(_release_history_source(repository, revision, path, token).encode()).hexdigest()
-                   for path in FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS[0]}
+                   for path in (FRESH_PROTECT_PREINTENT_SOURCE if fresh_serializer else FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS[0])}
         protect_baseline = (target == 'protect' and run['id'] == PROTECT_RECOVERY_RUN
             and revision == PROTECT_RECOVERY_REVISION and sources == PROTECT_PREUPLOAD_SOURCE)
-        if sources not in FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS and not protect_baseline:
+        if (sources != FRESH_PROTECT_PREINTENT_SOURCE if fresh_serializer else
+            sources not in FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS and not protect_baseline):
             return False
         inventory = _completion_inventory(api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token), 'artifacts')
         package = _completion_artifact(inventory, 'fast-track-package-' + revision + '-' + target, run)
+        if fresh_serializer and (package['id'] != 12822934766
+            or package['digest'] != 'sha256:a1b5a5261988c14de28da6a33997dcedee860e30de3667d0ced89fdd05f7590b'):
+            return False
         attempts = _completion_jobs(repository, run, token)
         _completion_original_artifact_owner(dict(run=run, attempts=attempts), target, package,
             'Preserve immutable application bytes before upload', ('success',))
@@ -251,7 +289,7 @@ def attested_fast_track_preupload_failure(repository, run, job, attempt, target,
         if hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest() != operation_id:
             return False
         return _fast_track_preupload_log_proven(_release_job_log(repository, job['id'], token), revision, step,
-            protect_baseline=protect_baseline)
+            protect_baseline=protect_baseline, fresh_serializer=fresh_serializer)
     except (KeyError, TypeError, ValueError, RuntimeError, OSError, UnicodeError, zipfile.BadZipFile, subprocess.SubprocessError):
         return False
 
@@ -426,6 +464,18 @@ def fast_track_recovery_material(repository, original, key, token):
         if key == 'protect':
             material['protectBaselineCorrection'] = protect_recovery_baseline_proof(repository, original, package, token)
     return material
+
+
+def fresh_protect_retained_supersession(original, material, key):
+    """Reuse the original immutable authorization; never synthesize old success."""
+    if key != 'protect' or original['run']['id'] != 40703908687 or material.get('originalIntent') is not None:
+        return None
+    if original['run']['head_sha'] != '9af32d2e6bf608cb790eed59a43e90cdd9d877e6':
+        raise ValueError('FRESH_PROTECT_RECOVERY_SOURCE_CHANGED')
+    proof = fast_track_protect_supersession(original['run']['head_sha'])
+    if proof is None:
+        raise ValueError('FRESH_PROTECT_RECOVERY_AUTHORIZATION_MISSING')
+    return proof
 
 
 _RECOVERY_PACKAGE_DIGESTS = contextvars.ContextVar('recovery_package_digests', default=None)
@@ -831,6 +881,10 @@ def validate_fast_track_recovery_record(repository, run, artifact, record, token
         raise ValueError('FAST_TRACK_RECOVERY_MATERIAL_IDENTITY_CHANGED')
     if 'protectBaselineCorrection' in expected and record.get('baseline') != PROTECT_BASELINE_REVISION:
         raise ValueError('PROTECT_RECOVERY_RECEIPT_BASELINE_CHANGED')
+    if 'protectBaselineCorrection' not in expected:
+        authorization = fresh_protect_retained_supersession(original, material, record.get('target'))
+        if authorization is not None and record.get('baseline') != authorization['originalRevision']:
+            raise ValueError('PROTECT_RECOVERY_RECEIPT_BASELINE_CHANGED')
     jobs = _completion_rows(api_get(repository, f"actions/runs/{run['id']}/attempts/{observer['runAttempt']}/jobs?per_page=100", token), 'jobs')
     job = next(job for job in jobs if job['id'] == observer['jobId'])
     steps = [step for step in job.get('steps', []) if step.get('name') == 'Recover exact retained application bytes']
@@ -1212,6 +1266,9 @@ def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
     # Shared serializer preflight; exact paired generation, never arbitrary helpers.
     if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) in {
+        # Independently reviewed retained fresh-Protect preparation, unchanged journal.
+        ('63de609c4e97fd97c566d59f3d1bb4eae745bfcc8012e508e2944b2307678240',
+         '5b42fcbed0ac4a331ff5c706ef5a6a3ce96eb32d556ef4051c65ee4cf99e881e'),
         ('dd6c8154aadc3f829204bee307936630d6620e06c416681be65cce2d32fab487',
          '95117a0cd4e1f21bf6407f5324107fdcdfeba582d9ce2123975d567b00664f73'),
         # Reviewed completion-only proof reuse; retained recovery paths unchanged.
