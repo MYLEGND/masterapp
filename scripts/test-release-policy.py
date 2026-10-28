@@ -1924,19 +1924,27 @@ class CompletionScopedDiscoveryTests(unittest.TestCase):
         self.intent=dict(id=11,name='legend-release-operation-intent-'+self.operation,expired=False,
             digest='sha256:'+'c'*64,workflow_run=dict(id=10,head_sha=self.sha))
         self.originals=dict(total_count=1,artifacts=[self.intent])
-        self.run=dict(id=20,head_branch='Legend/fast-track-release',path='.github/workflows/deployment-diagnostics.yml',status='completed',conclusion='failure')
+        self.run=dict(id=20,head_sha='d'*40,run_attempt=1,event='workflow_dispatch',head_repository=dict(full_name=self.repo),head_branch='Legend/fast-track-release',path='.github/workflows/deployment-diagnostics.yml',status='completed',conclusion='failure')
         self.runs=dict(total_count=1,workflow_runs=[self.run])
-        self.success=dict(id=21,name='legend-release-operation-success-'+self.operation)
+        self.success=dict(id=21,name='legend-release-operation-success-'+self.operation,expired=False,digest='sha256:'+'e'*64,workflow_run=dict(id=20,head_sha=self.run['head_sha']))
         self.artifacts={20:dict(total_count=1,artifacts=[self.success])}
         self.records={21:dict(applicationRevision=self.sha)}
         self.recovery=dict(total_count=0,artifacts=[])
-        self.calls=[];self.reads=[];self.closes=[]
+        self.calls=[];self.reads=[];self.closes=[];self.named_overrides={}
     def api(self,repo,path,token):
         self.assertEqual(repo,self.repo);self.calls.append(path)
-        if path.startswith('actions/artifacts?'):return self.recovery
+        if path.startswith('actions/artifacts?name='):
+            from urllib.parse import parse_qs
+            name=parse_qs(path.split('?',1)[1])['name'][0]
+            if name==self.a.fast_track_recovery_summary_name(self.original['id'],self.sha):return self.recovery
+            if name in self.named_overrides:return self.named_overrides[name]
+            rows=[row for payload in self.artifacts.values() for row in payload['artifacts'] if row.get('name')==name]
+            return dict(total_count=len(rows),artifacts=rows)
         if path==f"actions/runs/{self.original['id']}":return self.original
         if path==f"actions/runs/{self.original['id']}/artifacts?per_page=100":return self.originals
         if path.startswith('actions/workflows/'):return self.runs
+        for run in self.runs['workflow_runs']:
+            if path==f"actions/runs/{run['id']}":return run
         if path.endswith('/jobs?filter=latest&per_page=100'):return dict(total_count=0,jobs=[])
         if path.endswith('/artifacts?per_page=100'):return self.artifacts[int(path.split('/')[2])]
         raise AssertionError(path)
@@ -1961,7 +1969,7 @@ class CompletionScopedDiscoveryTests(unittest.TestCase):
         self.assertTrue(self.check());self.assertEqual(self.reads,[21])
         self.records[21]['applicationRevision']='d'*40
         self.assertFalse(self.check())
-    def test_actual_cbc_empty_intent_scope_scans_all_metadata_not_unrelated_bodies(self):
+    def test_actual_cbc_empty_intent_scope_queries_exact_summary_not_unrelated_runs(self):
         import copy
         self.sha='cbc94de2f33baeecce331f0184522686b658c58f'
         self.original.update(id=40506653784,head_sha=self.sha);self.current=copy.deepcopy(self.original)
@@ -1971,7 +1979,10 @@ class CompletionScopedDiscoveryTests(unittest.TestCase):
         self.artifacts={current['id']:dict(total_count=1,artifacts=[dict(id=12760978926,name='legend-release-operation-success-85ba96e6a5dca05d83949e0c1854783518177cd99928996f82ddade432cc4704')]),
             prior['id']:dict(total_count=1,artifacts=[dict(id=12715727916,name='legend-release-completion-91ce77b99c4d692ba3bf963e73b8c3b1014d4b6834971c2e3b40fe6afec45537')])}
         self.assertFalse(self.check());self.assertEqual(self.reads,[])
-        for run in [current,prior]:self.assertIn(f"actions/runs/{run['id']}/artifacts?per_page=100",self.calls)
+        name=self.a.fast_track_completion_summary_name(self.original['id'],self.sha)
+        self.assertIn('actions/artifacts?name='+name+'&per_page=100',self.calls)
+        for run in [current,prior]:self.assertNotIn(f"actions/runs/{run['id']}/artifacts?per_page=100",self.calls)
+        self.assertFalse(any(path.startswith('actions/workflows/') for path in self.calls))
         self.assertEqual(self.closes,['actions/runs/40506653784'])
     def test_actual_a459_summary38_remains_discoverable(self):
         import copy
@@ -2021,12 +2032,20 @@ class CompletionScopedDiscoveryTests(unittest.TestCase):
             self.original.clear();self.original.update(copy.deepcopy(good));self.original.update(changes)
             with self.subTest(changes=changes),self.assertRaises(ValueError):self.check()
         self.assertEqual(self.reads,[])
-    def test_diagnostics_inventory_still_must_be_complete_even_for_empty_scope(self):
+    def test_each_named_inventory_must_be_complete_even_for_empty_scope(self):
         self.originals=dict(total_count=0,artifacts=[])
+        name=self.a.fast_track_completion_summary_name(10,self.sha)
+        for payload in [dict(total_count=1,artifacts=[]),dict(total_count=True,artifacts=[]),
+                        dict(total_count=101,artifacts=[self.success]*100),
+                        dict(total_count=2,artifacts=[self.success,self.success]),dict(total_count=1,artifacts=[None])]:
+            self.named_overrides[name]=payload
+            with self.subTest(payload=payload),self.assertRaises(ValueError):self.check()
+        self.assertEqual(self.reads,[])
+    def test_unscoped_inventory_completeness_contract_is_unchanged(self):
         self.runs['total_count']=2
-        with self.assertRaises(ValueError):self.check()
+        with self.assertRaises(ValueError):self.check(scoped=False)
         self.runs['total_count']=1;self.artifacts[20]['total_count']=2
-        with self.assertRaises(ValueError):self.check()
+        with self.assertRaises(ValueError):self.check(scoped=False)
         self.assertEqual(self.reads,[])
     def test_closing_identity_is_uncached_and_rejects_drift_for_both_results(self):
         import copy
@@ -2060,6 +2079,112 @@ class CompletionScopedDiscoveryTests(unittest.TestCase):
                 with self.assertRaises(ValueError if forged else RuntimeError):
                     self.a.fast_track_effective_baseline(self.sha,'d'*40,repository=self.repo,token='test-only')
                 proof.assert_called_once()
+
+    def test_every_relevant_name_must_be_checked_before_absence(self):
+        self.artifacts[20]['artifacts']=[]
+        self.assertFalse(self.check())
+        names=[self.a.fast_track_completion_summary_name(10,self.sha),'legend-release-operation-success-'+self.operation]
+        for name in names:self.assertIn('actions/artifacts?name='+name+'&per_page=100',self.calls)
+        self.assertEqual(self.reads,[]);self.assertEqual(self.closes,['actions/runs/10'])
+    def test_named_inventory_failure_is_not_broad_fallback(self):
+        original=self.api
+        def api(repo,path,token):
+            if path=='actions/artifacts?name='+self.a.fast_track_completion_summary_name(10,self.sha)+'&per_page=100':
+                raise self.a.EvidenceLookupUnavailable('unavailable')
+            return original(repo,path,token)
+        with patch.object(self,'api',side_effect=api),self.assertRaises(self.a.EvidenceLookupUnavailable):self.check()
+        self.assertFalse(any(path.startswith('actions/workflows/') for path in self.calls))
+        self.assertEqual((self.reads,self.closes),([],[]))
+    def test_named_artifact_identity_expiry_and_digest_fail_closed(self):
+        import copy
+        good=copy.deepcopy(self.success);name=good['name']
+        for change in [dict(name='foreign'),dict(expired=True),dict(expired=None),dict(digest=''),
+                       dict(workflow_run=None),dict(workflow_run=dict(id=True,head_sha='d'*40)),
+                       dict(workflow_run=dict(id=20,head_sha='invalid'))]:
+            self.named_overrides[name]=dict(total_count=1,artifacts=[dict(good,**change)])
+            with self.subTest(change=change),self.assertRaisesRegex(ValueError,'DISCOVERY_ARTIFACT_UNPROVEN'):self.check()
+        self.assertEqual(self.reads,[])
+    def test_named_producer_identity_is_authenticated_not_inferred_from_name(self):
+        import copy
+        good=copy.deepcopy(self.run)
+        for change in [dict(id=True),dict(id=99),dict(head_sha='f'*40),dict(head_repository=dict(full_name='foreign/repo'))]:
+            self.run.clear();self.run.update(copy.deepcopy(good));self.run.update(change)
+            original=self.api
+            def api(repo,path,token):
+                if path=='actions/runs/20':return self.run
+                return original(repo,path,token)
+            with self.subTest(change=change),patch.object(self,'api',side_effect=api),self.assertRaisesRegex(ValueError,'DISCOVERY_PRODUCER_UNPROVEN'):self.check()
+        self.assertEqual(self.reads,[])
+    def test_same_name_outside_exact_diagnostics_scope_is_not_completion(self):
+        for key,value in [('event','push'),('path','.github/workflows/other.yml'),('head_branch','other')]:
+            old=self.run[key];self.run[key]=value
+            with self.subTest(key=key):self.assertFalse(self.check())
+            self.run[key]=old
+        self.assertEqual(self.reads,[]);self.assertEqual(len(self.closes),3)
+    def test_body_revision_and_digest_reader_remain_required(self):
+        self.records[21]['applicationRevision']='f'*40
+        self.assertFalse(self.check());self.assertEqual(self.reads,[21])
+        with patch.object(self,'read',side_effect=ValueError('digest changed')),self.assertRaisesRegex(ValueError,'digest changed'):self.check()
+    def test_positive_summary_still_reads_every_matching_operation_body(self):
+        name=self.a.fast_track_completion_summary_name(10,self.sha)
+        summary=dict(self.success,id=22,name=name)
+        self.artifacts[20]=dict(total_count=2,artifacts=[self.success,summary]);self.records[22]=dict(applicationRevision=self.sha)
+        self.assertTrue(self.check());self.assertEqual(self.reads,[22,21])
+        self.assertIn('actions/artifacts?name='+self.success['name']+'&per_page=100',self.calls)
+        self.records[22]['applicationRevision']='f'*40;self.reads=[]
+        self.assertTrue(self.check());self.assertEqual(self.reads,[22,21])
+    def test_unrelated_run_count_does_not_expand_scoped_metadata_reads(self):
+        self.originals=dict(total_count=0,artifacts=[])
+        self.artifacts={index:dict(total_count=1,artifacts=[dict(id=index,name='unrelated')]) for index in range(100,200)}
+        self.assertFalse(self.check())
+        self.assertEqual(len(self.calls),4) # recovery summary, original, original inventory, exact completion summary
+        self.assertEqual(len(self.closes),1);self.assertEqual(self.reads,[])
+
+
+    def test_positive_cannot_hide_malformed_matching_body_before_or_after_summary(self):
+        name=self.a.fast_track_completion_summary_name(10,self.sha)
+        summary=dict(self.success,id=22,name=name)
+        self.artifacts[20]=dict(total_count=2,artifacts=[self.success,summary])
+        self.records[22]=dict(applicationRevision=self.sha)
+        original=self.read
+        for broken in [21,22]:
+            self.reads=[]
+            def read(repo,run,artifact,filename,**kwargs):
+                if artifact['id']==broken:raise ValueError('malformed matching body')
+                return original(repo,run,artifact,filename,**kwargs)
+            with self.subTest(broken=broken),patch.object(self,'read',side_effect=read),self.assertRaisesRegex(ValueError,'malformed matching body'):self.check()
+        self.assertEqual(self.closes,[])
+    def test_positive_cannot_hide_later_matching_artifact_or_query_error(self):
+        name=self.a.fast_track_completion_summary_name(10,self.sha)
+        summary=dict(self.success,id=22,name=name)
+        self.artifacts[20]=dict(total_count=2,artifacts=[self.success,summary]);self.records[22]=dict(applicationRevision=self.sha)
+        self.success['expired']=True
+        with self.assertRaisesRegex(ValueError,'DISCOVERY_ARTIFACT_UNPROVEN'):self.check()
+        self.success['expired']=False
+        original=self.api
+        def api(repo,path,token):
+            if path=='actions/artifacts?name='+self.success['name']+'&per_page=100':raise self.a.EvidenceLookupUnavailable('late query unavailable')
+            return original(repo,path,token)
+        with patch.object(self,'api',side_effect=api),self.assertRaises(self.a.EvidenceLookupUnavailable):self.check()
+        self.assertEqual(self.closes,[])
+    def test_positive_still_reads_multiple_matching_bodies_and_does_not_accept_conflicts(self):
+        name=self.a.fast_track_completion_summary_name(10,self.sha)
+        summary=dict(self.success,id=22,name=name);conflict=dict(self.success,id=23)
+        self.artifacts[20]=dict(total_count=3,artifacts=[self.success,summary,conflict])
+        self.records[22]=dict(applicationRevision=self.sha)
+        self.records[23]=dict(applicationRevision='f'*40)
+        self.assertTrue(self.check());self.assertEqual(self.reads,[22,21,23])
+        # Discovery accumulates presence only; the existing caller must still
+        # execute the canonical rejecting receipt proof for conflicting evidence.
+        with patch.object(self.a,'fast_track_historical_producers',return_value=[self.original]), \
+             patch.object(self.a.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
+             patch.object(self.a,'api_get',side_effect=self.api), \
+             patch.object(self.a,'_api_get_uncached',side_effect=self.close), \
+             patch.object(self.a,'_release_history_json',side_effect=self.read), \
+             patch.object(self.a,'fast_track_completed_operation_receipts',side_effect=ValueError('Competing completion success evidence')) as proof:
+            with self.assertRaisesRegex(ValueError,'Competing completion success evidence'):
+                self.a.fast_track_effective_baseline(self.sha,'d'*40,repository=self.repo,token='test-only')
+            proof.assert_called_once()
 
 
 class CompletionSummaryTests(unittest.TestCase):

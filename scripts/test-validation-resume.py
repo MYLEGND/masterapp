@@ -5584,7 +5584,9 @@ class ReviewedEqualContractRuntimeTests(unittest.TestCase):
             ('b7cd7a413410db1d64dee03063ef487f94c106b581a58bf1c805873219ebc1dd',
              'a34e572bb44103afa50e13f9c58c624057b8a5b8d9a7215c27369db707024c36'),
             ('a34e572bb44103afa50e13f9c58c624057b8a5b8d9a7215c27369db707024c36',
-             'dde0b179a337f9a039559b3186e405e42a005d5b9e06c7c84016f7918ade63b4')
+             'dde0b179a337f9a039559b3186e405e42a005d5b9e06c7c84016f7918ade63b4'),
+            ('a34e572bb44103afa50e13f9c58c624057b8a5b8d9a7215c27369db707024c36',
+             'eb93ec6a6dac28258c41a8cc729bcc0cafbe52812af58cbda414959f9a90423e')
         }), m.REVIEWED_EQUAL_CONTRACT_RUNTIME_PAIRS)
         proof = self.prove()
         self.assertEqual('approved-definitions-reviewed-runtime-pair', proof['rule'])
@@ -5707,6 +5709,23 @@ class ReviewedStudioMediaEqualContractRuntimeTests(ReviewedEqualContractRuntimeT
             (self.before, '48a666a64388194341ae312c0742a1d784b5d97f771bd4366d7c9a0ecfe3b4bf'),
             (self.before, 'facb9ea689dea4f09c3da283bf01b042d7b0d3e0a94ca893d8d552baab1410fd'),
             ('facb9ea689dea4f09c3da283bf01b042d7b0d3e0a94ca893d8d552baab1410fd', self.after)]:
+            self.trusted['runtimeIdentity'] = before
+            self.current['runtimeIdentity'] = after
+            with self.subTest(before=before, after=after), self.assertRaisesRegex(ValueError, 'UNPROVEN'):
+                self.prove(git_results=[])
+
+
+class ReviewedProtectRecoveryEqualContractRuntimeTests(ReviewedStudioMediaEqualContractRuntimeTests):
+    # Preserve every existing contract/identity/Git/metadata negative for this
+    # independently compiled, exact current application closure as well.
+    def setUp(self):
+        super().setUp()
+        self.after = 'eb93ec6a6dac28258c41a8cc729bcc0cafbe52812af58cbda414959f9a90423e'
+        self.current['runtimeIdentity'] = self.after
+
+    def test_prior_candidate_does_not_become_trusted_authority_for_current_runtime(self):
+        prior = 'dde0b179a337f9a039559b3186e405e42a005d5b9e06c7c84016f7918ade63b4'
+        for before, after in ((prior, self.after), (self.after, prior)):
             self.trusted['runtimeIdentity'] = before
             self.current['runtimeIdentity'] = after
             with self.subTest(before=before, after=after), self.assertRaisesRegex(ValueError, 'UNPROVEN'):
@@ -7290,6 +7309,8 @@ class RetainedRecoveryDiscoveryTests(unittest.TestCase):
         self.calls=[];self.complete=True;self.count=None
     def api(self,repo,path,token):
         self.calls.append(path)
+        if path=='actions/artifacts?name='+m.fast_track_completion_summary_name(71,self.before)+'&per_page=100':
+            return dict(total_count=0,artifacts=[])
         if path.startswith('actions/artifacts?name='):
             self.assertEqual(path,'actions/artifacts?name='+self.name+'&per_page=100')
             return dict(total_count=len(self.artifacts) if self.count is None else self.count,artifacts=self.artifacts)
@@ -7378,6 +7399,12 @@ class RetainedRecoveryDiscoveryTests(unittest.TestCase):
     def test_existing_diagnostics_still_use_canonical_proof(self):
         self.artifacts=[];original=self.api
         def api(repo,path,token):
+            if path=='actions/artifacts?name='+m.fast_track_completion_summary_name(71,self.before)+'&per_page=100':
+                return dict(total_count=1,artifacts=[dict(id=102,name=m.fast_track_completion_summary_name(71,self.before),
+                    expired=False,digest='sha256:'+'d'*64,workflow_run=dict(id=81,head_sha='e'*40))])
+            if path=='actions/runs/81':
+                return dict(id=81,head_sha='e'*40,event='workflow_dispatch',head_repository=dict(full_name='owner/repo'),
+                    head_branch=m.FAST_TRACK_PR_BASE,path='.github/workflows/'+m.FAST_TRACK_COMPLETION_WORKFLOW)
             if path.startswith('actions/workflows/'):
                 return dict(total_count=1,workflow_runs=[dict(id=81,head_branch=m.FAST_TRACK_PR_BASE,
                     path='.github/workflows/'+m.FAST_TRACK_COMPLETION_WORKFLOW)])
