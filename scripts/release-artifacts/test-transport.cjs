@@ -4,6 +4,78 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const {publish, validateRecord} = require('./transport.cjs');
+const {execFileSync} = require('node:child_process');
+const crypto = require('node:crypto');
+
+// Exercise the real Python phase serializers without invoking live authority or providers.
+function pythonSupersessionRecords() {
+  return JSON.parse(execFileSync('python3', ['-c', String.raw`
+import ast, hashlib, importlib.util, json, pathlib
+root=pathlib.Path.cwd().parent
+tree=ast.parse((root/'validation-resume.py').read_text())
+function=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='fast_track_protect_supersession')
+records=[ast.literal_eval(n.value) for n in ast.walk(function) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='expected' for t in n.targets)]
+spec=importlib.util.spec_from_file_location('journal',root/'release-operation-evidence.py')
+module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+result=[]
+for auth in records:
+    journal=object.__new__(module.OperationJournal)
+    journal.identity=dict(target='protect',applicationRevision='c'*40,packageDigest='b'*64)
+    journal.operation_id=hashlib.sha256(json.dumps(journal.identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    journal.baseline=auth['originalRevision'];journal.producer=10;journal.run=10;journal.attempt=1
+    journal.authorization=None;journal.supersession=dict(auth,candidateRevision='c'*40)
+    intent=journal.intent_record(['old-provider-id'],submission_kind='azure_onedeploy_windows_intent_v1')
+    result.append([intent,journal.submitted_record(intent,'new-provider-id'),journal.success_record(intent,['new-provider-id'])])
+print(json.dumps(result))
+`], {cwd: __dirname, encoding: 'utf8', env: {...process.env, PYTHONDONTWRITEBYTECODE: '1'}}));
+}
+
+test('both canonical Python supersession generations survive all phase serializers and immutable readback', async () => {
+  const generations = pythonSupersessionRecords();
+  assert.equal(generations.length, 2);
+  const pins = ['aa65d799221ecbafd6ec316a6bce8e7049ee5ac7202ce00bc879e068a1940737', '123a6d98e874738eb4b630550e0de706a0a053a7ed0ec128cc79ba7a2f34dc17'];
+  for (const [index, phases] of generations.entries()) {
+    for (const value of phases) {
+      const fixed = Object.fromEntries(Object.keys(value.supersession).filter(k => k !== 'candidateRevision').sort().map(k => [k,value.supersession[k]]));
+      assert.equal(crypto.createHash('sha256').update(JSON.stringify(fixed)).digest('hex'), pins[index]);
+      const name = `legend-release-operation-${value.phase}-${value.operationId}`;
+      assert.doesNotThrow(() => validateRecord(name,value));
+      let stored; const calls=[];
+      const client={
+        async listArtifacts(){calls.push('list');return {artifacts:[]};},
+        async uploadArtifact(n,files){calls.push('upload');assert.equal(n,name);stored=await fs.readFile(files[0]);return {id:42};},
+        async downloadArtifact(id,options){calls.push('readback');assert.equal(id,42);await fs.mkdir(options.path);await fs.writeFile(path.join(options.path,'operation.json'),stored);}
+      };
+      assert.deepEqual(await publish(client,name,value),{artifactId:42});
+      assert.deepEqual(calls,['list','upload','readback']);
+      assert.deepEqual(JSON.parse(stored),value);
+    }
+  }
+});
+
+test('supersession alteration, crossing, ambiguity and mixed contexts fail before artifact access', async () => {
+  const generations=pythonSupersessionRecords();
+  for (const [index, phases] of generations.entries()) for (const value of phases) {
+    const variants=[];
+    for (const key of Object.keys(value.supersession)) {
+      const altered=structuredClone(value);altered.supersession[key]=typeof altered.supersession[key]==='number'?altered.supersession[key]+1:typeof altered.supersession[key]==='boolean'?false:'changed';variants.push(altered);
+      const missing=structuredClone(value);delete missing.supersession[key];variants.push(missing);
+      const crossed=structuredClone(value);crossed.supersession[key]=generations[1-index][0].supersession[key];
+      if(crossed.supersession[key]!==value.supersession[key]) variants.push(crossed);
+    }
+    for (const change of [{target:'portal'},{schemaVersion:2},{baseline:'e'.repeat(40)},{applicationRevision:'e'.repeat(40)},{operationId:'f'.repeat(64)},{recoveryEvidence:{}},{completionEvidence:{}},{componentSource:{}},{candidateRevision:'c'.repeat(40)}]) variants.push({...structuredClone(value),...change});
+    variants.push({...structuredClone(value),supersession:{...value.supersession,extra:'not-allowed'}});
+    variants.push({...structuredClone(value),supersession:null});
+    variants.push({...structuredClone(value),supersession:[]});
+    variants.push({...structuredClone(value),unexpected:'not-allowed'});
+    variants.push({...structuredClone(value),baselineDeploymentIds:['x'.repeat(33000)]});
+    for(const bad of variants){
+      let calls=0;const client=new Proxy({}, {get(){calls++;throw new Error('artifact access forbidden');}});
+      await assert.rejects(publish(client,`legend-release-operation-${bad.phase}-${bad.operationId}`,bad),/Invalid/);
+      assert.equal(calls,0);
+    }
+  }
+});
 const name = 'legend-release-operation-intent-' + 'a'.repeat(64);
 const record = {schemaVersion: 1, phase: 'intent', operationId: 'a'.repeat(64),
   packageDigest: 'b'.repeat(64), applicationRevision: 'c'.repeat(40), baseline: 'd'.repeat(40),

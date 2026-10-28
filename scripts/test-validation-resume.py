@@ -6500,7 +6500,7 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         root=Path(__file__).parent
         source=(root/'deploy-approved-app.py').read_text()
         journal=(root/'release-operation-evidence.py').read_text()
-        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'49e6b1caae18705fa91898d794c6d27e34be5ba8bda60693e5f1e65284a0caa8')
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'63de609c4e97fd97c566d59f3d1bb4eae745bfcc8012e508e2944b2307678240')
         self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'5b42fcbed0ac4a331ff5c706ef5a6a3ce96eb32d556ef4051c65ee4cf99e881e')
         self.assertTrue(m._recovery_preflight_source_contract(source,journal))
         for changed in [source+'# unreviewed helper\n',source.replace('reconcile_only=journal.intent is not None','reconcile_only=False')]:
@@ -6520,7 +6520,10 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
                     '5b42fcbed0ac4a331ff5c706ef5a6a3ce96eb32d556ef4051c65ee4cf99e881e')
         context=('b1133d3d89e16754deabdd1a513eb0d43c4a59f62343ddf542e24c72b753b19c', diagnostic[1])
         multiline=('49e6b1caae18705fa91898d794c6d27e34be5ba8bda60693e5f1e65284a0caa8', diagnostic[1])
+        fresh=('63de609c4e97fd97c566d59f3d1bb4eae745bfcc8012e508e2944b2307678240', diagnostic[1])
         for source,journal,accepted in [(old[0],old[1],True),(new[0],new[1],True),(current[0],current[1],True),
+                (fresh[0],fresh[1],True),(fresh[0],old[1],False),(fresh[0],new[1],False),
+                ('f'*64,fresh[1],False),(fresh[0],'f'*64,False),
                 (multiline[0],multiline[1],True),(multiline[0],old[1],False),(multiline[0],new[1],False),
                 ('f'*64,multiline[1],False),(multiline[0],'f'*64,False),
                 (context[0],context[1],True),(context[0],old[1],False),(context[0],new[1],False),
@@ -8566,6 +8569,70 @@ class FastTrackCompleteRunJobsTests(unittest.TestCase):
         self.assertEqual([], self.fresh_calls)
         self.assertIsNone(m._EVIDENCE_BUDGET.get())
 
+
+
+class FreshProtectPushNonentryTests(unittest.TestCase):
+    revision='9af32d2e6bf608cb790eed59a43e90cdd9d877e6'
+    # Bounded nonsecret excerpt of actual job122875752175; not a synthesized traceback.
+    retained_log='2026-10-28T14:22:58.7003217Z [command]/usr/bin/git log -1 --format=%H\n2026-10-28T14:22:58.7031831Z 9af32d2e6bf608cb790eed59a43e90cdd9d877e6\n2026-10-28T14:29:49.5575402Z Traceback (most recent call last):\n2026-10-28T14:29:49.5576526Z   File "/home/runner/work/masterapp/masterapp/scripts/deploy-approved-app.py", line 814, in reconcile\n2026-10-28T14:29:49.5577763Z     allowed = journal.before_submit(\n2026-10-28T14:29:49.5578313Z               ^^^^^^^^^^^^^^^^^^^^^^\n2026-10-28T14:29:49.5579386Z   File "/home/runner/work/masterapp/masterapp/scripts/release-operation-evidence.py", line 278, in before_submit\n2026-10-28T14:29:49.5580336Z     self.publisher(\'legend-release-operation-intent-\' + self.operation_id, record)\n2026-10-28T14:29:49.5581266Z   File "/home/runner/work/masterapp/masterapp/scripts/release-operation-evidence.py", line 53, in publish_record\n2026-10-28T14:29:49.5582234Z     raise RuntimeError("Durable operation publication/readback unavailable; reconcile without writing")\n2026-10-28T14:29:49.5588603Z RuntimeError: Durable operation publication/readback unavailable; reconcile without writing\n2026-10-28T14:29:49.5597867Z \n2026-10-28T14:29:49.5598496Z The above exception was the direct cause of the following exception:\n2026-10-28T14:29:49.5598824Z \n2026-10-28T14:29:49.5599010Z Traceback (most recent call last):\n2026-10-28T14:29:49.5599980Z   File "/home/runner/work/masterapp/masterapp/scripts/deploy-approved-app.py", line 2064, in <module>\n2026-10-28T14:29:49.5601031Z     main()\n2026-10-28T14:29:49.5601892Z   File "/home/runner/work/masterapp/masterapp/scripts/deploy-approved-app.py", line 2008, in main\n2026-10-28T14:29:49.5603047Z     fast_track_deploy(args.fast_track_target, Path(args.package_root))\n2026-10-28T14:29:49.5604648Z   File "/home/runner/work/masterapp/masterapp/scripts/deploy-approved-app.py", line 1451, in fast_track_deploy\n2026-10-28T14:29:49.5605828Z     result = reconcile(azure, baseline=journal.baseline, journal=journal,\n2026-10-28T14:29:49.5606306Z              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n2026-10-28T14:29:49.5607081Z   File "/home/runner/work/masterapp/masterapp/scripts/deploy-approved-app.py", line 822, in reconcile\n2026-10-28T14:29:49.5608263Z     raise DeploymentSubmissionNotEntered(\'Durable upload intent could not be proven; no write authorized\') from exc\n2026-10-28T14:29:49.5609183Z DeploymentSubmissionNotEntered: Durable upload intent could not be proven; no write authorized\n2026-10-28T14:29:49.5870201Z ##[error]Process completed with exit code 1.\n2026-10-28T14:29:50.3698376Z Cleaning up orphan processes\n'
+    retained_package={'id': 12822934766, 'node_id': 'MDg6QXJ0aWZhY3QxMjgyMjkzNDc2Ng==', 'name': 'fast-track-package-9af32d2e6bf608cb790eed59a43e90cdd9d877e6-protect', 'size_in_bytes': 167634164, 'url': 'https://api.github.com/repos/MYLEGND/masterapp/actions/artifacts/12822934766', 'archive_download_url': 'https://api.github.com/repos/MYLEGND/masterapp/actions/artifacts/12822934766/zip', 'expired': False, 'digest': 'sha256:a1b5a5261988c14de28da6a33997dcedee860e30de3667d0ced89fdd05f7590b', 'created_at': '2026-10-28T14:25:50Z', 'updated_at': '2026-10-28T14:25:50Z', 'expires_at': '2026-11-27T14:25:43Z', 'workflow_run': {'id': 40703908687, 'repository_id': 1209859492, 'head_repository_id': 1209859492, 'head_branch': 'Legend/fast-track-release', 'head_sha': '9af32d2e6bf608cb790eed59a43e90cdd9d877e6'}}
+    def setUp(self):
+        self.run=dict(id=40703908687,run_attempt=1,status='completed',conclusion='failure',head_sha=self.revision,event='push',path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,head_branch=m.FAST_TRACK_PR_BASE,head_repository=dict(full_name='MYLEGND/masterapp'))
+        self.step=dict(name='Publish or reconcile exact application bytes',status='completed',conclusion='failure',started_at='2026-10-28T14:26:01Z',completed_at='2026-10-28T14:29:49Z')
+        self.job=dict(id=122875752175,run_id=self.run['id'],run_attempt=1,head_sha=self.revision,status='completed',conclusion='failure',name='Affected App Deploy — Protect',steps=[self.step])
+        self.package=json.loads(json.dumps(self.retained_package))
+        self.digest='bf52931933f8030362065c9d5552ccb71c4baf1a489d48c17f91fa7ecf0901b7'
+        self.operation=hashlib.sha256(json.dumps(dict(target='protect',applicationRevision=self.revision,packageDigest=self.digest),sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    def invoke(self, *, log=None, changed_source=False, extra_intent=False, incomplete=False, owner=True):
+        rows=[self.package]+([dict(name='legend-release-operation-intent-conflict')] if extra_intent else [])
+        def source(repo,rev,path,token):
+            value=m.subprocess.check_output(['git','show',rev+':'+path],cwd=Path(__file__).parent.parent,text=True)
+            return value+'# changed' if changed_source else value
+        with patch.object(m,'_release_history_source',side_effect=source), patch.object(m,'api_get',return_value=dict(total_count=len(rows)+int(incomplete),artifacts=rows)), patch.object(m,'_completion_jobs',return_value={1:[self.job]}), patch.object(m,'_completion_original_artifact_owner',side_effect=None if owner else ValueError('owner')), patch.object(m,'_release_history_json',return_value=dict(target='protect')), patch.object(m,'fast_track_recovery_package_digest',return_value=self.digest), patch.object(m,'_release_job_log',return_value=self.retained_log if log is None else log):
+            return m.attested_fast_track_preupload_failure('MYLEGND/masterapp',self.run,self.job,1,'protect',self.operation,'test-only')
+    def test_retained_real_history_and_exact_source_generation_prove_nonentry(self):
+        self.assertTrue(self.invoke())
+    def test_source_artifact_owner_history_and_contradiction_fail_closed(self):
+        for kwargs in [dict(changed_source=True),dict(extra_intent=True),dict(incomplete=True),dict(owner=False)]:
+            with self.subTest(kwargs=kwargs):self.assertFalse(self.invoke(**kwargs))
+        self.package['expired']=True;self.assertFalse(self.invoke())
+        self.setUp();self.package['id']+=1;self.assertFalse(self.invoke())
+        self.setUp();self.package['digest']='sha256:'+'f'*64;self.assertFalse(self.invoke())
+    def test_attempt_job_source_and_operation_changes_fail_closed(self):
+        for obj,key,value in [('run','id',40703908688),('run','run_attempt',2),('job','id',122875752176),('job','run_attempt',2),('job','head_sha','f'*40)]:
+            self.setUp();getattr(self,obj)[key]=value;self.assertFalse(self.invoke())
+        self.setUp();self.operation='f'*64;self.assertFalse(self.invoke())
+    def test_changed_missing_duplicate_out_of_order_or_postsubmit_trace_is_not_nonentry(self):
+        log=self.retained_log
+        mutations=[log.replace('line 814','line 815'),log.replace('in before_submit','in submit'),log.replace('DeploymentSubmissionNotEntered:','OtherError:'),log+log,log.replace('2026-10-28T14:29:49','2026-10-28T14:40:49'),log+'Submitting the verified immutable ZIP once.\n',log+'AZURE_TRACKED_DEPLOYMENT_REFERENCE:unexpected\n',log.replace('Cleaning up orphan processes','missing cleanup')]
+        for changed in mutations:
+            with self.subTest(change=hashlib.sha256(changed.encode()).hexdigest()):self.assertFalse(self.invoke(log=changed))
+    def test_fresh_authorization_is_source_bound_and_other_contexts_unchanged(self):
+        original=dict(run=self.run);material=dict(originalIntent=None)
+        with patch.object(m,'fast_track_protect_supersession',return_value={'originalRevision':'8f94550fdcb0dfbe1b1b1c71aa43171a60661096'}) as authority:
+            self.assertIsNotNone(m.fresh_protect_retained_supersession(original,material,'protect'))
+            authority.assert_called_once_with(self.revision)
+            self.assertIsNone(m.fresh_protect_retained_supersession(original,material,'portal'))
+            self.assertIsNone(m.fresh_protect_retained_supersession(original,dict(originalIntent={}), 'protect'))
+        with patch.object(m,'fast_track_protect_supersession',return_value=None):
+            with self.assertRaises(ValueError):m.fresh_protect_retained_supersession(original,material,'protect')
+        self.run['head_sha']='f'*40
+        with self.assertRaises(ValueError):m.fresh_protect_retained_supersession(original,material,'protect')
+
+    def test_recovery_receipt_rederives_the_original_authorized_baseline(self):
+        original=dict(run=self.run);material=dict(packageArtifact=self.package,originalIntent=None)
+        observer=dict(runId=20,runAttempt=1,jobId=21,promotionRunId=22,toolRevision='a'*40)
+        run=dict(id=20,display_title='LEGEND retained recovery original=40703908687 application='+self.revision)
+        record=dict(recoveryEvidence=m.fast_track_recovery_record_proof(original,material,observer),
+            target='protect',packageDigest=self.digest,producingRun=20,producingAttempt=1,
+            packageProducerRun=40703908687,applicationRevision=self.revision,
+            baseline='8f94550fdcb0dfbe1b1b1c71aa43171a60661096')
+        jobs=dict(total_count=1,jobs=[dict(id=21,steps=[dict(name='Recover exact retained application bytes',status='completed')])])
+        with patch.object(m,'fast_track_recovery_producer',return_value=observer),patch.object(m,'fast_track_completion_original',return_value=original),patch.object(m,'fast_track_recovery_material',return_value=material),patch.object(m,'fast_track_recovery_package_digest',return_value=self.digest),patch.object(m,'api_get',return_value=jobs),patch.object(m,'_completion_artifact_in_step',return_value=True):
+            self.assertTrue(m.validate_fast_track_recovery_record('MYLEGND/masterapp',run,{},record,'test-only'))
+            for baseline in ['f'*40,self.revision,m.PROTECT_BASELINE_REVISION]:
+                with self.subTest(baseline=baseline),self.assertRaisesRegex(ValueError,'BASELINE_CHANGED'):
+                    m.validate_fast_track_recovery_record('MYLEGND/masterapp',run,{},dict(record,baseline=baseline),'test-only')
 
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.

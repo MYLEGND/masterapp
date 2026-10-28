@@ -1396,7 +1396,10 @@ def prepare_protect_replacement(revision, baseline, azure):
             artifact_id=proof['rollbackArtifactId'], expected_digest=proof['rollbackArtifactDigest'])
         rollback_digest = verify_package(root / 'deploy.zip', baseline, False)
     print('FAST_TRACK_SUPERSESSION_ROLLBACK_VERIFIED:' + rollback_digest)
-    azure.authorized_replacement = True
+    provider = azure
+    while isinstance(provider, RecoveryDeadlineAzure):
+        provider = provider.azure
+    provider.authorized_replacement = True
     return proof
 
 
@@ -1694,6 +1697,12 @@ def prepare_protect_retained_replacement(azure, original, material, state, packa
     """Validate retained rollback bytes and the corrected live baseline before intent."""
     proof = material.get('protectBaselineCorrection')
     if proof is None:
+        provider = azure
+        while isinstance(provider, RecoveryDeadlineAzure):
+            provider = provider.azure
+        if (provider.app == TARGETS['protect']['releaseName']
+            and _RELEASE_AUTHORITY.fresh_protect_retained_supersession(original, material, 'protect') is not None):
+            prepare_protect_replacement(original['run']['head_sha'], state['revision'], azure)
         return
     if (original['run']['id'] != proof['originalRun']
         or original['run']['head_sha'] != proof['applicationRevision']

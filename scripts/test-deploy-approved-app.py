@@ -3782,6 +3782,49 @@ class TargetPreintentProducerTests(unittest.TestCase):
     def test_hold_publication_failure_cannot_fall_through(self):target_hold_five_target_payload(publication_failure=True)
     def test_callback_success_then_ambiguous_intent_publisher_never_emits_hold(self):target_hold_five_target_payload(callback_failure=False)
 
+class FreshProtectRetainedReplacementTests(unittest.TestCase):
+    revision='9af32d2e6bf608cb790eed59a43e90cdd9d877e6'
+    baseline='8f94550fdcb0dfbe1b1b1c71aa43171a60661096'
+    def exercise(self, *, active=False, bad_baseline=False, bad_rollback=False, expired=False, target='protect', intent=None):
+        from types import SimpleNamespace
+        observed_caps=[]
+        def history():
+            observed_caps.append(deploy._DEPLOYMENT_READ_CAP.get())
+            return [row('original-provider',1 if active else 4)]
+        provider=SimpleNamespace(app=deploy.TARGETS[target]['releaseName'],deployments=history)
+        azure=deploy.RecoveryDeadlineAzure(provider,deploy.time.monotonic()+(-1 if expired else 25))
+        original=dict(run=dict(id=40703908687,head_sha=self.revision))
+        material=dict(originalIntent=intent)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ,GITHUB_REPOSITORY='MYLEGND/masterapp'), \
+             patch.object(deploy._RELEASE_AUTHORITY,'_download_run_artifact') as download, \
+             patch.object(deploy,'verify_package',side_effect=ValueError('invalid rollback') if bad_rollback else None,return_value='d'*64), \
+             patch.object(deploy,'read_deployments_bounded',side_effect=lambda bounded,**kwargs:bounded.deployments()) as read:
+            def invoke():
+                deploy.prepare_protect_retained_replacement(azure,original,material,
+                    dict(revision='f'*40 if bad_baseline else self.baseline),Path(root))
+            if target!='protect' or intent is not None:
+                invoke();read.assert_not_called();download.assert_not_called()
+                self.assertFalse(getattr(provider,'authorized_replacement',False));return
+            if active or bad_baseline or bad_rollback or expired:
+                with self.assertRaises((deploy.DeploymentDrift,deploy.DeploymentReconciliationRequired,ValueError)):invoke()
+                self.assertFalse(getattr(provider,'authorized_replacement',False))
+                if active or bad_baseline or expired:download.assert_not_called()
+            else:
+                # Both existing checkpoints must execute the same complete preparation.
+                invoke();invoke();self.assertEqual(download.call_count,2)
+                self.assertTrue(provider.authorized_replacement)
+                self.assertNotIn('authorized_replacement',azure.__dict__)
+                self.assertTrue(all(0<cap<=25 for cap in observed_caps))
+                self.assertEqual(read.call_args.args[0],azure)
+                self.assertEqual(download.call_args.kwargs,dict(artifact_id=12749425188,expected_digest='sha256:59af04b03aa6d815144cd253ed6cb8594b22d930e8420289de7a0b6a6562acee'))
+    def test_both_checks_preserve_read_deadline_and_underlying_tracked_submit(self):self.exercise()
+    def test_changed_baseline_active_provider_and_bad_rollback_never_enable_submit(self):
+        for kwargs in [dict(active=True),dict(bad_baseline=True),dict(bad_rollback=True),dict(expired=True)]:
+            with self.subTest(kwargs=kwargs):self.exercise(**kwargs)
+    def test_other_targets_and_existing_intent_do_not_gain_replacement_authority(self):
+        self.exercise(target='portal');self.exercise(intent={})
+
+
 class ProtectRetainedBaselineTests(unittest.TestCase):
     def invoke(self, *, baseline='c'*40, digest='d'*64, flags_error=False):
         from types import SimpleNamespace

@@ -192,6 +192,26 @@ function replacementOperation(name, record) {
 
 // JSON arrives on stdin, never as an arbitrary upload path. Only the bounded
 // release operation record can be persisted; credentials cannot enter it.
+function supersessionRecord(record) {
+  const value = record.supersession;
+  const keys = 'authorizationId,authorizedBy,target,originalRun,originalOperationId,originalRevision,expectedReleaseParent,historicalOutcome,authorizeOneReplacement,rollbackArtifactId,rollbackArtifactDigest,candidateRevision';
+  if (!exactKeys(value, keys) || record.schemaVersion !== 1 || record.target !== 'protect' ||
+      !sha(value.candidateRevision, 40) || value.candidateRevision !== record.applicationRevision ||
+      record.baseline !== value.originalRevision ||
+      ['recoveryEvidence', 'completionEvidence', 'componentSource', 'candidateRevision'].some(key => record[key] !== undefined))
+    throw new Error('Invalid Protect supersession record');
+  // Serializer pins only: Python retains source, ancestry and live writer authority.
+  const pins = new Set([
+    'aa65d799221ecbafd6ec316a6bce8e7049ee5ac7202ce00bc879e068a1940737', // protect-replacement-20261026
+    '123a6d98e874738eb4b630550e0de706a0a053a7ed0ec128cc79ba7a2f34dc17' // fresh-protect-20261028
+  ]);
+  const fixed = Object.fromEntries(Object.keys(value).filter(key => key !== 'candidateRevision').sort().map(key => [key, value[key]]));
+  const fingerprint = crypto.createHash('sha256').update(JSON.stringify(fixed)).digest('hex');
+  const identity = {applicationRevision: record.applicationRevision, packageDigest: record.packageDigest, target: record.target};
+  if (!pins.has(fingerprint) || crypto.createHash('sha256').update(JSON.stringify(identity)).digest('hex') !== record.operationId)
+    throw new Error('Invalid Protect supersession identity');
+}
+
 function validateRecord(name, record) {
   const targetHold = /^legend-retained-target-preintent-[a-f0-9]{64}$/.test(name);
   const preflight = /^legend-retained-preflight-nonentry-[a-f0-9]{64}$/.test(name);
@@ -214,7 +234,7 @@ function validateRecord(name, record) {
     'resources', 'authorizationMode', 'producingRun', 'producingAttempt', 'phase'] : ['schemaVersion', 'operationId', 'target', 'applicationRevision',
     'packageDigest', 'baseline', 'packageProducerRun', 'producingRun', 'producingAttempt',
     'baselineDeploymentIds', 'phase', 'deploymentIds', 'candidateRevision', 'componentSource',
-    'providerRequestCorrelation', 'submissionContract', 'deploymentId', 'completionEvidence', 'recoveryEvidence']);
+    'providerRequestCorrelation', 'submissionContract', 'deploymentId', 'completionEvidence', 'recoveryEvidence', 'supersession']);
   if (!record || Object.keys(record).some(key => !allowed.has(key)) ||
       JSON.stringify(record).length > (plan ? 524288 : 32768)) throw new Error('Invalid release operation record');
   if (targetHold) {
@@ -369,6 +389,7 @@ function validateRecord(name, record) {
         !Number.isSafeInteger(record[key]) || record[key] < 1)))
     throw new Error('Invalid release operation identity');
   if (!preflight && !retained && !completion && !observation && !locator && !recovery && !plan && !child && !admission && !replacement) {
+    if (record.supersession !== undefined) supersessionRecord(record);
     if (record.recoveryEvidence !== undefined) recoveryEvidence(record);
     if (record.completionEvidence !== undefined) {
       const proof = record.completionEvidence;
