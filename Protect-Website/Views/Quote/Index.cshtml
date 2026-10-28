@@ -680,11 +680,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const lifeModal = document.getElementById("lifeModal");
     const lifeClose = lifeModal ? lifeModal.querySelector(".life-modal-close") : null;
 
-    function closeLife() {
+    function closeLife(restoreFocus = true) {
         if (!lifeTile || !lifeModal) return;
+        const wasOpen = lifeModal.classList.contains("open");
         lifeModal.classList.remove("open");
         lifeTile.classList.remove("open");
         lifeTile.setAttribute("aria-expanded", "false");
+        lifeModal.setAttribute("aria-hidden", "true");
+        if (wasOpen && restoreFocus) lifeTile.focus({ preventScroll: true });
     }
 
     function openLife() {
@@ -692,7 +695,8 @@ document.addEventListener("DOMContentLoaded", function () {
         lifeModal.classList.add("open");
         lifeTile.classList.add("open");
         lifeTile.setAttribute("aria-expanded", "true");
-        lifeModal.focus();
+        lifeModal.setAttribute("aria-hidden", "false");
+        lifeModal.querySelector('[role="dialog"]')?.focus({ preventScroll: true });
     }
 
     if (lifeTile && lifeModal) {
@@ -713,10 +717,18 @@ document.addEventListener("DOMContentLoaded", function () {
         document.addEventListener("click", (e) => {
             if (!lifeTile || !lifeModal) return;
             if (!(e.target instanceof Element)) return;
-            if (!lifeTile.contains(e.target) && !lifeModal.contains(e.target)) closeLife();
+            if (e.target === lifeModal) closeLife();
+            else if (!lifeTile.contains(e.target) && !lifeModal.contains(e.target)) closeLife(false);
         });
 
-        window.addEventListener("scroll", closeLife, { passive: true });
+        // Focus, browser anchoring and viewport movement must not dismiss an
+        // open fixed dialog. Explicit close, backdrop and Escape own dismissal.
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape" && lifeModal.classList.contains("open")) {
+                e.preventDefault();
+                closeLife();
+            }
+        });
         lifeClose?.addEventListener("click", closeLife);
     }
 });
