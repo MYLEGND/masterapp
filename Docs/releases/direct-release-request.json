@@ -1,44 +1,24 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue the Founder-delegated coordinated recovery for ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. Promote only the independently reviewed seven-file release-proof correction through the existing nonpublishing trusted-tooling controls. No application deployment, SQL, restart, provider mutation, access change or spend. This request does not authorize another completion observation.",
-  "purpose": "Correct the observed completion-46 commit-associated pull-request repository-size false dependency; bound authenticated receipt-byte retention; reuse historical proof only within a freshly closed decision and recheck the live execution owner before any receipt publication; emit bounded nonsecret efficiency counters. Preserve source, identity, history, contradiction, timeout and authority protections. Include the existing completion-observer test fixture correction for uncached transport; production authority guards are unchanged.",
-  "requestId": "release-proof-efficiency-20261028-v1",
+  "authorization": "Continue Layla's Founder-delegated same recovery for ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. Prepare independently reviewed bounded status-read diagnostics through existing nonpublishing trusted-tooling controls. No completion observation, application upload, SQL, restart, provider/settings/credential/cost change; no formal GitHub approval on Zac's behalf.",
+  "purpose": "Preserve bounded allowlisted Azure CLI-reported nonzero-exit metadata in the canonical status-read adapter. Never copy stderr or infer root cause. Preserve unknown/failure, all command/target/identity, timeouts/retries, success and authority conditions; reuse promoted PR718 proof logic unchanged.",
+  "requestId": "protect-status-read-diagnostics-20261028-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "ce09e96c36a21c3557f8bdd6bc8c123cb4b8b20e",
-    "sourceRevision": "565359f72a28110fa9520b553d9aa1916f31318c",
+    "baseRevision": "9dd5655763b29e2dadeb86f4ab097221c1cf9a46",
+    "sourceRevision": "afe030a83fe4788eb5a04e41520318c6de5362d6",
     "files": {
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "916749ca2d191601d5880c0825a61373351a13d7"
-      },
-      "scripts/test-validation-resume.py": {
-        "mode": "100644",
-        "blob": "6ca3b713cdcf373ca7afacfc6ae2041aafee1414"
-      },
       "scripts/deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "559175549766a7effd9e335e16a757a7285f80d4"
+        "blob": "87a80642f55b6930e8ebd09bded3a342b9848eef"
       },
       "scripts/test-deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "35e293462bb14df908103d43ba650c52d135c727"
-      },
-      "scripts/release-operation-evidence.py": {
-        "mode": "100644",
-        "blob": "60058875542f12333feadb8ac83b0e54dcb014f6"
-      },
-      "scripts/test-release-operation-evidence.py": {
-        "mode": "100644",
-        "blob": "005b93ca5cc0726d8f3cd5aa2beafb512b4e9e73"
-      },
-      "scripts/test-release-policy.py": {
-        "mode": "100644",
-        "blob": "6ea858b8f982f36decbe96d13c9be0277c46b405"
+        "blob": "cf274749b49931cf17c3e75d69d4890f29b348fd"
       }
     }
   }
