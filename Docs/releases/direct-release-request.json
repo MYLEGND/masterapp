@@ -1,32 +1,24 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue the approved completion recovery and consolidated paused application deployment. Promote only the independently reviewed complete scoped metadata-discovery correction, its preserved regression fixtures, and the exact a34-to-eb93 reviewed-runtime pair backed by authenticated compiled-contract equality. Retain all original source, CI, identity, ancestry, full contract equality, fresh proof comparator, provider proof, 100-entry cache and 20-minute controls. No app uploads, SQL, restart, activation, phone/routing, credential, access or spending changes.",
-  "purpose": "Promote the canonical scoped metadata discovery and exact reviewed runtime eligibility; no application publication or completion acceptance is authorized by this promotion.",
-  "requestId": "shayla-completion-metadata-eb93-promotion-20261028-v1",
+  "authorization": "Continue the approved bounded completion-recovery tooling diagnosis after actual completion44 cache-bound failure. Promote only failure-path nonsecret receipt-cache diagnostics and focused regressions. Preserve all cap100, byte limits, full proof comparator, artifact/source identity, timeout, authority and success behavior. This is evidence acquisition, not a capacity fix or authorization to dispatch another completion invocation, upload, run SQL, restart, activate, change privacy/access or spend.",
+  "purpose": "Make the existing cache-bound failure actionable without changing the failed outcome or production admission. Any subsequent real completion observation requires separate current admission; no synthetic provider run or automatic retry.",
+  "requestId": "completion-cache-bound-diagnostic-20261028-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "f2f4bd30317bac7d88512d9bdec3ac9064b58bd1",
-    "sourceRevision": "a99afa3bde0a086bb7e071affcd308241e63cda1",
+    "baseRevision": "011c5a6f644cf686badc8e4dd90b7242404ca3a1",
+    "sourceRevision": "21e38aaef5c4ab5cff2dabd27efc210545f6f9eb",
     "files": {
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "01c13d1d35ef3c374a26cf275509490c135ecc66"
-      },
-      "scripts/test-release-policy.py": {
-        "mode": "100644",
-        "blob": "8783e62b671133d06783d2383219077ff2d36d98"
+        "blob": "8f0f2d1d06dc3888ca1068f05cafaa84431061ed"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "fc9552336824675656c793b1b50e086e7b3dfda3"
-      },
-      "scripts/test-fast-track-release.py": {
-        "mode": "100644",
-        "blob": "90daa2a671b1a264d47babb2b45509caa5c2bec2"
+        "blob": "cb0814f6b53d67428f2a42b7ac5bb564b5a0d099"
       }
     }
   }
