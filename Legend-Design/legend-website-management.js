@@ -61,7 +61,8 @@
       dialog.remove(); if (parentInstance) parentInstance.show(); else trigger.focus();
     });
     dialog.showModal();
-    const dismissed = () => closed || !dialog.open;
+    const isClosed = () => closed || !dialog.open;
+    const dismissed = () => isClosed() || startupController.signal.aborted;
     const editorHref = () => {
       // The management session has already been authorized against the canonical
       // website API. Reuse that exact ticket for editor entry instead of minting
@@ -94,9 +95,22 @@
     const run = async (action, { startup = false } = {}) => {
       if (busy) return; busy = true; status.textContent = 'Working…';
       dialog.querySelectorAll('button').forEach(n => { if (!startup || n !== closeButton) n.disabled = true; });
-      try { await action(); } catch (error) {
-        if (!dismissed()) {
+      let startupTimer;
+      try {
+        if (startup) await Promise.race([
+          action(),
+          new Promise((_, reject) => {
+            startupTimer = window.setTimeout(() => {
+              startupController.abort();
+              reject(new Error('Website workspace loading timed out. Close and reopen it to retry. Your saved content has not been changed.'));
+            }, 30000);
+          })
+        ]);
+        else await action();
+      } catch (error) {
+        if (!isClosed()) {
           status.textContent = error.message;
+          if (startup && startupController.signal.aborted) panel.replaceChildren();
           if (startup && session?.ticket && error.status === 409 && error.details?.error === 'website_draft_duplicate_identity') {
             const recovery = el('a', 'Review saved website recovery', { href: editorHref(), class: 'wm-primary' });
             recovery.prepend(icon('editor'));
@@ -105,9 +119,10 @@
         }
       }
       finally {
+        window.clearTimeout(startupTimer);
         busy = false;
         if (startup) startupPending = false;
-        if (!dismissed()) dialog.querySelectorAll('button').forEach(n => n.disabled = false);
+        if (!isClosed()) dialog.querySelectorAll('button').forEach(n => n.disabled = false);
       }
     };
     const reload = async () => { state = await request(''); };

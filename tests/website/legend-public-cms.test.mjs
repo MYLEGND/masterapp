@@ -7559,3 +7559,44 @@ test('Protect content viewport and Studio flow preserve authored footer appearan
     }finally{f.close();}
   }
 });
+
+for (const readyState of ['interactive','complete']) test(`canonical initial read starts once when document is already ${readyState}`,async()=>{
+  const f=await domFixture({search:'',beforeEval:w=>{
+    Object.defineProperty(w.document,'readyState',{get:()=>readyState});
+    const add=w.document.addEventListener.bind(w.document);
+    w.document.addEventListener=(type,...args)=>{if(type!=='DOMContentLoaded')add(type,...args);};
+    w.document.documentElement.setAttribute('data-legend-canonical-pending','true');
+  }});
+  try{
+    assert.equal(f.calls.filter(x=>new URL(x.url).pathname==='/api/website-content/public/legend').length,1);
+    assert.equal(f.w.document.documentElement.hasAttribute('data-legend-canonical-pending'),false);
+  }finally{f.close();}
+});
+
+for(const editor of [false,true]) for(const body of [false,true]) test(`canonical ${editor?'editor':'public'} stalled ${body?'body':'headers'} terminates without late application`,async()=>{
+  let deadline,release,signal;
+  const f=await domFixture({search:editor?'?legendEdit=ticket':'',beforeEval:w=>{
+    w.document.documentElement.setAttribute('data-legend-canonical-pending','true');
+    const set=w.setTimeout.bind(w);w.setTimeout=(fn,ms,...args)=>ms===30000?(deadline=fn,77):set(fn,ms,...args);
+    const original=w.fetch;
+    w.fetch=async(url,options)=>{
+      if(!/\/api\/website-content\/(public\/legend|manage)(\?|$)/.test(String(url)))return original(url,options);
+      signal=options?.signal;
+      const deferred=new Promise(resolve=>{release=resolve;});
+      return body?{ok:true,status:200,json:()=>deferred}:deferred;
+    };
+  }});
+  try{
+    assert.equal(typeof deadline,'function','initial read must have a complete-body deadline');
+    deadline();await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(signal.aborted,true);
+    assert.equal(f.w.document.documentElement.hasAttribute('data-legend-canonical-pending'),false);
+    assert.match(f.w.document.body.textContent,/temporarily unavailable|could not load|timed out/i);
+    const failure=f.w.document.body.textContent;
+    const payload={siteKey:'legend',document:canonicalDocument(),revision:1};
+    release(body?payload:{ok:true,status:200,json:async()=>payload});
+    await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(f.w.document.body.textContent,failure,'late completion cannot overwrite recovery state');
+    assert.equal(f.w.document.querySelector('#legend-cms-save'),null);
+  }finally{f.close();}
+});

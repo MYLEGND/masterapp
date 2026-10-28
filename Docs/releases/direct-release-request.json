@@ -1,11 +1,14 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder-authorized continuation: complete and deploy the consolidated Coverage/forms repair. Includes successor-live-residuals-20261028 and audit-addendum-20261028 under ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. Preserve release155 receipts, saved Studio content, paused receptionist calls, hours and both $25 limits. No new costs, credentials, privacy/security changes or voice activation.",
-  "purpose": "Repair Coverage backward focus containment and authored card color precedence; restore Life contact Back to answers; correct Auto/Home license applicability, driver choices and dynamic labels, truthful Home history choices, and customer-facing Disability processing copy. Protect-only canonical source scope; preserve successful Website and other application operations.",
-  "requestId": "shayla-consolidated-forms-live-residuals-20261028-v2",
+  "authorization": "Founder-authorized canonical-loading-studio-20261028 continuation: repair and selectively deploy confirmed shared loading defects across actual public and authenticated Studio consumers. Preserve release156, all content/drafts/publications, tenant and editor-reader authorization, paused calls and both $25 caps. No new costs.",
+  "purpose": "Bound complete canonical publication/draft reads, initialize on an already-parsed document without waiting for unrelated modules, and bound authenticated workspace startup with stale-reply rejection. No content migration, re-publication, stale template fallback or save/publish retry change.",
+  "requestId": "canonical-website-loading-studio-20261028-v1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-protect"
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false

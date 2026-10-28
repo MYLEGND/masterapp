@@ -5644,22 +5644,25 @@
   }
 
   function unavailable(error) {
-    if (!editorMode && !materializeMode) {
+    {
       document.body.replaceChildren();
       const main = document.createElement('main');
       main.className = 'legend-canonical-unavailable';
       main.setAttribute('role', 'alert');
       const heading = document.createElement('h1');
-      heading.textContent = 'Website temporarily unavailable';
+      heading.textContent = editorMode || materializeMode ? 'Website Studio could not load' : 'Website temporarily unavailable';
       const explanation = document.createElement('p');
-      explanation.textContent = 'The latest published website could not be verified. An older version will not be shown.';
+      explanation.textContent = editorMode || materializeMode
+        ? 'Your saved content has not been changed. Retry this read or reopen Website Studio from your workspace.'
+        : 'The latest published website could not be verified. An older version will not be shown.';
       const retry = document.createElement('button');
       retry.type = 'button';
-      retry.textContent = 'Retry website';
+      retry.textContent = editorMode || materializeMode ? 'Retry Website Studio' : 'Retry website';
       retry.addEventListener('click', () => location.reload());
       main.append(heading, explanation, retry);
       document.body.appendChild(main);
-      console.error('[legend-publication]', error);
+      document.documentElement.dataset.legendWebsiteLoadError = error?.name === 'WebsiteLoadTimeout' ? 'timeout' : 'read-failed';
+      console.error('[legend-publication]', { stage: document.documentElement.dataset.legendWebsiteLoadStage, code: document.documentElement.dataset.legendWebsiteLoadError });
     }
     revealPublishedWebsite();
   }
@@ -5983,21 +5986,48 @@
       }
     }
   }
+  // Bound the complete initial read, including a stalled JSON body. This never
+  // wraps save/publish: an ambiguous mutation keeps its existing reconciliation.
+  async function readInitialWebsite(url, stage) {
+    const controller = new AbortController();
+    let timer;
+    document.documentElement.dataset.legendWebsiteLoadStage = stage;
+    try {
+      return await Promise.race([
+        (async () => {
+          const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
+          const payload = await response.json().catch(error => {
+            if (response.ok) throw error;
+            return null;
+          });
+          return { response, payload };
+        })(),
+        new Promise((_, reject) => {
+          timer = window.setTimeout(() => {
+            const error = new Error('The website content read timed out. Please retry.');
+            error.name = 'WebsiteLoadTimeout';
+            controller.abort();
+            reject(error);
+          }, 30000);
+        })
+      ]);
+    } finally { window.clearTimeout(timer); }
+  }
+
   async function loadPublic() {
     if (SITE_KEY === 'business' && !BUSINESS_ID) {
-      const resolved = await fetch(`${API_BASE}/api/website-content/public/resolve?host=${encodeURIComponent(location.hostname)}`, { cache: 'no-store' });
+      const { response: resolved, payload: resolvedPayload } = await readInitialWebsite(`${API_BASE}/api/website-content/public/resolve?host=${encodeURIComponent(location.hostname)}`, 'resolve');
       if (!resolved.ok) throw new Error('This domain is not connected to a published business website.');
-      const resolvedPayload = await resolved.json(); BUSINESS_ID = resolvedPayload.businessId || resolvedPayload.business?.id;
+      BUSINESS_ID = resolvedPayload?.businessId || resolvedPayload?.business?.id;
       if (!BUSINESS_ID) throw new Error('This domain is not connected to a business.');
     }
     const url = new URL(`${API_BASE}/api/website-content/public/${encodeURIComponent(SITE_KEY)}`);
     if (AGENT_SLUG) url.searchParams.set('agentSlug', AGENT_SLUG);
     if (BUSINESS_ID) url.searchParams.set('businessId', BUSINESS_ID);
     try {
-      const response = await fetch(url, { cache: 'no-store' });
+      const { response, payload } = await readInitialWebsite(url, 'publication');
       if (!response.ok)
         throw new Error('The published website is unavailable (' + response.status + ').');
-      const payload = await response.json();
       if (!payload?.document || typeof payload.document !== 'object')
         throw new Error('The canonical publication response was invalid.');
       storeContext = payload.store || null;
@@ -10328,10 +10358,10 @@
       const url = new URL(`${API_BASE}/api/website-content/manage`);
       url.searchParams.set('ticket', editorTicket);
       if(auditMode) url.searchParams.set('audit','true');
-      const response = await fetch(url, { cache: 'no-store' });
+      const { response, payload } = await readInitialWebsite(url, 'authorized-draft');
       if (!response.ok) {
         if (response.status===409) {
-          const failure = await response.json().catch(() => null);
+          const failure = payload;
           if (['website_draft_duplicate_identity', 'website_draft_runtime_anchor_recovery'].includes(failure?.error)) {
             showSavedDraftRecovery();
             return;
@@ -10343,7 +10373,6 @@
           ? 'This edit session has expired. Open Website Studio again from your profile.'
           : 'Website Studio could not load the saved website (HTTP ' + response.status + '). Your saved content has not been changed.');
       }
-      const payload = await response.json();
       if (payload.siteKey && payload.siteKey !== SITE_KEY) {
         if (showEditorAuthorizationRecovery('This Website Studio authorization belongs to a different website scope.')) return;
         throw new Error('This edit session belongs to a different website. Open it from your profile.');
@@ -10405,8 +10434,7 @@
       revealPublishedWebsite();
     } catch (error) {
       unavailable(error);
-      console.error('[legend-cms]', error);
-      alert(error?.message || 'Unable to open website editor.');
+      console.error('[legend-cms]', error?.name || 'WebsiteLoadError');
     }
   }
 
@@ -10546,7 +10574,10 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', async () => {
+  let initialLoadStarted = false;
+  async function initializeWebsite() {
+    if (initialLoadStarted) return;
+    initialLoadStarted = true;
     injectContentStyles();
     if (editorMode || materializeMode) await loadEditor();
     else {
@@ -10558,5 +10589,10 @@
     }
     installResponsiveResize();
     if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
-  }, { once: true });
+  }
+  // Deferred scripts already have a parsed DOM. Do not wait for unrelated
+  // module/deferred loads, or miss readiness when the script arrives late.
+  if (document.readyState === 'loading')
+    document.addEventListener('DOMContentLoaded', initializeWebsite, { once: true });
+  else void initializeWebsite();
 })();

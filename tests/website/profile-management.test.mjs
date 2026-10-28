@@ -11,7 +11,7 @@ const deferred = () => {
   const promise = new Promise(resolve => { release = resolve; });
   return { promise, release };
 };
-async function fixture({ caps = {}, failPublish = false, scope = 'business', handoff = false, deferPath = null, deferReply = null, manageFailure = null, publicationBehavior = null, storageEntries = [], publicationScopeId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } = {}) {
+async function fixture({ beforeEval = null, caps = {}, failPublish = false, scope = 'business', handoff = false, deferPath = null, deferReply = null, manageFailure = null, publicationBehavior = null, storageEntries = [], publicationScopeId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } = {}) {
   const dom = new JSDOM(`<button data-website-manage data-session="/profile/session" data-edit="/profile/edit" data-live="https://business.test" data-title="Business A" data-scope="${scope}">Manage</button>`, { url: 'https://client.mylegnd.com/profile', runScripts: 'outside-only' });
   const { window } = dom, calls = [], publications = new Map();
   for (const [key, value] of storageEntries) window.sessionStorage.setItem(key, value);
@@ -71,6 +71,7 @@ async function fixture({ caps = {}, failPublish = false, scope = 'business', han
     if (parsed.pathname === '/api/website-inquiries/manage') value = { inquiries: [{ id: 'inquiry-a', name: '<img src=x onerror=alert(1)>', firstName: 'Avery', lastName: 'Example', phone: '(602) 555-0199', email: 'a@example.test', message: 'Please call', status: 'New' }] };
     return { ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(value)) };
   };
+  if (beforeEval) beforeEval(window);
   window.eval(source); window.document.querySelector('[data-website-manage]').click(); await flush();
   const click = async text => { const found = [...window.document.querySelectorAll('button')].find(node => node.textContent.startsWith(text)); assert.ok(found, `button ${text}`); found.click(); await flush(); };
   const storage = () => Array.from({ length: window.sessionStorage.length }, (_, index) => {
@@ -600,4 +601,47 @@ test('status proof for a different canonical state remains pending without resum
   assert.equal(f.calls.filter(x => x.path.endsWith('/publish')).length, 1);
   assert.ok(![...f.document.querySelectorAll('button')].some(x => x.textContent === 'Resume original request'));
   f.dom.window.close();
+});
+
+for (const path of ['/profile/session','/api/website-content/handoff','/api/website-content/manage']) test(`workspace startup deadline covers ${path} and ignores stale completion`,async()=>{
+  let deadline;const pending=deferred();
+  const f=await fixture({handoff:true,deferPath:path,deferReply:pending,beforeEval:w=>{
+    const set=w.setTimeout.bind(w);w.setTimeout=(fn,ms,...args)=>ms===30000?(deadline=fn,88):set(fn,ms,...args);
+  }});
+  try{
+    assert.equal(typeof deadline,'function');deadline();await flush();
+    assert.match(f.document.querySelector('[role=status]').textContent,/timed out/);
+    assert.equal(f.calls.find(x=>x.path===path).options.signal.aborted,true);
+    assert.equal(f.document.querySelector('.wm-grid'),null);
+    const notice=f.document.querySelector('[role=status]').textContent;
+    pending.release();await flush();
+    assert.equal(f.document.querySelector('[role=status]').textContent,notice);
+    assert.equal(f.document.querySelector('.wm-grid'),null);
+    await f.click('Close');
+    f.document.querySelector('[data-website-manage]').click();await flush();
+    assert.ok(f.document.querySelector('.wm-grid'));
+    assert.equal(f.calls.filter(x=>x.path==='/profile/session').length,2);
+    assert.equal(f.calls.some(x=>/publish|save|drafts/.test(x.path)),false);
+  }finally{f.dom.window.close();}
+});
+
+test('startup status timeout retains publication recovery but removes operational controls',async()=>{
+  const pending=deferred();let deadline;
+  const request={schemaVersion:1,requestId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',expectedRevision:7,phase:'pending'};
+  const key='legend-website-publication-v1:https://protect.mylegnd.com:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const f=await fixture({storageEntries:[[key,JSON.stringify(request)]],deferPath:'/api/website-content/manage/publication-status',deferReply:pending,beforeEval:w=>{
+    const set=w.setTimeout.bind(w);w.setTimeout=(fn,ms,...args)=>ms===30000?(deadline=fn,99):set(fn,ms,...args);
+  }});
+  try{
+    assert.ok(f.document.querySelector('.wm-grid'));
+    deadline();await flush();
+    assert.match(f.document.querySelector('[role=status]').textContent,/timed out/);
+    assert.equal(f.document.querySelector('.wm-grid'),null);
+    assert.deepEqual(f.pendingPublication(),request);
+    pending.release();await flush();
+    assert.equal(f.document.querySelector('.wm-grid'),null);
+    assert.deepEqual(f.pendingPublication(),request);
+    assert.equal(f.calls.some(x=>x.options.method==='POST'),false);
+    await f.click('Close');
+  }finally{f.dom.window.close();}
 });

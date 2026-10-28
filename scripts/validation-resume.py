@@ -4607,6 +4607,9 @@ def fast_track_scope(paths):
             return {'portal', 'client', 'protect'}
         if path.startswith('SHARED/Branding/'):
             return {'portal', 'client', 'protect', 'website'}
+        if path == 'Legend-Design/legend-website-management.js':
+            # Linked and loaded by the two authenticated workspace hosts only.
+            return {'portal', 'client'}
         if path == 'Legend-Design/legend-public-inquiry.js':
             return {'website', 'protect'}
         if path == 'Legend-Design/legend-web-foundation.css':
