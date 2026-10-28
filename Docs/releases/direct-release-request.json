@@ -1,7 +1,7 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue the Founder-delegated coordinated recovery for ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. Promote only the independently reviewed six-file release-proof correction through the existing nonpublishing trusted-tooling controls. No application deployment, SQL, restart, provider mutation, access change or spend. This request does not authorize another completion observation.",
-  "purpose": "Correct the observed completion-46 commit-associated pull-request repository-size false dependency; bound authenticated receipt-byte retention; reuse historical proof only within a freshly closed decision and recheck the live execution owner before any receipt publication; emit bounded nonsecret efficiency counters. Preserve source, identity, history, contradiction, timeout and authority protections.",
+  "authorization": "Continue the Founder-delegated coordinated recovery for ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. Promote only the independently reviewed seven-file release-proof correction through the existing nonpublishing trusted-tooling controls. No application deployment, SQL, restart, provider mutation, access change or spend. This request does not authorize another completion observation.",
+  "purpose": "Correct the observed completion-46 commit-associated pull-request repository-size false dependency; bound authenticated receipt-byte retention; reuse historical proof only within a freshly closed decision and recheck the live execution owner before any receipt publication; emit bounded nonsecret efficiency counters. Preserve source, identity, history, contradiction, timeout and authority protections. Include the existing completion-observer test fixture correction for uncached transport; production authority guards are unchanged.",
   "requestId": "release-proof-efficiency-20261028-v1",
   "releaseMode": "validate-only",
   "targets": [],
@@ -10,7 +10,7 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "ce09e96c36a21c3557f8bdd6bc8c123cb4b8b20e",
-    "sourceRevision": "61fca0ef5eb7eca4a609e16749e8d07eb35c75fb",
+    "sourceRevision": "565359f72a28110fa9520b553d9aa1916f31318c",
     "files": {
       "scripts/validation-resume.py": {
         "mode": "100644",
@@ -35,6 +35,10 @@
       "scripts/test-release-operation-evidence.py": {
         "mode": "100644",
         "blob": "005b93ca5cc0726d8f3cd5aa2beafb512b4e9e73"
+      },
+      "scripts/test-release-policy.py": {
+        "mode": "100644",
+        "blob": "6ea858b8f982f36decbe96d13c9be0277c46b405"
       }
     }
   }
