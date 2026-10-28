@@ -5762,6 +5762,7 @@ for(const key of ['auto','home']) test('shipped '+key+' navigator follows saved 
     f.w.setStep=step=>{f.w.currentStep=step;};
     f.w['emit'+(key==='auto'?'Auto':'Home')+'StepComplete']=(from,to)=>f.w.transitions.push([from,to]);
     f.w.togglePreviousAddress=()=>{};f.w.toggleHouseUpdateYearFields=()=>{};
+    if(key==='home') f.w.eval(nativeFunction(nativeViewSources.home,'toggleRentersPropertyRequirements'));
     for(const name of ['nativeStepOrder','validateCurrentStep','goNext','goBack']) f.w.eval(nativeFunction(nativeViewSources[key],name));
     f.w.document.getElementById('field2').value='';f.w.goNext();assert.equal(f.w.currentStep,2);
     f.w.document.getElementById('field2').value='restored';f.w.goNext();assert.equal(f.w.currentStep,1);
@@ -7573,14 +7574,14 @@ for (const readyState of ['interactive','complete']) test(`canonical initial rea
   }finally{f.close();}
 });
 
-for(const editor of [false,true]) for(const body of [false,true]) test(`canonical ${editor?'editor':'public'} stalled ${body?'body':'headers'} terminates without late application`,async()=>{
+for(const siteKey of ['legend','protect']) for(const editor of [false,true]) for(const body of [false,true]) test(`canonical ${siteKey} ${editor?'editor':'public'} stalled ${body?'body':'headers'} terminates without late application`,async()=>{
   let deadline,release,signal;
-  const f=await domFixture({search:editor?'?legendEdit=ticket':'',beforeEval:w=>{
+  const f=await domFixture({siteKey,search:editor?'?legendEdit=ticket':'',beforeEval:w=>{
     w.document.documentElement.setAttribute('data-legend-canonical-pending','true');
     const set=w.setTimeout.bind(w);w.setTimeout=(fn,ms,...args)=>ms===30000?(deadline=fn,77):set(fn,ms,...args);
     const original=w.fetch;
     w.fetch=async(url,options)=>{
-      if(!/\/api\/website-content\/(public\/legend|manage)(\?|$)/.test(String(url)))return original(url,options);
+      if(!/\/api\/website-content\/(public\/(legend|protect)|manage)(\?|$)/.test(String(url)))return original(url,options);
       signal=options?.signal;
       const deferred=new Promise(resolve=>{release=resolve;});
       return body?{ok:true,status:200,json:()=>deferred}:deferred;
@@ -7593,7 +7594,7 @@ for(const editor of [false,true]) for(const body of [false,true]) test(`canonica
     assert.equal(f.w.document.documentElement.hasAttribute('data-legend-canonical-pending'),false);
     assert.match(f.w.document.body.textContent,/temporarily unavailable|could not load|timed out/i);
     const failure=f.w.document.body.textContent;
-    const payload={siteKey:'legend',document:canonicalDocument(),revision:1};
+    const payload={siteKey,document:canonicalDocument(),revision:1};
     release(body?payload:{ok:true,status:200,json:async()=>payload});
     await new Promise(resolve=>setTimeout(resolve,5));
     assert.equal(f.w.document.body.textContent,failure,'late completion cannot overwrite recovery state');
@@ -7635,3 +7636,59 @@ test('Protect page-only publication renders identical native form controls and p
   }
   assert.deepEqual(results[1],results[0]);
 });
+
+for(const siteKey of ['legend','protect']) for(const editor of [false,true]) {
+  test(`canonical ${siteKey} ${editor?'Studio':'public'} first reveal waits for complete body and preserves content`,async()=>{
+    let release;const doc=canonicalDocument(),original=JSON.stringify(doc);
+    const f=await domFixture({siteKey,doc,search:editor?'?legendEdit=ticket':'',beforeEval:w=>{
+      w.document.documentElement.setAttribute('data-legend-canonical-pending','true');
+      const fetch=w.fetch;
+      w.fetch=async(url,options)=>{
+        const response=await fetch(url,options);
+        if(!/\/api\/website-content\/(public\/(legend|protect)|manage)(\?|$)/.test(String(url)))return response;
+        const payload=await response.json();
+        return {...response,json:()=>new Promise(resolve=>{release=()=>resolve(payload);})};
+      };
+    }});
+    try{
+      assert.equal(f.w.document.documentElement.hasAttribute('data-legend-canonical-pending'),true);
+      assert.equal(f.w.document.querySelector('#legend-cms-save'),null);
+      release();await new Promise(resolve=>setTimeout(resolve,30));
+      assert.equal(f.w.document.documentElement.hasAttribute('data-legend-canonical-pending'),false);
+      assert.equal(!!f.w.document.querySelector('#legend-cms-save'),editor);
+      assert.equal(JSON.stringify(f.serverDocument()),original);
+      assert.equal(f.calls.some(call=>call.method==='POST'),false);
+    }finally{f.close();}
+  });
+  for(const failure of ['network','http','invalid-json']) test(`canonical ${siteKey} ${editor?'Studio':'public'} ${failure} permits fresh initialization`,async()=>{
+    let attempts=0;const doc=canonicalDocument(),original=JSON.stringify(doc);
+    const f=await domFixture({siteKey,doc,search:editor?'?legendEdit=ticket':'',beforeEval:w=>{
+      w.document.documentElement.setAttribute('data-legend-canonical-pending','true');
+      const fetch=w.fetch;
+      w.fetch=async(url,options)=>{
+        if(!/\/api\/website-content\/(public\/(legend|protect)|manage)(\?|$)/.test(String(url)))return fetch(url,options);
+        attempts++;
+        if(failure==='network')throw new TypeError('synthetic network unavailable');
+        return {ok:failure!=='http',status:failure==='http'?503:200,json:async()=>{if(failure==='invalid-json')throw new SyntaxError('invalid body');return {error:'unavailable'};}};
+      };
+    }});
+    try{
+      assert.equal(attempts,1,'no implicit retry');
+      assert.equal(f.w.document.documentElement.hasAttribute('data-legend-canonical-pending'),false);
+      assert.match(f.w.document.body.textContent,/could not load|temporarily unavailable/);
+      assert.equal(f.w.document.querySelector('#legend-cms-save'),null);
+      assert.ok([...f.w.document.querySelectorAll('button')].some(button=>/^Retry/.test(button.textContent)));
+      assert.equal(JSON.stringify(f.serverDocument()),original);
+      assert.equal(f.calls.some(call=>call.method==='POST'),false);
+    }finally{f.close();}
+    const reopened=await domFixture({siteKey,doc,search:editor?'?legendEdit=ticket':''});
+    try{
+      assert.equal(!!reopened.w.document.querySelector('#legend-cms-save'),editor);
+      assert.equal(JSON.stringify(reopened.serverDocument()),original);
+      assert.equal(reopened.calls.some(call=>call.method==='POST'),false);
+      const reads=reopened.calls.filter(call=>/\/api\/website-content\/(public\/(legend|protect)|manage)(\?|$)/.test(call.url));
+      assert.equal(reads.length,1);
+      assert.equal(reads[0].url.includes('/manage'),editor);
+    }finally{reopened.close();}
+  });
+}

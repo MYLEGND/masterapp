@@ -1003,7 +1003,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <label asp-for="PurchaseDate">Purchase Date<span class="text-danger">*</span></label>
+                    <label asp-for="PurchaseDate">Purchase Date<span class="text-danger" data-home-owner-required="PurchaseDate">*</span><span data-home-renter-optional="PurchaseDate" hidden> (optional for renters)</span></label>
                     <input asp-for="PurchaseDate" type="date" class="form-control" required data-original-required="1" />
                     <span asp-validation-for="PurchaseDate" class="text-danger"></span>
                 </div>
@@ -1127,12 +1127,12 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <label asp-for="DwellingCoverage">Dwelling<span class="text-danger">*</span></label>
+                    <label asp-for="DwellingCoverage">Dwelling<span class="text-danger" data-home-owner-required="DwellingCoverage">*</span><span data-home-renter-optional="DwellingCoverage" hidden> (optional for renters)</span></label>
                     <input asp-for="DwellingCoverage" class="form-control" required data-original-required="1" />
                     <span asp-validation-for="DwellingCoverage" class="text-danger"></span>
                 </div>
                 <div class="col-md-6">
-                    <label asp-for="EstReplacementCost">Est. Replacement Cost<span class="text-danger">*</span></label>
+                    <label asp-for="EstReplacementCost">Est. Replacement Cost<span class="text-danger" data-home-owner-required="EstReplacementCost">*</span><span data-home-renter-optional="EstReplacementCost" hidden> (optional for renters)</span></label>
                     <input asp-for="EstReplacementCost" class="form-control" required data-original-required="1" />
                     <span asp-validation-for="EstReplacementCost" class="text-danger"></span>
                 </div>
@@ -1525,6 +1525,7 @@
 	            // keep conditional logic correct when moving steps
 	            if (step === 2) togglePreviousAddress();
 	            toggleHouseUpdateYearFields();
+            toggleRentersPropertyRequirements();
 	            if (step === 2 && quoteStarted) emitHomeContactStepView(step);
 	            refreshFieldStates();
 	        }
@@ -1557,6 +1558,7 @@
             // Ensure conditional required fields are correct before validating
             togglePreviousAddress(true);
             toggleHouseUpdateYearFields();
+            toggleRentersPropertyRequirements();
 
             const inputs = stepEl.querySelectorAll("input, select, textarea");
             for (const el of inputs) {
@@ -1592,6 +1594,19 @@
             if (!el) return;
             if (yes) el.setAttribute("required", "required");
             else el.removeAttribute("required");
+        }
+
+        function toggleRentersPropertyRequirements() {
+            const renters = document.getElementById("PolicyFormType")?.value === "HO4 - Renters";
+            ["PurchaseDate", "DwellingCoverage", "EstReplacementCost"].forEach(id => {
+                const input = document.getElementById(id);
+                if (!input) return;
+                setRequired(input, !renters);
+                input.dataset.originalRequired = renters ? "0" : "1";
+                document.querySelectorAll(`[data-home-owner-required="${id}"]`).forEach(mark => mark.hidden = renters);
+                document.querySelectorAll(`[data-home-renter-optional="${id}"]`).forEach(mark => mark.hidden = !renters);
+                updateFieldState(input);
+            });
         }
 
         function togglePreviousAddress(keepVisibleIfOnServerError = false) {
@@ -1666,6 +1681,7 @@
                 yearsEl.addEventListener("change", () => togglePreviousAddress());
             }
             togglePreviousAddress();
+            document.getElementById("PolicyFormType")?.addEventListener("change", toggleRentersPropertyRequirements);
 
             // Wire house update dropdowns to year fields
             document.querySelectorAll(".houseUpdate").forEach(sel => {
@@ -1673,6 +1689,7 @@
                 sel.addEventListener("input", () => toggleOneUpdate(sel));
             });
             toggleHouseUpdateYearFields();
+            toggleRentersPropertyRequirements();
 
         const form = document.getElementById("homeQuoteForm");
         if (form) {
@@ -1686,6 +1703,7 @@
                 // Ensure conditional fields are correct, then allow submit
                 togglePreviousAddress(true);
                     toggleHouseUpdateYearFields();
+            toggleRentersPropertyRequirements();
                     enableAllInputsForSubmit();
                     const disclaimer = document.getElementById("AcknowledgedDisclaimer");
                     if (disclaimer) {

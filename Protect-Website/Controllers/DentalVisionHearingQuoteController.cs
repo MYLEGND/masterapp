@@ -682,7 +682,7 @@ await TryWriteLeadEventAsync(
             var householdLabel = string.IsNullOrWhiteSpace(model.HouseholdSize) ? "Not provided" : model.HouseholdSize.Trim();
             var currentCoverageLabel = string.IsNullOrWhiteSpace(model.CurrentCoverage) ? "Not provided" : model.CurrentCoverage.Trim();
             var coverageTypeLabel = string.IsNullOrWhiteSpace(model.CoverageType) ? "Not provided" : model.CoverageType.Trim();
-            var primaryConcernLabel = string.IsNullOrWhiteSpace(model.PrimaryConcern) ? "Not provided" : model.PrimaryConcern.Trim();
+            var primaryConcernLabel = DentalVisionHearingQuoteFormModel.PrimaryConcernDisplay(model.PrimaryConcern);
             var contactMethodLabel = string.IsNullOrWhiteSpace(model.ContactMethod) ? "Not provided" : model.ContactMethod.Trim();
             var bestTimeLabel = string.IsNullOrWhiteSpace(model.BestTimeToContact) ? "Not provided" : model.BestTimeToContact.Trim();
             var stateLine = string.IsNullOrWhiteSpace(model.State)
@@ -698,12 +698,12 @@ await TryWriteLeadEventAsync(
                 _ => "This prospect's answers point toward a dental, vision, and hearing coverage decision that still needs guidance around cost, access, and plan fit."
             };
 
-            var timingCopy = primaryConcernLabel switch
+            var timingCopy = model.PrimaryConcern?.Trim() switch
             {
                 "Lower Monthly Premium" => "Monthly affordability is already front of mind, so waiting can keep the household exposed to the same premium and deductible pressure without more clarity.",
                 "Lower Deductible" => "Out-of-pocket exposure matters here, and a delayed review can leave the household carrying the same deductible risk longer than necessary.",
-                "Better Doctor Network" => "Doctor and specialist access usually becomes more important once care is needed, so network fit is worth confirming before that pressure increases.",
-                "Prescription Coverage" => "Prescription costs rarely get easier by waiting, so medication access and pharmacy fit are worth reviewing now.",
+                "Better Doctor Network" => "Confirm whether the preferred dental, vision, and hearing providers participate in the plans being reviewed.",
+                "Prescription Coverage" => "Review the dental, vision, and hearing benefits, limits, and out-of-pocket costs that matter to this household.",
                 _ => "Dental, vision, and hearing coverage decisions usually become more urgent once dental, vision, or hearing needs, provider access, or monthly affordability pressure increase."
             };
 
@@ -817,23 +817,23 @@ Start by confirming household fit, provider access, out-of-pocket comfort, and w
             var householdLabel = string.IsNullOrWhiteSpace(model.HouseholdSize) ? "Not provided" : model.HouseholdSize.Trim();
             var currentCoverageLabel = string.IsNullOrWhiteSpace(model.CurrentCoverage) ? "Not provided" : model.CurrentCoverage.Trim();
             var coverageTypeLabel = string.IsNullOrWhiteSpace(model.CoverageType) ? "Not provided" : model.CoverageType.Trim();
-            var primaryConcernLabel = string.IsNullOrWhiteSpace(model.PrimaryConcern) ? "Not provided" : model.PrimaryConcern.Trim();
+            var primaryConcernLabel = DentalVisionHearingQuoteFormModel.PrimaryConcernDisplay(model.PrimaryConcern);
 
             var surfacedCopy = currentCoverageLabel switch
             {
                 "No current coverage" => "You may be trying to close a coverage gap before dental, vision, or hearing needs or unexpected costs put pressure on the household.",
-                "Employer plan" => "You may already have an employer option, but still need help checking affordability, doctor access, and uncovered gaps.",
+                "Employer plan" => "You may already have an employer option, but still need help checking affordability, dental, vision, and hearing provider access, and uncovered gaps.",
                 "Medical only / need DVH" => "You may need a closer DVH benefits review around benefit fit, out-of-pocket costs, and whether a stronger option is available.",
                 "Spouse / family plan" => "You may be reviewing whether the current family setup still fits dependents, providers, and out-of-pocket exposure.",
                 _ => "Your answers point toward a dental, vision, and hearing coverage decision that still needs a clearer side-by-side review."
             };
 
-            var timingCopy = primaryConcernLabel switch
+            var timingCopy = model.PrimaryConcern?.Trim() switch
             {
                 "Lower Monthly Premium" => "Monthly affordability matters now, so reviewing sooner can help you avoid carrying the same premium pressure without better clarity.",
                 "Lower Deductible" => "If out-of-pocket exposure matters most, it helps to confirm the deductible tradeoff before a care need makes that decision feel urgent.",
-                "Better Doctor Network" => "Provider access becomes more important once appointments and care are already in motion, so network fit is worth confirming now.",
-                "Prescription Coverage" => "Prescription costs rarely get easier by waiting, so it helps to review medication access and pharmacy fit before needs increase.",
+                "Better Doctor Network" => "Confirm whether your preferred dental, vision, and hearing providers participate in the plans being reviewed.",
+                "Prescription Coverage" => "Review dental, vision, and hearing benefits, limits, and out-of-pocket costs before choosing a plan.",
                 _ => "Dental, vision, and hearing coverage decisions usually feel more urgent once dental, vision, or hearing needs, provider access, or monthly cost pressure start to build."
             };
 
@@ -932,7 +932,7 @@ Household
 
 <div style=""background:#08254d;border:1px solid rgba(243,214,136,.20);border-radius:18px;padding:18px;margin-bottom:18px;"">
 <div style=""color:#fff8e7;font-size:14px;line-height:1.42;font-weight:700;"">
-This review is meant to narrow the plans worth discussing first, based on your doctors, prescriptions, household setup, and budget pressure.
+This review is meant to narrow the plans worth discussing first, based on your dental, vision, and hearing providers, benefit needs, household setup, and budget.
 </div>
 
 <div style=""margin-top:10px;color:rgba(248,250,252,.84);font-size:15px;line-height:1.55;font-weight:600;"">
