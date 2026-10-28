@@ -16,6 +16,8 @@ import os
 from pathlib import Path
 import re
 import signal
+import shutil
+import stat
 import subprocess
 import time
 import urllib.request
@@ -174,8 +176,16 @@ def deployment_read_error_metadata(result):
     metadata = dict(schemaVersion=1, source='azure-cli-reported', category='unknown',
                     returnCode=code if type(code) is int and -255 <= code <= 255 else None,
                     providerCode=None, httpStatus=None,
-                    inputTooLarge=type(stderr) is str and len(stderr) > 8192)
-    if metadata['returnCode'] is None or type(stderr) is not str or metadata['inputTooLarge']:
+                    inputTooLarge=type(stderr) is str and len(stderr) > 8192,
+                    unknownReason='UNRECOGNIZED_FORMAT', stderrLineCount=None)
+    if metadata['returnCode'] is None:
+        metadata['unknownReason']='INVALID_RETURN_CODE'
+        return metadata
+    if type(stderr) is not str:
+        metadata['unknownReason']='INVALID_TYPE'
+        return metadata
+    if metadata['inputTooLarge']:
+        metadata['unknownReason']='OVERSIZED'
         return metadata
     provider_codes = {
         'AuthenticationFailed': 'authentication', 'InvalidAuthenticationToken': 'authentication',
@@ -193,11 +203,23 @@ def deployment_read_error_metadata(result):
     }
     # Only remove one conventional line ending; embedded/multiple lines remain unknown.
     line = stderr.removesuffix('\n').removesuffix('\r')
+    metadata['stderrLineCount']=min(8, len(stderr.splitlines()))
+    if not line:
+        metadata['unknownReason']='EMPTY'
+        return metadata
+    if '\n' in line or '\r' in line:
+        metadata['unknownReason']='MULTILINE'
+        return metadata
     if line.count('ERROR:') != 1:
+        if line.count('ERROR:') > 1:
+            metadata['unknownReason']='CONFLICTING_MARKERS'
         return metadata
     match = re.fullmatch(r'ERROR: \(([A-Za-z]+)\)(?: [^\r\n]*)?', line)
+    if match and match[1] not in provider_codes:
+        metadata['unknownReason']='UNKNOWN_PROVIDER_CODE'
     if match and match[1] in provider_codes:
         if 'Operation returned an invalid status' in line or 'Code:' in line or 'HTTP/' in line:
+            metadata['unknownReason']='CONFLICTING_MARKERS'
             return metadata
         metadata.update(providerCode=match[1], category=provider_codes[match[1]])
     else:
@@ -205,7 +227,115 @@ def deployment_read_error_metadata(result):
         if match and match[1] in statuses:
             status, category = statuses[match[1]]
             metadata.update(httpStatus=status, category=category)
+    if metadata['category'] != 'unknown':
+        metadata['unknownReason']=None
     return metadata
+
+
+_COMPLETION_DIAGNOSTICS = contextvars.ContextVar('completion_diagnostics', default=None)
+
+
+def _diagnostic_executable():
+    # Resolution is a checkpoint snapshot, not proof of later executed bytes.
+    path=os.environ.get('PATH')
+    if type(path) is not str or len(path)>8192 or len(path.split(os.pathsep))>64:
+        return None
+    resolved=shutil.which('az')
+    if resolved and os.path.realpath(resolved)=='/opt/az/bin/az':
+        return 'OPT_AZ'
+    return None
+
+
+def _diagnostic_package_version(executable):
+    # Read installed distribution metadata only. Never run/import CLI code,
+    # inspect CLI configuration/token stores, or start another subprocess.
+    if executable!='OPT_AZ':
+        return None
+    root=Path('/opt/az/lib')
+    if root.is_symlink() or root.resolve()!=root:return None
+    versions=[]
+    with os.scandir(root) as entries:
+        for count,entry in enumerate(entries):
+            if count>=32:return None
+            if not re.fullmatch(r'python3\.[0-9]{1,2}',entry.name):continue
+            if not entry.is_dir(follow_symlinks=False):return None
+            packages=Path(entry.path)/'site-packages'
+            if packages.is_symlink() or not packages.is_dir():return None
+            with os.scandir(packages) as distributions:
+                for index,distribution in enumerate(distributions):
+                    if index>=2048:return None
+                    if not distribution.name.startswith('azure_cli-'):continue
+                    match=re.fullmatch(r'azure_cli-([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.dist-info',distribution.name)
+                    if not match or not distribution.is_dir(follow_symlinks=False):return None
+                    metadata=Path(distribution.path)/'METADATA'
+                    fd=os.open(metadata,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+                    with os.fdopen(fd,'rb') as stream:
+                        info=os.fstat(stream.fileno())
+                        if not stat.S_ISREG(info.st_mode) or info.st_size>8192:return None
+                        raw=stream.read(8193)
+                    if len(raw)>8192:return None
+                    lines=raw.decode('utf-8').splitlines()
+                    if [v for v in lines if v.startswith('Name: ')]!=['Name: azure-cli']:return None
+                    if [v for v in lines if v.startswith('Version: ')]!=['Version: '+match[1]]:return None
+                    versions.append(match[1])
+    return versions[0] if len(versions)==1 else None
+
+
+def _diagnostic_snapshot():
+    # These operational strings stay in invocation-local memory only. Neither
+    # their values nor hashes are emitted; no credential variables are read.
+    values={}
+    for key,limit in (('PATH',8192),('AZURE_CONFIG_DIR',4096),('AZURE_CLOUD_NAME',128)):
+        value=os.environ.get(key)
+        values[key]=(value is not None, value if type(value) is str and len(value)<=limit else None)
+    cwd=os.getcwd()
+    values['cwd']=(True,cwd if len(cwd)<=4096 else None)
+    return values
+
+
+def _start_completion_diagnostics():
+    try:
+        executable=_diagnostic_executable()
+        try:version=_diagnostic_package_version(executable)
+        except Exception:version=None
+        image=os.environ.get('ImageVersion')
+        image=image if type(image) is str and re.fullmatch(r'[0-9]{8}\.[0-9]{1,4}\.[0-9]{1,3}',image) else None
+        return dict(started=time.monotonic(),baseline=_diagnostic_snapshot(),executable=executable,
+                    packageVersion=version,imageVersion=image,count=0)
+    except Exception:
+        return None
+
+
+def completion_diagnostic(checkpoint, target=None, command=None):
+    """Best-effort bounded observations; never release or provider authority."""
+    try:
+        state=_COMPLETION_DIAGNOSTICS.get()
+        if state is None or state['count']>=24:return
+        if checkpoint not in {'completion-entry','target-entry','deployment-read'}:return
+        state['count']+=1
+        snapshot=_diagnostic_snapshot()
+        equality={key:(value[1]==state['baseline'][key][1]
+                       if value[1] is not None and state['baseline'][key][1] is not None else None)
+                  for key,value in snapshot.items()}
+        executable=_diagnostic_executable()
+        report=dict(schemaVersion=1,checkpoint=checkpoint,sequence=state['count'],
+            elapsedSinceEntrySeconds=min(86400,max(0,round(time.monotonic()-state['started'],3))),
+            imageVersion=state['imageVersion'],installedCliPackageVersion=state['packageVersion'],
+            cliVersionSource='installed-package-metadata',executable=executable,
+            executableEqualsEntry=(executable==state['executable'] if executable and state['executable'] else None),
+            contextPresent={key:value[0] for key,value in snapshot.items()},contextEqualsEntry=equality,
+            contextIsAuthorizationProof=False)
+        if target in TARGETS and re.fullmatch('[a-z]{1,16}',target):
+            app=TARGETS[target]['releaseName'];group=_RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP
+            if re.fullmatch('[a-z0-9-]{1,64}',app) and re.fullmatch('[a-z0-9-]{1,64}',group):
+                report.update(target=target,app=app,resourceGroup=group,
+                    commandKind='AZ_WEBAPP_LOG_DEPLOYMENT_LIST',explicitSubscriptionArgument=False)
+                if command is not None:
+                    report['commandMatchesCanonical']=(command==['az','webapp','log','deployment','list',
+                        '-g',group,'-n',app,'--only-show-errors','-o','json'])
+        print('LEGEND_COMPLETION_CONTEXT:'+json.dumps(report,sort_keys=True),flush=True)
+    except Exception:
+        pass  # No diagnostic error may replace the original operation result.
 
 
 class Azure:
@@ -218,9 +348,19 @@ class Azure:
 
     def deployments(self):
         # Uses the existing OIDC session; no publishing credentials or new authority.
-        result = deployment_read_process(
-            ['az', 'webapp', 'log', 'deployment', 'list', '-g', _RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP, '-n', self.app,
-             '--only-show-errors', '-o', 'json'], timeout=_DEPLOYMENT_READ_CAP.get())
+        command=['az', 'webapp', 'log', 'deployment', 'list', '-g', _RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP, '-n', self.app,
+                 '--only-show-errors', '-o', 'json']
+        cap=_DEPLOYMENT_READ_CAP.get()
+        if _COMPLETION_DIAGNOSTICS.get() is not None:
+            diagnostic_started=time.monotonic()
+            try:
+                completion_diagnostic('deployment-read',next((key for key,row in TARGETS.items()
+                    if row['releaseName']==self.app),None),command)
+            except Exception:
+                pass
+            # Diagnostics consume, never extend, the caller's existing allowance.
+            cap-=max(0,time.monotonic()-diagnostic_started)
+        result = deployment_read_process(command, timeout=cap)
         if result.returncode:
             try:
                 print('LEGEND_DEPLOYMENT_READ_ERROR:' + json.dumps(
@@ -1344,6 +1484,15 @@ def complete_fast_track(original_run, revision, package_root, *, validate_only=F
     """Finish genuine original receipts; never rebuild, submit or restart apps."""
     # Cache immutable authenticated bytes only for this invocation. Mutable proof
     # snapshots are separately closed before any receipt can be published.
+    diagnostic_token=_COMPLETION_DIAGNOSTICS.set(_start_completion_diagnostics() if not validate_only else None)
+    try:
+        return _complete_fast_track_with_metrics(original_run,revision,package_root,validate_only=validate_only)
+    finally:
+        _COMPLETION_DIAGNOSTICS.reset(diagnostic_token)
+
+
+def _complete_fast_track_with_metrics(original_run, revision, package_root, *, validate_only=False):
+    completion_diagnostic('completion-entry')
     with _RELEASE_AUTHORITY.recovery_material_reuse():
         outcome='failure'
         try:
@@ -1386,6 +1535,7 @@ def _complete_fast_track(original_run, revision, package_root, *, validate_only=
     results={}
     for key,material in materials.items():
         print('FAST_TRACK_COMPLETION_STAGE:target:'+key+':start', flush=True)
+        completion_diagnostic('target-entry',key)
         journal=owner.CompletionJournal(original,material,observer,authority=authority)
         azure=CompletionObservation(target_azure(key,package_root/key/'deploy.zip',revision),journal)
         # Public checks precede the success record as well as follow reconciliation.

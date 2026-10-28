@@ -6500,7 +6500,7 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         root=Path(__file__).parent
         source=(root/'deploy-approved-app.py').read_text()
         journal=(root/'release-operation-evidence.py').read_text()
-        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'28322882e185f6e1c5c9a03b152a34772f6e9aa31b37b834dbc057789d38c56c')
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'b1133d3d89e16754deabdd1a513eb0d43c4a59f62343ddf542e24c72b753b19c')
         self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'5b42fcbed0ac4a331ff5c706ef5a6a3ce96eb32d556ef4051c65ee4cf99e881e')
         self.assertTrue(m._recovery_preflight_source_contract(source,journal))
         for changed in [source+'# unreviewed helper\n',source.replace('reconcile_only=journal.intent is not None','reconcile_only=False')]:
@@ -6518,7 +6518,11 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
                  '5b42fcbed0ac4a331ff5c706ef5a6a3ce96eb32d556ef4051c65ee4cf99e881e')
         diagnostic=('28322882e185f6e1c5c9a03b152a34772f6e9aa31b37b834dbc057789d38c56c',
                     '5b42fcbed0ac4a331ff5c706ef5a6a3ce96eb32d556ef4051c65ee4cf99e881e')
+        context=('b1133d3d89e16754deabdd1a513eb0d43c4a59f62343ddf542e24c72b753b19c', diagnostic[1])
         for source,journal,accepted in [(old[0],old[1],True),(new[0],new[1],True),(current[0],current[1],True),
+                (context[0],context[1],True),(context[0],old[1],False),(context[0],new[1],False),
+                (old[0],context[1],False),(new[0],context[1],False),
+                ('f'*64,context[1],False),(context[0],'f'*64,False),
                 (diagnostic[0],diagnostic[1],True),
                 (diagnostic[0],old[1],False),(diagnostic[0],new[1],False),
                 (old[0],diagnostic[1],False),(new[0],diagnostic[1],False),
