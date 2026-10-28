@@ -7163,7 +7163,8 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
       assert.equal(f.calls.some(call=>call.method==='POST' && !call.url.includes('/manage/')),false);
     }finally{f.close();}
   }
-  const compiler=new JSDOM(html,{url:'https://protect.example.test'+pathname,runScripts:'outside-only'});
+  // The canonical server compiler uses the document route, not its external agent-prefixed URL.
+  const compiler=new JSDOM(html,{url:'https://protect.example.test/quote',runScripts:'outside-only'});
   try{
     const w=compiler.window;w.CSS={escape:value=>String(value)};
     const modalBefore=w.document.getElementById('lifeModal'),styleBefore=w.document.querySelector('main style');
@@ -7171,6 +7172,9 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
     w.eval(source);
     assertRetainedProtectShell(w,doc.shell);
     assert.equal(w.document.getElementById('lifeModal'),modalBefore);
+    assert.deepEqual([...modalBefore.querySelectorAll('a')].map(a=>a.getAttribute('href')),
+      ['Life','Term-Life','Whole-Life','Final-Expense','Mortgage-Protection','IUL'].map(route=>prefix+'/Quote/'+route),
+      'Canonical compilation must retain the native owner-scoped destinations');
     assert.equal(w.document.querySelector('main style'),styleBefore);
     assert.equal(w.document.querySelectorAll('form').length,0);
     assert.equal(w.getComputedStyle(modalBefore).display,'none');
