@@ -6500,8 +6500,8 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         root=Path(__file__).parent
         source=(root/'deploy-approved-app.py').read_text()
         journal=(root/'release-operation-evidence.py').read_text()
-        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'560355f4e9b4c70ff077bb5b47d86b596c1cb5c5182f9bafd222233697b8db9e')
-        self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'e63d7136ccfb3dd0002710b651b409d8cdeed6b45de2238823239add755afaab')
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'a1fb29ac45e31287f03e0b5edc3c32cdf557943bcf2fe79040b241a34ceff253')
+        self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'5b42fcbed0ac4a331ff5c706ef5a6a3ce96eb32d556ef4051c65ee4cf99e881e')
         self.assertTrue(m._recovery_preflight_source_contract(source,journal))
         for changed in [source+'# unreviewed helper\n',source.replace('reconcile_only=journal.intent is not None','reconcile_only=False')]:
             self.assertNotEqual(changed,source)
@@ -6514,11 +6514,34 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
              '95117a0cd4e1f21bf6407f5324107fdcdfeba582d9ce2123975d567b00664f73')
         new=('560355f4e9b4c70ff077bb5b47d86b596c1cb5c5182f9bafd222233697b8db9e',
              'e63d7136ccfb3dd0002710b651b409d8cdeed6b45de2238823239add755afaab')
-        for source,journal,accepted in [(old[0],old[1],True),(new[0],new[1],True),
-                (old[0],new[1],False),(new[0],old[1],False),('f'*64,new[1],False),(new[0],'f'*64,False)]:
+        current=('a1fb29ac45e31287f03e0b5edc3c32cdf557943bcf2fe79040b241a34ceff253',
+                 '5b42fcbed0ac4a331ff5c706ef5a6a3ce96eb32d556ef4051c65ee4cf99e881e')
+        for source,journal,accepted in [(old[0],old[1],True),(new[0],new[1],True),(current[0],current[1],True),
+                (old[0],new[1],False),(new[0],old[1],False),(new[0],current[1],False),
+                (current[0],new[1],False),(old[0],current[1],False),(current[0],old[1],False),
+                ('f'*64,current[1],False),(current[0],'f'*64,False)]:
             values={b'source':source,b'journal':journal}
             with self.subTest(source=source,journal=journal),patch.object(m.hashlib,'sha256',side_effect=lambda value:SimpleNamespace(hexdigest=lambda:values[value])):
                 self.assertEqual(m._recovery_preflight_source_contract('source','journal'),accepted)
+
+    def test_prior_completion_source_closure_survives_exactly_not_crossed(self):
+        from types import SimpleNamespace
+        paths=('scripts/deploy-approved-app.py','scripts/validation-resume.py','scripts/release-artifacts/transport.cjs')
+        old=('560355f4e9b4c70ff077bb5b47d86b596c1cb5c5182f9bafd222233697b8db9e',
+             '64be3d23090198e79d5e1346c5a4785854af0827e8fe88396751f60dbec07cf0',
+             '7735ecb6aa40f8259b3f65d6eacbf5f9b09a27bebef4a5ec65aca72b6b99705d')
+        new=('d'*64,'e'*64,'f'*64)
+        values={('old'+str(i)).encode():old[i] for i in range(3)}
+        values.update({('new'+str(i)).encode():new[i] for i in range(3)})
+        def source(repo,revision,path,token):return 'old'+str(paths.index(path))
+        def current(path):return ('new'+str(next(i for i,p in enumerate(paths) if str(path).endswith(p.removeprefix('scripts/'))))).encode()
+        with patch.object(m,'_release_history_source',side_effect=source),patch.object(Path,'read_bytes',autospec=True,side_effect=current), \
+             patch.object(m.hashlib,'sha256',side_effect=lambda value:SimpleNamespace(hexdigest=lambda:values[value])):
+            self.assertTrue(m._recovery_receipt_source_closure('owner/repo','a'*40,'fixture'))
+            for index in range(3):
+                def crossed(repo,revision,path,token):return ('new' if paths.index(path)==index else 'old')+str(paths.index(path))
+                with patch.object(m,'_release_history_source',side_effect=crossed):
+                    self.assertFalse(m._recovery_receipt_source_closure('owner/repo','a'*40,'fixture'))
 
 
 class RecoveryPreflightRecordTests(unittest.TestCase):
@@ -6789,8 +6812,8 @@ class RecoveryReceiptReuseTests(unittest.TestCase):
             self.assertEqual(len(m._RECOVERY_RECEIPT_BYTES.get()[1]),100)
             self.get(size=32768)  # Existing fitting bytes remain usable at capacity.
             self.artifact['id']=101
-            with self.assertRaisesRegex(ValueError,'RECOVERY_RECEIPT_CACHE_BOUND'):self.get()
-            self.assertEqual(downloads.call_count,100)
+            self.get()
+            self.assertEqual(downloads.call_count,101)
             self.assertEqual(len(m._RECOVERY_RECEIPT_BYTES.get()[1]),100)
     def test_failed_cancelled_and_pending_cross_limit_donors_are_not_borrowed(self):
         import concurrent.futures
@@ -6933,8 +6956,61 @@ class RecoveryReceiptReuseTests(unittest.TestCase):
         with patch.object(m,'_download_run_artifact',side_effect=self.download) as downloads,m.recovery_material_reuse():
             for i in range(100):self.artifact['id']=40+i;self.get()
             self.artifact['id']=140
-            with self.assertRaisesRegex(ValueError,'CACHE_BOUND'):self.get()
-            self.assertEqual(downloads.call_count,100)
+            self.get()
+            self.assertEqual(downloads.call_count,101)
+            self.assertEqual(len(m._RECOVERY_RECEIPT_BYTES.get()[1]),100)
+
+    def test_mixed_retention_revisit_and_fresh_identity(self):
+        names=('operation.json','validation-resume.json','fast-track-admission.json')
+        calls=[]
+        def download(repo,run,name,directory,**kw):
+            calls.append(kw['artifact_id'])
+            for filename in names:(directory/filename).write_bytes(self.raw)
+        with patch.object(m,'_download_run_artifact',side_effect=download),m.recovery_material_reuse():
+            for i in range(120):
+                self.artifact['id']=i+1
+                self.assertEqual(self.get(filename=names[i%3]),dict(items=[1]))
+            entries=m._RECOVERY_RECEIPT_BYTES.get()[1]
+            self.assertEqual(len(entries),100)
+            self.assertEqual(set(key[5] for key in entries),set(names))
+            self.artifact['id']=1
+            self.assertEqual(self.get(filename=names[0]),dict(items=[1]))
+            self.assertEqual(len(calls),121) # Evicted bytes are reauthenticated.
+            self.artifact['expired']=True
+            with self.assertRaises(m.ReleaseOperationHistoryUnproven):self.get(filename=names[0])
+            self.assertEqual(len(calls),121)
+
+    def test_evicted_receipt_still_participates_in_canonical_conflict_check(self):
+        operation='b'*64; revision='a'*40; name='legend-release-operation-intent-'+operation
+        artifacts=[dict(id=i,name=name,digest='sha256:'+'e'*64,expired=False,
+                        workflow_run=dict(id=i)) for i in (1,2)]
+        records={i:dict(operationId=operation,target='website',applicationRevision=revision,
+                        producingRun=i,producingAttempt=1,phase='intent',baseline=('c' if i==1 else 'd')*40,
+                        packageDigest='e'*64) for i in (1,2)}
+        def download(repo,run,name,directory,**kw):
+            (directory/'operation.json').write_text(json.dumps(records.get(run,dict(dummy=run))))
+        def api(repo,path,token):
+            if path.startswith('actions/artifacts?'):return dict(artifacts=artifacts,total_count=2)
+            run_id=int(path.rsplit('/',1)[1])
+            # Contradictions from failed and cancelled producers are evidence,
+            # not candidates to discard when reducing the working set.
+            return dict(id=run_id,head_sha=revision,run_attempt=1,status='completed',
+                        conclusion='failure' if run_id==1 else 'cancelled',event='push',
+                        path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,
+                        head_branch=m.FAST_TRACK_PR_BASE,head_repository=dict(full_name='owner/repo'))
+        with patch.object(m,'_download_run_artifact',side_effect=download) as downloads, \
+             patch.object(m,'_release_history_api',side_effect=api),m.recovery_material_reuse():
+            m._release_history_json('owner/repo',1,artifacts[0],'operation.json',verify_digest=True,max_bytes=32768)
+            for i in range(3,103):
+                a=dict(id=i,name='other',digest='sha256:'+'f'*64,expired=False,workflow_run=dict(id=i))
+                m._release_history_json('owner/repo',i,a,'operation.json',verify_digest=True,max_bytes=32768)
+            self.assertFalse(any(key[2]==1 for key in m._RECOVERY_RECEIPT_BYTES.get()[1]))
+            with self.assertRaisesRegex(RuntimeError,'Competing deployment intents'):
+                m.release_operation_history('owner/repo',operation,revision,'website',200,1,'token')
+            self.assertEqual(downloads.call_count,103)
+            artifacts[0]['expired']=True
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'expired'):
+                m.release_operation_history('owner/repo',operation,revision,'website',200,1,'token')
 
 class RecoveryReceiptCacheDiagnosticTests(unittest.TestCase):
     def setUp(self):
@@ -6955,7 +7031,8 @@ class RecoveryReceiptCacheDiagnosticTests(unittest.TestCase):
         return future
 
     def fill(self, entries):
-        entries.update((self.key(i), self.future()) for i in range(1, 101))
+        # No completed authenticated entry can be evicted in this fixture.
+        entries.update((self.key(i), self.future('pending')) for i in range(1, 101))
 
     def read_bound(self):
         import contextlib, io
@@ -6986,7 +7063,7 @@ class RecoveryReceiptCacheDiagnosticTests(unittest.TestCase):
             self.assertEqual(body['limit'], 100)
             self.assertEqual(body['requested']['artifactId'], 999)
             self.assertEqual([r['artifactId'] for r in body['entries']], list(range(1, 101)))
-            self.assertTrue(all(r['state'] == 'completed' for r in body['entries']))
+            self.assertTrue(all(r['state'] == 'pending' for r in body['entries']))
         self.assertIsNone(m._RECOVERY_RECEIPT_BYTES.get())
 
     def test_output_is_allowlisted_and_never_contains_private_strings(self):
@@ -7199,6 +7276,258 @@ class RecoveryBoundaryDiagnosticTests(unittest.TestCase):
             with m.recovery_admission_proof():
                 m._RECOVERY_PROOF_VIEW.get()['entries'][('PRIVATE_REPO','actions/runs/10')]=dict(raw='{"id":1}',uses=2,token='PRIVATE_TOKEN')
             report.assert_not_called()
+
+
+class RecoveryEfficiencyDiagnosticTests(unittest.TestCase):
+    def test_counts_actual_transport_attempts_and_authenticated_receipts_only(self):
+        import contextlib,io
+        artifact=dict(id=40,name='private-name',digest='sha256:'+'d'*64,expired=False,workflow_run=dict(id=10))
+        raw=b'{"private":"secret-body"}'
+        def download(repo,run,name,directory,**kw):(directory/'operation.json').write_bytes(raw)
+        output=io.StringIO()
+        with m.recovery_material_reuse(),patch.object(m.urllib.request,'urlopen',side_effect=[TimeoutError(),io.BytesIO(b'{"ok":true}')]) as api, \
+             patch.object(m.time,'sleep'),patch.object(m,'_download_run_artifact',side_effect=download) as dl,contextlib.redirect_stdout(output):
+            self.assertEqual(m._api_get_uncached('PRIVATE_REPOSITORY','actions/runs?branch=PRIVATE&per_page=100','PRIVATE_TOKEN'),{'ok':True})
+            m._recovery_efficiency_add(originalProofCalls=1,sourceProofCalls=2,promotionProofCalls=3)
+            for _ in range(2):m._release_history_json('PRIVATE_REPOSITORY',10,artifact,'operation.json',verify_digest=True,max_bytes=32768)
+            m.report_recovery_efficiency('success')
+        self.assertEqual(api.call_count,2);self.assertEqual(dl.call_count,1)
+        line=output.getvalue();self.assertNotIn('PRIVATE',line);self.assertNotIn('secret-body',line)
+        report=json.loads(line.split(':',1)[1]);self.assertEqual(report['githubJsonTransportAttempts'],2)
+        self.assertEqual(report['historyPageTransportAttempts'],2);self.assertEqual(report['originalProofCalls'],1)
+        self.assertEqual(report['sourceProofCalls'],2);self.assertEqual(report['promotionProofCalls'],3)
+        self.assertEqual(report['receiptDownloads'],1);self.assertEqual(report['receiptContentBytes'],len(raw))
+        self.assertEqual(report['completedContentBytes'],len(raw));self.assertEqual(report['retainedEntries'],1)
+    def test_concurrent_counts_and_nonblocking_snapshots_ignore_pending(self):
+        import concurrent.futures,contextvars,contextlib,io
+        output=io.StringIO()
+        with m.recovery_material_reuse(),contextlib.redirect_stdout(output),concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            def count():
+                for _ in range(500):m._recovery_efficiency_add(originalProofCalls=1)
+            futures=[pool.submit(contextvars.copy_context().run,count) for _ in range(2)]
+            for future in futures:future.result()
+            cache_lock,entries=m._RECOVERY_RECEIPT_BYTES.get();entries[('fixture',)]=concurrent.futures.Future()
+            metrics_lock,counters=m._RECOVERY_LOG_BYTES.get()['metrics'];self.assertEqual(counters['originalProofCalls'],1000)
+            with cache_lock:m.report_recovery_efficiency('failure')
+            with metrics_lock:m.report_recovery_efficiency('failure')
+            m.report_recovery_efficiency('failure')
+        reports=[json.loads(line.split(':',1)[1]) for line in output.getvalue().splitlines()]
+        self.assertEqual(reports[0]['cacheStatus'],'unavailable');self.assertEqual(reports[1]['countersStatus'],'unavailable')
+        self.assertEqual(reports[2]['completedEntries'],0);self.assertEqual(reports[2]['retainedEntries'],1)
+        self.assertEqual(reports[2]['originalProofCalls'],1000)
+    def test_measurement_failures_never_replace_original_result(self):
+        class BrokenLock:
+            def __enter__(self):raise RuntimeError('PRIVATE_FAILURE')
+            def __exit__(self,*args):return False
+        with m.recovery_material_reuse():
+            m._RECOVERY_LOG_BYTES.get()['metrics']=(BrokenLock(),{})
+            m._recovery_efficiency_add(originalProofCalls=1)
+            m.report_recovery_efficiency('failure')
+        with m.recovery_material_reuse():
+            for owner,name in [(m.json,'dumps'),('builtins','print')]:
+                patched=patch.object(owner,name,side_effect=RuntimeError('PRIVATE_FAILURE')) if not isinstance(owner,str) else patch(owner+'.'+name,side_effect=RuntimeError('PRIVATE_FAILURE'))
+                with patched:m.report_recovery_efficiency('failure')
+
+
+class CompletionLiveGuardTests(unittest.TestCase):
+    def setUp(self):
+        self.repo='owner/repo';self.revision='a'*40;self.application='b'*40
+        self.observer=dict(runId=10,runAttempt=1,jobId=20,toolRevision=self.revision,promotionRunId=30)
+        self.run=dict(id=10,run_attempt=1,event='workflow_dispatch',path='.github/workflows/'+m.FAST_TRACK_COMPLETION_WORKFLOW,
+            head_branch=m.FAST_TRACK_PR_BASE,head_sha=self.revision,status='in_progress',conclusion=None,
+            head_repository=dict(full_name=self.repo))
+        self.job=dict(id=20,run_id=10,run_attempt=1,head_sha=self.revision,name=m.FAST_TRACK_COMPLETION_JOB,
+                      status='in_progress',conclusion=None,runner_name='fixture-runner')
+        self.jobs=dict(total_count=1,jobs=[self.job]);self.ref=dict(object=dict(sha=self.revision));self.calls=[]
+        self.inputs=dict(scope='complete_fast_track',original_run='5',application_revision=self.application)
+        self.env=dict(GITHUB_ACTIONS='true',GITHUB_EVENT_NAME='workflow_dispatch',GITHUB_REF='refs/heads/'+m.FAST_TRACK_PR_BASE,
+            GITHUB_JOB='complete-fast-track',GITHUB_WORKFLOW_REF=self.repo+'/.github/workflows/'+m.FAST_TRACK_COMPLETION_WORKFLOW+'@refs/heads/'+m.FAST_TRACK_PR_BASE,
+            GITHUB_REPOSITORY=self.repo,GH_TOKEN='fixture',RUNNER_NAME='fixture-runner',GITHUB_RUN_ID='10',GITHUB_RUN_ATTEMPT='1',GITHUB_SHA=self.revision)
+        self.git_head=self.revision;self.git_result=0;self.git_ancestry=0
+    def api(self,repo,path,token,**kwargs):
+        import copy
+        self.assertEqual(kwargs,dict(max_attempts=1))
+        self.calls.append(path)
+        if path=='actions/runs/10':return copy.deepcopy(self.run)
+        if path=='actions/runs/10/attempts/1/jobs?per_page=100':return copy.deepcopy(self.jobs)
+        if path=='git/ref/heads/'+m.FAST_TRACK_PR_BASE:return copy.deepcopy(self.ref)
+        raise AssertionError(path)
+    def invoke(self):
+        from contextlib import ExitStack
+        with tempfile.TemporaryDirectory() as tmp,ExitStack() as stack:
+            event=Path(tmp)/'event.json';event.write_text(json.dumps(dict(inputs=self.inputs)));env=dict(self.env,GITHUB_EVENT_PATH=str(event))
+            stack.enter_context(patch.dict(os.environ,env,clear=True))
+            stack.enter_context(patch.object(m,'_api_get_uncached',side_effect=self.api))
+            stack.enter_context(patch.object(m.subprocess,'check_output',return_value=self.git_head))
+            stack.enter_context(patch.object(m.subprocess,'run',side_effect=lambda args,**kw:SimpleNamespace(
+                returncode=self.git_result if args[1]=='diff' else self.git_ancestry)))
+            return m.assert_fast_track_completion_live_execution(5,self.application,self.observer)
+    def test_current_owner_checked_uncached_after_proof_and_no_context_allowed(self):
+        self.assertEqual(self.invoke(),self.observer)
+        self.assertEqual(self.calls,['actions/runs/10','actions/runs/10/attempts/1/jobs?per_page=100','git/ref/heads/'+m.FAST_TRACK_PR_BASE])
+        with m.recovery_admission_proof(),self.assertRaisesRegex(ValueError,'LIVE_INSIDE_PROOF'):self.invoke()
+    def test_every_current_owner_field_drift_fails(self):
+        changes=[lambda:self.env.update(GITHUB_ACTIONS='false'),lambda:self.env.update(GH_TOKEN=''),
+            lambda:self.env.update(GITHUB_REPOSITORY='other/repo'),lambda:self.env.update(GITHUB_REF='refs/heads/other'),
+            lambda:self.env.update(GITHUB_WORKFLOW_REF='other'),lambda:self.env.update(GITHUB_JOB='other'),
+            lambda:self.env.update(GITHUB_RUN_ID='11'),lambda:self.env.update(GITHUB_RUN_ATTEMPT='2'),
+            lambda:self.env.update(GITHUB_SHA='c'*40),lambda:self.env.update(RUNNER_NAME='other'),
+            lambda:self.env.update(GITHUB_EVENT_NAME='push'),lambda:self.inputs.update(scope='other'),
+            lambda:self.inputs.update(original_run='6'),lambda:self.inputs.update(application_revision='c'*40),
+            lambda:self.inputs.update(target='portal'),lambda:self.inputs.update(deployment_id='other'),
+            lambda:self.run.update(id=11),lambda:self.run.update(run_attempt=2),lambda:self.run.update(event='push'),
+            lambda:self.run.update(path='other'),lambda:self.run.update(head_branch='other'),lambda:self.run.update(head_sha='c'*40),
+            lambda:self.run.update(status='completed'),lambda:self.run.update(conclusion='success'),
+            lambda:self.run['head_repository'].update(full_name='other/repo'),lambda:self.job.update(id=21),
+            lambda:self.job.update(run_id=11),lambda:self.job.update(run_attempt=2),lambda:self.job.update(head_sha='c'*40),
+            lambda:self.job.update(name='other'),lambda:self.job.update(status='queued'),lambda:self.job.update(status='completed'),
+            lambda:self.job.update(runner_name='other'),lambda:self.job.update(conclusion='failure'),
+            lambda:self.job.update(run_attempt=True),
+            lambda:self.jobs.update(total_count=2),lambda:self.ref['object'].update(sha='c'*40),
+            lambda:setattr(self,'git_head','c'*40),lambda:setattr(self,'git_result',1),lambda:setattr(self,'git_ancestry',1),
+            lambda:self.observer.update(runAttempt=True),lambda:self.observer.update(promotionRunId=0)]
+        for index in range(len(changes)):
+            self.setUp();changes[index]()
+            with self.subTest(change=index),self.assertRaises((ValueError,AssertionError)):self.invoke()
+    def test_pending_final_job_never_sleeps_or_publishes(self):
+        self.job['status']='queued'
+        with patch.object(m.time,'sleep',side_effect=AssertionError('guard must not wait')):
+            with self.assertRaises(ValueError):self.invoke()
+    def test_preproof_empty_job_inventory_can_settle_inside_decision(self):
+        import copy
+        reads=[];sleeps=[]
+        expected={key:self.run[key] for key in ('id','run_attempt','event','path','head_branch','head_sha')}
+        def transport(repo,path,token):
+            reads.append(path)
+            if path=='actions/runs/10':return copy.deepcopy(self.run)
+            if path=='actions/runs/10/attempts/1/jobs?per_page=100':
+                return dict(total_count=0,jobs=[]) if reads.count(path)==1 else copy.deepcopy(self.jobs)
+            raise AssertionError(path)
+        with patch.dict(os.environ,dict(GITHUB_RUN_ID='10',RUNNER_NAME='fixture-runner')), \
+             patch.object(m,'_api_get_uncached',side_effect=transport),m.recovery_admission_proof():
+            run,job=m._observe_live_workflow(self.repo,expected,'fixture',queued_job=lambda:m.FAST_TRACK_COMPLETION_JOB,
+                require_job=True,uncached_job=True,sleep=lambda seconds:sleeps.append(seconds))
+            self.assertEqual(run['id'],10);self.assertEqual(job['id'],20)
+            self.assertEqual(reads.count('actions/runs/10/attempts/1/jobs?per_page=100'),2)
+            self.assertEqual(len(sleeps),1)
+            self.assertNotIn((self.repo,'actions/runs/10/attempts/1/jobs?per_page=100'),m._RECOVERY_PROOF_VIEW.get()['entries'])
+    def test_final_transport_never_retries_or_sleeps(self):
+        failures=[TimeoutError(),m.urllib.error.HTTPError('https://example.invalid',503,'unavailable',{},None)]
+        for failure in failures:
+            with self.subTest(failure=type(failure).__name__), \
+                 patch.object(m.urllib.request,'urlopen',side_effect=failure) as request, \
+                 patch.object(m.time,'sleep',side_effect=AssertionError('final guard must not sleep')) as sleep:
+                with self.assertRaises(m.EvidenceLookupUnavailable):
+                    m._api_get_uncached(self.repo,'actions/runs/10','fixture',max_attempts=1)
+            self.assertEqual(request.call_count,1);sleep.assert_not_called()
+    def test_real_postclosure_guard_drift_blocks_journal_publish_and_existing_return(self):
+        from contextlib import contextmanager
+        from unittest.mock import Mock
+        spec=importlib.util.spec_from_file_location('guard_journal',Path(__file__).with_name('release-operation-evidence.py'))
+        journal=importlib.util.module_from_spec(spec);spec.loader.exec_module(journal)
+        changes=[lambda:self.env.update(GITHUB_ACTIONS='false'),lambda:self.env.update(GH_TOKEN=''),
+            lambda:self.env.update(GITHUB_REPOSITORY='other/repo'),lambda:self.env.update(GITHUB_REF='other'),
+            lambda:self.env.update(GITHUB_WORKFLOW_REF='other'),lambda:self.env.update(GITHUB_JOB='other'),
+            lambda:self.env.update(GITHUB_RUN_ID='11'),lambda:self.env.update(GITHUB_RUN_ATTEMPT='2'),
+            lambda:self.env.update(GITHUB_SHA='c'*40),lambda:self.env.update(RUNNER_NAME='other'),
+            lambda:self.env.update(GITHUB_EVENT_NAME='push'),lambda:self.inputs.update(scope='other'),
+            lambda:self.inputs.update(original_run='6'),lambda:self.inputs.update(application_revision='c'*40),
+            lambda:self.inputs.update(target='portal'),lambda:self.inputs.update(deployment_id='other'),
+            lambda:self.ref['object'].update(sha='c'*40),lambda:self.run.update(id=11),
+            lambda:self.run.update(run_attempt=2),lambda:self.run.update(event='push'),lambda:self.run.update(path='other'),
+            lambda:self.run.update(head_branch='other'),lambda:self.run.update(head_sha='c'*40),
+            lambda:self.run.update(status='completed'),lambda:self.run.update(conclusion='success'),
+            lambda:self.run['head_repository'].update(full_name='other/repo'),lambda:self.job.update(id=21),
+            lambda:self.job.update(name='other'),lambda:self.job.update(run_id=11),lambda:self.job.update(run_attempt=2),
+            lambda:self.job.update(head_sha='c'*40),lambda:self.job.update(runner_name='other'),
+            lambda:self.job.update(status='queued'),lambda:self.job.update(conclusion='failure'),
+            lambda:self.jobs.update(total_count=2),lambda:setattr(self,'git_head','c'*40),
+            lambda:setattr(self,'git_result',1),lambda:setattr(self,'git_ancestry',1)]
+        for index in range(len(changes)):
+            for existing in (False,True):
+                self.setUp();publish=Mock()
+                intent=dict(target='portal',applicationRevision=self.application,packageDigest='b'*64,baseline='c'*40,
+                    operationId='d'*64,phase='intent',schemaVersion=1,producingRun=5,producingAttempt=1,
+                    packageProducerRun=5,baselineDeploymentIds=['old'],submissionContract=dict(kind='azure_onedeploy_windows_intent_v1',value='d'*64))
+                material=dict(intent=intent,intentArtifact=dict(id=11,digest='sha256:'+'e'*64),packageJob=dict(id=12),
+                    packageAttempt=1,packageArtifact=dict(id=13,digest='sha256:'+'f'*64),originalJob=dict(id=14))
+                @contextmanager
+                def boundary():
+                    yield
+                    changes[index]()
+                success=dict(intent,phase='success',deploymentIds=['new']) if existing else None
+                authority=SimpleNamespace(recovery_admission_proof=boundary,
+                    assert_fast_track_completion_execution=lambda *args:self.observer,
+                    assert_fast_track_completion_live_execution=lambda *args:self.invoke(),
+                    release_operation_history=lambda *args,**kw:success if kw.get('phase')=='success' else None,
+                    validate_original_completion_success=lambda *args:None,_completion_original_unchanged=lambda *args:None)
+                with patch.dict(os.environ,dict(GITHUB_REPOSITORY=self.repo,GH_TOKEN='fixture')):
+                    owner=journal.CompletionJournal(dict(run=dict(id=5,run_attempt=1)),material,self.observer,authority=authority,publisher=publish)
+                owner.provider=dict(deploymentId='new',receivedTime='2026-10-21T13:02:00Z',status=4,runtimeRevision=self.application)
+                with self.subTest(change=index,existing=existing),self.assertRaises((ValueError,AssertionError)):
+                    owner.record_success(['new'])
+                publish.assert_not_called()
+
+
+class RecoveryCommitPullBoundaryTests(unittest.TestCase):
+    # Run 46's diagnostic records the field paths and types, not scalar values.
+    # These values and the remaining PR body are deliberately synthetic.
+    path='commits/e5a3cbc82aa9c8d6a2b0b988d49a0b9b20017e74/pulls?per_page=100'
+    def setUp(self):
+        self.before=[dict(number=706,merged_at='now',merge_commit_sha='a'*40,
+            base=dict(ref='Legend/fast-track-release',sha='b'*40,repo=dict(id=1,full_name='owner/repo',url='repo-url',size=10)),
+            head=dict(ref='branch',sha='c'*40,repo=dict(id=1,full_name='owner/repo',url='repo-url',size=10)),
+            unknownFlag=True,unknownNumber=1,unknownNested=dict(size=4))]
+    def raw(self, value):return json.dumps(value,sort_keys=True,separators=(',',':'))
+    def copy(self):return json.loads(json.dumps(self.before))
+    def equal(self,after,path=None):return m._recovery_boundary_equal(path or self.path,self.raw(self.before),self.raw(after))
+    def test_run46_diagnostic_shape_only_is_admitted_and_closes_silently(self):
+        after=self.copy();after[0]['base']['repo']['size']=11;after[0]['head']['repo']['size']=11
+        diagnostic=m._recovery_boundary_diagnostic('owner/repo',self.path,self.raw(self.before),self.raw(after))
+        self.assertEqual([r['fieldPath'] for r in diagnostic['changedFields']],
+                         [[0,'base','repo','size'],[0,'head','repo','size']])
+        self.assertTrue(all(r['beforeType']==r['afterType']=='int' for r in diagnostic['changedFields']))
+        with patch.object(m,'_api_get_uncached',return_value=after),patch.object(m,'_report_recovery_boundary') as report:
+            with m.recovery_admission_proof():
+                m._RECOVERY_PROOF_VIEW.get()['entries'][('owner/repo',self.path)]=dict(raw=self.raw(self.before),uses=2,token='fixture')
+            report.assert_not_called()
+        self.assertEqual(self.before[0]['base']['repo']['size'],10)
+    def test_authority_unknown_fields_types_and_container_changes_still_reject(self):
+        changes=[lambda x:x[0].update(number=707),lambda x:x[0].update(merged_at=None),
+            lambda x:x[0].update(merge_commit_sha='f'*40),lambda x:x[0]['base'].update(ref='other'),
+            lambda x:x[0]['base'].update(sha='f'*40),lambda x:x[0]['head'].update(ref='other'),
+            lambda x:x[0]['head'].update(sha='f'*40),lambda x:x[0]['base']['repo'].update(id=2),
+            lambda x:x[0]['head']['repo'].update(full_name='other/repo'),
+            lambda x:x[0]['base']['repo'].update(url='other-url'),
+            lambda x:x[0].update(unknownFlag=1),lambda x:x[0].update(unknownNumber=1.0),
+            lambda x:x[0]['unknownNested'].update(size=5),lambda x:x[0].update(newField='unknown'),
+            lambda x:x.append(x[0]),lambda x:x.clear()]
+        for change in changes:
+            after=self.copy();after[0]['base']['repo']['size']=11;change(after)
+            with self.subTest(change=change):self.assertFalse(self.equal(after))
+        first=self.copy()[0];second=self.copy()[0];second['number']=707
+        self.before=[first,second];after=self.copy();after.reverse()
+        self.assertFalse(self.equal(after))
+    def test_malformed_size_and_wrong_endpoint_never_normalize(self):
+        for value in (None,True,'11',-1,1.0):
+            after=self.copy();after[0]['base']['repo']['size']=value
+            with self.subTest(value=value):self.assertFalse(self.equal(after))
+        after=self.copy();del after[0]['base']['repo']['size'];self.assertFalse(self.equal(after))
+        for mutation in [lambda x:x[0].update(base=None),lambda x:x[0]['base'].update(repo=None)]:
+            after=self.copy();mutation(after);self.assertFalse(self.equal(after))
+        self.before[0]['base']['repo'].pop('size');after=self.copy();after[0]['head']['repo']['size']=11
+        self.assertFalse(self.equal(after))
+        self.setUp();after=self.copy();after[0]['base']['repo']['size']=11
+        for path in ('pulls/706','actions/runs/1','commits/'+'a'*40+'/pulls',self.path+'&page=2'):
+            self.assertFalse(self.equal(after,path))
+    def test_rejection_reports_original_unnormalized_snapshots(self):
+        after=self.copy();after[0]['base']['repo']['size']=11;after[0]['head']['sha']='f'*40
+        old=self.raw(self.before);new=self.raw(after)
+        with patch.object(m,'_api_get_uncached',return_value=after),patch.object(m,'_report_recovery_boundary') as report:
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'RECOVERY_PROOF_CHANGED_AT_BOUNDARY'):
+                with m.recovery_admission_proof():
+                    m._RECOVERY_PROOF_VIEW.get()['entries'][('owner/repo',self.path)]=dict(raw=old,uses=2,token='fixture')
+            report.assert_called_once_with('owner/repo',self.path,old,new)
 
 
 class RecoveryAdmissionProofTests(unittest.TestCase):

@@ -434,6 +434,61 @@ _RECOVERY_LOG_BYTES = contextvars.ContextVar('recovery_log_bytes', default=None)
 _RECOVERY_PROOF_VIEW = contextvars.ContextVar('recovery_proof_view', default=None)
 
 
+def _recovery_efficiency_add(**increments):
+    """Best-effort invocation-local counters; never authority or evidence."""
+    state = None
+    try:
+        state = _RECOVERY_LOG_BYTES.get()
+        if state is None or 'metrics' not in state:
+            return
+        lock, counters = state['metrics']
+        with lock:
+            for key, value in increments.items():
+                counters[key] = counters.get(key, 0) + value
+    except BaseException:
+        try:
+            if isinstance(state, dict):state['metricsFailed'] = True
+        except BaseException:
+            pass
+
+
+def report_recovery_efficiency(outcome):
+    """One bounded nonsecret snapshot; never waits for proof/cache work."""
+    try:
+        state = _RECOVERY_LOG_BYTES.get()
+        if state is None or outcome not in ('success', 'failure'):
+            return
+        names = ('originalProofCalls','sourceProofCalls','promotionProofCalls',
+                 'githubJsonTransportAttempts','historyPageTransportAttempts',
+                 'receiptDownloads','receiptContentBytes')
+        metrics_lock, counters = state['metrics']
+        report = dict(schemaVersion=1, outcome=outcome, countersStatus='unavailable', cacheStatus='unavailable')
+        if not state.get('metricsFailed') and metrics_lock.acquire(blocking=False):
+            try:
+                report.update({key: counters.get(key, 0) for key in names})
+                report['countersStatus'] = 'observed'
+            finally:
+                metrics_lock.release()
+        cache = _RECOVERY_RECEIPT_BYTES.get()
+        if cache is not None:
+            lock, entries = cache
+            if lock.acquire(blocking=False):
+                try:
+                    completed = 0; raw_bytes = 0
+                    for future in entries.values():
+                        if future.done() and not future.cancelled() and future.exception(timeout=0) is None:
+                            raw = future.result(timeout=0)
+                            if not isinstance(raw, bytes):raise ValueError('Receipt bytes unavailable')
+                            completed += 1;raw_bytes += len(raw)
+                    report.update(cacheStatus='observed',retainedEntries=len(entries),
+                                  completedEntries=completed,completedContentBytes=raw_bytes)
+                finally:
+                    lock.release()
+        print('LEGEND_RECOVERY_EFFICIENCY:' + json.dumps(report,sort_keys=True,separators=(',',':')),flush=True)
+    except BaseException:
+        pass  # Diagnostics never change the original result or exception.
+
+
 def _recovery_metadata_endpoint(path):
     """Explicit historical read classes; live refs and unknown endpoints bypass."""
     return bool(re.fullmatch(
@@ -567,6 +622,47 @@ def _report_recovery_boundary(repository, path, previous_raw, current_raw):
         pass  # Reporting must never replace or suppress the original proof failure.
 
 
+def _recovery_boundary_equal(path, previous_raw, current_raw):
+    """Compare complete snapshots, with one evidenced PR repository metric exception.
+
+    Repository size is mutable aggregate metadata, not a commit or authority
+    identity.  The only exception is the commit-associated PR list, and only
+    when both snapshots have the exact expected shape and nonnegative integer
+    size values.  Unknown shapes fall back to the original strict comparison.
+    """
+    if previous_raw == current_raw:
+        return True
+    if not re.fullmatch(r'commits/[a-f0-9]{40}/pulls\?per_page=100', path):
+        return False
+    if max(len(previous_raw), len(current_raw)) > 8 * 1024 * 1024:
+        return False
+    try:
+        previous = json.loads(previous_raw)
+        current = json.loads(current_raw)
+        if (type(previous) is not list or type(current) is not list
+            or len(previous) != len(current) or len(previous) > 100):
+            return False
+        for before_row, after_row in zip(previous, current):
+            if type(before_row) is not dict or type(after_row) is not dict:
+                return False
+            for side in ('base', 'head'):
+                before_side, after_side = before_row.get(side), after_row.get(side)
+                if type(before_side) is not dict or type(after_side) is not dict:
+                    return False
+                before_repo, after_repo = before_side.get('repo'), after_side.get('repo')
+                if type(before_repo) is not dict or type(after_repo) is not dict:
+                    return False
+                old, new = before_repo.get('size'), after_repo.get('size')
+                if type(old) is not int or type(new) is not int or old < 0 or new < 0:
+                    return False
+                before_repo['size'] = new
+        # JSON serialization, rather than Python container equality, preserves
+        # type distinctions such as true vs 1 and 1 vs 1.0 in all other fields.
+        return json.dumps(previous, sort_keys=True, separators=(',', ':')) == current_raw
+    except (TypeError, ValueError, RecursionError):
+        return False
+
+
 @contextlib.contextmanager
 def recovery_admission_proof():
     """One read-only decision boundary, never an invocation-wide approval."""
@@ -589,7 +685,7 @@ def recovery_admission_proof():
             if entry['uses'] > 1:
                 current = _api_get_uncached(repository, path, entry['token'])
                 raw = json.dumps(current, sort_keys=True, separators=(',', ':'))
-                if raw != entry['raw']:
+                if not _recovery_boundary_equal(path, entry['raw'], raw):
                     _report_recovery_boundary(repository, path, entry['raw'], raw)
                     raise ReleaseOperationHistoryUnproven('RECOVERY_PROOF_CHANGED_AT_BOUNDARY')
     finally:
@@ -623,7 +719,8 @@ def recovery_material_reuse():
     """One invocation, shared by its copied worker contexts; never mutable proof."""
     token = _RECOVERY_PACKAGE_DIGESTS.set((threading.Lock(), {}))
     receipt_token = _RECOVERY_RECEIPT_BYTES.set((threading.Lock(), {}))
-    log_token = _RECOVERY_LOG_BYTES.set(dict(entries={}, bytes=0, lock=threading.Lock()))
+    log_token = _RECOVERY_LOG_BYTES.set(dict(entries={}, bytes=0, lock=threading.Lock(),
+                                               metrics=(threading.Lock(), {})))
     try:
         yield
     finally:
@@ -1120,6 +1217,9 @@ def _recovery_preflight_source_contract(source, journal_source):
         # Reviewed completion-only proof reuse; retained recovery paths unchanged.
         ('560355f4e9b4c70ff077bb5b47d86b596c1cb5c5182f9bafd222233697b8db9e',
          'e63d7136ccfb3dd0002710b651b409d8cdeed6b45de2238823239add755afaab'),
+        # Completion decision-boundary refactor; exact paired generation only.
+        ('a1fb29ac45e31287f03e0b5edc3c32cdf557943bcf2fe79040b241a34ceff253',
+         '5b42fcbed0ac4a331ff5c706ef5a6a3ce96eb32d556ef4051c65ee4cf99e881e'),
     }:
         return True
     return (hashlib.sha256(source.encode()).hexdigest() in (RECOVERY_PREFLIGHT_PRODUCER_SHA256, 'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850', 'e75833a3c3a4d8827f48b7395a8af7e61eeab9e5cfbb4e1f6a0ebb4af49901ed', 'ef930621e8c36e447fd884ef99bd03f5ce666bf1feda3431158af8e86d5ab6ab',
@@ -1150,7 +1250,13 @@ def _recovery_receipt_source_closure(repository, revision, token):
         'e75833a3c3a4d8827f48b7395a8af7e61eeab9e5cfbb4e1f6a0ebb4af49901ed',
         '45b7270f4f5640bdc7104f0bab0a1602a4f006a86a68fc2b63a28f970d0ad9ab',
         'f1b22bcc777114af2437280ee71550555d6b8e2d1701964915eb76de28248557')))
-    return source in (current, previous, read_hold_generation, receipt_reuse_generation, proof_context_generation)
+    # Preserve the exact previous promoted diagnostic generation when the
+    # current deploy/validator bytes advance; never accept crossed generations.
+    previous_completion_generation = dict(zip(paths, (
+        '560355f4e9b4c70ff077bb5b47d86b596c1cb5c5182f9bafd222233697b8db9e',
+        '64be3d23090198e79d5e1346c5a4785854af0827e8fe88396751f60dbec07cf0',
+        '7735ecb6aa40f8259b3f65d6eacbf5f9b09a27bebef4a5ec65aca72b6b99705d')))
+    return source in (current, previous, read_hold_generation, receipt_reuse_generation, proof_context_generation, previous_completion_generation)
 
 
 def attested_recovery_terminal_preflight(repository, run, job, attempt, revision, token):
@@ -5612,7 +5718,9 @@ def api_get(repository: str, path: str, token: str):
     return _recovery_proof_read(repository, path, token)
 
 
-def _api_get_uncached(repository: str, path: str, token: str):
+def _api_get_uncached(repository: str, path: str, token: str, *, max_attempts=3):
+    if type(max_attempts) is not int or max_attempts not in (1, 3):
+        raise ValueError('Invalid evidence attempt limit')
     url = f"https://api.github.com/repos/{repository}/{path.lstrip('/')}"
     request = urllib.request.Request(
         url,
@@ -5623,13 +5731,16 @@ def _api_get_uncached(repository: str, path: str, token: str):
             "User-Agent": "legend-validation-resume/1.0",
         },
     )
-    for attempt in range(3):
+    for attempt in range(max_attempts):
         try:
-            with urllib.request.urlopen(request, timeout=evidence_remaining(30)) as response:
+            timeout = evidence_remaining(30)
+            _recovery_efficiency_add(githubJsonTransportAttempts=1,
+                historyPageTransportAttempts=int(path.startswith('actions/runs?branch=')))
+            with urllib.request.urlopen(request, timeout=timeout) as response:
                 return json.load(response)
         except (TimeoutError, urllib.error.URLError, http.client.RemoteDisconnected) as exc:
             retryable = not isinstance(exc, urllib.error.HTTPError) or exc.code in {408, 429, 500, 502, 503, 504}
-            if not retryable or attempt == 2:
+            if not retryable or attempt + 1 == max_attempts:
                 headers = getattr(exc, "headers", None) or {}
                 rate = {key: headers.get(key) for key in (
                     "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After")
@@ -5774,6 +5885,7 @@ def fast_track_selection(before, head):
 
 def fast_track_promotion_parent(repository, run, token):
     """A successful no-publish promotion is never a shipped recovery boundary."""
+    _recovery_efficiency_add(promotionProofCalls=1)
     import tempfile
     revision = run.get('head_sha', '')
     policy = _fast_track_policy()
@@ -5842,12 +5954,12 @@ def _live_identity_diagnostic(reason, *, run=None, expected_job=None, **details)
         expectedJob=expected_job, **details), sort_keys=True), flush=True)
 
 def _exact_active_job(repository, run, token, expected_job, *, error=RuntimeError,
-                      code='FAST_TRACK_ACTIVE_JOB_UNPROVEN'):
+                      code='FAST_TRACK_ACTIVE_JOB_UNPROVEN', read=None):
     """Return positive current-attempt ownership or a specifically pending state."""
     runner = os.environ.get('RUNNER_NAME', '')
     if not runner or not expected_job:
         raise error(code + ':job_identity_missing')
-    payload = api_get(repository,
+    payload = (read or api_get)(repository,
         f"actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs?per_page=100", token)
     jobs = payload.get('jobs')
     complete = (isinstance(jobs, list) and type(payload.get('total_count')) is int
@@ -5891,6 +6003,7 @@ def _exact_active_job(repository, run, token, expected_job, *, error=RuntimeErro
 def _observe_live_workflow(repository, expected, token, *, queued_job,
                            error=RuntimeError, code='FAST_TRACK_EXECUTION_PRODUCER_UNPROVEN',
                            job_code='FAST_TRACK_ACTIVE_JOB_UNPROVEN', require_job=False,
+                           uncached_job=False,
                            clock=time.monotonic, sleep=time.sleep):
     """Bound only pending lifecycle metadata; immutable disagreement is terminal."""
     deadline = clock() + 30
@@ -5910,7 +6023,8 @@ def _observe_live_workflow(repository, expected, token, *, queued_job,
             job = None
             if require_job or run['status'] == 'queued':
                 name = queued_job()
-                job = _exact_active_job(repository, run, token, name, error=error, code=job_code)
+                job = _exact_active_job(repository, run, token, name, error=error, code=job_code,
+                                        read=_api_get_uncached if uncached_job else None)
                 if job is None:
                     _live_identity_diagnostic('pending', run=run, expected_job=name,
                         observation=observation + 1)
@@ -6987,6 +7101,7 @@ _COMPLETION_BASELINE_PROVING = contextvars.ContextVar("completion_baseline_provi
 
 def fast_track_completion_original(repository, original_run, revision, token):
     """Derive all original obligations; caller target lists have no authority."""
+    _recovery_efficiency_add(originalProofCalls=1)
     proof_key = (repository.lower(), original_run, revision)
     if proof_key in _COMPLETION_BASELINE_PROVING.get():
         raise ValueError("FAST_TRACK_COMPLETION_CARRIED_BASELINE_PROOF_CYCLE")
@@ -7198,7 +7313,7 @@ def fast_track_completion_observer(repository, run, token, *, live=False, attemp
                 promotionRunId=promotion['id'])
 
 
-def assert_fast_track_completion_execution(original_run, application_revision, *, clock=time.monotonic, sleep=time.sleep):
+def _completion_execution_input(original_run, application_revision):
     env = os.environ
     repository = env.get('GITHUB_REPOSITORY',''); token = env.get('GH_TOKEN') or env.get('GITHUB_TOKEN')
     ref = 'refs/heads/' + FAST_TRACK_PR_BASE
@@ -7222,21 +7337,66 @@ def assert_fast_track_completion_execution(original_run, application_revision, *
     expected = dict(id=run_id, run_attempt=attempt, event='workflow_dispatch',
         path='.github/workflows/' + FAST_TRACK_COMPLETION_WORKFLOW,
         head_branch=FAST_TRACK_PR_BASE, head_sha=revision)
+    return repository, token, expected
+
+
+def _completion_checked_source(revision, application_revision):
+    if (subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()!=revision
+        or subprocess.run(['git','diff','--quiet','HEAD','--',
+            '.github/workflows/'+FAST_TRACK_COMPLETION_WORKFLOW,'scripts/validation-resume.py',
+            'scripts/deploy-approved-app.py','scripts/release-operation-evidence.py',
+            'scripts/release_policy.py','scripts/release-artifacts/transport.cjs'],capture_output=True).returncode
+        or subprocess.run(['git','merge-base','--is-ancestor',application_revision,revision],capture_output=True).returncode):
+        raise ValueError('FAST_TRACK_COMPLETION_CHECKED_SOURCE_UNPROVEN')
+
+
+def assert_fast_track_completion_execution(original_run, application_revision, *, clock=time.monotonic, sleep=time.sleep):
+    repository, token, expected = _completion_execution_input(original_run, application_revision)
+    revision, attempt = expected['head_sha'], expected['run_attempt']
     with evidence_lookup_budget(clock() + 30, clock=clock):
         run, _ = _observe_live_workflow(repository, expected, token,
             queued_job=lambda: FAST_TRACK_COMPLETION_JOB, require_job=True,
             error=ValueError, code='FAST_TRACK_COMPLETION_EXECUTION_CHANGED',
-            job_code='FAST_TRACK_COMPLETION_OBSERVER_JOB_UNPROVEN', clock=clock, sleep=sleep)
+            job_code='FAST_TRACK_COMPLETION_OBSERVER_JOB_UNPROVEN', uncached_job=True, clock=clock, sleep=sleep)
         result = fast_track_completion_observer(repository, run, token, live=True, attempt=attempt)
-        if (subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()!=revision
-            or subprocess.run(['git','diff','--quiet','HEAD','--',
-                '.github/workflows/'+FAST_TRACK_COMPLETION_WORKFLOW,'scripts/validation-resume.py',
-                'scripts/deploy-approved-app.py','scripts/release-operation-evidence.py',
-                'scripts/release_policy.py','scripts/release-artifacts/transport.cjs'],capture_output=True).returncode
-            or subprocess.run(['git','merge-base','--is-ancestor',application_revision,revision],capture_output=True).returncode):
-            raise ValueError('FAST_TRACK_COMPLETION_CHECKED_SOURCE_UNPROVEN')
+        _completion_checked_source(revision, application_revision)
         evidence_remaining(1)
         return result
+
+
+def assert_fast_track_completion_live_execution(original_run, application_revision, observer, *, clock=time.monotonic):
+    """One non-settling fresh owner check after a closed historical decision."""
+    if _RECOVERY_PROOF_VIEW.get() is not None:
+        raise ValueError('FAST_TRACK_COMPLETION_LIVE_INSIDE_PROOF')
+    repository, token, expected = _completion_execution_input(original_run, application_revision)
+    revision, attempt = expected['head_sha'], expected['run_attempt']
+    if (not isinstance(observer, dict) or set(observer) != {'runId','runAttempt','jobId','toolRevision','promotionRunId'}
+        or type(observer.get('runId')) is not int or type(observer.get('runAttempt')) is not int
+        or observer.get('runId') != expected['id'] or observer.get('runAttempt') != attempt
+        or observer.get('toolRevision') != revision
+        or type(observer.get('jobId')) is not int or observer['jobId'] < 1
+        or type(observer.get('promotionRunId')) is not int or observer['promotionRunId'] < 1):
+        raise ValueError('FAST_TRACK_COMPLETION_LIVE_OWNER_CHANGED')
+    with evidence_lookup_budget(clock() + 30, clock=clock):
+        run = _api_get_uncached(repository, f"actions/runs/{expected['id']}", token, max_attempts=1)
+        if (type(run.get('id')) is not int or type(run.get('run_attempt')) is not int
+            or any(run.get(key) != value for key, value in expected.items())
+            or run.get('head_repository', {}).get('full_name', '').lower() != repository.lower()
+            or run.get('status') not in {'in_progress','queued'} or run.get('conclusion') is not None):
+            raise ValueError('FAST_TRACK_COMPLETION_EXECUTION_CHANGED')
+        job = _exact_active_job(repository, run, token, FAST_TRACK_COMPLETION_JOB,
+            error=ValueError, code='FAST_TRACK_COMPLETION_OBSERVER_JOB_UNPROVEN',
+            read=lambda repo,path,credential:_api_get_uncached(repo,path,credential,max_attempts=1))
+        if (job is None or type(job.get('run_id')) is not int or type(job.get('run_attempt')) is not int
+            or job.get('id') != observer['jobId']
+            or job.get('status') != 'in_progress' or job.get('runner_name') != os.environ.get('RUNNER_NAME')):
+            raise ValueError('FAST_TRACK_COMPLETION_LIVE_OWNER_CHANGED')
+        current = _api_get_uncached(repository, 'git/ref/heads/' + FAST_TRACK_PR_BASE, token, max_attempts=1)
+        if current.get('object', {}).get('sha') != revision:
+            raise ValueError('FAST_TRACK_COMPLETION_TOOL_HEAD_CHANGED')
+        _completion_checked_source(revision, application_revision)
+        evidence_remaining(1)
+        return observer
 
 
 @functools.lru_cache(maxsize=1)
@@ -7659,6 +7819,7 @@ def fast_track_source_admission(*, allow_nonpublishing=False):
 
 def fast_track_merged_source_proof(repository, revision, token):
     """Existing merged-tree/three-receipt authority shared by exact promotion history."""
+    _recovery_efficiency_add(sourceProofCalls=1)
     pulls = api_get(repository, f'commits/{revision}/pulls?per_page=100', token)
     candidates = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == revision
         and p.get('base', {}).get('ref') == FAST_TRACK_PR_BASE
@@ -11791,6 +11952,7 @@ def _recovery_receipt_json(repository, run_id, artifact, filename, max_bytes):
     lock, entries = _RECOVERY_RECEIPT_BYTES.get()
     with lock:
         future = entries.get(identity)
+        hit_key = identity if future is not None else None
         if future is None:
             # Borrow only completed authenticated bytes that satisfy this caller.
             # Pending reads and failures keep their original size-qualified key.
@@ -11798,9 +11960,27 @@ def _recovery_receipt_json(repository, run_id, artifact, filename, max_bytes):
                 if (key[:-1] == identity[:-1] and donor.done() and not donor.cancelled()
                     and donor.exception() is None and len(donor.result()) <= max_bytes):
                     future = donor
+                    hit_key = key
                     break
+        if hit_key is not None:
+            # Dict insertion order is the bounded cache's recency order.  Keep
+            # the exact Future (including pending/failure) and key unchanged.
+            entries[hit_key] = entries.pop(hit_key)
         owns = future is None
         if owns:
+            if len(entries) >= 100:
+                # Retain a bounded working set, not a bounded history: every
+                # caller still traverses and validates every receipt.  Only
+                # successfully authenticated bytes can leave the working set;
+                # active readers already hold their Future, and a later read
+                # must authenticate the immutable artifact again.  Never evict
+                # a pending, failed or cancelled producer to make room.
+                for key, cached in entries.items():
+                    if (cached.done() and not cached.cancelled()
+                        and cached.exception(timeout=0) is None
+                        and isinstance(cached.result(timeout=0), bytes)):
+                        del entries[key]
+                        break
             if len(entries) >= 100:
                 try:
                     diagnostic = _recovery_receipt_cache_bound_diagnostic(entries, identity)
@@ -11824,6 +12004,7 @@ def _recovery_receipt_json(repository, run_id, artifact, filename, max_bytes):
             if len(raw) > max_bytes:raise RuntimeError('Oversized recovery receipt')
             json.loads(raw)  # Invalid content is never retained as a successful read.
             future.set_result(raw)
+            _recovery_efficiency_add(receiptDownloads=1,receiptContentBytes=len(raw))
         except BaseException as error:
             future.set_exception(error)
             with lock:
