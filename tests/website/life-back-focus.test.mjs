@@ -30,7 +30,7 @@ function fixture({ shell = 'public', order = [0, 1, 2, 3, 4], width = 1180, cano
     ${shell === 'landing' ? '<section id="lifeEducationContactPanel"><div class="lq-contact-first-flow-surface">' : ''}
     <form id="lifeWizardForm"><div id="lifeStep1Panel" class="lq-step-panel lq-step1-panel ${shell === 'landing' ? 'lq-contact-first-wizard-panel' : ''}"><div class="lq-step-panel-pad">
     <div class="lq-step-progress-wrap"><div id="lifeStep1Progress">Question 1</div><span id="lifeStep1ProgressFill"></span></div>${steps}</div></div>
-    <div id="lifeProcessingPanel" hidden><h2>Processing</h2></div><div id="lifeStep2Panel" hidden><h2>Contact</h2></div></form>
+    <div id="lifeProcessingPanel" hidden><h2>Processing</h2></div><div id="lifeStep2Panel" hidden><h2>Contact</h2>${source.match(/<button[^>]+id="step2BackBtn"[^>]*>Back to answers<\/button>/)?.[0] || ''}<input name="ContactName" value="synthetic retained"></div></form>
     ${shell === 'landing' ? '</div></section>' : ''}</body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
   const { window } = dom;
   const { document } = window;
@@ -86,6 +86,12 @@ function fixture({ shell = 'public', order = [0, 1, 2, 3, 4], width = 1180, cano
     function persistFunnelState() { window.saved++; }
     ${helperNames.map(shippedFunction).join('\n')}
     ${backBinding}
+    let postSubmitSuccessActive = false;
+    function clearProcessingTimer() {}
+    function setActivePanel(panel) { step1Panel.hidden = panel !== step1Panel; step2Panel.hidden = panel !== step2Panel; }
+    ${shippedFunction('showStep1')}
+    const step2BackBtn = document.getElementById('step2BackBtn');
+    ${source.slice(source.indexOf("  step2BackBtn?.addEventListener('click'"), source.indexOf("  window.addEventListener('legend:website-content-rendered'", source.indexOf("  step2BackBtn?.addEventListener('click'")))}
     window.life = { show: showMicroStep, queue: queueMicroAdvance, current: () => currentMicroStep,
       panel: step1Panel, steps: microSteps, forwardFocus: () => focusFunnelPanel(step2Panel), processingFocus: () => focusFunnelPanel(processingPanel) };
   `);
@@ -236,6 +242,31 @@ for (const tag of ['input', 'button', 'select', 'textarea']) {
     assert.equal(control.hasAttribute('tabindex'), false);
     assert.equal(control.tabIndex, originalTabIndex);
     assert.equal(control.tabIndex, 0);
+    f.dom.window.close();
+  });
+}
+
+for (const shell of ['public', 'landing']) {
+  test(`${shell}: contact Back to answers preserves values and focuses the last authored question`, () => {
+    const buttons = source.match(/<button[^>]+id="step2BackBtn"[^>]*>Back to answers<\/button>/g) || [];
+    assert.equal(buttons.length, 2, 'Both mutually exclusive contact layouts render the existing action');
+    for (const button of buttons) assert.match(button, /type="button"/);
+    const f = fixture({ shell, order: [3, 1, 4, 0, 2], canonicalOrder: shell === 'landing' });
+    f.reset(2);
+    f.life.panel.hidden = true;
+    f.document.getElementById('lifeStep2Panel').hidden = false;
+    const before = Array.from(f.document.querySelectorAll('input'), el => [el.name, el.value, el.checked]);
+    let submissions = 0;
+    f.document.querySelector('form').addEventListener('submit', e => { e.preventDefault(); submissions++; });
+    f.document.getElementById('step2BackBtn').click();
+    f.tick();
+    assert.equal(f.life.current(), 2);
+    assert.equal(f.life.panel.hidden, false);
+    assert.equal(f.document.getElementById('lifeStep2Panel').hidden, true);
+    assert.equal(f.document.activeElement.id, 'question-2');
+    assert.deepEqual(Array.from(f.document.querySelectorAll('input'), el => [el.name, el.value, el.checked]), before);
+    assert.equal(submissions, 0);
+    assert.equal(f.window.events.filter(e => e.type === 'back').length, 1);
     f.dom.window.close();
   });
 }

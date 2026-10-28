@@ -5832,6 +5832,7 @@ input:checked + .lq-answer-card {
                                                 <div class="lq-trust-note" id="lifeSubmitTrustNote">@stepTwoSubmitNoteText</div>
                                                 <button type="submit" class="btn-gold btn-progress w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                                             </div>
+                                            <button type="button" class="btn-ghost" id="step2BackBtn">Back to answers</button>
                                             <div class="lq-error" id="lifeError"></div>
                                             <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
                                             <div class="lq-contact-grid">
@@ -6407,6 +6408,7 @@ input:checked + .lq-answer-card {
                             <div class="lq-trust-note" id="lifeSubmitTrustNote">@stepTwoSubmitNoteText</div>
                             <button type="submit" class="btn-gold btn-progress w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                         </div>
+                        <button type="button" class="btn-ghost" id="step2BackBtn">Back to answers</button>
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
                         <div class="lq-contact-grid">
@@ -10837,7 +10839,7 @@ const contactFieldProgress = new Map();
     trackEvent('life_step2_back');
     metaSignalApi?.trackBacktrack({ fromStep: 'contact', toStep: 'discovery' });
     const last = nativeMicroOrder().at(-1);
-    if (last != null) showStep1(last, true);
+    if (last != null) showStep1(last, true, { focusQuestion: true });
   });
 
   window.addEventListener('legend:website-content-rendered', event => {

@@ -190,7 +190,7 @@
                 </div>
                 <div class="col-md-4">
                     <label for="Applicant_DriversLicenseNumber">Driver’s License #<span class="text-danger">*</span></label>
-                    <input asp-for="DriversLicenseNumber" class="form-control" required data-original-required="1" id="Applicant_DriversLicenseNumber" />
+                    <input asp-for="DriversLicenseNumber" class="form-control" required data-original-required="1" id="Applicant_DriversLicenseNumber" data-license-detail />
                     <span asp-validation-for="DriversLicenseNumber" class="text-danger"></span>
                 </div>
             </div>
@@ -213,7 +213,7 @@
 
                 <div class="col-md-4">
                     <label for="Applicant_DLState">DL State<span class="text-danger">*</span></label>
-                    <select asp-for="DLState" class="form-select" required data-original-required="1" id="Applicant_DLState">
+                    <select asp-for="DLState" class="form-select" required data-original-required="1" id="Applicant_DLState" data-license-detail>
                         <option value="">--Select--</option>
                         <option>AZ</option><option>CA</option><option>IA</option><option>KS</option><option>LA</option><option>MD</option><option>MS</option><option>OH</option><option>SC</option><option>SD</option><option>TX</option><option>WA</option>
                     </select>
@@ -698,6 +698,8 @@
                     <label asp-for="AutoYearsWithPriorCarrierOrAgent">Auto years with prior carrier or years with current agent<span class="text-danger">*</span></label>
                     <select asp-for="AutoYearsWithPriorCarrierOrAgent" class="form-select" required data-original-required="1">
                         <option value="">--Select--</option>
+                        <option>0 years</option>
+                        <option>Not applicable</option>
                         <option>5 Years or more</option>
                         <option>1 year</option>
                         <option>2 years</option>
@@ -1426,6 +1428,7 @@
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+    <partial name="_QuoteLicenseApplicability" />
 
 	    <script>
 	        let currentStep = 1;

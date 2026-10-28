@@ -1,12 +1,11 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continuation of the same PR713 release under ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1:fresh-protect-20261028 and current instruction to continue through live acceptance. Routine in-scope decisions remain delegated under Sentinel_fc7d4767eb1c8191a14c2f815d950d0b. Correct the concrete revision382 Coverage rendering regression found after canonical all-five reconciliation40720264630/1. Preserve all combined application work, saved Studio documents, original operations and receipts. No credentials, access, privacy, settings, new cost, unnecessary SQL, formal Founder PR approval or voice activation is authorized by this source correction.",
-  "purpose": "Finish same combined release live acceptance: preserve the verified native Coverage overlay position against saved offsets, synchronize modal accessibility/focus, and prevent ordinary scrolling from dismissing it. Preserve saved Studio presentation and all accepted application/tooling work. Canonical dependency closure selects Protect and Website; preserve Portal/Client/Parfait operations. No settings, credentials, costs, SQL or voice activation.",
-  "requestId": "shayla-combined-coverage-modal-acceptance-20261028-v1",
+  "authorization": "Founder-authorized continuation: complete and deploy the consolidated Coverage/forms repair. Includes successor-live-residuals-20261028 and audit-addendum-20261028 under ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. Preserve release155 receipts, saved Studio content, paused receptionist calls, hours and both $25 limits. No new costs, credentials, privacy/security changes or voice activation.",
+  "purpose": "Repair Coverage backward focus containment and authored card color precedence; restore Life contact Back to answers; correct Auto/Home license applicability, driver choices and dynamic labels, truthful Home history choices, and customer-facing Disability processing copy. Protect-only canonical source scope; preserve successful Website and other application operations.",
+  "requestId": "shayla-consolidated-forms-live-residuals-20261028-v2",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-protect",
-    "masterapp-website"
+    "masterapp-protect"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
