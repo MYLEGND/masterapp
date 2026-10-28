@@ -7107,6 +7107,100 @@ class RecoveryReceiptCacheDiagnosticTests(unittest.TestCase):
             diagnostic.assert_not_called(); self.assertEqual(len(entries), 100)
 
 
+class RecoveryBoundaryDiagnosticTests(unittest.TestCase):
+    def report(self, before, after):
+        return m._recovery_boundary_diagnostic('PRIVATE_REPO', 'actions/runs/10',
+            json.dumps(before), json.dumps(after))
+
+    def test_structural_field_paths_without_private_keys_or_values(self):
+        before = dict(repository=dict(pushed_at='PRIVATE_BEFORE'), run_attempt=1,
+            PRIVATE_KEY='PRIVATE_VALUE', artifacts=[dict(expired=False), dict(id=2)])
+        after = dict(repository=dict(pushed_at='PRIVATE_AFTER'), run_attempt=2,
+            PRIVATE_KEY='OTHER_PRIVATE_VALUE', artifacts=[dict(expired=True), dict(id=3)])
+        result = self.report(before, after)
+        paths = [row['fieldPath'] for row in result['changedFields']]
+        self.assertIn(['repository', 'pushed_at'], paths)
+        self.assertIn(['run_attempt'], paths)
+        self.assertIn(['artifacts', 0, 'expired'], paths)
+        self.assertNotIn('PRIVATE', json.dumps(result))
+        self.assertFalse(result['truncated'])
+        self.assertNotEqual(result['beforeSha256'], result['afterSha256'])
+
+    def test_list_order_type_missing_and_bounds(self):
+        result = self.report(dict(jobs=[1, 2], status=True), dict(jobs=[2, 1], status=1, id=3))
+        self.assertEqual(len(result['changedFields']), 4)
+        self.assertIn('missing', [r['beforeType'] for r in result['changedFields']])
+        for before, after in [(list(range(3000)),list(range(3000))),
+                              (list(range(3000)),list(range(1,3001)))]:
+            result = self.report(before, after)
+            self.assertTrue(result['truncated'])
+            self.assertLessEqual(result['visitedNodes'], 2048)
+            self.assertLessEqual(len(result['changedFields']), 32)
+        before={}; after={}; a=before; b=after
+        for _ in range(15):a['repo']={};b['repo']={};a=a['repo'];b=b['repo']
+        b['id']=1
+        self.assertTrue(self.report(before,after)['truncated'])
+
+    def test_cache_snapshot_never_waits_or_mutates(self):
+        import concurrent.futures
+        with m.recovery_material_reuse():
+            lock, entries = m._RECOVERY_RECEIPT_BYTES.get()
+            key=('PRIVATE_REPO', 10, 20, 'PRIVATE_NAME', 'sha256:'+'d'*64, 'operation.json',32768)
+            entries[key]=concurrent.futures.Future()
+            before=list(entries.items())
+            self.assertEqual(self.report(1,2)['receiptCache']['entries'][0]['state'],'pending')
+            self.assertEqual(list(entries.items()),before)
+            with lock:self.assertEqual(self.report(1,2)['receiptCache']['status'],'unavailable')
+            with patch.object(m,'_recovery_receipt_cache_bound_diagnostic',side_effect=ValueError('PRIVATE_ERROR')):
+                result=self.report(dict(id=1),dict(id=2))
+                self.assertEqual(result['receiptCache']['status'],'unavailable')
+                self.assertEqual(result['changedFields'][0]['fieldPath'],['id'])
+        self.assertIsNone(m._RECOVERY_RECEIPT_BYTES.get())
+
+    def test_wide_container_at_depth_limit_is_not_traversed(self):
+        before={}; after={}; a=before; b=after
+        for _ in range(12):a['repo']={};b['repo']={};a=a['repo'];b=b['repo']
+        a.update((str(i),i) for i in range(10000));b.update(a);b['0']=-1
+        # Field hashing is performed for every traversed dictionary child. The
+        # wide terminal object must not even enumerate/hash its child keys.
+        with patch.object(m.hashlib,'sha256',wraps=m.hashlib.sha256) as hashes:
+            result=self.report(before,after)
+        self.assertEqual(hashes.call_count,3)
+        self.assertEqual(result['visitedNodes'],13)
+        self.assertTrue(result['truncated'])
+
+    def test_boundary_retains_first_failure_full_comparison_and_cleanup(self):
+        import contextlib, io
+        calls=[]; output=io.StringIO()
+        def transport(repo,path,token):calls.append(path);return dict(id=10,repository=dict(pushed_at='new'))
+        with patch.object(m,'_api_get_uncached',side_effect=transport), contextlib.redirect_stdout(output):
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'^RECOVERY_PROOF_CHANGED_AT_BOUNDARY$'):
+                with m.recovery_admission_proof():
+                    state=m._RECOVERY_PROOF_VIEW.get()
+                    for run in (10,11):state['entries'][('PRIVATE_REPO',f'actions/runs/{run}')]=dict(
+                        raw=json.dumps(dict(id=run,repository=dict(pushed_at='old')),sort_keys=True,separators=(',',':')),
+                        uses=2,token='PRIVATE_TOKEN')
+            self.assertIsNone(m._RECOVERY_PROOF_VIEW.get())
+        self.assertEqual(calls,['actions/runs/10'])
+        self.assertEqual(len(output.getvalue().splitlines()),1)
+        self.assertNotIn('PRIVATE',output.getvalue())
+
+    def test_diagnostic_failure_does_not_replace_original_exception(self):
+        for owner,name in [(m,'_recovery_boundary_diagnostic'),('builtins','print')]:
+            patched=patch(owner+'.'+name,side_effect=RuntimeError('PRIVATE_ERROR')) if isinstance(owner,str) else patch.object(owner,name,side_effect=RuntimeError('PRIVATE_ERROR'))
+            with patched, patch.object(m,'_api_get_uncached',return_value=dict(id=2)):
+                with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'^RECOVERY_PROOF_CHANGED_AT_BOUNDARY$'):
+                    with m.recovery_admission_proof():
+                        m._RECOVERY_PROOF_VIEW.get()['entries'][('PRIVATE_REPO','actions/runs/10')]=dict(raw='{"id":1}',uses=2,token='PRIVATE_TOKEN')
+            self.assertIsNone(m._RECOVERY_PROOF_VIEW.get())
+
+    def test_success_stays_silent(self):
+        with patch.object(m,'_api_get_uncached',return_value=dict(id=1)), patch.object(m,'_report_recovery_boundary') as report:
+            with m.recovery_admission_proof():
+                m._RECOVERY_PROOF_VIEW.get()['entries'][('PRIVATE_REPO','actions/runs/10')]=dict(raw='{"id":1}',uses=2,token='PRIVATE_TOKEN')
+            report.assert_not_called()
+
+
 class RecoveryAdmissionProofTests(unittest.TestCase):
     def test_promotion_receipt_download_reuse_preserves_exact_acceptance(self):
         import contextlib

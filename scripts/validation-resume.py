@@ -483,6 +483,90 @@ def _recovery_metadata_reusable(repository, path, value, token):
         and row.get('merged_at') for row in value))
 
 
+def _recovery_boundary_diagnostic(repository, path, previous_raw, current_raw):
+    """Failure-only held-state evidence; never a proof or a new observation."""
+    fields = frozenset(('id run_id run_attempt head_sha head_branch status conclusion '
+        'event path workflow_id workflow_run workflow_runs jobs steps artifacts total_count '
+        'expired digest size_in_bytes created_at updated_at started_at completed_at '
+        'run_started_at expires_at repository head_repository base head repo pushed_at '
+        'size default_branch merge_commit_sha merged_at number ref sha').split())
+    if max(len(previous_raw), len(current_raw)) > 8 * 1024 * 1024:
+        raise ValueError('Diagnostic input bound')
+    before, after = json.loads(previous_raw), json.loads(current_raw)
+    rows = []; visited = 0; truncated = False
+    missing = object()
+    def kind(value):
+        return 'missing' if value is missing else type(value).__name__
+    def field(key):
+        return key if key in fields else 'field-sha256:' + hashlib.sha256(key.encode()).hexdigest()
+    def walk(left, right, location, depth):
+        nonlocal visited, truncated
+        if visited >= 2048 or len(rows) >= 32:
+            truncated = True
+            return
+        visited += 1
+        if depth >= 12 and (type(left) in (dict, list) or type(right) in (dict, list)):
+            truncated = True
+            return
+        if type(left) is dict and type(right) is dict:
+            # No arbitrary field name or scalar value is emitted.
+            for key in left:
+                if visited >= 2048 or len(rows) >= 32:
+                    truncated = True; break
+                walk(left[key], right.get(key, missing), location + [field(key)], depth + 1)
+            for key in right:
+                if visited >= 2048 or len(rows) >= 32:
+                    truncated = True; break
+                if key not in left:walk(missing, right[key], location + [field(key)], depth + 1)
+        elif type(left) is list and type(right) is list:
+            for index in range(max(len(left), len(right))):
+                if visited >= 2048 or len(rows) >= 32:
+                    truncated = True; break
+                walk(left[index] if index < len(left) else missing,
+                     right[index] if index < len(right) else missing, location + [index], depth + 1)
+        elif type(left) is not type(right) or left != right:
+            rows.append(dict(fieldPath=location, beforeType=kind(left), afterType=kind(right)))
+    walk(before, after, [], 0)
+    category = ('run' if re.fullmatch(r'actions/runs/\d+', path) else
+        'job' if re.fullmatch(r'actions/jobs/\d+', path) else
+        'pull' if re.fullmatch(r'pulls/\d+', path) else
+        'artifacts' if '/artifacts?' in path or path.startswith('actions/artifacts?') else
+        'jobs' if '/jobs?' in path else 'collection')
+    result = dict(schemaVersion=1, reason='RECOVERY_PROOF_CHANGED_AT_BOUNDARY',
+        endpointCategory=category,
+        endpointIdentitySha256=hashlib.sha256(json.dumps([repository,path], separators=(',', ':')).encode()).hexdigest(),
+        beforeSha256=hashlib.sha256(previous_raw.encode()).hexdigest(),
+        afterSha256=hashlib.sha256(current_raw.encode()).hexdigest(),
+        changedFields=rows, visitedNodes=visited, truncated=truncated,
+        receiptCache=dict(status='unavailable'))
+    try:
+        cache = _RECOVERY_RECEIPT_BYTES.get()
+        if cache is not None:
+            lock, entries = cache
+            if lock.acquire(blocking=False):
+                try:
+                    if entries:
+                        snapshot = _recovery_receipt_cache_bound_diagnostic(entries, next(iter(entries)))
+                        for key in ('requested', 'reason'):snapshot.pop(key)
+                        result['receiptCache'] = dict(status='observed', **snapshot)
+                    else:result['receiptCache'] = dict(status='observed', retainedEntries=0)
+                finally:
+                    lock.release()
+    except BaseException:
+        pass  # An unavailable cache snapshot must not discard the mismatch evidence.
+    return result
+
+
+def _report_recovery_boundary(repository, path, previous_raw, current_raw):
+    try:
+        report = _recovery_boundary_diagnostic(repository, path, previous_raw, current_raw)
+        encoded = json.dumps(report, sort_keys=True, separators=(',', ':'))
+        if len(encoded.encode()) <= 65536:
+            print('LEGEND_RECOVERY_PROOF_BOUNDARY:' + encoded, flush=True)
+    except BaseException:
+        pass  # Reporting must never replace or suppress the original proof failure.
+
+
 @contextlib.contextmanager
 def recovery_admission_proof():
     """One read-only decision boundary, never an invocation-wide approval."""
@@ -506,6 +590,7 @@ def recovery_admission_proof():
                 current = _api_get_uncached(repository, path, entry['token'])
                 raw = json.dumps(current, sort_keys=True, separators=(',', ':'))
                 if raw != entry['raw']:
+                    _report_recovery_boundary(repository, path, entry['raw'], raw)
                     raise ReleaseOperationHistoryUnproven('RECOVERY_PROOF_CHANGED_AT_BOUNDARY')
     finally:
         _RECOVERY_PROOF_VIEW.reset(handle)
