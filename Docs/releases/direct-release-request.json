@@ -1,32 +1,32 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue Layla's Founder-delegated same recovery for ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. Prepare independently reviewed bounded status-read diagnostics through existing nonpublishing trusted-tooling controls. No completion observation, application upload, SQL, restart, provider/settings/credential/cost change; no formal GitHub approval on Zac's behalf.",
-  "purpose": "Preserve bounded allowlisted Azure CLI-reported nonzero-exit metadata in the canonical status-read adapter. Never copy stderr or infer root cause. Preserve unknown/failure, all command/target/identity, timeouts/retries, success and authority conditions; reuse promoted PR718 proof logic unchanged. Register the exact independently reviewed diagnostic adapter with its unchanged journal as one additional paired source generation; retain all prior pairs and crossed/unknown rejection checks.",
-  "requestId": "protect-status-read-diagnostics-20261028-v1",
+  "authorization": "Layla admits implementation of reviewed bounded same-context diagnostics under Founder task-specific delegation for the existing PR713 release repair. Draft nonpublishing tooling candidate and native CI only; no merge, promotion, observation, provider/settings/credentials/cost changes, application upload, SQL or restart; no formal GitHub approval as Founder.",
+  "purpose": "Add bounded unknown-stderr shape, canonical command/context, installed CLI-package version and nonsecret equality diagnostics at actual completion checkpoints. Preserve strict classification, failed-producer receipt eligibility, authority, success/failure and read deadlines; diagnostics consume existing read allowance. Register only independently reviewed exact adapter/journal generation; preserve old pairs and crossed/unknown rejection.",
+  "requestId": "completion-context-diagnostics-20261028-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "9dd5655763b29e2dadeb86f4ab097221c1cf9a46",
-    "sourceRevision": "8407e2d3c4dc2e7d0c106c12739fdc8b2b2fecb0",
+    "baseRevision": "182c51907c7c8f58077ea00b33a9582b5ebdda08",
+    "sourceRevision": "4ada744f167fec5f0c31e162761a2777340aafdd",
     "files": {
       "scripts/deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "87a80642f55b6930e8ebd09bded3a342b9848eef"
+        "blob": "edd4c9dc322d4c20dcc1c31ef0dacaf74147fccc"
       },
       "scripts/test-deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "cf274749b49931cf17c3e75d69d4890f29b348fd"
+        "blob": "e028110940d622cb2ea8f05c53605d73f95952ba"
       },
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "63a641c7c3dc876d039bebb8fc7aecd636079b0b"
+        "blob": "a23fb12b3b955fafb6f492fa0e3f8bec92fbf117"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "71bea88adf4cf03410f912fd8c1e9c7d3e9a48df"
+        "blob": "3f76088801d96fb818093f97c24819c9a8b14038"
       }
     }
   }
