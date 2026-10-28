@@ -1,7 +1,7 @@
 {
   "requestedBy": "Founder",
   "authorization": "Continue Layla's Founder-delegated same recovery for ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. Prepare independently reviewed bounded status-read diagnostics through existing nonpublishing trusted-tooling controls. No completion observation, application upload, SQL, restart, provider/settings/credential/cost change; no formal GitHub approval on Zac's behalf.",
-  "purpose": "Preserve bounded allowlisted Azure CLI-reported nonzero-exit metadata in the canonical status-read adapter. Never copy stderr or infer root cause. Preserve unknown/failure, all command/target/identity, timeouts/retries, success and authority conditions; reuse promoted PR718 proof logic unchanged.",
+  "purpose": "Preserve bounded allowlisted Azure CLI-reported nonzero-exit metadata in the canonical status-read adapter. Never copy stderr or infer root cause. Preserve unknown/failure, all command/target/identity, timeouts/retries, success and authority conditions; reuse promoted PR718 proof logic unchanged. Register the exact independently reviewed diagnostic adapter with its unchanged journal as one additional paired source generation; retain all prior pairs and crossed/unknown rejection checks.",
   "requestId": "protect-status-read-diagnostics-20261028-v1",
   "releaseMode": "validate-only",
   "targets": [],
@@ -10,7 +10,7 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "9dd5655763b29e2dadeb86f4ab097221c1cf9a46",
-    "sourceRevision": "afe030a83fe4788eb5a04e41520318c6de5362d6",
+    "sourceRevision": "8407e2d3c4dc2e7d0c106c12739fdc8b2b2fecb0",
     "files": {
       "scripts/deploy-approved-app.py": {
         "mode": "100644",
@@ -19,6 +19,14 @@
       "scripts/test-deploy-approved-app.py": {
         "mode": "100644",
         "blob": "cf274749b49931cf17c3e75d69d4890f29b348fd"
+      },
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "63a641c7c3dc876d039bebb8fc7aecd636079b0b"
+      },
+      "scripts/test-validation-resume.py": {
+        "mode": "100644",
+        "blob": "71bea88adf4cf03410f912fd8c1e9c7d3e9a48df"
       }
     }
   }
