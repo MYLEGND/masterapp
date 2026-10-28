@@ -7108,6 +7108,9 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
         Object.assign(node,retained.find(child=>child.id===id));
       }
     }
+    const savedModal=captured.get('quote_index.div.node.node28');
+    savedModal.style={...savedModal.style,offsetXPercent:0};
+    savedModal.breakpointStyles=Object.fromEntries(['desktop','tablet','mobile'].map(key=>[key,{offsetXPercent:0}]));
     doc.pages['/quote'].composition=savedCoverageShape.filter(row=>row[3]===null).map(row=>structuredClone(captured.get(row[0])));
     assert.equal(captured.get('quote_index.button.node.35').tag,'span');
   }finally{capture.close();}
@@ -7135,6 +7138,7 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
         assert.equal(original.tile.getAttribute('role'),'button');
         assert.equal(original.tile.getAttribute('aria-haspopup'),'dialog');
         assert.equal(original.modal.querySelector('[role="dialog"]').getAttribute('aria-modal'),'true');
+        assert.equal(f.w.getComputedStyle(original.modal).position,'fixed','Neutral saved offsets cannot override the native viewport overlay');
         assert.equal(f.w.document.querySelectorAll('#lifeModal').length,1);
         assert.equal(f.w.document.querySelector('.calendar-container').lastElementChild,original.booking,'Current native booking branch must retain its authorized node');
         assert.equal(original.booking.getAttribute('style'),original.bookingStyle,'Saved placeholder typography never styles the native booking branch');
@@ -7153,11 +7157,28 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
         assert.equal(f.w.getComputedStyle(original.modal).display,'none');
         original.tile.click();assert.equal(original.tile.getAttribute('aria-expanded'),'true');
         assert.equal(f.w.getComputedStyle(original.modal).display,'flex');
+        assert.equal(original.modal.getAttribute('aria-hidden'),'false');
+        assert.equal(f.w.document.activeElement,original.modal.querySelector('[role="dialog"]'));
+        f.w.dispatchEvent(new f.w.Event('scroll'));
+        assert.equal(original.modal.classList.contains('open'),true,'Window movement must not dismiss the dialog');
         original.modal.querySelector('.life-modal-close').click();assert.equal(original.tile.getAttribute('aria-expanded'),'false');
         original.tile.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
         assert.equal(original.modal.classList.contains('open'),true);
-        original.tile.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+        original.modal.querySelector('[role="dialog"]').dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
         assert.equal(original.modal.classList.contains('open'),false);
+        assert.equal(original.modal.getAttribute('aria-hidden'),'true');
+        assert.equal(f.w.document.activeElement,original.tile);
+        original.tile.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:' ',bubbles:true}));
+        assert.equal(original.modal.classList.contains('open'),true);
+        original.modal.click();
+        assert.equal(original.modal.classList.contains('open'),false,'Backdrop click explicitly dismisses');
+        assert.equal(f.w.document.activeElement,original.tile,'Backdrop dismissal restores focus');
+        original.tile.click();
+        const outside=f.w.document.querySelector('.quote-tile[href]');
+        outside.focus();
+        outside.dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true}));
+        assert.equal(original.modal.classList.contains('open'),false);
+        assert.equal(f.w.document.activeElement,outside,'Outside dismissal preserves the clicked control focus');
       }else{
         for(const breakpoint of ['desktop','tablet','mobile']){f.change('#legend-cms-breakpoint',breakpoint);verify(breakpoint==='mobile'?'':'520.856px');}
         f.change('#legend-cms-breakpoint','base');verify();

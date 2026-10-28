@@ -718,6 +718,7 @@
   // Its optional DIV/H3/P must not retarget the static chooser's saved identities.
   // This is deliberately one template contract, not a general class remapper.
   const coverageNativeSnapshots = new WeakMap();
+  const coverageNativeOverlays = new WeakSet();
   const coverageBookingProjections = new WeakMap();
   function planCoverageTemplateIdentities(page) {
     if (SITE_KEY!=='protect' || !pageUsesSystemTemplate(page) || page.systemTemplateKey !== 'protect_template:quote_index') return;
@@ -744,6 +745,7 @@
       if(booking.length!==1)fail();
       snapshot={roots,elements,page:nativePage[0],modal:modal[0],calendar:calendar[0],shell:shell[0],prayer:prayer[0],booking:booking[0]};
       coverageNativeSnapshots.set(main,snapshot);
+      coverageNativeOverlays.add(elements.get(modal[0].id));
     }
     const saved=[];walkComposition(page.composition,node=>saved.push(node));
     const ids=new Set();for(const node of saved){if(!node.id || ids.has(node.id))fail();ids.add(node.id);}
@@ -1903,7 +1905,10 @@
     }
     const hasOffsetX = !sectionLocked && style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent));
     const hasOffsetY = !sectionLocked && style.offsetYPx != null && Number.isFinite(Number(style.offsetYPx));
-    if (hasOffsetX || hasOffsetY) {
+    // The verified native Coverage overlay owns viewport positioning. Saved
+    // presentation offsets remain in the document, but must not turn this fixed
+    // dialog into ordinary page flow (including the materialized zero default).
+    if ((hasOffsetX || hasOffsetY) && !coverageNativeOverlays.has(el)) {
       el.style.position = 'relative';
       if (hasOffsetX) el.style.left = `${Number(style.offsetXPercent)}%`;
       if (hasOffsetY) el.style.top = `${Number(style.offsetYPx)}px`;
