@@ -2305,7 +2305,7 @@ class CompletionObserverTests(unittest.TestCase):
             # Keep the real nested reader on the same injected clock domain.
             historical=self.a.fast_track_historical_producers
             def history(r,revision,t):return historical(r,revision,t,clock=lambda:self.now)
-            with patch.object(self.a,'fast_track_historical_producers',side_effect=history),patch.dict(os.environ,env,clear=True),patch.object(self.a,'api_get',side_effect=api),patch.object(self.a,'_release_history_source',return_value=(ROOT.parent/'.github/workflows/deployment-diagnostics.yml').read_text()),patch.object(self.a,'fast_track_promotion_parent',return_value=self.promoted),patch.object(self.a.subprocess,'check_output',return_value=self.sha),patch.object(self.a.subprocess,'run',return_value=SimpleNamespace(returncode=int(dirty))):
+            with patch.object(self.a,'fast_track_historical_producers',side_effect=history),patch.dict(os.environ,env,clear=True),patch.object(self.a,'api_get',side_effect=api),patch.object(self.a,'_api_get_uncached',side_effect=api),patch.object(self.a,'_release_history_source',return_value=(ROOT.parent/'.github/workflows/deployment-diagnostics.yml').read_text()),patch.object(self.a,'fast_track_promotion_parent',return_value=self.promoted),patch.object(self.a.subprocess,'check_output',return_value=self.sha),patch.object(self.a.subprocess,'run',return_value=SimpleNamespace(returncode=int(dirty))):
                 return self.a.assert_fast_track_completion_execution(original,revision or 'b'*40,clock=lambda:self.now,sleep=sleep)
     def test_v4_observer_waits_for_its_exact_runner_job(self):
         self.run['status']='queued';self.inventory_timeline=[[],[dict(self.job,status='queued',runner_name='')],[self.job]]
