@@ -22,7 +22,18 @@ namespace Protect_Website.Controllers
         public IActionResult Auto() => View("Auto");
         public IActionResult Home() => View("Home");
         public IActionResult Life() => View("Life");
-        public IActionResult DentalVisionHearing() => View("DentalVisionHearing");
+        [HttpGet]
+        public LocalRedirectResult DentalVisionHearing()
+        {
+            // This legacy GET is an alias, never a second editable form runtime.
+            // Reuse the middleware-owned scope and keep the same-origin query,
+            // including normal Studio authorization and attribution.
+            var slug = HttpContext.Items["TrackingSlug"] as string;
+            var isFounder = HttpContext.Items["IsFounderPath"] as bool? == true;
+            var scope = !isFounder && !string.IsNullOrWhiteSpace(slug)
+                ? "/a/" + Uri.EscapeDataString(slug.Trim()) : string.Empty;
+            return LocalRedirect($"{Request.PathBase}{scope}/Quote/Dental-Vision-Hearing{Request.QueryString}");
+        }
         public IActionResult Commercial() => View("Commercial");
         public IActionResult Other() => View("Other");
     }

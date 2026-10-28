@@ -1,9 +1,12 @@
+using Domain.Messaging;
+using Infrastructure.Messaging;
 using Infrastructure.Analytics;
 using Infrastructure.Bookings;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -445,6 +448,113 @@ public class LifeQuoteControllerPublicBookingTests
         Assert.True(leadRow.TryGetProperty("intakeSnapshot", out var intakeSnapshot));
         Assert.Equal("quote_life", GetRequiredProperty(intakeSnapshot, "sourcePageKey").GetString());
         Assert.Equal("Life", GetRequiredProperty(intakeSnapshot, "quoteTypeLabel").GetString());
+    }
+
+
+    [Theory]
+    [InlineData("founder", true)]
+    [InlineData("agent-one", true)]
+    [InlineData("agent-two", true)]
+    [InlineData("blank-public-name", true)]
+    [InlineData("inactive", false)]
+    [InlineData("ambiguous", false)]
+    [InlineData("shared-email-only", false)]
+    [InlineData("missing-user-id", false)]
+    public async Task PublicAgentCard_MatchesCanonicalAvatarIdentityAndProjectsOnlyPublicFields(string scenario, bool eligible)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var isFounder = scenario == "founder";
+        var userId = scenario == "missing-user-id" ? "" : "card-" + scenario;
+        var upn = isFounder ? "founder@example.test" : "private-account@example.test";
+        var tracking = new AgentTrackingProfile
+        {
+            AgentUserId = userId, AgentUpn = upn, Slug = "card-" + scenario,
+            DisplayName = "Must not use tracking alias", Status = "Active"
+        };
+        db.AgentTrackingProfiles.Add(tracking);
+        var profile = new AgentProfile
+        {
+            AgentUserId = scenario == "shared-email-only" ? "unrelated-owner" : userId.ToUpperInvariant(),
+            AgentUpn = upn, NormalizedEmail = upn.ToUpperInvariant(), IsActive = scenario != "inactive",
+            FullName = scenario == "blank-public-name" ? "" : "Public " + scenario,
+            ShortBio = "Approved public introduction " + scenario, Npn = "123456",
+            Phone = "private-phone-not-for-card", MetaCapiAccessToken = "private-credential-not-for-card"
+        };
+        db.AgentProfiles.Add(profile);
+        if (scenario == "ambiguous") db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = userId, AgentUpn = "second-private@example.test", NormalizedEmail = "SECOND-PRIVATE@EXAMPLE.TEST",
+            FullName = "Conflicting public name", IsActive = true
+        });
+        // A complete unrelated profile sharing the UPN must never outrank exact identity.
+        if (eligible) db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "unrelated-" + scenario, AgentUpn = upn, NormalizedEmail = upn.ToUpperInvariant(),
+            FullName = "Wrong owner", ShortBio = "Wrong owner bio", Npn = "999999", IsActive = true
+        });
+        await db.SaveChangesAsync();
+        var avatar = new MessagingProfileImageResolver(db, NullLogger<MessagingProfileImageResolver>.Instance);
+        var identity = await avatar.ResolveIdentitiesAsync([new MessagingParticipantReference(userId, MessagingParticipantTypes.Agent)]);
+        Assert.Equal(eligible, identity.Count == 1);
+        if (eligible) Assert.Equal(profile.Id, Assert.Single(identity.Values).ProfileId);
+        var booking = new Mock<IPublicBookingResolver>(MockBehavior.Strict);
+        if (!isFounder) booking.Setup(x => x.ResolveAsync(
+                It.Is<PublicBookingResolveContext>(value => value.AgentTrackingProfileId == tracking.Id && value.AgentUserId == tracking.AgentUserId && value.AgentSlug == tracking.Slug),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PublicBookingResolution(true, null, "https://booking.example.test/" + tracking.Slug, true, false, "configured",
+                PublicBookingConfigurationSources.None, tracking.Id, tracking.AgentUserId, tracking.Slug, null, null, null));
+        var leads = new Mock<IWebsiteLifeLeadCaptureService>(MockBehavior.Strict);
+        var email = new Mock<IWebsiteInquiryEmailSender>(MockBehavior.Strict);
+        var controller = BuildController(db, publicBookingResolver: booking.Object,
+            websiteLifeLeadCaptureService: leads.Object, emailSender: email.Object);
+        var http = controller.HttpContext;
+        http.Request.Method = "GET";
+        http.Request.Path = isFounder ? "/Quote/Life" : "/a/" + tracking.Slug + "/Quote/Life";
+        controller.TempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>());
+        var view = Assert.IsType<ViewResult>(await controller.LifeQuote());
+        var model = Assert.IsType<LifeWizardViewModel>(view.Model);
+        var card = Assert.IsType<LifeWizardAgentTrustProfile>(model.AgentTrustProfile);
+        Assert.Equal(tracking.Id, card.AgentTrackingProfileId);
+        Assert.Equal(tracking.Slug, card.AgentSlug);
+        Assert.Equal(isFounder ? null : "https://booking.example.test/" + tracking.Slug, card.SchedulingLink);
+        if (eligible)
+        {
+            Assert.Equal(profile.FullName, card.DisplayName);
+            Assert.Equal(profile.ShortBio, card.ShortBio);
+            Assert.Equal(profile.Npn, card.Npn);
+            Assert.Equal("https://portal.example.test/avatar/agent/" + tracking.Slug, card.ProfileImageUrl);
+            if (scenario == "blank-public-name") Assert.Empty(card.FirstName);
+            var json = JsonSerializer.Serialize(card);
+            foreach (var privateValue in new[] { upn, "private-phone-not-for-card", "private-credential-not-for-card", "Must not use tracking alias", "Wrong owner" })
+                Assert.DoesNotContain(privateValue, json, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.Empty(card.DisplayName); Assert.Empty(card.FirstName);
+            Assert.Null(card.ShortBio); Assert.Null(card.Npn); Assert.Null(card.ProfileImageUrl);
+        }
+        var profiles = new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance);
+        var hintedOwner = await ProtectWebsiteOwnerResolver.ResolveLeadAsync(profiles, "founder@example.test",
+            card.AgentTrackingProfileId, card.AgentSlug, isFounder);
+        Assert.NotNull(hintedOwner);
+        Assert.Equal(tracking.Id, hintedOwner!.Profile.Id);
+        Assert.Equal(tracking.AgentUserId, hintedOwner.Profile.AgentUserId);
+        Assert.Equal(isFounder, hintedOwner.IsFounder);
+        // Exercise the existing summary projection only, never a POST or send.
+        var summaryMethod = typeof(LifeQuoteController).GetMethod("BuildAgentTrustProfileAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var summaryCard = await (Task<LifeWizardAgentTrustProfile?>)summaryMethod.Invoke(controller, [CancellationToken.None, false])!;
+        if (isFounder) Assert.Null(summaryCard);
+        else
+        {
+            Assert.NotNull(summaryCard);
+            Assert.Equal(card.AgentTrackingProfileId, summaryCard!.AgentTrackingProfileId);
+            Assert.Equal(card.SchedulingLink, summaryCard.SchedulingLink);
+            Assert.Equal(card.DisplayName, summaryCard.DisplayName);
+        }
+        Assert.Empty(db.WebsiteLeads);
+        Assert.Empty(db.LeadAppointments);
+        leads.VerifyNoOtherCalls(); email.VerifyNoOtherCalls();
+        booking.VerifyAll(); booking.VerifyNoOtherCalls();
     }
 
     private static LifeQuoteController BuildController(

@@ -534,7 +534,7 @@
     var showAgentTrustCard = agentTrustProfile != null;
     var agentDisplayName = !string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
         ? agentTrustProfile!.DisplayName!.Trim()
-        : "Your licensed agent";
+        : "Your coverage team";
     var agentGreetingName = !string.IsNullOrWhiteSpace(agentTrustProfile?.FirstName)
         ? agentTrustProfile!.FirstName!.Trim()
         : agentDisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "there";
@@ -542,7 +542,7 @@
         ? agentTrustProfile!.FirstName!.Trim()
         : (!string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
             ? agentTrustProfile!.DisplayName!.Trim()
-            : "Your Agent");
+            : "Your coverage team");
     var stepTwoContactFitDescriptor = normalizedOfferKey switch
     {
         "term" => "the years your family depends on your income, stability, and presence",
@@ -593,10 +593,8 @@
     var heroTrustNote = "25+ carriers • Protection that fits your life • No obligation";
     var heroTrustPersonName = !string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
         ? agentTrustProfile!.DisplayName!.Trim()
-        : "Zac Owen";
-    var heroTrustPersonRole = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
-        ? "Licensed Insurance Professional"
-        : "Personal insurance guidance";
+        : "Your coverage team";
+    var heroTrustPersonRole = "Personal insurance guidance";
     var heroTrustPersonSupport = normalizedOfferKey switch
     {
         "mortgage" => "Personalized guidance to compare options and see what could help protect your home.",
@@ -607,18 +605,18 @@
         : string.Empty;
     var heroTrustPersonInitials = !string.IsNullOrWhiteSpace(agentTrustProfile?.FirstName)
         ? agentTrustProfile!.FirstName!.Substring(0, 1).ToUpperInvariant()
-        : "ZO";
+        : "CT";
     var contactFirstTrustImageUrl = !string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl)
         ? agentTrustProfile!.ProfileImageUrl!.Trim()
         : string.Empty;
     var contactFirstTrustLabelName = !string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
         ? agentTrustProfile!.DisplayName!.Trim()
-        : "your licensed agent";
+        : "your coverage team";
     var contactFirstTrustIntroLine = !string.IsNullOrWhiteSpace(agentTrustProfile?.FirstName)
         ? $"Hey, I’m {agentTrustProfile!.FirstName!.Trim()}."
         : (!string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
             ? $"Hey, I’m {agentTrustProfile!.DisplayName!.Trim()}."
-            : "Hey, I’m your licensed agent.");
+            : "Your coverage team is here to help.");
     var contactFirstTrustInitials = string.Concat(
         contactFirstTrustLabelName
             .Split(' ', StringSplitOptions.RemoveEmptyEntries)
@@ -802,7 +800,7 @@
         "iul" => "Unlock My IUL Review",
         _ => "Unlock My Full Review"
     };
-    var heroTrustAriaLabel = "Licensed professional guidance";
+    var heroTrustAriaLabel = "Personal coverage guidance";
     var showInlineMobileTrustBlock = false;
 
     var step1IntroTitle = productLanguageKey switch
@@ -5776,8 +5774,8 @@ input:checked + .lq-answer-card {
 
                             <div class="lq-step-panel lq-contact-first-wizard-panel" id="lifeProcessingPanel" data-funnel-step="1.5" hidden>
                                 <div class="lq-step-panel-pad">
-                                    <div class="lq-agent-handoff" role="note" aria-label="Licensed guidance from @contactFirstTrustLabelName">
-                                        <div class="lq-contact-capture-kicker">Licensed review with @contactFirstTrustLabelName</div>
+                                    <div class="lq-agent-handoff" role="note" aria-label="Coverage guidance from @contactFirstTrustLabelName">
+                                        <div class="lq-contact-capture-kicker">Coverage review with @contactFirstTrustLabelName</div>
                                         <div class="lq-agent-handoff-head">
                                             <div class="lq-agent-identity">
                                                 <div class="lq-agent-avatar" aria-hidden="true">
@@ -5819,7 +5817,7 @@ input:checked + .lq-answer-card {
                                     <div id="lifeContactCaptureWrap">
                                         <div class="lq-contact-grid">
                                         <div class="full lq-contact-capture-head">
-                                            <div class="lq-agent-handoff lq-contact-agent-card" role="note" aria-label="Licensed guidance from @contactFirstTrustLabelName">
+                                            <div class="lq-agent-handoff lq-contact-agent-card" role="note" aria-label="Coverage guidance from @contactFirstTrustLabelName">
                                                 <div class="lq-contact-capture-kicker">Your licensed review</div>
                                                 <div class="lq-agent-handoff-head">
                                                     <div class="lq-agent-identity">
@@ -6293,8 +6291,8 @@ input:checked + .lq-answer-card {
 
         <div class="lq-step-panel" id="lifeProcessingPanel" data-funnel-step="1.5" hidden>
             <div class="lq-step-panel-pad">
-                <div class="lq-agent-handoff" role="note" aria-label="Licensed guidance from @contactFirstTrustLabelName">
-                    <div class="lq-contact-capture-kicker">Licensed review with @contactFirstTrustLabelName</div>
+                <div class="lq-agent-handoff" role="note" aria-label="Coverage guidance from @contactFirstTrustLabelName">
+                    <div class="lq-contact-capture-kicker">Coverage review with @contactFirstTrustLabelName</div>
                     <div class="lq-agent-handoff-head">
                         <div class="lq-agent-identity">
                             <div class="lq-agent-avatar" aria-hidden="true">
@@ -6336,7 +6334,7 @@ input:checked + .lq-answer-card {
                 <div id="lifeContactCaptureWrap">
                     <div class="lq-contact-grid">
                         <div class="full lq-contact-capture-head">
-                            <div class="lq-agent-handoff" role="note" aria-label="Licensed guidance from @contactFirstTrustLabelName">
+                            <div class="lq-agent-handoff" role="note" aria-label="Coverage guidance from @contactFirstTrustLabelName">
                                                 <div class="lq-contact-capture-kicker">Your licensed review</div>
                                                 <div class="lq-agent-handoff-head">
                                                     <div class="lq-agent-identity">
@@ -6502,6 +6500,58 @@ input:checked + .lq-answer-card {
     </form>
 </div>
 </div>
+
+<script data-life-public-profile-projection>
+(() => {
+  // Capture only this server-rendered view's original public-card nodes before
+  // CMS hydration. Never discover authored lookalikes after a composition edit.
+  const shell = document.querySelector('[data-protect-form-shell]');
+  const fieldKey = Symbol.for('legend.protect.public-profile-field');
+  const mark = (element, root, kind, value, alt = '') => {
+    Object.defineProperty(element, fieldKey, {value:Object.freeze({shell,root,kind,value,alt})});
+  };
+  const cards = Array.from(shell?.querySelectorAll('.lq-agent-handoff,.lq-human-strip') || []).map(root => {
+    const fields = Array.from(root.querySelectorAll('.lq-agent-name,.lq-agent-display-name,.lq-agent-bio,.lq-agent-license,.lq-agent-avatar-fallback,.lq-human-strip-name,.lq-human-strip-role,.lq-human-strip-fallback'))
+      .map(element => ({element, text: element.textContent}));
+    const kicker = root.querySelector('.lq-contact-capture-kicker');
+    if (kicker?.textContent.startsWith('Coverage review with ')) fields.push({element: kicker, text: kicker.textContent});
+    const avatar = root.querySelector('.lq-agent-avatar,.lq-human-strip-avatar');
+    const image = avatar?.querySelector('img');
+    for (const field of fields) mark(field.element, root, field.element.matches('.lq-agent-avatar-fallback,.lq-human-strip-fallback') ? 'initials' : 'text', field.text);
+    if (image) mark(image, root, 'image', image.getAttribute('src'), image.getAttribute('alt') || '');
+    return {root, fields, avatar, image: image?.cloneNode(false), aria: root.getAttribute('aria-label'),
+      hasNpn: !!root.querySelector('.lq-agent-license')};
+  });
+  const project = () => {
+    for (const card of cards) {
+      if (!card.root.isConnected || !shell.contains(card.root)) continue;
+      if (card.aria !== null) card.root.setAttribute('aria-label', card.aria);
+      for (const {element, text} of card.fields) {
+        if (card.root.contains(element)) element.textContent = text;
+      }
+      if (!card.hasNpn) card.root.querySelectorAll('.lq-agent-license').forEach(element => element.remove());
+      if (!card.avatar || !card.root.contains(card.avatar)) continue;
+      const images = Array.from(card.avatar.querySelectorAll('img'));
+      if (!card.image) {
+        images.forEach(image => image.remove());
+      } else {
+        const image = images.shift() || card.image.cloneNode(false);
+        if (!image[fieldKey]) mark(image, card.root, 'image', card.image.getAttribute('src'), card.image.getAttribute('alt') || '');
+        if (image.getAttribute('src') !== card.image.getAttribute('src')) {
+          image.setAttribute('src', card.image.getAttribute('src'));
+          image.style.display = card.image.style.display;
+        }
+        image.setAttribute('alt', card.image.getAttribute('alt') || '');
+        if (!image.parentNode) card.avatar.prepend(image);
+        images.forEach(extra => extra.remove());
+      }
+      const fallback = card.fields.find(({element}) => element.matches('.lq-agent-avatar-fallback,.lq-human-strip-fallback'))?.element;
+      if (fallback && card.avatar.contains(fallback)) fallback.hidden = !!card.image && card.avatar.querySelector('img')?.style.display !== 'none';
+    }
+  };
+  window.addEventListener('legend:website-content-rendered', project);
+})();
+</script>
 
 <script src="~/js/meta-signal-intelligence.js" asp-append-version="true"></script>
 
@@ -8085,7 +8135,7 @@ const contactFieldProgress = new Map();
   }
 
   function getSubmitProcessingStage() {
-    const agentName = asTrimmed(agentDirectContactName) || 'our licensed team';
+    const agentName = asTrimmed(agentDirectContactName) || 'our coverage team';
     return {
       progress: 'Saving your review',
       heading: 'Saving your answers and opening scheduling...',
@@ -8822,7 +8872,7 @@ const contactFieldProgress = new Map();
     const normalized = normalizeStep2Preview(preview);
     const offerKey = resolveDisplayedOfferKeyForStep2(normalized);
     const isGeneral = isGeneralLifeQuoteForStep2(normalized);
-    const agentName = asTrimmed(agentDirectContactName) || 'your licensed agent';
+    const agentName = asTrimmed(agentDirectContactName) || 'your coverage team';
 
     const monthlyRange = formatCurrencyRangeCompactForStep2(
       normalized.primary.estimatedLowMonthly,
@@ -10326,7 +10376,7 @@ const contactFieldProgress = new Map();
     if (existingResult) existingResult.remove();
 
     const handoffCopy = getFinalHandoffCopy(quoteType);
-    const agentNameRaw = asTrimmed(agentDirectContactName) || 'your licensed agent';
+    const agentNameRaw = asTrimmed(agentDirectContactName) || 'your coverage team';
     const bookingCopy = mergeAgentNameIntoCopy(handoffCopy.bookingCopy, agentNameRaw);
 
     window.LegendQuoteReview.render(postSubmitSlot, {

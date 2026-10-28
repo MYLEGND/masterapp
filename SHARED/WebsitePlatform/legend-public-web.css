@@ -184,6 +184,7 @@ h3{font-size:clamp(20px,1.65vw,23px);letter-spacing:-.014em}
 }
 .legend-public--protect .layout-content{
   flex:1 0 auto;
+  min-height:calc(100dvh - var(--header-height));
   display:flow-root;
 }
 .legend-public--protect .site-footer{

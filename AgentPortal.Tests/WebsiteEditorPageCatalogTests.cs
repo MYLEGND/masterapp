@@ -38,4 +38,32 @@ public sealed class WebsiteEditorPageCatalogTests
         action.ActionConstraints = [new HttpMethodActionConstraint(["POST"])];
         Assert.DoesNotContain(WebsiteEditorPageCatalog.Discover(actions.Object, views.Object), p => p.Path == "/NewPublicPage");
     }
+
+    private sealed class RedirectBoundaryController : Controller
+    {
+        public LocalRedirectResult Legacy() => LocalRedirect("/Quote/Dental-Vision-Hearing");
+        public IActionResult Conditional(bool redirect) => redirect ? LocalRedirect("/Quote") : View();
+    }
+
+    [Fact]
+    public void OnlyExplicitlyRedirectOnlyGetIsExcluded_EvenWhenHistoricalViewExists()
+    {
+        var descriptors = new[] { "Legacy", "Conditional" }.Select(name => new ControllerActionDescriptor
+        {
+            ControllerName = "RedirectBoundary", ActionName = name,
+            ControllerTypeInfo = typeof(RedirectBoundaryController).GetTypeInfo(),
+            MethodInfo = typeof(RedirectBoundaryController).GetMethod(name)!,
+            ActionConstraints = [new HttpMethodActionConstraint(["GET"])]
+        }).ToArray();
+        var actions = new Mock<IActionDescriptorCollectionProvider>();
+        actions.SetupGet(x => x.ActionDescriptors).Returns(new ActionDescriptorCollection(descriptors, 1));
+        var views = new Mock<IRazorViewEngine>(MockBehavior.Strict);
+        views.Setup(x => x.GetView(null, "~/Views/RedirectBoundary/Conditional.cshtml", false))
+            .Returns(ViewEngineResult.Found("~/Views/RedirectBoundary/Conditional.cshtml", Mock.Of<IView>()));
+        var catalog = WebsiteEditorPageCatalog.Discover(actions.Object, views.Object);
+        Assert.DoesNotContain(catalog, page => page.Path == "/RedirectBoundary/Legacy");
+        Assert.Contains(catalog, page => page.Path == "/RedirectBoundary/Conditional");
+        views.Verify(x => x.GetView(null, "~/Views/RedirectBoundary/Legacy.cshtml", false), Times.Never);
+    }
+
 }

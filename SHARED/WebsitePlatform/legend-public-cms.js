@@ -587,15 +587,137 @@
     boundNativeTemplateRoots.add(main);
   }
 
-  function applyTemplateBackedCompositionPage() {
+  // The Coverage booking partial is server-owned and has conditional markup.
+  // Its optional DIV/H3/P must not retarget the static chooser's saved identities.
+  // This is deliberately one template contract, not a general class remapper.
+  const coverageNativeSnapshots = new WeakMap();
+  const coverageBookingProjections = new WeakMap();
+  function planCoverageTemplateIdentities(page) {
+    if (SITE_KEY!=='protect' || !pageUsesSystemTemplate(page) || page.systemTemplateKey !== 'protect_template:quote_index') return;
+    const main=document.querySelector('main');
+    let snapshot=coverageNativeSnapshots.get(main);
+    const fail=()=>{throw new Error('The saved Coverage layout needs identity review before it can be rendered. Your saved content was preserved.');};
+    const classes=node=>{const tokens=String(node?.className || '').split(/\s+/).filter(Boolean);return tokens.filter(token=>!(token==='show' && tokens.includes('reveal')) && !(token==='open' && (tokens.includes('life-modal') || tokens.includes('life-tile'))));};
+    const hasClass=(node,name)=>classes(node).includes(name);
+    if(!snapshot){
+      const roots=materializeCurrentPageComposition();
+      const elements=new Map();
+      for(const el of main.querySelectorAll('[data-cms-id]')){
+        if(elements.has(el.dataset.cmsId))fail();
+        elements.set(el.dataset.cmsId,el);
+      }
+      const nativePage=roots.filter(node=>hasClass(node,'quote-page'));
+      const modal=roots.filter(node=>hasClass(node,'life-modal'));
+      if(roots.length!==2 || nativePage.length!==1 || modal.length!==1 || elements.get(modal[0].id)?.id!=='lifeModal')fail();
+      const calendar=nativePage[0].children.filter(node=>hasClass(node,'calendar-section'));
+      const shell=nativePage[0].children.filter(node=>hasClass(node,'quote-shell'));
+      const prayer=nativePage[0].children.filter(node=>hasClass(node,'prayer-section'));
+      if(calendar.length!==1 || shell.length!==1 || prayer.length!==1 || elements.get(calendar[0].id)?.id!=='calendar')fail();
+      const booking=calendar[0].children.filter(node=>hasClass(node,'calendar-container'));
+      if(booking.length!==1)fail();
+      snapshot={roots,elements,page:nativePage[0],modal:modal[0],calendar:calendar[0],shell:shell[0],prayer:prayer[0],booking:booking[0]};
+      coverageNativeSnapshots.set(main,snapshot);
+    }
+    const saved=[];walkComposition(page.composition,node=>saved.push(node));
+    const ids=new Set();for(const node of saved){if(!node.id || ids.has(node.id))fail();ids.add(node.id);}
+    const roots=page.composition || [];
+    const pick=(nodes,name)=>{const matches=nodes.filter(node=>hasClass(node,name));if(matches.length>1)fail();return matches[0];};
+    const savedPage=pick(roots,'quote-page'),savedModal=pick(roots,'life-modal');
+    const pairs=[],omitted=[],rebound=new Set();
+    const markRebound=native=>walkComposition([native],node=>{const el=snapshot.elements.get(node.id);if(el)rebound.add(el);});
+    markRebound(snapshot.prayer);markRebound(snapshot.modal);markRebound(snapshot.booking);
+    let bookingPair=null;
+    const compatible=(native,node)=>native.type===node.type && native.tag===node.tag &&
+      classes(native).every(token=>classes(node).includes(token));
+    const empty=value=>value==null || value===false || value==='' ||
+      (Array.isArray(value)?value.every(empty):typeof value==='object' && Object.values(value).every(empty));
+    const safeBookingProjection=node=>{
+      const children=node.children || [];
+      // The historical safe projection contains a hidden diagnostic DIV and a
+      // non-executable whitespace frame placeholder. Never turn saved markup or
+      // a modified child into a runtime iframe, nor silently discard authored data.
+      if(children.length!==2 || children[0].type!=='container' || children[0].tag!=='div' ||
+        classes(children[0]).length || children[1].type!=='text' || children[1].tag!=='p' ||
+        classes(children[1]).join(' ')!=='booking-frame')fail();
+      for(const child of children){
+        for(const [key,value] of Object.entries(child)){
+          if(['id','type','tag','className'].includes(key))continue;
+          if(key==='text' && (value==null || typeof value==='string' && !value.trim()))continue;
+          if(key==='style' && value && Object.entries(value).every(([name,item])=>empty(item) || name==='offsetXPercent' && item===0))continue;
+          if(key==='layout' && value && Object.entries(value).every(([name,item])=>empty(item) || name==='mode' && item==='free' || name==='direction' && item==='column'))continue;
+          if(!empty(value))fail();
+        }
+      }
+    };
+    const bindStatic=(native,node)=>{
+      if(!compatible(native,node))fail();
+      const el=snapshot.elements.get(native.id);if(!el)fail();
+      pairs.push([el,node]);
+      if(native===snapshot.booking){
+        if(node.id!==native.id)fail(); // unchanged pre-booking anchor
+        safeBookingProjection(node);bookingPair=[el,node];return;
+      }
+      const a=native.children || [],b=node.children || [];
+      if(a.length!==b.length)fail();
+      // Complete static structure is required; an authored deletion/reorder must
+      // not make a different interactive child inherit a previous child's ID.
+      for(let i=0;i<a.length;i++)bindStatic(a[i],b[i]);
+    };
+    const omittedRoot=native=>{
+      if(saved.some(node=>node.id===native.id || hasClass(node,classes(native)[0])))fail();
+      omitted.push(snapshot.elements.get(native.id));
+    };
+    const bindAnchor=(native,node)=>{
+      if(node.id!==native.id || !compatible(native,node))fail();
+      pairs.push([snapshot.elements.get(native.id),node]);
+    };
+    if(savedPage){
+      bindAnchor(snapshot.page,savedPage);
+      const children=savedPage.children || [];
+      const shell=pick(children,'quote-shell');
+      // Before the conditional partial, original identities have not shifted.
+      // Preserve ordinary ID-based editing/additions/omissions in this region.
+      if(shell)bindAnchor(snapshot.shell,shell);else omittedRoot(snapshot.shell);
+      const calendar=pick(children,'calendar-section');
+      if(calendar){
+        bindAnchor(snapshot.calendar,calendar);
+        const booking=pick(calendar.children || [],'calendar-container');
+        if(booking)bindStatic(snapshot.booking,booking);else omittedRoot(snapshot.booking);
+      }else omittedRoot(snapshot.calendar);
+      const prayer=pick(children,'prayer-section');
+      if(prayer)bindStatic(snapshot.prayer,prayer);else omittedRoot(snapshot.prayer);
+    }else{
+      if(savedModal)fail();
+      omittedRoot(snapshot.page);
+    }
+    if(savedModal)bindStatic(snapshot.modal,savedModal);else omittedRoot(snapshot.modal);
+    const pairedElements=new Set(),pairedIds=new Set();
+    for(const [el,node] of pairs){
+      if(!el || el.ownerDocument!==document || pairedElements.has(el) || pairedIds.has(node.id))fail();
+      pairedElements.add(el);pairedIds.add(node.id);
+    }
+    // Validate the entire correspondence before touching IDs or removing nodes.
+    // Commit both lookup and materialization identity, not only a render-time map.
+    return ()=>{
+      for(const el of rebound){
+        delete el.dataset.cmsId;delete el.dataset.cmsCompositionId;
+      }
+      for(const [el,node] of pairs)el.dataset.cmsId=node.id;
+      if(bookingPair)coverageBookingProjections.set(bookingPair[0],bookingPair[1]);
+      for(const el of omitted)el?.remove();
+      return new Map(pairs.map(([el,node])=>[node.id,el]));
+    };
+  }
+
+  function applyTemplateBackedCompositionPage(coveragePlan = null) {
     const page=pageState();
     bindNativeTemplateIdentities();
-    const mounted=new Map();
+    const mounted=(coveragePlan || planCoverageTemplateIdentities(page))?.() || new Map();
     walkComposition(page.composition || [],node=>{
       const runtimeKey=String(node.systemKey || '');
-      const el=runtimeKey.startsWith('protect_runtime_form:')
+      const el=mounted.get(node.id) || (runtimeKey.startsWith('protect_runtime_form:')
         ? document.querySelector('form[data-cms-system-form="'+CSS.escape(runtimeKey)+'"]')
-        : findEditableElement(node.id);
+        : findEditableElement(node.id));
       if(el){
         // The server-owned form key mounts the existing native form. Its saved
         // canonical node ID remains stable even after historical materialization.
@@ -621,7 +743,7 @@
         // Move the original nodes, retaining native controls, state and listeners.
         // Unrepresented runtime inputs remain in their native parent.
         if(parent && el!==parent) parent.appendChild(el);
-        reconcile(node.children,el);
+        if(!coverageBookingProjections.has(el)) reconcile(node.children,el);
       }
     };
     reconcile(page.composition,document.querySelector('main'));
@@ -2110,6 +2232,16 @@
     if (el.matches?.('[data-public-nav-toggle],.nav-toggle')) return null;
     const tag = el.tagName.toLowerCase();
     if (['script','style','noscript','input','select','textarea'].includes(tag)) return null;
+    if(coverageBookingProjections.has(el)) {
+      const projection=cloneCanonicalValue(coverageBookingProjections.get(el));
+      walkComposition([projection],node=>{
+        if(identity.used.has(node.id)) throw new Error('The saved Coverage layout has conflicting identities. Your saved content was preserved.');
+        identity.used.add(node.id);
+        const remaining=(identity.pending.get(node.id)||0)-1;
+        if(remaining>0)identity.pending.set(node.id,remaining);else identity.pending.delete(node.id);
+      });
+      return projection;
+    }
 
     const id = materializedNodeId(el, fallbackId, identity);
     const model = legacyMigrationRecordForElement(el) || {};
@@ -3876,7 +4008,21 @@
     const original = rememberOriginal(el);
     const entityBound = el.hasAttribute?.('data-business-name') || el.hasAttribute?.('data-business-field');
     const commerceControl = !!el.dataset.legendStoreNav;
-    if (el instanceof HTMLImageElement) {
+    // Only the original native Life view can attach this non-serialized record.
+    // Saved classes/attributes, cloned nodes and other site templates cannot
+    // claim public identity ownership. Appearance remains ordinary authoring.
+    const profileField = SITE_KEY==='protect' && pageState().systemTemplateKey==='protect_template:life_wizard'
+      ? el[Symbol.for('legend.protect.public-profile-field')] : null;
+    const nativeProfileField = profileField && profileField.shell===document.querySelector('[data-protect-form-shell]') &&
+      profileField.root?.isConnected && profileField.shell?.contains(profileField.root) && profileField.root.contains(el)
+      ? profileField : null;
+    const failedProfileImage=nativeProfileField?.kind==='image' && el.getAttribute('src')===nativeProfileField.value && el.style.display==='none';
+    if(nativeProfileField?.kind==='text' || nativeProfileField?.kind==='initials') {
+      el.textContent=nativeProfileField.value;
+    }else if(nativeProfileField?.kind==='image' && el instanceof HTMLImageElement) {
+      if(el.getAttribute('src')!==nativeProfileField.value)el.setAttribute('src',nativeProfileField.value);
+      el.setAttribute('alt',nativeProfileField.alt);
+    }else if (el instanceof HTMLImageElement) {
       const media = model.mediaAssetId ? API_BASE + '/api/website-content/media/' + model.mediaAssetId : model.mediaUrl;
       el.src = media ? mediaUrl(media) : (original.src || '');
     } else if (!entityBound && !commerceControl && !el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName) && !isNativeTemplateFigure(el)) {
@@ -3889,7 +4035,7 @@
       if (href) el.setAttribute('href', href); else el.removeAttribute('href');
       el.target = model.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer';
     }
-    if (model.alt != null && el.tagName === 'IMG') el.alt = model.alt;
+    if (model.alt != null && el.tagName === 'IMG' && !nativeProfileField) el.alt = model.alt;
     if (el.tagName === 'VIDEO') {
       const media = model.mediaAssetId ? API_BASE + '/api/website-content/media/' + model.mediaAssetId : model.mediaUrl;
       if (media && safeUrl(media, true)) el.src = mediaUrl(media);
@@ -3904,10 +4050,15 @@
       el.muted=false;
       el.preload=looped ? 'auto' : 'metadata';
     }
-    applyDataBinding(el, model.dataBinding);
+    if(!nativeProfileField) applyDataBinding(el, model.dataBinding);
     applyCanonicalResponsiveAttributes(el,model);
     applyStyle(el, effectiveStyle(model,el));
     applyLayout(el, effectiveLayout(model,el));
+    if(failedProfileImage)el.style.display='none';
+    if(nativeProfileField?.kind==='initials'){
+      const photo=el.parentElement?.querySelector('img');
+      el.hidden=!!photo && photo.style.display!=='none';
+    }
     if (el.tagName === 'FORM') applyFormFieldPresentations(el,model);
     applyAnimations(el, model.animations);
   }
@@ -4386,6 +4537,13 @@
     restoreNativeFormContinuations();
     restoreFormStepPreview();
     documentState=normalizeDocument(doc);
+    // Prove Coverage correspondence before applying theme, shell, metadata or
+    // page mutations. Preparing native IDs alone does not claim readiness.
+    let coveragePlan=null;
+    if(SITE_KEY==='protect' && pageUsesSystemTemplate(pageState()) && pageState().systemTemplateKey==='protect_template:quote_index'){
+      bindNativeTemplateIdentities();
+      coveragePlan=planCoverageTemplateIdentities(pageState());
+    }
     applyTheme(documentState.theme);
     applyFavicon(documentState.faviconImageDataUrl);
 
@@ -4401,7 +4559,7 @@
       renderCanonicalShell();
       const page=pageState();
       if(pageUsesSystemTemplate(page)){
-        applyTemplateBackedCompositionPage();
+        applyTemplateBackedCompositionPage(coveragePlan);
       }else{
         renderCanonicalCompositionPage();
       }
@@ -9166,6 +9324,7 @@
       .legend-cms-editor [hidden]{display:none}
 
       body.legend-cms-editing .legend-cms-preview{container:legend-studio / inline-size}
+      body.legend-public--protect.legend-cms-editing .legend-cms-preview{display:flex;flex-direction:column}
       /* Editor canvas counterpart of legend-public-web.css's 980px header.
          Public media rules and authored Base styles remain unchanged. */
       @container legend-studio (max-width:980px){
@@ -9439,6 +9598,23 @@
     const remember=rememberFormPreview;
     if(selectedStep.phase)
       nativeFormPresentation(selectedStep.form,{phase:selectedStep.phase,step:selectedStep.nativeStep},formPreviewProjection);
+    else if(SITE_KEY==='protect' && pageState().systemTemplateKey==='protect_template:commercial_quote' &&
+        selectedStep.form.id==='commercialQuoteForm') {
+      // The native form owns these progress targets. Project display only;
+      // never call its validation/navigation handler or alter CurrentStep.
+      const form=selectedStep.form, main=form.closest('main');
+      const ownEntries=entries.filter(entry=>entry.form===form);
+      const position=ownEntries.indexOf(selectedStep)+1;
+      const target=key=>{
+        const id=form.dataset[key];
+        if(!id || !main) return null;
+        const matches=[...main.querySelectorAll('[data-cms-preview-for]')]
+          .filter(element=>element.id===id && element.dataset.cmsPreviewFor===form.id);
+        return matches.length===1 ? matches[0] : null;
+      };
+      formPreviewProjection.text(target('cmsPreviewProgressId'),'Step '+position+' of '+ownEntries.length);
+      formPreviewProjection.style(target('cmsPreviewProgressFillId'),'width',Math.round(position/ownEntries.length*100)+'%');
+    }
     for (const entry of entries) {
       if (entry.form !== selectedStep.form || entry.step === selectedStep.step) continue;
       remember(entry.step);
