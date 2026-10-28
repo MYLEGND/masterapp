@@ -7102,7 +7102,10 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
       if(node.tag!==tag)assert.deepEqual([node.tag,tag],['iframe','p'],'Only the existing safe iframe presentation conversion differs');
       node.tag=tag;
       if(['quote_index.div.node.node23','quote_index.div.node.node22.child.2'].includes(id)){
-        node.style={offsetXPercent:0};node.layout={mode:'free',direction:'column'};
+        // Literal retained revision382 presentation, including all responsive
+        // defaults: do not derive or scrub the fields that caused live rejection.
+        const retained=JSON.parse(readFileSync(new URL('./fixtures/coverage-booking-revision382.json',import.meta.url),'utf8'));
+        Object.assign(node,retained.find(child=>child.id===id));
       }
     }
     doc.pages['/quote'].composition=savedCoverageShape.filter(row=>row[3]===null).map(row=>structuredClone(captured.get(row[0])));
@@ -7116,7 +7119,7 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
   for(const search of ['', '?legendEdit=synthetic']){
     let original;
     const f=await domFixture({siteKey:'protect',doc,pathname,agentSlug:prefix?'synthetic-agent':'',pagePrefix:prefix,search,html,captureNativePage:true,beforeEval:w=>{
-      original={tile:w.document.querySelector('.life-tile'),modal:w.document.getElementById('lifeModal'),close:w.document.querySelector('.life-modal-close'),style:w.document.querySelector('main style'),booking:w.document.querySelector('.calendar-container').lastElementChild};
+      original={bookingStyle:w.document.querySelector('.calendar-container').lastElementChild.getAttribute('style'),tile:w.document.querySelector('.life-tile'),modal:w.document.getElementById('lifeModal'),close:w.document.querySelector('.life-modal-close'),style:w.document.querySelector('main style'),booking:w.document.querySelector('.calendar-container').lastElementChild};
       w.eval(script);
     }});
     try{
@@ -7134,6 +7137,9 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
         assert.equal(original.modal.querySelector('[role="dialog"]').getAttribute('aria-modal'),'true');
         assert.equal(f.w.document.querySelectorAll('#lifeModal').length,1);
         assert.equal(f.w.document.querySelector('.calendar-container').lastElementChild,original.booking,'Current native booking branch must retain its authorized node');
+        assert.equal(original.booking.getAttribute('style'),original.bookingStyle,'Saved placeholder typography never styles the native booking branch');
+        assert.equal(original.booking.hasAttribute('data-cms-id'),false);
+        assert.equal(original.booking.hasAttribute('data-cms-composition-id'),false);
         if(branch==='disabled'){
           assert.equal(original.booking.className,'calendar-fallback-card');
           assert.match(original.booking.textContent,/Scheduling unavailable/);
@@ -7153,7 +7159,7 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
         original.tile.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
         assert.equal(original.modal.classList.contains('open'),false);
       }else{
-        f.change('#legend-cms-breakpoint','mobile');verify('');
+        for(const breakpoint of ['desktop','tablet','mobile']){f.change('#legend-cms-breakpoint',breakpoint);verify(breakpoint==='mobile'?'':'520.856px');}
         f.change('#legend-cms-breakpoint','base');verify();
         const materialized=JSON.parse(JSON.stringify(f.w.__captureNativePage()));
         const find=(nodes,id)=>{for(const node of nodes){if(node.id===id)return node;const nested=find(node.children||[],id);if(nested)return nested;}};
@@ -7181,7 +7187,7 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
     assert.equal(w.getComputedStyle(modalBefore).display,'none');
   }finally{compiler.window.close();}
   }
-  for(const change of ['omit-modal','omit-calendar','omit-prayer','duplicate-modal','move-calendar','remove-close','authored-booking-text','authored-booking-style','pre-booking-edit-add-omit','extra-native-root']){
+  for(const change of ['omit-modal','omit-calendar','omit-prayer','duplicate-modal','move-calendar','remove-close','authored-booking-text','authored-booking-style','pre-booking-edit-add-omit','extra-native-root','authored-booking-breakpoint','authored-booking-color','authored-booking-numeric-string','authored-booking-layout','authored-booking-binding','authored-booking-signal','authored-booking-div-typography','authored-booking-tag','authored-booking-children']){
     const changed=structuredClone(doc),nodes=changed.pages['/quote'].composition;
     const pageNode=nodes.find(node=>node.className==='quote-page');
     const modalNode=nodes.find(node=>node.className==='life-modal');
@@ -7194,7 +7200,16 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
     if(change.startsWith('authored-booking')){
       const frame=canonicalNodeById(changed,'quote_index.div.node.node22.child.2','/quote');
       if(change==='authored-booking-text')frame.text='An authored change must not be silently discarded';
-      else frame.style.paddingTop=9;
+      else if(change==='authored-booking-style')frame.style.paddingTop=9;
+      else if(change==='authored-booking-breakpoint')frame.breakpointStyles.unknown={fontSize:17};
+      else if(change==='authored-booking-color')frame.breakpointStyles.mobile.color='url(https://untrusted.example.test)';
+      else if(change==='authored-booking-numeric-string')frame.style.fontSize='17';
+      else if(change==='authored-booking-layout')frame.breakpointLayouts.tablet.mode='grid';
+      else if(change==='authored-booking-binding')frame.dataBinding={source:'untrusted'};
+      else if(change==='authored-booking-signal')frame.signals=[{eventName:'untrusted'}];
+      else if(change==='authored-booking-div-typography')canonicalNodeById(changed,'quote_index.div.node.node23','/quote').style.fontSize=17;
+      else if(change==='authored-booking-tag')frame.tag='iframe';
+      else if(change==='authored-booking-children')frame.children.push(canonicalNode('unexpected.child','text','p',{text:'Must not disappear'}));
     }
     if(change==='pre-booking-edit-add-omit'){
       canonicalNodeById(changed,'quote_index.p.node.2','/quote').text='An ordinary authored introduction';

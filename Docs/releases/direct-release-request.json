@@ -1,41 +1,13 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder action ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1:fresh-protect-20261028 authorizes bounded canonical admission repair needed to complete the same PR713 release. Routine in-scope decisions delegated in Sentinel_fc7d4767eb1c8191a14c2f815d950d0b; latest direction is to continue through live verification. Independent Astra review accepted exact serializer delta. This request authorizes nonpublishing tooling promotion only; no application upload, SQL, routing, restart, provider/settings/credential/cost change or formal PR approval as Founder.",
-  "purpose": "Repair the proven Python/Node supersession serializer mismatch that stopped Protect before upload in run40703908687/1. Admit only exact canonical Protect supersession records through the existing immutable evidence transport. Retain live Python authority, source/identity/expiry/contradiction checks and no-replay behavior. Preserve the merged application9af32d2, Website/Parfait success receipts and Portal/Client unresolved operations; later recovery must use existing admission and reconcile them without blind uploads. Register only the independently reviewed exact original push non-entry source/log/package generation and reuse original source-bound Protect supersession/rollback preparation at both retained pre-intent checkpoints, preserving deadline wrappers and baseline checks. No old completion receipt is fabricated; prior exact source pairs remain accepted and crossed/unknown pairs remain rejected.",
-  "requestId": "protect-supersession-transport-20261028-v1",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "Continuation of the same PR713 release under ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1:fresh-protect-20261028 and current instruction to continue through live acceptance. Routine in-scope decisions remain delegated under Sentinel_fc7d4767eb1c8191a14c2f815d950d0b. Correct the concrete revision382 Coverage rendering regression found after canonical all-five reconciliation40720264630/1. Preserve all combined application work, saved Studio documents, original operations and receipts. No credentials, access, privacy, settings, new cost, unnecessary SQL, formal Founder PR approval or voice activation is authorized by this source correction.",
+  "purpose": "Preserve the exact inert historical Coverage booking projection with its saved base/responsive defaults and finite typography. The current guard rejected revision382 presentation before rendering. This changes only canonical safeBookingProjection validation; native booking identity/URL/styles, rendering and lossless capture remain unchanged. Keep unknown content, structure, executable metadata and unsupported presentation rejection. Native dependency closure selects Website and Protect for SHARED/WebsitePlatform/legend-public-cms.js; preserve verified Portal/Client/Parfait application9af operations. Reuse promoted PR721 tooling unchanged and canonical native checks/admission/rollback. No replay of old completion observations or old uploads. Calls remain paused pending actual safety, functional and budget acceptance.",
+  "requestId": "shayla-combined-coverage382-acceptance-20261028-v1",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-protect",
+    "masterapp-website"
+  ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "9af32d2e6bf608cb790eed59a43e90cdd9d877e6",
-    "sourceRevision": "4c906264314bb4839f45cc34848c2f9292295bb5",
-    "files": {
-      "scripts/deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "027d995aa2a7809d966e293cab250a673726abc8"
-      },
-      "scripts/test-deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "b885f472db50fa4798c390f9be7f88ebad55f8f6"
-      },
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "f31284e7fdbee1b068cf4510e50f8bf8b6dca37f"
-      },
-      "scripts/test-validation-resume.py": {
-        "mode": "100644",
-        "blob": "682103fe7bd5af297e794d06b0ea0c048817b1ab"
-      },
-      "scripts/release-artifacts/transport.cjs": {
-        "mode": "100644",
-        "blob": "1bc172e2c84f46fd15347008a0f4084adbfef8d5"
-      },
-      "scripts/release-artifacts/test-transport.cjs": {
-        "mode": "100644",
-        "blob": "41155b741c361a16b28af30df7e1b8fc6da105bd"
-      }
-    }
-  }
+  "preserveLiveTargets": false
 }
