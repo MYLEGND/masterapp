@@ -1,24 +1,24 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue the approved bounded completion-recovery tooling diagnosis after actual completion44 cache-bound failure. Promote only failure-path nonsecret receipt-cache diagnostics and focused regressions. Preserve all cap100, byte limits, full proof comparator, artifact/source identity, timeout, authority and success behavior. This is evidence acquisition, not a capacity fix or authorization to dispatch another completion invocation, upload, run SQL, restart, activate, change privacy/access or spend.",
-  "purpose": "Make the existing cache-bound failure actionable without changing the failed outcome or production admission. Any subsequent real completion observation requires separate current admission; no synthetic provider run or automatic retry.",
-  "requestId": "completion-cache-bound-diagnostic-20261028-v1",
+  "authorization": "Continue the designated successor's coordinated recovery for ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. Promote only independently reviewed failure-only held-state proof-boundary diagnostics and focused regressions. Preserve full metadata comparison, authority, original failures, cache100, byte limits and timeouts. No application deployment, SQL, restart, activation, access or spend. This does not authorize another completion invocation; prior44/45 permissions remain consumed.",
+  "purpose": "Identify the actual proof-boundary mismatch and retained receipt footprint in one bounded report without changing acceptance. Further consequential evidence acquisition requires separate current admission; no automatic retry.",
+  "requestId": "completion-proof-boundary-evidence-20261028-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "011c5a6f644cf686badc8e4dd90b7242404ca3a1",
-    "sourceRevision": "21e38aaef5c4ab5cff2dabd27efc210545f6f9eb",
+    "baseRevision": "5b5079761c7b01a289740484f4aa0cc2a94f9402",
+    "sourceRevision": "848bc78709fb97de7e9cf0f77083c9bf18732a25",
     "files": {
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "8f0f2d1d06dc3888ca1068f05cafaa84431061ed"
+        "blob": "8e7315711df8b1cb0263fd7934b8336b144912e7"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "cb0814f6b53d67428f2a42b7ac5bb564b5a0d099"
+        "blob": "2ea93253357bee595568b59a3af77fd53ee150d1"
       }
     }
   }
