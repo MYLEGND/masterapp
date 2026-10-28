@@ -1220,6 +1220,9 @@ def _recovery_preflight_source_contract(source, journal_source):
         # Completion decision-boundary refactor; exact paired generation only.
         ('a1fb29ac45e31287f03e0b5edc3c32cdf557943bcf2fe79040b241a34ceff253',
          '5b42fcbed0ac4a331ff5c706ef5a6a3ce96eb32d556ef4051c65ee4cf99e881e'),
+        # Reviewed bounded status-read diagnostics; exact unchanged journal pairing.
+        ('28322882e185f6e1c5c9a03b152a34772f6e9aa31b37b834dbc057789d38c56c',
+         '5b42fcbed0ac4a331ff5c706ef5a6a3ce96eb32d556ef4051c65ee4cf99e881e'),
     }:
         return True
     return (hashlib.sha256(source.encode()).hexdigest() in (RECOVERY_PREFLIGHT_PRODUCER_SHA256, 'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850', 'e75833a3c3a4d8827f48b7395a8af7e61eeab9e5cfbb4e1f6a0ebb4af49901ed', 'ef930621e8c36e447fd884ef99bd03f5ce666bf1feda3431158af8e86d5ab6ab',

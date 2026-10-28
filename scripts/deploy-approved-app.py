@@ -162,6 +162,52 @@ def deployment_read_process(command, timeout):
         raise
 
 
+def deployment_read_error_metadata(result):
+    """Allowlisted CLI-reported metadata, never a diagnosis or copied error text.
+
+    Accept only one complete recognized ERROR line (at most 8192 characters).
+    A nonzero exit is not a timeout. HTTP status and provider code are separate
+    observations; neither is inferred from the other.
+    """
+    code = result.returncode
+    stderr = result.stderr
+    metadata = dict(schemaVersion=1, source='azure-cli-reported', category='unknown',
+                    returnCode=code if type(code) is int and -255 <= code <= 255 else None,
+                    providerCode=None, httpStatus=None,
+                    inputTooLarge=type(stderr) is str and len(stderr) > 8192)
+    if metadata['returnCode'] is None or type(stderr) is not str or metadata['inputTooLarge']:
+        return metadata
+    provider_codes = {
+        'AuthenticationFailed': 'authentication', 'InvalidAuthenticationToken': 'authentication',
+        'ExpiredAuthenticationToken': 'authentication', 'AuthorizationFailed': 'authorization',
+        'Forbidden': 'authorization', 'ResourceNotFound': 'not_found',
+        'TooManyRequests': 'throttling', 'InternalServerError': 'service_error',
+        'ServiceUnavailable': 'service_error', 'BadRequest': 'invalid_request',
+    }
+    statuses = {
+        'Bad Request': (400, 'invalid_request'), 'Unauthorized': (401, 'authentication'),
+        'Forbidden': (403, 'authorization'), 'Not Found': (404, 'not_found'),
+        'Too Many Requests': (429, 'throttling'), 'Internal Server Error': (500, 'service_error'),
+        'Bad Gateway': (502, 'service_error'), 'Service Unavailable': (503, 'service_error'),
+        'Gateway Timeout': (504, 'service_error'),
+    }
+    # Only remove one conventional line ending; embedded/multiple lines remain unknown.
+    line = stderr.removesuffix('\n').removesuffix('\r')
+    if line.count('ERROR:') != 1:
+        return metadata
+    match = re.fullmatch(r'ERROR: \(([A-Za-z]+)\)(?: [^\r\n]*)?', line)
+    if match and match[1] in provider_codes:
+        if 'Operation returned an invalid status' in line or 'Code:' in line or 'HTTP/' in line:
+            return metadata
+        metadata.update(providerCode=match[1], category=provider_codes[match[1]])
+    else:
+        match = re.fullmatch(r"ERROR: Operation returned an invalid status '([A-Za-z ]+)'", line)
+        if match and match[1] in statuses:
+            status, category = statuses[match[1]]
+            metadata.update(httpStatus=status, category=category)
+    return metadata
+
+
 class Azure:
     def __init__(self, app, package, url, revision, static=False):
         self.app, self.package, self.url, self.revision = app, package, url, revision
@@ -176,6 +222,11 @@ class Azure:
             ['az', 'webapp', 'log', 'deployment', 'list', '-g', _RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP, '-n', self.app,
              '--only-show-errors', '-o', 'json'], timeout=_DEPLOYMENT_READ_CAP.get())
         if result.returncode:
+            try:
+                print('LEGEND_DEPLOYMENT_READ_ERROR:' + json.dumps(
+                    deployment_read_error_metadata(result), sort_keys=True), flush=True)
+            except Exception:
+                pass  # Diagnostic failure must not replace the original fail-closed result.
             raise RuntimeError('Azure deployment status unavailable')
         rows = json.loads(result.stdout)
         if not isinstance(rows, list) or any(
