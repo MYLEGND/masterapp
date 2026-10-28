@@ -129,3 +129,14 @@ test('DVH choices display product-specific wording while historical answer keys 
     }finally{w.close();}
   }
 });
+
+
+test('DVH narrow Studio canvas cannot inherit the desktop fixed-width Back button',()=>{
+  const source=read('Protect-Website/Views/Quote/DentalVisionHearing.cshtml');
+  const desktop=source.slice(source.indexOf('@@container protect-quote (min-width: 1024px)'),source.indexOf('@@container protect-quote (max-width: 720px)'));
+  assert.match(desktop,/\.lq-step-actions \.btn-ghost\s*\{\s*flex: 0 0 220px !important/);
+  assert.doesNotMatch(source, /@@media\s*\((?:min|max)-width:/);
+  assert.match(source,/@@container protect-quote \(max-width: 767\.98px\)[\s\S]*?\.lq-step-actions\s*\{\s*flex-direction: column/);
+  assert.match(source,/@@media \(prefers-reduced-motion: reduce\)/,'accessibility preference remains viewport-independent');
+  assert.match(read('SHARED/WebsitePlatform/public-inquiry-form.css'),/main:has\(> \[data-protect-form-shell\]\)[^{]*\{[^}]*container:protect-quote \/ inline-size/);
+});

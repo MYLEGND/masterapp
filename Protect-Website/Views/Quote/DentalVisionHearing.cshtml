@@ -1197,7 +1197,8 @@ body.dvh-landing.page-mode-paid-landing header .navbar-brand img {
     text-decoration: none !important;
 }
 
-@@media (min-width: 1024px) {
+/* Use the shared website canvas width, including narrow Studio previews. */
+@@container protect-quote (min-width: 1024px) {
     main.layout-content {
     }
 
@@ -1307,7 +1308,7 @@ body.dvh-landing.page-mode-paid-landing header .navbar-brand img {
     }
 }
 
-@@media (max-width: 720px) {
+@@container protect-quote (max-width: 720px) {
 
 
     .dq-contact-capture-wrap .lq-field-row {
@@ -1324,7 +1325,7 @@ body.dvh-final-step-active .dq-proof-chips {
     display: none;
 }
 
-@@media (max-width: 767.98px) {
+@@container protect-quote (max-width: 767.98px) {
     .dq-surface {
     }
 
@@ -1406,7 +1407,7 @@ body.dvh-final-step-active .dq-proof-chips {
 
 <style>
 /* DVH UX DENSITY REBALANCE */
-@@media (min-width: 1024px) {
+@@container protect-quote (min-width: 1024px) {
     #dvhHeroEntryPanel {
         max-width: 940px;
         margin: 0 auto;
@@ -1481,7 +1482,7 @@ body.dvh-final-step-active .dq-proof-chips {
     }
 }
 
-@@media (max-width: 767.98px) {
+@@container protect-quote (max-width: 767.98px) {
     body.dvh-final-step-active .dq-form-panel.qf-final-panel-no-chrome,
     body.dvh-final-step-active .dq-form-panel.qf-final-review-flat-mode,
     body.dvh-final-step-active .dq-form-panel.is-submitted,
