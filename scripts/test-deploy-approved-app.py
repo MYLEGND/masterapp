@@ -2834,6 +2834,15 @@ class RedactedPrepublicationDiagnosticsTests(unittest.TestCase):
 
 
 class CompletionProofReuseTests(unittest.TestCase):
+    def test_efficiency_reporting_failure_never_replaces_outcome(self):
+        a=deploy._RELEASE_AUTHORITY
+        with patch.object(a,'report_recovery_efficiency',side_effect=RuntimeError('report failed')), \
+             patch.object(deploy,'_complete_fast_track',side_effect=ValueError('original failure')):
+            with self.assertRaisesRegex(ValueError,'original failure'):
+                deploy.complete_fast_track(1,'a'*40,Path('/unused'))
+        with patch.object(a,'report_recovery_efficiency',side_effect=RuntimeError('report failed')), \
+             patch.object(deploy,'_complete_fast_track',return_value={'state':'ok'}):
+            self.assertEqual(deploy.complete_fast_track(1,'a'*40,Path('/unused'))['state'],'ok')
     def fixture(self):
         a=deploy._RELEASE_AUTHORITY
         revision='a'*40
@@ -3026,13 +3035,13 @@ class CompletionOnlyTests(unittest.TestCase):
     def test_prelogin_validation_verifies_package_without_provider_effect(self):
         from types import SimpleNamespace
         a=deploy._RELEASE_AUTHORITY
-        with patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',return_value=dict(toolRevision='b'*40)),patch.object(a,'fast_track_completion_original',return_value=dict(targets=['portal'])),patch.object(a,'fast_track_completion_material',return_value=dict(packageArtifact=dict(id=10,name='package',digest='sha256:'+'d'*64),intent=dict(packageDigest='e'*64))),patch.object(deploy,'verify_package',return_value='e'*64),patch.object(Path,'is_file',return_value=True),patch.object(Path,'is_symlink',return_value=False),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact') as download,patch.object(deploy,'target_azure') as provider:
+        with patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',return_value=dict(toolRevision='b'*40)),patch.object(a,'assert_fast_track_completion_live_execution'),patch.object(a,'fast_track_completion_original',return_value=dict(targets=['portal'])),patch.object(a,'fast_track_completion_material',return_value=dict(packageArtifact=dict(id=10,name='package',digest='sha256:'+'d'*64),intent=dict(packageDigest='e'*64))),patch.object(deploy,'verify_package',return_value='e'*64),patch.object(Path,'is_file',return_value=True),patch.object(Path,'is_symlink',return_value=False),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact') as download,patch.object(deploy,'target_azure') as provider:
             self.assertEqual(deploy.complete_fast_track(1,'a'*40,Path('/unused'),validate_only=True)['state'],'COMPLETION_PACKAGES_VERIFIED')
             download.assert_called_once();provider.assert_not_called()
     def test_bad_original_package_blocks_all_provider_observation(self):
         from types import SimpleNamespace
         a=deploy._RELEASE_AUTHORITY;material=dict(packageArtifact=dict(name='package',id=10,digest='sha256:'+'d'*64),intent=dict(packageDigest='e'*64))
-        with patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',return_value=dict(toolRevision='b'*40)),patch.object(a,'fast_track_completion_original',return_value=dict(targets=['portal'])),patch.object(a,'fast_track_completion_material',return_value=material),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact') as download,patch.object(deploy,'verify_package',return_value='wrong'),patch.object(deploy,'target_azure') as provider:
+        with patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',return_value=dict(toolRevision='b'*40)),patch.object(a,'assert_fast_track_completion_live_execution'),patch.object(a,'fast_track_completion_original',return_value=dict(targets=['portal'])),patch.object(a,'fast_track_completion_material',return_value=material),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact') as download,patch.object(deploy,'verify_package',return_value='wrong'),patch.object(deploy,'target_azure') as provider:
             with patch.object(Path,'is_file',return_value=True),patch.object(Path,'is_symlink',return_value=False):
                 with self.assertRaisesRegex(ValueError,'PACKAGE_CHANGED'):deploy.complete_fast_track(1,'a'*40,Path('/unused'),validate_only=True)
             download.assert_called_once();provider.assert_not_called()
@@ -3110,7 +3119,7 @@ class CompletionPublicMetadataTests(unittest.TestCase):
 
 
 class CompletionAdapterTests(unittest.TestCase):
-    def run_adapter(self,*,probe_failure=False,observer_change=False,probe_failure_at=4,metadata_error=None,proof_change=False):
+    def run_adapter(self,*,probe_failure=False,observer_change=False,probe_failure_at=4,metadata_error=None,proof_change=False,live_failure_at=0):
         from types import SimpleNamespace
         a=deploy._RELEASE_AUTHORITY;revision='a'*40
         observer=dict(runId=2,runAttempt=1,jobId=20,toolRevision='b'*40,promotionRunId=3)
@@ -3127,7 +3136,7 @@ class CompletionAdapterTests(unittest.TestCase):
         def provider(*args):timeline.append('provider');return SimpleNamespace(revision=revision)
         auth_calls=[0]
         def auth(*args):
-            self.assertIsNone(a._RECOVERY_PROOF_VIEW.get())
+            self.assertIsNotNone(a._RECOVERY_PROOF_VIEW.get())
             auth_calls[0]+=1
             return dict(observer,jobId=99) if observer_change and auth_calls[0]>1 else observer
         reads=[0]
@@ -3139,8 +3148,12 @@ class CompletionAdapterTests(unittest.TestCase):
                 a.api_get('owner/repo','actions/runs/999','test-only')
                 a.api_get('owner/repo','actions/runs/999','test-only')
             return completed
-        with patch.object(Path,'is_file',return_value=True),patch.object(Path,'is_symlink',return_value=False),patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',side_effect=auth),patch.object(a,'_api_get_uncached',side_effect=metadata_api),patch.object(a,'fast_track_completion_original',return_value=original),patch.object(a,'fast_track_completion_material',return_value=material),patch.object(a,'fast_track_completed_operation_receipts',side_effect=completed_proof),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact'),patch.object(deploy,'verify_package',side_effect=verify),patch.object(deploy,'target_azure',side_effect=provider),patch.object(deploy,'reconcile',return_value='preserved') as reconcile,patch.object(deploy,'verify_fast_track_public_metadata',side_effect=metadata),patch.object(deploy.importlib.util,'spec_from_file_location',return_value=spec),patch.object(deploy.importlib.util,'module_from_spec',return_value=owner):
-            if probe_failure or observer_change or proof_change:
+        live_calls=[0]
+        def live(*args):
+            self.assertIsNone(a._RECOVERY_PROOF_VIEW.get());live_calls[0]+=1
+            if live_calls[0]==live_failure_at:raise ValueError('live changed')
+        with patch.object(Path,'is_file',return_value=True),patch.object(Path,'is_symlink',return_value=False),patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')),patch.object(a,'assert_fast_track_completion_execution',side_effect=auth),patch.object(a,'assert_fast_track_completion_live_execution',side_effect=live),patch.object(a,'_api_get_uncached',side_effect=metadata_api),patch.object(a,'fast_track_completion_original',return_value=original),patch.object(a,'fast_track_completion_material',return_value=material),patch.object(a,'fast_track_completed_operation_receipts',side_effect=completed_proof),patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.object(a,'_download_run_artifact'),patch.object(deploy,'verify_package',side_effect=verify),patch.object(deploy,'target_azure',side_effect=provider),patch.object(deploy,'reconcile',return_value='preserved') as reconcile,patch.object(deploy,'verify_fast_track_public_metadata',side_effect=metadata),patch.object(deploy.importlib.util,'spec_from_file_location',return_value=spec),patch.object(deploy.importlib.util,'module_from_spec',return_value=owner):
+            if probe_failure or observer_change or proof_change or live_failure_at:
                 with self.assertRaises(a.ReleaseOperationHistoryUnproven if proof_change else type(metadata_error) if metadata_error else ValueError):deploy.complete_fast_track(1,revision,Path('/unused'))
                 publish.assert_not_called()
                 if probe_failure:self.assertEqual(reconcile.call_count,probe_failure_at//2)
@@ -3155,6 +3168,7 @@ class CompletionAdapterTests(unittest.TestCase):
                     self.assertTrue(call.kwargs['reconcile_only']);self.assertTrue(call.kwargs['require_receipt'])
             self.assertEqual(timeline[:2],['package','package'])
     def test_all_bytes_before_observation_and_aggregate_only_after_all_probes(self):self.run_adapter()
+    def test_summary_live_guard_failure_never_publishes(self):self.run_adapter(live_failure_at=2)
     def test_last_public_probe_failure_never_emits_aggregate(self):self.run_adapter(probe_failure=True)
     def test_http403_before_or_after_website_reconciliation_never_emits_aggregate(self):
         for probe in [3,4]:
@@ -3189,6 +3203,7 @@ class CompletionPackagePhaseV4Tests(unittest.TestCase):
         material=dict(packageArtifact=dict(name='original',id=10,digest='sha256:'+'d'*64),intent=dict(packageDigest=self.digest))
         stack.enter_context(patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')))
         for name,value in [('assert_fast_track_completion_execution',dict(toolRevision='b'*40)),('fast_track_completion_original',dict(targets=['portal'])),('fast_track_completion_material',material)]:stack.enter_context(patch.object(a,name,return_value=value))
+        stack.enter_context(patch.object(a,'assert_fast_track_completion_live_execution'))
         stack.enter_context(patch.object(deploy.subprocess,'run',return_value=SimpleNamespace(returncode=0)))
         self.download=stack.enter_context(patch.object(a,'_download_run_artifact',side_effect=download))
         self.provider=stack.enter_context(patch.object(deploy,'target_azure',side_effect=AssertionError('provider reached')))

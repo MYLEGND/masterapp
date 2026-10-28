@@ -1294,19 +1294,29 @@ def complete_fast_track(original_run, revision, package_root, *, validate_only=F
     # Cache immutable authenticated bytes only for this invocation. Mutable proof
     # snapshots are separately closed before any receipt can be published.
     with _RELEASE_AUTHORITY.recovery_material_reuse():
-        return _complete_fast_track(original_run, revision, package_root, validate_only=validate_only)
+        outcome='failure'
+        try:
+            result=_complete_fast_track(original_run, revision, package_root, validate_only=validate_only)
+            outcome='success'
+            return result
+        finally:
+            try:
+                _RELEASE_AUTHORITY.report_recovery_efficiency(outcome)
+            except BaseException:
+                pass  # Measurements must not affect completion semantics.
 
 
 def _complete_fast_track(original_run, revision, package_root, *, validate_only=False):
     authority=_RELEASE_AUTHORITY
     print('FAST_TRACK_COMPLETION_STAGE:original-authority:start', flush=True)
-    observer=authority.assert_fast_track_completion_execution(original_run,revision)
     repository=os.environ['GITHUB_REPOSITORY'];token=os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
     with authority.recovery_admission_proof():
+        observer=authority.assert_fast_track_completion_execution(original_run,revision)
         original=authority.fast_track_completion_original(repository,original_run,revision,token)
         if subprocess.run(['git','merge-base','--is-ancestor',revision,observer['toolRevision']],capture_output=True).returncode:
             raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_NOT_ANCESTOR')
         materials={key:authority.fast_track_completion_material(repository,original,key,token) for key in original['targets']}
+    authority.assert_fast_track_completion_live_execution(original_run,revision,observer)
     print('FAST_TRACK_COMPLETION_STAGE:original-authority:verified', flush=True)
     # Validate all original bytes before even the first completion record.
     for key,material in materials.items():
@@ -1335,15 +1345,16 @@ def _complete_fast_track(original_run, revision, package_root, *, validate_only=
         print('FAST_TRACK_COMPLETION_STAGE:target:'+key+':verified', flush=True)
     print('FAST_TRACK_COMPLETION_STAGE:summary-proof:start', flush=True)
     with authority.recovery_admission_proof():
+        if authority.assert_fast_track_completion_execution(original_run,revision)!=observer:
+            raise ValueError('FAST_TRACK_COMPLETION_OBSERVER_CHANGED')
         completed=authority.fast_track_completed_operation_receipts(repository,original['run'],token,require_completed_observer=False)
     print('FAST_TRACK_COMPLETION_STAGE:summary-proof:verified', flush=True)
     if not completed:
         raise ValueError('FAST_TRACK_COMPLETION_RECEIPTS_STILL_MISSING')
-    if authority.assert_fast_track_completion_execution(original_run,revision)!=observer:
-        raise ValueError('FAST_TRACK_COMPLETION_OBSERVER_CHANGED')
     summary=dict(schemaVersion=1,phase='success',originalRun=original_run,applicationRevision=revision,
         producingRun=observer['runId'],producingAttempt=observer['runAttempt'],observer=observer,targets=completed)
     print('FAST_TRACK_COMPLETION_STAGE:summary-publish:start', flush=True)
+    authority.assert_fast_track_completion_live_execution(original_run,revision,observer)
     owner.publish_record(authority.fast_track_completion_summary_name(original_run,revision),summary)
     print('FAST_TRACK_COMPLETION_STAGE:summary-publish:verified', flush=True)
     return {'state':'ORIGINAL_COMPLETIONS_VERIFIED','targets':results,'originalRun':original_run}

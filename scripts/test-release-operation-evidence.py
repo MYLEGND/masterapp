@@ -904,7 +904,7 @@ class CompletionJournalTests(unittest.TestCase):
             packageJob=dict(id=12),packageAttempt=1,packageArtifact=dict(id=11,digest='sha256:'+'f'*64),originalJob=dict(id=12))
         self.observer=dict(runId=2,runAttempt=1,jobId=20,toolRevision='f'*40,promotionRunId=3)
         self.success=None;self.submitted=None
-        self.authority=SimpleNamespace(_completion_original_unchanged=Mock(),validate_original_completion_success=Mock(),assert_fast_track_completion_execution=Mock(return_value=self.observer),release_operation_history=Mock(side_effect=lambda *args,**kw:self.submitted if kw.get('phase')=='submitted' else self.success))
+        self.authority=SimpleNamespace(_completion_original_unchanged=Mock(),validate_original_completion_success=Mock(),assert_fast_track_completion_execution=Mock(return_value=self.observer),assert_fast_track_completion_live_execution=Mock(return_value=self.observer),release_operation_history=Mock(side_effect=lambda *args,**kw:self.submitted if kw.get('phase')=='submitted' else self.success))
         from contextlib import nullcontext
         self.authority.recovery_admission_proof=nullcontext
         self.publish=Mock(return_value=dict(artifactId=42));self.env=dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='test-only')
@@ -964,10 +964,11 @@ class CompletionJournalTests(unittest.TestCase):
             yield
             timeline.append('proof-rechecked')
         self.authority.recovery_admission_proof=boundary
-        self.authority.assert_fast_track_completion_execution.side_effect=lambda *args:(timeline.append('live'),self.observer)[1]
+        self.authority.assert_fast_track_completion_execution.side_effect=lambda *args:(timeline.append('history'),self.observer)[1]
+        self.authority.assert_fast_track_completion_live_execution.side_effect=lambda *args:(timeline.append('live'),self.observer)[1]
         self.publish.side_effect=lambda *args:timeline.append('publish')
         self.owner().record_success(['new'])
-        self.assertEqual(timeline,['proof-enter','proof-rechecked','live','publish'])
+        self.assertEqual(timeline,['proof-enter','history','proof-rechecked','live','publish'])
 
     def test_changed_metadata_at_proof_exit_never_publishes_or_accepts_existing(self):
         from contextlib import contextmanager
@@ -981,7 +982,15 @@ class CompletionJournalTests(unittest.TestCase):
             with self.subTest(existing=existing),self.assertRaisesRegex(RuntimeError,'fresh proof changed'):
                 self.owner().record_success(['new'])
         self.publish.assert_not_called()
-        self.authority.assert_fast_track_completion_execution.assert_not_called()
+        self.authority.assert_fast_track_completion_live_execution.assert_not_called()
+
+    def test_post_closure_guard_failure_blocks_publish_and_existing_return(self):
+        self.authority.assert_fast_track_completion_live_execution.side_effect=ValueError('live changed')
+        for existing in [None,dict(self.intent,phase='success',deploymentIds=['new'])]:
+            self.success=existing
+            with self.subTest(existing=existing),self.assertRaisesRegex(ValueError,'live changed'):
+                self.owner().record_success(['new'])
+        self.publish.assert_not_called()
 
 
 class RetainedRecoveryJournalTests(DurableOperationProtocolTests):
