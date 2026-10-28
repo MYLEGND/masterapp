@@ -766,12 +766,27 @@
       if(children.length!==2 || children[0].type!=='container' || children[0].tag!=='div' ||
         classes(children[0]).length || children[1].type!=='text' || children[1].tag!=='p' ||
         classes(children[1]).join(' ')!=='booking-frame')fail();
+      const record=value=>value && typeof value==='object' && !Array.isArray(value);
+      const layout=value=>record(value) && Object.entries(value).every(([name,item])=>
+        empty(item) || name==='mode' && item==='free' || name==='direction' && item==='column');
+      // These inert saved children are retained only in the existing projection;
+      // they are never mounted or styled onto the native booking iframe. Preserve
+      // their canonical responsive defaults and finite text typography losslessly.
+      const style=(value,text)=>record(value) && Object.entries(value).every(([name,item])=>
+        empty(item) || name==='offsetXPercent' && item===0 || text && (
+          ['fontScale','fontSize','lineHeight'].includes(name) && typeof item==='number' && Number.isFinite(item) && item>0 ||
+          name==='fontWeight' && Number.isInteger(item) && item>=100 && item<=900 ||
+          name==='color' && typeof item==='string' && /^#[0-9a-f]{6}$/i.test(item)));
+      const breakpoints=(value,validate)=>record(value) && Object.entries(value).every(([name,item])=>
+        ['desktop','tablet','mobile'].includes(name) && validate(item));
       for(const child of children){
         for(const [key,value] of Object.entries(child)){
           if(['id','type','tag','className'].includes(key))continue;
           if(key==='text' && (value==null || typeof value==='string' && !value.trim()))continue;
-          if(key==='style' && value && Object.entries(value).every(([name,item])=>empty(item) || name==='offsetXPercent' && item===0))continue;
-          if(key==='layout' && value && Object.entries(value).every(([name,item])=>empty(item) || name==='mode' && item==='free' || name==='direction' && item==='column'))continue;
+          if(key==='style' && style(value,child===children[1]))continue;
+          if(key==='layout' && layout(value))continue;
+          if(key==='breakpointStyles' && breakpoints(value,item=>style(item,child===children[1])))continue;
+          if(key==='breakpointLayouts' && breakpoints(value,layout))continue;
           if(!empty(value))fail();
         }
       }
