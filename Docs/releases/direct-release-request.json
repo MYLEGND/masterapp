@@ -1,13 +1,14 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder-authorized canonical-loading-studio-20261028 continuation: repair and selectively deploy confirmed shared loading defects across actual public and authenticated Studio consumers. Preserve release156, all content/drafts/publications, tenant and editor-reader authorization, paused calls and both $25 caps. No new costs.",
-  "purpose": "Start canonical CMS once on parsed DOM, bound complete initial publication/draft reads and authenticated workspace startup, and project Protect public reads to the requested page body while preserving full navigation/shared content and native forms. No content migration, republication, stale fallback or mutation retry changes.",
-  "requestId": "canonical-website-loading-studio-20261028-v1",
+  "authorization": "Founder-authorized preparation of the full PR725 repair scope only. RELEASE HELD: no merge or deployment until all pre-release loading, runtime-binding, forms/Studio and Shayla prerequisites are complete, independently accepted, and the exact final candidate passes required checks and protected release confirmation. This saved request is not readiness or deployment approval. Preserve release156, content/drafts/publications, tenant and editor-reader authorization, paused calls, hours and both $25 caps. No new costs.",
+  "purpose": "Complete canonical public/Studio loading and recovery, page-local Protect reads, package-hash runtime/dependency binding, and confirmed form repairs together. Preserve styling and native controls; finish product-question review and browser acceptance. Include Parfait because it consumes the changed shared inquiry runtime. Booking readiness is separate. Served asset/live behavior and authorized controlled-call outcomes require post-deployment verification; they do not waive pre-release prerequisites. No schema/routing changes, content migration, republication, stale fallback or mutation retry changes.",
+  "requestId": "canonical-website-loading-studio-20261028-v2",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
     "masterapp-client",
     "masterapp-protect",
+    "masterapp-parfait",
     "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
