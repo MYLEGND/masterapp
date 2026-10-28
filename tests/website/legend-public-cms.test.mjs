@@ -6563,8 +6563,11 @@ test('Protect outer geometry has one adjustable scoped default without new maski
   assert.doesNotMatch(shell,/@media/);
   assert.doesNotMatch(shell,/!important|overflow:\s*hidden|max-height:\s*\d/);
   assert.doesNotMatch(shell,/\.public-form|\.legend-native-experience|\.pcq-form-shell/);
+  const shellAttributes=view=>view.match(/<[a-z][^>]*\sdata-protect-form-shell(?=[\s=>])[^>]*>/gi)||[];
   for(const key of ['life','disability','dvh']){
-    assert.equal((nativeViewSources[key].match(/data-protect-form-shell/g)||[]).length,1);
+    assert.equal(shellAttributes(nativeViewSources[key]).length,1,'Exactly one actual native wrapper attribute; JavaScript selector strings are not wrappers');
+    assert.equal(shellAttributes(nativeViewSources[key]+'<div data-protect-form-shell></div>').length,2,'The guard must still detect a duplicate wrapper');
+    assert.equal(shellAttributes(nativeViewSources[key]+'<div\n class="duplicate"\n data-protect-form-shell\n></div>').length,2,'A multiline duplicate must also be detected');
     assert.match(nativeViewSources[key],/data-cms-presentation="quote"/);
     assert.match(nativeViewSources[key],/LEGEND_NATIVE_FORM_PRESENTATION\?\.apply/);
     assert.doesNotMatch(nativeViewSources[key],/width:\s*min\(96vw,\s*1480px\)/);
@@ -7047,7 +7050,7 @@ function retainedProtectShellFixture(){
   for(const node of nodes.values())if(node.children.length)delete node.text;
   return shell;
 }
-function assertRetainedProtectShell(w,shell){
+function assertRetainedProtectShell(w,shell,expectedHeight='520.856px'){
   const walk=nodes=>{for(const node of nodes){
     const el=w.document.querySelector('[data-cms-id="'+node.id+'"]');
     assert.ok(el,'Saved shell node '+node.id);assert.equal(el.tagName.toLowerCase(),node.tag);
@@ -7056,7 +7059,8 @@ function assertRetainedProtectShell(w,shell){
     walk(node.children||[]);
   }};
   walk(shell.header);walk(shell.footer);
-  assert.equal(w.document.querySelector('.site-footer').style.height,'520.856px');
+  assert.equal(shell.footer[0].style.heightPx,520.856,'The saved Base geometry is unchanged at every effective breakpoint');
+  assert.equal(w.document.querySelector('.site-footer').style.height,expectedHeight);
 }
 
 for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserves native CSS modal identity and scoped links: '+(prefix||'root'),async()=>{
@@ -7114,8 +7118,8 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
       w.eval(script);
     }});
     try{
-      const verify=()=>{
-        assertRetainedProtectShell(f.w,doc.shell);
+      const verify=(expectedHeight='520.856px')=>{
+        assertRetainedProtectShell(f.w,doc.shell,expectedHeight);
         assert.equal(f.w.document.querySelector('.life-tile'),original.tile);
         assert.equal(f.w.document.getElementById('lifeModal'),original.modal);
         assert.equal(original.modal.dataset.cmsId,'quote_index.div.node.node28');
@@ -7147,7 +7151,7 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
         original.tile.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
         assert.equal(original.modal.classList.contains('open'),false);
       }else{
-        f.change('#legend-cms-breakpoint','mobile');verify();
+        f.change('#legend-cms-breakpoint','mobile');verify('');
         f.change('#legend-cms-breakpoint','base');verify();
         const materialized=JSON.parse(JSON.stringify(f.w.__captureNativePage()));
         const find=(nodes,id)=>{for(const node of nodes){if(node.id===id)return node;const nested=find(node.children||[],id);if(nested)return nested;}};
@@ -7225,7 +7229,8 @@ for(const [siteKey,template] of [['legend','protect_template:quote_index'],['bus
   const dom=new JSDOM('<!doctype html><html><body><main><p>Other native content</p></main></body></html>',{url:'https://site.example.test/quote',runScripts:'outside-only'});
   try{
     const w=dom.window;w.CSS={escape:value=>String(value)};
-    w.LEGEND_PUBLIC_CMS_RENDER_INPUT={siteKey,document:doc,pageKey:'other',pagePath:'/quote',server:true};
+    w.LEGEND_PUBLIC_CMS_RENDER_INPUT={siteKey,document:doc,pageKey:'other',pagePath:'/quote',server:true,
+      business:siteKey==='business'?{id:'11111111-1111-4111-8111-111111111111',displayName:'Synthetic business'}:null};
     assert.doesNotThrow(()=>w.eval(source));
     assert.equal(w.document.querySelector('[data-cms-id="ordinary.copy"]').textContent,'Ordinary saved content');
   }finally{dom.window.close();}
@@ -7376,7 +7381,7 @@ for(const owner of profileOwners) test('Life current 186 graph retains scoped pu
       w.eval(projection);
     }});
     try{
-      const verify=()=>{
+      const verify=(expectedHeight='520.856px')=>{
         assert.equal(f.w.document.getElementById('lifeWizardForm'),original.form);assert.equal(original.input.required,true);
         assert.equal(original.form.elements.AgentSlug.value,'synthetic-'+owner.key);
         assert.equal(original.form.querySelector('a').getAttribute('href'),'/a/synthetic-'+owner.key+'/booking');
@@ -7385,7 +7390,7 @@ for(const owner of profileOwners) test('Life current 186 graph retains scoped pu
         assert.equal(original.card.querySelector('.lq-agent-avatar img')?.getAttribute('src')||'',owner.photo);
         assert.equal(original.card.querySelector('.lq-agent-license')?.textContent||'',owner.npn?'NPN '+owner.npn:'');
         assert.equal(original.outside.isConnected,false,'The unrepresented outside strip remains omitted; no resurrection');
-        assertRetainedProtectShell(f.w,doc.shell);
+        assertRetainedProtectShell(f.w,doc.shell,expectedHeight);
         for(const node of canonicalNodes(doc,'/quote/life'))assert.ok(f.w.document.querySelector('[data-cms-id="'+node.id+'"]'),node.id);
       };
       verify();
@@ -7405,7 +7410,7 @@ for(const owner of profileOwners) test('Life current 186 graph retains scoped pu
         f.w.dispatchEvent(new f.w.CustomEvent('legend:website-content-rendered'));
         assert.equal(image.style.display,'none');assert.equal(fallback.hidden,false);assert.equal(srcWrites,0,'Reapply must not retry the same failed image URL');
       }
-      if(search){f.change('#legend-cms-breakpoint','mobile');verify();f.change('#legend-cms-breakpoint','base');verify();assert.deepEqual(await f.save(),doc);}
+      if(search){f.change('#legend-cms-breakpoint','mobile');verify('');f.change('#legend-cms-breakpoint','base');verify();assert.deepEqual(await f.save(),doc);}
       assert.equal(f.calls.some(call=>call.method==='POST' && !call.url.includes('/manage/')),false);
     }finally{f.close();}
   }
@@ -7436,11 +7441,11 @@ for(const owner of profileOwners) test('Life surviving outside public-card roots
       root=w.document.querySelector('.lq-human-strip');after=w.document.getElementById('afterPublicCard');w.eval(projection);
     }});
     try{
-      const verify=()=>{
+      const verify=(expectedHeight='520.856px')=>{
         assert.equal(root.isConnected,!omit);
         assert.equal(f.w.document.getElementById('afterPublicCard'),after);
         assert.equal(after.dataset.cmsId,later.id);assert.equal(after.textContent,'Unrelated later copy');
-        assertRetainedProtectShell(f.w,current.shell);
+        assertRetainedProtectShell(f.w,current.shell,expectedHeight);
         assert.equal(f.w.document.querySelector('[data-cms-id="authored.profile.copy"]').textContent,'Ordinary authored copy');
         assert.equal(f.w.document.querySelector('[data-cms-id="authored.profile.image"]').getAttribute('src'),'https://images.example/authored.png');
         if(omit)return;
@@ -7456,7 +7461,7 @@ for(const owner of profileOwners) test('Life surviving outside public-card roots
         const setAttribute=failedImage.setAttribute.bind(failedImage);
         failedImage.setAttribute=(name,value)=>{if(name==='src')srcWrites++;return setAttribute(name,value);};
       }
-      f.change('#legend-cms-breakpoint','mobile');verify();f.change('#legend-cms-breakpoint','base');verify();
+      f.change('#legend-cms-breakpoint','mobile');verify('');f.change('#legend-cms-breakpoint','base');verify();
       if(failedImage){assert.equal(failedImage.style.display,'none');assert.equal(fallback.hidden,false);assert.equal(srcWrites,0);}
       assert.deepEqual(await f.save(),current,'Runtime public identity is not copied into a new saved profile store');
       assert.equal(JSON.stringify(f.serverDocument()).includes('public-profile-field'),false);
@@ -7476,23 +7481,40 @@ test('Protect content viewport and Studio flow preserve authored footer appearan
   assert.match(source,/body\.legend-public--protect\.legend-cms-editing \.legend-cms-preview\{display:flex;flex-direction:column\}/);
   for(const siteKey of ['protect','legend','business']){
     const doc=canonicalDocument();
+    const business=siteKey==='business'?{id:'11111111-1111-4111-8111-111111111111',displayName:'Synthetic business'}:null;
     doc.shell.footer=[canonicalNode('section:shell.footer','section','footer',{
       className:'site-footer',style:{heightPx:520.856,paddingTop:31,paddingBottom:27},layout:{mode:'free'},children:[
         canonicalNode('footer.note','text','p',{text:'Preserved footer'})]})];
     const html='<!doctype html><html><head><style>'+foundationCss+publicCss+'</style></head><body class="legend-public--'+siteKey+'"><header class="site-header" style="height:112px">Header</header><main class="layout-content"><section><h1>Short content</h1></section></main><footer class="site-footer"></footer></body></html>';
-    const f=await domFixture({siteKey,doc,html});
+    const f=await domFixture({siteKey,doc,html,business});
     try{
       const footer=f.w.document.querySelector('.site-footer'),preview=f.w.document.querySelector('.legend-cms-preview');
       assert.ok(footer && preview);
       assert.equal(f.w.getComputedStyle(preview).display==='flex',siteKey==='protect');
       assert.equal(footer.style.height,'520.856px');assert.equal(footer.style.paddingTop,'31px');assert.equal(footer.style.paddingBottom,'27px');
+      f.change('#legend-cms-breakpoint','mobile');
+      assert.equal(footer.style.height,'','Default mobile flow intentionally does not inherit Base fixed height');
+      assert.equal(f.serverDocument().shell.footer[0].style.heightPx,520.856);
+      f.change('#legend-cms-breakpoint','base');assert.equal(footer.style.height,'520.856px');
       const saved=await f.save();assert.deepEqual(saved.shell.footer,doc.shell.footer);
-      const reopened=await domFixture({siteKey,doc:saved,html,search:''});
+      const reopened=await domFixture({siteKey,doc:saved,html,business,search:''});
       try{
         const current=reopened.w.document.querySelector('.site-footer');
         assert.equal(current.style.height,'520.856px');assert.equal(current.style.paddingTop,'31px');assert.equal(current.style.paddingBottom,'27px');
         assert.deepEqual(reopened.serverDocument().shell.footer,doc.shell.footer);
       }finally{reopened.close();}
+      const authored=structuredClone(saved);authored.shell.footer[0].breakpointStyles.mobile={heightPx:360};
+      const mobile=await domFixture({siteKey,doc:authored,html,business,viewportWidth:390});
+      try{
+        const current=mobile.w.document.querySelector('.site-footer');
+        mobile.change('#legend-cms-breakpoint','mobile');assert.equal(current.style.height,'360px','An explicit mobile height remains authoritative');
+        mobile.change('#legend-cms-breakpoint','base');assert.equal(current.style.height,'520.856px');
+        mobile.change('#legend-cms-breakpoint','mobile');assert.equal(current.style.height,'360px');
+        assert.deepEqual((await mobile.save()).shell.footer,authored.shell.footer);
+      }finally{mobile.close();}
+      const mobilePublic=await domFixture({siteKey,doc:authored,html,business,search:'',viewportWidth:390});
+      try{assert.equal(mobilePublic.w.document.querySelector('.site-footer').style.height,'360px');}
+      finally{mobilePublic.close();}
     }finally{f.close();}
   }
 });
