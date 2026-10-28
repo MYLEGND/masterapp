@@ -1223,6 +1223,12 @@ def _recovery_preflight_source_contract(source, journal_source):
         # Reviewed bounded status-read diagnostics; exact unchanged journal pairing.
         ('28322882e185f6e1c5c9a03b152a34772f6e9aa31b37b834dbc057789d38c56c',
          '5b42fcbed0ac4a331ff5c706ef5a6a3ce96eb32d556ef4051c65ee4cf99e881e'),
+        # Reviewed completion-context diagnostics; exact unchanged journal pair.
+        ('b1133d3d89e16754deabdd1a513eb0d43c4a59f62343ddf542e24c72b753b19c',
+         '5b42fcbed0ac4a331ff5c706ef5a6a3ce96eb32d556ef4051c65ee4cf99e881e'),
+        # Reviewed bounded multiline diagnostic coverage; unchanged exact journal.
+        ('49e6b1caae18705fa91898d794c6d27e34be5ba8bda60693e5f1e65284a0caa8',
+         '5b42fcbed0ac4a331ff5c706ef5a6a3ce96eb32d556ef4051c65ee4cf99e881e'),
     }:
         return True
     return (hashlib.sha256(source.encode()).hexdigest() in (RECOVERY_PREFLIGHT_PRODUCER_SHA256, 'a4b0f7958b39790f7fe07fc62df775b32e2e26ba2db2c1bb2a2f4a4dfc6fd850', 'e75833a3c3a4d8827f48b7395a8af7e61eeab9e5cfbb4e1f6a0ebb4af49901ed', 'ef930621e8c36e447fd884ef99bd03f5ce666bf1feda3431158af8e86d5ab6ab',

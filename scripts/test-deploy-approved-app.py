@@ -3492,7 +3492,7 @@ class DeploymentReadErrorMetadataTests(unittest.TestCase):
                      'ERROR: (Forbidden) detail ERROR: (AuthenticationFailed) detail',
                      "ERROR: (Forbidden) Operation returned an invalid status 'Unauthorized'",
                      'ERROR: (Forbidden) Code: AuthenticationFailed',
-                     'ERROR: (Forbidden) HTTP/1.1 401', 'ERROR: (Forbidden) detail\n\n']:
+                     'ERROR: (Forbidden) HTTP/1.1 401']:
             with self.subTest(text=text):
                 result = self.metadata(text)
                 self.assertEqual(result['category'], 'unknown')
@@ -3524,10 +3524,68 @@ class DeploymentReadErrorMetadataTests(unittest.TestCase):
         self.assertNotIn('Bearer', output.getvalue()); self.assertNotIn('Authorization:', output.getvalue())
         payload = json.loads(output.getvalue().split(':', 1)[1])
         self.assertEqual(payload, dict(schemaVersion=1, source='azure-cli-reported', category='authorization',
-                         returnCode=1, providerCode='Forbidden', httpStatus=None, inputTooLarge=False))
+                         returnCode=1, providerCode='Forbidden', httpStatus=None, inputTooLarge=False,
+                         unknownReason=None, stderrLineCount=1))
         self.assertEqual(process.call_args.args[0], ['az', 'webapp', 'log', 'deployment', 'list',
                          '-g', deploy._RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP, '-n', 'app', '--only-show-errors', '-o', 'json'])
         self.assertEqual(process.call_args.kwargs, {'timeout': 40})
+
+    def test_multiline_finite_shapes_never_emit_secret_details(self):
+        secret = 'SYNTHETIC_SECRET_DO_NOT_LOG'
+        cases = [('ERROR: (Forbidden) '+secret, 'authorization', None),
+                 ("ERROR: Operation returned an invalid status 'Unauthorized'", 'authentication', None),
+                 ('ERROR: unrecognized arguments: --'+secret, 'cli_argument', 'UNRECOGNIZED_ARGUMENTS'),
+                 ('ERROR: argument --secret: expected one argument', 'cli_argument', 'EXPECTED_ONE_ARGUMENT'),
+                 ('ERROR: the following arguments are required: --'+secret, 'cli_argument', 'REQUIRED_ARGUMENTS')]
+        for code in ('AADSTS700016', 'AADSTS7000215', 'AADSTS7000222'):
+            cases.append(('ERROR: '+code+': '+secret, 'authentication_reported', None))
+        for ending in ('\n', '\r\n'):
+            for line, category, kind in cases:
+                with self.subTest(line=line, ending=ending):
+                    result = self.metadata(ending.join([line, 'Trace: '+secret,
+                        'https://example.invalid/?token='+secret])+ending)
+                    self.assertEqual(result['category'], category)
+                    self.assertEqual(result.get('cliArgumentKind'), kind)
+                    self.assertEqual(result['stderrLineCount'], 3)
+                    self.assertIsNone(result['unknownReason'])
+                    for value in (secret, 'https:', '--secret', 'token='):
+                        self.assertNotIn(value, json.dumps(result))
+                    if category in ('cli_argument', 'authentication_reported'):
+                        self.assertIsNone(result['providerCode']); self.assertIsNone(result['httpStatus'])
+
+    def test_multiline_conflicts_and_malformed_shapes_stay_unknown(self):
+        first = 'ERROR: (Forbidden) safe'
+        markers = ('ERROR: (Forbidden) same', ' error: unknown', 'Code: AuthenticationFailed',
+                   'HTTP/1.1 401', 'Operation returned an invalid status', 'AADSTS999999: detail',
+                   'HTTP status: 401', 'Status: 401', 'StatusCode: 401',
+                   'AuthenticationError: detail', 'authentication error: detail', 'AuthError: detail')
+        cases = [first+'\n'+marker for marker in markers]
+        cases += [first+' '+marker for marker in markers]
+        cases += [first+ending for ending in ('\r', '\x1b[0m', '\u2028detail', '\vdetail', '\x85detail')]
+        cases += ['ERROR: argument --x: expected one arguments',
+                  'ERROR: unrecognized arguments:', 'ERROR: the following arguments are required:',
+                  'ERROR: AADSTS999999: detail', 'prefix ERROR: (Forbidden) detail',
+                  'ERROR: AADSTS700016:evil', first+'\n'+'detail\n'*31+'ERROR: other']
+        for text in cases:
+            with self.subTest(text=text):
+                result = self.metadata(text)
+                self.assertEqual(result['category'], 'unknown')
+                self.assertIsNone(result['providerCode']); self.assertIsNone(result['httpStatus'])
+                self.assertNotIn('authenticationCode', result)
+                self.assertNotIn('cliArgumentKind', result)
+
+    def test_multiline_bounds_never_classify_truncated_prefix(self):
+        first = 'ERROR: (Forbidden) safe'
+        result = self.metadata(first+'\n'+'detail\n'*31)
+        self.assertEqual(result['category'], 'authorization')
+        self.assertEqual(result['stderrLineCount'], 32)
+        for tail in ('detail', 'ERROR: other'):
+            result = self.metadata(first+'\n'+'detail\n'*31+tail)
+            self.assertEqual(result['unknownReason'], 'LINE_LIMIT')
+            self.assertEqual(result['stderrLineCount'], 33)
+        exact = 'ERROR: (Forbidden) '+'x'*(8192-len('ERROR: (Forbidden) '))
+        self.assertEqual(self.metadata(exact)['category'], 'authorization')
+        self.assertEqual(self.metadata(exact+'x')['unknownReason'], 'OVERSIZED')
 
     def test_diagnostic_failure_cannot_replace_original_failure(self):
         azure = deploy.Azure('app', Path('/immutable'), 'https://example.invalid', 'a' * 40)
@@ -3808,6 +3866,148 @@ class RecoveryContractBarrierTests(unittest.TestCase):
             self.assertEqual(failure['phase'],'preflight-nonentry')
             self.assertEqual(failure['failedTarget'],keys[-1])
             self.assertFalse(failure['writePhaseEntered'])
+
+
+class CompletionDiagnosticContextTests(unittest.TestCase):
+    def state(self):
+        return dict(started=100.0,baseline=deploy._diagnostic_snapshot(),executable='OPT_AZ',
+                    packageVersion='2.80.0',imageVersion='20261025.353.1',count=0)
+
+    def test_unknown_shapes_are_bounded_and_never_copy_untrusted_text(self):
+        secret='SYNTHETIC_SECRET_HTTPS_TOKEN'
+        cases=[('', 'EMPTY'),('ERROR: '+secret,'UNRECOGNIZED_FORMAT'),
+               ('ERROR: (UnknownProvider) '+secret,'UNKNOWN_PROVIDER_CODE'),
+               ('ERROR: (Forbidden) '+secret+'\nERROR: '+secret,'CONFLICTING_MARKERS'),
+               ('ERROR: (Forbidden) '+secret+' HTTP/1.1 401','CONFLICTING_MARKERS'),
+               ('ERROR: (Forbidden) '+secret+' ERROR: second','CONFLICTING_MARKERS'),
+               (secret*1000,'OVERSIZED'),(b'ERROR: '+secret.encode(),'INVALID_TYPE')]
+        for stderr,reason in cases:
+            with self.subTest(reason=reason):
+                result=deploy.deployment_read_error_metadata(subprocess.CompletedProcess([],1,secret,stderr))
+                self.assertEqual(result['unknownReason'],reason)
+                self.assertEqual(result['category'],'unknown')
+                self.assertIsNone(result['providerCode']);self.assertIsNone(result['httpStatus'])
+                self.assertNotIn(secret,json.dumps(result))
+                self.assertTrue(result['stderrLineCount'] is None or result['stderrLineCount']<=33)
+        result=deploy.deployment_read_error_metadata(subprocess.CompletedProcess([],True,'','ERROR: (Forbidden)'))
+        self.assertEqual(result['unknownReason'],'INVALID_RETURN_CODE')
+
+    def test_context_redaction_equality_unknown_and_event_cap(self):
+        secret='SYNTHETIC_SECRET_DO_NOT_EMIT'
+        env={'PATH':'/usr/bin','AZURE_CONFIG_DIR':'/private/'+secret,'AZURE_CLOUD_NAME':'azurecloud',
+             'GH_TOKEN':secret,'ACTIONS_RUNTIME_TOKEN':secret,'ImageVersion':'20261025.353.1'}
+        output=io.StringIO()
+        with patch.dict(os.environ,env,clear=True),patch.object(deploy,'_diagnostic_executable',return_value='OPT_AZ'), \
+             patch.object(deploy.time,'monotonic',return_value=110.0),patch('sys.stdout',output):
+            state=self.state();token=deploy._COMPLETION_DIAGNOSTICS.set(state)
+            try:
+                deploy.completion_diagnostic('completion-entry')
+                os.environ['AZURE_CONFIG_DIR']='/changed/'+secret
+                os.environ['PATH']='x'*8193
+                for _ in range(30):deploy.completion_diagnostic('target-entry','protect')
+            finally:deploy._COMPLETION_DIAGNOSTICS.reset(token)
+        self.assertNotIn(secret,output.getvalue());self.assertNotIn('/private/',output.getvalue())
+        rows=[json.loads(line.split(':',1)[1]) for line in output.getvalue().splitlines()]
+        self.assertEqual(len(rows),24)
+        self.assertTrue(rows[0]['contextEqualsEntry']['AZURE_CONFIG_DIR'])
+        self.assertFalse(rows[1]['contextEqualsEntry']['AZURE_CONFIG_DIR'])
+        self.assertIsNone(rows[1]['contextEqualsEntry']['PATH'])
+        self.assertEqual(rows[0]['elapsedSinceEntrySeconds'],10.0)
+        self.assertFalse(rows[0]['contextIsAuthorizationProof'])
+        self.assertEqual(rows[1]['target'],'protect')
+
+    def test_no_credential_variables_are_read_and_absence_is_not_equality(self):
+        class RestrictedEnv(dict):
+            def get(self,key,*args):
+                if key not in {'PATH','AZURE_CONFIG_DIR','AZURE_CLOUD_NAME','ImageVersion'}:
+                    raise AssertionError('unexpected environment access')
+                return super().get(key,*args)
+        with patch.object(deploy.os,'environ',RestrictedEnv(PATH='/usr/bin')), \
+             patch.object(deploy,'_diagnostic_executable',return_value=None), \
+             patch.object(deploy,'_diagnostic_package_version',return_value=None),patch('sys.stdout',new_callable=io.StringIO) as output:
+            state=deploy._start_completion_diagnostics();self.assertIsNotNone(state)
+            token=deploy._COMPLETION_DIAGNOSTICS.set(state)
+            try:deploy.completion_diagnostic('completion-entry')
+            finally:deploy._COMPLETION_DIAGNOSTICS.reset(token)
+            report=json.loads(output.getvalue().split(':',1)[1])
+            self.assertIsNone(report['contextEqualsEntry']['AZURE_CONFIG_DIR'])
+            self.assertIsNone(report['executableEqualsEntry'])
+
+    def test_noncompletion_has_no_context_events_or_metadata_reads(self):
+        with patch.object(deploy,'_diagnostic_snapshot') as snapshot,patch('sys.stdout',new_callable=io.StringIO) as output:
+            deploy.completion_diagnostic('deployment-read','protect')
+            snapshot.assert_not_called();self.assertEqual(output.getvalue(),'')
+
+    def test_context_resets_after_success_and_original_failure(self):
+        from contextlib import nullcontext
+        for error in [None,RuntimeError('original failure')]:
+            with patch.object(deploy,'_start_completion_diagnostics',return_value=self.state()), \
+                 patch.object(deploy._RELEASE_AUTHORITY,'recovery_material_reuse',return_value=nullcontext()), \
+                 patch.object(deploy._RELEASE_AUTHORITY,'report_recovery_efficiency'), \
+                 patch.object(deploy,'_complete_fast_track',side_effect=error,return_value={'original':'result'}), \
+                 patch.object(deploy,'_diagnostic_snapshot',side_effect=ValueError('diagnostic secret')):
+                if error:
+                    with self.assertRaisesRegex(RuntimeError,'original failure'):deploy.complete_fast_track(1,'a'*40,Path('/x'))
+                else:self.assertEqual(deploy.complete_fast_track(1,'a'*40,Path('/x')),{'original':'result'})
+                self.assertIsNone(deploy._COMPLETION_DIAGNOSTICS.get())
+
+    def test_diagnostic_errors_do_not_change_read_command_cap_or_result(self):
+        azure=deploy.target_azure('protect',None,'a'*40)
+        for code in [0,1]:
+            with patch.object(deploy,'completion_diagnostic',side_effect=RuntimeError('secret')), \
+                 patch.object(deploy,'deployment_read_process',return_value=subprocess.CompletedProcess([],code,'[]','')) as process, \
+                 patch('sys.stdout',new_callable=io.StringIO):
+                if code:
+                    with self.assertRaisesRegex(RuntimeError,'^Azure deployment status unavailable$'):azure.deployments()
+                else:self.assertEqual(azure.deployments(),[])
+                self.assertEqual(process.call_args.args[0],['az','webapp','log','deployment','list','-g',
+                    'masterapp-rg','-n','masterapp-protect','--only-show-errors','-o','json'])
+                self.assertEqual(process.call_args.kwargs,{'timeout':40})
+
+    def test_executable_resolution_rejects_unbounded_or_unknown_path(self):
+        for path in ['x'*8193,':'.join(['x']*65)]:
+            with patch.dict(os.environ,{'PATH':path}),patch.object(deploy.shutil,'which') as which:
+                self.assertIsNone(deploy._diagnostic_executable());which.assert_not_called()
+        with patch.dict(os.environ,{'PATH':'/usr/bin'}),patch.object(deploy.shutil,'which',return_value='/untrusted/az'):
+            self.assertIsNone(deploy._diagnostic_executable())
+
+    def test_diagnostic_elapsed_time_consumes_read_cap_and_exhaustion_starts_no_child(self):
+        azure=deploy.target_azure('protect',None,'a'*40)
+        token=deploy._COMPLETION_DIAGNOSTICS.set({})
+        try:
+            with patch.object(deploy.time,'monotonic',side_effect=[100.0,103.0]), \
+                 patch.object(deploy,'completion_diagnostic'), \
+                 patch.object(deploy,'deployment_read_process',return_value=subprocess.CompletedProcess([],0,'[]','')) as read:
+                self.assertEqual(azure.deployments(),[])
+                self.assertEqual(read.call_args.kwargs,{'timeout':37.0})
+            with patch.object(deploy.time,'monotonic',side_effect=[100.0,140.0]), \
+                 patch.object(deploy,'completion_diagnostic',side_effect=RuntimeError('diagnostic failed')), \
+                 patch.object(deploy.subprocess,'Popen') as child:
+                with self.assertRaises(subprocess.TimeoutExpired):azure.deployments()
+                child.assert_not_called()
+        finally:deploy._COMPLETION_DIAGNOSTICS.reset(token)
+
+    def test_package_metadata_identity_and_ambiguity_redaction(self):
+        real_scandir=os.scandir
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);packages=root/'python3.13/site-packages';packages.mkdir(parents=True)
+            dist=packages/'azure_cli-2.80.0.dist-info';dist.mkdir();metadata=dist/'METADATA'
+            def scan(path):return real_scandir(root if str(path)=='/opt/az/lib' else path)
+            with patch.object(deploy.os,'scandir',side_effect=scan), \
+                 patch.object(deploy.subprocess,'Popen',side_effect=AssertionError('no diagnostic process')):
+                for content,expected in [('Name: azure-cli\nVersion: 2.80.0\n','2.80.0'),
+                    ('Name: other\nVersion: 2.80.0\n',None),
+                    ('Name: azure-cli\nVersion: 2.80.0\nVersion: 2.80.0\n',None),
+                    ('Name: azure-cli\nVersion: 2.79.0\n',None),('x'*8193,None)]:
+                    metadata.write_text(content)
+                    self.assertEqual(deploy._diagnostic_package_version('OPT_AZ'),expected)
+                metadata.write_text('Name: azure-cli\nVersion: 2.80.0\n')
+                other=packages/'azure_cli-2.79.0.dist-info';other.mkdir()
+                (other/'METADATA').write_text('Name: azure-cli\nVersion: 2.79.0\n')
+                self.assertIsNone(deploy._diagnostic_package_version('OPT_AZ'))
+                shutil.rmtree(other);metadata.unlink();metadata.symlink_to(root/'secret')
+                (root/'secret').write_text('Name: azure-cli\nVersion: 2.80.0\n')
+                with self.assertRaises(OSError):deploy._diagnostic_package_version('OPT_AZ')
 
 
 if __name__ == '__main__':
