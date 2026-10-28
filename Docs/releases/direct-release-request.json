@@ -1,24 +1,40 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Continue the designated successor's coordinated recovery for ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. Promote only independently reviewed failure-only held-state proof-boundary diagnostics and focused regressions. Preserve full metadata comparison, authority, original failures, cache100, byte limits and timeouts. No application deployment, SQL, restart, activation, access or spend. This does not authorize another completion invocation; prior44/45 permissions remain consumed.",
-  "purpose": "Identify the actual proof-boundary mismatch and retained receipt footprint in one bounded report without changing acceptance. Further consequential evidence acquisition requires separate current admission; no automatic retry.",
-  "requestId": "completion-proof-boundary-evidence-20261028-v1",
+  "authorization": "Continue the Founder-delegated coordinated recovery for ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. Promote only the independently reviewed six-file release-proof correction through the existing nonpublishing trusted-tooling controls. No application deployment, SQL, restart, provider mutation, access change or spend. This request does not authorize another completion observation.",
+  "purpose": "Correct the observed completion-46 commit-associated pull-request repository-size false dependency; bound authenticated receipt-byte retention; reuse historical proof only within a freshly closed decision and recheck the live execution owner before any receipt publication; emit bounded nonsecret efficiency counters. Preserve source, identity, history, contradiction, timeout and authority protections.",
+  "requestId": "release-proof-efficiency-20261028-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "5b5079761c7b01a289740484f4aa0cc2a94f9402",
-    "sourceRevision": "848bc78709fb97de7e9cf0f77083c9bf18732a25",
+    "baseRevision": "ce09e96c36a21c3557f8bdd6bc8c123cb4b8b20e",
+    "sourceRevision": "61fca0ef5eb7eca4a609e16749e8d07eb35c75fb",
     "files": {
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "8e7315711df8b1cb0263fd7934b8336b144912e7"
+        "blob": "916749ca2d191601d5880c0825a61373351a13d7"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "2ea93253357bee595568b59a3af77fd53ee150d1"
+        "blob": "6ca3b713cdcf373ca7afacfc6ae2041aafee1414"
+      },
+      "scripts/deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "559175549766a7effd9e335e16a757a7285f80d4"
+      },
+      "scripts/test-deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "35e293462bb14df908103d43ba650c52d135c727"
+      },
+      "scripts/release-operation-evidence.py": {
+        "mode": "100644",
+        "blob": "60058875542f12333feadb8ac83b0e54dcb014f6"
+      },
+      "scripts/test-release-operation-evidence.py": {
+        "mode": "100644",
+        "blob": "005b93ca5cc0726d8f3cd5aa2beafb512b4e9e73"
       }
     }
   }
