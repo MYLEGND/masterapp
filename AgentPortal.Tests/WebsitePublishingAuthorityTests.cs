@@ -12,11 +12,56 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Xunit;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Hosting;
+using Infrastructure.WebsitePublishing;
+using Moq;
 
 namespace AgentPortal.Tests;
 
 public sealed class WebsitePublishingAuthorityTests
 {
+    [Theory]
+    [InlineData("/quote/life", true)]
+    [InlineData("/QUOTE/LIFE/", true)]
+    [InlineData("/a/projection/Quote/Life/", true)]
+    [InlineData("/unknown", false)]
+    [InlineData(null, false)]
+    public async Task ProtectPublicPageProjectionPreservesIdentityMetadataAndStoredContent(string? path, bool projected)
+    {
+        using var f = new Fixture();
+        var profile = new AgentTrackingProfile { AgentUserId = "projection-agent", AgentUpn = "projection@example.test", Slug = "projection" };
+        var document = Document("Other page body");
+        document.Pages["/quote/life"] = new WebsitePageDocument
+        {
+            Title = "Life", Navigation = new WebsitePageNavigation { Label = "Life", Order = 2 },
+            Composition = [new WebsiteCompositionNode { Id = "life.heading", Type = "heading", Tag = "h1", Text = "Current page body" }]
+        };
+        var stored = JsonSerializer.Serialize(document, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var state = new WebsiteContentState { OwnerKey = profile.AgentUserId, SiteKey = WebsiteEditorSiteKeys.Protect, DraftJson = "private draft" };
+        var version = new WebsiteContentVersion { StateId = state.Id, Revision = 17, DocumentJson = stored };
+        state.PublishedVersionId = version.Id;
+        f.Db.AddRange(profile, state, version);
+        await f.Db.SaveChangesAsync();
+
+        var full = Body(await f.Controller.Public("protect", agentSlug: "projection"));
+        var result = Body(await f.Controller.Public("protect", agentSlug: "projection", pagePath: path));
+        Assert.Equal(full.GetProperty("publication").ToString(), result.GetProperty("publication").ToString());
+        Assert.Equal(version.Id, result.GetProperty("publication").GetProperty("versionId").GetGuid());
+        Assert.Equal(Page(full, "/quote/life").ToString(), Page(result, "/quote/life").ToString());
+        Assert.Equal(Page(full).GetProperty("navigation").ToString(), Page(result).GetProperty("navigation").ToString());
+        Assert.Equal(Page(full).GetProperty("title").ToString(), Page(result).GetProperty("title").ToString());
+        Assert.Equal(projected ? 0 : Page(full).GetProperty("composition").GetArrayLength(), Page(result).GetProperty("composition").GetArrayLength());
+        foreach (var field in new[] { "shell", "theme", "reusableComponents", "collections", "breakpoints" })
+            Assert.Equal(full.GetProperty("document").GetProperty(field).ToString(), result.GetProperty("document").GetProperty(field).ToString());
+        foreach (var field in new[] { "ctaCatalog", "store" })
+            Assert.Equal(full.GetProperty(field).ToString(), result.GetProperty(field).ToString());
+        Assert.Equal(stored, (await f.Db.Set<WebsiteContentVersion>().SingleAsync(v => v.Id == version.Id)).DocumentJson);
+        Assert.Equal(version.Id, state.PublishedVersionId);
+        Assert.Equal("private draft", state.DraftJson);
+        Assert.Equal(full.ToString(), Body(await f.Controller.Public("protect", agentSlug: "projection")).ToString());
+    }
+
     private sealed class MaterializationAudit : Microsoft.EntityFrameworkCore.Diagnostics.IMaterializationInterceptor
     {
         public System.Collections.Generic.List<Type> EntityTypes { get; } = new();
@@ -279,7 +324,9 @@ public sealed class WebsitePublishingAuthorityTests
         var controller = fixture.Controller;
         controller.ControllerContext = new ControllerContext
         {
-            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = new ServiceCollection()
+                .AddSingleton(new WebsitePageCompiler(Mock.Of<IWebHostEnvironment>(), new ConfigurationBuilder().Build()))
+                .BuildServiceProvider() }
         };
         Assert.IsType<NotFoundResult>(await controller.LegendPage(path));
     }
@@ -317,7 +364,9 @@ public sealed class WebsitePublishingAuthorityTests
         var controller = fixture.Controller;
         controller.ControllerContext = new ControllerContext
         {
-            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = new ServiceCollection()
+                .AddSingleton(new WebsitePageCompiler(Mock.Of<IWebHostEnvironment>(), new ConfigurationBuilder().Build()))
+                .BuildServiceProvider() }
         };
         var firstPage = Assert.IsType<ContentResult>(await controller.LegendPage("/"));
         Assert.Contains("<h1>First</h1>", firstPage.Content, StringComparison.Ordinal);

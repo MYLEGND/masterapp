@@ -5741,6 +5741,20 @@ test('invalid authored native order fails navigation and publish visibly instead
   }finally{f.close();}
 });
 
+test('failed whole-site preflight marks both inspector evidence sources incomplete',async()=>{
+  const f=await domFixture({siteKey:'protect',doc:nativeOrderingDocument([1,3,2,4]),pathname:'/Quote/Auto',html:nativeOrderingHtml()});
+  try{
+    const before=f.calls.length;
+    f.click('#legend-cms-quality-refresh');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(f.w.document.getElementById('legend-cms-quality-saved-meta').textContent,'Whole-site preflight unavailable');
+    assert.equal(f.w.document.getElementById('legend-cms-quality-live-meta').textContent,'Rendered checks incomplete; whole-site preflight failed.');
+    assert.match(f.w.document.getElementById('legend-cms-quality-saved').textContent,/Question 3 must stay after Question 2/);
+    assert.equal(f.calls.slice(before).some(call=>call.method==='POST'),false);
+    assert.equal(f.w.document.getElementById('field2').value,'answer2');
+  }finally{f.close();}
+});
+
 test('native step ownership rejects moving a question into a different conditional group',async()=>{
   const doc=nativeOrderingDocument();
   const group=canonicalNodeById(doc,'native.steps','/quote/auto');
@@ -5762,6 +5776,7 @@ for(const key of ['auto','home']) test('shipped '+key+' navigator follows saved 
     f.w.setStep=step=>{f.w.currentStep=step;};
     f.w['emit'+(key==='auto'?'Auto':'Home')+'StepComplete']=(from,to)=>f.w.transitions.push([from,to]);
     f.w.togglePreviousAddress=()=>{};f.w.toggleHouseUpdateYearFields=()=>{};
+    if(key==='home') f.w.eval(nativeFunction(nativeViewSources.home,'toggleRentersPropertyRequirements'));
     for(const name of ['nativeStepOrder','validateCurrentStep','goNext','goBack']) f.w.eval(nativeFunction(nativeViewSources[key],name));
     f.w.document.getElementById('field2').value='';f.w.goNext();assert.equal(f.w.currentStep,2);
     f.w.document.getElementById('field2').value='restored';f.w.goNext();assert.equal(f.w.currentStep,1);
@@ -7558,4 +7573,160 @@ test('Protect content viewport and Studio flow preserve authored footer appearan
       finally{mobilePublic.close();}
     }finally{f.close();}
   }
+});
+
+for (const readyState of ['interactive','complete']) test(`canonical initial read starts once when document is already ${readyState}`,async()=>{
+  const f=await domFixture({search:'',beforeEval:w=>{
+    Object.defineProperty(w.document,'readyState',{get:()=>readyState});
+    const add=w.document.addEventListener.bind(w.document);
+    w.document.addEventListener=(type,...args)=>{if(type!=='DOMContentLoaded')add(type,...args);};
+    w.document.documentElement.setAttribute('data-legend-canonical-pending','true');
+  }});
+  try{
+    assert.equal(f.calls.filter(x=>new URL(x.url).pathname==='/api/website-content/public/legend').length,1);
+    assert.equal(f.w.document.documentElement.hasAttribute('data-legend-canonical-pending'),false);
+  }finally{f.close();}
+});
+
+for(const siteKey of ['legend','protect']) for(const editor of [false,true]) for(const body of [false,true]) test(`canonical ${siteKey} ${editor?'editor':'public'} stalled ${body?'body':'headers'} terminates without late application`,async()=>{
+  let deadline,release,signal;
+  const f=await domFixture({siteKey,search:editor?'?legendEdit=ticket':'',beforeEval:w=>{
+    w.document.documentElement.setAttribute('data-legend-canonical-pending','true');
+    const set=w.setTimeout.bind(w);w.setTimeout=(fn,ms,...args)=>ms===30000?(deadline=fn,77):set(fn,ms,...args);
+    const original=w.fetch;
+    w.fetch=async(url,options)=>{
+      if(!/\/api\/website-content\/(public\/(legend|protect)|manage)(\?|$)/.test(String(url)))return original(url,options);
+      signal=options?.signal;
+      const deferred=new Promise(resolve=>{release=resolve;});
+      return body?{ok:true,status:200,json:()=>deferred}:deferred;
+    };
+  }});
+  try{
+    assert.equal(typeof deadline,'function','initial read must have a complete-body deadline');
+    deadline();await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(signal.aborted,true);
+    assert.equal(f.w.document.documentElement.hasAttribute('data-legend-canonical-pending'),false);
+    assert.match(f.w.document.body.textContent,/temporarily unavailable|could not load|timed out/i);
+    const failure=f.w.document.body.textContent;
+    const payload={siteKey,document:canonicalDocument(),revision:1};
+    release(body?payload:{ok:true,status:200,json:async()=>payload});
+    await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(f.w.document.body.textContent,failure,'late completion cannot overwrite recovery state');
+    assert.equal(f.w.document.querySelector('#legend-cms-save'),null);
+  }finally{f.close();}
+});
+
+test('Protect public read requests only the canonical route while Studio retains full draft reads',async()=>{
+  for(const [pathname,agentSlug,pagePrefix,search,expected] of [
+    ['/Quote/Life/','','','', '/quote/life'],
+    ['/a/synthetic-agent/Quote/Life/','synthetic-agent','/a/synthetic-agent','', '/quote/life'],
+    ['/Quote/Life','','','?legendEdit=ticket',null]
+  ]){
+    const f=await domFixture({siteKey:'protect',pathname,agentSlug,pagePrefix,search});
+    try{
+      const reads=f.calls.map(call=>new URL(call.url));
+      if(expected) assert.equal(reads.find(url=>url.pathname==='/api/website-content/public/protect')?.searchParams.get('pagePath'),expected);
+      else {assert.ok(reads.some(url=>url.pathname==='/api/website-content/manage'));assert.ok(reads.every(url=>!url.searchParams.has('pagePath')));}
+    }finally{f.close();}
+  }
+});
+
+test('Protect page-only publication renders identical native form controls and preserves their existing listeners',async()=>{
+  const fixture=nativeContinuationFixture('life');
+  fixture.doc.pages['/']=canonicalDocument().pages['/'];
+  const projected=structuredClone(fixture.doc);projected.pages['/'].composition=[];
+  const results=[];
+  for(const doc of [fixture.doc,projected]){
+    let original,clicks=0;
+    const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Auto',search:'',html:fixture.html,beforeEval:w=>{
+      original=w.document.getElementById(fixture.buttonId);original.addEventListener('click',()=>clicks++);
+    }});
+    try{
+      assert.equal(f.w.document.getElementById(fixture.buttonId),original);
+      original.click();assert.equal(clicks,1);
+      results.push([...f.w.document.querySelectorAll('input,select,button')].map(n=>({tag:n.tagName,id:n.id,name:n.name,type:n.type,value:n.value,text:n.textContent.trim()})));
+      assert.ok(f.calls.every(call=>!call.method || call.method==='GET'));
+    }finally{f.close();}
+  }
+  assert.deepEqual(results[1],results[0]);
+});
+
+for(const siteKey of ['legend','protect']) for(const editor of [false,true]) {
+  test(`canonical ${siteKey} ${editor?'Studio':'public'} first reveal waits for complete body and preserves content`,async()=>{
+    let release;const doc=canonicalDocument(),original=JSON.stringify(doc);
+    const f=await domFixture({siteKey,doc,search:editor?'?legendEdit=ticket':'',beforeEval:w=>{
+      w.document.documentElement.setAttribute('data-legend-canonical-pending','true');
+      const fetch=w.fetch;
+      w.fetch=async(url,options)=>{
+        const response=await fetch(url,options);
+        if(!/\/api\/website-content\/(public\/(legend|protect)|manage)(\?|$)/.test(String(url)))return response;
+        const payload=await response.json();
+        return {...response,json:()=>new Promise(resolve=>{release=()=>resolve(payload);})};
+      };
+    }});
+    try{
+      assert.equal(f.w.document.documentElement.hasAttribute('data-legend-canonical-pending'),true);
+      assert.equal(f.w.document.querySelector('#legend-cms-save'),null);
+      release();await new Promise(resolve=>setTimeout(resolve,30));
+      assert.equal(f.w.document.documentElement.hasAttribute('data-legend-canonical-pending'),false);
+      assert.equal(!!f.w.document.querySelector('#legend-cms-save'),editor);
+      assert.equal(JSON.stringify(f.serverDocument()),original);
+      assert.equal(f.calls.some(call=>call.method==='POST'),false);
+    }finally{f.close();}
+  });
+  for(const failure of ['network','http','invalid-json']) test(`canonical ${siteKey} ${editor?'Studio':'public'} ${failure} permits fresh initialization`,async()=>{
+    let attempts=0;const doc=canonicalDocument(),original=JSON.stringify(doc);
+    const f=await domFixture({siteKey,doc,search:editor?'?legendEdit=ticket':'',beforeEval:w=>{
+      w.document.documentElement.setAttribute('data-legend-canonical-pending','true');
+      const fetch=w.fetch;
+      w.fetch=async(url,options)=>{
+        if(!/\/api\/website-content\/(public\/(legend|protect)|manage)(\?|$)/.test(String(url)))return fetch(url,options);
+        attempts++;
+        if(failure==='network')throw new TypeError('synthetic network unavailable');
+        return {ok:failure!=='http',status:failure==='http'?503:200,json:async()=>{if(failure==='invalid-json')throw new SyntaxError('invalid body');return {error:'unavailable'};}};
+      };
+    }});
+    try{
+      assert.equal(attempts,1,'no implicit retry');
+      assert.equal(f.w.document.documentElement.hasAttribute('data-legend-canonical-pending'),false);
+      assert.match(f.w.document.body.textContent,/could not load|temporarily unavailable/);
+      assert.equal(f.w.document.querySelector('#legend-cms-save'),null);
+      assert.ok([...f.w.document.querySelectorAll('button')].some(button=>/^Retry/.test(button.textContent)));
+      assert.equal(JSON.stringify(f.serverDocument()),original);
+      assert.equal(f.calls.some(call=>call.method==='POST'),false);
+    }finally{f.close();}
+    const reopened=await domFixture({siteKey,doc,search:editor?'?legendEdit=ticket':''});
+    try{
+      assert.equal(!!reopened.w.document.querySelector('#legend-cms-save'),editor);
+      assert.equal(JSON.stringify(reopened.serverDocument()),original);
+      assert.equal(reopened.calls.some(call=>call.method==='POST'),false);
+      const reads=reopened.calls.filter(call=>/\/api\/website-content\/(public\/(legend|protect)|manage)(\?|$)/.test(call.url));
+      assert.equal(reads.length,1);
+      assert.equal(reads[0].url.includes('/manage'),editor);
+    }finally{reopened.close();}
+  });
+}
+
+
+for(const siteKey of ['protect','legend']) test(`responsive audit reconciles only the established Protect alias: ${siteKey}`,async()=>{
+  const dom=new JSDOM('<body></body>',{url:'https://example.test/',runScripts:'outside-only'}),w=dom.window;
+  try{
+    w.SITE_KEY=siteKey;w.editorUrlForRoute=route=>new w.URL(route,w.location.href);
+    for(const name of ['normalizePageRoute','responsiveAuditRouteMatches'])w.eval(nativeFunction(source,name));
+    w.eval(source.slice(source.indexOf('  async function requestResponsiveAuditPage('),source.indexOf('  async function runSiteResponsiveQualityAudit(')));
+    const requested='/quote/dentalvisionhearing',resolved='/quote/dental-vision-hearing';
+    let settled=false;const promise=w.requestResponsiveAuditPage(requested).then(value=>{settled=true;return value;});
+    const frame=w.document.querySelector('iframe'),sender=frame.contentWindow;
+    const emit=(route,origin=w.location.origin,source=sender)=>w.dispatchEvent(new w.MessageEvent('message',{origin,source,data:{type:'legend-site-responsive-audit',route,revision:382,results:[{key:'mobile',checks:[]}]}}));
+    emit(resolved,'https://foreign.test');emit(resolved,w.location.origin,w);emit('/quote/home');
+    await Promise.resolve();assert.equal(settled,false,'wrong origin, sender and route cannot satisfy the audit');
+    if(siteKey==='legend'){emit(resolved);await Promise.resolve();assert.equal(settled,false,'Protect alias is not a general website redirect rule');}
+    emit(siteKey==='protect'?resolved:requested);
+    const result=await promise;
+    assert.equal(result.route,requested);assert.equal(result.resolvedRoute,siteKey==='protect'?resolved:requested);
+    assert.equal(result.revision,382);assert.equal(result.results[0].key,'mobile');
+    assert.equal(w.document.querySelector('iframe'),null,'completed audit removes its frame');
+    assert.equal(w.responsiveAuditRouteMatches('/quote/home',resolved),false);
+    assert.equal(w.responsiveAuditRouteMatches('/quote/dentalvisionhearing/landing',resolved),false);
+  }finally{w.close();}
 });

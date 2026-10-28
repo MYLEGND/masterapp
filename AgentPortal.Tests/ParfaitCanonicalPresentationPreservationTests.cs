@@ -18,7 +18,9 @@ public sealed class ParfaitCanonicalPresentationPreservationTests
     [Theory]
     [InlineData("Views/Home/Terms.cshtml", "4de5260fa3f13dcb01c6a2398e6ffd214bfffc73")]
     [InlineData("Views/Home/Privacy.cshtml", "97c9060926b2d10f796ff274691b1a25ef2a7484")]
-    [InlineData("Views/Shared/_Layout.cshtml", "b677436132bd4242bb52e70acf8a80a0cbac48dc")]
+    // Reviewed runtime-only change: version the inquiry module's child dependency;
+    // the layout, styles and authored presentation remain unchanged.
+    [InlineData("Views/Shared/_Layout.cshtml", "cd6992a223ce15675a287899cbe9fa3bb2946ec3")]
     [InlineData("Views/Shared/_ScopedWebsiteStoreLayout.cshtml", "64d65583c778f715af5bde408577a0fd7b155ffc")]
     [InlineData("Views/Home/Index.cshtml", "9abd970701d5f915d6f0431255869c68e479aed4")]
     [InlineData("Views/Store/Index.cshtml", "25ef81c066dd246e5b192b85bedd1381a3390ae5")]

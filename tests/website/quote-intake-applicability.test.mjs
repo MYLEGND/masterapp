@@ -88,3 +88,55 @@ test('Life modal cycles backward and forward, including an authored hidden close
     }finally{w.close();}
   }
 });
+
+test('renters may leave owner questions blank across product changes without losing values or disabled step state',()=>{
+  const ids=['PurchaseDate','DwellingCoverage','EstReplacementCost'];
+  const dom=new JSDOM(`<select id="PolicyFormType"><option>HO3 - Dwelling</option><option>HO4 - Renters</option><option>HO6 - Condo</option></select>${ids.map(id=>`<input id="${id}" required data-original-required="1"><span data-home-owner-required="${id}">*</span><span data-home-renter-optional="${id}" hidden>optional</span>`).join('')}<input id="unrelated" required>`,{runScripts:'outside-only'});
+  const w=dom.window;try{
+    const start=home.indexOf('        function setRequired('), end=home.indexOf('        function togglePreviousAddress(',start);
+    assert.ok(start>=0&&end>start);w.eval('function updateFieldState() {}\n'+home.slice(start,end));
+    const policy=w.document.getElementById('PolicyFormType');
+    for(const product of ['HO4 - Renters','HO3 - Dwelling','HO4 - Renters','HO6 - Condo','']){
+      policy.value=product;w.toggleRentersPropertyRequirements();
+      for(const id of ids){const field=w.document.getElementById(id),optional=product==='HO4 - Renters';
+        assert.equal(field.required,!optional);assert.equal(field.dataset.originalRequired,optional?'0':'1');
+        assert.equal(field.checkValidity(),optional);assert.equal(w.document.querySelector(`[data-home-owner-required="${id}"]`).hidden,optional);
+        assert.equal(w.document.querySelector(`[data-home-renter-optional="${id}"]`).hidden,!optional);
+      }
+      assert.equal(w.document.getElementById('unrelated').required,true);
+    }
+    const dwelling=w.document.getElementById('DwellingCoverage');dwelling.value='retained';dwelling.disabled=true;
+    policy.value='HO4 - Renters';w.toggleRentersPropertyRequirements();w.toggleRentersPropertyRequirements();
+    assert.equal(dwelling.value,'retained');assert.equal(dwelling.disabled,true);assert.equal(dwelling.required,false);
+  }finally{w.close();}
+});
+
+test('DVH choices display product-specific wording while historical answer keys stay compatible',()=>{
+  const source=read('Protect-Website/Views/Quote/DentalVisionHearing.cshtml');
+  for(const [value,label] of [['Better Doctor Network','Dental, vision & hearing provider access'],['Prescription Coverage','Dental, vision & hearing benefits']]){
+    const inputAt=source.indexOf(`value="${value}"`), end=source.indexOf('</label>',inputAt);
+    assert.ok(inputAt>0&&end>inputAt);
+    const dom=new JSDOM('<label>'+source.slice(inputAt- source.slice(0,inputAt).split('<input').at(-1).length-6,end)+'</label>');
+    try{assert.equal(dom.window.document.querySelector('.lq-card-title').textContent.trim(),label);}finally{dom.window.close();}
+  }
+  const start=source.indexOf('        function renderPostSubmitBookingState('),end=source.indexOf('            postSubmitSlot.hidden = false;',start);
+  for(const label of ['Dental, vision & hearing provider access','Dental, vision & hearing benefits']){
+    const dom=new JSDOM(`<form><label><input type="radio" name="PrimaryConcern" value="legacy" checked><span class="lq-card-title">${label}</span></label></form>`,{runScripts:'outside-only'}),w=dom.window;
+    try{
+      w.eval(`var form=document.querySelector('form'),postSubmitSlot={},latestSubmitResponse={},proofCard=null,publicBookingLoadingText='',publicBookingDisabledText='',result;function asTrimmed(v){return String(v||'').trim()}function readSelectedValue(){return ''}window.LegendQuoteReview={render:(slot,value)=>{result=value}};`+source.slice(start,end)+'}');
+      w.renderPostSubmitBookingState({loading:true});
+      assert.ok(w.result.diagnosis.includes(label.toLowerCase()));assert.doesNotMatch(w.result.diagnosis+w.result.implication,/prescription|doctor|pharmacy/i);
+    }finally{w.close();}
+  }
+});
+
+
+test('DVH narrow Studio canvas cannot inherit the desktop fixed-width Back button',()=>{
+  const source=read('Protect-Website/Views/Quote/DentalVisionHearing.cshtml');
+  const desktop=source.slice(source.indexOf('@@container protect-quote (min-width: 1024px)'),source.indexOf('@@container protect-quote (max-width: 720px)'));
+  assert.match(desktop,/\.lq-step-actions \.btn-ghost\s*\{\s*flex: 0 0 220px !important/);
+  assert.doesNotMatch(source, /@@media\s*\((?:min|max)-width:/);
+  assert.match(source,/@@container protect-quote \(max-width: 767\.98px\)[\s\S]*?\.lq-step-actions\s*\{\s*flex-direction: column/);
+  assert.match(source,/@@media \(prefers-reduced-motion: reduce\)/,'accessibility preference remains viewport-independent');
+  assert.match(read('SHARED/WebsitePlatform/public-inquiry-form.css'),/main:has\(> \[data-protect-form-shell\]\)[^{]*\{[^}]*container:protect-quote \/ inline-size/);
+});

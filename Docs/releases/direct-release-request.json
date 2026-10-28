@@ -1,11 +1,15 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder-authorized continuation: complete and deploy the consolidated Coverage/forms repair. Includes successor-live-residuals-20261028 and audit-addendum-20261028 under ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1. Preserve release155 receipts, saved Studio content, paused receptionist calls, hours and both $25 limits. No new costs, credentials, privacy/security changes or voice activation.",
-  "purpose": "Repair Coverage backward focus containment and authored card color precedence; restore Life contact Back to answers; correct Auto/Home license applicability, driver choices and dynamic labels, truthful Home history choices, and customer-facing Disability processing copy. Protect-only canonical source scope; preserve successful Website and other application operations.",
-  "requestId": "shayla-consolidated-forms-live-residuals-20261028-v2",
+  "authorization": "Founder explicitly authorized deployment of all preserved fixes and publication of the preserved draft on 2026-10-28. Supersedes the previous discretionary release hold. Deploy the complete reviewed PR725 candidate through protected approved-only five-app release, reuse compatible successful evidence and require mandatory CI/admission. Keep Shayla calls paused; no call, provider, privacy, funding, budget or routing authorization is added.",
+  "purpose": "Release canonical loading/recovery, runtime/dependency binding and reviewed product/form/Studio fixes together. Preserve authored content and existing publications during app deployment. After live application verification and exact draft readback, separately publish preserved LEGEND draft1624 with written inquiry fallback and paused voice admission. Record remaining browser/Safari verification honestly; no schema or routing change, content migration, stale fallback or mutation retry change.",
+  "requestId": "canonical-website-loading-studio-20261028-v2",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-protect"
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait",
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false

@@ -79,7 +79,17 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
       if (mounted) window.dispatchEvent(new CustomEvent('legend:website-content-rendered'));
       return;
     }
-    runtimePromise ||= import(new URL('./legend-public-inquiry.js', import.meta.url).href);
+    const moduleUrl = new URL(import.meta.url);
+    const moduleScript = [...document.scripts].find(script =>
+      script.src && new URL(script.src, location.href).href === moduleUrl.href);
+    const runtimeUrl = new URL('./legend-public-inquiry.js', moduleUrl);
+    const boundUrl = moduleScript?.getAttribute('data-inquiry-runtime');
+    if (boundUrl) {
+      const binding = new URL(boundUrl, location.href);
+      if (binding.origin === runtimeUrl.origin && binding.pathname === runtimeUrl.pathname)
+        runtimeUrl.search = binding.search;
+    }
+    runtimePromise ||= import(runtimeUrl.href);
     await runtimePromise;
   };
   const start = () => { void ensureRuntime(); };

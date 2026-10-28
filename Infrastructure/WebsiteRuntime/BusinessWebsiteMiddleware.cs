@@ -205,6 +205,20 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         if (!pages.TryGetProperty(normalized, out var page)) { await Unavailable(context, bridged, "page"); return; }
         var html = page.GetProperty("html").GetString() ?? "";
         html = html.Replace("__LEGEND_CANONICAL_URL__", WebUtility.HtmlEncode(origin + normalized), StringComparison.Ordinal);
+        try
+        {
+            html = await context.RequestServices.GetRequiredService<Infrastructure.WebsitePublishing.WebsitePageCompiler>()
+                .BindRuntimeAssetsAsync(html, context.RequestAborted);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or JsonException or System.Text.RegularExpressions.RegexMatchTimeoutException)
+        {
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            context.Response.Headers.RetryAfter = "30";
+            context.Response.ContentType = "text/plain; charset=utf-8";
+            if (!HttpMethods.IsHead(context.Request.Method))
+                await context.Response.WriteAsync("Published website temporarily unavailable.", context.RequestAborted);
+            return;
+        }
         context.Response.Headers["X-Robots-Tag"] = "index, follow";
         context.Response.Headers["X-Legend-Publication-Id"] = version.Id.ToString();
         context.Response.ContentType = "text/html; charset=utf-8";

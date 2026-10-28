@@ -220,7 +220,7 @@ namespace Protect_Website.Models
 
         public string? PurchasePrice { get; set; }
 
-        [Required]
+        [RequiredUnlessRenters]
         [DataType(DataType.Date)]
         public DateTime? PurchaseDate { get; set; }
 
@@ -249,10 +249,10 @@ namespace Protect_Website.Models
 
         // ===================== SECTION 5: GENERAL COVERAGES =====================
 
-        [Required]
+        [RequiredUnlessRenters]
         public string? DwellingCoverage { get; set; }
 
-        [Required]
+        [RequiredUnlessRenters]
         public string? EstReplacementCost { get; set; }
 
         public string? PersonalProperty { get; set; }

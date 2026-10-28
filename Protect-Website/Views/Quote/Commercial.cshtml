@@ -1486,31 +1486,13 @@ function enforceRequiredByLabels() {
         // If this label doesn’t contain the required-star, skip
         if (!label.querySelector('.required-star')) return;
 
-        // Find the associated control:
-        // 1) If label has "for", use it (best + precise)
+        // Respect the label's actual control. Group captions are not field
+        // labels: walking past their checkbox container reaches unrelated
+        // optional fields (for example Additional Comments).
         const forId = label.getAttribute('for');
-        let control = null;
-
-        if (forId) {
-            control = document.getElementById(forId);
-        }
-
-        // 2) Otherwise, pick the next input/select/textarea sibling
-        if (!control) {
-            let next = label.nextElementSibling;
-            while (next && !(next.matches && next.matches('input, select, textarea'))) {
-                next = next.nextElementSibling;
-            }
-            control = next;
-        }
-
-        // 3) Last fallback: search only within the same immediate wrapper, NOT the entire card
-        if (!control) {
-            const wrapper = label.parentElement;
-            if (wrapper) {
-                control = wrapper.querySelector('input, select, textarea');
-            }
-        }
+        const next = label.nextElementSibling;
+        const control = forId ? document.getElementById(forId)
+            : label.control || (next?.matches('input, select, textarea') ? next : null);
 
         if (!control) return;
 

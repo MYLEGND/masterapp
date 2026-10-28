@@ -2002,6 +2002,9 @@ class FastTrackImpactTests(unittest.TestCase):
         self.assertNotIn('releaseAdmission', result)
         self.assertEqual(len(result['matrix']['include']), 4)
 
+    def test_workspace_manager_selects_only_its_authenticated_hosts(self):
+        self.assertEqual(self.targets('Legend-Design/legend-website-management.js'), {'AgentPortal', 'ClientApp'})
+
     def test_cms_bundle_selects_only_its_two_consumers(self):
         self.assertEqual(self.targets('SHARED/WebsitePlatform/legend-public-cms.js'), {'Protect', 'Website'})
 

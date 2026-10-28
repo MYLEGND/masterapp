@@ -19,6 +19,8 @@ using Microsoft.Extensions.Configuration;
 using Moq;
 using ProtectWebsite.Services;
 using Xunit;
+using Microsoft.Extensions.DependencyInjection;
+using Infrastructure.WebsitePublishing;
 
 namespace AgentPortal.Tests;
 
@@ -48,7 +50,9 @@ public sealed class WebsiteDomainImportTests
         var environment = new Mock<IWebHostEnvironment>();
         environment.SetupGet(x => x.EnvironmentName).Returns("Production");
         var middleware = new BusinessWebsiteMiddleware(_ => throw new InvalidOperationException("Must not fall through."), environment.Object, config);
-        var context = new DefaultHttpContext();
+        var context = new DefaultHttpContext { RequestServices = new ServiceCollection()
+            .AddSingleton(new WebsitePageCompiler(Mock.Of<IWebHostEnvironment>(), new ConfigurationBuilder().Build()))
+            .BuildServiceProvider() };
         context.Request.Host = new HostString(binding.Hostname);
         context.Request.Path = "/";
         context.Request.Method = "GET";
@@ -87,7 +91,9 @@ public sealed class WebsiteDomainImportTests
         var domains = new WebsiteDomainService(db, Mock.Of<IHttpClientFactory>(), config);
         async Task<DefaultHttpContext> Request(string host)
         {
-            var context = new DefaultHttpContext();
+            var context = new DefaultHttpContext { RequestServices = new ServiceCollection()
+            .AddSingleton(new WebsitePageCompiler(Mock.Of<IWebHostEnvironment>(), new ConfigurationBuilder().Build()))
+            .BuildServiceProvider() };
             context.Request.Host = new HostString(host);
             context.Request.Method = "GET";
             context.Request.Path = "/sitemap.xml";
@@ -142,7 +148,9 @@ public sealed class WebsiteDomainImportTests
             },
             environment.Object,
             configuration);
-        var context = new DefaultHttpContext();
+        var context = new DefaultHttpContext { RequestServices = new ServiceCollection()
+            .AddSingleton(new WebsitePageCompiler(Mock.Of<IWebHostEnvironment>(), new ConfigurationBuilder().Build()))
+            .BuildServiceProvider() };
         context.Request.Host = new HostString("example.com");
         context.Request.Path = proofPath;
         var domains = new WebsiteDomainService(db, Mock.Of<IHttpClientFactory>(), configuration);
@@ -224,7 +232,9 @@ public sealed class WebsiteDomainImportTests
             _ => throw new InvalidOperationException("Bridged business traffic must not fall through."),
             environment.Object,
             configuration);
-        var context = new DefaultHttpContext();
+        var context = new DefaultHttpContext { RequestServices = new ServiceCollection()
+            .AddSingleton(new WebsitePageCompiler(Mock.Of<IWebHostEnvironment>(), new ConfigurationBuilder().Build()))
+            .BuildServiceProvider() };
         context.Request.Host = new HostString("masterapp-protect.azurewebsites.net");
         context.Request.Method = HttpMethods.Get;
         context.Request.Path = "/";

@@ -4,6 +4,16 @@ namespace Protect_Website.Models
 {
     public class DentalVisionHearingQuoteFormModel
     {
+        // Keep established answer identifiers for saved/native form compatibility.
+        // Display wording reflects the Founder-approved DVH-only review scope.
+        public static string PrimaryConcernDisplay(string? value) => value?.Trim() switch
+        {
+            "Better Doctor Network" => "Dental, vision & hearing provider access",
+            "Prescription Coverage" => "Dental, vision & hearing benefits",
+            null or "" => "Not provided",
+            var other => other
+        };
+
         // ===================== PERSONAL INFO =====================
         [Required(ErrorMessage = "First Name is required")]
         public string FirstName { get; set; } = "";

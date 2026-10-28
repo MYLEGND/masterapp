@@ -1197,7 +1197,8 @@ body.dvh-landing.page-mode-paid-landing header .navbar-brand img {
     text-decoration: none !important;
 }
 
-@@media (min-width: 1024px) {
+/* Use the shared website canvas width, including narrow Studio previews. */
+@@container protect-quote (min-width: 1024px) {
     main.layout-content {
     }
 
@@ -1307,7 +1308,7 @@ body.dvh-landing.page-mode-paid-landing header .navbar-brand img {
     }
 }
 
-@@media (max-width: 720px) {
+@@container protect-quote (max-width: 720px) {
 
 
     .dq-contact-capture-wrap .lq-field-row {
@@ -1324,7 +1325,7 @@ body.dvh-final-step-active .dq-proof-chips {
     display: none;
 }
 
-@@media (max-width: 767.98px) {
+@@container protect-quote (max-width: 767.98px) {
     .dq-surface {
     }
 
@@ -1406,7 +1407,7 @@ body.dvh-final-step-active .dq-proof-chips {
 
 <style>
 /* DVH UX DENSITY REBALANCE */
-@@media (min-width: 1024px) {
+@@container protect-quote (min-width: 1024px) {
     #dvhHeroEntryPanel {
         max-width: 940px;
         margin: 0 auto;
@@ -1481,7 +1482,7 @@ body.dvh-final-step-active .dq-proof-chips {
     }
 }
 
-@@media (max-width: 767.98px) {
+@@container protect-quote (max-width: 767.98px) {
     body.dvh-final-step-active .dq-form-panel.qf-final-panel-no-chrome,
     body.dvh-final-step-active .dq-form-panel.qf-final-review-flat-mode,
     body.dvh-final-step-active .dq-form-panel.is-submitted,
@@ -1887,14 +1888,14 @@ body.dvh-final-step-active .dq-proof-chips {
                                                     <input type="radio" name="PrimaryConcern" value="Better Doctor Network" @CheckedIf(form.PrimaryConcern == "Better Doctor Network") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-priority"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-title">Better Doctor Network</span>
+                                                        <span class="lq-card-title">Dental, vision &amp; hearing provider access</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.PrimaryConcern == "Prescription Coverage")">
                                                     <input type="radio" name="PrimaryConcern" value="Prescription Coverage" @CheckedIf(form.PrimaryConcern == "Prescription Coverage") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-priority"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-title">Prescription Coverage</span>
+                                                        <span class="lq-card-title">Dental, vision &amp; hearing benefits</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.PrimaryConcern == "Not Sure / Need Guidance")">
@@ -2324,7 +2325,7 @@ body.dvh-final-step-active .dq-proof-chips {
             } else if (primaryConcern === 'Lower Monthly Premium') {
                 signal = 'Because monthly affordability matters most, the conversation should stay centered on balancing premium, deductible, and day-to-day budget pressure.';
             } else if (primaryConcern === 'Better Doctor Network') {
-                signal = 'Because provider access matters most, the review should stay focused on keeping the doctors, facilities, and specialists you trust in network.';
+                signal = 'Because provider access matters most, the review should stay focused on checking whether your dental, vision, and hearing providers participate in the plans being reviewed.';
             }
 
             var shared=window.LEGEND_NATIVE_FORM_PRESENTATION?.reviewMarkup({kind:'review',kicker:'Review snapshot',title:'We will pick up the conversation from these answers.',copy:'Your answers shape the conversation so it starts with the coverage tradeoffs and care priorities that matter most.',metrics:[{label:'Age range',value:ageRange},{label:'Household',value:householdSize},{label:'Coverage goal',value:coverageType}],signal:signal+' Coverage status noted: '+currentCoverage+'.'});
@@ -2577,7 +2578,7 @@ body.dvh-final-step-active .dq-proof-chips {
             var householdSize = readSelectedValue('HouseholdSize') || 'Household';
             var currentCoverage = readSelectedValue('CurrentCoverage') || 'Current coverage';
             var coverageType = readSelectedValue('CoverageType') || 'Coverage goal';
-            var primaryConcern = readSelectedValue('PrimaryConcern') || 'Priority';
+            var primaryConcern = (form.querySelector('input[name="PrimaryConcern"]:checked')?.closest('label')?.querySelector('.lq-card-title')?.textContent || 'Priority').trim();
             var reviewSnapshot = { metrics: [{ label: 'Age range', value: ageRange }, { label: 'Household', value: householdSize }, { label: 'Current coverage', value: currentCoverage }, { label: 'Review focus', value: coverageType }] };
             var showInlineShell = !normalized.loading && normalized.enabled && normalized.canEmbed && normalized.embedUrl;
             var showFallbackLink = false;
@@ -2592,13 +2593,13 @@ body.dvh-final-step-active .dq-proof-chips {
                 title: 'Your dental, vision, and hearing review is ready for the next step.',
                 copy: 'We saved your answers so the conversation can start with your household needs, current coverage, and the plan tradeoffs that matter most.',
                 diagnosis: 'Your answers suggest this review should focus on ' + primaryConcern.toLowerCase() + ', current coverage fit, and what your household actually needs from the next plan conversation.',
-                implication: 'Monthly cost, deductibles, network fit, and care access usually feel more urgent once appointments or prescriptions are already in motion.',
+                implication: 'Review monthly cost, deductibles, benefit limits, and dental, vision, and hearing provider access before choosing a plan.',
                 snapshot: reviewSnapshot,
                 agentHtml: proofCard ? proofCard.outerHTML : '',
                 benefits: ['Review saved', 'Licensed guidance', 'No obligation'],
                 nextTitle: agentName + ' helps turn this review into a clear coverage decision.',
                 nextStep: 'The review can now confirm affordability, deductible comfort, provider access, and whether your current path still makes sense before any recommendation moves forward.',
-                checklist: ['Premium fit', 'Doctor access', 'Plan direction'],
+                checklist: ['Premium fit', 'DVH provider access', 'Benefit fit'],
                 bookingTitle: 'Choose a time to keep the review moving.',
                 bookingCopy: 'Schedule while this is fresh so ' + agentName + ' can confirm affordability, provider access, deductible comfort, and what path fits best.',
                 loading: normalized.loading,
