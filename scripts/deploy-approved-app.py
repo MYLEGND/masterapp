@@ -167,7 +167,7 @@ def deployment_read_process(command, timeout):
 def deployment_read_error_metadata(result):
     """Allowlisted CLI-reported metadata, never a diagnosis or copied error text.
 
-    Accept only one complete recognized ERROR line (at most 8192 characters).
+    Accept one anchored ERROR shape within at most 8192 characters / 32 lines.
     A nonzero exit is not a timeout. HTTP status and provider code are separate
     observations; neither is inferred from the other.
     """
@@ -201,34 +201,73 @@ def deployment_read_error_metadata(result):
         'Bad Gateway': (502, 'service_error'), 'Service Unavailable': (503, 'service_error'),
         'Gateway Timeout': (504, 'service_error'),
     }
-    # Only remove one conventional line ending; embedded/multiple lines remain unknown.
-    line = stderr.removesuffix('\n').removesuffix('\r')
-    metadata['stderrLineCount']=min(8, len(stderr.splitlines()))
-    if not line:
-        metadata['unknownReason']='EMPTY'
+    # No partial-input classification: bounds and ambiguity apply to every line.
+    text = stderr.replace('\r\n', '\n').removesuffix('\n')
+    lines = text.split('\n') if text else []
+    metadata['stderrLineCount'] = min(33, len(lines))
+    if len(lines) > 32:
+        metadata['unknownReason'] = 'LINE_LIMIT'
         return metadata
-    if '\n' in line or '\r' in line:
-        metadata['unknownReason']='MULTILINE'
+    if not text:
+        metadata['unknownReason'] = 'EMPTY'
         return metadata
-    if line.count('ERROR:') != 1:
-        if line.count('ERROR:') > 1:
-            metadata['unknownReason']='CONFLICTING_MARKERS'
+    # CRLF is supported; stray CR, ANSI and alternate separators are ambiguous.
+    if any(any(ord(c) < 32 and c != '\t' or ord(c) == 127 or
+                   c in '\x85\u2028\u2029' for c in line) for line in lines):
+        metadata['unknownReason'] = 'UNRECOGNIZED_FORMAT'
+        return metadata
+    markers = re.compile(r'ERROR\s*:|Code\s*:|HTTP/|Operation returned an invalid status|AADSTS|'
+                         r'(?<![A-Za-z0-9_])(?:HTTP status|Status|StatusCode)\s*:', re.I)
+    error_lines = [i for i, line in enumerate(lines) if line.startswith('ERROR: ')]
+    if len(error_lines) != 1:
+        if sum(len(re.findall(r'ERROR\s*:', line, re.I)) for line in lines) > 1:
+            metadata['unknownReason'] = 'CONFLICTING_MARKERS'
+        return metadata
+    index = error_lines[0]
+    line = lines[index]
+    # Only the selected anchored shape may consume its own markers. Detail lines
+    # are never evidence for a positive and must not introduce another marker.
+    if any(markers.search(detail) for i, detail in enumerate(lines) if i != index):
+        metadata['unknownReason'] = 'CONFLICTING_MARKERS'
         return metadata
     match = re.fullmatch(r'ERROR: \(([A-Za-z]+)\)(?: [^\r\n]*)?', line)
-    if match and match[1] not in provider_codes:
-        metadata['unknownReason']='UNKNOWN_PROVIDER_CODE'
-    if match and match[1] in provider_codes:
-        if 'Operation returned an invalid status' in line or 'Code:' in line or 'HTTP/' in line:
-            metadata['unknownReason']='CONFLICTING_MARKERS'
+    consumed = 'ERROR: '
+    update = {}
+    if match:
+        if match[1] not in provider_codes:
+            metadata['unknownReason'] = 'UNKNOWN_PROVIDER_CODE'
             return metadata
-        metadata.update(providerCode=match[1], category=provider_codes[match[1]])
+        update = dict(providerCode=match[1], category=provider_codes[match[1]])
     else:
         match = re.fullmatch(r"ERROR: Operation returned an invalid status '([A-Za-z ]+)'", line)
         if match and match[1] in statuses:
             status, category = statuses[match[1]]
-            metadata.update(httpStatus=status, category=category)
-    if metadata['category'] != 'unknown':
-        metadata['unknownReason']=None
+            update = dict(httpStatus=status, category=category)
+            consumed = line
+        else:
+            # Explicit finite CLI shapes: option names and tails are never emitted.
+            argument_shapes = (
+                (r'ERROR: unrecognized arguments: .+', 'UNRECOGNIZED_ARGUMENTS'),
+                (r'ERROR: argument --?[A-Za-z][A-Za-z0-9-]{0,63}: expected one argument', 'EXPECTED_ONE_ARGUMENT'),
+                (r'ERROR: the following arguments are required: .+', 'REQUIRED_ARGUMENTS'),
+            )
+            for pattern, kind in argument_shapes:
+                if re.fullmatch(pattern, line):
+                    update = dict(category='cli_argument', cliArgumentKind=kind)
+                    break
+            # Literal Microsoft Entra codes only; CLI-reported, not verified causes.
+            # https://learn.microsoft.com/en-us/entra/identity-platform/reference-error-codes
+            for auth_code in ('AADSTS700016', 'AADSTS7000215', 'AADSTS7000222'):
+                prefix = 'ERROR: ' + auth_code + ':'
+                if line.startswith(prefix) and (line == prefix or line[len(prefix)] == ' '):
+                    update = dict(category='authentication_reported', authenticationCode=auth_code)
+                    consumed = prefix
+                    break
+    if markers.search(line[len(consumed):]):
+        metadata['unknownReason'] = 'CONFLICTING_MARKERS'
+        return metadata
+    if update:
+        metadata.update(update, unknownReason=None)
     return metadata
 
 

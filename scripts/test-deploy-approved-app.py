@@ -3492,7 +3492,7 @@ class DeploymentReadErrorMetadataTests(unittest.TestCase):
                      'ERROR: (Forbidden) detail ERROR: (AuthenticationFailed) detail',
                      "ERROR: (Forbidden) Operation returned an invalid status 'Unauthorized'",
                      'ERROR: (Forbidden) Code: AuthenticationFailed',
-                     'ERROR: (Forbidden) HTTP/1.1 401', 'ERROR: (Forbidden) detail\n\n']:
+                     'ERROR: (Forbidden) HTTP/1.1 401']:
             with self.subTest(text=text):
                 result = self.metadata(text)
                 self.assertEqual(result['category'], 'unknown')
@@ -3529,6 +3529,63 @@ class DeploymentReadErrorMetadataTests(unittest.TestCase):
         self.assertEqual(process.call_args.args[0], ['az', 'webapp', 'log', 'deployment', 'list',
                          '-g', deploy._RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP, '-n', 'app', '--only-show-errors', '-o', 'json'])
         self.assertEqual(process.call_args.kwargs, {'timeout': 40})
+
+    def test_multiline_finite_shapes_never_emit_secret_details(self):
+        secret = 'SYNTHETIC_SECRET_DO_NOT_LOG'
+        cases = [('ERROR: (Forbidden) '+secret, 'authorization', None),
+                 ("ERROR: Operation returned an invalid status 'Unauthorized'", 'authentication', None),
+                 ('ERROR: unrecognized arguments: --'+secret, 'cli_argument', 'UNRECOGNIZED_ARGUMENTS'),
+                 ('ERROR: argument --secret: expected one argument', 'cli_argument', 'EXPECTED_ONE_ARGUMENT'),
+                 ('ERROR: the following arguments are required: --'+secret, 'cli_argument', 'REQUIRED_ARGUMENTS')]
+        for code in ('AADSTS700016', 'AADSTS7000215', 'AADSTS7000222'):
+            cases.append(('ERROR: '+code+': '+secret, 'authentication_reported', None))
+        for ending in ('\n', '\r\n'):
+            for line, category, kind in cases:
+                with self.subTest(line=line, ending=ending):
+                    result = self.metadata(ending.join([line, 'Trace: '+secret,
+                        'https://example.invalid/?token='+secret])+ending)
+                    self.assertEqual(result['category'], category)
+                    self.assertEqual(result.get('cliArgumentKind'), kind)
+                    self.assertEqual(result['stderrLineCount'], 3)
+                    self.assertIsNone(result['unknownReason'])
+                    for value in (secret, 'https:', '--secret', 'token='):
+                        self.assertNotIn(value, json.dumps(result))
+                    if category in ('cli_argument', 'authentication_reported'):
+                        self.assertIsNone(result['providerCode']); self.assertIsNone(result['httpStatus'])
+
+    def test_multiline_conflicts_and_malformed_shapes_stay_unknown(self):
+        first = 'ERROR: (Forbidden) safe'
+        markers = ('ERROR: (Forbidden) same', ' error: unknown', 'Code: AuthenticationFailed',
+                   'HTTP/1.1 401', 'Operation returned an invalid status', 'AADSTS999999: detail',
+                   'HTTP status: 401', 'Status: 401', 'StatusCode: 401',
+                   'AuthenticationError: detail', 'authentication error: detail', 'AuthError: detail')
+        cases = [first+'\n'+marker for marker in markers]
+        cases += [first+' '+marker for marker in markers]
+        cases += [first+ending for ending in ('\r', '\x1b[0m', '\u2028detail', '\vdetail', '\x85detail')]
+        cases += ['ERROR: argument --x: expected one arguments',
+                  'ERROR: unrecognized arguments:', 'ERROR: the following arguments are required:',
+                  'ERROR: AADSTS999999: detail', 'prefix ERROR: (Forbidden) detail',
+                  'ERROR: AADSTS700016:evil', first+'\n'+'detail\n'*31+'ERROR: other']
+        for text in cases:
+            with self.subTest(text=text):
+                result = self.metadata(text)
+                self.assertEqual(result['category'], 'unknown')
+                self.assertIsNone(result['providerCode']); self.assertIsNone(result['httpStatus'])
+                self.assertNotIn('authenticationCode', result)
+                self.assertNotIn('cliArgumentKind', result)
+
+    def test_multiline_bounds_never_classify_truncated_prefix(self):
+        first = 'ERROR: (Forbidden) safe'
+        result = self.metadata(first+'\n'+'detail\n'*31)
+        self.assertEqual(result['category'], 'authorization')
+        self.assertEqual(result['stderrLineCount'], 32)
+        for tail in ('detail', 'ERROR: other'):
+            result = self.metadata(first+'\n'+'detail\n'*31+tail)
+            self.assertEqual(result['unknownReason'], 'LINE_LIMIT')
+            self.assertEqual(result['stderrLineCount'], 33)
+        exact = 'ERROR: (Forbidden) '+'x'*(8192-len('ERROR: (Forbidden) '))
+        self.assertEqual(self.metadata(exact)['category'], 'authorization')
+        self.assertEqual(self.metadata(exact+'x')['unknownReason'], 'OVERSIZED')
 
     def test_diagnostic_failure_cannot_replace_original_failure(self):
         azure = deploy.Azure('app', Path('/immutable'), 'https://example.invalid', 'a' * 40)
@@ -3820,7 +3877,7 @@ class CompletionDiagnosticContextTests(unittest.TestCase):
         secret='SYNTHETIC_SECRET_HTTPS_TOKEN'
         cases=[('', 'EMPTY'),('ERROR: '+secret,'UNRECOGNIZED_FORMAT'),
                ('ERROR: (UnknownProvider) '+secret,'UNKNOWN_PROVIDER_CODE'),
-               ('ERROR: (Forbidden) '+secret+'\nWARNING: '+secret,'MULTILINE'),
+               ('ERROR: (Forbidden) '+secret+'\nERROR: '+secret,'CONFLICTING_MARKERS'),
                ('ERROR: (Forbidden) '+secret+' HTTP/1.1 401','CONFLICTING_MARKERS'),
                ('ERROR: (Forbidden) '+secret+' ERROR: second','CONFLICTING_MARKERS'),
                (secret*1000,'OVERSIZED'),(b'ERROR: '+secret.encode(),'INVALID_TYPE')]
@@ -3831,7 +3888,7 @@ class CompletionDiagnosticContextTests(unittest.TestCase):
                 self.assertEqual(result['category'],'unknown')
                 self.assertIsNone(result['providerCode']);self.assertIsNone(result['httpStatus'])
                 self.assertNotIn(secret,json.dumps(result))
-                self.assertTrue(result['stderrLineCount'] is None or result['stderrLineCount']<=8)
+                self.assertTrue(result['stderrLineCount'] is None or result['stderrLineCount']<=33)
         result=deploy.deployment_read_error_metadata(subprocess.CompletedProcess([],True,'','ERROR: (Forbidden)'))
         self.assertEqual(result['unknownReason'],'INVALID_RETURN_CODE')
 
