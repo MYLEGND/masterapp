@@ -1,13 +1,49 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized resolving and publishing the existing Protect work on 2026-10-29, including approved isolated successor recovery. Protected exact-candidate independent acceptance, CI/admission, scoped release and live verification remain required. No new costs, credentials, privacy/security changes or weakened protections.",
-  "purpose": "Complete the existing Protect repair in one reviewed release: bind compiled native slots to the exact request-owned Razor identity, and remove unused profile image/credential payloads from existing CTA and booking queries through least-data projections. Preserve owner filters, candidate ordering, booking policy, immutable publication and native correspondence, controls and posted values. Release only Website and Protect as selected by actual shared CMS and Protect runtime consumers; preserve Portal, Client and Parfait deployments and release160 recovery receipts. No schema, routing, timeout increase, cache, fallback, credentials or security-policy changes. The projection removes a known slow-query class; complete Studio/public latency benefit remains unverified until live acceptance. Protect training retirement remains pending its guarded content workflow.",
-  "requestId": "protect-native-identity-profile-read-repair-20261029-v1",
-  "releaseMode": "approved-only",
-  "targets": [
-    "masterapp-protect",
-    "masterapp-website"
-  ],
+  "authorization": "Founder authorized resolving the stalled Protect release161 upload on 2026-10-29 after disclosure that the original upload outcome remains UNKNOWN and may complete late. One bounded Protect-only replacement may use the exact retained reviewed package. Independent exact-control review, required CI, protected promotion, fresh readiness and exclusive ownership remain mandatory. No new costs, credentials, security or privacy changes.",
+  "purpose": "Promote reviewed recovery tooling only; deploy no application during this promotion. Extend the existing retained recovery journal with one fixed Protect161 replacement generation, authenticating the original intent, exact retained package and release160 rollback. Preserve original UNKNOWN history, block replay after ambiguous intent/submission, and require current baseline, idle provider, exclusive owner and actual provider/runtime acceptance. A subsequent existing retained-recovery dispatch may perform the single authorized tracked Protect replacement; preserve Website161 success and Portal, Client and Parfait159. No application rebuild, workflow additions, schema/routing changes, timeout relaxation or dormant recovery framework activation.",
+  "requestId": "protect161-retained-unknown-replacement-tool-promotion-20261029-v1",
+  "releaseMode": "validate-only",
+  "targets": [],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false
+  "preserveLiveTargets": false,
+  "trustedToolPromotion": {
+    "schemaVersion": 1,
+    "baseRevision": "c8fde29a67fbb500bbd7577c17298703d04e825c",
+    "sourceRevision": "7c910eeb02d33d5f16af42d0d1bf9ad2a93d7c1d",
+    "files": {
+      "scripts/deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "3648dcde35604d053339ecd6a9ba9b5a63ed7b7d"
+      },
+      "scripts/release-artifacts/test-transport.cjs": {
+        "mode": "100644",
+        "blob": "6aee9f434e410fdd2dd3beeeb7acc06dead82402"
+      },
+      "scripts/release-artifacts/transport.cjs": {
+        "mode": "100644",
+        "blob": "7def4a310299db08abe692b0fa785b3e7dfb7f75"
+      },
+      "scripts/release-operation-evidence.py": {
+        "mode": "100644",
+        "blob": "0e3251729ff6379e6b32bf53cb39471908859cef"
+      },
+      "scripts/test-deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "8e0750721b4007f4c802fda49e32cc2f11af1e6b"
+      },
+      "scripts/test-release-operation-evidence.py": {
+        "mode": "100644",
+        "blob": "204399451be44298a78fba240abe0469c0865377"
+      },
+      "scripts/test-validation-resume.py": {
+        "mode": "100644",
+        "blob": "14dfc6946cb139ce7b44713e516e34fd6e9381b1"
+      },
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "505e93f0884927fc8413db303ebc556333532527"
+      }
+    }
+  }
 }
