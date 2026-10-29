@@ -6575,8 +6575,8 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         root=Path(__file__).parent
         source=(root/'deploy-approved-app.py').read_text()
         journal=(root/'release-operation-evidence.py').read_text()
-        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'63de609c4e97fd97c566d59f3d1bb4eae745bfcc8012e508e2944b2307678240')
-        self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'5b42fcbed0ac4a331ff5c706ef5a6a3ce96eb32d556ef4051c65ee4cf99e881e')
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'95564a686c00eef65bd2566be9cfe46a76dc2a5a9bed776ad4b817511a90f6ef')
+        self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f')
         self.assertTrue(m._recovery_preflight_source_contract(source,journal))
         for changed in [source+'# unreviewed helper\n',source.replace('reconcile_only=journal.intent is not None','reconcile_only=False')]:
             self.assertNotEqual(changed,source)
@@ -8708,6 +8708,68 @@ class FreshProtectPushNonentryTests(unittest.TestCase):
             for baseline in ['f'*40,self.revision,m.PROTECT_BASELINE_REVISION]:
                 with self.subTest(baseline=baseline),self.assertRaisesRegex(ValueError,'BASELINE_CHANGED'):
                     m.validate_fast_track_recovery_record('MYLEGND/masterapp',run,{},dict(record,baseline=baseline),'test-only')
+
+
+class Protect161ReplacementTests(unittest.TestCase):
+    def setUp(self):
+        self.p = dict(m.PROTECT_161_REPLACEMENT)
+    def operation(self, proof=None):
+        p=self.p
+        return m.retained_operation_id('protect',p['applicationRevision'],p['packageDigest'],p if proof is None else proof)
+    def test_fixed_generation_and_unchanged_sibling_identity(self):
+        p=self.p
+        self.assertNotEqual(self.operation(),p['originalOperationId'])
+        self.assertEqual(self.operation(),self.operation(dict(p)))
+        old=m.retained_operation_id('website',p['applicationRevision'],'a'*64)
+        self.assertEqual(old,m.retained_preflight_operation_id('website',p['applicationRevision'],'a'*64,p['originalRun']))
+        self.assertEqual(self.operation(),m.retained_preflight_operation_id('protect',p['applicationRevision'],p['packageDigest'],p['originalRun']))
+    def test_all_pins_and_types_are_exact_no_renewed_generation(self):
+        for key,value in self.p.items():
+            replacement=dict(self.p); replacement[key]=False if isinstance(value,bool) else True if isinstance(value,int) else 'changed'
+            with self.subTest(key=key),self.assertRaises(ValueError):self.operation(replacement)
+        with self.assertRaises(ValueError):self.operation(dict(self.p,extra=True))
+        for target,revision,digest in [('website',self.p['applicationRevision'],self.p['packageDigest']),('protect','a'*40,self.p['packageDigest']),('protect',self.p['applicationRevision'],'a'*64)]:
+            with self.assertRaises(ValueError):m.retained_operation_id(target,revision,digest,self.p)
+    def history(self, rows, *, changed=False, recovery_error=False):
+        p=self.p; original=dict(run=dict(id=p['originalRun'],head_sha=p['applicationRevision'],run_attempt=2,status='completed'))
+        material=dict(unknownReplacement=dict(p))
+        if changed:material['unknownReplacement']['historicalOutcome']='FAILED'
+        def api(repo,path,token):
+            if path.startswith('actions/artifacts?'):return dict(total_count=0,artifacts=[])
+            return dict(total_count=1,jobs=[dict(name='Affected App Deploy — Protect',status='completed',conclusion='failure',steps=[dict(name='Publish or reconcile exact application bytes',status='completed',conclusion='failure')])])
+        with patch.object(m,'fast_track_completion_original',return_value=original),patch.object(m,'fast_track_recovery_material',return_value=material),patch.object(m,'_release_history_api',side_effect=api),patch.object(m,'fast_track_execution_history',return_value=rows),patch.object(m,'_release_history_runs',return_value=[]),patch.object(m,'attested_fast_track_preupload_failure',return_value=False),patch.object(m,'recovery_history_no_unjournaled_entry',side_effect=m.ReleaseOperationHistoryUnproven('other unknown recovery') if recovery_error else None) as recovery:
+            result=m.release_operation_history('MYLEGND/masterapp',self.operation(),p['applicationRevision'],'protect',999,1,'test-only',replacement=p)
+            recovery.assert_called_once()
+            return result
+    def test_only_exact_authenticated_old_unknown_history_is_excluded(self):
+        old=dict(id=self.p['originalRun'],head_sha=self.p['applicationRevision'],run_attempt=2,status='completed')
+        self.assertIsNone(self.history([old]))
+        for row in [dict(old,id=123),dict(old,status='in_progress'),dict(old,run_attempt=3)]:
+            with self.subTest(row=row),self.assertRaises(m.ReleaseOperationHistoryUnproven):self.history([row])
+        with self.assertRaises(ValueError):self.history([old],changed=True)
+        with self.assertRaises(m.ReleaseOperationHistoryUnproven):self.history([old],recovery_error=True)
+    def test_original_and_rollback_artifact_bytes_are_authenticated(self):
+        p=self.p; run=dict(id=p['originalRun'],head_sha=p['applicationRevision'],status='completed',run_attempt=2)
+        anchor=dict(id=p['rollbackRun'],head_sha=p['baselineRevision'],status='completed',conclusion='success')
+        def artifact(id,digest,name,owner):return dict(id=id,digest=digest,name=name,expired=False,workflow_run=owner)
+        intentartifact=artifact(p['originalIntentArtifactId'],p['originalIntentArtifactDigest'],'legend-release-operation-intent-'+p['originalOperationId'],run)
+        rollback=artifact(p['rollbackArtifactId'],p['rollbackArtifactDigest'],'fast-track-package-'+p['baselineRevision']+'-protect',anchor)
+        receipt=artifact(p['baselineReceiptId'],p['baselineReceiptDigest'],'legend-release-operation-success-0de1f23d9a6064ed213d9952b6d7d5e8d62fc933f9921cf55ba19ecbf40a09ef',anchor)
+        intent=dict(target='protect',applicationRevision=p['applicationRevision'],packageDigest=p['packageDigest'],operationId=p['originalOperationId'],baseline=p['baselineRevision'],packageProducerRun=run['id'],producingRun=run['id'],producingAttempt=1,phase='intent',schemaVersion=1,submissionContract=dict(kind='azure_onedeploy_windows_intent_v1',value=p['originalOperationId']))
+        success=dict(target='protect',applicationRevision=p['baselineRevision'],packageDigest=p['rollbackPackageDigest'],operationId='0de1f23d9a6064ed213d9952b6d7d5e8d62fc933f9921cf55ba19ecbf40a09ef',packageProducerRun=anchor['id'],producingRun=anchor['id'],producingAttempt=1,phase='success',deploymentIds=['30a1eeb8990043a59a9b4447290d8e7e'])
+        original=dict(run=run,artifacts=[intentartifact]); material=dict(packageArtifact=dict(id=p['candidateArtifactId'],digest=p['candidateArtifactDigest']),originalIntent=intent)
+        def invoke():
+            with patch.object(m,'api_get',side_effect=[anchor,dict(total_count=2,artifacts=[rollback,receipt])]),patch.object(m,'is_fast_track_producer',return_value=True),patch.object(m,'_completion_jobs',return_value={1:[]}),patch.object(m,'_completion_original_artifact_owner') as owner,patch.object(m,'_release_history_json',side_effect=[intent,success]) as read:
+                result=m.protect_161_replacement_proof('MYLEGND/masterapp',original,material,'test-only')
+                self.assertEqual(owner.call_count,3)
+                self.assertTrue(all(c.kwargs['verify_digest'] for c in read.call_args_list))
+                return result
+        snapshot=json.dumps(intent,sort_keys=True)
+        self.assertEqual(invoke(),p);self.assertEqual(snapshot,json.dumps(intent,sort_keys=True))
+        for row,key,value in [(intentartifact,'digest','sha256:'+'a'*64),(rollback,'expired',True),(receipt,'digest','sha256:'+'a'*64),(success,'packageDigest','b'*64),(intent,'operationId','c'*64),(anchor,'conclusion','failure')]:
+            saved=row[key];row[key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):invoke()
+            row[key]=saved
 
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.

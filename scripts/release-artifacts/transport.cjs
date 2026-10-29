@@ -32,6 +32,25 @@ const digest = value => typeof value === 'string' && /^sha256:[a-f0-9]{64}$/.tes
 const targets = ['website', 'portal', 'client', 'protect', 'parfait'];
 const operationIdentity = (target, revision, packageDigest) => crypto.createHash('sha256')
   .update(JSON.stringify({applicationRevision: revision, packageDigest, target})).digest('hex');
+// Fixed generation only. Serializer shape validation is not producer authority.
+const protect161Replacement = {"acceptLateCompletionRisk": true, "applicationRevision": "c8fde29a67fbb500bbd7577c17298703d04e825c", "authorizationId": "protect-release161-one-replacement-20261029", "baselineReceiptDigest": "sha256:55652cc0e83f0170717ce8789217c44d3c5f04ac0064dc2529a172388eb764f8", "baselineReceiptId": 12926290946, "baselineRevision": "10c5c3634f8899fdeecdfd2f84e2e1a5333114d7", "candidateArtifactDigest": "sha256:5e4fbb337ad3d5348380f7a69ad55abd0ad9b869f49bb65af95ca3fe95c769b3", "candidateArtifactId": 12929203115, "historicalOutcome": "UNKNOWN", "originalIntentArtifactDigest": "sha256:f1215af45675fea2020761f0c065db6a5b7cb798ce0b117df74761ed2bce3862", "originalIntentArtifactId": 12929917437, "originalOperationId": "68ef98f88a78383b645d7d1f48e75a4d2c7c0e7766746d55e2e81e5adb3eff7e", "originalRun": 40946628155, "packageDigest": "726c3bfd496979dee7ad0c7b079025dc9d9ee51b4ec52b5edc677a986d3b61d2", "rollbackArtifactDigest": "sha256:e7806c97811b6b0fe787f0135ea46dfa1e9664410a2d3e7b28f6482d13701010", "rollbackArtifactId": 12924409528, "rollbackPackageDigest": "c989444f9218bb6db17fcbbf9ce330d2b6f510c7fee47543316be03115b41eee", "rollbackRun": 40935932531, "schemaVersion": 1, "target": "protect"};
+function retainedOperationIdentity(target, revision, packageDigest, originalRun) {
+  const p = protect161Replacement;
+  if (originalRun !== p.originalRun || target !== p.target || revision !== p.applicationRevision || packageDigest !== p.packageDigest)
+    return operationIdentity(target, revision, packageDigest);
+  return crypto.createHash('sha256').update(JSON.stringify({applicationRevision: revision,
+    authorizationId: p.authorizationId, packageDigest, supersededOperationId: p.originalOperationId, target})).digest('hex');
+}
+function unknownReplacement(record, value) {
+  const p = protect161Replacement;
+  if (!exactKeys(value, Object.keys(p).join(',')) || Object.keys(p).some(k => value[k] !== p[k]) ||
+      record.target !== p.target || record.applicationRevision !== p.applicationRevision ||
+      record.packageDigest !== p.packageDigest || record.baseline !== p.baselineRevision ||
+      record.recoveryEvidence.originalRun !== p.originalRun ||
+      record.recoveryEvidence.packageArtifactId !== p.candidateArtifactId ||
+      record.recoveryEvidence.packageArtifactDigest !== p.candidateArtifactDigest)
+    throw new Error('Invalid exact Protect 161 replacement evidence');
+}
 function recoveryObserver(value, run, attempt) {
   return exactKeys(value, 'jobId,promotionRunId,runAttempt,runId,toolRevision') &&
     ['jobId', 'promotionRunId', 'runAttempt', 'runId'].every(key => positive(value[key])) &&
@@ -39,6 +58,8 @@ function recoveryObserver(value, run, attempt) {
 }
 function recoveryEvidence(record) {
   const proof = record.recoveryEvidence;
+  const replacement = proof?.unknownReplacement;
+  if (replacement !== undefined) unknownReplacement(record, replacement);
   const correction = proof?.protectBaselineCorrection;
   if (correction !== undefined) protectBaselineCorrection(record, correction);
   const keys = ['schemaVersion', 'operationId', 'target', 'applicationRevision', 'packageDigest', 'baseline',
@@ -51,12 +72,12 @@ function recoveryEvidence(record) {
       (record.phase === 'success' && (!Array.isArray(record.deploymentIds) || record.deploymentIds.length !== 1 ||
         record.baselineDeploymentIds.includes(record.deploymentIds[0]))))
     throw new Error('Invalid retained recovery phase fields');
-  if (!exactKeys(proof, 'schemaVersion,originalRun,originalAttempt,applicationRevision,packageArtifactId,packageArtifactDigest,jobId,promotionRunId,runAttempt,runId,toolRevision' + (correction === undefined ? '' : ',protectBaselineCorrection')) ||
+  if (!exactKeys(proof, 'schemaVersion,originalRun,originalAttempt,applicationRevision,packageArtifactId,packageArtifactDigest,jobId,promotionRunId,runAttempt,runId,toolRevision' + (correction === undefined ? '' : ',protectBaselineCorrection') + (replacement === undefined ? '' : ',unknownReplacement')) ||
       proof.schemaVersion !== 1 || record.schemaVersion !== 1 || record.completionEvidence !== undefined ||
       !['originalRun', 'originalAttempt', 'packageArtifactId'].every(key => positive(proof[key])) ||
       !digest(proof.packageArtifactDigest) || proof.originalRun !== record.packageProducerRun ||
       proof.originalRun === record.producingRun || proof.applicationRevision !== record.applicationRevision ||
-      !targets.includes(record.target) || record.operationId !== operationIdentity(record.target, record.applicationRevision, record.packageDigest) ||
+      !targets.includes(record.target) || record.operationId !== (replacement === undefined ? operationIdentity(record.target, record.applicationRevision, record.packageDigest) : retainedOperationIdentity(record.target, record.applicationRevision, record.packageDigest, proof.originalRun)) ||
       !recoveryObserver(Object.fromEntries(['jobId', 'promotionRunId', 'runAttempt', 'runId', 'toolRevision'].map(key => [key, proof[key]])), record.producingRun, record.producingAttempt))
     throw new Error('Invalid retained recovery operation evidence');
 }
@@ -92,7 +113,7 @@ function retainedSummary(name, record) {
   for (const [target, row] of Object.entries(record.targets)) {
     if (!targets.includes(target) || !exactKeys(row, 'operationId,packageDigest,packageArtifactId,packageArtifactDigest,deploymentIds') ||
         !sha(row.packageDigest, 64) || !positive(row.packageArtifactId) || !digest(row.packageArtifactDigest) ||
-        row.operationId !== operationIdentity(target, record.applicationRevision, row.packageDigest) ||
+        row.operationId !== retainedOperationIdentity(target, record.applicationRevision, row.packageDigest, record.originalRun) ||
         !Array.isArray(row.deploymentIds) || row.deploymentIds.length !== 1 ||
         typeof row.deploymentIds[0] !== 'string' || !/^[a-zA-Z0-9_.:-]{1,256}$/.test(row.deploymentIds[0]))
       throw new Error('Invalid retained recovery target evidence');
@@ -105,7 +126,7 @@ function preflightNonentry(name,record) {
   if(!exactKeys(record,preflightKeys)||record.schemaVersion!==1||record.phase!=='preflight-nonentry'||record.stage!=='all-target-preflight'||record.authorizesMutation!==false||record.writePhaseEntered!==false||!preflightReasons.includes(record.reason)||!sha(record.applicationRevision,40)||!['originalRun','originalAttempt','producingRun','producingAttempt'].every(k=>positive(record[k]))||record.originalRun===record.producingRun||!recoveryObserver(record.observer,record.producingRun,record.producingAttempt)||!record.targets||Array.isArray(record.targets)||!Object.keys(record.targets).length||Object.keys(record.targets).length>5||typeof record.failedTarget!=='string'||!targets.includes(record.failedTarget)||!Object.hasOwn(record.targets,record.failedTarget))throw new Error('Invalid terminal preflight identity');
   const identity={applicationRevision:record.applicationRevision,originalRun:record.originalRun,producingAttempt:record.producingAttempt,producingRun:record.producingRun};
   if(name!=='legend-retained-preflight-nonentry-'+crypto.createHash('sha256').update(JSON.stringify(identity)).digest('hex'))throw new Error('Invalid terminal preflight name');
-  for(const [key,row] of Object.entries(record.targets))if(!targets.includes(key)||!exactKeys(row,'operationId,packageDigest,packageArtifactId,packageArtifactDigest')||!sha(row.packageDigest,64)||!positive(row.packageArtifactId)||!digest(row.packageArtifactDigest)||row.operationId!==operationIdentity(key,record.applicationRevision,row.packageDigest))throw new Error('Invalid terminal preflight material');
+  for(const [key,row] of Object.entries(record.targets))if(!targets.includes(key)||!exactKeys(row,'operationId,packageDigest,packageArtifactId,packageArtifactDigest')||!sha(row.packageDigest,64)||!positive(row.packageArtifactId)||!digest(row.packageArtifactDigest)||row.operationId!==retainedOperationIdentity(key,record.applicationRevision,row.packageDigest,record.originalRun))throw new Error('Invalid terminal preflight material');
   const o=record.observation;
   if(!exactKeys(o,'historyReadComplete,historyCount,activeCount,runtimeRevision')||typeof o.historyReadComplete!=='boolean'||(o.runtimeRevision!==null&&!sha(o.runtimeRevision,40))||
       (o.historyReadComplete?(!Number.isSafeInteger(o.historyCount)||o.historyCount<0||o.historyCount>100000||!Number.isSafeInteger(o.activeCount)||o.activeCount<0||o.activeCount>o.historyCount):(o.historyCount!==null||o.activeCount!==null)))throw new Error('Invalid terminal preflight observation');

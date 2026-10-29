@@ -442,6 +442,69 @@ def protect_recovery_baseline_proof(repository, original, package, token):
         candidateArtifactDigest=package['digest'])
 
 
+# One risk-accepted replacement, not evidence that the old provider operation stopped.
+# The fixed generation survives tool promotion, retries and renewed observations.
+PROTECT_161_REPLACEMENT = {'schemaVersion': 1, 'authorizationId': 'protect-release161-one-replacement-20261029', 'target': 'protect', 'originalRun': 40946628155, 'originalOperationId': '68ef98f88a78383b645d7d1f48e75a4d2c7c0e7766746d55e2e81e5adb3eff7e', 'applicationRevision': 'c8fde29a67fbb500bbd7577c17298703d04e825c', 'packageDigest': '726c3bfd496979dee7ad0c7b079025dc9d9ee51b4ec52b5edc677a986d3b61d2', 'baselineRevision': '10c5c3634f8899fdeecdfd2f84e2e1a5333114d7', 'historicalOutcome': 'UNKNOWN', 'acceptLateCompletionRisk': True, 'originalIntentArtifactId': 12929917437, 'originalIntentArtifactDigest': 'sha256:f1215af45675fea2020761f0c065db6a5b7cb798ce0b117df74761ed2bce3862', 'candidateArtifactId': 12929203115, 'candidateArtifactDigest': 'sha256:5e4fbb337ad3d5348380f7a69ad55abd0ad9b869f49bb65af95ca3fe95c769b3', 'rollbackRun': 40935932531, 'rollbackArtifactId': 12924409528, 'rollbackArtifactDigest': 'sha256:e7806c97811b6b0fe787f0135ea46dfa1e9664410a2d3e7b28f6482d13701010', 'rollbackPackageDigest': 'c989444f9218bb6db17fcbbf9ce330d2b6f510c7fee47543316be03115b41eee', 'baselineReceiptId': 12926290946, 'baselineReceiptDigest': 'sha256:55652cc0e83f0170717ce8789217c44d3c5f04ac0064dc2529a172388eb764f8'}
+
+
+def retained_operation_id(target, revision, digest, replacement=None):
+    identity = dict(target=target, applicationRevision=revision, packageDigest=digest)
+    if replacement is not None:
+        if (json.dumps(replacement, sort_keys=True) != json.dumps(PROTECT_161_REPLACEMENT, sort_keys=True)
+            or any(identity[k] != replacement[k] for k in identity)):
+            raise ValueError('PROTECT_161_REPLACEMENT_IDENTITY_CHANGED')
+        identity.update(authorizationId=replacement['authorizationId'], supersededOperationId=replacement['originalOperationId'])
+    return hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def retained_preflight_operation_id(target, revision, digest, original_run):
+    # Shape only; historical receipt consumers independently authenticate materials.
+    p = PROTECT_161_REPLACEMENT
+    replacement = p if (original_run == p['originalRun'] and target == p['target']
+        and revision == p['applicationRevision'] and digest == p['packageDigest']) else None
+    return retained_operation_id(target, revision, digest, replacement)
+
+
+def protect_161_replacement_proof(repository, original, material, token):
+    p = PROTECT_161_REPLACEMENT
+    run = original['run']; package = material['packageArtifact']; intent = material['originalIntent']
+    if (repository.lower() != 'mylegnd/masterapp' or run['id'] != p['originalRun']
+        or run['head_sha'] != p['applicationRevision'] or run.get('status') != 'completed'
+        or package['id'] != p['candidateArtifactId'] or package['digest'] != p['candidateArtifactDigest']):
+        raise ValueError('PROTECT_161_ORIGINAL_CHANGED')
+    artifact = _completion_artifact(original['artifacts'], 'legend-release-operation-intent-' + p['originalOperationId'], run)
+    if artifact['id'] != p['originalIntentArtifactId'] or artifact['digest'] != p['originalIntentArtifactDigest']:
+        raise ValueError('PROTECT_161_INTENT_ARTIFACT_CHANGED')
+    _completion_original_artifact_owner(original, 'protect', artifact, 'Publish or reconcile exact application bytes', ('failure',))
+    actual = _release_history_json(repository, run['id'], artifact, 'operation.json', verify_digest=True)
+    expected = dict(target='protect', applicationRevision=p['applicationRevision'], packageDigest=p['packageDigest'],
+        operationId=p['originalOperationId'], baseline=p['baselineRevision'], packageProducerRun=run['id'],
+        producingRun=run['id'], producingAttempt=1, phase='intent', schemaVersion=1,
+        submissionContract=dict(kind='azure_onedeploy_windows_intent_v1', value=p['originalOperationId']))
+    if actual != intent or any(actual.get(k) != v for k,v in expected.items()):
+        raise ValueError('PROTECT_161_ORIGINAL_INTENT_CHANGED')
+    anchor = api_get(repository, 'actions/runs/' + str(p['rollbackRun']), token)
+    if (not is_fast_track_producer(repository, anchor) or anchor.get('id') != p['rollbackRun']
+        or anchor.get('head_sha') != p['baselineRevision'] or anchor.get('status') != 'completed'
+        or anchor.get('conclusion') != 'success'):
+        raise ValueError('PROTECT_161_ROLLBACK_PRODUCER_CHANGED')
+    artifacts = _completion_inventory(api_get(repository, 'actions/runs/' + str(anchor['id']) + '/artifacts?per_page=100', token), 'artifacts')
+    rollback = _completion_artifact(artifacts, 'fast-track-package-' + p['baselineRevision'] + '-protect', anchor)
+    receipt = _completion_artifact(artifacts, 'legend-release-operation-success-0de1f23d9a6064ed213d9952b6d7d5e8d62fc933f9921cf55ba19ecbf40a09ef', anchor)
+    if any(row[field] != p[pin] for row,field,pin in [(rollback,'id','rollbackArtifactId'),(rollback,'digest','rollbackArtifactDigest'),(receipt,'id','baselineReceiptId'),(receipt,'digest','baselineReceiptDigest')]):
+        raise ValueError('PROTECT_161_ROLLBACK_ARTIFACT_CHANGED')
+    context = dict(run=anchor, attempts=_completion_jobs(repository, anchor, token))
+    _completion_original_artifact_owner(context, 'protect', rollback, 'Preserve immutable application bytes before upload', ('success',))
+    _completion_original_artifact_owner(context, 'protect', receipt, 'Publish or reconcile exact application bytes', ('success',))
+    record = _release_history_json(repository, anchor['id'], receipt, 'operation.json', verify_digest=True)
+    expected = dict(target='protect', applicationRevision=p['baselineRevision'], packageDigest=p['rollbackPackageDigest'],
+        operationId='0de1f23d9a6064ed213d9952b6d7d5e8d62fc933f9921cf55ba19ecbf40a09ef', packageProducerRun=anchor['id'],
+        producingRun=anchor['id'], producingAttempt=1, phase='success', deploymentIds=['30a1eeb8990043a59a9b4447290d8e7e'])
+    if any(record.get(k) != v for k,v in expected.items()):
+        raise ValueError('PROTECT_161_ROLLBACK_RECEIPT_CHANGED')
+    return dict(p)
+
+
 def fast_track_recovery_material(repository, original, key, token):
     """Original bytes are mandatory. No rebuild or newly labelled package exists."""
     if key not in original['targets']:
@@ -463,6 +526,8 @@ def fast_track_recovery_material(repository, original, key, token):
             raise ValueError('PROTECT_RECOVERY_SUCCESSFUL_SIBLING_INTENT_MISSING')
         if key == 'protect':
             material['protectBaselineCorrection'] = protect_recovery_baseline_proof(repository, original, package, token)
+    if run['id'] == PROTECT_161_REPLACEMENT['originalRun'] and key == 'protect':
+        material['unknownReplacement'] = protect_161_replacement_proof(repository, original, material, token)
     return material
 
 
@@ -852,6 +917,8 @@ def _without_skipped_recovery_job(jobs, source):
 def fast_track_recovery_record_proof(original, material, observer):
     correction = ({'protectBaselineCorrection': material['protectBaselineCorrection']}
                   if 'protectBaselineCorrection' in material else {})
+    if 'unknownReplacement' in material:
+        correction['unknownReplacement'] = material['unknownReplacement']
     return dict(schemaVersion=1, originalRun=original['run']['id'], originalAttempt=original['run']['run_attempt'],
                 applicationRevision=original['run']['head_sha'], packageArtifactId=material['packageArtifact']['id'],
                 packageArtifactDigest=material['packageArtifact']['digest'], **observer, **correction)
@@ -885,6 +952,10 @@ def validate_fast_track_recovery_record(repository, run, artifact, record, token
         authorization = fresh_protect_retained_supersession(original, material, record.get('target'))
         if authorization is not None and record.get('baseline') != authorization['originalRevision']:
             raise ValueError('PROTECT_RECOVERY_RECEIPT_BASELINE_CHANGED')
+    replacement = material.get('unknownReplacement')
+    if replacement is not None and (record.get('baseline') != replacement['baselineRevision']
+        or record.get('operationId') != retained_operation_id(record['target'], record['applicationRevision'], record['packageDigest'], replacement)):
+        raise ValueError('PROTECT_161_RECOVERY_RECEIPT_CHANGED')
     jobs = _completion_rows(api_get(repository, f"actions/runs/{run['id']}/attempts/{observer['runAttempt']}/jobs?per_page=100", token), 'jobs')
     job = next(job for job in jobs if job['id'] == observer['jobId'])
     steps = [step for step in job.get('steps', []) if step.get('name') == 'Recover exact retained application bytes']
@@ -935,7 +1006,7 @@ def fast_track_recovery_completed(repository, original, token):
             if row['packageDigest'] != fast_track_recovery_package_digest(repository, original, material, key, token):
                 raise ValueError('RECOVERY_SUMMARY_PACKAGE_DIGEST_CHANGED')
             identity = dict(target=key, applicationRevision=run['head_sha'], packageDigest=row['packageDigest'])
-            if row['operationId'] != hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest():
+            if row['operationId'] != retained_operation_id(key, run['head_sha'], row['packageDigest'], material.get('unknownReplacement')):
                 raise ValueError('RECOVERY_SUMMARY_OPERATION_CHANGED')
             receipt = release_operation_history(repository, row['operationId'], run['head_sha'], key,
                                                 producer_id, observer['runAttempt'], token, phase='success')
@@ -1234,7 +1305,7 @@ def validate_recovery_preflight_nonentry(record):
             or not sha(row['packageDigest'],64) or not positive(row['packageArtifactId'])
             or not isinstance(row['packageArtifactDigest'],str) or not re.fullmatch('sha256:[a-f0-9]{64}',row['packageArtifactDigest'])):raise ValueError('RECOVERY_PREFLIGHT_RECORD_MATERIAL')
         identity=dict(target=key,applicationRevision=record['applicationRevision'],packageDigest=row['packageDigest'])
-        if row['operationId']!=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest():raise ValueError('RECOVERY_PREFLIGHT_RECORD_OPERATION')
+        if row['operationId']!=retained_preflight_operation_id(key,record['applicationRevision'],row['packageDigest'],record['originalRun']):raise ValueError('RECOVERY_PREFLIGHT_RECORD_OPERATION')
     if (not isinstance(o,dict) or set(o)!={'historyReadComplete','historyCount','activeCount','runtimeRevision'}
         or type(o['historyReadComplete']) is not bool or (o['runtimeRevision'] is not None and not sha(o['runtimeRevision'],40))):raise ValueError('RECOVERY_PREFLIGHT_RECORD_OBSERVATION')
     if o['historyReadComplete']:
@@ -1266,6 +1337,9 @@ def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
     # Shared serializer preflight; exact paired generation, never arbitrary helpers.
     if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) in {
+        # Exact161 retained replacement generation; publication requires independent review.
+        ('95564a686c00eef65bd2566be9cfe46a76dc2a5a9bed776ad4b817511a90f6ef',
+         '0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f'),
         # Independently reviewed retained fresh-Protect preparation, unchanged journal.
         ('63de609c4e97fd97c566d59f3d1bb4eae745bfcc8012e508e2944b2307678240',
          '5b42fcbed0ac4a331ff5c706ef5a6a3ce96eb32d556ef4051c65ee4cf99e881e'),
@@ -1345,6 +1419,7 @@ def attested_recovery_terminal_preflight(repository, run, job, attempt, revision
             identity=dict(target=key,applicationRevision=revision,packageDigest=digest)
             operation=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
             if intent is not None and any(intent.get(k)!=v for k,v in dict(identity,operationId=operation,packageProducerRun=original['run']['id']).items()):return False
+            operation=retained_operation_id(key,revision,digest,material.get('unknownReplacement'))
             expected[key]=dict(operationId=operation,packageDigest=digest,packageArtifactId=material['packageArtifact']['id'],packageArtifactDigest=material['packageArtifact']['digest'])
         path=f"actions/runs/{run['id']}/artifacts?per_page=100"
         inventory=_completion_inventory(api_get(repository,path,token),'artifacts')
@@ -1437,8 +1512,9 @@ def attested_recovery_target_hold(repository, run, job, attempt, revision, token
             digest=intent['packageDigest'] if intent else fast_track_recovery_package_digest(repository,original,material,key,token)
             identity=dict(target=key,applicationRevision=revision,packageDigest=digest)
             op=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
-            expected[key]=dict(operationId=op,packageDigest=digest,packageArtifactId=material['packageArtifact']['id'],packageArtifactDigest=material['packageArtifact']['digest'])
-            if intent:
+            current_op=retained_operation_id(key,revision,digest,material.get('unknownReplacement'))
+            expected[key]=dict(operationId=current_op,packageDigest=digest,packageArtifactId=material['packageArtifact']['id'],packageArtifactDigest=material['packageArtifact']['digest'])
+            if intent and 'unknownReplacement' not in material:
                 bound=fast_track_completion_material(repository,original,key,token)
                 if bound['intent']!=intent or any(intent.get(k)!=v for k,v in dict(identity,operationId=op,packageProducerRun=original['run']['id']).items()):return False
                 inherited[key]=intent
@@ -12796,7 +12872,7 @@ def release_attempt_never_entered(jobs, source=None):
     return True
 
 
-def release_operation_history(repository, operation_id, application_revision, target, current_run, current_attempt, token, *, phase="intent"):
+def release_operation_history(repository, operation_id, application_revision, target, current_run, current_attempt, token, *, phase="intent", replacement=None):
     """Return retained write-ahead intent, or prove publication never started.
 
     Absence/expiry is never negative deployment evidence. The independent Actions
@@ -12811,6 +12887,15 @@ def release_operation_history(repository, operation_id, application_revision, ta
             raise ReleaseOperationHistoryUnproven("Release evidence provider unavailable") from exc
     if phase not in {"intent", "success", "submitted"}:
         raise ValueError("Unknown deployment evidence phase")
+    excluded_original = None
+    if replacement is not None:
+        # Authenticate actual retained original and rollback bytes, not caller assertions.
+        original = fast_track_completion_original(repository, PROTECT_161_REPLACEMENT['originalRun'], application_revision, token)
+        material = fast_track_recovery_material(repository, original, target, token)
+        if (material.get('unknownReplacement') != replacement or
+            operation_id != retained_operation_id(target, application_revision, replacement.get('packageDigest'), replacement)):
+            raise ValueError('PROTECT_161_HISTORY_AUTHORITY_CHANGED')
+        excluded_original = original['run']
     name = f"legend-release-operation-{phase}-" + operation_id
     encoded = urllib.parse.quote(name, safe="")
     payload = read_api(f"actions/artifacts?name={encoded}&per_page=100")
@@ -12893,6 +12978,12 @@ def release_operation_history(repository, operation_id, application_revision, ta
 
     for run in fast_track_execution_history(repository, token):
         if run['head_sha'] != application_revision:
+            continue
+        if excluded_original is not None and run['id'] == excluded_original['id']:
+            if any(run.get(k) != excluded_original.get(k) for k in ('id','head_sha','run_attempt','status')) or run.get('status') != 'completed':
+                raise ReleaseOperationHistoryUnproven('Protect original Actions history changed')
+            # This exact old UNKNOWN operation is superseded, never called non-entry.
+            # All other ordinary and retained-recovery histories remain mandatory.
             continue
         count = run.get('run_attempt')
         if type(count) is not int or not 1 <= count <= 100:

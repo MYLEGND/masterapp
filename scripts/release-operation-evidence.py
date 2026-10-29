@@ -125,7 +125,7 @@ def readiness_refresh_once(identity, *, lookup, observe, execute, publisher=publ
 class OperationJournal:
     _publish = staticmethod(publish_record)
     def __init__(self, *, target, application_revision, package_digest, baseline,
-                 authority=None, publisher=None, environment=None, candidate_revision=None, component_source=None, supersession=None):
+                 authority=None, publisher=None, environment=None, candidate_revision=None, component_source=None, supersession=None, replacement=None):
         env = os.environ if environment is None else environment
         self.authority = authority or _authority()
         if target not in self.authority.RELEASE_TARGETS:
@@ -134,7 +134,11 @@ class OperationJournal:
             if not isinstance(value, str) or not re.fullmatch('[a-f0-9]{%d}' % size, value):
                 raise ValueError("Invalid immutable deployment identity")
         self.identity = dict(target=target, applicationRevision=application_revision, packageDigest=package_digest)
-        self.operation_id = hashlib.sha256(json.dumps(self.identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        if replacement is not None and getattr(self, 'recovery_evidence', {}).get('unknownReplacement') != replacement:
+            raise ValueError('Replacement requires the retained recovery producer')
+        self.replacement = replacement
+        self.operation_id = (self.authority.retained_operation_id(target, application_revision, package_digest, replacement)
+            if replacement is not None else hashlib.sha256(json.dumps(self.identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest())
         self.run = int(env['GITHUB_RUN_ID'])
         self.attempt = int(env['GITHUB_RUN_ATTEMPT'])
         self._new_intent_readback = False
@@ -157,7 +161,7 @@ class OperationJournal:
         try:
             self.intent = self.authority.release_operation_history(
                 self.repository, self.operation_id, application_revision, target,
-                self.run, self.attempt, self.token)
+                self.run, self.attempt, self.token, **({'replacement': replacement} if replacement is not None else {}))
         except self.authority.ReleaseOperationHistoryUnproven as exc:
             # Defer missing first-write proof, not malformed or conflicting
             # retained evidence. A healthy exact-candidate needs no upload.
@@ -361,7 +365,12 @@ class RecoveryJournal(OperationJournal):
             # Never mutate the original intent object or claim its producer.
             value = self.publication_record(record)
             return actual_publisher(name, value)
-        super().__init__(publisher=publish, **kwargs)
+        replacement = self.recovery_evidence.get('unknownReplacement')
+        super().__init__(publisher=publish, **({'replacement': replacement} if replacement is not None else {}), **kwargs)
+        if replacement is not None and self.baseline != replacement['baselineRevision']:
+            raise ValueError('Recovery replacement baseline changed')
+        if self.intent is not None and self.intent.get('recoveryEvidence', {}).get('unknownReplacement') != replacement:
+            raise ValueError('Recovery replacement generation changed')
         if (self.recovery_evidence.get('runId') != self.run
             or self.recovery_evidence.get('runAttempt') != self.attempt
             or self.recovery_evidence.get('originalRun') != self.producer
