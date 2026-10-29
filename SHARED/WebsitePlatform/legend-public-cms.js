@@ -10584,6 +10584,20 @@
     if (renderInput.publishedMarkupReady === true && renderInput.server === false && !editorMode && !materializeMode) {
       if(SITE_KEY==='protect' && renderInput.protectNativeSlot){
         try {
+          // Compiled page keys identify routes; native IDs belong to the exact
+          // request-owned Razor view (for example quote versus quote_index).
+          // Bind the immutable slot to this route before using that view's key.
+          const route=currentPageRoute();
+          const routeKey=route==='/'?'home':route.slice(1).replace(/\//g,'-');
+          const nativeKey=document.body?.dataset?.pageKey;
+          const nativePage=renderInput.document?.pages?.[route];
+          if(renderInput.siteKey!=='protect' || renderInput.pageKey!==routeKey ||
+              !/^protect_template:/.test(String(context.requestNativeView?.templateKey || '')) ||
+              nativePage?.systemTemplateKey!==context.requestNativeView.templateKey ||
+              nativeKey!==context.requestNativeView.pageKey ||
+              typeof nativeKey!=='string' || !/^[a-z][a-z0-9_]*$/.test(nativeKey))
+            throw new Error('Published native slot does not match the request-owned view.');
+          pageKey=nativeKey;
           prepareDom();
           injectContentStyles();
           applyDocument(renderInput.document || {}, true);

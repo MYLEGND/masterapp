@@ -164,19 +164,19 @@ public sealed class PublicBookingResolver : IPublicBookingResolver
             }
         }
 
-        AgentProfile? agentProfile = null;
+        BookingProfile? agentProfile = null;
         var normalizedUpn = NormalizeEmail(trackingProfile?.AgentUpn);
         if (!string.IsNullOrWhiteSpace(effectiveAgentUserId) || !string.IsNullOrWhiteSpace(normalizedUpn))
         {
             var trackingProfileDisplayName = trackingProfile?.DisplayName?.Trim();
 
-            var candidateProfiles = await _db.AgentProfiles
+            var candidateProfiles = await ProjectBookingProfiles(_db.AgentProfiles
                 .AsNoTracking()
                 .Where(x =>
                     (!string.IsNullOrWhiteSpace(effectiveAgentUserId) && x.AgentUserId == effectiveAgentUserId) ||
                     (!string.IsNullOrWhiteSpace(normalizedUpn) &&
                         (x.NormalizedEmail == normalizedUpn || x.AgentUpn.ToLower() == normalizedUpn)) ||
-                    (!string.IsNullOrWhiteSpace(trackingProfileDisplayName) && x.FullName == trackingProfileDisplayName))
+                    (!string.IsNullOrWhiteSpace(trackingProfileDisplayName) && x.FullName == trackingProfileDisplayName)))
                 .ToListAsync(cancellationToken);
 
             agentProfile = candidateProfiles
@@ -244,7 +244,7 @@ public sealed class PublicBookingResolver : IPublicBookingResolver
 
     private static ResolutionBuildResult BuildAgentProfileResolution(
         PublicBookingOptions options,
-        AgentProfile? agentProfile,
+        BookingProfile? agentProfile,
         ResolvedPublicBookingAgentContext context)
     {
         if (agentProfile == null)
@@ -284,7 +284,7 @@ public sealed class PublicBookingResolver : IPublicBookingResolver
             BookingPageIdOrMailbox: Clean(agentProfile.BookingPageIdOrMailbox)));
     }
 
-    private static bool HasBookingConfiguration(AgentProfile agentProfile)
+    private static bool HasBookingConfiguration(BookingProfile agentProfile)
     {
         return agentProfile.BookingEnabled.HasValue ||
             agentProfile.PreferModalOnMobile.HasValue ||
@@ -413,13 +413,29 @@ public sealed class PublicBookingResolver : IPublicBookingResolver
         return uri.ToString();
     }
 
+    // Booking resolution does not consume profile images or biography payloads.
+    // Keep filtering and stable candidate ranking unchanged; project only the
+    // values used below before asynchronous SQL materialization.
+    private static IQueryable<BookingProfile> ProjectBookingProfiles(IQueryable<AgentProfile> profiles) =>
+        profiles.Select(profile => new BookingProfile(
+            profile.AgentUserId, profile.UpdatedUtc, profile.BookingEnabled,
+            profile.PreferModalOnMobile, profile.MicrosoftBookingsEmbedUrl,
+            profile.FallbackBookingUrl, profile.CalendarUserId,
+            profile.CalendarEmail, profile.BookingPageIdOrMailbox));
+
+    private sealed record BookingProfile(
+        string AgentUserId, DateTime UpdatedUtc, bool? BookingEnabled,
+        bool? PreferModalOnMobile, string? MicrosoftBookingsEmbedUrl,
+        string? FallbackBookingUrl, string? CalendarUserId,
+        string? CalendarEmail, string? BookingPageIdOrMailbox);
+
     private sealed record ResolvedPublicBookingAgentContext(
         Guid? CommerceBusinessId,
         Guid? AgentTrackingProfileId,
         string? AgentUserId,
         string? AgentSlug,
         AgentTrackingProfile? TrackingProfile,
-        AgentProfile? AgentProfile);
+        BookingProfile? AgentProfile);
 
     private sealed record ResolutionBuildResult(bool Handled, PublicBookingResolution? Value)
     {
