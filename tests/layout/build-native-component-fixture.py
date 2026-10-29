@@ -112,14 +112,33 @@ def quote_projection_values():
     return values,conditions
 
 
+def validate_protect_layout_projection(layout):
+    """Bind component projection to the current request-owned native slot."""
+    anchors = [
+        '<body class="legend-public--protect @bodyClasses" style="@compiledPublication?.BodyStyle">',
+        'var mainClasses = isStandaloneQuoteLanding ? "layout-content" : "public-main layout-content";',
+        '<main id="main" class="@mainClasses">\n    @if (compiledPublication is not null && !compiledPublication.NativeSlot)\n    {\n        IgnoreBody();\n        @Html.Raw(compiledPublication.Main)\n    }\n    else\n    {\n        @RenderBody()\n    }\n</main>',
+        '@if (compiledPublication?.Footer is not null)\n{\n    @Html.Raw(compiledPublication.Footer)\n}\nelse\n{\n<footer class="site-footer">'
+    ]
+    if any(layout.count(anchor) != 1 for anchor in anchors) or layout.count('@RenderBody()') != 1:
+        raise ValueError('Quote layout authority changed')
+
+
 def protect_scripture_projection(layout):
     """Exact production modal markup and its owning inline lifecycle."""
-    modal = re.search(r'(<div id="psalmsModal"[\s\S]*?)\n\n<footer', layout)
+    validate_protect_layout_projection(layout)
+    start = '<div id="psalmsModal"'
+    end = '\n\n@if (compiledPublication?.Footer is not null)'
+    if layout.count(start) != 1 or layout.count(end) != 1:
+        raise ValueError('Protect scripture source boundary changed')
+    before, after = layout.split(start)
+    modal_markup, _ = after.split(end)
+    modal_markup = start + modal_markup
     scripts = [m[1] for m in re.finditer(r'<script>([\s\S]*?)</script>', layout)
                if "const trigger = document.getElementById('psalmsTrigger');" in m[1]]
-    if modal is None or len(scripts) != 1 or '@' in modal[1] or '@' in scripts[0]:
+    if len(scripts) != 1 or '@' in modal_markup or '@' in scripts[0]:
         raise ValueError('Protect scripture source boundary changed')
-    return modal[1], '<script data-source="Protect-Website/Views/Shared/_Layout.cshtml">' + scripts[0] + '</script>'
+    return modal_markup, '<script data-source="Protect-Website/Views/Shared/_Layout.cshtml">' + scripts[0] + '</script>'
 
 
 def build_quote_fixtures(root, out, raw):
@@ -129,8 +148,7 @@ def build_quote_fixtures(root, out, raw):
     for anchor in ['var usesContactFirstSiteControl = !isLandingRequested;', 'PageMode: isLandingRequested ? "paid_landing" : "site_mode"', ': usesContactFirstSiteControl\n                    ? ContactFirstEducationLandingVariant']:
         if controller.count(anchor)!=1:raise ValueError('Quote route authority changed: '+anchor)
     layout=source('Protect-Website/Views/Shared/_Layout.cshtml')
-    for anchor in ['<body class="legend-public--protect @bodyClasses">','var mainClasses = isStandaloneQuoteLanding ? "layout-content" : "public-main layout-content";']:
-        if layout.count(anchor)!=1:raise ValueError('Quote layout authority changed')
+    validate_protect_layout_projection(layout)
     scripture_markup, scripture_script = protect_scripture_projection(layout)
     review_assets=source('Protect-Website/Views/Shared/_QuoteFinalReviewAssets.cshtml')
     if review_assets.count('href="~/css/quote-final-review.css"')!=1:raise ValueError('Quote review CSS authority changed')

@@ -57,6 +57,7 @@ if (builder.Environment.IsDevelopment())
     mvcBuilder.AddRazorRuntimeCompilation();
 }
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ProtectWebsite.Controllers.WebsiteContentController>();
 builder.Services.AddSingleton(sp =>
     Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector.CreateShared(
         sp.GetRequiredService<IConfiguration>(),

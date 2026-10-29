@@ -1,2 +1,0 @@
-@{ ViewData["Title"] = "Training Packages"; Layout = ViewData["ParfaitHostLayout"] as string ?? "~/Views/Shared/_Layout.cshtml"; }
-<div class="home-container training-page"><h1>Training Packages</h1><p>Monthly coaching and gym access, with training benefits separate from LEGEND membership.</p>@if (ViewData["TrainingEnrollmentAvailable"] as bool? == true) { <a href="/store/training" class="btn-price">View monthly training plans</a> } else { <p>Preview only. Enrollment is unavailable in this preview.</p> }</div>

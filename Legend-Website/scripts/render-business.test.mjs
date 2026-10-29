@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseHTML} from 'linkedom';
-import {compileBusiness} from './render-business.mjs';
+import {compileBusiness,compileWebsite} from './render-business.mjs';
 const business={id:'b72b8796-2b35-4eed-8d6d-7260976084ea',displayName:'Sample & Business',legalName:'Sample LLC'};
 const document=()=>({elements:{},sectionOrder:{},extras:[],theme:{},pages:{}});
 
@@ -390,4 +390,41 @@ test('multi-page publication parses the shared CMS program once and executes in 
   assert.match(src,/const compiledCms=new vm\.Script\(cms,\{filename:'legend-public-cms\.js'\}\)/);
   assert.match(src,/compiledCms\.runInNewContext\(sandbox,\{timeout:3000\}\)/);
   assert.doesNotMatch(src,/vm\.runInNewContext\(cms,sandbox/);
+});
+
+
+test('Protect compiles immutable shell and ordinary routes while native requests own form slots',async()=>{
+  const node=(id,text,tag='p')=>({id,type:'text',tag,text,children:[]});
+  const payload={siteKey:'protect',publication:{versionId:'exact-version',revision:8},document:{version:3,
+    theme:{},shell:{header:[node('header','Published header','header')],footer:[node('footer','Published footer','footer')]},
+    pages:{'/':{composition:[node('home','Published home')]},'/contact':{composition:[node('contact','Published contact')]},
+      '/quote':{systemTemplateKey:'protect_template:quote_index',composition:[node('coverage','Native authored presentation')]},
+      '/quote/auto':{systemTemplateKey:'protect_template:auto_quote',composition:[node('auto','Native authored presentation')]},
+      '/trainingpackages':{navigation:{isDeleted:true},composition:[node('training','Retained recovery only')]}}}};
+  const compiled=await compileWebsite(payload);
+  assert.deepEqual(Object.keys(compiled.pages),['/','/contact','/quote','/quote/auto']);
+  for(const [route,page] of Object.entries(compiled.pages)){
+    const embedded=JSON.parse(page.payload);
+    assert.deepEqual(embedded.publication,payload.publication);
+    assert.equal(embedded.siteKey,'protect');
+    assert.equal(Object.keys(embedded.document.pages).length,1);
+    assert.match(page.header,/Published header/);assert.match(page.footer,/Published footer/);
+    assert.doesNotMatch(page.payload,/<script/i,'embedded JSON escapes markup');
+    assert.equal(page.nativeSlot,route.startsWith('/quote'));
+    if(page.nativeSlot){assert.equal(page.main,'');assert.equal(embedded.protectNativeSlot,true);}
+    else assert.match(page.main,new RegExp(route==='/'?'Published home':'Published contact'));
+    assert.doesNotMatch(page.html,/__RequestVerificationToken|AgentTrackingProfileId|ModelState/);
+  }
+  assert.throws(()=>{JSON.parse(compiled.pages['/'].payload).document.pages['/contact'].title='x'});
+});
+
+test('Protect shell fragments retain every root on its original side of main',async()=>{
+  const node=(id,text,tag)=>({id,type:'text',tag,text});
+  for(const header of [[],[node('h1','Header one','header'),node('h2','Header two','aside')]]){
+    const result=await compileWebsite({siteKey:'protect',publication:{versionId:'v'},document:{version:3,theme:{},shell:{header,footer:[node('f1','Footer one','footer'),node('f2','Footer two','aside')]},pages:{'/':{composition:[node('m','Main body','p')]}}}});
+    const page=result.pages['/'];
+    assert.match(page.footer,/Footer one/);assert.match(page.footer,/Footer two/);
+    assert.doesNotMatch(page.header||'',/Footer/);assert.doesNotMatch(page.main,/Header|Footer/);
+    if(!header.length)assert.equal(page.header,null);else{assert.match(page.header,/Header one/);assert.match(page.header,/Header two/);}
+  }
 });

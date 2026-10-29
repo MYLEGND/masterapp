@@ -62,6 +62,50 @@ public sealed class WebsitePublishingAuthorityTests
         Assert.Equal(full.ToString(), Body(await f.Controller.Public("protect", agentSlug: "projection")).ToString());
     }
 
+    [Theory]
+    [InlineData("/", "/", false, true)]
+    [InlineData("/Home/Index/", "/", false, true)]
+    [InlineData("/PRIVACY/", "/home/privacy", false, false)]
+    [InlineData("/Terms", "/home/terms", false, false)]
+    [InlineData("/Contact/Index/", "/contact", false, false)]
+    [InlineData("/QUOTE/Auto/", "/quote/auto", true, false)]
+    public async Task ProtectCompiledDeliveryBindsExactOwnerVersionAndDoesNotReadDraft(string path, string canonical, bool native, bool founder)
+    {
+        using var f = new Fixture(auditMaterialization: true);
+        var profile = new AgentTrackingProfile { AgentUserId = "scoped-owner", AgentUpn = "scope@example.test", Slug = "scope" };
+        var state = new WebsiteContentState { OwnerKey = profile.AgentUserId, SiteKey = WebsiteEditorSiteKeys.Protect, DraftJson = "private draft must not be read" };
+        var version = new WebsiteContentVersion { StateId = state.Id, Revision = 9, DocumentJson = "not needed for compiled delivery" };
+        var payload = JsonSerializer.Serialize(new { siteKey = "protect", publication = new { versionId = version.Id } });
+        var page = new { title = "Published", description = "Exact snapshot", header = "<header>Published</header>", footer = "<footer>Published</footer>", main = "<p>Published body</p>", styles = "", htmlStyle = "", bodyStyle = "", payload, nativeSlot = native };
+        version.CompiledPagesJson = JsonSerializer.Serialize(new { pages = new System.Collections.Generic.Dictionary<string, object> { [canonical] = page } });
+        state.PublishedVersionId = version.Id;
+        f.Db.AddRange(profile, state, version); await f.Db.SaveChangesAsync(); f.Db.ChangeTracker.Clear();
+        var controller = f.Controller;
+        controller.ControllerContext = new ControllerContext { HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext() };
+        controller.HttpContext.Items["TrackingProfile"] = profile;
+        controller.HttpContext.Items["IsFounderPath"] = founder;
+        var result = await controller.ResolveProtectPageAsync(path, default);
+        Assert.NotNull(result); Assert.Equal(version.Id, result.VersionId); Assert.Equal(native, result.NativeSlot);
+        Assert.Equal("<p>Published body</p>", result.Main);
+        Assert.Equal(version.Id.ToString("D"), controller.Response.Headers["X-Legend-Publication-Id"].ToString());
+        Assert.DoesNotContain(typeof(WebsiteContentState), f.Audit.EntityTypes);
+        Assert.DoesNotContain(typeof(WebsiteContentVersion), f.Audit.EntityTypes);
+        controller.HttpContext.Items["TrackingProfile"] = new AgentTrackingProfile { AgentUserId = "another-owner" };
+        Assert.Null(await controller.ResolveProtectPageAsync(path, default));
+        controller.HttpContext.Items["TrackingProfile"] = profile;
+        Assert.Null(await controller.ResolveProtectPageAsync("/not-published", default));
+        Assert.Null(await controller.ResolveProtectPageAsync("/trainingpackages", default));
+        var persistedVersion = await f.Db.Set<WebsiteContentVersion>().SingleAsync(v => v.Id == version.Id);
+        persistedVersion.CompiledPagesJson = persistedVersion.CompiledPagesJson!.Replace(version.Id.ToString(), Guid.NewGuid().ToString());
+        await f.Db.SaveChangesAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => controller.ResolveProtectPageAsync(path, default));
+        persistedVersion.SnapshotRetiredUtc = DateTime.UtcNow;
+        await f.Db.SaveChangesAsync();
+        Assert.Null(await controller.ResolveProtectPageAsync(path, default));
+        controller.HttpContext.Items.Remove("TrackingProfile");
+        Assert.Null(await controller.ResolveProtectPageAsync(path, default));
+    }
+
     private sealed class MaterializationAudit : Microsoft.EntityFrameworkCore.Diagnostics.IMaterializationInterceptor
     {
         public System.Collections.Generic.List<Type> EntityTypes { get; } = new();

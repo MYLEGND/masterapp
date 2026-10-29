@@ -4685,7 +4685,7 @@
     document.body.appendChild(script);
   }
 
-  function applyDocument(doc) {
+  function applyDocument(doc, preserveCompiledShell = false) {
     restoreNativeFormFrames(true);
     restoreNativeFormContinuations();
     restoreFormStepPreview();
@@ -4693,7 +4693,7 @@
     // Prove Coverage correspondence before applying theme, shell, metadata or
     // page mutations. Preparing native IDs alone does not claim readiness.
     let coveragePlan=null;
-    if(SITE_KEY==='protect' && pageUsesSystemTemplate(pageState()) && pageState().systemTemplateKey==='protect_template:quote_index'){
+    if(!(renderInput?.protectNativeSlot && renderInput?.server) && SITE_KEY==='protect' && pageUsesSystemTemplate(pageState()) && pageState().systemTemplateKey==='protect_template:quote_index'){
       bindNativeTemplateIdentities();
       coveragePlan=planCoverageTemplateIdentities(pageState());
     }
@@ -4709,9 +4709,11 @@
       applyLegacyMigrationPreview();
     }else{
       document.querySelectorAll('.legend-legacy-migration-node').forEach(node=>{scaledElements.delete(node);node.remove();});
-      renderCanonicalShell();
+      if (!preserveCompiledShell) renderCanonicalShell();
       const page=pageState();
-      if(pageUsesSystemTemplate(page)){
+      if(renderInput?.protectNativeSlot && renderInput?.server){
+        // The response owns this native form slot; never compile request data.
+      }else if(pageUsesSystemTemplate(page)){
         applyTemplateBackedCompositionPage(coveragePlan);
       }else{
         renderCanonicalCompositionPage();
@@ -5329,6 +5331,20 @@
         row.appendChild(remove);
       }
 
+      if (SITE_KEY==='protect' && entry.route==='/trainingpackages') {
+        // This obsolete Protect-only route has a recoverable retirement action,
+        // not the business site's arbitrary page creation/removal permissions.
+        open.disabled=true;
+        const retire=document.createElement('button'); retire.type='button';
+        retire.textContent=entry.deleted?'Training page retired':'Retire training page';
+        retire.disabled=entry.deleted;
+        retire.addEventListener('click',async()=>{
+          retire.disabled=true;
+          try { await creativeApplyMutationBatch([{type:'removePage',pagePath:entry.route}]); }
+          catch(error) { retire.disabled=false; alert(error.message || 'The page could not be retired.'); }
+        });
+        row.appendChild(retire);
+      }
       host.appendChild(row);
     }
   }
@@ -10483,11 +10499,16 @@
   // The same canonical model drives the editor and the immutable public DOM.
   // Re-evaluate at the real visitor width without ever remounting the page.
   function refreshCompiledResponsivePresentation() {
+    // A request-owned native main is not compiler output. Preserve its original
+    // declarations and use the existing native responsive authority on resize.
+    const nativeSlot = SITE_KEY==='protect' && renderInput?.protectNativeSlot;
+    if(nativeSlot) refreshResponsiveComposition();
     restoreNativeFormFrames(true);
     const canonicalNodes=new Map();
     for(const root of allCanonicalRootSets())
       walkComposition(root.nodes,node=>canonicalNodes.set(node.id,node));
     document.querySelectorAll('[data-cms-composition-id]').forEach(el=>{
+      if(nativeSlot && el.closest('main')) return;
       const model=canonicalNodes.get(el.dataset.cmsCompositionId);
       if(!model || (el.dataset.cmsSignalOnly && el.tagName!=='FORM')) return;
       applyCompiledResponsivePresentation(el,model);
@@ -10561,12 +10582,24 @@
     storeContext = renderInput.store || null;
     legacyMigration = renderInput.legacyMigration || null;
     if (renderInput.publishedMarkupReady === true && renderInput.server === false && !editorMode && !materializeMode) {
-      hydrateCompiledPublication(renderInput);
+      if(SITE_KEY==='protect' && renderInput.protectNativeSlot){
+        try {
+          prepareDom();
+          injectContentStyles();
+          applyDocument(renderInput.document || {}, true);
+          refreshCompiledResponsivePresentation();
+        } catch(error) {
+          unavailable(error);
+          return;
+        }
+      }else hydrateCompiledPublication(renderInput);
     } else {
       prepareDom();
       injectContentStyles();
       applyDocument(renderInput.document || {});
     }
+    if (SITE_KEY === 'protect' && window.__legendTrackingInitialized === true)
+      installPublishedSignalBindings();
     revealPublishedWebsite();
     window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE = true;
     if (!renderInput.server) {

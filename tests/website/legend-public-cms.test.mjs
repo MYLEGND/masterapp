@@ -1049,7 +1049,7 @@ test('business header navigation projects one canonical page catalog without pre
 });
 
 test('Protect suppresses old native content until the published revision is applied',()=>{
-  assert.match(protectLayoutSource,/data-legend-canonical-pending="@\(!isStandaloneQuoteLanding \? "true" : null\)"/);
+  assert.match(protectLayoutSource,/data-legend-canonical-pending="@\(compiledPublication is not null \? \(compiledPublication.NativeSlot \? "true" : null\)/);
 });
 
 test('canonical responsive hierarchy resets inherited desktop geometry on mobile but preserves explicit mobile intent',async()=>{
@@ -7729,4 +7729,96 @@ for(const siteKey of ['protect','legend']) test(`responsive audit reconciles onl
     assert.equal(w.responsiveAuditRouteMatches('/quote/home',resolved),false);
     assert.equal(w.responsiveAuditRouteMatches('/quote/dentalvisionhearing/landing',resolved),false);
   }finally{w.close();}
+});
+
+
+test('Protect embedded native slot applies authored presentation before reveal without fetching or replacing request controls',()=>{
+  const doc=canonicalDocument();
+  doc.pages['/quote/auto']={systemTemplateKey:'protect_template:auto_quote',composition:[canonicalNode('runtime.form.quote_auto_form','container','div',{
+    systemKey:'protect_runtime_form:quote_auto_form',fieldLabels:{submit:'Published submit'},fieldPresentations:{firstname:{style:{paddingLeft:14}}}
+  })]};
+  const dom=new JSDOM('<!doctype html><html data-legend-canonical-pending="true"><head></head><body><main><form id="autoQuoteForm" data-form-key="quote_auto_form" method="post" action="/Quote/Auto"><input type="hidden" name="__RequestVerificationToken" value="request-token"><input id="nativeName" name="FirstName" value="posted answer"><input name="AgentTrackingProfileId" value="agent-bound-id"><span class="field-validation-error">Posted validation error</span><button data-cms-field-key="submit" type="submit">Original submit</button></form></main></body></html>',{url:'https://protect.example.test/a/agent/Quote/Auto',runScripts:'outside-only'});
+  const w=dom.window;w.CSS={escape:value=>String(value)};
+  w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey:'protect',apiBase:'',agentSlug:'agent'};
+  w.LEGEND_PUBLIC_CMS_RENDER_INPUT={siteKey:'protect',document:doc,pageKey:'quote-auto',server:false,publishedMarkupReady:true,protectNativeSlot:true};
+  let fetches=0;w.fetch=()=>{fetches++;throw Error('No public fetch allowed')};
+  const form=w.document.querySelector('form'),input=w.document.getElementById('nativeName');
+  try{
+    w.eval(source);
+    assert.equal(w.LEGEND_PUBLIC_CMS_RENDER_COMPLETE,true);
+    assert.equal(w.document.documentElement.hasAttribute('data-legend-canonical-pending'),false);
+    assert.equal(w.document.querySelector('form'),form);assert.equal(w.document.getElementById('nativeName'),input);
+    assert.equal(input.value,'posted answer');assert.equal(input.style.paddingLeft,'14px');
+    assert.equal(form.querySelector('[name="__RequestVerificationToken"]').value,'request-token');
+    assert.equal(form.querySelector('[name="AgentTrackingProfileId"]').value,'agent-bound-id');
+    assert.match(form.textContent,/Posted validation error/);assert.match(form.textContent,/Published submit/);
+    assert.equal(fetches,0);
+  }finally{w.close();}
+});
+
+test('Protect embedded ordinary and native publication retains authored browser signal bindings',()=>{
+  for(const native of [false,true]){
+    const doc=canonicalDocument();
+    const path=native?'/quote/auto':'/';
+    const node=canonicalNode(native?'runtime.form.quote_auto_form':'visible-node','container','div',native?{
+      systemKey:'protect_runtime_form:quote_auto_form',signals:[{id:'s',eventName:'PageSectionViewed',trigger:'viewed',deliveryMode:'analytics'}]
+    }:{text:'Published content',signals:[{id:'s',eventName:'PageSectionViewed',trigger:'click',deliveryMode:'analytics'}]});
+    doc.pages[path]={...(native?{systemTemplateKey:'protect_template:auto_quote'}:{}),composition:[node]};
+    const html=native?'<form id="autoQuoteForm" data-form-key="quote_auto_form"><input name="FirstName"></form>':'<div data-cms-id="visible-node" data-cms-composition-id="visible-node">Published content</div>';
+    const dom=new JSDOM('<!doctype html><html><body><main>'+html+'</main></body></html>',{url:'https://protect.example.test'+path,runScripts:'outside-only'});
+    const w=dom.window,events=[];w.CSS={escape:value=>String(value)};
+    w.__legendTrackingInitialized=true;w.LegendAnalytics={trackBinding:(...args)=>events.push(args)};
+    w.LEGEND_PUBLIC_CMS_RENDER_INPUT={siteKey:'protect',document:doc,pageKey:native?'quote-auto':'home',server:false,publishedMarkupReady:true,protectNativeSlot:native};
+    try{
+      w.eval(source);
+      if(!native)w.document.querySelector('[data-cms-id="visible-node"]').click();
+      assert.equal(events.length,1,native?'native view signal':'ordinary click signal');
+      assert.equal(events[0][0].id,'s');assert.equal(events[0][1].pagePath,path);
+    }finally{w.close();}
+  }
+});
+
+test('Protect native hydration preserves compiled multi-root shell and fails closed on Coverage mismatch',async()=>{
+  const doc=canonicalDocument();
+  doc.shell={header:[canonicalNode('h1','container','header',{text:'Header one',style:{paddingTop:40},breakpointStyles:{mobile:{paddingTop:8}}}),canonicalNode('h2','container','aside',{text:'Header two'})],footer:[canonicalNode('f1','container','footer',{text:'Footer one'}),canonicalNode('f2','container','aside',{text:'Footer two'})]};
+  for(const coverage of [false,true]){
+    const path=coverage?'/quote':'/quote/auto';
+    doc.pages[path]={systemTemplateKey:coverage?'protect_template:quote_index':'protect_template:auto_quote',composition:coverage?[]:[canonicalNode('runtime.form.quote_auto_form','container','div',{systemKey:'protect_runtime_form:quote_auto_form'})]};
+    const shell='<header class="site-header" data-cms-id="h1" data-cms-composition-id="h1">Header one</header><aside data-cms-id="h2" data-cms-composition-id="h2">Header two</aside><main><form id="autoQuoteForm" data-form-key="quote_auto_form" style="padding-top:17px;display:none"><input name="FirstName"></form></main><footer class="site-footer" data-cms-id="f1" data-cms-composition-id="f1">Footer one</footer><aside data-cms-id="f2" data-cms-composition-id="f2">Footer two</aside>';
+    const dom=new JSDOM('<!doctype html><html data-legend-canonical-pending="true"><body>'+shell+'</body></html>',{url:'https://protect.example.test'+path,runScripts:'outside-only'});
+    const w=dom.window;w.innerWidth=390;w.CSS={escape:value=>String(value)};
+    w.LEGEND_PUBLIC_CMS_RENDER_INPUT={siteKey:'protect',document:doc,pageKey:coverage?'quote_index':'quote_auto',server:false,publishedMarkupReady:true,protectNativeSlot:true};
+    try{
+      w.eval(source);
+      if(!coverage) for(const id of ['h1','h2','f1','f2'])assert.equal(w.document.querySelectorAll('[data-cms-composition-id="'+id+'"]').length,1,id+' '+w.document.body.innerHTML);
+      if(coverage){
+        assert.notEqual(w.LEGEND_PUBLIC_CMS_RENDER_COMPLETE,true);
+        assert.match(w.document.body.textContent,/unavailable|try again|could not/i);
+      }else {
+        assert.equal(w.LEGEND_PUBLIC_CMS_RENDER_COMPLETE,true);
+        assert.equal(w.document.querySelector('[data-cms-composition-id="h1"]').style.paddingTop,'8px');
+        const form=w.document.getElementById('autoQuoteForm');
+        assert.equal(form.style.paddingTop,'17px');assert.equal(form.style.display,'none');
+        w.innerWidth=1280;w.dispatchEvent(new w.Event('resize'));await new Promise(resolve=>setTimeout(resolve,20));
+        assert.equal(w.document.getElementById('autoQuoteForm'),form);
+        assert.equal(form.style.paddingTop,'17px');assert.equal(form.style.display,'none');
+        assert.equal(w.document.querySelector('[data-cms-composition-id="h1"]').style.paddingTop,'40px');
+      }
+    }finally{w.close();}
+  }
+});
+
+
+test('Protect Studio exposes only the narrowly recoverable obsolete training retirement',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/trainingpackages']={title:'Training',composition:[canonicalNode('training','text','p',{text:'Recovery content'})]};
+  const f=await domFixture({siteKey:'protect',doc});
+  try{
+    const rows=[...f.w.document.querySelectorAll('.legend-cms-page-row')];
+    const training=rows.find(row=>row.textContent.includes('/trainingpackages'));
+    assert.ok(training);assert.match(training.textContent,/Retire training page/);
+    assert.equal(training.querySelector('button').disabled,true,'removed public route is not navigated');
+    const home=rows.find(row=>row.textContent.startsWith('/Retire')===false && row.querySelector('button')?.textContent==='/');
+    assert.ok(home);assert.equal(home.querySelectorAll('button').length,1,'no arbitrary fixed-page delete');
+  }finally{f.close();}
 });

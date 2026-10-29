@@ -895,7 +895,8 @@ public static class WebsiteDocumentMutationService
         var path = NormalizePath(operation.PagePath);
         if (path == "/") throw new ArgumentException("The home page cannot be removed.");
         if (!document.Pages.TryGetValue(path, out var page)) throw new ArgumentException($"Page '{path}' was not found.");
-        if (page.SystemTemplateKey is not null || siteKey != WebsiteEditorSiteKeys.Business)
+        var retiredProtectTraining = siteKey == WebsiteEditorSiteKeys.Protect && path == "/trainingpackages";
+        if (page.SystemTemplateKey is not null || (siteKey != WebsiteEditorSiteKeys.Business && !retiredProtectTraining))
             throw new WebsiteSiteSourceProtectionException("Protected or fixed-route pages cannot be removed from Website Studio.");
         var navigation = page.Navigation ?? new WebsitePageNavigation();
         navigation.IsDeleted = true;

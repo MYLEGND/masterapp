@@ -612,6 +612,37 @@ print('3 canonical regions;15 unknown-source rejection checks PASS;no browser/as
   assert.equal(result.error,null,result.stderr||result.error?.message);assert.match(result.stdout,/15 unknown-source rejection checks PASS/);
 });
 
+test('Protect component projection binds compiled layout boundaries and rejects ambiguous native authority',async()=>{
+  const result=await new Promise(resolve=>execFile('python3',['-c',String.raw`
+import importlib.util,sys
+from pathlib import Path
+root=Path(sys.argv[1]);spec=importlib.util.spec_from_file_location('fixture',root/'tests/layout/build-native-component-fixture.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+layout=(root/'Protect-Website/Views/Shared/_Layout.cshtml').read_text()
+m.validate_protect_layout_projection(layout)
+markup,script=m.protect_scripture_projection(layout)
+assert markup==layout[layout.index('<div id="psalmsModal"'):layout.index('\n\n@if (compiledPublication?.Footer is not null)')]
+assert markup.count('<div')==markup.count('</div>') and '<footer' not in markup and '@' not in markup
+assert all('id="'+id+'"' in markup for id in ['psalmsModal','psalmsDay','psalmsReference','psalmsTranslation','psalmsClose','psalmsStreak','psalmsStreakNote','psalmsText'])
+assert "const trigger = document.getElementById('psalmsTrigger');" in script
+mutations=[
+ layout.replace(' style="@compiledPublication?.BodyStyle"',''),
+ layout.replace('!compiledPublication.NativeSlot','compiledPublication.NativeSlot'),
+ layout.replace('@RenderBody()','@Html.Raw(compiledPublication.Main)'),
+ layout.replace('@RenderBody()','@RenderBody()\n@RenderBody()'),
+ layout.replace('@Html.Raw(compiledPublication.Footer)','@Html.Raw(compiledPublication.Header)'),
+ layout.replace('<div id="psalmsModal"','<div id="missingModal"'),
+ layout.replace('<div id="psalmsModal"','<div id="psalmsModal"></div><div id="psalmsModal"'),
+ layout.replace('\n\n@if (compiledPublication?.Footer is not null)','\n@unknownBranch\n\n@if (compiledPublication?.Footer is not null)'),
+ layout.replace("const trigger = document.getElementById('psalmsTrigger');","const trigger = document.getElementById('unknownTrigger');")]
+for bad in mutations:
+ try:m.protect_scripture_projection(bad)
+ except ValueError:pass
+ else:raise AssertionError('Changed or ambiguous production authority accepted')
+print('Exact native slot and scripture projection;9 negative controls PASS')
+`,root],{timeout:5000,maxBuffer:4096},(error,stdout,stderr)=>resolve({error,stdout,stderr})));
+  assert.equal(result.error,null,result.stderr||result.error?.message);assert.match(result.stdout,/9 negative controls PASS/);
+});
+
 // Quote checks are source-component geometry, not full Razor route or browser-zoom acceptance.
 function bookingHiddenComplete(state, hiddenBefore) {
   return !!state && state.sameNode===true && Number.isSafeInteger(hiddenBefore) && hiddenBefore>=0 && Number.isSafeInteger(state.hidden) && state.hidden>hiddenBefore && state.show===false && state.activeId==='fixtureSheetBooking';

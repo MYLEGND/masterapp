@@ -1,16 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized deployment of all preserved fixes and publication of the preserved draft on 2026-10-28. Supersedes the previous discretionary release hold. Deploy the complete reviewed PR725 candidate through protected approved-only five-app release, reuse compatible successful evidence and require mandatory CI/admission. Keep Shayla calls paused; no call, provider, privacy, funding, budget or routing authorization is added.",
-  "purpose": "Release canonical loading/recovery, runtime/dependency binding and reviewed product/form/Studio fixes together. Preserve authored content and existing publications during app deployment. After live application verification and exact draft readback, separately publish preserved LEGEND draft1624 with written inquiry fallback and paused voice admission. Record remaining browser/Safari verification honestly; no schema or routing change, content migration, stale fallback or mutation retry change.",
-  "requestId": "canonical-website-loading-studio-20261028-v2",
+  "authorization": "Founder authorized resolving and publishing the existing Protect work on 2026-10-29, including approved isolated successor recovery. Protected exact-candidate independent acceptance, CI/admission, scoped release and live verification remain required. No new costs, credentials, privacy/security changes or weakened protections.",
+  "purpose": "Publish the reviewed reconstructed Protect compiled-publication delivery and recoverable trainingpackages retirement through existing shared authorities. Preserve other tenants, commerce records, forms, owner/agent identity and saved content. After application live verification, perform only the authorized Protect retirement save/publish with fresh version guards and verify persistence. Preserve completed release157 as rollback history; do not replay it or infer recovery of unavailable source. Shayla calls and unrelated holds remain unchanged; no schema or routing change.",
+  "requestId": "protect-compiled-delivery-training-retirement-20261029-v1",
   "releaseMode": "approved-only",
-  "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect",
-    "masterapp-parfait",
-    "masterapp-website"
-  ],
+  "targets": ["masterapp-portal", "masterapp-client", "masterapp-protect", "masterapp-parfait", "masterapp-website"],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
 }

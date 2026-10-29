@@ -16,11 +16,12 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
 
 export async function compileWebsite(input, root=resolve(import.meta.dirname,'..')) {
   const siteKey=input?.siteKey||'business';
-  if(!['legend','business'].includes(siteKey) || !input?.document) throw new Error('Unsupported website publication.');
+  if(!['legend','business','protect'].includes(siteKey) || !input?.document) throw new Error('Unsupported website publication.');
   const company=siteKey==='legend';
-  if(!company && (!input.business?.id || !input.business.displayName)) throw new Error('A business and document are required.');
-  if(company && Number(input.document.version)!==3) throw new Error('Canonical published content is required.');
-  const displayName=company?'LEGEND®':input.business.displayName;
+  const protect=siteKey==='protect';
+  if(!company && !protect && (!input.business?.id || !input.business.displayName)) throw new Error('A business and document are required.');
+  if((company || protect) && Number(input.document.version)!==3) throw new Error('Canonical published content is required.');
+  const displayName=company?'LEGEND®':protect?'LEGEND Legacy Protection':input.business.displayName;
   const cms=await readFile(resolve(root,'dist/legend-public-cms.js'),'utf8');
   // Parse the single canonical CMS runtime once per publication, not once per
   // page. Each page still executes in its own isolated fresh DOM context.
@@ -34,7 +35,7 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
   const normalizeRoute=route=>(String(route||'').replace(/\/$/,'')||'/');
   const staticRoute=/^\/(?:[a-z0-9_-]+\/)*[a-z0-9_-]*$/;
   const dynamicPattern=/^\/(?:[a-z0-9_-]+\/)*\{item\}\/?$/;
-  const templateByRoute=new Map((company?Object.values(legendPages):businessPages).map(page=>[page.key==='home'?'/':'/'+page.key,page]));
+  const templateByRoute=new Map((protect?[]:company?Object.values(legendPages):businessPages).map(page=>[page.key==='home'?'/':'/'+page.key,page]));
   const descriptors=new Map();
 
   if(!canonicalV3)
@@ -113,7 +114,7 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
   const storeCartIcon=['cart','bag','basket'].includes(String(input.document?.store?.cartIcon||'').toLowerCase())
     ? String(input.document.store.cartIcon).toLowerCase()
     : 'cart';
-  const storeContext=company?(input.store||null):storeEnabled?{
+  const storeContext=(company || protect)?(input.store||null):storeEnabled?{
     enabled:true,label:storeLabel,cartIcon:storeCartIcon,commerceBusinessId:input.business.id,businessKey:input.business.key,
     storefrontUrl:storeRoot,cartUrl:storeRoot+'/cart'
   }:null;
@@ -124,7 +125,10 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
     const page=documents[sourceRoute]||{};
     const built=entry.templateRoute?templateByRoute.get(entry.templateRoute):null;
     const templateDirectory=built&&built.key!=='home'?built.key:'';
-    const template=await readFile(resolve(root,company?'dist':'dist/business-preview',templateDirectory,'index.html'),'utf8');
+    const nativeSlot=protect && typeof page.systemTemplateKey==='string' && page.systemTemplateKey.startsWith('protect_template:');
+    const template=protect
+      ? '<!doctype html><html><head><title></title><meta name="description" content=""></head><body class="legend-public--protect'+(route.endsWith('/landing')?' standalone-quote-landing':'')+'"><header class="site-header"></header><main id="main" class="public-main layout-content"></main><footer class="site-footer"></footer></body></html>'
+      : await readFile(resolve(root,company?'dist':'dist/business-preview',templateDirectory,'index.html'),'utf8');
     const {window}=parseHTML(template);
     const doc=window.document;
     if(company) doc.querySelector('script[src="/js/page-health.js"]')?.setAttribute('data-route',route);
@@ -161,7 +165,7 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
       document:currentDocument,
       legacyMigration:canonicalV3?null:currentDocument,
       siteKey,ctaCatalog:input.ctaCatalog,business:input.business,collections:input.collections||[],
-      store:storeContext,dynamicItem,pageKey:renderPageKey,pageCatalog,server:true
+      store:storeContext,dynamicItem,pageKey:renderPageKey,pageCatalog,server:true,protectNativeSlot:nativeSlot
     };
     compiledCms.runInNewContext(sandbox,{timeout:3000});
     if(window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE!==true)throw new Error('Canonical renderer did not complete.');
@@ -224,7 +228,8 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
       document:currentDocument,
       legacyMigration:canonicalV3?null:currentDocument,
       siteKey,ctaCatalog:input.ctaCatalog,business:input.business,collections:runtimeCollections,store:storeContext,dynamicItem,
-      pageKey:renderPageKey,pageCatalog,server:false,publishedMarkupReady:true,
+      publication:input.publication,
+      pageKey:renderPageKey,pageCatalog,server:false,publishedMarkupReady:true,protectNativeSlot:nativeSlot,
       runtime:{apiBase:publicApiBase,...(company?{editorAuthorizationUrl:editorAuthorizationBase+'/Account/EditLegendWebsite'}:{}),trackingAsset:publicRuntimeAssets.tracking,metaSignalAsset:publicRuntimeAssets.metaSignal,openAiMeasurementAsset:publicRuntimeAssets.openAiMeasurement}
     }).replace(/</g,'\\u003c');
     doc.body.insertBefore(renderInput,doc.querySelector('script[src^="/legend-public-cms.js"]'));
@@ -234,7 +239,17 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
       form.querySelectorAll('[disabled]').forEach(element=>element.removeAttribute('disabled'));
       form.querySelector('[data-preview-notice]')?.remove();
     }
-    result[route]={title:String(title),description:String(description||''),html:doc.toString()};
+    const bodyRoots=[...doc.body.children];
+    const mainIndex=bodyRoots.indexOf(doc.querySelector('main'));
+    result[route]={title:String(title),description:String(description||''),html:doc.toString(),...(protect?{
+      nativeSlot,
+      header:input.document.shell?.header?.length ? bodyRoots.slice(0,mainIndex).filter(el=>!el.matches('script,style')).map(el=>el.outerHTML).join('') : null,
+      footer:input.document.shell?.footer?.length ? bodyRoots.slice(mainIndex+1).filter(el=>!el.matches('script,style')).map(el=>el.outerHTML).join('') : null,
+      main:doc.querySelector('main')?.innerHTML||'',
+      styles:[...doc.querySelectorAll('style')].map(el=>el.outerHTML).join(''),
+      htmlStyle:doc.documentElement.getAttribute('style')||'',bodyStyle:doc.body.getAttribute('style')||'',
+      payload:renderInput.textContent
+    }: {})};
   }
 
   return {version:2,pages:result,manifest:manifest.map(({sourceRoute,dynamicItem,templateRoute,...entry})=>entry)};
