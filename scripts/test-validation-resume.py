@@ -2493,6 +2493,78 @@ class IsolatedDevelopmentReuseTests(unittest.TestCase):
 
 
 class GitHubEvidenceTransportTests(unittest.TestCase):
+    class Response:
+        def __init__(self, value=b'{"total_count":0,"jobs":[]}'):
+            self.value = value
+            self.closed = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            self.closed = True
+            return False
+
+        def read(self):
+            if isinstance(self.value, BaseException):
+                raise self.value
+            return self.value
+
+    def test_truncated_body_retries_same_read_and_never_accepts_partial_json(self):
+        partial = self.Response(m.http.client.IncompleteRead(b'{"total_count":0,"jobs":[]}', 20956))
+        complete = self.Response(b'{"total_count":1,"jobs":[{"id":42}]}')
+        with patch.object(m.urllib.request, 'urlopen', side_effect=[partial, complete]) as request, \
+             patch.object(m.time, 'sleep') as sleep:
+            value = m.api_get('owner/repo', 'actions/runs/42/attempts/1/jobs?per_page=100', 'fixture-token')
+        self.assertEqual({'total_count': 1, 'jobs': [{'id': 42}]}, value)
+        self.assertEqual(2, request.call_count)
+        self.assertIs(request.call_args_list[0].args[0], request.call_args_list[1].args[0])
+        self.assertEqual('GET', request.call_args.args[0].get_method())
+        self.assertTrue(partial.closed and complete.closed)
+        sleep.assert_called_once_with(1)
+
+    def test_truncated_body_exhaustion_is_typed_unavailable_with_bounded_endpoint(self):
+        for attempts in (1, 3):
+            with self.subTest(attempts=attempts), \
+                 patch.object(m.urllib.request, 'urlopen', side_effect=[
+                     self.Response(m.http.client.IncompleteRead(b'private-partial', 20956))
+                     for _ in range(attempts)]) as request, patch.object(m.time, 'sleep') as sleep:
+                with self.assertRaises(m.EvidenceLookupUnavailable) as caught:
+                    m._api_get_uncached('owner/repo', 'actions/runs/42/attempts/2/jobs?private=query', 'fixture-token',
+                                        max_attempts=attempts)
+            self.assertEqual(attempts, request.call_count)
+            self.assertEqual(attempts - 1, sleep.call_count)
+            self.assertEqual('actions/runs/42/attempts/2/jobs', caught.exception.endpoint)
+            self.assertNotIn('private', str(caught.exception))
+            self.assertIsInstance(caught.exception.__cause__, m.http.client.IncompleteRead)
+
+    def test_truncated_body_retry_cannot_extend_shared_deadline(self):
+        now = [0.0]
+        def sleep(seconds):
+            now[0] += seconds
+        with m.evidence_lookup_budget(0.5, clock=lambda: now[0]), \
+             patch.object(m.urllib.request, 'urlopen', return_value=self.Response(
+                 m.http.client.IncompleteRead(b'', 20956))) as request, \
+             patch.object(m.time, 'sleep', side_effect=sleep) as pause:
+            with self.assertRaisesRegex(m.EvidenceLookupUnavailable, 'deadline exhausted'):
+                m.api_get('owner/repo', 'actions/runs/42/attempts/1/jobs', 'fixture-token')
+        self.assertEqual(1, request.call_count)
+        self.assertEqual(0.5, request.call_args.kwargs['timeout'])
+        pause.assert_called_once_with(0.5)
+
+    def test_complete_malformed_json_and_access_denials_are_not_transport_retried(self):
+        cases = [(self.Response(b'{"jobs":'), json.JSONDecodeError),
+                 (m.urllib.error.HTTPError('https://api.github.com', 403, 'Forbidden', {}, None),
+                  m.EvidenceLookupUnavailable)]
+        for response, error in cases:
+            effect = [response]
+            with self.subTest(error=error), patch.object(m.urllib.request, 'urlopen', side_effect=effect) as request, \
+                 patch.object(m.time, 'sleep') as sleep:
+                with self.assertRaises(error):
+                    m.api_get('owner/repo', 'actions/runs/42/attempts/1/jobs', 'fixture-token')
+                self.assertEqual(1, request.call_count)
+                sleep.assert_not_called()
+
     def test_transient_remote_disconnect_is_retried_without_restarting_evidence_flow(self):
         class Response:
             def __enter__(self):
