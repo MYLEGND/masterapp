@@ -908,7 +908,7 @@ owner.baseline=p['baselineRevision'];owner.producer=p['originalRun'];owner.run=9
 owner.recovery_evidence=a.fast_track_recovery_record_proof(dict(run=dict(id=p['originalRun'],head_sha=p['applicationRevision'],run_attempt=2)),dict(packageArtifact=dict(id=p['candidateArtifactId'],digest=p['candidateArtifactDigest']),unknownReplacement=p),dict(runId=999,runAttempt=1,jobId=998,promotionRunId=997,toolRevision='a'*40))
 i=owner.intent_record(['old'],submission_kind='azure_onedeploy_windows_intent_v1')
 print(json.dumps([owner.publication_record(i),owner.publication_record(owner.submitted_record(i,'new')),owner.publication_record(owner.success_record(i,['new']))]))
-`], {encoding:'utf8'}));
+`], {encoding:'utf8',cwd:__dirname}));
   for (const record of records) {
     const name=`legend-release-operation-${record.phase}-${record.operationId}`;
     assert.doesNotThrow(()=>validateRecord(name,record));
@@ -941,7 +941,7 @@ proof=dict(originalRun=p['originalRun'],originalAttempt=2,applicationRevision=p[
 name,preflight=d.recovery_preflight_nonentry_record(proof,'protect',d.RecoveryPreflightFailure('runtime-unavailable'))
 assert a.validate_recovery_preflight_nonentry(preflight)==name
 print(json.dumps(dict(summaryName=a.fast_track_recovery_summary_name(p['originalRun'],p['applicationRevision']),summary=summary,preflightName=name,preflight=preflight,old=p['originalOperationId'])))
-`],{encoding:'utf8'}));
+`],{encoding:'utf8',cwd:__dirname}));
   assert.doesNotThrow(()=>validateRecord(payload.summaryName,payload.summary));
   assert.doesNotThrow(()=>validateRecord(payload.preflightName,payload.preflight));
   const website=payload.summary.targets.website;
