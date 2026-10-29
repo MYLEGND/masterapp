@@ -893,3 +893,61 @@ test('validation CLI is read-only and distinguishes contract rejection without S
   assert.equal(bad.stdout, '');
   assert.equal(bad.stderr, 'LEGEND_RECORD_CONTRACT_INVALID\n');
 });
+
+test('exact161 production journal roundtrip and fixed Python/JS generation parity', () => {
+  const records = JSON.parse(execFileSync('python3', ['-c', String.raw`
+import importlib.util,json,pathlib
+root=pathlib.Path.cwd().parent
+def module(name):
+ s=importlib.util.spec_from_file_location(name,root/(name+'.py'));m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
+a=module('validation-resume');j=module('release-operation-evidence');p=a.PROTECT_161_REPLACEMENT
+owner=object.__new__(j.RecoveryJournal)
+owner.identity=dict(target=p['target'],applicationRevision=p['applicationRevision'],packageDigest=p['packageDigest'])
+owner.operation_id=a.retained_operation_id(p['target'],p['applicationRevision'],p['packageDigest'],p)
+owner.baseline=p['baselineRevision'];owner.producer=p['originalRun'];owner.run=999;owner.attempt=1;owner.authorization=None;owner.supersession=None
+owner.recovery_evidence=a.fast_track_recovery_record_proof(dict(run=dict(id=p['originalRun'],head_sha=p['applicationRevision'],run_attempt=2)),dict(packageArtifact=dict(id=p['candidateArtifactId'],digest=p['candidateArtifactDigest']),unknownReplacement=p),dict(runId=999,runAttempt=1,jobId=998,promotionRunId=997,toolRevision='a'*40))
+i=owner.intent_record(['old'],submission_kind='azure_onedeploy_windows_intent_v1')
+print(json.dumps([owner.publication_record(i),owner.publication_record(owner.submitted_record(i,'new')),owner.publication_record(owner.success_record(i,['new']))]))
+`], {encoding:'utf8'}));
+  for (const record of records) {
+    const name=`legend-release-operation-${record.phase}-${record.operationId}`;
+    assert.doesNotThrow(()=>validateRecord(name,record));
+    for(const key of Object.keys(record.recoveryEvidence.unknownReplacement)) {
+      const changed=structuredClone(record);changed.recoveryEvidence.unknownReplacement[key]=null;
+      assert.throws(()=>validateRecord(name,changed));
+    }
+    for(const mutate of [r=>delete r.recoveryEvidence.unknownReplacement,
+      r=>r.recoveryEvidence.unknownReplacement.extra=true,r=>r.recoveryEvidence.unknownReplacement.schemaVersion=true,
+      r=>r.target='website',r=>r.baseline='f'.repeat(40),r=>r.operationId=record.recoveryEvidence.unknownReplacement.originalOperationId,
+      r=>r.recoveryEvidence.packageArtifactId++,r=>r.recoveryEvidence.originalRun++]) {
+      const changed=structuredClone(record);mutate(changed);assert.throws(()=>validateRecord(name,changed));
+    }
+  }
+});
+
+test('exact161 summary and preflight use new Protect generation and unchanged Website operation', () => {
+  const payload=JSON.parse(execFileSync('python3',['-c',String.raw`
+import importlib.util,json,pathlib
+root=pathlib.Path.cwd().parent
+s=importlib.util.spec_from_file_location('deploy',root/'deploy-approved-app.py');d=importlib.util.module_from_spec(s);s.loader.exec_module(d)
+a=d._RELEASE_AUTHORITY;p=a.PROTECT_161_REPLACEMENT
+observer=dict(runId=999,runAttempt=1,jobId=998,promotionRunId=997,toolRevision='a'*40)
+targets={}
+for key,digest,artifact,archive in [('protect',p['packageDigest'],p['candidateArtifactId'],p['candidateArtifactDigest']),('website','d'*64,42,'sha256:'+'e'*64)]:
+ targets[key]=dict(operationId=a.retained_operation_id(key,p['applicationRevision'],digest,p if key=='protect' else None),packageDigest=digest,packageArtifactId=artifact,packageArtifactDigest=archive)
+original=dict(run=dict(run_attempt=2))
+summary=d.recovery_summary_record(p['originalRun'],original,p['applicationRevision'],observer,{k:dict(v,deploymentIds=['new-'+k])for k,v in targets.items()})
+proof=dict(originalRun=p['originalRun'],originalAttempt=2,applicationRevision=p['applicationRevision'],observer=observer,targets=targets)
+name,preflight=d.recovery_preflight_nonentry_record(proof,'protect',d.RecoveryPreflightFailure('runtime-unavailable'))
+assert a.validate_recovery_preflight_nonentry(preflight)==name
+print(json.dumps(dict(summaryName=a.fast_track_recovery_summary_name(p['originalRun'],p['applicationRevision']),summary=summary,preflightName=name,preflight=preflight,old=p['originalOperationId'])))
+`],{encoding:'utf8'}));
+  assert.doesNotThrow(()=>validateRecord(payload.summaryName,payload.summary));
+  assert.doesNotThrow(()=>validateRecord(payload.preflightName,payload.preflight));
+  const website=payload.summary.targets.website;
+  assert.equal(website.operationId,crypto.createHash('sha256').update(JSON.stringify({applicationRevision:payload.summary.applicationRevision,packageDigest:website.packageDigest,target:'website'})).digest('hex'));
+  for(const [name,value] of [[payload.summaryName,payload.summary],[payload.preflightName,payload.preflight]]) {
+    const old=structuredClone(value);old.targets.protect.operationId=payload.old;assert.throws(()=>validateRecord(name,old));
+    const changed=structuredClone(value);changed.targets.website.operationId=value.targets.protect.operationId;assert.throws(()=>validateRecord(name,changed));
+  }
+});

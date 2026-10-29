@@ -2076,5 +2076,36 @@ class CanonicalReplacementAdapterTests(unittest.TestCase):
                 current_run=30, current_attempt=1, evidence_refs={},
                 fence=Fence(), authority=authority)
 
+
+class Protect161JournalTests(unittest.TestCase):
+    def setUp(self):
+        self.f=DurableOperationProtocolTests();self.f.setUp();self.addCleanup(self.f.doCleanups)
+        self.p=dict(journal._authority().PROTECT_161_REPLACEMENT)
+        self.f.authority.RELEASE_TARGETS['protect']={}
+        self.f.authority.retained_operation_id=journal._authority().retained_operation_id
+        self.f.env['PACKAGE_PRODUCER_RUN']=str(self.p['originalRun'])
+        old=self.f.authority.release_operation_history
+        self.f.authority.release_operation_history=lambda *a,replacement=None,**kw:old(*a,**kw)
+    def make(self, callback=lambda ids:None, publisher=None):
+        p=self.p
+        return journal.RecoveryJournal(target='protect',application_revision=p['applicationRevision'],package_digest=p['packageDigest'],baseline=p['baselineRevision'],authority=self.f.authority,environment=self.f.env,publisher=publisher or self.f.publish,before_new_intent=callback,recovery_evidence=dict(runId=int(self.f.env['GITHUB_RUN_ID']),runAttempt=int(self.f.env['GITHUB_RUN_ATTEMPT']),originalRun=p['originalRun'],applicationRevision=p['applicationRevision'],unknownReplacement=p))
+    def test_original_unknown_unchanged_and_repeated_generation_no_second_claim(self):
+        old=self.f.path/('intent'+self.p['originalOperationId']);old.write_text('original UNKNOWN bytes');before=old.read_bytes()
+        first=self.make();self.assertTrue(first.before_submit(['old'],submission_kind='azure_onedeploy_windows_intent_v1'))
+        self.f.env['GITHUB_RUN_ID']='11';self.f.env['GITHUB_RUN_ATTEMPT']='2'
+        second=self.make(callback=lambda ids:self.fail('must not re-enter write'))
+        self.assertEqual(first.operation_id,second.operation_id);self.assertFalse(second.before_submit(['other']))
+        self.assertEqual(old.read_bytes(),before)
+        with self.assertRaisesRegex(RuntimeError,'reconcile-only'):second.record_submission_observation('provider')
+    def test_ambiguous_intent_publication_blocks_submission_and_resume(self):
+        def lost(name,record):self.f.publish(name,record);raise TimeoutError('readback lost')
+        first=self.make(publisher=lost)
+        with self.assertRaises(TimeoutError):first.before_submit(['old'])
+        self.assertFalse(self.make().before_submit(['old']))
+    def test_fresh_guard_failure_prevents_intent(self):
+        def changed(ids):raise ValueError('fresh baseline changed')
+        with self.assertRaises(ValueError):self.make(callback=changed).before_submit(['old'])
+        self.assertEqual(list(self.f.path.iterdir()),[])
+
 if __name__ == '__main__':
     unittest.main()

@@ -1695,7 +1695,9 @@ def recovery_preupload_baseline(azure, original, key, *, expected=None):
 
 def prepare_protect_retained_replacement(azure, original, material, state, package_root):
     """Validate retained rollback bytes and the corrected live baseline before intent."""
-    proof = material.get('protectBaselineCorrection')
+    proof = material.get('unknownReplacement') or material.get('protectBaselineCorrection')
+    if proof is not None and 'unknownReplacement' in material:
+        proof = dict(proof, rollbackArtifactName='fast-track-package-' + proof['baselineRevision'] + '-protect')
     if proof is None:
         provider = azure
         while isinstance(provider, RecoveryDeadlineAzure):
@@ -1834,6 +1836,8 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
         intent = material['originalIntent']
         if intent is not None and any(intent.get(name) != value for name, value in dict(identity, operationId=operation, packageProducerRun=original_run).items()):
             raise ValueError('RECOVERY_ORIGINAL_INTENT_MATERIAL_CHANGED')
+        if 'unknownReplacement' in material:
+            operation = authority.retained_operation_id(key, revision, digest, material['unknownReplacement'])
         inventory[key] = dict(operationId=operation, packageDigest=digest, packageArtifactId=artifact['id'], packageArtifactDigest=artifact['digest'])
     proof = dict(originalRun=original_run, originalAttempt=original['run']['run_attempt'], applicationRevision=revision,
                  observer=observer, targets=inventory)
@@ -1857,7 +1861,8 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
             for key, material in materials.items():
                 azure = RecoveryDeadlineAzure(target_azure(key, package_root / key / 'deploy.zip', revision), publication_deadline)
                 prior = authority.release_operation_history(repository, inventory[key]['operationId'], revision, key,
-                    observer['runId'], observer['runAttempt'], token)
+                    observer['runId'], observer['runAttempt'], token,
+                    **({'replacement': materials[key]['unknownReplacement']} if 'unknownReplacement' in materials[key] else {}))
                 if prior is None:
                     states[key] = recovery_preupload_baseline(azure, original, key)
                     prepare_protect_retained_replacement(azure, original, material, states[key], package_root)
@@ -1872,7 +1877,8 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
                         with authority.recovery_admission_proof():
                             authority._completion_original_unchanged(repository, original['run'], token)
                             existing = authority.release_operation_history(repository, inventory[key]['operationId'], revision, key,
-                                observer['runId'], observer['runAttempt'], token)
+                                observer['runId'], observer['runAttempt'], token,
+                                **({'replacement': materials[key]['unknownReplacement']} if 'unknownReplacement' in materials[key] else {}))
                             if existing is not None:
                                 raise DeploymentReconciliationRequired('RECOVERY_INTENT_APPEARED_RECONCILE_ONLY')
                             if authority.assert_fast_track_recovery_execution(original_run, revision) != observer:

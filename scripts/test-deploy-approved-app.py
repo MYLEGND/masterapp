@@ -4053,5 +4053,44 @@ class CompletionDiagnosticContextTests(unittest.TestCase):
                 with self.assertRaises(OSError):deploy._diagnostic_package_version('OPT_AZ')
 
 
+
+class Protect161ProductionRecoveryTests(unittest.TestCase):
+    def test_exact_rollback_material_enables_tracked_not_async_submission(self):
+        from types import SimpleNamespace
+        p=dict(deploy._RELEASE_AUTHORITY.PROTECT_161_REPLACEMENT)
+        for baseline,digest,okay in [(p['baselineRevision'],p['rollbackPackageDigest'],True),('a'*40,p['rollbackPackageDigest'],False),(p['baselineRevision'],'b'*64,False)]:
+            provider=SimpleNamespace();azure=deploy.RecoveryDeadlineAzure(provider,deploy.time.monotonic()+1000)
+            with tempfile.TemporaryDirectory() as directory,patch.dict(os.environ,GITHUB_REPOSITORY='MYLEGND/masterapp'),patch.object(deploy._RELEASE_AUTHORITY,'_download_run_artifact') as download,patch.object(deploy,'verify_package',return_value=digest),patch.object(deploy,'recovery_host_flags'):
+                def invoke():deploy.prepare_protect_retained_replacement(azure,dict(run=dict(id=p['originalRun'],head_sha=p['applicationRevision'])),dict(unknownReplacement=p),dict(revision=baseline),Path(directory))
+                if okay:
+                    invoke();self.assertTrue(provider.authorized_replacement)
+                    self.assertEqual(download.call_args.kwargs,dict(artifact_id=p['rollbackArtifactId'],expected_digest=p['rollbackArtifactDigest']))
+                else:
+                    with self.assertRaises(deploy.DeploymentDrift):invoke()
+                    self.assertFalse(getattr(provider,'authorized_replacement',False))
+    def test_late_original_success_active_or_slow_read_never_authorizes_replacement(self):
+        p=deploy._RELEASE_AUTHORITY.PROTECT_161_REPLACEMENT
+        original=dict(run=dict(head_sha=p['applicationRevision']),attempts={1:[dict(name='Affected App Deploy — Protect',steps=[dict(name='Publish or reconcile exact application bytes',started_at='2026-10-29T20:22:00Z')])]})
+        for observed,rows in [(p['applicationRevision'],[dict(id='late',status=4,received_time='2026-10-29T20:30:00Z')]),(None,[dict(id='old',status=4,received_time='2026-10-29T19:11:00Z')]),(p['baselineRevision'],[dict(id='active',status=1)])]:
+            azure=Mock();azure.observed_revision.return_value=observed
+            with patch.object(deploy,'read_deployments_bounded',return_value=rows),patch.object(deploy.subprocess,'run',return_value=Mock(returncode=0)),self.assertRaises(deploy.DeploymentReconciliationRequired):
+                deploy.recovery_preupload_baseline(azure,original,'protect')
+            azure.submit.assert_not_called()
+    def test_preparation_reuses_original_bytes_but_selects_new_protect_identity_only(self):
+        a=deploy._RELEASE_AUTHORITY;p=dict(a.PROTECT_161_REPLACEMENT)
+        original=dict(run=dict(id=p['originalRun'],head_sha=p['applicationRevision'],run_attempt=2),targets=['website','protect'])
+        materials={key:dict(packageArtifact=dict(id=p['candidateArtifactId'] if key=='protect' else 42,name='retained-'+key,digest=p['candidateArtifactDigest'] if key=='protect' else 'sha256:'+'a'*64),originalIntent=dict(target=key,applicationRevision=p['applicationRevision'],packageDigest=p['packageDigest'] if key=='protect' else 'd'*64,packageProducerRun=p['originalRun'])) for key in original['targets']}
+        for key,value in materials.items():value['originalIntent']['operationId']=a.retained_operation_id(key,p['applicationRevision'],value['originalIntent']['packageDigest'])
+        materials['protect']['unknownReplacement']=p
+        before=json.dumps(materials,sort_keys=True)
+        def download(repo,run,name,path,**kw):
+            path.mkdir(parents=True);(path/'deploy.zip').write_bytes(b'fixture');(path/'SHA256SUMS').write_text('fixture')
+        with tempfile.TemporaryDirectory() as root,patch.dict(os.environ,GITHUB_REPOSITORY='MYLEGND/masterapp',GH_TOKEN='test-only'),patch.object(a,'fast_track_completion_original',return_value=original),patch.object(a,'fast_track_recovery_material',side_effect=lambda repo,o,key,token:materials[key]),patch.object(a,'_download_run_artifact',side_effect=download) as restored,patch.object(deploy,'verify_package',side_effect=lambda path,*args:materials[path.parent.name]['originalIntent']['packageDigest']),patch.object(deploy,'target_azure') as provider:
+            result=deploy._recover_fast_track(p['originalRun'],p['applicationRevision'],Path(root),dict(runId=999),deploy.time.monotonic()+1000,prepare_only=True)
+            self.assertEqual(result['targets']['protect']['operationId'],a.retained_operation_id('protect',p['applicationRevision'],p['packageDigest'],p))
+            self.assertEqual(result['targets']['website']['operationId'],materials['website']['originalIntent']['operationId'])
+            self.assertEqual(restored.call_count,2);provider.assert_not_called()
+        self.assertEqual(json.dumps(materials,sort_keys=True),before)
+
 if __name__ == '__main__':
     unittest.main()
