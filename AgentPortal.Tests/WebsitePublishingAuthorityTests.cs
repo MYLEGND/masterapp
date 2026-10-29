@@ -106,6 +106,55 @@ public sealed class WebsitePublishingAuthorityTests
         Assert.Null(await controller.ResolveProtectPageAsync(path, default));
     }
 
+    [Fact]
+    public void ImmutablePublicationLobReadHonorsCancellationBeforeAndAfterWithoutSwallowingErrors()
+    {
+        var method = typeof(WebsitePlatformController).GetMethod("ReadImmutablePublication",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var read = (Func<Func<string>, System.Threading.CancellationToken, string>)method.MakeGenericMethod(typeof(string))
+            .CreateDelegate(typeof(Func<Func<string>, System.Threading.CancellationToken, string>));
+        using var before = new System.Threading.CancellationTokenSource();
+        before.Cancel();
+        var entered = false;
+        Assert.Throws<OperationCanceledException>(() => read(() => { entered = true; return "private"; }, before.Token));
+        Assert.False(entered);
+        using var during = new System.Threading.CancellationTokenSource();
+        Assert.Throws<OperationCanceledException>(() => read(() => { during.Cancel(); return "must not escape"; }, during.Token));
+        var payload = new string('p', 2_000_000);
+        Assert.Same(payload, read(() => payload, default));
+        var failure = new InvalidOperationException("cardinality remains strict");
+        Assert.Same(failure, Assert.Throws<InvalidOperationException>(() => read(() => throw failure, default)));
+    }
+
+    [Fact]
+    public async Task ImmutablePublicationReadersRetainSingleRowCardinalityAndPreReadCancellation()
+    {
+        using var f = new Fixture();
+        var profile = new AgentTrackingProfile { AgentUserId = "duplicate-owner", Slug = "duplicate" };
+        foreach (var site in new[] { WebsiteEditorSiteKeys.Protect, WebsiteEditorSiteKeys.Legend })
+        {
+            var owner = site == WebsiteEditorSiteKeys.Legend ? WebsiteEditorSiteKeys.GlobalOwnerKey : profile.AgentUserId;
+            for (var index = 0; index < 2; index++)
+            {
+                var state = new WebsiteContentState { SiteKey = site, OwnerKey = owner };
+                var version = new WebsiteContentVersion { StateId = state.Id, CompiledPagesJson = "{}" };
+                state.PublishedVersionId = version.Id;
+                f.Db.AddRange(state, version);
+            }
+        }
+        await f.Db.SaveChangesAsync();
+        var controller = f.Controller;
+        controller.ControllerContext = new ControllerContext { HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext() };
+        controller.HttpContext.Items["TrackingProfile"] = profile;
+        using var cancelled = new System.Threading.CancellationTokenSource();
+        cancelled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => controller.ResolveProtectPageAsync("/", cancelled.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => controller.LegendPage("/", cancelled.Token));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => controller.ResolveProtectPageAsync("/", default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => controller.LegendPage("/", default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => controller.Public("legend"));
+    }
+
     private sealed class MaterializationAudit : Microsoft.EntityFrameworkCore.Diagnostics.IMaterializationInterceptor
     {
         public System.Collections.Generic.List<Type> EntityTypes { get; } = new();
