@@ -10,7 +10,7 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "c8fde29a67fbb500bbd7577c17298703d04e825c",
-    "sourceRevision": "7c910eeb02d33d5f16af42d0d1bf9ad2a93d7c1d",
+    "sourceRevision": "175e29cf176992a74fcb006132612d0ab7cd6c6e",
     "files": {
       "scripts/deploy-approved-app.py": {
         "mode": "100644",
@@ -18,7 +18,7 @@
       },
       "scripts/release-artifacts/test-transport.cjs": {
         "mode": "100644",
-        "blob": "6aee9f434e410fdd2dd3beeeb7acc06dead82402"
+        "blob": "0d40b9f62afb749cfb53620e3ad64aec7b305480"
       },
       "scripts/release-artifacts/transport.cjs": {
         "mode": "100644",
