@@ -155,6 +155,30 @@ public sealed class WebsitePublishingAuthorityTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => controller.Public("legend"));
     }
 
+
+    [Fact]
+    public async Task ProtectCtaPhoneProjectionKeepsLatestActiveOwnerAndOmitsProfileMaterialization()
+    {
+        using var f = new Fixture(auditMaterialization: true);
+        var now = DateTime.UtcNow;
+        f.Db.AgentProfiles.AddRange(
+            new AgentProfile { AgentUserId = "phone-owner", Phone = "+15550000001", UpdatedUtc = now.AddDays(-1), ProfileImageContent = new byte[2_000_000] },
+            new AgentProfile { AgentUserId = "phone-owner", Phone = "+15550000002", UpdatedUtc = now, ProfileImageContent = new byte[2_000_000] },
+            new AgentProfile { AgentUserId = "phone-owner", Phone = "+15550000003", UpdatedUtc = now.AddDays(1), IsActive = false },
+            new AgentProfile { AgentUserId = "other", Phone = "+15550000004", UpdatedUtc = now.AddDays(2) });
+        await f.Db.SaveChangesAsync();
+        f.Db.ChangeTracker.Clear();
+        var method = typeof(WebsitePlatformController).GetMethods(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+            .Single(m => m.Name == "BuildCallToActionCatalogAsync" && m.GetParameters().Length == 7);
+        async Task<System.Collections.Generic.IReadOnlyList<WebsiteCallToActionOption>> Read(string owner) =>
+            await (Task<System.Collections.Generic.IReadOnlyList<WebsiteCallToActionOption>>)method.Invoke(f.Controller,
+                new object?[] { "protect", owner, null, null, null, System.Threading.CancellationToken.None, null })!;
+        var options = await Read("phone-owner");
+        Assert.Equal("tel:+15550000002", Assert.Single(options.Where(o => o.Key == "protect_call")).Href);
+        Assert.DoesNotContain(await Read("missing-owner"), o => o.Key == "protect_call");
+        Assert.DoesNotContain(typeof(AgentProfile), f.Audit.EntityTypes);
+    }
+
     private sealed class MaterializationAudit : Microsoft.EntityFrameworkCore.Diagnostics.IMaterializationInterceptor
     {
         public System.Collections.Generic.List<Type> EntityTypes { get; } = new();

@@ -36,6 +36,7 @@ const legendSiteToolsBridgeSource = readFileSync(new URL('../../SHARED/wwwroot/j
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
+import {compileWebsite} from '../../Legend-Website/scripts/render-business.mjs';
 
 test('editor compact header restores authored Base geometry without remounting content or saving',async()=>{
   for(const name of ['LEGEND®','Cedar Advisory']){
@@ -7223,6 +7224,40 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
     assert.equal(w.getComputedStyle(modalBefore).display,'none');
   }finally{compiler.window.close();}
   }
+  // Use the actual compiler payload, not a handwritten native pageKey.
+  // Historical snapshots retain route-derived keys while Razor owns native IDs.
+  const compiled=await compileWebsite({siteKey:'protect',document:doc,publication:{versionId:'00000000-0000-0000-0000-000000000384',revision:384}});
+  const payload=JSON.parse(compiled.pages['/quote'].payload);
+  assert.equal(payload.pageKey,'quote');
+  for(const branch of ['embed','fallback','disabled']) for(const invalid of [null,'route','site','template','wrong-valid-template','missing-native-key','wrong-native-key','malformed-native-key',...(prefix?['agent-scope']:[])]){
+    const dom=new JSDOM(markup(branch),{url:'https://protect.example.test'+pathname,runScripts:'outside-only'});
+    const w=dom.window;w.CSS={escape:value=>String(value)};
+    w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey:'protect',apiBase:'',agentSlug:prefix?'synthetic-agent':'',pagePrefix:prefix};
+    w.LEGEND_PUBLIC_CMS_CONTEXT.requestNativeView={pageKey:'quote_index',templateKey:'protect_template:quote_index'};
+    w.LEGEND_PUBLIC_CMS_RENDER_INPUT=structuredClone(payload);
+    if(invalid==='route')w.LEGEND_PUBLIC_CMS_RENDER_INPUT.pageKey='quote-life';
+    if(invalid==='site')w.LEGEND_PUBLIC_CMS_RENDER_INPUT.siteKey='legend';
+    if(invalid==='template')delete w.LEGEND_PUBLIC_CMS_RENDER_INPUT.document.pages['/quote'].systemTemplateKey;
+    if(invalid==='missing-native-key')delete w.document.body.dataset.pageKey;
+    if(invalid==='wrong-native-key')w.document.body.dataset.pageKey='quote_life';
+    if(invalid==='malformed-native-key')w.document.body.dataset.pageKey='../quote';
+    if(invalid==='wrong-valid-template')w.LEGEND_PUBLIC_CMS_RENDER_INPUT.document.pages['/quote'].systemTemplateKey='protect_template:life_wizard';
+    if(invalid==='agent-scope'){w.LEGEND_PUBLIC_CMS_CONTEXT.agentSlug='different-agent';w.LEGEND_PUBLIC_CMS_CONTEXT.pagePrefix='/a/different-agent';}
+    const modal=w.document.getElementById('lifeModal');
+    let fetches=0;w.fetch=()=>{fetches++;throw Error('No publication fetch');};
+    try{
+      w.eval(source);
+      if(invalid){
+        assert.notEqual(w.LEGEND_PUBLIC_CMS_RENDER_COMPLETE,true,invalid);
+        assert.equal(w.document.documentElement.dataset.legendWebsiteLoadError,'read-failed',invalid);
+      }else{
+        assert.equal(w.LEGEND_PUBLIC_CMS_RENDER_COMPLETE,true,branch);
+        assert.equal(w.document.getElementById('lifeModal'),modal);
+        assert.ok(w.document.querySelector('[data-cms-id="quote_index.button.node.35"]'));
+      }
+      assert.equal(fetches,0);
+    }finally{w.close();}
+  }
   for(const change of ['omit-modal','omit-calendar','omit-prayer','duplicate-modal','move-calendar','remove-close','authored-booking-text','authored-booking-style','pre-booking-edit-add-omit','extra-native-root','authored-booking-breakpoint','authored-booking-color','authored-booking-numeric-string','authored-booking-layout','authored-booking-binding','authored-booking-signal','authored-booking-div-typography','authored-booking-tag','authored-booking-children']){
     const changed=structuredClone(doc),nodes=changed.pages['/quote'].composition;
     const pageNode=nodes.find(node=>node.className==='quote-page');
@@ -7742,6 +7777,8 @@ test('Protect embedded native slot applies authored presentation before reveal w
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey:'protect',apiBase:'',agentSlug:'agent'};
   w.LEGEND_PUBLIC_CMS_RENDER_INPUT={siteKey:'protect',document:doc,pageKey:'quote-auto',server:false,publishedMarkupReady:true,protectNativeSlot:true};
   let fetches=0;w.fetch=()=>{fetches++;throw Error('No public fetch allowed')};
+  w.document.body.dataset.pageKey='quote_auto';
+  w.LEGEND_PUBLIC_CMS_CONTEXT.requestNativeView={pageKey:'quote_auto',templateKey:'protect_template:auto_quote'};
   const form=w.document.querySelector('form'),input=w.document.getElementById('nativeName');
   try{
     w.eval(source);
@@ -7767,6 +7804,8 @@ test('Protect embedded ordinary and native publication retains authored browser 
     const html=native?'<form id="autoQuoteForm" data-form-key="quote_auto_form"><input name="FirstName"></form>':'<div data-cms-id="visible-node" data-cms-composition-id="visible-node">Published content</div>';
     const dom=new JSDOM('<!doctype html><html><body><main>'+html+'</main></body></html>',{url:'https://protect.example.test'+path,runScripts:'outside-only'});
     const w=dom.window,events=[];w.CSS={escape:value=>String(value)};
+    w.document.body.dataset.pageKey=native?'quote_auto':'home';
+    w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey:'protect',apiBase:'',requestNativeView:{pageKey:'quote_auto',templateKey:'protect_template:auto_quote'}};
     w.__legendTrackingInitialized=true;w.LegendAnalytics={trackBinding:(...args)=>events.push(args)};
     w.LEGEND_PUBLIC_CMS_RENDER_INPUT={siteKey:'protect',document:doc,pageKey:native?'quote-auto':'home',server:false,publishedMarkupReady:true,protectNativeSlot:native};
     try{
@@ -7787,7 +7826,9 @@ test('Protect native hydration preserves compiled multi-root shell and fails clo
     const shell='<header class="site-header" data-cms-id="h1" data-cms-composition-id="h1">Header one</header><aside data-cms-id="h2" data-cms-composition-id="h2">Header two</aside><main><form id="autoQuoteForm" data-form-key="quote_auto_form" style="padding-top:17px;display:none"><input name="FirstName"></form></main><footer class="site-footer" data-cms-id="f1" data-cms-composition-id="f1">Footer one</footer><aside data-cms-id="f2" data-cms-composition-id="f2">Footer two</aside>';
     const dom=new JSDOM('<!doctype html><html data-legend-canonical-pending="true"><body>'+shell+'</body></html>',{url:'https://protect.example.test'+path,runScripts:'outside-only'});
     const w=dom.window;w.innerWidth=390;w.CSS={escape:value=>String(value)};
-    w.LEGEND_PUBLIC_CMS_RENDER_INPUT={siteKey:'protect',document:doc,pageKey:coverage?'quote_index':'quote_auto',server:false,publishedMarkupReady:true,protectNativeSlot:true};
+    w.document.body.dataset.pageKey=coverage?'quote_index':'quote_auto';
+    w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey:'protect',apiBase:'',requestNativeView:{pageKey:w.document.body.dataset.pageKey,templateKey:doc.pages[path].systemTemplateKey}};
+    w.LEGEND_PUBLIC_CMS_RENDER_INPUT={siteKey:'protect',document:doc,pageKey:coverage?'quote':'quote-auto',server:false,publishedMarkupReady:true,protectNativeSlot:true};
     try{
       w.eval(source);
       if(!coverage) for(const id of ['h1','h2','f1','f2'])assert.equal(w.document.querySelectorAll('[data-cms-composition-id="'+id+'"]').length,1,id+' '+w.document.body.innerHTML);
@@ -7821,4 +7862,64 @@ test('Protect Studio exposes only the narrowly recoverable obsolete training ret
     const home=rows.find(row=>row.textContent.startsWith('/Retire')===false && row.querySelector('button')?.textContent==='/');
     assert.ok(home);assert.equal(home.querySelectorAll('button').length,1,'no arbitrary fixed-page delete');
   }finally{f.close();}
+});
+
+test('Protect compiler native payloads reuse request view identities for DVH and differing quote routes',async()=>{
+  for(const [route,nativeKey,formId,formKey,template] of [
+    ['/quote/dental-vision-hearing','quote_dvh','dvhQuoteForm','quote_dvh_form','dvh_quote'],
+    ['/quote/disability','quote_disability','disabilityQuoteForm','quote_disability_form','disability_quote'],
+    ['/quote/term-life','quote_term_life','lifeWizardForm','quote_term_life','life_wizard']
+  ]){
+    const doc=canonicalDocument();
+    doc.pages[route]={systemTemplateKey:'protect_template:'+template,composition:[canonicalNode('runtime.form.'+formKey,'container','div',{
+      systemKey:'protect_runtime_form:'+formKey,fieldLabels:{submit:'Published review'}
+    })]};
+    const compiled=await compileWebsite({siteKey:'protect',document:doc,publication:{versionId:'00000000-0000-0000-0000-000000000384',revision:384}});
+    const payload=JSON.parse(compiled.pages[route].payload);
+    assert.notEqual(payload.pageKey,nativeKey);
+    for(const prefix of ['', '/a/verified-agent']) for(const invalidKey of [false,true]){
+      const dom=new JSDOM('<!doctype html><html data-legend-canonical-pending="true"><body data-page-key="'+nativeKey+'"><main><form id="'+formId+'" data-form-key="'+formKey+'"><input name="__RequestVerificationToken" value="request-token"><input name="FirstName" value="posted"><button type="submit" data-cms-field-key="submit">Original</button></form></main></body></html>',{url:'https://protect.example.test'+prefix+route,runScripts:'outside-only'});
+      const w=dom.window;w.CSS={escape:v=>String(v)};
+      w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey:'protect',apiBase:'',agentSlug:prefix?'verified-agent':'',requestNativeView:{pageKey:nativeKey,templateKey:'protect_template:'+template}};
+      w.LEGEND_PUBLIC_CMS_RENDER_INPUT=payload;
+      if(invalidKey)w.document.body.dataset.pageKey='quote_other';
+      const form=w.document.querySelector('form');let calls=0;
+      w.fetch=()=>{calls++;throw Error('No public fetch');};
+      try{
+        w.eval(source);
+        if(invalidKey){assert.notEqual(w.LEGEND_PUBLIC_CMS_RENDER_COMPLETE,true);assert.equal(w.document.documentElement.dataset.legendWebsiteLoadError,'read-failed');continue;}
+        assert.equal(w.LEGEND_PUBLIC_CMS_RENDER_COMPLETE,true,route);
+        assert.equal(w.document.querySelector('form'),form);
+        assert.equal(form.querySelector('[name="FirstName"]').value,'posted');
+        assert.equal(form.querySelector('[name="__RequestVerificationToken"]').value,'request-token');
+        assert.match(form.textContent,/Published review/);
+        assert.equal(calls,0);
+      }finally{w.close();}
+    }
+  }
+});
+
+test('ordinary LEGEND compiled hydration ignores unrelated request native keys',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/']={composition:[canonicalNode('ordinary.legend','text','p',{text:'Published LEGEND content'})]};
+  const compiled=await compileWebsite({siteKey:'legend',document:doc,publication:{versionId:'00000000-0000-0000-0000-000000000384',revision:384}});
+  const dom=new JSDOM(compiled.pages['/'].html,{url:'https://www.example.test/',runScripts:'outside-only'});
+  const w=dom.window;w.CSS={escape:v=>String(v)};w.document.body.dataset.pageKey='unrelated_native_key';
+  const input=JSON.parse(w.document.getElementById('legend-cms-published-document').textContent);
+  assert.equal(input.siteKey,'legend');assert.equal(input.protectNativeSlot,false);
+  let calls=0;w.fetch=()=>{calls++;return Promise.resolve({ok:false,json:async()=>({})});};
+  const content=w.document.querySelector('[data-cms-id="ordinary.legend"]');
+  try{
+    w.eval(source);
+    assert.equal(w.LEGEND_PUBLIC_CMS_RENDER_COMPLETE,true);
+    assert.equal(w.document.querySelector('[data-cms-id="ordinary.legend"]'),content);
+    assert.match(content.textContent,/Published LEGEND content/);
+    assert.equal(w.document.documentElement.dataset.legendWebsiteLoadError,undefined);
+  }finally{w.close();}
+});
+
+test('Protect request-native context uses serialized existing server template authority',()=>{
+  assert.match(protectLayoutSource,/requestNativeView: @Html.Raw\(JsonSerializer.Serialize\(new \{/);
+  assert.match(protectLayoutSource,/pageKey = ViewData\["PageKey"\]\?\.ToString\(\)/);
+  assert.match(protectLayoutSource,/templateKey = Infrastructure.WebsiteEditing.WebsiteSystemTemplateAuthority.Resolve\(\s*Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect, requestPath\)/);
 });

@@ -4620,7 +4620,11 @@ def fast_track_scope(paths):
             return set(RELEASE_TARGETS)
         if path == 'Infrastructure/WebsiteEditing/WebsiteFaviconParity.cs':
             return {'portal', 'client', 'protect'}
-        if path == 'Infrastructure/WebsiteEditing/WebsitePlatformController.cs':
+        if path in {
+            'Infrastructure/WebsiteEditing/WebsitePlatformController.cs',
+            # Registered only by Protect; its quote/booking services and website
+            # controller are the runtime consumers, not the other .NET hosts.
+            'Infrastructure/Bookings/PublicBookingResolver.cs'}:
             return {'protect'}
         if path.startswith(('Infrastructure/Analytics/', 'Infrastructure/WebsitePublishing/',
                             'Infrastructure/WebsiteEditing/')) or path == 'Domain/Entities/WebsiteContentState.cs':

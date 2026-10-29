@@ -3440,6 +3440,10 @@ public class WebsitePlatformController : ControllerBase
     private string MediaBaseUrl() => WebsiteContentApiBaseUrl();
     private WebsiteDomainService DomainService() => HttpContext.RequestServices.GetRequiredService<WebsiteDomainService>();
 
+    // CTA construction needs a phone, never the profile's large image payload.
+    private static IQueryable<string?> ProjectProtectPhones(IQueryable<AgentProfile> profiles) =>
+        profiles.Select(profile => profile.Phone);
+
     private Task<IReadOnlyList<WebsiteCallToActionOption>> BuildCallToActionCatalogAsync(
         WebsiteEditorTicket actor,
         WebsiteBusinessFacts? facts,
@@ -3475,11 +3479,10 @@ public class WebsitePlatformController : ControllerBase
         }
         else if (siteKey == WebsiteEditorSiteKeys.Protect)
         {
-            var profile = await _db.AgentProfiles.AsNoTracking()
+            phone = await ProjectProtectPhones(_db.AgentProfiles.AsNoTracking()
                 .Where(row => row.AgentUserId == ownerUserId && row.IsActive)
-                .OrderByDescending(row => row.UpdatedUtc)
+                .OrderByDescending(row => row.UpdatedUtc))
                 .FirstOrDefaultAsync(cancellationToken);
-            phone = profile?.Phone;
             var resolver = ControllerContext.HttpContext?.RequestServices
                 .GetService(typeof(Infrastructure.Bookings.IPublicBookingResolver))
                 as Infrastructure.Bookings.IPublicBookingResolver;

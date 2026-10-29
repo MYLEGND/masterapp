@@ -7,6 +7,8 @@ using Microsoft.Extensions.Options;
 using Moq;
 using ProtectWebsite.Services.Booking;
 using Xunit;
+using System.Linq;
+using Microsoft.EntityFrameworkCore;
 
 namespace AgentPortal.Tests;
 
@@ -295,6 +297,66 @@ public class PublicBookingResolverTests
         Assert.Equal("https://bookings.example.com/founder/embed", resolution.EmbedUrl);
         Assert.Equal("https://bookings.example.com/founder/fallback", resolution.FallbackUrl);
         Assert.Equal("calendar-founder@example.com", resolution.CalendarEmail);
+    }
+
+
+    private sealed class ProfileMaterializationAudit : Microsoft.EntityFrameworkCore.Diagnostics.IMaterializationInterceptor
+    {
+        public int Profiles { get; private set; }
+        public object InitializedInstance(Microsoft.EntityFrameworkCore.Diagnostics.MaterializationInterceptionData data, object entity)
+        {
+            if (entity is AgentProfile) Profiles++;
+            return entity;
+        }
+    }
+
+    [Fact]
+    public async Task BookingProjectionPreservesConfiguredOwnerRankingWithoutMaterializingImageProfiles()
+    {
+        var audit = new ProfileMaterializationAudit();
+        await using var db = ControllerTestHelpers.BuildDb(audit);
+        db.AgentTrackingProfiles.Add(new AgentTrackingProfile { AgentUserId = "owner", AgentUpn = "shared@example.test", Slug = "owner" });
+        var now = DateTime.UtcNow;
+        db.AgentProfiles.AddRange(
+            new AgentProfile { AgentUserId = "owner", UpdatedUtc = now, ProfileImageContent = new byte[2_000_000] },
+            new AgentProfile { AgentUserId = "other", NormalizedEmail = "shared@example.test", UpdatedUtc = now, BookingEnabled = true, MicrosoftBookingsEmbedUrl = "https://book.example.test/other", ProfileImageContent = new byte[2_000_000] },
+            new AgentProfile { AgentUserId = "owner", UpdatedUtc = now.AddDays(-1), BookingEnabled = true, PreferModalOnMobile = true, MicrosoftBookingsEmbedUrl = "https://book.example.test/owner", FallbackBookingUrl = "https://book.example.test/fallback", CalendarUserId = "calendar-owner", CalendarEmail = "OWNER@EXAMPLE.TEST", BookingPageIdOrMailbox = "mailbox", ProfileImageContent = new byte[2_000_000] });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var resolver = new PublicBookingResolver(db, BuildOptions(new PublicBookingOptions()));
+        var result = await resolver.ResolveAsync(new PublicBookingResolveContext(AgentUserId: "owner", AgentSlug: "owner"));
+        Assert.True(result.Enabled);
+        Assert.True(result.PreferModalOnMobile);
+        Assert.Equal("https://book.example.test/owner", result.EmbedUrl);
+        Assert.Equal("https://book.example.test/fallback", result.FallbackUrl);
+        Assert.Equal("calendar-owner", result.CalendarUserId);
+        Assert.Equal("owner@example.test", result.CalendarEmail);
+        Assert.Equal("mailbox", result.BookingPageIdOrMailbox);
+        Assert.Equal("owner", result.AgentUserId);
+        Assert.Equal(0, audit.Profiles);
+    }
+
+    [Theory]
+    [InlineData("booking")]
+    [InlineData("phone")]
+    public void ProfileProjectionGeneratedSqlExcludesImageAndCredentialPayloads(string kind)
+    {
+        // Query translation only: no connection, credentials, or provider operation.
+        using var db = new Infrastructure.Data.MasterAppDbContext(
+            new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<Infrastructure.Data.MasterAppDbContext>()
+                .UseSqlServer("Server=localhost;Database=projection_only;Integrated Security=true;TrustServerCertificate=true").Options);
+        var owner = kind == "booking" ? typeof(PublicBookingResolver) : typeof(Infrastructure.WebsiteEditing.Controllers.WebsitePlatformController);
+        var method = owner.GetMethod(kind == "booking" ? "ProjectBookingProfiles" : "ProjectProtectPhones",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var filtered = db.AgentProfiles.AsNoTracking().Where(p => p.AgentUserId == "owner").OrderByDescending(p => p.UpdatedUtc);
+        var projected = Assert.IsAssignableFrom<System.Linq.IQueryable>(method.Invoke(null, new object[] { filtered }));
+        var sql = projected.ToQueryString();
+        Assert.DoesNotContain("ProfileImage", sql);
+        Assert.DoesNotContain("MetaCapiAccessToken", sql);
+        Assert.DoesNotContain("ShortBio", sql);
+        Assert.Contains("AgentUserId", sql); // owner predicate is preserved
+        Assert.Contains("ORDER BY", sql);
+        Assert.Contains(kind == "booking" ? "BookingEnabled" : "Phone", sql);
     }
 
     private static IOptionsSnapshot<PublicBookingOptions> BuildOptions(PublicBookingOptions options)

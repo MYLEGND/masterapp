@@ -29,6 +29,17 @@ deploy = load('deploy-approved-app')
 
 
 class UniversalFastTrackAdmissionTests(unittest.TestCase):
+    def test_public_booking_resolver_selects_only_registered_protect_consumer(self):
+        scope = authority.fast_track_scope(['Infrastructure/Bookings/PublicBookingResolver.cs'])
+        self.assertEqual({'protect'}, {row['key'] for row in scope['matrix']['include']})
+        combined = authority.fast_track_scope(['Infrastructure/Bookings/PublicBookingResolver.cs',
+                                               'SHARED/WebsitePlatform/legend-public-cms.js'])
+        self.assertEqual({'protect', 'website'}, {row['key'] for row in combined['matrix']['include']})
+        for unknown in ['Infrastructure/Bookings/UnreviewedSibling.cs',
+                        'Infrastructure/Bookings/PublicBookingOptions.cs']:
+            with self.subTest(unknown=unknown), self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+                authority.fast_track_scope([unknown])
+
     def test_training_shared_sources_select_every_managed_consumer_without_widening_unknown_paths(self):
         paths = ['Domain/Billing/BillingEnums.cs', 'Domain/Billing/ClientSubscriptionScope.cs', 'Domain/Billing/TrainingPlanTerms.cs', 'Domain/Entities/ClientSubscription.cs', 'Infrastructure/Billing/ClientBillingNotificationService.cs', 'Infrastructure/Billing/ClientPaymentMethodService.cs', 'Infrastructure/Billing/ClientSubscriptionActivationPolicyOptions.cs', 'Infrastructure/Data/MasterAppSqliteSchemaBootstrapper.cs', 'Infrastructure/Households/HouseholdReconciliationService.cs', 'Infrastructure/Identity/ClientEntraProvisioningRecoveryHostedService.cs', 'Infrastructure/Messaging/TranslationEntitlementAuthority.cs']
         managed = {key for key, row in authority.RELEASE_TARGETS.items() if not row['static']}

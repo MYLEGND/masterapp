@@ -1,11 +1,12 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder authorized resolving and publishing the existing Protect work on 2026-10-29, including approved isolated successor recovery. Protected exact-candidate independent acceptance, CI/admission, scoped release and live verification remain required. No new costs, credentials, privacy/security changes or weakened protections.",
-  "purpose": "Complete the existing Protect delivery repair by applying the established synchronous large-text materialization pattern only to immutable published document and compiled-page reads in the canonical website controller. Preserve owner/version/retirement/cardinality checks, cancellation before and after the bounded read, existing command timeouts, async writes, and all content. Preserve successful release159 application receipts; deploy only the affected Protect host. No cache, schema, routing, fallback, credentials or security-policy changes. Verify public first-response behavior after release; Website Studio authorized-draft timeout remains separately unresolved. Protect training retirement remains pending the existing guarded content workflow.",
-  "requestId": "protect-immutable-publication-lob-read-20261029-v1",
+  "purpose": "Complete the existing Protect repair in one reviewed release: bind compiled native slots to the exact request-owned Razor identity, and remove unused profile image/credential payloads from existing CTA and booking queries through least-data projections. Preserve owner filters, candidate ordering, booking policy, immutable publication and native correspondence, controls and posted values. Release only Website and Protect as selected by actual shared CMS and Protect runtime consumers; preserve Portal, Client and Parfait deployments and release160 recovery receipts. No schema, routing, timeout increase, cache, fallback, credentials or security-policy changes. The projection removes a known slow-query class; complete Studio/public latency benefit remains unverified until live acceptance. Protect training retirement remains pending its guarded content workflow.",
+  "requestId": "protect-native-identity-profile-read-repair-20261029-v1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-protect"
+    "masterapp-protect",
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
