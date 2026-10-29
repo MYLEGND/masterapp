@@ -196,22 +196,6 @@ h3{font-size:clamp(20px,1.65vw,23px);letter-spacing:-.014em}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.btn,.contact-card{transition:none}}
 
 /* Protect non-quote outer-shell normalization. */
-.legend-public--protect .training-page{
-  width:100%!important;
-  max-width:none!important;
-  margin:0!important;
-  padding:clamp(60px,8vw,104px) var(--public-page-pad)!important;
-}
-.legend-public--protect .training-page>.text-center{
-  max-width:900px;
-  margin-left:auto!important;
-  margin-right:auto!important;
-}
-.legend-public--protect .packages-grid{
-  max-width:1280px!important;
-  margin-left:auto!important;
-  margin-right:auto!important;
-}
 .legend-public--protect .legal-hero{
   max-width:1050px;margin:0 auto!important;padding:0 0 30px!important;background:transparent!important;color:var(--ink)!important;
   border:0!important;border-radius:0!important;box-shadow:none!important;

@@ -279,6 +279,67 @@ public class WebsitePlatformController : ControllerBase
         }
     }
 
+    public sealed record ProtectPublishedPage(Guid VersionId, string Title, string Description,
+        string? Header, string? Footer, string Main, string Styles, string HtmlStyle, string BodyStyle,
+        string Payload, bool NativeSlot);
+
+    // Called by Protect's request-owned Razor layout, never an alternate public route.
+    // Native controls/tokens/ModelState stay in Razor; only immutable authored fragments
+    // and their exact publication envelope are persisted by the shared compiler.
+    [NonAction]
+    public async Task<ProtectPublishedPage?> ResolveProtectPageAsync(string path, CancellationToken cancellationToken)
+    {
+        if (HttpContext.Items["TrackingProfile"] is not AgentTrackingProfile profile ||
+            string.IsNullOrWhiteSpace(profile.AgentUserId)) return null;
+        var ownerKey = NormalizeOwner(profile.AgentUserId);
+        var route = path.TrimEnd('/').ToLowerInvariant();
+        if (route.Length == 0 || route == "/home" || route == "/home/index") route = "/";
+        if (route == "/privacy") route = "/home/privacy";
+        if (route == "/terms") route = "/home/terms";
+        if (route.EndsWith("/index", StringComparison.Ordinal)) route = route[..^6];
+        if (route == "/trainingpackages") return null;
+        var publication = await (
+            from state in _db.Set<WebsiteContentState>().AsNoTracking()
+            join version in _db.Set<WebsiteContentVersion>().AsNoTracking() on state.PublishedVersionId equals version.Id
+            where state.SiteKey == WebsiteEditorSiteKeys.Protect && state.OwnerKey == ownerKey &&
+                  version.StateId == state.Id && version.SnapshotRetiredUtc == null
+            select new { version.Id, version.StateId, version.CompiledPagesJson }
+        ).SingleOrDefaultAsync(cancellationToken);
+        if (publication is null) return null;
+        var compiledPages = publication.CompiledPagesJson;
+        if (string.IsNullOrWhiteSpace(compiledPages))
+        {
+            // Same bounded historical materialization as LEGEND. Verify the
+            // envelope is still the exact version selected above before writing
+            // derived data. Never store request-generated native markup.
+            var slug = HttpContext.Items["IsFounderPath"] as bool? == true ? null : profile.Slug;
+            var result = await Public(WebsiteEditorSiteKeys.Protect, slug, cancellationToken: cancellationToken);
+            if (result is not OkObjectResult published) return null;
+            var payload = JsonSerializer.Serialize(published.Value, JsonOptions);
+            using var envelope = JsonDocument.Parse(payload);
+            if (!envelope.RootElement.TryGetProperty("publication", out var identity) ||
+                identity.ValueKind != JsonValueKind.Object || identity.GetProperty("versionId").GetGuid() != publication.Id)
+                return null;
+            var compiler = HttpContext.RequestServices.GetRequiredService<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
+            compiledPages = await compiler.CompileLegendAsync(payload, cancellationToken);
+            await _db.Set<WebsiteContentVersion>()
+                .Where(version => version.Id == publication.Id && version.StateId == publication.StateId &&
+                                  version.CompiledPagesJson == null && version.SnapshotRetiredUtc == null)
+                .ExecuteUpdateAsync(updates => updates.SetProperty(version => version.CompiledPagesJson, compiledPages), cancellationToken);
+        }
+        using var compiled = JsonDocument.Parse(compiledPages);
+        if (!compiled.RootElement.GetProperty("pages").TryGetProperty(route, out var page)) return null;
+        string Value(string name) => page.GetProperty(name).GetString() ?? "";
+        string? Optional(string name) => page.GetProperty(name).ValueKind == JsonValueKind.Null ? null : Value(name);
+        using var embedded = JsonDocument.Parse(Value("payload"));
+        if (embedded.RootElement.GetProperty("publication").GetProperty("versionId").GetGuid() != publication.Id)
+            throw new InvalidOperationException("protect_publication_identity_mismatch");
+        Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
+        Response.Headers["X-Legend-Publication-Id"] = publication.Id.ToString("D");
+        return new(publication.Id, Value("title"), Value("description"), Optional("header"), Optional("footer"),
+            Value("main"), Value("styles"), Value("htmlStyle"), Value("bodyStyle"), Value("payload"), page.GetProperty("nativeSlot").GetBoolean());
+    }
+
     [HttpGet("public/{siteKey}/favicon")]
     [HttpHead("public/{siteKey}/favicon")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
@@ -2695,7 +2756,7 @@ public class WebsitePlatformController : ControllerBase
             var compiler = HttpContext.RequestServices.GetRequiredService<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
             version.CompiledPagesJson = await compiler.CompileAsync(document, business, facts!, collections, cancellationToken);
         }
-        else if (actor.SiteKey == WebsiteEditorSiteKeys.Legend)
+        else if (actor.SiteKey is WebsiteEditorSiteKeys.Legend or WebsiteEditorSiteKeys.Protect)
         {
             // Compile before the published pointer is committed, as scoped
             // business sites already do. Readers never see an incomplete version.
@@ -2708,7 +2769,7 @@ public class WebsitePlatformController : ControllerBase
                 var scope = await PublishedStoreScopeAsync(actor.OwnerUserId, actor.SiteKey, document, cancellationToken);
                 var publicPayload = JsonSerializer.Serialize(new
                 {
-                    siteKey = WebsiteEditorSiteKeys.Legend,
+                    siteKey = actor.SiteKey,
                     publication = new { versionId = version.Id, revision = version.Revision },
                     business = (object?)null,
                     businessName = (string?)null,

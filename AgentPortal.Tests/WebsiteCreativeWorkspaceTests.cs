@@ -99,6 +99,23 @@ public sealed class WebsiteCreativeWorkspaceTests
             document,
             Actions());
 
+    [Fact]
+    public void ProtectTrainingRetirementPreservesRecoveryAndOtherFixedPages()
+    {
+        var document = Baseline();
+        document.Pages["/trainingpackages"] = document.Pages["/old"];
+        document.Pages.Remove("/old");
+        var actions = WebsiteCallToActionCatalog.Build(WebsiteEditorSiteKeys.Protect);
+        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(WebsiteEditorSiteKeys.Protect, document, actions);
+        var result = WebsiteDocumentMutationService.Apply(document, WebsiteEditorSiteKeys.Protect, actions, capabilities,
+            [new WebsiteMutationOperation { Type = "removePage", PagePath = "/trainingpackages" }]);
+        Assert.True(result.Document.Pages["/trainingpackages"].Navigation!.IsDeleted);
+        Assert.False(result.Document.Pages["/trainingpackages"].Navigation!.ShowInNavigation);
+        Assert.NotEmpty(result.Document.Pages["/trainingpackages"].Composition);
+        var restored = JsonSerializer.Deserialize<WebsiteContentDocument>(JsonSerializer.Serialize(result.Document, new JsonSerializerOptions(JsonSerializerDefaults.Web)), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        Assert.True(restored.Pages["/trainingpackages"].Navigation!.IsDeleted);
+    }
+
     [Theory]
     [InlineData(WebsiteEditorSiteKeys.Legend)]
     [InlineData(WebsiteEditorSiteKeys.Protect)]

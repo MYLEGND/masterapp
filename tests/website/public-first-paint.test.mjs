@@ -20,8 +20,8 @@ test('LEGEND static public HTML never paints an old authoring template ahead of 
   assert.match(build, /<script src="\/legend-public-cms\.js\?v=\$\{cmsVersion\}" defer>/);
 });
 test('Protect conceals legacy Razor content until the canonical published document is applied', () => {
-  assert.match(protect, /data-legend-canonical-pending="@\(!isStandaloneQuoteLanding \? "true" : null\)"/);
-  assert.match(protect, /<main id="main" class="@mainClasses">\s*@RenderBody\(\)/);
+  assert.match(protect, /data-legend-canonical-pending="@\(compiledPublication is not null \? \(compiledPublication.NativeSlot \? "true" : null\)/);
+  assert.match(protect, /compiledPublication is not null && !compiledPublication.NativeSlot/);
 });
 test('Canonical CMS still applies the saved published document and does not wait for optional provider runtime', () => {
   assert.match(cms, /const response = await fetch\(url, \{ cache: 'no-store' \}\)/);

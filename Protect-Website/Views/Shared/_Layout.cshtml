@@ -1,4 +1,5 @@
-﻿@using System.Text.Json
+@inject ProtectWebsite.Controllers.WebsiteContentController PublishedPages
+@using System.Text.Json
 @using Microsoft.AspNetCore.Http
 @using Microsoft.EntityFrameworkCore
 @using Shared.Analytics
@@ -49,6 +50,30 @@
     var websiteStudioMode =
         Context.Request.Query.ContainsKey("legendEdit") ||
         Context.Request.Query.ContainsKey("legendMaterialize");
+    Infrastructure.WebsiteEditing.Controllers.WebsitePlatformController.ProtectPublishedPage? compiledPublication = null;
+    // Thank-you is an outcome page, not an authored public route. Keep its
+    // existing native response and all editor/materialization behavior intact.
+    var useCompiledPublication = !websiteStudioMode && !requestPath.StartsWith("/ThankYou", StringComparison.OrdinalIgnoreCase);
+    if (useCompiledPublication)
+    {
+        PublishedPages.ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext { HttpContext = Context };
+        try { compiledPublication = await PublishedPages.ResolveProtectPageAsync(requestPath, Context.RequestAborted); }
+        catch (OperationCanceledException) when (Context.RequestAborted.IsCancellationRequested) { throw; }
+        catch (Exception error) when (error is InvalidOperationException or JsonException or OperationCanceledException)
+        {
+            compiledPublication = null;
+        }
+        if (compiledPublication is null)
+        {
+            Context.Response.StatusCode = 503;
+            Context.Response.Headers.CacheControl = "no-store";
+            Context.Response.Headers.RetryAfter = "30";
+            IgnoreBody();
+            IgnoreSection("Scripts");
+            <p role="status">Published website temporarily unavailable. Please try again.</p>
+            return;
+        }
+    }
     var analyticsBrowserConfigJson = JsonSerializer.Serialize(new
     {
         siteKey = Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect,
@@ -61,7 +86,7 @@
     });
 }
 <!DOCTYPE html>
-<html lang="en" data-legend-canonical-pending="@(!isStandaloneQuoteLanding ? "true" : null)">
+<html lang="en" style="@compiledPublication?.HtmlStyle" data-legend-canonical-pending="@(compiledPublication is not null ? (compiledPublication.NativeSlot ? "true" : null) : (!isStandaloneQuoteLanding ? "true" : null))">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -80,7 +105,12 @@
         if (seoDocumentRoute.StartsWith(agentPrefix + "/", StringComparison.OrdinalIgnoreCase))
             seoDocumentRoute = seoDocumentRoute[agentPrefix.Length..];
     }
-    if (!websiteStudioMode && Guid.TryParse(trackingProfileId, out var seoProfileId))
+    if (compiledPublication is not null)
+    {
+        publishedSeoTitle = compiledPublication.Title;
+        publishedSeoDescription = compiledPublication.Description;
+    }
+    else if (!websiteStudioMode && Guid.TryParse(trackingProfileId, out var seoProfileId))
     {
         var seoOwner = await WebsiteSeoDb.AgentTrackingProfiles.AsNoTracking()
             .Where(profile => profile.Id == seoProfileId)
@@ -219,10 +249,18 @@
     {
         @await Html.PartialAsync("~/Views/Diagnostics/_PageHealth.cshtml")
     }
+@if (compiledPublication is not null)
+{
+    @Html.Raw(compiledPublication.Styles)
+}
 </head>
 
-<body class="legend-public--protect @bodyClasses">
-@if (!isStandaloneQuoteLanding)
+<body class="legend-public--protect @bodyClasses" style="@compiledPublication?.BodyStyle">
+@if (compiledPublication?.Header is not null)
+{
+    @Html.Raw(compiledPublication.Header)
+}
+else if (!isStandaloneQuoteLanding)
 {
     <a class="skip" href="#main">Skip to content</a>
     <header class="site-header">
@@ -243,7 +281,15 @@
     </header>
 }
 <main id="main" class="@mainClasses">
-    @RenderBody()
+    @if (compiledPublication is not null && !compiledPublication.NativeSlot)
+    {
+        IgnoreBody();
+        @Html.Raw(compiledPublication.Main)
+    }
+    else
+    {
+        @RenderBody()
+    }
 </main>
 
 <div id="psalmsModal" class="scripture-modal" aria-hidden="true" hidden inert>
@@ -267,6 +313,12 @@
     </div>
 </div>
 
+@if (compiledPublication?.Footer is not null)
+{
+    @Html.Raw(compiledPublication.Footer)
+}
+else
+{
 <footer class="site-footer">
     <div class="footer-grid">
         <div>
@@ -295,6 +347,7 @@
         <span>Insurance products are offered through appropriately licensed professionals and subject to carrier terms.</span>
     </div>
 </footer>
+}
 
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
@@ -627,6 +680,10 @@
     };
 </script>
 <script src="~/design/legend-public-web.js" asp-append-version="true" defer></script>
+@if (compiledPublication is not null)
+{
+    <script type="application/json" id="legend-cms-published-document">@Html.Raw(compiledPublication.Payload)</script>
+}
 <script src="~/design/legend-public-cms.js" asp-append-version="true" defer></script>
 <script type="module" src="~/js/public-inquiry-form.mjs" asp-append-version="true" data-inquiry-runtime="@WebsiteFileVersions.AddFileVersionToPath(Context.Request.PathBase, Url.Content("~/js/legend-public-inquiry.js"))"></script>
 @await RenderSectionAsync("Scripts", required: false)

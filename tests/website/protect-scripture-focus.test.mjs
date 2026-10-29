@@ -5,7 +5,7 @@ import {JSDOM} from 'jsdom';
 
 const layout = await readFile(new URL('../../Protect-Website/Views/Shared/_Layout.cshtml', import.meta.url), 'utf8');
 const css = await readFile(new URL('../../Protect-Website/wwwroot/css/site.css', import.meta.url), 'utf8');
-const markup = layout.match(/(<div id="psalmsModal"[\s\S]*?)\n\n<footer/)[1];
+const markup = layout.match(/(<div id="psalmsModal"[\s\S]*?)\n\n@if \(compiledPublication\?\.Footer/)[1];
 const scripts = [...layout.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
 const script = scripts.find(s => s.includes("const trigger = document.getElementById('psalmsTrigger');"));
 function fixture(trigger = true, initialize = true) {
