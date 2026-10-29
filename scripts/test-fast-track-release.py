@@ -1933,7 +1933,7 @@ class AllAttemptPrewriteScopeTests(unittest.TestCase):
     def test_incomplete_foreign_active_or_started_publication_evidence_blocks(self):
         import copy
         original = copy.deepcopy(self.payloads)
-        changes = [lambda p: p.update(total_count=6), lambda p: p['jobs'].pop(),
+        changes = [lambda p: p.update(total_count=p['total_count'] + 1), lambda p: p['jobs'].pop(),
             lambda p: p['jobs'][0].update(run_id=8), lambda p: p['jobs'][0].update(head_sha='c'*40),
             lambda p: p['jobs'][0].update(run_attempt=1), lambda p: p['jobs'][0].update(status='in_progress'),
             lambda p: p['jobs'][3].update(conclusion='success'), lambda p: p['jobs'][4].update(conclusion='failure')]
@@ -1990,6 +1990,53 @@ class AllAttemptPrewriteScopeTests(unittest.TestCase):
         with patch.object(authority, '_release_history_source', side_effect=authority.EvidenceLookupUnavailable('deadline')):
             with self.assertRaises(authority.EvidenceLookupUnavailable):
                 authority.fast_track_attempts_proven_prewrite('owner/repo', self.run, 'b'*40, 'fixture')
+
+
+class AuthoredRecoveryAllAttemptPrewriteTests(AllAttemptPrewriteScopeTests):
+    def setUp(self):
+        super().setUp()
+        for attempt, payload in self.payloads.items():
+            payload['jobs'].append(dict(name=authority.FAST_TRACK_RECOVERY_JOB,
+                status='completed', conclusion='skipped', steps=[], run_id=7,
+                run_attempt=attempt, head_sha='a'*40))
+            payload['total_count'] = 6
+
+    def invoke(self, source='canonical'):
+        with patch.object(authority, '_job_blocks', return_value={authority.FAST_TRACK_RECOVERY_JOB_ID: 'authored'}):
+            return super().invoke(source)
+
+    def effective_baseline(self):
+        with patch.object(authority, '_job_blocks', return_value={authority.FAST_TRACK_RECOVERY_JOB_ID: 'authored'}):
+            return super().effective_baseline()
+
+    def test_only_exact_inert_authored_recovery_owner_can_be_normalized(self):
+        import copy
+        original = copy.deepcopy(self.payloads)
+        mutations = [
+            lambda p: p['jobs'][-1].update(status='in_progress'),
+            lambda p: p['jobs'][-1].update(conclusion='success'),
+            lambda p: p['jobs'][-1].update(conclusion=None),
+            lambda p: p['jobs'][-1].update(steps=[dict(name='unexpected', conclusion='skipped')]),
+            lambda p: p['jobs'][-1].update(steps=None),
+            lambda p: p['jobs'][-1].update(run_id=8),
+            lambda p: p['jobs'][-1].update(head_sha='f'*40),
+            lambda p: p['jobs'][-1].update(run_attempt=99),
+            lambda p: p['jobs'][-1].update(name='Unknown recovery owner'),
+            lambda p: p['jobs'].pop(),
+            lambda p: p['jobs'].append(dict(p['jobs'][-1])),
+            lambda p: p['jobs'].append(dict(p['jobs'][-1], name='Unexpected extra job')),
+        ]
+        for attempt in (1, 2):
+            for index, mutate in enumerate(mutations):
+                self.payloads = copy.deepcopy(original)
+                payload = self.payloads[attempt]
+                mutate(payload)
+                payload['total_count'] = len(payload['jobs'])
+                with self.subTest(attempt=attempt, mutation=index):
+                    self.assertFalse(self.invoke())
+        self.payloads = original
+        with patch.object(authority, '_job_blocks', return_value={}):
+            self.assertFalse(AllAttemptPrewriteScopeTests.invoke(self))
 
 
 class HistoricalCanonicalNoWriteTests(unittest.TestCase):

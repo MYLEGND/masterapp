@@ -5807,7 +5807,7 @@ def _api_get_uncached(repository: str, path: str, token: str, *, max_attempts=3)
                 historyPageTransportAttempts=int(path.startswith('actions/runs?branch=')))
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 return json.load(response)
-        except (TimeoutError, urllib.error.URLError, http.client.RemoteDisconnected) as exc:
+        except (TimeoutError, urllib.error.URLError, http.client.RemoteDisconnected, http.client.IncompleteRead) as exc:
             retryable = not isinstance(exc, urllib.error.HTTPError) or exc.code in {408, 429, 500, 502, 503, 504}
             if not retryable or attempt + 1 == max_attempts:
                 headers = getattr(exc, "headers", None) or {}
@@ -6911,7 +6911,19 @@ def fast_track_attempts_proven_prewrite(repository, run, revision, token):
         payload = api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token)
         jobs = payload.get('jobs')
         if (not isinstance(jobs, list) or payload.get('total_count') != len(jobs)
-            or len(jobs) != len(names) or any(not isinstance(job, dict) for job in jobs)):
+            or any(not isinstance(job, dict) for job in jobs)):
+            return False
+        # Authenticate the complete original inventory before excluding only
+        # the workflow-authored, explicitly skipped recovery owner.
+        if any(job.get('status') != 'completed' or job.get('run_id') != run['id']
+            or job.get('head_sha') != run['head_sha'] or type(job.get('run_attempt')) is not int
+            or job['run_attempt'] != attempt for job in jobs):
+            return False
+        try:
+            jobs = _without_skipped_recovery_job(jobs, source)
+        except ValueError:
+            return False
+        if len(jobs) != len(names):
             return False
         indexed = {job.get('name'): job for job in jobs}
         if set(indexed) != names or any(job.get('status') != 'completed'
