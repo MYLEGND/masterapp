@@ -214,7 +214,7 @@ public class WebsitePlatformController : ControllerBase
         if (route.Length == 0) route = "/";
         // Resolve exactly one immutable published snapshot. The visitor path must
         // never rebuild the entire public API envelope or launch a Node compiler.
-        var publication = await (
+        var publication = ReadImmutablePublication(() => (
             from state in _db.Set<WebsiteContentState>().AsNoTracking()
             join version in _db.Set<WebsiteContentVersion>().AsNoTracking()
                 on state.PublishedVersionId equals version.Id
@@ -223,7 +223,7 @@ public class WebsitePlatformController : ControllerBase
                   version.StateId == state.Id &&
                   version.SnapshotRetiredUtc == null
             select new { version.Id, version.StateId, version.CompiledPagesJson }
-        ).SingleOrDefaultAsync(cancellationToken);
+        ).SingleOrDefault(), cancellationToken);
         if (publication is null) return NotFound();
 
         try
@@ -298,13 +298,13 @@ public class WebsitePlatformController : ControllerBase
         if (route == "/terms") route = "/home/terms";
         if (route.EndsWith("/index", StringComparison.Ordinal)) route = route[..^6];
         if (route == "/trainingpackages") return null;
-        var publication = await (
+        var publication = ReadImmutablePublication(() => (
             from state in _db.Set<WebsiteContentState>().AsNoTracking()
             join version in _db.Set<WebsiteContentVersion>().AsNoTracking() on state.PublishedVersionId equals version.Id
             where state.SiteKey == WebsiteEditorSiteKeys.Protect && state.OwnerKey == ownerKey &&
                   version.StateId == state.Id && version.SnapshotRetiredUtc == null
             select new { version.Id, version.StateId, version.CompiledPagesJson }
-        ).SingleOrDefaultAsync(cancellationToken);
+        ).SingleOrDefault(), cancellationToken);
         if (publication is null) return null;
         var compiledPages = publication.CompiledPagesJson;
         if (string.IsNullOrWhiteSpace(compiledPages))
@@ -4155,6 +4155,18 @@ public class WebsitePlatformController : ControllerBase
     private async Task<WebsiteContentDocument?> LoadAsync(string ownerUserId, string siteKey, CancellationToken cancellationToken)
         => (await LoadPublicationAsync(ownerUserId, siteKey, cancellationToken)).Document;
 
+    // Immutable publication payloads are also large SQL text values. Reuse the
+    // StateAsync large-LOB workaround without changing predicates, cardinality,
+    // command timeout, or async writes. The blocking read cannot cancel midway;
+    // never return its payload if request cancellation arrived while it ran.
+    private static T ReadImmutablePublication<T>(Func<T> read, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = read();
+        cancellationToken.ThrowIfCancellationRequested();
+        return result;
+    }
+
     private async Task<(WebsiteContentDocument? Document, Guid? VersionId, long? Revision)> LoadPublicationAsync(
         string ownerUserId, string siteKey, CancellationToken cancellationToken)
     {
@@ -4167,10 +4179,10 @@ public class WebsitePlatformController : ControllerBase
         if (state is not null)
         {
             if (!state.PublishedVersionId.HasValue) return (null, null, null);
-            var version = await _db.Set<WebsiteContentVersion>().AsNoTracking()
+            var version = ReadImmutablePublication(() => _db.Set<WebsiteContentVersion>().AsNoTracking()
                 .Where(v => v.Id == state.PublishedVersionId && v.StateId == state.Id)
                 .Select(v => new { v.Id, v.Revision, v.DocumentJson, v.SnapshotRetiredUtc })
-                .SingleAsync(cancellationToken);
+                .Single(), cancellationToken);
             if (version.SnapshotRetiredUtc.HasValue) throw new InvalidOperationException("Active publication snapshot is unavailable.");
             return (Read(version.DocumentJson), version.Id, version.Revision);
         }

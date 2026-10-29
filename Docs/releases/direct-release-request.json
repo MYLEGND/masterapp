@@ -1,10 +1,12 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder authorized resolving and publishing the existing Protect work on 2026-10-29, including approved isolated successor recovery. Protected exact-candidate independent acceptance, CI/admission, scoped release and live verification remain required. No new costs, credentials, privacy/security changes or weakened protections.",
-  "purpose": "Publish the reviewed reconstructed Protect compiled-publication delivery and recoverable trainingpackages retirement through existing shared authorities. Preserve other tenants, commerce records, forms, owner/agent identity and saved content. After application live verification, perform only the authorized Protect retirement save/publish with fresh version guards and verify persistence. Preserve completed release157 as rollback history; do not replay it or infer recovery of unavailable source. Shayla calls and unrelated holds remain unchanged; no schema or routing change.",
-  "requestId": "protect-compiled-delivery-training-retirement-20261029-v1",
+  "purpose": "Complete the existing Protect delivery repair by applying the established synchronous large-text materialization pattern only to immutable published document and compiled-page reads in the canonical website controller. Preserve owner/version/retirement/cardinality checks, cancellation before and after the bounded read, existing command timeouts, async writes, and all content. Preserve successful release159 application receipts; deploy only the affected Protect host. No cache, schema, routing, fallback, credentials or security-policy changes. Verify public first-response behavior after release; Website Studio authorized-draft timeout remains separately unresolved. Protect training retirement remains pending the existing guarded content workflow.",
+  "requestId": "protect-immutable-publication-lob-read-20261029-v1",
   "releaseMode": "approved-only",
-  "targets": ["masterapp-portal", "masterapp-client", "masterapp-protect", "masterapp-parfait", "masterapp-website"],
+  "targets": [
+    "masterapp-protect"
+  ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
 }
