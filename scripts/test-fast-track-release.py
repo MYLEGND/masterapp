@@ -28,6 +28,40 @@ migration = load('release-migration')
 deploy = load('deploy-approved-app')
 
 
+CRM_READ_ONLY_OBSERVER_STEP = "      - name: Build read-only retained schema observer without application packages\n        if: inputs.original_run == '41131223973' && inputs.application_revision == '3243221ae661b53d60f78cc2dab108a93bad7632'\n        run: |\n          dotnet publish scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj -c Release --nologo \\\n            -m:1 -nr:false -p:UseSharedCompilation=false -o /tmp/retained-schema-probe\n"
+
+
+def assert_retained_recovery_build_boundary(case, recovery):
+    # Only this exact read-only tool build is permitted; original app bytes
+    # remain immutable and no migration executor is admitted by this exception.
+    case.assertEqual(recovery.count(CRM_READ_ONLY_OBSERVER_STEP), 1)
+    remaining = recovery.replace(CRM_READ_ONLY_OBSERVER_STEP, '', 1)
+    for forbidden in ('dotnet publish', 'dotnet build', 'npm run build', 'dotnet ef', 'efbundle', 'migrations bundle'):
+        case.assertNotIn(forbidden, remaining)
+
+
+class RetainedRecoveryBuildBoundaryTests(unittest.TestCase):
+    def test_exact_read_only_observer_is_permitted(self):
+        assert_retained_recovery_build_boundary(self, CRM_READ_ONLY_OBSERVER_STEP)
+
+    def test_changed_or_additional_builds_are_rejected(self):
+        original = CRM_READ_ONLY_OBSERVER_STEP
+        variants = {
+            'application project': original.replace('scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj', 'AgentPortal/AgentPortal.csproj'),
+            'duplicate observer': original + original,
+            'missing condition': '\n'.join(line for line in original.split('\n') if not line.strip().startswith('if:')),
+            'broadened condition': original.replace("inputs.original_run == '41131223973' && inputs.application_revision == '3243221ae661b53d60f78cc2dab108a93bad7632'", 'true'),
+            'changed output': original.replace('/tmp/retained-schema-probe', '/tmp/application'),
+            'extra app publish': original + '        run: dotnet publish AgentPortal/AgentPortal.csproj\n',
+            'extra app build': original + '        run: dotnet build AgentPortal/AgentPortal.csproj\n',
+            'migration executor': original + '        run: dotnet ef database update\n',
+            'frontend rebuild': original + '        run: npm run build\n',
+        }
+        for name, recovery in variants.items():
+            with self.subTest(name=name), self.assertRaises(AssertionError):
+                assert_retained_recovery_build_boundary(self, recovery)
+
+
 class UniversalFastTrackAdmissionTests(unittest.TestCase):
     def test_canonical_diagnostics_select_four_registered_hosts_and_unknown_siblings_fail_closed(self):
         paths = ['Domain/Entities/RuntimeDiagnosticIncident.cs', 'Infrastructure/Diagnostics/RuntimeDiagnosticSanitizer.Performance.cs', 'Infrastructure/Diagnostics/RuntimeDiagnosticSanitizer.cs', 'Infrastructure/Diagnostics/RuntimeDiagnosticStore.cs', 'Infrastructure/Diagnostics/RuntimeDiagnosticsExtensions.cs', 'Infrastructure/Diagnostics/RuntimeDiagnosticDependencyCapture.cs', 'SHARED/Diagnostics/LegendFailureDiagnosticsExtensions.cs', 'SHARED/Diagnostics/RuntimeDiagnosticEvent.cs', 'SHARED/Diagnostics/RuntimeDiagnosticPerformance.cs', 'SHARED/Diagnostics/RuntimeDiagnosticScope.cs']
@@ -133,7 +167,7 @@ class UniversalFastTrackAdmissionTests(unittest.TestCase):
         self.assertIn("if: github.event_name == 'workflow_dispatch'", recovery)
         self.assertIn('--prepare-recovery-only', recovery)
         self.assertIn('--recover-fast-track', recovery)
-        self.assertNotIn('dotnet publish', recovery)
+        assert_retained_recovery_build_boundary(self, recovery)
         self.assertNotIn('npm run build', recovery)
         self.assertIn('group: legend-approved-release', workflow)
         self.assertIn('cancel-in-progress: false', workflow)
