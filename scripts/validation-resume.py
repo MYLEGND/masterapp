@@ -2124,6 +2124,15 @@ def _fast_track_complete_run_jobs(repository, run, token):
 
 
 def fast_track_child_attempts(repository, child, token, *, current_run=None, current_attempt=None):
+    if child == 'migrations':
+        with audit_diagnostics():
+            return _fast_track_child_attempts(repository, child, token,
+                current_run=current_run, current_attempt=current_attempt)
+    return _fast_track_child_attempts(repository, child, token,
+        current_run=current_run, current_attempt=current_attempt)
+
+
+def _fast_track_child_attempts(repository, child, token, *, current_run=None, current_attempt=None):
     if child not in FAST_TRACK_CHILD_STEPS:
         return []
     owner_name, step_name = FAST_TRACK_CHILD_STEPS[child]
@@ -2198,11 +2207,13 @@ def fast_track_child_attempts(repository, child, token, *, current_run=None, cur
     # Each worker inherits the caller's single evidence deadline. Historical
     # attempts within a run stay ordered; all producers must finish before any
     # evidence is returned. A failed or timed-out read never becomes absence.
+    audit_phase('fast_track_inventory')
     runs = fast_track_execution_history(repository, token)
+    audit_phase('fast_track_attempts')
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=6)
     futures = []
     try:
-        futures = [pool.submit(contextvars.copy_context().run, inspect_run, run) for run in runs]
+        futures = [pool.submit(contextvars.copy_context().run, audit_call, run['id'], inspect_run, run) for run in runs]
         groups = [future.result(timeout=evidence_remaining(120)) for future in futures]
     except concurrent.futures.TimeoutError as error:
         raise EvidenceLookupUnavailable("Evidence lookup deadline exhausted; preserve completed receipts") from error
@@ -5912,8 +5923,152 @@ def evidence_remaining(maximum):
     return min(maximum, remaining)
 
 
+_AUDIT_DIAGNOSTIC = contextvars.ContextVar('migration_audit_diagnostic', default=None)
+_AUDIT_WORKER = contextvars.ContextVar('migration_audit_worker', default=None)
+_AUDIT_PHASES = ('fast_track_inventory', 'fast_track_attempts')
+
+
+def _audit_ms(value):
+    # Fixed numeric output; no exception/provider strings.
+    return min(86400000, max(0, int(value * 1000)))
+
+
+def _audit_endpoint(path):
+    if not isinstance(path, str) or len(path) > 4096:
+        return 'other'
+    if re.fullmatch(r'actions/runs\?[^\r\n]*', path):
+        return 'run_inventory'
+    if re.fullmatch(r'actions/runs/[0-9]+/(?:attempts/[0-9]+/)?jobs\?[^\r\n]*', path):
+        return 'job_inventory'
+    if re.fullmatch(r'actions/runs/[0-9]+(?:/attempts/[0-9]+)?', path):
+        return 'run_identity'
+    if re.fullmatch(r'actions/(?:runs/[0-9]+/)?artifacts(?:\?[^\r\n]*)?', path):
+        return 'artifact_inventory'
+    if path.startswith('contents/'):
+        return 'immutable_source'
+    return 'other'
+
+
+def audit_phase(phase):
+    state = _AUDIT_DIAGNOSTIC.get()
+    if state is None or phase not in _AUDIT_PHASES:
+        return
+    try:
+        now = time.monotonic()
+        with state['lock']:
+            previous = state['phase']
+            if previous is not None:
+                state['phases'][previous] += now - state['phaseStart']
+            state.update(phase=phase, phaseStart=now)
+    except BaseException:
+        pass
+
+
+@contextlib.contextmanager
+def audit_worker(run_id):
+    state = _AUDIT_DIAGNOSTIC.get()
+    row = None
+    try:
+        if state is not None and type(run_id) is int and 0 < run_id < 2**63:
+            with state['lock']:
+                state['activeCount'] += 1
+                if len(state['workers']) < 12:
+                    row = dict(runId=run_id, started=time.monotonic(), endpoint='idle')
+                    state['workers'][id(row)] = row
+    except BaseException:
+        pass
+    marker = _AUDIT_WORKER.set(row)
+    try:
+        yield
+    finally:
+        _AUDIT_WORKER.reset(marker)
+        try:
+            if state is not None and type(run_id) is int and 0 < run_id < 2**63:
+                with state['lock']:
+                    state['activeCount'] -= 1
+                    if row is not None:
+                        state['workers'].pop(id(row), None)
+        except BaseException:
+            pass
+
+
+def audit_call(run_id, action, *args):
+    with audit_worker(run_id):
+        return action(*args)
+
+
+@contextlib.contextmanager
+def audit_diagnostics():
+    # One canonical audit invocation, inherited by existing copy_context workers.
+    now = time.monotonic()
+    state = dict(lock=threading.Lock(), started=now, phase=None, phaseStart=now,
+                 phases={key: 0.0 for key in _AUDIT_PHASES}, workers={}, activeCount=0, reads={})
+    budget = _EVIDENCE_BUDGET.get()
+    try:
+        state['entryRemainingBudgetMs'] = None if budget is None else _audit_ms(budget[0] - budget[1]())
+    except BaseException:
+        state['entryRemainingBudgetMs'] = None
+    marker = _AUDIT_DIAGNOSTIC.set(state)
+    worker_marker = _AUDIT_WORKER.set(None)
+    try:
+        yield
+    except BaseException:
+        try:
+            # Never wait for workers or a logging lock during failure handling.
+            if state['lock'].acquire(blocking=False):
+                try:
+                    now = time.monotonic()
+                    phases = dict(state['phases'])
+                    if state['phase'] is not None:
+                        phases[state['phase']] += now - state['phaseStart']
+                    budget = _EVIDENCE_BUDGET.get()
+                    remaining = None if budget is None else _audit_ms(budget[0] - budget[1]())
+                    rows = [dict(runId=row['runId'], elapsedMs=_audit_ms(now-row['started']),
+                                 endpointClass=row['endpoint']) for row in state['workers'].values()]
+                    report = dict(schemaVersion=1, coverage='api_get_wrapper_not_artifact_body',
+                        phase=state['phase'], elapsedMs=_audit_ms(now-state['started']),
+                        remainingBudgetMs=remaining, entryRemainingBudgetMs=state['entryRemainingBudgetMs'],
+                        earlierLegacyTiming='unobserved', phaseMs={key:_audit_ms(value) for key,value in phases.items()},
+                        unfinishedCount=state['activeCount'], truncated=state['activeCount'] > len(rows),
+                        unfinished=rows, apiReads=dict(state['reads']))
+                finally:
+                    state['lock'].release()
+                print('LEGEND_MIGRATION_AUDIT_FAILURE:' + json.dumps(report, sort_keys=True), flush=True)
+        except BaseException:
+            pass  # Never replace the original exception or report provider text.
+        raise
+    finally:
+        _AUDIT_WORKER.reset(worker_marker)
+        _AUDIT_DIAGNOSTIC.reset(marker)
+
+
 def api_get(repository: str, path: str, token: str):
-    return _recovery_proof_read(repository, path, token)
+    state = _AUDIT_DIAGNOSTIC.get()
+    row = _AUDIT_WORKER.get()
+    started = None
+    endpoint = 'other'
+    if state is not None:
+        try:
+            endpoint = _audit_endpoint(path)
+            started = time.monotonic()
+            with state['lock']:
+                if row is not None:
+                    row['endpoint'] = endpoint
+        except BaseException:
+            pass
+    try:
+        return _recovery_proof_read(repository, path, token)
+    finally:
+        if state is not None and started is not None:
+            try:
+                with state['lock']:
+                    item = state['reads'].setdefault(endpoint, dict(count=0, elapsedMs=0))
+                    item['count'] = min(1000000, item['count'] + 1)
+                    item['elapsedMs'] = min(86400000, item['elapsedMs'] + _audit_ms(time.monotonic()-started))
+                    if row is not None:
+                        row['endpoint'] = 'idle'
+            except BaseException:
+                pass
 
 
 _LIVE_FRESHNESS = contextvars.ContextVar("live_evidence_freshness", default=None)

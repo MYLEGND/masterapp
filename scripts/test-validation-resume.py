@@ -16,6 +16,174 @@ spec.loader.exec_module(m)
 
 
 
+class MigrationAuditDiagnosticTests(unittest.TestCase):
+    def report(self, action):
+        import contextlib, io
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            with self.assertRaisesRegex(RuntimeError, '^original$'):
+                with m.audit_diagnostics():
+                    action()
+                    raise RuntimeError('original')
+        lines = output.getvalue().splitlines()
+        self.assertEqual(1, len(lines))
+        return json.loads(lines[0].split(':', 1)[1])
+
+    def test_failure_fixed_fields_no_raw_provider_data_and_original_exception(self):
+        secret = 'private-url?token=secret'
+        def action():
+            m.audit_phase('fast_track_inventory')
+            with patch.object(m, '_recovery_proof_read', return_value={'private': secret}):
+                self.assertEqual({'private': secret}, m.api_get('private/repo', secret, 'credential'))
+                m.api_get('private/repo', 'actions/runs?branch=secret', 'credential')
+        report = self.report(action)
+        raw = json.dumps(report)
+        for value in ('private-url', 'token=', 'private/repo', 'credential', 'branch=secret'):
+            self.assertNotIn(value, raw)
+        self.assertEqual('api_get_wrapper_not_artifact_body', report['coverage'])
+        self.assertEqual({'other', 'run_inventory'}, set(report['apiReads']))
+        self.assertIsNone(report['remainingBudgetMs'])
+
+    def test_success_silent_context_cleanup_and_transport_count_unchanged(self):
+        import contextlib, io
+        output = io.StringIO()
+        with patch.object(m, '_api_get_uncached', return_value={'ok': True}) as read:
+            with contextlib.redirect_stdout(output), m.audit_diagnostics():
+                for _ in range(3):
+                    m.api_get('o/r', 'actions/runs/123', 'stub')
+            self.assertEqual(3, read.call_count)
+        self.assertEqual('', output.getvalue())
+        self.assertIsNone(m._AUDIT_DIAGNOSTIC.get())
+        self.assertIsNone(m._AUDIT_WORKER.get())
+
+    def test_worker_snapshot_bounded_unfinished_not_failed(self):
+        import contextlib
+        stack = contextlib.ExitStack()
+        def action():
+            m.audit_phase('fast_track_attempts')
+            for i in range(20):
+                stack.enter_context(m.audit_worker(i + 1))
+        try:
+            report = self.report(action)
+        finally:
+            stack.close()
+        self.assertEqual(20, report['unfinishedCount'])
+        self.assertEqual(12, len(report['unfinished']))
+        self.assertTrue(report['truncated'])
+        self.assertNotIn('failed', json.dumps(report))
+        self.assertTrue(all(row['endpointClass'] == 'idle' for row in report['unfinished']))
+
+    def test_report_never_waits_on_lock_or_replaces_failure_when_print_throws(self):
+        import contextlib, io
+        for locked in (True, False):
+            with self.subTest(locked=locked), contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaisesRegex(RuntimeError, '^original$'):
+                    with m.audit_diagnostics():
+                        if locked:
+                            m._AUDIT_DIAGNOSTIC.get()['lock'].acquire()
+                        else:
+                            with patch('builtins.print', side_effect=ValueError('secret')):
+                                raise RuntimeError('original')
+                        raise RuntimeError('original')
+        self.assertIsNone(m._AUDIT_DIAGNOSTIC.get())
+
+    def test_budget_and_phase_are_finite_clamped_and_bad_phase_not_emitted(self):
+        with m.evidence_lookup_budget(5, clock=lambda: 9):
+            report = self.report(lambda: m.audit_phase('secret-phase'))
+        self.assertEqual(0, report['remainingBudgetMs'])
+        self.assertIsNone(report['phase'])
+        self.assertEqual(set(m._AUDIT_PHASES), set(report['phaseMs']))
+        self.assertNotIn('secret-phase', json.dumps(report))
+        for value in report['phaseMs'].values():
+            self.assertIs(type(value), int)
+            self.assertGreaterEqual(value, 0)
+            self.assertLessEqual(value, 86400000)
+
+    def test_api_exception_identity_and_invalid_endpoint_safety(self):
+        error = RuntimeError('original')
+        with patch.object(m, '_recovery_proof_read', side_effect=error):
+            with self.assertRaises(RuntimeError) as caught:
+                with m.audit_diagnostics():
+                    m.api_get('o/r', 'contents/' + 'x'*5000, 'stub')
+        self.assertIs(error, caught.exception)
+        self.assertEqual('other', m._audit_endpoint(None))
+        self.assertEqual('other', m._audit_endpoint('x'*5000))
+        self.assertEqual('job_inventory', m._audit_endpoint('actions/runs/7/attempts/1/jobs?per_page=100'))
+
+    def test_concurrent_context_isolation_and_worker_context_propagation(self):
+        import contextvars, concurrent.futures, threading
+        barrier = threading.Barrier(2)
+        def run(identity):
+            with m.audit_diagnostics():
+                m.audit_phase('fast_track_attempts')
+                context = contextvars.copy_context()
+                def worker():
+                    with m.audit_worker(identity):
+                        barrier.wait(timeout=3)
+                        state = m._AUDIT_DIAGNOSTIC.get()
+                        return [row['runId'] for row in state['workers'].values()]
+                return context.run(worker)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(run, i) for i in (5, 6)]
+            results = [f.result(timeout=5) for f in futures]
+        self.assertEqual([[5], [6]], results)
+        self.assertIsNone(m._AUDIT_DIAGNOSTIC.get())
+
+    def test_only_migration_history_is_instrumented_and_entry_budget_is_not_reset(self):
+        import contextlib, io
+        error=RuntimeError('original');output=io.StringIO()
+        with patch.object(m,'_fast_track_child_attempts',side_effect=error) as observe:
+            with contextlib.redirect_stdout(output), m.evidence_lookup_budget(10,clock=lambda:4):
+                with self.assertRaises(RuntimeError) as caught:
+                    m.fast_track_child_attempts('o/r','migrations','stub',current_run=8,current_attempt=2)
+            self.assertIs(error,caught.exception)
+            observe.assert_called_once_with('o/r','migrations','stub',current_run=8,current_attempt=2)
+            report=json.loads(output.getvalue().strip().split(':',1)[1])
+            self.assertEqual(6000,report['entryRemainingBudgetMs'])
+            self.assertEqual(6000,report['remainingBudgetMs'])
+            self.assertEqual('unobserved',report['earlierLegacyTiming'])
+            output=io.StringIO()
+            with contextlib.redirect_stdout(output), self.assertRaises(RuntimeError):
+                m.fast_track_child_attempts('o/r','routing-cloudflare','stub')
+            self.assertEqual('',output.getvalue())
+
+    def test_nested_audit_does_not_mutate_outer_worker(self):
+        with m.audit_diagnostics(), m.audit_worker(5):
+            outer = m._AUDIT_WORKER.get()
+            with m.audit_diagnostics():
+                self.assertIsNone(m._AUDIT_WORKER.get())
+                with patch.object(m, '_recovery_proof_read', return_value={}):
+                    m.api_get('o/r', 'actions/runs/5', 'stub')
+                self.assertEqual('idle', outer['endpoint'])
+            self.assertIs(outer, m._AUDIT_WORKER.get())
+
+    def test_pending_api_read_keeps_endpoint_class_without_waiting_for_completion(self):
+        import contextvars, concurrent.futures, threading
+        entered, release = threading.Event(), threading.Event()
+        def read(*args):
+            entered.set()
+            release.wait(timeout=3)
+            return {}
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = None
+        def action():
+            nonlocal future
+            m.audit_phase('fast_track_attempts')
+            future = pool.submit(contextvars.copy_context().run, m.audit_call, 77,
+                                 m.api_get, 'o/r', 'actions/runs/77/jobs?filter=all', 'stub')
+            self.assertTrue(entered.wait(timeout=2))
+        try:
+            with patch.object(m, '_recovery_proof_read', side_effect=read):
+                report = self.report(action)
+                self.assertEqual(77, report['unfinished'][0]['runId'])
+                self.assertEqual('job_inventory', report['unfinished'][0]['endpointClass'])
+                release.set()
+                future.result(timeout=3)
+        finally:
+            release.set()
+            pool.shutdown(wait=True)
+
+
 class CrmHistoryReleaseMappingTests(unittest.TestCase):
     def test_exact_shared_history_sources_select_managed_consumers(self):
         paths = ('Domain/Entities/CrmHistoryEntry.cs', 'Infrastructure/Crm/CrmHistoryStore.cs',
