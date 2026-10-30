@@ -1,0 +1,17 @@
+(() => {
+  'use strict';
+  const root=document.getElementById('history-ownership');if(!root)return;
+  const form=document.getElementById('ownership-correction'),status=document.getElementById('ownership-status'),list=document.getElementById('ownership-results'),load=document.getElementById('ownership-load');
+  const token=form.elements.namedItem('__RequestVerificationToken').value;
+  let cursor=0,requestId=crypto.randomUUID(),pending=null;
+  const draftKey='crm-owner-correction:'+root.dataset.draftScope;
+  const field=name=>form.elements.namedItem(name);
+  function remember(){try{sessionStorage.setItem(draftKey,JSON.stringify({requestId,pending,submissionId:field('submissionId').value,reason:field('reason').value,verified:field('verified').checked}));}catch{status.textContent='Keep this page open; browser draft recovery is unavailable.';}}
+  try{const draft=JSON.parse(sessionStorage.getItem(draftKey)||'null');if(draft){requestId=draft.requestId;pending=draft.pending;field('submissionId').value=draft.submissionId;field('reason').value=draft.reason;field('verified').checked=draft.verified;status.textContent=pending?'Recovered uncertain correction. Retry unchanged.':'Recovered unfiled instruction.';}}catch{}
+  form.addEventListener('input',remember);
+  async function json(url,options){const response=await fetch(url,{credentials:'same-origin',...options});if(!response.ok){const error=new Error(response.status===403||response.status===404?'Receipt unavailable under current authority.':'Correction was not confirmed; preserve the instruction and retry unchanged if its outcome is uncertain.');error.status=response.status;throw error;}return response.json();}
+  load.onclick=async()=>{load.disabled=true;try{const data=await json('/CrmHistory/UnresolvedOwnership?afterRowId='+cursor);list.replaceChildren();for(const item of data.submissions){const button=document.createElement('button');button.type='button';button.className='btn btn-outline-secondary d-block my-2';button.textContent=item.leadId+' · '+(item.sourcePageKey||'Source unavailable')+' · '+item.createdUtc;button.onclick=()=>{field('submissionId').value=item.leadId;remember();};list.append(button);}if(!data.submissions.length)list.textContent='No unresolved source receipts.';cursor=data.nextAfterRowId||0;load.textContent=cursor?'Load next receipts':'Reload receipts';}catch(error){status.textContent=error.message;}finally{load.disabled=false;}};
+  form.addEventListener('submit',async event=>{event.preventDefault();const button=form.querySelector('button');button.disabled=true;const body=JSON.stringify({requestId,submissionId:field('submissionId').value,reason:field('reason').value,verified:field('verified').checked});
+    try{if(pending&&pending!==body)throw new Error('Retry the unchanged uncertain correction before editing it.');pending=body;remember();const result=await json('/CrmHistory/CorrectOwner',{method:'POST',headers:{'Content-Type':'application/json','RequestVerificationToken':token},body});if(!result.saved||!result.id)throw new Error('No durable correction ID was confirmed. Retry unchanged.');form.reset();pending=null;requestId=crypto.randomUUID();try{sessionStorage.removeItem(draftKey);}catch{}status.textContent='Owner correction filed · '+result.id;}catch(error){if([400,403,404,422].includes(error.status)){pending=null;remember();}status.textContent=error.message;}finally{button.disabled=false;}
+  });
+})();

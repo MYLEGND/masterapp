@@ -4545,6 +4545,13 @@ def fast_track_scope(paths):
     # Infrastructure/Domain/Shared ProjectReference dependencies. Keep exact
     # ownership: an unknown sibling is not silently admitted.
     shared_server = {
+        # Filed CRM history shares the existing Domain/Infrastructure graph.
+        'Domain/Entities/CrmHistoryEntry.cs',
+        'Domain/Entities/WebsiteLeadIntakeLink.cs',
+        'Infrastructure/Crm/CrmHistoryStore.cs',
+        'Infrastructure/Data/Configurations/CrmHistoryEntryConfiguration.cs',
+        'Infrastructure/Leads/WebsiteSubmissionEvidence.cs',
+        'SHARED/Crm/InsuranceFormDisclosures.cs',
         # Canonical diagnostics: all four registered .NET hosts; no static Website bytes.
         'Domain/Entities/RuntimeDiagnosticIncident.cs',
         'Infrastructure/Diagnostics/RuntimeDiagnosticSanitizer.Performance.cs',
@@ -4746,7 +4753,9 @@ def fast_track_scope(paths):
         'Infrastructure/Infrastructure.csproj',
         'Infrastructure/Data/MasterAppDbContext.cs', 'Infrastructure/Data/Configurations/CommercePaymentModel.cs',
         'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.cs',
-        'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Management.cs'} for path in paths)
+        'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Management.cs',
+        'Infrastructure/Data/Configurations/CrmHistoryEntryConfiguration.cs',
+        'Domain/Entities/WebsiteLeadIntakeLink.cs'} for path in paths)
     backend = schema or bool(shared_server.intersection(paths)) or any(path.startswith(('CommerceCore/', 'Infrastructure/Commerce/', 'Infrastructure/WebsiteRuntime/',
         'Infrastructure/Analytics/', 'Infrastructure/WebsitePublishing/', 'Infrastructure/WebsiteEditing/',
         'Domain/Entities/Commerce', 'Legend-Cloudflare/src/website-routing/')) or path in {
@@ -5182,6 +5191,22 @@ BOOKING_SOURCE = (
 )
 
 CRM_SOURCE = (
+    "Infrastructure/Data/Configurations/CrmHistoryEntryConfiguration.cs",
+    "Infrastructure/Data/MasterAppDbContext.cs",
+    "AgentPortal/Views/CrmHistory/**",
+    "AgentPortal/wwwroot/js/crm-history*.js",
+    "Protect-Website/wwwroot/js/insurance-form-evidence.js",
+    "Infrastructure/Crm/**",
+    "Infrastructure/Leads/WebsiteLifeLeadCaptureService.cs",
+    "Infrastructure/Leads/WebsiteSubmissionEvidence.cs",
+    "AgentPortal/Controllers/CrmHistoryController.cs",
+    "AgentPortal/Controllers/CrmEvidenceController.cs",
+    "AgentPortal/Services/CrmEvidenceStorage.cs",
+    "AgentPortal/Services/AgentDocumentStorageLocation.cs",
+    "AgentPortal/Controllers/AgentDocumentsController.cs",
+    "AgentPortal/Services/CrmHistoryAccess.cs",
+    "Domain/Entities/CrmHistoryEntry.cs",
+    "SHARED/Crm/**",
     "Infrastructure/Businesses/**",
     "AgentPortal/Controllers/LeadsController.cs",
     "AgentPortal/Controllers/ClientsController.cs",
@@ -5401,6 +5426,9 @@ WORKFLOWS = {
                     "AgentPortal.Tests/WebsiteAnalyticsScopeTests.cs",
                     "AgentPortal.Tests/LaunchAuditRiskAssessmentTests.cs",
                     "AgentPortal.Tests/CanonicalCrmOutcomeLineageTests.cs",
+                    "AgentPortal.Tests/WebsiteLifeLeadCaptureServiceTests.cs",
+                    "AgentPortal.Tests/CrmHistoryTests.cs",
+                    "AgentPortal.Tests/CrmHistoryEvidenceTests.cs",
                 ) + CRM_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "exclude_paths": DIAGNOSTICS_SOURCE,
                 "materializes": ("compile-regression",),
@@ -5408,6 +5436,8 @@ WORKFLOWS = {
             "form-tracking": {
                 "step": "Run canonical form tracking tests",
                 "paths": (
+                    "tests/analytics/insurance-form-evidence.test.cjs",
+                    "Protect-Website/wwwroot/js/insurance-form-evidence.js",
                     "tests/analytics/form-tracker.test.cjs",
                     "SHARED/WebsitePlatform/tracking.js",
                     "SHARED/WebsitePlatform/meta-signal-intelligence.js",

@@ -1363,9 +1363,18 @@ namespace AgentPortal.Controllers;
             {
                 meta.SourceLeadClientUserId = oldClientUserId;
             }
+            meta.Activities.Add(new ClientCrmActivity
+            {
+                Type = "Conversion", Date = DateTime.UtcNow.ToString("yyyy-MM-dd"),
+                Note = "Lead converted to a client account; original relationship history retained.",
+                IsSystem = true, Channel = "System", CreatedBy = GetAgentUpnForAudit(), CreatedUtc = DateTime.UtcNow
+            });
             meta.RecordType = recordType;
             meta.PipelineStage = DefaultPipelineStageForRecordType(recordType);
             meta.StageEnteredUtc = DateTime.UtcNow;
+            var historyStore = new Infrastructure.Crm.CrmHistoryStore(_db);
+            var historyKey = await historyStore.ResolveClientKeyAsync(profile);
+            await historyStore.BackfillMetadataAsync(historyKey, "ClientProfile", profile.Id.ToString("N"), profile.CrmNotes);
             var agentLinks = await _db.AgentClients.Where(x => x.ClientUserId == oldClientUserId).ToListAsync();
 
             var recreatedLinks = agentLinks.Select(link => new AgentClient
@@ -1402,6 +1411,9 @@ namespace AgentPortal.Controllers;
             if (recreatedLinks.Count > 0)
                 _db.AgentClients.AddRange(recreatedLinks);
 
+            // The alternate-key conversion uses canonical SQL, so file its new
+            // metadata explicitly inside the same transaction as the identity swap.
+            await historyStore.BackfillMetadataAsync(historyKey, "ClientProfile", profileId.ToString("N"), serializedMeta);
             await _db.SaveChangesAsync();
 
             var convertedProfile = await _db.ClientProfiles
@@ -6178,34 +6190,6 @@ namespace AgentPortal.Controllers;
                 .OrderByDescending(x => x.Date)
                 .ThenByDescending(x => x.CreatedUtc)
                 .ToList()
-        });
-    }
-
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ClearActivities([FromBody] ClientRequest request)
-    {
-        string agentOid;
-        try { agentOid = GetAgentOidOrThrow(); }
-        catch { return Challenge(); }
-
-        var profile = await GetOwnedClientProfileAsync(agentOid, request.ClientUserId);
-        if (profile == null) return Forbid();
-
-        var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
-        meta.Activities.Clear();
-        profile.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
-        profile.UpdatedUtc = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
-
-        return Json(new
-        {
-            ok = true,
-            attemptsToday = 0,
-            attemptsThisWeek = 0,
-            attemptsThisMonth = 0,
-            attemptsThisYear = 0,
-            attemptsLifetime = 0
         });
     }
 

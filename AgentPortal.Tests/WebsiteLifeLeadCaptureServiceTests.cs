@@ -14,6 +14,44 @@ namespace AgentPortal.Tests;
 public class WebsiteLifeLeadCaptureServiceTests
 {
     [Fact]
+    public async Task Retry_Preserves_Original_Snapshot_And_Current_Relationship()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var tracking = Guid.NewGuid();
+        var submission = Guid.NewGuid();
+        db.AgentTrackingProfiles.Add(new AgentTrackingProfile
+        { Id = tracking, AgentUserId = "snapshot-owner", Slug = "snapshot-owner", AgentUpn = "synthetic@example.test" });
+        var source = new WebsiteLead
+        {
+            LeadId = submission, AgentTrackingProfileId = tracking, FirstName = "Synthetic",
+            Phone = "6025550100", MetadataJson = "{\"answer\":false,\"amount\":0}",
+            CreatedUtc = new DateTime(2026, 10, 1, 12, 0, 0, DateTimeKind.Utc)
+        };
+        db.WebsiteLeads.Add(source);
+        await db.SaveChangesAsync();
+        var service = new WebsiteLifeLeadCaptureService(db, NullLogger<WebsiteLifeLeadCaptureService>.Instance);
+        var request = new WebsiteLifeLeadCaptureRequest
+        { WebsiteLeadId = submission, AgentTrackingProfileId = tracking, ProductType = "life_term", OfferKey = "term" };
+        var first = await service.UpsertAsync(request);
+        var link = await db.WebsiteLeadIntakeLinks.SingleAsync();
+        var originalSnapshot = link.SnapshotJson;
+        var captured = link.CapturedUtc;
+        var relationship = await db.WorkstationLeadProfiles.SingleAsync();
+        relationship.FirstName = "Corrected by authorized human";
+        source.MetadataJson = "{\"answer\":true}";
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var retry = await service.UpsertAsync(request);
+        Assert.False(retry.Created);
+        Assert.Equal(first.WorkstationLeadId, retry.WorkstationLeadId);
+        Assert.Equal(1, await db.WorkstationLeadProfiles.CountAsync());
+        var preserved = await db.WebsiteLeadIntakeLinks.SingleAsync();
+        Assert.Equal(originalSnapshot, preserved.SnapshotJson);
+        Assert.Equal(captured, preserved.CapturedUtc);
+        Assert.Equal("Corrected by authorized human", (await db.WorkstationLeadProfiles.SingleAsync()).FirstName);
+    }
+
+    [Fact]
     public async Task UpsertAsync_Sqlite_Persists_Workstation_Lead_And_Intake_Link()
     {
         await using var conn = new SqliteConnection("Data Source=:memory:");
@@ -210,7 +248,7 @@ public class WebsiteLifeLeadCaptureServiceTests
     }
 
     [Fact]
-    public async Task UpsertAsync_Updates_Existing_Lead_Without_Resetting_Current_Stage()
+    public async Task UpsertAsync_Does_Not_Associate_A_New_Submission_By_Contact_Values()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         db.AgentProfiles.Add(new AgentProfile
@@ -257,17 +295,15 @@ public class WebsiteLifeLeadCaptureServiceTests
         await db.SaveChangesAsync();
 
         Assert.True(result.Captured);
-        Assert.False(result.Created);
-        Assert.Equal(WorkstationLeadBuckets.WholeLife, result.Bucket);
-        Assert.Equal("agent-2", result.AgentUserId);
-
-        var lead = await db.WorkstationLeadProfiles.SingleAsync();
-        Assert.Equal("existing-lead", lead.LeadId);
-        Assert.Equal("FollowUp", lead.Bucket);
-        Assert.Equal(WorkstationLeadBuckets.WholeLife, lead.OriginalLeadType);
-        Assert.Equal("TX", lead.State);
-        Assert.Equal("45", lead.Age);
-        Assert.Equal("200,000", lead.LoanAmount);
+        Assert.True(result.Created);
+        Assert.Equal(2, await db.WorkstationLeadProfiles.CountAsync());
+        var original = await db.WorkstationLeadProfiles.SingleAsync(x => x.LeadId == "existing-lead");
+        Assert.Equal("FollowUp", original.Bucket);
+        Assert.Equal("100,000", original.LoanAmount);
+        var created = await db.WorkstationLeadProfiles.SingleAsync(x => x.LeadId == result.WorkstationLeadId);
+        Assert.Equal("TX", created.State);
+        Assert.Equal("45", created.Age);
+        Assert.Equal("200,000", created.LoanAmount);
     }
 
     [Fact]
@@ -525,13 +561,14 @@ public class WebsiteLifeLeadCaptureServiceTests
         });
         await db.SaveChangesAsync();
 
-        var lead = await db.WorkstationLeadProfiles.SingleAsync();
+        Assert.Equal(2, await db.WorkstationLeadProfiles.CountAsync());
         var history = await db.WebsiteLeadIntakeLinks
             .OrderBy(x => x.SubmittedUtc)
             .ToListAsync();
 
         Assert.Equal(2, history.Count);
-        Assert.All(history, item => Assert.Equal(lead.LeadId, item.WorkstationLeadId));
+        Assert.Equal(firstLeadId.ToString("N"), history[0].WorkstationLeadId);
+        Assert.Equal(secondLeadId.ToString("N"), history[1].WorkstationLeadId);
         Assert.Equal("google", history[0].UtmSource);
         Assert.Equal("term_launch", history[0].UtmCampaign);
         Assert.Equal("facebook", history[1].UtmSource);

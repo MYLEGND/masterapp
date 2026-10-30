@@ -9,7 +9,9 @@ public class WebsiteLeadIntakeLink
     public long WebsiteLeadRowId { get; set; }
     public Guid WebsiteLeadPublicId { get; set; }
 
-    public string WorkstationLeadId { get; set; } = "";
+    public string? WorkstationLeadId { get; set; }
+    public Guid? HistoryClientProfileId { get; set; }
+    public Guid AssociationVersion { get; set; }
     public string AgentUserId { get; set; } = "";
     public Guid? CommerceBusinessId { get; set; }
     public string Bucket { get; set; } = "";

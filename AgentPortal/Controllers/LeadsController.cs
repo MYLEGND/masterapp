@@ -917,12 +917,12 @@ public class LeadsController : Controller
         {
             rows = await _db.WebsiteLeadIntakeLinks
                 .AsNoTracking()
-                .Where(x => ids.Contains(x.WorkstationLeadId))
+                .Where(x => x.WorkstationLeadId != null && ids.Contains(x.WorkstationLeadId))
                 .OrderByDescending(x => x.SubmittedUtc)
                 .ThenByDescending(x => x.CapturedUtc)
                 .Select(x => new LeadIntakeListRow
                 {
-                    WorkstationLeadId = x.WorkstationLeadId,
+                    WorkstationLeadId = x.WorkstationLeadId!,
                     AgentUserId = x.AgentUserId,
                     Bucket = x.Bucket,
                     SubmittedUtc = x.SubmittedUtc,
@@ -1956,7 +1956,7 @@ public class LeadsController : Controller
 
     private static object? BuildIntakeSnapshotPayload(WebsiteLeadIntakeLink? intake, int historyCount = 0)
     {
-        if (intake == null)
+        if (intake?.WorkstationLeadId == null)
             return null;
 
         return BuildIntakeSnapshotPayload(new LeadIntakeListRow
@@ -2000,7 +2000,7 @@ public class LeadsController : Controller
 
     private static object? BuildIntakeSnapshotPayload(LeadIntakeListRow? intake, int historyCount = 0)
     {
-        if (intake == null)
+        if (intake?.WorkstationLeadId == null)
             return null;
 
         var discoveryItems = ParseIntakeDiscoverySummary(intake.DiscoverySummaryJson);

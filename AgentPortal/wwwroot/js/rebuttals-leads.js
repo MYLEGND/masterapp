@@ -603,15 +603,6 @@
     const ageFilter = bridge.querySelector('[data-lb-age-filter]');
     const searchInput = bridge.querySelector('[data-lb-search]');
     const noteOpenBtn = bridge.querySelector('[data-note-self-open]');
-    const noteOverlay = bridge.querySelector('[data-note-self-overlay]');
-    const noteCloseBtn = bridge.querySelector('[data-note-self-close]');
-    const noteDateInput = bridge.querySelector('[data-note-self-date]');
-    const noteLeadInput = bridge.querySelector('[data-note-self-lead]');
-    const noteDatesSelect = bridge.querySelector('[data-note-self-dates]');
-    const noteSaveBtn = bridge.querySelector('[data-note-self-save]');
-    const noteWentWell = bridge.querySelector('[data-note-self-well]');
-    const noteCouldBetter = bridge.querySelector('[data-note-self-better]');
-    const noteStatusEl = bridge.querySelector('[data-note-self-status]');
     const scriptHandoffRoot = bridge.querySelector('[data-lb-script-handoff]');
     const summaryRequestedEl = scriptHandoffRoot?.querySelector('[data-lb-summary-requested]') || null;
     const summarySourceEl = scriptHandoffRoot?.querySelector('[data-lb-summary-source]') || null;
@@ -765,7 +756,6 @@
     let activeStateRequestToken = 0;
     let searchPushTimer = 0;
     let serverStateOptions = [];
-    let noteDatesLoaded = false;
     let dialTotalsRefreshInFlight = false;
     let textMenuEl = null;
     let editDrawerOpen = false;
@@ -1450,316 +1440,9 @@
       return new Date().toISOString().slice(0, 10);
     }
 
-    function noteLineDate(isoDate){
-      const m = String(isoDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (!m) return '00/00/0000';
-      return `${m[2]}/${m[3]}/${m[1]}`;
-    }
-
-    function notePrefix(isoDate){
-      return `[${noteLineDate(isoDate)}]`;
-    }
-
-    function stripExistingPrefix(line){
-      return String(line || '')
-        .replace(/^\s*\[[^\]]*\]\s*/, '')
-        .replace(/^\s*---\s*$/, '')
-        .trim();
-    }
-
-    function extractNoteBodyText(rawText){
-      const normalizedLines = String(rawText || '')
-        .split(/\r?\n/)
-        .map(stripExistingPrefix)
-        .filter(x => !!x);
-      return normalizedLines.join('\n').trim();
-    }
-
-    function syncNoteTextareaTone(textarea){
-      if (!textarea) return;
-      const hasBody = !!extractNoteBodyText(textarea.value || '');
-      textarea.classList.toggle('note-self-has-body', hasBody);
-      textarea.classList.toggle('note-self-prefix-only', !hasBody);
-    }
-
-    function syncAllNoteTextareaTones(){
-      [noteWentWell, noteCouldBetter].forEach(syncNoteTextareaTone);
-    }
-
-    function syncNotePrefixVisual(dateValue){
-      const date = (dateValue || noteDateInput?.value || todayIsoDate()).trim();
-      const prefix = notePrefix(date);
-      [noteWentWell, noteCouldBetter].forEach((textarea) => {
-        const col = textarea?.closest('.note-self-col');
-        if (!col) return;
-        col.dataset.notePrefix = prefix;
-        col.classList.toggle('has-note-prefix', !!prefix);
-      });
-    }
-
-    function normalizeNoteBodyForDate(rawText, isoDate){
-      const prefix = notePrefix(isoDate);
-      const body = extractNoteBodyText(rawText);
-      if (!body) return `${prefix} `;
-
-      const lines = body.split(/\r?\n/);
-      const first = lines[0] || '';
-      const rest = lines.slice(1).join('\n');
-      return rest ? `${prefix} ${first}\n${rest}` : `${prefix} ${first}`;
-    }
-
-    function lineStartIndex(text, pos){
-      const p = Math.max(0, pos || 0);
-      return text.lastIndexOf('\n', Math.max(0, p - 1)) + 1;
-    }
-
-    function lineEndIndex(text, pos){
-      const p = Math.max(0, pos || 0);
-      const idx = text.indexOf('\n', p);
-      return idx < 0 ? text.length : idx;
-    }
-
-    function currentLinePrefixLength(text, caretPos){
-      const start = lineStartIndex(text, caretPos);
-      const end = lineEndIndex(text, caretPos);
-      const line = text.slice(start, end);
-      const m = line.match(/^\[(\d{2})\/(\d{2})\/(\d{4})\]\s?/);
-      return m ? m[0].length : 0;
-    }
-
-    function enforceCaretAfterPrefix(textarea){
-      if (!textarea) return;
-      const value = textarea.value || '';
-      const start = textarea.selectionStart ?? 0;
-      const end = textarea.selectionEnd ?? start;
-      const lineStart = lineStartIndex(value, start);
-      const protectedPrefixLen = currentLinePrefixLength(value, start);
-      if (!protectedPrefixLen) return;
-      const min = lineStart + protectedPrefixLen;
-      if (start < min || end < min){
-        textarea.setSelectionRange(min, min);
-      }
-    }
-
-    function isEditingInsidePrefix(textarea, key){
-      if (!textarea) return false;
-      const value = textarea.value || '';
-      const start = textarea.selectionStart ?? 0;
-      const end = textarea.selectionEnd ?? start;
-      const lineStart = lineStartIndex(value, start);
-      const protectedPrefixLen = currentLinePrefixLength(value, start);
-      if (!protectedPrefixLen) return false;
-      const min = lineStart + protectedPrefixLen;
-
-      if (start !== end){
-        return start < min;
-      }
-
-      if (key === 'Backspace') return start <= min;
-      if (key === 'Delete') return start < min;
-      if (key === 'Home') return true;
-      return false;
-    }
-
-    function displayDate(isoDate){
-      if (!isoDate) return '00-00-0000';
-      const m = String(isoDate).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (!m) return '00-00-0000';
-      return `${m[2]}-${m[3]}-${m[1]}`;
-    }
-
-    function currentLeadContext(){
-      const lead = resolveCurrentLead();
-      const leadId = (lead?.leadId || '').trim();
-      const leadName = `${lead?.firstName || ''} ${lead?.lastName || ''}`.trim() || 'Lead';
-      return { leadId, leadName };
-    }
-
-    function encodeNoteKey(leadId, noteDate){
-      return `${encodeURIComponent(leadId || '')}|${noteDate || ''}`;
-    }
-
-    function decodeNoteKey(raw){
-      const value = (raw || '').trim();
-      if (!value) return { leadId: '', noteDate: '' };
-      const sep = value.indexOf('|');
-      if (sep < 0) return { leadId: '', noteDate: value };
-      return {
-        leadId: decodeURIComponent(value.slice(0, sep)),
-        noteDate: value.slice(sep + 1)
-      };
-    }
-
-    function syncLeadField(){
-      if (!noteLeadInput) return;
-      const ctx = currentLeadContext();
-      noteLeadInput.value = ctx.leadId ? ctx.leadName : 'No lead selected';
-    }
-
-    function setNoteStatus(message, bad){
-      if (!noteStatusEl) return;
-      noteStatusEl.textContent = message || '';
-      noteStatusEl.classList.toggle('is-bad', !!bad);
-    }
-
-    async function loadNoteDates(leadIdValue){
-      if (!noteDatesSelect) return [];
-      const leadId = (leadIdValue || currentLeadContext().leadId || '').trim();
-      if (!leadId){
-        noteDatesSelect.innerHTML = '<option value="">Select lead + date</option>';
-        noteDatesLoaded = false;
-        return [];
-      }
-      try {
-        const res = await fetch(`/WorkstationNotes/Dates?leadId=${encodeURIComponent(leadId)}`, withDialHeaders({ credentials: 'include' }));
-        if (!res.ok) throw new Error('failed');
-        const dates = await res.json();
-        const list = Array.isArray(dates) ? dates : [];
-        const current = noteDatesSelect.value || '';
-        noteDatesSelect.innerHTML = ['<option value="">Select lead + date</option>']
-          .concat(list.map(d => {
-            const leadId = (d?.leadId || '').toString();
-            const leadName = (d?.leadName || 'Lead').toString();
-            const noteDate = (d?.noteDate || '').toString();
-            const label = `${leadName} — ${displayDate(noteDate)}`;
-            return `<option value="${encodeNoteKey(leadId, noteDate)}">${escapeHtml(label)}</option>`;
-          }))
-          .join('');
-        if (current && Array.from(noteDatesSelect.options).some(o => o.value === current)){
-          noteDatesSelect.value = current;
-        }
-        noteDatesLoaded = true;
-        return list;
-      } catch {
-        setNoteStatus('Could not load saved dates', true);
-        return [];
-      }
-    }
-
-    async function loadNoteForDate(dateValue, leadIdValue){
-      if (!noteDateInput || !noteWentWell || !noteCouldBetter) return;
-      const date = (dateValue || noteDateInput.value || todayIsoDate()).trim();
-      const fallbackLeadId = currentLeadContext().leadId;
-      const leadId = (leadIdValue || fallbackLeadId || '').trim();
-      if (!leadId){
-        noteWentWell.value = '';
-        noteCouldBetter.value = '';
-        setNoteStatus('Select a lead first', true);
-        return;
-      }
-      if (!date) return;
-      noteDateInput.value = date;
-      setNoteStatus('Loading...');
-      try {
-        const res = await fetch(`/WorkstationNotes/Entry?leadId=${encodeURIComponent(leadId)}&date=${encodeURIComponent(date)}`, withDialHeaders({ credentials: 'include' }));
-        if (!res.ok) throw new Error('failed');
-        const payload = await res.json();
-        noteWentWell.value = extractNoteBodyText(payload?.wentWell || '');
-        noteCouldBetter.value = extractNoteBodyText(payload?.couldBetter || '');
-        syncNotePrefixVisual(date);
-        syncAllNoteTextareaTones();
-        const loadedLeadName = (payload?.leadName || currentLeadContext().leadName || 'Lead').toString();
-        if (noteDatesSelect) noteDatesSelect.value = encodeNoteKey(leadId, date);
-        setNoteStatus(`Loaded ${loadedLeadName} — ${displayDate(date)}`);
-      } catch {
-        setNoteStatus('Failed to load note', true);
-      }
-    }
-
-    async function saveNoteForDate(){
-      if (!noteDateInput || !noteWentWell || !noteCouldBetter) return;
-      const date = (noteDateInput.value || '').trim();
-      const ctx = currentLeadContext();
-      if (!ctx.leadId){
-        setNoteStatus('Select a lead first', true);
-        return;
-      }
-      if (!date){
-        setNoteStatus('Pick a date first', true);
-        return;
-      }
-      setNoteStatus('Saving...');
-      try {
-        const normalizedWentWell = normalizeNoteBodyForDate(noteWentWell.value || '', date);
-        const normalizedCouldBetter = normalizeNoteBodyForDate(noteCouldBetter.value || '', date);
-        const wentWellBody = extractNoteBodyText(normalizedWentWell);
-        const couldBetterBody = extractNoteBodyText(normalizedCouldBetter);
-
-        noteWentWell.value = wentWellBody;
-        noteCouldBetter.value = couldBetterBody;
-        syncNotePrefixVisual(date);
-        syncAllNoteTextareaTones();
-
-        const res = await fetch('/WorkstationNotes/Entry', withDialHeaders({
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'RequestVerificationToken': token
-          },
-          body: JSON.stringify({
-            leadId: ctx.leadId,
-            leadName: ctx.leadName,
-            date,
-            wentWell: wentWellBody ? normalizedWentWell : '',
-            couldBetter: couldBetterBody ? normalizedCouldBetter : ''
-          })
-        }));
-        if (!res.ok) throw new Error('failed');
-        const payload = await res.json().catch(() => null);
-        if (payload?.deleted){
-          setNoteStatus(`Cleared ${ctx.leadName} — ${displayDate(date)}`);
-        } else {
-          setNoteStatus(`Saved ${ctx.leadName} — ${displayDate(date)}`);
-        }
-        await loadNoteDates(ctx.leadId);
-        if (noteDatesSelect) noteDatesSelect.value = encodeNoteKey(ctx.leadId, date);
-        if (payload?.deleted && noteDatesSelect && !Array.from(noteDatesSelect.options).some(o => o.value === encodeNoteKey(ctx.leadId, date))){
-          noteDatesSelect.value = '';
-        }
-      } catch {
-        setNoteStatus('Failed to save note', true);
-      }
-    }
-
-    async function openNoteModal(){
-      if (!noteOverlay) return;
-      noteOverlay.hidden = false;
-      document.body.classList.add('note-self-open');
-      syncLeadField();
-      const ctx = currentLeadContext();
-      if (!ctx.leadId){
-        setNoteStatus('Select a lead first', true);
-        if (noteWentWell) noteWentWell.value = '';
-        if (noteCouldBetter) noteCouldBetter.value = '';
-        syncNotePrefixVisual();
-        syncAllNoteTextareaTones();
-        if (noteDatesSelect) noteDatesSelect.innerHTML = '<option value="">Select lead + date</option>';
-        if (noteDateInput && !noteDateInput.value) noteDateInput.value = todayIsoDate();
-        return;
-      }
-      if (noteDateInput && !noteDateInput.value) noteDateInput.value = todayIsoDate();
-      syncNotePrefixVisual();
-      const list = await loadNoteDates(ctx.leadId);
-      if (Array.isArray(list) && list.length){
-        const newestDate = (list[0]?.noteDate || '').toString();
-        if (newestDate){
-          if (noteDateInput) noteDateInput.value = newestDate;
-          if (noteDatesSelect) noteDatesSelect.value = encodeNoteKey(ctx.leadId, newestDate);
-          await loadNoteForDate(newestDate, ctx.leadId);
-        } else {
-          await loadNoteForDate(noteDateInput?.value || todayIsoDate(), ctx.leadId);
-        }
-      } else {
-        await loadNoteForDate(noteDateInput?.value || todayIsoDate(), ctx.leadId);
-      }
-      noteWentWell?.focus();
-    }
-
-    function closeNoteModal(){
-      if (!noteOverlay) return;
-      noteOverlay.hidden = true;
-      document.body.classList.remove('note-self-open');
+    function openNoteModal(){
+      const id = resolveCurrentLead()?.leadId;
+      if (id) window.location.assign('/CrmHistory?kind=lead&id=' + encodeURIComponent(id));
     }
 
     function normalizeStateOption(value){
@@ -2803,7 +2486,6 @@
       updateAgentWideDials(lead);
       renderAgentWideDialCounters();
       updateCommunicationAvailability(lead);
-      if (noteOverlay && !noteOverlay.hidden) syncLeadField();
     }
 
     async function fetchLeads(){
@@ -3517,10 +3199,6 @@
 
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
-      if (noteOverlay && !noteOverlay.hidden) {
-        closeNoteModal();
-        return;
-      }
       closeTextMenu();
       if (!pendingAction) return;
       resetPendingAction();
@@ -3698,72 +3376,8 @@
       }
     });
 
-    noteOpenBtn?.addEventListener('click', async () => {
-      await openNoteModal();
-    });
-    drawerNoteOpenBtn?.addEventListener('click', async () => {
-      await openNoteModal();
-    });
-    noteCloseBtn?.addEventListener('click', () => {
-      closeNoteModal();
-    });
-    noteOverlay?.addEventListener('click', (event) => {
-      if (event.target !== noteOverlay) return;
-      closeNoteModal();
-    });
-    noteDateInput?.addEventListener('change', async () => {
-      syncNotePrefixVisual(noteDateInput.value);
-      await loadNoteForDate(noteDateInput.value, currentLeadContext().leadId);
-    });
-    noteDatesSelect?.addEventListener('change', async () => {
-      const selected = decodeNoteKey(noteDatesSelect.value || '');
-      if (!selected.noteDate) return;
-      if (noteDateInput) noteDateInput.value = selected.noteDate;
-      await loadNoteForDate(selected.noteDate, selected.leadId || currentLeadContext().leadId);
-    });
-    noteSaveBtn?.addEventListener('click', async () => {
-      await saveNoteForDate();
-    });
-
-    [noteWentWell, noteCouldBetter].forEach(textarea => {
-      if (!textarea) return;
-
-      textarea.addEventListener('focus', () => {
-        syncNoteTextareaTone(textarea);
-      });
-
-      textarea.addEventListener('keydown', (event) => {
-        if (isEditingInsidePrefix(textarea, event.key)){
-          event.preventDefault();
-          const value = textarea.value || '';
-          const start = textarea.selectionStart ?? 0;
-          const lineStart = lineStartIndex(value, start);
-          const protectedPrefixLen = currentLinePrefixLength(value, start);
-          const min = lineStart + protectedPrefixLen;
-          textarea.setSelectionRange(min, min);
-          return;
-        }
-      });
-
-      textarea.addEventListener('click', () => {
-        enforceCaretAfterPrefix(textarea);
-      });
-
-      textarea.addEventListener('keyup', () => {
-        enforceCaretAfterPrefix(textarea);
-      });
-
-      textarea.addEventListener('input', () => {
-        enforceCaretAfterPrefix(textarea);
-        syncNoteTextareaTone(textarea);
-      });
-
-      textarea.addEventListener('blur', () => {
-        syncNoteTextareaTone(textarea);
-      });
-    });
-    syncAllNoteTextareaTones();
-    syncNotePrefixVisual();
+    noteOpenBtn?.addEventListener('click', openNoteModal);
+    drawerNoteOpenBtn?.addEventListener('click', openNoteModal);
     // Lead loading remains available while the shared realtime client downloads.
     let leadBridgeConnection = null;
     function startLeadBridgeRealtime() {

@@ -1,3 +1,4 @@
+@inject Microsoft.AspNetCore.DataProtection.IDataProtectionProvider HistoryProtection
 
 
 
@@ -555,7 +556,7 @@
     var stepTwoContactKickerText = "Final step";
     var contactMethodHelperText = "We’ll send your full review, carrier fit analysis, and recommended next step based on your answers.";
     var contactMethodErrorText = "Please enter your phone number so we can send and review your options.";
-    var consentPromptText = "I’m okay with a quick call or text to review my options. No obligation.";
+    var consentPromptText = Shared.Crm.InsuranceFormDisclosures.Life;
     var consentErrorText = "Please check the box so we can follow up about your review.";
     var stepTwoContactTitleText = "Where should we send your full review?";
     var stepTwoContactCopyText = "Your starting point is ready. Add your first name and best number so we can send the review and help you compare the next step.";
@@ -5375,7 +5376,8 @@ input:checked + .lq-answer-card {
             </div>
         }
     </div>
-<form asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-cms-presentation="quote" data-cms-review-kind="life" data-cms-review-metrics="Monthly range|Coverage range" data-cms-entry-id="lifeHeroEntryPanel" data-cms-education-id="lifeEducationContactPanel" data-cms-question-id="lifeStep1Panel" data-cms-processing-id="lifeProcessingPanel" data-cms-contact-id="lifeStep2Panel" data-cms-review-id="lifeStep2EstimateSlot" data-cms-progress-id="lifeStep1Progress" data-cms-progress-fill-id="lifeStep1ProgressFill" data-cms-processing-fill-id="lifeProcessingFill" data-cms-trust-id="lifeHeroTrustStrip" data-cms-started-class="life-quote-started" data-cms-final-class="life-final-step-active" data-form-key="@pageKey" data-ajax-submit="true" novalidate>
+<form data-insurance-history="true" asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-cms-presentation="quote" data-cms-review-kind="life" data-cms-review-metrics="Monthly range|Coverage range" data-cms-entry-id="lifeHeroEntryPanel" data-cms-education-id="lifeEducationContactPanel" data-cms-question-id="lifeStep1Panel" data-cms-processing-id="lifeProcessingPanel" data-cms-contact-id="lifeStep2Panel" data-cms-review-id="lifeStep2EstimateSlot" data-cms-progress-id="lifeStep1Progress" data-cms-progress-fill-id="lifeStep1ProgressFill" data-cms-processing-fill-id="lifeProcessingFill" data-cms-trust-id="lifeHeroTrustStrip" data-cms-started-class="life-quote-started" data-cms-final-class="life-final-step-active" data-form-key="@pageKey" data-ajax-submit="true" novalidate>
+<input type="hidden" name="HistoryDisclosureToken" value="@(Infrastructure.Leads.WebsiteSubmissionEvidence.ProtectAuthorization(HistoryProtection, typeof(Protect_Website.Models.LifeQuoteFormModel).FullName!, "MarketingEmailConsent", Shared.Crm.InsuranceFormDisclosures.Life))" />
         @Html.AntiForgeryToken()
         <input type="hidden" name="SubmissionId" value="@(Context?.Request is { HasFormContentType: true } submissionRequest && Guid.TryParse(submissionRequest.Form["SubmissionId"], out var submissionToken) ? submissionToken : Guid.NewGuid())" />
         @if (!string.IsNullOrWhiteSpace(agentSlug))
@@ -11736,3 +11738,5 @@ body.life-final-step-active .lq-hero-shell {
     }
 }
 </style>
+
+<script src="~/js/insurance-form-evidence.js" asp-append-version="true" defer></script>

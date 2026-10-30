@@ -16,6 +16,42 @@ spec.loader.exec_module(m)
 
 
 
+class CrmHistoryReleaseMappingTests(unittest.TestCase):
+    def test_exact_shared_history_sources_select_managed_consumers(self):
+        paths = ('Domain/Entities/CrmHistoryEntry.cs', 'Infrastructure/Crm/CrmHistoryStore.cs',
+                 'Infrastructure/Leads/WebsiteSubmissionEvidence.cs', 'SHARED/Crm/InsuranceFormDisclosures.cs')
+        for path in paths:
+            with self.subTest(path=path):
+                result = m.fast_track_scope([path])
+                self.assertEqual({'portal', 'client', 'protect', 'parfait'}, set(result['impacts'][path]))
+                self.assertFalse(result['routing'])
+                self.assertFalse(result['schema'])
+
+    def test_history_model_configuration_requires_schema_readiness(self):
+        result = m.fast_track_scope(['Infrastructure/Data/Configurations/CrmHistoryEntryConfiguration.cs'])
+        self.assertTrue(result['schema'])
+        self.assertFalse(result['routing'])
+
+    def test_native_client_intake_association_selects_all_consumers_and_schema(self):
+        path = 'Domain/Entities/WebsiteLeadIntakeLink.cs'
+        result = m.fast_track_scope([path])
+        self.assertEqual({'portal', 'client', 'protect', 'parfait'}, set(result['impacts'][path]))
+        self.assertTrue(result['schema'])
+        self.assertFalse(result['routing'])
+
+    def test_unknown_history_sibling_is_not_silently_admitted(self):
+        with self.assertRaises(ValueError):
+            m.fast_track_scope(['Infrastructure/Crm/UnreviewedSibling.cs'])
+
+    def test_existing_crm_lane_owns_both_regression_classes(self):
+        paths = m.WORKFLOWS['masterapp-platform-architecture-validation.yml']['gates']['crm-regressions']['paths']
+        self.assertIn('AgentPortal.Tests/WebsiteLifeLeadCaptureServiceTests.cs', paths)
+        self.assertIn('AgentPortal.Tests/CrmHistoryTests.cs', paths)
+        self.assertIn('AgentPortal.Tests/CrmHistoryEvidenceTests.cs', paths)
+        self.assertIn('AgentPortal/Controllers/CrmEvidenceController.cs', paths)
+        self.assertIn('Infrastructure/Data/Configurations/CrmHistoryEntryConfiguration.cs', paths)
+
+
 class ParfaitPushCoverageTests(unittest.TestCase):
     def setUp(self):
         self.sha = 'a' * 40

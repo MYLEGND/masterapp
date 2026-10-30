@@ -1,3 +1,4 @@
+@inject Microsoft.AspNetCore.DataProtection.IDataProtectionProvider HistoryProtection
 @using System.Text.Json
 @model Protect_Website.Models.AutoQuoteFormModel
 @{
@@ -116,7 +117,8 @@
 	                    <div class="wizard-pill" data-pill="5" data-cms-step-link="5">Coverage</div>
 	                </div>
 
-	                <form action="/Quote/Auto" method="post" class="pcq-form-frame" id="autoQuoteForm" novalidate data-form-key="@formKey">
+	                <form data-insurance-history="true" action="/Quote/Auto" method="post" class="pcq-form-frame" id="autoQuoteForm" novalidate data-form-key="@formKey">
+<input type="hidden" name="HistoryDisclosureToken" value="@(Infrastructure.Leads.WebsiteSubmissionEvidence.ProtectAuthorization(HistoryProtection, typeof(Protect_Website.Models.AutoQuoteFormModel).FullName!, "AcknowledgedDisclaimer", Shared.Crm.InsuranceFormDisclosures.Auto))" />
 	    @Html.AntiForgeryToken()
         <input type="hidden" name="SubmissionId" value="@(Context?.Request is { HasFormContentType: true } submissionRequest && Guid.TryParse(submissionRequest.Form["SubmissionId"], out var submissionToken) ? submissionToken : Guid.NewGuid())" />
 	    @if (!string.IsNullOrWhiteSpace(agentSlug))
@@ -1376,7 +1378,7 @@
 	            <div class="form-check disclaimer-check">
 	                <input asp-for="AcknowledgedDisclaimer" class="form-check-input" type="checkbox" required data-original-required="1" id="AcknowledgedDisclaimer" />
 	                <label class="form-check-label" for="AcknowledgedDisclaimer">
-	                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my auto insurance quote request.<span class="text-danger">*</span>
+	                    @Shared.Crm.InsuranceFormDisclosures.Auto<span class="text-danger">*</span>
                 </label>
             </div>
             <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
@@ -2279,3 +2281,5 @@
 	    });
 	</script>
 	}
+
+<script src="~/js/insurance-form-evidence.js" asp-append-version="true" defer></script>

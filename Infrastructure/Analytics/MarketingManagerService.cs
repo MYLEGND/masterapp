@@ -179,12 +179,12 @@ public sealed class MarketingManagerService(
 
         var leadIds = leads.Select(x => x.LeadId).ToArray();
         var intakeRows = await db.WebsiteLeadIntakeLinks.AsNoTracking()
-            .Where(x => leadIds.Contains(x.WorkstationLeadId))
+            .Where(x => x.WorkstationLeadId != null && leadIds.Contains(x.WorkstationLeadId))
             .OrderByDescending(x => x.SubmittedUtc)
             .ThenByDescending(x => x.CapturedUtc)
             .ToListAsync(ct);
         var intakeByLead = intakeRows
-            .GroupBy(x => x.WorkstationLeadId, StringComparer.Ordinal)
+            .GroupBy(x => x.WorkstationLeadId!, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
 
         var visitorIds = intakeRows.Select(x => x.VisitorId)
