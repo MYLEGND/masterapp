@@ -588,4 +588,3 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Recover exact retained application bytes
         run: python3 scripts/deploy-approved-app.py --recover-fast-track "$ORIGINAL_RUN" --recovery-revision "$APPLICATION_REVISION" --package-root "$RUNNER_TEMP/retained-recovery"
-
