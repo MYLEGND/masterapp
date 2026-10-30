@@ -6629,7 +6629,7 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         root=Path(__file__).parent
         source=(root/'deploy-approved-app.py').read_text()
         journal=(root/'release-operation-evidence.py').read_text()
-        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'95564a686c00eef65bd2566be9cfe46a76dc2a5a9bed776ad4b817511a90f6ef')
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'2695c73db8082f794e79e4d32f36d034d7c21dbc63912b373cc5bce30e46dcf6')
         self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f')
         self.assertTrue(m._recovery_preflight_source_contract(source,journal))
         for changed in [source+'# unreviewed helper\n',source.replace('reconcile_only=journal.intent is not None','reconcile_only=False')]:
@@ -6650,7 +6650,8 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         context=('b1133d3d89e16754deabdd1a513eb0d43c4a59f62343ddf542e24c72b753b19c', diagnostic[1])
         multiline=('49e6b1caae18705fa91898d794c6d27e34be5ba8bda60693e5f1e65284a0caa8', diagnostic[1])
         fresh=('63de609c4e97fd97c566d59f3d1bb4eae745bfcc8012e508e2944b2307678240', diagnostic[1])
-        for source,journal,accepted in [(old[0],old[1],True),(new[0],new[1],True),(current[0],current[1],True),
+        portal=('2695c73db8082f794e79e4d32f36d034d7c21dbc63912b373cc5bce30e46dcf6','0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f')
+        for source,journal,accepted in [(portal[0],portal[1],True),(portal[0],old[1],False),(portal[0],fresh[1],False),(portal[0],'f'*64,False),('f'*64,portal[1],False),(old[0],old[1],True),(new[0],new[1],True),(current[0],current[1],True),
                 (fresh[0],fresh[1],True),(fresh[0],old[1],False),(fresh[0],new[1],False),
                 ('f'*64,fresh[1],False),(fresh[0],'f'*64,False),
                 (multiline[0],multiline[1],True),(multiline[0],old[1],False),(multiline[0],new[1],False),

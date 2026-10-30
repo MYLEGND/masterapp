@@ -2,7 +2,7 @@
   "requestedBy": "Founder",
   "authorization": "Founder authorized completing the existing combined diagnostics and Client Activity & Case History release through existing protected controls, including ordinary nonpublishing tool promotion. No deployment, migration, credentials, spending or Production-confirmation bypass is authorized by this tool-only request.",
   "purpose": "Promote exact reviewed CRM observer/rehearsal, executed-test discovery, read-only compatibility mapping, and first-CRM Portal-before-writers barrier through ordinary validate-only controls. No application publication or schema mutation.",
-  "requestId": "masterapp-crm-trusted-tools-20261030-v2",
+  "requestId": "masterapp-crm-trusted-tools-20261030-v3",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -10,7 +10,7 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "c81486bfe0fbca2bd67e87496ccba22ccff4e06b",
-    "sourceRevision": "59f734ec54e43189dc497878bed0bb0616b9ebfb",
+    "sourceRevision": "43549101b0c684118cb76ea270f5edeb0a85a24b",
     "files": {
       ".github/workflows/masterapp-platform-architecture-validation.yml": {
         "mode": "100644",
@@ -62,11 +62,11 @@
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "2c0a29a8454f2b9587fdbf2e6821fb1ceaf5376b"
+        "blob": "f1f75546d7385bc3395a6f8185aa18cc09df08cc"
       },
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "7c5741f7c444110c4ddac16808e6b0a05e9f0cb5"
+        "blob": "a94365e8664202c8c14c36d4765554a57d4f84a2"
       },
       ".github/workflows/parfait-cutover-live-readonly.yml": {
         "mode": "100644",
