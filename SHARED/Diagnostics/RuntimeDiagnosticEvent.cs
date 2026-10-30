@@ -31,6 +31,8 @@ public sealed record RuntimeDiagnosticEvent
     [JsonPropertyName("category")] public string? Category { get; init; }
     [JsonPropertyName("statusCode")] public int? StatusCode { get; init; }
     [JsonPropertyName("appVersion")] public string? AppVersion { get; init; }
+    // In-process only: browser deserialization cannot assert server performance.
+    [JsonIgnore] public RuntimeDiagnosticPerformance? Performance { get; init; }
     [JsonPropertyName("structuralReproducer")] public RuntimeDiagnosticStructuralReproducer? StructuralReproducer { get; init; }
 }
 

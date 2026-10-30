@@ -1,11 +1,14 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder requested diagnosing and fixing the recurrent Protect-hosted Website Studio timeout. Publish the independently reviewed bounded diagnostic prerequisite through the existing protected release checks. Preserve current tenant, ticket, content, release and access controls. No new telemetry sink, logging configuration, credentials, security changes or spending commitment.",
-  "purpose": "Deploy Protect-hosted Manage stage timing only through the existing logger and verified existing application event-log read route. Fixed stage labels, bounded milliseconds and outcome only; no ticket, owner, content, exception text or stack. At most one warning per minute per process for slow or failed requests. Preserve original queries, responses, exceptions and timeouts. This is diagnostic instrumentation, not a claimed timeout repair; measure the live slow stage before proposing a correction. Preserve Website, Portal, Client and Parfait deployments and all publication content. No SQL, routing, logging settings or provider restart.",
-  "requestId": "protect-studio-manage-bounded-diagnostic-20261030-v1",
+  "authorization": "Founder requested permanent proactive diagnostics across MasterApp using the existing canonical diagnostic store and Founder access. Publish only after independent exact-source review, protected CI, schema rehearsal/admission and selective release. No new provider, telemetry export, logging configuration, credentials, access expansion, retention extension or paid capacity.",
+  "purpose": "Extend the existing server diagnostic pipeline with bounded request/stage/dependency timing, sample freshness and capture-loss disclosure. Reuse the existing browser observer and Founder interface; migrate the temporary Manage-only logger to the shared collector. Add only one nullable bounded performance-evidence column under normal migration controls, leaving it in place for application rollback and existing 30-day expiry. Release the four affected .NET hosts; preserve the unchanged Website deployment and all tenant content, training, commerce and voice behavior. This establishes diagnostic capability, not a claim that every root cause is observable or the earlier timeout is permanently fixed.",
+  "requestId": "masterapp-canonical-permanent-diagnostics-20261030-v1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-protect"
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false

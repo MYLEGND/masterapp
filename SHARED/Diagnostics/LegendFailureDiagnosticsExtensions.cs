@@ -23,14 +23,37 @@ public static class LegendFailureDiagnosticsExtensions
                 return Task.CompletedTask;
             });
 
-            try
+            var path = (context.Request.Path.Value ?? string.Empty).TrimEnd('/');
+            var excluded = path.Equals("/api/runtime-diagnostics", StringComparison.OrdinalIgnoreCase) ||
+                path.Equals("/api/v1/mobile/runtime-diagnostics", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith("/founder/diagnostics", StringComparison.OrdinalIgnoreCase);
+            using var performance = excluded ? null : new RuntimeDiagnosticScope();
+            var outcome = "completed";
+            try { await next(); }
+            catch (OperationCanceledException ex)
             {
-                await next();
+                outcome = context.RequestAborted.IsCancellationRequested ? "caller_canceled" : "deadline_exceeded";
+                await CaptureExceptionAsync(context, ex, appName);
+                throw;
             }
             catch (Exception ex)
             {
+                outcome = "failed";
                 await CaptureExceptionAsync(context, ex, appName);
                 throw;
+            }
+            finally
+            {
+                if (outcome == "completed" && context.Response.StatusCode >= 500) outcome = "failed";
+                if (performance is not null && !context.Items.ContainsKey(PerformanceRecordedKey))
+                {
+                    try
+                    {
+                        if (performance.ElapsedMs >= 10_000 || outcome is "failed" or "deadline_exceeded" || context.Response.StatusCode >= 500)
+                            await CapturePerformanceAsync(context, performance.Snapshot(outcome), appName);
+                    }
+                    catch { /* Capture never changes business response/cancellation. */ }
+                }
             }
 
             var location = context.Response.Headers.Location.ToString();
@@ -56,6 +79,23 @@ public static class LegendFailureDiagnosticsExtensions
         });
     }
 
+    private const string PerformanceRecordedKey = "Legend.RuntimeDiagnostic.PerformanceRecorded";
+    private static async Task CapturePerformanceAsync(HttpContext context, RuntimeDiagnosticPerformance performance, string appName)
+    {
+        using var suppression = RuntimeDiagnosticScope.Suppress();
+        var sink = context.RequestServices.GetService<IRuntimeDiagnosticSink>();
+        if (sink is null) return;
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        await sink.RecordAsync(new RuntimeDiagnosticEvent
+        {
+            AppIdentifier = appName, Platform = "server",
+            Route = (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText,
+            ErrorName = performance.Outcome is "caller_canceled" or "deadline_exceeded" ? "OperationCanceledException" :
+                context.Response.StatusCode >= 500 ? "HttpFailure" : "SlowOperation",
+            StatusCode = context.Response.StatusCode, Performance = performance
+        }, deadline.Token);
+    }
+
     // MVC exception filters can handle a fault before it reaches middleware.
     // Both boundaries use the same bounded capture; classification and durable
     // sanitization remain the responsibility of the existing diagnostic sink.
@@ -65,6 +105,10 @@ public static class LegendFailureDiagnosticsExtensions
         // Deliberate request cancellation is expected and must not become a
         // server-defect report. The caller still owns its original response.
         if (exception is OperationCanceledException && context.RequestAborted.IsCancellationRequested) return;
+        RuntimeDiagnosticPerformance? performance = null;
+        try { performance = RuntimeDiagnosticScope.Current?.Snapshot(exception is OperationCanceledException ? "deadline_exceeded" : "failed"); } catch { }
+        using var suppression = RuntimeDiagnosticScope.Suppress();
+        context.Items[PerformanceRecordedKey] = true; // one attempt, including failed persistence
         try
         {
             // Resolution and logging are inside the guard as well: a broken
@@ -91,8 +135,10 @@ public static class LegendFailureDiagnosticsExtensions
                 CorrelationId = context.TraceIdentifier,
                 Category = exception is OperationCanceledException ? "cancellation" : "unhandled_exception",
                 StatusCode = 500,
-                Timestamp = DateTimeOffset.UtcNow
+                Timestamp = DateTimeOffset.UtcNow,
+                Performance = performance
             }, deadline.Token);
+            context.Items[PerformanceRecordedKey] = true;
         }
         catch (Exception captureFailure)
         {

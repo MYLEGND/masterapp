@@ -21,12 +21,20 @@ namespace AgentPortal.Controllers;
 public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Controller
 {
     [HttpGet]
-    public async Task<IActionResult> Index([FromQuery] int page = 1, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Index([FromQuery] int page = 1, CancellationToken cancellationToken = default,
+        [FromQuery] string? app = null, [FromQuery] string? category = null)
     {
         FounderGuard.EnsureFounderOrThrow(User);
         page = Math.Clamp(page, 1, 1000);
         var now = DateTime.UtcNow;
-        var rows = await db.RuntimeDiagnosticIncidents.AsNoTracking().Where(row => row.ExpiresUtc > now)
+        var query = db.RuntimeDiagnosticIncidents.AsNoTracking().Where(row => row.ExpiresUtc > now);
+        if (app is "AgentPortal" or "ClientApp" or "ParfaitApp" or "ProtectWebsite") query = query.Where(row => row.AppIdentifier == app);
+        else app = null;
+        if (category is "Performance" or "NetworkOrCapacity" or "Network" or "ExpectedCancellation" or "SuspectedDefect" or "Authentication") query = query.Where(row => row.Category == category);
+        else category = null;
+        ViewData["AppFilter"] = app; ViewData["CategoryFilter"] = category;
+        ViewData["CaptureStatus"] = HttpContext?.RequestServices.GetService<Infrastructure.Diagnostics.RuntimeDiagnosticStore>()?.CaptureStatus;
+        var rows = await query
             .OrderByDescending(row => row.LastSeenUtc).ThenBy(row => row.Id)
             .Skip((page - 1) * 50).Take(51).ToListAsync(cancellationToken);
         ViewData["Batch"] = await db.FounderSoftwareRepairBatches.AsNoTracking().SingleOrDefaultAsync(x => x.Id == "active", cancellationToken);

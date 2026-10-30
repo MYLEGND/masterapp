@@ -453,14 +453,14 @@ public class WebsitePlatformController : ControllerBase
         CancellationToken cancellationToken = default,
         [FromQuery] bool audit = false)
     {
-        using var timing = new WebsiteManageTiming(HttpContext?.RequestServices.GetService<ILogger<WebsitePlatformController>>());
+        using var timing = new Shared.Diagnostics.RuntimeDiagnosticStageSequence();
         try
         {
             var actor = await AuthorizeAsync(ticket, cancellationToken);
             if (actor is null) return Unauthorized();
-            timing.Next(WebsiteManageTiming.Stage.StateRead);
+            timing.Next(Shared.Diagnostics.RuntimeDiagnosticStage.StateRead);
             var state = await StateAsync(actor, cancellationToken);
-            timing.Next(WebsiteManageTiming.Stage.BusinessFacts);
+            timing.Next(Shared.Diagnostics.RuntimeDiagnosticStage.BusinessFacts);
             var business = actor.CommerceBusinessId.HasValue
                 ? await _db.CommerceBusinesses.AsNoTracking()
                     .SingleAsync(b => b.Id == actor.CommerceBusinessId, cancellationToken)
@@ -468,7 +468,7 @@ public class WebsitePlatformController : ControllerBase
             var facts = business is null
                 ? null
                 : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
-            timing.Next(WebsiteManageTiming.Stage.DraftValidation);
+            timing.Next(Shared.Diagnostics.RuntimeDiagnosticStage.DraftValidation);
             WebsiteContentDocument draft;
             try { draft = Read(state.DraftJson); }
             catch (InvalidOperationException ex) when (ex.Message.StartsWith("website_duplicate_node_identity:", StringComparison.Ordinal))
@@ -480,14 +480,14 @@ public class WebsitePlatformController : ControllerBase
                 return Conflict(new { error = "website_draft_runtime_anchor_recovery",
                     message = "Review the saved protected form anchors before editing. Your saved content and publication were preserved." });
             WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, draft);
-            timing.Next(WebsiteManageTiming.Stage.Collections);
+            timing.Next(Shared.Diagnostics.RuntimeDiagnosticStage.Collections);
             IReadOnlyDictionary<string, WebsiteCollectionProjection> collectionData =
                 business is null || (draft.Collections?.Count ?? 0) == 0
                     ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
                     : await new WebsiteCollectionProjectionService(_db)
                         .LoadAsync(draft, business.Id, cancellationToken);
 
-            timing.Next(WebsiteManageTiming.Stage.CommerceStore);
+            timing.Next(Shared.Diagnostics.RuntimeDiagnosticStage.CommerceStore);
             var commerceService = HttpContext?.RequestServices?.GetService(typeof(WebsiteCommerceScopeService))
                 as WebsiteCommerceScopeService;
             var commerceScope = commerceService is null || (audit && draft.Store?.Enabled != true)
@@ -522,7 +522,7 @@ public class WebsitePlatformController : ControllerBase
                 });
             }
 
-            timing.Next(WebsiteManageTiming.Stage.PublicationHistory);
+            timing.Next(Shared.Diagnostics.RuntimeDiagnosticStage.PublicationHistory);
             var publicationUsage = await _db.Set<WebsiteContentVersion>().AsNoTracking()
                 .Where(v => v.StateId == state.Id)
                 .GroupBy(_ => 1)
@@ -538,11 +538,11 @@ public class WebsitePlatformController : ControllerBase
                 .Take(Infrastructure.WebsitePublishing.WebsiteSnapshotRetention.Limit)
                 .Select(v => new { versionId = v.Id, v.Revision, v.CreatedUtc })
                 .ToListAsync(cancellationToken);
-            timing.Next(WebsiteManageTiming.Stage.CallToAction);
+            timing.Next(Shared.Diagnostics.RuntimeDiagnosticStage.CallToAction);
             var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, draft);
-            timing.Next(WebsiteManageTiming.Stage.PublishPermission);
+            timing.Next(Shared.Diagnostics.RuntimeDiagnosticStage.PublishPermission);
             var canPublish = await CanPublishAsync(actor, cancellationToken);
-            timing.Next(WebsiteManageTiming.Stage.Media);
+            timing.Next(Shared.Diagnostics.RuntimeDiagnosticStage.Media);
             var mediaUsage = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
                 .Where(a => a.OwnerKey == actor.OwnerUserId)
                 .GroupBy(_ => 1)
@@ -553,9 +553,9 @@ public class WebsitePlatformController : ControllerBase
                 })
                 .SingleOrDefaultAsync(cancellationToken);
 
-            timing.Next(WebsiteManageTiming.Stage.NamedDrafts);
+            timing.Next(Shared.Diagnostics.RuntimeDiagnosticStage.NamedDrafts);
             var drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc });
-            timing.Next(WebsiteManageTiming.Stage.ResponsePreparation);
+            timing.Next(Shared.Diagnostics.RuntimeDiagnosticStage.ResponsePreparation);
             return Ok(new
             {
                 business = business is null
@@ -624,12 +624,10 @@ public class WebsitePlatformController : ControllerBase
         }
         catch (OperationCanceledException)
         {
-            timing.Failed(canceled: true);
             throw;
         }
         catch
         {
-            timing.Failed(canceled: false);
             throw;
         }
     }
@@ -1067,6 +1065,7 @@ public class WebsitePlatformController : ControllerBase
         [FromBody] WebsiteMutationRequest request,
         CancellationToken cancellationToken = default)
     {
+        using var diagnosticStage = Shared.Diagnostics.RuntimeDiagnosticScope.Current?.Stage(Shared.Diagnostics.RuntimeDiagnosticStage.StudioEdit);
         return await ApplyMutationBatchAsync(request, cancellationToken);
     }
 
@@ -1965,6 +1964,7 @@ public class WebsitePlatformController : ControllerBase
     [RequestSizeLimit(4_500_000)]
     public async Task<IActionResult> Save([FromBody] SaveRequest request, CancellationToken cancellationToken = default)
     {
+        using var diagnosticStage = Shared.Diagnostics.RuntimeDiagnosticScope.Current?.Stage(Shared.Diagnostics.RuntimeDiagnosticStage.StudioSave);
         if (request?.Document is null) return BadRequest();
         var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
         if (actor is null) return Unauthorized();
@@ -2716,6 +2716,7 @@ public class WebsitePlatformController : ControllerBase
     [HttpPost("manage/publish")]
     public async Task<IActionResult> Publish([FromBody] PublishRequest request, CancellationToken cancellationToken = default)
     {
+        using var diagnosticStage = Shared.Diagnostics.RuntimeDiagnosticScope.Current?.Stage(Shared.Diagnostics.RuntimeDiagnosticStage.PublicationValidate);
         var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
         if (actor is null) return Unauthorized();
         if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
@@ -2744,6 +2745,7 @@ public class WebsitePlatformController : ControllerBase
         WebsiteEditorTicket actor, WebsiteContentState state, WebsiteContentDocument document,
         string? importReportJson, CancellationToken cancellationToken, Guid? requestId = null)
     {
+        using var diagnosticStage = new Shared.Diagnostics.RuntimeDiagnosticStageSequence(Shared.Diagnostics.RuntimeDiagnosticStage.PublicationValidate);
         WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
         CommerceBusiness? business = null;
         WebsiteBusinessFacts? facts = null;
@@ -2809,6 +2811,7 @@ public class WebsitePlatformController : ControllerBase
                 version.CompiledPagesJson = await compiler.CompileLegendAsync(publicPayload, cancellationToken);
             }
         }
+        diagnosticStage.Next(Shared.Diagnostics.RuntimeDiagnosticStage.PublicationCommit);
         _db.Set<WebsiteContentVersion>().Add(version);
         state.ImportReportJson = importReportJson;
         state.PublishedVersionId = version.Id;
@@ -4395,67 +4398,4 @@ public class WebsitePlatformController : ControllerBase
         => WebsiteEditorSiteKeys.ToolPrefix + siteKey;
 
 
-}
-
-// Bounded diagnostics for the existing Manage action, not a request deadline or
-// an alternate telemetry sink. No caller-controlled values enter the record.
-internal sealed class WebsiteManageTiming : IDisposable
-{
-    internal enum Stage { Authorization, StateRead, BusinessFacts, DraftValidation, Collections,
-        CommerceStore, PublicationHistory, CallToAction, PublishPermission, Media, NamedDrafts, ResponsePreparation }
-    internal sealed class RateGuard
-    {
-        private readonly object gate = new();
-        private long? last;
-        internal bool Admit(TimeProvider clock, long now)
-        {
-            lock (gate)
-            {
-                if (last.HasValue && clock.GetElapsedTime(last.Value, now) < TimeSpan.FromMinutes(1)) return false;
-                last = now;
-                return true;
-            }
-        }
-    }
-    private static readonly RateGuard ProcessGuard = new();
-    private readonly ILogger? logger;
-    private readonly TimeProvider clock;
-    private readonly RateGuard guard;
-    private readonly long started;
-    private long stageStarted;
-    private readonly long[] durations = new long[12];
-    private Stage stage;
-    private string outcome = "returned";
-    private bool disposed;
-    internal WebsiteManageTiming(ILogger? logger, TimeProvider? clock = null, RateGuard? guard = null)
-    {
-        this.logger = logger; this.clock = clock ?? TimeProvider.System; this.guard = guard ?? ProcessGuard;
-        started = stageStarted = this.clock.GetTimestamp();
-    }
-    private long Milliseconds(long from, long to) =>
-        (long)Math.Clamp(clock.GetElapsedTime(from, to).TotalMilliseconds, 0, 3_600_000);
-    internal void Next(Stage next)
-    {
-        var now = clock.GetTimestamp();
-        durations[(int)stage] = Milliseconds(stageStarted, now);
-        stage = next; stageStarted = now;
-    }
-    internal void Failed(bool canceled) => outcome = canceled ? "canceled" : "failed";
-    public void Dispose()
-    {
-        if (disposed) return;
-        disposed = true;
-        // Diagnostics must not replace business results or the original exception,
-        // including when an existing logging provider itself is unavailable.
-        try
-        {
-            var now = clock.GetTimestamp();
-            var total = Milliseconds(started, now);
-            if ((total < 10_000 && outcome == "returned") || logger?.IsEnabled(LogLevel.Warning) != true || !guard.Admit(clock, now)) return;
-            durations[(int)stage] = Milliseconds(stageStarted, now);
-            logger.LogWarning("WebsiteStudio manage timing Outcome={Outcome} LastStage={LastStage} DurationMs={DurationMs} StageMs={StageMs}",
-                outcome, stage.ToString(), total, string.Join(",", durations));
-        }
-        catch { /* Diagnostic failure never changes the authoritative request. */ }
-    }
 }

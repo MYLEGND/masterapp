@@ -18,6 +18,8 @@ public sealed class RuntimeDiagnosticIncident
     public string? AppVersion { get; set; }
     public string? SourceFilePath { get; set; }
     public string? StackTrace { get; set; }
+    // Nullable for historical rows; includes explicit sample time, not LastSeen.
+    public string? PerformanceEvidenceJson { get; set; }
     public string? StructuralReproducerJson { get; set; }
     public string? CorrelationId { get; set; }
     public string Disposition { get; set; } = "Observed";

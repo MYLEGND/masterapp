@@ -327,6 +327,93 @@ public sealed class RuntimeDiagnosticsTests
         public IFileProvider WebRootFileProvider { get; set; } = new NullFileProvider();
     }
 
+    [Fact]
+    public async Task PerformanceSampleUpdatesTruthfullyAndSuppressionDoesNotEraseLatestEvidenceOrErrors()
+    {
+        await using var fixture = await StoreFixture.CreateAsync();
+        var value = new RuntimeDiagnosticEvent { ErrorName = "HttpFailure", StatusCode = 503,
+            Performance = new() { ElapsedMs = 12000, InstrumentedBoundaries = ["request"] } };
+        using var observation = new RuntimeDiagnosticScope();
+        await fixture.Store.RecordAsync(value);
+        Assert.Empty(observation.Snapshot("completed").Dependencies); // store's own EF is excluded
+        await using var checkScope = fixture.Services.CreateAsyncScope();
+        var db = checkScope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+        var first = await db.RuntimeDiagnosticIncidents.AsNoTracking().SingleAsync();
+        Assert.NotNull(first.PerformanceEvidenceJson);
+        await fixture.Store.RecordAsync(value with { Performance = value.Performance with { ElapsedMs = 99999 } });
+        var suppressed = await db.RuntimeDiagnosticIncidents.AsNoTracking().SingleAsync();
+        Assert.Equal(2, suppressed.Occurrences); // error survives performance rate cap
+        Assert.Equal(first.PerformanceEvidenceJson, suppressed.PerformanceEvidenceJson);
+        Assert.Equal(1, fixture.Store.CaptureStatus.RateLimited);
+        // Another process has its own bounded sampler, but the shared incident's
+        // latest retained sample must be atomically replaced, not labeled current with old metrics.
+        var other = new RuntimeDiagnosticStore(fixture.Services.GetRequiredService<IServiceScopeFactory>(), new EnvironmentStub(),
+            fixture.Services.GetRequiredService<IHttpContextAccessor>(), Routes());
+        await other.RecordAsync(value with { Performance = value.Performance with { ElapsedMs = 24000 } });
+        var updated = await db.RuntimeDiagnosticIncidents.AsNoTracking().SingleAsync();
+        Assert.Equal(3, updated.Occurrences);
+        using var json = JsonDocument.Parse(updated.PerformanceEvidenceJson!);
+        Assert.Equal(24000, json.RootElement.GetProperty("performance").GetProperty("elapsedMs").GetInt32());
+        Assert.True(json.RootElement.GetProperty("sampledUtc").GetDateTime() >= first.LastSeenUtc);
+        Assert.Equal(first.DeduplicationKey, updated.DeduplicationKey);
+        Assert.True(updated.ExpiresUtc >= updated.LastSeenUtc.AddDays(30).AddSeconds(-1));
+    }
+
+    [Fact]
+    public async Task PersistenceFailureIsCountedAndNeverAcceptedAsAHealthySample()
+    {
+        await using var fixture = await StoreFixture.CreateAsync();
+        await using var scope = fixture.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<MasterAppDbContext>().Database.ExecuteSqlRawAsync("DROP TABLE RuntimeDiagnosticIncidents");
+        await Assert.ThrowsAnyAsync<Exception>(() => fixture.Store.RecordAsync(new() { ErrorName = "SlowOperation", Performance = new() }));
+        Assert.Equal(1, fixture.Store.CaptureStatus.Failed);
+        Assert.Equal(0, fixture.Store.CaptureStatus.Recorded);
+        Assert.Null(fixture.Store.CaptureStatus.LastRecordedUtc);
+    }
+
+    [Fact]
+    public async Task RejectedSlowSamplesCannotExhaustExistingExceptionBudget()
+    {
+        await using var fixture = await StoreFixture.CreateAsync();
+        for (var i = 0; i < 105; i++)
+            await fixture.Store.RecordAsync(new() { ErrorName = "SlowOperation", Performance = new() { ElapsedMs = 10001 } });
+        await fixture.Store.RecordAsync(new() { ErrorName = "InvalidOperationException" });
+        await using var scope = fixture.Services.CreateAsyncScope();
+        var rows = await scope.ServiceProvider.GetRequiredService<MasterAppDbContext>().RuntimeDiagnosticIncidents.AsNoTracking().ToListAsync();
+        Assert.Equal(2, rows.Count);
+        Assert.Contains(rows, x => x.ErrorName == "InvalidOperationException");
+        Assert.Equal(2, fixture.Store.CaptureStatus.Recorded);
+        Assert.Equal(104, fixture.Store.CaptureStatus.RateLimited);
+    }
+
+    [Fact]
+    public async Task OutOfOrderPerformanceArrivalCannotReplaceNewerRetainedSample()
+    {
+        await using var fixture = await StoreFixture.CreateAsync();
+        await fixture.Store.RecordAsync(new() { ErrorName = "SlowOperation", Performance = new() { ElapsedMs = 12000 } });
+        await using var scope = fixture.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+        var row = await db.RuntimeDiagnosticIncidents.AsNoTracking().SingleAsync();
+        string Sample(DateTime time, int duration) => JsonSerializer.Serialize(new { sampledUtc = time,
+            performance = new RuntimeDiagnosticPerformance { ElapsedMs = duration } });
+        var futureTime = DateTime.UtcNow.AddMinutes(1);
+        var newer = Sample(futureTime, 24000);
+        await db.RuntimeDiagnosticIncidents.Where(item => item.Id == row.Id)
+            .ExecuteUpdateAsync(set => set.SetProperty(item => item.Disposition, "ManuallyClosed"));
+        Assert.True(await RuntimeDiagnosticStore.RetainNewerPerformanceAsync(db, row.DeduplicationKey, newer));
+        var afterSample = await db.RuntimeDiagnosticIncidents.AsNoTracking().SingleAsync();
+        Assert.Equal(row.ReviewVersion + 1, afterSample.ReviewVersion);
+        Assert.True(afterSample.Recurred);
+        Assert.Equal(row.Occurrences, afterSample.Occurrences); // sample update does not double-count an event
+
+        Assert.False(await RuntimeDiagnosticStore.RetainNewerPerformanceAsync(db, row.DeduplicationKey, Sample(futureTime.AddSeconds(-1), 99000)));
+        Assert.False(await RuntimeDiagnosticStore.RetainNewerPerformanceAsync(db, row.DeduplicationKey, Sample(futureTime, 88000)));
+        Assert.False(await RuntimeDiagnosticStore.RetainNewerPerformanceAsync(db, row.DeduplicationKey, "{\"sampledUtc\":123}"));
+        Assert.False(await RuntimeDiagnosticStore.RetainNewerPerformanceAsync(db, row.DeduplicationKey, "[]"));
+        Assert.Equal(newer, (await db.RuntimeDiagnosticIncidents.AsNoTracking().SingleAsync()).PerformanceEvidenceJson);
+        Assert.True(await RuntimeDiagnosticStore.RetainNewerPerformanceAsync(db, row.DeduplicationKey, Sample(futureTime.AddSeconds(1), 26000)));
+    }
+
     private sealed class StoreFixture(SqliteConnection connection, ServiceProvider services) : IAsyncDisposable
     {
         public SqliteConnection Connection { get; } = connection;
@@ -352,7 +439,7 @@ public sealed class RuntimeDiagnosticsTests
                 Id TEXT PRIMARY KEY, DeduplicationKey TEXT NOT NULL UNIQUE, AppIdentifier TEXT NOT NULL,
                 Platform TEXT NOT NULL, Route TEXT NOT NULL, ErrorName TEXT NOT NULL, Summary TEXT NOT NULL,
                 Category TEXT NOT NULL, StatusCode INTEGER NULL, GitCommitHash TEXT NULL, ReleaseVerified INTEGER NOT NULL,
-                AppVersion TEXT NULL, SourceFilePath TEXT NULL, StackTrace TEXT NULL, StructuralReproducerJson TEXT NULL, CorrelationId TEXT NULL,
+                AppVersion TEXT NULL, SourceFilePath TEXT NULL, StackTrace TEXT NULL, StructuralReproducerJson TEXT NULL, PerformanceEvidenceJson TEXT NULL, CorrelationId TEXT NULL,
                 Disposition TEXT NOT NULL, ReviewVersion INTEGER NOT NULL, Recurred INTEGER NOT NULL, ReviewedUtc TEXT NULL,
                 FirstSeenUtc TEXT NOT NULL, LastSeenUtc TEXT NOT NULL, ExpiresUtc TEXT NOT NULL, Occurrences INTEGER NOT NULL);
                 """);

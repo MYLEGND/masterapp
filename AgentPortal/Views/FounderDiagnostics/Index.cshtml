@@ -10,6 +10,28 @@
     <h1>Runtime diagnostics</h1>
     <p>Sanitized runtime observations for Founder review. An observation does not prove a code defect. Review does not stage, merge, or publish a repair.</p>
     <p>Records expire after 30 days without another observation. Offline, startup, and fatal crashes may be missing.</p>
+    <details class="mb-3">
+        <summary>Capture coverage, limits and missing evidence</summary>
+        <p>Server requests include elapsed middleware time through response serialization. Shared database capture distinguishes connection opening, command return and reader lifetime (including consumer work). HTTP timing ends at handler/header completion, not body consumption. Stage and dependency timings overlap; do not add them as separate wall-clock costs.</p>
+        <p>Slow server samples begin at 10 seconds and are capped at one per minute per process. Each sample is at most 4 KiB, with 16 stage labels and four dependency kinds. Existing event admission and 30-day retention still apply. Public browser observations cannot assert server timing or verified cross-host revision.</p>
+        <p>Missing evidence is unknown, not healthy. Before-host startup, uninstrumented workers, non-factory HTTP, network transfer after the middleware returns, provider internals, capture outages and fatal crashes may remain unobserved. Reader lifetime does not distinguish database wait from application decoding. Process counters reset on restart and are not fleet totals.</p>
+        @if (ViewData["CaptureStatus"] is ValueTuple<long, long, long, DateTime?, long> status)
+        {
+            <p>Current Portal server-capture process: recorded @status.Item1; rate-limited @status.Item2; persistence failures @status.Item3; out-of-order/contending samples not retained @status.Item5; last recorded @(status.Item4?.ToString("u") ?? "none in this process"). Other hosts' capture loss is not observed by these local counters.</p>
+        }
+    </details>
+    @if (!details)
+    {
+        <form method="get" class="mb-3" aria-label="Diagnostic observation filters">
+            <label>Application <select name="app"><option value="">All</option>
+                @foreach (var name in new[] { "AgentPortal", "ClientApp", "ParfaitApp", "ProtectWebsite" }) { <option value="@name" selected="@(ViewData["AppFilter"] as string == name)">@name</option> }
+            </select></label>
+            <label>Category <select name="category"><option value="">All</option>
+                @foreach (var name in new[] { "Performance", "NetworkOrCapacity", "Network", "ExpectedCancellation", "SuspectedDefect", "Authentication" }) { <option value="@name" selected="@(ViewData["CategoryFilter"] as string == name)">@name</option> }
+            </select></label>
+            <button type="submit" class="btn btn-outline-secondary">Filter observations</button>
+        </form>
+    }
     @if (batch is not null)
     {
         <article class="card mb-3"><div class="card-body">
@@ -98,13 +120,35 @@
                     <dt class="col-sm-3">Last received UTC</dt><dd class="col-sm-9">@item.LastSeenUtc.ToString("u")</dd>
                     <dt class="col-sm-3">Release correlation</dt><dd class="col-sm-9">@(item.ReleaseVerified ? "Server assembly metadata" : "Unverified client claim or unavailable") <code>@item.GitCommitHash</code></dd>
                 </dl>
+                @{ var sample = AgentPortal.Models.RuntimeDiagnosticPerformanceView.Read(item.PerformanceEvidenceJson); }
+                @if (sample is not null)
+                {
+                    <section aria-label="Retained performance sample" class="border rounded p-3 mb-3">
+                        <h3 class="h6">Latest retained performance sample</h3>
+                        <dl class="row">
+                            <dt class="col-sm-3">Sample UTC</dt><dd class="col-sm-9">@sample.SampledUtc.ToString("u") (not necessarily the last occurrence)</dd>
+                            <dt class="col-sm-3">Elapsed / outcome</dt><dd class="col-sm-9">@sample.Evidence.ElapsedMs ms · @sample.Evidence.Outcome.Replace('_', ' ')</dd>
+                            <dt class="col-sm-3">Largest measured stage</dt><dd class="col-sm-9">@(sample.LargestStage is { } stage ? $"{stage.Stage.Replace('_', ' ')}: {stage.ElapsedMs} ms" : "Not observed")</dd>
+                            <dt class="col-sm-3">Largest dependency aggregate</dt><dd class="col-sm-9">@(sample.LargestDependency is { } dependency ? $"{dependency.Kind.Replace('_', ' ')}: {dependency.ElapsedMs} ms across {dependency.Count} calls, {dependency.FailedCount} failed" : "Not observed")</dd>
+                            <dt class="col-sm-3">Observed boundaries</dt><dd class="col-sm-9">@(sample.Evidence.InstrumentedBoundaries.Count > 0 ? string.Join(", ", sample.Evidence.InstrumentedBoundaries.Select(x => x.Replace('_', ' '))) : "None")</dd>
+                            <dt class="col-sm-3">Missing boundaries</dt><dd class="col-sm-9">@(sample.MissingBoundaries.Length > 0 ? string.Join(", ", sample.MissingBoundaries.Select(x => x.Replace('_', ' '))) : "None of the declared boundaries; other platform gaps still apply")</dd>
+                            <dt class="col-sm-3">Completeness</dt><dd class="col-sm-9">@(sample.Evidence.Truncated ? "Truncated — incomplete sample" : "Bounded sample; absence of a metric is not healthy proof")</dd>
+                        </dl>
+                        <p>Measured stages and dependencies overlap and are not causal attribution. Do not add them as independent wall-clock costs. Reader lifetime includes consumer work; HTTP ends at handler/headers.</p>
+                        <details><summary>Encoded evidence and observed trace</summary>
+                            <p>App/revision are bound to this incident. Trace may be inherited from a caller and never establishes identity or authorization.</p>
+                            <pre>@item.PerformanceEvidenceJson</pre>
+                        </details>
+                    </section>
+                }
+                else { <p>No readable retained performance sample (historical, uninstrumented, suppressed, unsupported, or unavailable); no healthy result is inferred.</p> }
                 @if (item.Recurred) { <p>Observed again after manual closure. A successful repair has not been verified.</p> }
                 @if (details)
                 {
                     <p>Version: @item.AppVersion</p>
                     <p>Source: <code>@item.SourceFilePath</code></p>
                     @if (!string.IsNullOrWhiteSpace(item.StackTrace)) { <pre>@item.StackTrace</pre> }
-                    <p>Server correlation: <code>@item.CorrelationId</code></p>
+                    <p>Server-observed correlation (not identity proof): <code>@item.CorrelationId</code></p>
                     <p><a asp-action="RepairContext" asp-route-id="@item.Id">Open sanitized repair context</a></p>
                     @if (item.Disposition == "ConfirmedDefect")
                     {
@@ -143,8 +187,8 @@
         @if (details) { <a asp-action="Index">All observations</a> }
         else
         {
-            @if (page > 1) { <a asp-action="Index" asp-route-page="@(page - 1)">Previous</a> }
-            @if (ViewData["HasMore"] as bool? == true) { <a asp-action="Index" asp-route-page="@(page + 1)">Next</a> }
+            @if (page > 1) { <a asp-action="Index" asp-route-page="@(page - 1)" asp-route-app="@(ViewData["AppFilter"] as string)" asp-route-category="@(ViewData["CategoryFilter"] as string)">Previous</a> }
+            @if (ViewData["HasMore"] as bool? == true) { <a asp-action="Index" asp-route-page="@(page + 1)" asp-route-app="@(ViewData["AppFilter"] as string)" asp-route-category="@(ViewData["CategoryFilter"] as string)">Next</a> }
         }
     </nav>
 </section>

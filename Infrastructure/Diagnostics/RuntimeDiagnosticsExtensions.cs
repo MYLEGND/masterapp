@@ -52,6 +52,7 @@ public static class RuntimeDiagnosticsExtensions
         ArgumentNullException.ThrowIfNull(configuration);
         services.TryAddSingleton(environment);
         services.AddHttpContextAccessor();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<Microsoft.Extensions.Http.IHttpMessageHandlerBuilderFilter, RuntimeDiagnosticHttpCaptureFilter>());
         services.AddOptions<RuntimeDiagnosticPublicWebsiteOptions>();
         services.TryAddSingleton<RuntimeDiagnosticStore>();
         services.TryAddSingleton<IRuntimeDiagnosticSink>(provider => provider.GetRequiredService<RuntimeDiagnosticStore>());

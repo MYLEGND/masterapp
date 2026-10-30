@@ -14,7 +14,7 @@ using Infrastructure.WebsiteEditing.Controllers;
 namespace Infrastructure.WebsitePublishing;
 
 /// <summary>Runs the same publishing authority after rechecking the scheduled actor's current access.</summary>
-public sealed class WebsitePublishWorker(IServiceScopeFactory scopes, ILogger<WebsitePublishWorker> logger) : BackgroundService
+public sealed class WebsitePublishWorker(IServiceScopeFactory scopes, ILogger<WebsitePublishWorker> logger, Shared.Diagnostics.IRuntimeDiagnosticSink? diagnosticSink = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -29,12 +29,14 @@ public sealed class WebsitePublishWorker(IServiceScopeFactory scopes, ILogger<We
     public async Task RunMaintenanceAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        try { await RunDueAsync(cancellationToken); }
+        try { await Shared.Diagnostics.RuntimeDiagnosticOperation.ObserveAsync(Shared.Diagnostics.RuntimeDiagnosticStage.BackgroundScan,
+            () => RunDueAsync(cancellationToken), diagnosticSink, cancellationToken); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception exception) { logger.LogError(exception, "Scheduled website publish scan failed."); }
 
         cancellationToken.ThrowIfCancellationRequested();
-        try { await RetireSnapshotsAsync(cancellationToken); }
+        try { await Shared.Diagnostics.RuntimeDiagnosticOperation.ObserveAsync(Shared.Diagnostics.RuntimeDiagnosticStage.SnapshotRetention,
+            () => RetireSnapshotsAsync(cancellationToken), diagnosticSink, cancellationToken); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception exception) { logger.LogError(exception, "Website snapshot retirement scan failed."); }
     }

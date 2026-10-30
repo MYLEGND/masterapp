@@ -3333,6 +3333,25 @@ class ValidationResumePlannerTests(unittest.TestCase):
         self.assertFalse(plan["gates"]["crm-regressions"]["run"])
         self.assertFalse(plan["gates"]["renderer-tests"]["run"])
 
+    def test_new_performance_suites_match_saved_workflow_filter_and_planner(self):
+        import re
+        workflow = "masterapp-platform-architecture-validation.yml"
+        text = (ROOT / ".github/workflows" / workflow).read_text()
+        filters = re.findall(r'--filter "([^"]+)"', text)
+        diagnostic_filter = next(value for value in filters if "FullyQualifiedName~RuntimeDiagnostics" in value)
+        terms = [term.removeprefix("FullyQualifiedName~") for term in diagnostic_filter.split("|")]
+        for suffix in ("Performance", "Scope", "DependencyCapture", "Migration", "Presentation"):
+            name = "RuntimeDiagnostics" + suffix + "Tests"
+            path = "AgentPortal.Tests/" + name + ".cs"
+            with self.subTest(suite=name):
+                self.assertIn("class " + name, (ROOT / path).read_text())
+                self.assertTrue(any(term in "AgentPortal.Tests." + name for term in terms))
+                plan = m.compute_plan(workflow, "b" * 40, self.prior(), self.successful_steps(workflow), [path], "prior_run")
+                self.assertTrue(plan["gates"]["founder-diagnostics-regressions"]["run"])
+                self.assertTrue(plan["gates"]["compile-regression"]["run"])
+                for unrelated in ("website-regressions", "booking-regressions", "crm-regressions"):
+                    self.assertFalse(plan["gates"][unrelated]["run"], unrelated)
+
     def test_diagnostics_test_fix_reruns_only_diagnostics_test_gate_and_build_chain(self):
         workflow = "masterapp-platform-architecture-validation.yml"
         plan = m.compute_plan(

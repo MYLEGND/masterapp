@@ -25,6 +25,14 @@ public class MasterAppDbContext : DbContext
 
     public MasterAppDbContext(DbContextOptions<MasterAppDbContext> options) : base(options) { }
 
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        base.OnConfiguring(optionsBuilder);
+        optionsBuilder.AddInterceptors(Infrastructure.Diagnostics.RuntimeDiagnosticConnectionCapture.Instance,
+            Infrastructure.Diagnostics.RuntimeDiagnosticCommandCapture.Instance);
+    }
+
+
     // SQL Server scalar JSON functions have CLR bodies for local query providers.
     // Authority predicates pass root paths and guard malformed historical JSON first.
     public static int? IsJson(string? json)
@@ -331,6 +339,7 @@ public class MasterAppDbContext : DbContext
             entity.Property(row => row.SourceFilePath).HasMaxLength(180);
             entity.Property(row => row.StackTrace).HasMaxLength(2300);
             entity.Property(row => row.StructuralReproducerJson);
+            entity.Property(row => row.PerformanceEvidenceJson).HasMaxLength(4096);
             entity.Property(row => row.CorrelationId).HasMaxLength(32);
             entity.Property(row => row.Disposition).IsRequired().HasMaxLength(32);
             entity.Property(row => row.ReviewVersion).IsConcurrencyToken();

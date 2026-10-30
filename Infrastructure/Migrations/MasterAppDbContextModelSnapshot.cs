@@ -13169,6 +13169,10 @@ namespace Infrastructure.Migrations
                     b.Property<long>("Occurrences")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("PerformanceEvidenceJson")
+                        .HasMaxLength(4096)
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Platform")
                         .IsRequired()
                         .HasMaxLength(16)

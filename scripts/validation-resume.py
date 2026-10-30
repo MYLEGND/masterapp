@@ -4545,6 +4545,17 @@ def fast_track_scope(paths):
     # Infrastructure/Domain/Shared ProjectReference dependencies. Keep exact
     # ownership: an unknown sibling is not silently admitted.
     shared_server = {
+        # Canonical diagnostics: all four registered .NET hosts; no static Website bytes.
+        'Domain/Entities/RuntimeDiagnosticIncident.cs',
+        'Infrastructure/Diagnostics/RuntimeDiagnosticSanitizer.Performance.cs',
+        'Infrastructure/Diagnostics/RuntimeDiagnosticSanitizer.cs',
+        'Infrastructure/Diagnostics/RuntimeDiagnosticStore.cs',
+        'Infrastructure/Diagnostics/RuntimeDiagnosticsExtensions.cs',
+        'Infrastructure/Diagnostics/RuntimeDiagnosticDependencyCapture.cs',
+        'SHARED/Diagnostics/LegendFailureDiagnosticsExtensions.cs',
+        'SHARED/Diagnostics/RuntimeDiagnosticEvent.cs',
+        'SHARED/Diagnostics/RuntimeDiagnosticPerformance.cs',
+        'SHARED/Diagnostics/RuntimeDiagnosticScope.cs',
         'Domain/Billing/BillingEnums.cs',
         'Domain/Billing/ClientSubscriptionScope.cs',
         'Domain/Billing/TrainingPlanTerms.cs',
