@@ -29,6 +29,22 @@ deploy = load('deploy-approved-app')
 
 
 class UniversalFastTrackAdmissionTests(unittest.TestCase):
+    def test_canonical_diagnostics_select_four_registered_hosts_and_unknown_siblings_fail_closed(self):
+        paths = ['Domain/Entities/RuntimeDiagnosticIncident.cs', 'Infrastructure/Diagnostics/RuntimeDiagnosticSanitizer.Performance.cs', 'Infrastructure/Diagnostics/RuntimeDiagnosticSanitizer.cs', 'Infrastructure/Diagnostics/RuntimeDiagnosticStore.cs', 'Infrastructure/Diagnostics/RuntimeDiagnosticsExtensions.cs', 'Infrastructure/Diagnostics/RuntimeDiagnosticDependencyCapture.cs', 'SHARED/Diagnostics/LegendFailureDiagnosticsExtensions.cs', 'SHARED/Diagnostics/RuntimeDiagnosticEvent.cs', 'SHARED/Diagnostics/RuntimeDiagnosticPerformance.cs', 'SHARED/Diagnostics/RuntimeDiagnosticScope.cs']
+        for path in paths:
+            with self.subTest(path=path):
+                scope = authority.fast_track_scope([path])
+                self.assertEqual({'portal', 'client', 'protect', 'parfait'}, {row['key'] for row in scope['matrix']['include']})
+                self.assertNotIn('website', {row['key'] for row in scope['matrix']['include']})
+        for unknown in ['Infrastructure/Diagnostics/UnreviewedSink.cs', 'SHARED/Diagnostics/UnreviewedCollector.cs',
+                        'Domain/Entities/RuntimeDiagnosticPrivateContent.cs']:
+            with self.subTest(path=unknown), self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+                authority.fast_track_scope([unknown])
+        scope = authority.fast_track_scope(paths + ['Infrastructure/Migrations/20261030033900_RuntimeDiagnosticPerformanceEvidence.cs'])
+        self.assertTrue(scope['schema'])
+        self.assertTrue(scope['commerce'])
+        self.assertFalse(scope['routing'])
+
     def test_public_booking_resolver_selects_only_registered_protect_consumer(self):
         scope = authority.fast_track_scope(['Infrastructure/Bookings/PublicBookingResolver.cs'])
         self.assertEqual({'protect'}, {row['key'] for row in scope['matrix']['include']})

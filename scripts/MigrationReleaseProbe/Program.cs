@@ -546,10 +546,19 @@ internal static class TrustedCandidateContract
     {
         if (trusted.SchemaVersion != 3 || candidate.SchemaVersion != 3 ||
             trusted.Migrations is null || candidate.Migrations is null ||
-            trusted.Migrations.Length is < 1 or > 10000)
+            trusted.Migrations.Length is < 1 or > 10000 || candidate.Migrations.Length is < 1 or > 10000 ||
+            trusted.Migrations.Any(entry => entry is null) || candidate.Migrations.Any(entry => entry is null))
             throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
         if (JsonSerializer.Serialize(trusted, CandidateContract.Json) == JsonSerializer.Serialize(candidate, CandidateContract.Json))
             return "approved-definitions-exact";
+        // One independently reviewed current transition, not a generic append waiver.
+        if (candidate.Migrations.Length == trusted.Migrations.Length + 1 &&
+            trusted.Migrations[^1].Id == CandidateContract.BrowserMigration &&
+            candidate.Migrations[^1].Id == CandidateContract.DiagnosticsMigration &&
+            candidate.Migrations[^1].Supported && Digest(candidate.Migrations[^1]) == CandidateContract.DiagnosticsEntrySha256 &&
+            candidate.Migrations.Take(trusted.Migrations.Length).Zip(trusted.Migrations).All(pair =>
+                JsonSerializer.Serialize(pair.First, CandidateContract.Json) == JsonSerializer.Serialize(pair.Second, CandidateContract.Json)))
+            return "approved-prefix-reviewed-diagnostics-entry";
         var added = candidate.Migrations.Length - trusted.Migrations.Length;
         if (added is < 1 or > 5 || candidate.Migrations.Length > 10000 ||
             !candidate.Migrations.Take(trusted.Migrations.Length).Zip(trusted.Migrations).All(pair =>
@@ -685,6 +694,8 @@ internal static class TrustedCandidateContract
             Console.WriteLine("LEGEND_MANAGEMENT_APPEND_TEST:PROVEN");
         }
         current = complete;
+        var browserIndex = Array.FindIndex(current.Migrations, entry => entry.Id == CandidateContract.BrowserMigration);
+        if (browserIndex >= 0) current = current with { Migrations = current.Migrations.Take(browserIndex + 1).ToArray() };
         if (current.Migrations[^1].Id == CandidateContract.BrowserMigration)
         {
             Require(Digest(current.Migrations[^1]) == BrowserEntrySha256);
@@ -699,6 +710,28 @@ internal static class TrustedCandidateContract
                 if (count > 1) Reject(() => Prove(prefix, current with { Migrations = [..prefix.Migrations, entry] }));
             }
             Console.WriteLine("LEGEND_BROWSER_APPEND_TEST:PROVEN");
+        }
+        current = complete;
+        if (current.Migrations[^1].Id == CandidateContract.DiagnosticsMigration)
+        {
+            var entry = current.Migrations[^1];
+            Require(Digest(entry) == CandidateContract.DiagnosticsEntrySha256);
+            var prefix = current with { Migrations = current.Migrations[..^1] };
+            Require(Prove(prefix, current) == "approved-prefix-reviewed-diagnostics-entry");
+            foreach (var bad in new[] { entry with { Supported = false }, entry with { Columns = [] },
+                entry with { Columns = [entry.Columns[0] with { Nullable = false }] },
+                entry with { Columns = [entry.Columns[0] with { Type = "nvarchar(4096)" }] },
+                entry with { Columns = [entry.Columns[0] with { Name = "Unreviewed" }] },
+                entry with { Columns = [entry.Columns[0], entry.Columns[0]] } })
+                Reject(() => Prove(prefix, current with { Migrations = [..prefix.Migrations, bad] }));
+            Reject(() => Prove(prefix with { Migrations = prefix.Migrations[..^1] }, current));
+            Reject(() => Prove(prefix, current with { Migrations = [..current.Migrations, unknown] }));
+            var changed = prefix.Migrations.ToArray(); changed[0] = changed[0] with { Supported = !changed[0].Supported };
+            Reject(() => Prove(prefix, current with { Migrations = [..changed, entry] }));
+            var oversized = prefix with { Migrations = [..Enumerable.Repeat(prefix.Migrations[0], 9999), prefix.Migrations[^1]] };
+            Reject(() => Prove(oversized, oversized with { Migrations = [..oversized.Migrations, entry] }));
+            Reject(() => Prove(prefix, current with { Migrations = [..prefix.Migrations, null!] }));
+            Console.WriteLine("LEGEND_DIAGNOSTICS_APPEND_TEST:PROVEN");
         }
         var path = Path.Combine(Path.GetTempPath(), "legend-contract-test-" + Guid.NewGuid().ToString("N") + ".json");
         try

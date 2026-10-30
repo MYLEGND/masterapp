@@ -671,6 +671,31 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'): self.gate()
                 self.assertFalse(self.sql_entered)
 
+    def test_diagnostics_exact_entry_marker_and_all_retained_baselines_required(self):
+        with self.payment_fixture():
+            additions=[dict(id=i,supported=True) for i in ('20261026063902_AddScopedTrainingSubscriptions',
+                '20261026210738_AddReceptionistManagement','20261026223148_ReceptionistBrowserCreation')]
+            diagnostic=json.loads('{"id":"20261030033900_RuntimeDiagnosticPerformanceEvidence","supported":true,"columns":[{"schema":"dbo","table":"RuntimeDiagnosticIncidents","name":"PerformanceEvidenceJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]}')
+            self.current['migrations'].extend([*additions,diagnostic])
+            self.source_present.update(row['id']+'.cs' for row in [*additions,diagnostic])
+            self.test_stdout+='LEGEND_TRAINING_APPEND_TEST:PROVEN\nLEGEND_MANAGEMENT_APPEND_TEST:PROVEN\nLEGEND_BROWSER_APPEND_TEST:PROVEN\nLEGEND_DIAGNOSTICS_APPEND_TEST:PROVEN\n'
+            digest=lambda row:hashlib.sha256(json.dumps(row,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            with patch.multiple(m.AUTHORITY,REVIEWED_TRAINING_ENTRY=digest(additions[0]),
+                REVIEWED_MANAGEMENT_ENTRY=digest(additions[1]),REVIEWED_BROWSER_ENTRY=digest(additions[2])):
+                self.gate()
+                fixtures=[kw for cmd,kw in self.calls if cmd[-1]=='migration-test']
+                self.assertEqual(['payment-and-successors','canonical-payment-training-management-browser-diagnostics',
+                    'training-management-browser-diagnostics','management-browser-diagnostics','browser-diagnostics','diagnostics-only'],
+                    [kw['env']['LEGEND_REHEARSAL_PENDING_COUNT'] for kw in fixtures])
+                self.sql_entered=False
+                self.test_stdout=self.test_stdout.replace('LEGEND_DIAGNOSTICS_APPEND_TEST:PROVEN\n','')
+                with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
+                self.assertFalse(self.sql_entered)
+                self.test_stdout+='LEGEND_DIAGNOSTICS_APPEND_TEST:PROVEN\n'
+                diagnostic['columns'][0]['nullable']=False
+                with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
+                self.assertFalse(self.sql_entered)
+
     def test_payment_only_failure_cannot_be_hidden_by_broad_suffix_success(self):
         original=self.process
         def fail_narrow(command,**kwargs):

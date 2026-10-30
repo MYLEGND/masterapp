@@ -4545,6 +4545,17 @@ def fast_track_scope(paths):
     # Infrastructure/Domain/Shared ProjectReference dependencies. Keep exact
     # ownership: an unknown sibling is not silently admitted.
     shared_server = {
+        # Canonical diagnostics: all four registered .NET hosts; no static Website bytes.
+        'Domain/Entities/RuntimeDiagnosticIncident.cs',
+        'Infrastructure/Diagnostics/RuntimeDiagnosticSanitizer.Performance.cs',
+        'Infrastructure/Diagnostics/RuntimeDiagnosticSanitizer.cs',
+        'Infrastructure/Diagnostics/RuntimeDiagnosticStore.cs',
+        'Infrastructure/Diagnostics/RuntimeDiagnosticsExtensions.cs',
+        'Infrastructure/Diagnostics/RuntimeDiagnosticDependencyCapture.cs',
+        'SHARED/Diagnostics/LegendFailureDiagnosticsExtensions.cs',
+        'SHARED/Diagnostics/RuntimeDiagnosticEvent.cs',
+        'SHARED/Diagnostics/RuntimeDiagnosticPerformance.cs',
+        'SHARED/Diagnostics/RuntimeDiagnosticScope.cs',
         'Domain/Billing/BillingEnums.cs',
         'Domain/Billing/ClientSubscriptionScope.cs',
         'Domain/Billing/TrainingPlanTerms.cs',
@@ -9371,6 +9382,15 @@ def readiness_scope(candidate, approved):
         paths = subprocess.check_output(['git', 'diff', '--no-renames', '--name-only', '-z',
                                          approved, candidate, '--']).decode().split('\0')
         paths = sorted(path for path in paths if path)
+        # The one exact nonpublishing diagnostics bootstrap is evaluated before
+        # provider readiness. This is only a zero-effect scope proof; ordinary
+        # source checks, trusted-tool promotion and SQL rehearsal remain required.
+        if RELEASE_REQUEST_PATH in paths:
+            import release_policy
+            bootstrap = release_policy.diagnostics_bootstrap_scope(approved, candidate)
+            if bootstrap is not None:
+                return dict(bootstrap, state='not-required',
+                            reason='exact_nonpublishing_diagnostics_bootstrap')
         if not paths or RELEASE_REQUEST_PATH in paths:
             return dict(result, reason='release_request_or_empty_scope')
         source = git_show_file(approved, 'scripts/validation-resume.py')
@@ -9494,6 +9514,40 @@ REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS = frozenset({
     ('3fbe9ce6512a2ebb7db43f0f45a5227786094ac6b287ccc3eca40c59da05f6e0',
      'e097be398e774e6226b9a7cb72b41b7eec92eb8a3043af8e16e412381ca0051f')
 })
+
+
+REVIEWED_DIAGNOSTICS_ENTRY = 'de521b85cf05c3b68c66e7e44ccee6b3ae4ce0634aeaf8128c4054811672e362'
+REVIEWED_DIAGNOSTICS_RUNTIME_PAIRS = frozenset({
+    ('2ca97a12dace04280b175b6e5c6adf8b81e8a8a550d46bee745b38a968e9dae7',
+     'bf1be3ad4c22961f4c1503048fc0f1ea6522d40d3c1a46d6fb6b3a36f7d54e1d')
+})
+
+
+def reviewed_diagnostics_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
+    """Exact reviewed nullable diagnostic column; inherited trusted tools remain mandatory."""
+    if ((trusted.get('runtimeIdentity'), current.get('runtimeIdentity')) not in REVIEWED_DIAGNOSTICS_RUNTIME_PAIRS
+        or not current.get('toolIdentity') or current.get('toolIdentity') != trusted.get('toolIdentity')
+        or not current.get('executionIdentity') or current.get('executionIdentity') != trusted.get('executionIdentity')):
+        return False
+    if (not isinstance(contract, dict) or not isinstance(approved_contract, dict)
+        or set(contract) != {'schemaVersion', 'migrations'} or set(approved_contract) != set(contract)
+        or type(contract['schemaVersion']) is not int or contract['schemaVersion'] != 3
+        or type(approved_contract['schemaVersion']) is not int or approved_contract['schemaVersion'] != 3
+        or not isinstance(contract['migrations'], list) or not isinstance(approved_contract['migrations'], list)
+        or not 1 <= len(approved_contract['migrations']) < 10000
+        or len(contract['migrations']) != len(approved_contract['migrations']) + 1
+        or contract['migrations'][:-1] != approved_contract['migrations']):
+        return False
+    previous, entry = approved_contract['migrations'][-1], contract['migrations'][-1]
+    if (not isinstance(previous, dict) or previous.get('id') != '20261026223148_ReceptionistBrowserCreation'
+        or not isinstance(entry, dict) or entry.get('id') != '20261030033900_RuntimeDiagnosticPerformanceEvidence'
+        or entry.get('supported') is not True
+        or hashlib.sha256(json.dumps(entry, sort_keys=True, separators=(',', ':'),
+            ensure_ascii=True, allow_nan=False).encode()).hexdigest() != REVIEWED_DIAGNOSTICS_ENTRY):
+        return False
+    if subprocess.run(['git', 'merge-base', '--is-ancestor', approved, candidate], capture_output=True).returncode:
+        return False
+    return subprocess.run(['git', 'diff', '--quiet', approved, candidate, '--', 'scripts', '.github'], capture_output=True).returncode == 0
 
 
 def reviewed_browser_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
@@ -9655,6 +9709,10 @@ def candidate_migration_contract_proven(candidate, approved, contract, approved_
     trusted = migration_probe_identity(approved, approved)
     rule = 'approved-definitions-exact'
     if current['runtimeIdentity'] != trusted['runtimeIdentity']:
+        if reviewed_diagnostics_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
+            return {'state': 'proven', 'rule': 'approved-prefix-reviewed-diagnostics-entry',
+                    'runtimeIdentity': current['runtimeIdentity'],
+                    'approvedRuntimeIdentity': trusted['runtimeIdentity']}
         if reviewed_browser_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
             return {'state': 'proven', 'rule': 'approved-prefix-reviewed-browser-entry',
                     'runtimeIdentity': current['runtimeIdentity'],

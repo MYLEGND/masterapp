@@ -7,7 +7,7 @@
         ? entry.AttemptedValue : Convert.ToString(fallback, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
     var submittedRevision = Model.SubmittedApply?.ExpectedRevision ?? Model.SubmittedRollback?.ExpectedRevision;
     var selectedVersion = Model.SubmittedRollback is null ? null : Attempt("SourceVersionId", Model.SubmittedRollback.SourceVersionId);
-    var invalidFields = ViewData.ModelState.Where(x => x.Value.Errors.Count > 0).Select(x => x.Key switch
+    var invalidFields = ViewData.ModelState.Where(x => x.Value is { Errors.Count: > 0 }).Select(x => x.Key switch
     {
         "ExpectedRevision" => "review revision", "ReviewHash" => "content review", "ConfirmContentReview" => "review confirmation",
         "SourceVersionId" => "saved version", "RestoreOperatingConfiguration" => "recovery choice", _ => null
