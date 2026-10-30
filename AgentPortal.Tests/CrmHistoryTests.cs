@@ -244,10 +244,24 @@ public sealed partial class CrmHistoryTests
         await db.SaveChangesAsync();
         var nativeRequest = new AgentPortal.Controllers.CrmHistoryController.AssociationCorrection(Guid.NewGuid(), link.Id, "", "Verified native client", native.Id, preserved.AssociationVersion);
         Assert.IsType<Microsoft.AspNetCore.Mvc.NotFoundResult>(await BuildController(db, "other").CorrectAssociation(nativeRequest));
+        var beforeDisabled = await db.Set<CrmHistoryEntry>().CountAsync();
+        var versionBeforeDisabled = preserved.AssociationVersion;
+        var disabled = BuildController(db, "owner", nativeEnabled: false);
+        Assert.Equal(503, Assert.IsType<Microsoft.AspNetCore.Mvc.ObjectResult>(await disabled.CorrectAssociation(nativeRequest)).StatusCode);
+        Assert.Equal("target", preserved.WorkstationLeadId);
+        Assert.Null(preserved.HistoryClientProfileId);
+        Assert.Equal(versionBeforeDisabled, preserved.AssociationVersion);
+        Assert.Equal(beforeDisabled, await db.Set<CrmHistoryEntry>().CountAsync());
         // HttpContextAccessor is ambient; restore the authenticated owner after the denial fixture.
         controller = BuildController(db, "owner");
         Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await controller.CorrectAssociation(nativeRequest));
         Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await controller.CorrectAssociation(nativeRequest));
+        var beforeDisabledRetry = await db.Set<CrmHistoryEntry>().CountAsync();
+        controller = BuildController(db, "owner", nativeEnabled: false);
+        var disabledRetry = Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await controller.CorrectAssociation(nativeRequest));
+        Assert.Equal(CrmHistoryStore.EntryId(CrmHistoryStore.ClientKey(native.Id), "AssociationCorrection", nativeRequest.RequestId.ToString("N")),
+            System.Text.Json.JsonSerializer.SerializeToElement(disabledRetry.Value).GetProperty("id").GetGuid());
+        Assert.Equal(beforeDisabledRetry, await db.Set<CrmHistoryEntry>().CountAsync());
         db.ChangeTracker.Clear();
         preserved = await db.WebsiteLeadIntakeLinks.SingleAsync();
         Assert.Null(preserved.WorkstationLeadId); Assert.Equal(native.Id, preserved.HistoryClientProfileId);
@@ -335,7 +349,7 @@ public sealed partial class CrmHistoryTests
         Assert.Equal("2026-10-30",rows[0].GetProperty("OccurredDate").GetString()); Assert.Equal("unknown",rows[2].GetProperty("TimePrecision").GetString());
     }
 
-    private static AgentPortal.Controllers.CrmHistoryController BuildController(MasterAppDbContext db, string owner, bool restricted = false)
+    private static AgentPortal.Controllers.CrmHistoryController BuildController(MasterAppDbContext db, string owner, bool restricted = false, bool nativeEnabled = true)
     {
         var claims = new System.Collections.Generic.List<System.Security.Claims.Claim>
         { new("oid", owner), new("zoneinfo", "America/New_York") };
@@ -344,7 +358,7 @@ public sealed partial class CrmHistoryTests
         { User = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(claims, "Synthetic")) };
         var agents = new AgentPortal.Services.EffectiveAgentContext(new Microsoft.AspNetCore.Http.HttpContextAccessor { HttpContext = http }, null!,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<AgentPortal.Services.EffectiveAgentContext>.Instance);
-        return new(db, agents, new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(new System.Collections.Generic.Dictionary<string,string?> { ["CrmHistory:NativeClientAssociationsEnabled"] = "true" }).Build(), new AgentPortal.Services.AgentTimeZoneResolver())
+        return new(db, agents, new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(new System.Collections.Generic.Dictionary<string,string?> { ["CrmHistory:NativeClientAssociationsEnabled"] = nativeEnabled.ToString() }).Build(), new AgentPortal.Services.AgentTimeZoneResolver())
         { ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext { HttpContext = http } };
     }
 

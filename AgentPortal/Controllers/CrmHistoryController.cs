@@ -336,10 +336,13 @@ public sealed class CrmHistoryController(MasterAppDbContext db, EffectiveAgentCo
             candidates.AddRange(await query.Where(x => x.OccurredUtc == null && x.OccurredDate == null)
                 .OrderByDescending(x => x.RecordedUtc).ThenBy(x => x.Id).Take(prefix).Select(projection).ToListAsync(HttpContext.RequestAborted));
         }
-        var rows = (recordedTime ? candidates.OrderByDescending(x => x.RecordedUtc).ThenBy(x => x.Id)
+        // SQL Server uniqueidentifier order differs from Guid.CompareTo. Keep
+        // the merge's tie order identical to the database prefix on every page.
+        var idComparer = HistoryIdComparer(db.Database.IsSqlServer());
+        var rows = (recordedTime ? candidates.OrderByDescending(x => x.RecordedUtc).ThenBy(x => x.Id, idComparer)
             : candidates.OrderByDescending(x => EventDay(x.OccurredUtc, x.OccurredDate, zone), StringComparer.Ordinal)
                 .ThenByDescending(x => x.OccurredUtc.HasValue).ThenByDescending(x => x.OccurredUtc)
-                .ThenByDescending(x => x.RecordedUtc).ThenBy(x => x.Id)).Skip(page * 50).Take(50).ToList();
+                .ThenByDescending(x => x.RecordedUtc).ThenBy(x => x.Id, idComparer)).Skip(page * 50).Take(50).ToList();
         var activeHolds = await db.Set<CrmHistoryEntry>().AsNoTracking().Where(x => x.RelationshipKey == relationship.Key &&
             x.Type == "PreservationHold" && x.FiledUtc <= snapshot && !db.Set<CrmHistoryEntry>().Any(release =>
                 release.RelationshipKey == relationship.Key && release.RelatedEntryId == x.Id && release.Type == "PreservationRelease" && release.FiledUtc <= snapshot))
@@ -352,6 +355,11 @@ public sealed class CrmHistoryController(MasterAppDbContext db, EffectiveAgentCo
         var overdueObligations = await outstanding.CountAsync(x => x.DueUtc < snapshot, HttpContext.RequestAborted);
         return Ok(new { count, page, pageSize = 50, snapshotUtc = DateTime.SpecifyKind(snapshot, DateTimeKind.Utc), entries = rows, activeHolds, openObligations, overdueObligations });
     }
+
+    private static readonly IComparer<Guid> SqlHistoryIdComparer = Comparer<Guid>.Create((left, right) =>
+        new System.Data.SqlTypes.SqlGuid(left).CompareTo(new System.Data.SqlTypes.SqlGuid(right)));
+
+    internal static IComparer<Guid> HistoryIdComparer(bool sqlServer) => sqlServer ? SqlHistoryIdComparer : Comparer<Guid>.Default;
 
     private static DateTime DayStart(DateOnly date, TimeZoneInfo zone)
     {
