@@ -9554,7 +9554,7 @@ REVIEWED_CRM_ENTRY = 'b2654e654640d238a5eb818558bd0ce149a5aefc78d3189489aef0b736
 # equal inherited tool/execution identities and the pinned ordered contract.
 REVIEWED_CRM_RUNTIME_PAIRS = frozenset({
     ('37ddb814b51e2ea585fa6bd3f23aa9f25f41cf5064c9ad178102ed8aaaafa08b',
-     'c1e96d7f5c3a3707b1e187cb721cb683264a4179c479c034184b5fdece46f92e')
+     '152c7da0179eb2a0ff3d769c419620aadd47e721b3000d5fe0a720f479e8fd17')
 })
 
 
