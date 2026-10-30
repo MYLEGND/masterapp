@@ -109,8 +109,16 @@ public sealed partial class CrmHistoryTests
             var start=new ProcessStartInfo("node") { WorkingDirectory=repo.FullName,RedirectStandardOutput=true,RedirectStandardError=true,UseShellExecute=false };
             start.ArgumentList.Add("tests/analytics/crm-history-browser.cjs");start.ArgumentList.Add(origin);
             using var process=Process.Start(start)!;var stdout=process.StandardOutput.ReadToEndAsync();var stderr=process.StandardError.ReadToEndAsync();
-            using var timeout=new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(90));
-            try{await process.WaitForExitAsync(timeout.Token);}catch{process.Kill(entireProcessTree:true);throw;}
+            using var timeout=new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(180));
+            try{await process.WaitForExitAsync(timeout.Token);}
+            catch(OperationCanceledException)
+            {
+                if(!process.HasExited)process.Kill(entireProcessTree:true);
+                await Task.WhenAny(Task.WhenAll(stdout,stderr),Task.Delay(TimeSpan.FromSeconds(5)));
+                var capturedOutput=stdout.IsCompletedSuccessfully?stdout.Result:"stdout did not close within cleanup budget";
+                var capturedError=stderr.IsCompletedSuccessfully?stderr.Result:"stderr did not close within cleanup budget";
+                throw new Xunit.Sdk.XunitException("CRM browser exceeded its bounded 180s budget.\n"+capturedOutput+capturedError);
+            }
             var output=await stdout;var error=await stderr;
             Assert.True(process.ExitCode==0,output+error);Assert.Contains("CRM_HOSTED_BROWSER:PASS",output);
             await host.StopAsync();

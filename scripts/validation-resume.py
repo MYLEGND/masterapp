@@ -1337,6 +1337,9 @@ def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
     # Shared serializer preflight; exact paired generation, never arbitrary helpers.
     if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) in {
+        # Reviewed first-CRM Portal publication barrier; unchanged journal and recovery paths.
+        ('2695c73db8082f794e79e4d32f36d034d7c21dbc63912b373cc5bce30e46dcf6',
+         '0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f'),
         # Exact161 retained replacement generation; publication requires independent review.
         ('95564a686c00eef65bd2566be9cfe46a76dc2a5a9bed776ad4b817511a90f6ef',
          '0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f'),

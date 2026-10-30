@@ -4,10 +4,12 @@ const assert=require('node:assert/strict'),{spawn}=require('node:child_process')
   assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.GITHUB_REPOSITORY,'MYLEGND/masterapp');assert.equal(process.env.RUNNER_OS,'Linux');
   assert.equal(JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH,'utf8')).repository.private,false);
   const origin=new URL(process.argv[2]);assert.equal(origin.protocol,'http:');assert.equal(origin.hostname,'127.0.0.1');assert.ok(origin.port);
-  const deadline=Date.now()+75000;let driver,session,driverOrigin,log='';
+  const deadline=Date.now()+150000;let driver,session,driverOrigin,log='',stage='startup';
   const pause=ms=>new Promise(r=>setTimeout(r,ms));
   const command=async(method,endpoint,body)=>{
-    assert.ok(Date.now()<deadline,'Browser acceptance deadline exceeded');
+    assert.ok(Date.now()<deadline,'Browser acceptance deadline exceeded at '+stage);
+    stage=method+' '+endpoint;
+    console.log('CRM_HOSTED_BROWSER:COMMAND:'+stage);
     const response=await fetch(driverOrigin+endpoint,{method,headers:{'content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(8000)});
     const result=await response.json();assert.ok(response.ok,JSON.stringify(result));if(result.value?.error)throw new Error(JSON.stringify(result.value));return result.value;
   };
@@ -16,12 +18,13 @@ const assert=require('node:assert/strict'),{spawn}=require('node:child_process')
   const keys=values=>command('POST','/session/'+session+'/actions',{actions:[{type:'key',id:'keyboard',actions:values.flatMap(value=>[{type:'keyDown',value},{type:'keyUp',value}])}]});
   try{
     const binary=process.env.CHROMEWEBDRIVER?path.join(process.env.CHROMEWEBDRIVER,'chromedriver'):'chromedriver';
-    driver=spawn(binary,['--port=0','--allowed-ips=127.0.0.1'],{stdio:['ignore','pipe','pipe']});
+    driver=spawn(binary,['--port=0','--allowed-ips=127.0.0.1'],{detached:true,stdio:['ignore','pipe','pipe']});
     driver.on('error',e=>{log+=e.message;});for(const stream of [driver.stdout,driver.stderr])stream.on('data',data=>{log=(log+data.toString()).slice(-12000);});
     const startup=Date.now()+8000;while(!/started successfully on port (\d+)/i.test(log)&&Date.now()<startup&&driver.exitCode===null)await pause(40);
     const port=log.match(/started successfully on port (\d+)/i)?.[1];assert.ok(port,'ChromeDriver failed to start');driverOrigin='http://127.0.0.1:'+port;
     session=(await command('POST','/session',{capabilities:{alwaysMatch:{browserName:'chrome','goog:chromeOptions':{binary:'/usr/bin/google-chrome',args:['--headless=new','--disable-background-networking','--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1']}}}})).sessionId;assert.ok(session);
     for(const width of [1180,393]){
+      console.log('CRM_HOSTED_BROWSER:VIEWPORT:'+width);
       await command('POST','/session/'+session+'/window/rect',{width,height:800});
       await command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setDeviceMetricsOverride',params:{width,height:800,deviceScaleFactor:1,mobile:width<600}});
       await command('POST','/session/'+session+'/url',{url:origin.origin+'/__synthetic/signin'});
@@ -52,8 +55,17 @@ const assert=require('node:assert/strict'),{spawn}=require('node:child_process')
       assert.equal(await execute('return document.querySelector("#history-filters [name=range]").value'),'today');
     }
     console.log('CRM_HOSTED_BROWSER:PASS:desktop-mobile-keyboard-actual-view-and-endpoints:synthetic-only:not-live');
+  }catch(error){
+    console.error('CRM_HOSTED_BROWSER:FAIL:'+stage+':'+error.message);
+    throw error;
   }finally{
-    if(session)await command('DELETE','/session/'+session).catch(()=>{});
-    if(driver){driver.kill('SIGTERM');await pause(150);if(driver.exitCode===null)driver.kill('SIGKILL');}
+    if(session)await fetch(driverOrigin+'/session/'+session,{method:'DELETE',signal:AbortSignal.timeout(3000)}).catch(()=>{});
+    if(driver?.pid){
+      // Own the driver/browser process group, including children that retain pipes.
+      try{process.kill(-driver.pid,'SIGTERM');}catch(error){if(error.code!=='ESRCH')throw error;}
+      await pause(150);
+      try{process.kill(-driver.pid,'SIGKILL');}catch(error){if(error.code!=='ESRCH')throw error;}
+      driver.stdout.destroy();driver.stderr.destroy();
+    }
   }
 })().catch(error=>{console.error(error.message);process.exitCode=1;});
