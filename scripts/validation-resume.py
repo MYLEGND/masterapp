@@ -331,6 +331,17 @@ def attested_fast_track_preupload_failure(repository, run, job, attempt, target,
         return False
 
 
+def historical_recovery_workflow_matches(source, current):
+    """Retain one reviewed predecessor for history, never live execution."""
+    return source == current or (
+        hashlib.sha256(current.encode()).hexdigest(),
+        hashlib.sha256(source.encode()).hexdigest(),
+    ) == (
+        '946f12938a47c3009871006969ae9d0ef50e9c0cc67f1df81a202f0a3bacc424',
+        'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd',
+    )
+
+
 def fast_track_recovery_producer(repository, run, token, *, attempt, live=False):
     """Authenticate this separate dispatch, without changing push provenance."""
     revision = run.get('head_sha', '')
@@ -341,7 +352,9 @@ def fast_track_recovery_producer(repository, run, token, *, attempt, live=False)
         or not re.fullmatch('[a-f0-9]{40}', revision)):
         raise ValueError('FAST_TRACK_RECOVERY_PRODUCER_UNPROVEN')
     path = '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW
-    if _release_history_source(repository, revision, path, token) != (Path(__file__).resolve().parent.parent / path).read_text():
+    source = _release_history_source(repository, revision, path, token)
+    current = (Path(__file__).resolve().parent.parent / path).read_text()
+    if source != current and (live or not historical_recovery_workflow_matches(source, current)):
         raise ValueError('FAST_TRACK_RECOVERY_WORKFLOW_CHANGED')
     promotions = fast_track_historical_producers(repository, revision, token)
     if (len(promotions) != 1 or promotions[0].get('head_sha') != revision
@@ -1750,8 +1763,9 @@ def fast_track_execution_history(repository, token, *, clock=time.monotonic, inc
                     path = '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW
                     if (row['path'] != path
                         or not re.fullmatch(r'LEGEND retained recovery original=[1-9][0-9]* application=[a-f0-9]{40}', row.get('display_title', ''))
-                        or _release_history_source(repository, row['head_sha'], path, token)
-                        != (Path(__file__).resolve().parent.parent / path).read_text()):
+                        or not historical_recovery_workflow_matches(
+                            _release_history_source(repository, row['head_sha'], path, token),
+                            (Path(__file__).resolve().parent.parent / path).read_text())):
                         raise RuntimeError('FAST_TRACK_RECOVERY_HISTORY_PRODUCER_UNPROVEN')
                     if include_recovery:
                         producers.append(row)
