@@ -377,8 +377,8 @@ internal static partial class RehearsalFixture
             if (diagnostics) mutations = mutations.Concat(new[] {
                 "ALTER TABLE dbo.RuntimeDiagnosticIncidents DROP COLUMN PerformanceEvidenceJson",
                 "ALTER TABLE dbo.RuntimeDiagnosticIncidents ALTER COLUMN PerformanceEvidenceJson nvarchar(2048) NULL",
-                "UPDATE dbo.RuntimeDiagnosticIncidents SET PerformanceEvidenceJson = '{}'; ALTER TABLE dbo.RuntimeDiagnosticIncidents ALTER COLUMN PerformanceEvidenceJson nvarchar(max) NOT NULL",
-                "ALTER TABLE dbo.RuntimeDiagnosticIncidents ADD DEFAULT ('{}') FOR PerformanceEvidenceJson"
+                "UPDATE dbo.RuntimeDiagnosticIncidents SET PerformanceEvidenceJson = '{{}}'; ALTER TABLE dbo.RuntimeDiagnosticIncidents ALTER COLUMN PerformanceEvidenceJson nvarchar(max) NOT NULL",
+                "ALTER TABLE dbo.RuntimeDiagnosticIncidents ADD DEFAULT ('{{}}') FOR PerformanceEvidenceJson"
             }).ToArray();
             if (browser) mutations = mutations.Concat(BrowserDrift()).ToArray();
             if (management) mutations = mutations.Concat(ManagementDrift(pending.Single(m => m.Id == ManagementMigration))).ToArray();

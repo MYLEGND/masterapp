@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder authorized completing the existing combined diagnostics and Client Activity & Case History release through existing protected controls, including ordinary nonpublishing tool promotion. No deployment, migration, credentials, spending or Production-confirmation bypass is authorized by this tool-only request.",
-  "purpose": "Promote exact reviewed CRM migration observer/rehearsal and mandatory executed-test discovery tools. No application publication or schema mutation. Preserve original bootstrap bounds; feature application release remains separately subject to migration-first admission, full acceptance and required Production confirmation.",
-  "requestId": "masterapp-crm-trusted-tools-20261030-v1",
+  "purpose": "Promote exact reviewed CRM observer/rehearsal, executed-test discovery, read-only compatibility mapping, and first-CRM Portal-before-writers barrier through ordinary validate-only controls. No application publication or schema mutation.",
+  "requestId": "masterapp-crm-trusted-tools-20261030-v2",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -10,7 +10,7 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "c81486bfe0fbca2bd67e87496ccba22ccff4e06b",
-    "sourceRevision": "bb3f1b2b5dae9c72c0a3839ba930bb5fcd15a186",
+    "sourceRevision": "59f734ec54e43189dc497878bed0bb0616b9ebfb",
     "files": {
       ".github/workflows/masterapp-platform-architecture-validation.yml": {
         "mode": "100644",
@@ -42,7 +42,7 @@
       },
       "scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.cs": {
         "mode": "100644",
-        "blob": "fbb3bcad8bc3608bbe41f082b47b7c8cf1c1659d"
+        "blob": "c42d6abe4648591e4e92a12b134fd097f7d497c7"
       },
       "scripts/migration-probe-package.py": {
         "mode": "100644",
@@ -67,6 +67,22 @@
       "scripts/validation-resume.py": {
         "mode": "100644",
         "blob": "7c5741f7c444110c4ddac16808e6b0a05e9f0cb5"
+      },
+      ".github/workflows/parfait-cutover-live-readonly.yml": {
+        "mode": "100644",
+        "blob": "52ed64a56b051a45d8fbd4c744a77b04026fa1e1"
+      },
+      "scripts/deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "c5e8796f050d71e2f2fefdf6c4b96dcd5051f23e"
+      },
+      "scripts/test-deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "49ac8b99355096eeb6a2b8e46db78d2ff320999c"
+      },
+      "scripts/test-parfait-readonly-workflow.py": {
+        "mode": "100644",
+        "blob": "f901fc38a711e5f916a7081299f3ac34940fa064"
       }
     }
   }
