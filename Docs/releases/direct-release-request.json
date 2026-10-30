@@ -1,25 +1,16 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized completing the combined permanent diagnostics and client/case-history release, including this reviewed bounded release-audit diagnostic on 2026-10-30. Preserve all protected validation, exact evidence, fresh baseline/recovery checks and mandatory confirmations. No new costs, credentials, access or production-data changes are authorized by this tool-only promotion.",
-  "purpose": "Promote two reviewed validation-tool files that add bounded failure-only migration-history timing. Preserve existing evidence, deadlines, parallelism and source/runtime/schema. Earlier legacy timing remains unobserved. This promotion does not deploy applications or execute SQL; the retained combined release still requires its existing admission and live verification.",
-  "requestId": "masterapp-migration-history-audit-observation-20261030-v1",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "Founder authorized completing and deploying diagnostics and Client Activity & Case History together in the existing owned release, with independent exact-source acceptance and existing protected controls. No new credentials, spend, security exception or Production-confirmation bypass.",
+  "purpose": "One combined diagnostics and Client Activity & Case History release for Portal, Client, Protect and Parfait. Retain permanent bounded diagnostics; shared append-only Lead/Client history, original dated form answers and separate authorization evidence, protected PDF versions, conversion continuity, filtering, permissions and backfill. Apply reviewed diagnostics then CRM schema migrations through trusted observer, synthetic SQL rehearsal and recovery admission before application publication. Deploy retention-safe Portal first, with exact successful publication and fresh live/idle proof before the other three hosts publish. From the first CRM history filing, Portal rollback must remain CRM-compatible even while native associations are disabled; preserve schema, filed history and protected document storage. Native-client associations remain disabled until all four hosts and protected durable evidence storage are verified and an exact compatible rollback floor is recorded; retain filed schema/evidence on rollback. Preserve unchanged Website deployment and tenant content. Exact A-L route/browser acceptance and mandatory human Production confirmation remain required.",
+  "requestId": "masterapp-combined-audit-continuation-20261030-v1",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait"
+  ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "74de9a6889bd3e55807d187cc1a9fc7e2b23e043",
-    "sourceRevision": "b24de8e8e05d885f48662cfe759480349c691006",
-    "files": {
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "ce2df4d66e39fca954284ff45323144a65a4d1c0"
-      },
-      "scripts/test-validation-resume.py": {
-        "mode": "100644",
-        "blob": "30270e65a9a78e803ffec57f77421f2e94c3d91e"
-      }
-    }
-  }
+  "preserveLiveTargets": false
 }
+
