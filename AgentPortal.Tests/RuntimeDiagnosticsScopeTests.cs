@@ -115,6 +115,86 @@ public sealed class RuntimeDiagnosticsScopeTests
         Assert.Equal("HttpFailure", captured.ErrorName); Assert.Equal("failed", captured.Performance!.Outcome);
         Assert.Equal(503, captured.StatusCode);
     }
+    [Theory]
+    [InlineData("handled")]
+    [InlineData("exception")]
+    [InlineData("abort")]
+    public async Task ServerRequestSuppressionSurvivesAsyncUnwindWithoutLeakingOrAcceptingCallerClaims(string mode)
+    {
+        var sink = new RecordingSink();
+        using var services = new ServiceCollection().AddLogging().AddSingleton<IHostEnvironment>(new Host())
+            .AddSingleton<IRuntimeDiagnosticSink>(sink).BuildServiceProvider();
+        var suppressed = new DefaultHttpContext { RequestServices = services };
+        var ordinary = new DefaultHttpContext { RequestServices = services };
+        ordinary.Request.Headers["X-Legend-Suppress-Diagnostics"] = "true";
+        ordinary.Items["CaptureSuppressedKey"] = true;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var error = new InvalidOperationException("original private fault");
+        var app = new ApplicationBuilder(services); app.UseLegendFailureDiagnostics();
+        app.Run(async current =>
+        {
+            if (ReferenceEquals(current, suppressed))
+            {
+                LegendFailureDiagnosticsExtensions.SuppressRequestCapture(current);
+                using (RuntimeDiagnosticScope.Suppress())
+                { LegendFailureDiagnosticsExtensions.SuppressRequestCapture(current); await Task.Yield(); }
+                entered.SetResult(); await release.Task;
+                if (mode == "exception") throw error;
+                if (mode == "abort") { current.RequestAborted = new CancellationToken(true); throw new OperationCanceledException(current.RequestAborted); }
+            }
+            current.Response.StatusCode = 503;
+        });
+        var pipeline = app.Build();
+        var pending = pipeline(suppressed); await entered.Task;
+        await pipeline(ordinary); Assert.Equal(1, sink.Count);
+        release.SetResult();
+        if (mode == "exception") Assert.Same(error, await Assert.ThrowsAsync<InvalidOperationException>(() => pending));
+        else if (mode == "abort") await Assert.ThrowsAsync<OperationCanceledException>(() => pending);
+        else { await pending; Assert.Equal(503, suppressed.Response.StatusCode); }
+        Assert.Equal(1, sink.Count);
+        await pipeline(new DefaultHttpContext { RequestServices = services });
+        Assert.Equal(2, sink.Count); Assert.Null(RuntimeDiagnosticScope.Current);
+    }
+    [Fact]
+    public async Task SlowRestrictedEarlyRejectionsAndMetadataSuccessNeverPersistButOrdinaryBearerStillCaptures()
+    {
+        var sink = new RecordingSink();
+        var configuration = new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build();
+        var registrations = new ServiceCollection().AddLogging().AddSingleton<IHostEnvironment>(new Host())
+            .AddSingleton<IRuntimeDiagnosticSink>(sink);
+        registrations.AddAuthentication("fixture").AddCookie("fixture");
+        using var services = registrations.BuildServiceProvider();
+        var metadataBearer = new DefaultHttpContext { RequestServices = services };
+        metadataBearer.SetEndpoint(new Endpoint(_ => Task.CompletedTask, new EndpointMetadataCollection(new MetadataMarker()), "metadata"));
+        metadataBearer.Request.Headers.Authorization = "Bearer untrusted";
+        var restricted = new DefaultHttpContext { RequestServices = services };
+        restricted.User = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+            [new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, Infrastructure.Identity.RestrictedAiIdentity.Role)], "cookie"));
+        var ordinary = new DefaultHttpContext { RequestServices = services };
+        ordinary.Request.Headers.Authorization = "Bearer ordinary";
+        var metadataSuccess = new DefaultHttpContext { RequestServices = services };
+        var app = new ApplicationBuilder(services); app.UseLegendFailureDiagnostics();
+        app.Run(async current =>
+        {
+            // Local deterministic threshold exercise only; no production requests.
+            await Task.Delay(10_050);
+            if (ReferenceEquals(current, metadataSuccess))
+            { LegendFailureDiagnosticsExtensions.SuppressRequestCapture(current); current.Response.StatusCode = 200; return; }
+            await new Infrastructure.Identity.RestrictedAiAccessBoundary(next =>
+            {
+                Assert.Same(ordinary, next); next.Response.StatusCode = 503; return Task.CompletedTask;
+            }, configuration).InvokeAsync(current);
+        });
+        var pipeline = app.Build();
+        await Task.WhenAll(pipeline(metadataBearer), pipeline(restricted), pipeline(metadataSuccess), pipeline(ordinary));
+        Assert.Equal(403, metadataBearer.Response.StatusCode); Assert.Equal(403, restricted.Response.StatusCode);
+        Assert.Equal(200, metadataSuccess.Response.StatusCode); Assert.Equal(503, ordinary.Response.StatusCode);
+        Assert.Equal(1, sink.Count); Assert.Equal("HttpFailure", sink.Captured!.ErrorName);
+        Assert.Null(RuntimeDiagnosticScope.Current);
+    }
+    private sealed class MetadataMarker : Infrastructure.Identity.IRestrictedAiReadEndpoint
+    { public bool AllowsRestrictedAi => true; }
     private sealed class RecordingSink : IRuntimeDiagnosticSink
     {
         internal int Count; internal RuntimeDiagnosticEvent? Captured;

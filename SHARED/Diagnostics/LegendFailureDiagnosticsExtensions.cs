@@ -45,7 +45,7 @@ public static class LegendFailureDiagnosticsExtensions
             finally
             {
                 if (outcome == "completed" && context.Response.StatusCode >= 500) outcome = "failed";
-                if (performance is not null && !context.Items.ContainsKey(PerformanceRecordedKey))
+                if (performance is not null && !IsRequestCaptureSuppressed(context) && !context.Items.ContainsKey(PerformanceRecordedKey))
                 {
                     try
                     {
@@ -79,9 +79,16 @@ public static class LegendFailureDiagnosticsExtensions
         });
     }
 
+    // Only trusted server middleware can mark a request. A private object key
+    // cannot be asserted by a URL, header, claim or caller-provided item name.
+    private static readonly object CaptureSuppressedKey = new();
+    public static void SuppressRequestCapture(HttpContext context) => context.Items[CaptureSuppressedKey] = true;
+    private static bool IsRequestCaptureSuppressed(HttpContext context) => context.Items.ContainsKey(CaptureSuppressedKey);
+
     private const string PerformanceRecordedKey = "Legend.RuntimeDiagnostic.PerformanceRecorded";
     private static async Task CapturePerformanceAsync(HttpContext context, RuntimeDiagnosticPerformance performance, string appName)
     {
+        if (IsRequestCaptureSuppressed(context)) return;
         using var suppression = RuntimeDiagnosticScope.Suppress();
         var sink = context.RequestServices.GetService<IRuntimeDiagnosticSink>();
         if (sink is null) return;
@@ -102,6 +109,7 @@ public static class LegendFailureDiagnosticsExtensions
     public static async Task CaptureExceptionAsync(HttpContext context, Exception exception,
         string? appName = null, ILogger? logger = null)
     {
+        if (IsRequestCaptureSuppressed(context)) return;
         // Deliberate request cancellation is expected and must not become a
         // server-defect report. The caller still owns its original response.
         if (exception is OperationCanceledException && context.RequestAborted.IsCancellationRequested) return;

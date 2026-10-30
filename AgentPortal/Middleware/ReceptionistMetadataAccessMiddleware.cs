@@ -12,6 +12,9 @@ public sealed class ReceptionistMetadataAccessMiddleware(RequestDelegate next)
         var marker = context.GetEndpoint()?.Metadata.GetMetadata<ReceptionistMetadataReadAttribute>();
         var restricted = ReceptionistMetadataAccess.Restricted(context.User, configuration);
         if (marker is null && !restricted) { await next(context); return; }
+        // Preserve the metadata-only boundary: even a handled 503 must not
+        // create diagnostic records or enter human fault capture upstream.
+        Shared.Diagnostics.LegendFailureDiagnosticsExtensions.SuppressRequestCapture(context);
         Infrastructure.Identity.RestrictedAiIdentity.DisableStatusReexecution(context);
         context.Response.Headers.CacheControl = "no-store";
         context.Response.Headers.Pragma = "no-cache";

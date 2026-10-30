@@ -56,6 +56,7 @@ public sealed class RestrictedAiAccessBoundary(RequestDelegate next, IConfigurat
             // Metadata uses the existing cookie lane only. Do not trigger JWT
             // discovery/key fetching or authentication callbacks during this pure
             // observation, including mixed-cookie requests.
+            Shared.Diagnostics.LegendFailureDiagnosticsExtensions.SuppressRequestCapture(context);
             RestrictedAiIdentity.DisableStatusReexecution(context);
             context.Response.Headers.CacheControl = "no-store";
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -77,6 +78,7 @@ public sealed class RestrictedAiAccessBoundary(RequestDelegate next, IConfigurat
             }
         }
         if (!principals.Any(x => RestrictedAiIdentity.IsRestricted(x, configuration))) { await next(context); return; }
+        Shared.Diagnostics.LegendFailureDiagnosticsExtensions.SuppressRequestCapture(context);
         RestrictedAiIdentity.DisableStatusReexecution(context);
         context.Response.Headers.CacheControl = "no-store";
         var permitted = context.GetEndpoint()?.Metadata.GetMetadata<IRestrictedAiReadEndpoint>()?.AllowsRestrictedAi == true;
