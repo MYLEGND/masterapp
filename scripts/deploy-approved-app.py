@@ -1868,6 +1868,109 @@ def recovery_summary_record(original_run, original, revision, observer, records)
                 observer=observer, targets=records)
 
 
+def crm_retained_portal_gate(original, inventory, observer, deadline):
+    """Retained recovery uses its durable receipt, not the failed original job."""
+    authority = _RELEASE_AUTHORITY
+    repository = os.environ['GITHUB_REPOSITORY']; token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    revision = original['run']['head_sha']; material = inventory['portal']
+    with authority.evidence_lookup_budget(deadline):
+        success = authority.release_operation_history(repository, material['operationId'], revision, 'portal',
+            observer['runId'], observer['runAttempt'], token, phase='success')
+        if (success is None or success.get('packageDigest') != material['packageDigest']
+            or success.get('applicationRevision') != revision or success.get('target') != 'portal'
+            or len(success.get('deploymentIds', [])) != 1):
+            raise DeploymentReconciliationRequired('CRM_RECOVERY_PORTAL_RECEIPT_UNPROVEN')
+        azure = RecoveryDeadlineAzure(target_azure('portal', None, revision), deadline)
+        rows = read_deployments_bounded(azure, phase='retained CRM Portal-first barrier', deadline=deadline)
+        if (any(row['status'] in (0, 1, 2) for row in rows)
+            or azure.observed_revision() != revision
+            or not any(row['id'] in success['deploymentIds'] and row['status'] == 4 for row in rows)):
+            raise DeploymentReconciliationRequired('CRM_RECOVERY_PORTAL_LIVE_UNPROVEN')
+        authority.assert_fast_track_recovery_live_execution(original['run']['id'], revision, observer)
+
+
+def crm_retained_schema_fresh(proof, original, observer):
+    """No earlier read can silently outlive the canonical 900-second window."""
+    from datetime import datetime, timezone
+    record = proof['record']
+    if (record['originalRun'] != original['run']['id'] or record['applicationRevision'] != original['run']['head_sha']
+        or record['observer'] != observer or type(proof.get('artifactId')) is not int or proof['artifactId'] < 1):
+        raise DeploymentReconciliationRequired('CRM_RECOVERY_SCHEMA_PROOF_CHANGED')
+    for value in (record['observation']['observedUtc'], record['recovery']['observedUtc']):
+        age = (datetime.now(timezone.utc) - _RELEASE_AUTHORITY._completion_time(value)).total_seconds()
+        if not 0 <= age <= 900:
+            raise DeploymentReconciliationRequired('CRM_RECOVERY_SCHEMA_PROOF_STALE')
+
+
+def crm_retained_schema_gate(original, observer, deadline, publisher):
+    """Read-only schema/recovery proof; no bundle or migration executor exists."""
+    authority = _RELEASE_AUTHORITY
+    repository = os.environ['GITHUB_REPOSITORY']; token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    run = original['run']; revision = run['head_sha']
+    if (repository.lower() != 'mylegnd/masterapp' or run['id'] != 41131223973
+        or revision != authority.CRM_PREINTENT_REVISION or set(original['targets']) != {'portal','client','protect','parfait'}):
+        raise DeploymentReconciliationRequired('CRM_RECOVERY_SCHEMA_SCOPE_UNPROVEN')
+    authority.assert_fast_track_recovery_live_execution(run['id'], revision, observer)
+    fast_track_migration_gate(run)
+    # Bind to the independently reviewed attempt3 physical schema success, not
+    # the older SQL intent whose original failed outcome remains preserved.
+    rows = [row for row in original['artifacts'] if row.get('id') == 13017640415]
+    if (len(rows) != 1 or rows[0].get('expired') is not False
+        or rows[0].get('digest') != 'sha256:cbe0bd54e2e652908a19d84779ec10f51246cf3e01e3920f8e59d50c70b2a508'):
+        raise DeploymentReconciliationRequired('CRM_RECOVERY_SCHEMA_RECEIPT_UNPROVEN')
+    receipt = authority._release_history_json(repository, run['id'], rows[0], 'operation.json', verify_digest=True)
+    if (receipt.get('producingRun') != run['id'] or receipt.get('producingAttempt') != 3
+        or receipt.get('applicationRevision') != revision or receipt.get('child') != 'migrations'
+        or receipt.get('phase') != 'success' or receipt.get('observation', {}).get('providerVersion') != 'schema-ready-no-write'):
+        raise DeploymentReconciliationRequired('CRM_RECOVERY_SCHEMA_RECEIPT_UNPROVEN')
+    spec = importlib.util.spec_from_file_location('retained_schema_observer', Path(__file__).with_name('release-migration.py'))
+    migration = importlib.util.module_from_spec(spec); spec.loader.exec_module(migration)
+    audit = migration.history_audit()
+    # No current migration is excluded: recovery is not a SQL owner. All normal
+    # migration producers must be settled, including the complete original run.
+    with authority.evidence_lookup_budget(min(deadline, time.monotonic() + 120)):
+        report = audit.audit(authority, repository, token)
+    if (report.get('completeHistory') is not True or any(
+        row.get('parent') not in {'success','failure','cancelled','skipped'}
+        or row['code'] in audit.BLOCKED_CODES or row['code'] not in audit.STATUS_CODES
+        for row in report['records'])):
+        raise DeploymentReconciliationRequired('CRM_RECOVERY_SCHEMA_HISTORY_UNPROVEN')
+    probe = Path(os.environ['MIGRATION_PROBE_DLL']); connection = migration.connection_string()
+    physical_deadline = min(deadline, time.monotonic() + 90)
+    first = migration.observe(probe, connection, schema_only_activity=True, deadline=physical_deadline)
+    second = migration.observe(probe, connection, schema_only_activity=True, deadline=physical_deadline)
+    for key in ('databaseIdentity','schemaIdentity','baselineIdentity','ready','pendingCount','mutationActivity'):
+        if key not in first or first[key] != second.get(key):
+            raise DeploymentReconciliationRequired('CRM_RECOVERY_SCHEMA_DRIFT')
+    if (second['ready'] is not True or type(second['pendingCount']) is not int or second['pendingCount'] != 0
+        or second['mutationActivity'] != 'settled' or second['schemaIdentity'] != receipt.get('observation', {}).get('schemaIdentity')
+        or second['databaseIdentity'] != '3a055450807aeaa2c6465702b983dc99968329389d7c0ae480c3c72cc3a9ff3b'):
+        raise DeploymentReconciliationRequired('CRM_RECOVERY_SCHEMA_NOT_READY')
+    recovery_phase_remaining(deadline, 420)
+    recovery = migration.production_recovery(second['databaseIdentity'])
+    if (recovery.get('databaseIdentity') != second['databaseIdentity']
+        or recovery.get('restoreWindowVerified') is not True
+        or recovery.get('restoreExecuted') is not False or recovery.get('authorizesMutation') is not False):
+        raise DeploymentReconciliationRequired('CRM_RECOVERY_SCHEMA_NOT_READY')
+    authority.assert_fast_track_recovery_live_execution(run['id'], revision, observer)
+    record = dict(schemaVersion=1, phase='retained-schema-read-only',
+        applicationRevision=revision, producingRun=observer['runId'], producingAttempt=observer['runAttempt'],
+        observation={key:second[key] for key in ('databaseIdentity','schemaIdentity','baselineIdentity',
+            'observedUtc','pendingCount','ready','mutationActivity')}, recovery=recovery,
+        historyIdentity=hashlib.sha256(json.dumps(report,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
+        originalRun=run['id'], originalSuccessArtifact=13017640415, observer=observer,
+        sqlExecutionAuthorized=False)
+    digest = hashlib.sha256(json.dumps(record,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    name = 'legend-retained-schema-proof-' + digest
+    recovery_phase_remaining(deadline, 180)
+    artifact = publisher(name, record)
+    proof = dict(record=record, artifactId=artifact['artifactId'], name=name, contentIdentity=digest)
+    crm_retained_schema_fresh(proof, original, observer)
+    print('CRM_RETAINED_SCHEMA_VERIFIED:' + json.dumps({key:proof[key] for key in
+        ('artifactId','name','contentIdentity')},sort_keys=True),flush=True)
+    return proof
+
+
 def _recover_fast_track(original_run, revision, package_root, observer, deadline, *, prepare_only=False):
     """Resume retained original materials under a separately promoted tool owner."""
     authority = _RELEASE_AUTHORITY
@@ -1903,11 +2006,15 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
     owner = importlib.util.module_from_spec(spec); spec.loader.exec_module(owner)
     os.environ['PACKAGE_PRODUCER_RUN'] = str(original_run)
     publication_deadline = deadline - RECOVERY_FINAL_RESERVE_SECONDS
-    journals = {}; states = {}
+    crm = original_run == 41131223973 and revision == authority.CRM_PREINTENT_REVISION
+    journals = {}; states = {}; key = 'portal' if crm else None
     def publish_phase_record(name, record):
         return owner.publish_record(name, record, timeout=min(180, recovery_phase_remaining(publication_deadline)))
     # Versioned terminal receipt boundary: every enclosed operation is read-only.
     try:
+        if crm:
+            with authority.evidence_lookup_budget(publication_deadline):
+                schema_proof = crm_retained_schema_gate(original, observer, publication_deadline, publish_phase_record)
         with authority.recovery_admission_proof():
             # All targets are validated before the first possible new intent.
             for key, material in materials.items():
@@ -1924,6 +2031,8 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
                 evidence = authority.fast_track_recovery_record_proof(original, material, observer)
                 def before_write(ids, *, key=key, azure=azure):
                     try:
+                        if crm and key != 'portal':
+                            crm_retained_portal_gate(original, inventory, observer, publication_deadline)
                         # A separate historical proof closes with uncached readback
                         # before fresh live ownership/provider checks and any intent.
                         with authority.recovery_admission_proof():
@@ -1943,6 +2052,8 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
                             raise DeploymentDrift('RECOVERY_PROVIDER_BASELINE_CHANGED_BEFORE_INTENT')
                         prepare_protect_retained_replacement(azure, original, materials[key], fresh, package_root)
                         recovery_host_flags(key)
+                        if crm:
+                            crm_retained_schema_fresh(schema_proof, original, observer)
                         recovery_phase_remaining(publication_deadline, RECOVERY_WRITE_RESERVE_SECONDS)
                     except Exception as failure:
                         # This callback has not returned to journal.before_submit:
@@ -1971,6 +2082,10 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
         owner.publish_record(name, record, timeout=min(180, recovery_phase_remaining(deadline - 60)))
         raise
     def recover_target(key):
+        if crm:
+            crm_retained_schema_fresh(schema_proof, original, observer)
+        if crm and key != 'portal':
+            crm_retained_portal_gate(original, inventory, observer, publication_deadline)
         azure, journal = journals[key]
         def read_failure(failure):
             reason = 'provider-read-timeout' if isinstance(failure.__cause__, subprocess.TimeoutExpired) else 'provider-read-unavailable'
@@ -1986,9 +2101,16 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
         return result
     # Same all-target barrier and bounded parallel composition as normal release;
     # five independent 420s observers must not consume five sequential budgets.
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(journals))) as executor:
-        futures = {executor.submit(contextvars.copy_context().run, recover_target, key): key for key in journals}
-        results = {futures[future]: future.result() for future in concurrent.futures.as_completed(futures)}
+    results = {}
+    if crm:
+        results['portal'] = recover_target('portal')
+        crm_retained_portal_gate(original, inventory, observer, publication_deadline)
+        with authority.evidence_lookup_budget(publication_deadline):
+            schema_proof = crm_retained_schema_gate(original, observer, publication_deadline, publish_phase_record)
+    remaining = [key for key in journals if key not in results]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(remaining))) as executor:
+        futures = {executor.submit(contextvars.copy_context().run, recover_target, key): key for key in remaining}
+        results.update({futures[future]: future.result() for future in concurrent.futures.as_completed(futures)})
     with authority.evidence_lookup_budget(min(deadline - 240, time.monotonic() + 90)):
         with authority.recovery_admission_proof():
             authority._completion_original_unchanged(repository, original['run'], token)

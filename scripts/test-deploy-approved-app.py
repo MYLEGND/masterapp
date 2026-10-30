@@ -35,6 +35,100 @@ def prepare_supported_azure(azure):
     return azure
 
 
+class CrmRetainedSchemaTests(unittest.TestCase):
+    def setUp(self):
+        from types import SimpleNamespace
+        from datetime import datetime,timezone,timedelta
+        self.stack=ExitStack();self.addCleanup(self.stack.close)
+        self.authority=deploy._RELEASE_AUTHORITY
+        self.revision=self.authority.CRM_PREINTENT_REVISION
+        self.observer=dict(runId=20,runAttempt=1,jobId=30,toolRevision='b'*40,promotionRunId=19)
+        self.original=dict(run=dict(id=41131223973,head_sha=self.revision),targets=['portal','client','protect','parfait'],
+            artifacts=[dict(id=13017640415,expired=False,digest='sha256:cbe0bd54e2e652908a19d84779ec10f51246cf3e01e3920f8e59d50c70b2a508')])
+        now=datetime.now(timezone.utc)
+        self.observation=dict(databaseIdentity='3a055450807aeaa2c6465702b983dc99968329389d7c0ae480c3c72cc3a9ff3b',
+            schemaIdentity='0e4674714d917c5f2dbfa3cd42f2de954e7b3f310c8322c08ec0f427d3615451',baselineIdentity='c'*64,
+            observedUtc=now.isoformat(),pendingCount=0,ready=True,mutationActivity='settled')
+        self.recovery=dict(databaseIdentity=self.observation['databaseIdentity'],observedUtc=now.isoformat(),
+            restorePointUtc=(now-timedelta(minutes=15)).isoformat(),earliestRestoreUtc=(now-timedelta(days=2)).isoformat(),
+            retentionDays=7,restoreWindowVerified=True,restoreExecuted=False,authorizesMutation=False)
+        self.receipt=dict(producingRun=41131223973,producingAttempt=3,applicationRevision=self.revision,
+            child='migrations',phase='success',observation=dict(schemaIdentity=self.observation['schemaIdentity'],providerVersion='schema-ready-no-write'))
+        self.report=dict(completeHistory=True,records=[dict(parent='failure',code='settled')])
+        self.audit=SimpleNamespace(audit=Mock(return_value=self.report),BLOCKED_CODES=set(),STATUS_CODES={'settled'})
+        self.module=SimpleNamespace(history_audit=lambda:self.audit,connection_string=Mock(return_value='test'),
+            observe=Mock(side_effect=lambda *a,**k:dict(self.observation)),production_recovery=Mock(return_value=self.recovery))
+        self.publisher=Mock(return_value=dict(artifactId=42))
+        self.stack.enter_context(patch.dict(os.environ,GITHUB_REPOSITORY='MYLEGND/masterapp',GH_TOKEN='test',MIGRATION_PROBE_DLL='readonly.dll'))
+        self.stack.enter_context(patch.object(self.authority,'assert_fast_track_recovery_live_execution'))
+        self.stack.enter_context(patch.object(self.authority,'_release_history_json',return_value=self.receipt))
+        self.stack.enter_context(patch.object(deploy,'fast_track_migration_gate'))
+        self.stack.enter_context(patch.object(deploy.importlib.util,'spec_from_file_location',return_value=SimpleNamespace(loader=Mock())))
+        self.stack.enter_context(patch.object(deploy.importlib.util,'module_from_spec',return_value=self.module))
+
+    def call(self):
+        return deploy.crm_retained_schema_gate(self.original,self.observer,deploy.time.monotonic()+1200,self.publisher)
+
+    def test_paired_physical_reads_and_durable_readback_before_proof(self):
+        proof=self.call();self.assertEqual(proof['artifactId'],42)
+        self.assertEqual(self.module.observe.call_count,2)
+        self.audit.audit.assert_called_once_with(self.authority,'MYLEGND/masterapp','test')
+        for call in self.module.observe.call_args_list:self.assertTrue(call.kwargs['schema_only_activity'])
+        name,record=self.publisher.call_args.args
+        result=subprocess.run(['node',str(ROOT/'release-artifacts/transport.cjs')],input=json.dumps(dict(mode='validate',name=name,record=record)),text=True,capture_output=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        record['sqlExecutionAuthorized']=True
+        result=subprocess.run(['node',str(ROOT/'release-artifacts/transport.cjs')],input=json.dumps(dict(mode='validate',name=name,record=record)),text=True,capture_output=True)
+        self.assertEqual(result.returncode,2)
+
+    def test_pending_drift_active_wrong_database_and_failed_receipt_block(self):
+        for field,value in [('pendingCount',1),('ready',False),('mutationActivity','active'),('databaseIdentity','f'*64),('schemaIdentity','f'*64)]:
+            old=self.observation[field];self.observation[field]=value
+            with self.subTest(field=field),self.assertRaises(deploy.DeploymentReconciliationRequired):self.call()
+            self.observation[field]=old
+        self.publisher.assert_not_called()
+        self.publisher.side_effect=RuntimeError('readback unavailable')
+        with self.assertRaisesRegex(RuntimeError,'readback unavailable'):self.call()
+
+    def test_stale_or_changed_scope_proof_blocks_before_intent(self):
+        proof=self.call();proof['record']['observation']['observedUtc']='2020-01-01T00:00:00Z'
+        with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired,'STALE'):
+            deploy.crm_retained_schema_fresh(proof,self.original,self.observer)
+        proof['record']['observer']=dict(self.observer,runAttempt=2)
+        with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired,'CHANGED'):
+            deploy.crm_retained_schema_fresh(proof,self.original,self.observer)
+
+    def test_incomplete_or_active_history_blocks_without_sql_reads(self):
+        self.report['completeHistory']=False
+        with self.assertRaises(deploy.DeploymentReconciliationRequired):self.call()
+        self.report['completeHistory']=True;self.report['records'][0]['parent']=None
+        with self.assertRaises(deploy.DeploymentReconciliationRequired):self.call()
+        self.module.observe.assert_not_called();self.publisher.assert_not_called()
+
+
+class CrmRetainedPortalTests(unittest.TestCase):
+    def test_receipt_and_matching_completed_deployment_are_both_required(self):
+        authority=deploy._RELEASE_AUTHORITY;revision='a'*40
+        original=dict(run=dict(id=10,head_sha=revision));observer=dict(runId=20,runAttempt=1)
+        inventory=dict(portal=dict(operationId='b'*64,packageDigest='c'*64))
+        success=dict(packageDigest='c'*64,applicationRevision=revision,target='portal',deploymentIds=['new'])
+        azure=Mock();azure.observed_revision.return_value=revision
+        with patch.dict(os.environ,GITHUB_REPOSITORY='o/r',GH_TOKEN='test'), \
+             patch.object(authority,'release_operation_history',return_value=success) as history, \
+             patch.object(authority,'assert_fast_track_recovery_live_execution'), \
+             patch.object(deploy,'target_azure',return_value=azure), \
+             patch.object(deploy,'read_deployments_bounded',return_value=[row('new',4)]) as rows:
+            call=lambda:deploy.crm_retained_portal_gate(original,inventory,observer,deploy.time.monotonic()+120)
+            call();azure.submit.assert_not_called()
+            for value in [[],[row('other',4)],[row('new',1)],[row('new',4),row('busy',0)]]:
+                rows.return_value=value
+                with self.assertRaises(deploy.DeploymentReconciliationRequired):call()
+            rows.return_value=[row('new',4)];azure.observed_revision.return_value='d'*40
+            with self.assertRaises(deploy.DeploymentReconciliationRequired):call()
+            history.return_value=None
+            with self.assertRaises(deploy.DeploymentReconciliationRequired):call()
+
+
 class CrmPortalFirstGateTests(unittest.TestCase):
     migration = 'Infrastructure/Migrations/20261030070000_CrmRelationshipHistory.cs'
     def setUp(self):

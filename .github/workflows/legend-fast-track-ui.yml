@@ -550,6 +550,10 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       ORIGINAL_RUN: ${{ inputs.original_run }}
       APPLICATION_REVISION: ${{ inputs.application_revision }}
+      RELEASE_RESOURCE_GROUP: masterapp-rg
+      RELEASE_DATABASE_SERVER_RESOURCE_ID: /subscriptions/a543b54e-8a42-4a4b-bd4d-bc13573b1c48/resourceGroups/MasterApp-Data-RG/providers/Microsoft.Sql/servers/masterapp-sql-prod-1221
+      DATABASE_AUTHORITY: masterapp-protect
+      MIGRATION_PROBE_DLL: /tmp/retained-schema-probe/MigrationReleaseProbe.dll
     steps:
       - name: Check out promoted recovery tool authority
         uses: actions/checkout@v4
@@ -562,6 +566,16 @@ jobs:
           node-version: 24
       - name: Validate original authority and restore retained packages without rebuilding
         run: python3 scripts/deploy-approved-app.py --recover-fast-track "$ORIGINAL_RUN" --recovery-revision "$APPLICATION_REVISION" --package-root "$RUNNER_TEMP/retained-recovery" --prepare-recovery-only
+      - name: Install read-only schema observer runtime
+        if: inputs.original_run == '41131223973' && inputs.application_revision == '3243221ae661b53d60f78cc2dab108a93bad7632'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build read-only retained schema observer without application packages
+        if: inputs.original_run == '41131223973' && inputs.application_revision == '3243221ae661b53d60f78cc2dab108a93bad7632'
+        run: |
+          dotnet publish scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj -c Release --nologo \
+            -m:1 -nr:false -p:UseSharedCompilation=false -o /tmp/retained-schema-probe
       - name: Install canonical durable evidence transport
         run: npm ci --prefix scripts/release-artifacts --ignore-scripts --no-audit --no-fund
       - name: Prepare canonical durable evidence transport
@@ -574,3 +588,4 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Recover exact retained application bytes
         run: python3 scripts/deploy-approved-app.py --recover-fast-track "$ORIGINAL_RUN" --recovery-revision "$APPLICATION_REVISION" --package-root "$RUNNER_TEMP/retained-recovery"
+

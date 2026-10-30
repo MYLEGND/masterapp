@@ -244,6 +244,37 @@ def _fast_track_preupload_log_proven(log, revision, step, *, protect_baseline=Fa
         and any('Process completed with exit code 1.' in line for line in events))
 
 
+# Exact terminal evidence from the combined release. These jobs failed before
+# reconcile/submit: Portal in journal history, siblings at the Portal barrier.
+# Full authenticated log digests bind the reviewed traces, including checkout,
+# timestamps and cleanup. Unknown attempts and changed bytes remain blocked.
+CRM_PREINTENT_REVISION = '3243221ae661b53d60f78cc2dab108a93bad7632'
+CRM_PREINTENT_SOURCE = {
+    '.github/workflows/legend-fast-track-ui.yml': '2483f64db179d31d74603ddd7c399f9abd25f9b1abc40198fb7c9ebb9d278c4e',
+    'scripts/deploy-approved-app.py': '2695c73db8082f794e79e4d32f36d034d7c21dbc63912b373cc5bce30e46dcf6',
+    'scripts/release-operation-evidence.py': '0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f',
+    'scripts/validation-resume.py': '90e978cad490611a4aaf6305b9c3595a846e059af03a2c611180c693c0a4a401',
+}
+CRM_PREINTENT_LOGS = {
+    (3, 'portal', 124345165817): '620137514c9db57330a489279bd488abd5d67b96826a133cbc29aa360aaa91d0',
+    (3, 'client', 124345165792): '4d7d41494a0e02e17398a05816f2bf0e11f3ad7f677ed69def724cee3ef8b717',
+    (3, 'protect', 124345165761): '37d31fdfd345893195db65b2965fbb84c8d75bd8f03b5a43c172d3eddad76d12',
+    (3, 'parfait', 124345165749): 'da6a47aeb6a0275c2734e988e0735b08cb42b7ffedefe584289a76229ffb7609',
+    (4, 'portal', 124357989085): 'b23f58e726a49d65b9f5faad0ebaeb826ec8c945b504946728f43f7dfdd2874c',
+    (4, 'client', 124357989034): 'bb0a694d557c1c4940d818d43bf4a209e5c8e49f93f50b5695458c00034aabf8',
+    (4, 'protect', 124357989328): '71d4ed3b52cd5c01a2e31274f461b0de1698c6f335bc5dca51a1fa194ef1a723',
+    (4, 'parfait', 124357989094): '155916067e44e520f91db2e66de3865a7cf270d20d206c4d5d88b3211913a9ae',
+}
+
+
+def crm_preintent_log_digest(repository, run, job, attempt, target):
+    if (repository.lower() != 'mylegnd/masterapp' or run.get('id') != 41131223973
+        or run.get('head_sha') != CRM_PREINTENT_REVISION or run.get('run_attempt') != 4
+        or run.get('status') != 'completed' or run.get('conclusion') != 'failure'):
+        return None
+    return CRM_PREINTENT_LOGS.get((attempt, target, job.get('id')))
+
+
 def attested_fast_track_preupload_failure(repository, run, job, attempt, target, operation_id, token):
     """Generic reviewed pre-upload read failure; unknown generations stay held."""
     import tempfile
@@ -258,16 +289,17 @@ def attested_fast_track_preupload_failure(repository, run, job, attempt, target,
             or job.get('status') != 'completed' or job.get('conclusion') != 'failure'):
             return False
         step = _completion_step(job, 'Publish or reconcile exact application bytes', conclusions=('failure',))
+        crm_digest = crm_preintent_log_digest(repository, run, job, attempt, target)
         fresh_serializer = (repository.lower() == 'mylegnd/masterapp' and target == 'protect'
             and run['id'] == 40703908687 and run['run_attempt'] == attempt == 1
             and revision == '9af32d2e6bf608cb790eed59a43e90cdd9d877e6' and job['id'] == 122875752175)
         if fresh_serializer and run.get('conclusion') != 'failure':
             return False
         sources = {path: hashlib.sha256(_release_history_source(repository, revision, path, token).encode()).hexdigest()
-                   for path in (FRESH_PROTECT_PREINTENT_SOURCE if fresh_serializer else FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS[0])}
+                   for path in (CRM_PREINTENT_SOURCE if crm_digest else FRESH_PROTECT_PREINTENT_SOURCE if fresh_serializer else FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS[0])}
         protect_baseline = (target == 'protect' and run['id'] == PROTECT_RECOVERY_RUN
             and revision == PROTECT_RECOVERY_REVISION and sources == PROTECT_PREUPLOAD_SOURCE)
-        if (sources != FRESH_PROTECT_PREINTENT_SOURCE if fresh_serializer else
+        if (sources != CRM_PREINTENT_SOURCE if crm_digest else sources != FRESH_PROTECT_PREINTENT_SOURCE if fresh_serializer else
             sources not in FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS and not protect_baseline):
             return False
         inventory = _completion_inventory(api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token), 'artifacts')
@@ -290,7 +322,10 @@ def attested_fast_track_preupload_failure(repository, run, job, attempt, target,
         identity = dict(target=target, applicationRevision=revision, packageDigest=digest)
         if hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest() != operation_id:
             return False
-        return _fast_track_preupload_log_proven(_release_job_log(repository, job['id'], token), revision, step,
+        log = _release_job_log(repository, job['id'], token)
+        if crm_digest:
+            return hashlib.sha256('\n'.join(log.splitlines()).encode()).hexdigest() == crm_digest
+        return _fast_track_preupload_log_proven(log, revision, step,
             protect_baseline=protect_baseline, fresh_serializer=fresh_serializer)
     except (KeyError, TypeError, ValueError, RuntimeError, OSError, UnicodeError, zipfile.BadZipFile, subprocess.SubprocessError):
         return False
@@ -7579,8 +7614,14 @@ def fast_track_completion_original(repository, original_run, revision, token):
     expected_names = {'Select exact affected applications', 'Admit exact validated fast-track source',
         'Reconcile production schema before publication', 'Publish verified website routing'}
     expected_names |= {'Affected App Deploy — ' + fast_track_target_label(key) for key in selected}
-    for jobs in attempts.values():
-        if (len(jobs) != len(expected_names) or {job['name'] for job in jobs} != expected_names
+    for attempt, jobs in attempts.items():
+        attempt_names = expected_names
+        if (repository.lower() == 'mylegnd/masterapp' and original_run == 41131223973
+            and revision == CRM_PREINTENT_REVISION and run.get('run_attempt') == 4
+            and run.get('conclusion') == 'failure' and attempt in (1, 2) and fast_track_skipped_matrix(jobs)):
+            attempt_names = {name for name in expected_names if not name.startswith('Affected App Deploy — ')} | {
+                'Affected App Deploy — ${{ matrix.target }}'}
+        if (len(jobs) != len(attempt_names) or {job['name'] for job in jobs} != attempt_names
             or any(job['status'] != 'completed' for job in jobs)):
             raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_JOB_SCOPE_UNPROVEN')
     latest = {job['name']: job for job in attempts[run['run_attempt']]}
@@ -7635,6 +7676,30 @@ def fast_track_completion_original(repository, original_run, revision, token):
         mark = _COMPLETION_BASELINE_PROVING.set(_COMPLETION_BASELINE_PROVING.get() | {proof_key})
         try:
             for key in selected:
+                if (repository.lower() == 'mylegnd/masterapp' and original_run == 41131223973
+                    and revision == CRM_PREINTENT_REVISION and run.get('run_attempt') == 4
+                    and run.get('conclusion') == 'failure'):
+                    retained = fast_track_recovery_material(repository, original, key, token)
+                    if retained['originalIntent'] is None:
+                        digest = fast_track_recovery_package_digest(repository, original, retained, key, token)
+                        operation = retained_operation_id(key, revision, digest)
+                        # Prove only this original's complete attempt history.
+                        # Repository-wide recovery history still runs before any
+                        # new intent; recursing through it here would reject the
+                        # legitimate new recovery receipts being authenticated.
+                        for attempt, jobs in attempts.items():
+                            if attempt in (1, 2) and fast_track_skipped_matrix(jobs):
+                                continue
+                            owners = [job for job in jobs if job.get('name') ==
+                                      'Affected App Deploy — ' + fast_track_target_label(key)]
+                            if len(owners) != 1:
+                                raise ValueError('CRM_RECOVERY_ORIGINAL_OWNER_UNPROVEN')
+                            job = owners[0]
+                            if job.get('conclusion') == 'skipped':
+                                continue
+                            if not attested_fast_track_preupload_failure(repository, run, job, attempt, key, operation, token):
+                                raise ValueError('CRM_RECOVERY_ORIGINAL_NONENTRY_UNPROVEN')
+                        continue
                 material = fast_track_completion_material(repository, original, key, token)
                 if material['intent']['baseline'] != selection_baseline:
                     raise ValueError('FAST_TRACK_COMPLETION_CARRIED_BASELINE_INTENT_MISMATCH')

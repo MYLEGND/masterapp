@@ -234,6 +234,32 @@ function supersessionRecord(record) {
 }
 
 function validateRecord(name, record) {
+  if (/^legend-retained-schema-proof-[a-f0-9]{64}$/.test(name)) {
+    const canonical = value => Array.isArray(value) ? value.map(canonical) :
+      value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key,canonical(value[key])])) : value;
+    const keys='schemaVersion,phase,originalRun,applicationRevision,producingRun,producingAttempt,observer,originalSuccessArtifact,observation,historyIdentity,recovery,sqlExecutionAuthorized';
+    if (!record || !exactKeys(record,keys) || JSON.stringify(record).length>32768 || record.schemaVersion!==1 ||
+        record.phase!=='retained-schema-read-only' || record.originalRun!==41131223973 ||
+        record.applicationRevision!=='3243221ae661b53d60f78cc2dab108a93bad7632' || record.originalSuccessArtifact!==13017640415 ||
+        !positive(record.producingRun) || !positive(record.producingAttempt) || record.producingRun===record.originalRun ||
+        !recoveryObserver(record.observer,record.producingRun,record.producingAttempt) ||
+        !sha(record.historyIdentity,64) || record.sqlExecutionAuthorized!==false)
+      throw new Error('Invalid retained schema proof');
+    const o=record.observation,r=record.recovery;
+    if (!o || !exactKeys(o,'databaseIdentity,schemaIdentity,baselineIdentity,observedUtc,pendingCount,ready,mutationActivity') ||
+        o.databaseIdentity!=='3a055450807aeaa2c6465702b983dc99968329389d7c0ae480c3c72cc3a9ff3b' ||
+        o.schemaIdentity!=='0e4674714d917c5f2dbfa3cd42f2de954e7b3f310c8322c08ec0f427d3615451' ||
+        !sha(o.baselineIdentity,64) || !Number.isFinite(Date.parse(o.observedUtc)) ||
+        o.pendingCount!==0 || o.ready!==true || o.mutationActivity!=='settled' ||
+        !r || !exactKeys(r,'databaseIdentity,observedUtc,restorePointUtc,earliestRestoreUtc,retentionDays,restoreWindowVerified,restoreExecuted,authorizesMutation') ||
+        r.databaseIdentity!==o.databaseIdentity || !['observedUtc','restorePointUtc','earliestRestoreUtc'].every(k=>Number.isFinite(Date.parse(r[k]))) ||
+        Date.parse(r.earliestRestoreUtc)>Date.parse(r.restorePointUtc) || Date.parse(r.restorePointUtc)>=Date.parse(r.observedUtc) ||
+        !Number.isSafeInteger(r.retentionDays) || r.retentionDays<7 || r.restoreWindowVerified!==true ||
+        r.restoreExecuted!==false || r.authorizesMutation!==false ||
+        name!==`legend-retained-schema-proof-${crypto.createHash('sha256').update(JSON.stringify(canonical(record))).digest('hex')}`)
+      throw new Error('Invalid retained schema observation');
+    return;
+  }
   const targetHold = /^legend-retained-target-preintent-[a-f0-9]{64}$/.test(name);
   const preflight = /^legend-retained-preflight-nonentry-[a-f0-9]{64}$/.test(name);
   const retained = /^legend-retained-recovery-success-[a-f0-9]{64}$/.test(name);
