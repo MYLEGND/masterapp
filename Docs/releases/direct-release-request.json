@@ -10,11 +10,11 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "3243221ae661b53d60f78cc2dab108a93bad7632",
-    "sourceRevision": "37804ec701a2e478f8ec3ab2785ba01f50774848",
+    "sourceRevision": "9fc3d4906f404bb515402bd276ba15d7cd781363",
     "files": {
       ".github/workflows/legend-fast-track-ui.yml": {
         "mode": "100644",
-        "blob": "a35b1e25e3268a011c776006b5f779f328b7caf8"
+        "blob": "90f0dec8147b069428abf57fe21fef18e016313f"
       },
       "scripts/deploy-approved-app.py": {
         "mode": "100644",
