@@ -10225,6 +10225,46 @@ def require_readiness(repository, candidate, *, event=None, clock=time.monotonic
         sleep(min(10, max(0, deadline - clock())))
 
 
+SOURCE_VALIDATION_VISIBILITY_WAIT_SECONDS = 300
+SOURCE_VALIDATION_VISIBILITY_MAX_OBSERVATIONS = 61
+
+
+def _await_source_validation_visibility(repository, expected, token, name, *, clock, sleep):
+    """Read-only lifecycle synchronization; return no evidence or admission.
+
+    Provider lifecycle rows can lag the executing runner by several minutes.
+    This bounded source-only phase never accepts queued/unassigned ownership.
+    Its caller must collect a separate fresh proof under the unchanged 30s gate.
+    """
+    deadline = clock() + SOURCE_VALIDATION_VISIBILITY_WAIT_SECONDS
+    with evidence_lookup_budget(deadline, clock=clock):
+        for observation in range(SOURCE_VALIDATION_VISIBILITY_MAX_OBSERVATIONS):
+            if clock() >= deadline:
+                break
+            run = _live_freshness_read(api_get, repository, f"actions/runs/{expected['id']}", token,
+                endpoint='current_run', observation=observation + 1)
+            if (run.get('status') not in {'in_progress', 'queued'} or run.get('conclusion') is not None
+                or any(run.get(key) != value for key, value in expected.items())
+                or run.get('head_repository', {}).get('full_name', '').lower() != repository.lower()):
+                raise ValueError('FAST_TRACK_SOURCE_VALIDATION_IDENTITY_MISMATCH')
+            path = f"actions/runs/{expected['id']}/attempts/{expected['run_attempt']}/jobs?per_page=100"
+            def read_jobs(repo, requested_path, credential):
+                if repo == repository and requested_path == path:
+                    return _live_freshness_read(api_get, repo, requested_path, credential,
+                        endpoint='current_attempt_jobs', observation=observation + 1)
+                return api_get(repo, requested_path, credential)
+            job = _exact_active_job(repository, run, token, name, error=ValueError,
+                code='FAST_TRACK_SOURCE_VALIDATION_ACTIVE_JOB_UNPROVEN', read=read_jobs)
+            evidence_remaining(1)
+            _live_identity_diagnostic('source_visibility_ready' if job is not None else 'source_visibility_pending',
+                run=run, expected_job=name, observation=observation + 1)
+            if job is not None:
+                return
+            if observation + 1 < SOURCE_VALIDATION_VISIBILITY_MAX_OBSERVATIONS and clock() < deadline:
+                sleep(evidence_remaining(min(5, deadline - clock())))
+    raise ValueError('FAST_TRACK_SOURCE_VALIDATION_VISIBILITY_UNPROVEN:pending_deadline_exhausted')
+
+
 def fast_track_source_validation_scope(args, *, clock=time.monotonic, sleep=time.sleep):
     """Separate development pushes from authenticated fast-track PR validation.
 
@@ -10248,8 +10288,11 @@ def fast_track_source_validation_scope(args, *, clock=time.monotonic, sleep=time
         path='.github/workflows/' + args.workflow, head_sha=args.current_sha)
     if args.event == 'push':
         expected['head_branch'] = args.head_branch
+    name = _source_validation_job_name(args.repository, args.current_sha, args.workflow, token)
+    _await_source_validation_visibility(args.repository, expected, token, name, clock=clock, sleep=sleep)
+    # Discard synchronization observations and re-read every live ownership field.
     run, _ = _observe_live_workflow(args.repository, expected, token,
-        queued_job=lambda: _source_validation_job_name(args.repository, args.current_sha, args.workflow, token),
+        queued_job=lambda: name, require_job=True,
         error=ValueError, code='FAST_TRACK_SOURCE_VALIDATION_IDENTITY_MISMATCH',
         job_code='FAST_TRACK_SOURCE_VALIDATION_ACTIVE_JOB_UNPROVEN', clock=clock, sleep=sleep)
     if args.event == 'push':
