@@ -13,6 +13,8 @@ import ast
 import functools
 import concurrent.futures
 import fnmatch
+import email.utils
+import datetime
 import hashlib
 import http.client
 import json
@@ -5914,6 +5916,56 @@ def api_get(repository: str, path: str, token: str):
     return _recovery_proof_read(repository, path, token)
 
 
+_LIVE_FRESHNESS = contextvars.ContextVar("live_evidence_freshness", default=None)
+
+
+def _live_freshness_read(read, repository, path, token, *, endpoint, observation):
+    # Set only around the two exact live observer reads, never source/history reads.
+    marker = _LIVE_FRESHNESS.set((repository, path, endpoint, observation))
+    try:
+        return read(repository, path, token)
+    finally:
+        _LIVE_FRESHNESS.reset(marker)
+
+
+def _freshness_headers(headers):
+    """Fixed, bounded metadata only. Never return arbitrary provider header text."""
+    result = {}
+    for name in ('Date', 'Age', 'Cache-Control'):
+        value = headers.get(name) if headers is not None else None
+        state = 'absent' if value is None else 'invalid'
+        if isinstance(value, str) and 0 < len(value) <= 512:
+            if name == 'Date':
+                try:
+                    parsed = email.utils.parsedate_to_datetime(value)
+                    if parsed.tzinfo is not None:
+                        result['dateUtc'] = parsed.astimezone(datetime.timezone.utc).isoformat()
+                        state = 'valid'
+                except (ValueError, TypeError, OverflowError):
+                    pass
+            elif name == 'Age':
+                if re.fullmatch(r'[0-9]{1,10}', value) and int(value) <= 2147483647:
+                    result['ageSeconds'] = int(value)
+                    state = 'valid'
+            else:
+                directives = {part.strip().split('=', 1)[0].lower() for part in value.split(',')}
+                result['cacheDirectives'] = {key: key in directives for key in
+                    ('no-cache', 'no-store', 'private', 'public', 'must-revalidate', 'max-age', 's-maxage')}
+                state = 'valid'
+        result[{'Date': 'dateState', 'Age': 'ageState', 'Cache-Control': 'cacheState'}[name]] = state
+    return result
+
+
+def _report_live_freshness(context, headers, attempt):
+    # Observability must not replace the original transport/parser/gate outcome.
+    try:
+        print(json.dumps({'liveEvidenceFreshness': dict(endpoint=context[2],
+            observation=context[3], transportAttempt=attempt,
+            **_freshness_headers(headers))}, sort_keys=True))
+    except Exception:
+        pass
+
+
 def _api_get_uncached(repository: str, path: str, token: str, *, max_attempts=3):
     if type(max_attempts) is not int or max_attempts not in (1, 3):
         raise ValueError('Invalid evidence attempt limit')
@@ -5927,14 +5979,24 @@ def _api_get_uncached(repository: str, path: str, token: str, *, max_attempts=3)
             "User-Agent": "legend-validation-resume/1.0",
         },
     )
+    context = _LIVE_FRESHNESS.get()
+    context = context if context and context[:2] == (repository, path) else None
+    if context:
+        request.add_header('Cache-Control', 'no-cache')
     for attempt in range(max_attempts):
+        reported = False
         try:
             timeout = evidence_remaining(30)
             _recovery_efficiency_add(githubJsonTransportAttempts=1,
                 historyPageTransportAttempts=int(path.startswith('actions/runs?branch=')))
             with urllib.request.urlopen(request, timeout=timeout) as response:
+                if context:
+                    _report_live_freshness(context, getattr(response, 'headers', None), attempt + 1)
+                    reported = True
                 return json.load(response)
         except (TimeoutError, urllib.error.URLError, http.client.RemoteDisconnected, http.client.IncompleteRead) as exc:
+            if context and not reported:
+                _report_live_freshness(context, getattr(exc, 'headers', None), attempt + 1)
             retryable = not isinstance(exc, urllib.error.HTTPError) or exc.code in {408, 429, 500, 502, 503, 504}
             if not retryable or attempt + 1 == max_attempts:
                 headers = getattr(exc, "headers", None) or {}
@@ -6211,7 +6273,8 @@ def _observe_live_workflow(repository, expected, token, *, queued_job,
         for observation in range(7):
             if observation and clock() >= deadline:
                 break
-            run = api_get(repository, f"actions/runs/{expected['id']}", token)
+            run = _live_freshness_read(api_get, repository, f"actions/runs/{expected['id']}", token,
+                endpoint='current_run', observation=observation + 1)
             mismatch = [key for key, value in expected.items() if run.get(key) != value]
             if run.get('head_repository', {}).get('full_name', '').lower() != repository.lower():
                 mismatch.append('head_repository')
@@ -6223,8 +6286,15 @@ def _observe_live_workflow(repository, expected, token, *, queued_job,
             job = None
             if require_job or run['status'] == 'queued':
                 name = queued_job()
+                exact_jobs_path = f"actions/runs/{expected['id']}/attempts/{expected['run_attempt']}/jobs?per_page=100"
+                def read_live_jobs(repo, path, credential):
+                    read = _api_get_uncached if uncached_job else api_get
+                    if repo == repository and path == exact_jobs_path:
+                        return _live_freshness_read(read, repo, path, credential,
+                            endpoint='current_attempt_jobs', observation=observation + 1)
+                    return read(repo, path, credential)
                 job = _exact_active_job(repository, run, token, name, error=error, code=job_code,
-                                        read=_api_get_uncached if uncached_job else None)
+                                        read=read_live_jobs)
                 if job is None:
                     _live_identity_diagnostic('pending', run=run, expected_job=name,
                         observation=observation + 1)

@@ -2528,6 +2528,110 @@ class IsolatedDevelopmentReuseTests(unittest.TestCase):
         self.assertTrue(plan['gates']['routing']['run'])
 
 
+class LiveEvidenceFreshnessTests(unittest.TestCase):
+    def response(self, payload, headers=None):
+        response = GitHubEvidenceTransportTests.Response(json.dumps(payload).encode())
+        response.headers = headers or {}
+        return response
+
+    def test_observer_revalidates_only_exact_live_reads_and_resets_context(self):
+        fixture = LiveWorkflowIdentityPollingTests(); fixture.setUp()
+        fixture.run['status'] = 'in_progress'
+        expected = {key: fixture.run[key] for key in ('id', 'run_attempt', 'head_sha', 'event', 'path', 'head_branch')}
+        responses = [self.response(fixture.run), self.response(fixture.inventories[0]), self.response({})]
+        with patch.dict(os.environ, fixture.env, clear=True), \
+             patch.object(m.urllib.request, 'urlopen', side_effect=responses) as transport, \
+             patch('builtins.print') as output:
+            m._observe_live_workflow('owner/repo', expected, 'private-token',
+                queued_job=lambda: fixture.job['name'], require_job=True)
+            m._api_get_uncached('owner/repo', 'actions/runs/99', 'private-token')
+        requests = [call.args[0] for call in transport.call_args_list]
+        self.assertEqual(['no-cache', 'no-cache', None], [r.get_header('Cache-control') for r in requests])
+        rows = [json.loads(call.args[0])['liveEvidenceFreshness'] for call in output.call_args_list
+                if 'liveEvidenceFreshness' in str(call.args[0])]
+        self.assertEqual(['current_run', 'current_attempt_jobs'], [row['endpoint'] for row in rows])
+        self.assertEqual([1, 1], [row['observation'] for row in rows])
+        self.assertIsNone(m._LIVE_FRESHNESS.get())
+        self.assertNotIn('private-token', str(rows))
+        self.assertNotIn('owner/repo', str(rows))
+
+    def test_revalidation_preserves_queued_deadline_and_full_assignment_boundary(self):
+        for eventually_assigned in (False, True):
+            fixture = LiveWorkflowIdentityPollingTests(); fixture.setUp()
+            expected = {key: fixture.run[key] for key in ('id', 'run_attempt', 'head_sha', 'event', 'path', 'head_branch')}
+            reads = []
+            def transport(request, **kwargs):
+                reads.append(request)
+                if '/jobs?' in request.full_url:
+                    assigned = eventually_assigned and len(reads) >= 4
+                    job = fixture.job if assigned else fixture.job | dict(status='queued', runner_name='')
+                    return self.response(dict(total_count=1, jobs=[job]))
+                return self.response(fixture.run)
+            with patch.dict(os.environ, fixture.env, clear=True), \
+                 patch.object(m.urllib.request, 'urlopen', side_effect=transport), patch('builtins.print'):
+                invoke = lambda: m._observe_live_workflow('owner/repo', expected, 'token',
+                    queued_job=lambda: fixture.job['name'], require_job=True,
+                    clock=lambda: fixture.now, sleep=fixture.sleep)
+                if eventually_assigned:
+                    self.assertEqual(fixture.job, invoke()[1]); self.assertEqual(5, fixture.now)
+                else:
+                    with self.assertRaisesRegex(RuntimeError, 'pending_deadline_exhausted'):
+                        invoke()
+                    self.assertEqual(30, fixture.now)
+                self.assertTrue(all(r.get_header('Cache-control') == 'no-cache' for r in reads))
+            self.assertIsNone(m._LIVE_FRESHNESS.get())
+
+    def test_revalidated_identity_mismatch_is_terminal_without_job_read(self):
+        fixture = LiveWorkflowIdentityPollingTests(); fixture.setUp()
+        expected = {key: fixture.run[key] for key in ('id', 'run_attempt', 'head_sha', 'event', 'path', 'head_branch')}
+        with patch.object(m.urllib.request, 'urlopen', return_value=self.response(fixture.run | dict(head_sha='b'*40))) as transport, \
+             patch('builtins.print'), patch.object(m.time, 'sleep') as sleep:
+            with self.assertRaisesRegex(RuntimeError, 'PRODUCER_UNPROVEN'):
+                m._observe_live_workflow('owner/repo', expected, 'token', queued_job=lambda: fixture.job['name'], require_job=True)
+        self.assertEqual(1, transport.call_count); sleep.assert_not_called()
+        self.assertIsNone(m._LIVE_FRESHNESS.get())
+
+    def test_header_metadata_is_typed_bounded_and_never_echoes_unknown_values(self):
+        headers = {'Date': 'Fri, 30 Oct 2026 18:00:00 GMT', 'Age': '123',
+            'Cache-Control': 'public, max-age=secret, unknown=private-customer',
+            'ETag': 'private-etag', 'X-GitHub-Request-Id': 'private-id'}
+        value = m._freshness_headers(headers)
+        self.assertEqual('2026-10-30T18:00:00+00:00', value['dateUtc'])
+        self.assertEqual(123, value['ageSeconds'])
+        self.assertTrue(value['cacheDirectives']['public'])
+        self.assertTrue(value['cacheDirectives']['max-age'])
+        self.assertNotIn('secret', json.dumps(value)); self.assertNotIn('customer', json.dumps(value))
+        self.assertNotIn('etag', json.dumps(value)); self.assertNotIn('private-id', json.dumps(value))
+        for raw in ('x' * 513, 'private-customer', '-1', '999999999999999999999', ''):
+            result = m._freshness_headers({'Date': raw, 'Age': raw})
+            self.assertEqual('invalid', result['dateState']); self.assertEqual('invalid', result['ageState'])
+            self.assertNotIn(raw, json.dumps(result)) if raw else None
+        self.assertEqual('invalid', m._freshness_headers({'Cache-Control': 'x' * 513})['cacheState'])
+        self.assertEqual('absent', m._freshness_headers({})['dateState'])
+
+    def test_context_cannot_revalidate_other_repository_or_path(self):
+        marker = m._LIVE_FRESHNESS.set(('owner/repo', 'actions/runs/123', 'current_run', 1))
+        try:
+            with patch.object(m.urllib.request, 'urlopen', side_effect=[self.response({}), self.response({})]) as transport:
+                m._api_get_uncached('other/repo', 'actions/runs/123', 'token')
+                m._api_get_uncached('owner/repo', 'actions/runs/123/attempts/1/jobs?per_page=100', 'token')
+            self.assertTrue(all(call.args[0].get_header('Cache-control') is None for call in transport.call_args_list))
+        finally:
+            m._LIVE_FRESHNESS.reset(marker)
+
+    def test_forbidden_read_remains_terminal_and_context_resets(self):
+        failure = m.urllib.error.HTTPError('https://example.invalid/private', 403, 'private',
+            {'Date': 'private-customer'}, None)
+        with patch.object(m.urllib.request, 'urlopen', side_effect=failure) as transport, \
+             patch.object(m.time, 'sleep') as sleep, patch('builtins.print') as output:
+            with self.assertRaises(m.EvidenceLookupUnavailable):
+                m._live_freshness_read(m._api_get_uncached, 'owner/repo', 'actions/runs/123', 'token',
+                    endpoint='current_run', observation=1)
+        self.assertEqual(1, transport.call_count); sleep.assert_not_called()
+        self.assertIsNone(m._LIVE_FRESHNESS.get())
+        self.assertNotIn('private-customer', str(output.call_args_list))
+
+
 class GitHubEvidenceTransportTests(unittest.TestCase):
     class Response:
         def __init__(self, value=b'{"total_count":0,"jobs":[]}'):
