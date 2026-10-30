@@ -24,7 +24,7 @@ public class WebsiteLifeLeadCaptureServiceTests
         var source = new WebsiteLead
         {
             LeadId = submission, AgentTrackingProfileId = tracking, FirstName = "Synthetic",
-            Phone = "6025550100", MetadataJson = "{\"answer\":false,\"amount\":0}",
+            Email = "synthetic@example.test", Phone = "6025550100", MetadataJson = "{\"answer\":false,\"amount\":0}",
             CreatedUtc = new DateTime(2026, 10, 1, 12, 0, 0, DateTimeKind.Utc)
         };
         db.WebsiteLeads.Add(source);

@@ -7,7 +7,10 @@
   const scope = new URLSearchParams({kind:root.dataset.kind,id:root.dataset.relationshipId});
   const token = filters.querySelector('[name="__RequestVerificationToken"]').value;
   const zone = root.dataset.timezone || 'America/Phoenix';
-  let snapshotUtc = null;
+  let snapshotUtc = null, detailGeneration = 0;
+  function invalidateDetail() { detailGeneration++; }
+  dialog.addEventListener('close', () => { if (!dialog.open) invalidateDetail(); });
+  dialog.addEventListener('cancel', invalidateDetail);
   let page = 0, generation = 0, requestId = crypto.randomUUID(), savedPayload = null;
   const draftKey='crm-history-draft:'+root.dataset.draftScope+':'+scope.toString();
   function rememberDraft(){try{sessionStorage.setItem(draftKey,JSON.stringify({requestId,savedPayload,fields:Object.fromEntries(new FormData(form))}));}catch{status.textContent='Draft is open in this page; browser recovery storage is unavailable.';}}
@@ -48,8 +51,14 @@
     const raw=document.createElement('details'),rawTitle=document.createElement('summary');rawTitle.textContent='Original captured fields and provenance';raw.append(rawTitle);renderValue(snapshot,raw);detail.append(raw);
   }
   async function open(entry) {
-    detail.replaceChildren(); dialog.showModal();
+    const current = ++detailGeneration;
+    const association = document.getElementById('history-association');
+    association.elements.namedItem('submissionId').value = '';
+    delete association.dataset.expectedVersion;
+    detail.replaceChildren(); detail.textContent = 'Loading record…'; dialog.showModal();
     try {const data=await json(endpoint('Entry/'+entry.id));
+      if (current !== detailGeneration || !dialog.open) return;
+      detail.replaceChildren();
       const {contentJson, ...provenance}=data.entry;const provenanceBox=document.createElement('details'),provenanceTitle=document.createElement('summary');provenanceTitle.textContent='Record provenance and original IDs';provenanceBox.append(provenanceTitle);renderValue(provenance,provenanceBox);detail.append(provenanceBox);const permalink=document.createElement('a');permalink.textContent='Link to this record';permalink.href='/CrmHistory?'+new URLSearchParams([...scope,['entry',entry.id]]);detail.append(permalink);
       try {renderValue(JSON.parse(data.entry.contentJson),detail,'Filed content');}catch {renderValue(data.entry.contentJson,detail,'Filed content');}
       if(data.entry.source==='ProtectedDocument'){const download=document.createElement('a');download.textContent='Download verified original evidence';download.href=endpoint('Evidence/'+data.entry.id);download.className='btn btn-outline-primary';detail.append(download);}
@@ -57,7 +66,7 @@
       if(data.submission){const association=document.getElementById('history-association');association.elements.namedItem('submissionId').value=data.entry.submissionId;association.dataset.expectedVersion=data.submission.associationVersion;}
       else delete document.getElementById('history-association').dataset.expectedVersion;
       if(data.submission){const {snapshotJson,...meta}=data.submission;renderValue(meta,detail,'Submission');try{renderSubmission(JSON.parse(snapshotJson));}catch{renderValue(snapshotJson,detail,'Original captured fields');}}
-    } catch(e){detail.textContent=e.message;}
+    } catch(e){if(current===detailGeneration && dialog.open)detail.textContent=e.message;}
   }
   async function load() {
     const current=++generation;status.textContent='Loading history…';
@@ -81,7 +90,7 @@
     }catch(e){status.textContent=e.message;}
   }
   filters.addEventListener('submit',e=>{e.preventDefault();page=0;snapshotUtc=null;load();});filters.addEventListener('reset',()=>setTimeout(()=>{page=0;snapshotUtc=null;load();},0));
-  document.getElementById('history-previous').onclick=()=>{if(page>0){page--;load();}};document.getElementById('history-next').onclick=()=>{page++;load();};document.getElementById('history-close').onclick=()=>dialog.close();
+  document.getElementById('history-previous').onclick=()=>{if(page>0){page--;load();}};document.getElementById('history-next').onclick=()=>{page++;load();};document.getElementById('history-close').onclick=()=>{invalidateDetail();dialog.close();};
   form.addEventListener('submit',async e=>{e.preventDefault();const submit=form.querySelector('button');submit.disabled=true;
     const payload={requestId,type:field(form,'type'),account:field(form,'account'),occurredDate:field(form,'occurredUtc')?null:field(form,'occurredDate')||null,occurredUtc:field(form,'occurredUtc')?field(form,'occurredUtc')+':00Z':null,timeZoneId:zone,channel:field(form,'channel'),direction:field(form,'direction'),participants:field(form,'participants'),outcome:field(form,'outcome'),nextAction:field(form,'nextAction'),caseReference:field(form,'caseReference'),product:field(form,'product'),relatedEntryId:field(form,'relatedEntryId')||null,assignedOwner:field(form,'assignedOwner')||null,dueUtc:field(form,'dueUtc')?field(form,'dueUtc')+':00Z':null,evidenceSource:field(form,'evidenceSource'),evidenceReference:field(form,'evidenceReference'),evidenceState:field(form,'evidenceState')};
     if(savedPayload && JSON.stringify(payload)!==savedPayload){status.textContent='The prior save is uncertain. Retry the unchanged entry before editing it.';submit.disabled=false;return;}

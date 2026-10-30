@@ -671,6 +671,57 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'): self.gate()
                 self.assertFalse(self.sql_entered)
 
+    def test_diagnostics_exact_entry_marker_and_all_retained_baselines_required(self):
+        with self.payment_fixture():
+            additions=[dict(id=i,supported=True) for i in ('20261026063902_AddScopedTrainingSubscriptions',
+                '20261026210738_AddReceptionistManagement','20261026223148_ReceptionistBrowserCreation')]
+            diagnostic=json.loads('{"id":"20261030033900_RuntimeDiagnosticPerformanceEvidence","supported":true,"columns":[{"schema":"dbo","table":"RuntimeDiagnosticIncidents","name":"PerformanceEvidenceJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]}')
+            self.current['migrations'].extend([*additions,diagnostic])
+            self.source_present.update(row['id']+'.cs' for row in [*additions,diagnostic])
+            self.test_stdout+='LEGEND_TRAINING_APPEND_TEST:PROVEN\nLEGEND_MANAGEMENT_APPEND_TEST:PROVEN\nLEGEND_BROWSER_APPEND_TEST:PROVEN\nLEGEND_DIAGNOSTICS_APPEND_TEST:PROVEN\n'
+            digest=lambda row:hashlib.sha256(json.dumps(row,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            with patch.multiple(m.AUTHORITY,REVIEWED_TRAINING_ENTRY=digest(additions[0]),
+                REVIEWED_MANAGEMENT_ENTRY=digest(additions[1]),REVIEWED_BROWSER_ENTRY=digest(additions[2])):
+                self.gate()
+                fixtures=[kw for cmd,kw in self.calls if cmd[-1]=='migration-test']
+                self.assertEqual(['payment-and-successors','canonical-payment-training-management-browser-diagnostics',
+                    'training-management-browser-diagnostics','management-browser-diagnostics','browser-diagnostics','diagnostics-only'],
+                    [kw['env']['LEGEND_REHEARSAL_PENDING_COUNT'] for kw in fixtures])
+                self.sql_entered=False
+                self.test_stdout=self.test_stdout.replace('LEGEND_DIAGNOSTICS_APPEND_TEST:PROVEN\n','')
+                with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
+                self.assertFalse(self.sql_entered)
+                self.test_stdout+='LEGEND_DIAGNOSTICS_APPEND_TEST:PROVEN\n'
+                diagnostic['columns'][0]['nullable']=False
+                with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
+                self.assertFalse(self.sql_entered)
+
+    def test_crm_exact_suffix_marker_and_all_retained_baselines_required(self):
+        with self.payment_fixture():
+            additions=[dict(id=i,supported=True) for i in ('20261026063902_AddScopedTrainingSubscriptions',
+                '20261026210738_AddReceptionistManagement','20261026223148_ReceptionistBrowserCreation')]
+            diagnostic=json.loads('{"id":"20261030033900_RuntimeDiagnosticPerformanceEvidence","supported":true,"columns":[{"schema":"dbo","table":"RuntimeDiagnosticIncidents","name":"PerformanceEvidenceJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]}')
+            crm=json.loads('{"id":"20261030070000_CrmRelationshipHistory","supported":true,"columns":[{"schema":"dbo","table":"WebsiteLeadIntakeLinks","name":"AssociationVersion","type":"uniqueidentifier","nullable":false,"default":"00000000-0000-0000-0000-000000000000","precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"WebsiteLeadIntakeLinks","name":"HistoryClientProfileId","type":"uniqueidentifier","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[{"schema":"dbo","name":"CrmHistoryEntries","columns":[{"schema":"dbo","table":"CrmHistoryEntries","name":"Id","type":"uniqueidentifier","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"RelationshipKey","type":"nvarchar(100)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"RecordedBy","type":"nvarchar(450)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"RecordedUtc","type":"datetime2","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"FiledUtc","type":"datetime2","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"OccurredUtc","type":"datetime2","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"OccurredDate","type":"nvarchar(10)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"TimeZoneId","type":"nvarchar(100)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"TimePrecision","type":"nvarchar(20)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"Type","type":"nvarchar(60)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"Source","type":"nvarchar(80)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"SourceId","type":"nvarchar(200)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"ContentJson","type":"nvarchar(max)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"SubmissionId","type":"uniqueidentifier","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"RelatedEntryId","type":"uniqueidentifier","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"FormName","type":"nvarchar(160)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"FormVersion","type":"nvarchar(100)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"Product","type":"nvarchar(100)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"CaseReference","type":"nvarchar(200)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"AssignedOwner","type":"nvarchar(450)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"DueUtc","type":"datetime2","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"Status","type":"nvarchar(40)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"EvidenceStatus","type":"nvarchar(80)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null}],"primaryKey":{"name":"PK_CrmHistoryEntries","columns":["Id"]},"foreignKeys":[],"uniqueKeys":[],"checks":[]}],"indexes":[{"schema":"dbo","table":"WebsiteLeadIntakeLinks","name":"IX_WebsiteLeadIntakeLinks_HistoryClientProfileId","columns":["HistoryClientProfileId"],"unique":false,"filter":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"IX_CrmHistoryEntries_RelationshipKey_Source_SourceId","columns":["RelationshipKey","Source","SourceId"],"unique":true,"filter":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"IX_CrmHistoryEntries_RelationshipKey_OccurredUtc_Id","columns":["RelationshipKey","OccurredUtc","Id"],"unique":false,"filter":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"IX_CrmHistoryEntries_RelationshipKey_RecordedUtc_Id","columns":["RelationshipKey","RecordedUtc","Id"],"unique":false,"filter":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"IX_CrmHistoryEntries_SubmissionId","columns":["SubmissionId"],"unique":false,"filter":null}],"guards":["crm-relationship-history-v1"],"foreignKeys":[{"schema":"dbo","table":"WebsiteLeadIntakeLinks","constraint":{"name":"FK_WebsiteLeadIntakeLinks_ClientProfiles_HistoryClientProfileId","columns":["HistoryClientProfileId"],"principalSchema":"dbo","principalTable":"ClientProfiles","principalColumns":["Id"]}}]}')
+            self.current['migrations'].extend([*additions,diagnostic,crm])
+            self.source_present.update(row['id']+'.cs' for row in [*additions,diagnostic,crm])
+            self.test_stdout+='LEGEND_TRAINING_APPEND_TEST:PROVEN\nLEGEND_MANAGEMENT_APPEND_TEST:PROVEN\nLEGEND_BROWSER_APPEND_TEST:PROVEN\nLEGEND_DIAGNOSTICS_APPEND_TEST:PROVEN\nLEGEND_CRM_APPEND_TEST:PROVEN\n'
+            digest=lambda row:hashlib.sha256(json.dumps(row,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            with patch.multiple(m.AUTHORITY,REVIEWED_TRAINING_ENTRY=digest(additions[0]),
+                REVIEWED_MANAGEMENT_ENTRY=digest(additions[1]),REVIEWED_BROWSER_ENTRY=digest(additions[2])):
+                self.gate()
+                fixtures=[kw for cmd,kw in self.calls if cmd[-1]=='migration-test']
+                self.assertEqual(['payment-and-successors','canonical-payment-training-management-browser-diagnostics-crm',
+                    'training-management-browser-diagnostics-crm','management-browser-diagnostics-crm','browser-diagnostics-crm','diagnostics-crm','crm-only'],
+                    [kw['env']['LEGEND_REHEARSAL_PENDING_COUNT'] for kw in fixtures])
+                self.sql_entered=False
+                self.test_stdout=self.test_stdout.replace('LEGEND_CRM_APPEND_TEST:PROVEN\n','')
+                with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
+                self.assertFalse(self.sql_entered)
+                self.test_stdout+='LEGEND_CRM_APPEND_TEST:PROVEN\n'
+                crm['foreignKeys']=[]
+                with self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
+                self.assertFalse(self.sql_entered)
+
     def test_payment_only_failure_cannot_be_hidden_by_broad_suffix_success(self):
         original=self.process
         def fail_narrow(command,**kwargs):

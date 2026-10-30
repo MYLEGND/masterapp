@@ -84,7 +84,9 @@ TRUSTED_TOOL_PATHS = frozenset({
 # candidate application/migration files and arbitrary neighboring tools remain excluded.
 TRUSTED_ADDED_TOOL_PATHS = frozenset({
     'scripts/MigrationReleaseProbe/CandidateContract.Browser.cs',
+    'scripts/MigrationReleaseProbe/CandidateContract.Crm.cs',
     'scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.Browser.cs',
+    'scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.Crm.cs',
 })
 
 
@@ -92,6 +94,102 @@ def tool_promotion_requested(sha):
     # Presence, including null/malformed/stale values, must never fall through
     # into normal publication. The exact validator owns positive admission.
     return 'trustedToolPromotion' in read_request(sha)
+
+
+# Retire after the diagnostics feature inherits the promoted observer. These
+# views are NOT tooling: only this exact, single-baseline nonpublishing repair
+# may carry their already reviewed null-safe predicates through promotion.
+DIAGNOSTICS_BOOTSTRAP_BASE = '27f90cb6595ac9be0be148d72791b05f0f5e74ca'
+DIAGNOSTICS_BOOTSTRAP_REQUEST = {
+    'requestedBy': 'Founder',
+    'authorization': 'Founder requested completion of the bounded diagnostics bootstrap and combined diagnostics/client activity release. Bootstrap is nonpublishing and retains independent review, exact CI and credential-free SQL rehearsal; it authorizes no application, database or provider changes.',
+    'purpose': 'One-use exact-base observer promotion with two reviewed null-safe Razor predicates; retire after verified feature integration.',
+    'requestId': 'diagnostics-observer-exact-bootstrap-20261030-v1',
+    'releaseMode': 'validate-only', 'targets': [],
+    'cloudflareWebsiteRouting': False, 'preserveLiveTargets': False,
+}
+DIAGNOSTICS_BOOTSTRAP_RAZOR = {
+    'SHARED/Views/Shared/ReceptionistContentReview.cshtml': (
+        '7f91701a46a070bf53fddca061f69f2c036c8c02', '3bf031b67662e8fec40ba8163db7cf653124925d'),
+    'SHARED/Views/Shared/ReceptionistManagement.cshtml': (
+        '269c4f288509f8a1f44df67c856dbe0fdbf47617', '9597d074ffaca0cba4f8bd48a65dfb3fde2eb468'),
+}
+# Filled from the sealed reviewed control plus the explicit readiness/test delta.
+DIAGNOSTICS_BOOTSTRAP_TOOLS = {'scripts/MigrationReleaseProbe/CandidateContract.cs': 'a8f43169cfe101cfd58d8d85b7af7977997c5800', 'scripts/MigrationReleaseProbe/Program.cs': '38952ac8cb9e17c6577e5b3c455f49c3169d8938', 'scripts/MigrationReleaseProbe/Rehearsal/CandidateContractTests.cs': 'a082b665386cced31830e659ddca1b2497730c9e', 'scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.cs': '4055fa8172b3c84fb88c1c6ec90c9c1f1676d476', 'scripts/migration-probe-package.py': '02045754431c9beef886467c9d1797995a28f712', 'scripts/test-fast-track-release.py': 'd452e539c3c4b2c09004d339d69df99e61221793', 'scripts/test-migration-probe-package.py': 'fdc290cc62d711ee566abc6fd0e72933adb9251b', 'scripts/test-release-policy.py': 'd5afeaa2e3a9e49a98dad5f2905fedf66f28fec5', 'scripts/test-validation-resume.py': 'd81892b0e1ef01e99b0957c4095218b35a7e44ac', 'scripts/validation-resume.py': '98efc67bc15574b8068b7d4b7c59a279c005765c'}
+
+
+def diagnostics_bootstrap_scope(before, revision):
+    """Return an immutable zero-effect proof for this case, otherwise fail closed.
+
+    No provider reads or writes. This is NOT source acceptance or release
+    admission. The normal authenticated promotion validator still runs later.
+    """
+    import hashlib
+    import re
+    if before != DIAGNOSTICS_BOOTSTRAP_BASE:
+        return None
+    def git(*args):
+        result = subprocess.run(['git', *args], capture_output=True, text=True, check=False)
+        if result.returncode:
+            raise ValueError('DIAGNOSTICS_BOOTSTRAP_SOURCE_UNAVAILABLE')
+        return result.stdout
+    request = read_request(revision)
+    if request.get('requestId') != DIAGNOSTICS_BOOTSTRAP_REQUEST['requestId']:
+        return None
+    def reject():
+        raise ValueError('DIAGNOSTICS_BOOTSTRAP_SCOPE_UNPROVEN')
+    if (set(request) != set(DIAGNOSTICS_BOOTSTRAP_REQUEST) | {'trustedToolPromotion'}
+            or any(type(request.get(k)) is not type(v) or request[k] != v
+                   for k, v in DIAGNOSTICS_BOOTSTRAP_REQUEST.items())):
+        reject()
+    marker = request['trustedToolPromotion']
+    expected_paths = set(DIAGNOSTICS_BOOTSTRAP_TOOLS) | set(DIAGNOSTICS_BOOTSTRAP_RAZOR) | {'scripts/release_policy.py'}
+    if (not isinstance(marker, dict)
+            or set(marker) != {'schemaVersion', 'baseRevision', 'sourceRevision', 'files'}
+            or type(marker.get('schemaVersion')) is not int or marker['schemaVersion'] != 1
+            or marker.get('baseRevision') != before
+            or not re.fullmatch('[a-f0-9]{40}', marker.get('sourceRevision', ''))
+            or not isinstance(marker.get('files'), dict)
+            or set(marker['files']) != expected_paths or len(expected_paths) != 13):
+        reject()
+    source = marker['sourceRevision']
+    # Source is a single immutable child of the one approved baseline, before
+    # the request is bound. No hidden ancestry or changed application tree.
+    if git('rev-list', '--parents', '-n', '1', source).split() != [source, before]:
+        reject()
+    def rows(ref):
+        data = git('diff', '--no-renames', '--name-status', '-z', before, ref, '--').split('\0')
+        if data[-1:] != [''] or len(data[:-1]) % 2:
+            reject()
+        pairs = list(zip(data[:-1:2], data[1:-1:2]))
+        if any(status != 'M' for status, path in pairs) or len({p for _, p in pairs}) != len(pairs):
+            reject()
+        return {p for _, p in pairs}
+    if rows(source) != expected_paths or rows(revision) != expected_paths | {REQUEST}:
+        reject()
+    def entry(ref, path):
+        data = git('ls-tree', '-z', ref, '--', path)
+        match = re.fullmatch(r'100644 blob ([a-f0-9]{40})\t' + re.escape(path) + '\0', data)
+        if not match:
+            reject()
+        return {'mode': '100644', 'blob': match.group(1)}
+    for path in expected_paths:
+        original, current = entry(before, path), entry(revision, path)
+        if marker['files'][path] != current or entry(source, path) != current:
+            reject()
+        if path in DIAGNOSTICS_BOOTSTRAP_RAZOR:
+            old, new = DIAGNOSTICS_BOOTSTRAP_RAZOR[path]
+            if original['blob'] != old or current['blob'] != new:
+                reject()
+        elif path in DIAGNOSTICS_BOOTSTRAP_TOOLS and current['blob'] != DIAGNOSTICS_BOOTSTRAP_TOOLS[path]:
+            reject()
+    if entry(before, REQUEST)['mode'] != entry(revision, REQUEST)['mode']:
+        reject()
+    proof = dict(candidate=revision, approved=before, sourceRevision=source,
+                 sourceTree=git('rev-parse', source + '^{tree}').strip(),
+                 paths=sorted(expected_paths | {REQUEST}),
+                 productionEligible=False, authorizesMutation=False)
+    return dict(proof, identity=hashlib.sha256(json.dumps(proof, sort_keys=True).encode()).hexdigest())
 
 
 def trusted_tool_promotion(before, revision, admission):
@@ -130,7 +228,11 @@ def trusted_tool_promotion(before, revision, admission):
         raise ValueError('TRUSTED_TOOL_PROMOTION_DIFF_UNPROVEN')
     rows = list(zip(changed[:-1:2], changed[1:-1:2]))
     files = value.get('files')
-    if (not isinstance(files, dict) or not files or not set(files) <= TRUSTED_TOOL_PATHS | TRUSTED_ADDED_TOOL_PATHS
+    bootstrap = diagnostics_bootstrap_scope(before, revision)
+    permitted = TRUSTED_TOOL_PATHS | TRUSTED_ADDED_TOOL_PATHS
+    if bootstrap is not None:
+        permitted = permitted | set(DIAGNOSTICS_BOOTSTRAP_RAZOR)
+    if (not isinstance(files, dict) or not files or not set(files) <= permitted
         or any(status != 'M' and not (status == 'A' and path in TRUSTED_ADDED_TOOL_PATHS) for status, path in rows)
         or len({path for status, path in rows}) != len(rows)
         or {path for status, path in rows} != set(files) | {REQUEST}):

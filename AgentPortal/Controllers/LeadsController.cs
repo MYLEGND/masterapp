@@ -275,7 +275,9 @@ public class LeadsController : Controller
         return LeadCanonicalizer.SelectCanonical(rows, _logger, context);
     }
 
-    private async Task<int> DeleteLeadProfilesAsync(IEnumerable<WorkstationLeadProfile> leads)
+    private const string HistoryDeletionConflict = "No leads were deleted. This selection contains retained history or submission evidence, or its ownership changed. Preserve these records through the existing archive and disposition process.";
+
+    private async Task<int?> DeleteLeadProfilesAsync(IEnumerable<WorkstationLeadProfile> leads)
     {
         var ownedLeads = leads
             .Where(x => x != null && !string.IsNullOrWhiteSpace(x.LeadId))
@@ -295,21 +297,41 @@ public class LeadsController : Controller
         if (leadIds.Length == 0)
             return 0;
 
+        await using var transaction = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, HttpContext.RequestAborted) : null;
+        var owner = ownedLeads[0].AgentUserId;
+        var current = await _db.WorkstationLeadProfiles.AsNoTracking()
+            .Where(x => leadIds.Contains(x.LeadId) && x.AgentUserId == owner).ToListAsync(HttpContext.RequestAborted);
+        var historyKeys = leadIds.Select(Infrastructure.Crm.CrmHistoryStore.LeadKey).ToArray();
+        // Fail closed for legacy/unrecognized metadata. An empty new history table
+        // does not prove that a relationship has no records to retain.
+        if (current.Count != ownedLeads.Count || current.Any(x =>
+                !string.IsNullOrWhiteSpace(x.CrmNotes) && x.CrmNotes.Trim() is not ("{}" or "null")) ||
+            await _db.WebsiteLeadIntakeLinks.AnyAsync(x => leadIds.Contains(x.WorkstationLeadId), HttpContext.RequestAborted) ||
+            await _db.Set<CrmHistoryEntry>().AnyAsync(x => historyKeys.Contains(x.RelationshipKey), HttpContext.RequestAborted) ||
+            _db.ChangeTracker.Entries<CrmHistoryEntry>().Any(x => historyKeys.Contains(x.Entity.RelationshipKey)) ||
+            await new Infrastructure.Crm.CrmHistoryStore(_db).HasLegacySelfNotesAsync(leadIds, HttpContext.RequestAborted))
+            return null;
+
         var appointments = await _db.LeadAppointments
             .Where(x => leadIds.Contains(x.WorkstationLeadId))
             .ToListAsync();
         if (appointments.Count != 0)
             _db.LeadAppointments.RemoveRange(appointments);
 
-        var intakeLinks = await _db.WebsiteLeadIntakeLinks
-            .Where(x => leadIds.Contains(x.WorkstationLeadId))
-            .ToListAsync();
-        if (intakeLinks.Count != 0)
-            _db.WebsiteLeadIntakeLinks.RemoveRange(intakeLinks);
-
         _db.WorkstationLeadProfiles.RemoveRange(ownedLeads);
-        await _db.SaveChangesAsync();
-        return ownedLeads.Count;
+        try
+        {
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
+            if (transaction is not null) await transaction.CommitAsync(HttpContext.RequestAborted);
+            return ownedLeads.Count;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (transaction is not null) await transaction.RollbackAsync(HttpContext.RequestAborted);
+            _db.ChangeTracker.Clear();
+            return null;
+        }
     }
 
     private static string Norm(string? v) => (v ?? "").Trim().ToLowerInvariant();
@@ -2549,7 +2571,7 @@ public class LeadsController : Controller
             x.LeadId == clientUserId && x.AgentUserId == agentId);
         if (lead == null) return NotFound();
 
-        await DeleteLeadProfilesAsync(new[] { lead });
+        if (await DeleteLeadProfilesAsync(new[] { lead }) is null) return Conflict(HistoryDeletionConflict);
         return RedirectToAction(nameof(Index));
     }
 
@@ -2569,6 +2591,7 @@ public class LeadsController : Controller
         if (toDelete.Count == 0) return Json(new { deleted = 0 });
 
         var deletedCount = await DeleteLeadProfilesAsync(toDelete);
+        if (deletedCount is null) return Conflict(HistoryDeletionConflict);
         return Json(new { deleted = deletedCount });
     }
 
@@ -2612,6 +2635,7 @@ public class LeadsController : Controller
         if (toDelete.Count == 0) return Json(new { deleted = 0 });
 
         var deletedCount = await DeleteLeadProfilesAsync(toDelete);
+        if (deletedCount is null) return Conflict(HistoryDeletionConflict);
         var remaining = isProductBucket
             ? await _db.WorkstationLeadProfiles
                 .CountAsync(x =>

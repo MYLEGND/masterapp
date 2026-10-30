@@ -2617,5 +2617,159 @@ class CompletionInheritedPromotionTests(unittest.TestCase):
                 self.a.fast_track_recovery_producer(self.repo,self.run,'fixture',attempt=1)
 
 
+class DiagnosticsBootstrapTests(unittest.TestCase):
+    """Real immutable Git objects; never a mock SQL/provider success marker."""
+    @classmethod
+    def setUpClass(cls):
+        import release_policy as policy
+        cls.policy = policy
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.repo = Path(cls.tmp.name) / 'repo.git'
+        subprocess.run(['git', 'clone', '--bare', '--shared', str(ROOT.parent), str(cls.repo)], check=True, capture_output=True)
+        cls.env = dict(os.environ, GIT_DIR=str(cls.repo), GIT_INDEX_FILE=str(cls.repo / 'fixture-index'),
+                       GIT_AUTHOR_NAME='Synthetic fixture', GIT_AUTHOR_EMAIL='fixture@example.invalid',
+                       GIT_COMMITTER_NAME='Synthetic fixture', GIT_COMMITTER_EMAIL='fixture@example.invalid')
+        cls.paths = set(policy.DIAGNOSTICS_BOOTSTRAP_TOOLS) | set(policy.DIAGNOSTICS_BOOTSTRAP_RAZOR) | {'scripts/release_policy.py'}
+        cls.base = policy.DIAGNOSTICS_BOOTSTRAP_BASE
+        cls.git('read-tree', cls.base)
+        cls.files = {}
+        for path in cls.paths:
+            # This one-use bootstrap fixture must retain its original reviewed
+            # blobs after later ordinary tool promotions change the working tree.
+            pinned = policy.DIAGNOSTICS_BOOTSTRAP_TOOLS.get(path)
+            if path in policy.DIAGNOSTICS_BOOTSTRAP_RAZOR:
+                pinned = policy.DIAGNOSTICS_BOOTSTRAP_RAZOR[path][1]
+            content = cls.git('cat-file', 'blob', pinned).encode() if pinned else (ROOT.parent / path).read_bytes()
+            blob = cls.git('hash-object', '-w', '--stdin', data=content).strip()
+            cls.files[path] = dict(mode='100644', blob=blob)
+            cls.git('update-index', '--add', '--cacheinfo', '100644', blob, path)
+        tree = cls.git('write-tree').strip()
+        cls.source = cls.git('commit-tree', tree, '-p', cls.base, data=b'synthetic exact source\n').strip()
+        cls.request = dict(policy.DIAGNOSTICS_BOOTSTRAP_REQUEST, trustedToolPromotion=dict(
+            schemaVersion=1, baseRevision=cls.base, sourceRevision=cls.source, files=cls.files))
+        cls.revision = cls.candidate(cls.request)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    @classmethod
+    def git(cls, *args, data=None):
+        return subprocess.run(['git', *args], input=data, env=cls.env, check=True, capture_output=True).stdout.decode()
+
+    @classmethod
+    def candidate(cls, request, changes=None):
+        cls.git('read-tree', cls.source)
+        blob = cls.git('hash-object', '-w', '--stdin', data=json.dumps(request).encode()).strip()
+        cls.git('update-index', '--add', '--cacheinfo', '100644', blob, cls.policy.REQUEST)
+        for path, mode, content in changes or []:
+            blob = cls.git('hash-object', '-w', '--stdin', data=content).strip()
+            cls.git('update-index', '--add', '--cacheinfo', mode, blob, path)
+        tree = cls.git('write-tree').strip()
+        return cls.git('commit-tree', tree, '-p', cls.source, data=b'synthetic bound request\n').strip()
+
+    def scope(self, revision=None, base=None):
+        original = subprocess.run
+        def run(args, **kw):
+            kw['env'] = self.env
+            return original(args, **kw)
+        with patch.object(self.policy.subprocess, 'run', side_effect=run):
+            return self.policy.diagnostics_bootstrap_scope(base or self.base, revision or self.revision)
+
+    def promotion(self, revision=None, mutation=None):
+        candidate = revision or self.revision
+        self.git('read-tree', candidate)
+        tree = self.git('write-tree').strip()
+        merge = self.git('commit-tree', tree, '-p', self.base, '-p', candidate, data=b'synthetic merge\n').strip()
+        admission = dict(executionAuthority=merge, candidate=candidate, sourcePr=1,
+            validation={key:{} for key in ('approved-release-security-validation.yml',
+                'masterapp-platform-architecture-validation.yml', 'parfait-isolated-validation.yml')})
+        if mutation: mutation(admission)
+        original = subprocess.run
+        def run(args, **kw):
+            kw['env'] = self.env
+            return original(args, **kw)
+        with patch.object(self.policy.subprocess, 'run', side_effect=run):
+            return self.policy.trusted_tool_promotion(self.base, merge, admission)
+
+    def test_full_authenticated_merge_promotion_still_has_zero_effects(self):
+        proof = self.promotion()
+        self.assertFalse(proof['productionEligible'])
+        self.assertFalse(proof['authorizesMutation'])
+        self.assertEqual(self.source, proof['sourceRevision'])
+        self.assertEqual(self.files, proof['files'])
+
+    def test_merge_admission_drift_still_rejected(self):
+        for mutation in [lambda a:a.update(executionAuthority='f'*40),
+                         lambda a:a.update(candidate=None),
+                         lambda a:a.update(sourcePr=0),
+                         lambda a:a.update(validation={})]:
+            with self.subTest(mutation=mutation), self.assertRaisesRegex(ValueError, 'AUTHORIZATION_UNPROVEN'):
+                self.promotion(mutation=mutation)
+
+    def test_merge_rejects_extra_runtime_even_if_request_targets_stay_empty(self):
+        candidate = self.candidate(self.request, [('AgentPortal/Program.cs', '100644', b'changed')])
+        with self.assertRaisesRegex(ValueError, 'BOOTSTRAP'):
+            self.promotion(candidate)
+
+    def test_readiness_matches_same_exact_case_and_drift_requires_provider_proof(self):
+        spec = importlib.util.spec_from_file_location('bootstrap_readiness_fixture', ROOT / 'validation-resume.py')
+        authority = importlib.util.module_from_spec(spec); spec.loader.exec_module(authority)
+        original = subprocess.run
+        def run(args, **kw):
+            kw['env'] = self.env
+            return original(args, **kw)
+        with patch.object(authority.subprocess, 'run', side_effect=run):
+            result = authority.readiness_scope(self.revision, self.base)
+            self.assertEqual('not-required', result['state'])
+            self.assertEqual('exact_nonpublishing_diagnostics_bootstrap', result['reason'])
+            self.assertFalse(result['authorizesMutation'])
+            drift = self.candidate(self.request, [('AgentPortal/Program.cs', '100644', b'changed')])
+            self.assertEqual('required', authority.readiness_scope(drift, self.base)['state'])
+            self.assertEqual('required', authority.readiness_scope(self.revision, self.source)['state'])
+
+    def test_exact_source_is_nonpublishing_and_bound_to_full_tree(self):
+        proof = self.scope()
+        self.assertFalse(proof['productionEligible'])
+        self.assertFalse(proof['authorizesMutation'])
+        self.assertEqual(14, len(proof['paths']))
+        self.assertEqual(self.source, proof['sourceRevision'])
+        self.assertEqual(40, len(proof['sourceTree']))
+
+    def test_base_change_or_replay_cannot_match(self):
+        self.assertIsNone(self.scope(base=self.source))
+        self.assertIsNone(self.scope(base=self.revision))
+
+    def test_razor_paths_never_enter_generic_tool_allowlist(self):
+        self.assertTrue(set(self.policy.DIAGNOSTICS_BOOTSTRAP_RAZOR).isdisjoint(self.policy.TRUSTED_TOOL_PATHS))
+
+    def test_request_drift_rejected(self):
+        import copy
+        for key, value in [('targets', ['masterapp-portal']), ('cloudflareWebsiteRouting', True),
+                           ('releaseMode', 'approved-only'), ('preserveLiveTargets', True),
+                           ('authorization', 'changed'), ('purpose', 'changed'), ('unexpected', True)]:
+            req = copy.deepcopy(self.request); req[key] = value
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'BOOTSTRAP'):
+                self.scope(self.candidate(req))
+
+    def test_manifest_or_source_drift_rejected(self):
+        import copy
+        for key, value in [('baseRevision', 'f'*40), ('sourceRevision', self.revision),
+                           ('schemaVersion', True), ('files', {})]:
+            req = copy.deepcopy(self.request); req['trustedToolPromotion'][key] = value
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'BOOTSTRAP'):
+                self.scope(self.candidate(req))
+
+    def test_extra_application_migration_model_or_mode_rejected(self):
+        cases = [('AgentPortal/Program.cs', '100644', b'changed'),
+                 ('Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs', '100644', b'changed'),
+                 ('Infrastructure/Migrations/20261030033900_RuntimeDiagnosticPerformanceEvidence.cs', '100644', b'changed'),
+                 ('SHARED/Views/Shared/ReceptionistManagement.cshtml', '100755', b'changed'),
+                 ('scripts/MigrationReleaseProbe/Program.cs', '100644', b'changed')]
+        for change in cases:
+            with self.subTest(path=change[0]), self.assertRaisesRegex(ValueError, 'BOOTSTRAP'):
+                self.scope(self.candidate(self.request, [change]))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -10,6 +10,8 @@ using Microsoft.EntityFrameworkCore.Migrations.Operations;
 // approved observer. The production observer never loads a candidate assembly.
 internal static partial class CandidateContract
 {
+    internal const string DiagnosticsMigration = "20261030033900_RuntimeDiagnosticPerformanceEvidence";
+    internal const string DiagnosticsEntrySha256 = "3bbe02c3ef64b582fe8d35b4717a99f409598cbcb8f8883da3aa68da1a89cc68";
     internal sealed record Column(string Schema, string Table, string Name, string Type,
         bool Nullable, JsonElement Default, int? Precision, int? Scale, string? Collation);
     internal sealed record Entry(string Id, bool Supported, Column[] Columns,
@@ -74,6 +76,11 @@ internal static partial class CandidateContract
             if (migration.Id == BrowserMigration)
             {
                 PlanBrowser(batch, migration, isApplied, applied.Contains(CoordinationMigration), cancellation);
+                continue;
+            }
+            if (migration.Id == CrmMigration)
+            {
+                PlanCrm(batch, migration, isApplied, cancellation);
                 continue;
             }
             PlanStructures(batch, migration, isApplied, cancellation);

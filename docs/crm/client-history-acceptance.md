@@ -99,3 +99,16 @@ Interaction, association, preservation and evidence uploads retain scoped reques
 These steps are a plan awaiting exact environment admission/rehearsal, not evidence that rollback, migration, production storage, or release has already been accepted.
 
 Current frozen-source local evidence: strict AgentPortal build 21 passed (zero warnings/errors); expanded compiled probe run 19 passed all 18 groups, including protected PDF retry/conflict/access and storage-success/database-rollback recovery. The probe build also has zero warnings/errors after aligning cached runtime dependencies. Two form-evidence JavaScript tests and five focused validation-planner mapping tests passed. Prior 639-test planner success is preserved; full CRM xUnit and end-to-end A–L acceptance remain pending.
+
+
+## Follow-up after executed candidate 70872488
+
+Architecture run 41066834355 actually selected and executed the required CRM classes: 59 total, 56 passed, 3 failed. The failures were a missing synthetic Email, ambient test identity contamination, and deletion of retained evidence reaching the immutable guard. Parfait run 41066834418 executed 1116 tests (1114 passed, 2 failed); it remains insufficient proof for the two required CRM classes. Prior statements above about unexecuted xUnit describe earlier checkpoints, not this baseline.
+
+The follow-up repairs those fixtures, retains original privacy assertions, and makes protected single/bulk/bucket deletion return conflict before staging removals. Restricted receptionist fixtures now include the history entity; same-email independent submissions retain distinct identities. The native disclosure fixture uses explicit synthetic non-authoritative tokens and still rejects unknown expressions.
+
+New controller-boundary coverage targets all 12 insurance POST handlers with real SQLite persistence/capture, original disclosure snapshots and retry identity. These tests are not yet executed, and do not establish hosted routing, model binding, antiforgery or browser acceptance. Actual conversion-route failure injection and authenticated desktop/mobile acceptance remain open.
+
+The detail dialog now rejects stale responses after close/reopen and has an accessible name. Three Node regressions passed. The exact migration observer and disposable synthetic rehearsal cover the ordered diagnostics-plus-CRM suffix; offline compatibility/descriptor checks passed, while actual SQL rehearsal and release admission remain pending. The proposed CRM runtime compatibility pair pins the exact base and candidate infrastructure closures; inherited tools, execution identity, independent review and protected promotion remain required. No combined application deployment or live verification is asserted.
+
+The follow-up also adds actual shared-submission failure/retry and three conversion-handler paths, with failures injected before creation commit. These C# cases remain unexecuted. Strict AgentPortal build23 passed with zero warnings/errors; six Node checks passed; migration descriptor and compatibility harnesses passed. Package orchestration tests (53) mock the SQL/provider boundary and are not SQL rehearsal evidence. Release-policy tests passed206 cases with pinned historical bootstrap blobs unchanged.

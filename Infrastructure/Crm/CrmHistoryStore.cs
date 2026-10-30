@@ -206,6 +206,34 @@ public sealed class CrmHistoryStore(MasterAppDbContext db)
         catch (JsonException) { return JsonDocument.Parse(JsonSerializer.Serialize(new { _unparsedLegacy = raw })); }
     }
 
+    // Retention-only lookup across prior owners: never reads their note contents.
+    public async Task<bool> HasLegacySelfNotesAsync(IEnumerable<string> sourceKeys, CancellationToken ct = default)
+    {
+        if (!db.Database.IsRelational()) return false;
+        var connection = db.Database.GetDbConnection();
+        var opened = connection.State != System.Data.ConnectionState.Open;
+        if (opened) await connection.OpenAsync(ct);
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = db.Database.CurrentTransaction?.GetDbTransaction();
+            command.CommandText = db.Database.IsSqlite()
+                ? "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='AgentLeadSelfNotes'"
+                : "SELECT COUNT(*) FROM sys.tables WHERE name='AgentLeadSelfNotes' AND schema_id=SCHEMA_ID('dbo')";
+            if (Convert.ToInt32(await command.ExecuteScalarAsync(ct)) == 0) return false;
+            var names = new List<string>();
+            foreach (var key in sourceKeys.Distinct())
+            {
+                var parameter = command.CreateParameter(); parameter.ParameterName = "@id" + names.Count;
+                parameter.Value = key; names.Add(parameter.ParameterName); command.Parameters.Add(parameter);
+            }
+            if (names.Count == 0) return false;
+            command.CommandText = "SELECT COUNT(*) FROM AgentLeadSelfNotes WHERE LeadId IN (" + string.Join(",", names) + ")";
+            return Convert.ToInt64(await command.ExecuteScalarAsync(ct)) > 0;
+        }
+        finally { if (opened) await connection.CloseAsync(); }
+    }
+
     public async Task BackfillLegacySelfNotesAsync(string relationshipKey, string agentId, IEnumerable<string?> sourceKeys, CancellationToken ct = default)
     {
         if (!db.Database.IsRelational()) return;

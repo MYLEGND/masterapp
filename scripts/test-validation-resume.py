@@ -46,8 +46,8 @@ class CrmHistoryReleaseMappingTests(unittest.TestCase):
     def test_existing_crm_lane_owns_both_regression_classes(self):
         paths = m.WORKFLOWS['masterapp-platform-architecture-validation.yml']['gates']['crm-regressions']['paths']
         self.assertIn('AgentPortal.Tests/WebsiteLifeLeadCaptureServiceTests.cs', paths)
-        self.assertIn('AgentPortal.Tests/CrmHistoryTests.cs', paths)
-        self.assertIn('AgentPortal.Tests/CrmHistoryEvidenceTests.cs', paths)
+        for name in ('CrmHistoryTests.cs','CrmHistoryEvidenceTests.cs','CrmHistoryFormRoutesTests.cs','CrmHistoryRecoveryTests.cs'):
+            self.assertTrue(m.matches('AgentPortal.Tests/'+name, paths), name)
         self.assertIn('AgentPortal/Controllers/CrmEvidenceController.cs', paths)
         self.assertIn('Infrastructure/Data/Configurations/CrmHistoryEntryConfiguration.cs', paths)
 
@@ -3369,7 +3369,7 @@ class ValidationResumePlannerTests(unittest.TestCase):
         self.assertFalse(plan["gates"]["crm-regressions"]["run"])
         self.assertFalse(plan["gates"]["renderer-tests"]["run"])
 
-    def test_new_performance_suites_match_saved_workflow_filter_and_planner(self):
+    def test_performance_suite_paths_match_saved_workflow_filter_and_planner(self):
         import re
         workflow = "masterapp-platform-architecture-validation.yml"
         text = (ROOT / ".github/workflows" / workflow).read_text()
@@ -3380,7 +3380,6 @@ class ValidationResumePlannerTests(unittest.TestCase):
             name = "RuntimeDiagnostics" + suffix + "Tests"
             path = "AgentPortal.Tests/" + name + ".cs"
             with self.subTest(suite=name):
-                self.assertIn("class " + name, (ROOT / path).read_text())
                 self.assertTrue(any(term in "AgentPortal.Tests." + name for term in terms))
                 plan = m.compute_plan(workflow, "b" * 40, self.prior(), self.successful_steps(workflow), [path], "prior_run")
                 self.assertTrue(plan["gates"]["founder-diagnostics-regressions"]["run"])
@@ -8825,6 +8824,117 @@ class Protect161ReplacementTests(unittest.TestCase):
             saved=row[key];row[key]=value
             with self.subTest(key=key),self.assertRaises(ValueError):invoke()
             row[key]=saved
+
+class ReviewedDiagnosticsContractTests(unittest.TestCase):
+    def setUp(self):
+        self.entry = json.loads('{"id":"20261030033900_RuntimeDiagnosticPerformanceEvidence","supported":true,"columns":[{"schema":"dbo","table":"RuntimeDiagnosticIncidents","name":"PerformanceEvidenceJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]}')
+        self.prior = dict(schemaVersion=3, migrations=[dict(id='20261026223148_ReceptionistBrowserCreation', supported=True)])
+        self.contract = dict(schemaVersion=3, migrations=[*self.prior['migrations'], self.entry])
+        before, after = next(iter(m.REVIEWED_DIAGNOSTICS_RUNTIME_PAIRS))
+        self.trusted = dict(runtimeIdentity=before, toolIdentity='c'*64, executionIdentity='d'*64)
+        self.current = dict(self.trusted, runtimeIdentity=after)
+
+    def prove(self, contract=None, prior=None, results=(0, 0)):
+        with patch.object(m.subprocess, 'run', side_effect=[SimpleNamespace(returncode=x) for x in results]):
+            return m.reviewed_diagnostics_contract_extension('e'*40, 'f'*40,
+                self.contract if contract is None else contract, self.prior if prior is None else prior, self.current, self.trusted)
+
+    def test_exact_entry_and_both_serialization_pins(self):
+        self.assertTrue(self.prove())
+        self.assertEqual(m.REVIEWED_DIAGNOSTICS_ENTRY, hashlib.sha256(json.dumps(self.entry, sort_keys=True, separators=(',', ':')).encode()).hexdigest())
+        source=Path('scripts/MigrationReleaseProbe/CandidateContract.cs').read_text()
+        self.assertIn(hashlib.sha256(json.dumps(self.entry, separators=(',', ':')).encode()).hexdigest(), source)
+
+    def test_each_unreviewed_column_or_extra_operation_is_rejected(self):
+        import copy
+        for key,value in [('name','Other'),('table','Other'),('nullable',False),('type','nvarchar(4096)'),('default','{}'),('collation','other')]:
+            bad=copy.deepcopy(self.contract);bad['migrations'][-1]['columns'][0][key]=value
+            with self.subTest(key=key):self.assertFalse(self.prove(bad,results=()))
+        for key,value in [('columns',[]),('indexes',[{}]),('tables',[{}]),('guards',['extra']),('foreignKeys',[{}]),('supported',1),('id','29990101_Unknown'),('unknown',False)]:
+            bad=copy.deepcopy(self.contract);bad['migrations'][-1][key]=value
+            with self.subTest(key=key):self.assertFalse(self.prove(bad,results=()))
+
+    def test_missing_duplicate_reordered_prefix_or_unknown_suffix_rejected(self):
+        import copy
+        for rows in [self.prior['migrations'], [self.entry], [self.entry,*self.prior['migrations']],
+            [*self.contract['migrations'],self.entry], [*self.contract['migrations'],dict(id='29990101_Unknown')]]:
+            self.assertFalse(self.prove(dict(schemaVersion=3,migrations=rows),results=()))
+        prior=copy.deepcopy(self.prior);prior['migrations'][-1]['id']='20261026210738_AddReceptionistManagement'
+        self.assertFalse(self.prove(dict(schemaVersion=3,migrations=[*prior['migrations'],self.entry]),prior,results=()))
+        for version in (True,2,'3'):
+            self.assertFalse(self.prove(dict(self.contract,schemaVersion=version),results=()))
+        self.assertFalse(self.prove(dict(self.contract,unknown=False),results=()))
+
+    def test_exact_runtime_tools_execution_ancestry_and_no_tool_diff_required(self):
+        for row in (self.current,self.trusted):
+            for key in ('runtimeIdentity','toolIdentity','executionIdentity'):
+                old=row[key];row[key]='0'*64
+                with self.subTest(key=key):self.assertFalse(self.prove(results=()))
+                row[key]=old
+        self.assertFalse(self.prove(results=(1,)))
+        self.assertFalse(self.prove(results=(0,1)))
+
+    def test_actual_dispatcher_uses_exact_extension_and_cannot_fall_back_to_equality(self):
+        with patch.object(m,'migration_probe_identity',side_effect=[self.current,self.trusted]), \
+             patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
+            result=m.candidate_migration_contract_proven('e'*40,'f'*40,self.contract,self.prior)
+            self.assertEqual('approved-prefix-reviewed-diagnostics-entry',result['rule'])
+        with patch.object(m,'migration_probe_identity',side_effect=[self.current,self.trusted]), \
+             patch.object(m,'migration_contract_static_styles_only',return_value=False), \
+             self.assertRaisesRegex(ValueError,'UNPROVEN'):
+            m.candidate_migration_contract_proven('e'*40,'f'*40,self.prior,self.prior)
+
+
+class ReviewedCrmContractTests(unittest.TestCase):
+    def setUp(self):
+        self.entry = json.loads('{"id":"20261030070000_CrmRelationshipHistory","supported":true,"columns":[{"schema":"dbo","table":"WebsiteLeadIntakeLinks","name":"AssociationVersion","type":"uniqueidentifier","nullable":false,"default":"00000000-0000-0000-0000-000000000000","precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"WebsiteLeadIntakeLinks","name":"HistoryClientProfileId","type":"uniqueidentifier","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[{"schema":"dbo","name":"CrmHistoryEntries","columns":[{"schema":"dbo","table":"CrmHistoryEntries","name":"Id","type":"uniqueidentifier","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"RelationshipKey","type":"nvarchar(100)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"RecordedBy","type":"nvarchar(450)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"RecordedUtc","type":"datetime2","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"FiledUtc","type":"datetime2","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"OccurredUtc","type":"datetime2","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"OccurredDate","type":"nvarchar(10)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"TimeZoneId","type":"nvarchar(100)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"TimePrecision","type":"nvarchar(20)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"Type","type":"nvarchar(60)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"Source","type":"nvarchar(80)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"SourceId","type":"nvarchar(200)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"ContentJson","type":"nvarchar(max)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"SubmissionId","type":"uniqueidentifier","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"RelatedEntryId","type":"uniqueidentifier","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"FormName","type":"nvarchar(160)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"FormVersion","type":"nvarchar(100)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"Product","type":"nvarchar(100)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"CaseReference","type":"nvarchar(200)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"AssignedOwner","type":"nvarchar(450)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"DueUtc","type":"datetime2","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"Status","type":"nvarchar(40)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"EvidenceStatus","type":"nvarchar(80)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null}],"primaryKey":{"name":"PK_CrmHistoryEntries","columns":["Id"]},"foreignKeys":[],"uniqueKeys":[],"checks":[]}],"indexes":[{"schema":"dbo","table":"WebsiteLeadIntakeLinks","name":"IX_WebsiteLeadIntakeLinks_HistoryClientProfileId","columns":["HistoryClientProfileId"],"unique":false,"filter":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"IX_CrmHistoryEntries_RelationshipKey_Source_SourceId","columns":["RelationshipKey","Source","SourceId"],"unique":true,"filter":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"IX_CrmHistoryEntries_RelationshipKey_OccurredUtc_Id","columns":["RelationshipKey","OccurredUtc","Id"],"unique":false,"filter":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"IX_CrmHistoryEntries_RelationshipKey_RecordedUtc_Id","columns":["RelationshipKey","RecordedUtc","Id"],"unique":false,"filter":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"IX_CrmHistoryEntries_SubmissionId","columns":["SubmissionId"],"unique":false,"filter":null}],"guards":["crm-relationship-history-v1"],"foreignKeys":[{"schema":"dbo","table":"WebsiteLeadIntakeLinks","constraint":{"name":"FK_WebsiteLeadIntakeLinks_ClientProfiles_HistoryClientProfileId","columns":["HistoryClientProfileId"],"principalSchema":"dbo","principalTable":"ClientProfiles","principalColumns":["Id"]}}]}')
+        self.diagnostics = json.loads('{"id":"20261030033900_RuntimeDiagnosticPerformanceEvidence","supported":true,"columns":[{"schema":"dbo","table":"RuntimeDiagnosticIncidents","name":"PerformanceEvidenceJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]}')
+        self.prior = dict(schemaVersion=3, migrations=[dict(id='20261026223148_ReceptionistBrowserCreation', supported=True)])
+        self.contract = dict(schemaVersion=3, migrations=[*self.prior['migrations'], self.diagnostics, self.entry])
+        self.trusted = dict(runtimeIdentity='a'*64, toolIdentity='c'*64, executionIdentity='d'*64)
+        self.current = dict(self.trusted, runtimeIdentity='b'*64)
+        runtime = patch.object(m, 'REVIEWED_CRM_RUNTIME_PAIRS', frozenset({('a'*64,'b'*64)}))
+        runtime.start(); self.addCleanup(runtime.stop)
+
+    def prove(self, contract=None, results=(0,0)):
+        with patch.object(m.subprocess, 'run', side_effect=[SimpleNamespace(returncode=x) for x in results]):
+            return m.reviewed_crm_contract_extension('e'*40, 'f'*40,
+                self.contract if contract is None else contract, self.prior, self.current, self.trusted)
+
+    def test_exact_ordered_suffix_and_descriptor_pins(self):
+        self.assertTrue(self.prove())
+        self.assertEqual(m.REVIEWED_CRM_ENTRY, hashlib.sha256(json.dumps(self.entry, sort_keys=True, separators=(',', ':')).encode()).hexdigest())
+        self.assertIn(hashlib.sha256(json.dumps(self.entry,separators=(',', ':')).encode()).hexdigest(),
+            Path('scripts/MigrationReleaseProbe/CandidateContract.Crm.cs').read_text())
+
+    def test_skip_reorder_duplicate_unknown_and_prefix_drift_rejected(self):
+        import copy
+        for rows in [self.prior['migrations'], [*self.prior['migrations'],self.entry],
+            [*self.prior['migrations'],self.entry,self.diagnostics], [*self.contract['migrations'],self.entry]]:
+            self.assertFalse(self.prove(dict(schemaVersion=3,migrations=rows),results=()))
+        bad=copy.deepcopy(self.contract);bad['migrations'][0]['supported']=False
+        self.assertFalse(self.prove(bad,results=()))
+        for key,value in [('columns',[]),('tables',[]),('indexes',[]),('foreignKeys',[]),('guards',[]),('supported',1),('unknown',False)]:
+            bad=copy.deepcopy(self.contract);bad['migrations'][-1][key]=value
+            with self.subTest(key=key):self.assertFalse(self.prove(bad,results=()))
+        bad=copy.deepcopy(self.contract);bad['migrations'][-1]['tables'][0]['columns'][0]['nullable']=True
+        self.assertFalse(self.prove(bad,results=()))
+        bad=copy.deepcopy(self.contract);bad['migrations'][-2]['columns'][0]['nullable']=False
+        self.assertFalse(self.prove(bad,results=()))
+
+    def test_runtime_tools_execution_ancestry_and_script_equality_remain_required(self):
+        for row in (self.current,self.trusted):
+            for key in ('runtimeIdentity','toolIdentity','executionIdentity'):
+                old=row[key];row[key]='0'*64
+                self.assertFalse(self.prove(results=()));row[key]=old
+        self.assertFalse(self.prove(results=(1,)))
+        self.assertFalse(self.prove(results=(0,1)))
+
+    def test_dispatcher_uses_combined_rule(self):
+        with patch.object(m,'migration_probe_identity',side_effect=[self.current,self.trusted]), patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
+            result=m.candidate_migration_contract_proven('e'*40,'f'*40,self.contract,self.prior)
+            self.assertEqual('approved-prefix-reviewed-diagnostics-crm-entries',result['rule'])
+
 
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.

@@ -244,6 +244,8 @@ public sealed partial class CrmHistoryTests
         await db.SaveChangesAsync();
         var nativeRequest = new AgentPortal.Controllers.CrmHistoryController.AssociationCorrection(Guid.NewGuid(), link.Id, "", "Verified native client", native.Id, preserved.AssociationVersion);
         Assert.IsType<Microsoft.AspNetCore.Mvc.NotFoundResult>(await BuildController(db, "other").CorrectAssociation(nativeRequest));
+        // HttpContextAccessor is ambient; restore the authenticated owner after the denial fixture.
+        controller = BuildController(db, "owner");
         Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await controller.CorrectAssociation(nativeRequest));
         Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await controller.CorrectAssociation(nativeRequest));
         db.ChangeTracker.Clear();

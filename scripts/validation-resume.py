@@ -5427,8 +5427,7 @@ WORKFLOWS = {
                     "AgentPortal.Tests/LaunchAuditRiskAssessmentTests.cs",
                     "AgentPortal.Tests/CanonicalCrmOutcomeLineageTests.cs",
                     "AgentPortal.Tests/WebsiteLifeLeadCaptureServiceTests.cs",
-                    "AgentPortal.Tests/CrmHistoryTests.cs",
-                    "AgentPortal.Tests/CrmHistoryEvidenceTests.cs",
+                    "AgentPortal.Tests/CrmHistory*Tests.cs",
                 ) + CRM_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "exclude_paths": DIAGNOSTICS_SOURCE,
                 "materializes": ("compile-regression",),
@@ -5437,6 +5436,9 @@ WORKFLOWS = {
                 "step": "Run canonical form tracking tests",
                 "paths": (
                     "tests/analytics/insurance-form-evidence.test.cjs",
+                    "tests/analytics/crm-history.test.cjs",
+                    "AgentPortal/wwwroot/js/crm-history.js",
+                    "AgentPortal/Views/CrmHistory/Index.cshtml",
                     "Protect-Website/wwwroot/js/insurance-form-evidence.js",
                     "tests/analytics/form-tracker.test.cjs",
                     "SHARED/WebsitePlatform/tracking.js",
@@ -9412,6 +9414,15 @@ def readiness_scope(candidate, approved):
         paths = subprocess.check_output(['git', 'diff', '--no-renames', '--name-only', '-z',
                                          approved, candidate, '--']).decode().split('\0')
         paths = sorted(path for path in paths if path)
+        # The one exact nonpublishing diagnostics bootstrap is evaluated before
+        # provider readiness. This is only a zero-effect scope proof; ordinary
+        # source checks, trusted-tool promotion and SQL rehearsal remain required.
+        if RELEASE_REQUEST_PATH in paths:
+            import release_policy
+            bootstrap = release_policy.diagnostics_bootstrap_scope(approved, candidate)
+            if bootstrap is not None:
+                return dict(bootstrap, state='not-required',
+                            reason='exact_nonpublishing_diagnostics_bootstrap')
         if not paths or RELEASE_REQUEST_PATH in paths:
             return dict(result, reason='release_request_or_empty_scope')
         source = git_show_file(approved, 'scripts/validation-resume.py')
@@ -9535,6 +9546,78 @@ REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS = frozenset({
     ('3fbe9ce6512a2ebb7db43f0f45a5227786094ac6b287ccc3eca40c59da05f6e0',
      'e097be398e774e6226b9a7cb72b41b7eec92eb8a3043af8e16e412381ca0051f')
 })
+
+
+REVIEWED_CRM_ENTRY = 'b2654e654640d238a5eb818558bd0ce149a5aefc78d3189489aef0b736447ac4'
+# Exact proposed runtime closures; promotion still requires independent review,
+# equal inherited tool/execution identities and the pinned ordered contract.
+REVIEWED_CRM_RUNTIME_PAIRS = frozenset({
+    ('37ddb814b51e2ea585fa6bd3f23aa9f25f41cf5064c9ad178102ed8aaaafa08b',
+     'c1e96d7f5c3a3707b1e187cb721cb683264a4179c479c034184b5fdece46f92e')
+})
+
+
+def reviewed_crm_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
+    if ((trusted.get('runtimeIdentity'), current.get('runtimeIdentity')) not in REVIEWED_CRM_RUNTIME_PAIRS
+        or not current.get('toolIdentity') or current.get('toolIdentity') != trusted.get('toolIdentity')
+        or not current.get('executionIdentity') or current.get('executionIdentity') != trusted.get('executionIdentity')):
+        return False
+    if (not isinstance(contract, dict) or not isinstance(approved_contract, dict)
+        or set(contract) != {'schemaVersion', 'migrations'} or set(approved_contract) != set(contract)
+        or type(contract['schemaVersion']) is not int or contract['schemaVersion'] != 3
+        or type(approved_contract['schemaVersion']) is not int or approved_contract['schemaVersion'] != 3
+        or not isinstance(contract['migrations'], list) or not isinstance(approved_contract['migrations'], list)
+        or not 1 <= len(approved_contract['migrations']) <= 9998
+        or len(contract['migrations']) != len(approved_contract['migrations']) + 2
+        or contract['migrations'][:-2] != approved_contract['migrations']):
+        return False
+    previous = approved_contract['migrations'][-1]
+    if not isinstance(previous, dict) or previous.get('id') != '20261026223148_ReceptionistBrowserCreation':
+        return False
+    for entry, (migration_id, digest) in zip(contract['migrations'][-2:], (
+        ('20261030033900_RuntimeDiagnosticPerformanceEvidence', REVIEWED_DIAGNOSTICS_ENTRY),
+        ('20261030070000_CrmRelationshipHistory', REVIEWED_CRM_ENTRY))):
+        if (not isinstance(entry, dict) or entry.get('id') != migration_id or entry.get('supported') is not True
+            or hashlib.sha256(json.dumps(entry, sort_keys=True, separators=(',', ':'),
+                ensure_ascii=True, allow_nan=False).encode()).hexdigest() != digest):
+            return False
+    if subprocess.run(['git', 'merge-base', '--is-ancestor', approved, candidate], capture_output=True).returncode:
+        return False
+    return subprocess.run(['git', 'diff', '--quiet', approved, candidate, '--', 'scripts', '.github'], capture_output=True).returncode == 0
+
+
+REVIEWED_DIAGNOSTICS_ENTRY = 'de521b85cf05c3b68c66e7e44ccee6b3ae4ce0634aeaf8128c4054811672e362'
+REVIEWED_DIAGNOSTICS_RUNTIME_PAIRS = frozenset({
+    ('2ca97a12dace04280b175b6e5c6adf8b81e8a8a550d46bee745b38a968e9dae7',
+     'bf1be3ad4c22961f4c1503048fc0f1ea6522d40d3c1a46d6fb6b3a36f7d54e1d')
+})
+
+
+def reviewed_diagnostics_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
+    """Exact reviewed nullable diagnostic column; inherited trusted tools remain mandatory."""
+    if ((trusted.get('runtimeIdentity'), current.get('runtimeIdentity')) not in REVIEWED_DIAGNOSTICS_RUNTIME_PAIRS
+        or not current.get('toolIdentity') or current.get('toolIdentity') != trusted.get('toolIdentity')
+        or not current.get('executionIdentity') or current.get('executionIdentity') != trusted.get('executionIdentity')):
+        return False
+    if (not isinstance(contract, dict) or not isinstance(approved_contract, dict)
+        or set(contract) != {'schemaVersion', 'migrations'} or set(approved_contract) != set(contract)
+        or type(contract['schemaVersion']) is not int or contract['schemaVersion'] != 3
+        or type(approved_contract['schemaVersion']) is not int or approved_contract['schemaVersion'] != 3
+        or not isinstance(contract['migrations'], list) or not isinstance(approved_contract['migrations'], list)
+        or not 1 <= len(approved_contract['migrations']) < 10000
+        or len(contract['migrations']) != len(approved_contract['migrations']) + 1
+        or contract['migrations'][:-1] != approved_contract['migrations']):
+        return False
+    previous, entry = approved_contract['migrations'][-1], contract['migrations'][-1]
+    if (not isinstance(previous, dict) or previous.get('id') != '20261026223148_ReceptionistBrowserCreation'
+        or not isinstance(entry, dict) or entry.get('id') != '20261030033900_RuntimeDiagnosticPerformanceEvidence'
+        or entry.get('supported') is not True
+        or hashlib.sha256(json.dumps(entry, sort_keys=True, separators=(',', ':'),
+            ensure_ascii=True, allow_nan=False).encode()).hexdigest() != REVIEWED_DIAGNOSTICS_ENTRY):
+        return False
+    if subprocess.run(['git', 'merge-base', '--is-ancestor', approved, candidate], capture_output=True).returncode:
+        return False
+    return subprocess.run(['git', 'diff', '--quiet', approved, candidate, '--', 'scripts', '.github'], capture_output=True).returncode == 0
 
 
 def reviewed_browser_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
@@ -9696,6 +9779,14 @@ def candidate_migration_contract_proven(candidate, approved, contract, approved_
     trusted = migration_probe_identity(approved, approved)
     rule = 'approved-definitions-exact'
     if current['runtimeIdentity'] != trusted['runtimeIdentity']:
+        if reviewed_crm_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
+            return {'state': 'proven', 'rule': 'approved-prefix-reviewed-diagnostics-crm-entries',
+                    'runtimeIdentity': current['runtimeIdentity'],
+                    'approvedRuntimeIdentity': trusted['runtimeIdentity']}
+        if reviewed_diagnostics_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
+            return {'state': 'proven', 'rule': 'approved-prefix-reviewed-diagnostics-entry',
+                    'runtimeIdentity': current['runtimeIdentity'],
+                    'approvedRuntimeIdentity': trusted['runtimeIdentity']}
         if reviewed_browser_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
             return {'state': 'proven', 'rule': 'approved-prefix-reviewed-browser-entry',
                     'runtimeIdentity': current['runtimeIdentity'],

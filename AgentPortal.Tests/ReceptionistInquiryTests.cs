@@ -668,6 +668,7 @@ public sealed partial class ReceptionistInquiryTests
         protected override void OnModelCreating(ModelBuilder model)
         {
             model.ApplyConfiguration(new MarketingConnectionConfiguration());
+            model.ApplyConfiguration(new CrmHistoryEntryConfiguration());
             ReceptionistModelConfiguration.Configure(model, Database.ProviderName);
             model.Entity<AgentTrackingProfile>().Ignore(x => x.Aliases);
             model.Entity<AgentProfile>(); model.Entity<CommerceBusinessStorefrontSettings>();
@@ -693,7 +694,7 @@ public sealed partial class ReceptionistInquiryTests
             model.Entity<LeadAppointment>();
             model.Entity<ClientProfile>(); model.Entity<AgentClient>(); model.Entity<CommerceBusinessMember>(); model.Entity<AccountLifecycleRecord>();
             var allowed = new HashSet<Type>(typeof(ReceptionistCall).Assembly.GetTypes().Where(x => x.Namespace == "Domain.Entities" && x.Name.StartsWith("Receptionist", StringComparison.Ordinal)))
-            { typeof(MarketingConnection), typeof(AgentTrackingProfile), typeof(AgentProfile), typeof(CommerceBusiness), typeof(CommerceBusinessStorefrontSettings),
+            { typeof(CrmHistoryEntry), typeof(MarketingConnection), typeof(AgentTrackingProfile), typeof(AgentProfile), typeof(CommerceBusiness), typeof(CommerceBusinessStorefrontSettings),
                 typeof(WebsiteLead), typeof(WebsiteLeadIntakeLink), typeof(WorkstationLeadProfile), typeof(CommerceWebsiteInquiry), typeof(LeadAppointment),
                 typeof(ClientProfile), typeof(AgentClient), typeof(CommerceBusinessMember), typeof(AccountLifecycleRecord) };
             foreach (var entity in model.Model.GetEntityTypes().ToArray())

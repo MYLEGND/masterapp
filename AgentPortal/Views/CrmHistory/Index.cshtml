@@ -83,6 +83,6 @@
             </form>
         </details>
     }
-    <dialog id="history-detail" class="rounded p-4" style="max-width:min(900px,95vw);max-height:90vh;overflow:auto"><button id="history-close" class="btn btn-outline-secondary">Close</button><h2>Filed record</h2><div id="history-detail-content"></div></dialog>
+    <dialog aria-labelledby="history-detail-title" id="history-detail" class="rounded p-4" style="max-width:min(900px,95vw);max-height:90vh;overflow:auto"><button id="history-close" class="btn btn-outline-secondary">Close</button><h2 id="history-detail-title">Filed record</h2><div id="history-detail-content"></div></dialog>
 </section>
 @section Scripts { <script src="~/js/crm-history.js" asp-append-version="true"></script> }

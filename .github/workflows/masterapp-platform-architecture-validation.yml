@@ -453,7 +453,7 @@ jobs:
           PYTEST
           }
           form_tracking() {
-            node --test tests/analytics/form-tracker.test.cjs tests/analytics/insurance-form-evidence.test.cjs
+            node --test tests/analytics/form-tracker.test.cjs tests/analytics/insurance-form-evidence.test.cjs tests/analytics/crm-history.test.cjs
           }
           release_web_contracts() {
             node --test tests/analytics/csv-export.test.cjs
