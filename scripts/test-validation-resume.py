@@ -6703,6 +6703,137 @@ class RetainedRecoveryHistoryTests(unittest.TestCase):
         run=self.run_fixture();run['display_title']='unknown'
         with self.assertRaises(m.ReleaseOperationHistoryUnproven):self.invoke(run,[])
 
+class CrmOriginalInventoryTests(unittest.TestCase):
+    def setUp(self):
+        import copy
+        self.copy=copy.deepcopy;self.rev=m.CRM_PREINTENT_REVISION;self.base='b'*40;self.carried='c'*40
+        self.run=dict(id=41131223973,head_sha=self.rev,run_attempt=4,status='completed',conclusion='failure',
+            event='push',path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,
+            head_branch=m.FAST_TRACK_PR_BASE,head_repository=dict(full_name='MYLEGND/masterapp'))
+        self.targets=['portal','client','protect','parfait']
+        def step(name,conclusion='success'):return dict(name=name,status='completed',conclusion=conclusion)
+        base=[dict(name='Select exact affected applications',status='completed',conclusion='success',
+                  steps=[step('Derive application impact exclusively from changed paths')]),
+              dict(name='Admit exact validated fast-track source',status='completed',conclusion='success',
+                  steps=[step('Authenticate merged source and preserved required validation')]),
+              dict(name='Reconcile production schema before publication',status='completed',conclusion='success',
+                  steps=[step('Apply or reconcile the exact rehearsed migration bundle','skipped'),
+                         step('Reconcile fresh already-ready schema without SQL bundle or mutation')]),
+              dict(name='Publish verified website routing',status='completed',conclusion='skipped',steps=[])]
+        self.attempts={}
+        for attempt in range(1,5):
+            jobs=self.copy(base)
+            if attempt<3:
+                jobs[2]['conclusion']='failure'
+                jobs.append(dict(name='Affected App Deploy — ${{ matrix.target }}',status='completed',conclusion='skipped',steps=[]))
+            else:
+                jobs.extend(dict(name='Affected App Deploy — '+m.fast_track_target_label(key),status='completed',conclusion='failure',
+                    steps=[step('Publish or reconcile exact application bytes','failure')]) for key in self.targets)
+            self.attempts[attempt]=jobs
+
+    def call(self):
+        from contextlib import ExitStack
+        request=dict(releaseMode='approved-only',requestedBy='Founder',preserveLiveTargets=False,
+            targets=[m.RELEASE_TARGETS[k]['releaseName'] for k in self.targets],cloudflareWebsiteRouting=False)
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(m,'api_get',side_effect=lambda repo,path,token:
+                dict(total_count=0,artifacts=[]) if '/artifacts?' in path else self.run))
+            stack.enter_context(patch.object(m,'fast_track_historical_producers',return_value=[self.run]))
+            stack.enter_context(patch.object(m,'fast_track_merged_source_proof'))
+            stack.enter_context(patch.object(m.subprocess,'check_output',side_effect=lambda args,**kw:
+                self.rev+' '+self.base+' '+'d'*40 if args[1]=='rev-list' else m.RELEASE_REQUEST_PATH+'\n'))
+            stack.enter_context(patch.object(m,'_release_history_source',side_effect=lambda repo,rev,path,token:
+                json.dumps(request) if path==m.RELEASE_REQUEST_PATH else 'jobs: {}'))
+            stack.enter_context(patch.object(m,'fast_track_effective_baseline',return_value=self.carried))
+            stack.enter_context(patch.object(m,'fast_track_scope',return_value=dict(matrix=dict(include=[dict(key=k) for k in self.targets]),commerce=True,routing=False)))
+            stack.enter_context(patch.object(m,'_completion_jobs',return_value=self.attempts))
+            stack.enter_context(patch.object(m,'_completion_original_unchanged'))
+            stack.enter_context(patch.object(m,'fast_track_recovery_material',return_value=dict(originalIntent=None,packageArtifact={})))
+            stack.enter_context(patch.object(m,'fast_track_recovery_package_digest',return_value='e'*64))
+            attestation=stack.enter_context(patch.object(m,'attested_fast_track_preupload_failure',return_value=True))
+            result=m.fast_track_completion_original('MYLEGND/masterapp',41131223973,self.rev,'test')
+            self.assertEqual(attestation.call_count,8)
+            return result
+
+    def test_actual_skipped_then_expanded_shape_carries_no_intent_scope(self):
+        self.assertEqual(self.call()['baseRevision'],self.carried)
+
+    def test_unproven_skipped_matrix_or_scope_is_not_normalized(self):
+        original=self.copy(self.attempts)
+        for change in [dict(steps=[dict(name='unexpected')]),dict(status='in_progress'),dict(conclusion='failure')]:
+            self.attempts=self.copy(original);self.attempts[1][-1].update(change)
+            with self.subTest(change=change),self.assertRaises(ValueError):self.call()
+        self.attempts=self.copy(original);self.attempts[1].append(self.copy(self.attempts[1][-1]))
+        with self.assertRaises(ValueError):self.call()
+        self.attempts=self.copy(original);self.attempts[1].pop(0)
+        with self.assertRaises(ValueError):self.call()
+        self.attempts=self.copy(original);self.attempts[3]=self.copy(self.attempts[1])
+        with self.assertRaises(ValueError):self.call()
+
+
+class CrmPreintentIdentityTests(unittest.TestCase):
+    def setUp(self):
+        self.run = dict(id=41131223973, head_sha=m.CRM_PREINTENT_REVISION,
+                        run_attempt=4, status='completed', conclusion='failure')
+
+    def test_only_eight_reviewed_terminal_jobs_are_recognized(self):
+        self.assertEqual(len(m.CRM_PREINTENT_LOGS), 8)
+        for (attempt, target, job), digest in m.CRM_PREINTENT_LOGS.items():
+            self.assertEqual(m.crm_preintent_log_digest('MYLEGND/masterapp', self.run,
+                             dict(id=job), attempt, target), digest)
+            self.assertIsNone(m.crm_preintent_log_digest('other/repo', self.run,
+                              dict(id=job), attempt, target))
+            self.assertIsNone(m.crm_preintent_log_digest('MYLEGND/masterapp', self.run,
+                              dict(id=job + 1), attempt, target))
+            self.assertIsNone(m.crm_preintent_log_digest('MYLEGND/masterapp', self.run,
+                              dict(id=job), 5, target))
+
+    def test_active_rerun_changed_revision_or_nonterminal_original_remains_held(self):
+        for change in [dict(status='in_progress'), dict(conclusion=None), dict(conclusion='cancelled'),
+                       dict(run_attempt=5), dict(head_sha='a'*40), dict(id=1)]:
+            with self.subTest(change=change):
+                self.assertIsNone(m.crm_preintent_log_digest('MYLEGND/masterapp',
+                    self.run | change, dict(id=124357989085), 4, 'portal'))
+
+
+class CrmPreintentAttestationTests(unittest.TestCase):
+    def fixture(self):
+        fixture = RetainedPreuploadAttestationTests(); fixture.setUp()
+        fixture.target = 'portal'
+        fixture.run.update(id=41131223973, run_attempt=4, head_sha=m.CRM_PREINTENT_REVISION,
+                           conclusion='failure', head_repository=dict(full_name='MYLEGND/masterapp'))
+        fixture.job.update(id=124357989085, run_id=41131223973, run_attempt=4,
+                           head_sha=m.CRM_PREINTENT_REVISION, name='Affected App Deploy — AgentPortal')
+        fixture.package.update(name='fast-track-package-'+m.CRM_PREINTENT_REVISION+'-portal',
+                               workflow_run=dict(id=41131223973,head_sha=m.CRM_PREINTENT_REVISION))
+        import io,zipfile
+        buffer=io.BytesIO()
+        with zipfile.ZipFile(buffer,'w') as archive:
+            archive.writestr('_deployment-provenance.txt',m.CRM_PREINTENT_REVISION)
+            archive.writestr('wwwroot/_deployment-provenance.json',json.dumps(dict(releaseSha=m.CRM_PREINTENT_REVISION)))
+        fixture.archive=buffer.getvalue();fixture.digest=hashlib.sha256(fixture.archive).hexdigest()
+        fixture.operation = m.retained_operation_id('portal',m.CRM_PREINTENT_REVISION,fixture.digest)
+        return fixture
+
+    def invoke(self, fixture, **kwargs):
+        log = 'reviewed complete terminal trace\n'
+        with patch.object(m, 'CRM_PREINTENT_SOURCE', {'scripts/deploy-approved-app.py':hashlib.sha256(b'reviewed-source').hexdigest()}), \
+             patch.object(m, 'CRM_PREINTENT_LOGS', {(4,'portal',124357989085):hashlib.sha256(log.rstrip('\n').encode()).hexdigest()}):
+            return fixture.invoke(repository='MYLEGND/masterapp', log=kwargs.pop('log',log), **kwargs)
+
+    def test_exact_log_still_requires_source_package_operation_and_inventory(self):
+        self.assertTrue(self.invoke(self.fixture()))
+        for options in [dict(source='changed'),dict(owner=False),dict(extra_intent=True),
+                        dict(complete=False),dict(bad_checksum=True),dict(log='truncated'),
+                        dict(log='reviewed complete terminal trace\nSubmitting the verified immutable ZIP once.')]:
+            with self.subTest(options=options):self.assertFalse(self.invoke(self.fixture(),**options))
+        fixture=self.fixture();fixture.operation='f'*64;self.assertFalse(self.invoke(fixture))
+        fixture=self.fixture();fixture.package['expired']=True;self.assertFalse(self.invoke(fixture))
+        fixture=self.fixture();fixture.job['status']='in_progress';self.assertFalse(self.invoke(fixture))
+        fixture=self.fixture();fixture.job['head_sha']='f'*40;self.assertFalse(self.invoke(fixture))
+        fixture=self.fixture();fixture.run['status']='in_progress';self.assertFalse(self.invoke(fixture))
+
+
 class RetainedPreuploadAttestationTests(unittest.TestCase):
     def setUp(self):
         import io,zipfile
@@ -6719,10 +6850,11 @@ class RetainedPreuploadAttestationTests(unittest.TestCase):
         with zipfile.ZipFile(buffer,'w') as archive:archive.writestr('_deployment-provenance.txt','a'*40)
         self.archive=buffer.getvalue();self.digest=hashlib.sha256(self.archive).hexdigest()
         self.operation=hashlib.sha256(json.dumps(dict(target='website',applicationRevision='a'*40,packageDigest=self.digest),sort_keys=True,separators=(',',':')).encode()).hexdigest()
-    def invoke(self, *, source='reviewed-source', owner=True, extra_intent=False, complete=True, bad_checksum=False):
+    def invoke(self, *, source='reviewed-source', owner=True, extra_intent=False, complete=True, bad_checksum=False,
+               repository='owner/repo', log=None):
         rows=[self.package]+([dict(name='legend-release-operation-intent-any')] if extra_intent else [])
         def download(repo,run,name,directory,**kwargs):
-            self.assertEqual((run,kwargs['artifact_id'],kwargs['expected_digest']),(10,40,'sha256:'+'e'*64))
+            self.assertEqual((run,kwargs['artifact_id'],kwargs['expected_digest']),(self.run['id'],40,'sha256:'+'e'*64))
             (directory/'deploy.zip').write_bytes(self.archive)
             (directory/'SHA256SUMS').write_text(('0'*64 if bad_checksum else self.digest)+'  deploy.zip\n')
         with patch.object(m,'FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS',({'scripts/deploy-approved-app.py':hashlib.sha256(b'reviewed-source').hexdigest()},)), \
@@ -6730,10 +6862,11 @@ class RetainedPreuploadAttestationTests(unittest.TestCase):
              patch.object(m,'api_get',return_value=dict(total_count=len(rows)+(0 if complete else 1),artifacts=rows)), \
              patch.object(m,'_completion_jobs',return_value={1:[self.job]}), \
              patch.object(m,'_completion_original_artifact_owner',side_effect=None if owner else ValueError('missing owner')), \
-             patch.object(m,'_release_history_json',return_value=dict(target='website')), \
+             patch.object(m,'_release_history_json',return_value=dict(target=getattr(self,'target','website'))), \
              patch.object(m,'_download_run_artifact',side_effect=download), \
-             patch.object(m,'_release_job_log',return_value=RetainedRecoveryAuthorityTests().log()):
-            return m.attested_fast_track_preupload_failure('owner/repo',self.run,self.job,1,'website',self.operation,'token')
+             patch.object(m,'_release_job_log',return_value=RetainedRecoveryAuthorityTests().log() if log is None else log):
+            return m.attested_fast_track_preupload_failure(repository,self.run,self.job,self.job['run_attempt'],
+                getattr(self,'target','website'),self.operation,'token')
     def test_original_and_recovery_share_only_verified_bytes_with_fresh_guards(self):
         with m.recovery_material_reuse(),patch.object(m,'_verified_recovery_package_digest',wraps=m._verified_recovery_package_digest)as verify:
             self.assertTrue(self.invoke());self.assertTrue(self.invoke());self.assertEqual(verify.call_count,1)
@@ -6981,7 +7114,7 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         root=Path(__file__).parent
         source=(root/'deploy-approved-app.py').read_text()
         journal=(root/'release-operation-evidence.py').read_text()
-        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'2695c73db8082f794e79e4d32f36d034d7c21dbc63912b373cc5bce30e46dcf6')
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'f639c1dc92e1f382964b2e1aca9b6f1d606eec1ba1c11d492424b298d17628b2')
         self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f')
         self.assertTrue(m._recovery_preflight_source_contract(source,journal))
         for changed in [source+'# unreviewed helper\n',source.replace('reconcile_only=journal.intent is not None','reconcile_only=False')]:
@@ -7003,7 +7136,9 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         multiline=('49e6b1caae18705fa91898d794c6d27e34be5ba8bda60693e5f1e65284a0caa8', diagnostic[1])
         fresh=('63de609c4e97fd97c566d59f3d1bb4eae745bfcc8012e508e2944b2307678240', diagnostic[1])
         portal=('2695c73db8082f794e79e4d32f36d034d7c21dbc63912b373cc5bce30e46dcf6','0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f')
-        for source,journal,accepted in [(portal[0],portal[1],True),(portal[0],old[1],False),(portal[0],fresh[1],False),(portal[0],'f'*64,False),('f'*64,portal[1],False),(old[0],old[1],True),(new[0],new[1],True),(current[0],current[1],True),
+        crm=('f639c1dc92e1f382964b2e1aca9b6f1d606eec1ba1c11d492424b298d17628b2',portal[1])
+        for source,journal,accepted in [(crm[0],crm[1],True),(crm[0],old[1],False),(crm[0],new[1],False),(crm[0],fresh[1],False),(crm[0],'f'*64,False),('f'*64,crm[1],False),
+                (portal[0],portal[1],True),(portal[0],old[1],False),(portal[0],fresh[1],False),(portal[0],'f'*64,False),('f'*64,portal[1],False),(old[0],old[1],True),(new[0],new[1],True),(current[0],current[1],True),
                 (fresh[0],fresh[1],True),(fresh[0],old[1],False),(fresh[0],new[1],False),
                 ('f'*64,fresh[1],False),(fresh[0],'f'*64,False),
                 (multiline[0],multiline[1],True),(multiline[0],old[1],False),(multiline[0],new[1],False),
