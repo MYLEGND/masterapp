@@ -256,7 +256,15 @@ internal static partial class RehearsalFixture
             // Construct the supported synthetic prior schema explicitly. Never
             // run arbitrary migration Down code or imply database rollback.
             if (crm) await db.Database.ExecuteSqlRawAsync(
-                "ALTER TABLE dbo.WebsiteLeadIntakeLinks DROP CONSTRAINT CK_WebsiteLeadIntakeLinks_HistoryAssociation; ALTER TABLE dbo.WebsiteLeadIntakeLinks ALTER COLUMN WorkstationLeadId nvarchar(64) NOT NULL", timeout.Token);
+                """
+                ALTER TABLE dbo.WebsiteLeadIntakeLinks DROP CONSTRAINT CK_WebsiteLeadIntakeLinks_HistoryAssociation;
+                ALTER TABLE dbo.WebsiteLeadIntakeLinks DROP CONSTRAINT FK_WebsiteLeadIntakeLinks_WorkstationLeadProfiles_WorkstationLeadId;
+                DROP INDEX IX_WebsiteLeadIntakeLinks_WorkstationLeadId_SubmittedUtc ON dbo.WebsiteLeadIntakeLinks;
+                ALTER TABLE dbo.WebsiteLeadIntakeLinks ALTER COLUMN WorkstationLeadId nvarchar(64) NOT NULL;
+                CREATE INDEX IX_WebsiteLeadIntakeLinks_WorkstationLeadId_SubmittedUtc ON dbo.WebsiteLeadIntakeLinks(WorkstationLeadId,SubmittedUtc);
+                ALTER TABLE dbo.WebsiteLeadIntakeLinks WITH CHECK ADD CONSTRAINT FK_WebsiteLeadIntakeLinks_WorkstationLeadProfiles_WorkstationLeadId
+                    FOREIGN KEY(WorkstationLeadId) REFERENCES dbo.WorkstationLeadProfiles(LeadId) ON DELETE CASCADE;
+                """, timeout.Token);
             if (browser) await db.Database.ExecuteSqlRawAsync(
                 "ALTER TABLE dbo.ReceptionistCalls DROP CONSTRAINT CK_ReceptionistCall_BrowserCreation", timeout.Token);
             var reverse = pending.Reverse().SelectMany(m =>

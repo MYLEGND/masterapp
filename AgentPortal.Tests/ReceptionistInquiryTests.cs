@@ -399,7 +399,9 @@ public sealed partial class ReceptionistInquiryTests
         await using (var db = f.Database())
         {
             if (change == "facts") (await db.WebsiteLeads.SingleAsync()).Notes = "A different unconfirmed need";
-            else if (change == "link") db.WebsiteLeadIntakeLinks.Remove(await db.WebsiteLeadIntakeLinks.SingleAsync());
+            // Simulate out-of-band database damage; normal SaveChanges correctly
+            // refuses to delete immutable filed evidence. Readback must still detect it.
+            else if (change == "link") await db.WebsiteLeadIntakeLinks.ExecuteDeleteAsync();
             else
             {
                 var crm = await db.WorkstationLeadProfiles.SingleAsync();

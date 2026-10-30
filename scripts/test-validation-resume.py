@@ -46,7 +46,7 @@ class CrmHistoryReleaseMappingTests(unittest.TestCase):
     def test_existing_crm_lane_owns_both_regression_classes(self):
         paths = m.WORKFLOWS['masterapp-platform-architecture-validation.yml']['gates']['crm-regressions']['paths']
         self.assertIn('AgentPortal.Tests/WebsiteLifeLeadCaptureServiceTests.cs', paths)
-        for name in ('CrmHistoryTests.cs','CrmHistoryEvidenceTests.cs','CrmHistoryFormRoutesTests.cs','CrmHistoryRecoveryTests.cs'):
+        for name in ('CrmHistoryTests.cs','CrmHistoryEvidenceTests.cs','CrmHistoryFormRoutesTests.cs','CrmHistoryRecoveryTests.cs','CrmHistoryConversionTests.cs','CrmHistoryBrowserTests.cs'):
             self.assertTrue(m.matches('AgentPortal.Tests/'+name, paths), name)
         self.assertIn('AgentPortal/Controllers/CrmEvidenceController.cs', paths)
         self.assertIn('Infrastructure/Data/Configurations/CrmHistoryEntryConfiguration.cs', paths)
@@ -8934,6 +8934,58 @@ class ReviewedCrmContractTests(unittest.TestCase):
         with patch.object(m,'migration_probe_identity',side_effect=[self.current,self.trusted]), patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
             result=m.candidate_migration_contract_proven('e'*40,'f'*40,self.contract,self.prior)
             self.assertEqual('approved-prefix-reviewed-diagnostics-crm-entries',result['rule'])
+
+
+class CrmSourcePresenceAndDiscoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.root=Path(self.temp.name)
+        self.trx=self.root/'results.trx'
+    def touch(self,paths):
+        for path in paths:
+            file=self.root/path;file.parent.mkdir(parents=True,exist_ok=True);file.write_text('synthetic')
+    def results(self,crm=True,outcome='Passed',capture=True):
+        rows=[]
+        if capture:rows.append('<UnitTestResult testName="AgentPortal.Tests.WebsiteLifeLeadCaptureServiceTests.Capture" outcome="Passed"/>')
+        if crm:
+            for method,count in m.CRM_REQUIRED_METHOD_COUNTS.items():
+                rows.extend(f'<UnitTestResult testName="AgentPortal.Tests.CrmHistoryTests.{method}({i})" outcome="{outcome}"/>' for i in range(count))
+        self.trx.write_text('<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">'+''.join(rows)+'</TestRun>')
+    def test_tool_only_absence_still_requires_capture_service(self):
+        self.results(crm=False);m.verify_crm_discovery(self.trx,self.root)
+        self.results(crm=False,capture=False)
+        with self.assertRaises(ValueError):m.verify_crm_discovery(self.trx,self.root)
+    def test_complete_feature_requires_actual_passing_crm_results(self):
+        self.touch(m.CRM_FEATURE_TEST_INPUTS);self.results();m.verify_crm_discovery(self.trx,self.root)
+        for outcome in ('Failed','NotExecuted','Skipped'):
+            self.results(outcome=outcome)
+            with self.assertRaises(ValueError):m.verify_crm_discovery(self.trx,self.root)
+        self.results(crm=False)
+        with self.assertRaises(ValueError):m.verify_crm_discovery(self.trx,self.root)
+    def test_missing_one_required_browser_result_is_not_acceptance(self):
+        self.touch(m.CRM_FEATURE_TEST_INPUTS);self.results()
+        import xml.etree.ElementTree as ET
+        tree=ET.parse(self.trx);root=tree.getroot()
+        for row in list(root):
+            if 'HostedSyntheticHistory' in row.get('testName',''):root.remove(row)
+        tree.write(self.trx)
+        with self.assertRaisesRegex(ValueError,'HostedSyntheticHistory'):m.verify_crm_discovery(self.trx,self.root)
+
+    def test_any_orphan_source_or_test_is_not_absence(self):
+        for path in (*m.CRM_FEATURE_TEST_INPUTS,'AgentPortal.Tests/CrmHistoryEvidenceTests.cs'):
+            self.touch([path]);self.results()
+            with self.assertRaisesRegex(ValueError,'INCOMPLETE'):m.verify_crm_discovery(self.trx,self.root)
+            (self.root/path).unlink()
+    def test_node_pairs_are_complete_and_failures_propagate(self):
+        with patch.object(m.subprocess,'run') as run:
+            m.run_form_tracking(self.root);self.assertEqual(['node','--test','tests/analytics/form-tracker.test.cjs'],run.call_args.args[0])
+            self.touch((*m.FORM_EVIDENCE_TEST_INPUTS,*m.CRM_UI_TEST_INPUTS));m.run_form_tracking(self.root)
+            self.assertIn('tests/analytics/crm-history.test.cjs',run.call_args.args[0])
+            for path in (*m.FORM_EVIDENCE_TEST_INPUTS,*m.CRM_UI_TEST_INPUTS):
+                (self.root/path).unlink()
+                with self.assertRaisesRegex(ValueError,'INCOMPLETE'):m.run_form_tracking(self.root)
+                self.touch([path])
+        with patch.object(m.subprocess,'run',side_effect=m.subprocess.CalledProcessError(1,['node'])):
+            with self.assertRaises(m.subprocess.CalledProcessError):m.run_form_tracking(self.root)
 
 
 if __name__ == "__main__":

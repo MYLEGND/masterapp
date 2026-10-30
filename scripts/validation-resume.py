@@ -5428,6 +5428,7 @@ WORKFLOWS = {
                     "AgentPortal.Tests/CanonicalCrmOutcomeLineageTests.cs",
                     "AgentPortal.Tests/WebsiteLifeLeadCaptureServiceTests.cs",
                     "AgentPortal.Tests/CrmHistory*Tests.cs",
+                    "tests/analytics/crm-history-browser.cjs",
                 ) + CRM_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "exclude_paths": DIAGNOSTICS_SOURCE,
                 "materializes": ("compile-regression",),
@@ -14530,6 +14531,77 @@ def cmd_verify_release_coverage(args):
     print(f"Every named release step is classified: {args.workflow}")
 
 
+CRM_FEATURE_TEST_INPUTS = (
+    'Domain/Entities/CrmHistoryEntry.cs',
+    'Infrastructure/Migrations/20261030070000_CrmRelationshipHistory.cs',
+    'AgentPortal/Controllers/CrmHistoryController.cs',
+    'AgentPortal.Tests/CrmHistoryTests.cs',
+    'AgentPortal.Tests/CrmHistoryFormRoutesTests.cs',
+    'AgentPortal.Tests/CrmHistoryConversionTests.cs',
+    'AgentPortal.Tests/CrmHistoryRecoveryTests.cs',
+    'AgentPortal.Tests/CrmHistoryBrowserTests.cs',
+    'tests/analytics/crm-history-browser.cjs',
+)
+CRM_REQUIRED_METHOD_COUNTS = {
+    'InsuranceHandlerFilesExactSubmissionAndRetryKeepsOneTile': 12,
+    'ConversionHandlersPreserveHistoryAndRollbackFailedCreation': 5,
+    'SubmissionFailureRollsBackAnswersAndHistoryThenSameReceiptRecoversOnce': 1,
+    'HostedSyntheticHistorySupportsDesktopMobileKeyboardAndProtectedEndpoints': 1,
+}
+FORM_EVIDENCE_TEST_INPUTS = (
+    'Protect-Website/wwwroot/js/insurance-form-evidence.js',
+    'tests/analytics/insurance-form-evidence.test.cjs',
+)
+CRM_UI_TEST_INPUTS = (
+    'AgentPortal/wwwroot/js/crm-history.js',
+    'AgentPortal/Views/CrmHistory/Index.cshtml',
+    'tests/analytics/crm-history.test.cjs',
+)
+
+
+def feature_test_presence(paths, root=Path('.'), extra_markers=()):
+    present = [(root / path).is_file() for path in paths]
+    if any(present) or any((root / path).is_file() for path in extra_markers):
+        if not all(present):
+            raise ValueError('FEATURE_TEST_SOURCE_INCOMPLETE:' + ','.join(path for path, exists in zip(paths, present) if not exists))
+        return True
+    return False
+
+
+def verify_crm_discovery(trx, root=Path('.')):
+    import xml.etree.ElementTree as ET
+    crm = feature_test_presence(CRM_FEATURE_TEST_INPUTS, root,
+        [str(path.relative_to(root)) for path in root.glob('AgentPortal.Tests/CrmHistory*Tests.cs')])
+    suites = ['WebsiteLifeLeadCaptureServiceTests'] + (['CrmHistoryTests'] if crm else [])
+    results = ET.parse(trx).getroot()
+    ns = {'t': 'http://microsoft.com/schemas/VisualStudio/TeamTest/2010'}
+    for suite in suites:
+        tests = [row for row in results.findall('.//t:UnitTestResult', ns) if row.get('testName', '').startswith('AgentPortal.Tests.' + suite + '.')]
+        if not tests or any(row.get('outcome') != 'Passed' for row in tests):
+            raise ValueError(suite + ': required discovered tests did not all execute successfully')
+        print(f'{suite}: {len(tests)} executed PASS')
+    if crm:
+        for method, expected in CRM_REQUIRED_METHOD_COUNTS.items():
+            prefix = 'AgentPortal.Tests.CrmHistoryTests.' + method
+            actual = [row for row in results.findall('.//t:UnitTestResult', ns)
+                if row.get('testName', '') == prefix or row.get('testName', '').startswith(prefix + '(')]
+            if len(actual) != expected or any(row.get('outcome') != 'Passed' for row in actual):
+                raise ValueError(method + ': exact required regression cases did not all execute successfully')
+            print(f'{method}: {len(actual)} executed PASS')
+    else:
+        print('CRM_HISTORY:NOT_PRESENT_IN_SOURCE')
+
+
+def run_form_tracking(root=Path('.')):
+    tests = ['tests/analytics/form-tracker.test.cjs']
+    for label, paths in [('FORM_EVIDENCE', FORM_EVIDENCE_TEST_INPUTS), ('CRM_UI', CRM_UI_TEST_INPUTS)]:
+        if feature_test_presence(paths, root):
+            tests.append(paths[-1])
+        else:
+            print(label + ':NOT_PRESENT_IN_SOURCE')
+    subprocess.run(['node', '--test', *tests], cwd=root, check=True)
+
+
 def build_parser():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -14688,6 +14760,11 @@ def build_parser():
     coverage.add_argument("--workflow", required=True)
     coverage.add_argument("--workflow-path", required=True)
     coverage.set_defaults(func=cmd_verify_release_coverage)
+    crm_discovery = sub.add_parser('verify-crm-discovery')
+    crm_discovery.add_argument('--trx', required=True)
+    crm_discovery.set_defaults(func=lambda args: verify_crm_discovery(args.trx))
+    form_tracking = sub.add_parser('run-form-tracking')
+    form_tracking.set_defaults(func=lambda args: run_form_tracking())
     return parser
 
 

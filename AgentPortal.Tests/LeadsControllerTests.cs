@@ -449,8 +449,8 @@ public class LeadsControllerTests
         await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).Options);
         await db.Database.EnsureCreatedAsync();
         db.WorkstationLeadProfiles.AddRange(
-            new WorkstationLeadProfile { LeadId="protected", AgentUserId="agent-1", Bucket="LifeInsurance" },
-            new WorkstationLeadProfile { LeadId="empty", AgentUserId="agent-1", Bucket="LifeInsurance" });
+            new WorkstationLeadProfile { LeadId="protected", AgentUserId="agent-1", Bucket="LifeInsurance", OriginalLeadType="LifeInsurance" },
+            new WorkstationLeadProfile { LeadId="empty", AgentUserId="agent-1", Bucket="LifeInsurance", OriginalLeadType="LifeInsurance" });
         if(evidence=="filed") await new Infrastructure.Crm.CrmHistoryStore(db).StageAsync(new CrmHistoryEntry {
             RelationshipKey="lead:protected", Source="Synthetic", SourceId="hold", Type="PreservationHold", ContentJson="{}" });
         await db.SaveChangesAsync();

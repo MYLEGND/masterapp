@@ -75,13 +75,13 @@ internal static partial class RehearsalFixture
             "ALTER TABLE dbo.WebsiteLeadIntakeLinks NOCHECK CONSTRAINT CK_WebsiteLeadIntakeLinks_HistoryAssociation; ALTER TABLE dbo.WebsiteLeadIntakeLinks CHECK CONSTRAINT CK_WebsiteLeadIntakeLinks_HistoryAssociation",
             "ALTER TABLE dbo.WebsiteLeadIntakeLinks NOCHECK CONSTRAINT FK_WebsiteLeadIntakeLinks_ClientProfiles_HistoryClientProfileId; ALTER TABLE dbo.WebsiteLeadIntakeLinks CHECK CONSTRAINT FK_WebsiteLeadIntakeLinks_ClientProfiles_HistoryClientProfileId",
             "DECLARE @n sysname = (SELECT d.name FROM sys.default_constraints d JOIN sys.columns c ON c.object_id=d.parent_object_id AND c.column_id=d.parent_column_id WHERE d.parent_object_id=OBJECT_ID('dbo.WebsiteLeadIntakeLinks') AND c.name='AssociationVersion'); EXEC('ALTER TABLE dbo.WebsiteLeadIntakeLinks DROP CONSTRAINT '+QUOTENAME(@n)); ALTER TABLE dbo.WebsiteLeadIntakeLinks ADD DEFAULT ('20000000-0000-0000-0000-000000000001') FOR AssociationVersion",
-            "ALTER TABLE dbo.WebsiteLeadIntakeLinks DROP CONSTRAINT FK_WebsiteLeadIntakeLinks_ClientProfiles_HistoryClientProfileId; DROP INDEX IX_WebsiteLeadIntakeLinks_HistoryClientProfileId ON dbo.WebsiteLeadIntakeLinks; ALTER TABLE dbo.WebsiteLeadIntakeLinks ALTER COLUMN HistoryClientProfileId varchar(36) NULL",
+            "ALTER TABLE dbo.WebsiteLeadIntakeLinks DROP CONSTRAINT CK_WebsiteLeadIntakeLinks_HistoryAssociation; ALTER TABLE dbo.WebsiteLeadIntakeLinks DROP CONSTRAINT FK_WebsiteLeadIntakeLinks_ClientProfiles_HistoryClientProfileId; DROP INDEX IX_WebsiteLeadIntakeLinks_HistoryClientProfileId ON dbo.WebsiteLeadIntakeLinks; ALTER TABLE dbo.WebsiteLeadIntakeLinks ALTER COLUMN HistoryClientProfileId varchar(36) NULL",
 
             "ALTER TABLE dbo.WebsiteLeadIntakeLinks NOCHECK CONSTRAINT FK_WebsiteLeadIntakeLinks_ClientProfiles_HistoryClientProfileId",
             "DROP INDEX IX_WebsiteLeadIntakeLinks_HistoryClientProfileId ON dbo.WebsiteLeadIntakeLinks",
             "DROP INDEX IX_CrmHistoryEntries_RelationshipKey_Source_SourceId ON dbo.CrmHistoryEntries",
             "ALTER TABLE dbo.CrmHistoryEntries ALTER COLUMN ContentJson nvarchar(max) NULL",
-            "ALTER TABLE dbo.WebsiteLeadIntakeLinks ALTER COLUMN WorkstationLeadId nvarchar(64) NOT NULL"
+            "ALTER TABLE dbo.WebsiteLeadIntakeLinks DROP CONSTRAINT CK_WebsiteLeadIntakeLinks_HistoryAssociation; ALTER TABLE dbo.WebsiteLeadIntakeLinks DROP CONSTRAINT FK_WebsiteLeadIntakeLinks_WorkstationLeadProfiles_WorkstationLeadId; DROP INDEX IX_WebsiteLeadIntakeLinks_WorkstationLeadId_SubmittedUtc ON dbo.WebsiteLeadIntakeLinks; ALTER TABLE dbo.WebsiteLeadIntakeLinks ALTER COLUMN WorkstationLeadId nvarchar(64) NOT NULL"
         } : new[] {
             "ALTER TABLE dbo.WebsiteLeadIntakeLinks ADD HistoryClientProfileId uniqueidentifier NULL",
             "CREATE TABLE dbo.CrmHistoryEntries (Id uniqueidentifier NOT NULL PRIMARY KEY)",

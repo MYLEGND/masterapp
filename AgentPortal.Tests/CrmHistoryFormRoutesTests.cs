@@ -98,6 +98,7 @@ public sealed partial class CrmHistoryTests
         });
         http.Items["TrackingProfile"]=profile;http.Items["TrackingSlug"]=profile.Slug;http.Items["IsFounderPath"]=false;
         controller.ControllerContext=new ControllerContext { HttpContext=http };
+        controller.Url=Mock.Of<IUrlHelper>();
         controller.TempData=new TempDataDictionary(http,Mock.Of<ITempDataProvider>());
         const string answers="""
             {"FirstName":"Synthetic","LastName":"Applicant","InsuredFirstName":"Synthetic","InsuredLastName":"Applicant",
@@ -137,7 +138,7 @@ public sealed partial class CrmHistoryTests
         var history=BuildController(db,profile.AgentUserId);
         var list=Assert.IsType<OkObjectResult>(await history.Entries("lead",link.WorkstationLeadId!,null,null,null,null,null,null,null,null,null));
         using(var listed=JsonDocument.Parse(JsonSerializer.Serialize(list.Value)))
-            Assert.Contains(listed.RootElement.GetProperty("entries").EnumerateArray(),x=>x.GetProperty("id").GetGuid()==tile.Id);
+            Assert.Contains(listed.RootElement.GetProperty("entries").EnumerateArray(),x=>x.GetProperty("Id").GetGuid()==tile.Id);
         Assert.IsType<OkObjectResult>(await history.Entry(tile.Id,"lead",link.WorkstationLeadId!));
         var original=link.SnapshotJson;
         await Submit();
