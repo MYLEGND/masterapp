@@ -29,7 +29,7 @@
         _ when key.StartsWith("Evidence[", StringComparison.Ordinal) => "dated review evidence",
         _ => null
     };
-    var invalidFields = ViewData.ModelState.Where(x => x.Value.Errors.Count > 0).Select(x => FieldLabel(x.Key))
+    var invalidFields = ViewData.ModelState.Where(x => x.Value is { Errors.Count: > 0 }).Select(x => FieldLabel(x.Key))
         .Where(x => x is not null).Distinct().ToArray();
 }
 <section class="dashboard-page-shell py-4">

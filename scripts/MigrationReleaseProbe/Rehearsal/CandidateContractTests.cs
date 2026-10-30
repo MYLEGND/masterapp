@@ -56,6 +56,18 @@ internal static class CandidateContractTests
                 Management(assembly.CreateMigration(management, db.Database.ProviderName!).UpOperations, path);
             if (assembly.Migrations.TryGetValue(CandidateContract.BrowserMigration, out var browser))
                 Browser(assembly.CreateMigration(browser, db.Database.ProviderName!).UpOperations, path, CandidateContract.Current(db));
+            if (assembly.Migrations.TryGetValue(CandidateContract.DiagnosticsMigration, out var diagnostics))
+            {
+                var diagnosticOperations = assembly.CreateMigration(diagnostics, db.Database.ProviderName!).UpOperations;
+                var diagnosticEntry = CandidateContract.Describe(CandidateContract.DiagnosticsMigration, diagnosticOperations);
+                Check(diagnosticOperations.Count == 1 && RehearsalFixture.IsDiagnosticsFixture(diagnosticEntry), "exact diagnostic column fixture");
+                foreach (var bad in new[] { diagnosticEntry with { Columns = [] },
+                    diagnosticEntry with { Columns = [diagnosticEntry.Columns[0] with { Nullable = false }] },
+                    diagnosticEntry with { Columns = [diagnosticEntry.Columns[0] with { Type = "nvarchar(4096)" }] },
+                    diagnosticEntry with { Columns = [diagnosticEntry.Columns[0], diagnosticEntry.Columns[0]] } })
+                    Check(!RehearsalFixture.IsDiagnosticsFixture(bad), "diagnostic fixture drift rejected");
+                Console.WriteLine("DIAGNOSTICS_CONTRACT:PROVEN");
+            }
             PredicateBounds();
             DefaultDefinitions();
             CatalogPlans(CandidateContract.Current(db));

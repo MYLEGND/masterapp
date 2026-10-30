@@ -3333,6 +3333,24 @@ class ValidationResumePlannerTests(unittest.TestCase):
         self.assertFalse(plan["gates"]["crm-regressions"]["run"])
         self.assertFalse(plan["gates"]["renderer-tests"]["run"])
 
+    def test_performance_suite_paths_match_saved_workflow_filter_and_planner(self):
+        import re
+        workflow = "masterapp-platform-architecture-validation.yml"
+        text = (ROOT / ".github/workflows" / workflow).read_text()
+        filters = re.findall(r'--filter "([^"]+)"', text)
+        diagnostic_filter = next(value for value in filters if "FullyQualifiedName~RuntimeDiagnostics" in value)
+        terms = [term.removeprefix("FullyQualifiedName~") for term in diagnostic_filter.split("|")]
+        for suffix in ("Performance", "Scope", "DependencyCapture", "Migration", "Presentation"):
+            name = "RuntimeDiagnostics" + suffix + "Tests"
+            path = "AgentPortal.Tests/" + name + ".cs"
+            with self.subTest(suite=name):
+                self.assertTrue(any(term in "AgentPortal.Tests." + name for term in terms))
+                plan = m.compute_plan(workflow, "b" * 40, self.prior(), self.successful_steps(workflow), [path], "prior_run")
+                self.assertTrue(plan["gates"]["founder-diagnostics-regressions"]["run"])
+                self.assertTrue(plan["gates"]["compile-regression"]["run"])
+                for unrelated in ("website-regressions", "booking-regressions", "crm-regressions"):
+                    self.assertFalse(plan["gates"][unrelated]["run"], unrelated)
+
     def test_diagnostics_test_fix_reruns_only_diagnostics_test_gate_and_build_chain(self):
         workflow = "masterapp-platform-architecture-validation.yml"
         plan = m.compute_plan(
@@ -8770,6 +8788,66 @@ class Protect161ReplacementTests(unittest.TestCase):
             saved=row[key];row[key]=value
             with self.subTest(key=key),self.assertRaises(ValueError):invoke()
             row[key]=saved
+
+class ReviewedDiagnosticsContractTests(unittest.TestCase):
+    def setUp(self):
+        self.entry = json.loads('{"id":"20261030033900_RuntimeDiagnosticPerformanceEvidence","supported":true,"columns":[{"schema":"dbo","table":"RuntimeDiagnosticIncidents","name":"PerformanceEvidenceJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]}')
+        self.prior = dict(schemaVersion=3, migrations=[dict(id='20261026223148_ReceptionistBrowserCreation', supported=True)])
+        self.contract = dict(schemaVersion=3, migrations=[*self.prior['migrations'], self.entry])
+        before, after = next(iter(m.REVIEWED_DIAGNOSTICS_RUNTIME_PAIRS))
+        self.trusted = dict(runtimeIdentity=before, toolIdentity='c'*64, executionIdentity='d'*64)
+        self.current = dict(self.trusted, runtimeIdentity=after)
+
+    def prove(self, contract=None, prior=None, results=(0, 0)):
+        with patch.object(m.subprocess, 'run', side_effect=[SimpleNamespace(returncode=x) for x in results]):
+            return m.reviewed_diagnostics_contract_extension('e'*40, 'f'*40,
+                self.contract if contract is None else contract, self.prior if prior is None else prior, self.current, self.trusted)
+
+    def test_exact_entry_and_both_serialization_pins(self):
+        self.assertTrue(self.prove())
+        self.assertEqual(m.REVIEWED_DIAGNOSTICS_ENTRY, hashlib.sha256(json.dumps(self.entry, sort_keys=True, separators=(',', ':')).encode()).hexdigest())
+        source=Path('scripts/MigrationReleaseProbe/CandidateContract.cs').read_text()
+        self.assertIn(hashlib.sha256(json.dumps(self.entry, separators=(',', ':')).encode()).hexdigest(), source)
+
+    def test_each_unreviewed_column_or_extra_operation_is_rejected(self):
+        import copy
+        for key,value in [('name','Other'),('table','Other'),('nullable',False),('type','nvarchar(4096)'),('default','{}'),('collation','other')]:
+            bad=copy.deepcopy(self.contract);bad['migrations'][-1]['columns'][0][key]=value
+            with self.subTest(key=key):self.assertFalse(self.prove(bad,results=()))
+        for key,value in [('columns',[]),('indexes',[{}]),('tables',[{}]),('guards',['extra']),('foreignKeys',[{}]),('supported',1),('id','29990101_Unknown'),('unknown',False)]:
+            bad=copy.deepcopy(self.contract);bad['migrations'][-1][key]=value
+            with self.subTest(key=key):self.assertFalse(self.prove(bad,results=()))
+
+    def test_missing_duplicate_reordered_prefix_or_unknown_suffix_rejected(self):
+        import copy
+        for rows in [self.prior['migrations'], [self.entry], [self.entry,*self.prior['migrations']],
+            [*self.contract['migrations'],self.entry], [*self.contract['migrations'],dict(id='29990101_Unknown')]]:
+            self.assertFalse(self.prove(dict(schemaVersion=3,migrations=rows),results=()))
+        prior=copy.deepcopy(self.prior);prior['migrations'][-1]['id']='20261026210738_AddReceptionistManagement'
+        self.assertFalse(self.prove(dict(schemaVersion=3,migrations=[*prior['migrations'],self.entry]),prior,results=()))
+        for version in (True,2,'3'):
+            self.assertFalse(self.prove(dict(self.contract,schemaVersion=version),results=()))
+        self.assertFalse(self.prove(dict(self.contract,unknown=False),results=()))
+
+    def test_exact_runtime_tools_execution_ancestry_and_no_tool_diff_required(self):
+        for row in (self.current,self.trusted):
+            for key in ('runtimeIdentity','toolIdentity','executionIdentity'):
+                old=row[key];row[key]='0'*64
+                with self.subTest(key=key):self.assertFalse(self.prove(results=()))
+                row[key]=old
+        self.assertFalse(self.prove(results=(1,)))
+        self.assertFalse(self.prove(results=(0,1)))
+
+    def test_actual_dispatcher_uses_exact_extension_and_cannot_fall_back_to_equality(self):
+        with patch.object(m,'migration_probe_identity',side_effect=[self.current,self.trusted]), \
+             patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
+            result=m.candidate_migration_contract_proven('e'*40,'f'*40,self.contract,self.prior)
+            self.assertEqual('approved-prefix-reviewed-diagnostics-entry',result['rule'])
+        with patch.object(m,'migration_probe_identity',side_effect=[self.current,self.trusted]), \
+             patch.object(m,'migration_contract_static_styles_only',return_value=False), \
+             self.assertRaisesRegex(ValueError,'UNPROVEN'):
+            m.candidate_migration_contract_proven('e'*40,'f'*40,self.prior,self.prior)
+
 
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.
