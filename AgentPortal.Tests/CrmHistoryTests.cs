@@ -168,6 +168,8 @@ public sealed partial class CrmHistoryTests
         foreach (var principal in new[] { ("other", false), ("owner", true) })
         {
             var controller = BuildController(db, principal.Item1, principal.Item2);
+            Assert.IsType<Microsoft.AspNetCore.Mvc.NotFoundResult>(await controller.Index("lead", "synthetic"));
+            Assert.False(controller.ViewData.ContainsKey("RelationshipName"));
             Assert.IsType<Microsoft.AspNetCore.Mvc.NotFoundResult>(await controller.Entry(entry.Id, "lead", "synthetic"));
             Assert.IsType<Microsoft.AspNetCore.Mvc.NotFoundResult>(await controller.Export("lead", "synthetic"));
             Assert.IsType<Microsoft.AspNetCore.Mvc.NotFoundResult>(await controller.Entries("lead", "synthetic", null, null, null, null, null, null, null, null, null));
@@ -347,6 +349,36 @@ public sealed partial class CrmHistoryTests
         var result=Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await BuildController(db,"owner").Entries("lead","mixed",null,null,null,null,null,null,null,null,null));
         var rows=System.Text.Json.JsonSerializer.SerializeToElement(result.Value).GetProperty("entries");
         Assert.Equal("2026-10-30",rows[0].GetProperty("OccurredDate").GetString()); Assert.Equal("unknown",rows[2].GetProperty("TimePrecision").GetString());
+    }
+
+    [Fact]
+    public async Task HistoryHeaderUsesAuthorizedRouteSubjectIncludingConvertedProfiles()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).Options);
+        await db.Database.EnsureCreatedAsync();
+        var client = new ClientProfile { ClientUserId = "synthetic-client", FirstName = " Client ", LastName = "Subject" };
+        var lead = new WorkstationLeadProfile { LeadId = "synthetic-header", AgentUserId = "owner", FirstName = " Lead ", LastName = "Subject" };
+        lead.CrmNotes = Shared.Crm.ClientCrmMetaSerializer.Serialize(new Shared.Crm.ClientCrmMeta { ConvertedClientProfileId = client.Id });
+        client.CrmNotes = Shared.Crm.ClientCrmMetaSerializer.Serialize(new Shared.Crm.ClientCrmMeta { SourceWorkstationLeadId = lead.LeadId });
+        db.AddRange(lead, client, new AgentClient { AgentUserId = "owner", ClientUserId = client.ClientUserId });
+        await db.SaveChangesAsync();
+        foreach (var subject in new[] { ("lead", lead.LeadId, "Lead"), ("profile", client.Id.ToString("N"), "Client") })
+        {
+            var controller = BuildController(db, "owner");
+            Assert.IsType<Microsoft.AspNetCore.Mvc.ViewResult>(await controller.Index(subject.Item1, subject.Item2));
+            Assert.Equal(subject.Item3, controller.ViewData["RelationshipType"]);
+            Assert.Equal(subject.Item3 + " Subject", controller.ViewData["RelationshipName"]);
+            Assert.Equal(subject.Item2, controller.ViewData["RelationshipId"]);
+            Assert.IsType<Microsoft.AspNetCore.Mvc.NotFoundResult>(await BuildController(db, "other").Index(subject.Item1, subject.Item2));
+        }
+        var redirect = Assert.IsType<Microsoft.AspNetCore.Mvc.RedirectToActionResult>(await BuildController(db, "owner").Index("client", client.ClientUserId));
+        Assert.Equal(client.Id.ToString("N"), redirect.RouteValues!["id"]);
+        lead.FirstName = " "; lead.LastName = ""; await db.SaveChangesAsync();
+        var unnamed = BuildController(db, "owner");
+        Assert.IsType<Microsoft.AspNetCore.Mvc.ViewResult>(await unnamed.Index("lead", lead.LeadId));
+        Assert.Equal("Name unavailable", unnamed.ViewData["RelationshipName"]);
     }
 
     private static AgentPortal.Controllers.CrmHistoryController BuildController(MasterAppDbContext db, string owner, bool restricted = false, bool nativeEnabled = true)

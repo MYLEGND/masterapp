@@ -3,6 +3,7 @@
 }
 <section class="container py-4" id="crm-history" data-kind="@ViewData["Kind"]" data-relationship-id="@ViewData["RelationshipId"]" data-timezone="@ViewData["TimeZone"]" data-draft-scope="@ViewData["DraftScope"]">
     <h1>Client Activity &amp; Case History</h1>
+    <p id="history-subject" class="fs-4 fw-semibold text-break">@ViewData["RelationshipType"]: @ViewData["RelationshipName"]</p>
     <p>Internal relationship history · Note to Self</p>
     <form id="history-filters" class="row g-3">
         @Html.AntiForgeryToken()

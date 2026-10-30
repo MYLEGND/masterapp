@@ -31,6 +31,13 @@ const assert=require('node:assert/strict'),{spawn}=require('node:child_process')
       await wait('!!document.getElementById("crm-history")');
       await execute('document.querySelector("#history-filters [name=type]").value="FormSubmission";const viewport=document.createElement("meta");viewport.name="viewport";viewport.content="width=device-width, initial-scale=1";document.head.append(viewport);const css=document.createElement("link");css.onload=()=>window.__crmCssReady=true;css.rel="stylesheet";css.href="/lib/bootstrap/dist/css/bootstrap.min.css";document.head.append(css);const js=document.createElement("script");js.src="/js/crm-history.js";document.body.append(js);');
       await wait('window.__crmCssReady===true');assert.equal(await execute('return innerWidth'),width);
+      assert.equal(await execute('return document.getElementById("history-subject").textContent'),'Lead: Synthetic Lead <safe>');
+      assert.equal(await execute('return document.querySelectorAll("#history-subject safe").length'),0);
+      for(const zoom of ['1','2']){
+        await execute('document.body.style.zoom='+JSON.stringify(zoom));
+        assert.ok(await execute('const s=document.getElementById("history-subject"),r=s.getBoundingClientRect();return r.width>0&&r.height>0&&r.left>=0&&r.right<=innerWidth+1&&s.scrollWidth<=s.clientWidth+1;'));
+      }
+      await execute('document.body.style.zoom="1"');
       await wait('document.querySelectorAll("#history-results button").length===2');
       await execute('document.querySelector("#history-results button").focus();');await keys(['\uE007']);
       await wait('document.getElementById("history-detail").open && document.getElementById("history-detail-content").textContent.includes("END-OF-DISCLOSURE")');
@@ -53,6 +60,16 @@ const assert=require('node:assert/strict'),{spawn}=require('node:child_process')
       await execute('document.querySelector("#history-filters [name=range]").value="today";document.querySelector("#history-filters button").focus();');await keys(['\uE007']);
       await wait('document.getElementById("history-status").textContent.startsWith("1 records")&&document.querySelectorAll("#history-results button").length===1');
       assert.equal(await execute('return document.querySelector("#history-filters [name=range]").value'),'today');
+      await command('POST','/session/'+session+'/url',{url:origin.origin+'/CrmHistory?kind=profile&id=11111111111111111111111111111111'});
+      await wait('!!document.getElementById("history-subject")');
+      assert.equal(await execute('return document.getElementById("history-subject").textContent'),'Client: Synthetic Client <safe>');
+      await execute('const css=document.createElement("link");css.onload=()=>window.__crmCssReady=true;css.rel="stylesheet";css.href="/lib/bootstrap/dist/css/bootstrap.min.css";document.head.append(css);');
+      await wait('window.__crmCssReady===true');
+      for(const zoom of ['1','2']){
+        await execute('document.body.style.zoom='+JSON.stringify(zoom));
+        assert.ok(await execute('const s=document.getElementById("history-subject"),r=s.getBoundingClientRect();return r.width>0&&r.height>0&&r.left>=0&&r.right<=innerWidth+1&&s.scrollWidth<=s.clientWidth+1;'));
+      }
+      await execute('document.body.style.zoom="1"');
     }
     console.log('CRM_HOSTED_BROWSER:PASS:desktop-mobile-keyboard-actual-view-and-endpoints:synthetic-only:not-live');
   }catch(error){

@@ -26,6 +26,12 @@ public sealed class CrmHistoryController(MasterAppDbContext db, EffectiveAgentCo
     {
         var relationship = await Resolve(kind, id); if (relationship is null) return NotFound();
         if (kind == "client") return RedirectToAction(nameof(Index), new { kind = "profile", id = relationship.Client!.Id.ToString("N") });
+        var isLead = kind == "lead";
+        var firstName = isLead ? relationship.Lead!.FirstName : relationship.Client!.FirstName;
+        var lastName = isLead ? relationship.Lead!.LastName : relationship.Client!.LastName;
+        var displayName = string.Join(" ", new[] { firstName, lastName }.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()));
+        ViewData["RelationshipType"] = isLead ? "Lead" : "Client";
+        ViewData["RelationshipName"] = displayName.Length == 0 ? "Name unavailable" : displayName;
         ViewData["TimeZone"] = timeZones.Resolve(HttpContext).Id;
         ViewData["AgentId"] = Agent;
         ViewData["DraftScope"] = (User.GetStableUserId() ?? Agent) + ":" + Agent;

@@ -50,7 +50,9 @@ public sealed partial class CrmHistoryTests
         await using(var seed=new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).Options))
         {
             await seed.Database.EnsureCreatedAsync();
-            seed.Add(new WorkstationLeadProfile { LeadId="synthetic-browser",AgentUserId="synthetic-owner" });
+            seed.Add(new WorkstationLeadProfile { LeadId="synthetic-browser",AgentUserId="synthetic-owner",FirstName="Synthetic",LastName="Lead <safe>" });
+            seed.Add(new ClientProfile { Id=Guid.Parse("11111111-1111-1111-1111-111111111111"),ClientUserId="synthetic-header-client",FirstName="Synthetic",LastName="Client <safe>" });
+            seed.Add(new AgentClient { AgentUserId="synthetic-owner",ClientUserId="synthetic-header-client" });
             var source=new WebsiteLead { LeadId=Guid.NewGuid(),FirstName="Synthetic",Email="synthetic@example.test",CreatedUtc=DateTime.UtcNow };
             seed.Add(source);await seed.SaveChangesAsync();
             var answers=Enumerable.Range(1,100).ToDictionary(x=>"Question "+x,x=>(object)(x==100?"FINAL-SYNTHETIC-ANSWER":"Synthetic answer "+x));
