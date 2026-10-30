@@ -192,7 +192,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
 
         // CRM row and intake link are one unit of work. A failed handoff is not success.
         if (websiteLead != null)
-            await UpsertIntakeLinkAsync(websiteLead, lead, agentUserId, bucket, submittedUtc, cancellationToken);
+            await UpsertIntakeLinkAsync(websiteLead, lead, agentUserId, bucket, request.ProductType, submittedUtc, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
 
         return new WebsiteLifeLeadCaptureResult(true, created, lead.LeadId, bucket, agentUserId, null);
@@ -203,6 +203,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
         WorkstationLeadProfile lead,
         string agentUserId,
         string bucket,
+        string? productType,
         DateTime submittedUtc,
         CancellationToken cancellationToken)
     {
@@ -236,7 +237,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
         intakeLink.ReferrerUrl = ReadMetadataString(metadata, "ReferrerUrl");
         intakeLink.InterestType = Clean(websiteLead.InterestType);
         intakeLink.OfferKey = ReadMetadataString(metadata, "OfferKey");
-        intakeLink.ProductType = ReadMetadataString(metadata, "ProductType");
+        intakeLink.ProductType = ReadMetadataString(metadata, "ProductType") ?? Clean(productType);
         intakeLink.UtmSource = Clean(websiteLead.UtmSource);
         intakeLink.UtmMedium = Clean(websiteLead.UtmMedium);
         intakeLink.UtmCampaign = Clean(websiteLead.UtmCampaign);
