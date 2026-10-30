@@ -10,7 +10,7 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "3243221ae661b53d60f78cc2dab108a93bad7632",
-    "sourceRevision": "9fc3d4906f404bb515402bd276ba15d7cd781363",
+    "sourceRevision": "0b2e1b9766a6f6087464d651a996b69236d5fcec",
     "files": {
       ".github/workflows/legend-fast-track-ui.yml": {
         "mode": "100644",
@@ -39,6 +39,10 @@
       "scripts/release-artifacts/test-transport.cjs": {
         "mode": "100644",
         "blob": "c6b03c8c813a2af618d648c81d60251c11580063"
+      },
+      "scripts/test-fast-track-release.py": {
+        "mode": "100644",
+        "blob": "f74b54039bd2ec38399ea2a1527e9ca2d5955a36"
       }
     }
   }
