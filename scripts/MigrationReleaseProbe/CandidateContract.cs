@@ -78,6 +78,11 @@ internal static partial class CandidateContract
                 PlanBrowser(batch, migration, isApplied, applied.Contains(CoordinationMigration), cancellation);
                 continue;
             }
+            if (migration.Id == CrmMigration)
+            {
+                PlanCrm(batch, migration, isApplied, cancellation);
+                continue;
+            }
             PlanStructures(batch, migration, isApplied, cancellation);
             // Pending new tables were proven absent as whole objects. Querying
             // every column of a nonexistent table adds no evidence. Applied

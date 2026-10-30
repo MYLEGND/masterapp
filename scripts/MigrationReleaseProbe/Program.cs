@@ -551,6 +551,17 @@ internal static class TrustedCandidateContract
             throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
         if (JsonSerializer.Serialize(trusted, CandidateContract.Json) == JsonSerializer.Serialize(candidate, CandidateContract.Json))
             return "approved-definitions-exact";
+        // Exact combined release suffix. The old prefix remains byte-identical;
+        // neither a skipped diagnostic migration nor an arbitrary append is accepted.
+        if (candidate.Migrations.Length == trusted.Migrations.Length + 2 &&
+            trusted.Migrations[^1].Id == CandidateContract.BrowserMigration &&
+            candidate.Migrations[^2].Id == CandidateContract.DiagnosticsMigration &&
+            candidate.Migrations[^2].Supported && Digest(candidate.Migrations[^2]) == CandidateContract.DiagnosticsEntrySha256 &&
+            candidate.Migrations[^1].Id == CandidateContract.CrmMigration &&
+            candidate.Migrations[^1].Supported && Digest(candidate.Migrations[^1]) == CandidateContract.CrmEntrySha256 &&
+            candidate.Migrations.Take(trusted.Migrations.Length).Zip(trusted.Migrations).All(pair =>
+                JsonSerializer.Serialize(pair.First, CandidateContract.Json) == JsonSerializer.Serialize(pair.Second, CandidateContract.Json)))
+            return "approved-prefix-reviewed-diagnostics-crm-entries";
         // One independently reviewed current transition, not a generic append waiver.
         if (candidate.Migrations.Length == trusted.Migrations.Length + 1 &&
             trusted.Migrations[^1].Id == CandidateContract.BrowserMigration &&
@@ -711,7 +722,7 @@ internal static class TrustedCandidateContract
             }
             Console.WriteLine("LEGEND_BROWSER_APPEND_TEST:PROVEN");
         }
-        current = complete;
+        current = complete with { Migrations = complete.Migrations.TakeWhile(m => m.Id != CandidateContract.CrmMigration).ToArray() };
         if (current.Migrations[^1].Id == CandidateContract.DiagnosticsMigration)
         {
             var entry = current.Migrations[^1];
@@ -732,6 +743,24 @@ internal static class TrustedCandidateContract
             Reject(() => Prove(oversized, oversized with { Migrations = [..oversized.Migrations, entry] }));
             Reject(() => Prove(prefix, current with { Migrations = [..prefix.Migrations, null!] }));
             Console.WriteLine("LEGEND_DIAGNOSTICS_APPEND_TEST:PROVEN");
+        }
+        current = complete;
+        if (current.Migrations[^1].Id == CandidateContract.CrmMigration)
+        {
+            var prefix = current with { Migrations = current.Migrations[..^2] };
+            Require(Prove(prefix, current) == "approved-prefix-reviewed-diagnostics-crm-entries");
+            var entry = current.Migrations[^1];
+            foreach (var bad in new[] { entry with { Supported = false }, entry with { Guards = [] },
+                entry with { Columns = [] }, entry with { Tables = [] }, entry with { ForeignKeys = [] },
+                entry with { Indexes = [] } })
+                Reject(() => Prove(prefix, current with { Migrations = [..current.Migrations[..^1], bad] }));
+            Reject(() => Prove(prefix, current with { Migrations = [..prefix.Migrations, entry] }));
+            Reject(() => Prove(prefix, current with { Migrations = [..prefix.Migrations, entry, current.Migrations[^2]] }));
+            Reject(() => Prove(prefix, current with { Migrations = [..current.Migrations, entry] }));
+            Reject(() => Prove(prefix, current with { Migrations = [..current.Migrations, unknown] }));
+            var changed = prefix.Migrations.ToArray(); changed[0] = changed[0] with { Supported = !changed[0].Supported };
+            Reject(() => Prove(prefix, current with { Migrations = [..changed, current.Migrations[^2], entry] }));
+            Console.WriteLine("LEGEND_CRM_APPEND_TEST:PROVEN");
         }
         var path = Path.Combine(Path.GetTempPath(), "legend-contract-test-" + Guid.NewGuid().ToString("N") + ".json");
         try

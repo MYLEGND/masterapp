@@ -68,6 +68,12 @@ internal static class CandidateContractTests
                     Check(!RehearsalFixture.IsDiagnosticsFixture(bad), "diagnostic fixture drift rejected");
                 Console.WriteLine("DIAGNOSTICS_CONTRACT:PROVEN");
             }
+            Crm(CandidateContract.CrmOperations(), path);
+            if (assembly.Migrations.TryGetValue(CandidateContract.CrmMigration, out var crm))
+            {
+                Crm(assembly.CreateMigration(crm, db.Database.ProviderName!).UpOperations, path);
+                Console.WriteLine("CRM_CONTRACT:PROVEN");
+            }
             PredicateBounds();
             DefaultDefinitions();
             CatalogPlans(CandidateContract.Current(db));
@@ -81,6 +87,58 @@ internal static class CandidateContractTests
         }
         finally { File.Delete(path); }
         Console.WriteLine("LEGEND_MIGRATION_CONTRACT_TESTS:PASS");
+    }
+    private static void Crm(IReadOnlyList<MigrationOperation> operations, string path)
+    {
+        var id = CandidateContract.CrmMigration;
+        var entry = CandidateContract.Describe(id, operations);
+        Check(entry.Supported && entry.Columns.Length == 2 && entry.Tables.Length == 1 &&
+            entry.Tables[0].Columns.Length == 23 && entry.Indexes.Length == 5 && entry.ForeignKeys.Length == 1,
+            "complete exact CRM transition");
+        File.WriteAllText(path, JsonSerializer.Serialize(new CandidateContract.Contract(3, [entry]), CandidateContract.Json));
+        Check(CandidateContract.Read(path).Migrations.Single().Supported, "CRM roundtrip");
+        foreach (var malformed in new[] { entry with { Guards = [] }, entry with { ForeignKeys = [] },
+            entry with { Indexes = [] }, entry with { Tables = [entry.Tables[0] with { Columns = entry.Tables[0].Columns[..^1] }] },
+            entry with { Columns = [entry.Columns[0] with { Default = JsonSerializer.SerializeToElement("unexpected") }, entry.Columns[1]] } })
+        {
+            File.WriteAllText(path, JsonSerializer.Serialize(new CandidateContract.Contract(3, [malformed]), CandidateContract.Json));
+            try { CandidateContract.Read(path); throw new Exception("Malformed CRM descriptor accepted"); }
+            catch (InvalidOperationException) { }
+        }
+        for (var i = 0; i < operations.Count; i++)
+        {
+            Check(!CandidateContract.Describe(id, operations.Where((_, n) => n != i).ToArray()).Supported, "CRM missing operation");
+            var changed = operations.ToArray();
+            (changed[i], changed[(i + 1) % changed.Length]) = (changed[(i + 1) % changed.Length], changed[i]);
+            Check(!CandidateContract.Describe(id, changed).Supported, "CRM reordered operation");
+            operations[i].AddAnnotation("Unreviewed", true);
+            Check(!CandidateContract.Describe(id, operations).Supported, "CRM annotation");
+            operations[i].RemoveAnnotation("Unreviewed");
+        }
+        Check(!CandidateContract.Describe(id, [..operations, operations[0]]).Supported, "CRM appended operation");
+        var alter = operations.OfType<AlterColumnOperation>().Single();
+        alter.OldColumn.IsNullable = true;
+        Check(!CandidateContract.Describe(id, operations).Supported, "CRM old nullability");
+        alter.OldColumn.IsNullable = false;
+        alter.IsNullable = false;
+        Check(!CandidateContract.Describe(id, operations).Supported, "CRM new nullability");
+        alter.IsNullable = true;
+        var fk = operations.OfType<AddForeignKeyOperation>().Single();
+        fk.OnDelete = ReferentialAction.Cascade;
+        Check(!CandidateContract.Describe(id, operations).Supported, "CRM cascade rejected");
+        fk.OnDelete = ReferentialAction.Restrict;
+        var table = operations.OfType<CreateTableOperation>().Single();
+        table.Columns[0].AddAnnotation("Unreviewed", true);
+        Check(!CandidateContract.Describe(id, operations).Supported, "CRM nested annotation");
+        table.Columns[0].RemoveAnnotation("Unreviewed");
+        var check = operations.OfType<AddCheckConstraintOperation>().Single();
+        var original = check.Sql;
+        check.Sql = "1=1";
+        Check(!CandidateContract.Describe(id, operations).Supported, "CRM check weakened");
+        check.Sql = original;
+        Check(CandidateContract.Describe(id, operations).Supported, "CRM restored exact operations");
+        CandidateContract.Plan([entry], [], CancellationToken.None);
+        CandidateContract.Plan([entry], [id], CancellationToken.None);
     }
     private static void Browser(IReadOnlyList<MigrationOperation> operations, string path, CandidateContract.Contract contract)
     {

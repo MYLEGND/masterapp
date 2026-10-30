@@ -16,6 +16,42 @@ spec.loader.exec_module(m)
 
 
 
+class CrmHistoryReleaseMappingTests(unittest.TestCase):
+    def test_exact_shared_history_sources_select_managed_consumers(self):
+        paths = ('Domain/Entities/CrmHistoryEntry.cs', 'Infrastructure/Crm/CrmHistoryStore.cs',
+                 'Infrastructure/Leads/WebsiteSubmissionEvidence.cs', 'SHARED/Crm/InsuranceFormDisclosures.cs')
+        for path in paths:
+            with self.subTest(path=path):
+                result = m.fast_track_scope([path])
+                self.assertEqual({'portal', 'client', 'protect', 'parfait'}, set(result['impacts'][path]))
+                self.assertFalse(result['routing'])
+                self.assertFalse(result['schema'])
+
+    def test_history_model_configuration_requires_schema_readiness(self):
+        result = m.fast_track_scope(['Infrastructure/Data/Configurations/CrmHistoryEntryConfiguration.cs'])
+        self.assertTrue(result['schema'])
+        self.assertFalse(result['routing'])
+
+    def test_native_client_intake_association_selects_all_consumers_and_schema(self):
+        path = 'Domain/Entities/WebsiteLeadIntakeLink.cs'
+        result = m.fast_track_scope([path])
+        self.assertEqual({'portal', 'client', 'protect', 'parfait'}, set(result['impacts'][path]))
+        self.assertTrue(result['schema'])
+        self.assertFalse(result['routing'])
+
+    def test_unknown_history_sibling_is_not_silently_admitted(self):
+        with self.assertRaises(ValueError):
+            m.fast_track_scope(['Infrastructure/Crm/UnreviewedSibling.cs'])
+
+    def test_existing_crm_lane_owns_both_regression_classes(self):
+        paths = m.WORKFLOWS['masterapp-platform-architecture-validation.yml']['gates']['crm-regressions']['paths']
+        self.assertIn('AgentPortal.Tests/WebsiteLifeLeadCaptureServiceTests.cs', paths)
+        for name in ('CrmHistoryTests.cs','CrmHistoryEvidenceTests.cs','CrmHistoryFormRoutesTests.cs','CrmHistoryRecoveryTests.cs','CrmHistoryConversionTests.cs','CrmHistoryBrowserTests.cs'):
+            self.assertTrue(m.matches('AgentPortal.Tests/'+name, paths), name)
+        self.assertIn('AgentPortal/Controllers/CrmEvidenceController.cs', paths)
+        self.assertIn('Infrastructure/Data/Configurations/CrmHistoryEntryConfiguration.cs', paths)
+
+
 class ParfaitPushCoverageTests(unittest.TestCase):
     def setUp(self):
         self.sha = 'a' * 40
@@ -8847,6 +8883,116 @@ class ReviewedDiagnosticsContractTests(unittest.TestCase):
              patch.object(m,'migration_contract_static_styles_only',return_value=False), \
              self.assertRaisesRegex(ValueError,'UNPROVEN'):
             m.candidate_migration_contract_proven('e'*40,'f'*40,self.prior,self.prior)
+
+
+class ReviewedCrmContractTests(unittest.TestCase):
+    def setUp(self):
+        self.entry = json.loads('{"id":"20261030070000_CrmRelationshipHistory","supported":true,"columns":[{"schema":"dbo","table":"WebsiteLeadIntakeLinks","name":"AssociationVersion","type":"uniqueidentifier","nullable":false,"default":"00000000-0000-0000-0000-000000000000","precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"WebsiteLeadIntakeLinks","name":"HistoryClientProfileId","type":"uniqueidentifier","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[{"schema":"dbo","name":"CrmHistoryEntries","columns":[{"schema":"dbo","table":"CrmHistoryEntries","name":"Id","type":"uniqueidentifier","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"RelationshipKey","type":"nvarchar(100)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"RecordedBy","type":"nvarchar(450)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"RecordedUtc","type":"datetime2","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"FiledUtc","type":"datetime2","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"OccurredUtc","type":"datetime2","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"OccurredDate","type":"nvarchar(10)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"TimeZoneId","type":"nvarchar(100)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"TimePrecision","type":"nvarchar(20)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"Type","type":"nvarchar(60)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"Source","type":"nvarchar(80)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"SourceId","type":"nvarchar(200)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"ContentJson","type":"nvarchar(max)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"SubmissionId","type":"uniqueidentifier","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"RelatedEntryId","type":"uniqueidentifier","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"FormName","type":"nvarchar(160)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"FormVersion","type":"nvarchar(100)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"Product","type":"nvarchar(100)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"CaseReference","type":"nvarchar(200)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"AssignedOwner","type":"nvarchar(450)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"DueUtc","type":"datetime2","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"Status","type":"nvarchar(40)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"EvidenceStatus","type":"nvarchar(80)","nullable":false,"default":null,"precision":null,"scale":null,"collation":null}],"primaryKey":{"name":"PK_CrmHistoryEntries","columns":["Id"]},"foreignKeys":[],"uniqueKeys":[],"checks":[]}],"indexes":[{"schema":"dbo","table":"WebsiteLeadIntakeLinks","name":"IX_WebsiteLeadIntakeLinks_HistoryClientProfileId","columns":["HistoryClientProfileId"],"unique":false,"filter":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"IX_CrmHistoryEntries_RelationshipKey_Source_SourceId","columns":["RelationshipKey","Source","SourceId"],"unique":true,"filter":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"IX_CrmHistoryEntries_RelationshipKey_OccurredUtc_Id","columns":["RelationshipKey","OccurredUtc","Id"],"unique":false,"filter":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"IX_CrmHistoryEntries_RelationshipKey_RecordedUtc_Id","columns":["RelationshipKey","RecordedUtc","Id"],"unique":false,"filter":null},{"schema":"dbo","table":"CrmHistoryEntries","name":"IX_CrmHistoryEntries_SubmissionId","columns":["SubmissionId"],"unique":false,"filter":null}],"guards":["crm-relationship-history-v1"],"foreignKeys":[{"schema":"dbo","table":"WebsiteLeadIntakeLinks","constraint":{"name":"FK_WebsiteLeadIntakeLinks_ClientProfiles_HistoryClientProfileId","columns":["HistoryClientProfileId"],"principalSchema":"dbo","principalTable":"ClientProfiles","principalColumns":["Id"]}}]}')
+        self.diagnostics = json.loads('{"id":"20261030033900_RuntimeDiagnosticPerformanceEvidence","supported":true,"columns":[{"schema":"dbo","table":"RuntimeDiagnosticIncidents","name":"PerformanceEvidenceJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]}')
+        self.prior = dict(schemaVersion=3, migrations=[dict(id='20261026223148_ReceptionistBrowserCreation', supported=True)])
+        self.contract = dict(schemaVersion=3, migrations=[*self.prior['migrations'], self.diagnostics, self.entry])
+        self.trusted = dict(runtimeIdentity='a'*64, toolIdentity='c'*64, executionIdentity='d'*64)
+        self.current = dict(self.trusted, runtimeIdentity='b'*64)
+        runtime = patch.object(m, 'REVIEWED_CRM_RUNTIME_PAIRS', frozenset({('a'*64,'b'*64)}))
+        runtime.start(); self.addCleanup(runtime.stop)
+
+    def prove(self, contract=None, results=(0,0)):
+        with patch.object(m.subprocess, 'run', side_effect=[SimpleNamespace(returncode=x) for x in results]):
+            return m.reviewed_crm_contract_extension('e'*40, 'f'*40,
+                self.contract if contract is None else contract, self.prior, self.current, self.trusted)
+
+    def test_exact_ordered_suffix_and_descriptor_pins(self):
+        self.assertTrue(self.prove())
+        self.assertEqual(m.REVIEWED_CRM_ENTRY, hashlib.sha256(json.dumps(self.entry, sort_keys=True, separators=(',', ':')).encode()).hexdigest())
+        self.assertIn(hashlib.sha256(json.dumps(self.entry,separators=(',', ':')).encode()).hexdigest(),
+            Path('scripts/MigrationReleaseProbe/CandidateContract.Crm.cs').read_text())
+
+    def test_skip_reorder_duplicate_unknown_and_prefix_drift_rejected(self):
+        import copy
+        for rows in [self.prior['migrations'], [*self.prior['migrations'],self.entry],
+            [*self.prior['migrations'],self.entry,self.diagnostics], [*self.contract['migrations'],self.entry]]:
+            self.assertFalse(self.prove(dict(schemaVersion=3,migrations=rows),results=()))
+        bad=copy.deepcopy(self.contract);bad['migrations'][0]['supported']=False
+        self.assertFalse(self.prove(bad,results=()))
+        for key,value in [('columns',[]),('tables',[]),('indexes',[]),('foreignKeys',[]),('guards',[]),('supported',1),('unknown',False)]:
+            bad=copy.deepcopy(self.contract);bad['migrations'][-1][key]=value
+            with self.subTest(key=key):self.assertFalse(self.prove(bad,results=()))
+        bad=copy.deepcopy(self.contract);bad['migrations'][-1]['tables'][0]['columns'][0]['nullable']=True
+        self.assertFalse(self.prove(bad,results=()))
+        bad=copy.deepcopy(self.contract);bad['migrations'][-2]['columns'][0]['nullable']=False
+        self.assertFalse(self.prove(bad,results=()))
+
+    def test_runtime_tools_execution_ancestry_and_script_equality_remain_required(self):
+        for row in (self.current,self.trusted):
+            for key in ('runtimeIdentity','toolIdentity','executionIdentity'):
+                old=row[key];row[key]='0'*64
+                self.assertFalse(self.prove(results=()));row[key]=old
+        self.assertFalse(self.prove(results=(1,)))
+        self.assertFalse(self.prove(results=(0,1)))
+
+    def test_dispatcher_uses_combined_rule(self):
+        with patch.object(m,'migration_probe_identity',side_effect=[self.current,self.trusted]), patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
+            result=m.candidate_migration_contract_proven('e'*40,'f'*40,self.contract,self.prior)
+            self.assertEqual('approved-prefix-reviewed-diagnostics-crm-entries',result['rule'])
+
+
+class CrmSourcePresenceAndDiscoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.root=Path(self.temp.name)
+        self.trx=self.root/'results.trx'
+    def touch(self,paths):
+        for path in paths:
+            file=self.root/path;file.parent.mkdir(parents=True,exist_ok=True);file.write_text('synthetic')
+    def results(self,crm=True,outcome='Passed',capture=True):
+        rows=[]
+        if capture:rows.append('<UnitTestResult testName="AgentPortal.Tests.WebsiteLifeLeadCaptureServiceTests.Capture" outcome="Passed"/>')
+        if crm:
+            for method,count in m.CRM_REQUIRED_METHOD_COUNTS.items():
+                rows.extend(f'<UnitTestResult testName="AgentPortal.Tests.CrmHistoryTests.{method}({i})" outcome="{outcome}"/>' for i in range(count))
+        self.trx.write_text('<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">'+''.join(rows)+'</TestRun>')
+    def test_tool_only_absence_still_requires_capture_service(self):
+        self.results(crm=False);m.verify_crm_discovery(self.trx,self.root)
+        self.results(crm=False,capture=False)
+        with self.assertRaises(ValueError):m.verify_crm_discovery(self.trx,self.root)
+    def test_complete_feature_requires_actual_passing_crm_results(self):
+        self.touch(m.CRM_FEATURE_TEST_INPUTS);self.results();m.verify_crm_discovery(self.trx,self.root)
+        for outcome in ('Failed','NotExecuted','Skipped'):
+            self.results(outcome=outcome)
+            with self.assertRaises(ValueError):m.verify_crm_discovery(self.trx,self.root)
+        self.results(crm=False)
+        with self.assertRaises(ValueError):m.verify_crm_discovery(self.trx,self.root)
+    def test_missing_one_required_browser_result_is_not_acceptance(self):
+        self.touch(m.CRM_FEATURE_TEST_INPUTS);self.results()
+        import xml.etree.ElementTree as ET
+        tree=ET.parse(self.trx);root=tree.getroot()
+        for row in list(root):
+            if 'HostedSyntheticHistory' in row.get('testName',''):root.remove(row)
+        tree.write(self.trx)
+        with self.assertRaisesRegex(ValueError,'HostedSyntheticHistory'):m.verify_crm_discovery(self.trx,self.root)
+
+    def test_repeated_result_cannot_substitute_for_missing_route(self):
+        self.touch(m.CRM_FEATURE_TEST_INPUTS);self.results()
+        import xml.etree.ElementTree as ET
+        tree=ET.parse(self.trx);rows=[row for row in tree.getroot() if 'InsuranceHttpRoutes' in row.get('testName','')]
+        rows[1].set('testName',rows[0].get('testName'));tree.write(self.trx)
+        with self.assertRaisesRegex(ValueError,'InsuranceHttpRoutes'):m.verify_crm_discovery(self.trx,self.root)
+
+    def test_any_orphan_source_or_test_is_not_absence(self):
+        for path in (*m.CRM_FEATURE_TEST_INPUTS,'AgentPortal.Tests/CrmHistoryEvidenceTests.cs'):
+            self.touch([path]);self.results()
+            with self.assertRaisesRegex(ValueError,'INCOMPLETE'):m.verify_crm_discovery(self.trx,self.root)
+            (self.root/path).unlink()
+    def test_node_pairs_are_complete_and_failures_propagate(self):
+        with patch.object(m.subprocess,'run') as run:
+            m.run_form_tracking(self.root);self.assertEqual(['node','--test','tests/analytics/form-tracker.test.cjs'],run.call_args.args[0])
+            self.touch((*m.FORM_EVIDENCE_TEST_INPUTS,*m.CRM_UI_TEST_INPUTS));m.run_form_tracking(self.root)
+            self.assertIn('tests/analytics/crm-history.test.cjs',run.call_args.args[0])
+            for path in (*m.FORM_EVIDENCE_TEST_INPUTS,*m.CRM_UI_TEST_INPUTS):
+                (self.root/path).unlink()
+                with self.assertRaisesRegex(ValueError,'INCOMPLETE'):m.run_form_tracking(self.root)
+                self.touch([path])
+        with patch.object(m.subprocess,'run',side_effect=m.subprocess.CalledProcessError(1,['node'])):
+            with self.assertRaises(m.subprocess.CalledProcessError):m.run_form_tracking(self.root)
 
 
 if __name__ == "__main__":

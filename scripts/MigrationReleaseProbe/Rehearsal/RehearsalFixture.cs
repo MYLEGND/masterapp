@@ -166,6 +166,15 @@ internal static partial class RehearsalFixture
             requestedCount = requestedCount switch { "diagnostics-only" => "1", "browser-diagnostics" => "2",
                 "management-browser-diagnostics" => "3", "training-management-browser-diagnostics" => "4", _ => "5" };
         }
+        if (requestedCount is "crm-only" or "diagnostics-crm" or "browser-diagnostics-crm" or "management-browser-diagnostics-crm" or "training-management-browser-diagnostics-crm" or "canonical-payment-training-management-browser-diagnostics-crm")
+        {
+            var expected = new[] { CanonicalPaymentMigration, CandidateContract.TrainingMigration, ManagementMigration,
+                CandidateContract.BrowserMigration, CandidateContract.DiagnosticsMigration, CandidateContract.CrmMigration };
+            if (!contract.Migrations.TakeLast(6).Select(m => m.Id).SequenceEqual(expected))
+                throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
+            requestedCount = requestedCount switch { "crm-only" => "1", "diagnostics-crm" => "2", "browser-diagnostics-crm" => "3",
+                "management-browser-diagnostics-crm" => "4", "training-management-browser-diagnostics-crm" => "5", _ => "6" };
+        }
         if (!int.TryParse(requestedCount, out var count) || count is < 1 or > 1000)
             throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
         var pending = contract.Migrations.TakeLast(count).ToArray();
@@ -177,6 +186,7 @@ internal static partial class RehearsalFixture
         var payments = pending.Any(m => m.Id == paymentMigration);
         var retention = pending.Any(m => m.Id == retentionMigration);
         var browser = pending.Any(m => m.Id == CandidateContract.BrowserMigration);
+        var crm = pending.Any(m => m.Id == CandidateContract.CrmMigration);
         var diagnostics = pending.Any(m => m.Id == CandidateContract.DiagnosticsMigration);
         var management = pending.Any(m => m.Id == ManagementMigration);
         var receptionist = pending.Any(m => m.Id == ReceptionistMigration);
@@ -187,13 +197,14 @@ internal static partial class RehearsalFixture
                 m.Indexes.Length != 0 || m.Guards.Length != 0 || m.ForeignKeys.Length != 0 || m.Columns[0] is not {
                     Schema: "dbo", Table: "WebsiteContentVersion", Name: "SnapshotRetiredUtc",
                     Type: "datetime2", Nullable: true } || m.Columns[0].Default.ValueKind != JsonValueKind.Null)) ||
+            (m.Id == CandidateContract.CrmMigration && !IsCrmFixture(m)) ||
             (m.Id == CandidateContract.DiagnosticsMigration && !IsDiagnosticsFixture(m)) ||
             (m.Id == ReceptionistMigration && !IsReceptionistFixture(m)) ||
             (m.Id == CandidateContract.BrowserMigration && !IsBrowserFixture(m)) ||
             (m.Id == ManagementMigration && !IsManagementFixture(m)) ||
             (m.Id == CanonicalPaymentMigration && !IsCanonicalPaymentFixture(m)) ||
             (m.Id == CandidateContract.TrainingMigration && !IsTrainingFixture(m)) ||
-            (m.Id != CandidateContract.DiagnosticsMigration && m.Id != CandidateContract.BrowserMigration && m.Id != ManagementMigration && m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration && m.Id != CanonicalPaymentMigration && m.Id != CandidateContract.TrainingMigration &&
+            (m.Id != CandidateContract.CrmMigration && m.Id != CandidateContract.DiagnosticsMigration && m.Id != CandidateContract.BrowserMigration && m.Id != ManagementMigration && m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration && m.Id != CanonicalPaymentMigration && m.Id != CandidateContract.TrainingMigration &&
             (m.Tables.Length != 0 || m.Indexes.Length != 0 || m.Guards.Length != 0 || m.ForeignKeys.Length != 0 ||
             m.Columns.Any(c => c.Schema != "dbo" || c.Table != "MobileProfileSettings")))))
             throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
@@ -206,6 +217,7 @@ internal static partial class RehearsalFixture
                 throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             db.MobileProfileSettings.Add(new Domain.Entities.MobileProfileSettings {
                 ProfileId = Guid.NewGuid(), ParticipantType = "Agent", Bio = "synthetic migration fixture" });
+            if (crm) await SeedCrmData(db, timeout.Token);
             if (diagnostics) db.AddRange(DiagnosticRows());
             if (receptionist || management || browser) db.AddRange(MarketingRows());
             if (canonicalPayments) db.AddRange(CanonicalPaymentRows());
@@ -243,6 +255,16 @@ internal static partial class RehearsalFixture
                 await db.Database.ExecuteSqlRawAsync(command.CommandText, timeout.Token);
             // Construct the supported synthetic prior schema explicitly. Never
             // run arbitrary migration Down code or imply database rollback.
+            if (crm) await db.Database.ExecuteSqlRawAsync(
+                """
+                ALTER TABLE dbo.WebsiteLeadIntakeLinks DROP CONSTRAINT CK_WebsiteLeadIntakeLinks_HistoryAssociation;
+                ALTER TABLE dbo.WebsiteLeadIntakeLinks DROP CONSTRAINT FK_WebsiteLeadIntakeLinks_WorkstationLeadProfiles_WorkstationLeadId;
+                DROP INDEX IX_WebsiteLeadIntakeLinks_WorkstationLeadId_SubmittedUtc ON dbo.WebsiteLeadIntakeLinks;
+                ALTER TABLE dbo.WebsiteLeadIntakeLinks ALTER COLUMN WorkstationLeadId nvarchar(64) NOT NULL;
+                CREATE INDEX IX_WebsiteLeadIntakeLinks_WorkstationLeadId_SubmittedUtc ON dbo.WebsiteLeadIntakeLinks(WorkstationLeadId,SubmittedUtc);
+                ALTER TABLE dbo.WebsiteLeadIntakeLinks WITH CHECK ADD CONSTRAINT FK_WebsiteLeadIntakeLinks_WorkstationLeadProfiles_WorkstationLeadId
+                    FOREIGN KEY(WorkstationLeadId) REFERENCES dbo.WorkstationLeadProfiles(LeadId) ON DELETE CASCADE;
+                """, timeout.Token);
             if (browser) await db.Database.ExecuteSqlRawAsync(
                 "ALTER TABLE dbo.ReceptionistCalls DROP CONSTRAINT CK_ReceptionistCall_BrowserCreation", timeout.Token);
             var reverse = pending.Reverse().SelectMany(m =>
@@ -288,10 +310,11 @@ internal static partial class RehearsalFixture
         }
         else if (operation == "precondition")
         {
-            if (!payments && !receptionist && !canonicalPayments && !training && !management && !browser && !diagnostics) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+            if (!payments && !receptionist && !canonicalPayments && !training && !management && !browser && !diagnostics && !crm) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             await VerifyCatalogBatchProtocol(db, timeout.Token);
             var applied = (await db.Database.GetAppliedMigrationsAsync(timeout.Token)).ToArray();
             await CandidateContract.Verify(db, contract, applied, timeout.Token);
+            if (crm) await CrmDrift(db, contract, applied, false, timeout.Token);
             if (diagnostics)
             {
                 await using var transaction = await db.Database.BeginTransactionAsync(timeout.Token);
@@ -337,7 +360,7 @@ internal static partial class RehearsalFixture
         }
         else if (operation == "adversarial")
         {
-            if (!payments && !receptionist && !canonicalPayments && !training && !management && !browser && !diagnostics) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+            if (!payments && !receptionist && !canonicalPayments && !training && !management && !browser && !diagnostics && !crm) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             var applied = db.Database.GetMigrations().ToArray();
             var mutations = payments ? new[] {
                 "ALTER INDEX [IX_CommercePaymentReceipts_Provider_Environment_AccountId_EventId] ON [dbo].[CommercePaymentReceipts] DISABLE",
@@ -405,6 +428,11 @@ internal static partial class RehearsalFixture
                     throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
             }
             await db.Database.OpenConnectionAsync(timeout.Token);
+            if (crm)
+            {
+                await VerifyCrmData(db, timeout.Token);
+                await CrmDrift(db, contract, db.Database.GetMigrations().ToArray(), true, timeout.Token);
+            }
             if (diagnostics) await VerifyDiagnosticsData(db, timeout.Token);
             if (canonicalPayments) await VerifyCanonicalPaymentData(db, timeout.Token);
             if ((management || browser) && !receptionist) await VerifyManagementPredecessor(db, sql.InitialCatalog, timeout.Token);

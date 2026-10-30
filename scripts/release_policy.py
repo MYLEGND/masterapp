@@ -84,7 +84,9 @@ TRUSTED_TOOL_PATHS = frozenset({
 # candidate application/migration files and arbitrary neighboring tools remain excluded.
 TRUSTED_ADDED_TOOL_PATHS = frozenset({
     'scripts/MigrationReleaseProbe/CandidateContract.Browser.cs',
+    'scripts/MigrationReleaseProbe/CandidateContract.Crm.cs',
     'scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.Browser.cs',
+    'scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.Crm.cs',
 })
 
 
