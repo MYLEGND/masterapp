@@ -453,50 +453,111 @@ public class WebsitePlatformController : ControllerBase
         CancellationToken cancellationToken = default,
         [FromQuery] bool audit = false)
     {
-        var actor = await AuthorizeAsync(ticket, cancellationToken);
-        if (actor is null) return Unauthorized();
-        var state = await StateAsync(actor, cancellationToken);
-        var business = actor.CommerceBusinessId.HasValue
-            ? await _db.CommerceBusinesses.AsNoTracking()
-                .SingleAsync(b => b.Id == actor.CommerceBusinessId, cancellationToken)
-            : null;
-        var facts = business is null
-            ? null
-            : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
-        WebsiteContentDocument draft;
-        try { draft = Read(state.DraftJson); }
-        catch (InvalidOperationException ex) when (ex.Message.StartsWith("website_duplicate_node_identity:", StringComparison.Ordinal))
+        using var timing = new WebsiteManageTiming(HttpContext?.RequestServices.GetService<ILogger<WebsitePlatformController>>());
+        try
         {
-            return Conflict(new { error = "website_draft_duplicate_identity",
-                message = "The saved website needs identity recovery before editing. Your content and publication were preserved." });
-        }
-        if (WebsiteSystemTemplateAuthority.HasReviewableRuntimeAnchorRecovery(actor.SiteKey, draft))
-            return Conflict(new { error = "website_draft_runtime_anchor_recovery",
-                message = "Review the saved protected form anchors before editing. Your saved content and publication were preserved." });
-        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, draft);
-        IReadOnlyDictionary<string, WebsiteCollectionProjection> collectionData =
-            business is null || (draft.Collections?.Count ?? 0) == 0
-                ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
-                : await new WebsiteCollectionProjectionService(_db)
-                    .LoadAsync(draft, business.Id, cancellationToken);
+            var actor = await AuthorizeAsync(ticket, cancellationToken);
+            if (actor is null) return Unauthorized();
+            timing.Next(WebsiteManageTiming.Stage.StateRead);
+            var state = await StateAsync(actor, cancellationToken);
+            timing.Next(WebsiteManageTiming.Stage.BusinessFacts);
+            var business = actor.CommerceBusinessId.HasValue
+                ? await _db.CommerceBusinesses.AsNoTracking()
+                    .SingleAsync(b => b.Id == actor.CommerceBusinessId, cancellationToken)
+                : null;
+            var facts = business is null
+                ? null
+                : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
+            timing.Next(WebsiteManageTiming.Stage.DraftValidation);
+            WebsiteContentDocument draft;
+            try { draft = Read(state.DraftJson); }
+            catch (InvalidOperationException ex) when (ex.Message.StartsWith("website_duplicate_node_identity:", StringComparison.Ordinal))
+            {
+                return Conflict(new { error = "website_draft_duplicate_identity",
+                    message = "The saved website needs identity recovery before editing. Your content and publication were preserved." });
+            }
+            if (WebsiteSystemTemplateAuthority.HasReviewableRuntimeAnchorRecovery(actor.SiteKey, draft))
+                return Conflict(new { error = "website_draft_runtime_anchor_recovery",
+                    message = "Review the saved protected form anchors before editing. Your saved content and publication were preserved." });
+            WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, draft);
+            timing.Next(WebsiteManageTiming.Stage.Collections);
+            IReadOnlyDictionary<string, WebsiteCollectionProjection> collectionData =
+                business is null || (draft.Collections?.Count ?? 0) == 0
+                    ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
+                    : await new WebsiteCollectionProjectionService(_db)
+                        .LoadAsync(draft, business.Id, cancellationToken);
 
-        var commerceService = HttpContext?.RequestServices?.GetService(typeof(WebsiteCommerceScopeService))
-            as WebsiteCommerceScopeService;
-        var commerceScope = commerceService is null || (audit && draft.Store?.Enabled != true)
-            ? null
-            : await commerceService.ResolveAsync(actor, state, createIfMissing: false, cancellationToken);
-        var storePayload = await StorePayloadAsync(
-            actor.SiteKey,
-            draft,
-            commerceScope,
-            ticket,
-            cancellationToken);
+            timing.Next(WebsiteManageTiming.Stage.CommerceStore);
+            var commerceService = HttpContext?.RequestServices?.GetService(typeof(WebsiteCommerceScopeService))
+                as WebsiteCommerceScopeService;
+            var commerceScope = commerceService is null || (audit && draft.Store?.Enabled != true)
+                ? null
+                : await commerceService.ResolveAsync(actor, state, createIfMissing: false, cancellationToken);
+            var storePayload = await StorePayloadAsync(
+                actor.SiteKey,
+                draft,
+                commerceScope,
+                ticket,
+                cancellationToken);
 
-        if (audit)
-        {
+            if (audit)
+            {
+                return Ok(new
+                {
+                    source = "website_studio_audit_render",
+                    business = business is null
+                        ? null
+                        : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType },
+                    siteKey = actor.SiteKey,
+                    agentSlug = actor.AgentSlug,
+                    commerceBusinessId = actor.CommerceBusinessId,
+                    document = draft,
+                    legacyMigration = draft.LegacyMigration,
+                    revision = state.Revision,
+                    facts,
+                    collections = collectionData.Values,
+                    ctaCatalog = new { options = Array.Empty<object>() },
+                    store = storePayload,
+                    drafts = Array.Empty<object>()
+                });
+            }
+
+            timing.Next(WebsiteManageTiming.Stage.PublicationHistory);
+            var publicationUsage = await _db.Set<WebsiteContentVersion>().AsNoTracking()
+                .Where(v => v.StateId == state.Id)
+                .GroupBy(_ => 1)
+                .Select(group => new
+                {
+                    IdentityCount = group.Count(),
+                    RetainedPayloadCount = group.Count(v => v.SnapshotRetiredUtc == null)
+                })
+                .SingleOrDefaultAsync(cancellationToken);
+            var history = await _db.Set<WebsiteContentVersion>().AsNoTracking()
+                .Where(v => v.StateId == state.Id && v.SnapshotRetiredUtc == null)
+                .OrderByDescending(v => v.Revision).ThenByDescending(v => v.Id)
+                .Take(Infrastructure.WebsitePublishing.WebsiteSnapshotRetention.Limit)
+                .Select(v => new { versionId = v.Id, v.Revision, v.CreatedUtc })
+                .ToListAsync(cancellationToken);
+            timing.Next(WebsiteManageTiming.Stage.CallToAction);
+            var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, draft);
+            timing.Next(WebsiteManageTiming.Stage.PublishPermission);
+            var canPublish = await CanPublishAsync(actor, cancellationToken);
+            timing.Next(WebsiteManageTiming.Stage.Media);
+            var mediaUsage = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
+                .Where(a => a.OwnerKey == actor.OwnerUserId)
+                .GroupBy(_ => 1)
+                .Select(group => new
+                {
+                    MediaBytes = group.Sum(value => value.SizeBytes),
+                    MediaCount = group.Count()
+                })
+                .SingleOrDefaultAsync(cancellationToken);
+
+            timing.Next(WebsiteManageTiming.Stage.NamedDrafts);
+            var drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc });
+            timing.Next(WebsiteManageTiming.Stage.ResponsePreparation);
             return Ok(new
             {
-                source = "website_studio_audit_render",
                 business = business is null
                     ? null
                     : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType },
@@ -506,106 +567,71 @@ public class WebsitePlatformController : ControllerBase
                 document = draft,
                 legacyMigration = draft.LegacyMigration,
                 revision = state.Revision,
+                publishedRevision = history.FirstOrDefault(v => v.versionId == state.PublishedVersionId)?.Revision,
+                publicationScopeId = state.Id,
                 facts,
+                editorBaseUrl = actor.SiteKey == WebsiteEditorSiteKeys.Business
+                    ? (_configuration["LegendWebsiteBaseUrl"] ?? "https://www.mylegnd.com").TrimEnd('/')
+                    : null,
+                dataCatalog = WebsiteCollectionSourcePolicy.Catalog,
                 collections = collectionData.Values,
-                ctaCatalog = new { options = Array.Empty<object>() },
+                ctaCatalog = new { options = ctaOptions },
                 store = storePayload,
-                drafts = Array.Empty<object>()
-            });
-        }
-
-        var publicationUsage = await _db.Set<WebsiteContentVersion>().AsNoTracking()
-            .Where(v => v.StateId == state.Id)
-            .GroupBy(_ => 1)
-            .Select(group => new
-            {
-                IdentityCount = group.Count(),
-                RetainedPayloadCount = group.Count(v => v.SnapshotRetiredUtc == null)
-            })
-            .SingleOrDefaultAsync(cancellationToken);
-        var history = await _db.Set<WebsiteContentVersion>().AsNoTracking()
-            .Where(v => v.StateId == state.Id && v.SnapshotRetiredUtc == null)
-            .OrderByDescending(v => v.Revision).ThenByDescending(v => v.Id)
-            .Take(Infrastructure.WebsitePublishing.WebsiteSnapshotRetention.Limit)
-            .Select(v => new { versionId = v.Id, v.Revision, v.CreatedUtc })
-            .ToListAsync(cancellationToken);
-        var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, draft);
-        var canPublish = await CanPublishAsync(actor, cancellationToken);
-        var mediaUsage = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
-            .Where(a => a.OwnerKey == actor.OwnerUserId)
-            .GroupBy(_ => 1)
-            .Select(group => new
-            {
-                MediaBytes = group.Sum(value => value.SizeBytes),
-                MediaCount = group.Count()
-            })
-            .SingleOrDefaultAsync(cancellationToken);
-
-        return Ok(new
-        {
-            business = business is null
-                ? null
-                : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType },
-            siteKey = actor.SiteKey,
-            agentSlug = actor.AgentSlug,
-            commerceBusinessId = actor.CommerceBusinessId,
-            document = draft,
-            legacyMigration = draft.LegacyMigration,
-            revision = state.Revision,
-            publishedRevision = history.FirstOrDefault(v => v.versionId == state.PublishedVersionId)?.Revision,
-            publicationScopeId = state.Id,
-            facts,
-            editorBaseUrl = actor.SiteKey == WebsiteEditorSiteKeys.Business
-                ? (_configuration["LegendWebsiteBaseUrl"] ?? "https://www.mylegnd.com").TrimEnd('/')
-                : null,
-            dataCatalog = WebsiteCollectionSourcePolicy.Catalog,
-            collections = collectionData.Values,
-            ctaCatalog = new { options = ctaOptions },
-            store = storePayload,
-            usage = new
-            {
-                mediaBytes = mediaUsage?.MediaBytes ?? 0,
-                mediaCount = mediaUsage?.MediaCount ?? 0,
-                publishedVersions = publicationUsage?.RetainedPayloadCount ?? 0,
-                publicationIdentityCount = publicationUsage?.IdentityCount ?? 0,
-                retiredPublishedVersions = (publicationUsage?.IdentityCount ?? 0) - (publicationUsage?.RetainedPayloadCount ?? 0),
-                publishedVersionOverflow = Math.Max(0, (publicationUsage?.RetainedPayloadCount ?? 0) -
-                    Infrastructure.WebsitePublishing.WebsiteSnapshotRetention.Limit),
-                publishedVersionLimit = Infrastructure.WebsitePublishing.WebsiteSnapshotRetention.Limit
-            },
-            importReport = string.IsNullOrEmpty(state.ImportReportJson)
-                ? (JsonElement?)null
-                : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
-            drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }),
-            history,
-            signalCatalog = (object?)null,
-            agentContract = WebsiteStudioAgentContract.CompactPayload,
-            capabilities = new
-            {
-                canPublish,
-                canManageDomains = canPublish,
-                canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business,
-                canSchedule = canPublish,
-                canDelete = canPublish,
-                canPromote = canPublish,
-                compositionV3 = true,
-                browserAgentWorkspace = true,
-                externalAiApi = false,
-                requiresCompositionMaterialization = draft.LegacyMigration is not null
-            },
-            schedule = new { publishUtc = state.ScheduledPublishUtc, error = state.ScheduleError },
-            readiness = new
-            {
-                checks = new[]
+                usage = new
                 {
-                    new
+                    mediaBytes = mediaUsage?.MediaBytes ?? 0,
+                    mediaCount = mediaUsage?.MediaCount ?? 0,
+                    publishedVersions = publicationUsage?.RetainedPayloadCount ?? 0,
+                    publicationIdentityCount = publicationUsage?.IdentityCount ?? 0,
+                    retiredPublishedVersions = (publicationUsage?.IdentityCount ?? 0) - (publicationUsage?.RetainedPayloadCount ?? 0),
+                    publishedVersionOverflow = Math.Max(0, (publicationUsage?.RetainedPayloadCount ?? 0) -
+                        Infrastructure.WebsitePublishing.WebsiteSnapshotRetention.Limit),
+                    publishedVersionLimit = Infrastructure.WebsitePublishing.WebsiteSnapshotRetention.Limit
+                },
+                importReport = string.IsNullOrEmpty(state.ImportReportJson)
+                    ? (JsonElement?)null
+                    : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
+                drafts,
+                history,
+                signalCatalog = (object?)null,
+                agentContract = WebsiteStudioAgentContract.CompactPayload,
+                capabilities = new
+                {
+                    canPublish,
+                    canManageDomains = canPublish,
+                    canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business,
+                    canSchedule = canPublish,
+                    canDelete = canPublish,
+                    canPromote = canPublish,
+                    compositionV3 = true,
+                    browserAgentWorkspace = true,
+                    externalAiApi = false,
+                    requiresCompositionMaterialization = draft.LegacyMigration is not null
+                },
+                schedule = new { publishUtc = state.ScheduledPublishUtc, error = state.ScheduleError },
+                readiness = new
+                {
+                    checks = new[]
                     {
-                        passed = true,
-                        message = "Draft is isolated from published content. Publishing validates and compiles the complete website."
+                        new
+                        {
+                            passed = true,
+                            message = "Draft is isolated from published content. Publishing validates and compiles the complete website."
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            timing.Failed(canceled: true);
+            throw;
+        }
+        catch
+        {
+            timing.Failed(canceled: false);
+            throw;
+        }
     }
 
     [HttpGet("manage/data-catalog")]
@@ -4369,4 +4395,67 @@ public class WebsitePlatformController : ControllerBase
         => WebsiteEditorSiteKeys.ToolPrefix + siteKey;
 
 
+}
+
+// Bounded diagnostics for the existing Manage action, not a request deadline or
+// an alternate telemetry sink. No caller-controlled values enter the record.
+internal sealed class WebsiteManageTiming : IDisposable
+{
+    internal enum Stage { Authorization, StateRead, BusinessFacts, DraftValidation, Collections,
+        CommerceStore, PublicationHistory, CallToAction, PublishPermission, Media, NamedDrafts, ResponsePreparation }
+    internal sealed class RateGuard
+    {
+        private readonly object gate = new();
+        private long? last;
+        internal bool Admit(TimeProvider clock, long now)
+        {
+            lock (gate)
+            {
+                if (last.HasValue && clock.GetElapsedTime(last.Value, now) < TimeSpan.FromMinutes(1)) return false;
+                last = now;
+                return true;
+            }
+        }
+    }
+    private static readonly RateGuard ProcessGuard = new();
+    private readonly ILogger? logger;
+    private readonly TimeProvider clock;
+    private readonly RateGuard guard;
+    private readonly long started;
+    private long stageStarted;
+    private readonly long[] durations = new long[12];
+    private Stage stage;
+    private string outcome = "returned";
+    private bool disposed;
+    internal WebsiteManageTiming(ILogger? logger, TimeProvider? clock = null, RateGuard? guard = null)
+    {
+        this.logger = logger; this.clock = clock ?? TimeProvider.System; this.guard = guard ?? ProcessGuard;
+        started = stageStarted = this.clock.GetTimestamp();
+    }
+    private long Milliseconds(long from, long to) =>
+        (long)Math.Clamp(clock.GetElapsedTime(from, to).TotalMilliseconds, 0, 3_600_000);
+    internal void Next(Stage next)
+    {
+        var now = clock.GetTimestamp();
+        durations[(int)stage] = Milliseconds(stageStarted, now);
+        stage = next; stageStarted = now;
+    }
+    internal void Failed(bool canceled) => outcome = canceled ? "canceled" : "failed";
+    public void Dispose()
+    {
+        if (disposed) return;
+        disposed = true;
+        // Diagnostics must not replace business results or the original exception,
+        // including when an existing logging provider itself is unavailable.
+        try
+        {
+            var now = clock.GetTimestamp();
+            var total = Milliseconds(started, now);
+            if ((total < 10_000 && outcome == "returned") || logger?.IsEnabled(LogLevel.Warning) != true || !guard.Admit(clock, now)) return;
+            durations[(int)stage] = Milliseconds(stageStarted, now);
+            logger.LogWarning("WebsiteStudio manage timing Outcome={Outcome} LastStage={LastStage} DurationMs={DurationMs} StageMs={StageMs}",
+                outcome, stage.ToString(), total, string.Join(",", durations));
+        }
+        catch { /* Diagnostic failure never changes the authoritative request. */ }
+    }
 }
