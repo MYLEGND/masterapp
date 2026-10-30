@@ -258,7 +258,7 @@ function validateRecord(name, record) {
         r.restoreExecuted!==false || r.authorizesMutation!==false ||
         name!==`legend-retained-schema-proof-${crypto.createHash('sha256').update(JSON.stringify(canonical(record))).digest('hex')}`)
       throw new Error('Invalid retained schema observation');
-    return;
+    return {filename:'operation.json'};
   }
   const targetHold = /^legend-retained-target-preintent-[a-f0-9]{64}$/.test(name);
   const preflight = /^legend-retained-preflight-nonentry-[a-f0-9]{64}$/.test(name);

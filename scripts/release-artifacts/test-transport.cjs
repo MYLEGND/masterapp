@@ -7,6 +7,34 @@ const {publish, validateRecord} = require('./transport.cjs');
 const {execFileSync} = require('node:child_process');
 const crypto = require('node:crypto');
 
+test('retained CRM schema proof publishes and reads back exact immutable bytes', async () => {
+  const value={schemaVersion:1,phase:'retained-schema-read-only',originalRun:41131223973,
+    applicationRevision:'3243221ae661b53d60f78cc2dab108a93bad7632',producingRun:20,producingAttempt:1,
+    observer:{runId:20,runAttempt:1,jobId:30,toolRevision:'b'.repeat(40),promotionRunId:19},
+    originalSuccessArtifact:13017640415,historyIdentity:'a'.repeat(64),sqlExecutionAuthorized:false,
+    observation:{databaseIdentity:'3a055450807aeaa2c6465702b983dc99968329389d7c0ae480c3c72cc3a9ff3b',
+      schemaIdentity:'0e4674714d917c5f2dbfa3cd42f2de954e7b3f310c8322c08ec0f427d3615451',baselineIdentity:'c'.repeat(64),
+      observedUtc:'2026-10-30T23:00:00Z',pendingCount:0,ready:true,mutationActivity:'settled'},
+    recovery:{databaseIdentity:'3a055450807aeaa2c6465702b983dc99968329389d7c0ae480c3c72cc3a9ff3b',
+      observedUtc:'2026-10-30T23:00:00Z',restorePointUtc:'2026-10-30T22:45:00Z',earliestRestoreUtc:'2026-10-28T00:00:00Z',
+      retentionDays:7,restoreWindowVerified:true,restoreExecuted:false,authorizesMutation:false}};
+  const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
+  const name='legend-retained-schema-proof-'+crypto.createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
+  assert.deepEqual(validateRecord(name,value),{filename:'operation.json'});
+  let stored;const calls=[];
+  const client={async listArtifacts(){calls.push('list');return {artifacts:[]};},
+    async uploadArtifact(n,files){calls.push('upload');assert.equal(n,name);stored=await fs.readFile(files[0]);return {id:42};},
+    async downloadArtifact(id,options){calls.push('readback');assert.equal(id,42);await fs.mkdir(options.path);await fs.writeFile(path.join(options.path,'operation.json'),stored);}};
+  assert.deepEqual(await publish(client,name,value),{artifactId:42});
+  assert.deepEqual(calls,['list','upload','readback']);assert.deepEqual(JSON.parse(stored),value);
+  for(const change of [{sqlExecutionAuthorized:true},{originalRun:1},{producingAttempt:2},{unexpected:'data'},
+    {observation:{...value.observation,pendingCount:1}},{recovery:{...value.recovery,restoreExecuted:true}}]){
+    assert.throws(()=>validateRecord(name,{...structuredClone(value),...change}));
+  }
+  client.downloadArtifact=async(id,options)=>{await fs.mkdir(options.path);await fs.writeFile(path.join(options.path,'operation.json'),'changed');};
+  await assert.rejects(publish(client,name,value),/readback mismatch/);
+});
+
 // Exercise the real Python phase serializers without invoking live authority or providers.
 function pythonSupersessionRecords() {
   return JSON.parse(execFileSync('python3', ['-c', String.raw`
