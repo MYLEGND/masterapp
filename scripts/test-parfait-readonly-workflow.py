@@ -192,6 +192,21 @@ class TrustedContractExecutionTests(unittest.TestCase):
         self.assertEqual(1,len(self.commands))
         self.assertFalse((self.root/'trusted-contract-proof.json').exists())
 
+    def test_combined_crm_rule_requires_matching_independent_observer(self):
+        self.proof['rule']='approved-prefix-reviewed-diagnostics-crm-entries'
+        for wrong in ('approved-definitions-exact', 'approved-prefix-reviewed-diagnostics-entry',
+                      'approved-prefix-reviewed-browser-entry'):
+            self.verified['rule']=wrong
+            with self.subTest(rule=wrong),self.assertRaisesRegex(SystemExit,'COMPATIBILITY_UNPROVEN'):
+                self.execute()
+            self.assertFalse((self.root/'trusted-contract-proof.json').exists())
+        self.verified['rule']=self.proof['rule']
+        self.execute()
+        import json
+        receipt=json.loads((self.root/'trusted-contract-proof.json').read_text())
+        self.assertEqual(self.proof['rule'],receipt['observer']['rule'])
+        self.assertFalse(receipt['observer']['authorizesMutation'])
+
     def test_browser_rule_requires_exact_independent_observer_rule(self):
         import json
         self.proof['rule']='approved-prefix-reviewed-browser-entry'

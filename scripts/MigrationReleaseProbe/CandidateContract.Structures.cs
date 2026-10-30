@@ -46,6 +46,7 @@ internal static partial class CandidateContract
     internal static Entry Describe(string id, IReadOnlyList<MigrationOperation> operations)
     {
         if (id == BrowserMigration) return BrowserEntry(ExactBrowserOperations(operations));
+        if (id == CrmMigration) return CrmEntry(ExactCrmOperations(operations));
         var columns = operations.OfType<AddColumnOperation>().Select(DescribeColumn).ToArray();
         var tables = operations.OfType<CreateTableOperation>().Select(t => new Table(t.Schema ?? "dbo", t.Name,
             t.Columns.Select(DescribeColumn).ToArray(), new Key(t.PrimaryKey?.Name ?? "", t.PrimaryKey?.Columns ?? []),
@@ -122,6 +123,7 @@ internal static partial class CandidateContract
         if (m.Supported && m.Id == TrainingMigration && Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(m, Json))) !=
             "5a543b02a2a1ae2f2bb35d5e2a8fb51f41e9601b1ef4de2707ec6db51029be10") return false;
         if (m.Id == BrowserMigration && m.Supported) return ExactBrowserEntry(m);
+        if (m.Id == CrmMigration && m.Supported) return ExactCrmEntry(m);
         // Unsupported historical migrations remain opaque and cannot become pending supported operations.
         if (!m.Supported) return true;
         if (m.Guards.Length > 1 || m.Columns.Any(c => !ValidColumn(c)) || m.Guards.Any(g => g != CheckoutGuard && !(g == TrainingIndexTransition && m.Id == TrainingMigration)) ||

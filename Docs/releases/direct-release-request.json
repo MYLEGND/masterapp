@@ -1,68 +1,88 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder requested completion of the bounded diagnostics bootstrap and combined diagnostics/client activity release. Bootstrap is nonpublishing and retains independent review, exact CI and credential-free SQL rehearsal; it authorizes no application, database or provider changes.",
-  "purpose": "One-use exact-base observer promotion with two reviewed null-safe Razor predicates; retire after verified feature integration.",
-  "requestId": "diagnostics-observer-exact-bootstrap-20261030-v1",
+  "authorization": "Founder authorized completing the existing combined diagnostics and Client Activity & Case History release through existing protected controls, including ordinary nonpublishing tool promotion. No deployment, migration, credentials, spending or Production-confirmation bypass is authorized by this tool-only request.",
+  "purpose": "Promote exact reviewed CRM observer/rehearsal, executed-test discovery, read-only compatibility mapping, and first-CRM Portal-before-writers barrier through ordinary validate-only controls. No application publication or schema mutation.",
+  "requestId": "masterapp-crm-trusted-tools-20261030-v3",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "27f90cb6595ac9be0be148d72791b05f0f5e74ca",
-    "sourceRevision": "62eac7879cbffb6f583e014ebddb4c6696097d21",
+    "baseRevision": "c81486bfe0fbca2bd67e87496ccba22ccff4e06b",
+    "sourceRevision": "43549101b0c684118cb76ea270f5edeb0a85a24b",
     "files": {
-      "SHARED/Views/Shared/ReceptionistContentReview.cshtml": {
+      ".github/workflows/masterapp-platform-architecture-validation.yml": {
         "mode": "100644",
-        "blob": "3bf031b67662e8fec40ba8163db7cf653124925d"
+        "blob": "b468f250f3dcf547dc93f1e95c31ef0ff8a2423d"
       },
-      "SHARED/Views/Shared/ReceptionistManagement.cshtml": {
+      "scripts/MigrationReleaseProbe/CandidateContract.Crm.cs": {
         "mode": "100644",
-        "blob": "9597d074ffaca0cba4f8bd48a65dfb3fde2eb468"
+        "blob": "48cbd299441bae3802038d0872a0a0358a3062b5"
+      },
+      "scripts/MigrationReleaseProbe/CandidateContract.Structures.cs": {
+        "mode": "100644",
+        "blob": "babb4750099da200e68e49e76136ef7e921655d2"
       },
       "scripts/MigrationReleaseProbe/CandidateContract.cs": {
         "mode": "100644",
-        "blob": "a8f43169cfe101cfd58d8d85b7af7977997c5800"
+        "blob": "66b8e532ac0f6d4cadabedf0f840d6ddfa40e87c"
       },
       "scripts/MigrationReleaseProbe/Program.cs": {
         "mode": "100644",
-        "blob": "38952ac8cb9e17c6577e5b3c455f49c3169d8938"
+        "blob": "cd6621f4ca7dd0fa23907887abdaafc9a3c019b7"
       },
       "scripts/MigrationReleaseProbe/Rehearsal/CandidateContractTests.cs": {
         "mode": "100644",
-        "blob": "a082b665386cced31830e659ddca1b2497730c9e"
+        "blob": "649ad3a560947711a5f04c39c28100e18298fd7c"
+      },
+      "scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.Crm.cs": {
+        "mode": "100644",
+        "blob": "311f9d7389088bf2ddbf4e4bedf32e408f9dc7da"
       },
       "scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.cs": {
         "mode": "100644",
-        "blob": "4055fa8172b3c84fb88c1c6ec90c9c1f1676d476"
+        "blob": "c42d6abe4648591e4e92a12b134fd097f7d497c7"
       },
       "scripts/migration-probe-package.py": {
         "mode": "100644",
-        "blob": "02045754431c9beef886467c9d1797995a28f712"
+        "blob": "7a6c3bce2a20abb843b291602e96e0a0c4a13d4d"
       },
       "scripts/release_policy.py": {
         "mode": "100644",
-        "blob": "b8b674b076bc2536cb964928e1db4ae7d6132471"
-      },
-      "scripts/test-fast-track-release.py": {
-        "mode": "100644",
-        "blob": "d452e539c3c4b2c09004d339d69df99e61221793"
+        "blob": "1f77bba7dd1c8527b20d16f37b48866991a75296"
       },
       "scripts/test-migration-probe-package.py": {
         "mode": "100644",
-        "blob": "fdc290cc62d711ee566abc6fd0e72933adb9251b"
+        "blob": "cc76ff183d4bb2a9b3b875ae3b121e1831bb92f3"
       },
       "scripts/test-release-policy.py": {
         "mode": "100644",
-        "blob": "d5afeaa2e3a9e49a98dad5f2905fedf66f28fec5"
+        "blob": "a0a17d55d3001a4fa4e678d29c952f7fc0baf3f3"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "d81892b0e1ef01e99b0957c4095218b35a7e44ac"
+        "blob": "f1f75546d7385bc3395a6f8185aa18cc09df08cc"
       },
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "98efc67bc15574b8068b7d4b7c59a279c005765c"
+        "blob": "a94365e8664202c8c14c36d4765554a57d4f84a2"
+      },
+      ".github/workflows/parfait-cutover-live-readonly.yml": {
+        "mode": "100644",
+        "blob": "52ed64a56b051a45d8fbd4c744a77b04026fa1e1"
+      },
+      "scripts/deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "c5e8796f050d71e2f2fefdf6c4b96dcd5051f23e"
+      },
+      "scripts/test-deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "49ac8b99355096eeb6a2b8e46db78d2ff320999c"
+      },
+      "scripts/test-parfait-readonly-workflow.py": {
+        "mode": "100644",
+        "blob": "f901fc38a711e5f916a7081299f3ac34940fa064"
       }
     }
   }

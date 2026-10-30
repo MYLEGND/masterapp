@@ -35,6 +35,107 @@ def prepare_supported_azure(azure):
     return azure
 
 
+class CrmPortalFirstGateTests(unittest.TestCase):
+    migration = 'Infrastructure/Migrations/20261030070000_CrmRelationshipHistory.cs'
+    def setUp(self):
+        self.run = dict(id=10, head_sha='a'*40, run_attempt=2)
+        self.owner = dict(name='Affected App Deploy — AgentPortal', run_id=10,
+            head_sha='a'*40, run_attempt=1, status='completed', conclusion='success',
+            steps=[dict(name='Publish or reconcile exact application bytes',status='completed',conclusion='success')])
+        self.stack = ExitStack(); self.addCleanup(self.stack.close)
+        self.stack.enter_context(patch.dict(os.environ, GITHUB_REPOSITORY='owner/repo', GH_TOKEN='test'))
+        self.authority = self.stack.enter_context(patch.object(deploy._RELEASE_AUTHORITY, 'assert_fast_track_release_execution', return_value=self.run))
+        self.tree = self.stack.enter_context(patch.object(deploy.subprocess, 'check_output', return_value=''))
+        self.api = self.stack.enter_context(patch.object(deploy._RELEASE_AUTHORITY, 'api_get',
+            return_value=dict(total_count=1, jobs=[self.owner])))
+        self.azure = Mock(); self.azure.observed_revision.return_value='a'*40
+        self.provider = self.stack.enter_context(patch.object(deploy, 'target_azure', return_value=self.azure))
+        self.rows = self.stack.enter_context(patch.object(deploy, 'read_deployments_bounded', return_value=[row('ok',4)]))
+    def call(self, key='client', changed=None, **kwargs):
+        deploy.fast_track_crm_portal_gate(key,self.run,'b'*40,
+            [self.migration] if changed is None else changed,
+            dict(matrix=dict(include=[dict(azure_app=deploy.TARGETS['portal']['releaseName'])])), **kwargs)
+    def test_exact_successful_portal_and_fresh_idle_runtime_allow(self):
+        for key in ['client','protect','parfait']:
+            self.call(key)
+        self.provider.assert_called_with('portal',None,'a'*40)
+        self.azure.submit.assert_not_called()
+    def test_unaffected_and_later_releases_do_not_wait(self):
+        self.call('portal'); self.call('website'); self.call(changed=[])
+        self.tree.return_value=self.migration; self.call()
+        self.api.assert_not_called(); self.provider.assert_not_called()
+    def test_wrong_missing_duplicate_or_truncated_owner_blocks(self):
+        for field,value in [('run_id',11),('head_sha','c'*40),('run_attempt',3),('run_attempt',True)]:
+            with self.subTest(field=field,value=value):
+                original=self.owner[field];self.owner[field]=value
+                with self.assertRaises(deploy.DeploymentReconciliationRequired):self.call()
+                self.owner[field]=original
+        for payload in [dict(total_count=0,jobs=[]),dict(total_count=2,jobs=[self.owner]*2),dict(total_count=2,jobs=[self.owner])]:
+            self.api.return_value=payload
+            with self.assertRaises(deploy.DeploymentReconciliationRequired):self.call()
+        self.provider.assert_not_called()
+    def test_failed_cancelled_skipped_portal_blocks(self):
+        for result in ['failure','cancelled','skipped',None]:
+            self.owner['conclusion']=result
+            with self.assertRaises(deploy.DeploymentReconciliationRequired):self.call()
+        self.provider.assert_not_called()
+    def test_missing_or_skipped_publication_step_blocks(self):
+        for steps in [[],[dict(name='Publish or reconcile exact application bytes',status='completed',conclusion='skipped')]]:
+            self.owner['steps']=steps
+            with self.assertRaises(deploy.DeploymentReconciliationRequired):self.call()
+        self.provider.assert_not_called()
+    def test_first_crm_without_portal_scope_blocks(self):
+        with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired,'OUTSIDE_SCOPE'):
+            deploy.fast_track_crm_portal_gate('client',self.run,'b'*40,[self.migration],dict(matrix=dict(include=[])))
+        self.api.assert_not_called()
+    def test_active_provider_or_wrong_runtime_blocks(self):
+        for status in [0,1,2]:
+            self.rows.return_value=[row('active',status)]
+            with self.assertRaises(deploy.DeploymentReconciliationRequired):self.call()
+        self.rows.return_value=[row('ok',4)];self.azure.observed_revision.return_value='c'*40
+        with self.assertRaises(deploy.DeploymentReconciliationRequired):self.call()
+    def test_wait_is_bounded_and_success_can_follow_pending(self):
+        self.owner['status']='in_progress';self.owner['conclusion']=None
+        sleep=Mock()
+        with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired,'WAIT_EXHAUSTED'):
+            self.call(clock=Mock(side_effect=[0,900]),sleep=sleep)
+        sleep.assert_not_called();self.provider.assert_not_called()
+        def finish(_):self.owner.update(status='completed',conclusion='success')
+        self.call(clock=lambda:0,sleep=finish)
+        self.provider.assert_called_once()
+    def test_late_success_and_changed_authority_deny(self):
+        now=[0]
+        def late_api(*args):
+            now[0]=901
+            return dict(total_count=1,jobs=[self.owner])
+        self.api.side_effect=late_api
+        with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired,'WAIT_EXHAUSTED'): self.call(clock=lambda:now[0])
+        self.provider.assert_not_called();self.api.side_effect=None
+        self.authority.return_value=dict(self.run, head_sha='c'*40)
+        with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired,'AUTHORITY_CHANGED'): self.call()
+        self.authority.return_value=self.run
+        now=[0]
+        def late():now[0]=901;return 'a'*40
+        self.azure.observed_revision.side_effect=late
+        with self.assertRaises(Exception): self.call(clock=lambda:now[0])
+    def test_failed_gate_blocks_target_effects_at_actual_entry(self):
+        scope=dict(commerce=False,matrix=dict(include=[dict(azure_app=deploy.TARGETS['client']['releaseName'])]))
+        with patch.dict(os.environ,BEFORE='b'*40), patch.object(deploy._RELEASE_AUTHORITY,'fast_track_scope',return_value=scope), \
+             patch.object(deploy._RELEASE_AUTHORITY,'attested_website_only_recovery_scope',return_value=False), \
+             patch.object(deploy._RELEASE_AUTHORITY,'fast_track_source_admission'), \
+             patch.object(deploy,'verify_package',return_value='d'*64), \
+             patch.object(deploy,'fast_track_crm_portal_gate',side_effect=deploy.DeploymentReconciliationRequired('hold')), \
+             patch.object(deploy,'operation_journal') as journal, patch.object(deploy,'reconcile') as reconcile:
+            with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired,'hold'):
+                deploy.fast_track_deploy('client',Path('/unused'))
+            journal.assert_not_called();reconcile.assert_not_called();self.provider.assert_not_called()
+    def test_gate_precedes_any_target_journal_or_upload(self):
+        import inspect
+        source=inspect.getsource(deploy.fast_track_deploy)
+        self.assertLess(source.index('fast_track_crm_portal_gate('),source.index('operation_journal('))
+        self.assertLess(source.index('fast_track_crm_portal_gate('),source.index('result = reconcile('))
+
+
 class FakeAzure:
     def __init__(self, states, revisions, accepted=True, static=False, recovery_accepted=True):
         self.states, self.revisions, self.accepted = list(states), list(revisions), accepted

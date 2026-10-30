@@ -1337,6 +1337,9 @@ def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
     # Shared serializer preflight; exact paired generation, never arbitrary helpers.
     if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) in {
+        # Reviewed first-CRM Portal publication barrier; unchanged journal and recovery paths.
+        ('2695c73db8082f794e79e4d32f36d034d7c21dbc63912b373cc5bce30e46dcf6',
+         '0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f'),
         # Exact161 retained replacement generation; publication requires independent review.
         ('95564a686c00eef65bd2566be9cfe46a76dc2a5a9bed776ad4b817511a90f6ef',
          '0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f'),
@@ -4545,6 +4548,13 @@ def fast_track_scope(paths):
     # Infrastructure/Domain/Shared ProjectReference dependencies. Keep exact
     # ownership: an unknown sibling is not silently admitted.
     shared_server = {
+        # Filed CRM history shares the existing Domain/Infrastructure graph.
+        'Domain/Entities/CrmHistoryEntry.cs',
+        'Domain/Entities/WebsiteLeadIntakeLink.cs',
+        'Infrastructure/Crm/CrmHistoryStore.cs',
+        'Infrastructure/Data/Configurations/CrmHistoryEntryConfiguration.cs',
+        'Infrastructure/Leads/WebsiteSubmissionEvidence.cs',
+        'SHARED/Crm/InsuranceFormDisclosures.cs',
         # Canonical diagnostics: all four registered .NET hosts; no static Website bytes.
         'Domain/Entities/RuntimeDiagnosticIncident.cs',
         'Infrastructure/Diagnostics/RuntimeDiagnosticSanitizer.Performance.cs',
@@ -4746,7 +4756,9 @@ def fast_track_scope(paths):
         'Infrastructure/Infrastructure.csproj',
         'Infrastructure/Data/MasterAppDbContext.cs', 'Infrastructure/Data/Configurations/CommercePaymentModel.cs',
         'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.cs',
-        'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Management.cs'} for path in paths)
+        'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Management.cs',
+        'Infrastructure/Data/Configurations/CrmHistoryEntryConfiguration.cs',
+        'Domain/Entities/WebsiteLeadIntakeLink.cs'} for path in paths)
     backend = schema or bool(shared_server.intersection(paths)) or any(path.startswith(('CommerceCore/', 'Infrastructure/Commerce/', 'Infrastructure/WebsiteRuntime/',
         'Infrastructure/Analytics/', 'Infrastructure/WebsitePublishing/', 'Infrastructure/WebsiteEditing/',
         'Domain/Entities/Commerce', 'Legend-Cloudflare/src/website-routing/')) or path in {
@@ -5182,6 +5194,22 @@ BOOKING_SOURCE = (
 )
 
 CRM_SOURCE = (
+    "Infrastructure/Data/Configurations/CrmHistoryEntryConfiguration.cs",
+    "Infrastructure/Data/MasterAppDbContext.cs",
+    "AgentPortal/Views/CrmHistory/**",
+    "AgentPortal/wwwroot/js/crm-history*.js",
+    "Protect-Website/wwwroot/js/insurance-form-evidence.js",
+    "Infrastructure/Crm/**",
+    "Infrastructure/Leads/WebsiteLifeLeadCaptureService.cs",
+    "Infrastructure/Leads/WebsiteSubmissionEvidence.cs",
+    "AgentPortal/Controllers/CrmHistoryController.cs",
+    "AgentPortal/Controllers/CrmEvidenceController.cs",
+    "AgentPortal/Services/CrmEvidenceStorage.cs",
+    "AgentPortal/Services/AgentDocumentStorageLocation.cs",
+    "AgentPortal/Controllers/AgentDocumentsController.cs",
+    "AgentPortal/Services/CrmHistoryAccess.cs",
+    "Domain/Entities/CrmHistoryEntry.cs",
+    "SHARED/Crm/**",
     "Infrastructure/Businesses/**",
     "AgentPortal/Controllers/LeadsController.cs",
     "AgentPortal/Controllers/ClientsController.cs",
@@ -5401,6 +5429,9 @@ WORKFLOWS = {
                     "AgentPortal.Tests/WebsiteAnalyticsScopeTests.cs",
                     "AgentPortal.Tests/LaunchAuditRiskAssessmentTests.cs",
                     "AgentPortal.Tests/CanonicalCrmOutcomeLineageTests.cs",
+                    "AgentPortal.Tests/WebsiteLifeLeadCaptureServiceTests.cs",
+                    "AgentPortal.Tests/CrmHistory*Tests.cs",
+                    "tests/analytics/crm-history-browser.cjs",
                 ) + CRM_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "exclude_paths": DIAGNOSTICS_SOURCE,
                 "materializes": ("compile-regression",),
@@ -5408,6 +5439,11 @@ WORKFLOWS = {
             "form-tracking": {
                 "step": "Run canonical form tracking tests",
                 "paths": (
+                    "tests/analytics/insurance-form-evidence.test.cjs",
+                    "tests/analytics/crm-history.test.cjs",
+                    "AgentPortal/wwwroot/js/crm-history.js",
+                    "AgentPortal/Views/CrmHistory/Index.cshtml",
+                    "Protect-Website/wwwroot/js/insurance-form-evidence.js",
                     "tests/analytics/form-tracker.test.cjs",
                     "SHARED/WebsitePlatform/tracking.js",
                     "SHARED/WebsitePlatform/meta-signal-intelligence.js",
@@ -9516,6 +9552,44 @@ REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS = frozenset({
 })
 
 
+REVIEWED_CRM_ENTRY = 'b2654e654640d238a5eb818558bd0ce149a5aefc78d3189489aef0b736447ac4'
+# Exact proposed runtime closures; promotion still requires independent review,
+# equal inherited tool/execution identities and the pinned ordered contract.
+REVIEWED_CRM_RUNTIME_PAIRS = frozenset({
+    ('37ddb814b51e2ea585fa6bd3f23aa9f25f41cf5064c9ad178102ed8aaaafa08b',
+     '152c7da0179eb2a0ff3d769c419620aadd47e721b3000d5fe0a720f479e8fd17')
+})
+
+
+def reviewed_crm_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
+    if ((trusted.get('runtimeIdentity'), current.get('runtimeIdentity')) not in REVIEWED_CRM_RUNTIME_PAIRS
+        or not current.get('toolIdentity') or current.get('toolIdentity') != trusted.get('toolIdentity')
+        or not current.get('executionIdentity') or current.get('executionIdentity') != trusted.get('executionIdentity')):
+        return False
+    if (not isinstance(contract, dict) or not isinstance(approved_contract, dict)
+        or set(contract) != {'schemaVersion', 'migrations'} or set(approved_contract) != set(contract)
+        or type(contract['schemaVersion']) is not int or contract['schemaVersion'] != 3
+        or type(approved_contract['schemaVersion']) is not int or approved_contract['schemaVersion'] != 3
+        or not isinstance(contract['migrations'], list) or not isinstance(approved_contract['migrations'], list)
+        or not 1 <= len(approved_contract['migrations']) <= 9998
+        or len(contract['migrations']) != len(approved_contract['migrations']) + 2
+        or contract['migrations'][:-2] != approved_contract['migrations']):
+        return False
+    previous = approved_contract['migrations'][-1]
+    if not isinstance(previous, dict) or previous.get('id') != '20261026223148_ReceptionistBrowserCreation':
+        return False
+    for entry, (migration_id, digest) in zip(contract['migrations'][-2:], (
+        ('20261030033900_RuntimeDiagnosticPerformanceEvidence', REVIEWED_DIAGNOSTICS_ENTRY),
+        ('20261030070000_CrmRelationshipHistory', REVIEWED_CRM_ENTRY))):
+        if (not isinstance(entry, dict) or entry.get('id') != migration_id or entry.get('supported') is not True
+            or hashlib.sha256(json.dumps(entry, sort_keys=True, separators=(',', ':'),
+                ensure_ascii=True, allow_nan=False).encode()).hexdigest() != digest):
+            return False
+    if subprocess.run(['git', 'merge-base', '--is-ancestor', approved, candidate], capture_output=True).returncode:
+        return False
+    return subprocess.run(['git', 'diff', '--quiet', approved, candidate, '--', 'scripts', '.github'], capture_output=True).returncode == 0
+
+
 REVIEWED_DIAGNOSTICS_ENTRY = 'de521b85cf05c3b68c66e7e44ccee6b3ae4ce0634aeaf8128c4054811672e362'
 REVIEWED_DIAGNOSTICS_RUNTIME_PAIRS = frozenset({
     ('2ca97a12dace04280b175b6e5c6adf8b81e8a8a550d46bee745b38a968e9dae7',
@@ -9709,6 +9783,10 @@ def candidate_migration_contract_proven(candidate, approved, contract, approved_
     trusted = migration_probe_identity(approved, approved)
     rule = 'approved-definitions-exact'
     if current['runtimeIdentity'] != trusted['runtimeIdentity']:
+        if reviewed_crm_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
+            return {'state': 'proven', 'rule': 'approved-prefix-reviewed-diagnostics-crm-entries',
+                    'runtimeIdentity': current['runtimeIdentity'],
+                    'approvedRuntimeIdentity': trusted['runtimeIdentity']}
         if reviewed_diagnostics_contract_extension(candidate, approved, contract, approved_contract, current, trusted):
             return {'state': 'proven', 'rule': 'approved-prefix-reviewed-diagnostics-entry',
                     'runtimeIdentity': current['runtimeIdentity'],
@@ -14456,6 +14534,80 @@ def cmd_verify_release_coverage(args):
     print(f"Every named release step is classified: {args.workflow}")
 
 
+CRM_FEATURE_TEST_INPUTS = (
+    'Domain/Entities/CrmHistoryEntry.cs',
+    'Infrastructure/Migrations/20261030070000_CrmRelationshipHistory.cs',
+    'AgentPortal/Controllers/CrmHistoryController.cs',
+    'AgentPortal.Tests/CrmHistoryTests.cs',
+    'AgentPortal.Tests/CrmHistoryFormRoutesTests.cs',
+    'AgentPortal.Tests/CrmHistoryHttpRoutesTests.cs',
+    'AgentPortal.Tests/CrmHistoryConversionTests.cs',
+    'AgentPortal.Tests/CrmHistoryRecoveryTests.cs',
+    'AgentPortal.Tests/CrmHistoryBrowserTests.cs',
+    'tests/analytics/crm-history-browser.cjs',
+)
+CRM_REQUIRED_METHOD_COUNTS = {
+    'InsuranceHandlerFilesExactSubmissionAndRetryKeepsOneTile': 12,
+    'InsuranceHttpRoutesValidateBeforeFilingAndPreserveExactRetries': 12,
+    'ConversionHandlersPreserveHistoryAndRollbackFailedCreation': 5,
+    'SubmissionFailureRollsBackAnswersAndHistoryThenSameReceiptRecoversOnce': 1,
+    'HostedSyntheticHistorySupportsDesktopMobileKeyboardAndProtectedEndpoints': 1,
+}
+FORM_EVIDENCE_TEST_INPUTS = (
+    'Protect-Website/wwwroot/js/insurance-form-evidence.js',
+    'tests/analytics/insurance-form-evidence.test.cjs',
+)
+CRM_UI_TEST_INPUTS = (
+    'AgentPortal/wwwroot/js/crm-history.js',
+    'AgentPortal/Views/CrmHistory/Index.cshtml',
+    'tests/analytics/crm-history.test.cjs',
+)
+
+
+def feature_test_presence(paths, root=Path('.'), extra_markers=()):
+    present = [(root / path).is_file() for path in paths]
+    if any(present) or any((root / path).is_file() for path in extra_markers):
+        if not all(present):
+            raise ValueError('FEATURE_TEST_SOURCE_INCOMPLETE:' + ','.join(path for path, exists in zip(paths, present) if not exists))
+        return True
+    return False
+
+
+def verify_crm_discovery(trx, root=Path('.')):
+    import xml.etree.ElementTree as ET
+    crm = feature_test_presence(CRM_FEATURE_TEST_INPUTS, root,
+        [str(path.relative_to(root)) for path in root.glob('AgentPortal.Tests/CrmHistory*Tests.cs')])
+    suites = ['WebsiteLifeLeadCaptureServiceTests'] + (['CrmHistoryTests'] if crm else [])
+    results = ET.parse(trx).getroot()
+    ns = {'t': 'http://microsoft.com/schemas/VisualStudio/TeamTest/2010'}
+    for suite in suites:
+        tests = [row for row in results.findall('.//t:UnitTestResult', ns) if row.get('testName', '').startswith('AgentPortal.Tests.' + suite + '.')]
+        if not tests or any(row.get('outcome') != 'Passed' for row in tests):
+            raise ValueError(suite + ': required discovered tests did not all execute successfully')
+        print(f'{suite}: {len(tests)} executed PASS')
+    if crm:
+        for method, expected in CRM_REQUIRED_METHOD_COUNTS.items():
+            prefix = 'AgentPortal.Tests.CrmHistoryTests.' + method
+            actual = [row for row in results.findall('.//t:UnitTestResult', ns)
+                if row.get('testName', '') == prefix or row.get('testName', '').startswith(prefix + '(')]
+            if (len(actual) != expected or len({row.get('testName') for row in actual}) != expected
+                or any(row.get('outcome') != 'Passed' for row in actual)):
+                raise ValueError(method + ': exact required regression cases did not all execute successfully')
+            print(f'{method}: {len(actual)} executed PASS')
+    else:
+        print('CRM_HISTORY:NOT_PRESENT_IN_SOURCE')
+
+
+def run_form_tracking(root=Path('.')):
+    tests = ['tests/analytics/form-tracker.test.cjs']
+    for label, paths in [('FORM_EVIDENCE', FORM_EVIDENCE_TEST_INPUTS), ('CRM_UI', CRM_UI_TEST_INPUTS)]:
+        if feature_test_presence(paths, root):
+            tests.append(paths[-1])
+        else:
+            print(label + ':NOT_PRESENT_IN_SOURCE')
+    subprocess.run(['node', '--test', *tests], cwd=root, check=True)
+
+
 def build_parser():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -14614,6 +14766,11 @@ def build_parser():
     coverage.add_argument("--workflow", required=True)
     coverage.add_argument("--workflow-path", required=True)
     coverage.set_defaults(func=cmd_verify_release_coverage)
+    crm_discovery = sub.add_parser('verify-crm-discovery')
+    crm_discovery.add_argument('--trx', required=True)
+    crm_discovery.set_defaults(func=lambda args: verify_crm_discovery(args.trx))
+    form_tracking = sub.add_parser('run-form-tracking')
+    form_tracking.set_defaults(func=lambda args: run_form_tracking())
     return parser
 
 

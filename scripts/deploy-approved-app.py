@@ -1403,6 +1403,57 @@ def prepare_protect_replacement(revision, baseline, azure):
     return proof
 
 
+def fast_track_crm_portal_gate(key, run, before, changed, scope, *, clock=time.monotonic, sleep=time.sleep):
+    """First CRM writers wait for the retention-safe Portal in this release."""
+    migration = 'Infrastructure/Migrations/20261030070000_CrmRelationshipHistory.cs'
+    if key not in {'client', 'protect', 'parfait'} or migration not in changed:
+        return
+    if subprocess.check_output(['git', 'ls-tree', '--name-only', before, '--', migration], text=True).strip():
+        return
+    if TARGETS['portal']['releaseName'] not in {r['azure_app'] for r in scope['matrix']['include']}:
+        raise DeploymentReconciliationRequired('FAST_TRACK_CRM_PORTAL_OUTSIDE_SCOPE')
+    repository = os.environ['GITHUB_REPOSITORY']
+    token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    deadline = clock() + 900
+    while True:
+        if clock() >= deadline:
+            raise DeploymentReconciliationRequired('FAST_TRACK_CRM_PORTAL_WAIT_EXHAUSTED')
+        with _RELEASE_AUTHORITY.evidence_lookup_budget(deadline, clock=clock):
+            payload = _RELEASE_AUTHORITY.api_get(repository,
+                f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100", token)
+        if clock() >= deadline:
+            raise DeploymentReconciliationRequired('FAST_TRACK_CRM_PORTAL_WAIT_EXHAUSTED')
+        jobs = payload.get('jobs', [])
+        owners = [j for j in jobs if j.get('name') == 'Affected App Deploy — AgentPortal']
+        if (payload.get('total_count') != len(jobs) or len(owners) != 1
+            or owners[0].get('run_id') != run['id'] or owners[0].get('head_sha') != run['head_sha']
+            or type(owners[0].get('run_attempt')) is not int
+            or not 1 <= owners[0]['run_attempt'] <= run['run_attempt']):
+            raise DeploymentReconciliationRequired('FAST_TRACK_CRM_PORTAL_OWNER_UNPROVEN')
+        owner = owners[0]
+        if owner.get('status') == 'completed':
+            publication = [step for step in owner.get('steps', []) if step.get('name') == 'Publish or reconcile exact application bytes']
+            if (owner.get('conclusion') != 'success' or len(publication) != 1
+                or publication[0].get('status') != 'completed' or publication[0].get('conclusion') != 'success'):
+                raise DeploymentReconciliationRequired('FAST_TRACK_CRM_PORTAL_NOT_SUCCESSFUL')
+            # Portal publication requires its durable success receipt. Confirm its
+            # current runtime and provider are still exact and idle before intent.
+            portal = target_azure('portal', None, run['head_sha'])
+            rows = read_deployments_bounded(portal, phase='CRM Portal-first barrier',
+                deadline=deadline, clock=clock, sleep=sleep)
+            if any(r['status'] in (0, 1, 2) for r in rows) or portal.observed_revision() != run['head_sha']:
+                raise DeploymentReconciliationRequired('FAST_TRACK_CRM_PORTAL_LIVE_UNPROVEN')
+            with _RELEASE_AUTHORITY.evidence_lookup_budget(deadline, clock=clock):
+                fresh = _RELEASE_AUTHORITY.assert_fast_track_release_execution(target=key)
+            if (clock() >= deadline or any(fresh.get(k) != run.get(k) for k in ('id', 'head_sha', 'run_attempt'))):
+                raise DeploymentReconciliationRequired('FAST_TRACK_CRM_PORTAL_AUTHORITY_CHANGED')
+            print('FAST_TRACK_CRM_PORTAL_RETENTION_READY:' + run['head_sha'], flush=True)
+            return
+        if owner.get('status') not in {'queued', 'in_progress', 'waiting', 'pending'} or clock() >= deadline:
+            raise DeploymentReconciliationRequired('FAST_TRACK_CRM_PORTAL_WAIT_EXHAUSTED')
+        sleep(min(30, max(0, deadline - clock())))
+
+
 def fast_track_deploy(key, package_root):
     """Use the canonical one-upload reconciler from the existing fast-track lane."""
     run = _RELEASE_AUTHORITY.assert_fast_track_release_execution(target=key)
@@ -1422,6 +1473,7 @@ def fast_track_deploy(key, package_root):
         fast_track_migration_gate(run)
     package = package_root / 'deploy.zip'
     digest = verify_package(package, revision, TARGETS[key]['static'])
+    fast_track_crm_portal_gate(key, run, before, changed, scope)
     azure = target_azure(key, package, revision)
     baseline = azure.observed_revision()
     if recovering:

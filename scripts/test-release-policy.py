@@ -2634,7 +2634,13 @@ class DiagnosticsBootstrapTests(unittest.TestCase):
         cls.git('read-tree', cls.base)
         cls.files = {}
         for path in cls.paths:
-            blob = cls.git('hash-object', '-w', '--stdin', data=(ROOT.parent / path).read_bytes()).strip()
+            # This one-use bootstrap fixture must retain its original reviewed
+            # blobs after later ordinary tool promotions change the working tree.
+            pinned = policy.DIAGNOSTICS_BOOTSTRAP_TOOLS.get(path)
+            if path in policy.DIAGNOSTICS_BOOTSTRAP_RAZOR:
+                pinned = policy.DIAGNOSTICS_BOOTSTRAP_RAZOR[path][1]
+            content = cls.git('cat-file', 'blob', pinned).encode() if pinned else (ROOT.parent / path).read_bytes()
+            blob = cls.git('hash-object', '-w', '--stdin', data=content).strip()
             cls.files[path] = dict(mode='100644', blob=blob)
             cls.git('update-index', '--add', '--cacheinfo', '100644', blob, path)
         tree = cls.git('write-tree').strip()
