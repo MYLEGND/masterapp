@@ -1076,7 +1076,7 @@ public sealed class WebsiteInquiryIsolationTests
     }
 
     [Fact]
-    public async Task DistinctSubmissionsSameEmailKeepDistinctInquiryIntakeAndConversionWhileCrmContactMerges()
+    public async Task DistinctSubmissionsSameEmailKeepDistinctInquiryIntakeConversionAndRelationships()
     {
         using var f = new Fixture(); await f.SeedPublishedAsync();
         var request = f.Request();
@@ -1085,7 +1085,16 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Equal(2, await f.Db.Set<CommerceWebsiteInquiry>().CountAsync());
         Assert.Equal(2, await f.Db.WebsiteLeads.CountAsync());
         Assert.Equal(2, await f.Db.WebsiteLeadIntakeLinks.CountAsync());
-        Assert.Single(await f.Db.WorkstationLeadProfiles.ToListAsync());
+        var profiles = await f.Db.WorkstationLeadProfiles.ToListAsync();
+        Assert.Equal(2, profiles.Count);
+        var links = await f.Db.WebsiteLeadIntakeLinks.ToListAsync();
+        Assert.Equal(2, links.Select(x => x.WorkstationLeadId).Distinct().Count());
+        Assert.Equal(2, links.Select(x => x.WebsiteLeadPublicId).Distinct().Count());
+        Assert.All(links, link =>
+        {
+            Assert.Equal(f.BusinessId, link.CommerceBusinessId);
+            Assert.Equal(f.BusinessId, Assert.Single(profiles, x => x.LeadId == link.WorkstationLeadId).CommerceBusinessId);
+        });
         var events = await f.Db.AnalyticsEvents.Where(x => x.EventType == "website_lead_submitted").ToListAsync();
         Assert.Equal(2, events.Count); Assert.Equal(2, events.Select(x => x.EventId).Distinct().Count());
         Assert.Equal(2, events.Select(x => x.ClientEventId).Distinct().Count());

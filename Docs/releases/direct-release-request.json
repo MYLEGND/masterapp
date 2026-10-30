@@ -1,89 +1,15 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized completing the existing combined diagnostics and Client Activity & Case History release through existing protected controls, including ordinary nonpublishing tool promotion. No deployment, migration, credentials, spending or Production-confirmation bypass is authorized by this tool-only request.",
-  "purpose": "Promote exact reviewed CRM observer/rehearsal, executed-test discovery, read-only compatibility mapping, and first-CRM Portal-before-writers barrier through ordinary validate-only controls. No application publication or schema mutation.",
-  "requestId": "masterapp-crm-trusted-tools-20261030-v3",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "Founder authorized completing and deploying diagnostics and Client Activity & Case History together in the existing owned release, with independent exact-source acceptance and existing protected controls. No new credentials, spend, security exception or Production-confirmation bypass.",
+  "purpose": "One combined diagnostics and Client Activity & Case History release for Portal, Client, Protect and Parfait. Retain permanent bounded diagnostics; shared append-only Lead/Client history, original dated form answers and separate authorization evidence, protected PDF versions, conversion continuity, filtering, permissions and backfill. Apply reviewed diagnostics then CRM schema migrations through trusted observer, synthetic SQL rehearsal and recovery admission before application publication. Deploy retention-safe Portal first, with exact successful publication and fresh live/idle proof before the other three hosts publish. From the first CRM history filing, Portal rollback must remain CRM-compatible even while native associations are disabled; preserve schema, filed history and protected document storage. Native-client associations remain disabled until all four hosts and protected durable evidence storage are verified and an exact compatible rollback floor is recorded; retain filed schema/evidence on rollback. Preserve unchanged Website deployment and tenant content. Exact A-L route/browser acceptance and mandatory human Production confirmation remain required.",
+  "requestId": "masterapp-canonical-permanent-diagnostics-20261030-v1",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait"
+  ],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false,
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "c81486bfe0fbca2bd67e87496ccba22ccff4e06b",
-    "sourceRevision": "43549101b0c684118cb76ea270f5edeb0a85a24b",
-    "files": {
-      ".github/workflows/masterapp-platform-architecture-validation.yml": {
-        "mode": "100644",
-        "blob": "b468f250f3dcf547dc93f1e95c31ef0ff8a2423d"
-      },
-      "scripts/MigrationReleaseProbe/CandidateContract.Crm.cs": {
-        "mode": "100644",
-        "blob": "48cbd299441bae3802038d0872a0a0358a3062b5"
-      },
-      "scripts/MigrationReleaseProbe/CandidateContract.Structures.cs": {
-        "mode": "100644",
-        "blob": "babb4750099da200e68e49e76136ef7e921655d2"
-      },
-      "scripts/MigrationReleaseProbe/CandidateContract.cs": {
-        "mode": "100644",
-        "blob": "66b8e532ac0f6d4cadabedf0f840d6ddfa40e87c"
-      },
-      "scripts/MigrationReleaseProbe/Program.cs": {
-        "mode": "100644",
-        "blob": "cd6621f4ca7dd0fa23907887abdaafc9a3c019b7"
-      },
-      "scripts/MigrationReleaseProbe/Rehearsal/CandidateContractTests.cs": {
-        "mode": "100644",
-        "blob": "649ad3a560947711a5f04c39c28100e18298fd7c"
-      },
-      "scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.Crm.cs": {
-        "mode": "100644",
-        "blob": "311f9d7389088bf2ddbf4e4bedf32e408f9dc7da"
-      },
-      "scripts/MigrationReleaseProbe/Rehearsal/RehearsalFixture.cs": {
-        "mode": "100644",
-        "blob": "c42d6abe4648591e4e92a12b134fd097f7d497c7"
-      },
-      "scripts/migration-probe-package.py": {
-        "mode": "100644",
-        "blob": "7a6c3bce2a20abb843b291602e96e0a0c4a13d4d"
-      },
-      "scripts/release_policy.py": {
-        "mode": "100644",
-        "blob": "1f77bba7dd1c8527b20d16f37b48866991a75296"
-      },
-      "scripts/test-migration-probe-package.py": {
-        "mode": "100644",
-        "blob": "cc76ff183d4bb2a9b3b875ae3b121e1831bb92f3"
-      },
-      "scripts/test-release-policy.py": {
-        "mode": "100644",
-        "blob": "a0a17d55d3001a4fa4e678d29c952f7fc0baf3f3"
-      },
-      "scripts/test-validation-resume.py": {
-        "mode": "100644",
-        "blob": "f1f75546d7385bc3395a6f8185aa18cc09df08cc"
-      },
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "a94365e8664202c8c14c36d4765554a57d4f84a2"
-      },
-      ".github/workflows/parfait-cutover-live-readonly.yml": {
-        "mode": "100644",
-        "blob": "52ed64a56b051a45d8fbd4c744a77b04026fa1e1"
-      },
-      "scripts/deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "c5e8796f050d71e2f2fefdf6c4b96dcd5051f23e"
-      },
-      "scripts/test-deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "49ac8b99355096eeb6a2b8e46db78d2ff320999c"
-      },
-      "scripts/test-parfait-readonly-workflow.py": {
-        "mode": "100644",
-        "blob": "f901fc38a711e5f916a7081299f3ac34940fa064"
-      }
-    }
-  }
+  "preserveLiveTargets": false
 }

@@ -84,6 +84,7 @@ namespace Protect_Website.Controllers
                     MetadataJson = OpenAiAttributionMetadata.WithBrowserReference(
                         JsonSerializer.Serialize(model), UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request))
                 };
+                WebsiteSubmissionEvidence.Attach(lead, model, "Risk assessment request", "AcknowledgedDisclaimer", model.AcknowledgedDisclaimer, Shared.Crm.InsuranceFormDisclosures.RiskAssessment, HttpContext?.Request is { HasFormContentType: true } evidenceRequest ? evidenceRequest.Form["HistoryPresentationJson"].FirstOrDefault() : null, HttpContext?.Request is { HasFormContentType: true } disclosureRequest ? disclosureRequest.Form["HistoryDisclosureToken"].FirstOrDefault() : null, HttpContext?.RequestServices);
                 WebsiteLifeLeadCaptureResult captured = null!;
                 if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead, Request.Form["SubmissionId"].FirstOrDefault(), ct, async _ =>
                 {

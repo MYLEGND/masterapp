@@ -25,6 +25,63 @@ public class MasterAppDbContext : DbContext
 
     public MasterAppDbContext(DbContextOptions<MasterAppDbContext> options) : base(options) { }
 
+    private void ProtectFiledCrmHistory()
+    {
+        ChangeTracker.DetectChanges();
+        if (ChangeTracker.Entries<CrmHistoryEntry>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Filed history is immutable. Record an attributed addendum instead.");
+        foreach (var entry in ChangeTracker.Entries<WebsiteLeadIntakeLink>())
+        {
+            if (entry.State == EntityState.Deleted || entry.State == EntityState.Modified &&
+                (entry.Property(x => x.SnapshotJson).IsModified || entry.Property(x => x.WebsiteLeadPublicId).IsModified ||
+                 entry.Property(x => x.SubmittedUtc).IsModified || entry.Property(x => x.CapturedUtc).IsModified))
+                throw new InvalidOperationException("Filed submission evidence is immutable. Preserve the original and file a linked correction.");
+        }
+        if (ChangeTracker.Entries<WebsiteLead>().Any(x => x.State == EntityState.Deleted && SubmittedEvidence(x.Property(p => p.MetadataJson).OriginalValue).HasValue))
+            throw new InvalidOperationException("Original submitted form evidence is immutable and cannot be deleted while ownership reconciliation is pending.");
+        foreach (var entry in ChangeTracker.Entries<WebsiteLead>().Where(x => x.State == EntityState.Modified && x.Property(p => p.MetadataJson).IsModified))
+        {
+            var original = SubmittedEvidence(entry.Property(x => x.MetadataJson).OriginalValue);
+            var current = SubmittedEvidence(entry.Entity.MetadataJson);
+            if (original.HasValue && (!current.HasValue || !System.Text.Json.JsonElement.DeepEquals(original.Value, current.Value)))
+                throw new InvalidOperationException("Original submitted form evidence is immutable, including while ownership reconciliation is pending.");
+        }
+    }
+
+    private static System.Text.Json.JsonElement? SubmittedEvidence(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            return document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object && document.RootElement.TryGetProperty("SubmittedFormEvidence", out var evidence)
+                ? evidence.Clone() : null;
+        }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        ProtectFiledCrmHistory();
+        new Infrastructure.Crm.CrmHistoryStore(this).CaptureTrackedAsync().GetAwaiter().GetResult();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        ProtectFiledCrmHistory();
+        await new Infrastructure.Crm.CrmHistoryStore(this).CaptureTrackedAsync(cancellationToken);
+        return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        base.OnConfiguring(optionsBuilder);
+        optionsBuilder.AddInterceptors(Infrastructure.Diagnostics.RuntimeDiagnosticConnectionCapture.Instance,
+            Infrastructure.Diagnostics.RuntimeDiagnosticCommandCapture.Instance);
+    }
+
+
     // SQL Server scalar JSON functions have CLR bodies for local query providers.
     // Authority predicates pass root paths and guard malformed historical JSON first.
     public static int? IsJson(string? json)
@@ -242,6 +299,7 @@ public class MasterAppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.ApplyConfiguration(new CrmHistoryEntryConfiguration());
         modelBuilder.HasDbFunction(typeof(MasterAppDbContext).GetMethod(nameof(IsJson))!)
             .HasName("ISJSON").IsBuiltIn();
         modelBuilder.HasDbFunction(typeof(MasterAppDbContext).GetMethod(nameof(JsonValue))!)
@@ -331,6 +389,7 @@ public class MasterAppDbContext : DbContext
             entity.Property(row => row.SourceFilePath).HasMaxLength(180);
             entity.Property(row => row.StackTrace).HasMaxLength(2300);
             entity.Property(row => row.StructuralReproducerJson);
+            entity.Property(row => row.PerformanceEvidenceJson).HasMaxLength(4096);
             entity.Property(row => row.CorrelationId).HasMaxLength(32);
             entity.Property(row => row.Disposition).IsRequired().HasMaxLength(32);
             entity.Property(row => row.ReviewVersion).IsConcurrencyToken();
@@ -1802,12 +1861,18 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => x.Oppref);
         });
 
+        modelBuilder.Entity<WebsiteLead>().Property(x => x.AgentTrackingProfileId).IsConcurrencyToken();
+
         modelBuilder.Entity<WebsiteLeadIntakeLink>(e =>
         {
+            e.ToTable("WebsiteLeadIntakeLinks", t => t.HasCheckConstraint("CK_WebsiteLeadIntakeLinks_HistoryAssociation", "(([WorkstationLeadId] IS NOT NULL AND [HistoryClientProfileId] IS NULL) OR ([WorkstationLeadId] IS NULL AND [HistoryClientProfileId] IS NOT NULL AND [CommerceBusinessId] IS NULL))"));
             e.HasIndex(x => x.CommerceBusinessId);
             e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
             e.HasKey(x => x.Id);
-            e.Property(x => x.WorkstationLeadId).IsRequired().HasMaxLength(64);
+            e.Property(x => x.WorkstationLeadId).HasMaxLength(64);
+            e.Property(x => x.AssociationVersion).IsConcurrencyToken();
+            e.HasIndex(x => x.HistoryClientProfileId);
+            e.HasOne<ClientProfile>().WithMany().HasForeignKey(x => x.HistoryClientProfileId).OnDelete(DeleteBehavior.Restrict);
             e.Property(x => x.AgentUserId).IsRequired().HasMaxLength(180);
             e.Property(x => x.Bucket).IsRequired().HasMaxLength(80);
             e.Property(x => x.SourcePageKey).HasMaxLength(160);

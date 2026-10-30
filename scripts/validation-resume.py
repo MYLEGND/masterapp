@@ -13,6 +13,8 @@ import ast
 import functools
 import concurrent.futures
 import fnmatch
+import email.utils
+import datetime
 import hashlib
 import http.client
 import json
@@ -5914,6 +5916,56 @@ def api_get(repository: str, path: str, token: str):
     return _recovery_proof_read(repository, path, token)
 
 
+_LIVE_FRESHNESS = contextvars.ContextVar("live_evidence_freshness", default=None)
+
+
+def _live_freshness_read(read, repository, path, token, *, endpoint, observation):
+    # Set only around the two exact live observer reads, never source/history reads.
+    marker = _LIVE_FRESHNESS.set((repository, path, endpoint, observation))
+    try:
+        return read(repository, path, token)
+    finally:
+        _LIVE_FRESHNESS.reset(marker)
+
+
+def _freshness_headers(headers):
+    """Fixed, bounded metadata only. Never return arbitrary provider header text."""
+    result = {}
+    for name in ('Date', 'Age', 'Cache-Control'):
+        value = headers.get(name) if headers is not None else None
+        state = 'absent' if value is None else 'invalid'
+        if isinstance(value, str) and 0 < len(value) <= 512:
+            if name == 'Date':
+                try:
+                    parsed = email.utils.parsedate_to_datetime(value)
+                    if parsed.tzinfo is not None:
+                        result['dateUtc'] = parsed.astimezone(datetime.timezone.utc).isoformat()
+                        state = 'valid'
+                except (ValueError, TypeError, OverflowError):
+                    pass
+            elif name == 'Age':
+                if re.fullmatch(r'[0-9]{1,10}', value) and int(value) <= 2147483647:
+                    result['ageSeconds'] = int(value)
+                    state = 'valid'
+            else:
+                directives = {part.strip().split('=', 1)[0].lower() for part in value.split(',')}
+                result['cacheDirectives'] = {key: key in directives for key in
+                    ('no-cache', 'no-store', 'private', 'public', 'must-revalidate', 'max-age', 's-maxage')}
+                state = 'valid'
+        result[{'Date': 'dateState', 'Age': 'ageState', 'Cache-Control': 'cacheState'}[name]] = state
+    return result
+
+
+def _report_live_freshness(context, headers, attempt):
+    # Observability must not replace the original transport/parser/gate outcome.
+    try:
+        print(json.dumps({'liveEvidenceFreshness': dict(endpoint=context[2],
+            observation=context[3], transportAttempt=attempt,
+            **_freshness_headers(headers))}, sort_keys=True))
+    except Exception:
+        pass
+
+
 def _api_get_uncached(repository: str, path: str, token: str, *, max_attempts=3):
     if type(max_attempts) is not int or max_attempts not in (1, 3):
         raise ValueError('Invalid evidence attempt limit')
@@ -5927,14 +5979,24 @@ def _api_get_uncached(repository: str, path: str, token: str, *, max_attempts=3)
             "User-Agent": "legend-validation-resume/1.0",
         },
     )
+    context = _LIVE_FRESHNESS.get()
+    context = context if context and context[:2] == (repository, path) else None
+    if context:
+        request.add_header('Cache-Control', 'no-cache')
     for attempt in range(max_attempts):
+        reported = False
         try:
             timeout = evidence_remaining(30)
             _recovery_efficiency_add(githubJsonTransportAttempts=1,
                 historyPageTransportAttempts=int(path.startswith('actions/runs?branch=')))
             with urllib.request.urlopen(request, timeout=timeout) as response:
+                if context:
+                    _report_live_freshness(context, getattr(response, 'headers', None), attempt + 1)
+                    reported = True
                 return json.load(response)
         except (TimeoutError, urllib.error.URLError, http.client.RemoteDisconnected, http.client.IncompleteRead) as exc:
+            if context and not reported:
+                _report_live_freshness(context, getattr(exc, 'headers', None), attempt + 1)
             retryable = not isinstance(exc, urllib.error.HTTPError) or exc.code in {408, 429, 500, 502, 503, 504}
             if not retryable or attempt + 1 == max_attempts:
                 headers = getattr(exc, "headers", None) or {}
@@ -6211,7 +6273,8 @@ def _observe_live_workflow(repository, expected, token, *, queued_job,
         for observation in range(7):
             if observation and clock() >= deadline:
                 break
-            run = api_get(repository, f"actions/runs/{expected['id']}", token)
+            run = _live_freshness_read(api_get, repository, f"actions/runs/{expected['id']}", token,
+                endpoint='current_run', observation=observation + 1)
             mismatch = [key for key, value in expected.items() if run.get(key) != value]
             if run.get('head_repository', {}).get('full_name', '').lower() != repository.lower():
                 mismatch.append('head_repository')
@@ -6223,8 +6286,15 @@ def _observe_live_workflow(repository, expected, token, *, queued_job,
             job = None
             if require_job or run['status'] == 'queued':
                 name = queued_job()
+                exact_jobs_path = f"actions/runs/{expected['id']}/attempts/{expected['run_attempt']}/jobs?per_page=100"
+                def read_live_jobs(repo, path, credential):
+                    read = _api_get_uncached if uncached_job else api_get
+                    if repo == repository and path == exact_jobs_path:
+                        return _live_freshness_read(read, repo, path, credential,
+                            endpoint='current_attempt_jobs', observation=observation + 1)
+                    return read(repo, path, credential)
                 job = _exact_active_job(repository, run, token, name, error=error, code=job_code,
-                                        read=_api_get_uncached if uncached_job else None)
+                                        read=read_live_jobs)
                 if job is None:
                     _live_identity_diagnostic('pending', run=run, expected_job=name,
                         observation=observation + 1)
@@ -10155,6 +10225,46 @@ def require_readiness(repository, candidate, *, event=None, clock=time.monotonic
         sleep(min(10, max(0, deadline - clock())))
 
 
+SOURCE_VALIDATION_VISIBILITY_WAIT_SECONDS = 300
+SOURCE_VALIDATION_VISIBILITY_MAX_OBSERVATIONS = 61
+
+
+def _await_source_validation_visibility(repository, expected, token, name, *, clock, sleep):
+    """Read-only lifecycle synchronization; return no evidence or admission.
+
+    Provider lifecycle rows can lag the executing runner by several minutes.
+    This bounded source-only phase never accepts queued/unassigned ownership.
+    Its caller must collect a separate fresh proof under the unchanged 30s gate.
+    """
+    deadline = clock() + SOURCE_VALIDATION_VISIBILITY_WAIT_SECONDS
+    with evidence_lookup_budget(deadline, clock=clock):
+        for observation in range(SOURCE_VALIDATION_VISIBILITY_MAX_OBSERVATIONS):
+            if clock() >= deadline:
+                break
+            run = _live_freshness_read(api_get, repository, f"actions/runs/{expected['id']}", token,
+                endpoint='current_run', observation=observation + 1)
+            if (run.get('status') not in {'in_progress', 'queued'} or run.get('conclusion') is not None
+                or any(run.get(key) != value for key, value in expected.items())
+                or run.get('head_repository', {}).get('full_name', '').lower() != repository.lower()):
+                raise ValueError('FAST_TRACK_SOURCE_VALIDATION_IDENTITY_MISMATCH')
+            path = f"actions/runs/{expected['id']}/attempts/{expected['run_attempt']}/jobs?per_page=100"
+            def read_jobs(repo, requested_path, credential):
+                if repo == repository and requested_path == path:
+                    return _live_freshness_read(api_get, repo, requested_path, credential,
+                        endpoint='current_attempt_jobs', observation=observation + 1)
+                return api_get(repo, requested_path, credential)
+            job = _exact_active_job(repository, run, token, name, error=ValueError,
+                code='FAST_TRACK_SOURCE_VALIDATION_ACTIVE_JOB_UNPROVEN', read=read_jobs)
+            evidence_remaining(1)
+            _live_identity_diagnostic('source_visibility_ready' if job is not None else 'source_visibility_pending',
+                run=run, expected_job=name, observation=observation + 1)
+            if job is not None:
+                return
+            if observation + 1 < SOURCE_VALIDATION_VISIBILITY_MAX_OBSERVATIONS and clock() < deadline:
+                sleep(evidence_remaining(min(5, deadline - clock())))
+    raise ValueError('FAST_TRACK_SOURCE_VALIDATION_VISIBILITY_UNPROVEN:pending_deadline_exhausted')
+
+
 def fast_track_source_validation_scope(args, *, clock=time.monotonic, sleep=time.sleep):
     """Separate development pushes from authenticated fast-track PR validation.
 
@@ -10178,8 +10288,11 @@ def fast_track_source_validation_scope(args, *, clock=time.monotonic, sleep=time
         path='.github/workflows/' + args.workflow, head_sha=args.current_sha)
     if args.event == 'push':
         expected['head_branch'] = args.head_branch
+    name = _source_validation_job_name(args.repository, args.current_sha, args.workflow, token)
+    _await_source_validation_visibility(args.repository, expected, token, name, clock=clock, sleep=sleep)
+    # Discard synchronization observations and re-read every live ownership field.
     run, _ = _observe_live_workflow(args.repository, expected, token,
-        queued_job=lambda: _source_validation_job_name(args.repository, args.current_sha, args.workflow, token),
+        queued_job=lambda: name, require_job=True,
         error=ValueError, code='FAST_TRACK_SOURCE_VALIDATION_IDENTITY_MISMATCH',
         job_code='FAST_TRACK_SOURCE_VALIDATION_ACTIVE_JOB_UNPROVEN', clock=clock, sleep=sleep)
     if args.event == 'push':

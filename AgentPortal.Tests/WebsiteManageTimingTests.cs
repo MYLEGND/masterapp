@@ -1,11 +1,11 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using Infrastructure.WebsiteEditing.Controllers;
-using Microsoft.Extensions.Logging;
+using Shared.Diagnostics;
 using Xunit;
-
 namespace AgentPortal.Tests;
+
+// Regression for the former Manage-only warning: the same stage coverage now
+// contributes to canonical request evidence rather than a second log pipeline.
 public sealed class WebsiteManageTimingTests
 {
     private sealed class Clock : TimeProvider
@@ -14,84 +14,75 @@ public sealed class WebsiteManageTimingTests
         public override long TimestampFrequency => 1000;
         public override long GetTimestamp() => Now;
     }
-    private sealed class CapturingLogger : ILogger
+    [Fact]
+    public void SequentialManageStagesPreserveMeasuredIntervals()
     {
-        internal readonly List<string> Records = [];
-        internal bool Throw;
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(LogLevel level) => true;
-        public void Log<TState>(LogLevel level, EventId id, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        var clock = new Clock(); using var scope = new RuntimeDiagnosticScope(clock);
+        using (var sequence = new RuntimeDiagnosticStageSequence())
         {
-            Assert.Null(exception);
-            Assert.Equal(LogLevel.Warning, level);
-            if (Throw) throw new InvalidOperationException("logger unavailable");
-            Records.Add(formatter(state, exception));
+            clock.Now = 10; sequence.Next(RuntimeDiagnosticStage.StateRead);
+            clock.Now = 12010; sequence.Next(RuntimeDiagnosticStage.BusinessFacts);
+            clock.Now = 12030;
         }
+        var snapshot = scope.Snapshot("completed");
+        Assert.Equal(12030, snapshot.ElapsedMs);
+        Assert.Equal(10, snapshot.Stages.Single(x => x.Stage == "authorization").ElapsedMs);
+        Assert.Equal(12000, snapshot.Stages.Single(x => x.Stage == "state_read").ElapsedMs);
+        Assert.Equal(20, snapshot.Stages.Single(x => x.Stage == "business_facts").ElapsedMs);
     }
     [Fact]
-    public void FastSuccessProducesNoRecord()
+    public void DisabledCaptureDoesNotChangeBusinessExecution()
     {
-        var clock = new Clock(); var log = new CapturingLogger();
-        using (var timing = new WebsiteManageTiming(log, clock, new())) { clock.Now = 9999; }
-        Assert.Empty(log.Records);
+        var result = 0;
+        using (var sequence = new RuntimeDiagnosticStageSequence())
+        { result++; sequence.Next(RuntimeDiagnosticStage.StateRead); result++; }
+        Assert.Equal(2, result); Assert.Null(RuntimeDiagnosticScope.Current);
     }
     [Fact]
-    public void SlowReadRecordsOnlyBoundedFixedStagesAndNumbersOnce()
+    public void ExceptionDisposesLastStageAndPreservesOriginalException()
     {
-        var clock = new Clock(); var log = new CapturingLogger();
-        var timing = new WebsiteManageTiming(log, clock, new());
-        clock.Now = 12; timing.Next(WebsiteManageTiming.Stage.StateRead);
-        clock.Now = 12345; timing.Dispose(); timing.Dispose();
-        var record = Assert.Single(log.Records);
-        Assert.Contains("Outcome=returned LastStage=StateRead DurationMs=12345 StageMs=12,12333,0,0,0,0,0,0,0,0,0,0", record);
-        Assert.True(record.Length < 256);
-    }
-    [Theory]
-    [InlineData(false, "failed")]
-    [InlineData(true, "canceled")]
-    public void FailurePropagatesOriginalExceptionWithoutLoggingItsContent(bool canceled, string outcome)
-    {
-        var clock = new Clock(); var log = new CapturingLogger();
-        Exception original = canceled ? new OperationCanceledException("PRIVATE-TICKET-CONTENT") : new InvalidOperationException("PRIVATE-TICKET-CONTENT");
-        var actual = Record.Exception((Action)(() =>
+        var clock = new Clock(); using var scope = new RuntimeDiagnosticScope(clock);
+        var original = new InvalidOperationException("private message");
+        var actual = Assert.Throws<InvalidOperationException>((Action)(() =>
         {
-            using var timing = new WebsiteManageTiming(log, clock, new());
-            try { throw original; }
-            catch { timing.Failed(canceled); throw; }
+            using var sequence = new RuntimeDiagnosticStageSequence(RuntimeDiagnosticStage.StateRead);
+            clock.Now = 20; throw original;
         }));
         Assert.Same(original, actual);
-        Assert.Contains("Outcome=" + outcome, Assert.Single(log.Records));
-        Assert.DoesNotContain("PRIVATE", log.Records[0]);
+        Assert.Equal(20, scope.Snapshot("failed").Stages.Single().ElapsedMs);
     }
     [Fact]
-    public void ProcessGuardSuppressesFurtherRequestsWithoutChangingTheirResults()
+    public void RepeatedStagesAggregateInsteadOfGrowingPayload()
     {
-        var clock = new Clock(); var log = new CapturingLogger(); var guard = new WebsiteManageTiming.RateGuard();
-        int Run() { using var t = new WebsiteManageTiming(log, clock, guard); t.Failed(false); return 42; }
-        Assert.Equal(42, Run());
-        for (var i = 0; i < 1000; i++) Assert.Equal(42, Run());
-        Assert.Single(log.Records);
-        clock.Now = 59999; Assert.Equal(42, Run()); Assert.Single(log.Records);
-        clock.Now = 60000; Assert.Equal(42, Run()); Assert.Equal(2, log.Records.Count);
+        var clock = new Clock(); using var scope = new RuntimeDiagnosticScope(clock);
+        for (var i = 0; i < 100; i++) using (scope.Stage(RuntimeDiagnosticStage.StateRead)) clock.Now++;
+        Assert.Equal(100, scope.Snapshot("completed").Stages.Single().ElapsedMs);
     }
     [Fact]
-    public void DisabledOrBrokenLoggerCannotReplaceBusinessFailure()
+    public void RepeatedDisposeDoesNotDoubleCount()
     {
-        var original = new InvalidOperationException("business failure");
-        var actual = Record.Exception((Action)(() =>
+        var clock = new Clock(); using var scope = new RuntimeDiagnosticScope(clock);
+        var stage = scope.Stage(RuntimeDiagnosticStage.StateRead); clock.Now = 10;
+        stage.Dispose(); clock.Now = 20; stage.Dispose();
+        Assert.Equal(10, scope.Snapshot("completed").Stages.Single().ElapsedMs);
+    }
+    [Fact]
+    public void LongDurationIsBounded()
+    {
+        var clock = new Clock(); using var scope = new RuntimeDiagnosticScope(clock);
+        using (scope.Stage(RuntimeDiagnosticStage.StateRead)) clock.Now = long.MaxValue / 2;
+        Assert.Equal(3600000, scope.Snapshot("failed").Stages.Single().ElapsedMs);
+    }
+    [Fact]
+    public void SuppressedCaptureCannotObserveDiagnosticsOwnStages()
+    {
+        using var scope = new RuntimeDiagnosticScope();
+        using (RuntimeDiagnosticScope.Suppress())
         {
-            using var timing = new WebsiteManageTiming(new CapturingLogger { Throw = true }, new Clock(), new());
-            try { throw original; } catch { timing.Failed(false); throw; }
-        }));
-        Assert.Same(original, actual);
-        using var absent = new WebsiteManageTiming(null, new Clock(), new()); absent.Failed(false);
-    }
-    [Fact]
-    public void DurationIsCapped()
-    {
-        var clock = new Clock(); var log = new CapturingLogger();
-        using(var timing = new WebsiteManageTiming(log, clock, new())) clock.Now = long.MaxValue / 2;
-        Assert.Contains("DurationMs=3600000", Assert.Single(log.Records));
-        Assert.True(log.Records[0].Length < 256);
+            Assert.Null(RuntimeDiagnosticScope.Current);
+            using var sequence = new RuntimeDiagnosticStageSequence(RuntimeDiagnosticStage.StateRead);
+        }
+        Assert.Same(scope, RuntimeDiagnosticScope.Current);
+        Assert.Empty(scope.Snapshot("completed").Stages);
     }
 }

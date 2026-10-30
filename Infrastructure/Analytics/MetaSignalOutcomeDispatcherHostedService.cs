@@ -120,10 +120,14 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             .Select(x => x.ToString("N"))
             .ToArray();
 
-        var intakeLinksByWorkstationLeadId = await db.WebsiteLeadIntakeLinks
-            .AsNoTracking()
-            .Where(x => workstationLeadIds.Contains(x.WorkstationLeadId))
-            .ToDictionaryAsync(x => x.WorkstationLeadId, cancellationToken);
+        var linkedIntakes = await db.WebsiteLeadIntakeLinks.AsNoTracking()
+            .Where(x => x.WorkstationLeadId != null && workstationLeadIds.Contains(x.WorkstationLeadId))
+            .ToListAsync(cancellationToken);
+        // An explicitly associated relationship can have multiple submissions.
+        // Do not guess which submission a legacy relationship-only outcome means.
+        // Exact public submission IDs still resolve through the canonical lookup below.
+        var intakeLinksByWorkstationLeadId = linkedIntakes.GroupBy(x => x.WorkstationLeadId!, StringComparer.Ordinal)
+            .Where(group => group.Count() == 1).ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
 
         // A canonical website conversion may carry either the public WebsiteLead ID
         // directly (business/website intake) or a workstation lead ID (legacy Protect

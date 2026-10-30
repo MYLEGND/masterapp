@@ -40,6 +40,7 @@ internal static partial class RuntimeDiagnosticSanitizer
             "HttpFailure" => "HttpFailure", "TransportFailure" => "TransportFailure",
             "DecodeFailure" => "DecodeFailure", "OperationFailure" => "OperationFailure",
             "UnhandledException" => "UnhandledException", "AuthenticationFailure" => "AuthenticationFailure",
+            "SlowOperation" when server => "SlowOperation",
             "SqlException" => "SqlException", "OutOfMemoryException" => "OutOfMemoryException",
             _ => "UnclassifiedError"
         };
@@ -51,6 +52,7 @@ internal static partial class RuntimeDiagnosticSanitizer
             _ => name switch
             {
                 "AuthenticationFailure" => "Authentication",
+                "SlowOperation" => "Performance",
                 "TransportFailure" or "HttpRequestException" or "TimeoutException" or "NetworkError" or "TimeoutError" or "OfflineError" => "Network",
                 "TaskCanceledException" or "OperationCanceledException" => "ExpectedCancellation",
                 "DecodeFailure" or "UnhandledException" or "TypeError" or "ReferenceError" or "SyntaxError" or "NullReferenceException" or "OutOfMemoryException" => "SuspectedDefect",
@@ -66,6 +68,7 @@ internal static partial class RuntimeDiagnosticSanitizer
             Category = category, StatusCode = value.StatusCode,
             Summary = category switch
             {
+                "Performance" => "A slow operation was observed; timing boundaries may overlap.",
                 "Authentication" => "Authentication or access was rejected.",
                 "NetworkOrCapacity" => "A request encountered a timeout, capacity limit or unavailable service.",
                 "Network" => "A transport interruption was observed.",
@@ -120,6 +123,17 @@ internal static partial class RuntimeDiagnosticSanitizer
             var structural = LegendSiteToolDisclosureAuthority.SanitizeStructuralReproducer(value.StructuralReproducer);
             if (structural is not null)
                 incident.StructuralReproducerJson = JsonSerializer.Serialize(structural);
+        }
+        var performance = SanitizePerformance(value.Performance, server);
+        if (performance is not null)
+        {
+            // Server sample time and observed trace are bound to this sanitized
+            // app/revision incident. A trace may be inherited and is not authority.
+            using var evidence = JsonDocument.Parse(performance);
+            var envelope = JsonSerializer.Serialize(new { sampledUtc = now,
+                observedTraceId = incident.CorrelationId, performance = evidence.RootElement });
+            if (Encoding.UTF8.GetByteCount(envelope) <= MaximumPerformanceBytes)
+                incident.PerformanceEvidenceJson = envelope;
         }
         incident.DeduplicationKey = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n',
             incident.AppIdentifier, incident.Platform, incident.Route, incident.ErrorName, incident.Category,

@@ -50,7 +50,7 @@ public sealed class AgentDocumentsController : Controller
     {
         _env = env;
         _configuration = configuration;
-        _blobContainer = BuildBlobContainerClient(configuration);
+        _blobContainer = AgentPortal.Services.AgentDocumentStorageLocation.BuildBlobContainerClient(configuration);
     }
 
     [HttpGet]
@@ -255,19 +255,7 @@ public sealed class AgentDocumentsController : Controller
                ?? User.Identity?.Name;
     }
 
-    private string GetBaseRoot()
-    {
-        var configured = Environment.GetEnvironmentVariable("LEGEND_AGENT_DOCUMENTS_ROOT");
-        if (!string.IsNullOrWhiteSpace(configured))
-        {
-            Directory.CreateDirectory(configured);
-            return configured;
-        }
-
-        var fallback = Path.Combine(_env.ContentRootPath, "App_Data", "agent-documents");
-        Directory.CreateDirectory(fallback);
-        return fallback;
-    }
+    private string GetBaseRoot() => AgentPortal.Services.AgentDocumentStorageLocation.GetBaseRoot(_env);
 
     private string GetUserRoot(string userId)
     {
@@ -348,24 +336,6 @@ public sealed class AgentDocumentsController : Controller
     }
 
     private bool UseBlobStorage() => _blobContainer != null;
-
-    private static BlobContainerClient? BuildBlobContainerClient(IConfiguration configuration)
-    {
-        var connString = configuration["AgentDocuments:StorageConnectionString"];
-        var containerName = configuration["AgentDocuments:ContainerName"];
-        if (!string.IsNullOrWhiteSpace(connString) && !string.IsNullOrWhiteSpace(containerName))
-        {
-            return new BlobContainerClient(connString, containerName);
-        }
-
-        var containerUrl = configuration["AgentDocuments:BlobContainerUrl"];
-        if (!string.IsNullOrWhiteSpace(containerUrl))
-        {
-            return new BlobContainerClient(new Uri(containerUrl), new DefaultAzureCredential());
-        }
-
-        return null;
-    }
 
     private async Task EnsureContainerExistsAsync()
     {

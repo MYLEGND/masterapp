@@ -1,0 +1,17 @@
+@{ ViewData["Title"] = "Unresolved submission ownership"; }
+<section class="container py-4" id="history-ownership" data-draft-scope="@ViewData["DraftScope"]">
+    <h1>Unresolved submission ownership</h1>
+    <p>This restricted queue contains source receipt IDs, not customer answers. Verify the owner from the source receipt; names, email addresses and phone numbers do not determine ownership.</p>
+    <p>Current authorized target agent: <strong>@ViewData["AgentId"]</strong>. Use the existing View as Agent context to choose the intended agent before filing a correction.</p>
+    <button id="ownership-load" type="button" class="btn btn-outline-secondary">Load unresolved receipts</button>
+    <div id="ownership-results" class="my-3"></div>
+    <form id="ownership-correction" class="row g-3">
+        @Html.AntiForgeryToken()
+        <label>Exact public submission ID<input name="submissionId" class="form-control" required /></label>
+        <label>Evidence and reason for assigning this owner<textarea name="reason" class="form-control" maxlength="4000" required></textarea></label>
+        <label><input name="verified" type="checkbox" required /> I verified this target owner using the source receipt. This is my administrative instruction, not a client authorization.</label>
+        <div><button class="btn btn-primary">File owner correction</button></div>
+    </form>
+    <p id="ownership-status" role="status" aria-live="polite"></p>
+</section>
+@section Scripts { <script src="~/js/crm-history-ownership.js" asp-append-version="true"></script> }

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
@@ -25,12 +26,37 @@ public sealed class RuntimeDiagnosticStore(IServiceScopeFactory scopes, IHostEnv
     private DateTime _window;
     private DateTime _nextRetention;
     private int _globalCount;
+    private DateTime _nextPerformance;
+    private long _recorded, _rateLimited, _failed, _samplesNotRetained;
+    private DateTime? _lastRecorded;
+    // Process-local pipeline health, not global/application-fleet completeness.
+    public (long Recorded, long RateLimited, long Failed, DateTime? LastRecordedUtc, long SamplesNotRetained) CaptureStatus
+    { get { lock (_admissionLock) return (_recorded, _rateLimited, _failed, _lastRecorded, _samplesNotRetained); } }
+
 
     public async Task RecordAsync(RuntimeDiagnosticEvent diagnosticEvent, CancellationToken cancellationToken = default)
     {
         if (!RuntimeDiagnosticSanitizer.IsBounded(diagnosticEvent)) return;
-        if (!Admit("server")) return;
-        await PersistAsync(diagnosticEvent, server: true, cancellationToken);
+        if (diagnosticEvent.Performance is not null)
+        {
+            bool admitted;
+            lock (_admissionLock)
+            {
+                admitted = DateTime.UtcNow >= _nextPerformance;
+                if (admitted) _nextPerformance = DateTime.UtcNow.AddMinutes(1);
+                else _rateLimited++;
+            }
+            if (!admitted)
+            {
+                // Existing error capture survives a rejected performance sample.
+                if (diagnosticEvent.ErrorName == "SlowOperation") return;
+                diagnosticEvent = diagnosticEvent with { Performance = null };
+            }
+        }
+        if (!Admit("server")) { lock (_admissionLock) _rateLimited++; return; }
+        try { await PersistAsync(diagnosticEvent, server: true, cancellationToken); }
+        catch { lock (_admissionLock) _failed++; throw; }
+        lock (_admissionLock) { _recorded++; _lastRecorded = DateTime.UtcNow; }
     }
 
     public async Task<RuntimeDiagnosticAdmissionResult> RecordClientAsync(RuntimeDiagnosticEvent diagnosticEvent,
@@ -63,8 +89,38 @@ public sealed class RuntimeDiagnosticStore(IServiceScopeFactory scopes, IHostEnv
         }
     }
 
+    private static DateTime? SampleTime(string? json)
+    {
+        if (json is null || Encoding.UTF8.GetByteCount(json) > RuntimeDiagnosticSanitizer.MaximumPerformanceBytes) return null;
+        try
+        {
+            using var sample = JsonDocument.Parse(json);
+            return sample.RootElement.ValueKind == JsonValueKind.Object && sample.RootElement.TryGetProperty("sampledUtc", out var time) && time.ValueKind == JsonValueKind.String && time.TryGetDateTime(out var value)
+                ? value.ToUniversalTime() : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    // Compare-and-swap only the bounded sample. Never overwrite a concurrent
+    // winner, and never replace newer source time with an older arrival. There
+    // is no retry loop; an unretained contending sample is not called latest.
+    internal static async Task<bool> RetainNewerPerformanceAsync(MasterAppDbContext db, string key,
+        string sample, CancellationToken token = default)
+    {
+        if (SampleTime(sample) is not { } incoming) return false;
+        var old = await db.RuntimeDiagnosticIncidents.Where(row => row.DeduplicationKey == key)
+            .Select(row => row.PerformanceEvidenceJson).SingleAsync(token);
+        if (old == sample) return true;
+        if (SampleTime(old) is { } retained && incoming <= retained) return false;
+        return await db.RuntimeDiagnosticIncidents.Where(row => row.DeduplicationKey == key && row.PerformanceEvidenceJson == old)
+            .ExecuteUpdateAsync(set => set.SetProperty(row => row.PerformanceEvidenceJson, sample)
+                .SetProperty(row => row.ReviewVersion, row => row.ReviewVersion + 1)
+                .SetProperty(row => row.Recurred, row => row.Recurred || row.Disposition == "ManuallyClosed"), token) == 1;
+    }
+
     private async Task PersistAsync(RuntimeDiagnosticEvent value, bool server, CancellationToken callerToken)
     {
+        using var suppression = RuntimeDiagnosticScope.Suppress();
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(callerToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(3));
         var token = deadline.Token;
@@ -103,9 +159,15 @@ public sealed class RuntimeDiagnosticStore(IServiceScopeFactory scopes, IHostEnv
         {
             var existing = await db.RuntimeDiagnosticIncidents.SingleOrDefaultAsync(row => row.DeduplicationKey == incident.DeduplicationKey, token);
             if (existing is null) db.RuntimeDiagnosticIncidents.Add(incident);
-            else { existing.Occurrences++; existing.ReviewVersion++; existing.LastSeenUtc = now; existing.ExpiresUtc = now.AddDays(30); existing.Recurred |= existing.Disposition == "ManuallyClosed"; }
+            else { existing.Occurrences++; existing.ReviewVersion++; existing.LastSeenUtc = now; existing.ExpiresUtc = now.AddDays(30); existing.Recurred |= existing.Disposition == "ManuallyClosed";
+                if (SampleTime(incident.PerformanceEvidenceJson) is { } incoming &&
+                    (SampleTime(existing.PerformanceEvidenceJson) is not { } retained || incoming > retained))
+                    existing.PerformanceEvidenceJson = incident.PerformanceEvidenceJson; }
             await db.SaveChangesAsync(token);
         }
+        if (db.Database.IsRelational() && incident.PerformanceEvidenceJson is not null &&
+            !await RetainNewerPerformanceAsync(db, incident.DeduplicationKey, incident.PerformanceEvidenceJson, token))
+            lock (_admissionLock) _samplesNotRetained++;
         bool prune;
         lock (_admissionLock)
         {

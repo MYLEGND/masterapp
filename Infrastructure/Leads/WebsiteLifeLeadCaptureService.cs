@@ -88,37 +88,38 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
         var submittedUtc = websiteLead?.CreatedUtc
             ?? (request.SubmittedUtc == default ? DateTime.UtcNow : request.SubmittedUtc);
         var normalizedPhone = NormalizePhoneKey(websiteLead?.Phone ?? request.Phone);
-        var normalizedEmail = NormalizeEmailKey(websiteLead?.Email ?? request.Email);
         var requestedAmount = request.CoverageAmount.HasValue && request.CoverageAmount.Value > 0
             ? request.CoverageAmount.Value.ToString("N0", CultureInfo.InvariantCulture)
             : null;
 
-        WorkstationLeadProfile? existing = null;
-        if (confirmed is null && (!string.IsNullOrWhiteSpace(normalizedPhone) || !string.IsNullOrWhiteSpace(normalizedEmail)))
+        // A contact value is not a relationship identity. Only the canonical
+        // submission link may resolve an existing relationship; a new submission
+        // remains separate until an authorized association is explicitly recorded.
+        var intake = _db.WebsiteLeadIntakeLinks.Local.FirstOrDefault(x => x.WebsiteLeadPublicId == request.WebsiteLeadId)
+            ?? await _db.WebsiteLeadIntakeLinks.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.WebsiteLeadPublicId == request.WebsiteLeadId, cancellationToken);
+        if (intake is not null && (intake.AgentUserId != agentUserId || intake.CommerceBusinessId != businessId))
+            throw new InvalidOperationException("The submission relationship owner does not match its persisted owner.");
+        if (intake?.HistoryClientProfileId is Guid nativeClientId)
         {
-            // Check tracked local leads first so repeated submissions folded into the same unit of work
-            // still attach to the same internal lead before SaveChanges runs.
-            var localCandidates = _db.WorkstationLeadProfiles.Local
-                .Where(x => x.CommerceBusinessId == businessId && MatchesBucketCandidate(x, agentUserId, bucket))
-                .OrderByDescending(x => x.UpdatedUtc)
-                .ThenByDescending(x => x.CreatedUtc)
-                .ToList();
-
-            existing = localCandidates.FirstOrDefault(x => MatchesContactCandidate(x, normalizedPhone, normalizedEmail));
-
-            if (existing == null)
-            {
-                var candidates = await _db.WorkstationLeadProfiles
-                    .Where(x =>
-                        x.CommerceBusinessId == businessId && x.AgentUserId == agentUserId &&
-                        ((x.OriginalLeadType != null && x.OriginalLeadType == bucket) ||
-                         ((x.OriginalLeadType == null || x.OriginalLeadType == "") && x.Bucket == bucket)))
-                    .OrderByDescending(x => x.UpdatedUtc)
-                    .ThenByDescending(x => x.CreatedUtc)
-                    .ToListAsync(cancellationToken);
-
-                existing = candidates.FirstOrDefault(x => MatchesContactCandidate(x, normalizedPhone, normalizedEmail));
-            }
+            var client = await _db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == nativeClientId, cancellationToken);
+            if (client is null || businessId.HasValue || !await _db.AgentClients.AnyAsync(x =>
+                x.ClientUserId == client.ClientUserId && x.AgentUserId == agentUserId, cancellationToken))
+                throw new InvalidOperationException("The persisted client association is unavailable under the submission owner.");
+            return new WebsiteLifeLeadCaptureResult(true, false, null, intake.Bucket, agentUserId, null);
+        }
+        var relationshipId = intake?.WorkstationLeadId ?? request.WebsiteLeadId.ToString("N");
+        var existing = _db.WorkstationLeadProfiles.Local.FirstOrDefault(x => x.LeadId == relationshipId)
+            ?? await _db.WorkstationLeadProfiles.SingleOrDefaultAsync(x => x.LeadId == relationshipId, cancellationToken);
+        if (existing is not null && (existing.AgentUserId != agentUserId || existing.CommerceBusinessId != businessId))
+            throw new InvalidOperationException("The submission relationship belongs to another owner.");
+        if (intake is not null)
+        {
+            if (existing is null)
+                throw new InvalidOperationException("The persisted submission relationship is unavailable.");
+            // A delivery retry must not rewrite answers, attribution, capture time,
+            // current client details, or the original submission snapshot.
+            return new WebsiteLifeLeadCaptureResult(true, false, existing.LeadId, intake.Bucket, agentUserId, null);
         }
 
         WorkstationLeadProfile lead;
@@ -127,10 +128,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
         {
             // An inbound observation is not account authentication or an accepted cross-channel identity merge.
             // Its action-stable intake identity preserves existing contacts and keeps reconciliation explicit.
-            var leadId = confirmed is not null ? request.WebsiteLeadId.ToString("N") : businessId.HasValue
-                ? new Guid(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
-                    $"business-contact:v1|{businessId:N}|{normalizedEmail}")).AsSpan(0, 16)).ToString("N")
-                : request.WebsiteLeadId.ToString("N");
+            var leadId = relationshipId;
             lead = new WorkstationLeadProfile
             {
                 LeadId = leadId,
@@ -194,7 +192,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
 
         // CRM row and intake link are one unit of work. A failed handoff is not success.
         if (websiteLead != null)
-            await UpsertIntakeLinkAsync(websiteLead, lead, agentUserId, bucket, submittedUtc, cancellationToken);
+            await UpsertIntakeLinkAsync(websiteLead, lead, agentUserId, bucket, request.ProductType, submittedUtc, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
 
         return new WebsiteLifeLeadCaptureResult(true, created, lead.LeadId, bucket, agentUserId, null);
@@ -205,6 +203,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
         WorkstationLeadProfile lead,
         string agentUserId,
         string bucket,
+        string? productType,
         DateTime submittedUtc,
         CancellationToken cancellationToken)
     {
@@ -238,7 +237,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
         intakeLink.ReferrerUrl = ReadMetadataString(metadata, "ReferrerUrl");
         intakeLink.InterestType = Clean(websiteLead.InterestType);
         intakeLink.OfferKey = ReadMetadataString(metadata, "OfferKey");
-        intakeLink.ProductType = ReadMetadataString(metadata, "ProductType");
+        intakeLink.ProductType = ReadMetadataString(metadata, "ProductType") ?? Clean(productType);
         intakeLink.UtmSource = Clean(websiteLead.UtmSource);
         intakeLink.UtmMedium = Clean(websiteLead.UtmMedium);
         intakeLink.UtmCampaign = Clean(websiteLead.UtmCampaign);
@@ -263,6 +262,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
         intakeLink.RecommendationSecondaryKey = ReadMetadataString(metadata, "RecommendationSecondaryKey");
         intakeLink.RecommendationSecondaryTitle = ReadMetadataString(metadata, "RecommendationSecondaryTitle");
         intakeLink.SnapshotJson = websiteLead.MetadataJson;
+        await new Infrastructure.Crm.CrmHistoryStore(_db).StageSubmissionAsync(intakeLink, cancellationToken);
     }
 
     private async Task<string?> ResolveAgentUserIdAsync(WebsiteLifeLeadCaptureRequest request, CancellationToken cancellationToken)
@@ -477,15 +477,6 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
 
     private static string NormalizeEmailKey(string? email)
         => (email ?? string.Empty).Trim().ToLowerInvariant();
-
-    private static bool MatchesBucketCandidate(WorkstationLeadProfile lead, string agentUserId, string bucket)
-        => lead.AgentUserId == agentUserId &&
-           ((lead.OriginalLeadType != null && lead.OriginalLeadType == bucket) ||
-            ((lead.OriginalLeadType == null || lead.OriginalLeadType == "") && lead.Bucket == bucket));
-
-    private static bool MatchesContactCandidate(WorkstationLeadProfile lead, string normalizedPhone, string normalizedEmail)
-        => (!string.IsNullOrWhiteSpace(normalizedPhone) && NormalizePhoneKey(lead.Phone) == normalizedPhone) ||
-           (!string.IsNullOrWhiteSpace(normalizedEmail) && NormalizeEmailKey(lead.Email) == normalizedEmail);
 
     private static string NormalizeStateValue(string? state)
         => (state ?? string.Empty).Trim().ToUpperInvariant();

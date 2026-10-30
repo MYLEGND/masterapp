@@ -357,7 +357,7 @@ public class LeadsControllerTests
     }
 
     [Fact]
-    public async Task Delete_Removes_Appointment_And_IntakeLink_Dependents()
+    public async Task Delete_Preserves_Appointment_And_Immutable_Intake_Evidence()
     {
         await using var conn = new SqliteConnection("Data Source=:memory:");
         await conn.OpenAsync();
@@ -431,11 +431,44 @@ public class LeadsControllerTests
 
         var result = await controller.Delete("L-DELETE-1");
 
-        Assert.IsType<RedirectToActionResult>(result);
-        Assert.False(await db.WorkstationLeadProfiles.AnyAsync(x => x.LeadId == "L-DELETE-1"));
-        Assert.False(await db.LeadAppointments.AnyAsync(x => x.WorkstationLeadId == "L-DELETE-1"));
-        Assert.False(await db.WebsiteLeadIntakeLinks.AnyAsync(x => x.WorkstationLeadId == "L-DELETE-1"));
+        Assert.IsType<ConflictObjectResult>(result);
+        Assert.True(await db.WorkstationLeadProfiles.AnyAsync(x => x.LeadId == "L-DELETE-1"));
+        Assert.True(await db.LeadAppointments.AnyAsync(x => x.WorkstationLeadId == "L-DELETE-1"));
+        Assert.True(await db.WebsiteLeadIntakeLinks.AnyAsync(x => x.WorkstationLeadId == "L-DELETE-1"));
         Assert.True(await db.WebsiteLeads.AnyAsync(x => x.Id == 1001));
+    }
+
+    [Theory]
+    [InlineData("filed")]
+    [InlineData("legacy")]
+    [InlineData("prior-owner-note")]
+    public async Task ProtectedHistoryRejectsEntireBulkAndBucketWithoutDeletingUnprotectedRows(string evidence)
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).Options);
+        await db.Database.EnsureCreatedAsync();
+        db.WorkstationLeadProfiles.AddRange(
+            new WorkstationLeadProfile { LeadId="protected", AgentUserId="agent-1", Bucket="LifeInsurance", OriginalLeadType="LifeInsurance" },
+            new WorkstationLeadProfile { LeadId="empty", AgentUserId="agent-1", Bucket="LifeInsurance", OriginalLeadType="LifeInsurance" });
+        if(evidence=="filed") await new Infrastructure.Crm.CrmHistoryStore(db).StageAsync(new CrmHistoryEntry {
+            RelationshipKey="lead:protected", Source="Synthetic", SourceId="hold", Type="PreservationHold", ContentJson="{}" });
+        await db.SaveChangesAsync();
+        if(evidence=="legacy")
+        {
+            await db.Database.ExecuteSqlRawAsync("UPDATE WorkstationLeadProfiles SET CrmNotes='unrecognized legacy content' WHERE LeadId='protected'");
+            Assert.Equal(0,await db.Set<CrmHistoryEntry>().CountAsync());
+        }
+        if(evidence=="prior-owner-note")
+        {
+            await db.Database.ExecuteSqlRawAsync("CREATE TABLE AgentLeadSelfNotes (AgentUserId TEXT, LeadId TEXT, NoteDate TEXT, WentWell TEXT, CouldBetter TEXT, CreatedUtc TEXT)");
+            await db.Database.ExecuteSqlRawAsync("INSERT INTO AgentLeadSelfNotes VALUES ('former-owner','protected','2026-10-01','Original synthetic note',NULL,'2026-10-01T12:00:00Z')");
+        }
+        var controller=ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
+        Assert.IsType<ConflictObjectResult>(await controller.DeleteBulk(new[]{"empty","protected"}));
+        Assert.IsType<ConflictObjectResult>(await controller.DeleteBucket(new LeadsController.DeleteBucketRequest { Bucket="LifeInsurance" }));
+        Assert.Equal(2,await db.WorkstationLeadProfiles.CountAsync());
+        Assert.DoesNotContain(db.ChangeTracker.Entries(),x=>x.State==EntityState.Deleted);
     }
 
     [Fact]

@@ -1955,8 +1955,8 @@ class LiveWorkflowIdentityPollingTests(unittest.TestCase):
                 result=self.source(workflow,key,name)
                 self.assertEqual('source-validation-only',result['phase']);self.assertFalse(result['releaseAdmission'])
         self.assertEqual([],self.sleeps)
-    def test_source_queued_then_in_progress_retains_source_only_scope(self):
-        self.inventories=[dict(total_count=0,jobs=[])]
+    def test_source_queued_then_in_progress_requires_fresh_job_and_retains_source_only_scope(self):
+        self.inventories=[dict(total_count=0,jobs=[]),self.inventories[0]]
         self.runs=[self.run,self.run|dict(status='in_progress',event='pull_request',
             path='.github/workflows/masterapp-platform-architecture-validation.yml',
             pull_requests=[dict(number=7,base=dict(ref=m.FAST_TRACK_PR_BASE),head=dict(sha=self.revision))])]
@@ -1964,7 +1964,7 @@ class LiveWorkflowIdentityPollingTests(unittest.TestCase):
     def test_source_sibling_only_never_grants_scope(self):
         self.inventories=[dict(total_count=1,jobs=[self.job|dict(name='Approved-head preflight')])]
         with self.assertRaisesRegex(ValueError,'pending_deadline_exhausted'):self.source()
-        self.assertEqual(30,self.now)
+        self.assertEqual(300,self.now)
     def test_source_unknown_dynamic_or_ambiguous_planner_metadata_fails_without_poll(self):
         for source in ('jobs:\n  sibling:\n    steps: []\n',
                 'jobs:\n  validate:\n    name: ${{ matrix.name }}\n    steps:\n      - name: Plan exact validation resume\n',
@@ -2276,10 +2276,29 @@ class FastTrackSourceValidationTests(unittest.TestCase):
             pull_requests=[dict(number=580, base=dict(ref=m.FAST_TRACK_PR_BASE), head=dict(sha=self.sha))])
         self.pr = dict(number=580, state='open', base=dict(ref=m.FAST_TRACK_PR_BASE),
             head=dict(sha=self.sha, repo=dict(full_name='owner/repo')))
+        # Supply the actual immutable planner/job contract now required even
+        # when the run row is already in_progress; never mock away admission.
+        env = patch.dict(m.os.environ, {'GITHUB_JOB': 'plan', 'RUNNER_NAME': 'fixture-runner'})
+        env.start(); self.addCleanup(env.stop)
+        source = patch.object(m, '_release_history_source', return_value=
+            'jobs:\n  plan:\n    name: fixture-planner\n    steps:\n      - name: Plan exact validation resume\n')
+        source.start(); self.addCleanup(source.stop)
+
+    def api(self, repository, path, token):
+        if path == 'actions/runs/91':
+            return self.run
+        if path == 'actions/runs/91/attempts/1/jobs?per_page=100':
+            return dict(total_count=1, jobs=[dict(id=92, run_id=91, run_attempt=1,
+                head_sha=self.sha, name='fixture-planner', status='in_progress',
+                conclusion=None, runner_name='fixture-runner')])
+        if path == 'pulls/580':
+            return self.pr
+        raise AssertionError('Unexpected fixture evidence path: ' + path)
+
 
     def scope(self):
         with patch.dict(m.os.environ, {'GITHUB_ACTIONS': 'true', 'GITHUB_TOKEN': 'test-token'}), \
-             patch.object(m, 'api_get', side_effect=[self.run, self.pr]), \
+             patch.object(m, 'api_get', side_effect=self.api), \
              patch.object(m, 'approved_head_preflight', return_value={'current': True, 'approvedHeadSha': 'a' * 40}) as preflight:
             result = m.fast_track_source_validation_scope(self.args)
             preflight.assert_called_once_with('owner/repo', self.sha, 'test-token', base_branch=m.FAST_TRACK_PR_BASE)
@@ -2300,13 +2319,14 @@ class FastTrackSourceValidationTests(unittest.TestCase):
     def test_push_without_pr_is_development_only_and_never_queries_pr_or_base(self):
         self.development()
         with patch.dict(m.os.environ, {'GITHUB_ACTIONS':'true','GITHUB_TOKEN':'test-token'}), \
-             patch.object(m, 'api_get', return_value=self.run) as api, \
+             patch.object(m, 'api_get', side_effect=self.api) as api, \
              patch.object(m, 'approved_head_preflight') as preflight:
             scope = m.fast_track_source_validation_scope(self.args)
         self.assertEqual('development-validation-only', scope['phase'])
         self.assertFalse(scope['releaseAdmission'])
         self.assertNotIn('pullRequest', scope)
-        api.assert_called_once()
+        self.assertEqual(['actions/runs/91', 'actions/runs/91/attempts/1/jobs?per_page=100'] * 2,
+            [call.args[1] for call in api.call_args_list])
         preflight.assert_not_called()
 
     def test_genuine_isolated_pr_uses_strict_source_contract(self):
@@ -2326,7 +2346,7 @@ class FastTrackSourceValidationTests(unittest.TestCase):
 
     def test_changed_current_base_is_rejected(self):
         with patch.dict(m.os.environ, {'GITHUB_ACTIONS':'true','GITHUB_TOKEN':'test-token'}), \
-             patch.object(m, 'api_get', side_effect=[self.run,self.pr]), \
+             patch.object(m, 'api_get', side_effect=self.api), \
              patch.object(m, 'approved_head_preflight', return_value={'current':False}), \
              self.assertRaisesRegex(ValueError, 'FAST_TRACK_BASE_CHANGED'):
             m.fast_track_source_validation_scope(self.args)
@@ -2338,7 +2358,7 @@ class FastTrackSourceValidationTests(unittest.TestCase):
             self.run.update(head_branch=branch, head_repository=dict(full_name=repository))
             with self.subTest(branch=branch, repository=repository), \
                  patch.dict(m.os.environ, {'GITHUB_ACTIONS':'true','GITHUB_TOKEN':'test-token'}), \
-                 patch.object(m, 'api_get', return_value=self.run), self.assertRaises(ValueError):
+                 patch.object(m, 'api_get', side_effect=self.api), self.assertRaises(ValueError):
                 m.fast_track_source_validation_scope(self.args)
 
     def test_development_plan_has_no_source_admission_envelope(self):
@@ -2347,7 +2367,7 @@ class FastTrackSourceValidationTests(unittest.TestCase):
             self.args.validation_base = m.FAST_TRACK_PR_BASE
             self.args.output = str(Path(directory) / 'plan.json')
             with patch.dict(m.os.environ, {'GITHUB_ACTIONS':'true','GITHUB_TOKEN':'test-token'}), \
-                 patch.object(m, 'api_get', return_value=self.run), \
+                 patch.object(m, 'api_get', side_effect=self.api), \
                  patch.object(m, '_compute_validation_plan_once', return_value={'sourceValidationScope':{'forged':True}}), \
                  patch.object(m, 'require_readiness') as readiness:
                 m.cmd_plan(self.args)
@@ -2526,6 +2546,170 @@ class IsolatedDevelopmentReuseTests(unittest.TestCase):
              patch.object(m,'_historical_workflow_definition',return_value=m.WORKFLOWS[self.workflow]):
             plan=m._plan_against_prior(self.workflow,self.sha,prior,steps,source)
         self.assertTrue(plan['gates']['routing']['run'])
+
+
+class SourceValidationVisibilityTests(unittest.TestCase):
+    def fixture(self):
+        fixture = LiveWorkflowIdentityPollingTests(); fixture.setUp()
+        fixture.run['status'] = 'in_progress'
+        return fixture
+
+    def test_multiminute_pending_returns_no_evidence_then_fresh_job_proof(self):
+        f = self.fixture()
+        pending = dict(total_count=1, jobs=[f.job | dict(status='queued', runner_name='', name='architecture-validation')])
+        f.inventories = [pending] * 40 + [dict(total_count=1, jobs=[f.job])]
+        result = f.source()
+        self.assertEqual(200, f.now)
+        self.assertFalse(result['releaseAdmission'])
+        self.assertEqual(42, sum('/jobs?' in path for path in f.reads))
+        self.assertEqual(42, sum(path == 'actions/runs/123' for path in f.reads))
+
+    def test_terminal_foreign_or_unassigned_after_ready_cannot_reuse_wait_evidence(self):
+        for mutation in (dict(status='completed', conclusion='failure'), dict(run_attempt=1),
+                         dict(head_sha='b'*40), dict(runner_name='foreign'),
+                         dict(status='queued', runner_name='')):
+            with self.subTest(mutation=mutation):
+                f = self.fixture()
+                ready = dict(total_count=1, jobs=[f.job])
+                bad = dict(total_count=1, jobs=[f.job | dict(name='architecture-validation') | mutation])
+                f.inventories = [ready, bad]
+                with self.assertRaisesRegex(ValueError, 'ACTIVE_JOB_UNPROVEN'):
+                    f.source()
+                self.assertGreaterEqual(sum('/jobs?' in path for path in f.reads), 2)
+                self.assertEqual(30 if mutation.get('status') == 'queued' else 0, f.now)
+
+    def test_terminal_or_mismatched_wait_fails_without_sleep(self):
+        for mutation in (dict(status='completed', conclusion='failure'), dict(run_attempt=1), dict(head_sha='b'*40)):
+            f = self.fixture(); f.run.update(mutation)
+            with self.subTest(mutation=mutation), self.assertRaisesRegex(ValueError, 'IDENTITY_MISMATCH'):
+                f.source()
+            self.assertEqual([], f.sleeps)
+
+    def test_forbidden_visibility_read_is_not_retried_by_wait(self):
+        f = self.fixture()
+        expected = {key: f.run[key] for key in ('id', 'run_attempt', 'head_sha', 'event', 'path')}
+        with patch.object(m, 'api_get', side_effect=m.EvidenceLookupUnavailable('unavailable', status=403)) as read:
+            with self.assertRaises(m.EvidenceLookupUnavailable):
+                m._await_source_validation_visibility('owner/repo', expected, 'token', 'architecture-validation',
+                    clock=lambda:f.now, sleep=f.sleep)
+        self.assertEqual(1, read.call_count); self.assertEqual([], f.sleeps)
+
+    def test_wait_returns_none_and_respects_shorter_enclosing_budget(self):
+        f = self.fixture()
+        expected = {key: f.run[key] for key in ('id', 'run_attempt', 'head_sha', 'event', 'path')}
+        with patch.dict(os.environ, f.env, clear=True), patch.object(m, 'api_get', side_effect=f.api):
+            self.assertIsNone(m._await_source_validation_visibility('owner/repo', expected, 'token', f.job['name'],
+                clock=lambda:f.now, sleep=f.sleep))
+            f.inventories = [dict(total_count=0, jobs=[])]
+            with m.evidence_lookup_budget(12, clock=lambda:f.now):
+                with self.assertRaises(m.EvidenceLookupUnavailable):
+                    m._await_source_validation_visibility('owner/repo', expected, 'token', f.job['name'],
+                        clock=lambda:f.now, sleep=f.sleep)
+            self.assertEqual(12, f.now)
+
+
+class LiveEvidenceFreshnessTests(unittest.TestCase):
+    def response(self, payload, headers=None):
+        response = GitHubEvidenceTransportTests.Response(json.dumps(payload).encode())
+        response.headers = headers or {}
+        return response
+
+    def test_observer_revalidates_only_exact_live_reads_and_resets_context(self):
+        fixture = LiveWorkflowIdentityPollingTests(); fixture.setUp()
+        fixture.run['status'] = 'in_progress'
+        expected = {key: fixture.run[key] for key in ('id', 'run_attempt', 'head_sha', 'event', 'path', 'head_branch')}
+        responses = [self.response(fixture.run), self.response(fixture.inventories[0]), self.response({})]
+        with patch.dict(os.environ, fixture.env, clear=True), \
+             patch.object(m.urllib.request, 'urlopen', side_effect=responses) as transport, \
+             patch('builtins.print') as output:
+            m._observe_live_workflow('owner/repo', expected, 'private-token',
+                queued_job=lambda: fixture.job['name'], require_job=True)
+            m._api_get_uncached('owner/repo', 'actions/runs/99', 'private-token')
+        requests = [call.args[0] for call in transport.call_args_list]
+        self.assertEqual(['no-cache', 'no-cache', None], [r.get_header('Cache-control') for r in requests])
+        rows = [json.loads(call.args[0])['liveEvidenceFreshness'] for call in output.call_args_list
+                if 'liveEvidenceFreshness' in str(call.args[0])]
+        self.assertEqual(['current_run', 'current_attempt_jobs'], [row['endpoint'] for row in rows])
+        self.assertEqual([1, 1], [row['observation'] for row in rows])
+        self.assertIsNone(m._LIVE_FRESHNESS.get())
+        self.assertNotIn('private-token', str(rows))
+        self.assertNotIn('owner/repo', str(rows))
+
+    def test_revalidation_preserves_queued_deadline_and_full_assignment_boundary(self):
+        for eventually_assigned in (False, True):
+            fixture = LiveWorkflowIdentityPollingTests(); fixture.setUp()
+            expected = {key: fixture.run[key] for key in ('id', 'run_attempt', 'head_sha', 'event', 'path', 'head_branch')}
+            reads = []
+            def transport(request, **kwargs):
+                reads.append(request)
+                if '/jobs?' in request.full_url:
+                    assigned = eventually_assigned and len(reads) >= 4
+                    job = fixture.job if assigned else fixture.job | dict(status='queued', runner_name='')
+                    return self.response(dict(total_count=1, jobs=[job]))
+                return self.response(fixture.run)
+            with patch.dict(os.environ, fixture.env, clear=True), \
+                 patch.object(m.urllib.request, 'urlopen', side_effect=transport), patch('builtins.print'):
+                invoke = lambda: m._observe_live_workflow('owner/repo', expected, 'token',
+                    queued_job=lambda: fixture.job['name'], require_job=True,
+                    clock=lambda: fixture.now, sleep=fixture.sleep)
+                if eventually_assigned:
+                    self.assertEqual(fixture.job, invoke()[1]); self.assertEqual(5, fixture.now)
+                else:
+                    with self.assertRaisesRegex(RuntimeError, 'pending_deadline_exhausted'):
+                        invoke()
+                    self.assertEqual(30, fixture.now)
+                self.assertTrue(all(r.get_header('Cache-control') == 'no-cache' for r in reads))
+            self.assertIsNone(m._LIVE_FRESHNESS.get())
+
+    def test_revalidated_identity_mismatch_is_terminal_without_job_read(self):
+        fixture = LiveWorkflowIdentityPollingTests(); fixture.setUp()
+        expected = {key: fixture.run[key] for key in ('id', 'run_attempt', 'head_sha', 'event', 'path', 'head_branch')}
+        with patch.object(m.urllib.request, 'urlopen', return_value=self.response(fixture.run | dict(head_sha='b'*40))) as transport, \
+             patch('builtins.print'), patch.object(m.time, 'sleep') as sleep:
+            with self.assertRaisesRegex(RuntimeError, 'PRODUCER_UNPROVEN'):
+                m._observe_live_workflow('owner/repo', expected, 'token', queued_job=lambda: fixture.job['name'], require_job=True)
+        self.assertEqual(1, transport.call_count); sleep.assert_not_called()
+        self.assertIsNone(m._LIVE_FRESHNESS.get())
+
+    def test_header_metadata_is_typed_bounded_and_never_echoes_unknown_values(self):
+        headers = {'Date': 'Fri, 30 Oct 2026 18:00:00 GMT', 'Age': '123',
+            'Cache-Control': 'public, max-age=secret, unknown=private-customer',
+            'ETag': 'private-etag', 'X-GitHub-Request-Id': 'private-id'}
+        value = m._freshness_headers(headers)
+        self.assertEqual('2026-10-30T18:00:00+00:00', value['dateUtc'])
+        self.assertEqual(123, value['ageSeconds'])
+        self.assertTrue(value['cacheDirectives']['public'])
+        self.assertTrue(value['cacheDirectives']['max-age'])
+        self.assertNotIn('secret', json.dumps(value)); self.assertNotIn('customer', json.dumps(value))
+        self.assertNotIn('etag', json.dumps(value)); self.assertNotIn('private-id', json.dumps(value))
+        for raw in ('x' * 513, 'private-customer', '-1', '999999999999999999999', ''):
+            result = m._freshness_headers({'Date': raw, 'Age': raw})
+            self.assertEqual('invalid', result['dateState']); self.assertEqual('invalid', result['ageState'])
+            self.assertNotIn(raw, json.dumps(result)) if raw else None
+        self.assertEqual('invalid', m._freshness_headers({'Cache-Control': 'x' * 513})['cacheState'])
+        self.assertEqual('absent', m._freshness_headers({})['dateState'])
+
+    def test_context_cannot_revalidate_other_repository_or_path(self):
+        marker = m._LIVE_FRESHNESS.set(('owner/repo', 'actions/runs/123', 'current_run', 1))
+        try:
+            with patch.object(m.urllib.request, 'urlopen', side_effect=[self.response({}), self.response({})]) as transport:
+                m._api_get_uncached('other/repo', 'actions/runs/123', 'token')
+                m._api_get_uncached('owner/repo', 'actions/runs/123/attempts/1/jobs?per_page=100', 'token')
+            self.assertTrue(all(call.args[0].get_header('Cache-control') is None for call in transport.call_args_list))
+        finally:
+            m._LIVE_FRESHNESS.reset(marker)
+
+    def test_forbidden_read_remains_terminal_and_context_resets(self):
+        failure = m.urllib.error.HTTPError('https://example.invalid/private', 403, 'private',
+            {'Date': 'private-customer'}, None)
+        with patch.object(m.urllib.request, 'urlopen', side_effect=failure) as transport, \
+             patch.object(m.time, 'sleep') as sleep, patch('builtins.print') as output:
+            with self.assertRaises(m.EvidenceLookupUnavailable):
+                m._live_freshness_read(m._api_get_uncached, 'owner/repo', 'actions/runs/123', 'token',
+                    endpoint='current_run', observation=1)
+        self.assertEqual(1, transport.call_count); sleep.assert_not_called()
+        self.assertIsNone(m._LIVE_FRESHNESS.get())
+        self.assertNotIn('private-customer', str(output.call_args_list))
 
 
 class GitHubEvidenceTransportTests(unittest.TestCase):

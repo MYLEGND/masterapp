@@ -77,6 +77,19 @@ public static class WebsiteLeadSubmission
         {
             await db.SaveChangesAsync(ct);
             if (persistHandoff != null) await persistHandoff(ct);
+            // All persisted website submission routes share the same atomic CRM
+            // boundary, including API routes that do not supply their own handoff.
+            if (websiteMeasurement && !db.WebsiteLeadIntakeLinks.Local.Any(x => x.WebsiteLeadPublicId == lead.LeadId) &&
+                !await db.WebsiteLeadIntakeLinks.AnyAsync(x => x.WebsiteLeadPublicId == lead.LeadId, ct))
+            {
+                await new WebsiteLifeLeadCaptureService(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<WebsiteLifeLeadCaptureService>.Instance)
+                    .UpsertAsync(new WebsiteLifeLeadCaptureRequest
+                    {
+                        WebsiteLeadId = lead.LeadId, SubmittedUtc = lead.CreatedUtc, ProductType = lead.InterestType ?? "inquiry",
+                        FirstName = lead.FirstName, LastName = lead.LastName, Email = lead.Email, Phone = lead.Phone,
+                        AgentTrackingProfileId = lead.AgentTrackingProfileId, AgentSlug = lead.AgentSlug
+                    }, ct);
+            }
             if (transaction != null) await transaction.CommitAsync(ct);
             return true;
         }

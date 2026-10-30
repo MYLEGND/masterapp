@@ -2227,15 +2227,6 @@ let finPlanVersion = 0;
 let finPlanAllocManual = false; // align with workstation auto-split behavior
 const clientActionsHubModal = $("#clientActionsHubModal");
 const noteOpenBtn = document.querySelector("[data-note-self-open]");
-const noteOverlay = document.querySelector("[data-note-self-overlay]");
-const noteCloseBtn = document.querySelector("[data-note-self-close]");
-const noteDateInput = document.querySelector("[data-note-self-date]");
-const noteLeadInput = document.querySelector("[data-note-self-lead]");
-const noteDatesSelect = document.querySelector("[data-note-self-dates]");
-const noteSaveBtn = document.querySelector("[data-note-self-save]");
-const noteWentWell = document.querySelector("[data-note-self-well]");
-const noteCouldBetter = document.querySelector("[data-note-self-better]");
-const noteStatusEl = document.querySelector("[data-note-self-status]");
 
 let activeClientId = null;
 let activeClientDetail = null;
@@ -2665,7 +2656,6 @@ const dActType = $("#dActType");
 const dActDate = $("#dActDate");
 const dActNote = $("#dActNote");
 const btnAddActivity = $("#btnAddActivity");
-const btnClearTimeline = $("#btnClearTimeline");
 const timeline = $("#timeline");
 const timelineFilters = $("#timelineFilters");
 
@@ -4349,7 +4339,6 @@ function closeDrawer(){
   drawer.classList.remove("open");
   drawerBackdrop.classList.remove("open");
   drawer.setAttribute("aria-hidden", "true");
-  closeNoteModal();
   window.LegendModal?.unlockPageScroll("crm-quick-view");
 }
 function openClientActionsHub(){
@@ -4390,284 +4379,14 @@ clientFinPlanBtn?.addEventListener("click", async (e) => {
   await openFinPlanModal(requestedClientId);
 });
 
-/* ========= Note to Self (Quick View) ========= */
-function noteLineDate(isoDate){
-  const m = String(isoDate || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return "00/00/0000";
-  return `${m[2]}/${m[3]}/${m[1]}`;
-}
-
-function notePrefix(isoDate){
-  return `[${noteLineDate(isoDate)}]`;
-}
-
-function stripExistingPrefix(line){
-  return String(line || "")
-    .replace(/^\s*\[[^\]]*\]\s*/, "")
-    .replace(/^\s*---\s*$/, "")
-    .trim();
-}
-
-function extractNoteBodyText(rawText){
-  const normalizedLines = String(rawText || "")
-    .split(/\r?\n/)
-    .map(stripExistingPrefix)
-    .filter(x => !!x);
-  return normalizedLines.join("\n").trim();
-}
-
-function normalizeNoteBodyForDate(rawText, isoDate){
-  const prefix = notePrefix(isoDate);
-  const body = extractNoteBodyText(rawText);
-  if (!body) return `${prefix} `;
-
-  const lines = body.split(/\r?\n/);
-  const first = lines[0] || "";
-  const rest = lines.slice(1).join("\n");
-  return rest ? `${prefix} ${first}\n${rest}` : `${prefix} ${first}`;
-}
-
-function lineStartIndex(text, pos){
-  const p = Math.max(0, pos || 0);
-  return text.lastIndexOf("\n", Math.max(0, p - 1)) + 1;
-}
-
-function lineEndIndex(text, pos){
-  const p = Math.max(0, pos || 0);
-  const idx = text.indexOf("\n", p);
-  return idx < 0 ? text.length : idx;
-}
-
-function currentLinePrefixLength(text, caretPos){
-  const start = lineStartIndex(text, caretPos);
-  const end = lineEndIndex(text, caretPos);
-  const line = text.slice(start, end);
-  const m = line.match(/^\[(\d{2})\/(\d{2})\/(\d{4})\]\s?/);
-  return m ? m[0].length : 0;
-}
-
-function enforceCaretAfterPrefix(textarea){
-  if (!textarea) return;
-  const value = textarea.value || "";
-  const start = textarea.selectionStart ?? 0;
-  const end = textarea.selectionEnd ?? start;
-  const lineStart = lineStartIndex(value, start);
-  const protectedPrefixLen = currentLinePrefixLength(value, start);
-  if (!protectedPrefixLen) return;
-  const min = lineStart + protectedPrefixLen;
-  if (start < min || end < min){
-    textarea.setSelectionRange(min, min);
-  }
-}
-
-function isEditingInsidePrefix(textarea, key){
-  if (!textarea) return false;
-  const value = textarea.value || "";
-  const start = textarea.selectionStart ?? 0;
-  const end = textarea.selectionEnd ?? start;
-  const lineStart = lineStartIndex(value, start);
-  const protectedPrefixLen = currentLinePrefixLength(value, start);
-  if (!protectedPrefixLen) return false;
-  const min = lineStart + protectedPrefixLen;
-
-  if (start !== end){
-    return start < min;
-  }
-
-  if (key === "Backspace") return start <= min;
-  if (key === "Delete") return start < min;
-  if (key === "Home") return true;
-  return false;
-}
-
 function noteCurrentLeadContext(){
   const leadId = (activeClientId || "").trim();
   const leadName = (dName?.textContent || "").trim() || "Lead";
   return { leadId, leadName };
 }
-
-function noteSetStatus(msg, bad = false){
-  if (!noteStatusEl) return;
-  noteStatusEl.textContent = msg || "";
-  noteStatusEl.classList.toggle("is-bad", !!bad);
-}
-
-function noteSyncLeadField(){
-  if (!noteLeadInput) return;
-  const ctx = noteCurrentLeadContext();
-  noteLeadInput.value = ctx.leadId ? ctx.leadName : "No lead selected";
-}
-
-async function noteLoadDates(leadIdValue){
-  if (!noteDatesSelect) return [];
-  const leadId = (leadIdValue || noteCurrentLeadContext().leadId || "").trim();
-  if (!leadId){
-    noteDatesSelect.innerHTML = '<option value="">Select lead + date</option>';
-    return [];
-  }
-  try{
-    const res = await fetch(`/WorkstationNotes/Dates?leadId=${encodeURIComponent(leadId)}`, {
-      credentials: "include"
-    });
-    if (!res.ok) throw new Error("fail");
-    const dates = await res.json();
-    const list = Array.isArray(dates) ? dates : [];
-    const current = noteDatesSelect.value || "";
-    noteDatesSelect.innerHTML = ['<option value="">Select lead + date</option>']
-      .concat(list.map(d => {
-        const lid = (d?.leadId || "").toString();
-        const nm = (d?.leadName || "Lead").toString();
-        const nd = (d?.noteDate || "").toString();
-        return `<option value="${noteEncodeKey(lid, nd)}">${escapeHtml(`${nm} — ${noteDisplayDate(nd)}`)}</option>`;
-      })).join("");
-    if (current && Array.from(noteDatesSelect.options).some(o => o.value === current)){
-      noteDatesSelect.value = current;
-    }
-    return list;
-  }catch{
-    noteSetStatus("Could not load saved dates", true);
-    return [];
-  }
-}
-
-async function noteLoadForDate(dateValue, leadIdValue){
-  if (!noteDateInput || !noteWentWell || !noteCouldBetter) return;
-  const date = (dateValue || noteDateInput.value || noteTodayISO()).trim();
-  const fallbackLead = noteCurrentLeadContext().leadId;
-  const leadId = (leadIdValue || fallbackLead || "").trim();
-  if (!leadId){
-    noteWentWell.value = "";
-    noteCouldBetter.value = "";
-    noteSetStatus("Select a lead first", true);
-    return;
-  }
-  if (!date) return;
-  noteDateInput.value = date;
-  noteSetStatus("Loading...");
-  try{
-    const res = await fetch(`/WorkstationNotes/Entry?leadId=${encodeURIComponent(leadId)}&date=${encodeURIComponent(date)}`, {
-      credentials: "include"
-    });
-    if (!res.ok) throw new Error("fail");
-    const payload = await res.json();
-    noteWentWell.value = normalizeNoteBodyForDate(payload?.wentWell || "", date);
-    noteCouldBetter.value = normalizeNoteBodyForDate(payload?.couldBetter || "", date);
-    if (noteDatesSelect) noteDatesSelect.value = noteEncodeKey(leadId, date);
-    noteSetStatus(`Loaded ${(payload?.leadName || noteCurrentLeadContext().leadName)} — ${noteDisplayDate(date)}`);
-  }catch{
-    noteSetStatus("Failed to load note", true);
-  }
-}
-
-async function noteSave(){
-  if (!noteDateInput || !noteWentWell || !noteCouldBetter) return;
-  const date = (noteDateInput.value || "").trim();
-  const ctx = noteCurrentLeadContext();
-  if (!ctx.leadId){
-    noteSetStatus("Select a lead first", true);
-    return;
-  }
-  if (!date){
-    noteSetStatus("Pick a date first", true);
-    return;
-  }
-  noteSetStatus("Saving...");
-  try{
-    const normalizedWentWell = normalizeNoteBodyForDate(noteWentWell.value || "", date);
-    const normalizedCouldBetter = normalizeNoteBodyForDate(noteCouldBetter.value || "", date);
-    const wentWellBody = extractNoteBodyText(normalizedWentWell);
-    const couldBetterBody = extractNoteBodyText(normalizedCouldBetter);
-
-    noteWentWell.value = normalizedWentWell;
-    noteCouldBetter.value = normalizedCouldBetter;
-
-    const token = getAntiForgeryToken();
-    const res = await fetch("/WorkstationNotes/Entry", {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        "RequestVerificationToken": token
-      },
-      body: JSON.stringify({
-        leadId: ctx.leadId,
-        leadName: ctx.leadName,
-        date,
-        wentWell: wentWellBody ? normalizedWentWell : "",
-        couldBetter: couldBetterBody ? normalizedCouldBetter : ""
-      })
-    });
-    if (!res.ok) throw new Error("fail");
-    const payload = await res.json().catch(() => null);
-    noteSetStatus(payload?.deleted ? `Cleared ${ctx.leadName} — ${noteDisplayDate(date)}` : `Saved ${ctx.leadName} — ${noteDisplayDate(date)}`);
-    await noteLoadDates(ctx.leadId);
-    if (noteDatesSelect) noteDatesSelect.value = noteEncodeKey(ctx.leadId, date);
-  }catch{
-    noteSetStatus("Failed to save note", true);
-  }
-}
-
-async function openNoteModal(){
-  if (!noteOverlay) return;
-  noteOverlay.hidden = false;
-  
-  noteSyncLeadField();
-  const ctx = noteCurrentLeadContext();
-  if (!ctx.leadId){
-    noteSetStatus("Select a lead first", true);
-    if (noteWentWell) noteWentWell.value = "";
-    if (noteCouldBetter) noteCouldBetter.value = "";
-    if (noteDatesSelect) noteDatesSelect.innerHTML = '<option value="">Select lead + date</option>';
-    if (noteDateInput && !noteDateInput.value) noteDateInput.value = noteTodayISO();
-    return;
-  }
-
-  if (noteDateInput && !noteDateInput.value) noteDateInput.value = noteTodayISO();
-
-  const list = await noteLoadDates(ctx.leadId);
-  if (Array.isArray(list) && list.length){
-    const newestDate = (list[0]?.noteDate || "").toString();
-    if (newestDate){
-      if (noteDateInput) noteDateInput.value = newestDate;
-      if (noteDatesSelect) noteDatesSelect.value = noteEncodeKey(ctx.leadId, newestDate);
-      await noteLoadForDate(newestDate, ctx.leadId);
-    }else{
-      await noteLoadForDate(noteDateInput?.value || noteTodayISO(), ctx.leadId);
-    }
-  }else{
-    await noteLoadForDate(noteDateInput?.value || noteTodayISO(), ctx.leadId);
-  }
-
-  noteWentWell?.focus();
-}
-
-function closeNoteModal(){
-  if (!noteOverlay) return;
-  noteOverlay.hidden = true;
-  
-}
-
-noteOpenBtn?.addEventListener("click", openNoteModal);
-noteCloseBtn?.addEventListener("click", closeNoteModal);
-noteDatesSelect?.addEventListener("change", (e) => {
-  const decoded = noteDecodeKey(e.target.value);
-  if (!decoded.leadId || !decoded.noteDate) return;
-  noteLoadForDate(decoded.noteDate, decoded.leadId);
-});
-noteDateInput?.addEventListener("change", () => {
-  noteLoadForDate(noteDateInput.value, noteCurrentLeadContext().leadId);
-});
-noteSaveBtn?.addEventListener("click", noteSave);
-
-[noteWentWell, noteCouldBetter].forEach((ta) => {
-  if (!ta) return;
-  ta.addEventListener("keydown", (e) => {
-    if (isEditingInsidePrefix(ta, e.key)) e.preventDefault();
-  });
-  ta.addEventListener("click", () => enforceCaretAfterPrefix(ta));
-  ta.addEventListener("keyup", () => enforceCaretAfterPrefix(ta));
-  ta.addEventListener("mouseup", () => enforceCaretAfterPrefix(ta));
-  ta.addEventListener("paste", () => setTimeout(() => enforceCaretAfterPrefix(ta), 0));
+noteOpenBtn?.addEventListener("click", () => {
+  const context = noteCurrentLeadContext();
+  if (context.leadId) window.location.assign('/CrmHistory?kind=client&id=' + encodeURIComponent(context.leadId));
 });
 
 function safeHtml(s){
@@ -5160,34 +4879,6 @@ timelineFilters?.addEventListener("click", (e) => {
   activeTimelineFilter = btn.getAttribute("data-timelinefilter") || "all";
   $$("[data-timelinefilter]", timelineFilters).forEach(x => x.classList.toggle("active", x === btn));
   renderTimeline(activeClientDetail?.activities || []);
-});
-
-btnClearTimeline?.addEventListener("click", () => {
-  if (!activeClientId) return;
-  if (!confirm("Clear this client activity timeline?")) return;
-
-  postJson(crmRoute("/Clients/ClearActivities"), { clientUserId: activeClientId })
-    .then((data) => {
-      const row = rows.find(r => r.dataset.clientId === activeClientId);
-      if (row){
-        row.dataset.sAttemptstoday = String(data?.attemptsToday ?? 0);
-        row.dataset.sAttemptsweek = String(data?.attemptsThisWeek ?? 0);
-        row.dataset.sAttemptsmonth = String(data?.attemptsThisMonth ?? 0);
-        row.dataset.sAttemptsyear = String(data?.attemptsThisYear ?? 0);
-        row.dataset.sAttemptslife = String(data?.attemptsLifetime ?? 0);
-        hydrateRow(row);
-      }
-      activeClientDetail = { ...(activeClientDetail || {}), activities: [] };
-      renderTimeline([]);
-      dAttempts.textContent = `Attempts: ${row?.dataset.crmAttemptsToday || 0} today • ${row?.dataset.crmAttemptsWeek || 0} week • ${row?.dataset.crmAttemptsLife || 0} total`;
-      dSaved.textContent = "Timeline cleared ✔";
-      toast("Timeline cleared");
-      renderAll();
-    })
-    .catch(err => {
-      console.error(err);
-      toast("Timeline clear failed.");
-    });
 });
 
 btnSaveLocal?.addEventListener("click", () => {
@@ -6125,6 +5816,15 @@ async function enableReminders(){
   }
 }
 
+let historyReminderItems = [];
+async function refreshHistoryReminders(){
+  try {
+    const response = await fetch('/CrmHistory/Reminders',{credentials:'same-origin',cache:'no-store'});
+    if(!response.ok)throw new Error('Relationship reminders unavailable');
+    const data=await response.json();historyReminderItems=Array.isArray(data.items)?data.items:[];
+    if(data.hasMore)toast('Showing the first 500 history reminders. Open relationship history for remaining obligations.');
+  }catch {historyReminderItems=[];toast('Relationship reminders could not refresh. Check Client Activity & Case History for outstanding work.');}
+}
 function listDueItems(){
   const items = rows.map(r => {
     const id = r.dataset.clientId;
@@ -6144,6 +5844,7 @@ function listDueItems(){
     return { id, name, email, phone, nextDate, nextText, pri, overdue, today };
   }).filter(Boolean);
 
+  items.push(...historyReminderItems);
   const priScore = (p) => {
     const x = (p || "").toLowerCase();
     if (x === "urgent") return 0;
@@ -6175,7 +5876,8 @@ function refreshRemindersUI(){
   }
 }
 
-function openRemindersModal(){
+async function openRemindersModal(){
+  await refreshHistoryReminders();
   const body = $("#remindersBody");
   const due = listDueItems();
 
@@ -6226,7 +5928,8 @@ document.addEventListener("click", (e) => {
   const openId = e.target.closest("[data-remopen]")?.getAttribute("data-remopen");
   if (openId){
     closeModal();
-    openQuickViewByClientId(openId);
+    const historyItem=historyReminderItems.find(x=>x.id===openId);
+    if(historyItem)window.location.assign(historyItem.historyUrl);else openQuickViewByClientId(openId);
   }
 
   const delBtn = e.target.closest(".delCard");
@@ -6257,6 +5960,8 @@ document.addEventListener("click", (e) => {
 
   const copyId = e.target.closest("[data-remcopy]")?.getAttribute("data-remcopy");
   if (copyId){
+    const historyItem=historyReminderItems.find(x=>x.id===copyId);
+    if(historyItem){copyText(`${historyItem.name}\nDue: ${historyItem.nextDate}\n${historyItem.historyUrl}`);return;}
     const row = rows.find(r => r.dataset.clientId === copyId);
     if (!row) return;
     const line = `${fullName(row)}\nNext: ${norm(row.dataset.crmNextDate)} • ${norm(row.dataset.crmNextText)}\nEmail: ${norm(row.dataset.email)}\nPhone: ${norm(row.dataset.phone)}`.trim();
@@ -6271,7 +5976,8 @@ function notify(title, body){
   try { new Notification(title, { body }); } catch {}
 }
 
-function checkReminders(){
+async function checkReminders(){
+  await refreshHistoryReminders();
   const due = listDueItems();
   refreshRemindersUI();
 

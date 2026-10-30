@@ -70,6 +70,7 @@ public sealed partial class WebsitePageCompiler(IWebHostEnvironment environment,
 
     private async Task<string> CompileInputAsync(string input, CancellationToken cancellationToken)
     {
+        using var diagnosticStage = Shared.Diagnostics.RuntimeDiagnosticScope.Current?.Stage(Shared.Diagnostics.RuntimeDiagnosticStage.PublicationCompile);
         var root = configuration["WebsitePublishing:CompilerRoot"]
             ?? Path.Combine(environment.ContentRootPath, "WebsiteCompiler");
         var runner = Path.Combine(root, "scripts", "render-business-cli.mjs");

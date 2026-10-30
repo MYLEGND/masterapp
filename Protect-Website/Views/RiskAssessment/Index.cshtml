@@ -1,3 +1,4 @@
+@inject Microsoft.AspNetCore.DataProtection.IDataProtectionProvider HistoryProtection
 @model Protect_Website.Models.RiskAssessmentModel
 @{
     ViewData["Title"] = "Risk Assessment";
@@ -211,7 +212,8 @@
                     </div>
                 }
 
-<form asp-controller="RiskAssessment" asp-action="SubmitRiskAssessment" method="post" class="pcq-form-frame" id="riskAssessmentForm" data-form-key="risk_assessment_form">
+<form data-insurance-history="true" asp-controller="RiskAssessment" asp-action="SubmitRiskAssessment" method="post" class="pcq-form-frame" id="riskAssessmentForm" data-form-key="risk_assessment_form">
+<input type="hidden" name="HistoryDisclosureToken" value="@(Infrastructure.Leads.WebsiteSubmissionEvidence.ProtectAuthorization(HistoryProtection, typeof(Protect_Website.Models.RiskAssessmentModel).FullName!, "AcknowledgedDisclaimer", Shared.Crm.InsuranceFormDisclosures.RiskAssessment))" />
     @Html.AntiForgeryToken()
         <input type="hidden" name="AgentSlug" value="@Context.Items["TrackingSlug"]" />
         <input type="hidden" name="SessionId" /><input type="hidden" name="VisitorId" />
@@ -840,7 +842,7 @@
             <div class="form-check">
                 <input asp-for="AcknowledgedDisclaimer" class="form-check-input" type="checkbox" required data-original-required="1" />
                 <label class="form-check-label" for="AcknowledgedDisclaimer">
-                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my risk assessment / legacy review request.<span class="text-danger">*</span>
+                    @Shared.Crm.InsuranceFormDisclosures.RiskAssessment<span class="text-danger">*</span>
                 </label>
                 <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
             </div>
@@ -1115,3 +1117,5 @@
         updateWorkingYears();
     </script>
 }
+
+<script src="~/js/insurance-form-evidence.js" asp-append-version="true" defer></script>

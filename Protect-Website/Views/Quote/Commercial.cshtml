@@ -1,3 +1,4 @@
+@inject Microsoft.AspNetCore.DataProtection.IDataProtectionProvider HistoryProtection
 @model Protect_Website.Models.CommercialQuoteFormModel
 
 @{
@@ -112,12 +113,13 @@
 	                    </div>
 	                </div>
 
-	<form action="/Quote/Commercial"
+	<form data-insurance-history="true" action="/Quote/Commercial"
 	      method="post"
 	      id="commercialQuoteForm"
 	      data-form-key="@formKey"
               data-cms-preview-progress-id="stepLabel"
               data-cms-preview-progress-fill-id="progressFill">
+<input type="hidden" name="HistoryDisclosureToken" value="@(Infrastructure.Leads.WebsiteSubmissionEvidence.ProtectAuthorization(HistoryProtection, typeof(Protect_Website.Models.CommercialQuoteFormModel).FullName!, "AcknowledgedDisclaimer", Shared.Crm.InsuranceFormDisclosures.Commercial))" />
 
 
         @Html.AntiForgeryToken()
@@ -1271,7 +1273,7 @@
 	                <div class="form-check mt-2 disclaimer-check">
 	                    <input asp-for="AcknowledgedDisclaimer" class="form-check-input" required />
 	                    <label asp-for="AcknowledgedDisclaimer" class="form-check-label">
-	                        I acknowledge that by submitting this form, I authorize the company to contact me regarding my commercial insurance quote request<span class="required-star">*</span>.
+	                        @Shared.Crm.InsuranceFormDisclosures.Commercial<span class="text-danger">*</span>
                     </label>
                 </div>
                 <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger d-block mt-1"></span>
@@ -1790,3 +1792,5 @@ function enforceRequiredByLabels() {
         })();
     </script>
 }
+
+<script src="~/js/insurance-form-evidence.js" asp-append-version="true" defer></script>

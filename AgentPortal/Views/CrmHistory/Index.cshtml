@@ -1,0 +1,89 @@
+@{
+    ViewData["Title"] = "Client Activity & Case History";
+}
+<section class="container py-4" id="crm-history" data-kind="@ViewData["Kind"]" data-relationship-id="@ViewData["RelationshipId"]" data-timezone="@ViewData["TimeZone"]" data-draft-scope="@ViewData["DraftScope"]">
+    <h1>Client Activity &amp; Case History</h1>
+    <p id="history-subject" class="fs-4 fw-semibold text-break">@ViewData["RelationshipType"]: @ViewData["RelationshipName"]</p>
+    <p>Internal relationship history · Note to Self</p>
+    <form id="history-filters" class="row g-3">
+        @Html.AntiForgeryToken()
+        <label class="col-md-3">Date range<select name="range" class="form-select"><option value="all">All time</option><option value="unknown">Unknown event date</option><option value="today">Today</option><option value="week">This week</option><option value="month">This month</option><option value="custom">Custom</option></select></label>
+        <label class="col-md-3">From<input name="from" type="date" class="form-control" /></label>
+        <label class="col-md-3">Through<input name="through" type="date" class="form-control" /></label>
+        <label class="col-md-3">Group<select name="group" class="form-select"><option value="day">Day</option><option value="week">Week (Monday)</option><option value="month">Month</option><option value="none">None</option></select></label>
+        <label class="col-md-3">Event type<select name="type" class="form-select"><option value="">All types</option>@foreach(var type in new[]{"FormSubmission","Note","Call","AttemptedCall","Meeting","Email","Message","Document","Milestone","FollowUp","Complaint","Addendum","Conversion"}) {<option>@type</option>}</select></label>
+        <label class="col-md-3">Assigned owner<input name="owner" class="form-control" maxlength="450" /></label>
+        <label class="col-md-3">Product<input name="product" class="form-control" maxlength="100" /></label>
+        <label class="col-md-3">Case / application / policy<input name="caseReference" class="form-control" maxlength="200" /></label>
+        <label class="col-md-3">Search internal history<input name="search" class="form-control" maxlength="200" /></label>
+        <label class="col-md-3">Follow-ups<select name="obligations" class="form-select"><option value="">All records</option><option value="open">Open follow-ups / complaints</option><option value="overdue">Overdue follow-ups / complaints</option></select></label>
+        <label class="col-md-3">Status<input name="status" class="form-control" maxlength="40" /></label>
+        <label class="col-md-3">Evidence status<input name="evidence" class="form-control" maxlength="80" /></label>
+        <label class="col-md-3">Time basis<select name="recordedTime" class="form-select"><option value="false">Event time</option><option value="true">Recorded time</option></select></label>
+        <div><button class="btn btn-primary">Apply filters</button> <button type="reset" class="btn btn-outline-secondary">Reset</button></div>
+    </form>
+    <button id="history-export" class="btn btn-outline-secondary my-3" type="button">Export case history</button>
+    <p id="history-preservation-status" role="status"></p>
+    <p id="history-status" role="status" aria-live="polite"></p>
+    <div id="history-results" class="row g-3"></div>
+    <nav aria-label="History pages" class="my-3"><button id="history-previous" class="btn btn-outline-secondary">Previous</button> <button id="history-next" class="btn btn-outline-secondary">Next</button></nav>
+    <details class="card p-3"><summary>Log interaction</summary>
+        <form id="history-interaction" class="row g-3 mt-2">
+            <label class="col-md-4">Type<select name="type" class="form-select">@foreach(var type in new[]{"Note","Call","AttemptedCall","Meeting","Email","Message","Document","Milestone","FollowUp","Complaint","Addendum","TaskCompleted","TaskCanceled"}) {<option>@type</option>}</select></label>
+            <label class="col-md-4">Date (leave blank if unknown)<input name="occurredDate" type="date" class="form-control" /></label>
+            <label class="col-md-4">Exact event time (UTC, if known; replaces date above)<input name="occurredUtc" type="datetime-local" class="form-control" /><small>Leave blank when only the date is known. Never estimate a missing time.</small></label>
+            <label class="col-md-4">Channel<input name="channel" class="form-control" maxlength="80" /></label>
+            <label>Factual account<textarea name="account" class="form-control" rows="5" required maxlength="20000"></textarea></label>
+            <label class="col-md-6">Participants<input name="participants" class="form-control" maxlength="2000" /></label>
+            <label class="col-md-6">Direction<select name="direction" class="form-select"><option value="">Unknown / not applicable</option><option>Inbound</option><option>Outbound</option></select></label>
+            <label>Outcome<textarea name="outcome" class="form-control" maxlength="4000"></textarea></label>
+            <label>Next action<textarea name="nextAction" class="form-control" maxlength="4000"></textarea></label>
+            <label class="col-md-6">Case / application / policy<input name="caseReference" class="form-control" maxlength="200" /></label>
+            <label class="col-md-6">Product<input name="product" class="form-control" maxlength="100" /></label>
+            <label class="col-md-6">Follow-up owner<input name="assignedOwner" class="form-control" maxlength="450" value="@ViewData["AgentId"]" /></label>
+            <label class="col-md-6">Due time (UTC)<input name="dueUtc" type="datetime-local" class="form-control" /></label>
+            <label>Evidence source (carrier, document or receipt name)<input name="evidenceSource" class="form-control" maxlength="500" /></label>
+            <label>Protected source reference (no public file URLs)<input name="evidenceReference" class="form-control" maxlength="2000" /></label>
+            <label>Evidence state<select name="evidenceState" class="form-select"><option>Evidence unavailable</option><option>Manual source reference</option><option>Human-reported source inspection</option><option>Later recollection</option></select></label>
+            <p>Manual evidence is the recorder's account. It is not an independently captured client signature, carrier approval or active coverage.</p>
+            <label>Related entry ID for addendum or follow-up<input name="relatedEntryId" class="form-control" /></label>
+            <div><button class="btn btn-primary">File interaction</button></div>
+        </form>
+    </details>
+    <details class="card p-3 my-3"><summary>Attach protected evidence</summary>
+        <p>Upload an original PDF (maximum 20 MB). Each upload files an immutable version. A later version links to the original; it does not replace it. Identify missing pages or unavailable signature evidence explicitly.</p>
+        <form id="history-evidence" class="row g-3">
+            <label>Original PDF<input type="file" name="file" accept="application/pdf,.pdf" class="form-control" required /></label>
+            <label>Source<input name="source" class="form-control" required maxlength="500" /></label>
+            <label>Completeness and limitations<textarea name="completeness" class="form-control" required maxlength="2000"></textarea></label>
+            <label>Previous evidence entry ID (for a new version)<input name="previousVersion" class="form-control" /></label>
+            <div><button class="btn btn-outline-primary">File evidence version</button></div>
+        </form>
+    </details>
+    <details class="card p-3 my-3"><summary>Correct a submission association</summary>
+        <p>Open the current submission tile first, then choose the exact target relationship ID. No matching by name, email or phone is performed. The original submission and correction history are preserved.</p>
+        <form id="history-association" class="row g-3">
+            <label>Submission ID<input name="submissionId" class="form-control" required /></label>
+            <label>Target relationship<select name="targetKind" class="form-select"><option value="lead">Lead</option><option value="profile">Client profile</option></select></label>
+            <label>Exact lead or client profile ID<input name="targetLeadId" class="form-control" required maxlength="100" /></label>
+            <label>Reason<textarea name="reason" class="form-control" required maxlength="4000"></textarea></label>
+            <div><button class="btn btn-outline-primary">File association correction</button></div>
+        </form>
+    </details>
+    <details class="card p-3 my-3"><summary>Unlinked owned submissions</summary><p>Only submissions with your existing verified ownership mapping appear here. Missing ownership is never inferred from matching contact information.</p><button id="history-unlinked-load" type="button" class="btn btn-outline-secondary">Load unlinked submissions</button><div id="history-unlinked-results"></div></details>
+    @if (ViewData["MayManageHolds"] is true)
+    {
+        <a class="btn btn-outline-secondary my-3" href="/CrmHistory/Ownership">Review unresolved submission ownership</a>
+        <details class="card p-3 my-3"><summary>Record preservation instruction</summary>
+            <p>Records an attributed hold or release instruction. Releasing an instruction does not delete records or authorize disposition.</p>
+            <form id="history-preservation" class="row g-3">
+                <label>Action<select name="release" class="form-select"><option value="false">Place preservation hold</option><option value="true">Record release of a hold</option></select></label>
+                <label>Original hold ID (required for release)<input name="holdEntryId" class="form-control" /></label>
+                <label>Instruction and basis<textarea name="reason" class="form-control" required maxlength="4000"></textarea></label>
+                <div><button class="btn btn-outline-primary">File preservation instruction</button></div>
+            </form>
+        </details>
+    }
+    <dialog aria-labelledby="history-detail-title" id="history-detail" class="rounded p-4" style="max-width:min(900px,95vw);max-height:90vh;overflow:auto"><button id="history-close" class="btn btn-outline-secondary">Close</button><h2 id="history-detail-title">Filed record</h2><div id="history-detail-content"></div></dialog>
+</section>
+@section Scripts { <script src="~/js/crm-history.js" asp-append-version="true"></script> }

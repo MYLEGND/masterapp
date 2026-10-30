@@ -1,3 +1,4 @@
+@inject Microsoft.AspNetCore.DataProtection.IDataProtectionProvider HistoryProtection
 @using System.Text.Json
 @model Protect_Website.Models.DisabilityQuoteFormModel
 
@@ -95,7 +96,7 @@
     var primaryStartCtaNote = "A quick review now can help protect your paycheck from a major interruption later.";
     var contactMethodHelperText = "Best number to save and review your disability coverage details.";
     var contactMethodErrorText = "Please enter your phone number so we can save your review.";
-    var consentPromptText = "I agree to receive a call or text to review my disability coverage options and next steps.";
+    var consentPromptText = Shared.Crm.InsuranceFormDisclosures.Disability;
     var consentErrorText = "Please check the box so we can save your review.";
 
     form.PageVariant = pageVariant;
@@ -1495,7 +1496,8 @@ body.disability-final-step-active .dq-proof-chips {
                 </div>
             </div>
 
-            <form asp-action="SubmitDisabilityQuote" asp-controller="DisabilityQuote" method="post" id="disabilityQuoteForm" data-cms-presentation="quote" data-cms-review-kind="review" data-cms-review-metrics="Age range|Work type|Income focus" data-cms-entry-id="disabilityHeroEntryPanel" data-cms-education-id="disabilityEducationPanel" data-cms-question-id="dqStep1Panel" data-cms-processing-id="dqProcessingPanel" data-cms-contact-id="dqContactPanel" data-cms-review-id="disabilityReviewSummary" data-cms-progress-id="dqStep1Progress" data-cms-progress-fill-id="dqStep1ProgressFill" data-cms-processing-fill-id="dqProcessingFill" data-cms-trust-id="" data-cms-started-class="disability-quote-started" data-cms-final-class="disability-final-step-active" data-form-key="@formKey" novalidate>
+            <form data-insurance-history="true" asp-action="SubmitDisabilityQuote" asp-controller="DisabilityQuote" method="post" id="disabilityQuoteForm" data-cms-presentation="quote" data-cms-review-kind="review" data-cms-review-metrics="Age range|Work type|Income focus" data-cms-entry-id="disabilityHeroEntryPanel" data-cms-education-id="disabilityEducationPanel" data-cms-question-id="dqStep1Panel" data-cms-processing-id="dqProcessingPanel" data-cms-contact-id="dqContactPanel" data-cms-review-id="disabilityReviewSummary" data-cms-progress-id="dqStep1Progress" data-cms-progress-fill-id="dqStep1ProgressFill" data-cms-processing-fill-id="dqProcessingFill" data-cms-trust-id="" data-cms-started-class="disability-quote-started" data-cms-final-class="disability-final-step-active" data-form-key="@formKey" novalidate>
+<input type="hidden" name="HistoryDisclosureToken" value="@(Infrastructure.Leads.WebsiteSubmissionEvidence.ProtectAuthorization(HistoryProtection, typeof(Protect_Website.Models.DisabilityQuoteFormModel).FullName!, "AcknowledgedDisclaimer", Shared.Crm.InsuranceFormDisclosures.Disability))" />
                 @Html.AntiForgeryToken()
         <input type="hidden" name="SubmissionId" value="@(Context?.Request is { HasFormContentType: true } submissionRequest && Guid.TryParse(submissionRequest.Form["SubmissionId"], out var submissionToken) ? submissionToken : Guid.NewGuid())" />
                 @if (!string.IsNullOrWhiteSpace(agentSlug))
@@ -3083,3 +3085,5 @@ body.disability-final-step-active .dq-proof-chips {
     }());
     </script>
 }
+
+<script src="~/js/insurance-form-evidence.js" asp-append-version="true" defer></script>

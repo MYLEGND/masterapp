@@ -347,6 +347,7 @@ if (!ModelState.IsValid)
                         RecommendationSecondaryTitle   = model.RecommendationSecondaryTitle,
                     })
                 };
+                WebsiteSubmissionEvidence.Attach(lead, model, "Quote request", "MarketingEmailConsent", model.MarketingEmailConsent, Shared.Crm.InsuranceFormDisclosures.Life, HttpContext?.Request is { HasFormContentType: true } evidenceRequest ? evidenceRequest.Form["HistoryPresentationJson"].FirstOrDefault() : null, HttpContext?.Request is { HasFormContentType: true } disclosureRequest ? disclosureRequest.Form["HistoryDisclosureToken"].FirstOrDefault() : null, HttpContext?.RequestServices);
                 if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead,
                         HttpContext?.Request is { HasFormContentType: true } submissionRequest ? submissionRequest.Form["SubmissionId"].FirstOrDefault() : null,
                         HttpContext?.RequestAborted ?? CancellationToken.None, async ct =>
