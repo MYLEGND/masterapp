@@ -1,15 +1,41 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized completing and deploying diagnostics and Client Activity & Case History together in the existing owned release, with independent exact-source acceptance and existing protected controls. No new credentials, spend, security exception or Production-confirmation bypass.",
-  "purpose": "One combined diagnostics and Client Activity & Case History release for Portal, Client, Protect and Parfait. Retain permanent bounded diagnostics; shared append-only Lead/Client history, original dated form answers and separate authorization evidence, protected PDF versions, conversion continuity, filtering, permissions and backfill. Apply reviewed diagnostics then CRM schema migrations through trusted observer, synthetic SQL rehearsal and recovery admission before application publication. Deploy retention-safe Portal first, with exact successful publication and fresh live/idle proof before the other three hosts publish. From the first CRM history filing, Portal rollback must remain CRM-compatible even while native associations are disabled; preserve schema, filed history and protected document storage. Native-client associations remain disabled until all four hosts and protected durable evidence storage are verified and an exact compatible rollback floor is recorded; retain filed schema/evidence on rollback. Preserve unchanged Website deployment and tenant content. Exact A-L route/browser acceptance and mandatory human Production confirmation remain required.",
-  "requestId": "masterapp-combined-audit-continuation-20261030-v1",
-  "releaseMode": "approved-only",
-  "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect",
-    "masterapp-parfait"
-  ],
+  "authorization": "Founder authorized completing the existing combined diagnostics and Client Activity & Case History release, including necessary admission repair, independent review, normal protected integration and retained-package recovery. No new credentials, spend, security exception, SQL replay or confirmation bypass.",
+  "purpose": "Promote only reviewed recovery tooling for original run 41131223973 application revision 3243221ae661b53d60f78cc2dab108a93bad7632. Authenticate the exact pre-upload failures from attempts 3 and 4 and earlier skipped matrices; retain unknown-intent holds elsewhere. Reuse all four original immutable application packages and completed schema success through the existing retained recovery dispatch, with fresh durable read-only schema/recovery proof, Portal-first receipt/live-idle barriers and unchanged rollback/native-association holds. This promotion deploys no applications, performs no SQL and changes no routing. Original combined requirements and acceptance A-L remain intact.",
+  "requestId": "masterapp-combined-preintent-recovery-tools-20261030-v1",
+  "releaseMode": "validate-only",
+  "targets": [],
   "cloudflareWebsiteRouting": false,
-  "preserveLiveTargets": false
+  "preserveLiveTargets": false,
+  "trustedToolPromotion": {
+    "schemaVersion": 1,
+    "baseRevision": "3243221ae661b53d60f78cc2dab108a93bad7632",
+    "sourceRevision": "5113034fa92d81f940cdab0efd6894d7fa822b47",
+    "files": {
+      ".github/workflows/legend-fast-track-ui.yml": {
+        "mode": "100644",
+        "blob": "a35b1e25e3268a011c776006b5f779f328b7caf8"
+      },
+      "scripts/deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "9892fb55ece1369a1e97b7bc75462fe5fbe8ad63"
+      },
+      "scripts/release-artifacts/transport.cjs": {
+        "mode": "100644",
+        "blob": "0e21823c4da0b3db03e6f1c2f6b308afb4a3695e"
+      },
+      "scripts/test-deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "70c23319e41acc7744853ee5a2407117a239993a"
+      },
+      "scripts/test-validation-resume.py": {
+        "mode": "100644",
+        "blob": "5cc4f521d2851572d06ae730c46a7661d25c64fa"
+      },
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "4861b005957faf5cbf58bca6f252fc532077d5f2"
+      }
+    }
+  }
 }
