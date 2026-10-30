@@ -14537,6 +14537,7 @@ CRM_FEATURE_TEST_INPUTS = (
     'AgentPortal/Controllers/CrmHistoryController.cs',
     'AgentPortal.Tests/CrmHistoryTests.cs',
     'AgentPortal.Tests/CrmHistoryFormRoutesTests.cs',
+    'AgentPortal.Tests/CrmHistoryHttpRoutesTests.cs',
     'AgentPortal.Tests/CrmHistoryConversionTests.cs',
     'AgentPortal.Tests/CrmHistoryRecoveryTests.cs',
     'AgentPortal.Tests/CrmHistoryBrowserTests.cs',
@@ -14544,6 +14545,7 @@ CRM_FEATURE_TEST_INPUTS = (
 )
 CRM_REQUIRED_METHOD_COUNTS = {
     'InsuranceHandlerFilesExactSubmissionAndRetryKeepsOneTile': 12,
+    'InsuranceHttpRoutesValidateBeforeFilingAndPreserveExactRetries': 12,
     'ConversionHandlersPreserveHistoryAndRollbackFailedCreation': 5,
     'SubmissionFailureRollsBackAnswersAndHistoryThenSameReceiptRecoversOnce': 1,
     'HostedSyntheticHistorySupportsDesktopMobileKeyboardAndProtectedEndpoints': 1,
@@ -14585,7 +14587,8 @@ def verify_crm_discovery(trx, root=Path('.')):
             prefix = 'AgentPortal.Tests.CrmHistoryTests.' + method
             actual = [row for row in results.findall('.//t:UnitTestResult', ns)
                 if row.get('testName', '') == prefix or row.get('testName', '').startswith(prefix + '(')]
-            if len(actual) != expected or any(row.get('outcome') != 'Passed' for row in actual):
+            if (len(actual) != expected or len({row.get('testName') for row in actual}) != expected
+                or any(row.get('outcome') != 'Passed' for row in actual)):
                 raise ValueError(method + ': exact required regression cases did not all execute successfully')
             print(f'{method}: {len(actual)} executed PASS')
     else:

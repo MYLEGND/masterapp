@@ -8970,6 +8970,13 @@ class CrmSourcePresenceAndDiscoveryTests(unittest.TestCase):
         tree.write(self.trx)
         with self.assertRaisesRegex(ValueError,'HostedSyntheticHistory'):m.verify_crm_discovery(self.trx,self.root)
 
+    def test_repeated_result_cannot_substitute_for_missing_route(self):
+        self.touch(m.CRM_FEATURE_TEST_INPUTS);self.results()
+        import xml.etree.ElementTree as ET
+        tree=ET.parse(self.trx);rows=[row for row in tree.getroot() if 'InsuranceHttpRoutes' in row.get('testName','')]
+        rows[1].set('testName',rows[0].get('testName'));tree.write(self.trx)
+        with self.assertRaisesRegex(ValueError,'InsuranceHttpRoutes'):m.verify_crm_discovery(self.trx,self.root)
+
     def test_any_orphan_source_or_test_is_not_absence(self):
         for path in (*m.CRM_FEATURE_TEST_INPUTS,'AgentPortal.Tests/CrmHistoryEvidenceTests.cs'):
             self.touch([path]);self.results()

@@ -47,7 +47,10 @@ public sealed partial class CrmHistoryTests
     [InlineData("DisabilityQuoteController", "SubmitDisabilityQuote", "disability", "quote_disability")]
     [InlineData("DentalVisionHearingQuoteController", "SubmitDentalVisionHearingQuote", "dental_vision_hearing", "quote_dvh")]
     [InlineData("RiskAssessmentController", "SubmitRiskAssessment", "risk_assessment", "risk_assessment")]
-    public async Task InsuranceHandlerFilesExactSubmissionAndRetryKeepsOneTile(string controllerName, string actionName, string product, string pageKey)
+    public Task InsuranceHandlerFilesExactSubmissionAndRetryKeepsOneTile(string controllerName, string actionName, string product, string pageKey)
+        => VerifyInsuranceSubmission(controllerName, actionName, product, pageKey, false);
+
+    private async Task VerifyInsuranceSubmission(string controllerName, string actionName, string product, string pageKey, bool hosted)
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
@@ -110,7 +113,10 @@ public sealed partial class CrmHistoryTests
              "Drivers":[{"FirstName":"Synthetic","LastName":"One"},{"FirstName":"Synthetic","LastName":"Two"}],
              "Vehicles":[{"Make":"Synthetic","Model":"One"},{"Make":"Synthetic","Model":"Two"}]}
             """;
-        async Task<IActionResult> Submit() => await (Task<IActionResult>)action.Invoke(controller,[JsonSerializer.Deserialize(controllerName=="RiskAssessmentController" ? answers.Replace("\"HouseholdSize\":\"1\"", "\"HouseholdSize\":1", StringComparison.Ordinal) : answers,modelType)!])!;
+        var answerJson=controllerName=="RiskAssessmentController" ? answers.Replace("\"HouseholdSize\":\"1\"", "\"HouseholdSize\":1", StringComparison.Ordinal) : answers;
+        using var httpFixture=hosted ? await InsuranceHttpFixture.Create(type,action,modelType,known,Dependency,protector,profile,CompleteInsuranceFixture(answerJson,controllerName),http) : null;
+        async Task<IActionResult> Submit() => httpFixture is not null ? await httpFixture.Submit(http.Request.Form) :
+            await (Task<IActionResult>)action.Invoke(controller,[JsonSerializer.Deserialize(answerJson,modelType)!])!;
         var result=await Submit();
         Assert.True(result is OkObjectResult or RedirectToActionResult or RedirectResult, result.GetType().Name);
         var submission=await db.WebsiteLeads.SingleAsync();

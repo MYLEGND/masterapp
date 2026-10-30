@@ -33,8 +33,14 @@ internal static partial class RehearsalFixture
     private static async Task VerifyCrmData(MasterAppDbContext db, CancellationToken ct)
     {
         var row = await db.WebsiteLeadIntakeLinks.AsNoTracking().SingleAsync(x => x.Id == CrmReceipt, ct);
+        // These columns exist only in a CRM candidate. Keep the trusted tool
+        // compilable against its pre-feature promotion baseline without adding
+        // application entities to the nonpublishing tool change.
+        var association = await db.WebsiteLeadIntakeLinks.AsNoTracking().Where(x => x.Id == CrmReceipt)
+            .Select(x => new { Client = EF.Property<Guid?>(x, "HistoryClientProfileId"), Version = EF.Property<Guid>(x, "AssociationVersion") })
+            .SingleAsync(ct);
         if (row.WebsiteLeadPublicId != CrmPublic || row.WorkstationLeadId != "synthetic-crm-preserved" ||
-            row.HistoryClientProfileId is not null || row.CommerceBusinessId is not null || row.AssociationVersion != Guid.Empty ||
+            association.Client is not null || row.CommerceBusinessId is not null || association.Version != Guid.Empty ||
             row.AgentUserId != "synthetic-owner" || row.SubmittedUtc != CrmTime || row.CapturedUtc != CrmTime || row.SnapshotJson != CrmSnapshot ||
             !await db.WebsiteLeads.AnyAsync(x => x.Id == row.WebsiteLeadRowId && x.LeadId == CrmPublic, ct))
             throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
@@ -61,8 +67,10 @@ internal static partial class RehearsalFixture
         await using (var transaction = await db.Database.BeginTransactionAsync(ct))
         {
             await db.Database.ExecuteSqlRawAsync("UPDATE dbo.WebsiteLeadIntakeLinks SET WorkstationLeadId = NULL, HistoryClientProfileId = '20000000-0000-0000-0000-000000000003' WHERE Id = '20000000-0000-0000-0000-000000000001'", ct);
-            var native = await db.WebsiteLeadIntakeLinks.AsNoTracking().SingleAsync(x => x.Id == CrmReceipt, ct);
-            if (native.WorkstationLeadId is not null || native.HistoryClientProfileId != CrmClient || native.SnapshotJson != CrmSnapshot)
+            var native = await db.WebsiteLeadIntakeLinks.AsNoTracking().Where(x => x.Id == CrmReceipt)
+                .Select(x => new { x.WorkstationLeadId, Client = EF.Property<Guid?>(x, "HistoryClientProfileId"), x.SnapshotJson })
+                .SingleAsync(ct);
+            if (native.WorkstationLeadId is not null || native.Client != CrmClient || native.SnapshotJson != CrmSnapshot)
                 throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
             await transaction.RollbackAsync(ct);
         }
@@ -74,7 +82,7 @@ internal static partial class RehearsalFixture
             "ALTER TABLE dbo.WebsiteLeadIntakeLinks NOCHECK CONSTRAINT CK_WebsiteLeadIntakeLinks_HistoryAssociation",
             "ALTER TABLE dbo.WebsiteLeadIntakeLinks NOCHECK CONSTRAINT CK_WebsiteLeadIntakeLinks_HistoryAssociation; ALTER TABLE dbo.WebsiteLeadIntakeLinks CHECK CONSTRAINT CK_WebsiteLeadIntakeLinks_HistoryAssociation",
             "ALTER TABLE dbo.WebsiteLeadIntakeLinks NOCHECK CONSTRAINT FK_WebsiteLeadIntakeLinks_ClientProfiles_HistoryClientProfileId; ALTER TABLE dbo.WebsiteLeadIntakeLinks CHECK CONSTRAINT FK_WebsiteLeadIntakeLinks_ClientProfiles_HistoryClientProfileId",
-            "DECLARE @n sysname = (SELECT d.name FROM sys.default_constraints d JOIN sys.columns c ON c.object_id=d.parent_object_id AND c.column_id=d.parent_column_id WHERE d.parent_object_id=OBJECT_ID('dbo.WebsiteLeadIntakeLinks') AND c.name='AssociationVersion'); EXEC('ALTER TABLE dbo.WebsiteLeadIntakeLinks DROP CONSTRAINT '+QUOTENAME(@n)); ALTER TABLE dbo.WebsiteLeadIntakeLinks ADD DEFAULT ('20000000-0000-0000-0000-000000000001') FOR AssociationVersion",
+            "DECLARE @n sysname = (SELECT d.name FROM sys.default_constraints d JOIN sys.columns c ON c.object_id=d.parent_object_id AND c.column_id=d.parent_column_id WHERE d.parent_object_id=OBJECT_ID('dbo.WebsiteLeadIntakeLinks') AND c.name='AssociationVersion'); DECLARE @sql nvarchar(max) = N'ALTER TABLE dbo.WebsiteLeadIntakeLinks DROP CONSTRAINT '+QUOTENAME(@n); EXEC(@sql); ALTER TABLE dbo.WebsiteLeadIntakeLinks ADD DEFAULT ('20000000-0000-0000-0000-000000000001') FOR AssociationVersion",
             "ALTER TABLE dbo.WebsiteLeadIntakeLinks DROP CONSTRAINT CK_WebsiteLeadIntakeLinks_HistoryAssociation; ALTER TABLE dbo.WebsiteLeadIntakeLinks DROP CONSTRAINT FK_WebsiteLeadIntakeLinks_ClientProfiles_HistoryClientProfileId; DROP INDEX IX_WebsiteLeadIntakeLinks_HistoryClientProfileId ON dbo.WebsiteLeadIntakeLinks; ALTER TABLE dbo.WebsiteLeadIntakeLinks ALTER COLUMN HistoryClientProfileId varchar(36) NULL",
 
             "ALTER TABLE dbo.WebsiteLeadIntakeLinks NOCHECK CONSTRAINT FK_WebsiteLeadIntakeLinks_ClientProfiles_HistoryClientProfileId",
