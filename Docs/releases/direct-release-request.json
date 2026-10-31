@@ -1,32 +1,49 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Existing Founder approval to complete the combined release and necessary bounded admission repair, with independent review and normal protected integration.",
-  "purpose": "Reduce repeated original/material evidence reads inside one existing bounded read-only proof snapshot, closed with uncached readback before schema/live/provider/publication checks. Preserve exact original packages, all-target and before-intent gates, Portal-first ordering, and unchanged deadlines/reserves. Report bounded existing efficiency counters without affecting outcomes.",
-  "requestId": "masterapp-combined-original-proof-reuse-20261031-v1",
+  "authorization": "Zac explicitly approved this one-release admission-policy change in Sentinel_1a096f6271dc8191808e39cd0e87e11e at 2026-10-31T01:53:42Z. Preserve current security, production, ownership and recovery protections.",
+  "purpose": "Adopt the exact retained four app3243221 packages and completed schema through the existing recovery owner, replacing recursive predecessor provenance with pinned terminal effects and fresh current operation/provider/schema/rollback proof. This tool promotion publishes no applications and authorizes no SQL replay, rebuild, routing or unrelated features.",
+  "requestId": "stable-base-3243221-20261031-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
+  "baselineAdoption": {
+    "generation": "stable-base-3243221-20261031-v1",
+    "authorization": "Sentinel_1a096f6271dc8191808e39cd0e87e11e",
+    "materialIdentity": "952f8a78731c151e716f6e03f1623bb0b7fab587abae4b7fabdac9b58d4b4ae4"
+  },
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "173fbd2052b2935a2a9200b9b2ddfe2cb964c1e9",
-    "sourceRevision": "e854b34c29bdef214c61e4a409e5a07ef349647c",
+    "baseRevision": "1ecc94b988188bf664e1e515b363f63dbed915fe",
+    "sourceRevision": "aae5a9f47662a2690a0f01027b6ffd1996e96f9f",
     "files": {
       "scripts/deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "dad0cb93d38b6446752d85e47d0c70c42c574c80"
+        "blob": "cfa58d322c105b1511b2d2f674f1c9e930086bcc"
+      },
+      "scripts/release-artifacts/test-transport.cjs": {
+        "mode": "100644",
+        "blob": "9d425228eadb4d713486a6fb6acbc241ec100906"
+      },
+      "scripts/release-artifacts/transport.cjs": {
+        "mode": "100644",
+        "blob": "223629a3a54fd2e96211cb95dc09b9c1aab398ca"
+      },
+      "scripts/release_policy.py": {
+        "mode": "100644",
+        "blob": "3cad7752503159f7b5d2533767fb206a96aed108"
       },
       "scripts/test-deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "1fdb145c06b53238363d95986f1f60a98adefd04"
-      },
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "83b8baa5b9a79d0f003eede3545a377ff19c0437"
+        "blob": "4d6a9ae1df83c0a891359caea5b44d75cd42d8a6"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "3362b8124a97258452b28076d83da86211282c2c"
+        "blob": "49862d26fb03504d8c828fcefd89c660295763ae"
+      },
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "339e60ec7b7902f7b7c39e74b36979e020325032"
       }
     }
   }
