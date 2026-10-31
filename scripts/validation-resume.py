@@ -358,6 +358,7 @@ def fast_track_recovery_producer(repository, run, token, *, attempt, live=False)
         raise ValueError('FAST_TRACK_RECOVERY_WORKFLOW_CHANGED')
     adopted = stable_baseline_recovery_run(repository, run)
     if adopted:
+        stable_baseline_continuation_parent(repository, run, token)
         promotions = [r for r in _fast_track_history_observation(repository, token)
                       if r['head_sha'] == revision and is_fast_track_producer(repository, r)]
     else:
@@ -667,10 +668,37 @@ def _recovery_metadata_endpoint(path):
         r'|actions/(?:runs|workflows/[^/?]+/runs)\?[^#]+'
         r'|actions/artifacts\?name=[^&]+&per_page=100'
         r'|pulls/\d+'
-        r'|commits/[a-f0-9]{40}/pulls\?per_page=100', path))
+        r'|commits/[a-f0-9]{40}/pulls\?per_page=100'
+        r'|compare/[a-f0-9]{40}\.\.\.[a-f0-9]{40}', path))
 
 
 def _recovery_metadata_reusable(repository, path, value, token):
+    comparison = re.fullmatch(r'compare/([a-f0-9]{40})\.\.\.([a-f0-9]{40})', path)
+    if comparison:
+        # Only exact immutable pairs enter the existing bounded decision view.
+        # Ref comparisons and provider state never qualify. The complete raw
+        # response is still fetched uncached and compared when this view closes.
+        base, head = comparison.groups()
+        status = value.get('status') if isinstance(value, dict) else None
+        counts = [value.get(k) for k in ('ahead_by', 'behind_by', 'total_commits')] if isinstance(value, dict) else []
+        merge_base = value.get('merge_base_commit', {}).get('sha') if isinstance(value, dict) and isinstance(value.get('merge_base_commit'), dict) else None
+        valid = (isinstance(value, dict)
+            and value.get('url') == 'https://api.github.com/repos/' + repository + '/' + path
+            and value.get('html_url') == 'https://github.com/' + repository + '/' + path
+            and isinstance(value.get('base_commit'), dict) and value['base_commit'].get('sha') == base
+            and re.fullmatch('[a-f0-9]{40}', str(merge_base)) is not None
+            and status in {'ahead', 'behind', 'identical', 'diverged'}
+            and len(counts) == 3 and all(type(n) is int and n >= 0 for n in counts)
+            and counts[0] == counts[2])
+        if valid:
+            ahead, behind, _ = counts
+            valid = ((status == 'ahead' and ahead > 0 and behind == 0 and merge_base == base)
+                or (status == 'behind' and ahead == 0 and behind > 0 and merge_base == head)
+                or (status == 'identical' and ahead == behind == 0 and base == head == merge_base)
+                or (status == 'diverged' and ahead > 0 and behind > 0 and merge_base not in {base, head}))
+        if not valid:
+            raise ReleaseOperationHistoryUnproven('RECOVERY_COMPARE_IDENTITY_UNPROVEN')
+        return True
     if not isinstance(value, (dict, list)):
         return False
     current = os.environ.get('GITHUB_RUN_ID')
@@ -7616,7 +7644,16 @@ _COMPLETION_BASELINE_PROVING = contextvars.ContextVar("completion_baseline_provi
 
 # Explicit retained effects snapshot accepted into this one admission root.
 # These are terminal observations, never permissions to repeat old writes.
+STABLE_BASE_CONTINUATION = dict(
+    priorToolRevision='d0566fc8200699ff8be2d4081a7bb571f3ad460a',
+    priorPromotionRun=41166381726, terminalNonentryRun=41166598096,
+    terminalNonentryAttempt=1,
+    terminalNonentryIdentity='b3de59e3b1d6f196abd334767694cb904852ceafcee67c19c76f58d3857de545')
+
 STABLE_BASE_PRIOR_RECOVERIES = {
+    41166598096: ('d0566fc8200699ff8be2d4081a7bb571f3ad460a', 124435405071, 13029616606,
+        'sha256:9c7fe092d767b417a2f99aa6b73da9b57dc353cc2056482aee601a7faced58a3',
+        'b3de59e3b1d6f196abd334767694cb904852ceafcee67c19c76f58d3857de545'),
     41146890884: ('1701c92649b811b3dca1587ef76146d14bea28f8', 124373976346, None, None, None),
     41149725754: ('3c7d959fee3af1f649fa42285c5b14070d5e814b', 124383112275, None, None, None),
     41151618259: ('173fbd2052b2935a2a9200b9b2ddfe2cb964c1e9', 124389208379, 13023308925,
@@ -7627,6 +7664,8 @@ STABLE_BASE_PRIOR_RECOVERIES = {
         '02b2adfb350152eb0f972d05d92e6c4a39a00307defc4aba594ff2ccdaffff40'),
 }
 STABLE_BASE_SCHEMA_COMPANIONS = {
+    41166598096: (13028853646, 'sha256:b543e92b0cf6b72b5c1507475d62366f3a798171f33683ca866cde3c0a8ed168',
+        'legend-retained-schema-proof-d865c8121799a58a8abb8f786b3d9c33bbde8ffe092713bdd26ba686f1647fa0'),
     41151618259: (13022699696, 'sha256:78850a96eaef38565df578e07520926622c5fef8a530ed044623d70d4847329a',
         'legend-retained-schema-proof-099677423df5c26284396f673b4efcac5f7b671182f4dd79f34b6f3a14c1e0d2'),
     41154369039: (13024437457, 'sha256:8bb5bfa0edab22b4eb128ad299c57a3eaaf79aa62f57c4bee5a5c5cf8f76691f',
@@ -7720,6 +7759,33 @@ def stable_baseline_operation_nonentry(repository, revision, target, operation_i
     return True
 
 
+def stable_baseline_tool_request(request, adoption):
+    if request.get('baselineAdoption') != stable_baseline_identity(adoption):
+        raise ValueError('STABLE_BASE_TOOL_AUTHORITY_CHANGED')
+    base = request.get('trustedToolPromotion', {}).get('baseRevision')
+    if 'baselineContinuation' not in request:
+        if base != adoption['implementationBase']:
+            raise ValueError('STABLE_BASE_TOOL_AUTHORITY_CHANGED')
+        return False  # Original generation is never relabelled as continuation.
+    if (request['baselineContinuation'] != STABLE_BASE_CONTINUATION
+        or base != STABLE_BASE_CONTINUATION['priorToolRevision']):
+        raise ValueError('STABLE_BASE_CONTINUATION_CHANGED')
+    return True
+
+
+def stable_baseline_continuation_parent(repository, run, token):
+    request = _fast_track_policy().read_request(run['head_sha'])
+    adoption = stable_baseline_authority(repository, 41131223973, CRM_PREINTENT_REVISION)
+    if not stable_baseline_tool_request(request, adoption):return
+    prior = api_get(repository, 'actions/runs/' + str(STABLE_BASE_CONTINUATION['priorPromotionRun']), token)
+    if (prior.get('id') != STABLE_BASE_CONTINUATION['priorPromotionRun']
+        or prior.get('head_sha') != STABLE_BASE_CONTINUATION['priorToolRevision']
+        or prior.get('run_attempt') != 1 or prior.get('status') != 'completed'
+        or prior.get('conclusion') != 'success' or not is_fast_track_producer(repository, prior)
+        or fast_track_promotion_parent(repository, prior, token) != adoption['implementationBase']):
+        raise ValueError('STABLE_BASE_CONTINUATION_PARENT_UNPROVEN')
+
+
 def stable_baseline_recovery_run(repository, run):
     if repository.lower() != 'mylegnd/masterapp':return False
     if run.get('display_title') != 'LEGEND retained recovery original=41131223973 application=' + CRM_PREINTENT_REVISION:
@@ -7728,9 +7794,7 @@ def stable_baseline_recovery_run(repository, run):
     if 'baselineAdoption' not in request:
         return False  # Historical receipts retain their original validator.
     adoption = stable_baseline_authority(repository, 41131223973, CRM_PREINTENT_REVISION)
-    if (request['baselineAdoption'] != stable_baseline_identity(adoption)
-        or request.get('trustedToolPromotion', {}).get('baseRevision') != adoption['implementationBase']):
-        raise ValueError('STABLE_BASE_TOOL_AUTHORITY_CHANGED')
+    stable_baseline_tool_request(request, adoption)
     return True
 
 
@@ -7740,9 +7804,7 @@ def stable_baseline_completed_parent(repository, before, token):
     request = _fast_track_policy().read_request(before)
     if 'baselineAdoption' not in request:return None
     adoption = stable_baseline_authority(repository, 41131223973, CRM_PREINTENT_REVISION)
-    if (request['baselineAdoption'] != stable_baseline_identity(adoption)
-        or request.get('trustedToolPromotion', {}).get('baseRevision') != adoption['implementationBase']):
-        raise ValueError('STABLE_BASE_FORWARD_AUTHORITY_CHANGED')
+    stable_baseline_tool_request(request, adoption)
     name = fast_track_recovery_summary_name(adoption['originalRun'], adoption['applicationRevision'])
     artifacts = _completion_inventory(api_get(repository,
         'actions/artifacts?name=' + urllib.parse.quote(name, safe='') + '&per_page=100', token), 'artifacts')
