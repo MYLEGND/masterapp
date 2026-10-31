@@ -6622,6 +6622,7 @@ class HistoricalRecoveryWorkflowTests(unittest.TestCase):
         self.assertFalse(m.historical_recovery_workflow_matches(current+'# changed',current))
 
     def test_actual_preserved_historical_workflow_bytes(self):
+        import subprocess
         current=(ROOT/'.github/workflows'/m.FAST_TRACK_RELEASE_WORKFLOW).read_text()
         old=subprocess.check_output(['git','show','8fd4deb1fcbd54a472abe486758de331928e646c:.github/workflows/legend-fast-track-ui.yml'],text=True)
         self.assertEqual(hashlib.sha256(old.encode()).hexdigest(),'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd')
