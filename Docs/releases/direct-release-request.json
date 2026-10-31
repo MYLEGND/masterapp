@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
   "authorization": "Zac explicitly approved this one-release admission-policy change in Sentinel_1a096f6271dc8191808e39cd0e87e11e at 2026-10-31T01:53:42Z. Preserve current security, production, ownership and recovery protections.",
-  "purpose": "Bounded immutable exact-SHA ancestry proof reuse and exact one-step nonentry continuation for the existing approved four-package baseline. Same material/adoption identity, same operation IDs, fresh closing checks, unchanged deadlines and current provider/rollback protections. Zero-target tool promotion only.",
-  "requestId": "stable-base-proof-reuse-20261031-v1",
+  "purpose": "Exact approved current-state adoption root replacing retired provenance only for pinned four packages; current operations, serving identity, recoverable rollback, schema compatibility and closing fences retained. Zero-target tool promotion only.",
+  "requestId": "stable-base-current-root-20261031-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -14,16 +14,32 @@
   },
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "d0566fc8200699ff8be2d4081a7bb571f3ad460a",
-    "sourceRevision": "3de5d9a2cee1a902e6a6b9e1988cbebe077bf70d",
+    "baseRevision": "972772d037f925a104a090d8d7ddcb896aa4e259",
+    "sourceRevision": "976a0c45b76c7e2722a57591c6382c3891656efc",
     "files": {
-      "scripts/validation-resume.py": {
+      "scripts/deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "f5b4c43ad085c7c1cf1d40ed51ea632d03dc79f7"
+        "blob": "95ebd44eb422e88cc7d1bfb0a5c4aae83cd19693"
+      },
+      "scripts/release-artifacts/test-transport.cjs": {
+        "mode": "100644",
+        "blob": "13706a10ef3d3f201c4c199d35c48c291dbabb59"
+      },
+      "scripts/release-artifacts/transport.cjs": {
+        "mode": "100644",
+        "blob": "a60dc9d5e9c5cbf190499a73fcc9c242e84108b2"
+      },
+      "scripts/test-deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "c8ac31fd491856bb582cd4ad2729245b69c0f428"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "8765d3a270a810a172b20289c618ebe8dfd11c29"
+        "blob": "550e45654e2c3f706aebe44f684cfee2f5a56818"
+      },
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "f74cdb62b5e249161872cbfa1722a536a74a7ad1"
       }
     }
   },
@@ -33,5 +49,23 @@
     "terminalNonentryRun": 41166598096,
     "terminalNonentryAttempt": 1,
     "terminalNonentryIdentity": "b3de59e3b1d6f196abd334767694cb904852ceafcee67c19c76f58d3857de545"
+  },
+  "baselineCurrentStateRoot": {
+    "version": 1,
+    "priorToolRevision": "972772d037f925a104a090d8d7ddcb896aa4e259",
+    "priorPromotionRun": 41210238965,
+    "terminalNonentryRun": 41210428598,
+    "terminalNonentryAttempt": 1,
+    "terminalNonentryIdentity": "5be4498327568c5eb6e9b6705db0bc46f44f54c91b76640fced427a57f8a95ef",
+    "history": {
+      "Legend/fast-track-release": {
+        "count": 249,
+        "identity": "8212daaba44e43271dfa1b82df86e9e2627d370b54badd673b08d9bdf63078b3"
+      },
+      "legend/approved-changes": {
+        "count": 349,
+        "identity": "ebd9f65a17a5167f8f8b13aafb449f0315fcaf47002ddf0da082de63cd9a1050"
+      }
+    }
   }
 }
