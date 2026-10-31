@@ -8232,6 +8232,51 @@ class RecoveryCommitPullBoundaryTests(unittest.TestCase):
 
 
 class RecoveryAdmissionProofTests(unittest.TestCase):
+    def comparison(self, base='a'*40, head='b'*40):
+        path='compare/'+base+'...'+head
+        return path,dict(url='https://api.github.com/repos/owner/repo/'+path,
+            html_url='https://github.com/owner/repo/'+path,base_commit=dict(sha=base),
+            merge_base_commit=dict(sha=head),status='behind',ahead_by=0,behind_by=3,total_commits=0)
+    def test_four_target_immutable_comparison_one_read_and_one_fresh_close(self):
+        path,value=self.comparison();calls=[]
+        def read(repo,p,token):calls.append(p);return json.loads(json.dumps(value))
+        with patch.object(m,'_api_get_uncached',side_effect=read):
+            with m.recovery_admission_proof():
+                for target in ('portal','client','protect','parfait'):
+                    proof=m._release_history_api('owner/repo',path,'fixture')
+                    self.assertEqual(proof['status'],'behind');proof['status']='tampered'
+                self.assertEqual(calls,[path])
+            self.assertEqual(calls,[path,path])
+            with m.recovery_admission_proof():m._release_history_api('owner/repo',path,'fixture')
+            self.assertEqual(calls,[path,path,path])
+        print('RECOVERY_FOUR_TARGET_COMPARE_COUNTS:initial=1 closing=1 next_boundary=1')
+    def test_comparison_identity_and_status_malformed_rejected(self):
+        mutations=[lambda v:v.update(url=v['url'].replace('owner/repo','other/repo')),
+            lambda v:v.update(html_url=v['html_url'].replace('b'*40,'c'*40)),
+            lambda v:v['base_commit'].update(sha='c'*40),
+            lambda v:v['merge_base_commit'].update(sha='c'*40),
+            lambda v:v.update(status='unknown'),lambda v:v.update(behind_by=True),
+            lambda v:v.update(ahead_by=1),lambda v:v.update(total_commits=-1)]
+        for change in mutations:
+            path,value=self.comparison();change(value)
+            with patch.object(m,'_api_get_uncached',return_value=value):
+                with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'COMPARE_IDENTITY'):
+                    with m.recovery_admission_proof():m.api_get('owner/repo',path,'fixture')
+    def test_comparison_closing_drift_fails_and_refs_never_cache(self):
+        path,value=self.comparison();calls=[]
+        def read(repo,p,token):
+            calls.append(p);result=json.loads(json.dumps(value))
+            if len(calls)>1:result['behind_by']=4
+            return result
+        with patch.object(m,'_api_get_uncached',side_effect=read):
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'CHANGED_AT_BOUNDARY'):
+                with m.recovery_admission_proof():
+                    m.api_get('owner/repo',path,'fixture');m.api_get('owner/repo',path,'fixture')
+        for ref in ('compare/main...'+('b'*40),'compare/'+('a'*40)+'...main',path+'?page=1'):
+            with patch.object(m,'_api_get_uncached',return_value=value) as transport,m.recovery_admission_proof():
+                m.api_get('owner/repo',ref,'fixture');m.api_get('owner/repo',ref,'fixture')
+                self.assertEqual(transport.call_count,2)
+
     def test_promotion_receipt_download_reuse_preserves_exact_acceptance(self):
         import contextlib
         run=dict(id=10,run_attempt=1,head_sha='a'*40,status='completed',conclusion='success',event='push',
@@ -9552,6 +9597,40 @@ class CrmSourcePresenceAndDiscoveryTests(unittest.TestCase):
 
 
 class StableBaselineAdoptionTests(unittest.TestCase):
+    def test_exact_one_step_continuation_keeps_material_identity_and_legacy_marker(self):
+        adoption=m.stable_baseline_authority('MYLEGND/masterapp',41131223973,m.CRM_PREINTENT_REVISION)
+        identity=m.stable_baseline_identity(adoption)
+        legacy=dict(baselineAdoption=identity,trustedToolPromotion=dict(baseRevision=adoption['implementationBase']))
+        self.assertFalse(m.stable_baseline_tool_request(legacy,adoption))
+        request=dict(baselineAdoption=identity,baselineContinuation=self.copy(m.STABLE_BASE_CONTINUATION),
+            trustedToolPromotion=dict(baseRevision=m.STABLE_BASE_CONTINUATION['priorToolRevision']))
+        self.assertTrue(m.stable_baseline_tool_request(request,adoption))
+        self.assertEqual(m.stable_baseline_identity(adoption),identity)
+        mutations=[lambda q:q['baselineContinuation'].update(priorToolRevision='f'*40),
+            lambda q:q['baselineContinuation'].update(priorPromotionRun=1),
+            lambda q:q['baselineContinuation'].update(terminalNonentryAttempt=2),
+            lambda q:q['baselineContinuation'].update(terminalNonentryIdentity='0'*64),
+            lambda q:q['trustedToolPromotion'].update(baseRevision=adoption['implementationBase']),
+            lambda q:q['baselineAdoption'].update(materialIdentity='0'*64),
+            lambda q:q.pop('baselineContinuation')]
+        for mutate in mutations:
+            altered=self.copy(request);mutate(altered)
+            with self.assertRaises(ValueError):m.stable_baseline_tool_request(altered,adoption)
+    def test_continuation_authenticates_actual_prior_promotion(self):
+        adoption=m.stable_baseline_authority('MYLEGND/masterapp',41131223973,m.CRM_PREINTENT_REVISION)
+        request=dict(baselineAdoption=m.stable_baseline_identity(adoption),baselineContinuation=self.copy(m.STABLE_BASE_CONTINUATION),
+            trustedToolPromotion=dict(baseRevision=m.STABLE_BASE_CONTINUATION['priorToolRevision']))
+        prior=dict(id=41166381726,head_sha=m.STABLE_BASE_CONTINUATION['priorToolRevision'],run_attempt=1,status='completed',conclusion='success',
+            event='push',head_branch=m.FAST_TRACK_PR_BASE,path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,head_repository=dict(full_name='MYLEGND/masterapp'))
+        with patch.object(m,'_fast_track_policy',return_value=SimpleNamespace(read_request=lambda rev:request,stable_baseline_adoption=lambda *args:adoption)),             patch.object(m,'api_get',return_value=prior),patch.object(m,'fast_track_promotion_parent',return_value=adoption['implementationBase']) as validate:
+            m.stable_baseline_continuation_parent('MYLEGND/masterapp',dict(head_sha='e'*40),'fixture');validate.assert_called_once()
+            for key,value in [('run_attempt',2),('conclusion','failure'),('head_sha','f'*40)]:
+                before=prior[key];prior[key]=value
+                with self.assertRaises(ValueError):m.stable_baseline_continuation_parent('MYLEGND/masterapp',dict(head_sha='e'*40),'fixture')
+                prior[key]=before
+            validate.return_value='f'*40
+            with self.assertRaises(ValueError):m.stable_baseline_continuation_parent('MYLEGND/masterapp',dict(head_sha='e'*40),'fixture')
+
     def setUp(self):
         import copy
         self.copy=copy.deepcopy
