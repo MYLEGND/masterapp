@@ -1,24 +1,24 @@
 {
   "requestedBy": "Founder",
   "authorization": "Existing Founder approval to complete the combined release and necessary bounded admission repair, with independent review and normal protected integration.",
-  "purpose": "Preserve the exact reviewed predecessor recovery workflow in historical inventory and nonlive receipt authentication after the read-only observer workflow promotion. Live producers remain byte-for-byte exact. Resume original run41131223973 application3243221 only through existing retained recovery with originalfour packages, fresh schema/recovery proof and Portal-first gates. No SQL replay, application rebuild, routing, native-association activation, new credentials or spend.",
-  "requestId": "masterapp-combined-historical-recovery-workflow-20261030-v1",
+  "purpose": "Correct the original CRM preintent workflow hash to authenticated immutable Git bytes and test all four original source pins against Git. Retain original packages, schema evidence, fresh recovery checks and Portal-first publication. No application rebuild, SQL replay or routing change.",
+  "requestId": "masterapp-combined-original-workflow-pin-20261031-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "1701c92649b811b3dca1587ef76146d14bea28f8",
-    "sourceRevision": "63ee4e102b0f80efa5fe60a1240b7c450a1e32b6",
+    "baseRevision": "3c7d959fee3af1f649fa42285c5b14070d5e814b",
+    "sourceRevision": "6e88750854cf1e87d256d0bdcf859e6cec4bec11",
     "files": {
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "9b17b4c5e8d300f550db9bbc49301f74f6c6b776"
+        "blob": "9231efcca9b071bb7ed9af1639c7fb6223562d5d"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "06b8bcc95cdfe4a15c985abb480e96d12cf0dd0b"
+        "blob": "6e7a7b6fc4a97cf42824f6cae4b026cc038505b8"
       }
     }
   }

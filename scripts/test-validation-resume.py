@@ -6828,6 +6828,13 @@ class CrmOriginalInventoryTests(unittest.TestCase):
 
 
 class CrmPreintentIdentityTests(unittest.TestCase):
+    def test_actual_original_git_source_closure(self):
+        import subprocess
+        for path, expected in m.CRM_PREINTENT_SOURCE.items():
+            with self.subTest(path=path):
+                source=subprocess.check_output(['git','show',m.CRM_PREINTENT_REVISION+':'+path])
+                self.assertEqual(hashlib.sha256(source).hexdigest(),expected)
+
     def setUp(self):
         self.run = dict(id=41131223973, head_sha=m.CRM_PREINTENT_REVISION,
                         run_attempt=4, status='completed', conclusion='failure')
