@@ -874,6 +874,11 @@ def recovery_admission_proof():
         # A paginated branch inventory is one observation, never cached pages.
         # Include active/queued rows and reject their drift just like terminal rows.
         for repository, entry in state['histories'].items():
+            if entry.get('kind')=='stable-current-root':
+                current=_stable_root_inventory(entry['repository'],entry['observer'],entry['token'])
+                if json.dumps(current,sort_keys=True,separators=(',',':'))!=entry['raw']:
+                    raise ReleaseOperationHistoryUnproven('STABLE_ROOT_CHANGED_AT_BOUNDARY')
+                continue
             current = _read_fast_track_history_inventory(repository, entry['token'], uncached=True)
             if _fast_track_history_raw(current) != entry['raw']:
                 raise ReleaseOperationHistoryUnproven('RECOVERY_HISTORY_CHANGED_AT_BOUNDARY')
@@ -1030,6 +1035,8 @@ def validate_fast_track_recovery_record(repository, run, artifact, record, token
         if not stable_baseline_recovery_run(repository, run):
             raise ValueError('STABLE_BASE_MARKER_ON_LEGACY_RECEIPT')
         admission, admitted_artifact = stable_baseline_admission_record(repository, original, observer, token)
+        if stable_baseline_current_root(repository,observer['toolRevision']) is not None and admission.get('currentStateRoot')!=STABLE_BASE_CURRENT_ROOT:
+            raise ValueError('STABLE_ROOT_ADMISSION_MARKER_MISSING')
         adopted_target = admission['targets'][record['target']]
         if record.get('baseline') != adopted_target['baseline'] or record.get('baselineDeploymentIds') != adopted_target['baselineDeploymentIds']:
             raise ValueError('STABLE_BASE_INTENT_BASELINE_CHANGED')
@@ -1434,6 +1441,9 @@ RECOVERY_PREFLIGHT_PRODUCER_SHA256 = '15ba27c53564223cb41502bb5528949e6435f0e6bc
 def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
     # Shared serializer preflight; exact paired generation, never arbitrary helpers.
+    if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) == (
+        '9982b99ce5c6836d2d3dafcecac557283ffa1007c296dbd3dadf3dabe72c3c08', '0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f'):
+        return True  # Exact current-state-root correction; legacy pairs remain below.
     if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) == (
         '8d38caa1e3b333053b23e2c91485e789dc38606dd5b914f1ab709d6dabe8183e', '0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f'):
         return True  # Exact current adoption producer; historical snapshots stay separate.
@@ -7674,6 +7684,13 @@ STABLE_BASE_SCHEMA_COMPANIONS = {
 
 
 
+STABLE_BASE_PRIOR_RECOVERIES[41210428598] = ('972772d037f925a104a090d8d7ddcb896aa4e259',124564086505,13046228162,
+    'sha256:e66d854a63f9b6a6e574b03cb9b77414535965b3a3db730f59c91b812a7e29c5',
+    '5be4498327568c5eb6e9b6705db0bc46f44f54c91b76640fced427a57f8a95ef')
+STABLE_BASE_SCHEMA_COMPANIONS[41210428598] = (13046486351,
+    'sha256:c756d596972b12239c54dd5708ae50b70e90c410eed0c4940aff75ea8ef073ea',
+    'legend-retained-schema-proof-49979746b08ca5d56dcd0b8389ff9062d1d8997a382dfdd3dcf6f26586f1f275')
+
 def stable_baseline_operation_nonentry(repository, revision, target, operation_id, current_run, current_attempt, token):
     adoption = stable_baseline_authority(repository, 41131223973, revision)
     if adoption is None:return False
@@ -7759,10 +7776,109 @@ def stable_baseline_operation_nonentry(repository, revision, target, operation_i
     return True
 
 
+STABLE_BASE_CURRENT_ROOT = {'version': 1, 'priorToolRevision': '972772d037f925a104a090d8d7ddcb896aa4e259', 'priorPromotionRun': 41210238965, 'terminalNonentryRun': 41210428598, 'terminalNonentryAttempt': 1, 'terminalNonentryIdentity': '5be4498327568c5eb6e9b6705db0bc46f44f54c91b76640fced427a57f8a95ef', 'history': {'Legend/fast-track-release': {'count': 249, 'identity': '8212daaba44e43271dfa1b82df86e9e2627d370b54badd673b08d9bdf63078b3'}, 'legend/approved-changes': {'count': 349, 'identity': 'ebd9f65a17a5167f8f8b13aafb449f0315fcaf47002ddf0da082de63cd9a1050'}}}
+
+
+def stable_baseline_current_root(repository, tool_revision=None):
+    """One explicitly promoted correction of the already approved adoption root."""
+    if repository.lower() != 'mylegnd/masterapp':return None
+    if tool_revision is None and os.environ.get('GITHUB_ACTIONS') != 'true':return None
+    revision = tool_revision or os.environ.get('GITHUB_SHA', '')
+    if not re.fullmatch('[a-f0-9]{40}', revision):return None
+    request = _fast_track_policy().read_request(revision)
+    if 'baselineCurrentStateRoot' not in request:return None
+    adoption = stable_baseline_authority(repository, 41131223973, CRM_PREINTENT_REVISION)
+    stable_baseline_tool_request(request, adoption)
+    return json.loads(json.dumps(STABLE_BASE_CURRENT_ROOT))
+
+
+def _stable_root_inventory(repository, observer, token):
+    """Fresh complete sanctioned writer inventories, never inferred old success."""
+    fields = ('id','head_sha','head_branch','path','event','run_attempt','status','conclusion','created_at','updated_at')
+    result = {}
+    for branch, expected in STABLE_BASE_CURRENT_ROOT['history'].items():
+        base = 'actions/runs?branch=' + urllib.parse.quote(branch, safe='')
+        if branch == TRUSTED_PR_BASE:base += '&event=workflow_dispatch'
+        base += '&per_page=100'
+        rows=[];seen=set();total=None
+        with evidence_lookup_budget(time.monotonic()+30):
+            for page in range(1,11):
+                evidence_remaining(30)
+                payload=_api_get_uncached(repository,base + (f'&page={page}' if page>1 else ''),token)
+                evidence_remaining(30)  # A late final page is not timely evidence.
+                batch=payload.get('workflow_runs');count=payload.get('total_count')
+                if (type(count) is not int or not 0<=count<=1000 or (total is not None and total!=count)
+                    or not isinstance(batch,list) or len(batch)!=min(100,count-len(rows))):
+                    raise ReleaseOperationHistoryUnproven('STABLE_ROOT_INVENTORY_INCOMPLETE')
+                total=count
+                for row in batch:
+                    if (not isinstance(row,dict) or type(row.get('id')) is not int or row['id']<1 or row['id'] in seen
+                        or row.get('head_branch')!=branch or row.get('head_repository',{}).get('full_name','').lower()!=repository.lower()
+                        or any(k not in row for k in fields) or not re.fullmatch('[a-f0-9]{40}',str(row['head_sha']))
+                        or type(row['run_attempt']) is not int or row['run_attempt']<1
+                        or not isinstance(row['path'],str) or not row['path']
+                        or (branch==TRUSTED_PR_BASE and row['event']!='workflow_dispatch')):
+                        raise ReleaseOperationHistoryUnproven('STABLE_ROOT_PRODUCER_UNKNOWN')
+                    _completion_time(row['created_at']);_completion_time(row['updated_at'])
+                    seen.add(row['id']);rows.append(row)
+                if len(rows)==total:break
+            if len(rows)!=total:raise ReleaseOperationHistoryUnproven('STABLE_ROOT_INVENTORY_INCOMPLETE')
+            evidence_remaining(30)
+        retired=[];allowed=set()
+        for row in rows:
+            if row['id'] in {observer['runId'],observer['promotionRunId']}:
+                if (branch!=FAST_TRACK_PR_BASE or row['head_sha']!=observer['toolRevision']
+                    or row['run_attempt']!=1 or row['path']!='.github/workflows/'+FAST_TRACK_RELEASE_WORKFLOW):
+                    raise ReleaseOperationHistoryUnproven('STABLE_ROOT_CURRENT_OWNER_CHANGED')
+                if row['id']==observer['promotionRunId']:
+                    if row['event']!='push' or row['status']!='completed' or row['conclusion']!='success':
+                        raise ReleaseOperationHistoryUnproven('STABLE_ROOT_PROMOTION_UNPROVEN')
+                elif (row['event']!='workflow_dispatch' or row['status'] not in {'in_progress','completed'}
+                    or row.get('display_title')!='LEGEND retained recovery original=41131223973 application='+CRM_PREINTENT_REVISION):
+                    raise ReleaseOperationHistoryUnproven('STABLE_ROOT_CURRENT_OWNER_CHANGED')
+                allowed.add(row['id']);continue
+            if row['status']!='completed' or row['conclusion'] not in {'success','failure','cancelled','skipped','timed_out','action_required','neutral','stale'}:
+                raise ReleaseOperationHistoryUnproven('STABLE_ROOT_ACTIVE_OR_UNKNOWN_WRITER')
+            retired.append({k:row[k] for k in fields})
+        if branch==FAST_TRACK_PR_BASE and allowed!={observer['runId'],observer['promotionRunId']}:
+            raise ReleaseOperationHistoryUnproven('STABLE_ROOT_CURRENT_OWNER_MISSING')
+        retired.sort(key=lambda r:r['id'])
+        digest=hashlib.sha256(json.dumps(retired,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        if len(retired)!=expected['count'] or digest!=expected['identity']:
+            raise ReleaseOperationHistoryUnproven('STABLE_ROOT_CHANGED_OR_NEW_ATTEMPT')
+        result[branch]=dict(count=len(retired),identity=digest)
+    return result
+
+
+def stable_baseline_current_inventory(repository, observer, token):
+    if stable_baseline_current_root(repository,observer['toolRevision']) is None:
+        raise ReleaseOperationHistoryUnproven('STABLE_ROOT_AUTHORITY_MISSING')
+    state=_RECOVERY_PROOF_VIEW.get();key=(repository,'stable-current-root')
+    if state is not None and key in state['histories']:
+        if state['histories'][key]['observer'] != observer:
+            raise ReleaseOperationHistoryUnproven('STABLE_ROOT_OBSERVER_CHANGED')
+        evidence_remaining(30)
+        return json.loads(state['histories'][key]['raw'])
+    result=_stable_root_inventory(repository,observer,token)
+    if state is not None:
+        raw=json.dumps(result,sort_keys=True,separators=(',',':'));size=len(raw.encode())
+        if len(state['histories'])>=4 or state['bytes']+size>32*1024*1024:
+            raise ReleaseOperationHistoryUnproven('RECOVERY_PROOF_STORAGE_BOUND')
+        state['histories'][key]=dict(kind='stable-current-root',raw=raw,token=token,repository=repository,observer=dict(observer))
+        state['bytes']+=size
+    return result
+
+
 def stable_baseline_tool_request(request, adoption):
     if request.get('baselineAdoption') != stable_baseline_identity(adoption):
         raise ValueError('STABLE_BASE_TOOL_AUTHORITY_CHANGED')
     base = request.get('trustedToolPromotion', {}).get('baseRevision')
+    if 'baselineCurrentStateRoot' in request:
+        if (json.dumps(request['baselineCurrentStateRoot'],sort_keys=True,separators=(',',':')) != json.dumps(STABLE_BASE_CURRENT_ROOT,sort_keys=True,separators=(',',':'))
+            or request.get('baselineContinuation') != STABLE_BASE_CONTINUATION
+            or base != STABLE_BASE_CURRENT_ROOT['priorToolRevision']):
+            raise ValueError('STABLE_ROOT_AUTHORITY_CHANGED')
+        return True
     if 'baselineContinuation' not in request:
         if base != adoption['implementationBase']:
             raise ValueError('STABLE_BASE_TOOL_AUTHORITY_CHANGED')
@@ -7777,6 +7893,14 @@ def stable_baseline_continuation_parent(repository, run, token):
     request = _fast_track_policy().read_request(run['head_sha'])
     adoption = stable_baseline_authority(repository, 41131223973, CRM_PREINTENT_REVISION)
     if not stable_baseline_tool_request(request, adoption):return
+    if 'baselineCurrentStateRoot' in request:
+        root=STABLE_BASE_CURRENT_ROOT
+        previous=api_get(repository,'actions/runs/'+str(root['priorPromotionRun']),token)
+        if (previous.get('id')!=root['priorPromotionRun'] or previous.get('head_sha')!=root['priorToolRevision']
+            or previous.get('run_attempt')!=1 or previous.get('status')!='completed' or previous.get('conclusion')!='success'
+            or not is_fast_track_producer(repository,previous)
+            or fast_track_promotion_parent(repository,previous,token)!=STABLE_BASE_CONTINUATION['priorToolRevision']):
+            raise ValueError('STABLE_ROOT_PROMOTION_PARENT_UNPROVEN')
     prior = api_get(repository, 'actions/runs/' + str(STABLE_BASE_CONTINUATION['priorPromotionRun']), token)
     if (prior.get('id') != STABLE_BASE_CONTINUATION['priorPromotionRun']
         or prior.get('head_sha') != STABLE_BASE_CONTINUATION['priorToolRevision']
@@ -7831,6 +7955,11 @@ def validate_stable_baseline_admission(record, original, observer):
     adoption = original.get('baselineAdoption')
     keys = {'schemaVersion','phase','authorizesMutation','liveStable','originalRun','applicationRevision',
             'observer','baselineAdoption','schemaProofIdentity','targets'}
+    root=record.get('currentStateRoot')
+    if root is not None:
+        if json.dumps(root,sort_keys=True,separators=(',',':'))!=json.dumps(STABLE_BASE_CURRENT_ROOT,sort_keys=True,separators=(',',':')) or stable_baseline_current_root('MYLEGND/masterapp',observer['toolRevision'])!=root:
+            raise ValueError('STABLE_ROOT_ADMISSION_CHANGED')
+        keys=keys|{'currentStateRoot'}
     if (not adoption or adoption != stable_baseline_authority('MYLEGND/masterapp', original['run']['id'], original['run']['head_sha'])
         or set(record) != keys or record['schemaVersion'] != 1
         or record['phase'] != 'baseline-admission' or record['authorizesMutation'] is not False
@@ -7842,7 +7971,10 @@ def validate_stable_baseline_admission(record, original, observer):
         raise ValueError('STABLE_BASE_ADMISSION_CHANGED')
     for key, expected in adoption['targets'].items():
         row = record['targets'][key]
-        if (set(row) != set(expected) | {'baseline','baselineDeploymentIds','rollbackEvidence'}
+        extra={'providerInventoryIdentity'} if root is not None else set()
+        if root is not None and not re.fullmatch('[a-f0-9]{64}',str(row.get('providerInventoryIdentity',''))):
+            raise ValueError('STABLE_ROOT_PROVIDER_INVENTORY_MISSING')
+        if (set(row) != set(expected) | {'baseline','baselineDeploymentIds','rollbackEvidence'} | extra
             or any(row[k] != v for k, v in expected.items())
             or not re.fullmatch('[a-f0-9]{40}', row.get('baseline', ''))
             or not isinstance(row['baselineDeploymentIds'], list) or not row['baselineDeploymentIds']
@@ -13853,6 +13985,12 @@ def release_operation_history(repository, operation_id, application_revision, ta
         return None
 
     adopted_nonentry = stable_baseline_operation_nonentry(repository, application_revision, target, operation_id, current_run, current_attempt, token)
+    if adopted_nonentry and stable_baseline_current_root(repository) is not None:
+        observer=assert_fast_track_recovery_execution(41131223973,application_revision)
+        if observer['runId']!=current_run or observer['runAttempt']!=current_attempt:
+            raise ReleaseOperationHistoryUnproven('STABLE_ROOT_OPERATION_OWNER_CHANGED')
+        stable_baseline_current_inventory(repository,observer,token)
+        return None  # Exact operation had no write; retired provenance is not called nonentry.
     if not adopted_nonentry:
         recovery_history_no_unjournaled_entry(repository, application_revision, current_run, current_attempt, token, target=target, operation_id=operation_id)
 

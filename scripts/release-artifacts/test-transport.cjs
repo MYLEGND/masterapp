@@ -993,6 +993,12 @@ test('stable baseline admission is four-target durable evidence, never live comp
       artifact:`fast-track-package-${baseline}-${target}`,runId:14,packageDigest:'4'.repeat(64)}};
   const name='legend-stable-baseline-admission-900-1';
   assert.deepEqual(validateRecord(name,value),{filename:'operation.json'});
+  const current=structuredClone(value);current.currentStateRoot={version:1,priorToolRevision:'5'.repeat(40),priorPromotionRun:99,terminalNonentryRun:100,terminalNonentryAttempt:1,terminalNonentryIdentity:'6'.repeat(64),history:{'Legend/fast-track-release':{count:249,identity:'7'.repeat(64)},'legend/approved-changes':{count:349,identity:'8'.repeat(64)}}};
+  for(const row of Object.values(current.targets))row.providerInventoryIdentity='9'.repeat(64);
+  assert.deepEqual(validateRecord(name,current),{filename:'operation.json'});
+  for(const mutate of [x=>delete x.targets.portal.providerInventoryIdentity,x=>x.currentStateRoot.version=2,x=>x.currentStateRoot.terminalNonentryAttempt=2,x=>x.currentStateRoot.history['Legend/fast-track-release'].identity='UNKNOWN']){
+    const bad=structuredClone(current);mutate(bad);assert.throws(()=>validateRecord(name,bad));
+  }
   let bytes;const client={async listArtifacts(){return {artifacts:[]};},async uploadArtifact(n,files){bytes=await fs.readFile(files[0]);return {id:42};},
     async downloadArtifact(id,options){await fs.mkdir(options.path);await fs.writeFile(path.join(options.path,'operation.json'),bytes);}};
   assert.deepEqual(await publish(client,name,value),{artifactId:42});

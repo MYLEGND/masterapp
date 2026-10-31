@@ -1723,6 +1723,28 @@ def recovery_preupload_baseline(azure, original, key, *, expected=None):
     if observation['activeCount']: raise RecoveryPreflightFailure('provider-active',observation)
     if observed is None: raise RecoveryPreflightFailure('runtime-unavailable',observation)
     if observed == original['run']['head_sha']: raise RecoveryPreflightFailure('runtime-candidate-unproven',observation)
+    current_root = ('baselineAdoption' in original and _RELEASE_AUTHORITY.stable_baseline_current_root(
+        os.environ['GITHUB_REPOSITORY']) is not None)
+    if current_root:
+        # The approved current-state root does not require a predecessor SHA or
+        # the old upload window. It does require complete known terminal provider
+        # state, an actual serving revision, and separately verified rollback.
+        if len({row['id'] for row in rows}) != len(rows):
+            raise RecoveryPreflightFailure('provider-identity-ambiguous',observation)
+        normalized=[]
+        for row in rows:
+            if (row.get('status') not in (3,4) or row.get('complete') is not True
+                or not all(isinstance(row.get(k),str) and row[k] for k in ('received_time','start_time','end_time'))):
+                raise RecoveryPreflightFailure('provider-history-unknown',observation)
+            received,start,end=(_RELEASE_AUTHORITY._completion_time(row[k]) for k in ('received_time','start_time','end_time'))
+            if not received<=start<=end:
+                raise RecoveryPreflightFailure('provider-history-time-unproven',observation)
+            normalized.append({k:row.get(k) for k in ('id','status','received_time','start_time','end_time','complete','active')})
+        state=dict(revision=observed,deploymentIds=sorted(row['id'] for row in rows),
+            providerInventoryIdentity=hashlib.sha256(json.dumps(sorted(normalized,key=lambda row:row['id']),sort_keys=True,separators=(',',':')).encode()).hexdigest())
+        if expected is not None and state!=expected:
+            raise RecoveryPreflightDrift('baseline-drift',observation)
+        return state
     if subprocess.run(['git', 'merge-base', '--is-ancestor', observed, original['run']['head_sha']], capture_output=True).returncode:
         raise RecoveryPreflightDrift('baseline-not-ancestor',observation)
     starts = []
@@ -1971,13 +1993,20 @@ def crm_retained_schema_gate(original, observer, deadline, publisher):
     audit = migration.history_audit()
     # No current migration is excluded: recovery is not a SQL owner. All normal
     # migration producers must be settled, including the complete original run.
-    with authority.evidence_lookup_budget(min(deadline, time.monotonic() + 120)):
-        report = audit.audit(authority, repository, token)
-    if (report.get('completeHistory') is not True or any(
-        row.get('parent') not in {'success','failure','cancelled','skipped'}
-        or row['code'] in audit.BLOCKED_CODES or row['code'] not in audit.STATUS_CODES
-        for row in report['records'])):
-        raise DeploymentReconciliationRequired('CRM_RECOVERY_SCHEMA_HISTORY_UNPROVEN')
+    if authority.stable_baseline_current_root(repository,observer['toolRevision']) is not None:
+        # Reuse the explicit retired-provenance cut, not 241 old migration
+        # attempts. Current/changed writers still stop before physical SQL reads.
+        with authority.recovery_admission_proof():
+            current=authority.stable_baseline_current_inventory(repository,observer,token)
+        report=dict(scope='approved-current-state-root',inventory=current,sqlExecutionAuthorized=False)
+    else:
+        with authority.evidence_lookup_budget(min(deadline, time.monotonic() + 120)):
+            report = audit.audit(authority, repository, token)
+        if (report.get('completeHistory') is not True or any(
+            row.get('parent') not in {'success','failure','cancelled','skipped'}
+            or row['code'] in audit.BLOCKED_CODES or row['code'] not in audit.STATUS_CODES
+            for row in report['records'])):
+            raise DeploymentReconciliationRequired('CRM_RECOVERY_SCHEMA_HISTORY_UNPROVEN')
     probe = Path(os.environ['MIGRATION_PROBE_DLL']); connection = migration.connection_string()
     physical_deadline = min(deadline, time.monotonic() + 90)
     first = migration.observe(probe, connection, schema_only_activity=True, deadline=physical_deadline)
@@ -2070,6 +2099,12 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
                     observer['runId'], observer['runAttempt'], token,
                     **({'replacement': materials[key]['unknownReplacement']} if 'unknownReplacement' in materials[key] else {}))
                 if prior is None:
+                    if authority.stable_baseline_current_root(repository,observer['toolRevision']) is not None:
+                        for phase in ('submitted','success'):
+                            orphan=authority.release_operation_history(repository,inventory[key]['operationId'],revision,key,
+                                observer['runId'],observer['runAttempt'],token,phase=phase)
+                            if orphan is not None:
+                                raise DeploymentReconciliationRequired('STABLE_ROOT_UNMATCHED_OPERATION_RECEIPT')
                     states[key] = recovery_preupload_baseline(azure, original, key)
                     prepare_protect_retained_replacement(azure, original, material, states[key], package_root)
                     rollback[key] = prepare_stable_baseline_rollback(original, key, states[key], package_root)
@@ -2139,6 +2174,10 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
             schemaProofIdentity=schema_proof['contentIdentity'],
             targets={key: dict(inventory[key], baseline=states[key]['revision'],
                 baselineDeploymentIds=states[key]['deploymentIds'], rollbackEvidence=rollback[key]) for key in original['targets']})
+        if authority.stable_baseline_current_root(repository,observer['toolRevision']) is not None:
+            record['currentStateRoot']=authority.STABLE_BASE_CURRENT_ROOT
+            for key in record['targets']:
+                record['targets'][key]['providerInventoryIdentity']=states[key].get('providerInventoryIdentity')
         authority.validate_stable_baseline_admission(record, original, observer)
         publish_phase_record(authority.stable_baseline_admission_name(observer), record)
     def recover_target(key):
