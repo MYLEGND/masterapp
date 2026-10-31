@@ -302,6 +302,11 @@ class OperationJournal:
         self.submission_observation = record
         return result
 
+    def _success_history(self):
+        return self.authority.release_operation_history(
+            self.repository, self.operation_id, self.identity['applicationRevision'],
+            self.identity['target'], self.run, self.attempt, self.token, phase='success')
+
     def record_success(self, deployment_ids):
         if self.intent is None:
             raise RuntimeError('Exact deployment intent required before artifact success')
@@ -312,9 +317,7 @@ class OperationJournal:
         if (self.submission_observation is not None and
                 observed != [self.submission_observation['deploymentId']]):
             raise RuntimeError('Successful deployment differs from retained provider observation')
-        existing = self.authority.release_operation_history(
-            self.repository, self.operation_id, self.identity['applicationRevision'],
-            self.identity['target'], self.run, self.attempt, self.token, phase='success')
+        existing = self._success_history()
         if existing is not None:
             if (any(existing.get(key) != value for key, value in self.identity.items()) or
                     existing.get('baseline') != self.baseline or existing.get('phase') != 'success' or
@@ -410,6 +413,11 @@ class RecoveryJournal(OperationJournal):
             raise self.history_error
         self.before_new_intent(self._ids(baseline_ids))
         return super().before_submit(baseline_ids, **kwargs)
+
+    def _success_history(self):
+        # This scope must close before record_success publishes any receipt.
+        with self.authority.recovery_admission_proof():
+            return super()._success_history()
 
     def record_submission_observation(self, deployment_id):
         if not self._new_intent_readback:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import datetime as dt
+import contextlib
 import importlib.util
 import json
 import sys
@@ -65,6 +66,7 @@ class DurableOperationProtocolTests(unittest.TestCase):
                         GITHUB_REPOSITORY='owner/repo', GH_TOKEN='test-placeholder')
         self.authority = type('Authority', (), dict(RELEASE_TARGETS={'portal': {}, 'client': {}},
                               ReleaseOperationHistoryUnproven=journal._authority().ReleaseOperationHistoryUnproven))()
+        self.authority.recovery_admission_proof = contextlib.nullcontext
         self.authority.release_operation_history = lambda repo, key, *args, phase='intent': (
             json.loads((self.path / (phase + key)).read_text()) if (self.path / (phase + key)).exists() else None)
 
@@ -994,6 +996,29 @@ class CompletionJournalTests(unittest.TestCase):
 
 
 class RetainedRecoveryJournalTests(DurableOperationProtocolTests):
+    def test_success_lookup_closes_before_publication_and_drift_blocks(self):
+        owner=self.recovery(); owner.before_submit(['old'])
+        events=[]; original=self.authority.release_operation_history
+        @contextlib.contextmanager
+        def boundary():
+            events.append('open'); yield; events.append('close')
+        def history(*args,**kwargs):
+            self.assertEqual(events[-1],'open'); events.append('proof'); return original(*args,**kwargs)
+        def publish(*args):
+            self.assertEqual(events[-1],'close'); events.append('publish'); return {'artifactId':1}
+        self.authority.recovery_admission_proof=boundary
+        self.authority.release_operation_history=history
+        owner.publisher=publish; owner.record_success(['new'])
+        self.assertEqual(events,['open','proof','close','publish'])
+        @contextlib.contextmanager
+        def changed():
+            yield
+            raise ValueError('closing drift')
+        self.authority.recovery_admission_proof=changed
+        self.authority.release_operation_history=original
+        with self.assertRaisesRegex(ValueError,'closing drift'):owner.record_success(['new'])
+        self.assertEqual(events.count('publish'),1)
+
     def recovery(self, **kwargs):
         evidence = dict(runId=int(self.env['GITHUB_RUN_ID']), runAttempt=1, originalRun=8,
                         applicationRevision='a' * 40, toolRevision='d' * 40)
