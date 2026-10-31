@@ -4319,5 +4319,26 @@ class Protect161ProductionRecoveryTests(unittest.TestCase):
             self.assertEqual(restored.call_count,2);provider.assert_not_called()
         self.assertEqual(json.dumps(materials,sort_keys=True),before)
 
+class StableBaselineRollbackTests(unittest.TestCase):
+    def test_legacy_scope_no_new_rollback_route(self):
+        self.assertIsNone(deploy.prepare_stable_baseline_rollback({},'portal',{},Path('/unused')))
+    def test_missing_or_expired_exact_rollback_blocks_before_download(self):
+        authority=deploy._RELEASE_AUTHORITY
+        with patch.dict(os.environ,{'GITHUB_REPOSITORY':'MYLEGND/masterapp','GITHUB_TOKEN':'test'}), patch.object(authority,'api_get',return_value=dict(total_count=0,artifacts=[])), patch.object(authority,'_download_run_artifact') as download:
+            with self.assertRaises(deploy.DeploymentReconciliationRequired):
+                deploy.prepare_stable_baseline_rollback({'baselineAdoption':{}},'portal',{'revision':'a'*40},Path('/unused'))
+            download.assert_not_called()
+    def test_rollback_verified_bytes_and_changed_readback_rejected(self):
+        authority=deploy._RELEASE_AUTHORITY;revision='a'*40
+        artifact=dict(id=7,name='fast-track-package-'+revision+'-portal',expired=False,digest='sha256:'+'b'*64,workflow_run=dict(id=8,head_sha=revision))
+        run=dict(id=8,head_sha=revision,status='completed')
+        with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ,{'GITHUB_REPOSITORY':'MYLEGND/masterapp','GITHUB_TOKEN':'test'}), patch.object(authority,'api_get',side_effect=lambda repo,path,token:dict(total_count=1,artifacts=[artifact]) if path.startswith('actions/artifacts') else run), patch.object(authority,'is_fast_track_producer',return_value=True), patch.object(authority,'_completion_jobs',return_value={}), patch.object(authority,'_completion_original_artifact_owner'), patch.object(deploy,'verify_package',return_value='c'*64):
+            root=Path(temp);directory=root/'stable-rollback-portal';directory.mkdir();(directory/'deploy.zip').write_bytes(b'retained-fixture')
+            proof=deploy.prepare_stable_baseline_rollback({'baselineAdoption':{}},'portal',{'revision':revision},root)
+            self.assertEqual(proof['artifactId'],7);self.assertEqual(proof['packageDigest'],'c'*64)
+            with self.assertRaises(deploy.DeploymentDrift):
+                deploy.prepare_stable_baseline_rollback({'baselineAdoption':{}},'portal',{'revision':revision},root,expected=dict(proof,packageDigest='d'*64))
+
+
 if __name__ == '__main__':
     unittest.main()

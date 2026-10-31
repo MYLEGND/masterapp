@@ -1855,6 +1855,7 @@ class SelectorAttemptNonentryTests(unittest.TestCase):
                     base=dict(ref=m.FAST_TRACK_PR_BASE),head=dict(repo=dict(full_name=self.repository)))] if merged else []
             return original(repo,path,token)
         with ExitStack() as stack:
+            stack.enter_context(patch.object(m,'_fast_track_policy',return_value=SimpleNamespace(read_request=lambda revision: {})))
             stack.enter_context(patch.object(m,'api_get',side_effect=api))
             stack.enter_context(patch.object(m,'_release_history_source',return_value=self.source))
             stack.enter_context(patch.object(m,'git_show_file',return_value=self.source))
@@ -6792,6 +6793,8 @@ class CrmOriginalInventoryTests(unittest.TestCase):
         request=dict(releaseMode='approved-only',requestedBy='Founder',preserveLiveTargets=False,
             targets=[m.RELEASE_TARGETS[k]['releaseName'] for k in self.targets],cloudflareWebsiteRouting=False)
         with ExitStack() as stack:
+            # Retain coverage of the legacy historical interpretation separately.
+            stack.enter_context(patch.object(m,'stable_baseline_authority',return_value=None))
             stack.enter_context(patch.object(m,'api_get',side_effect=lambda repo,path,token:
                 dict(total_count=0,artifacts=[]) if '/artifacts?' in path else self.run))
             stack.enter_context(patch.object(m,'fast_track_historical_producers',return_value=[self.run]))
@@ -7177,7 +7180,7 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         root=Path(__file__).parent
         source=(root/'deploy-approved-app.py').read_text()
         journal=(root/'release-operation-evidence.py').read_text()
-        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'ebf12dabec3e452844376167444ea5e822763fcf246bea68627d2ba9cfcc5dd4')
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'8d38caa1e3b333053b23e2c91485e789dc38606dd5b914f1ab709d6dabe8183e')
         self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f')
         self.assertTrue(m._recovery_preflight_source_contract(source,journal))
         for changed in [source+'# unreviewed helper\n',source.replace('reconcile_only=journal.intent is not None','reconcile_only=False')]:
@@ -7318,7 +7321,7 @@ class RecoveryPreflightTerminalConsumerTests(RecoveryPreflightRecordTests):
     def test_complete_generation_rejects_writes_anywhere_and_helper_changes(self):
         source=Path(self.producer.__file__).read_text();journal=Path(self.producer.__file__).with_name('release-operation-evidence.py').read_text()
         for bad in [source.replace('# Versioned terminal receipt boundary','submit_unreviewed_provider_write()\n    # Versioned terminal receipt boundary'),
-                    source.replace('        raise\n    def recover_target','        azure.submit()\n        raise\n    def recover_target'),
+                    source.replace('    def recover_target(key):','    azure.submit()\n    def recover_target(key):'),
                     source.replace("stage='all-target-preflight'","stage='unreviewed'"),source+'\nopen("unreviewed", "w")\n']:
             self.assertFalse(m._recovery_preflight_source_contract(bad,journal))
 
@@ -9546,6 +9549,151 @@ class CrmSourcePresenceAndDiscoveryTests(unittest.TestCase):
                 self.touch([path])
         with patch.object(m.subprocess,'run',side_effect=m.subprocess.CalledProcessError(1,['node'])):
             with self.assertRaises(m.subprocess.CalledProcessError):m.run_form_tracking(self.root)
+
+
+class StableBaselineAdoptionTests(unittest.TestCase):
+    def setUp(self):
+        import copy
+        self.copy=copy.deepcopy
+        self.a=m.stable_baseline_authority('MYLEGND/masterapp',41131223973,m.CRM_PREINTENT_REVISION)
+        self.original=dict(run=dict(id=41131223973,head_sha=m.CRM_PREINTENT_REVISION),baselineAdoption=self.a)
+        self.observer=dict(runId=99,runAttempt=1,jobId=100,toolRevision='e'*40,promotionRunId=98)
+    def admission(self):
+        return dict(schemaVersion=1,phase='baseline-admission',authorizesMutation=False,liveStable=False,
+            originalRun=41131223973,applicationRevision=m.CRM_PREINTENT_REVISION,observer=self.observer,
+            baselineAdoption=m.stable_baseline_identity(self.a),schemaProofIdentity='f'*64,
+            targets={key:dict(row,baseline='b'*40,baselineDeploymentIds=['prior'],rollbackEvidence=dict(
+                revision='b'*40,artifactId=7,artifactDigest='sha256:'+'c'*64,
+                artifact='fast-track-package-'+'b'*40+'-'+key,runId=8,packageDigest='d'*64))
+                for key,row in self.a['targets'].items()})
+    def test_adopted_context_never_calls_historical_baseline_or_rebuild(self):
+        from contextlib import ExitStack
+        fixture=CrmOriginalInventoryTests();fixture.setUp()
+        artifacts=[dict(id=self.a['schemaSuccessArtifact'],digest=self.a['schemaSuccessDigest'],expired=False)]
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(m,'fast_track_merged_source_proof'))
+            stack.enter_context(patch.object(m,'_fast_track_history_observation',return_value=[fixture.run]))
+            stack.enter_context(patch.object(m,'_completion_jobs',return_value=fixture.attempts))
+            stack.enter_context(patch.object(m,'_release_history_source',return_value='jobs: {}'))
+            stack.enter_context(patch.object(m,'api_get',return_value=dict(total_count=1,artifacts=artifacts)))
+            stack.enter_context(patch.object(m,'_completion_original_unchanged'))
+            stack.enter_context(patch.object(m,'fast_track_recovery_material',side_effect=lambda repo,original,key,token:
+                dict(packageArtifact=dict(id=self.a['targets'][key]['packageArtifactId'],digest=self.a['targets'][key]['packageArtifactDigest']))))
+            stack.enter_context(patch.object(m,'fast_track_recovery_package_digest',side_effect=lambda repo,original,material,key,token:self.a['targets'][key]['packageDigest']))
+            old=stack.enter_context(patch.object(m,'fast_track_effective_baseline',side_effect=AssertionError('old-chain')))
+            result=m.stable_baseline_original('MYLEGND/masterapp',fixture.run,'test',self.a)
+            self.assertEqual(result['targets'],list(self.a['targets']));old.assert_not_called()
+            self.assertNotIn('liveStable',result)
+            artifacts[0]['expired']=True
+            with self.assertRaises(ValueError):m.stable_baseline_original('MYLEGND/masterapp',fixture.run,'test',self.a)
+    def operation_fixture(self, mutate=None):
+        from contextlib import ExitStack
+        revision=m.CRM_PREINTENT_REVISION;target='portal';current=99
+        title='LEGEND retained recovery original=41131223973 application='+revision
+        def run(i,head,event='workflow_dispatch'):
+            return dict(id=i,head_sha=head,event=event,path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,
+                head_branch=m.FAST_TRACK_PR_BASE,head_repository=dict(full_name='MYLEGND/masterapp'),
+                display_title=title,run_attempt=1,status='completed',conclusion='failure')
+        original=run(41131223973,revision,'push');original['run_attempt']=4
+        rows=[original,dict(run(current,'e'*40),status='in_progress',conclusion=None)]
+        snapshots=self.copy(m.STABLE_BASE_PRIOR_RECOVERIES);jobs={};artifacts={};records={}
+        names=['Select exact affected applications','Admit exact validated fast-track source','Reconcile production schema before publication',
+            'Publish verified website routing','Affected App Deploy — ${{ matrix.target }}']
+        for i,(head,owner,artifact,digest,record_hash) in list(snapshots.items()):
+            rows.append(run(i,head));steps=[]
+            for n,result in [('Validate original authority and restore retained packages without rebuilding','failure' if artifact is None else 'success'),
+                ('Sign in to Azure Production','skipped' if artifact is None else 'success'),('Recover exact retained application bytes','skipped' if artifact is None else 'failure')]:
+                steps.append(dict(name=n,status='completed',conclusion=result,started_at='2026-10-31T00:00:00Z',completed_at='2026-10-31T01:00:00Z'))
+            jobs[i]=[dict(id=owner,name=m.FAST_TRACK_RECOVERY_JOB,run_id=i,run_attempt=1,head_sha=head,status='completed',conclusion='failure',steps=steps)]
+            jobs[i]+=[dict(id=owner+j+1,name=n,run_id=i,run_attempt=1,head_sha=head,status='completed',conclusion='skipped',steps=[]) for j,n in enumerate(names)]
+            artifacts[i]=[]
+            if artifact:
+                record=dict(targets=self.a['targets'],writePhaseEntered=False,authorizesMutation=False)
+                records[artifact]=record;record_hash=hashlib.sha256(json.dumps(record,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+                snapshots[i]=(head,owner,artifact,digest,record_hash)
+                cid,cdigest,cname=m.STABLE_BASE_SCHEMA_COMPANIONS[i]
+                artifacts[i]=[dict(id=artifact,digest=digest,expired=False,created_at='2026-10-31T00:30:00Z'),dict(id=cid,name=cname,digest=cdigest,expired=False)]
+        log='retained nonentry fixture';digest=hashlib.sha256(log.encode()).hexdigest()
+        attempts={1:[dict(name='Affected App Deploy — ${{ matrix.target }}',status='completed',conclusion='skipped',steps=[])],
+                  2:[dict(name='Affected App Deploy — ${{ matrix.target }}',status='completed',conclusion='skipped',steps=[])],
+                  3:[dict(id=300,name='Affected App Deploy — AgentPortal')],4:[dict(id=400,name='Affected App Deploy — AgentPortal')]}
+        if mutate:mutate(rows,jobs,artifacts)
+        def api(repo,path,token):
+            i=int(path.split('/')[2]);field='jobs' if '/jobs?' in path else 'artifacts';values=jobs[i] if field=='jobs' else artifacts[i]
+            return dict(total_count=len(values),**{field:values})
+        with ExitStack() as stack:
+            for name,value in [('_fast_track_history_observation',rows),('_completion_jobs',attempts),('_release_job_log',log)]:
+                stack.enter_context(patch.object(m,name,return_value=value))
+            stack.enter_context(patch.object(m,'api_get',side_effect=api))
+            stack.enter_context(patch.object(m,'_release_history_json',side_effect=lambda repo,i,a,*args,**kwargs:records[a['id']]))
+            stack.enter_context(patch.object(m,'STABLE_BASE_PRIOR_RECOVERIES',snapshots))
+            stack.enter_context(patch.object(m,'CRM_PREINTENT_LOGS',{(3,target,300):digest,(4,target,400):digest}))
+            return m.stable_baseline_operation_nonentry('MYLEGND/masterapp',revision,target,self.a['targets'][target]['operationId'],current,1,'test')
+    def test_complete_current_effect_snapshot_positive_and_mutable_drift(self):
+        self.assertTrue(self.operation_fixture())
+        changes=[lambda rows,j,a:rows.append(dict(rows[-1],id=123)),
+            lambda rows,j,a:rows[-1].update(status='in_progress'),
+            lambda rows,j,a:rows[-1].update(display_title='unclassified'),
+            lambda rows,j,a:rows[-1].update(run_attempt=2),
+            lambda rows,j,a:j[41146890884][1].update(conclusion='success'),
+            lambda rows,j,a:a[41151618259][1].update(digest='sha256:'+'0'*64)]
+        for change in changes:
+            with self.subTest(change=change),self.assertRaises(m.ReleaseOperationHistoryUnproven):self.operation_fixture(change)
+    def test_forward_boundary_requires_real_completed_four_target_proof(self):
+        from contextlib import ExitStack
+        request=dict(baselineAdoption=m.stable_baseline_identity(self.a),trustedToolPromotion=dict(baseRevision=self.a['implementationBase']))
+        policy=SimpleNamespace(read_request=lambda before:request)
+        before='e'*40
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(m,'_fast_track_policy',return_value=policy))
+            stack.enter_context(patch.object(m,'stable_baseline_authority',return_value=self.a))
+            api=stack.enter_context(patch.object(m,'api_get',side_effect=lambda repo,path,token:dict(total_count=1,artifacts=[dict(id=7,workflow_run=dict(id=8))]) if path.startswith('actions/artifacts') else dict(id=8,head_sha=before,status='completed',conclusion='success')))
+            stack.enter_context(patch.object(m,'fast_track_completion_original',return_value=self.original))
+            completed=stack.enter_context(patch.object(m,'fast_track_recovery_completed',return_value=False))
+            with self.assertRaises(ValueError):m.stable_baseline_completed_parent('MYLEGND/masterapp',before,'test')
+            completed.return_value=True
+            self.assertEqual(m.stable_baseline_completed_parent('MYLEGND/masterapp',before,'test'),m.CRM_PREINTENT_REVISION)
+            api.side_effect=lambda *args:dict(total_count=0,artifacts=[])
+            self.assertIsNone(m.stable_baseline_completed_parent('MYLEGND/masterapp',before,'test'))
+    def test_only_exact_scope_and_copy_isolation(self):
+        for args in [('other/repo',41131223973,m.CRM_PREINTENT_REVISION),('MYLEGND/masterapp',1,m.CRM_PREINTENT_REVISION),('MYLEGND/masterapp',41131223973,'a'*40)]:
+            self.assertIsNone(m.stable_baseline_authority(*args))
+        self.a['targets']['portal']['packageDigest']='0'*64
+        self.assertNotEqual(self.a,m.stable_baseline_authority('MYLEGND/masterapp',41131223973,m.CRM_PREINTENT_REVISION))
+    def test_admission_is_not_live_success_and_requires_every_material_and_rollback(self):
+        record=self.admission();self.assertTrue(m.validate_stable_baseline_admission(record,self.original,self.observer))
+        for key,value in [('liveStable',True),('authorizesMutation',True),('phase','success'),('originalRun',1),('applicationRevision','a'*40),('schemaProofIdentity','UNKNOWN')]:
+            bad=self.copy(record);bad[key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):m.validate_stable_baseline_admission(bad,self.original,self.observer)
+        for field,value in [('packageArtifactId',1),('packageDigest','0'*64),('packageArtifactDigest','sha256:'+'0'*64),('baselineDeploymentIds',[]),('rollbackEvidence',None)]:
+            bad=self.copy(record);bad['targets']['portal'][field]=value
+            with self.subTest(field=field),self.assertRaises(ValueError):m.validate_stable_baseline_admission(bad,self.original,self.observer)
+        for field,value in [('artifactId',0),('revision','a'*40),('artifactDigest','expired'),('packageDigest','UNKNOWN')]:
+            bad=self.copy(record);bad['targets']['client']['rollbackEvidence'][field]=value
+            with self.subTest(field=field),self.assertRaises(ValueError):m.validate_stable_baseline_admission(bad,self.original,self.observer)
+        bad=self.copy(record);bad['targets'].pop('protect')
+        with self.assertRaises(ValueError):m.validate_stable_baseline_admission(bad,self.original,self.observer)
+    def test_changed_schema_parent_authority_or_generation_cannot_reuse_admission(self):
+        record=self.admission()
+        for key,value in [('schemaIdentity','0'*64),('implementationBase','0'*40),('authorization','other'),('generation','other')]:
+            original=self.copy(self.original);original['baselineAdoption'][key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):m.validate_stable_baseline_admission(record,original,self.observer)
+    def test_same_operation_ids_and_explicit_new_receipt_marker(self):
+        key='portal';row=self.a['targets'][key]
+        material=dict(packageArtifact=dict(id=row['packageArtifactId'],digest=row['packageArtifactDigest']))
+        original=dict(self.original,run=dict(self.original['run'],run_attempt=4))
+        proof=m.fast_track_recovery_record_proof(original,material,self.observer)
+        self.assertEqual(proof['baselineAdoption'],m.stable_baseline_identity(self.a))
+        self.assertEqual(m.retained_operation_id(key,m.CRM_PREINTENT_REVISION,row['packageDigest']),row['operationId'])
+        original.pop('baselineAdoption')
+        self.assertNotIn('baselineAdoption',m.fast_track_recovery_record_proof(original,material,self.observer))
+    def test_unknown_missing_new_or_reused_operation_inventory_stops(self):
+        row=self.a['targets']['portal']
+        with patch.object(m,'_fast_track_history_observation',return_value=[]):
+            with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                m.stable_baseline_operation_nonentry('MYLEGND/masterapp',m.CRM_PREINTENT_REVISION,'portal',row['operationId'],99,1,'test')
+        with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+            m.stable_baseline_operation_nonentry('MYLEGND/masterapp',m.CRM_PREINTENT_REVISION,'portal','0'*64,99,1,'test')
 
 
 if __name__ == "__main__":

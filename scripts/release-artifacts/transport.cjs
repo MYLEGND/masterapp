@@ -62,6 +62,14 @@ function recoveryEvidence(record) {
   if (replacement !== undefined) unknownReplacement(record, replacement);
   const correction = proof?.protectBaselineCorrection;
   if (correction !== undefined) protectBaselineCorrection(record, correction);
+  // Structural transport validation only; authenticated admission compares this
+  // identity with the single canonical policy manifest, never caller authority.
+  const adoption = proof?.baselineAdoption;
+  if (adoption !== undefined && (!exactKeys(adoption, 'generation,authorization,materialIdentity') ||
+      typeof adoption.generation !== 'string' || !/^[a-z0-9-]{1,100}$/.test(adoption.generation) ||
+      typeof adoption.authorization !== 'string' || !/^Sentinel_[a-f0-9]{32}$/.test(adoption.authorization) ||
+      !/^[a-f0-9]{64}$/.test(adoption.materialIdentity) || correction !== undefined || replacement !== undefined))
+    throw new Error('Invalid stable baseline identity');
   const keys = ['schemaVersion', 'operationId', 'target', 'applicationRevision', 'packageDigest', 'baseline',
     'packageProducerRun', 'producingRun', 'producingAttempt', 'baselineDeploymentIds', 'phase', 'recoveryEvidence'];
   for (const key of ['providerRequestCorrelation', 'submissionContract']) if (record[key] !== undefined) keys.push(key);
@@ -72,7 +80,7 @@ function recoveryEvidence(record) {
       (record.phase === 'success' && (!Array.isArray(record.deploymentIds) || record.deploymentIds.length !== 1 ||
         record.baselineDeploymentIds.includes(record.deploymentIds[0]))))
     throw new Error('Invalid retained recovery phase fields');
-  if (!exactKeys(proof, 'schemaVersion,originalRun,originalAttempt,applicationRevision,packageArtifactId,packageArtifactDigest,jobId,promotionRunId,runAttempt,runId,toolRevision' + (correction === undefined ? '' : ',protectBaselineCorrection') + (replacement === undefined ? '' : ',unknownReplacement')) ||
+  if (!exactKeys(proof, 'schemaVersion,originalRun,originalAttempt,applicationRevision,packageArtifactId,packageArtifactDigest,jobId,promotionRunId,runAttempt,runId,toolRevision' + (correction === undefined ? '' : ',protectBaselineCorrection') + (replacement === undefined ? '' : ',unknownReplacement') + (adoption === undefined ? '' : ',baselineAdoption')) ||
       proof.schemaVersion !== 1 || record.schemaVersion !== 1 || record.completionEvidence !== undefined ||
       !['originalRun', 'originalAttempt', 'packageArtifactId'].every(key => positive(proof[key])) ||
       !digest(proof.packageArtifactDigest) || proof.originalRun !== record.packageProducerRun ||
@@ -234,6 +242,29 @@ function supersessionRecord(record) {
 }
 
 function validateRecord(name, record) {
+  if (/^legend-stable-baseline-admission-[1-9][0-9]*-[1-9][0-9]*$/.test(name)) {
+    const keys='schemaVersion,phase,authorizesMutation,liveStable,originalRun,applicationRevision,observer,baselineAdoption,schemaProofIdentity,targets';
+    const p=record?.baselineAdoption,o=record?.observer;
+    if (!record || !exactKeys(record,keys) || JSON.stringify(record).length>32768 || record.schemaVersion!==1 ||
+        record.phase!=='baseline-admission' || record.authorizesMutation!==false || record.liveStable!==false ||
+        !positive(record.originalRun) || !sha(record.applicationRevision,40) || !sha(record.schemaProofIdentity,64) ||
+        !o || !recoveryObserver(o,o.runId,o.runAttempt) || name!==`legend-stable-baseline-admission-${o.runId}-${o.runAttempt}` ||
+        !p || !exactKeys(p,'generation,authorization,materialIdentity') || typeof p.generation!=='string' || !/^[a-z0-9-]{1,100}$/.test(p.generation) ||
+        typeof p.authorization!=='string' || !/^Sentinel_[a-f0-9]{32}$/.test(p.authorization) || !sha(p.materialIdentity,64) ||
+        !record.targets || !exactKeys(record.targets,'portal,client,protect,parfait')) throw new Error('Invalid stable baseline admission');
+    for (const [target,row] of Object.entries(record.targets)) {
+      const r=row?.rollbackEvidence;
+      if (!row || !exactKeys(row,'operationId,packageDigest,packageArtifactId,packageArtifactDigest,baseline,baselineDeploymentIds,rollbackEvidence') ||
+          !sha(row.packageDigest,64) || row.operationId!==operationIdentity(target,record.applicationRevision,row.packageDigest) ||
+          !positive(row.packageArtifactId) || !digest(row.packageArtifactDigest) || !sha(row.baseline,40) ||
+          !Array.isArray(row.baselineDeploymentIds) || !row.baselineDeploymentIds.length || row.baselineDeploymentIds.length>1000 ||
+          new Set(row.baselineDeploymentIds).size!==row.baselineDeploymentIds.length || row.baselineDeploymentIds.some(x=>typeof x!=='string'||!/^[a-zA-Z0-9_.:-]{1,256}$/.test(x)) ||
+          !r || !exactKeys(r,'revision,artifactId,artifactDigest,artifact,runId,packageDigest') || r.revision!==row.baseline ||
+          !positive(r.artifactId) || !positive(r.runId) || !digest(r.artifactDigest) || !sha(r.packageDigest,64) ||
+          r.artifact!==`fast-track-package-${row.baseline}-${target}`) throw new Error('Invalid stable baseline target');
+    }
+    return {filename:'operation.json'};
+  }
   if (/^legend-retained-schema-proof-[a-f0-9]{64}$/.test(name)) {
     const canonical = value => Array.isArray(value) ? value.map(canonical) :
       value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key,canonical(value[key])])) : value;
