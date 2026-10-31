@@ -243,8 +243,8 @@ function supersessionRecord(record) {
 
 function validateRecord(name, record) {
   if (/^legend-stable-baseline-admission-[1-9][0-9]*-[1-9][0-9]*$/.test(name)) {
-    const root=record?.currentStateRoot;
-    const keys='schemaVersion,phase,authorizesMutation,liveStable,originalRun,applicationRevision,observer,baselineAdoption,schemaProofIdentity,targets'+(root===undefined?'':',currentStateRoot');
+    const root=record?.currentStateRoot, carried=record?.carriedPortalSuccess;
+    const keys='schemaVersion,phase,authorizesMutation,liveStable,originalRun,applicationRevision,observer,baselineAdoption,schemaProofIdentity,targets'+(root===undefined?'':',currentStateRoot')+(carried===undefined?'':',carriedPortalSuccess');
     if (root!==undefined && (!root || !exactKeys(root,'version,priorToolRevision,priorPromotionRun,terminalNonentryRun,terminalNonentryAttempt,terminalNonentryIdentity,history') ||
         root.version!==1 || !sha(root.priorToolRevision,40) || !positive(root.priorPromotionRun) || !positive(root.terminalNonentryRun) || root.terminalNonentryAttempt!==1 ||
         !sha(root.terminalNonentryIdentity,64) || !root.history || !exactKeys(root.history,'Legend/fast-track-release,legend/approved-changes') ||
@@ -258,6 +258,19 @@ function validateRecord(name, record) {
         !p || !exactKeys(p,'generation,authorization,materialIdentity') || typeof p.generation!=='string' || !/^[a-z0-9-]{1,100}$/.test(p.generation) ||
         typeof p.authorization!=='string' || !/^Sentinel_[a-f0-9]{32}$/.test(p.authorization) || !sha(p.materialIdentity,64) ||
         !record.targets || !exactKeys(record.targets,'portal,client,protect,parfait')) throw new Error('Invalid stable baseline admission');
+    if (carried!==undefined) {
+      const c=carried?.currentServingObservation, old=carried?.observer;
+      if (!root || !carried || !exactKeys(carried,'observer,admissionArtifactId,admissionArtifactDigest,successArtifactId,successArtifactDigest,deploymentId,currentServingObservation') ||
+          !old || !recoveryObserver(old,old.runId,old.runAttempt) || old.runId===o.runId ||
+          !positive(carried.admissionArtifactId) || !digest(carried.admissionArtifactDigest) || !positive(carried.successArtifactId) || !digest(carried.successArtifactDigest) ||
+          typeof carried.deploymentId!=='string' || !/^[a-zA-Z0-9_.:-]{1,256}$/.test(carried.deploymentId) ||
+          !c || !exactKeys(c,'observer,observedUtc,revision,deploymentIds,providerInventoryIdentity') ||
+          !c.observer || !recoveryObserver(c.observer,o.runId,o.runAttempt) || Object.keys(o).some(k=>c.observer[k]!==o[k]) || typeof c.observedUtc!=='string' || !Number.isFinite(Date.parse(c.observedUtc)) ||
+          c.revision!==record.applicationRevision || !sha(c.providerInventoryIdentity,64) ||
+          !Array.isArray(c.deploymentIds) || !c.deploymentIds.length || c.deploymentIds.length>1000 ||
+          new Set(c.deploymentIds).size!==c.deploymentIds.length || !c.deploymentIds.includes(carried.deploymentId) ||
+          c.deploymentIds.some(x=>typeof x!=='string'||!/^[a-zA-Z0-9_.:-]{1,256}$/.test(x))) throw new Error('Invalid carried Portal success');
+    }
     for (const [target,row] of Object.entries(record.targets)) {
       const r=row?.rollbackEvidence;
       if (!row || !exactKeys(row,'operationId,packageDigest,packageArtifactId,packageArtifactDigest,baseline,baselineDeploymentIds,rollbackEvidence'+(root===undefined?'':',providerInventoryIdentity')) ||

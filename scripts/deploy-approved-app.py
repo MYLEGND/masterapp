@@ -1702,6 +1702,25 @@ def recovery_target_preintent_record(proof, target, failure):
     return name,record
 
 
+def recovery_current_provider_state(rows, observed):
+    observation=dict(historyReadComplete=True,historyCount=len(rows),runtimeRevision=observed)
+    if not rows:raise RecoveryPreflightFailure('history-empty',observation)
+    if len({row['id'] for row in rows}) != len(rows):
+        raise RecoveryPreflightFailure('preflight-authority-unproven',observation)
+    normalized=[]
+    for row in rows:
+        if (row.get('status') not in (3,4) or row.get('complete') is not True
+            or not all(isinstance(row.get(k),str) and row[k] for k in ('received_time','start_time','end_time'))):
+            raise RecoveryPreflightFailure('preflight-authority-unproven',observation)
+        received,start,end=(_RELEASE_AUTHORITY._completion_time(row[k]) for k in ('received_time','start_time','end_time'))
+        if not received<=start<=end:
+            raise RecoveryPreflightFailure('provider-history-time-unproven',observation)
+        normalized.append({k:row.get(k) for k in ('id','status','received_time','start_time','end_time','complete','active')})
+    state=dict(revision=observed,deploymentIds=sorted(row['id'] for row in rows),
+        providerInventoryIdentity=hashlib.sha256(json.dumps(sorted(normalized,key=lambda row:row['id']),sort_keys=True,separators=(',',':')).encode()).hexdigest())
+    return state
+
+
 def recovery_preupload_baseline(azure, original, key, *, expected=None):
     """Fresh idle provider state cannot overtake the attested original no-entry."""
     # This function only establishes a NEW-write baseline; inherited intents
@@ -1729,19 +1748,7 @@ def recovery_preupload_baseline(azure, original, key, *, expected=None):
         # The approved current-state root does not require a predecessor SHA or
         # the old upload window. It does require complete known terminal provider
         # state, an actual serving revision, and separately verified rollback.
-        if len({row['id'] for row in rows}) != len(rows):
-            raise RecoveryPreflightFailure('provider-identity-ambiguous',observation)
-        normalized=[]
-        for row in rows:
-            if (row.get('status') not in (3,4) or row.get('complete') is not True
-                or not all(isinstance(row.get(k),str) and row[k] for k in ('received_time','start_time','end_time'))):
-                raise RecoveryPreflightFailure('provider-history-unknown',observation)
-            received,start,end=(_RELEASE_AUTHORITY._completion_time(row[k]) for k in ('received_time','start_time','end_time'))
-            if not received<=start<=end:
-                raise RecoveryPreflightFailure('provider-history-time-unproven',observation)
-            normalized.append({k:row.get(k) for k in ('id','status','received_time','start_time','end_time','complete','active')})
-        state=dict(revision=observed,deploymentIds=sorted(row['id'] for row in rows),
-            providerInventoryIdentity=hashlib.sha256(json.dumps(sorted(normalized,key=lambda row:row['id']),sort_keys=True,separators=(',',':')).encode()).hexdigest())
+        state=recovery_current_provider_state(rows,observed)
         if expected is not None and state!=expected:
             raise RecoveryPreflightDrift('baseline-drift',observation)
         return state
@@ -1933,18 +1940,20 @@ def recovery_summary_record(original_run, original, revision, observer, records)
                 observer=observer, targets=records)
 
 
-def crm_retained_portal_gate(original, inventory, observer, deadline):
+def crm_retained_portal_gate(original, inventory, observer, deadline, *, expected=None):
     """Retained recovery uses its durable receipt, not the failed original job."""
     authority = _RELEASE_AUTHORITY
     repository = os.environ['GITHUB_REPOSITORY']; token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
     revision = original['run']['head_sha']; material = inventory['portal']
     with authority.evidence_lookup_budget(deadline):
-        success = authority.release_operation_history(repository, material['operationId'], revision, 'portal',
-            observer['runId'], observer['runAttempt'], token, phase='success')
-        if (success is None or success.get('packageDigest') != material['packageDigest']
-            or success.get('applicationRevision') != revision or success.get('target') != 'portal'
-            or len(success.get('deploymentIds', [])) != 1):
-            raise DeploymentReconciliationRequired('CRM_RECOVERY_PORTAL_RECEIPT_UNPROVEN')
+        # Close immutable receipt proofs before fresh provider/live observations.
+        with authority.recovery_admission_proof():
+            success = authority.release_operation_history(repository, material['operationId'], revision, 'portal',
+                observer['runId'], observer['runAttempt'], token, phase='success')
+            if (success is None or success.get('packageDigest') != material['packageDigest']
+                or success.get('applicationRevision') != revision or success.get('target') != 'portal'
+                or len(success.get('deploymentIds', [])) != 1):
+                raise DeploymentReconciliationRequired('CRM_RECOVERY_PORTAL_RECEIPT_UNPROVEN')
         azure = RecoveryDeadlineAzure(target_azure('portal', None, revision), deadline)
         rows = read_deployments_bounded(azure, phase='retained CRM Portal-first barrier', deadline=deadline)
         if (any(row['status'] in (0, 1, 2) for row in rows)
@@ -1952,6 +1961,12 @@ def crm_retained_portal_gate(original, inventory, observer, deadline):
             or not any(row['id'] in success['deploymentIds'] and row['status'] == 4 for row in rows)):
             raise DeploymentReconciliationRequired('CRM_RECOVERY_PORTAL_LIVE_UNPROVEN')
         authority.assert_fast_track_recovery_live_execution(original['run']['id'], revision, observer)
+        if authority.stable_baseline_partial_marker(repository,observer.get('toolRevision')) is not None:
+            from datetime import datetime, timezone
+            current=dict(recovery_current_provider_state(rows,revision),observer=observer,observedUtc=datetime.now(timezone.utc).isoformat())
+            if expected is not None and {k:v for k,v in current.items() if k!='observedUtc'}!={k:v for k,v in expected.items() if k!='observedUtc'}:
+                raise DeploymentDrift('STABLE_CARRIED_PORTAL_CURRENT_STATE_CHANGED')
+            return current
 
 
 def crm_retained_schema_fresh(proof, original, observer):
@@ -2083,7 +2098,7 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
     os.environ['PACKAGE_PRODUCER_RUN'] = str(original_run)
     publication_deadline = deadline - RECOVERY_FINAL_RESERVE_SECONDS
     crm = original_run == 41131223973 and revision == authority.CRM_PREINTENT_REVISION
-    journals = {}; states = {}; rollback = {}; key = 'portal' if crm else None
+    journals = {}; states = {}; rollback = {}; carried_portal = None; key = 'portal' if crm else None
     def publish_phase_record(name, record):
         return owner.publish_record(name, record, timeout=min(180, recovery_phase_remaining(publication_deadline)))
     # Versioned terminal receipt boundary: every enclosed operation is read-only.
@@ -2113,11 +2128,19 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
                     baseline = prior['baseline']
                     states[key] = dict(revision=baseline, deploymentIds=prior['baselineDeploymentIds'])
                     rollback[key] = prepare_stable_baseline_rollback(original, key, states[key], package_root)
+                    if authority.stable_baseline_partial_marker(repository,observer['toolRevision']) is not None:
+                        if key!='portal':raise DeploymentReconciliationRequired('STABLE_PARTIAL_UNEXPECTED_INHERITED_INTENT')
+                        carried=authority.stable_baseline_carried_portal(repository,original,observer,token)
+                        if prior!=carried['intent'] or rollback[key]!=carried['target']['rollbackEvidence']:
+                            raise DeploymentReconciliationRequired('STABLE_CARRIED_BASELINE_CHANGED')
+                        carried_portal=dict(carried['binding'])
+                        states[key]['providerInventoryIdentity']=carried['target']['providerInventoryIdentity']
                 evidence = authority.fast_track_recovery_record_proof(original, material, observer)
                 def before_write(ids, *, key=key, azure=azure):
                     try:
                         if crm and key != 'portal':
-                            crm_retained_portal_gate(original, inventory, observer, publication_deadline)
+                            crm_retained_portal_gate(original, inventory, observer, publication_deadline,
+                                expected=carried_portal.get('currentServingObservation') if carried_portal else None)
                         # A separate historical proof closes with uncached readback
                         # before fresh live ownership/provider checks and any intent.
                         with authority.recovery_admission_proof():
@@ -2167,6 +2190,9 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
         name, record = recovery_preflight_nonentry_record(proof, key, failure)
         owner.publish_record(name, record, timeout=min(180, recovery_phase_remaining(deadline - 60)))
         raise
+    if carried_portal is not None:
+        # Historical preflight has closed; this is a separate fresh live observation.
+        carried_portal['currentServingObservation']=crm_retained_portal_gate(original,inventory,observer,publication_deadline)
     if 'baselineAdoption' in original:
         record = dict(schemaVersion=1, phase='baseline-admission', authorizesMutation=False, liveStable=False,
             originalRun=original_run, applicationRevision=revision, observer=observer,
@@ -2178,13 +2204,16 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
             record['currentStateRoot']=authority.STABLE_BASE_CURRENT_ROOT
             for key in record['targets']:
                 record['targets'][key]['providerInventoryIdentity']=states[key].get('providerInventoryIdentity')
-        authority.validate_stable_baseline_admission(record, original, observer)
+        if carried_portal is not None:record['carriedPortalSuccess']=carried_portal
+        with authority.recovery_admission_proof():
+            authority.validate_stable_baseline_admission(record, original, observer)
         publish_phase_record(authority.stable_baseline_admission_name(observer), record)
     def recover_target(key):
         if crm:
             crm_retained_schema_fresh(schema_proof, original, observer)
         if crm and key != 'portal':
-            crm_retained_portal_gate(original, inventory, observer, publication_deadline)
+            crm_retained_portal_gate(original, inventory, observer, publication_deadline,
+                                expected=carried_portal.get('currentServingObservation') if carried_portal else None)
         azure, journal = journals[key]
         def read_failure(failure):
             reason = 'provider-read-timeout' if isinstance(failure.__cause__, subprocess.TimeoutExpired) else 'provider-read-unavailable'
@@ -2203,7 +2232,8 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
     results = {}
     if crm:
         results['portal'] = recover_target('portal')
-        crm_retained_portal_gate(original, inventory, observer, publication_deadline)
+        crm_retained_portal_gate(original, inventory, observer, publication_deadline,
+                                expected=carried_portal.get('currentServingObservation') if carried_portal else None)
         with authority.evidence_lookup_budget(publication_deadline):
             schema_proof = crm_retained_schema_gate(original, observer, publication_deadline, publish_phase_record)
     remaining = [key for key in journals if key not in results]
