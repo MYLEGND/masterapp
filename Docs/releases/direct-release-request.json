@@ -10,7 +10,7 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "1701c92649b811b3dca1587ef76146d14bea28f8",
-    "sourceRevision": "7343619d8238fbcdcdd416b76c297ada9350d274",
+    "sourceRevision": "63ee4e102b0f80efa5fe60a1240b7c450a1e32b6",
     "files": {
       "scripts/validation-resume.py": {
         "mode": "100644",
@@ -18,7 +18,7 @@
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "d4268624644fb10ab89113318ac2f0d11fe70e1d"
+        "blob": "06b8bcc95cdfe4a15c985abb480e96d12cf0dd0b"
       }
     }
   }
