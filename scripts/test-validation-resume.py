@@ -6605,6 +6605,52 @@ class RetainedRecoveryAuthorityTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 m._without_skipped_recovery_job([normal] + bad, source)
 
+class HistoricalRecoveryWorkflowTests(unittest.TestCase):
+    def test_exact_current_workflow_and_closed_directional_pair(self):
+        from types import SimpleNamespace
+        current=(ROOT/'.github/workflows'/m.FAST_TRACK_RELEASE_WORKFLOW).read_text()
+        self.assertEqual(hashlib.sha256(current.encode()).hexdigest(),
+            '946f12938a47c3009871006969ae9d0ef50e9c0cc67f1df81a202f0a3bacc424')
+        self.assertTrue(m.historical_recovery_workflow_matches(current,current))
+        values={b'current':'946f12938a47c3009871006969ae9d0ef50e9c0cc67f1df81a202f0a3bacc424',
+                b'old':'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd',b'unknown':'f'*64}
+        with patch.object(m.hashlib,'sha256',side_effect=lambda value:SimpleNamespace(hexdigest=lambda:values[value])):
+            self.assertTrue(m.historical_recovery_workflow_matches('old','current'))
+            for source,local in [('current','old'),('old','unknown'),('unknown','current')]:
+                with self.subTest(source=source,current=local):
+                    self.assertFalse(m.historical_recovery_workflow_matches(source,local))
+        self.assertFalse(m.historical_recovery_workflow_matches(current+'# changed',current))
+
+    def test_actual_preserved_historical_workflow_bytes(self):
+        import subprocess
+        current=(ROOT/'.github/workflows'/m.FAST_TRACK_RELEASE_WORKFLOW).read_text()
+        old=subprocess.check_output(['git','show','8fd4deb1fcbd54a472abe486758de331928e646c:.github/workflows/legend-fast-track-ui.yml'],text=True)
+        self.assertEqual(hashlib.sha256(old.encode()).hexdigest(),'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd')
+        self.assertTrue(m.historical_recovery_workflow_matches(old,current))
+        self.assertFalse(m.historical_recovery_workflow_matches(current,old))
+        self.assertFalse(m.historical_recovery_workflow_matches(old+'# changed',current))
+        self.assertFalse(m.historical_recovery_workflow_matches(old,current+'# changed'))
+
+    def test_inventory_uses_compatibility_without_dropping_dispatch_identity(self):
+        run=dict(id=20,head_sha='b'*40,path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,
+            event='workflow_dispatch',head_branch=m.FAST_TRACK_PR_BASE,head_repository=dict(full_name='owner/repo'),
+            display_title='LEGEND retained recovery original=7 application='+'a'*40)
+        with patch.object(m,'_fast_track_history_observation',return_value=[run]), \
+             patch.object(m,'_release_history_source',return_value='historical'), \
+             patch.object(m,'historical_recovery_workflow_matches',return_value=True) as match:
+            self.assertEqual(m.fast_track_execution_history('owner/repo','token'),[])
+            self.assertEqual(m.fast_track_execution_history('owner/repo','token',include_recovery=True),[run])
+            self.assertTrue(match.called)
+            for key,value in [('display_title','unknown'),('path',run['path']+'@wrong')]:
+                original=run[key];run[key]=value
+                with self.subTest(key=key),self.assertRaisesRegex(RuntimeError,'HISTORY_PRODUCER_UNPROVEN'):
+                    m.fast_track_execution_history('owner/repo','token',include_recovery=True)
+                run[key]=original
+            match.return_value=False
+            with self.assertRaisesRegex(RuntimeError,'RECOVERY_HISTORY_PRODUCER_UNPROVEN'):
+                m.fast_track_execution_history('owner/repo','token',include_recovery=True)
+
+
 class RetainedRecoveryProducerTests(unittest.TestCase):
     def setUp(self):
         self.run = dict(id=20, run_attempt=1, head_sha='b'*40, path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,
@@ -6615,12 +6661,22 @@ class RetainedRecoveryProducerTests(unittest.TestCase):
         self.jobs = [dict(id=i+1, name=name, run_id=20, run_attempt=1, head_sha='b'*40,
                          status='completed', conclusion='skipped', steps=[]) for i,name in enumerate(names)]
         self.source = (ROOT/'.github/workflows'/m.FAST_TRACK_RELEASE_WORKFLOW).read_text()
-    def invoke(self, *, source=None, promotions=None, promoted=True):
+    def invoke(self, *, source=None, promotions=None, promoted=True, live=False):
         with patch.object(m, '_release_history_source', return_value=self.source if source is None else source), \
              patch.object(m, 'fast_track_historical_producers', return_value=[dict(id=19,head_sha='b'*40)] if promotions is None else promotions), \
              patch.object(m, 'fast_track_promotion_parent', return_value={} if promoted else None), \
              patch.object(m, 'api_get', return_value=dict(total_count=len(self.jobs), jobs=self.jobs)):
-            return m.fast_track_recovery_producer('owner/repo',self.run,'token',attempt=1)
+            return m.fast_track_recovery_producer('owner/repo',self.run,'token',attempt=1,live=live)
+    def test_historical_compatibility_never_authorizes_live_source(self):
+        with patch.object(m,'historical_recovery_workflow_matches',return_value=True):
+            self.assertEqual(self.invoke(source='historical')['runId'],20)
+            with self.assertRaisesRegex(ValueError,'WORKFLOW_CHANGED'):
+                self.invoke(source='historical',live=True)
+            with self.assertRaisesRegex(ValueError,'TOOL_NOT_PROMOTED'):
+                self.invoke(source='historical',promoted=False)
+        with patch.object(m,'_fast_track_recovery_owner',return_value=self.jobs[-1]) as owner:
+            self.assertEqual(self.invoke(live=True)['jobId'],6)
+            self.assertTrue(owner.call_args.kwargs['live'])
     def test_exact_separate_producer(self):
         proof=self.invoke()
         self.assertEqual(proof,dict(runId=20,runAttempt=1,jobId=6,toolRevision='b'*40,promotionRunId=19))

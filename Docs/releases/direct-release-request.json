@@ -1,48 +1,24 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized completing the existing combined diagnostics and Client Activity & Case History release, including necessary admission repair, independent review, normal protected integration and retained-package recovery. No new credentials, spend, security exception, SQL replay or confirmation bypass.",
-  "purpose": "Promote only reviewed recovery tooling for original run 41131223973 application revision 3243221ae661b53d60f78cc2dab108a93bad7632. Authenticate the exact pre-upload failures from attempts 3 and 4 and earlier skipped matrices; retain unknown-intent holds elsewhere. Reuse all four original immutable application packages and completed schema success through the existing retained recovery dispatch, with fresh durable read-only schema/recovery proof, Portal-first receipt/live-idle barriers and unchanged rollback/native-association holds. This promotion deploys no applications, performs no SQL and changes no routing. Original combined requirements and acceptance A-L remain intact.",
-  "requestId": "masterapp-combined-preintent-recovery-tools-20261030-v1",
+  "authorization": "Existing Founder approval to complete the combined release and necessary bounded admission repair, with independent review and normal protected integration.",
+  "purpose": "Preserve the exact reviewed predecessor recovery workflow in historical inventory and nonlive receipt authentication after the read-only observer workflow promotion. Live producers remain byte-for-byte exact. Resume original run41131223973 application3243221 only through existing retained recovery with originalfour packages, fresh schema/recovery proof and Portal-first gates. No SQL replay, application rebuild, routing, native-association activation, new credentials or spend.",
+  "requestId": "masterapp-combined-historical-recovery-workflow-20261030-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "3243221ae661b53d60f78cc2dab108a93bad7632",
-    "sourceRevision": "c23724e569c27fe390deb7436fcfda61f5bee9aa",
+    "baseRevision": "1701c92649b811b3dca1587ef76146d14bea28f8",
+    "sourceRevision": "63ee4e102b0f80efa5fe60a1240b7c450a1e32b6",
     "files": {
-      ".github/workflows/legend-fast-track-ui.yml": {
+      "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "90f0dec8147b069428abf57fe21fef18e016313f"
-      },
-      "scripts/deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "9892fb55ece1369a1e97b7bc75462fe5fbe8ad63"
-      },
-      "scripts/release-artifacts/transport.cjs": {
-        "mode": "100644",
-        "blob": "f6b9403895c8844a3fb77dec1ce10924dec90b83"
-      },
-      "scripts/test-deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "70c23319e41acc7744853ee5a2407117a239993a"
+        "blob": "9b17b4c5e8d300f550db9bbc49301f74f6c6b776"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "c2af84771006b49edd2c806ef4dd3e65630eaf36"
-      },
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "d9576402514a9238365e1ca63e21d9dea4fe9a35"
-      },
-      "scripts/release-artifacts/test-transport.cjs": {
-        "mode": "100644",
-        "blob": "c6b03c8c813a2af618d648c81d60251c11580063"
-      },
-      "scripts/test-fast-track-release.py": {
-        "mode": "100644",
-        "blob": "f74b54039bd2ec38399ea2a1527e9ca2d5955a36"
+        "blob": "06b8bcc95cdfe4a15c985abb480e96d12cf0dd0b"
       }
     }
   }
