@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Zac explicitly approved this one-release admission-policy change in Sentinel_1a096f6271dc8191808e39cd0e87e11e at 2026-10-31T01:53:42Z. Preserve current security, production, ownership and recovery protections.",
-  "purpose": "Exact approved current-state adoption root replacing retired provenance only for pinned four packages; current operations, serving identity, recoverable rollback, schema compatibility and closing fences retained. Zero-target tool promotion only.",
-  "requestId": "stable-base-current-root-20261031-v1",
+  "authorization": "Zac explicitly approved this one-release admission-policy change in Sentinel_1a096f6271dc8191808e39cd0e87e11e at 2026-10-31T01:53:42Z. Preserve current security, production, ownership and recovery protections. Exact paired-source trust admission approved in Sentinel_26a83424099081918c5b20a2e2f85669 at 2026-10-31T20:18:21Z, subject to independent review.",
+  "purpose": "Carry exact accepted Portal success without replay and close read-only historical proof scopes before fresh provider checks; deploy only remaining targets through existing protected recovery after zero-target tooling promotion.",
+  "requestId": "stable-base-portal-carry-20261031-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -14,32 +14,40 @@
   },
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "972772d037f925a104a090d8d7ddcb896aa4e259",
-    "sourceRevision": "976a0c45b76c7e2722a57591c6382c3891656efc",
+    "baseRevision": "8f68e9c71c8e0535f46b5094577410ce41feab65",
+    "sourceRevision": "7c81512d6b566e846904fecf658543b0dfd19f0e",
     "files": {
       "scripts/deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "95ebd44eb422e88cc7d1bfb0a5c4aae83cd19693"
+        "blob": "9028028eb72c139367f6d325dd4c60b088cdd1e1"
       },
       "scripts/release-artifacts/test-transport.cjs": {
         "mode": "100644",
-        "blob": "13706a10ef3d3f201c4c199d35c48c291dbabb59"
+        "blob": "e84d6ac9ab39979a172c28fa1a0d2138d5144f39"
       },
       "scripts/release-artifacts/transport.cjs": {
         "mode": "100644",
-        "blob": "a60dc9d5e9c5cbf190499a73fcc9c242e84108b2"
+        "blob": "31b551159147f9be0142e05087c7f88fa1c692c3"
+      },
+      "scripts/release-operation-evidence.py": {
+        "mode": "100644",
+        "blob": "897434fa8c6df3531ef8ed826ab413bb2f4146ec"
       },
       "scripts/test-deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "c8ac31fd491856bb582cd4ad2729245b69c0f428"
+        "blob": "aeaf4c9cfa1a83fb375e82a30472849b2b299bde"
+      },
+      "scripts/test-release-operation-evidence.py": {
+        "mode": "100644",
+        "blob": "9c9ab0a79e69d3f2ae3c1ab56e8a3d766c6913bd"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "550e45654e2c3f706aebe44f684cfee2f5a56818"
+        "blob": "5c9224f2ce036126bf265b90c7645558efc873dc"
       },
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "f74cdb62b5e249161872cbfa1722a536a74a7ad1"
+        "blob": "e7558e787533c0d609b5b107ab88916e87614278"
       }
     }
   },
@@ -67,5 +75,12 @@
         "identity": "ebd9f65a17a5167f8f8b13aafb449f0315fcaf47002ddf0da082de63cd9a1050"
       }
     }
+  },
+  "baselinePartialContinuation": {
+    "priorToolRevision": "8f68e9c71c8e0535f46b5094577410ce41feab65",
+    "priorPromotionRun": 41234931239,
+    "partialRun": 41235118337,
+    "partialAttempt": 1,
+    "effectsIdentity": "3411a4c51b21e1267265e125cec9fa4c03b8a9ed75f50d61ea8e4811162a2e92"
   }
 }
