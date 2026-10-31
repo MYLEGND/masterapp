@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
   "authorization": "Zac explicitly approved this one-release admission-policy change in Sentinel_1a096f6271dc8191808e39cd0e87e11e at 2026-10-31T01:53:42Z. Preserve current security, production, ownership and recovery protections.",
-  "purpose": "Adopt the exact retained four app3243221 packages and completed schema through the existing recovery owner, replacing recursive predecessor provenance with pinned terminal effects and fresh current operation/provider/schema/rollback proof. This tool promotion publishes no applications and authorizes no SQL replay, rebuild, routing or unrelated features.",
-  "requestId": "stable-base-3243221-20261031-v1",
+  "purpose": "Bounded immutable exact-SHA ancestry proof reuse and exact one-step nonentry continuation for the existing approved four-package baseline. Same material/adoption identity, same operation IDs, fresh closing checks, unchanged deadlines and current provider/rollback protections. Zero-target tool promotion only.",
+  "requestId": "stable-base-proof-reuse-20261031-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -14,37 +14,24 @@
   },
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "1ecc94b988188bf664e1e515b363f63dbed915fe",
-    "sourceRevision": "aae5a9f47662a2690a0f01027b6ffd1996e96f9f",
+    "baseRevision": "d0566fc8200699ff8be2d4081a7bb571f3ad460a",
+    "sourceRevision": "3de5d9a2cee1a902e6a6b9e1988cbebe077bf70d",
     "files": {
-      "scripts/deploy-approved-app.py": {
+      "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "cfa58d322c105b1511b2d2f674f1c9e930086bcc"
-      },
-      "scripts/release-artifacts/test-transport.cjs": {
-        "mode": "100644",
-        "blob": "9d425228eadb4d713486a6fb6acbc241ec100906"
-      },
-      "scripts/release-artifacts/transport.cjs": {
-        "mode": "100644",
-        "blob": "223629a3a54fd2e96211cb95dc09b9c1aab398ca"
-      },
-      "scripts/release_policy.py": {
-        "mode": "100644",
-        "blob": "3cad7752503159f7b5d2533767fb206a96aed108"
-      },
-      "scripts/test-deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "4d6a9ae1df83c0a891359caea5b44d75cd42d8a6"
+        "blob": "f5b4c43ad085c7c1cf1d40ed51ea632d03dc79f7"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "49862d26fb03504d8c828fcefd89c660295763ae"
-      },
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "339e60ec7b7902f7b7c39e74b36979e020325032"
+        "blob": "8765d3a270a810a172b20289c618ebe8dfd11c29"
       }
     }
+  },
+  "baselineContinuation": {
+    "priorToolRevision": "d0566fc8200699ff8be2d4081a7bb571f3ad460a",
+    "priorPromotionRun": 41166381726,
+    "terminalNonentryRun": 41166598096,
+    "terminalNonentryAttempt": 1,
+    "terminalNonentryIdentity": "b3de59e3b1d6f196abd334767694cb904852ceafcee67c19c76f58d3857de545"
   }
 }
