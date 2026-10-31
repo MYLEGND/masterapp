@@ -243,7 +243,13 @@ function supersessionRecord(record) {
 
 function validateRecord(name, record) {
   if (/^legend-stable-baseline-admission-[1-9][0-9]*-[1-9][0-9]*$/.test(name)) {
-    const keys='schemaVersion,phase,authorizesMutation,liveStable,originalRun,applicationRevision,observer,baselineAdoption,schemaProofIdentity,targets';
+    const root=record?.currentStateRoot;
+    const keys='schemaVersion,phase,authorizesMutation,liveStable,originalRun,applicationRevision,observer,baselineAdoption,schemaProofIdentity,targets'+(root===undefined?'':',currentStateRoot');
+    if (root!==undefined && (!root || !exactKeys(root,'version,priorToolRevision,priorPromotionRun,terminalNonentryRun,terminalNonentryAttempt,terminalNonentryIdentity,history') ||
+        root.version!==1 || !sha(root.priorToolRevision,40) || !positive(root.priorPromotionRun) || !positive(root.terminalNonentryRun) || root.terminalNonentryAttempt!==1 ||
+        !sha(root.terminalNonentryIdentity,64) || !root.history || !exactKeys(root.history,'Legend/fast-track-release,legend/approved-changes') ||
+        Object.values(root.history).some(x=>!x || !exactKeys(x,'count,identity') || !positive(x.count) || x.count>1000 || !sha(x.identity,64))))
+      throw new Error('Invalid current-state root');
     const p=record?.baselineAdoption,o=record?.observer;
     if (!record || !exactKeys(record,keys) || JSON.stringify(record).length>32768 || record.schemaVersion!==1 ||
         record.phase!=='baseline-admission' || record.authorizesMutation!==false || record.liveStable!==false ||
@@ -254,7 +260,8 @@ function validateRecord(name, record) {
         !record.targets || !exactKeys(record.targets,'portal,client,protect,parfait')) throw new Error('Invalid stable baseline admission');
     for (const [target,row] of Object.entries(record.targets)) {
       const r=row?.rollbackEvidence;
-      if (!row || !exactKeys(row,'operationId,packageDigest,packageArtifactId,packageArtifactDigest,baseline,baselineDeploymentIds,rollbackEvidence') ||
+      if (!row || !exactKeys(row,'operationId,packageDigest,packageArtifactId,packageArtifactDigest,baseline,baselineDeploymentIds,rollbackEvidence'+(root===undefined?'':',providerInventoryIdentity')) ||
+          (root!==undefined && !sha(row.providerInventoryIdentity,64)) ||
           !sha(row.packageDigest,64) || row.operationId!==operationIdentity(target,record.applicationRevision,row.packageDigest) ||
           !positive(row.packageArtifactId) || !digest(row.packageArtifactDigest) || !sha(row.baseline,40) ||
           !Array.isArray(row.baselineDeploymentIds) || !row.baselineDeploymentIds.length || row.baselineDeploymentIds.length>1000 ||

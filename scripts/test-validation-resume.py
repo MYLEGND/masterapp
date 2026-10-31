@@ -7180,7 +7180,7 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         root=Path(__file__).parent
         source=(root/'deploy-approved-app.py').read_text()
         journal=(root/'release-operation-evidence.py').read_text()
-        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'8d38caa1e3b333053b23e2c91485e789dc38606dd5b914f1ab709d6dabe8183e')
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'9982b99ce5c6836d2d3dafcecac557283ffa1007c296dbd3dadf3dabe72c3c08')
         self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f')
         self.assertTrue(m._recovery_preflight_source_contract(source,journal))
         for changed in [source+'# unreviewed helper\n',source.replace('reconcile_only=journal.intent is not None','reconcile_only=False')]:
@@ -9774,6 +9774,90 @@ class StableBaselineAdoptionTests(unittest.TestCase):
         with self.assertRaises(m.ReleaseOperationHistoryUnproven):
             m.stable_baseline_operation_nonentry('MYLEGND/masterapp',m.CRM_PREINTENT_REVISION,'portal','0'*64,99,1,'test')
 
+
+
+class StableCurrentStateRootTests(unittest.TestCase):
+    def setUp(self):
+        import copy
+        self.copy=copy.deepcopy
+        self.observer=dict(runId=9991,runAttempt=1,jobId=9992,toolRevision='f'*40,promotionRunId=9990)
+        self.fields=('id','head_sha','head_branch','path','event','run_attempt','status','conclusion','created_at','updated_at')
+        def row(i,branch):return dict(id=i,head_sha='a'*40,head_branch=branch,path='.github/workflows/old.yml',event='workflow_dispatch',
+            run_attempt=1,status='completed',conclusion='failure',created_at='2026-10-01T00:00:00Z',updated_at='2026-10-01T00:01:00Z',head_repository=dict(full_name='MYLEGND/masterapp'))
+        self.rows={m.FAST_TRACK_PR_BASE:[row(i,m.FAST_TRACK_PR_BASE) for i in range(1,102)],m.TRUSTED_PR_BASE:[row(201,m.TRUSTED_PR_BASE)]}
+        self.root=self.copy(m.STABLE_BASE_CURRENT_ROOT)
+        for branch,rows in self.rows.items():
+            projected=[{k:r[k] for k in self.fields}for r in rows]
+            self.root['history'][branch]=dict(count=len(rows),identity=hashlib.sha256(json.dumps(projected,sort_keys=True,separators=(',',':')).encode()).hexdigest())
+        for ident,event,status,conclusion in [(9991,'workflow_dispatch','in_progress',None),(9990,'push','completed','success')]:
+            r=row(ident,m.FAST_TRACK_PR_BASE);r.update(head_sha='f'*40,path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,event=event,status=status,conclusion=conclusion,
+                display_title='LEGEND retained recovery original=41131223973 application='+m.CRM_PREINTENT_REVISION)
+            self.rows[m.FAST_TRACK_PR_BASE].append(r)
+        self.calls=[]
+    def read(self,repo,path,token):
+        import urllib.parse
+        q=urllib.parse.parse_qs(path.partition('?')[2]);branch=q['branch'][0];page=int(q.get('page',['1'])[0]);rows=self.rows[branch]
+        self.calls.append((branch,page));return dict(total_count=len(rows),workflow_runs=self.copy(rows[(page-1)*100:page*100]))
+    def test_complete_retired_cut_reused_once_and_closed_fresh(self):
+        with patch.object(m,'STABLE_BASE_CURRENT_ROOT',self.root),patch.object(m,'stable_baseline_current_root',return_value=self.root),patch.object(m,'_api_get_uncached',side_effect=self.read):
+            with m.recovery_admission_proof():
+                for target in range(4):
+                    result=m.stable_baseline_current_inventory('MYLEGND/masterapp',self.observer,'fixture')
+                    result.clear()  # caller cannot mutate the shared snapshot
+            self.assertEqual(len(self.calls),6)  # 3 complete initial pages + 3 closing pages
+    def test_same_view_changed_observer_stops(self):
+        with patch.object(m,'STABLE_BASE_CURRENT_ROOT',self.root),patch.object(m,'stable_baseline_current_root',return_value=self.root),patch.object(m,'_api_get_uncached',side_effect=self.read):
+            with m.recovery_admission_proof():
+                m.stable_baseline_current_inventory('MYLEGND/masterapp',self.observer,'fixture')
+                for key,value in [('runId',9998),('runAttempt',2),('jobId',9998),('toolRevision','e'*40),('promotionRunId',9998)]:
+                    with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'OBSERVER_CHANGED'):
+                        m.stable_baseline_current_inventory('MYLEGND/masterapp',dict(self.observer,**{key:value}),'fixture')
+    def test_late_final_page_stops(self):
+        late=[False]
+        def read(*args):
+            result=self.read(*args)
+            if len(self.calls)==3:late[0]=True
+            return result
+        def remaining(*args):
+            if late[0]:raise m.EvidenceLookupUnavailable('late final page')
+            return 30
+        with patch.object(m,'STABLE_BASE_CURRENT_ROOT',self.root),patch.object(m,'_api_get_uncached',side_effect=read),patch.object(m,'evidence_remaining',side_effect=remaining):
+            with self.assertRaises(m.EvidenceLookupUnavailable):m._stable_root_inventory('MYLEGND/masterapp',self.observer,'fixture')
+    def test_changed_new_active_or_unknown_history_stops(self):
+        mutations=[lambda:self.rows[m.TRUSTED_PR_BASE][0].update(run_attempt=2),
+            lambda:self.rows[m.TRUSTED_PR_BASE][0].update(status='in_progress'),
+            lambda:self.rows[m.TRUSTED_PR_BASE][0].update(conclusion=None),
+            lambda:self.rows[m.TRUSTED_PR_BASE][0].update(head_sha='b'*40),
+            lambda:self.rows[m.TRUSTED_PR_BASE][0].update(updated_at='2026-10-02T00:00:00Z'),
+            lambda:self.rows[m.TRUSTED_PR_BASE].append(dict(self.rows[m.TRUSTED_PR_BASE][0],id=202)),
+            lambda:self.rows[m.FAST_TRACK_PR_BASE][-1].update(conclusion='failure')]
+        for mutate in mutations:
+            saved=self.copy(self.rows);mutate()
+            with patch.object(m,'STABLE_BASE_CURRENT_ROOT',self.root),patch.object(m,'_api_get_uncached',side_effect=self.read):
+                with self.assertRaises(m.ReleaseOperationHistoryUnproven):m._stable_root_inventory('MYLEGND/masterapp',self.observer,'fixture')
+            self.rows=saved
+    def test_closing_new_attempt_and_duplicate_pages_rejected(self):
+        with patch.object(m,'STABLE_BASE_CURRENT_ROOT',self.root),patch.object(m,'stable_baseline_current_root',return_value=self.root),patch.object(m,'_api_get_uncached',side_effect=self.read):
+            with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                with m.recovery_admission_proof():
+                    m.stable_baseline_current_inventory('MYLEGND/masterapp',self.observer,'fixture')
+                    self.rows[m.TRUSTED_PR_BASE][0]['run_attempt']=2
+        self.rows[m.FAST_TRACK_PR_BASE][100]=self.copy(self.rows[m.FAST_TRACK_PR_BASE][0])
+        with patch.object(m,'STABLE_BASE_CURRENT_ROOT',self.root),patch.object(m,'_api_get_uncached',side_effect=self.read):
+            with self.assertRaises(m.ReleaseOperationHistoryUnproven):m._stable_root_inventory('MYLEGND/masterapp',self.observer,'fixture')
+    def test_exact_operation_nonentry_retires_only_old_provenance_after_current_fence(self):
+        with patch.object(m,'_release_history_api',return_value=dict(total_count=0,artifacts=[])),patch.object(m,'stable_baseline_operation_nonentry',return_value=True),patch.object(m,'stable_baseline_current_root',return_value=self.root),patch.object(m,'assert_fast_track_recovery_execution',return_value=self.observer),patch.object(m,'stable_baseline_current_inventory',return_value={'complete':'cut'}) as current,patch.object(m,'_release_history_runs',side_effect=AssertionError('Retired legacy matching')):
+            self.assertIsNone(m.release_operation_history('MYLEGND/masterapp','a'*64,m.CRM_PREINTENT_REVISION,'portal',9991,1,'fixture'))
+            current.assert_called_once()
+            current.side_effect=m.ReleaseOperationHistoryUnproven('changed attempt')
+            with self.assertRaises(m.ReleaseOperationHistoryUnproven):m.release_operation_history('MYLEGND/masterapp','a'*64,m.CRM_PREINTENT_REVISION,'portal',9991,1,'fixture')
+    def test_exact_authority_preserves_material_and_old_requests(self):
+        a=m.stable_baseline_authority('MYLEGND/masterapp',41131223973,m.CRM_PREINTENT_REVISION)
+        q=dict(baselineAdoption=m.stable_baseline_identity(a),baselineContinuation=self.copy(m.STABLE_BASE_CONTINUATION),baselineCurrentStateRoot=self.copy(m.STABLE_BASE_CURRENT_ROOT),trustedToolPromotion=dict(baseRevision=m.STABLE_BASE_CURRENT_ROOT['priorToolRevision']))
+        self.assertTrue(m.stable_baseline_tool_request(q,a))
+        for mutate in [lambda x:x['baselineCurrentStateRoot'].update(version=True),lambda x:x['baselineCurrentStateRoot'].update(version=2),lambda x:x['trustedToolPromotion'].update(baseRevision='f'*40),lambda x:x.pop('baselineContinuation'),lambda x:x['baselineCurrentStateRoot']['history'][m.FAST_TRACK_PR_BASE].update(identity='0'*64)]:
+            changed=self.copy(q);mutate(changed)
+            with self.assertRaises(ValueError):m.stable_baseline_tool_request(changed,a)
 
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.

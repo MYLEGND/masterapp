@@ -41,6 +41,7 @@ class CrmRetainedSchemaTests(unittest.TestCase):
         from datetime import datetime,timezone,timedelta
         self.stack=ExitStack();self.addCleanup(self.stack.close)
         self.authority=deploy._RELEASE_AUTHORITY
+        self.current_root=self.stack.enter_context(patch.object(self.authority,'stable_baseline_current_root',return_value=None))
         self.revision=self.authority.CRM_PREINTENT_REVISION
         self.observer=dict(runId=20,runAttempt=1,jobId=30,toolRevision='b'*40,promotionRunId=19)
         self.original=dict(run=dict(id=41131223973,head_sha=self.revision),targets=['portal','client','protect','parfait'],
@@ -4339,6 +4340,48 @@ class StableBaselineRollbackTests(unittest.TestCase):
             with self.assertRaises(deploy.DeploymentDrift):
                 deploy.prepare_stable_baseline_rollback({'baselineAdoption':{}},'portal',{'revision':revision},root,expected=dict(proof,packageDigest='d'*64))
 
+
+
+class CurrentRootProviderTests(unittest.TestCase):
+    def setUp(self):
+        self.original=dict(baselineAdoption={},run=dict(head_sha='a'*40))
+        self.azure=Mock();self.azure.observed_revision.return_value='b'*40
+        self.rows=[dict(id='old-failed',status=3,received_time='2026-10-31T12:00:00Z',start_time='2026-10-31T12:00:01Z',end_time='2026-10-31T12:00:02Z',complete=True,active=False)]
+    def call(self,expected=None):
+        with patch.dict(os.environ,GITHUB_REPOSITORY='MYLEGND/masterapp'),patch.object(deploy._RELEASE_AUTHORITY,'stable_baseline_current_root',return_value={'version':1}),patch.object(deploy,'read_deployments_bounded',return_value=self.rows):
+            return deploy.recovery_preupload_baseline(self.azure,self.original,'portal',expected=expected)
+    def test_known_terminal_failure_is_history_not_noeffect_and_no_old_matching(self):
+        with patch.object(deploy.subprocess,'run',side_effect=AssertionError('No old ancestor matcher')):
+            state=self.call();self.assertEqual(state['revision'],'b'*40);self.assertIn('providerInventoryIdentity',state)
+            self.assertEqual(state,self.call(expected=state))
+        self.azure.submit.assert_not_called()
+    def test_active_unknown_incomplete_and_current_candidate_stop(self):
+        for key,value in [('status',1),('status',None),('complete',False),('end_time',None),('end_time','2020-01-01T00:00:00Z')]:
+            old=self.rows[0][key];self.rows[0][key]=value
+            with self.assertRaises((deploy.RecoveryPreflightFailure,ValueError)):self.call()
+            self.rows[0][key]=old
+        self.azure.observed_revision.return_value='a'*40
+        with self.assertRaises(deploy.RecoveryPreflightFailure):self.call()
+    def test_sameid_terminal_or_time_change_and_new_row_are_drift(self):
+        state=self.call();self.rows[0]['status']=4
+        with self.assertRaises(deploy.RecoveryPreflightDrift):self.call(expected=state)
+        self.rows[0]['status']=3;self.rows.append(dict(self.rows[0],id='later'))
+        with self.assertRaises(deploy.RecoveryPreflightDrift):self.call(expected=state)
+
+class CurrentRootSchemaTests(CrmRetainedSchemaTests):
+    def test_exactroot_skips_old_audit_but_keeps_physical_and_restore(self):
+        self.current_root.return_value={'version':1}
+        with patch.object(self.authority,'stable_baseline_current_inventory',return_value={'exact':'cut'}) as inventory:
+            proof=self.call()
+        self.audit.audit.assert_not_called();inventory.assert_called_once()
+        self.assertEqual(self.module.observe.call_count,2)
+        self.module.production_recovery.assert_called_once()
+        self.assertFalse(proof['record']['sqlExecutionAuthorized'])
+    def test_changed_currentwriter_stops_before_sql_observation(self):
+        self.current_root.return_value={'version':1}
+        with patch.object(self.authority,'stable_baseline_current_inventory',side_effect=RuntimeError('changed writer')):
+            with self.assertRaises(RuntimeError):self.call()
+        self.module.observe.assert_not_called()
 
 if __name__ == '__main__':
     unittest.main()
