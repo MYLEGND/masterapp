@@ -1387,6 +1387,9 @@ def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
     # Shared serializer preflight; exact paired generation, never arbitrary helpers.
     if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) in {
+        # Original/material proof reuse closes before schema and publication; unchanged journal.
+        ('ebf12dabec3e452844376167444ea5e822763fcf246bea68627d2ba9cfcc5dd4',
+         '0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f'),
         # Reviewed CRM retained recovery: fresh read-only schema proof and Portal-first barrier.
         ('f639c1dc92e1f382964b2e1aca9b6f1d606eec1ba1c11d492424b298d17628b2',
          '0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f'),

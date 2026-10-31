@@ -1851,13 +1851,22 @@ def recover_fast_track(original_run, revision, package_root, *, prepare_only=Fal
     repository = os.environ['GITHUB_REPOSITORY']; token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
     # Authentication receipts belong to the same byte-only invocation cache.
     with authority.recovery_material_reuse():
-        with authority.recovery_admission_proof():
-            observer = authority.assert_fast_track_recovery_execution(original_run, revision)
-        authority.assert_fast_track_recovery_live_execution(original_run, revision, observer)
-        deadline = recovery_job_deadline(authority, repository, observer, token)
-        # Nested authority reads share the original finite job budget.
-        with authority.evidence_lookup_budget(deadline - 60):
-            return _recover_fast_track(original_run, revision, package_root, observer, deadline, prepare_only=prepare_only)
+        outcome = 'failure'
+        try:
+            with authority.recovery_admission_proof():
+                observer = authority.assert_fast_track_recovery_execution(original_run, revision)
+            authority.assert_fast_track_recovery_live_execution(original_run, revision, observer)
+            deadline = recovery_job_deadline(authority, repository, observer, token)
+            # Nested authority reads share the original finite job budget.
+            with authority.evidence_lookup_budget(deadline - 60):
+                result = _recover_fast_track(original_run, revision, package_root, observer, deadline, prepare_only=prepare_only)
+            outcome = 'success'
+            return result
+        finally:
+            try:
+                authority.report_recovery_efficiency(outcome)
+            except BaseException:
+                pass  # Diagnostics never replace the original result or failure.
 
 
 def recovery_summary_record(original_run, original, revision, observer, records):
@@ -1975,8 +1984,12 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
     """Resume retained original materials under a separately promoted tool owner."""
     authority = _RELEASE_AUTHORITY
     repository = os.environ['GITHUB_REPOSITORY']; token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
-    original = authority.fast_track_completion_original(repository, original_run, revision, token)
-    materials = {key: authority.fast_track_recovery_material(repository, original, key, token) for key in original['targets']}
+    # Repeated original/material proofs share one read-only snapshot and the
+    # existing authenticated byte cache. Close with uncached readback before
+    # schema evidence, live provider checks or any publication can begin.
+    with authority.recovery_admission_proof():
+        original = authority.fast_track_completion_original(repository, original_run, revision, token)
+        materials = {key: authority.fast_track_recovery_material(repository, original, key, token) for key in original['targets']}
     inventory = {}
     for key, material in materials.items():
         artifact = material['packageArtifact']; directory = package_root / key

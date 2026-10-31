@@ -3512,7 +3512,24 @@ class RetainedRecoveryConsumerTests(unittest.TestCase):
             download.assert_not_called();azure.assert_not_called();process.assert_not_called()
 
 class RetainedRecoveryIntegratedTests(unittest.TestCase):
-    def run_case(self, *, entered=False, race=False, expired=False, preflight_failure=False, publication_failure=False, read_failure=False, proof_failure=0, live_failure=False):
+    def test_efficiency_report_failure_preserves_recovery_outcome(self):
+        authority=deploy._RELEASE_AUTHORITY
+        with patch.dict(os.environ,dict(GITHUB_REPOSITORY='owner/repo',GH_TOKEN='fixture')), \
+             patch.object(authority,'assert_fast_track_recovery_execution',return_value={}), \
+             patch.object(authority,'assert_fast_track_recovery_live_execution'), \
+             patch.object(deploy,'recovery_job_deadline',side_effect=lambda *args:deploy.time.monotonic()+1800), \
+             patch.object(authority,'report_recovery_efficiency',side_effect=RuntimeError('report failed')) as report:
+            with patch.object(deploy,'_recover_fast_track',return_value={'state':'verified'}):
+                self.assertEqual(deploy.recover_fast_track(10,'a'*40,Path('/unused')),{'state':'verified'})
+            report.assert_called_with('success')
+            with patch.object(deploy,'_recover_fast_track',side_effect=ValueError('original failure')):
+                with self.assertRaisesRegex(ValueError,'original failure'):
+                    deploy.recover_fast_track(10,'a'*40,Path('/unused'))
+            report.assert_called_with('failure')
+        self.assertIsNone(authority._RECOVERY_PROOF_VIEW.get())
+        self.assertIsNone(authority._RECOVERY_RECEIPT_BYTES.get())
+
+    def run_case(self, *, entered=False, race=False, expired=False, preflight_failure=False, publication_failure=False, read_failure=False, proof_failure=0, live_failure=False, material_failure=False):
         from types import SimpleNamespace
         authority=deploy._RELEASE_AUTHORITY
         observer=dict(runId=20,runAttempt=1,jobId=30,toolRevision='b'*40,promotionRunId=19)
@@ -3531,13 +3548,19 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
             proof_active+=1
             try:
                 yield
-                if proof_failure and number==proof_failure+1:
+                if (proof_failure and number==proof_failure+2) or (material_failure and number==2):
                     raise authority.ReleaseOperationHistoryUnproven('RECOVERY_PROOF_CHANGED_AT_BOUNDARY')
             finally:proof_active-=1
         def authenticate(*args):
             self.assertGreater(proof_active,0)
             self.assertIsNotNone(authority._RECOVERY_RECEIPT_BYTES.get())
             return observer
+        def original_proof(*args):
+            self.assertGreater(proof_active,0)
+            return original
+        def material_proof(*args):
+            self.assertGreater(proof_active,0)
+            return material
         def live_owner(*args):
             nonlocal live_reads
             live_reads+=1
@@ -3559,6 +3582,7 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
                 if self.intent is not None:return False
                 self.callback(['old']);events.append('intent');self.intent={};return True
         def reconcile(azure,**kwargs):
+            self.assertEqual(proof_active,0)
             events.append(('reconcile_only',kwargs['reconcile_only']))
             self.assertLessEqual(kwargs['timeout'],420)
             if read_failure:
@@ -3569,6 +3593,7 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
             if kwargs['journal'].before_submit():events.append('upload')
             return 'preserved' if entered else 'deployed'
         def download(repo,run,name,directory,**kwargs):
+            self.assertEqual(proof_active,0)
             self.assertEqual((run,name,kwargs['artifact_id'],kwargs['expected_digest']),
                              (10,'immutable-original',40,'sha256:'+'e'*64))
             directory.mkdir(parents=True);(directory/'deploy.zip').write_bytes(b'exact fixture');(directory/'SHA256SUMS').write_text('fixture')
@@ -3579,9 +3604,9 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
             stack.enter_context(patch.object(authority,'assert_fast_track_recovery_execution',side_effect=authenticate))
             stack.enter_context(patch.object(authority,'assert_fast_track_recovery_live_execution',side_effect=live_owner))
             stack.enter_context(patch.object(deploy,'recovery_job_deadline',side_effect=lambda *args:deploy.time.monotonic()+1800))
-            stack.enter_context(patch.object(authority,'fast_track_completion_original',return_value=original))
-            stack.enter_context(patch.object(authority,'fast_track_recovery_material',return_value=material))
-            stack.enter_context(patch.object(authority,'_download_run_artifact',side_effect=download))
+            stack.enter_context(patch.object(authority,'fast_track_completion_original',side_effect=original_proof))
+            stack.enter_context(patch.object(authority,'fast_track_recovery_material',side_effect=material_proof))
+            package_download=stack.enter_context(patch.object(authority,'_download_run_artifact',side_effect=download))
             stack.enter_context(patch.object(authority,'release_operation_history',side_effect=history))
             stack.enter_context(patch.object(authority,'_completion_original_unchanged'))
             stack.enter_context(patch.object(authority,'recovery_admission_proof',side_effect=proof_view))
@@ -3595,6 +3620,12 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
             stack.enter_context(patch.object(deploy.importlib.util,'spec_from_file_location',return_value=SimpleNamespace(loader=Mock())))
             stack.enter_context(patch.object(deploy.importlib.util,'module_from_spec',return_value=owner))
             root=Path(temporary)
+            if material_failure:
+                with self.assertRaisesRegex(authority.ReleaseOperationHistoryUnproven,'CHANGED_AT_BOUNDARY'):
+                    deploy.recover_fast_track(10,'a'*40,root,prepare_only=True)
+                package_download.assert_not_called();baseline.assert_not_called();owner.publish_record.assert_not_called()
+                self.assertEqual(events,[]);self.assertEqual(proof_active,0)
+                return
             deploy.recover_fast_track(10,'a'*40,root,prepare_only=True)
             proof_boundaries.clear()
             if proof_failure:
@@ -3604,7 +3635,7 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
                 record=owner.publish_record.call_args.args[1]
                 self.assertEqual(record['phase'],'preflight-nonentry' if proof_failure==1 else 'target-preintent-hold')
                 self.assertFalse(record['authorizesMutation'])
-                self.assertEqual(len(proof_boundaries),proof_failure+1)
+                self.assertEqual(len(proof_boundaries),proof_failure+2)
             elif live_failure:
                 with self.assertRaisesRegex(ValueError,'LIVE_OWNER_CHANGED'):deploy.recover_fast_track(10,'a'*40,root)
                 self.assertNotIn('intent',events);self.assertNotIn('upload',events)
@@ -3645,6 +3676,7 @@ class RetainedRecoveryIntegratedTests(unittest.TestCase):
                 self.assertIn(('reconcile_only',entered),events)
                 self.assertEqual(baseline.call_count,0 if entered else 2)
     def test_fresh_owner_drift_after_history_readback_prevents_intent(self):self.run_case(live_failure=True)
+    def test_original_material_readback_drift_stops_before_package_restore(self):self.run_case(material_failure=True)
     def test_original_immutable_package_first_write_after_fresh_barriers(self):self.run_case()
     def test_initial_proof_readback_drift_holds_before_workers(self):self.run_case(proof_failure=1)
     def test_preintent_proof_readback_drift_holds_before_intent(self):self.run_case(proof_failure=2)
