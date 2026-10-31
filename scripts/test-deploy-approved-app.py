@@ -108,6 +108,64 @@ class CrmRetainedSchemaTests(unittest.TestCase):
 
 
 class CrmRetainedPortalTests(unittest.TestCase):
+    def test_carried_current_provider_digest_is_fresh_and_drift_fenced(self):
+        authority=deploy._RELEASE_AUTHORITY; revision='a'*40
+        original=dict(run=dict(id=10,head_sha=revision));observer=dict(runId=20,runAttempt=1,toolRevision='e'*40)
+        inventory=dict(portal=dict(operationId='b'*64,packageDigest='c'*64))
+        success=dict(packageDigest='c'*64,applicationRevision=revision,target='portal',deploymentIds=['new'])
+        azure=Mock();azure.observed_revision.return_value=revision
+        rows=[dict(id='new',status=4,complete=True,received_time='2026-10-31T19:00:00Z',start_time='2026-10-31T19:00:01Z',end_time='2026-10-31T19:00:02Z',active=True)]
+        with patch.dict(os.environ,GITHUB_REPOSITORY='o/r',GH_TOKEN='test'), \
+             patch.object(authority,'release_operation_history',return_value=success),patch.object(authority,'stable_baseline_partial_marker',return_value={'exact':True}), \
+             patch.object(authority,'assert_fast_track_recovery_live_execution'),patch.object(deploy,'target_azure',return_value=azure), \
+             patch.object(deploy,'read_deployments_bounded',return_value=rows):
+            first=deploy.crm_retained_portal_gate(original,inventory,observer,deploy.time.monotonic()+120)
+            second=deploy.crm_retained_portal_gate(original,inventory,observer,deploy.time.monotonic()+120,expected=first)
+            self.assertEqual(first['providerInventoryIdentity'],second['providerInventoryIdentity'])
+            rows[0]['end_time']='2026-10-31T19:00:03Z'
+            with self.assertRaisesRegex(deploy.DeploymentDrift,'CURRENT_STATE_CHANGED'):
+                deploy.crm_retained_portal_gate(original,inventory,observer,deploy.time.monotonic()+120,expected=first)
+            rows[0]['complete']=False
+            with self.assertRaises(deploy.RecoveryPreflightFailure):
+                deploy.crm_retained_portal_gate(original,inventory,observer,deploy.time.monotonic()+120,expected=first)
+            rows[0]['complete']=True
+            rows.append(dict(rows[0]))
+            with self.assertRaisesRegex(deploy.RecoveryPreflightFailure,'PREFLIGHT_AUTHORITY_UNPROVEN'):
+                deploy.crm_retained_portal_gate(original,inventory,observer,deploy.time.monotonic()+120,expected=first)
+            azure.submit.assert_not_called()
+
+    def test_receipt_scope_closes_before_fresh_provider_and_drift_blocks(self):
+        authority=deploy._RELEASE_AUTHORITY; revision='a'*40; events=[]
+        original=dict(run=dict(id=10,head_sha=revision)); observer=dict(runId=20,runAttempt=1)
+        inventory=dict(portal=dict(operationId='b'*64,packageDigest='c'*64))
+        success=dict(packageDigest='c'*64,applicationRevision=revision,target='portal',deploymentIds=['new'])
+        from contextlib import contextmanager
+        @contextmanager
+        def boundary():
+            events.append('open'); yield; events.append('close')
+        def history(*a,**k):
+            self.assertEqual(events[-1],'open'); events.append('proof'); return success
+        def provider(*a,**k):
+            self.assertEqual(events[-1],'close'); events.append('provider'); return [row('new',4)]
+        azure=Mock(); azure.observed_revision.return_value=revision
+        with patch.dict(os.environ,GITHUB_REPOSITORY='o/r',GH_TOKEN='test'), \
+             patch.object(authority,'recovery_admission_proof',side_effect=boundary), \
+             patch.object(authority,'release_operation_history',side_effect=history), \
+             patch.object(authority,'assert_fast_track_recovery_live_execution'), \
+             patch.object(deploy,'target_azure',return_value=azure), \
+             patch.object(deploy,'read_deployments_bounded',side_effect=provider) as read:
+            deploy.crm_retained_portal_gate(original,inventory,observer,deploy.time.monotonic()+120)
+            self.assertEqual(events,['open','proof','close','provider'])
+            @contextmanager
+            def changed():
+                yield
+                raise ValueError('closing drift')
+            with patch.object(authority,'recovery_admission_proof',side_effect=changed), \
+                 patch.object(authority,'release_operation_history',return_value=success), \
+                 self.assertRaisesRegex(ValueError,'closing drift'):
+                deploy.crm_retained_portal_gate(original,inventory,observer,deploy.time.monotonic()+120)
+            self.assertEqual(read.call_count,1)
+
     def test_receipt_and_matching_completed_deployment_are_both_required(self):
         authority=deploy._RELEASE_AUTHORITY;revision='a'*40
         original=dict(run=dict(id=10,head_sha=revision));observer=dict(runId=20,runAttempt=1)

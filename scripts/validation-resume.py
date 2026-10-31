@@ -1441,6 +1441,8 @@ RECOVERY_PREFLIGHT_PRODUCER_SHA256 = '15ba27c53564223cb41502bb5528949e6435f0e6bc
 def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
     # Shared serializer preflight; exact paired generation, never arbitrary helpers.
+    if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) == ('21220b50cf1c6d02e538eb5747c5f5aea46395f2abbfe6b82efbdfb4c585210f', '10cb03c9b02afbbb9912ec592757959960c0ea9d139f1280a9dcddfaa4f22351'):
+        return True  # Exact Portal-proof scope and carried-success continuation.
     if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) == (
         '9982b99ce5c6836d2d3dafcecac557283ffa1007c296dbd3dadf3dabe72c3c08', '0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f'):
         return True  # Exact current-state-root correction; legacy pairs remain below.
@@ -7712,13 +7714,22 @@ def stable_baseline_operation_nonentry(repository, revision, target, operation_i
             raise ReleaseOperationHistoryUnproven('STABLE_BASE_PRODUCER_UNKNOWN')
         elif row['head_sha'] == revision:
             relevant.append(row)
+    partial=stable_baseline_partial_marker(repository)
     expected = set(STABLE_BASE_PRIOR_RECOVERIES) | {adoption['originalRun'], current_run}
+    if partial is not None:expected.add(partial['partialRun'])
     if {r['id'] for r in relevant} != expected:
         raise ReleaseOperationHistoryUnproven('STABLE_BASE_OPERATION_INVENTORY_CHANGED')
     for run in relevant:
         if run['id'] == current_run:
             if run.get('run_attempt') != current_attempt or current_attempt != 1:
                 raise ReleaseOperationHistoryUnproven('STABLE_BASE_CURRENT_ATTEMPT_REQUIRES_RECONCILIATION')
+            continue
+        if partial is not None and run['id']==partial['partialRun']:
+            records=stable_baseline_partial_effects(repository,token)
+            holds=[v for v in records.values() if v.get('phase')=='target-preintent-hold' and v.get('failedTarget')==target]
+            if (target=='portal' or len(holds)!=1 or holds[0].get('targetWritePhaseEntered') is not False
+                or any(v.get('target')==target and v.get('phase') in {'intent','submitted','success'} for v in records.values())):
+                raise ReleaseOperationHistoryUnproven('STABLE_PARTIAL_TARGET_NOT_NONENTRY')
             continue
         if run['id'] == adoption['originalRun']:
             if (run.get('head_sha') != revision or run.get('run_attempt') != adoption['originalAttempt']
@@ -7779,6 +7790,63 @@ def stable_baseline_operation_nonentry(repository, revision, target, operation_i
 STABLE_BASE_CURRENT_ROOT = {'version': 1, 'priorToolRevision': '972772d037f925a104a090d8d7ddcb896aa4e259', 'priorPromotionRun': 41210238965, 'terminalNonentryRun': 41210428598, 'terminalNonentryAttempt': 1, 'terminalNonentryIdentity': '5be4498327568c5eb6e9b6705db0bc46f44f54c91b76640fced427a57f8a95ef', 'history': {'Legend/fast-track-release': {'count': 249, 'identity': '8212daaba44e43271dfa1b82df86e9e2627d370b54badd673b08d9bdf63078b3'}, 'legend/approved-changes': {'count': 349, 'identity': 'ebd9f65a17a5167f8f8b13aafb449f0315fcaf47002ddf0da082de63cd9a1050'}}}
 
 
+STABLE_BASE_PARTIAL_CONTINUATION = {'priorToolRevision': '8f68e9c71c8e0535f46b5094577410ce41feab65', 'priorPromotionRun': 41234931239, 'partialRun': 41235118337, 'partialAttempt': 1, 'effectsIdentity': '3411a4c51b21e1267265e125cec9fa4c03b8a9ed75f50d61ea8e4811162a2e92'}
+STABLE_BASE_PARTIAL_EFFECTS = {'priorToolRevision': '8f68e9c71c8e0535f46b5094577410ce41feab65', 'priorPromotionRun': 41234931239, 'partialRun': 41235118337, 'partialAttempt': 1, 'runs': {'41234931239': {'id': 41234931239, 'head_sha': '8f68e9c71c8e0535f46b5094577410ce41feab65', 'head_branch': 'Legend/fast-track-release', 'path': '.github/workflows/legend-fast-track-ui.yml', 'event': 'push', 'run_attempt': 1, 'status': 'completed', 'conclusion': 'success', 'created_at': '2026-10-31T19:35:22Z', 'updated_at': '2026-10-31T19:35:44Z'}, '41235118337': {'id': 41235118337, 'head_sha': '8f68e9c71c8e0535f46b5094577410ce41feab65', 'head_branch': 'Legend/fast-track-release', 'path': '.github/workflows/legend-fast-track-ui.yml', 'event': 'workflow_dispatch', 'run_attempt': 1, 'status': 'completed', 'conclusion': 'failure', 'created_at': '2026-10-31T19:37:46Z', 'updated_at': '2026-10-31T19:54:26Z'}}, 'artifacts': {'13056295247': {'name': 'legend-retained-schema-proof-d6fbe457312bca1d0f08f91bdb541ff829b814a684fe9f66c13d86abc3b8e362', 'digest': 'sha256:c60d22bd14142ddd4b530955bc1e0a8490a2360f5ae1c97b41ef64c4762f18ae', 'identity': 'd6fbe457312bca1d0f08f91bdb541ff829b814a684fe9f66c13d86abc3b8e362', 'phase': 'retained-schema-read-only', 'target': None}, '13056145503': {'name': 'legend-retained-target-preintent-7d19d5ad0c2c1e808a9dee7acf1e19b8201b4cd875e5403a03a862ed6051049d', 'digest': 'sha256:3807915d0d640f26b8b571dff97556c0586baff261ed297306e8a06ae3eba9ca', 'identity': '7eeac4f50713c61536cfc8597537d74de4bf01f8a6f3bd74c795ffb6850b05e0', 'phase': 'target-preintent-hold', 'target': 'protect'}, '13056045698': {'name': 'legend-retained-target-preintent-abc9696c53f511e6989c80da18d770f33167248b08cf42e802d8f66fb856e312', 'digest': 'sha256:5a70545b8f0154882a309e01109ce58af4fe442ca24b2ebd286ded3d0929c6d3', 'identity': '07ddd248a14caf5afcfe26258608dd5fb1de538d1b002c0675ab7e2f7c9f56d9', 'phase': 'target-preintent-hold', 'target': 'client'}, '13056010806': {'name': 'legend-retained-target-preintent-efb0108dc6a17dce72e3f680bb49961c599d9a6fc277fd108828406017b240b2', 'digest': 'sha256:739d7cdbe480bb202b9a8725e1a0cc5103815bb78bc5dae61da3c1387a1d5795', 'identity': 'b169745e38671e678f0743f50ac09aa94bedc4f4e6d4a267f6378edd5af014d0', 'phase': 'target-preintent-hold', 'target': 'parfait'}, '13055975033': {'name': 'legend-stable-baseline-admission-41235118337-1', 'digest': 'sha256:26873bff543e9d110be7926462cae276a3211580c594e2581b6f9b0e6d45d917', 'identity': 'aaf1ef7f67eede92a6dba29c431245178ee6fc528514433255f0e884879493ad', 'phase': 'baseline-admission', 'target': None}, '13055661171': {'name': 'legend-release-operation-submitted-274de3b30b337020a30da96e8aec03d5664c1669eaee0849094e4b1c3b8ed240', 'digest': 'sha256:06e7516af2e9ea8c0bbb1c0811238af9dd6b5b228609d9500a1c3038cceaece8', 'identity': '385f5e6d7aeb53d4b09ffda37c5eb500aacd61920c11a820f385ec2ad4da3556', 'phase': 'submitted', 'target': 'portal'}, '13055430973': {'name': 'legend-release-operation-success-274de3b30b337020a30da96e8aec03d5664c1669eaee0849094e4b1c3b8ed240', 'digest': 'sha256:1be025a9f047228c7ed1599d0406c785d56d78797ef8bf1e4a85b3a3dff081e9', 'identity': '0f49e2dcb1f2cdf992115d4d6e4d04e46691d3163f30db4a4e4f6c6099912655', 'phase': 'success', 'target': 'portal'}, '13055321315': {'name': 'legend-retained-schema-proof-089487fe6118e249c00b85605e482dfd68a6cf754eda390a188f1cfff56acf5a', 'digest': 'sha256:73ac2ebd97c1d6d83bb764be12f21714660a3cb3ea25573c22114f24a090cb5a', 'identity': '089487fe6118e249c00b85605e482dfd68a6cf754eda390a188f1cfff56acf5a', 'phase': 'retained-schema-read-only', 'target': None}, '13055064981': {'name': 'legend-release-operation-intent-274de3b30b337020a30da96e8aec03d5664c1669eaee0849094e4b1c3b8ed240', 'digest': 'sha256:5114fe17bee65eba703b14b0c06d9c56f08c8172238d4b4de7df56365c41a92d', 'identity': '3fc27b684f3db678733380132d49593e829eb84fcd0c658024eda0046920c4e0', 'phase': 'intent', 'target': 'portal'}}}
+
+def stable_baseline_partial_marker(repository, tool_revision=None):
+    if repository.lower()!='mylegnd/masterapp':return None
+    if tool_revision is None and os.environ.get('GITHUB_ACTIONS')!='true':return None
+    revision=tool_revision or os.environ.get('GITHUB_SHA','')
+    if not re.fullmatch('[a-f0-9]{40}',revision):return None
+    request=_fast_track_policy().read_request(revision)
+    value=request.get('baselinePartialContinuation')
+    if 'baselinePartialContinuation' not in request:return None
+    adoption=stable_baseline_authority(repository,41131223973,CRM_PREINTENT_REVISION)
+    stable_baseline_tool_request(request,adoption)
+    return json.loads(json.dumps(STABLE_BASE_PARTIAL_CONTINUATION))
+
+
+def stable_baseline_partial_effects(repository, token, *, uncached=False):
+    """Exact mixed outcome: Portal succeeded, three targets never entered writes."""
+    expected=STABLE_BASE_PARTIAL_EFFECTS; read=_api_get_uncached if uncached else api_get
+    fields=tuple(next(iter(expected['runs'].values())).keys())
+    for identity,pinned in expected['runs'].items():
+        run=read(repository,'actions/runs/'+str(identity),token)
+        if ({k:run.get(k) for k in fields}!=pinned
+            or run.get('head_repository',{}).get('full_name','').lower()!=repository.lower()):
+            raise ReleaseOperationHistoryUnproven('STABLE_PARTIAL_RUN_CHANGED')
+    run=read(repository,'actions/runs/'+str(expected['partialRun']),token)
+    jobs=_completion_rows(read(repository,f"actions/runs/{run['id']}/attempts/1/jobs?per_page=100",token),'jobs')
+    names={'Select exact affected applications','Admit exact validated fast-track source',
+        'Reconcile production schema before publication','Publish verified website routing',
+        'Affected App Deploy — ${{ matrix.target }}',FAST_TRACK_RECOVERY_JOB}
+    owners=[j for j in jobs if j.get('id')==124637139871 and j.get('name')==FAST_TRACK_RECOVERY_JOB]
+    if (len(jobs)!=6 or {j.get('name') for j in jobs}!=names or len(owners)!=1
+        or any(j.get('status')!='completed' or j.get('run_attempt')!=1 or j.get('head_sha')!=expected['priorToolRevision'] for j in jobs)
+        or any(j.get('conclusion')!='skipped' or j.get('steps')!=[] for j in jobs if j['id']!=124637139871)):
+        raise ReleaseOperationHistoryUnproven('STABLE_PARTIAL_OWNER_CHANGED')
+    if owners[0].get('conclusion')!='failure' or any(j.get('run_id')!=run['id'] for j in jobs):
+        raise ReleaseOperationHistoryUnproven('STABLE_PARTIAL_OWNER_CHANGED')
+    step=_completion_step(owners[0],'Recover exact retained application bytes',conclusions=('failure',))
+    inventory=_completion_inventory(read(repository,f"actions/runs/{run['id']}/artifacts?per_page=100",token),'artifacts')
+    if len(inventory)!=len(expected['artifacts']) or {str(a.get('id')) for a in inventory}!=set(expected['artifacts']):
+        raise ReleaseOperationHistoryUnproven('STABLE_PARTIAL_EFFECTS_CHANGED')
+    records={}
+    for artifact in inventory:
+        pin=expected['artifacts'][str(artifact['id'])]
+        if (artifact.get('name')!=pin['name'] or artifact.get('digest')!=pin['digest'] or artifact.get('expired') is not False
+            or artifact.get('workflow_run',{}).get('id')!=run['id']
+            or artifact.get('workflow_run',{}).get('head_sha')!=expected['priorToolRevision']
+            or not _completion_artifact_in_step(artifact,step)):
+            raise ReleaseOperationHistoryUnproven('STABLE_PARTIAL_ARTIFACT_CHANGED')
+        record=_release_history_json(repository,run['id'],artifact,'operation.json',verify_digest=True)
+        if hashlib.sha256(json.dumps(record,sort_keys=True,separators=(',',':')).encode()).hexdigest()!=pin['identity']:
+            raise ReleaseOperationHistoryUnproven('STABLE_PARTIAL_CONTENT_CHANGED')
+        records[artifact['id']]=record
+    # These pinned bytes retain their original producer; no new success is minted.
+    return records
+
+
 def stable_baseline_current_root(repository, tool_revision=None):
     """One explicitly promoted correction of the already approved adoption root."""
     if repository.lower() != 'mylegnd/masterapp':return None
@@ -7796,6 +7864,8 @@ def _stable_root_inventory(repository, observer, token):
     """Fresh complete sanctioned writer inventories, never inferred old success."""
     fields = ('id','head_sha','head_branch','path','event','run_attempt','status','conclusion','created_at','updated_at')
     result = {}
+    partial=stable_baseline_partial_marker(repository,observer['toolRevision'])
+    if partial is not None:stable_baseline_partial_effects(repository,token,uncached=True)
     for branch, expected in STABLE_BASE_CURRENT_ROOT['history'].items():
         base = 'actions/runs?branch=' + urllib.parse.quote(branch, safe='')
         if branch == TRUSTED_PR_BASE:base += '&event=workflow_dispatch'
@@ -7824,8 +7894,12 @@ def _stable_root_inventory(repository, observer, token):
                 if len(rows)==total:break
             if len(rows)!=total:raise ReleaseOperationHistoryUnproven('STABLE_ROOT_INVENTORY_INCOMPLETE')
             evidence_remaining(30)
-        retired=[];allowed=set()
+        retired=[];allowed=set();carried=set()
         for row in rows:
+            if partial is not None and str(row['id']) in STABLE_BASE_PARTIAL_EFFECTS['runs']:
+                if {k:row.get(k) for k in fields}!=STABLE_BASE_PARTIAL_EFFECTS['runs'][str(row['id'])]:
+                    raise ReleaseOperationHistoryUnproven('STABLE_PARTIAL_INVENTORY_CHANGED')
+                carried.add(str(row['id']));continue
             if row['id'] in {observer['runId'],observer['promotionRunId']}:
                 if (branch!=FAST_TRACK_PR_BASE or row['head_sha']!=observer['toolRevision']
                     or row['run_attempt']!=1 or row['path']!='.github/workflows/'+FAST_TRACK_RELEASE_WORKFLOW):
@@ -7840,6 +7914,8 @@ def _stable_root_inventory(repository, observer, token):
             if row['status']!='completed' or row['conclusion'] not in {'success','failure','cancelled','skipped','timed_out','action_required','neutral','stale'}:
                 raise ReleaseOperationHistoryUnproven('STABLE_ROOT_ACTIVE_OR_UNKNOWN_WRITER')
             retired.append({k:row[k] for k in fields})
+        if partial is not None and branch==FAST_TRACK_PR_BASE and carried!=set(STABLE_BASE_PARTIAL_EFFECTS['runs']):
+            raise ReleaseOperationHistoryUnproven('STABLE_PARTIAL_INVENTORY_MISSING')
         if branch==FAST_TRACK_PR_BASE and allowed!={observer['runId'],observer['promotionRunId']}:
             raise ReleaseOperationHistoryUnproven('STABLE_ROOT_CURRENT_OWNER_MISSING')
         retired.sort(key=lambda r:r['id'])
@@ -7873,10 +7949,14 @@ def stable_baseline_tool_request(request, adoption):
     if request.get('baselineAdoption') != stable_baseline_identity(adoption):
         raise ValueError('STABLE_BASE_TOOL_AUTHORITY_CHANGED')
     base = request.get('trustedToolPromotion', {}).get('baseRevision')
+    partial=request.get('baselinePartialContinuation')
+    if 'baselinePartialContinuation' in request and (json.dumps(partial,sort_keys=True,separators=(',',':'))!=json.dumps(STABLE_BASE_PARTIAL_CONTINUATION,sort_keys=True,separators=(',',':')) or 'baselineCurrentStateRoot' not in request):
+        raise ValueError('STABLE_PARTIAL_AUTHORITY_CHANGED')
     if 'baselineCurrentStateRoot' in request:
+        expected_base=STABLE_BASE_PARTIAL_CONTINUATION['priorToolRevision'] if partial is not None else STABLE_BASE_CURRENT_ROOT['priorToolRevision']
         if (json.dumps(request['baselineCurrentStateRoot'],sort_keys=True,separators=(',',':')) != json.dumps(STABLE_BASE_CURRENT_ROOT,sort_keys=True,separators=(',',':'))
             or request.get('baselineContinuation') != STABLE_BASE_CONTINUATION
-            or base != STABLE_BASE_CURRENT_ROOT['priorToolRevision']):
+            or base != expected_base):
             raise ValueError('STABLE_ROOT_AUTHORITY_CHANGED')
         return True
     if 'baselineContinuation' not in request:
@@ -7893,6 +7973,14 @@ def stable_baseline_continuation_parent(repository, run, token):
     request = _fast_track_policy().read_request(run['head_sha'])
     adoption = stable_baseline_authority(repository, 41131223973, CRM_PREINTENT_REVISION)
     if not stable_baseline_tool_request(request, adoption):return
+    if 'baselinePartialContinuation' in request:
+        partial=STABLE_BASE_PARTIAL_CONTINUATION
+        previous=api_get(repository,'actions/runs/'+str(partial['priorPromotionRun']),token)
+        if (previous.get('id')!=partial['priorPromotionRun'] or previous.get('head_sha')!=partial['priorToolRevision']
+            or previous.get('run_attempt')!=1 or previous.get('status')!='completed' or previous.get('conclusion')!='success'
+            or not is_fast_track_producer(repository,previous)
+            or fast_track_promotion_parent(repository,previous,token)!=STABLE_BASE_CURRENT_ROOT['priorToolRevision']):
+            raise ValueError('STABLE_PARTIAL_PROMOTION_PARENT_UNPROVEN')
     if 'baselineCurrentStateRoot' in request:
         root=STABLE_BASE_CURRENT_ROOT
         previous=api_get(repository,'actions/runs/'+str(root['priorPromotionRun']),token)
@@ -7947,6 +8035,31 @@ def stable_baseline_completed_parent(repository, before, token):
     return adoption['applicationRevision']
 
 
+def stable_baseline_carried_portal(repository, original, observer, token):
+    if stable_baseline_partial_marker(repository,observer['toolRevision']) is None:return None
+    records=stable_baseline_partial_effects(repository,token)
+    run=api_get(repository,'actions/runs/41235118337',token)
+    old=fast_track_recovery_producer(repository,run,token,attempt=1)
+    admission,artifact=stable_baseline_admission_record(repository,original,old,token)
+    if admission!=records[13055975033]:raise ValueError('STABLE_CARRIED_ADMISSION_CHANGED')
+    intent,submitted,success=(records[i] for i in (13055064981,13055661171,13055430973))
+    expected=original['baselineAdoption']['targets']['portal']
+    for record in (intent,submitted,success):
+        if (record.get('operationId')!=expected['operationId'] or record.get('packageDigest')!=expected['packageDigest']
+            or record.get('recoveryEvidence',{}).get('runId')!=old['runId']
+            or record.get('baseline')!=admission['targets']['portal']['baseline']
+            or record.get('baselineDeploymentIds')!=admission['targets']['portal']['baselineDeploymentIds']):
+            raise ValueError('STABLE_CARRIED_OPERATION_CHANGED')
+    deployment='6c10d7d8ad9940ec87a4c19324970801'
+    if submitted.get('deploymentId')!=deployment or success.get('deploymentIds')!=[deployment]:
+        raise ValueError('STABLE_CARRIED_PROVIDER_CHANGED')
+    binding=dict(observer=old,admissionArtifactId=13055975033,
+        admissionArtifactDigest=STABLE_BASE_PARTIAL_EFFECTS['artifacts']['13055975033']['digest'],
+        successArtifactId=13055430973,successArtifactDigest=STABLE_BASE_PARTIAL_EFFECTS['artifacts']['13055430973']['digest'],
+        deploymentId=deployment)
+    return dict(target=admission['targets']['portal'],binding=binding,intent=intent,success=success)
+
+
 def stable_baseline_admission_name(observer):
     return 'legend-stable-baseline-admission-' + str(observer['runId']) + '-' + str(observer['runAttempt'])
 
@@ -7956,6 +8069,28 @@ def validate_stable_baseline_admission(record, original, observer):
     keys = {'schemaVersion','phase','authorizesMutation','liveStable','originalRun','applicationRevision',
             'observer','baselineAdoption','schemaProofIdentity','targets'}
     root=record.get('currentStateRoot')
+    carried=record.get('carriedPortalSuccess')
+    requires_carried=stable_baseline_partial_marker('MYLEGND/masterapp',observer['toolRevision']) is not None
+    if requires_carried and root is None:
+        raise ValueError('STABLE_CARRIED_CURRENT_ROOT_REQUIRED')
+    if requires_carried != ('carriedPortalSuccess' in record) or ('carriedPortalSuccess' in record and carried is None):
+        raise ValueError('STABLE_CARRIED_PORTAL_MARKER_REQUIRED')
+    if carried is not None:
+        keys=keys|{'carriedPortalSuccess'}
+        retained=stable_baseline_carried_portal('MYLEGND/masterapp',original,observer,os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN'])
+        if (retained is None or not isinstance(carried,dict) or set(carried)!=set(retained['binding'])|{'currentServingObservation'}
+            or any(carried.get(k)!=v for k,v in retained['binding'].items())
+            or record.get('targets',{}).get('portal')!=retained['target']):
+            raise ValueError('STABLE_CARRIED_PORTAL_CHANGED')
+        current=carried['currentServingObservation']
+        if (not isinstance(current,dict) or set(current)!={'observer','observedUtc','revision','deploymentIds','providerInventoryIdentity'}
+            or current['observer']!=observer or current['revision']!=original['run']['head_sha']
+            or not isinstance(current['deploymentIds'],list) or not current['deploymentIds'] or len(current['deploymentIds'])>1000
+            or len(set(current['deploymentIds']))!=len(current['deploymentIds']) or carried['deploymentId'] not in current['deploymentIds']
+            or any(not isinstance(v,str) or not re.fullmatch('[a-zA-Z0-9_.:-]{1,256}',v) for v in current['deploymentIds'])
+            or not re.fullmatch('[a-f0-9]{64}',str(current['providerInventoryIdentity']))):
+            raise ValueError('STABLE_CARRIED_CURRENT_OBSERVATION_CHANGED')
+        _completion_time(current['observedUtc'])
     if root is not None:
         if json.dumps(root,sort_keys=True,separators=(',',':'))!=json.dumps(STABLE_BASE_CURRENT_ROOT,sort_keys=True,separators=(',',':')) or stable_baseline_current_root('MYLEGND/masterapp',observer['toolRevision'])!=root:
             raise ValueError('STABLE_ROOT_ADMISSION_CHANGED')
@@ -8015,6 +8150,11 @@ def stable_baseline_admission_record(repository, original, observer, token):
         step['completed_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     if not _completion_artifact_in_step(rows[0], step):
         raise ValueError('STABLE_BASE_ADMISSION_OUTSIDE_OWNER_STEP')
+    if 'carriedPortalSuccess' in record:
+        observed=_completion_time(record['carriedPortalSuccess']['currentServingObservation']['observedUtc'])
+        created=_completion_time(rows[0]['created_at'])
+        if not _completion_time(step['started_at'])<=observed<=created or (created-observed).total_seconds()>900:
+            raise ValueError('STABLE_CARRIED_OBSERVATION_OUTSIDE_OWNER_STEP')
     schema_name = 'legend-retained-schema-proof-' + record['schemaProofIdentity']
     schema_rows = [a for a in inventory if a.get('name') == schema_name]
     if (len(schema_rows) != 1 or schema_rows[0].get('expired') is not False

@@ -580,7 +580,7 @@ authority=load('authority',root/'validation-resume.py')
 observer=dict(runId=20,runAttempt=1,jobId=30,promotionRunId=19,toolRevision='b'*40)
 original=dict(run=dict(id=10,run_attempt=5,head_sha='a'*40))
 env=dict(GITHUB_RUN_ID='20',GITHUB_RUN_ATTEMPT='1',PACKAGE_PRODUCER_RUN='10',GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='test-only')
-fake=SimpleNamespace(RELEASE_TARGETS=authority.RELEASE_TARGETS,ReleaseOperationHistoryUnproven=RuntimeError,release_operation_history=lambda *a,**k:None)
+fake=SimpleNamespace(RELEASE_TARGETS=authority.RELEASE_TARGETS,ReleaseOperationHistoryUnproven=RuntimeError,release_operation_history=lambda *a,**k:None,recovery_admission_proof=__import__('contextlib').nullcontext)
 rows=[];records={};previews=[]
 for n,target in enumerate(['portal','client','protect','parfait','website']):
  material=dict(packageArtifact=dict(id=40+n,digest='sha256:'+'c'*64))
@@ -998,6 +998,14 @@ test('stable baseline admission is four-target durable evidence, never live comp
   assert.deepEqual(validateRecord(name,current),{filename:'operation.json'});
   for(const mutate of [x=>delete x.targets.portal.providerInventoryIdentity,x=>x.currentStateRoot.version=2,x=>x.currentStateRoot.terminalNonentryAttempt=2,x=>x.currentStateRoot.history['Legend/fast-track-release'].identity='UNKNOWN']){
     const bad=structuredClone(current);mutate(bad);assert.throws(()=>validateRecord(name,bad));
+  }
+  const carried=structuredClone(current);carried.carriedPortalSuccess={observer:{...observer,runId:700,jobId:701,promotionRunId:699},
+    admissionArtifactId:70,admissionArtifactDigest:'sha256:'+'a'.repeat(64),successArtifactId:71,successArtifactDigest:'sha256:'+'b'.repeat(64),deploymentId:'deployed',
+    currentServingObservation:{observer,observedUtc:'2026-10-31T20:00:00Z',revision,deploymentIds:['deployed'],providerInventoryIdentity:'c'.repeat(64)}};
+  assert.deepEqual(validateRecord(name,carried),{filename:'operation.json'});
+  for(const mutate of [x=>x.carriedPortalSuccess.currentServingObservation.revision=baseline,x=>x.carriedPortalSuccess.currentServingObservation.deploymentIds=[],
+      x=>x.carriedPortalSuccess.observer=observer,x=>x.carriedPortalSuccess.currentServingObservation.observer={...observer,jobId:5},x=>delete x.currentStateRoot]) {
+    const bad=structuredClone(carried);mutate(bad);assert.throws(()=>validateRecord(name,bad));
   }
   let bytes;const client={async listArtifacts(){return {artifacts:[]};},async uploadArtifact(n,files){bytes=await fs.readFile(files[0]);return {id:42};},
     async downloadArtifact(id,options){await fs.mkdir(options.path);await fs.writeFile(path.join(options.path,'operation.json'),bytes);}};
