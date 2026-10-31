@@ -979,3 +979,30 @@ print(json.dumps(dict(summaryName=a.fast_track_recovery_summary_name(p['original
     const changed=structuredClone(value);changed.targets.website.operationId=value.targets.protect.operationId;assert.throws(()=>validateRecord(name,changed));
   }
 });
+
+test('stable baseline admission is four-target durable evidence, never live completion', async () => {
+  const revision='a'.repeat(40), baseline='b'.repeat(40), packageDigest='c'.repeat(64);
+  const observer={runId:900,runAttempt:1,jobId:901,toolRevision:'d'.repeat(40),promotionRunId:899};
+  const value={schemaVersion:1,phase:'baseline-admission',authorizesMutation:false,liveStable:false,
+    originalRun:800,applicationRevision:revision,observer,schemaProofIdentity:'e'.repeat(64),
+    baselineAdoption:{generation:'stable-base-example-v1',authorization:'Sentinel_'+'f'.repeat(32),materialIdentity:'1'.repeat(64)},targets:{}};
+  for(const target of ['portal','client','protect','parfait']) value.targets[target]={
+    operationId:crypto.createHash('sha256').update(JSON.stringify({applicationRevision:revision,packageDigest,target})).digest('hex'),
+    packageDigest,packageArtifactId:12,packageArtifactDigest:'sha256:'+'2'.repeat(64),baseline,baselineDeploymentIds:['prior'],
+    rollbackEvidence:{revision:baseline,artifactId:13,artifactDigest:'sha256:'+'3'.repeat(64),
+      artifact:`fast-track-package-${baseline}-${target}`,runId:14,packageDigest:'4'.repeat(64)}};
+  const name='legend-stable-baseline-admission-900-1';
+  assert.deepEqual(validateRecord(name,value),{filename:'operation.json'});
+  let bytes;const client={async listArtifacts(){return {artifacts:[]};},async uploadArtifact(n,files){bytes=await fs.readFile(files[0]);return {id:42};},
+    async downloadArtifact(id,options){await fs.mkdir(options.path);await fs.writeFile(path.join(options.path,'operation.json'),bytes);}};
+  assert.deepEqual(await publish(client,name,value),{artifactId:42});
+  for(const change of [{liveStable:true},{authorizesMutation:true},{phase:'success'},{schemaProofIdentity:'UNKNOWN'},
+    {observer:{...observer,runAttempt:2}},{targets:{...value.targets,website:value.targets.portal}}])
+    assert.throws(()=>validateRecord(name,{...structuredClone(value),...change}));
+  for(const field of ['rollbackEvidence','baselineDeploymentIds']){
+    const bad=structuredClone(value);bad.targets.portal[field]=field==='rollbackEvidence'?null:[];
+    assert.throws(()=>validateRecord(name,bad));
+  }
+  client.downloadArtifact=async(id,options)=>{await fs.mkdir(options.path);await fs.writeFile(path.join(options.path,'operation.json'),'changed');};
+  await assert.rejects(publish(client,name,value),/readback mismatch/);
+});

@@ -6,6 +6,21 @@ import subprocess
 
 REQUEST = 'Docs/releases/direct-release-request.json'
 
+# One explicitly approved admission root, NOT a successful/live baseline and
+# NOT a generic reset. Existing operation IDs and retained history are unchanged.
+# Current owner/provider/rollback/schema proof remains mandatory before intent.
+STABLE_BASELINE_ADOPTION = {'schemaVersion': 1, 'generation': 'stable-base-3243221-20261031-v1', 'authorization': 'Sentinel_1a096f6271dc8191808e39cd0e87e11e', 'authorizationUtc': '2026-10-31T01:53:42Z', 'implementationBase': '1ecc94b988188bf664e1e515b363f63dbed915fe', 'originalRun': 41131223973, 'originalAttempt': 4, 'applicationRevision': '3243221ae661b53d60f78cc2dab108a93bad7632', 'targets': {'portal': {'operationId': '274de3b30b337020a30da96e8aec03d5664c1669eaee0849094e4b1c3b8ed240', 'packageDigest': '9252d398f53338d79e68b34cee8cd52cbdc3f094901f3f077b43048b77079ed1', 'packageArtifactId': 13016469859, 'packageArtifactDigest': 'sha256:c047e89e96a68d84555f342dc6806cd5024f7c3b389f1667b6bac6d918c223f0'}, 'client': {'operationId': '63bcbb93939b90faa9010f64309b8f343d44866d5e570a200e3e25af53c84a1a', 'packageDigest': '2e78237df64f9c9e7ba2d9016401ffa0ab47d38b455a681b2cc02c885157744b', 'packageArtifactId': 13016754756, 'packageArtifactDigest': 'sha256:625a555dc6aaec04bad4dbd25f63c8a9a98fd1f0bdc237ab4426c15b78bdc5fd'}, 'protect': {'operationId': 'ca053279fd3a8892d0a8ab69d2bc7c0a2bbb1c904bbe743b44456fb3cf3a4d00', 'packageDigest': '3e8ba8b6073bec9e3a64204c0e0b745e8dcf894c28be05900b158bdc2e28431c', 'packageArtifactId': 13016709993, 'packageArtifactDigest': 'sha256:171f0b608107fb23f33ce5cb572ded74303018e120ca088e93341dad18aeb3d0'}, 'parfait': {'operationId': 'c5706545da6cdfecd541252b8c83f91580c7982053c3283ac4e68e29e76782e6', 'packageDigest': '61c0df9a39064aef218209b2ef1633065ed882b02b01a5715d9ee447dd096af4', 'packageArtifactId': 13016969652, 'packageArtifactDigest': 'sha256:1d119e8af08ef8afaa7ab7d8f7a9f99df0c9ce8dce222d8f0d68cce070ad58d0'}}, 'schemaIdentity': '0e4674714d917c5f2dbfa3cd42f2de954e7b3f310c8322c08ec0f427d3615451', 'databaseIdentity': '3a055450807aeaa2c6465702b983dc99968329389d7c0ae480c3c72cc3a9ff3b', 'schemaSuccessArtifact': 13017640415, 'schemaSuccessDigest': 'sha256:cbe0bd54e2e652908a19d84779ec10f51246cf3e01e3920f8e59d50c70b2a508', 'cloudflareWebsiteRouting': False, 'sqlExecutionAuthorized': False}
+
+def stable_baseline_adoption(repository, original_run, application_revision):
+    """Return only the exact Founder-approved four-package authority."""
+    import copy
+    if (repository.lower() != 'mylegnd/masterapp'
+        or original_run != STABLE_BASELINE_ADOPTION['originalRun']
+        or application_revision != STABLE_BASELINE_ADOPTION['applicationRevision']):
+        return None
+    return copy.deepcopy(STABLE_BASELINE_ADOPTION)
+
+
 
 def read_request(sha=None):
     if sha is None:

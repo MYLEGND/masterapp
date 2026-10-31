@@ -1745,6 +1745,40 @@ def recovery_preupload_baseline(azure, original, key, *, expected=None):
     return state
 
 
+def prepare_stable_baseline_rollback(original, key, state, package_root, *, expected=None):
+    """Recover exact currently serving bytes, without rebuilding or replaying SQL."""
+    if 'baselineAdoption' not in original:
+        return None
+    authority = _RELEASE_AUTHORITY
+    repository = os.environ['GITHUB_REPOSITORY']; token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    revision = state['revision']
+    name = 'fast-track-package-' + revision + '-' + key
+    rows = authority._completion_inventory(authority.api_get(repository,
+        'actions/artifacts?name=' + authority.urllib.parse.quote(name, safe='') + '&per_page=100', token), 'artifacts')
+    if len(rows) != 1 or rows[0].get('name') != name or rows[0].get('expired') is not False:
+        raise DeploymentReconciliationRequired('STABLE_BASE_ROLLBACK_UNAVAILABLE')
+    artifact = rows[0]; producer_id = artifact.get('workflow_run', {}).get('id')
+    run = authority.api_get(repository, f'actions/runs/{producer_id}', token)
+    if (not authority.is_fast_track_producer(repository, run) or run.get('head_sha') != revision
+        or run.get('status') != 'completed' or artifact.get('workflow_run', {}).get('head_sha') != revision
+        or not re.fullmatch('sha256:[a-f0-9]{64}', artifact.get('digest', ''))):
+        raise DeploymentReconciliationRequired('STABLE_BASE_ROLLBACK_PRODUCER_UNPROVEN')
+    attempts = authority._completion_jobs(repository, run, token)
+    authority._completion_original_artifact_owner(dict(run=run, attempts=attempts), key, artifact,
+        'Preserve immutable application bytes before upload', ('success',))
+    directory = package_root / ('stable-rollback-' + key)
+    if not (directory / 'deploy.zip').is_file():
+        authority._download_run_artifact(repository, producer_id, name, directory,
+            artifact_id=artifact['id'], expected_digest=artifact['digest'])
+    if (directory / 'deploy.zip').is_symlink():raise ValueError('STABLE_BASE_ROLLBACK_SYMLINK')
+    digest = verify_package(directory / 'deploy.zip', revision, TARGETS[key]['static'])
+    proof = dict(revision=revision, artifactId=artifact['id'], artifactDigest=artifact['digest'],
+                 artifact=name, runId=producer_id, packageDigest=digest)
+    if expected is not None and proof != expected:
+        raise DeploymentDrift('STABLE_BASE_ROLLBACK_CHANGED')
+    return proof
+
+
 def prepare_protect_retained_replacement(azure, original, material, state, package_root):
     """Validate retained rollback bytes and the corrected live baseline before intent."""
     proof = material.get('unknownReplacement') or material.get('protectBaselineCorrection')
@@ -2020,7 +2054,7 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
     os.environ['PACKAGE_PRODUCER_RUN'] = str(original_run)
     publication_deadline = deadline - RECOVERY_FINAL_RESERVE_SECONDS
     crm = original_run == 41131223973 and revision == authority.CRM_PREINTENT_REVISION
-    journals = {}; states = {}; key = 'portal' if crm else None
+    journals = {}; states = {}; rollback = {}; key = 'portal' if crm else None
     def publish_phase_record(name, record):
         return owner.publish_record(name, record, timeout=min(180, recovery_phase_remaining(publication_deadline)))
     # Versioned terminal receipt boundary: every enclosed operation is read-only.
@@ -2038,9 +2072,12 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
                 if prior is None:
                     states[key] = recovery_preupload_baseline(azure, original, key)
                     prepare_protect_retained_replacement(azure, original, material, states[key], package_root)
+                    rollback[key] = prepare_stable_baseline_rollback(original, key, states[key], package_root)
                     baseline = states[key]['revision']
                 else:
                     baseline = prior['baseline']
+                    states[key] = dict(revision=baseline, deploymentIds=prior['baselineDeploymentIds'])
+                    rollback[key] = prepare_stable_baseline_rollback(original, key, states[key], package_root)
                 evidence = authority.fast_track_recovery_record_proof(original, material, observer)
                 def before_write(ids, *, key=key, azure=azure):
                     try:
@@ -2064,6 +2101,7 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
                         if sorted(ids) != fresh['deploymentIds']:
                             raise DeploymentDrift('RECOVERY_PROVIDER_BASELINE_CHANGED_BEFORE_INTENT')
                         prepare_protect_retained_replacement(azure, original, materials[key], fresh, package_root)
+                        prepare_stable_baseline_rollback(original, key, fresh, package_root, expected=rollback.get(key))
                         recovery_host_flags(key)
                         if crm:
                             crm_retained_schema_fresh(schema_proof, original, observer)
@@ -2094,6 +2132,15 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
         name, record = recovery_preflight_nonentry_record(proof, key, failure)
         owner.publish_record(name, record, timeout=min(180, recovery_phase_remaining(deadline - 60)))
         raise
+    if 'baselineAdoption' in original:
+        record = dict(schemaVersion=1, phase='baseline-admission', authorizesMutation=False, liveStable=False,
+            originalRun=original_run, applicationRevision=revision, observer=observer,
+            baselineAdoption=authority.stable_baseline_identity(original['baselineAdoption']),
+            schemaProofIdentity=schema_proof['contentIdentity'],
+            targets={key: dict(inventory[key], baseline=states[key]['revision'],
+                baselineDeploymentIds=states[key]['deploymentIds'], rollbackEvidence=rollback[key]) for key in original['targets']})
+        authority.validate_stable_baseline_admission(record, original, observer)
+        publish_phase_record(authority.stable_baseline_admission_name(observer), record)
     def recover_target(key):
         if crm:
             crm_retained_schema_fresh(schema_proof, original, observer)

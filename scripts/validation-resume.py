@@ -356,7 +356,12 @@ def fast_track_recovery_producer(repository, run, token, *, attempt, live=False)
     current = (Path(__file__).resolve().parent.parent / path).read_text()
     if source != current and (live or not historical_recovery_workflow_matches(source, current)):
         raise ValueError('FAST_TRACK_RECOVERY_WORKFLOW_CHANGED')
-    promotions = fast_track_historical_producers(repository, revision, token)
+    adopted = stable_baseline_recovery_run(repository, run)
+    if adopted:
+        promotions = [r for r in _fast_track_history_observation(repository, token)
+                      if r['head_sha'] == revision and is_fast_track_producer(repository, r)]
+    else:
+        promotions = fast_track_historical_producers(repository, revision, token)
     if (len(promotions) != 1 or promotions[0].get('head_sha') != revision
         or fast_track_promotion_parent(repository, promotions[0], token) is None):
         raise ValueError('FAST_TRACK_RECOVERY_TOOL_NOT_PROMOTED')
@@ -969,6 +974,8 @@ def fast_track_recovery_record_proof(original, material, observer):
                   if 'protectBaselineCorrection' in material else {})
     if 'unknownReplacement' in material:
         correction['unknownReplacement'] = material['unknownReplacement']
+    if 'baselineAdoption' in original:
+        correction['baselineAdoption'] = stable_baseline_identity(original['baselineAdoption'])
     return dict(schemaVersion=1, originalRun=original['run']['id'], originalAttempt=original['run']['run_attempt'],
                 applicationRevision=original['run']['head_sha'], packageArtifactId=material['packageArtifact']['id'],
                 packageArtifactDigest=material['packageArtifact']['digest'], **observer, **correction)
@@ -987,6 +994,19 @@ def validate_fast_track_recovery_record(repository, run, artifact, record, token
     if record.get('packageDigest') != fast_track_recovery_package_digest(repository, original, material, record.get('target'), token):
         raise ValueError('FAST_TRACK_RECOVERY_RECORD_PACKAGE_DIGEST_CHANGED')
     expected = fast_track_recovery_record_proof(original, material, observer)
+    if 'baselineAdoption' not in proof:
+        if stable_baseline_recovery_run(repository, run):
+            raise ValueError('STABLE_BASE_RECEIPT_MARKER_MISSING')
+        expected.pop('baselineAdoption', None)  # Legacy records keep legacy identity.
+    else:
+        if not stable_baseline_recovery_run(repository, run):
+            raise ValueError('STABLE_BASE_MARKER_ON_LEGACY_RECEIPT')
+        admission, admitted_artifact = stable_baseline_admission_record(repository, original, observer, token)
+        adopted_target = admission['targets'][record['target']]
+        if record.get('baseline') != adopted_target['baseline'] or record.get('baselineDeploymentIds') != adopted_target['baselineDeploymentIds']:
+            raise ValueError('STABLE_BASE_INTENT_BASELINE_CHANGED')
+        if _completion_time(admitted_artifact['created_at']) > _completion_time(artifact['created_at']):
+            raise ValueError('STABLE_BASE_ADMISSION_AFTER_OPERATION')
     # Later original read-only reruns may append attempts; the record must bind
     # a real earlier terminal snapshot, never claim future original history.
     if type(proof.get('originalAttempt')) is not int or not 1 <= proof['originalAttempt'] <= expected['originalAttempt']:
@@ -1386,6 +1406,9 @@ RECOVERY_PREFLIGHT_PRODUCER_SHA256 = '15ba27c53564223cb41502bb5528949e6435f0e6bc
 def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
     # Shared serializer preflight; exact paired generation, never arbitrary helpers.
+    if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) == (
+        '8d38caa1e3b333053b23e2c91485e789dc38606dd5b914f1ab709d6dabe8183e', '0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f'):
+        return True  # Exact current adoption producer; historical snapshots stay separate.
     if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) in {
         # Original/material proof reuse closes before schema and publication; unchanged journal.
         ('ebf12dabec3e452844376167444ea5e822763fcf246bea68627d2ba9cfcc5dd4',
@@ -7591,9 +7614,308 @@ def _completion_original_unchanged(repository, run, token):
 _COMPLETION_BASELINE_PROVING = contextvars.ContextVar("completion_baseline_proving", default=frozenset())
 
 
+# Explicit retained effects snapshot accepted into this one admission root.
+# These are terminal observations, never permissions to repeat old writes.
+STABLE_BASE_PRIOR_RECOVERIES = {
+    41146890884: ('1701c92649b811b3dca1587ef76146d14bea28f8', 124373976346, None, None, None),
+    41149725754: ('3c7d959fee3af1f649fa42285c5b14070d5e814b', 124383112275, None, None, None),
+    41151618259: ('173fbd2052b2935a2a9200b9b2ddfe2cb964c1e9', 124389208379, 13023308925,
+        'sha256:73ba6200784b20cbbd557ef6a7bd095da97758c498f52a57a2814c66feee3420',
+        'c880bf4ddd957d20c7b02cc3225e78913144d5798e79146ded59369e38bbc8c6'),
+    41154369039: ('1ecc94b988188bf664e1e515b363f63dbed915fe', 124397814540, 13024142919,
+        'sha256:3f6d8a8f8eae137cab1d26e2afe76e7280bd47cf0ca61c20edb5767d43a1270d',
+        '02b2adfb350152eb0f972d05d92e6c4a39a00307defc4aba594ff2ccdaffff40'),
+}
+STABLE_BASE_SCHEMA_COMPANIONS = {
+    41151618259: (13022699696, 'sha256:78850a96eaef38565df578e07520926622c5fef8a530ed044623d70d4847329a',
+        'legend-retained-schema-proof-099677423df5c26284396f673b4efcac5f7b671182f4dd79f34b6f3a14c1e0d2'),
+    41154369039: (13024437457, 'sha256:8bb5bfa0edab22b4eb128ad299c57a3eaaf79aa62f57c4bee5a5c5cf8f76691f',
+        'legend-retained-schema-proof-37070444a4f36ce1f4680e0880640127dd50d43deb625ee15e1f12c7b26c56f9'),
+}
+
+
+
+def stable_baseline_operation_nonentry(repository, revision, target, operation_id, current_run, current_attempt, token):
+    adoption = stable_baseline_authority(repository, 41131223973, revision)
+    if adoption is None:return False
+    if target not in adoption['targets'] or operation_id != adoption['targets'][target]['operationId']:
+        raise ReleaseOperationHistoryUnproven('STABLE_BASE_OPERATION_CHANGED')
+    rows = _fast_track_history_observation(repository, token)
+    title = 'LEGEND retained recovery original=41131223973 application=' + revision
+    relevant = []
+    for row in rows:
+        if row['path'].split('@')[0] != '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW:continue
+        if row['id'] != current_run and row.get('status') != 'completed':
+            raise ReleaseOperationHistoryUnproven('STABLE_BASE_COMPETING_EXECUTION')
+        if row.get('event') == 'workflow_dispatch':
+            scope = re.fullmatch(r'LEGEND retained recovery original=([1-9][0-9]*) application=([a-f0-9]{40})', row.get('display_title', ''))
+            if scope is None or row['path'] != '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW:
+                raise ReleaseOperationHistoryUnproven('STABLE_BASE_DISPATCH_SCOPE_UNKNOWN')
+            if scope[2] == revision:relevant.append(row)
+        elif not is_fast_track_producer(repository, row):
+            raise ReleaseOperationHistoryUnproven('STABLE_BASE_PRODUCER_UNKNOWN')
+        elif row['head_sha'] == revision:
+            relevant.append(row)
+    expected = set(STABLE_BASE_PRIOR_RECOVERIES) | {adoption['originalRun'], current_run}
+    if {r['id'] for r in relevant} != expected:
+        raise ReleaseOperationHistoryUnproven('STABLE_BASE_OPERATION_INVENTORY_CHANGED')
+    for run in relevant:
+        if run['id'] == current_run:
+            if run.get('run_attempt') != current_attempt or current_attempt != 1:
+                raise ReleaseOperationHistoryUnproven('STABLE_BASE_CURRENT_ATTEMPT_REQUIRES_RECONCILIATION')
+            continue
+        if run['id'] == adoption['originalRun']:
+            if (run.get('head_sha') != revision or run.get('run_attempt') != adoption['originalAttempt']
+                or run.get('status') != 'completed' or run.get('conclusion') != 'failure'):
+                raise ReleaseOperationHistoryUnproven('STABLE_BASE_ORIGINAL_CHANGED')
+            attempts = _completion_jobs(repository, run, token)
+            if set(attempts) != {1,2,3,4}:raise ReleaseOperationHistoryUnproven('STABLE_BASE_ORIGINAL_ATTEMPTS_CHANGED')
+            for n, jobs in attempts.items():
+                if n in (1,2):
+                    if not fast_track_skipped_matrix(jobs):raise ReleaseOperationHistoryUnproven('STABLE_BASE_ORIGINAL_PUBLICATION_UNKNOWN')
+                    continue
+                owners = [j for j in jobs if j['name'] == 'Affected App Deploy — ' + fast_track_target_label(target)]
+                if len(owners) != 1:raise ReleaseOperationHistoryUnproven('STABLE_BASE_ORIGINAL_OWNER_CHANGED')
+                job = owners[0]; digest = CRM_PREINTENT_LOGS.get((n,target,job['id']))
+                if not digest or hashlib.sha256('\n'.join(_release_job_log(repository,job['id'],token).splitlines()).encode()).hexdigest() != digest:
+                    raise ReleaseOperationHistoryUnproven('STABLE_BASE_ORIGINAL_NONENTRY_CHANGED')
+            continue
+        head, job_id, artifact_id, archive_digest, record_digest = STABLE_BASE_PRIOR_RECOVERIES[run['id']]
+        if (run.get('head_sha') != head or run.get('run_attempt') != 1 or run.get('status') != 'completed'
+            or run.get('conclusion') != 'failure' or run.get('display_title') != title or run.get('event') != 'workflow_dispatch'):
+            raise ReleaseOperationHistoryUnproven('STABLE_BASE_PRIOR_ATTEMPT_CHANGED')
+        jobs = _completion_rows(api_get(repository, f"actions/runs/{run['id']}/attempts/1/jobs?per_page=100", token), 'jobs')
+        names = {'Select exact affected applications','Admit exact validated fast-track source',
+            'Reconcile production schema before publication','Publish verified website routing',
+            'Affected App Deploy — ${{ matrix.target }}',FAST_TRACK_RECOVERY_JOB}
+        if (len(jobs) != len(names) or {j['name'] for j in jobs} != names
+            or any(j.get('run_id') != run['id'] or j.get('run_attempt') != 1 or j.get('head_sha') != head or j.get('status') != 'completed' for j in jobs)):
+            raise ReleaseOperationHistoryUnproven('STABLE_BASE_PRIOR_JOBS_CHANGED')
+        owners = [j for j in jobs if j['id'] == job_id and j['name'] == FAST_TRACK_RECOVERY_JOB]
+        if len(owners) != 1 or any(j['conclusion'] != 'skipped' or j.get('steps') != [] for j in jobs if j['id'] != job_id):
+            raise ReleaseOperationHistoryUnproven('STABLE_BASE_PRIOR_COMPETING_OWNER')
+        job = owners[0]
+        if job['conclusion'] != 'failure':raise ReleaseOperationHistoryUnproven('STABLE_BASE_PRIOR_OUTCOME_CHANGED')
+        inventory = _completion_inventory(api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token), 'artifacts')
+        if artifact_id is None:
+            _completion_step(job,'Validate original authority and restore retained packages without rebuilding',conclusions=('failure',))
+            _completion_step(job,'Sign in to Azure Production',conclusions=('skipped',))
+            _completion_step(job,'Recover exact retained application bytes',conclusions=('skipped',))
+            if inventory:raise ReleaseOperationHistoryUnproven('STABLE_BASE_PRIOR_EFFECTS_CHANGED')
+        else:
+            artifacts = [a for a in inventory if a.get('id') == artifact_id]
+            if len(artifacts) != 1 or artifacts[0].get('digest') != archive_digest or artifacts[0].get('expired') is not False:
+                raise ReleaseOperationHistoryUnproven('STABLE_BASE_PRIOR_RECEIPT_CHANGED')
+            companion_id, companion_digest, companion_name = STABLE_BASE_SCHEMA_COMPANIONS[run['id']]
+            companions = [a for a in inventory if a.get('id') == companion_id]
+            if (len(inventory) != 2 or len(companions) != 1 or companions[0].get('digest') != companion_digest
+                or companions[0].get('name') != companion_name or companions[0].get('expired') is not False):
+                raise ReleaseOperationHistoryUnproven('STABLE_BASE_PRIOR_EXTRA_EFFECTS')
+            record = _release_history_json(repository,run['id'],artifacts[0],'operation.json',verify_digest=True)
+            if (hashlib.sha256(json.dumps(record,sort_keys=True,separators=(',',':')).encode()).hexdigest() != record_digest
+                or record.get('targets') != adoption['targets'] or record.get('writePhaseEntered') is not False
+                or record.get('authorizesMutation') is not False
+                or not _completion_artifact_in_step(artifacts[0],_completion_step(job,'Recover exact retained application bytes',conclusions=('failure',)))):
+                raise ReleaseOperationHistoryUnproven('STABLE_BASE_PRIOR_NONENTRY_CHANGED')
+    return True
+
+
+def stable_baseline_recovery_run(repository, run):
+    if repository.lower() != 'mylegnd/masterapp':return False
+    if run.get('display_title') != 'LEGEND retained recovery original=41131223973 application=' + CRM_PREINTENT_REVISION:
+        return False
+    request = _fast_track_policy().read_request(run['head_sha'])
+    if 'baselineAdoption' not in request:
+        return False  # Historical receipts retain their original validator.
+    adoption = stable_baseline_authority(repository, 41131223973, CRM_PREINTENT_REVISION)
+    if (request['baselineAdoption'] != stable_baseline_identity(adoption)
+        or request.get('trustedToolPromotion', {}).get('baseRevision') != adoption['implementationBase']):
+        raise ValueError('STABLE_BASE_TOOL_AUTHORITY_CHANGED')
+    return True
+
+
+def stable_baseline_completed_parent(repository, before, token):
+    """Only four actual completed adopted operations end predecessor traversal."""
+    if repository.lower() != 'mylegnd/masterapp':return None
+    request = _fast_track_policy().read_request(before)
+    if 'baselineAdoption' not in request:return None
+    adoption = stable_baseline_authority(repository, 41131223973, CRM_PREINTENT_REVISION)
+    if (request['baselineAdoption'] != stable_baseline_identity(adoption)
+        or request.get('trustedToolPromotion', {}).get('baseRevision') != adoption['implementationBase']):
+        raise ValueError('STABLE_BASE_FORWARD_AUTHORITY_CHANGED')
+    name = fast_track_recovery_summary_name(adoption['originalRun'], adoption['applicationRevision'])
+    artifacts = _completion_inventory(api_get(repository,
+        'actions/artifacts?name=' + urllib.parse.quote(name, safe='') + '&per_page=100', token), 'artifacts')
+    same_owner = []
+    for artifact in artifacts:
+        producer = api_get(repository, 'actions/runs/' + str(artifact.get('workflow_run', {}).get('id')), token)
+        if producer.get('head_sha') == before:
+            if producer.get('status') != 'completed' or producer.get('conclusion') != 'success':
+                raise ValueError('STABLE_BASE_FORWARD_NOT_COMPLETED')
+            same_owner.append(producer)
+    if not same_owner:return None
+    if len(same_owner) != 1:raise ValueError('STABLE_BASE_FORWARD_AMBIGUOUS')
+    original = fast_track_completion_original(repository, adoption['originalRun'], adoption['applicationRevision'], token)
+    if not fast_track_recovery_completed(repository, original, token):
+        raise ValueError('STABLE_BASE_FORWARD_FOUR_TARGET_PROOF_MISSING')
+    return adoption['applicationRevision']
+
+
+def stable_baseline_admission_name(observer):
+    return 'legend-stable-baseline-admission-' + str(observer['runId']) + '-' + str(observer['runAttempt'])
+
+
+def validate_stable_baseline_admission(record, original, observer):
+    adoption = original.get('baselineAdoption')
+    keys = {'schemaVersion','phase','authorizesMutation','liveStable','originalRun','applicationRevision',
+            'observer','baselineAdoption','schemaProofIdentity','targets'}
+    if (not adoption or adoption != stable_baseline_authority('MYLEGND/masterapp', original['run']['id'], original['run']['head_sha'])
+        or set(record) != keys or record['schemaVersion'] != 1
+        or record['phase'] != 'baseline-admission' or record['authorizesMutation'] is not False
+        or record['liveStable'] is not False or record['observer'] != observer
+        or record['originalRun'] != adoption['originalRun'] or record['applicationRevision'] != adoption['applicationRevision']
+        or record['baselineAdoption'] != stable_baseline_identity(adoption)
+        or not re.fullmatch('[a-f0-9]{64}', record.get('schemaProofIdentity', ''))
+        or not isinstance(record['targets'], dict) or set(record['targets']) != set(adoption['targets'])):
+        raise ValueError('STABLE_BASE_ADMISSION_CHANGED')
+    for key, expected in adoption['targets'].items():
+        row = record['targets'][key]
+        if (set(row) != set(expected) | {'baseline','baselineDeploymentIds','rollbackEvidence'}
+            or any(row[k] != v for k, v in expected.items())
+            or not re.fullmatch('[a-f0-9]{40}', row.get('baseline', ''))
+            or not isinstance(row['baselineDeploymentIds'], list) or not row['baselineDeploymentIds']
+            or len(set(row['baselineDeploymentIds'])) != len(row['baselineDeploymentIds'])
+            or any(not isinstance(v, str) or not re.fullmatch('[a-zA-Z0-9_.:-]{1,256}', v) for v in row['baselineDeploymentIds'])):
+            raise ValueError('STABLE_BASE_PROVIDER_OR_MATERIAL_CHANGED')
+        rollback = row['rollbackEvidence']
+        if (not isinstance(rollback, dict) or set(rollback) != {'revision','artifactId','artifactDigest','artifact','runId','packageDigest'}
+            or rollback['revision'] != row['baseline']
+            or any(type(rollback[k]) is not int or rollback[k] < 1 for k in ('artifactId','runId'))
+            or not re.fullmatch('sha256:[a-f0-9]{64}', rollback['artifactDigest'])
+            or not re.fullmatch('[a-f0-9]{64}', rollback['packageDigest'])
+            or rollback['artifact'] != 'fast-track-package-' + row['baseline'] + '-' + key):
+            raise ValueError('STABLE_BASE_ROLLBACK_UNPROVEN')
+    return True
+
+
+def stable_baseline_admission_record(repository, original, observer, token):
+    name = stable_baseline_admission_name(observer)
+    inventory = _completion_inventory(api_get(repository,
+        f"actions/runs/{observer['runId']}/artifacts?per_page=100", token), 'artifacts')
+    rows = [a for a in inventory if a.get('name') == name]
+    if (len(rows) != 1 or rows[0].get('expired') is not False
+        or rows[0].get('workflow_run', {}).get('id') != observer['runId']):
+        raise ValueError('STABLE_BASE_ADMISSION_RECEIPT_UNAVAILABLE')
+    record = _release_history_json(repository, observer['runId'], rows[0], 'operation.json', verify_digest=True)
+    validate_stable_baseline_admission(record, original, observer)
+    jobs = _completion_rows(api_get(repository, f"actions/runs/{observer['runId']}/attempts/{observer['runAttempt']}/jobs?per_page=100", token), 'jobs')
+    owners = [j for j in jobs if j.get('id') == observer['jobId'] and j.get('name') == FAST_TRACK_RECOVERY_JOB]
+    if len(owners) != 1:raise ValueError('STABLE_BASE_ADMISSION_OWNER_MISSING')
+    steps = [v for v in owners[0].get('steps', []) if v.get('name') == 'Recover exact retained application bytes']
+    if len(steps) != 1:raise ValueError('STABLE_BASE_ADMISSION_STEP_MISSING')
+    step = dict(steps[0])
+    if step.get('status') == 'in_progress' and step.get('completed_at') is None:
+        import datetime
+        if str(observer['runId']) != os.environ.get('GITHUB_RUN_ID') or str(observer['runAttempt']) != os.environ.get('GITHUB_RUN_ATTEMPT'):
+            raise ValueError('STABLE_BASE_ADMISSION_OTHER_ACTIVE_OWNER')
+        step['completed_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    if not _completion_artifact_in_step(rows[0], step):
+        raise ValueError('STABLE_BASE_ADMISSION_OUTSIDE_OWNER_STEP')
+    schema_name = 'legend-retained-schema-proof-' + record['schemaProofIdentity']
+    schema_rows = [a for a in inventory if a.get('name') == schema_name]
+    if (len(schema_rows) != 1 or schema_rows[0].get('expired') is not False
+        or not _completion_artifact_in_step(schema_rows[0], step)):
+        raise ValueError('STABLE_BASE_FRESH_SCHEMA_RECEIPT_MISSING')
+    schema = _release_history_json(repository, observer['runId'], schema_rows[0], 'operation.json', verify_digest=True)
+    adoption = original['baselineAdoption']; observed = schema.get('observation', {})
+    if (hashlib.sha256(json.dumps(schema, sort_keys=True, separators=(',', ':')).encode()).hexdigest() != record['schemaProofIdentity']
+        or schema.get('observer') != observer or schema.get('originalRun') != adoption['originalRun']
+        or schema.get('applicationRevision') != adoption['applicationRevision'] or schema.get('sqlExecutionAuthorized') is not False
+        or schema.get('phase') != 'retained-schema-read-only' or observed.get('ready') is not True
+        or observed.get('pendingCount') != 0 or observed.get('mutationActivity') != 'settled'
+        or observed.get('schemaIdentity') != adoption['schemaIdentity'] or observed.get('databaseIdentity') != adoption['databaseIdentity']
+        or schema.get('recovery', {}).get('restoreWindowVerified') is not True
+        or _completion_time(schema_rows[0]['created_at']) > _completion_time(rows[0]['created_at'])):
+        raise ValueError('STABLE_BASE_FRESH_SCHEMA_RECEIPT_CHANGED')
+    return record, rows[0]
+
+
+def stable_baseline_identity(adoption):
+    return dict(generation=adoption['generation'], authorization=adoption['authorization'],
+        materialIdentity=hashlib.sha256(json.dumps(adoption, sort_keys=True, separators=(',', ':')).encode()).hexdigest())
+
+
+def stable_baseline_authority(repository, original_run, revision):
+    return _fast_track_policy().stable_baseline_adoption(repository, original_run, revision)
+
+
+def stable_baseline_original(repository, run, token, adoption):
+    """Adopt exact retained material, never fabricate old release completion.
+
+    This approved boundary replaces recursive predecessor scope/provenance only.
+    Complete current operations, provider state, rollback and fresh schema remain
+    separate mandatory admission gates in the unchanged recovery owner.
+    """
+    if (adoption != stable_baseline_authority(repository, run.get('id'), run.get('head_sha'))
+        or not is_fast_track_producer(repository, run)
+        or run.get('id') != adoption['originalRun']
+        or run.get('head_sha') != adoption['applicationRevision']
+        or run.get('run_attempt') != adoption['originalAttempt']
+        or run.get('status') != 'completed' or run.get('conclusion') != 'failure'):
+        raise ValueError('STABLE_BASE_ORIGINAL_CHANGED')
+    fast_track_merged_source_proof(repository, run['head_sha'], token)
+    rows = _fast_track_history_observation(repository, token)
+    producers = [r for r in rows if r['head_sha'] == run['head_sha']
+                 and r['path'] == '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW and r['event'] == 'push']
+    if len(producers) != 1 or producers[0]['id'] != run['id']:
+        raise ValueError('STABLE_BASE_ORIGINAL_AMBIGUOUS')
+    attempts = _completion_jobs(repository, run, token)
+    if set(attempts) != set(range(1, adoption['originalAttempt'] + 1)):
+        raise ValueError('STABLE_BASE_ATTEMPTS_INCOMPLETE')
+    workflow = _release_history_source(repository, run['head_sha'], '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW, token)
+    attempts = {n: _without_skipped_recovery_job(jobs, workflow) for n, jobs in attempts.items()}
+    targets = list(adoption['targets'])
+    names = {'Select exact affected applications', 'Admit exact validated fast-track source',
+             'Reconcile production schema before publication', 'Publish verified website routing'}
+    for n, jobs in attempts.items():
+        expected = names | ({'Affected App Deploy — ${{ matrix.target }}'} if n in (1, 2)
+            else {'Affected App Deploy — ' + fast_track_target_label(key) for key in targets})
+        if (len(jobs) != len(expected) or {j['name'] for j in jobs} != expected
+            or (n in (1,2) and not fast_track_skipped_matrix(jobs))
+            or any(j.get('status') != 'completed' for j in jobs)):
+            raise ValueError('STABLE_BASE_ORIGINAL_JOBS_CHANGED')
+    latest = {j['name']: j for j in attempts[adoption['originalAttempt']]}
+    for name, step in [('Select exact affected applications', 'Derive application impact exclusively from changed paths'),
+        ('Admit exact validated fast-track source', 'Authenticate merged source and preserved required validation')]:
+        if latest[name]['conclusion'] != 'success':raise ValueError('STABLE_BASE_ORIGINAL_ADMISSION_CHANGED')
+        _completion_step(latest[name], step)
+    if any(next(j for j in jobs if j['name'] == 'Publish verified website routing')['conclusion'] != 'skipped'
+           for jobs in attempts.values()):raise ValueError('STABLE_BASE_ROUTING_NOT_AUTHORIZED')
+    artifacts = _completion_inventory(api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token), 'artifacts')
+    schema = [a for a in artifacts if a.get('id') == adoption['schemaSuccessArtifact']]
+    if len(schema) != 1 or schema[0].get('digest') != adoption['schemaSuccessDigest'] or schema[0].get('expired') is not False:
+        raise ValueError('STABLE_BASE_SCHEMA_RECEIPT_CHANGED')
+    # The physical schema observer verifies receipt contents and fresh readiness.
+    # This context carries no ready/live/success assertion of its own.
+    context = dict(run=run, attempts=attempts, latest=latest, artifacts=artifacts,
+        targets=targets, baseRevision=adoption['implementationBase'],
+        scope=dict(commerce=True, schema=True, routing=False), baselineAdoption=adoption)
+    for key in targets:
+        material = fast_track_recovery_material(repository, context, key, token)
+        artifact = material['packageArtifact']; expected = adoption['targets'][key]
+        if (artifact['id'] != expected['packageArtifactId'] or artifact['digest'] != expected['packageArtifactDigest']
+            or fast_track_recovery_package_digest(repository, context, material, key, token) != expected['packageDigest']):
+            raise ValueError('STABLE_BASE_PACKAGE_CHANGED')
+    _completion_original_unchanged(repository, run, token)
+    return context
+
+
 def fast_track_completion_original(repository, original_run, revision, token):
     """Derive all original obligations; caller target lists have no authority."""
     _recovery_efficiency_add(originalProofCalls=1)
+    adoption = stable_baseline_authority(repository, original_run, revision)
+    if adoption is not None:
+        return stable_baseline_original(repository, api_get(repository, f'actions/runs/{original_run}', token), token, adoption)
     proof_key = (repository.lower(), original_run, revision)
     if proof_key in _COMPLETION_BASELINE_PROVING.get():
         raise ValueError("FAST_TRACK_COMPLETION_CARRIED_BASELINE_PROOF_CYCLE")
@@ -8251,6 +8573,11 @@ def fast_track_effective_baseline(before, revision, *, repository=None, token=No
         if not re.fullmatch('[a-f0-9]{40}', before) or subprocess.run(
                 ['git', 'merge-base', '--is-ancestor', before, revision], capture_output=True).returncode:
             raise RuntimeError('FAST_TRACK_SCOPE_BASELINE_UNPROVEN')
+        adopted = stable_baseline_completed_parent(repository, before, token)
+        if adopted is not None:
+            if subprocess.run(['git', 'merge-base', '--is-ancestor', adopted, revision], capture_output=True).returncode:
+                raise RuntimeError('STABLE_BASE_FORWARD_ANCESTRY_CHANGED')
+            return adopted
         runs = fast_track_historical_producers(repository, before, token)
         prior = runs[0] if runs else None
         if prior is None:
@@ -13463,9 +13790,11 @@ def release_operation_history(repository, operation_id, application_revision, ta
     if phase in {"success", "submitted"}:
         return None
 
-    recovery_history_no_unjournaled_entry(repository, application_revision, current_run, current_attempt, token, target=target, operation_id=operation_id)
+    adopted_nonentry = stable_baseline_operation_nonentry(repository, application_revision, target, operation_id, current_run, current_attempt, token)
+    if not adopted_nonentry:
+        recovery_history_no_unjournaled_entry(repository, application_revision, current_run, current_attempt, token, target=target, operation_id=operation_id)
 
-    for run in fast_track_execution_history(repository, token):
+    for run in ([] if adopted_nonentry else fast_track_execution_history(repository, token)):
         if run['head_sha'] != application_revision:
             continue
         if excluded_original is not None and run['id'] == excluded_original['id']:
