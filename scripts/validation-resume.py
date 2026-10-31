@@ -250,7 +250,7 @@ def _fast_track_preupload_log_proven(log, revision, step, *, protect_baseline=Fa
 # timestamps and cleanup. Unknown attempts and changed bytes remain blocked.
 CRM_PREINTENT_REVISION = '3243221ae661b53d60f78cc2dab108a93bad7632'
 CRM_PREINTENT_SOURCE = {
-    '.github/workflows/legend-fast-track-ui.yml': '2483f64db179d31d74603ddd7c399f9abd25f9b1abc40198fb7c9ebb9d278c4e',
+    '.github/workflows/legend-fast-track-ui.yml': 'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd',
     'scripts/deploy-approved-app.py': '2695c73db8082f794e79e4d32f36d034d7c21dbc63912b373cc5bce30e46dcf6',
     'scripts/release-operation-evidence.py': '0ceb0249c443ec9431100d14ae680028b172036bc2555c009a489bf86f47ec8f',
     'scripts/validation-resume.py': '90e978cad490611a4aaf6305b9c3595a846e059af03a2c611180c693c0a4a401',
