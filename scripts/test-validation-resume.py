@@ -10011,6 +10011,117 @@ class StablePartialContinuationTests(unittest.TestCase):
             with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'RUN_CHANGED'):m.stable_baseline_partial_effects('MYLEGND/masterapp','fixture')
 
 
+class LegacyQueuedRunDispositionTests(unittest.TestCase):
+    @staticmethod
+    def run_record(**changes):
+        row = dict(id=37642351262, run_attempt=1,
+                   head_sha='40c21d84cfe3c42ecfb48e7940615e603060c765',
+                   head_branch='legend/approved-changes',
+                   path='.github/workflows/legend-release-lifecycle.yml', event='workflow_run',
+                   created_at='2026-10-07T15:07:05Z', updated_at='2026-10-07T15:07:05Z',
+                   run_started_at='2026-10-07T15:07:05Z', status='queued', conclusion=None,
+                   repository={'full_name':'MYLEGND/masterapp'},
+                   head_repository={'full_name':'MYLEGND/masterapp'})
+        row.update(changes)
+        return row
+
+    def test_exact_stale_run_remains_queued_and_is_freshly_rechecked(self):
+        row = self.run_record()
+        with patch.object(m,'_api_get_uncached',side_effect=[row,{'total_count':0,'jobs':[]},row]) as api:
+            result = m.completed_resource_legacy_run_disposition('MYLEGND/masterapp','token',observed=row)
+        self.assertEqual('queued',result['status'])
+        self.assertIsNone(result['conclusion'])
+        self.assertEqual('founder_disposed_stale_nonwriter',result['classification'])
+        self.assertEqual(0,result['jobCount'])
+        self.assertEqual(3,api.call_count)
+        self.assertEqual(api.call_args_list[0],api.call_args_list[2])
+        self.assertIn('/attempts/1/jobs?',api.call_args_list[1].args[1])
+
+    def test_terminal_cancelled_zero_job_semantics_remain_supported(self):
+        row=self.run_record(status='completed',conclusion='cancelled')
+        with patch.object(m,'_api_get_uncached',side_effect=[row,{'total_count':0,'jobs':[]},row]):
+            result=m.completed_resource_legacy_run_disposition('MYLEGND/masterapp','token')
+        self.assertEqual('terminal_cancelled_nonentry',result['classification'])
+        self.assertIsNone(result['authorization'])
+
+    def test_changed_identity_or_status_never_inherits_disposition(self):
+        cases=[dict(id=37642351263),dict(run_attempt=2),dict(run_attempt=True),dict(head_sha='a'*40),
+               dict(head_branch='other'),dict(path='.github/workflows/other.yml'),dict(event='push'),
+               dict(repository={'full_name':'other/repo'}),dict(head_repository={'full_name':'other/repo'}),
+               dict(repository=None),dict(status='in_progress'),dict(status='waiting'),dict(status='pending'),
+               dict(status='requested'),dict(updated_at='2026-11-01T00:00:00Z'),
+               dict(created_at=None),dict(run_started_at=None),dict(status='completed',conclusion='success'),
+               dict(status='completed',conclusion='failure'),dict(conclusion='cancelled')]
+        for changes in cases:
+            with self.subTest(changes=changes),patch.object(m,'_api_get_uncached',return_value=self.run_record(**changes)):
+                with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                    m.completed_resource_legacy_run_disposition('MYLEGND/masterapp','token')
+        with patch.object(m,'_api_get_uncached') as api:
+            with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                m.completed_resource_legacy_run_disposition('other/repo','token')
+            api.assert_not_called()
+
+    def test_jobs_missing_malformed_or_present_block(self):
+        for jobs in ({},{'total_count':False,'jobs':[]},{'total_count':1,'jobs':[]},
+                     {'total_count':0,'jobs':[{'id':1}]},{'total_count':1,'jobs':[{'id':1}]},None):
+            with self.subTest(jobs=jobs),patch.object(m,'_api_get_uncached',side_effect=[self.run_record(),jobs]):
+                with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'JOBS_UNPROVEN'):
+                    m.completed_resource_legacy_run_disposition('MYLEGND/masterapp','token')
+
+    def test_missing_reads_and_mid_read_transition_fail_closed(self):
+        for responses in ([RuntimeError('unavailable')],
+                          [self.run_record(),RuntimeError('unavailable')],
+                          [self.run_record(),{'total_count':0,'jobs':[]},RuntimeError('unavailable')],
+                          [self.run_record(),{'total_count':0,'jobs':[]},self.run_record(status='in_progress')],
+                          [self.run_record(),{'total_count':0,'jobs':[]},self.run_record(run_attempt=2)]):
+            with self.subTest(responses=responses),patch.object(m,'_api_get_uncached',side_effect=responses):
+                with self.assertRaises((RuntimeError,m.ReleaseOperationHistoryUnproven)):
+                    m.completed_resource_legacy_run_disposition('MYLEGND/masterapp','token')
+        with patch.object(m,'_api_get_uncached',return_value=self.run_record(status='completed',conclusion='cancelled')):
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'STATE_CHANGED'):
+                m.completed_resource_legacy_run_disposition('MYLEGND/masterapp','token',observed=self.run_record())
+
+    def writer_inventory(self,extra=None):
+        # Stub only the already-audited historical dispatch surface. Exercise the
+        # real current active inventory and fresh exact disposition validator.
+        rows=[dict.fromkeys(m._RESOURCE_ROOT_HISTORY_FIELDS,None) for _ in range(349)]
+        for i,row in enumerate(rows):
+            row.update(id=i+1,head_branch=m.TRUSTED_PR_BASE,event='workflow_dispatch',
+                       head_repository={'full_name':'MYLEGND/masterapp'})
+        legacy=self.run_record()
+        def api(repo,path,token):
+            if path.startswith('git/ref/heads/'):
+                return {'object':{'sha':'5bf13a59c7608d87264ffbf280fa3551598ea774'}}
+            if 'event=workflow_dispatch' in path:
+                page=int(path.split('&page=')[-1]) if '&page=' in path else 1
+                return {'total_count':349,'workflow_runs':rows[(page-1)*100:page*100]}
+            if 'actions/runs?status=' in path:
+                active=[legacy]+([extra] if extra else []) if 'status=queued&' in path else []
+                return {'total_count':len(active),'workflow_runs':active}
+            if '/jobs?' in path:return {'total_count':0,'jobs':[]}
+            return legacy
+        digest=SimpleNamespace(hexdigest=lambda:'ebd9f65a17a5167f8f8b13aafb449f0315fcaf47002ddf0da082de63cd9a1050')
+        with patch.object(m,'_api_get_uncached',side_effect=api),patch.object(m.hashlib,'sha256',return_value=digest):
+            return m._completed_resource_other_writers('MYLEGND/masterapp','token')
+
+    def test_active_inventory_allows_exact_stale_but_blocks_real_competitor(self):
+        result=self.writer_inventory()
+        self.assertEqual([],result['activeWriters'])
+        self.assertEqual('queued',result['nonwriterDispositions'][0]['status'])
+        with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'COMPETING_ACTIVE_WRITER'):
+            self.writer_inventory(self.run_record(id=37642351263))
+
+    def test_later_currentness_gate_rechecks_even_if_writer_inventory_was_cached(self):
+        empty=hashlib.sha256(b'[]').hexdigest()
+        with patch.object(m,'completed_resource_other_writers',return_value={}), \
+             patch.object(m,'_fast_track_history_observation',return_value=[]), \
+             patch.dict(m._RESOURCE_ROOT_HISTORY,{'count':0,'identity':empty}), \
+             patch.object(m,'_api_get_uncached',return_value=self.run_record(status='in_progress')):
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'DISPOSITION_STATE_CHANGED'):
+                m.completed_resource_currentness('MYLEGND/masterapp','f'*40,
+                    m._fast_track_policy().initial_completed_resource_baselines(),{},'token',required_resources=set())
+
+
 class CompletedResourceBaselineTests(unittest.TestCase):
     def contract(self):
         return m._fast_track_policy().initial_completed_resource_baselines()
@@ -10069,9 +10180,9 @@ class CompletedResourceBaselineTests(unittest.TestCase):
         holds={};empty=hashlib.sha256(b'[]').hexdigest()
         def api(repository,endpoint,token):
             if endpoint.endswith('/jobs?per_page=100'):return {'total_count':0,'jobs':[]}
-            return {'status':'completed','conclusion':'cancelled','run_attempt':1,
-                'head_sha':'40c21d84cfe3c42ecfb48e7940615e603060c765'}
+            return LegacyQueuedRunDispositionTests.run_record(status='completed', conclusion='cancelled')
         with patch.object(m,'completed_resource_other_writers'), \
+             patch.object(m,'_api_get_uncached',side_effect=api), \
              patch.object(m,'_fast_track_history_observation',return_value=[]), \
              patch.dict(m._RESOURCE_ROOT_HISTORY,{'count':0,'identity':empty}), \
              patch.object(m,'api_get',side_effect=api):
@@ -10120,12 +10231,13 @@ class CompletedResourceBaselineTests(unittest.TestCase):
         def api(repo,path,token):
             if '/artifacts?' in path:return {'total_count':1 if '/12/' in path else 0,'artifacts':[artifact] if '/12/' in path else []}
             if '/jobs?' in path:return {'total_count':0,'jobs':[]}
-            return {'status':'completed','conclusion':'cancelled','run_attempt':1,'head_sha':'40c21d84cfe3c42ecfb48e7940615e603060c765'}
+            return LegacyQueuedRunDispositionTests.run_record(status='completed', conclusion='cancelled')
         fake=SimpleNamespace(COMPLETED_RESOURCE_ROOT_REFS=policy.COMPLETED_RESOURCE_ROOT_REFS,
             read_request=lambda sha:{'targets':['masterapp-client']},tool_promotion_requested=lambda sha:False)
         with contextlib.ExitStack() as stack:
             patches={'_fast_track_policy':dict(return_value=fake),'completed_resource_other_writers':{},
                 '_fast_track_history_observation':dict(return_value=rows),'api_get':dict(side_effect=api),
+                '_api_get_uncached':dict(side_effect=api),
                 'is_fast_track_producer':dict(side_effect=lambda repo,run:run['event']=='push'),
                 'completed_resource_contract':dict(return_value=self.contract()),'fast_track_merged_source_proof':{},
                 '_completion_jobs':dict(return_value={1:jobs}),

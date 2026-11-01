@@ -6800,6 +6800,63 @@ _RESOURCE_ROOT_HISTORY_FIELDS = ('id','head_sha','head_branch','path','event','r
 _RESOURCE_ROOT_HISTORY = {'count':253,'lastRun':41240193444,'identity':'16a17b13e7f5ab585ece7bf90beed13e9d51ccfa65ad872b4ab8980be473d43a'}
 
 
+# Exact Founder-scoped stale legacy run disposition.
+# This is one exact non-writer classification, not cancellation or release admission.
+_LEGACY_QUEUED_DISPOSITION = {
+    'repository': 'MYLEGND/masterapp', 'id': 37642351262, 'run_attempt': 1,
+    'head_sha': '40c21d84cfe3c42ecfb48e7940615e603060c765',
+    'head_branch': 'legend/approved-changes',
+    'path': '.github/workflows/legend-release-lifecycle.yml', 'event': 'workflow_run',
+    'created_at': '2026-10-07T15:07:05Z', 'updated_at': '2026-10-07T15:07:05Z',
+    'run_started_at': '2026-10-07T15:07:05Z',
+    'authorization': 'scoped-stale-legacy-nonwriter-v1',
+}
+
+
+def completed_resource_legacy_run_disposition(repository, token, *, observed=None):
+    """Fresh exact identity/zero-job proof; never relabel a queued run terminal.
+
+    Both currentness consumers use this owner. No proof-view cache is accepted:
+    re-read the run after jobs to detect state/attempt changes during observation.
+    """
+    expected = _LEGACY_QUEUED_DISPOSITION
+    if repository.lower() != expected['repository'].lower():
+        raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_LEGACY_DISPOSITION_IDENTITY_CHANGED')
+    endpoint = 'actions/runs/' + str(expected['id'])
+    def validate(run):
+        if (not isinstance(run, dict)
+            or type(run.get('id')) is not int or type(run.get('run_attempt')) is not int
+            or any(run.get(key) != expected[key] for key in
+                   ('id', 'run_attempt', 'head_sha', 'head_branch', 'path', 'event'))
+            or any(not isinstance(run.get(key), dict)
+                   or run[key].get('full_name', '').lower() != repository.lower()
+                   for key in ('repository', 'head_repository'))):
+            raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_LEGACY_DISPOSITION_IDENTITY_CHANGED')
+        state = (run.get('status'), run.get('conclusion'))
+        if state not in {('queued', None), ('completed', 'cancelled')}:
+            raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_LEGACY_DISPOSITION_STATE_CHANGED')
+        if state[0] == 'queued' and any(run.get(key) != expected[key] for key in
+                                       ('created_at', 'updated_at', 'run_started_at')):
+            raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_LEGACY_DISPOSITION_STATE_CHANGED')
+        return state
+    if observed is not None:
+        validate(observed)
+    run = _api_get_uncached(repository, endpoint, token)
+    state = validate(run)
+    if observed is not None and state != (observed.get('status'), observed.get('conclusion')):
+        raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_LEGACY_DISPOSITION_STATE_CHANGED')
+    jobs = _api_get_uncached(repository, endpoint + '/attempts/1/jobs?per_page=100', token)
+    if (not isinstance(jobs, dict) or type(jobs.get('total_count')) is not int
+        or jobs['total_count'] != 0 or jobs.get('jobs') != []):
+        raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_LEGACY_DISPOSITION_JOBS_UNPROVEN')
+    if validate(_api_get_uncached(repository, endpoint, token)) != state:
+        raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_LEGACY_DISPOSITION_STATE_CHANGED')
+    return dict(runId=expected['id'], runAttempt=1, sourceRevision=expected['head_sha'],
+                status=state[0], conclusion=state[1], jobCount=0,
+                classification='founder_disposed_stale_nonwriter' if state[0] == 'queued' else 'terminal_cancelled_nonentry',
+                authorization=expected['authorization'] if state[0] == 'queued' else None)
+
+
 def _completed_resource_other_writers(repository, token):
     """Current writers and the audited legacy dispatch surface, not all old events.
 
@@ -6835,7 +6892,7 @@ def _completed_resource_other_writers(repository, token):
     if len(rows)!=349 or digest!='ebd9f65a17a5167f8f8b13aafb449f0315fcaf47002ddf0da082de63cd9a1050':
         raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_NEW_OR_RETRIED_LEGACY_WRITER')
     current=int(os.environ.get('GITHUB_RUN_ID','0'))
-    active=[]
+    active=[];nonwriters=[]
     readers={'masterapp-platform-architecture-validation.yml','approved-release-security-validation.yml',
              'parfait-isolated-validation.yml'}
     for status in ('queued','in_progress','waiting','pending','requested'):
@@ -6851,6 +6908,9 @@ def _completed_resource_other_writers(repository, token):
                 if row.get('head_sha')!=os.environ.get('GITHUB_SHA') or path!='.github/workflows/'+FAST_TRACK_RELEASE_WORKFLOW:
                     raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_ACTIVE_OWNER_CHANGED')
                 continue
+            if row.get('id') == _LEGACY_QUEUED_DISPOSITION['id']:
+                nonwriters.append(completed_resource_legacy_run_disposition(repository, token, observed=row))
+                continue
             if name in readers and row.get('event') in {'pull_request','push','workflow_dispatch'}:
                 source=_release_history_source(repository,row['head_sha'],path,token)
                 approved_sources=[subprocess.check_output(['git','show',ref+':'+path],text=True)
@@ -6859,7 +6919,7 @@ def _completed_resource_other_writers(repository, token):
             active.append(row.get('id'))
     if active:
         raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_COMPETING_ACTIVE_WRITER')
-    return dict(approvedRef=approved,dispatchCount=len(rows),dispatchIdentity=digest,activeWriters=[])
+    return dict(approvedRef=approved,dispatchCount=len(rows),dispatchIdentity=digest,activeWriters=[],nonwriterDispositions=nonwriters)
 
 
 def completed_resource_other_writers(repository,token):
@@ -7195,13 +7255,8 @@ def completed_resource_currentness(repository, revision, contract, proofs, token
     # An unselected hold never silently advances its saved reference.
     for resource in resource_holds:
         if resource in contract['resources']:latest[resource]=contract['resources'][resource]
-    # The separate legacy queued operation is not erased by the new source root.
-    queued = api_get(repository,'actions/runs/37642351262',token)
-    if queued.get('status')!='completed' or queued.get('conclusion')!='cancelled':
-        raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_LEGACY_QUEUED_OPERATION_UNRESOLVED')
-    jobs=_completion_inventory(api_get(repository,'actions/runs/37642351262/attempts/1/jobs?per_page=100',token),'jobs')
-    if jobs or queued.get('run_attempt')!=1 or queued.get('head_sha')!='40c21d84cfe3c42ecfb48e7940615e603060c765':
-        raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_LEGACY_CANCELLATION_EFFECTS_UNKNOWN')
+    # Revalidate the same exact disposition independently of cached writer inventory.
+    completed_resource_legacy_run_disposition(repository, token)
     return latest
 
 
