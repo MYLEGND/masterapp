@@ -1814,3 +1814,34 @@ This is local development verification, not new production publication or full
 business-journey acceptance. Original fast-track branch remains unchanged. New
 local branch has no remote counterpart, so canonical session preflight reports
 missing remote; no passing session preflight or remote preservation is claimed.
+
+## 2026-11-01 — Protect development dependency closure
+
+Local base635d55ab8d48d67a7dada0125a6b8dcb39d1379c preserved. Protect's normal
+Development startup failed ValidateOnBuild: marketing registered receptionist
+booking without its canonical inquiry dependency; shared commerce registered
+training enrollment while Protect gated its billing dependency behind cutover.
+AddMarketingConnections now calls the existing idempotent confirmed-inquiry
+registration adjacent to booking. Protect's single AddMasterAppBilling call now
+accompanies its unconditional commerce core registration. MVC cutover/preview,
+financial intelligence, automation worker, startup proof, training rollout and
+Development SQL refusal are unchanged. No runtime worker/provider activation or
+validation suppression was added.
+
+Actual Protect and test-project compilation passed (existing unrelated test
+obsolete API/nullable warnings remain).32unique focused dependency, training and
+cutover cases passed: initial31passes retained; final4dependency cases reran after
+correcting the no-new-worker assertion to preserve the existing DataProtection
+hosted service. The marketing regression asserts inquiry registration BEFORE an
+idempotency repeat so it cannot mask the original missing dependency. Test runner
+required permitted local sockets; no production providers or writes were tested.
+
+Protect then started on its unchanged Development profile at1111/1112 with normal
+DI validation. HTTP verification exposed missing local Founder:Upn; the existing
+production Founder__Upn was copied without disclosure into native local user-secrets,
+not source, and production configuration was untouched. Final startup succeeded;
+/design/legend-web-foundation.css returned200 and canonical SHA256
+f370b3a6cd39bac15c12183e1f7a682fd9276650b938e68aa0ddaf3e3ce79219.
+Verification processes were stopped to leave ports free for the Founder. No
+production deployment, migration, charge, email or cutover was performed. Local
+repair branch still has no remote counterpart; no remote preservation is claimed.

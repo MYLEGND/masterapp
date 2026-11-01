@@ -78,6 +78,9 @@ builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteCommerceScopeSer
 // analytics and automation services; only the proven live checkout and the
 // single SQL-leased automation dispatcher depend on the cutover gate.
 builder.Services.AddLegendCommerceCore();
+// Shared training services require billing dependencies even before public cutover.
+// Registration does not activate checkout routes or background dispatchers.
+builder.Services.AddMasterAppBilling(builder.Configuration);
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsService>();
 builder.Services.AddSingleton<ParfaitMetaCapiCredentialProtector>();
@@ -87,7 +90,6 @@ builder.Services.AddMemoryCache();
 
 if (Infrastructure.WebsiteRuntime.CommerceSharedHostCutoverGate.IsConfigured(builder.Configuration))
 {
-    builder.Services.AddMasterAppBilling(builder.Configuration);
     builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
     builder.Services.AddLegendCommerceAutomationWorker();
     builder.Services.AddHostedService<CommerceCutoverStartupProof>();
