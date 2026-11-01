@@ -54,13 +54,14 @@ public sealed class LegendPublishedPageTests
         private readonly ServiceProvider services;
         public WebsitePlatformController Controller { get; }
         public WebsiteContentState State { get; }
+        public string CompilerRoot { get; }
 
         public Fixture(bool compilerAvailable = true)
         {
             connection.Open();
             Db = new(new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).AddInterceptors(Writes).Options);
             Db.Database.EnsureCreated();
-            var compilerRoot = System.IO.Path.GetFullPath(System.IO.Path.Combine(SourceDirectory(), "..", "Legend-Website"));
+            var compilerRoot = CompilerRoot = System.IO.Path.GetFullPath(System.IO.Path.Combine(SourceDirectory(), "..", "Legend-Website"));
             var config = new ConfigurationBuilder().AddInMemoryCollection(new System.Collections.Generic.Dictionary<string, string?>
             {
                 ["WebsitePublishing:CompilerRoot"] = compilerAvailable ? compilerRoot : System.IO.Path.Combine(compilerRoot, "missing-compiler")
@@ -176,8 +177,12 @@ public sealed class LegendPublishedPageTests
         // A fresh service cannot compile: the second request must use the persisted
         // immutable pages, not the first compiler instance's in-memory cache.
         using var unavailable = new ServiceCollection().AddSingleton(new WebsitePageCompiler(
-            Mock.Of<IWebHostEnvironment>(value => value.ContentRootPath == "/missing-fixture-compiler"),
-            new ConfigurationBuilder().Build())).BuildServiceProvider();
+            Mock.Of<IWebHostEnvironment>(value => value.ContentRootPath == AppContext.BaseDirectory),
+            new ConfigurationBuilder().AddInMemoryCollection(new System.Collections.Generic.Dictionary<string, string?>
+            {
+                ["WebsitePublishing:CompilerRoot"] = f.CompilerRoot,
+                ["WebsitePublishing:NodeExecutable"] = "/missing-fixture-node"
+            }).Build())).BuildServiceProvider();
         f.Controller.HttpContext.RequestServices = unavailable;
         Assert.Contains("Published blank-slot fixture", await ReadPage());
         Assert.Equal(after.CompiledPagesJson, await f.Db.Set<WebsiteContentVersion>().AsNoTracking()
