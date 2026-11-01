@@ -9,11 +9,18 @@ namespace Infrastructure.Billing;
 internal sealed class BillingEntitlementService : IBillingEntitlementService
 {
     private readonly MasterAppDbContext _db;
-    private readonly IHouseholdMembershipService _households;
+    private readonly Lazy<IHouseholdMembershipService> _households;
 
     public BillingEntitlementService(
         MasterAppDbContext db,
         IHouseholdMembershipService households)
+        : this(db, new Lazy<IHouseholdMembershipService>(() => households))
+    {
+    }
+
+    internal BillingEntitlementService(
+        MasterAppDbContext db,
+        Lazy<IHouseholdMembershipService> households)
     {
         _db = db;
         _households = households;
@@ -35,7 +42,7 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
             return new BillingEntitlementEvaluationResult(ClientEntitlementStatus.NotGranted, null, null, null,
                 "UNKNOWN_ENTITLEMENT", ClientEntitlementSourceType.Subscription, string.Empty, "No subscription owns this entitlement.");
 
-        var access = await _households.ResolveActiveAccessAsync(
+        var access = await _households.Value.ResolveActiveAccessAsync(
             request.ClientProfileId,
             cancellationToken);
         if (!CanEvaluateSubscription(access))
@@ -81,7 +88,7 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
         {
             if (entitlementKey != BillingEntitlementKeys.ClientAppFullAccess)
                 throw new InvalidOperationException("Unknown subscription entitlement.");
-            var access = await _households.ResolveActiveAccessAsync(clientProfileId, cancellationToken);
+            var access = await _households.Value.ResolveActiveAccessAsync(clientProfileId, cancellationToken);
             if (!CanEvaluateSubscription(access))
                 throw new InvalidOperationException("Eligible household access is required before entitlement can be refreshed.");
             entitlementOwnerProfileId = access.SubscriptionOwnerClientProfileId ?? clientProfileId;

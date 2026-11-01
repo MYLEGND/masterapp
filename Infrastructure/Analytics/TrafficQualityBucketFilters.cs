@@ -15,6 +15,8 @@ public static class TrafficQualityBucketFilters
     public const string LikelyBotsAutomationClientValue = "likely_bots_automation";
     public const string InternalQaClientValue = "internal_qa";
     public const string AllTrafficClientValue = "all_traffic";
+    private const int HumanScoreThreshold = 90;
+    private const int LikelyHumanScoreThreshold = 60;
 
     private static readonly Expression<Func<AnalyticsEvent, bool>> Internal = e => e.IsInternal ||
         (e.Environment != null && (e.Environment.ToLower().StartsWith("dev") || e.Environment.ToLower().StartsWith("stag") ||
@@ -52,8 +54,8 @@ public static class TrafficQualityBucketFilters
         var external = Expression.AndAlso(Expression.Not(internalTraffic), Expression.Not(bot));
         var suspicious = Bind(Anomalous);
         var valid = Expression.AndAlso(external, Expression.Not(suspicious));
-        var human = Expression.GreaterThanOrEqual(score, Expression.Constant(90));
-        var likely = Expression.AndAlso(Expression.GreaterThanOrEqual(score, Expression.Constant(60)), Expression.Not(human));
+        var human = Expression.GreaterThanOrEqual(score, Expression.Constant(HumanScoreThreshold));
+        var likely = Expression.AndAlso(Expression.GreaterThanOrEqual(score, Expression.Constant(LikelyHumanScoreThreshold)), Expression.Not(human));
         Expression body = mode switch
         {
             TrafficQualityMode.AllTraffic => Expression.Constant(true),
@@ -63,7 +65,7 @@ public static class TrafficQualityBucketFilters
             TrafficQualityMode.LikelyHuman => Expression.AndAlso(valid, likely),
             // Absence of interaction is unknown, not proof of suspicious activity.
             TrafficQualityMode.SuspiciousActivity => Expression.AndAlso(external, suspicious),
-            _ => Expression.AndAlso(valid, Expression.LessThan(score, Expression.Constant(60)))
+            _ => Expression.AndAlso(valid, Expression.LessThan(score, Expression.Constant(LikelyHumanScoreThreshold)))
         };
         return Expression.Lambda<Func<AnalyticsEvent, bool>>(body, p);
     }
@@ -87,12 +89,18 @@ public static class TrafficQualityBucketFilters
     {
         if (mode == TrafficQualityMode.AllTraffic) return query;
         var parameter = Expression.Parameter(typeof(AnalyticsEvent), "row");
-        Expression rank = Expression.Constant(Precedence.Length);
-        for (var index = Precedence.Length - 1; index >= 0; index--)
-        {
-            var predicate = BuildEventPredicate(Precedence[index]);
-            rank = Expression.Condition(new Replace(predicate.Parameters[0], parameter).Visit(predicate.Body)!, Expression.Constant(index), rank);
-        }
+        Expression Bind(LambdaExpression expression) => new Replace(expression.Parameters[0], parameter).Visit(expression.Body)!;
+        Expression Rank(TrafficQualityMode bucket) => Expression.Constant(Array.IndexOf(Precedence, bucket));
+        var score = Bind(Score);
+        // Earlier CASE branches already exclude higher-precedence evidence.
+        // Repeating those exclusions in every later branch expands expensive
+        // environment/user-agent predicates throughout each grouped SQL query.
+        var rank = Expression.Condition(Bind(Internal), Rank(TrafficQualityMode.InternalQa),
+            Expression.Condition(Bind(Automated), Rank(TrafficQualityMode.LikelyBotsAutomation),
+                Expression.Condition(Bind(Anomalous), Rank(TrafficQualityMode.SuspiciousActivity),
+                    Expression.Condition(Expression.GreaterThanOrEqual(score, Expression.Constant(HumanScoreThreshold)), Rank(TrafficQualityMode.RealHumanTraffic),
+                        Expression.Condition(Expression.GreaterThanOrEqual(score, Expression.Constant(LikelyHumanScoreThreshold)), Rank(TrafficQualityMode.LikelyHuman),
+                            Expression.Constant(Precedence.Length))))));
         var projection = Expression.Lambda<Func<AnalyticsEvent, BucketSeed>>(Expression.MemberInit(
             Expression.New(typeof(BucketSeed)),
             Expression.Bind(typeof(BucketSeed).GetProperty(nameof(BucketSeed.Row))!, parameter),

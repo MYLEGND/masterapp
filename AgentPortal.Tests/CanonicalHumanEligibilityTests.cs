@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading.Tasks;
 using Domain.Entities;
 using Infrastructure.Analytics;
@@ -219,5 +220,134 @@ public sealed class CanonicalHumanEligibilityTests
             .UseSqlServer("Server=invalid.test;Database=translation_only;Integrated Security=true").Options);
         foreach (var mode in Enum.GetValues<TrafficQualityMode>())
             Assert.Contains("SELECT", TrafficQualityBucketFilters.ApplyEventBucketMembership(db.AnalyticsEvents, mode).ToQueryString());
+    }
+
+    [Fact]
+    public void BucketRankingDoesNotRepeatHigherPriorityPredicatesPerLowerBucket()
+    {
+        using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlServer("Server=invalid.test;Database=translation_only;Integrated Security=true").Options);
+        var query = TrafficQualityBucketFilters.ApplyEventBucketMembership(db.AnalyticsEvents, TrafficQualityMode.RealHumanTraffic);
+        var count = new QualityPredicateCount();
+        count.Visit(query.Expression);
+        Assert.Equal(1, count.InternalChecks);
+        Assert.Equal(1, count.WebDriverChecks);
+        Assert.Contains("SELECT", query.ToQueryString()); // Translate only; no connection is opened.
+    }
+
+    [Fact]
+    public async Task RelationalRankPreservesPrecedenceAcrossNullAndOverlappingSignals()
+    {
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).Options);
+        await db.Database.EnsureCreatedAsync();
+        var rows = (from internalFlag in new[] { false, true }
+                    from webDriver in new bool?[] { null, false, true }
+                    from agent in new string?[] { null, "", "Mozilla/5.0", "crawler bot" }
+                    from engaged in new int?[] { null, -1, 5000, 15000, 25000 }
+                    select new { internalFlag, webDriver, agent, engaged }).Select((sample, index) =>
+        {
+            var row = Evidence();
+            row.SessionId = "precedence-" + index;
+            row.IsInternal = sample.internalFlag;
+            row.WebDriver = sample.webDriver;
+            row.UserAgent = sample.agent;
+            row.EngagedMilliseconds = sample.engaged;
+            return row;
+        }).ToArray();
+        db.AnalyticsEvents.AddRange(rows);
+        var oldBot = Evidence(); oldBot.SessionId = rows[0].SessionId; oldBot.UserAgent = "crawler bot";
+        oldBot.EventUtc = DateTime.UtcNow.AddDays(-10);
+        var otherVisitor = Evidence(); otherVisitor.SessionId = rows[1].SessionId; otherVisitor.VisitorId = "different";
+        otherVisitor.IsInternal = true;
+        var otherHost = Evidence(); otherHost.SessionId = rows[2].SessionId; otherHost.Host = "other.test";
+        otherHost.IsInternal = true;
+        var future = Evidence(); future.SessionId = rows[3].SessionId; future.EventUtc = DateTime.UtcNow.AddDays(1);
+        future.IsInternal = true;
+        db.AnalyticsEvents.AddRange(oldBot, otherVisitor, otherHost, future);
+        foreach (var session in new string?[] { null, "", " ", "Case", "case", "café", "cafe" })
+        {
+            var signal = Evidence(); signal.SessionId = session; signal.Host = "EXAMPLE.TEST";
+            var conflict = Evidence(); conflict.SessionId = session; conflict.IsHeadless = true;
+            db.AnalyticsEvents.AddRange(signal, conflict);
+        }
+        await db.SaveChangesAsync();
+        var cutoff = DateTime.UtcNow;
+        var from = cutoff.AddHours(-1);
+        var query = db.AnalyticsEvents.Where(row => row.EventUtc >= from && row.EventUtc <= cutoff);
+        var evidence = db.AnalyticsEvents.Where(row => row.EventUtc <= cutoff);
+        foreach (var mode in Enum.GetValues<TrafficQualityMode>().Distinct())
+        {
+            // Retain the original provider-translated rank as the oracle, including
+            // SQL null semantics, evidence outside the date range and scoped keys.
+            var expected = await LegacyBucketMembership(query, mode, evidence)
+                .Select(row => row.EventId).ToArrayAsync();
+            var actual = await TrafficQualityBucketFilters.ApplyEventBucketMembership(query, mode, evidence)
+                .Select(row => row.EventId).ToArrayAsync();
+            Assert.Equal(expected.Order().ToArray(), actual.Order().ToArray());
+        }
+    }
+
+    private sealed class LegacyBucketSeed
+    {
+        public AnalyticsEvent Row { get; set; } = null!;
+        public int Rank { get; set; }
+    }
+
+    // Frozen rank/query shape from 11ec3932, used only as a regression oracle.
+    private static IQueryable<AnalyticsEvent> LegacyBucketMembership(IQueryable<AnalyticsEvent> query,
+        TrafficQualityMode mode, IQueryable<AnalyticsEvent> evidence)
+    {
+        if (mode == TrafficQualityMode.AllTraffic) return query;
+        TrafficQualityMode[] precedence = [TrafficQualityMode.InternalQa, TrafficQualityMode.LikelyBotsAutomation,
+            TrafficQualityMode.SuspiciousActivity, TrafficQualityMode.RealHumanTraffic, TrafficQualityMode.LikelyHuman];
+        var parameter = Expression.Parameter(typeof(AnalyticsEvent), "row");
+        Expression rank = Expression.Constant(precedence.Length);
+        for (var index = precedence.Length - 1; index >= 0; index--)
+        {
+            var predicate = TrafficQualityBucketFilters.BuildEventPredicate(precedence[index]);
+            rank = Expression.Condition(new ReplaceRankParameter(predicate.Parameters[0], parameter).Visit(predicate.Body)!,
+                Expression.Constant(index), rank);
+        }
+        var projection = Expression.Lambda<Func<AnalyticsEvent, LegacyBucketSeed>>(Expression.MemberInit(
+            Expression.New(typeof(LegacyBucketSeed)),
+            Expression.Bind(typeof(LegacyBucketSeed).GetProperty(nameof(LegacyBucketSeed.Row))!, parameter),
+            Expression.Bind(typeof(LegacyBucketSeed).GetProperty(nameof(LegacyBucketSeed.Rank))!, rank)), parameter);
+        var sessions = query.Where(row => row.SessionId != null && row.SessionId != "").Select(row => row.SessionId);
+        var ids = query.Select(row => row.EventId);
+        var buckets = evidence.Where(row => sessions.Contains(row.SessionId) || ids.Contains(row.EventId))
+            .Select(projection).GroupBy(seed => new {
+                seed.Row.CommerceBusinessId, seed.Row.AgentTrackingProfileId, Host = (seed.Row.Host ?? "").ToLower(),
+                Session = seed.Row.SessionId ?? "", Visitor = seed.Row.VisitorId ?? "",
+                Singleton = seed.Row.SessionId == null || seed.Row.SessionId == "" ? seed.Row.EventId : Guid.Empty
+            }).Select(group => new { group.Key, Rank = group.Min(seed => seed.Rank) });
+        var target = Array.IndexOf(precedence, mode);
+        if (target < 0) target = precedence.Length;
+        return query.Join(buckets.Where(bucket => bucket.Rank == target), row => new {
+            row.CommerceBusinessId, row.AgentTrackingProfileId, Host = (row.Host ?? "").ToLower(),
+            Session = row.SessionId ?? "", Visitor = row.VisitorId ?? "",
+            Singleton = row.SessionId == null || row.SessionId == "" ? row.EventId : Guid.Empty
+        }, bucket => bucket.Key, (row, _) => row);
+    }
+
+    private sealed class ReplaceRankParameter(ParameterExpression from, ParameterExpression to) : ExpressionVisitor
+    {
+        protected override Expression VisitParameter(ParameterExpression node) => node == from ? to : base.VisitParameter(node);
+    }
+
+    private sealed class QualityPredicateCount : ExpressionVisitor
+    {
+        public int InternalChecks { get; private set; }
+        public int WebDriverChecks { get; private set; }
+        protected override Expression VisitMember(MemberExpression node)
+        {
+            if (node.Member.DeclaringType == typeof(AnalyticsEvent))
+            {
+                if (node.Member.Name == nameof(AnalyticsEvent.IsInternal)) InternalChecks++;
+                if (node.Member.Name == nameof(AnalyticsEvent.WebDriver)) WebDriverChecks++;
+            }
+            return base.VisitMember(node);
+        }
     }
 }

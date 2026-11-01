@@ -2231,6 +2231,19 @@ class FastTrackImpactTests(unittest.TestCase):
             'Legend-Cloudflare/tests/website-routing/bridge.test.mjs',
             'scripts/test-parfait-readonly-workflow.py')['selected'])
 
+    def test_billing_registration_selects_exact_real_hosts_without_admission(self):
+        path = 'Infrastructure/Billing/BillingServiceCollectionExtensions.cs'
+        result = self.scope(path)
+        self.assertEqual({row['target'] for row in result['matrix']['include']},
+                         {'AgentPortal', 'ClientApp', 'Protect', 'Parfait'})
+        for project in ('AgentPortal', 'ClientApp', 'Protect-Website', 'ParfaitApp'):
+            self.assertIn('AddMasterAppBilling(builder.Configuration)',
+                          (ROOT / project / 'Program.cs').read_text())
+        self.assertFalse(result['schema'])
+        self.assertNotIn('releaseAdmission', result)
+        with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+            self.scope('Infrastructure/Billing/UnreviewedRegistration.cs')
+
     def test_unknown_shared_source_blocks_instead_of_blanket_deploy(self):
         with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
             self.scope('Infrastructure/UnreviewedDependency.cs')
@@ -3721,6 +3734,26 @@ class ValidationResumePlannerTests(unittest.TestCase):
         self.assertFalse(plan["gates"]["booking-regressions"]["run"])
         self.assertFalse(plan["gates"]["crm-regressions"]["run"])
         self.assertFalse(plan["gates"]["renderer-tests"]["run"])
+
+    def test_website_repair_test_only_changes_invalidate_selected_gate_and_compile(self):
+        import re
+        workflow = "masterapp-platform-architecture-validation.yml"
+        text = (ROOT / ".github/workflows" / workflow).read_text()
+        filters = re.findall(r'--filter "([^"]+)"', text)
+        website_filter = next(value for value in filters if "FullyQualifiedName~WebsitePublishingAuthorityTests" in value)
+        terms = [term.removeprefix("FullyQualifiedName~") for term in website_filter.split("|")]
+        for name in ("WebsiteNamedDraftReaderTests", "QuoteLegacyLifeRouteTests",
+                     "TrainingEnrollmentDependencyResolutionTests", "CanonicalHumanEligibilityTests"):
+            with self.subTest(suite=name):
+                self.assertTrue(any(term in "AgentPortal.Tests." + name for term in terms))
+                plan = m.compute_plan(workflow, "b" * 40, self.prior(), self.successful_steps(workflow),
+                                      ["AgentPortal.Tests/" + name + ".cs"], "prior_run")
+                self.assertTrue(plan["gates"]["website-regressions"]["run"])
+                self.assertEqual("gate_inputs_changed", plan["gates"]["website-regressions"]["reason"])
+                self.assertTrue(plan["gates"]["compile-regression"]["run"])
+                self.assertTrue(plan["gates"]["restore-dotnet"]["run"])
+                for unrelated in ("founder-diagnostics-regressions", "booking-regressions", "crm-regressions"):
+                    self.assertFalse(plan["gates"][unrelated]["run"], unrelated)
 
     def test_performance_suite_paths_match_saved_workflow_filter_and_planner(self):
         import re

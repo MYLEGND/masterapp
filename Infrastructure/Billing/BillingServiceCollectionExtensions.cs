@@ -1,5 +1,9 @@
 using Domain.Billing;
 using Infrastructure.Billing.Square;
+using Infrastructure.Data;
+using Infrastructure.Households;
+using Infrastructure.Identity;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -21,7 +25,13 @@ public static class BillingServiceCollectionExtensions
 
         services.AddScoped<IBillingGateway, SquareBillingGateway>();
         services.AddScoped<IBillingOrchestrator, MasterAppBillingOrchestrator>();
-        services.AddScoped<IBillingEntitlementService, BillingEntitlementService>();
+        services.TryAddScoped<IClientEntraLifecycleService, ClientEntraLifecycleService>();
+        services.TryAddScoped<IHouseholdMembershipService, HouseholdMembershipService>();
+        // Training entitlements do not use household provisioning. Resolve this scoped
+        // dependency only when the household entitlement branch actually needs it.
+        services.AddScoped<IBillingEntitlementService>(provider => new BillingEntitlementService(
+            provider.GetRequiredService<MasterAppDbContext>(),
+            new Lazy<IHouseholdMembershipService>(() => provider.GetRequiredService<IHouseholdMembershipService>())));
         services.AddScoped<IClientPaymentMethodService, ClientPaymentMethodService>();
         services.AddScoped<IClientBillingNotificationService, ClientBillingNotificationService>();
         services.AddScoped<IClientSubscriptionActivationPolicyService, ClientSubscriptionActivationPolicyService>();

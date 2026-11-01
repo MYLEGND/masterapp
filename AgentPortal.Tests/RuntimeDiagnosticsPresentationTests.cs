@@ -51,13 +51,56 @@ public sealed class RuntimeDiagnosticsPresentationTests
     [Fact]
     public async Task ExistingRazorViewRendersActionableSummaryAndPreservesFiltersOnBothPaginationLinks()
     {
+        var html = await RenderDiagnosticsAsync();
+        Assert.Contains("Largest measured stage", html); Assert.Contains("state read: 12000 ms", html);
+        Assert.Contains("13000 ms", html); Assert.Contains("Truncated", html); Assert.Contains("not causal attribution", html);
+        var links = Regex.Matches(html, "<a[^>]*href=\"([^\"]+)\"[^>]*>(Previous|Next)</a>");
+        Assert.Equal(2, links.Count);
+        foreach (Match link in links)
+        {
+            var uri = new Uri(new Uri("https://fixture.test"), WebUtility.HtmlDecode(link.Groups[1].Value));
+            Assert.Equal("/founder/diagnostics", uri.AbsolutePath);
+            var query = QueryHelpers.ParseQuery(uri.Query);
+            Assert.Equal("ProtectWebsite", query["app"].ToString()); Assert.Equal("Performance", query["category"].ToString());
+            Assert.Equal(link.Groups[2].Value == "Previous" ? "1" : "3", query["page"].ToString());
+        }
+    }
+
+    [Theory]
+    [InlineData("Observed")]
+    [InlineData("ConfirmedDefect")]
+    [InlineData("Dismissed")]
+    [InlineData("ManuallyClosed")]
+    public async Task DetailReviewRendersSavedDispositionAndCanonicalReturnLink(string disposition)
+    {
+        var html = await RenderDiagnosticsAsync(details: true, disposition: disposition);
+        var select = Regex.Match(html, "<select[^>]*name=\"disposition\"[^>]*>([\\s\\S]*?)</select>");
+        Assert.True(select.Success);
+        var selected = Regex.Matches(select.Groups[1].Value, "<option[^>]*value=\"([^\"]+)\"[^>]*selected(?:=\"[^\"]*\")?[^>]*>");
+        Assert.Single(selected.Cast<Match>());
+        Assert.Equal(disposition, selected[0].Groups[1].Value);
+        Assert.Contains("name=\"reviewVersion\" value=\"7\"", html);
+        Assert.Contains("name=\"confirmDefect\"", html);
+        var link = Regex.Match(html, "<a[^>]*href=\"([^\"]+)\"[^>]*>All observations</a>");
+        Assert.True(link.Success);
+        var uri = new Uri(new Uri("https://fixture.test"), WebUtility.HtmlDecode(link.Groups[1].Value));
+        Assert.Equal("/founder/diagnostics", uri.AbsolutePath);
+        Assert.Equal(string.Empty, uri.Query);
+    }
+
+    private static async Task<string> RenderDiagnosticsAsync(bool details = false, string disposition = "Observed")
+    {
         using var host = await new HostBuilder().ConfigureWebHost(builder => builder.UseEnvironment("Testing").UseTestServer()
             .ConfigureServices(services =>
             {
                 services.AddRouting(); services.AddDataProtection();
                 services.AddControllersWithViews().AddApplicationPart(typeof(FounderDiagnosticsController).Assembly)
                     .AddApplicationPart(Assembly.Load("AgentPortal.Views"));
-            }).Configure(app => { app.UseRouting(); app.UseEndpoints(endpoints => endpoints.MapControllers()); })).StartAsync();
+            }).Configure(app => { app.UseRouting(); app.UseEndpoints(endpoints =>
+            {
+                endpoints.MapControllers();
+                endpoints.MapControllerRoute("default", "{controller=Home}/{action=Index}/{id?}");
+            }); })).StartAsync();
         using var scope = host.Services.CreateScope(); var services = scope.ServiceProvider;
         var http = new DefaultHttpContext { RequestServices = services };
         http.Request.Scheme = "https"; http.Request.Host = new HostString("fixture.test"); http.Request.Path = "/founder/diagnostics";
@@ -69,22 +112,12 @@ public sealed class RuntimeDiagnosticsPresentationTests
         var found = services.GetRequiredService<IRazorViewEngine>().GetView(null, "~/Views/FounderDiagnostics/Index.cshtml", false);
         Assert.True(found.Success);
         var viewData = new ViewDataDictionary<IReadOnlyList<RuntimeDiagnosticIncident>>(services.GetRequiredService<IModelMetadataProvider>(), new ModelStateDictionary())
-        { Model = new[] { new RuntimeDiagnosticIncident { Id = Guid.NewGuid(), AppIdentifier = "ProtectWebsite", PerformanceEvidenceJson = Sample() } } };
+        { Model = new[] { new RuntimeDiagnosticIncident { Id = Guid.NewGuid(), AppIdentifier = "ProtectWebsite", PerformanceEvidenceJson = Sample(), Disposition = disposition, ReviewVersion = 7 } } };
         viewData["Page"] = 2; viewData["HasMore"] = true; viewData["AppFilter"] = "ProtectWebsite"; viewData["CategoryFilter"] = "Performance";
+        viewData["Details"] = details;
         using var writer = new StringWriter();
         await found.View.RenderAsync(new ViewContext(context, found.View, viewData,
             new TempDataDictionary(http, services.GetRequiredService<ITempDataProvider>()), writer, new HtmlHelperOptions()));
-        var html = writer.ToString();
-        Assert.Contains("Largest measured stage", html); Assert.Contains("state read: 12000 ms", html);
-        Assert.Contains("13000 ms", html); Assert.Contains("Truncated", html); Assert.Contains("not causal attribution", html);
-        var links = Regex.Matches(html, "<a[^>]*href=\"([^\"]+)\"[^>]*>(Previous|Next)</a>");
-        Assert.Equal(2, links.Count);
-        foreach (Match link in links)
-        {
-            var uri = new Uri(new Uri("https://fixture.test"), WebUtility.HtmlDecode(link.Groups[1].Value));
-            var query = QueryHelpers.ParseQuery(uri.Query);
-            Assert.Equal("ProtectWebsite", query["app"].ToString()); Assert.Equal("Performance", query["category"].ToString());
-            Assert.Equal(link.Groups[2].Value == "Previous" ? "1" : "3", query["page"].ToString());
-        }
+        return writer.ToString();
     }
 }
