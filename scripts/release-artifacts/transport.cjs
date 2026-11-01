@@ -72,7 +72,7 @@ function recoveryEvidence(record) {
     throw new Error('Invalid stable baseline identity');
   const keys = ['schemaVersion', 'operationId', 'target', 'applicationRevision', 'packageDigest', 'baseline',
     'packageProducerRun', 'producingRun', 'producingAttempt', 'baselineDeploymentIds', 'phase', 'recoveryEvidence'];
-  for (const key of ['providerRequestCorrelation', 'submissionContract']) if (record[key] !== undefined) keys.push(key);
+  for (const key of ['providerRequestCorrelation', 'submissionContract', 'supersession']) if (record[key] !== undefined) keys.push(key);
   if (record.phase === 'submitted') keys.push('deploymentId');
   if (record.phase === 'success') keys.push('deploymentIds');
   if (!exactKeys(record, keys.join(',')) || !Array.isArray(record.baselineDeploymentIds) ||
@@ -251,6 +251,25 @@ function replacementOperation(name, record) {
 // release operation record can be persisted; credentials cannot enter it.
 function supersessionRecord(record) {
   const value = record.supersession;
+  if (value?.authorizationId === 'protect-forward-68ef-20261101-v1') {
+    const material=value.material, proof=record.recoveryEvidence;
+    const fixed=Object.fromEntries(Object.keys(value).filter(k=>!['candidateRevision','material'].includes(k)).sort().map(k=>[k,value[k]]));
+    if (crypto.createHash('sha256').update(JSON.stringify(fixed)).digest('hex') !== '9931476bae806a711f57ce24650f87ed39eba37dfa321e09b75eef45dd4c3d16' ||
+        record.schemaVersion!==1 || record.target!=='protect' || !sha(value.candidateRevision,40) ||
+        value.candidateRevision!==record.applicationRevision || record.baseline!==value.baselineRevision ||
+        ['completionEvidence','componentSource','candidateRevision'].some(k=>record[k]!==undefined) ||
+        !material || !exactKeys(material,'applicationRevision,packageDigest,packageProducerRun,packageArtifactId,packageArtifactDigest,operationId,producingAttempt') ||
+        material.applicationRevision!==record.applicationRevision || material.packageDigest!==record.packageDigest ||
+        material.packageProducerRun!==record.packageProducerRun || !positive(material.packageArtifactId) ||
+        !digest(material.packageArtifactDigest) || material.operationId!==record.operationId || material.producingAttempt!==1 ||
+        record.operationId!==operationIdentity(record.target,record.applicationRevision,record.packageDigest) ||
+        (proof===undefined ? record.producingRun!==record.packageProducerRun :
+          (proof.originalRun!==material.packageProducerRun || proof.originalAttempt!==1 ||
+           proof.packageArtifactId!==material.packageArtifactId || proof.packageArtifactDigest!==material.packageArtifactDigest)) ||
+        (record.phase==='intent' && record.producingAttempt!==1))
+      throw new Error('Invalid forward Protect material or recovery binding');
+    return;
+  }
   const keys = 'authorizationId,authorizedBy,target,originalRun,originalOperationId,originalRevision,expectedReleaseParent,historicalOutcome,authorizeOneReplacement,rollbackArtifactId,rollbackArtifactDigest,candidateRevision';
   if (!exactKeys(value, keys) || record.schemaVersion !== 1 || record.target !== 'protect' ||
       !sha(value.candidateRevision, 40) || value.candidateRevision !== record.applicationRevision ||
@@ -322,7 +341,7 @@ function validateRecord(name, record) {
         record.phase!=='retained-schema-read-only' || !positive(record.originalRun) || !sha(record.applicationRevision,40) ||
         (forward ? (!completedResourceReference(record.schemaReference) || record.schemaReference.runId!==record.originalRun ||
           record.schemaReference.sourceRevision!==record.applicationRevision || record.schemaReference.artifactId!==record.originalSuccessArtifact ||
-          !/^legend-release-child-success-[a-f0-9]{64}$/.test(record.schemaReference.artifactName)) :
+          !/^legend-(release-child-success|migration-observation)-[a-f0-9]{64}$/.test(record.schemaReference.artifactName)) :
           (record.originalRun!==41131223973 || record.applicationRevision!=='3243221ae661b53d60f78cc2dab108a93bad7632' || record.originalSuccessArtifact!==13017640415)) ||
         !positive(record.producingRun) || !positive(record.producingAttempt) || record.producingRun===record.originalRun ||
         !recoveryObserver(record.observer,record.producingRun,record.producingAttempt) ||

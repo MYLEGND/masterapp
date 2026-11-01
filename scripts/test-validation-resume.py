@@ -7230,8 +7230,8 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         root=Path(__file__).parent
         source=(root/'deploy-approved-app.py').read_text()
         journal=(root/'release-operation-evidence.py').read_text()
-        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'c933b4dbca67be109816c418567b7094679d3f3fc1078160041fb824c45a5796')
-        self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'4bd7edacd32764edff0504597e15c59dbd24f547ede3b5c22bba247c0ada8df5')
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'05a2db1772ca0b22446c0a68dea0d1bad85d8a314570ee1f9194a48b155a59b5')
+        self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'fec49886ac862469b0d71be6e5bc11af15cdfcc62d7318452a4bb59fd514822f')
         self.assertTrue(m._recovery_preflight_source_contract(source,journal))
         for changed in [source+'# unreviewed helper\n',source.replace('reconcile_only=journal.intent is not None','reconcile_only=False')]:
             self.assertNotEqual(changed,source)
@@ -10471,7 +10471,7 @@ class CompletedResourceBaselineTests(unittest.TestCase):
             started_at='2026-11-01T00:00:01Z',completed_at='2026-11-01T00:01:00Z')])
         original={'run':{'id':10,'head_sha':revision}}
         with patch.object(m,'_release_history_json',side_effect=lambda *a,**k:record), \
-             patch.object(m,'completed_resource_receipt',return_value={'record':{'observation':{'schemaIdentity':'f'*64}}}), \
+             patch.object(m,'completed_resource_original_schema',return_value={'reference':copy.deepcopy(reference),'record':{'observation':{'schemaIdentity':'f'*64}}}), \
              patch.object(m,'api_get',return_value={'total_count':1,'jobs':[job]}):
             self.assertEqual(record,m.completed_resource_schema_proof('MYLEGND/masterapp',original,observer,artifact(),'fixture'))
             saved=copy.deepcopy(record)
@@ -10547,6 +10547,85 @@ class ForwardProtectDispositionTests(unittest.TestCase):
         for changes in ({'embedded':'a'*40},{'digest':'a'*64},{'expired':True},{'wrong_head':True},{'drift':True},{'missing':True},{'duplicate':True},{'attempt':2,'first_write':True},{'attempt':True}):
             with self.subTest(changes=changes),self.assertRaises(ValueError):self.material(**changes)
 
+
+class ResourceMetadataPreintentAttestationTests(unittest.TestCase):
+    def fixture(self):
+        fixture = RetainedPreuploadAttestationTests(); fixture.setUp()
+        fixture.target = 'portal'
+        fixture.run.update(id=41336371077, run_attempt=1, head_sha='f2841ef8d0871ed69be01484024424eb3f63f121',
+                           conclusion='failure', head_repository=dict(full_name='MYLEGND/masterapp'))
+        fixture.job.update(id=124939345563, run_id=41336371077, run_attempt=1,
+                           head_sha='f2841ef8d0871ed69be01484024424eb3f63f121', name='Affected App Deploy — AgentPortal')
+        fixture.package.update(name='fast-track-package-'+'f2841ef8d0871ed69be01484024424eb3f63f121'+'-portal',
+                               workflow_run=dict(id=41336371077,head_sha='f2841ef8d0871ed69be01484024424eb3f63f121'))
+        import io,zipfile
+        buffer=io.BytesIO()
+        with zipfile.ZipFile(buffer,'w') as archive:
+            archive.writestr('_deployment-provenance.txt','f2841ef8d0871ed69be01484024424eb3f63f121')
+            archive.writestr('wwwroot/_deployment-provenance.json',json.dumps(dict(releaseSha='f2841ef8d0871ed69be01484024424eb3f63f121')))
+        fixture.archive=buffer.getvalue();fixture.digest=hashlib.sha256(fixture.archive).hexdigest()
+        fixture.operation = m.retained_operation_id('portal','f2841ef8d0871ed69be01484024424eb3f63f121',fixture.digest)
+        return fixture
+
+    def invoke(self, fixture, **kwargs):
+        log = 'reviewed complete terminal trace\n'
+        with patch.object(m, 'RESOURCE_METADATA_PREINTENT_SOURCE', {'scripts/deploy-approved-app.py':hashlib.sha256(b'reviewed-source').hexdigest()}), \
+             patch.object(m, 'RESOURCE_METADATA_PREINTENT_LOGS', {('portal',124939345563):hashlib.sha256(log.rstrip('\n').encode()).hexdigest()}):
+            return fixture.invoke(repository='MYLEGND/masterapp', log=kwargs.pop('log',log), **kwargs)
+
+    def test_exact_log_still_requires_source_package_operation_and_inventory(self):
+        self.assertTrue(self.invoke(self.fixture()))
+        for options in [dict(source='changed'),dict(owner=False),dict(extra_intent=True),
+                        dict(complete=False),dict(bad_checksum=True),dict(log='truncated'),
+                        dict(log='reviewed complete terminal trace\nSubmitting the verified immutable ZIP once.')]:
+            with self.subTest(options=options):self.assertFalse(self.invoke(self.fixture(),**options))
+        fixture=self.fixture();fixture.operation='f'*64;self.assertFalse(self.invoke(fixture))
+        fixture=self.fixture();fixture.package['expired']=True;self.assertFalse(self.invoke(fixture))
+        fixture=self.fixture();fixture.job['status']='in_progress';self.assertFalse(self.invoke(fixture))
+        fixture=self.fixture();fixture.job['head_sha']='f'*40;self.assertFalse(self.invoke(fixture))
+        fixture=self.fixture();fixture.run['status']='in_progress';self.assertFalse(self.invoke(fixture))
+
+
+    def test_only_three_exact_jobs_and_first_terminal_attempt(self):
+        run=self.fixture().run
+        self.assertEqual(set(k[0] for k in m.RESOURCE_METADATA_PREINTENT_LOGS),{'portal','client','parfait','protect'})
+        for (target,job),digest in m.RESOURCE_METADATA_PREINTENT_LOGS.items():
+            self.assertEqual(digest,m.resource_metadata_preintent_log_digest('MYLEGND/masterapp',run,dict(id=job),1,target))
+            for change in (dict(id=1),dict(run_attempt=2),dict(status='in_progress'),dict(conclusion='success'),dict(head_sha='a'*40)):
+                with self.subTest(change=change):self.assertIsNone(m.resource_metadata_preintent_log_digest('MYLEGND/masterapp',run|change,dict(id=job),1,target))
+            self.assertIsNone(m.resource_metadata_preintent_log_digest('other/repo',run,dict(id=job),1,target))
+            self.assertIsNone(m.resource_metadata_preintent_log_digest('MYLEGND/masterapp',run,dict(id=job+1),1,target))
+            self.assertIsNone(m.resource_metadata_preintent_log_digest('MYLEGND/masterapp',run,dict(id=job),2,target))
+    def test_current_recovery_pair_accepts_exact_bytes_only(self):
+        source=(ROOT/'scripts/deploy-approved-app.py').read_text();journal=(ROOT/'scripts/release-operation-evidence.py').read_text()
+        self.assertTrue(m._recovery_preflight_source_contract(source,journal))
+        self.assertFalse(m._recovery_preflight_source_contract(source+'changed',journal))
+        self.assertFalse(m._recovery_preflight_source_contract(source,journal+'changed'))
+
+
+class OriginalNoSqlSchemaReuseTests(unittest.TestCase):
+    def fixture(self):
+        run=dict(id=10,head_sha='a'*40,run_attempt=1)
+        artifact=dict(id=20,name='legend-migration-observation-'+'b'*64,digest='sha256:'+'c'*64)
+        original=dict(run=run,artifacts=[artifact],resourceBaselines=dict(resources=dict(schema={'artifactId':1})))
+        value=dict(producingAttempt=1,schemaIdentity='d'*64)
+        owner=dict(steps=[dict(name='Apply or reconcile the exact rehearsed migration bundle',status='completed',conclusion='skipped')])
+        return original,value,owner
+    def invoke(self,*,valid=True,sql='skipped',duplicate=False):
+        original,value,owner=self.fixture();owner['steps'][0]['conclusion']=sql
+        if duplicate:original['artifacts']*=2
+        with patch.object(m,'_release_history_json',return_value=value),patch.object(m,'api_get',return_value=dict(total_count=0,jobs=[])), \
+             patch.object(m,'_completed_resource_owner',return_value=owner),patch.object(m,'_completion_step',return_value={}), \
+             patch.object(m,'completed_resource_receipt',return_value=dict(record=dict(observation=dict(databaseIdentity='e'*64)))), \
+             patch.object(m,'attested_fast_track_no_write_observation',return_value=valid) as attest:
+            result=m.completed_resource_original_schema('MYLEGND/masterapp',original,'test-only')
+            attest.assert_called_once();return result
+    def test_original_observation_reused_without_synthetic_child_success(self):
+        result=self.invoke();self.assertTrue(result['reference']['artifactName'].startswith('legend-migration-observation-'))
+        self.assertEqual('d'*64,result['record']['observation']['schemaIdentity'])
+    def test_missing_authentication_actual_sql_or_ambiguous_observation_refuse(self):
+        for options in (dict(valid=False),dict(sql='success'),dict(duplicate=True)):
+            with self.subTest(options=options),self.assertRaises(ValueError):self.invoke(**options)
 
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.

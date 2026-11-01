@@ -1053,3 +1053,66 @@ test('completed target acceptance is separate from provider success and binds al
   }
   const bad=structuredClone(value);bad.observation.deploymentId='different';assert.throws(()=>validateRecord(name(value),bad));
 });
+
+function pythonForwardProtectRecords() {
+  return JSON.parse(execFileSync('python3',['-c',String.raw`
+import ast,hashlib,importlib.util,json,pathlib
+root=pathlib.Path.cwd().parent
+tree=ast.parse((root/'validation-resume.py').read_text())
+auth=next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='PROTECT_FORWARD_68EF' for t in n.targets))
+spec=importlib.util.spec_from_file_location('journal',root/'release-operation-evidence.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+j=object.__new__(m.OperationJournal);j.identity=dict(target='protect',applicationRevision='c'*40,packageDigest='b'*64)
+j.operation_id=hashlib.sha256(json.dumps(j.identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+j.baseline=auth['baselineRevision'];j.producer=41336371077;j.run=j.producer;j.attempt=1;j.authorization=None;j.supersession=dict(auth,candidateRevision='c'*40)
+j.forward_material=dict(j.identity,packageProducerRun=j.producer,packageArtifactId=13095892226,packageArtifactDigest='sha256:'+'d'*64,operationId=j.operation_id,producingAttempt=1);j.forward_material.pop('target')
+i=j.intent_record(['old'],submission_kind='azure_onedeploy_windows_intent_v1')
+normal=[i,j.submitted_record(i,'new'),j.success_record(i,['new'])]
+proof=dict(schemaVersion=1,originalRun=j.producer,originalAttempt=1,applicationRevision='c'*40,packageArtifactId=13095892226,packageArtifactDigest='sha256:'+'d'*64,runId=999,runAttempt=1,jobId=1000,toolRevision='e'*40,promotionRunId=998)
+recovery=[dict(r,producingRun=999,recoveryEvidence=proof) for r in normal]
+print(json.dumps(normal+recovery))
+`],{cwd:__dirname,encoding:'utf8',env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}}));
+}
+
+test('forward Protect Python intent submitted success serialize with original material and actual recovery owner',()=>{
+  for(const record of pythonForwardProtectRecords()) {
+    const name=`legend-release-operation-${record.phase}-${record.operationId}`;
+    assert.deepEqual(validateRecord(name,record),{filename:'operation.json'});
+  }
+});
+
+test('forward Protect malformed consent material producer and crossed recovery fail closed',()=>{
+  for(const record of pythonForwardProtectRecords()) {
+    const variants=[];
+    for(const key of Object.keys(record.supersession.material)) {
+      const bad=structuredClone(record);bad.supersession.material[key]='changed';variants.push(bad);
+    }
+    for(const key of Object.keys(record.supersession).filter(k=>k!=='material')) {
+      const bad=structuredClone(record);delete bad.supersession[key];variants.push(bad);
+    }
+    const extra=structuredClone(record);extra.supersession.material.extra=true;variants.push(extra);
+    const baseline=structuredClone(record);baseline.baseline='a'.repeat(40);variants.push(baseline);
+    if(record.recoveryEvidence) {
+      for(const key of ['originalRun','originalAttempt','packageArtifactId','packageArtifactDigest','runId','runAttempt','applicationRevision']) {
+        const bad=structuredClone(record);bad.recoveryEvidence[key]='changed';variants.push(bad);
+      }
+    }
+    for(const bad of variants) assert.throws(()=>validateRecord(`legend-release-operation-${bad.phase}-${bad.operationId}`,bad));
+  }
+});
+
+test('original no-SQL observation schema proof retains exact run source and immutable reference',()=>{
+  const database='3a055450807aeaa2c6465702b983dc99968329389d7c0ae480c3c72cc3a9ff3b';
+  const value={schemaVersion:2,phase:'retained-schema-read-only',originalRun:10,applicationRevision:'a'.repeat(40),
+    producingRun:20,producingAttempt:1,observer:{runId:20,runAttempt:1,jobId:21,toolRevision:'b'.repeat(40),promotionRunId:19},
+    originalSuccessArtifact:11,historyIdentity:'c'.repeat(64),sqlExecutionAuthorized:false,
+    schemaReference:{sourceRevision:'a'.repeat(40),runId:10,runAttempt:1,artifactId:11,artifactDigest:'sha256:'+'d'.repeat(64),artifactName:'legend-migration-observation-'+'e'.repeat(64)},
+    observation:{databaseIdentity:database,schemaIdentity:'f'.repeat(64),baselineIdentity:'1'.repeat(64),observedUtc:'2026-11-01T00:00:02Z',pendingCount:0,ready:true,mutationActivity:'settled'},
+    recovery:{databaseIdentity:database,observedUtc:'2026-11-01T00:00:02Z',restorePointUtc:'2026-10-31T23:50:00Z',earliestRestoreUtc:'2026-10-25T00:00:00Z',retentionDays:7,restoreWindowVerified:true,restoreExecuted:false,authorizesMutation:false}};
+  const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
+  const name=v=>'legend-retained-schema-proof-'+crypto.createHash('sha256').update(JSON.stringify(canonical(v))).digest('hex');
+  assert.deepEqual(validateRecord(name(value),value),{filename:'operation.json'});
+  for(const change of [r=>r.schemaReference.runId=99,r=>r.schemaReference.sourceRevision='b'.repeat(40),r=>r.schemaReference.artifactId=99,
+      r=>r.schemaReference.artifactName='unrecognized',r=>r.observation.pendingCount=1,r=>r.sqlExecutionAuthorized=true]) {
+    const bad=structuredClone(value);change(bad);assert.throws(()=>validateRecord(name(bad),bad));
+  }
+});

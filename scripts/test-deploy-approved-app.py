@@ -4491,7 +4491,7 @@ class CompletedTargetAcceptanceTests(unittest.TestCase):
         from datetime import datetime
         authority=Mock();authority.recovery_admission_proof.side_effect=contextlib.nullcontext
         authority._completion_time.side_effect=lambda value:datetime.fromisoformat(value.replace('Z','+00:00'))
-        authority.completed_resource_receipt.return_value={'record':{'baselineDeploymentIds':['A'],'deploymentIds':['B']}}
+        authority.completed_resource_receipt.return_value={'reference':{'sourceRevision':'b'*40},'record':{'baselineDeploymentIds':['A'],'deploymentIds':['B']}}
         original={'run':{'head_sha':'c'*40},'resourceBaselines':{'resources':{'client':{'sourceRevision':'b'*40}}}}
         def row(identity):return dict(id=identity,status=4,complete=True,active=False,
             received_time='2026-11-01T00:00:00Z',start_time='2026-11-01T00:00:01Z',end_time='2026-11-01T00:00:02Z')
@@ -4584,6 +4584,50 @@ class CompletedResourceMetadataRetentionTests(unittest.TestCase):
             azure.deployments.side_effect=error
             with self.assertRaises(deploy.DeploymentStatusUnavailable):
                 deploy.read_deployments_bounded(azure,attempts=1,interval=0,sleep=lambda _:None)
+
+
+class CompletedResourceThreeAppMetadataTests(CompletedResourceMetadataRetentionTests):
+    def setUp(self):
+        super().setUp()
+        self.key='portal'
+        self.configure(self.key)
+    def configure(self,key):
+        self.key=key;pin=deploy._COMPLETED_RESOURCE_METADATA_ABSENCE[key]
+        self.current=pin['current'];self.old=pin['historical']
+        self.proof=dict(reference=dict(sourceRevision=self.revision,runId=pin['runId'],runAttempt=1,
+            artifactId=pin['artifactId'],artifactDigest=pin['artifactDigest']),
+            record=dict(baselineDeploymentIds=[self.old,'other-old'],deploymentIds=[self.current],packageDigest=pin['packageDigest']))
+    def invoke(self,rows=None,revision=None,key=None,disposition=True):
+        return super().invoke(rows,revision,key or self.key,False)
+    def test_all_three_exact_receipts_and_missing_ids(self):
+        for key in ('portal','client','parfait'):
+            with self.subTest(key=key):
+                self.configure(key)
+                self.test_exact_missing_historical_metadata_preserves_receipt_and_current_state()
+                self.test_second_missing_current_missing_new_duplicate_ids_refuse()
+                self.test_active_status_unknown_complete_and_runtime_drift_refuse()
+                self.test_closing_state_detects_reappearance_new_id_metadata_and_runtime_races()
+    def test_other_resource_generation_or_receipt_never_gets_subset_acceptance(self):
+        for key in ('portal','client','parfait'):
+            self.configure(key)
+            for field,value in (('artifactId',1),('artifactDigest','sha256:'+'a'*64),('runId',1),('runAttempt',2),('sourceRevision','a'*40)):
+                original=dict(self.proof['reference']);self.proof['reference'][field]=value
+                with self.subTest(key=key,field=field),self.assertRaises(deploy.DeploymentReconciliationRequired):self.invoke()
+                self.proof['reference']=original
+    def test_future_receipt_exact_inventory_remains_ordinary(self):
+        self.proof['reference']['artifactId']=1
+        self.invoke(self.rows([self.old,'other-old',self.current]))
+    def test_retained_resume_uses_same_inventory_and_closing_state(self):
+        azure=Mock();azure.observed_revision.return_value=self.revision
+        original=dict(run=dict(head_sha='f'*40),resourceBaselines=dict(resources={self.key:self.proof['reference']}))
+        with patch.object(deploy,'read_deployments_bounded',return_value=self.rows()), \
+             patch.object(deploy._RELEASE_AUTHORITY,'completed_resource_receipt',return_value=self.proof), \
+             patch.dict(os.environ,dict(GITHUB_REPOSITORY='MYLEGND/masterapp',GH_TOKEN='test-only')):
+            state=deploy.recovery_preupload_baseline(azure,original,self.key)
+            self.assertEqual(self.invoke(),state)
+            self.assertEqual(state,deploy.recovery_preupload_baseline(azure,original,self.key,expected=state))
+            with self.assertRaises(deploy.RecoveryPreflightDrift):
+                deploy.recovery_preupload_baseline(azure,original,self.key,expected=dict(state,providerInventoryIdentity='changed'))
 
 if __name__ == '__main__':
     unittest.main()
