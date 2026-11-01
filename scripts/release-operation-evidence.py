@@ -289,15 +289,22 @@ class OperationJournal:
             raise self.history_error
         if self.intent is not None:
             return False
+        recovery=getattr(self,'recovery_evidence',None) if self._forward_replacement() else None
         if self.supersession is not None:
-            run = self.authority.assert_fast_track_release_execution(target='protect')
-            if run['head_sha'] != self.identity['applicationRevision'] or run['id'] != self.run:
-                raise ValueError('Replacement write authority changed')
+            if recovery is not None:
+                observer=self.authority.assert_fast_track_recovery_execution(self.producer,self.identity['applicationRevision'])
+                if (observer['runId']!=self.run or observer['runAttempt']!=self.attempt
+                    or any(recovery.get(k)!=observer[k] for k in ('runId','runAttempt','jobId','toolRevision','promotionRunId'))):
+                    raise ValueError('Replacement recovery owner changed')
+            else:
+                run = self.authority.assert_fast_track_release_execution(target='protect')
+                if run['head_sha'] != self.identity['applicationRevision'] or run['id'] != self.run:
+                    raise ValueError('Replacement write authority changed')
         if self._forward_replacement():
-            if self.attempt != 1 or self.producer != self.run:
+            if self.attempt != 1 or (self.producer != self.run and recovery is None):
                 raise ValueError('Forward replacement permits one producing attempt')
             self.forward_material = self.authority.forward_protect_material(
-                self.repository, self.identity['applicationRevision'], self.identity['packageDigest'], self.run, self.token, first_write=True)
+                self.repository, self.identity['applicationRevision'], self.identity['packageDigest'], self.producer, self.token, first_write=True)
         if self.forward_before_new_intent is not None:
             self.forward_before_new_intent(self._ids(baseline_ids))
         record = self.intent_record(baseline_ids, submission_kind=submission_kind)
@@ -411,6 +418,9 @@ class RecoveryJournal(OperationJournal):
         Synthetic IDs are local shape probes only. No state, receipt, authority,
         callback or provider operation is changed by this check.
         """
+        if self._forward_replacement() and self.intent is None:
+            self.forward_material=self.authority.forward_protect_material(
+                self.repository,self.identity['applicationRevision'],self.identity['packageDigest'],self.producer,self.token,first_write=True)
         intents = ([self.intent] if self.intent is not None else [
             self.intent_record(baseline_ids, submission_kind=kind) for kind in
             ('azure_onedeploy_deployment_tag_v1', 'azure_onedeploy_windows_intent_v1')])

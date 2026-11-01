@@ -2166,5 +2166,41 @@ class Protect161JournalTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.make(callback=changed).before_submit(['old'])
         self.assertEqual(list(self.f.path.iterdir()),[])
 
+
+class ForwardProtectRetainedJournalTests(DurableOperationProtocolTests):
+    def retained(self, *, changed_owner=False, publisher=None):
+        first=self.forward();proof=first.supersession
+        self.env['PACKAGE_PRODUCER_RUN']='8'
+        self.material['packageProducerRun']=8
+        evidence=dict(runId=10,runAttempt=int(self.env['GITHUB_RUN_ATTEMPT']),jobId=11,toolRevision='d'*40,promotionRunId=9,
+            originalRun=8,applicationRevision='a'*40)
+        observer={k:evidence[k] for k in ('runId','runAttempt','jobId','toolRevision','promotionRunId')}
+        if changed_owner:observer['jobId']=99
+        self.authority.assert_fast_track_recovery_execution=lambda *args:observer
+        self.authority.assert_fast_track_release_execution=lambda **kwargs:(_ for _ in ()).throw(AssertionError('not a push producer'))
+        self.bindings=[]
+        def material(*args,**kwargs):
+            self.bindings.append((args[3],kwargs));return dict(self.material)
+        self.authority.forward_protect_material=material
+        return journal.RecoveryJournal(target='protect',application_revision='a'*40,package_digest='b'*64,
+            baseline='c'*40,authority=self.authority,environment=self.env,publisher=publisher or self.publish,
+            recovery_evidence=evidence,before_new_intent=lambda ids:None,supersession=proof)
+    def test_retained_material_preview_and_first_intent_bind_original_not_tool_run(self):
+        owner=self.retained();records=[]
+        owner.validate_contract(['old'],validator=lambda n,r:records.append(r))
+        self.assertEqual(len(records),5)
+        self.assertTrue(owner.before_submit(['old']))
+        self.assertTrue(all(run==8 for run,options in self.bindings))
+        self.assertEqual(owner.intent['supersession']['material']['packageProducerRun'],8)
+        self.assertFalse(owner.before_submit(['old']))
+    def test_retained_wrong_owner_second_first_write_and_failed_readback_cannot_upload(self):
+        with self.assertRaisesRegex(ValueError,'owner changed'):self.retained(changed_owner=True).before_submit(['old'])
+        self.env['GITHUB_RUN_ATTEMPT']='2'
+        with self.assertRaisesRegex(ValueError,'one producing attempt'):self.retained().before_submit(['old'])
+        self.env['GITHUB_RUN_ATTEMPT']='1'
+        owner=self.retained(publisher=lambda *args:(_ for _ in ()).throw(TimeoutError('readback failed')))
+        with self.assertRaises(TimeoutError):owner.before_submit(['old'])
+        self.assertIsNone(owner.intent)
+
 if __name__ == '__main__':
     unittest.main()

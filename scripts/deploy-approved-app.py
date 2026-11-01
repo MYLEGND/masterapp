@@ -1734,6 +1734,24 @@ def recovery_target_preintent_record(proof, target, failure):
     return name,record
 
 
+# Exact authenticated completed-resource receipts; only the identified historical
+# metadata row may be absent. No new, current, active or unknown writer is excluded.
+_COMPLETED_RESOURCE_METADATA_ABSENCE = {
+    'portal': dict(runId=41235118337, artifactId=13055430973,
+        artifactDigest='sha256:1be025a9f047228c7ed1599d0406c785d56d78797ef8bf1e4a85b3a3dff081e9',
+        current='6c10d7d8ad9940ec87a4c19324970801', historical='58d40e34ec874724b8b4cf97cf0d0fbb',
+        packageDigest='9252d398f53338d79e68b34cee8cd52cbdc3f094901f3f077b43048b77079ed1'),
+    'client': dict(runId=41240193444, artifactId=13056979567,
+        artifactDigest='sha256:ccaaaadc7e310049712011ce70c22bf02847993243ff292213ca53e764060d08',
+        current='ebafe582a25b48c48118fd0eb9e7138c', historical='a9494960798440e692a6d1b545a09b5b',
+        packageDigest='2e78237df64f9c9e7ba2d9016401ffa0ab47d38b455a681b2cc02c885157744b'),
+    'parfait': dict(runId=41240193444, artifactId=13057074013,
+        artifactDigest='sha256:48a1f956189c13ef29356ce1bf44e009933d6a9e02c8d4246d0f1090c2818153',
+        current='edb265476ddf41b4aa9198fa17ec19e6', historical='d2ab77f245c24c00b1b6f71e0518df6d',
+        packageDigest='61c0df9a39064aef218209b2ef1633065ed882b02b01a5715d9ee447dd096af4'),
+}
+
+
 def completed_resource_provider_inventory(key, rows, state, proof, disposition):
     """Classify one missing historical metadata row, never a missing writer.
 
@@ -1744,18 +1762,26 @@ def completed_resource_provider_inventory(key, rows, state, proof, disposition):
     expected=sorted(set(proof['record']['baselineDeploymentIds']+proof['record']['deploymentIds']))
     scoped=(key=='protect' and isinstance(disposition,dict) and
         disposition.get('authorizationId')=='protect-forward-68ef-20261101-v1')
-    if not scoped:
+    pin=_COMPLETED_RESOURCE_METADATA_ABSENCE.get(key)
+    if pin is not None and proof['reference'].get('artifactId')!=pin['artifactId']:
+        pin=None  # Later receipts retain the ordinary exact-inventory contract.
+    if not scoped and pin is None:
         if state['deploymentIds']!=expected:
             raise DeploymentReconciliationRequired('RESOURCE_BASELINE_UNRECONCILED_PROVIDER_EFFECT')
         return
-    current='6e39068a9bb448b58fc0d329a8aa0dd2'
+    if scoped:
+        pin=dict(runId=41240193444,artifactId=13057606696,
+            artifactDigest='sha256:f9856400f0db7b724940d3f7fdb567cbb1c5055a21df0471d486411a17f92dba',
+            current='6e39068a9bb448b58fc0d329a8aa0dd2',historical='4ab02b0ea3394ab1b4b9d672184b819c',
+            packageDigest='3e8ba8b6073bec9e3a64204c0e0b745e8dcf894c28be05900b158bdc2e28431c')
+    current=pin['current']
     reference=proof['reference'];record=proof['record']
     if (reference.get('sourceRevision')!='3243221ae661b53d60f78cc2dab108a93bad7632'
-        or reference.get('runId')!=41240193444 or reference.get('runAttempt')!=1
-        or reference.get('artifactId')!=13057606696
-        or reference.get('artifactDigest')!='sha256:f9856400f0db7b724940d3f7fdb567cbb1c5055a21df0471d486411a17f92dba'
+        or reference.get('runId')!=pin['runId'] or reference.get('runAttempt')!=1
+        or reference.get('artifactId')!=pin['artifactId']
+        or reference.get('artifactDigest')!=pin['artifactDigest']
         or record.get('deploymentIds')!=[current]
-        or record.get('packageDigest')!='3e8ba8b6073bec9e3a64204c0e0b745e8dcf894c28be05900b158bdc2e28431c'
+        or record.get('packageDigest')!=pin['packageDigest']
         or state.get('revision')!=reference['sourceRevision']
         or recovery_current_provider_state(rows,state['revision'])!=state
         or any(type(row.get('active')) is not bool or row['active']!=(row['id']==current) for row in rows)
@@ -1763,7 +1789,7 @@ def completed_resource_provider_inventory(key, rows, state, proof, disposition):
         raise DeploymentReconciliationRequired('RESOURCE_BASELINE_PROVIDER_CURRENTNESS_UNPROVEN')
     missing=set(expected)-set(state['deploymentIds'])
     unexpected=set(state['deploymentIds'])-set(expected)
-    historical='4ab02b0ea3394ab1b4b9d672184b819c'
+    historical=pin['historical']
     if (unexpected or (missing and (missing!={historical}
         or historical not in record['baselineDeploymentIds']))):
         raise DeploymentReconciliationRequired('RESOURCE_BASELINE_UNRECONCILED_PROVIDER_EFFECT')
@@ -1817,11 +1843,14 @@ def recovery_preupload_baseline(azure, original, key, *, expected=None):
         with _RELEASE_AUTHORITY.recovery_admission_proof():
             accepted=_RELEASE_AUTHORITY.completed_resource_receipt(repository,key,reference,token)
         state=recovery_current_provider_state(rows,observed)
-        expected_ids=sorted(set(accepted['record']['baselineDeploymentIds']+accepted['record']['deploymentIds']))
         provider=[row for row in rows if row['id'] in accepted['record']['deploymentIds']]
-        if (observed!=reference['sourceRevision'] or state['deploymentIds']!=expected_ids
+        if (observed!=reference['sourceRevision']
             or len(provider)!=1 or provider[0].get('status')!=4 or provider[0].get('complete') is not True):
             raise RecoveryPreflightDrift('baseline-drift',observation)
+        disposition=(_RELEASE_AUTHORITY.fast_track_protect_supersession(original['run']['head_sha'])
+                     if key=='protect' else None)
+        try:completed_resource_provider_inventory(key,rows,state,accepted,disposition)
+        except DeploymentReconciliationRequired as exc:raise RecoveryPreflightDrift('baseline-drift',observation) from exc
         if expected is not None and state!=expected:raise RecoveryPreflightDrift('baseline-drift',observation)
         return state
     if current_root:
@@ -1903,7 +1932,8 @@ def prepare_protect_retained_replacement(azure, original, material, state, packa
         while isinstance(provider, RecoveryDeadlineAzure):
             provider = provider.azure
         if (provider.app == TARGETS['protect']['releaseName']
-            and _RELEASE_AUTHORITY.fresh_protect_retained_supersession(original, material, 'protect') is not None):
+            and (_RELEASE_AUTHORITY.forward_protect_retained_supersession(original,'protect') is not None
+                 or _RELEASE_AUTHORITY.fresh_protect_retained_supersession(original, material, 'protect') is not None)):
             prepare_protect_replacement(original['run']['head_sha'], state['revision'], azure)
         return
     if (original['run']['id'] != proof['originalRun']
@@ -2128,16 +2158,8 @@ def crm_retained_schema_gate(original, observer, deadline, publisher):
     fast_track_migration_gate(run)
     schema_reference=None
     if forward:
-        receipts=[]
-        for artifact in original['artifacts']:
-            if not artifact.get('name','').startswith('legend-release-child-success-'):continue
-            value=authority._release_history_json(repository,run['id'],artifact,'operation.json',verify_digest=True)
-            if value.get('child')!='migrations':continue
-            reference=dict(sourceRevision=revision,runId=run['id'],runAttempt=value['producingAttempt'],
-                artifactId=artifact['id'],artifactDigest=artifact['digest'],artifactName=artifact['name'])
-            receipts.append((reference,authority.completed_resource_receipt(repository,'schema',reference,token)['record']))
-        if len(receipts)!=1:raise DeploymentReconciliationRequired('RESOURCE_RECOVERY_SCHEMA_RECEIPT_UNPROVEN')
-        schema_reference,receipt=receipts[0]
+        accepted=authority.completed_resource_original_schema(repository,original,token)
+        schema_reference,receipt=accepted['reference'],accepted['record']
     else:
         # Bind to the independently reviewed attempt3 physical schema success, not
         # the older SQL intent whose original failed outcome remains preserved.
@@ -2220,7 +2242,8 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
         materials = {key: authority.fast_track_recovery_material(repository, original, key, token) for key in original['targets']}
     if 'resourceBaselines' in original:
         authority.completed_resource_recovery_currentness(repository,original,observer,token)
-        if 'protect' in original['targets']:
+        if ('protect' in original['targets']
+            and authority.forward_protect_retained_supersession(original,'protect') is None):
             raise DeploymentReconciliationRequired('RESOURCE_BASELINE_PROTECT_68EF_DISPOSITION_REQUIRED')
     inventory = {}
     for key, material in materials.items():
@@ -2327,7 +2350,8 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
                         owner.publish_record(name, record, timeout=min(180, recovery_phase_remaining(deadline - 60)))
                         raise
                 journal = owner.RecoveryJournal(target=key, application_revision=revision, package_digest=inventory[key]['packageDigest'],
-                    baseline=baseline, authority=authority, recovery_evidence=evidence, before_new_intent=before_write, publisher=publish_phase_record)
+                    baseline=baseline, authority=authority, recovery_evidence=evidence, before_new_intent=before_write, publisher=publish_phase_record,
+                    supersession=authority.forward_protect_retained_supersession(original,key))
                 if journal.history_error is not None:
                     raise journal.history_error
                 if prior is not None and journal.intent != prior:

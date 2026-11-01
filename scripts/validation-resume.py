@@ -275,6 +275,27 @@ def crm_preintent_log_digest(repository, run, job, attempt, target):
     return CRM_PREINTENT_LOGS.get((attempt, target, job.get('id')))
 
 
+# Exact terminal traces: three inventory holds and one runtime-unavailable
+# deadline, all before intent/upload. Unknown source, jobs or attempts stay held.
+RESOURCE_METADATA_PREINTENT_SOURCE = {'.github/workflows/legend-fast-track-ui.yml': '62980dabd1c0ed2ec843b181a1f92c7c2a922190bbe1773ca9ad9ebb09c18a2e',
+ 'scripts/deploy-approved-app.py': 'c933b4dbca67be109816c418567b7094679d3f3fc1078160041fb824c45a5796',
+ 'scripts/release-operation-evidence.py': '4bd7edacd32764edff0504597e15c59dbd24f547ede3b5c22bba247c0ada8df5',
+ 'scripts/validation-resume.py': '667689fbbb6e41a8d4a5698d228117b259daf8716d113d22d9b734263d695c93'}
+RESOURCE_METADATA_PREINTENT_LOGS = {('portal', 124939345563): 'f5abd91a25eeab01d606683594a0af36ceecc402f110df9002a33841e74d0cc6',
+ ('client', 124939345673): 'a9071bdf5ad8cd5d3a4de6ad82cc1ded2d21554cdeca219e435f508a24d92b3c',
+ ('parfait', 124939345708): '166a81afd32564e582c37bc97e2c6895babaf077ea99a4a38bc4d33918a4758d',
+ ('protect', 124939345598): '3edc038ee23ea9d9f5275229ff41b7e47dc7922cb71cfcb3f741ff7f331a8eb7'}
+
+
+def resource_metadata_preintent_log_digest(repository, run, job, attempt, target):
+    if (repository.lower() != 'mylegnd/masterapp' or run.get('id') != 41336371077
+        or run.get('head_sha') != 'f2841ef8d0871ed69be01484024424eb3f63f121'
+        or run.get('run_attempt') != 1 or attempt != 1
+        or run.get('status') != 'completed' or run.get('conclusion') != 'failure'):
+        return None
+    return RESOURCE_METADATA_PREINTENT_LOGS.get((target, job.get('id')))
+
+
 def attested_fast_track_preupload_failure(repository, run, job, attempt, target, operation_id, token):
     """Generic reviewed pre-upload read failure; unknown generations stay held."""
     import tempfile
@@ -290,16 +311,17 @@ def attested_fast_track_preupload_failure(repository, run, job, attempt, target,
             return False
         step = _completion_step(job, 'Publish or reconcile exact application bytes', conclusions=('failure',))
         crm_digest = crm_preintent_log_digest(repository, run, job, attempt, target)
+        metadata_digest = resource_metadata_preintent_log_digest(repository,run,job,attempt,target)
         fresh_serializer = (repository.lower() == 'mylegnd/masterapp' and target == 'protect'
             and run['id'] == 40703908687 and run['run_attempt'] == attempt == 1
             and revision == '9af32d2e6bf608cb790eed59a43e90cdd9d877e6' and job['id'] == 122875752175)
         if fresh_serializer and run.get('conclusion') != 'failure':
             return False
         sources = {path: hashlib.sha256(_release_history_source(repository, revision, path, token).encode()).hexdigest()
-                   for path in (CRM_PREINTENT_SOURCE if crm_digest else FRESH_PROTECT_PREINTENT_SOURCE if fresh_serializer else FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS[0])}
+                   for path in (RESOURCE_METADATA_PREINTENT_SOURCE if metadata_digest else CRM_PREINTENT_SOURCE if crm_digest else FRESH_PROTECT_PREINTENT_SOURCE if fresh_serializer else FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS[0])}
         protect_baseline = (target == 'protect' and run['id'] == PROTECT_RECOVERY_RUN
             and revision == PROTECT_RECOVERY_REVISION and sources == PROTECT_PREUPLOAD_SOURCE)
-        if (sources != CRM_PREINTENT_SOURCE if crm_digest else sources != FRESH_PROTECT_PREINTENT_SOURCE if fresh_serializer else
+        if (sources != RESOURCE_METADATA_PREINTENT_SOURCE if metadata_digest else sources != CRM_PREINTENT_SOURCE if crm_digest else sources != FRESH_PROTECT_PREINTENT_SOURCE if fresh_serializer else
             sources not in FAST_TRACK_PREUPLOAD_SOURCE_GENERATIONS and not protect_baseline):
             return False
         inventory = _completion_inventory(api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token), 'artifacts')
@@ -323,8 +345,8 @@ def attested_fast_track_preupload_failure(repository, run, job, attempt, target,
         if hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest() != operation_id:
             return False
         log = _release_job_log(repository, job['id'], token)
-        if crm_digest:
-            return hashlib.sha256('\n'.join(log.splitlines()).encode()).hexdigest() == crm_digest
+        if crm_digest or metadata_digest:
+            return hashlib.sha256('\n'.join(log.splitlines()).encode()).hexdigest() == (crm_digest or metadata_digest)
         return _fast_track_preupload_log_proven(log, revision, step,
             protect_baseline=protect_baseline, fresh_serializer=fresh_serializer)
     except (KeyError, TypeError, ValueError, RuntimeError, OSError, UnicodeError, zipfile.BadZipFile, subprocess.SubprocessError):
@@ -597,6 +619,18 @@ def fast_track_recovery_material(repository, original, key, token):
     if run['id'] == PROTECT_161_REPLACEMENT['originalRun'] and key == 'protect':
         material['unknownReplacement'] = protect_161_replacement_proof(repository, original, material, token)
     return material
+
+
+def forward_protect_retained_supersession(original, key):
+    """The same approved generation and original package, under a recovery owner."""
+    if key != 'protect' or original['run']['id'] != 41336371077:
+        return None
+    if original['run']['head_sha'] != 'f2841ef8d0871ed69be01484024424eb3f63f121':
+        raise ValueError('FORWARD_PROTECT_RECOVERY_SOURCE_CHANGED')
+    proof=fast_track_protect_supersession(original['run']['head_sha'])
+    if proof is None or proof.get('authorizationId')!=PROTECT_FORWARD_68EF['authorizationId']:
+        raise ValueError('FORWARD_PROTECT_RECOVERY_AUTHORIZATION_CHANGED')
+    return proof
 
 
 def fresh_protect_retained_supersession(original, material, key):
@@ -1068,6 +1102,12 @@ def validate_fast_track_recovery_record(repository, run, artifact, record, token
         or record.get('packageProducerRun') != original['run']['id']
         or record.get('applicationRevision') != original['run']['head_sha']):
         raise ValueError('FAST_TRACK_RECOVERY_MATERIAL_IDENTITY_CHANGED')
+    forward=forward_protect_retained_supersession(original,record.get('target'))
+    if forward is not None:
+        binding=forward_protect_material(repository,record['applicationRevision'],record['packageDigest'],original['run']['id'],token)
+        if (record.get('supersession')!=dict(forward,material=binding)
+            or record.get('baseline')!=forward['baselineRevision']):
+            raise ValueError('FORWARD_PROTECT_RECOVERY_RECEIPT_CHANGED')
     if 'protectBaselineCorrection' in expected and record.get('baseline') != PROTECT_BASELINE_REVISION:
         raise ValueError('PROTECT_RECOVERY_RECEIPT_BASELINE_CHANGED')
     if 'protectBaselineCorrection' not in expected:
@@ -1457,6 +1497,11 @@ RECOVERY_PREFLIGHT_PRODUCER_SHA256 = '15ba27c53564223cb41502bb5528949e6435f0e6bc
 
 def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
+    # Exact shared metadata, original-schema and retained forward journal generation.
+    if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) == (
+        '05a2db1772ca0b22446c0a68dea0d1bad85d8a314570ee1f9194a48b155a59b5',
+        'fec49886ac862469b0d71be6e5bc11af15cdfcc62d7318452a4bb59fd514822f'):
+        return True
     # Exact reviewed one-generation forward Protect producer and journal pair.
     # Historical pairs remain distinct; no helper, mixed-pair or wildcard admission.
     if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) == (
@@ -6563,6 +6608,41 @@ def _completed_resource_owner(jobs, names, steps, artifact, *, exact_mixed_root=
 
 
 
+def completed_resource_original_schema(repository, original, token):
+    """Reuse an authenticated original schema success or no-SQL observation."""
+    run=original['run'];matches=[]
+    for artifact in original['artifacts']:
+        name=artifact.get('name','')
+        if not name.startswith(('legend-release-child-success-','legend-migration-observation-')):continue
+        value=_release_history_json(repository,run['id'],artifact,'operation.json',verify_digest=True)
+        if name.startswith('legend-release-child-success-') and value.get('child')!='migrations':continue
+        attempt=value.get('producingAttempt')
+        if type(attempt)is not int or not 1<=attempt<=run['run_attempt']:
+            raise ValueError('RESOURCE_RECOVERY_SCHEMA_ATTEMPT_CHANGED')
+        reference=dict(sourceRevision=run['head_sha'],runId=run['id'],runAttempt=attempt,
+            artifactId=artifact['id'],artifactDigest=artifact['digest'],artifactName=name)
+        if name.startswith('legend-release-child-success-'):
+            matches.append(completed_resource_receipt(repository,'schema',reference,token));continue
+        jobs=_completion_inventory(api_get(repository,f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100",token),'jobs')
+        owner=_completed_resource_owner(jobs,{'Reconcile production schema before publication'},
+            {'Reconcile fresh already-ready schema without SQL bundle or mutation'},artifact)
+        step=_completion_step(owner,'Reconcile fresh already-ready schema without SQL bundle or mutation',conclusions=('success',))
+        sql=[x for x in owner.get('steps',[]) if x.get('name')=='Apply or reconcile the exact rehearsed migration bundle']
+        baseline=completed_resource_receipt(repository,'schema',original['resourceBaselines']['resources']['schema'],token)
+        if (len(sql)!=1 or sql[0].get('status')!='completed' or sql[0].get('conclusion')!='skipped'
+            or not attested_fast_track_no_write_observation(repository,run,attempt,owner,step,original['artifacts'],token,baseline['record']['observation'])):
+            raise ValueError('RESOURCE_RECOVERY_SCHEMA_OBSERVATION_UNPROVEN')
+        matches.append(dict(reference=reference,record=dict(observation=dict(schemaIdentity=value['schemaIdentity']))))
+    # A newly published child plus its observation is one success, not competing evidence.
+    children=[x for x in matches if x['reference']['artifactName'].startswith('legend-release-child-success-')]
+    if children:
+        if len(children)!=1 or any(x['record']['observation']['schemaIdentity']!=children[0]['record']['observation']['schemaIdentity'] for x in matches):
+            raise ValueError('RESOURCE_RECOVERY_SCHEMA_COMPETING_EVIDENCE')
+        return children[0]
+    if len(matches)!=1:raise ValueError('RESOURCE_RECOVERY_SCHEMA_RECEIPT_UNPROVEN')
+    return matches[0]
+
+
 def completed_resource_schema_proof(repository,original,observer,artifact,token):
     """Authenticate the versioned existing read-only schema proof, never SQL."""
     record=_release_history_json(repository,observer['runId'],artifact,'operation.json',verify_digest=True)
@@ -6571,8 +6651,8 @@ def completed_resource_schema_proof(repository,original,observer,artifact,token)
         or record.get('applicationRevision')!=original['run']['head_sha'] or record.get('observer')!=observer
         or record.get('producingRun')!=observer['runId'] or record.get('producingAttempt')!=observer['runAttempt']):
         raise ValueError('RESOURCE_RECOVERY_SCHEMA_OWNER_CHANGED')
-    proof=completed_resource_receipt(repository,'schema',record['schemaReference'],token)
-    if (record['schemaReference']['runId']!=original['run']['id']
+    proof=completed_resource_original_schema(repository,original,token)
+    if (record['schemaReference']!=proof['reference'] or record['schemaReference']['runId']!=original['run']['id']
         or record['observation']['schemaIdentity']!=proof['record']['observation']['schemaIdentity']):
         raise ValueError('RESOURCE_RECOVERY_SCHEMA_MATERIAL_CHANGED')
     jobs=_completion_inventory(api_get(repository,f"actions/runs/{observer['runId']}/attempts/{observer['runAttempt']}/jobs?per_page=100",token),'jobs')
@@ -14653,6 +14733,8 @@ def _historical_publication_failed_before_first_write(repository, release_job, a
         'ba734241c9ae81a7184bd8c19980b9443ade2ae1d4bd8115d98153fbd0c68be2',
         # Reviewed pre-builder extraction; exact unchanged write-ahead method.
         '9614ad2b268bc2d55440c684340432c8ba0c95de7a11c7e8b153fee12741cebf',
+        # Exact pre-recovery forward generation; historical negative proof only.
+        '3e258481ace45651745803d07319f796fa20c39942aab4df2264ab5775efda70',
         # Exact fd4 historical negative proof; not success or replay authority.
         '5c0faffc2b6c1ffe7df28e217ebef7e119edd972624074c9c008e09738a3454b'}
     if ((function_dump(historical_deploy, 'reconcile') != function_dump(current_deploy, 'reconcile')
