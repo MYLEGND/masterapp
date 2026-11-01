@@ -7923,3 +7923,19 @@ test('Protect request-native context uses serialized existing server template au
   assert.match(protectLayoutSource,/pageKey = ViewData\["PageKey"\]\?\.ToString\(\)/);
   assert.match(protectLayoutSource,/templateKey = Infrastructure.WebsiteEditing.WebsiteSystemTemplateAuthority.Resolve\(\s*Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect, requestPath\)/);
 });
+
+test('local native capture uses the canonical materializer without management or provider requests', async()=>{
+  let captured;
+  const f=await domFixture({siteKey:'protect',search:'?legendLocalCapturePage=1',beforeEval:w=>{
+    w.LEGEND_PUBLIC_CMS_CONTEXT.localCapture=true;
+    w.postMessage=value=>{captured=value;};
+  }});
+  try {
+    assert.equal(captured.type,'legend-site-materialized-page');
+    assert.ok(captured.composition.length>0);
+    assert.equal(f.calls.length,0);
+    const event=new f.w.Event('submit',{bubbles:true,cancelable:true});
+    f.w.document.body.dispatchEvent(event);
+    assert.equal(event.defaultPrevented,true);
+  } finally { f.close(); }
+});

@@ -25,9 +25,13 @@ builder.Logging.SetMinimumLevel(LogLevel.Information);
 
 // 🔹 Azure Key Vault — pulls secrets (e.g. AzureAd:ClientSecret) at startup
 //    Works locally (via az login / VS Code Azure account) and in production (via Managed Identity).
+var localWebsiteRequested = builder.Configuration.GetValue<bool>("LocalWebsite:Capture") ||
+    !string.IsNullOrWhiteSpace(builder.Configuration["LocalWebsite:Document"]);
+if (localWebsiteRequested && !builder.Environment.IsDevelopment())
+    throw new InvalidOperationException("Local website bootstrap requires Development.");
 var keyVaultUri = builder.Configuration["KeyVault:Uri"]
     ?? "https://masterapp-kv-1221.vault.azure.net/";
-builder.Configuration.AddAzureKeyVault(new Uri(keyVaultUri), new DefaultAzureCredential(),
+if (!localWebsiteRequested) builder.Configuration.AddAzureKeyVault(new Uri(keyVaultUri), new DefaultAzureCredential(),
     new ProtectWebsite.Services.Configuration.ProtectKeyVaultSecretManager(builder.Environment.IsDevelopment()));
 
 // 🔹 MVC
@@ -91,12 +95,12 @@ builder.Services.AddMemoryCache();
 if (Infrastructure.WebsiteRuntime.CommerceSharedHostCutoverGate.IsConfigured(builder.Configuration))
 {
     builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
-    builder.Services.AddLegendCommerceAutomationWorker();
-    builder.Services.AddHostedService<CommerceCutoverStartupProof>();
+    if (!localWebsiteRequested) builder.Services.AddLegendCommerceAutomationWorker();
+    if (!localWebsiteRequested) builder.Services.AddHostedService<CommerceCutoverStartupProof>();
 }
-builder.Services.AddHostedService<Infrastructure.WebsiteEditing.WebsiteDomainHealthWorker>();
+if (!localWebsiteRequested) builder.Services.AddHostedService<Infrastructure.WebsiteEditing.WebsiteDomainHealthWorker>();
 builder.Services.AddSingleton<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
-builder.Services.AddHostedService<Infrastructure.WebsitePublishing.WebsitePublishWorker>();
+if (!localWebsiteRequested) builder.Services.AddHostedService<Infrastructure.WebsitePublishing.WebsitePublishWorker>();
 var publicWebsiteOrigins = new[]
 {
     "https://www.mylegnd.com", "https://mylegnd.com", "https://protect.mylegnd.com",
@@ -191,7 +195,30 @@ builder.Services.AddSession(options =>
 
 builder.Services.AddRuntimeDiagnostics(builder.Configuration, builder.Environment);
 
+var localWebsiteCapture = builder.Configuration.GetValue<bool>("LocalWebsite:Capture");
+var localWebsiteDocument = builder.Configuration["LocalWebsite:Document"];
+if (localWebsiteCapture || !string.IsNullOrWhiteSpace(localWebsiteDocument))
+{
+    var expectedDatabase = builder.Configuration["LocalWebsite:DatabasePath"];
+    if (!builder.Environment.IsDevelopment() || IsSqlServerConn(connString) ||
+        string.IsNullOrWhiteSpace(expectedDatabase) || !Path.IsPathFullyQualified(expectedDatabase))
+        throw new InvalidOperationException("Explicit local Development SQLite database required.");
+    var actualDatabase = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connString).DataSource;
+    if (Path.GetFullPath(actualDatabase) != Path.GetFullPath(expectedDatabase))
+        throw new InvalidOperationException("Local website database path mismatch.");
+    builder.WebHost.UseUrls("https://localhost:1113");
+}
+
 var app = builder.Build();
+if (localWebsiteCapture)
+    app.Use(async (context, next) =>
+    {
+        if (context.Connection.RemoteIpAddress is not { } address || !System.Net.IPAddress.IsLoopback(address))
+        { context.Response.StatusCode = 403; return; }
+        if (!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method))
+        { context.Response.StatusCode = 405; return; }
+        await next();
+    });
 
 if (!IsSqlServerConn(connString))
 {
@@ -201,6 +228,24 @@ if (!IsSqlServerConn(connString))
         .CreateLogger("Startup");
     var db = scope.ServiceProvider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>();
     await MasterAppSqliteSchemaBootstrapper.InitializeAsync(db, startupLogger, app.Lifetime.ApplicationStopping);
+}
+
+if (!string.IsNullOrWhiteSpace(localWebsiteDocument))
+{
+    using var scope = app.Services.CreateScope();
+    var controller = scope.ServiceProvider.GetRequiredService<ProtectWebsite.Controllers.WebsiteContentController>();
+    controller.ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext
+    {
+        HttpContext = new DefaultHttpContext { RequestServices = scope.ServiceProvider }
+    };
+    var document = System.Text.Json.JsonSerializer.Deserialize<Infrastructure.WebsiteEditing.Controllers.WebsitePlatformController.LocalProtectCapture>(
+        await File.ReadAllTextAsync(localWebsiteDocument), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))
+        ?? throw new InvalidOperationException("Local website document required.");
+    var result = await controller.BootstrapLocalProtectAsync(app.Configuration["LocalWebsite:DatabasePath"]!, document);
+    if (result is not Microsoft.AspNetCore.Mvc.OkObjectResult)
+        throw new InvalidOperationException("Local website publication rejected by canonical validation.");
+    Console.WriteLine("LOCAL_WEBSITE_PUBLISHED");
+    return;
 }
 
 if (app.Environment.IsDevelopment())
@@ -255,7 +300,7 @@ else
 }
 
 app.UseLegendFailureDiagnostics();
-app.UseHttpsRedirection();
+if (!localWebsiteCapture) app.UseHttpsRedirection();
 // Agent slug routing / context must run before routing so rewritten paths are routed correctly
 app.UseMiddleware<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
 

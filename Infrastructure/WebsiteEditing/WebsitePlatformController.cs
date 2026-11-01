@@ -2679,6 +2679,42 @@ public class WebsitePlatformController : ControllerBase
             ? new { disposition = "rejected_before_commit", requestId = id, expectedRevision }
             : null;
 
+    public sealed record LocalProtectCapture(string Schema, string OwnerUserId, WebsiteContentDocument Document);
+
+    [NonAction]
+    public async Task<IActionResult> BootstrapLocalProtectAsync(
+        string databasePath, LocalProtectCapture capture, CancellationToken cancellationToken = default)
+    {
+        var environment = HttpContext.RequestServices.GetRequiredService<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>();
+        if (environment.EnvironmentName != "Development" || !_db.Database.IsSqlite() ||
+            !Path.IsPathFullyQualified(databasePath) ||
+            Path.GetFullPath(_db.Database.GetDbConnection().DataSource) != Path.GetFullPath(databasePath))
+            throw new InvalidOperationException("local_website_database_scope_required");
+        var upn = (_configuration["Founder:Upn"] ?? "").Trim().ToLowerInvariant();
+        if (upn.Length == 0) throw new InvalidOperationException("local_website_owner_required");
+        var owner = await _db.AgentTrackingProfiles.AsNoTracking().SingleOrDefaultAsync(
+            p => p.AgentUpn.ToLower() == upn && p.Status.ToLower() == "active", cancellationToken);
+        if (owner is null || string.IsNullOrWhiteSpace(owner.AgentUserId))
+            throw new InvalidOperationException("local_website_active_owner_required");
+        var ownerKey = NormalizeOwner(owner.AgentUserId);
+        if (capture.Schema != "legend-local-protect/v1" || capture.OwnerUserId != ownerKey)
+            throw new InvalidOperationException("local_website_capture_owner_mismatch");
+        var document = capture.Document;
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+        if (await _db.Set<WebsiteContentState>().AnyAsync(
+                p => p.OwnerKey == ownerKey && p.SiteKey == WebsiteEditorSiteKeys.Protect, cancellationToken))
+            throw new InvalidOperationException("local_website_already_exists");
+        var state = new WebsiteContentState { OwnerKey = ownerKey, SiteKey = WebsiteEditorSiteKeys.Protect, DraftJson = "{}" };
+        _db.Add(state);
+        // This scope is local operator input, never a protected editor credential.
+        // HTTP callers retain their normal ticket and publication authorization.
+        var scope = new WebsiteEditorTicket(WebsiteEditorSiteKeys.Protect, ownerKey, owner.Slug,
+            false, DateTime.UtcNow.AddMinutes(1), ActorUserId: owner.AgentUserId);
+        var result = await PublishDocumentAsync(scope, state, document, null, cancellationToken);
+        if (result is OkObjectResult) await transaction.CommitAsync(cancellationToken);
+        return result;
+    }
+
     private async Task<IActionResult> PublishDocumentAsync(
         WebsiteEditorTicket actor, WebsiteContentState state, WebsiteContentDocument document,
         string? importReportJson, CancellationToken cancellationToken, Guid? requestId = null)

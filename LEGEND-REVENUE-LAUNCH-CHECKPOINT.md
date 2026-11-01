@@ -1892,3 +1892,33 @@ Quick View now opens (aria-hidden=false) and reaches Loaded. No record editing,
 production deployment, database migration, or push performed. Browser diagnostics
 correlate the running server assembly to635d55; the local static JavaScript repair
 was loaded by page refresh without claiming a server redeployment.
+
+## 2026-11-01 — Local Protect database publication
+
+Founder requested a local database website. Preserved local base
+99c45c91c7989496137ad7e1a5b7dff52c8b306f and the existing local-only continuity
+exception: this branch has no remote counterpart; no remote preflight pass,
+push, deployment, or production parity is claimed.
+
+Extended existing materialization and publication owners with explicit
+Development/SQLite/exact-path/active-owner guards. Capture is loopback-only,
+GET/HEAD-only, reuses native Protect pages and existing materializer, and
+isolates external workers and management writes. One-shot publication calls the
+existing canonical validator/compiler/publisher in a transaction and refuses an
+existing publication. Normal HTTP authorization and production behavior remain.
+
+Eight database guard/rollback tests and eight focused website materializer tests
+passed; Protect and the actual AgentPortal.Tests project compiled. Astra reviewed
+the bounded source and accepted one local publication after verified backup.
+The unchanged captured v3 document contains25 native pages; SHA256
+ debb5f5719654f00f82cf91bb036a9e41c59937919cd9f85f5432b41bb4b8183.
+Canonical publication succeeded once: revision1, published pointer matches its
+immutable version,25 compiled pages, SQLite integrity_check=ok. Local HTTPS1111
+home, /quote/term-life and /contact return200; both latter pages contain native
+forms. No form submitted or production provider operation performed.
+
+Verified before/after SQLite backups and capture are retained at
+/Users/zacowen/LEGEND-Recovery/protect-local-publication-20261101T152050/.
+This is persistent Mac recovery, not cloud recovery. Temporary capture host
+stopped; normal local Protect host remains running. Browser reinspection was
+unavailable after capture; final route checks used HTTP response evidence.

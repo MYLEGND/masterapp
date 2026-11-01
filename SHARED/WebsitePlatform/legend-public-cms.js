@@ -38,7 +38,8 @@
   const materializeMode = !!editorTicket && params.get('legendMaterialize') === '1';
   const auditMode = !!editorTicket && params.get('legendAudit') === '1';
   const editorMode = !!editorTicket && !materializeMode;
-  const studioIsolationMode = editorMode || materializeMode;
+  const localCaptureMode = context.localCapture === true;
+  const studioIsolationMode = editorMode || materializeMode || localCaptureMode;
   let managementPayload = null;
   // Capture the signed Studio authorization into non-visible history state and
   // remove it from the document URL before browser-tool discovery evaluates the page.
@@ -5074,7 +5075,8 @@
 
   async function requestMaterializedPage(route) {
     if(route===currentPageRoute()) return currentMaterializedPage();
-    const url=editorUrlForRoute(route,true);
+    const url=localCaptureMode ? new URL((context.pagePrefix || '') + route, location.origin) : editorUrlForRoute(route,true);
+    if(localCaptureMode) url.searchParams.set('legendLocalCapturePage','1');
     if(!url) throw new Error('Unable to resolve page '+route+' for Site Source migration.');
     return await new Promise((resolve,reject)=>{
       const frame=document.createElement('iframe');
@@ -5218,19 +5220,7 @@
     return result;
   }
 
-  async function materializeCanonicalSite() {
-    if(!legacyMigration) return true;
-    const status=document.getElementById('legend-cms-status');
-    const entries=websitePageEntries(false).filter(entry=>!entry.deleted);
-    const routes=[...new Set([currentPageRoute(),...entries.map(entry=>entry.route).filter(Boolean)])];
-    let completed=0;
-    const snapshots=await mapWithConcurrency(routes,4,async route=>{
-      const snapshot=await requestMaterializedPage(route);
-      completed++;
-      if(status) status.textContent='Preparing canonical Site Source · '+completed+'/'+routes.length;
-      return snapshot;
-    });
-
+  function assembleMaterializedSite(snapshots,entries) {
     const next=normalizeDocument(documentState);
     const firstShell=snapshots.find(snapshot=>snapshot?.shell)?.shell;
     next.shell={
@@ -5256,6 +5246,51 @@
     }
 
     next.version=3;
+    return next;
+  }
+
+  async function captureLocalWebsite() {
+    prepareDom();
+    revealPublishedWebsite();
+    legacyMigration = {};
+    if(params.get('legendLocalCapturePage') === '1') {
+      window.parent.postMessage({type:'legend-site-materialized-page',...currentMaterializedPage()},location.origin);
+      return;
+    }
+    const status=document.createElement('p');
+    status.id='legend-local-capture-status';
+    status.setAttribute('role','status');
+    document.body.prepend(status);
+    try {
+      const entries=websitePageEntries(false).filter(entry=>!entry.deleted);
+      const routes=[...new Set([currentPageRoute(),...entries.map(entry=>entry.route).filter(Boolean)])];
+      status.textContent='Capturing local repository pages';
+      const snapshots=await mapWithConcurrency(routes,4,requestMaterializedPage);
+      const next=assembleMaterializedSite(snapshots,entries);
+      const link=document.createElement('a');
+      link.id='legend-local-capture-download';
+      link.download='protect-local-website.json';
+      link.href=URL.createObjectURL(new Blob([JSON.stringify({schema:"legend-local-protect/v1",ownerUserId:context.localCaptureOwner,document:next})],{type:'application/json'}));
+      link.textContent='Download local website document';
+      status.after(link);
+      status.textContent='Local website capture ready: '+snapshots.length+' pages';
+    } catch(error) { status.textContent='Local capture failed: '+error.message; }
+  }
+
+  async function materializeCanonicalSite() {
+    if(!legacyMigration) return true;
+    const status=document.getElementById('legend-cms-status');
+    const entries=websitePageEntries(false).filter(entry=>!entry.deleted);
+    const routes=[...new Set([currentPageRoute(),...entries.map(entry=>entry.route).filter(Boolean)])];
+    let completed=0;
+    const snapshots=await mapWithConcurrency(routes,4,async route=>{
+      const snapshot=await requestMaterializedPage(route);
+      completed++;
+      if(status) status.textContent='Preparing canonical Site Source · '+completed+'/'+routes.length;
+      return snapshot;
+    });
+
+    const next=assembleMaterializedSite(snapshots,entries);
     legacyMigration=null;
     materializationSavePending=true;
     documentState=normalizeDocument(next);
@@ -10638,6 +10673,7 @@
     if (initialLoadStarted) return;
     initialLoadStarted = true;
     injectContentStyles();
+    if (localCaptureMode) { await captureLocalWebsite(); return; }
     if (editorMode || materializeMode) await loadEditor();
     else {
       try {
