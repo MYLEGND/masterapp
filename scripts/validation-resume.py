@@ -1457,6 +1457,12 @@ RECOVERY_PREFLIGHT_PRODUCER_SHA256 = '15ba27c53564223cb41502bb5528949e6435f0e6bc
 
 def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
+    # Exact reviewed one-generation forward Protect producer and journal pair.
+    # Historical pairs remain distinct; no helper, mixed-pair or wildcard admission.
+    if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) == (
+        'c933b4dbca67be109816c418567b7094679d3f3fc1078160041fb824c45a5796',
+        '4bd7edacd32764edff0504597e15c59dbd24f547ede3b5c22bba247c0ada8df5'):
+        return True
     # Exact independently reviewed permanent-resource producer; no crossed pairs.
     # Sentinel_2931e88ea42c8191a9013cbaf7b32250, 2026-11-01T02:25:17Z.
     if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) == (
@@ -6413,6 +6419,9 @@ def _fast_track_policy():
     return owner
 
 
+PROTECT_FORWARD_68EF = {'authorizationId': 'protect-forward-68ef-20261101-v1', 'authorizedBy': 'Founder', 'target': 'protect', 'originalRun': 40946628155, 'originalOperationId': '68ef98f88a78383b645d7d1f48e75a4d2c7c0e7766746d55e2e81e5adb3eff7e', 'originalRevision': 'c8fde29a67fbb500bbd7577c17298703d04e825c', 'originalPackageDigest': '726c3bfd496979dee7ad0c7b079025dc9d9ee51b4ec52b5edc677a986d3b61d2', 'expectedReleaseParent': 'da49e867994cdd2c8775585c60bc280caa01cd8d', 'reviewedApplicationAnchor': 'a41dae15f40ff2fd6a980126ebb167a02cd4c79c', 'historicalOutcome': 'UNKNOWN', 'authorizeOneReplacement': True, 'acceptLateCompletionRisk': True, 'baselineRevision': '3243221ae661b53d60f78cc2dab108a93bad7632', 'rollbackRun': 41131223973, 'rollbackArtifactId': 13016709993, 'rollbackArtifactDigest': 'sha256:171f0b608107fb23f33ce5cb572ded74303018e120ca088e93341dad18aeb3d0', 'rollbackPackageDigest': '3e8ba8b6073bec9e3a64204c0e0b745e8dcf894c28be05900b158bdc2e28431c'}
+
+
 def fast_track_protect_supersession(revision, *, request=None):
     """Founder replacement authority, never evidence of old completion.
 
@@ -6423,6 +6432,22 @@ def fast_track_protect_supersession(revision, *, request=None):
     record = request.get('protectSupersession')
     if record is None:
         return None
+    if isinstance(record, dict) and record.get('authorizationId') == PROTECT_FORWARD_68EF['authorizationId']:
+        if (json.dumps(record,sort_keys=True) != json.dumps(PROTECT_FORWARD_68EF,sort_keys=True) or request.get('requestedBy') != 'Founder'
+            or request.get('releaseMode') != 'approved-only' or request.get('cloudflareWebsiteRouting') is not False
+            or request.get('preserveLiveTargets') is not False
+            or request.get('targets') != ['masterapp-portal','masterapp-client','masterapp-protect','masterapp-parfait']):
+            raise ValueError('FORWARD_PROTECT_CONSENT_CHANGED')
+        parents=subprocess.check_output(['git','rev-list','--parents','-n','1',revision],text=True).split()
+        anchor=record['reviewedApplicationAnchor']
+        if (len(parents)!=3 or parents[0]!=revision or parents[1]!=record['expectedReleaseParent']
+            or subprocess.run(['git','merge-base','--is-ancestor',anchor,parents[2]],capture_output=True).returncode
+            or any(not release_control_only_path(path) for path in git_changed(anchor,revision))):
+            raise ValueError('FORWARD_PROTECT_GENERATION_CHANGED')
+        contract=completed_resource_contract(revision)
+        if contract is None or contract['resources']['protect']['sourceRevision']!=record['baselineRevision']:
+            raise ValueError('FORWARD_PROTECT_BASELINE_CHANGED')
+        return dict(record,candidateRevision=revision)
     expected = {'authorizationId': 'ENG-FORMS-RELEASE-MANUAL-HANDOFF-20261023:v1:protect-replacement-20261026',
      'authorizedBy': 'Founder',
      'target': 'protect',
@@ -6449,6 +6474,47 @@ def fast_track_protect_supersession(revision, *, request=None):
         or subprocess.run(['git', 'merge-base', '--is-ancestor', record['originalRevision'], revision], capture_output=True).returncode):
         raise ValueError('FAST_TRACK_SUPERSESSION_CANDIDATE_CHANGED')
     return dict(record, candidateRevision=revision)
+
+
+def forward_protect_material(repository, revision, digest, run_id, token, *, first_write=False):
+    """Seal actual postmerge retained bytes; source consent alone cannot upload."""
+    import tempfile, zipfile
+    proof=fast_track_protect_supersession(revision)
+    if (repository!='MYLEGND/masterapp' or proof is None
+        or proof.get('authorizationId')!=PROTECT_FORWARD_68EF['authorizationId']
+        or not re.fullmatch('[a-f0-9]{64}',digest or '') or type(run_id) is not int or run_id<=0):
+        raise ValueError('FORWARD_PROTECT_MATERIAL_IDENTITY')
+    run=_api_get_uncached(repository,f'actions/runs/{run_id}',token)
+    if (not is_fast_track_producer(repository,run) or run.get('head_sha')!=revision or run.get('id')!=run_id
+        or type(run.get('run_attempt')) is not int or not 1<=run['run_attempt']<=100
+        or (first_write and run['run_attempt']!=1)):
+        raise ValueError('FORWARD_PROTECT_PACKAGE_PRODUCER')
+    producers=_completion_inventory(_api_get_uncached(repository,
+        f'actions/runs?head_sha={revision}&event=push&per_page=100',token),'workflow_runs')
+    owners=[row for row in producers if is_fast_track_producer(repository,row)]
+    if len(owners)!=1 or owners[0].get('id')!=run_id or owners[0].get('head_sha')!=revision:
+        raise ValueError('FORWARD_PROTECT_GENERATION_PRODUCER_AMBIGUOUS')
+    artifacts=_completion_inventory(_api_get_uncached(repository,
+        f'actions/runs/{run_id}/artifacts?per_page=100',token),'artifacts')
+    artifact=_completion_artifact(artifacts,'fast-track-package-'+revision+'-protect',run)
+    if type(artifact.get('id')) is not int or artifact['id']<=0:
+        raise ValueError('FORWARD_PROTECT_ARTIFACT_IDENTITY')
+    with tempfile.TemporaryDirectory(prefix='forward-protect-material-') as directory:
+        root=Path(directory)
+        _download_run_artifact(repository,run_id,artifact['name'],root,
+            artifact_id=artifact['id'],expected_digest=artifact['digest'])
+        package=root/'deploy.zip'
+        with package.open('rb') as stream:actual=hashlib.file_digest(stream,'sha256').hexdigest()
+        with zipfile.ZipFile(package) as archive:
+            if archive.testzip() is not None:raise ValueError('FORWARD_PROTECT_CORRUPT_PACKAGE')
+            embedded=json.loads(archive.read('wwwroot/_deployment-provenance.json'))['releaseSha']
+        if actual!=digest or embedded!=revision:raise ValueError('FORWARD_PROTECT_PACKAGE_CHANGED')
+    closing=_api_get_uncached(repository,f'actions/runs/{run_id}',token)
+    if any(closing.get(k)!=run.get(k) for k in ('id','head_sha','run_attempt','status')):
+        raise ValueError('FORWARD_PROTECT_PRODUCER_DRIFT')
+    return dict(applicationRevision=revision,packageDigest=digest,packageProducerRun=run_id,
+        packageArtifactId=artifact['id'],packageArtifactDigest=artifact['digest'],
+        operationId=retained_operation_id('protect',revision,digest),producingAttempt=1)
 
 
 # Per-resource forward baselines. This is the existing release authority, not a
@@ -7182,6 +7248,8 @@ def completed_resource_currentness(repository, revision, contract, proofs, token
         if len(parents)!=3:raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PRODUCER_PARENT_UNKNOWN')
         recorded=completed_resource_scope(parents[1],run['head_sha'],completed_resource_contract(run['head_sha']))
         selected={r['key'] for r in recorded['matrix']['include']}
+        if completed_resource_failed_selector_nonentry(repository, run, revision, token, artifacts):
+            continue  # No downstream owner entered; historical intent remains unchanged.
         if set(request.get('targets',[]))!={r['azure_app'] for r in recorded['matrix']['include']}:
             raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_RECORDED_SCOPE_CHANGED')
         for resource in ('portal','client','protect','parfait','website','schema','routing'):
@@ -7306,7 +7374,9 @@ def completed_resource_selection(before, head, *, repository=None, token=None):
     # assertion that original 68ef stopped. Future Protect writes require a
     # separately authenticated disposition of that exact outstanding operation.
     if 'protect' in {row['key'] for row in scope['matrix']['include']}:
-        raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PROTECT_68EF_DISPOSITION_REQUIRED')
+        disposition=fast_track_protect_supersession(head)
+        if disposition is None or disposition.get('authorizationId')!=PROTECT_FORWARD_68EF['authorizationId']:
+            raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PROTECT_68EF_DISPOSITION_REQUIRED')
     return dict(scope, baseline=before, sourceParent=before, resourceBaselines=contract,
         schemaBaseline=contract['resources']['schema']['sourceRevision'], resourceHolds=holds,
         authenticatedResources=sorted(proofs), productionEligible=True,promotion=None)
@@ -8266,6 +8336,17 @@ def attested_fast_track_brand_preupload(repository, run, jobs, token):
     return True
 
 
+def completed_resource_failed_selector_nonentry(repository, run, revision, token, artifacts):
+    """No resource history effect without complete selector-only failure proof.
+
+    Any retained operation/material artifact contradicts selector nonentry. Keep
+    the historical request immutable; this cannot certify publication or advance
+    a resource baseline.
+    """
+    return (artifacts == [] and fast_track_selector_attempts_proven_nonentry(
+        repository, run, revision, token))
+
+
 def fast_track_selector_attempts_proven_nonentry(repository, run, revision, token,
                                                 *, clock=time.monotonic):
     """Carry unpublished scope only after every selector attempt proves nonentry.
@@ -8278,7 +8359,7 @@ def fast_track_selector_attempts_proven_nonentry(repository, run, revision, toke
         or not isinstance(run.get('repository'), dict) or not is_fast_track_producer(repository, run)
         or run.get('repository', {}).get('full_name', '').lower() != repository.lower()
         or run.get('status') != 'completed' or run.get('conclusion') != 'failure'
-        or type(run.get('run_attempt')) is not int or not 2 <= run['run_attempt'] <= 100
+        or type(run.get('run_attempt')) is not int or not 1 <= run['run_attempt'] <= 100
         or type(run.get('workflow_id')) is not int or run['workflow_id'] <= 0):
         return False
     def same_run(value, attempt):
@@ -8293,7 +8374,8 @@ def fast_track_selector_attempts_proven_nonentry(repository, run, revision, toke
     selector = 'Select exact affected applications'
     downstream = {'Admit exact validated fast-track source',
                   'Reconcile production schema before publication',
-                  'Affected App Deploy — ${{ matrix.target }}', 'Publish verified website routing'}
+                  'Affected App Deploy — ${{ matrix.target }}', 'Publish verified website routing',
+                  'Recover retained fast-track application materials'}
     names = downstream | {selector}
     with evidence_lookup_budget(clock() + 30.0, clock=clock):
         def read(endpoint):

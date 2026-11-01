@@ -1721,10 +1721,11 @@ class SelectorAttemptNonentryTests(unittest.TestCase):
         self.responses={self.endpoint:self.clone(self.run)}
         names=['Select exact affected applications','Admit exact validated fast-track source',
                'Reconcile production schema before publication',
-               'Affected App Deploy — ${{ matrix.target }}','Publish verified website routing']
+               'Affected App Deploy — ${{ matrix.target }}','Publish verified website routing',
+               'Recover retained fast-track application materials']
         for attempt in (1,2):
             self.responses[f'{self.endpoint}/attempts/{attempt}']=dict(self.run,run_attempt=attempt)
-            self.responses[self.jobpath(attempt)]=dict(total_count=5,jobs=[
+            self.responses[self.jobpath(attempt)]=dict(total_count=6,jobs=[
                 dict(id=100*attempt+i,name=name,run_id=self.run['id'],head_sha=self.run['head_sha'],
                     run_attempt=attempt,status='completed',conclusion='failure' if i==0 else 'skipped',steps=[])
                 for i,name in enumerate(names)])
@@ -1740,13 +1741,27 @@ class SelectorAttemptNonentryTests(unittest.TestCase):
              patch.object(m,'git_show_file',return_value=(ROOT/self.run['path']).read_text()):
             return m.fast_track_selector_attempts_proven_nonentry(
                 self.repository,self.run,self.revision,'placeholder',clock=lambda:self.now)
+    def test_single_attempt_complete_nonentry(self):
+        self.run['run_attempt']=1
+        self.responses[self.endpoint]=self.clone(self.run)
+        self.assertTrue(self.invoke())
+    def test_historical_scope_mismatch_requires_proof_and_no_artifacts(self):
+        with patch.object(m,'fast_track_selector_attempts_proven_nonentry',return_value=True) as proof:
+            self.assertTrue(m.completed_resource_failed_selector_nonentry(
+                self.repository,self.run,self.revision,'placeholder',[]))
+            for artifacts in (None,[dict(name='operation-intent')],[dict(name='unknown')]):
+                self.assertFalse(m.completed_resource_failed_selector_nonentry(
+                    self.repository,self.run,self.revision,'placeholder',artifacts))
+        with patch.object(m,'fast_track_selector_attempts_proven_nonentry',return_value=False):
+            self.assertFalse(m.completed_resource_failed_selector_nonentry(
+                self.repository,self.run,self.revision,'placeholder',[]))
     def test_both_failed_attempts_have_positive_complete_nonentry(self):
         self.assertTrue(self.invoke())
         self.assertEqual(self.calls,[self.endpoint,f'{self.endpoint}/attempts/1',self.jobpath(1),
             f'{self.endpoint}/attempts/2',self.jobpath(2),self.endpoint])
-    def test_only_multi_attempt_terminal_failure_is_eligible(self):
+    def test_only_bounded_terminal_failure_is_eligible(self):
         original=self.clone(self.run)
-        for key,value in [('run_attempt',1),('run_attempt',101),('run_attempt',True),('run_attempt','2'),
+        for key,value in [('run_attempt',0),('run_attempt',101),('run_attempt',True),('run_attempt','2'),
             ('status','in_progress'),('conclusion','success'),('workflow_id',True),('workflow_id',0),
             ('event','workflow_dispatch'),('head_branch','other'),('head_repository',{}),('repository',{})]:
             with self.subTest(key=key,value=value):
@@ -1767,7 +1782,7 @@ class SelectorAttemptNonentryTests(unittest.TestCase):
         with self.assertRaises(KeyError):self.invoke()
     def test_incomplete_duplicate_extra_or_malformed_jobs_refuse(self):
         path=self.jobpath(1);original=self.clone(self.responses[path])
-        variants=[None,{},dict(total_count=6,jobs=original['jobs']),dict(total_count=True,jobs=original['jobs']),
+        variants=[None,{},dict(total_count=7,jobs=original['jobs']),dict(total_count=True,jobs=original['jobs']),
             dict(total_count=4,jobs=original['jobs'][:-1]),dict(total_count=6,jobs=original['jobs']+[original['jobs'][0]]),
             dict(total_count=5,jobs=[original['jobs'][0]]*5),dict(total_count=5,jobs=[None]*5)]
         for value in variants:
@@ -1787,7 +1802,7 @@ class SelectorAttemptNonentryTests(unittest.TestCase):
     def test_any_downstream_entry_in_either_attempt_refuses(self):
         for attempt in (1,2):
             path=self.jobpath(attempt);original=self.clone(self.responses[path])
-            for i in range(1,5):
+            for i in range(1,6):
                 for conclusion in ('success','failure','cancelled',None):
                     with self.subTest(attempt=attempt,owner=i,conclusion=conclusion):
                         self.responses[path]=self.clone(original)
@@ -7215,8 +7230,8 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         root=Path(__file__).parent
         source=(root/'deploy-approved-app.py').read_text()
         journal=(root/'release-operation-evidence.py').read_text()
-        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'30d14c75cc1681a8d3c1b24c10b3f372eaa34bcc8ef3d50090a78702bef2f5ce')
-        self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'8960dde101f09d6ff3939cf76a7ee0a0787ea961a50a8384e693d5f78bbb7e95')
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'c933b4dbca67be109816c418567b7094679d3f3fc1078160041fb824c45a5796')
+        self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'4bd7edacd32764edff0504597e15c59dbd24f547ede3b5c22bba247c0ada8df5')
         self.assertTrue(m._recovery_preflight_source_contract(source,journal))
         for changed in [source+'# unreviewed helper\n',source.replace('reconcile_only=journal.intent is not None','reconcile_only=False')]:
             self.assertNotEqual(changed,source)
@@ -7242,6 +7257,14 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         closed=('21220b50cf1c6d02e538eb5747c5f5aea46395f2abbfe6b82efbdfb4c585210f','10cb03c9b02afbbb9912ec592757959960c0ea9d139f1280a9dcddfaa4f22351')
         permanent=('30d14c75cc1681a8d3c1b24c10b3f372eaa34bcc8ef3d50090a78702bef2f5ce',
                    '8960dde101f09d6ff3939cf76a7ee0a0787ea961a50a8384e693d5f78bbb7e95')
+        forward=('c933b4dbca67be109816c418567b7094679d3f3fc1078160041fb824c45a5796',
+                 '4bd7edacd32764edff0504597e15c59dbd24f547ede3b5c22bba247c0ada8df5')
+        for source,journal,accepted in [(forward[0],forward[1],True),
+                (forward[0],permanent[1],False),(permanent[0],forward[1],False),
+                (forward[0],'f'*64,False),('f'*64,forward[1],False)]:
+            values={b'source':source,b'journal':journal}
+            with self.subTest(source=source,journal=journal),patch.object(m.hashlib,'sha256',side_effect=lambda value:SimpleNamespace(hexdigest=lambda:values[value])):
+                self.assertEqual(m._recovery_preflight_source_contract('source','journal'),accepted)
         for source,journal,accepted in [(permanent[0],permanent[1],True),
                 (permanent[0],closed[1],False),(closed[0],permanent[1],False),
                 (permanent[0],'f'*64,False),('f'*64,permanent[1],False)]:
@@ -10261,6 +10284,33 @@ class CompletedResourceBaselineTests(unittest.TestCase):
             with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'LATE_UNRESOLVED_SUBMISSION'):
                 m.completed_resource_currentness('MYLEGND/masterapp','7'*40,contract,{'client':{'reference':ref_b}},'token')
 
+    def test_scope_mismatch_only_passes_authenticated_selector_nonentry(self):
+        import contextlib
+        contract=self.contract()
+        row=dict(id=10,head_sha='a'*40,path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,
+            status='completed',conclusion='failure',event='push',run_attempt=1)
+        fake=SimpleNamespace(COMPLETED_RESOURCE_ROOT_REFS=contract['resources'],
+            read_request=lambda sha:{'targets':['masterapp-protect']},tool_promotion_requested=lambda sha:False)
+        with contextlib.ExitStack() as stack:
+            for name,kwargs in {
+                '_fast_track_policy':dict(return_value=fake),'completed_resource_other_writers':{},
+                '_fast_track_history_observation':dict(return_value=[row]),
+                'is_fast_track_producer':dict(return_value=True),
+                'completed_resource_contract':dict(return_value=contract),'fast_track_merged_source_proof':{},
+                'api_get':dict(return_value={'total_count':0,'artifacts':[]}),
+                '_completion_jobs':dict(return_value={1:[]}),
+                'completed_resource_scope':dict(return_value={'matrix':{'include':[{'key':'client','azure_app':'masterapp-client'}]}}),
+                'completed_resource_legacy_run_disposition':{}}.items():
+                stack.enter_context(patch.object(m,name,**kwargs))
+            stack.enter_context(patch.object(m.subprocess,'check_output',return_value='a'*40+' '+'b'*40+' '+'c'*40))
+            stack.enter_context(patch.dict(m._RESOURCE_ROOT_HISTORY,{'lastRun':0,'count':0,'identity':hashlib.sha256(b'[]').hexdigest()}))
+            with patch.object(m,'fast_track_selector_attempts_proven_nonentry',return_value=True):
+                self.assertEqual({k:v for k,v in contract['resources'].items() if v is not None},
+                    m.completed_resource_currentness('MYLEGND/masterapp','d'*40,contract,{},'token'))
+            with patch.object(m,'fast_track_selector_attempts_proven_nonentry',return_value=False):
+                with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'RESOURCE_BASELINE_RECORDED_SCOPE_CHANGED'):
+                    m.completed_resource_currentness('MYLEGND/masterapp','d'*40,contract,{},'token')
+
     def test_no_change_tooling_does_not_advance_any_resource(self):
         value=self.contract();before=json.dumps(value,sort_keys=True)
         with patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
@@ -10433,6 +10483,69 @@ class CompletedResourceBaselineTests(unittest.TestCase):
                 with self.assertRaises((ValueError,RuntimeError)):
                     m.completed_resource_schema_proof('MYLEGND/masterapp',original,observer,artifact(),'fixture')
 
+
+
+class ForwardProtectDispositionTests(unittest.TestCase):
+    def request(self):
+        return dict(requestedBy='Founder',releaseMode='approved-only',cloudflareWebsiteRouting=False,
+            preserveLiveTargets=False,targets=['masterapp-portal','masterapp-client','masterapp-protect','masterapp-parfait'],
+            protectSupersession=dict(m.PROTECT_FORWARD_68EF))
+    def source(self, request=None, parent=None, paths=(), ancestry=0):
+        head='f'*40
+        with patch.object(m.subprocess,'check_output',return_value=head+' '+(parent or m.PROTECT_FORWARD_68EF['expectedReleaseParent'])+' '+'e'*40), \
+             patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=ancestry)), \
+             patch.object(m,'git_changed',return_value=paths), \
+             patch.object(m,'completed_resource_contract',return_value=m._fast_track_policy().initial_completed_resource_baselines()):
+            return m.fast_track_protect_supersession(head,request=request or self.request())
+    def test_exact_generation_admits_source_without_inventing_material(self):
+        proof=self.source(paths=['scripts/validation-resume.py'])
+        self.assertEqual('UNKNOWN',proof['historicalOutcome']);self.assertEqual('f'*40,proof['candidateRevision'])
+        self.assertNotIn('material',proof)
+    def test_changed_generation_scope_consent_and_application_refuse(self):
+        for key,value in [('originalOperationId','a'*64),('acceptLateCompletionRisk',False),('acceptLateCompletionRisk',1),('rollbackPackageDigest','a'*64)]:
+            r=self.request();r['protectSupersession'][key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):self.source(request=r)
+        r=self.request();r['targets']=['masterapp-protect']
+        with self.assertRaises(ValueError):self.source(request=r)
+        for changes in ({'parent':'a'*40},{'ancestry':1},{'paths':['Protect-Website/Controllers/QuoteController.cs']}):
+            with self.subTest(changes=changes),self.assertRaises(ValueError):self.source(**changes)
+    def test_selection_requires_scoped_consent_and_keeps_currentness(self):
+        contract=m._fast_track_policy().initial_completed_resource_baselines()
+        scope=dict(matrix={'include':[dict(key='protect',azure_app='masterapp-protect')]},routing=False,commerce=False,schema=False)
+        with patch.object(m,'completed_resource_contract',return_value=contract),patch.object(m,'completed_resource_scope',return_value=scope), \
+             patch.object(m,'completed_resource_receipt',return_value={}),patch.object(m,'completed_resource_currentness') as current:
+            for proof in (None,{'authorizationId':'other'}):
+                with patch.object(m,'fast_track_protect_supersession',return_value=proof),self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'PROTECT_68EF'):
+                    m.completed_resource_selection('a'*40,'f'*40,repository='MYLEGND/masterapp',token='placeholder')
+            with patch.object(m,'fast_track_protect_supersession',return_value=dict(m.PROTECT_FORWARD_68EF)):
+                result=m.completed_resource_selection('a'*40,'f'*40,repository='MYLEGND/masterapp',token='placeholder')
+                self.assertEqual(scope['matrix'],result['matrix']);self.assertTrue(current.called)
+                current.side_effect=m.ReleaseOperationHistoryUnproven('OTHER_WRITER')
+                with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'OTHER_WRITER'):
+                    m.completed_resource_selection('a'*40,'f'*40,repository='MYLEGND/masterapp',token='placeholder')
+
+    def material(self, *, embedded=None, digest=None, expired=False, wrong_head=False, drift=False, missing=False, duplicate=False, attempt=1, first_write=False):
+        import zipfile,contextlib
+        revision='f'*40
+        with tempfile.TemporaryDirectory() as directory:
+            package=Path(directory)/'deploy.zip'
+            with zipfile.ZipFile(package,'w') as z:z.writestr('wwwroot/_deployment-provenance.json',json.dumps({'releaseSha':embedded or revision}))
+            data=package.read_bytes();sha=hashlib.sha256(data).hexdigest()
+            run=dict(id=42,head_sha='a'*40 if wrong_head else revision,run_attempt=attempt,status='in_progress')
+            artifact=dict(id=99,name='fast-track-package-'+revision+'-protect',expired=expired,digest='sha256:'+'b'*64,workflow_run=dict(id=42,head_sha=revision))
+            reads=[run,dict(total_count=2 if duplicate else 1,workflow_runs=[run,dict(run,id=43)] if duplicate else [run]),dict(total_count=0 if missing else 1,artifacts=[] if missing else [artifact]),dict(run,run_attempt=2) if drift else run]
+            def download(repo,run,name,root,**kwargs):
+                self.assertEqual('sha256:'+'b'*64,kwargs['expected_digest']);(root/'deploy.zip').write_bytes(data)
+            with patch.object(m,'fast_track_protect_supersession',return_value=dict(m.PROTECT_FORWARD_68EF,candidateRevision=revision)), \
+                 patch.object(m,'_api_get_uncached',side_effect=reads),patch.object(m,'is_fast_track_producer',return_value=True), \
+                 patch.object(m,'_download_run_artifact',side_effect=download):
+                return m.forward_protect_material('MYLEGND/masterapp',revision,digest or sha,42,'placeholder',first_write=first_write)
+    def test_actual_retained_bytes_seal_final_merge_and_operation(self):
+        value=self.material();self.assertEqual(99,value['packageArtifactId']);self.assertEqual('f'*40,value['applicationRevision'])
+        self.assertEqual(m.retained_operation_id('protect','f'*40,value['packageDigest']),value['operationId'])
+    def test_unknown_changed_or_incomplete_material_refuses(self):
+        for changes in ({'embedded':'a'*40},{'digest':'a'*64},{'expired':True},{'wrong_head':True},{'drift':True},{'missing':True},{'duplicate':True},{'attempt':2,'first_write':True},{'attempt':True}):
+            with self.subTest(changes=changes),self.assertRaises(ValueError):self.material(**changes)
 
 
 if __name__ == "__main__":

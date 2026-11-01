@@ -4512,5 +4512,78 @@ class CompletedTargetAcceptanceTests(unittest.TestCase):
         verify.assert_called_once_with('client',{'revision':'a'*40},Path('/unused'),expected=None)
 
 
+class ForwardProtectRollbackTests(unittest.TestCase):
+    def invoke(self, *, baseline=None, active=False, digest=None):
+        proof=dict(deploy._RELEASE_AUTHORITY.PROTECT_FORWARD_68EF)
+        azure=Mock()
+        with patch.object(deploy._RELEASE_AUTHORITY,'fast_track_protect_supersession',return_value=proof), \
+             patch.object(deploy,'read_deployments_bounded',return_value=[dict(status=1 if active else 4)]), \
+             patch.object(deploy._RELEASE_AUTHORITY,'_download_run_artifact') as download, \
+             patch.object(deploy,'verify_package',return_value=digest or proof['rollbackPackageDigest']), \
+             patch.dict(os.environ,{'GITHUB_REPOSITORY':'MYLEGND/masterapp'}):
+            result=deploy.prepare_protect_replacement('f'*40,baseline or proof['baselineRevision'],azure)
+            self.assertEqual(proof['rollbackRun'],download.call_args.args[1])
+            self.assertEqual(proof['rollbackArtifactDigest'],download.call_args.kwargs['expected_digest'])
+            self.assertTrue(azure.authorized_replacement)
+            return result
+    def test_current324_rollback_not_old_unknown_revision(self):self.invoke()
+    def test_wrong_live_baseline_active_writer_and_changed_bytes_refuse(self):
+        for args in ({'baseline':'c'*40},{'active':True},{'digest':'a'*64}):
+            with self.subTest(args=args),self.assertRaises((deploy.DeploymentDrift,deploy.DeploymentReconciliationRequired)):
+                self.invoke(**args)
+
+class CompletedResourceMetadataRetentionTests(unittest.TestCase):
+    def setUp(self):
+        self.current='6e39068a9bb448b58fc0d329a8aa0dd2'
+        self.old='4ab02b0ea3394ab1b4b9d672184b819c'
+        self.revision='3243221ae661b53d60f78cc2dab108a93bad7632'
+        self.proof=dict(reference=dict(sourceRevision=self.revision,runId=41240193444,runAttempt=1,
+            artifactId=13057606696,artifactDigest='sha256:f9856400f0db7b724940d3f7fdb567cbb1c5055a21df0471d486411a17f92dba'),
+            record=dict(baselineDeploymentIds=[self.old,'other-old'],deploymentIds=[self.current],
+            packageDigest='3e8ba8b6073bec9e3a64204c0e0b745e8dcf894c28be05900b158bdc2e28431c'))
+        self.disposition=dict(authorizationId='protect-forward-68ef-20261101-v1')
+    def rows(self,ids=None):
+        return [dict(id=id,status=4,complete=True,active=id==self.current,
+            received_time='2026-10-31T20:00:00Z',start_time='2026-10-31T20:00:01Z',end_time='2026-10-31T20:01:00Z')
+            for id in (ids if ids is not None else ['other-old',self.current])]
+    def invoke(self,rows=None,revision=None,key='protect',disposition=True):
+        rows=self.rows() if rows is None else rows
+        state=deploy.recovery_current_provider_state(rows,revision or self.revision)
+        deploy.completed_resource_provider_inventory(key,rows,state,self.proof,self.disposition if disposition else None)
+        return state
+    def test_exact_missing_historical_metadata_preserves_receipt_and_current_state(self):
+        original=json.dumps(self.proof,sort_keys=True)
+        state=self.invoke();self.assertNotIn(self.old,state['deploymentIds'])
+        self.assertEqual(original,json.dumps(self.proof,sort_keys=True))
+        self.invoke(self.rows([self.old,'other-old',self.current]))
+    def test_second_missing_current_missing_new_duplicate_ids_refuse(self):
+        for ids in ([self.current],['other-old'],['other-old',self.current,'new'],['other-old',self.current,self.current]):
+            with self.subTest(ids=ids),self.assertRaises((deploy.DeploymentReconciliationRequired,deploy.RecoveryPreflightFailure)):
+                self.invoke(self.rows(ids))
+    def test_active_status_unknown_complete_and_runtime_drift_refuse(self):
+        for index,field,value in [(0,'status',1),(0,'complete',False),(0,'active',True),(0,'active',None),
+                                  (1,'active',False),(1,'status',3),(1,'complete',False)]:
+            rows=self.rows();rows[index][field]=value
+            with self.subTest(field=field,value=value),self.assertRaises((deploy.DeploymentReconciliationRequired,deploy.RecoveryPreflightFailure)):
+                self.invoke(rows)
+        with self.assertRaises(deploy.DeploymentReconciliationRequired):self.invoke(revision='a'*40)
+    def test_other_resource_generation_or_receipt_never_gets_subset_acceptance(self):
+        for kwargs in ({'key':'client'},{'disposition':False}):
+            with self.assertRaises(deploy.DeploymentReconciliationRequired):self.invoke(**kwargs)
+        self.proof['reference']['artifactId']=1
+        with self.assertRaises(deploy.DeploymentReconciliationRequired):self.invoke()
+    def test_closing_state_detects_reappearance_new_id_metadata_and_runtime_races(self):
+        initial=self.invoke()
+        variants=[self.rows([self.old,'other-old',self.current]),self.rows(['other-old',self.current,'new'])]
+        rows=self.rows();rows[0]['end_time']='2026-10-31T20:02:00Z';variants.append(rows)
+        for rows in variants:self.assertNotEqual(initial,deploy.recovery_current_provider_state(rows,self.revision))
+        self.assertNotEqual(initial,deploy.recovery_current_provider_state(self.rows(),'a'*40))
+    def test_list_auth_transport_or_malformed_failures_are_not_absence(self):
+        azure=Mock()
+        for error in (RuntimeError('403'),RuntimeError('401'),OSError('transport'),ValueError('malformed')):
+            azure.deployments.side_effect=error
+            with self.assertRaises(deploy.DeploymentStatusUnavailable):
+                deploy.read_deployments_bounded(azure,attempts=1,interval=0,sleep=lambda _:None)
+
 if __name__ == '__main__':
     unittest.main()

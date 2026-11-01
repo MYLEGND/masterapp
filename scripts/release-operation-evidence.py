@@ -190,8 +190,15 @@ class OperationJournal:
                     raise ValueError('Windows submission contract does not bind its operation')
             self._ids(self.intent.get('baselineDeploymentIds'))
             self.baseline = self.intent['baseline']
-        if self.intent is not None and self.intent.get('supersession') != self.supersession:
-            raise ValueError('Replacement intent authorization changed')
+        self.forward_material = None
+        if self.intent is not None:
+            expected = self.supersession
+            if self._forward_replacement():
+                self.forward_material = self.authority.forward_protect_material(
+                    self.repository, application_revision, package_digest, self.producer, self.token)
+                expected = dict(self.supersession, material=self.forward_material)
+            if self.intent.get('supersession') != expected:
+                raise ValueError('Replacement intent authorization changed')
         self.submission_observation = None
         if self.intent is not None and 'submissionContract' in self.intent:
             self.submission_observation = self.authority.release_operation_history(
@@ -199,6 +206,10 @@ class OperationJournal:
                 self.run, self.attempt, self.token, phase='submitted')
             if self.submission_observation is not None:
                 self._validate_submission_observation(self.submission_observation)
+
+    def _forward_replacement(self):
+        return (isinstance(self.supersession, dict) and
+            self.supersession.get('authorizationId') == 'protect-forward-68ef-20261101-v1')
 
     def _provider_request_correlation(self):
         # Metadata only: Azure does not promise idempotency for deployment tags.
@@ -257,6 +268,9 @@ class OperationJournal:
             record.update(self.authorization, schemaVersion=2)
         if self.supersession is not None:
             record['supersession'] = dict(self.supersession)
+            if self._forward_replacement():
+                if self.forward_material is None:raise ValueError('Forward replacement material is unbound')
+                record['supersession']['material'] = dict(self.forward_material)
         return record
 
     def submitted_record(self, intent, deployment_id):
@@ -279,6 +293,11 @@ class OperationJournal:
             run = self.authority.assert_fast_track_release_execution(target='protect')
             if run['head_sha'] != self.identity['applicationRevision'] or run['id'] != self.run:
                 raise ValueError('Replacement write authority changed')
+        if self._forward_replacement():
+            if self.attempt != 1 or self.producer != self.run:
+                raise ValueError('Forward replacement permits one producing attempt')
+            self.forward_material = self.authority.forward_protect_material(
+                self.repository, self.identity['applicationRevision'], self.identity['packageDigest'], self.run, self.token, first_write=True)
         if self.forward_before_new_intent is not None:
             self.forward_before_new_intent(self._ids(baseline_ids))
         record = self.intent_record(baseline_ids, submission_kind=submission_kind)

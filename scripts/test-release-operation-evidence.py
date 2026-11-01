@@ -120,6 +120,40 @@ class DurableOperationProtocolTests(unittest.TestCase):
             operation.before_submit([])
         self.assertIsNone(operation.intent)
 
+    def forward(self):
+        proof={'authorizationId':'protect-forward-68ef-20261101-v1','candidateRevision':'a'*40}
+        self.authority.RELEASE_TARGETS['protect']={}
+        self.authority.fast_track_protect_supersession=lambda revision:proof
+        self.authority.assert_fast_track_release_execution=lambda **kw:dict(head_sha='a'*40,id=10)
+        self.material=dict(applicationRevision='a'*40,packageDigest='b'*64,packageArtifactId=99,
+            packageArtifactDigest='sha256:'+'d'*64,packageProducerRun=10,producingAttempt=1)
+        self.authority.forward_protect_material=lambda *args,**kwargs:dict(self.material)
+        self.env['PACKAGE_PRODUCER_RUN']='10'
+        return self.make(target='protect',supersession=proof)
+
+    def test_forward_material_binds_before_durable_intent_and_no_resubmit(self):
+        first=self.forward()
+        with self.assertRaisesRegex(ValueError,'unbound'):first.intent_record([])
+        self.assertTrue(first.before_submit(['old']))
+        self.assertEqual(self.material,first.intent['supersession']['material'])
+        self.env['GITHUB_RUN_ATTEMPT']='2'
+        self.assertFalse(self.forward().before_submit(['old']))
+
+    def test_forward_missing_material_and_second_first_write_fail_closed(self):
+        first=self.forward()
+        self.authority.forward_protect_material=lambda *args,**kwargs:(_ for _ in ()).throw(ValueError('missing artifact'))
+        with self.assertRaisesRegex(ValueError,'missing artifact'):first.before_submit([])
+        self.assertIsNone(first.intent)
+        self.env['GITHUB_RUN_ATTEMPT']='2'
+        with self.assertRaisesRegex(ValueError,'one producing attempt'):self.forward().before_submit([])
+        self.assertEqual([],list(self.path.iterdir()))
+
+    def test_forward_failed_intent_transport_never_grants_submit(self):
+        first=self.forward()
+        first.publisher=lambda *args:(_ for _ in ()).throw(TimeoutError('readback failed'))
+        with self.assertRaises(TimeoutError):first.before_submit([])
+        self.assertIsNone(first.intent)
+
     def test_untouched_other_target_has_distinct_operation(self):
         self.assertTrue(self.make().before_submit([]))
         self.assertTrue(self.make(target='client').before_submit([]))
