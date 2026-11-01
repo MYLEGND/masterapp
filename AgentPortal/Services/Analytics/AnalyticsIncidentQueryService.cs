@@ -319,8 +319,20 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
 
         // Founder-only system monitor intentionally queries the global monitoring scope.
         var resolvedScope = ScopeContext.Global;
-        var currentEvents = await _analytics.ScopedEvents(currentRange, resolvedScope).ToListAsync(ct);
-        var previousEvents = await _analytics.ScopedEvents(previousRange, resolvedScope).ToListAsync(ct);
+        // Distinct interaction counts need only these fields. Keep canonical query
+        // filters and in-memory identity semantics without loading event payloads.
+        var currentEvents = await _analytics.ScopedEvents(currentRange, resolvedScope)
+            .Select(x => new AnalyticsEvent
+            {
+                EventType = x.EventType, SessionId = x.SessionId,
+                VisitorId = x.VisitorId, EventId = x.EventId
+            }).ToListAsync(ct);
+        var previousEvents = await _analytics.ScopedEvents(previousRange, resolvedScope)
+            .Select(x => new AnalyticsEvent
+            {
+                EventType = x.EventType, SessionId = x.SessionId,
+                VisitorId = x.VisitorId, EventId = x.EventId
+            }).ToListAsync(ct);
 
         var currentLeads = await QueryWebsiteLeads(currentWindowStartUtc, nowUtc).CountAsync(ct);
         var previousLeads = await QueryWebsiteLeads(previousWindowStartUtc, currentWindowStartUtc).CountAsync(ct);
