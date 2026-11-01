@@ -231,6 +231,7 @@ public class WebsitePlatformController : ControllerBase
             var compiledPages = publication.CompiledPagesJson;
             if (string.IsNullOrWhiteSpace(compiledPages))
             {
+                string? missingCompiledPages = compiledPages;
                 // One-time materialization for historical immutable publications.
                 // Derived compiled HTML can fill a missing slot without changing
                 // the authored DocumentJson, publication ID, or published pointer.
@@ -247,10 +248,12 @@ public class WebsitePlatformController : ControllerBase
                 var compiler = HttpContext.RequestServices
                     .GetRequiredService<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
                 compiledPages = await compiler.CompileLegendAsync(payload, cancellationToken);
+                // Match the observed missing slot: empty/whitespace historical
+                // values need the same one-time materialization as null.
                 await _db.Set<WebsiteContentVersion>()
                     .Where(version => version.Id == publication.Id &&
                                       version.StateId == publication.StateId &&
-                                      version.CompiledPagesJson == null &&
+                                      version.CompiledPagesJson == missingCompiledPages &&
                                       version.SnapshotRetiredUtc == null)
                     .ExecuteUpdateAsync(updates => updates
                         .SetProperty(version => version.CompiledPagesJson, compiledPages),
@@ -309,6 +312,7 @@ public class WebsitePlatformController : ControllerBase
         var compiledPages = publication.CompiledPagesJson;
         if (string.IsNullOrWhiteSpace(compiledPages))
         {
+            string? missingCompiledPages = compiledPages;
             // Same bounded historical materialization as LEGEND. Verify the
             // envelope is still the exact version selected above before writing
             // derived data. Never store request-generated native markup.
@@ -322,9 +326,11 @@ public class WebsitePlatformController : ControllerBase
                 return null;
             var compiler = HttpContext.RequestServices.GetRequiredService<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
             compiledPages = await compiler.CompileLegendAsync(payload, cancellationToken);
+            // Fill the observed missing slot (null or blank), without replacing a
+            // concurrently materialized publication or a retired snapshot.
             await _db.Set<WebsiteContentVersion>()
                 .Where(version => version.Id == publication.Id && version.StateId == publication.StateId &&
-                                  version.CompiledPagesJson == null && version.SnapshotRetiredUtc == null)
+                                  version.CompiledPagesJson == missingCompiledPages && version.SnapshotRetiredUtc == null)
                 .ExecuteUpdateAsync(updates => updates.SetProperty(version => version.CompiledPagesJson, compiledPages), cancellationToken);
         }
         using var compiled = JsonDocument.Parse(compiledPages);

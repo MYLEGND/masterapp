@@ -1,10 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Zac approved the permanent per-resource completed-receipt admission policy in Sentinel_84879ea6a8548191abb3fae9d62d1af2, and the exact independently reviewed paired-source/workflow/historical compatibility trust entries in Sentinel_2931e88ea42c8191a9013cbaf7b32250 at 2026-11-01T02:25:17Z. Preserve all production, current-operation, schema, rollback and live-verification controls.",
-  "purpose": "Promote the reviewed permanent completed-resource baseline tooling only. Preserve all four accepted app deployments; no app rebuild, SQL replay, routing publication or inferred Website/Founder acceptance.",
-  "requestId": "permanent-completed-resource-standard-20261101-v2",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "Zac explicitly requested diagnosis, surgical repair, implementation and deployment of website/Studio timeout and error fixes in Sentinel_6aa93f2132908191a59300a684120fdc at2026-11-01T05:33:11Z. Preserve independent review, exact-head CI, current-operation, schema, rollback and Production controls. This request does not waive original Protect68ef disposition or authorize identity/logging/security changes.",
+  "purpose": "Repair repeated derived public-page compilation when an immutable compiled slot contains an empty/whitespace value. Preserve authored website content, publication pointer/revision, tenant isolation and concurrent/nonretired snapshot fences. Protect-only source impact; no SQL or routing change. Current live incidence remains unproven, and source/CI is not deployment acceptance.",
+  "requestId": "website-studio-blank-compiled-slot-20261101-v1",
+  "releaseMode": "approved-only",
+  "targets": [
+    "masterapp-protect"
+  ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "perResourceBaselines": {
@@ -55,69 +57,6 @@
       "website": null,
       "routing": null,
       "founder": null
-    }
-  },
-  "trustedToolPromotion": {
-    "schemaVersion": 1,
-    "baseRevision": "fd4e2e49b98456604ef2602b8409069b73bab492",
-    "sourceRevision": "f3f769ae1517a782e8efa6c86e1b18720350ca80",
-    "files": {
-      ".github/workflows/legend-fast-track-ui.yml": {
-        "mode": "100644",
-        "blob": "6e51ba822d8b6888945672d3cf9a943d0a567eea"
-      },
-      "scripts/deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "e748a38d1bb91f4d0c1f3f8b601bb0553cf825e1"
-      },
-      "scripts/release-artifacts/test-transport.cjs": {
-        "mode": "100644",
-        "blob": "a0cadf8111df84ac34d5715e664c1e87276dadc9"
-      },
-      "scripts/release-artifacts/transport.cjs": {
-        "mode": "100644",
-        "blob": "01c6743ead474dd425b0ee125662f401de1e2c6e"
-      },
-      "scripts/release-migration.py": {
-        "mode": "100644",
-        "blob": "795d62671a74a19f6ea26d5374d6234a0b86d46e"
-      },
-      "scripts/release-operation-evidence.py": {
-        "mode": "100644",
-        "blob": "04c9fb83c3301659d56807092d0846687f5046d4"
-      },
-      "scripts/release_policy.py": {
-        "mode": "100644",
-        "blob": "933188899080dc0141afb7f87c100a11c388f48f"
-      },
-      "scripts/test-deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "2fb46f84b3cb79a3209372099bfd8750616116fc"
-      },
-      "scripts/test-fast-track-release.py": {
-        "mode": "100644",
-        "blob": "f54cccd12f6e66659258fbb5cd2e0bec70ff84f7"
-      },
-      "scripts/test-release-children.py": {
-        "mode": "100644",
-        "blob": "9e494f08a732a55c897d3963e71e3d7db6f2725e"
-      },
-      "scripts/test-release-policy.py": {
-        "mode": "100644",
-        "blob": "804b1c472b1e0c5acbbd81b29725e41f0d9ef5a7"
-      },
-      "scripts/test-validation-resume.py": {
-        "mode": "100644",
-        "blob": "f8cabcf68ab63e5f4a700bf77495abb3f5881308"
-      },
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "f042e75bd29fbe4710d2092dd769a6e46e902422"
-      },
-      "scripts/test-fast-track-ready-no-sql.py": {
-        "mode": "100644",
-        "blob": "989be1ebeb00ca93d1e3ae4dd66dcec4d4f5da83"
-      }
     }
   }
 }
