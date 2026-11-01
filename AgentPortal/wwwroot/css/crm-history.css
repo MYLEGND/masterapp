@@ -1,0 +1,72 @@
+/* Canonical Client / Lead history component. Palette belongs to legend-app-shell. */
+.history-workspace {
+    max-width: 1540px;
+    margin-inline: auto;
+    padding: clamp(20px, 3vw, 44px) var(--app-gutter) 56px;
+    color: var(--web-ink);
+}
+.history-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+.history-header h1 { font-size: clamp(1.55rem, 2.4vw, 2.25rem); font-weight: 800; letter-spacing: -.045em; line-height: 1.15; margin: 0 0 12px; }
+.history-eyebrow { color: var(--web-muted); font-size: .68rem; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; margin: 0 0 10px; }
+.history-subject { font-size: 1rem; font-weight: 700; overflow-wrap: anywhere; margin: 0 0 4px; }
+.history-caption { font-size: .8rem; color: var(--web-muted); margin: 0; }
+.history-action { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 8px 14px; border: 1px solid currentColor; border-radius: var(--legend-app-radius-compact); background: transparent; color: inherit; font-size: .76rem; font-weight: 700; text-decoration: none; cursor: pointer; }
+.history-inline-action { margin-inline-start: 8px; }
+.history-action:hover { color: var(--legend-app-accent); }
+.history-action:disabled { opacity: .45; cursor: default; }
+.history-header > button { flex-shrink: 0; }
+.history-filter-panel, .history-tool, .history-record {
+    background: var(--legend-app-panel);
+    color: var(--legend-app-on-dark);
+    border: 1px solid var(--legend-app-border);
+    border-radius: var(--legend-app-radius);
+}
+.history-filter-panel { padding: 20px; margin-bottom: 28px; }
+.history-filter-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.history-field, .history-form label { display: grid; align-content: start; gap: 7px; font-size: .75rem; font-weight: 600; min-width: 0; color: var(--legend-app-on-dark-muted); }
+.history-control { width: 100%; min-width: 0; min-height: 42px; padding: 9px 12px; color-scheme: dark; color: var(--legend-app-on-dark); background: var(--legend-app-surface); border: 1px solid var(--legend-app-border); border-radius: var(--legend-app-radius-compact); font: inherit; font-size: .85rem; line-height: 1.5; }
+.history-control:focus-visible { outline: 2px solid var(--legend-app-accent); outline-offset: 2px; }
+.history-advanced { margin-top: 18px; border-top: 1px solid var(--legend-app-border); padding-top: 14px; }
+.history-advanced summary, .history-tool summary { cursor: pointer; font-size: .85rem; font-weight: 700; }
+.history-advanced summary span, .history-tool summary span { display: block; font-size: .72rem; font-weight: 400; color: var(--legend-app-on-dark-muted); margin-top: 3px; }
+.history-advanced[open] .history-filter-grid { margin-top: 18px; }
+.history-filter-actions { display: flex; gap: 8px; margin-top: 18px; }
+.history-content-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr); gap: 28px; align-items: start; }
+.history-timeline, .history-tools { min-width: 0; }
+.history-section-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+.history-section-heading h2 { font-size: 1rem; font-weight: 800; letter-spacing: -.025em; margin: 0; }
+.history-section-heading > span { color: var(--web-muted); font-size: .7rem; }
+.history-obligations { background: var(--web-surface); border: 1px solid var(--web-border); border-radius: var(--legend-app-radius-compact); padding: 10px 14px; font-size: .76rem; margin: 0 0 10px; }
+#history-status { color: var(--web-muted); font-size: .74rem; margin-bottom: 16px; overflow-wrap: anywhere; }
+.history-results { display: grid; gap: 10px; }
+.history-date { margin: 12px 0 2px; font-size: .73rem; font-weight: 700; color: var(--web-muted); letter-spacing: .04em; }
+.history-record { display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: left; padding: 18px 20px; cursor: pointer; overflow-wrap: anywhere; }
+.history-record strong { font-size: .92rem; line-height: 1.4; }
+.history-record span { font-size: .76rem; line-height: 1.5; color: var(--legend-app-on-dark-muted); }
+.history-record:hover { border-color: var(--legend-app-accent); background: var(--legend-app-surface); }
+.history-record:focus-visible, .history-workspace summary:focus-visible { outline: 2px solid var(--legend-app-accent); outline-offset: 3px; }
+.history-pagination { display: flex; justify-content: space-between; gap: 12px; margin-top: 20px; }
+.history-tool { padding: 18px; margin-bottom: 12px; }
+.history-tool[open] > summary { padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--legend-app-border); }
+.history-tool p, .history-form small { font-size: .75rem; line-height: 1.6; font-weight: 400; color: var(--legend-app-on-dark-muted); }
+.history-form { display: grid; gap: 16px; }
+.history-form textarea { resize: vertical; }
+.history-dialog { width: min(900px, calc(100vw - 32px)); max-height: 88dvh; overflow: auto; padding: clamp(20px, 3vw, 32px); background: var(--legend-modal-surface); color: var(--legend-modal-ink); border: 1px solid var(--legend-modal-line-strong); border-radius: var(--legend-app-radius); box-shadow: var(--legend-modal-shadow); }
+.history-dialog::backdrop { background: color-mix(in srgb, var(--web-navy-deep) 65%, transparent); }
+.history-dialog h2 { font-size: 1.4rem; margin: 12px 0 24px; }
+.history-dialog h3 { color: var(--legend-modal-gold); }
+.history-dialog a { color: var(--legend-modal-gold-strong); }
+.history-dialog details { padding: 14px; border: 1px solid var(--legend-modal-line); border-radius: var(--legend-app-radius-compact); margin-block: 16px; }
+.history-value { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; }
+#history-close { float: right; }
+@media (max-width: 1000px) {
+    .history-content-grid { grid-template-columns: minmax(0, 1fr); }
+    .history-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+    .history-header { align-items: flex-start; flex-direction: column; gap: 16px; }
+    .history-filter-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .history-filter-panel, .history-tool { padding: 16px; }
+    .history-record { padding: 16px; }
+    .history-workspace { padding-inline: 16px; }
+}

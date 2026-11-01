@@ -1951,3 +1951,28 @@ configuration retained; no credential changes, migrations or deployment.
 Future refreshes still depend on Mac running, valid native Azure authentication,
 and working network/provider access. IP changes can require the scheduler interval
 plus Azure propagation; no guarantee of uninterrupted access is claimed.
+
+## 2026-11-01 — Canonical CRM history presentation
+
+Founder requested direct styling replacement for shared Clients/Leads activity
+and case notes. Preserved base2b3d3cd652e80f7d9c6538cb6d5d163980c3ab0c and local
+branch/recovery exception; Git preflight reports connectivity failure, no remote
+preservation or passing gate claimed.
+
+Replaced generic Bootstrap presentation at CrmHistory/Index.cshtml with one
+component stylesheet consuming the existing LEGEND app-shell palette. Compact
+primary filters, expandable advanced filters, timeline and case-note/evidence
+panel share responsive geometry. Replaced old control/action/card classes and
+inline dialog/value styles directly; no global token changes, !important,
+stacked override blocks or alternate history implementation. JavaScript changes
+are emitted presentation classes only. Every existing ID, field name, scope
+attribute, antiforgery token, permission gate and evidence wording is retained.
+
+Actual AgentPortal Razor build passed with0warnings/errors; four existing CRM
+Node regressions and JS syntax passed. Authenticated Lead timeline and Client
+profile route render the shared view. Desktop and390px layout checks have no
+horizontal overflow; final mobile controls use canonical navy palette. Native
+advanced-filter keyboard expansion and mobile record dialog fit/scroll/close
+verified; Client empty state is readable. No interactions/evidence/corrections
+submitted; normal existing history Backfill/access auditing remains unchanged.
+Only local Portal restarted; no deployment, migration or push.
