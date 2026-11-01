@@ -1716,7 +1716,7 @@ def recovery_preflight_nonentry_record(proof, failed_target, failure):
     reason = failure.reason if isinstance(failure, RecoveryPreflightFailure) else ('phase-deadline' if isinstance(failure, RecoveryPhaseDeadline) else 'preflight-authority-unproven')
     record = dict(schemaVersion=1, phase='preflight-nonentry', **proof,
         producingRun=observer['runId'], producingAttempt=observer['runAttempt'], failedTarget=failed_target,
-        stage='all-target-preflight', authorizesMutation=False, writePhaseEntered=False,
+        stage=('shared-schema-preflight' if failed_target is None else 'all-target-preflight'), authorizesMutation=False, writePhaseEntered=False,
         reason=reason, observation=observation)
     identity = {key: record[key] for key in ('applicationRevision','originalRun','producingRun','producingAttempt')}
     name = 'legend-retained-preflight-nonentry-' + hashlib.sha256(

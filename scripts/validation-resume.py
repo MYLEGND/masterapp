@@ -1459,7 +1459,7 @@ def validate_recovery_preflight_nonentry(record):
     positive=lambda value:type(value) is int and value>0
     sha=lambda value,size:isinstance(value,str) and re.fullmatch('[a-f0-9]{%d}'%size,value) is not None
     if (not isinstance(record,dict) or set(record)!=RECOVERY_PREFLIGHT_NONENTRY_KEYS or record['schemaVersion']!=1
-        or type(record['schemaVersion']) is not int or record['phase']!='preflight-nonentry' or record['stage']!='all-target-preflight'
+        or type(record['schemaVersion']) is not int or record['phase']!='preflight-nonentry' or record['stage'] not in {'all-target-preflight','shared-schema-preflight'}
         or record['authorizesMutation'] is not False or record['writePhaseEntered'] is not False
         or record['reason'] not in RECOVERY_PREFLIGHT_NONENTRY_REASONS or not sha(record['applicationRevision'],40)
         or not all(positive(record[k])for k in ['originalRun','originalAttempt','producingRun','producingAttempt'])
@@ -1468,7 +1468,13 @@ def validate_recovery_preflight_nonentry(record):
     if (not isinstance(observer,dict) or set(observer)!={'runId','runAttempt','jobId','toolRevision','promotionRunId'}
         or not all(positive(observer[k])for k in ['runId','runAttempt','jobId','promotionRunId'])
         or not sha(observer['toolRevision'],40) or observer['runId']!=record['producingRun'] or observer['runAttempt']!=record['producingAttempt']
-        or not isinstance(material,dict) or not 1<=len(material)<=5 or not isinstance(record['failedTarget'],str) or record['failedTarget'] not in material):raise ValueError('RECOVERY_PREFLIGHT_RECORD_SCOPE')
+        or not isinstance(material,dict) or not 1<=len(material)<=5):raise ValueError('RECOVERY_PREFLIGHT_RECORD_SCOPE')
+    if record['stage']=='shared-schema-preflight':
+        if (record['failedTarget'] is not None or record['reason'] not in {'preflight-authority-unproven','phase-deadline'}
+            or o != dict(historyReadComplete=False,historyCount=None,activeCount=None,runtimeRevision=None)):
+            raise ValueError('RECOVERY_SHARED_SCHEMA_PREFLIGHT_SCOPE')
+    elif not isinstance(record['failedTarget'],str) or record['failedTarget'] not in material:
+        raise ValueError('RECOVERY_PREFLIGHT_RECORD_SCOPE')
     for key,row in material.items():
         if (key not in RELEASE_TARGETS or not isinstance(row,dict) or set(row)!={'operationId','packageDigest','packageArtifactId','packageArtifactDigest'}
             or not sha(row['packageDigest'],64) or not positive(row['packageArtifactId'])
@@ -1504,6 +1510,10 @@ RECOVERY_PREFLIGHT_PRODUCER_SHA256 = '15ba27c53564223cb41502bb5528949e6435f0e6bc
 
 def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
+    # Exact shared-schema terminal receipt producer; unchanged write paths and journal.
+    if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) == (
+        '6bd4df52d451f803c6a2569402d2d443c3aa04f3383d6b90543ce2687445d618', 'fec49886ac862469b0d71be6e5bc11af15cdfcc62d7318452a4bb59fd514822f'):
+        return True
     # Exact shared metadata, original-schema and retained forward journal generation.
     if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) == (
         '05a2db1772ca0b22446c0a68dea0d1bad85d8a314570ee1f9194a48b155a59b5',
@@ -1602,9 +1612,48 @@ def _recovery_receipt_source_closure(repository, revision, token):
     return source in (current, previous, read_hold_generation, receipt_reuse_generation, proof_context_generation, previous_completion_generation)
 
 
+def _attested_shared_schema_preflight_failure(repository, run, job, attempt, revision, token):
+    """One exact historical serializer failure before target admission; no synthetic receipt."""
+    if (repository.lower()!='mylegnd/masterapp' or run.get('id')!=41352634254 or attempt!=1
+        or run.get('run_attempt')!=1 or run.get('head_sha')!='b5e940d762480ad8722bd86a76b4391864913dc2'
+        or run.get('event')!='workflow_dispatch' or run.get('status')!='completed' or run.get('conclusion')!='failure'
+        or revision!='f2841ef8d0871ed69be01484024424eb3f63f121'
+        or run.get('display_title')!='LEGEND retained recovery original=41336371077 application='+revision
+        or job.get('id')!=124985933054 or job.get('run_id')!=run['id'] or job.get('run_attempt')!=1
+        or job.get('head_sha')!=run['head_sha'] or job.get('name')!=FAST_TRACK_RECOVERY_JOB
+        or job.get('status')!='completed' or job.get('conclusion')!='failure'):
+        return False
+    pins={'scripts/deploy-approved-app.py':'05a2db1772ca0b22446c0a68dea0d1bad85d8a314570ee1f9194a48b155a59b5',
+          'scripts/release-operation-evidence.py':'fec49886ac862469b0d71be6e5bc11af15cdfcc62d7318452a4bb59fd514822f',
+          'scripts/validation-resume.py':'2076a6e3c229e2ae38a89f33559ee9ea76ae1ba3d67cd90df9bea005ea812b84',
+          'scripts/release-artifacts/transport.cjs':'05456cc1478b9f10f5b52f9ab812c73d2c0dc62acbecfa912e0d22499adef910',
+          '.github/workflows/legend-fast-track-ui.yml':'c4a64e196d1ed33b90f1574778f02d99c0949907190063543481a7e372f0f10c'}
+    if any(hashlib.sha256(_release_history_source(repository,run['head_sha'],path,token).encode()).hexdigest()!=digest
+           for path,digest in pins.items()):return False
+    expected=[('Set up job','success'),('Check out promoted recovery tool authority','success'),('Install Node 24','success'),
+        ('Validate original authority and restore retained packages without rebuilding','success'),
+        ('Install read-only schema observer runtime','success'),('Build read-only retained schema observer without application packages','success'),
+        ('Install canonical durable evidence transport','success'),('Prepare canonical durable evidence transport','success'),
+        ('Sign in to Azure Production','success'),('Recover exact retained application bytes','failure'),
+        ('Post Sign in to Azure Production','success'),('Post Install read-only schema observer runtime','skipped'),
+        ('Post Install Node 24','skipped'),('Post Check out promoted recovery tool authority','success'),('Complete job','success')]
+    if ([(x.get('name'),x.get('conclusion'))for x in job.get('steps',[])]!=expected
+        or any(x.get('status')!='completed'for x in job['steps'])):return False
+    path=f"actions/runs/{run['id']}/artifacts?per_page=100"
+    if _completion_inventory(api_get(repository,path,token),'artifacts'):return False
+    log=_release_job_log(repository,job['id'],token)
+    if hashlib.sha256(log.encode()).hexdigest()!='9cce9a0d7a9fccb14b0284efc7b6f9c95a1bb8e2c673e21fdd69ddfa2aa32fb7':return False
+    # Full original evidence is still authenticated by the caller; this only discharges this attempt's nonentry.
+    _completion_original_unchanged(repository,run,token)
+    jobs=_completion_inventory(api_get(repository,f"actions/runs/{run['id']}/attempts/1/jobs?per_page=100",token),'jobs')
+    if [x for x in jobs if x.get('name')==FAST_TRACK_RECOVERY_JOB]!=[job]:return False
+    return not _completion_inventory(api_get(repository,path,token),'artifacts')
+
+
 def attested_recovery_terminal_preflight(repository, run, job, attempt, revision, token):
     """Discharge only authenticated no-worker attempts, never prior intent/history."""
     try:
+        if _attested_shared_schema_preflight_failure(repository,run,job,attempt,revision,token):return True
         if (run.get('status')!='completed' or run.get('conclusion')!='failure' or job.get('status')!='completed'
             or job.get('conclusion')!='failure' or job.get('run_id')!=run['id'] or job.get('run_attempt')!=attempt
             or job.get('head_sha')!=run['head_sha'] or job.get('name')!=FAST_TRACK_RECOVERY_JOB):return False
@@ -1654,6 +1703,11 @@ def attested_recovery_terminal_preflight(repository, run, job, attempt, revision
                 ('Sign in to Azure Production','success'), ('Recover exact retained application bytes','failure'),
                 ('Post Sign in to Azure Production','success'), ('Post Install Node 24','skipped'),
                 ('Post Check out promoted recovery tool authority','success'), ('Complete job','success')]
+            if any(step.get('name')=='Install read-only schema observer runtime' for step in owner.get('steps',[])):
+                expected_steps[4:4]=[('Install read-only schema observer runtime','success'),
+                    ('Build read-only retained schema observer without application packages','success')]
+                expected_steps.insert(expected_steps.index(('Post Install Node 24','skipped')),
+                    ('Post Install read-only schema observer runtime','skipped'))
             if ([(step.get('name'),step.get('conclusion')) for step in owner.get('steps',[])] != expected_steps
                 or any(step.get('status') != 'completed' for step in owner['steps'])):
                 return False
@@ -1944,6 +1998,15 @@ def _audited_fast_track_observer_source(repository, run, token):
     source = _release_history_source(repository, run['head_sha'], 'scripts/release-migration.py', token)
     raw = source.encode()
     blob = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+    # Exact completed-resource no-SQL observer generation, including its command owners.
+    if blob == '795d62671a74a19f6ea26d5374d6234a0b86d46e':
+        workflow = _release_history_source(repository, run['head_sha'],
+                                           '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW, token)
+        blocks = _job_blocks(workflow)
+        return all(hashlib.sha256(blocks.get(name, '').encode()).hexdigest() == digest for name, digest in {
+            'commerce-gates': '5dcd32afac471f3401fec56abe10d572c17ff3d7cdcb2f7cc33c9c04475ecb6e',
+            'migrations': 'cc685292085b001897c4e9e38cec816a8c757e70bd7bf7b8f21f76a97140e1c2',
+        }.items())
     # Audited original no-SQL command flow, including main, observation and helpers.
     if blob not in {'6e5fcce433bfbbc83bab2f44067536efbc56c9eb',
                     '0ca98c14d866aee8f2140bd1a1b9efcce1c6c3a1'}:

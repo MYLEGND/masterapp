@@ -7251,7 +7251,7 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         root=Path(__file__).parent
         source=(root/'deploy-approved-app.py').read_text()
         journal=(root/'release-operation-evidence.py').read_text()
-        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'05a2db1772ca0b22446c0a68dea0d1bad85d8a314570ee1f9194a48b155a59b5')
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'6bd4df52d451f803c6a2569402d2d443c3aa04f3383d6b90543ce2687445d618')
         self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'fec49886ac862469b0d71be6e5bc11af15cdfcc62d7318452a4bb59fd514822f')
         self.assertTrue(m._recovery_preflight_source_contract(source,journal))
         for changed in [source+'# unreviewed helper\n',source.replace('reconcile_only=journal.intent is not None','reconcile_only=False')]:
@@ -7414,8 +7414,19 @@ class RecoveryPreflightTerminalConsumerTests(RecoveryPreflightRecordTests):
         source=Path(self.producer.__file__).read_text();journal=Path(self.producer.__file__).with_name('release-operation-evidence.py').read_text()
         for bad in [source.replace('# Versioned terminal receipt boundary','submit_unreviewed_provider_write()\n    # Versioned terminal receipt boundary'),
                     source.replace('    def recover_target(key):','    azure.submit()\n    def recover_target(key):'),
-                    source.replace("stage='all-target-preflight'","stage='unreviewed'"),source+'\nopen("unreviewed", "w")\n']:
+                    source.replace("stage=('shared-schema-preflight' if failed_target is None else 'all-target-preflight')","stage='unreviewed'"),source+'\nopen("unreviewed", "w")\n']:
             self.assertFalse(m._recovery_preflight_source_contract(bad,journal))
+
+    def test_reviewed_schema_observer_steps_and_shared_failure_receipt(self):
+        steps=self.fixture.job['steps']
+        template=dict(steps[0])
+        steps[4:4]=[dict(template,name='Install read-only schema observer runtime',conclusion='success'),dict(template,name='Build read-only retained schema observer without application packages',conclusion='success')]
+        index=next(i for i,x in enumerate(steps)if x['name']=='Post Install Node 24')
+        steps.insert(index,dict(template,name='Post Install read-only schema observer runtime',conclusion='skipped'))
+        self.name,self.record=self.producer.recovery_preflight_nonentry_record(self.proof,None,ValueError('schema unavailable'))
+        self.assertTrue(self.invoke())
+        steps[5]['conclusion']='failure'
+        self.assertFalse(self.invoke())
 
 class RecoveryPackageReuseTests(unittest.TestCase):
     def setUp(self):
@@ -10647,6 +10658,58 @@ class OriginalNoSqlSchemaReuseTests(unittest.TestCase):
     def test_missing_authentication_actual_sql_or_ambiguous_observation_refuse(self):
         for options in (dict(valid=False),dict(sql='success'),dict(duplicate=True)):
             with self.subTest(options=options),self.assertRaises(ValueError):self.invoke(**options)
+
+class SharedSchemaPreflightRecordTests(RecoveryPreflightRecordTests):
+    def test_actual_shared_producer_has_no_fictitious_target_and_no_authority(self):
+        name,record=self.producer.recovery_preflight_nonentry_record(self.proof,None,ValueError('schema observation unavailable'))
+        self.assertEqual(record['stage'],'shared-schema-preflight');self.assertIsNone(record['failedTarget'])
+        self.assertFalse(record['authorizesMutation']);self.assertFalse(record['writePhaseEntered'])
+        self.assertEqual(m.validate_recovery_preflight_nonentry(record),name)
+        for field,value in [('stage','all-target-preflight'),('failedTarget','website'),('reason','runtime-unavailable'),('authorizesMutation',True),('writePhaseEntered',True)]:
+            bad=json.loads(json.dumps(record));bad[field]=value
+            with self.subTest(field=field),self.assertRaises(ValueError):m.validate_recovery_preflight_nonentry(bad)
+        bad=json.loads(json.dumps(record));bad['observation']['runtimeRevision']='a'*40
+        with self.assertRaises(ValueError):m.validate_recovery_preflight_nonentry(bad)
+
+class CompletedResourceObserverSourceTests(unittest.TestCase):
+    def test_actual_current_observer_and_original_job_blocks_are_paired(self):
+        source=(ROOT/'scripts/release-migration.py').read_text()
+        workflow=(ROOT/'.github/workflows/legend-fast-track-ui.yml').read_text()
+        def invoke(s=source,w=workflow):
+            with patch.object(m,'_release_history_source',side_effect=lambda repo,rev,path,token:s if path.endswith('release-migration.py') else w):
+                return m._audited_fast_track_observer_source('MYLEGND/masterapp',{'head_sha':'a'*40},'test')
+        self.assertTrue(invoke())
+        self.assertFalse(invoke(s=source+'\n# changed helper'))
+        for name in ['commerce-gates','migrations']:
+            block=m._job_blocks(workflow)[name]
+            self.assertFalse(invoke(w=workflow.replace(block,block+'\n    # changed command owner\n')))
+
+class ExactSharedSchemaHistoricalFailureTests(unittest.TestCase):
+    def fixture(self):
+        revision='f2841ef8d0871ed69be01484024424eb3f63f121'
+        run=dict(id=41352634254,run_attempt=1,head_sha='b5e940d762480ad8722bd86a76b4391864913dc2',event='workflow_dispatch',status='completed',conclusion='failure',display_title='LEGEND retained recovery original=41336371077 application='+revision)
+        names=['Set up job','Check out promoted recovery tool authority','Install Node 24','Validate original authority and restore retained packages without rebuilding','Install read-only schema observer runtime','Build read-only retained schema observer without application packages','Install canonical durable evidence transport','Prepare canonical durable evidence transport','Sign in to Azure Production','Recover exact retained application bytes','Post Sign in to Azure Production','Post Install read-only schema observer runtime','Post Install Node 24','Post Check out promoted recovery tool authority','Complete job']
+        job=dict(id=124985933054,run_id=run['id'],run_attempt=1,head_sha=run['head_sha'],name=m.FAST_TRACK_RECOVERY_JOB,status='completed',conclusion='failure',steps=[dict(name=n,status='completed',conclusion='failure' if n=='Recover exact retained application bytes' else 'skipped' if n in ['Post Install read-only schema observer runtime','Post Install Node 24'] else 'success')for n in names])
+        return run,job,revision
+    def invoke(self,*,run_change=None,job_change=None,attempt=1,inventory=None,late=False,log_changed=False,source_changed=False,incomplete=False):
+        run,job,revision=self.fixture();run.update(run_change or {});job.update(job_change or {})
+        pins={'scripts/deploy-approved-app.py':'05a2db1772ca0b22446c0a68dea0d1bad85d8a314570ee1f9194a48b155a59b5','scripts/release-operation-evidence.py':'fec49886ac862469b0d71be6e5bc11af15cdfcc62d7318452a4bb59fd514822f','scripts/validation-resume.py':'2076a6e3c229e2ae38a89f33559ee9ea76ae1ba3d67cd90df9bea005ea812b84','scripts/release-artifacts/transport.cjs':'05456cc1478b9f10f5b52f9ab812c73d2c0dc62acbecfa912e0d22499adef910','.github/workflows/legend-fast-track-ui.yml':'c4a64e196d1ed33b90f1574778f02d99c0949907190063543481a7e372f0f10c','exact-log':'9cce9a0d7a9fccb14b0284efc7b6f9c95a1bb8e2c673e21fdd69ddfa2aa32fb7'}
+        reads=[];real=hashlib.sha256
+        def sha(value):
+            key=value.decode();return SimpleNamespace(hexdigest=lambda:pins[key]) if key in pins else real(value)
+        def api(repo,path,token):
+            if '/jobs?' in path:return dict(total_count=1,jobs=[job])
+            reads.append(path);rows=inventory or ([{'id':1}]if late and len(reads)>1 else [])
+            return dict(total_count=len(rows)+(1 if incomplete else 0),artifacts=rows)
+        with patch.object(m,'_release_history_source',side_effect=lambda repo,rev,path,token:'changed' if source_changed else path),patch.object(m.hashlib,'sha256',side_effect=sha),patch.object(m,'_release_job_log',return_value='changed'if log_changed else 'exact-log'),patch.object(m,'_completion_original_unchanged'),patch.object(m,'api_get',side_effect=api):
+            return m.attested_recovery_terminal_preflight('MYLEGND/masterapp',run,job,attempt,revision,'test')
+    def test_exact_terminal_failure_only(self):self.assertTrue(self.invoke())
+    def test_changed_attempt_identity_log_source_or_new_effect_refuses(self):
+        cases=[dict(attempt=2),dict(run_change={'run_attempt':2}),dict(run_change={'status':'in_progress'}),dict(run_change={'conclusion':'success'}),dict(run_change={'head_sha':'a'*40}),dict(job_change={'id':1}),dict(job_change={'steps':[]}),dict(log_changed=True),dict(source_changed=True),dict(inventory=[{'id':1}]),dict(late=True),dict(incomplete=True)]
+        for options in cases:
+            # Prevent fallback consumers from granting unrelated fixture evidence.
+            with self.subTest(options=options),patch.object(m,'_recovery_preflight_source_contract',return_value=False):self.assertFalse(self.invoke(**options))
+
 
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.
