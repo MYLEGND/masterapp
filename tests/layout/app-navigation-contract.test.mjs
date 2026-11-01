@@ -123,11 +123,28 @@ test('controller action discovery unions actual partials independent of file ord
   }
 });
 
+function namedRoutes(sources){
+  return new Set(sources.flatMap(source=>[...source.matchAll(/\[(?:HttpGet|HttpPost|HttpPut|HttpDelete|HttpPatch|Route)\s*\([^\]]*\bName\s*=\s*"([^"]+)"/g)].map(match=>match[1])));
+}
+function hasNamedRoute(attributes,routes){
+  const route=attributes.get('asp-route');
+  return typeof route==='string' && route.trim().length>0 && routes.has(route);
+}
+
+test('named route destinations require an exact declared route, not an action or parameter',()=>{
+  const routes=namedRoutes(['[HttpGet(Name = "FounderDiagnosticsIndex")] public IActionResult Index() {}']);
+  assert.equal(hasNamedRoute(attrs('<a asp-route="FounderDiagnosticsIndex" asp-route-page="2">'),routes),true);
+  for(const anchor of ['<a asp-route="">','<a asp-route=" ">','<a asp-route="Missing">','<a asp-route="Index">','<a asp-route-page="2">'])
+    assert.equal(hasNamedRoute(attrs(anchor),routes),false,anchor);
+  assert.equal(hasNamedRoute(attrs('<a asp-route="FounderDiagnosticsIndex">'),namedRoutes([])),false);
+});
+
 const apps=['AgentPortal','ClientApp'];
 
 test('AgentPortal and ClientApp views contain no placeholder navigation targets',()=>{
   const bad=[];
   for(const app of apps) {
+    const routes=namedRoutes(walk(join(ROOT,app,'Controllers'),'.cs').map(file=>readFileSync(file,'utf8')));
     for(const file of walk(join(ROOT,app,'Views'),'.cshtml')) {
       const src=readFileSync(file,'utf8');
       for(const m of src.matchAll(/<a\b[^>]*>/gi)) {
@@ -141,7 +158,7 @@ test('AgentPortal and ClientApp views contain no placeholder navigation targets'
           continue;
         }
         const jsHook=[...a.keys()].some(k=>k.startsWith('data-'));
-        if(!href && !a.get('asp-controller') && !a.get('asp-action') && !a.get('asp-page') && !a.get('data-bs-toggle') && !a.get('data-bs-dismiss') && !a.get('role') && !jsHook) {
+        if(!href && !hasNamedRoute(a,routes) && !a.get('asp-controller') && !a.get('asp-action') && !a.get('asp-page') && !a.get('data-bs-toggle') && !a.get('data-bs-dismiss') && !a.get('role') && !jsHook) {
           bad.push(file+': anchor has no destination or explicit UI role: '+m[0]);
         }
       }

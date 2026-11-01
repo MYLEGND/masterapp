@@ -1449,6 +1449,15 @@ class TrustedToolPromotionPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'MOBILE_FIXTURE_SCOPE_UNPROVEN'):
             self.invoke(fixture_kw=dict(path=path))
 
+    def test_only_reviewed_navigation_and_crm_validation_blobs_are_admitted(self):
+        pins = {'tests/layout/app-navigation-contract.test.mjs': '57c103161f271a5a00410180a99d4454032a5cef', 'tests/analytics/crm-history-browser.cjs': '4cfbb35f1286552d9c6c8e76a82c68ac0389f46c', 'tests/analytics/crm-history.test.cjs': '95d2f8ec9fb84d61b959581d5eeeb5664920f462'}
+        for path, blob in pins.items():
+            with self.subTest(path=path):
+                proof=self.invoke(fixture_kw=dict(path=path,blob=blob))
+                self.assertFalse(proof['productionEligible']); self.assertFalse(proof['authorizesMutation'])
+                with self.assertRaisesRegex(ValueError,'VALIDATION_FIXTURE_SCOPE_UNPROVEN'):
+                    self.invoke(fixture_kw=dict(path=path))
+
 class FastTrackIdentityObservationTests(unittest.TestCase):
     def setUp(self):
         spec = importlib.util.spec_from_file_location('identity_authority', ROOT / 'validation-resume.py')

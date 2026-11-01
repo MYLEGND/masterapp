@@ -115,6 +115,10 @@ def production_disabled(sha='HEAD'):
 # A promotion is a narrowly bound use of the existing validation-only request.
 # This is a tool boundary, not an alternative application ownership registry.
 TRUSTED_TOOL_PATHS = frozenset({
+    'tests/layout/app-navigation-contract.test.mjs',
+    'tests/analytics/crm-history-browser.cjs',
+    'tests/analytics/crm-history.test.cjs',
+
     'AgentPortal/AgentPortal.csproj',
     'AgentPortal.Tests/AgentPortal.Tests.csproj',
     'scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj',
@@ -358,6 +362,11 @@ def trusted_tool_promotion(before, revision, admission):
     mobile_fixture = 'tests/layout/modal-content-region.test.mjs'
     if mobile_fixture in files and files[mobile_fixture]['blob'] != 'c21b130bda415433686f01ece3111afe52aa217a':
         raise ValueError('TRUSTED_TOOL_PROMOTION_MOBILE_FIXTURE_SCOPE_UNPROVEN')
+    # Exact reviewed validation corrections; arbitrary test changes remain denied.
+    validation_fixtures = {'tests/layout/app-navigation-contract.test.mjs': '57c103161f271a5a00410180a99d4454032a5cef', 'tests/analytics/crm-history-browser.cjs': '4cfbb35f1286552d9c6c8e76a82c68ac0389f46c', 'tests/analytics/crm-history.test.cjs': '95d2f8ec9fb84d61b959581d5eeeb5664920f462'}
+    for path, blob in validation_fixtures.items():
+        if path in files and files[path]['blob'] != blob:
+            raise ValueError('TRUSTED_TOOL_PROMOTION_VALIDATION_FIXTURE_SCOPE_UNPROVEN')
     request_entry = entry(revision, REQUEST)
     if request_entry['mode'] != entry(before, REQUEST)['mode']:
         raise ValueError('TRUSTED_TOOL_PROMOTION_REQUEST_MODE_CHANGED')

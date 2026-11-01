@@ -39,3 +39,25 @@ test('filed record dialog has an accessible heading',()=>{
   const html=fs.readFileSync('AgentPortal/Views/CrmHistory/Index.cshtml','utf8');
   assert.match(html,/<dialog[^>]*aria-labelledby="history-detail-title"/);assert.match(html,/<h2 id="history-detail-title">Filed record<\/h2>/);
 });
+
+test('startup diagnostics classify failures without leaking driver text or identifiers',()=>{
+  const browser=fs.readFileSync('tests/analytics/crm-history-browser.cjs','utf8');
+  const start=browser.indexOf('function startupDiagnostics('),end=browser.indexOf('(async()=>{',start);
+  assert.ok(start>0 && end>start);
+  const context={};vm.runInNewContext(browser.slice(start,end),context);
+  const diagnostic=context.startupDiagnostics;
+  const secret='https://private.invalid/token?secret=private /private/path SESSION_PRIVATE';
+  const value=diagnostic('ChromeDriver started successfully on port 12345 '+secret,{exitCode:null,signalCode:null},8001);
+  assert.equal(value.ready,true);assert.equal(value.elapsedMs,8001);assert.equal(value.exited,false);
+  assert.equal(JSON.stringify(value).includes('private'),false);assert.equal(JSON.stringify(value).includes('12345'),false);
+  for(const [message,key] of [['only supports Chrome version 1','versionMismatch'],['No usable sandbox','sandboxFailure'],['Resource temporarily unavailable','resourceFailure'],["DevToolsActivePort file doesn't exist",'chromeExited'],['session not created','sessionRejected']]){
+    const result=diagnostic(message+secret,{exitCode:1,signalCode:'PRIVATE_SIGNAL'},Infinity);
+    assert.equal(result[key],true);assert.equal(result.exitCode,1);assert.equal(result.signaled,true);
+    assert.equal(result.elapsedMs,null);assert.equal(JSON.stringify(result).includes('PRIVATE'),false);
+  }
+  const unknown=diagnostic(secret,undefined,-1);
+  assert.equal(unknown.ready,false);assert.equal(unknown.versionMismatch,false);assert.equal(unknown.elapsedMs,0);
+  assert.equal(unknown.exitCode,null);assert.equal(unknown.exited,false);
+  assert.ok(browser.includes('AbortSignal.timeout(8000)'));
+  assert.ok(browser.includes('deadline=started+150000'));
+});
