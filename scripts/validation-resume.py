@@ -1457,6 +1457,12 @@ RECOVERY_PREFLIGHT_PRODUCER_SHA256 = '15ba27c53564223cb41502bb5528949e6435f0e6bc
 
 def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
+    # Exact reviewed one-generation forward Protect producer and journal pair.
+    # Historical pairs remain distinct; no helper, mixed-pair or wildcard admission.
+    if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) == (
+        'c933b4dbca67be109816c418567b7094679d3f3fc1078160041fb824c45a5796',
+        '4bd7edacd32764edff0504597e15c59dbd24f547ede3b5c22bba247c0ada8df5'):
+        return True
     # Exact independently reviewed permanent-resource producer; no crossed pairs.
     # Sentinel_2931e88ea42c8191a9013cbaf7b32250, 2026-11-01T02:25:17Z.
     if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) == (

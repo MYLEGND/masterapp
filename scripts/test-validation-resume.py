@@ -7230,8 +7230,8 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         root=Path(__file__).parent
         source=(root/'deploy-approved-app.py').read_text()
         journal=(root/'release-operation-evidence.py').read_text()
-        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'30d14c75cc1681a8d3c1b24c10b3f372eaa34bcc8ef3d50090a78702bef2f5ce')
-        self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'8960dde101f09d6ff3939cf76a7ee0a0787ea961a50a8384e693d5f78bbb7e95')
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'c933b4dbca67be109816c418567b7094679d3f3fc1078160041fb824c45a5796')
+        self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'4bd7edacd32764edff0504597e15c59dbd24f547ede3b5c22bba247c0ada8df5')
         self.assertTrue(m._recovery_preflight_source_contract(source,journal))
         for changed in [source+'# unreviewed helper\n',source.replace('reconcile_only=journal.intent is not None','reconcile_only=False')]:
             self.assertNotEqual(changed,source)
@@ -7257,6 +7257,14 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         closed=('21220b50cf1c6d02e538eb5747c5f5aea46395f2abbfe6b82efbdfb4c585210f','10cb03c9b02afbbb9912ec592757959960c0ea9d139f1280a9dcddfaa4f22351')
         permanent=('30d14c75cc1681a8d3c1b24c10b3f372eaa34bcc8ef3d50090a78702bef2f5ce',
                    '8960dde101f09d6ff3939cf76a7ee0a0787ea961a50a8384e693d5f78bbb7e95')
+        forward=('c933b4dbca67be109816c418567b7094679d3f3fc1078160041fb824c45a5796',
+                 '4bd7edacd32764edff0504597e15c59dbd24f547ede3b5c22bba247c0ada8df5')
+        for source,journal,accepted in [(forward[0],forward[1],True),
+                (forward[0],permanent[1],False),(permanent[0],forward[1],False),
+                (forward[0],'f'*64,False),('f'*64,forward[1],False)]:
+            values={b'source':source,b'journal':journal}
+            with self.subTest(source=source,journal=journal),patch.object(m.hashlib,'sha256',side_effect=lambda value:SimpleNamespace(hexdigest=lambda:values[value])):
+                self.assertEqual(m._recovery_preflight_source_contract('source','journal'),accepted)
         for source,journal,accepted in [(permanent[0],permanent[1],True),
                 (permanent[0],closed[1],False),(closed[0],permanent[1],False),
                 (permanent[0],'f'*64,False),('f'*64,permanent[1],False)]:
