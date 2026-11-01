@@ -2,7 +2,7 @@
   "requestedBy": "Founder",
   "authorization": "Founder requested the underlying cause correction and direct nonredundant retained resume. This request only promotes reviewed recovery tools; no application or provider mutation is authorized by this promotion.",
   "purpose": "Publish pending reviewed website, Studio, diagnostics, analytics and training dependency repairs across their four actual affected application owners. Historical requests and completed resource references remain unchanged. Old Protect68ef remains UNKNOWN; only the exact one-generation forward replacement consent may pass source selection, and actual immutable merge package binding plus durable intent remain mandatory before upload. No schema or routing change.",
-  "requestId": "website-diagnostics-candidate17-validation-promotion-20261101",
+  "requestId": "website-diagnostics-candidate18-validation-promotion-20261101",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -78,44 +78,28 @@
   },
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "49bd950bf5727866a4ccb1c79140e7193ad0c3a8",
-    "sourceRevision": "cf1bcc023263b7e904982556cbdb157513d08ab5",
+    "baseRevision": "b5e940d762480ad8722bd86a76b4391864913dc2",
+    "sourceRevision": "c7280aca096fe7257cab69245cf713911ef7fac8",
     "files": {
-      ".github/workflows/legend-fast-track-ui.yml": {
+      "scripts/deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "44b4f49fd93255a41f628023bc04cb2025816aeb"
+        "blob": "4044810a0fd0529a5f4d2d834434b8557a2ce868"
       },
-      "scripts/test-fast-track-release.py": {
+      "scripts/release-artifacts/test-transport.cjs": {
         "mode": "100644",
-        "blob": "0d037fff097e16db468b74873c04724afd8b2361"
+        "blob": "313d37f6900202eb0efa7eedf2f2c5aa21672f5b"
+      },
+      "scripts/release-artifacts/transport.cjs": {
+        "mode": "100644",
+        "blob": "0fcb70eec2ef92618fc4d5bd336082ea0fa83a45"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "e75832d9b8bb426fb7edabfd0514038afe14f35b"
+        "blob": "475fb582e655b5c7c61ad7126b46868b70ac0868"
       },
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "5d24c4206ebeb5016c4e93d72a8a7c451f9f0987"
-      },
-      "tests/layout/app-navigation-contract.test.mjs": {
-        "mode": "100644",
-        "blob": "57c103161f271a5a00410180a99d4454032a5cef"
-      },
-      "tests/analytics/crm-history-browser.cjs": {
-        "mode": "100644",
-        "blob": "4cfbb35f1286552d9c6c8e76a82c68ac0389f46c"
-      },
-      "tests/analytics/crm-history.test.cjs": {
-        "mode": "100644",
-        "blob": "95d2f8ec9fb84d61b959581d5eeeb5664920f462"
-      },
-      "scripts/release_policy.py": {
-        "mode": "100644",
-        "blob": "d2b5f4c811b2b61a79d03cf5af65b713de7f95dd"
-      },
-      "scripts/test-release-policy.py": {
-        "mode": "100644",
-        "blob": "6635d511dd726d860fe76b518cb880f5c15f7160"
+        "blob": "9947b30026017fb8d2ab7dbf8e7097bc68ec25e9"
       }
     }
   }
