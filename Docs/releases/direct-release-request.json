@@ -2,7 +2,7 @@
   "requestedBy": "Founder",
   "authorization": "Zac approved the permanent per-resource completed-receipt admission policy in Sentinel_84879ea6a8548191abb3fae9d62d1af2, and the exact independently reviewed paired-source/workflow/historical compatibility trust entries in Sentinel_2931e88ea42c8191a9013cbaf7b32250 at 2026-11-01T02:25:17Z. Preserve all production, current-operation, schema, rollback and live-verification controls.",
   "purpose": "Promote the reviewed permanent completed-resource baseline tooling only. Preserve all four accepted app deployments; no app rebuild, SQL replay, routing publication or inferred Website/Founder acceptance.",
-  "requestId": "permanent-completed-resource-standard-20261101-v1",
+  "requestId": "permanent-completed-resource-standard-20261101-v2",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -60,7 +60,7 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "fd4e2e49b98456604ef2602b8409069b73bab492",
-    "sourceRevision": "def456a11b6af691e3a061b9a4bce3a99fd091f5",
+    "sourceRevision": "f3f769ae1517a782e8efa6c86e1b18720350ca80",
     "files": {
       ".github/workflows/legend-fast-track-ui.yml": {
         "mode": "100644",
@@ -88,7 +88,7 @@
       },
       "scripts/release_policy.py": {
         "mode": "100644",
-        "blob": "f8bac2b88d9027dae57dbf6f18b6798b309e4684"
+        "blob": "933188899080dc0141afb7f87c100a11c388f48f"
       },
       "scripts/test-deploy-approved-app.py": {
         "mode": "100644",
@@ -108,11 +108,15 @@
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "dff6616eb66d480d9009231a3047234536c64810"
+        "blob": "f8cabcf68ab63e5f4a700bf77495abb3f5881308"
       },
       "scripts/validation-resume.py": {
         "mode": "100644",
         "blob": "f042e75bd29fbe4710d2092dd769a6e46e902422"
+      },
+      "scripts/test-fast-track-ready-no-sql.py": {
+        "mode": "100644",
+        "blob": "989be1ebeb00ca93d1e3ae4dd66dcec4d4f5da83"
       }
     }
   }
