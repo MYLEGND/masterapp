@@ -137,6 +137,7 @@ TRUSTED_TOOL_PATHS = frozenset({
     'scripts/test-validation-resume.py', 'scripts/test-release-policy.py',
     'scripts/test-release-lifecycle.py', 'scripts/test-fast-track-release.py',
     'scripts/test-release-children.py',
+    'scripts/test-fast-track-ready-no-sql.py',
     'scripts/test-parfait-readonly-workflow.py', 'scripts/test-migration-probe-package.py',
     'scripts/release-migration.py', 'scripts/test-release-migration-probe-retry.py',
     'scripts/MigrationReleaseProbe/Program.cs',

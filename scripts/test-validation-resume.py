@@ -9266,6 +9266,8 @@ class FastTrackCompleteRunJobsTests(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             stack.enter_context(patch.dict(os.environ, dict(GITHUB_REPOSITORY='owner/repo', GH_TOKEN='fixture',
                 GITHUB_RUN_ATTEMPT='1', APPLICATION_RELEASE_SHA='a' * 40)))
+            # This fixture exercises the legacy audit; never inherit the CI candidate's forward contract.
+            stack.enter_context(patch.object(m, 'completed_resource_execution', return_value=None))
             stack.enter_context(patch.object(m, 'evidence_lookup_budget', side_effect=budget))
             stack.enter_context(patch.object(production, 'release_authority', return_value=m))
             stack.enter_context(patch.object(production, 'history_audit', return_value=audit))
