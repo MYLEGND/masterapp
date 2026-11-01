@@ -1,15 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized the reviewed website/Studio/diagnostics repairs and one bounded forward Protect replacement under protect-forward-68ef-20261101-v1, accepting possible late completion and overwrite by the exact old68ef operation. This is not old-operation terminal proof or a general writer waiver. Preserve exact-head independent review and CI, source, package, current-operation, database, rollback and Production protections.",
+  "authorization": "Founder requested the underlying cause correction and direct nonredundant retained resume. This request only promotes reviewed recovery tools; no application or provider mutation is authorized by this promotion.",
   "purpose": "Publish pending reviewed website, Studio, diagnostics, analytics and training dependency repairs across their four actual affected application owners. Historical requests and completed resource references remain unchanged. Old Protect68ef remains UNKNOWN; only the exact one-generation forward replacement consent may pass source selection, and actual immutable merge package binding plus durable intent remain mandatory before upload. No schema or routing change.",
-  "requestId": "website-studio-diagnostics-four-apps-protect-forward-20261101",
-  "releaseMode": "approved-only",
-  "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect",
-    "masterapp-parfait"
-  ],
+  "requestId": "retained-f284-metadata-and-journal-tools-20261101-v1",
+  "releaseMode": "validate-only",
+  "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "perResourceBaselines": {
@@ -80,5 +75,44 @@
     "rollbackArtifactId": 13016709993,
     "rollbackArtifactDigest": "sha256:171f0b608107fb23f33ce5cb572ded74303018e120ca088e93341dad18aeb3d0",
     "rollbackPackageDigest": "3e8ba8b6073bec9e3a64204c0e0b745e8dcf894c28be05900b158bdc2e28431c"
+  },
+  "trustedToolPromotion": {
+    "schemaVersion": 1,
+    "baseRevision": "f2841ef8d0871ed69be01484024424eb3f63f121",
+    "sourceRevision": "e7c00969c61a6b0545bff61edd1f6daaf986ad85",
+    "files": {
+      "scripts/deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "3a6bf1f87f21b0b5bbc156576864cba73ad71926"
+      },
+      "scripts/release-artifacts/test-transport.cjs": {
+        "mode": "100644",
+        "blob": "212aa6eb1a318ae21adfa9938cce21c5390a0128"
+      },
+      "scripts/release-artifacts/transport.cjs": {
+        "mode": "100644",
+        "blob": "9e43a0ac74a69761ac67b418502e81fee9be7416"
+      },
+      "scripts/release-operation-evidence.py": {
+        "mode": "100644",
+        "blob": "53f334d3acfe7f17da7ec64f6466a334880f70cd"
+      },
+      "scripts/test-deploy-approved-app.py": {
+        "mode": "100644",
+        "blob": "289271bdde1d0dfe09558765fb5ea3d2c056ccac"
+      },
+      "scripts/test-release-operation-evidence.py": {
+        "mode": "100644",
+        "blob": "4f35790e7ca913fc0c6c6e32aae97d2b14a6b5f4"
+      },
+      "scripts/test-validation-resume.py": {
+        "mode": "100644",
+        "blob": "6e2e84975223d3910dd0de87888432c7b2c89aa3"
+      },
+      "scripts/validation-resume.py": {
+        "mode": "100644",
+        "blob": "86fdcc1f0c506a9e1719d17c277ce44a535f8687"
+      }
+    }
   }
 }
