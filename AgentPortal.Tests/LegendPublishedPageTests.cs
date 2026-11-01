@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Data.Common;
 using System.Linq;
 using System.Threading;
 using System.Text.Json;
@@ -15,6 +16,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -25,10 +27,29 @@ namespace AgentPortal.Tests;
 
 public sealed class LegendPublishedPageTests
 {
+    private sealed class PublicationWriteInterceptor : DbCommandInterceptor
+    {
+        public Action? BeforeWrite { get; set; }
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.StartsWith("UPDATE", StringComparison.OrdinalIgnoreCase) &&
+                command.CommandText.Contains("CompiledPagesJson", StringComparison.Ordinal))
+            {
+                var action = BeforeWrite;
+                BeforeWrite = null;
+                action?.Invoke();
+            }
+            return base.NonQueryExecutingAsync(command, eventData, result, cancellationToken);
+        }
+    }
+
     private sealed class Fixture : IDisposable
     {
         private readonly SqliteConnection connection = new("Data Source=:memory:");
         public MasterAppDbContext Db { get; }
+        public PublicationWriteInterceptor Writes { get; } = new();
         private readonly WebsiteEditorTicketProtector tickets = new(new EphemeralDataProtectionProvider());
         private readonly ServiceProvider services;
         public WebsitePlatformController Controller { get; }
@@ -37,7 +58,7 @@ public sealed class LegendPublishedPageTests
         public Fixture(bool compilerAvailable = true)
         {
             connection.Open();
-            Db = new(new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).Options);
+            Db = new(new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).AddInterceptors(Writes).Options);
             Db.Database.EnsureCreated();
             var compilerRoot = System.IO.Path.GetFullPath(System.IO.Path.Combine(SourceDirectory(), "..", "Legend-Website"));
             var config = new ConfigurationBuilder().AddInMemoryCollection(new System.Collections.Generic.Dictionary<string, string?>
@@ -106,6 +127,93 @@ public sealed class LegendPublishedPageTests
         Assert.Contains("Second publication", second.Content);
         Assert.Equal(f.State.PublishedVersionId.ToString(), f.Controller.Response.Headers["X-Legend-Publication-Id"].ToString());
         Assert.DoesNotContain("First publication", second.Content);
+    }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("   ", false)]
+    [InlineData("\t\r\n", false)]
+    [InlineData("\u2003", false)]
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData("   ", true)]
+    [InlineData("\t\r\n", true)]
+    [InlineData("\u2003", true)]
+    public async Task BlankCompiledPublicationIsMaterializedOnceWithoutChangingAuthoredContent(string? blank, bool protect)
+    {
+        using var f = new Fixture();
+        if (protect)
+        {
+            var profile = new AgentTrackingProfile { AgentUserId = "blank-slot-owner", AgentUpn = "blank-slot@example.test", Slug = "blank-slot" };
+            f.Db.Add(profile);
+            f.State.OwnerKey = profile.AgentUserId;
+            f.State.SiteKey = WebsiteEditorSiteKeys.Protect;
+            f.Controller.HttpContext.Items["TrackingProfile"] = profile;
+            f.Controller.ModelState.AddModelError("synthetic", "Preserved native validation");
+        }
+        await f.Publish("Published blank-slot fixture");
+        async Task<string?> ReadPage()
+        {
+            if (!protect) return Assert.IsType<ContentResult>(await f.Controller.LegendPage()).Content;
+            var page = await f.Controller.ResolveProtectPageAsync("/", CancellationToken.None);
+            Assert.NotNull(page);
+            Assert.False(f.Controller.ModelState.IsValid);
+            return page.Main;
+        }
+        var id = f.State.PublishedVersionId!.Value;
+        await f.Db.Set<WebsiteContentVersion>().Where(value => value.Id == id)
+            .ExecuteUpdateAsync(update => update.SetProperty(value => value.CompiledPagesJson, blank));
+        var before = await f.Db.Set<WebsiteContentVersion>().AsNoTracking().SingleAsync(value => value.Id == id);
+
+        Assert.Contains("Published blank-slot fixture", await ReadPage());
+        var after = await f.Db.Set<WebsiteContentVersion>().AsNoTracking().SingleAsync(value => value.Id == id);
+        Assert.False(string.IsNullOrWhiteSpace(after.CompiledPagesJson));
+        Assert.Equal(before.DocumentJson, after.DocumentJson);
+        Assert.Equal(before.Revision, after.Revision);
+        Assert.Equal(id, f.State.PublishedVersionId);
+
+        // A fresh service cannot compile: the second request must use the persisted
+        // immutable pages, not the first compiler instance's in-memory cache.
+        using var unavailable = new ServiceCollection().AddSingleton(new WebsitePageCompiler(
+            Mock.Of<IWebHostEnvironment>(value => value.ContentRootPath == "/missing-fixture-compiler"),
+            new ConfigurationBuilder().Build())).BuildServiceProvider();
+        f.Controller.HttpContext.RequestServices = unavailable;
+        Assert.Contains("Published blank-slot fixture", await ReadPage());
+        Assert.Equal(after.CompiledPagesJson, await f.Db.Set<WebsiteContentVersion>().AsNoTracking()
+            .Where(value => value.Id == id).Select(value => value.CompiledPagesJson).SingleAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MaterializationDoesNotReplaceConcurrentOutputOrRetiredSnapshot(bool retire)
+    {
+        using var f = new Fixture();
+        await f.Publish("Conditional materialization");
+        var id = f.State.PublishedVersionId!.Value;
+        await f.Db.Set<WebsiteContentVersion>().Where(value => value.Id == id)
+            .ExecuteUpdateAsync(update => update.SetProperty(value => value.CompiledPagesJson, " "));
+        var before = await f.Db.Set<WebsiteContentVersion>().AsNoTracking().SingleAsync(value => value.Id == id);
+        var invoked = false;
+        f.Writes.BeforeWrite = () =>
+        {
+            invoked = true;
+            if (retire)
+                f.Db.Set<WebsiteContentVersion>().Where(value => value.Id == id)
+                    .ExecuteUpdate(update => update.SetProperty(value => value.SnapshotRetiredUtc, DateTime.UtcNow));
+            else
+                f.Db.Set<WebsiteContentVersion>().Where(value => value.Id == id)
+                    .ExecuteUpdate(update => update.SetProperty(value => value.CompiledPagesJson, "concurrent nonblank output"));
+        };
+        Assert.IsType<ContentResult>(await f.Controller.LegendPage());
+        Assert.True(invoked);
+        var after = await f.Db.Set<WebsiteContentVersion>().AsNoTracking().SingleAsync(value => value.Id == id);
+        Assert.Equal(retire ? " " : "concurrent nonblank output", after.CompiledPagesJson);
+        Assert.Equal(retire, after.SnapshotRetiredUtc.HasValue);
+        Assert.Equal(before.DocumentJson, after.DocumentJson);
+        Assert.Equal(before.Revision, after.Revision);
+        Assert.Equal(id, f.State.PublishedVersionId);
     }
 
     [Fact]
