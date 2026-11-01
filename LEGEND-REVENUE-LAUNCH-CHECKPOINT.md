@@ -1870,3 +1870,25 @@ intentional503 with no SQLite exception because no local publication exists;
 canonical CSS returns200. This fixes schema initialization, not authored-content
 parity or full business-journey acceptance. No production content was copied and
 no missing-publication gate was bypassed. Production remains untouched.
+
+## 2026-11-01 — Leads CRM Quick View canonical cleanup
+
+Local base ce4ee617bb566b56ca9a574ea9468a32e028262a preserved. Continuing the
+Founder-authorized local-only repair scope; canonical preflight still reports
+missing remote for this local branch, with no passing remote gate claimed.
+Quick View failed before opening because the shared history migration removed
+noteSyncLeadField but left two calls in openDrawerForRow. Removed those obsolete
+calls; canonical /CrmHistory navigation and active selection remain unchanged.
+The same migration initialized historyReminderItems after initial rendering;
+moved its single declaration before that render in Leads and Clients. No stub,
+error suppression, alternate history owner, or delayed-render workaround added.
+
+Eleven focused CRM Node tests passed. New regressions execute the actual drawer
+function through shell and asynchronous detail hydration, preserve failure
+reporting and active identity, and exercise reminder initialization order for
+both pages. Original source reproduced undefined-helper failure and startup TDZ.
+Both scripts pass syntax checks. Authenticated localhost /Leads test-record
+Quick View now opens (aria-hidden=false) and reaches Loaded. No record editing,
+production deployment, database migration, or push performed. Browser diagnostics
+correlate the running server assembly to635d55; the local static JavaScript repair
+was loaded by page refresh without claiming a server redeployment.
