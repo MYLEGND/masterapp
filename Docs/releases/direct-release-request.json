@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Zac authorized personally diagnosing, surgically repairing, testing and deploying timeout/error fixes in Sentinel_6aa93f2132908191a59300a684120fdc at2026-11-01T05:33:11Z. Preserve exact-head CI, independent review, current-operation, package, database, rollback and Production protections; no queue376 or Protect68ef waiver.",
-  "purpose": "Publish the reviewed pending website, Studio, diagnostics, analytics and training dependency repairs across their four actual affected application owners. Historical release requests and completed resource references remain unchanged; failed selectors require complete authenticated nonentry evidence. No schema or routing change, no Protect unresolved-operation waiver.",
-  "requestId": "website-studio-diagnostics-four-apps-20261101",
+  "authorization": "Founder authorized the reviewed website/Studio/diagnostics repairs and one bounded forward Protect replacement under protect-forward-68ef-20261101-v1, accepting possible late completion and overwrite by the exact old68ef operation. This is not old-operation terminal proof or a general writer waiver. Preserve exact-head independent review and CI, source, package, current-operation, database, rollback and Production protections.",
+  "purpose": "Publish pending reviewed website, Studio, diagnostics, analytics and training dependency repairs across their four actual affected application owners. Historical requests and completed resource references remain unchanged. Old Protect68ef remains UNKNOWN; only the exact one-generation forward replacement consent may pass source selection, and actual immutable merge package binding plus durable intent remain mandatory before upload. No schema or routing change.",
+  "requestId": "website-studio-diagnostics-four-apps-protect-forward-20261101",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
@@ -61,5 +61,24 @@
       "routing": null,
       "founder": null
     }
+  },
+  "protectSupersession": {
+    "authorizationId": "protect-forward-68ef-20261101-v1",
+    "authorizedBy": "Founder",
+    "target": "protect",
+    "originalRun": 40946628155,
+    "originalOperationId": "68ef98f88a78383b645d7d1f48e75a4d2c7c0e7766746d55e2e81e5adb3eff7e",
+    "originalRevision": "c8fde29a67fbb500bbd7577c17298703d04e825c",
+    "originalPackageDigest": "726c3bfd496979dee7ad0c7b079025dc9d9ee51b4ec52b5edc677a986d3b61d2",
+    "expectedReleaseParent": "da49e867994cdd2c8775585c60bc280caa01cd8d",
+    "reviewedApplicationAnchor": "a41dae15f40ff2fd6a980126ebb167a02cd4c79c",
+    "historicalOutcome": "UNKNOWN",
+    "authorizeOneReplacement": true,
+    "acceptLateCompletionRisk": true,
+    "baselineRevision": "3243221ae661b53d60f78cc2dab108a93bad7632",
+    "rollbackRun": 41131223973,
+    "rollbackArtifactId": 13016709993,
+    "rollbackArtifactDigest": "sha256:171f0b608107fb23f33ce5cb572ded74303018e120ca088e93341dad18aeb3d0",
+    "rollbackPackageDigest": "3e8ba8b6073bec9e3a64204c0e0b745e8dcf894c28be05900b158bdc2e28431c"
   }
 }

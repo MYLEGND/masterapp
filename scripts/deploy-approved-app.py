@@ -1383,7 +1383,7 @@ def prepare_protect_replacement(revision, baseline, azure):
     proof = _RELEASE_AUTHORITY.fast_track_protect_supersession(revision)
     if proof is None:
         return None
-    if baseline != proof['originalRevision']:
+    if baseline != proof.get('baselineRevision',proof['originalRevision']):
         raise DeploymentDrift('FAST_TRACK_SUPERSESSION_LIVE_BASELINE_CHANGED')
     # This is a fresh no-active observation, not proof about the old missing reply.
     rows = read_deployments_bounded(azure, phase='authorized replacement preflight')
@@ -1393,9 +1393,11 @@ def prepare_protect_replacement(revision, baseline, azure):
     with tempfile.TemporaryDirectory(prefix='protect-retained-rollback-') as directory:
         root = Path(directory)
         _RELEASE_AUTHORITY._download_run_artifact(os.environ['GITHUB_REPOSITORY'],
-            proof['originalRun'], 'fast-track-package-' + baseline + '-protect', root,
+            proof.get('rollbackRun',proof['originalRun']), 'fast-track-package-' + baseline + '-protect', root,
             artifact_id=proof['rollbackArtifactId'], expected_digest=proof['rollbackArtifactDigest'])
         rollback_digest = verify_package(root / 'deploy.zip', baseline, False)
+        if 'rollbackPackageDigest' in proof and rollback_digest!=proof['rollbackPackageDigest']:
+            raise DeploymentDrift('FORWARD_PROTECT_ROLLBACK_BYTES_CHANGED')
     print('FAST_TRACK_SUPERSESSION_ROLLBACK_VERIFIED:' + rollback_digest)
     provider = azure
     while isinstance(provider, RecoveryDeadlineAzure):
@@ -1513,9 +1515,7 @@ def fast_track_deploy(key, package_root):
         accepted_provider = [row for row in provider_rows if row['id'] == proof['record']['deploymentIds'][0]]
         if len(accepted_provider) != 1 or accepted_provider[0].get('status') != 4 or accepted_provider[0].get('complete') is not True:
             raise DeploymentReconciliationRequired('RESOURCE_BASELINE_PROVIDER_SUCCESS_MISSING')
-        expected_ids=sorted(set(proof['record']['baselineDeploymentIds']+proof['record']['deploymentIds']))
-        if initial['deploymentIds']!=expected_ids:
-            raise DeploymentReconciliationRequired('RESOURCE_BASELINE_UNRECONCILED_PROVIDER_EFFECT')
+        completed_resource_provider_inventory(key,provider_rows,initial,proof,supersession)
         rollback = prepare_completed_resource_rollback(key,initial,package_root)
         if rollback['packageDigest'] != proof['record']['packageDigest']:
             raise DeploymentReconciliationRequired('RESOURCE_BASELINE_ROLLBACK_BYTES_CHANGED')
@@ -1732,6 +1732,41 @@ def recovery_target_preintent_record(proof, target, failure):
     identity={key:record[key] for key in ('applicationRevision','originalRun','producingRun','producingAttempt','failedTarget')}
     name='legend-retained-target-preintent-'+hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     return name,record
+
+
+def completed_resource_provider_inventory(key, rows, state, proof, disposition):
+    """Classify one missing historical metadata row, never a missing writer.
+
+    Kudu history is removable/retained metadata. The authenticated 324 receipt
+    remains immutable; the NEW intent records only freshly observed baseline IDs.
+    The existing closing check must match this complete normalized state exactly.
+    """
+    expected=sorted(set(proof['record']['baselineDeploymentIds']+proof['record']['deploymentIds']))
+    scoped=(key=='protect' and isinstance(disposition,dict) and
+        disposition.get('authorizationId')=='protect-forward-68ef-20261101-v1')
+    if not scoped:
+        if state['deploymentIds']!=expected:
+            raise DeploymentReconciliationRequired('RESOURCE_BASELINE_UNRECONCILED_PROVIDER_EFFECT')
+        return
+    current='6e39068a9bb448b58fc0d329a8aa0dd2'
+    reference=proof['reference'];record=proof['record']
+    if (reference.get('sourceRevision')!='3243221ae661b53d60f78cc2dab108a93bad7632'
+        or reference.get('runId')!=41240193444 or reference.get('runAttempt')!=1
+        or reference.get('artifactId')!=13057606696
+        or reference.get('artifactDigest')!='sha256:f9856400f0db7b724940d3f7fdb567cbb1c5055a21df0471d486411a17f92dba'
+        or record.get('deploymentIds')!=[current]
+        or record.get('packageDigest')!='3e8ba8b6073bec9e3a64204c0e0b745e8dcf894c28be05900b158bdc2e28431c'
+        or state.get('revision')!=reference['sourceRevision']
+        or recovery_current_provider_state(rows,state['revision'])!=state
+        or any(type(row.get('active')) is not bool or row['active']!=(row['id']==current) for row in rows)
+        or not any(row['id']==current and row['status']==4 and row['complete'] is True for row in rows)):
+        raise DeploymentReconciliationRequired('RESOURCE_BASELINE_PROVIDER_CURRENTNESS_UNPROVEN')
+    missing=set(expected)-set(state['deploymentIds'])
+    unexpected=set(state['deploymentIds'])-set(expected)
+    historical='4ab02b0ea3394ab1b4b9d672184b819c'
+    if (unexpected or (missing and (missing!={historical}
+        or historical not in record['baselineDeploymentIds']))):
+        raise DeploymentReconciliationRequired('RESOURCE_BASELINE_UNRECONCILED_PROVIDER_EFFECT')
 
 
 def recovery_current_provider_state(rows, observed):

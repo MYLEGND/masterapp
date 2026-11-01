@@ -10477,6 +10477,69 @@ class CompletedResourceBaselineTests(unittest.TestCase):
 
 
 
+class ForwardProtectDispositionTests(unittest.TestCase):
+    def request(self):
+        return dict(requestedBy='Founder',releaseMode='approved-only',cloudflareWebsiteRouting=False,
+            preserveLiveTargets=False,targets=['masterapp-portal','masterapp-client','masterapp-protect','masterapp-parfait'],
+            protectSupersession=dict(m.PROTECT_FORWARD_68EF))
+    def source(self, request=None, parent=None, paths=(), ancestry=0):
+        head='f'*40
+        with patch.object(m.subprocess,'check_output',return_value=head+' '+(parent or m.PROTECT_FORWARD_68EF['expectedReleaseParent'])+' '+'e'*40), \
+             patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=ancestry)), \
+             patch.object(m,'git_changed',return_value=paths), \
+             patch.object(m,'completed_resource_contract',return_value=m._fast_track_policy().initial_completed_resource_baselines()):
+            return m.fast_track_protect_supersession(head,request=request or self.request())
+    def test_exact_generation_admits_source_without_inventing_material(self):
+        proof=self.source(paths=['scripts/validation-resume.py'])
+        self.assertEqual('UNKNOWN',proof['historicalOutcome']);self.assertEqual('f'*40,proof['candidateRevision'])
+        self.assertNotIn('material',proof)
+    def test_changed_generation_scope_consent_and_application_refuse(self):
+        for key,value in [('originalOperationId','a'*64),('acceptLateCompletionRisk',False),('acceptLateCompletionRisk',1),('rollbackPackageDigest','a'*64)]:
+            r=self.request();r['protectSupersession'][key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):self.source(request=r)
+        r=self.request();r['targets']=['masterapp-protect']
+        with self.assertRaises(ValueError):self.source(request=r)
+        for changes in ({'parent':'a'*40},{'ancestry':1},{'paths':['Protect-Website/Controllers/QuoteController.cs']}):
+            with self.subTest(changes=changes),self.assertRaises(ValueError):self.source(**changes)
+    def test_selection_requires_scoped_consent_and_keeps_currentness(self):
+        contract=m._fast_track_policy().initial_completed_resource_baselines()
+        scope=dict(matrix={'include':[dict(key='protect',azure_app='masterapp-protect')]},routing=False,commerce=False,schema=False)
+        with patch.object(m,'completed_resource_contract',return_value=contract),patch.object(m,'completed_resource_scope',return_value=scope), \
+             patch.object(m,'completed_resource_receipt',return_value={}),patch.object(m,'completed_resource_currentness') as current:
+            for proof in (None,{'authorizationId':'other'}):
+                with patch.object(m,'fast_track_protect_supersession',return_value=proof),self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'PROTECT_68EF'):
+                    m.completed_resource_selection('a'*40,'f'*40,repository='MYLEGND/masterapp',token='placeholder')
+            with patch.object(m,'fast_track_protect_supersession',return_value=dict(m.PROTECT_FORWARD_68EF)):
+                result=m.completed_resource_selection('a'*40,'f'*40,repository='MYLEGND/masterapp',token='placeholder')
+                self.assertEqual(scope['matrix'],result['matrix']);self.assertTrue(current.called)
+                current.side_effect=m.ReleaseOperationHistoryUnproven('OTHER_WRITER')
+                with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'OTHER_WRITER'):
+                    m.completed_resource_selection('a'*40,'f'*40,repository='MYLEGND/masterapp',token='placeholder')
+
+    def material(self, *, embedded=None, digest=None, expired=False, wrong_head=False, drift=False, missing=False, duplicate=False, attempt=1, first_write=False):
+        import zipfile,contextlib
+        revision='f'*40
+        with tempfile.TemporaryDirectory() as directory:
+            package=Path(directory)/'deploy.zip'
+            with zipfile.ZipFile(package,'w') as z:z.writestr('wwwroot/_deployment-provenance.json',json.dumps({'releaseSha':embedded or revision}))
+            data=package.read_bytes();sha=hashlib.sha256(data).hexdigest()
+            run=dict(id=42,head_sha='a'*40 if wrong_head else revision,run_attempt=attempt,status='in_progress')
+            artifact=dict(id=99,name='fast-track-package-'+revision+'-protect',expired=expired,digest='sha256:'+'b'*64,workflow_run=dict(id=42,head_sha=revision))
+            reads=[run,dict(total_count=2 if duplicate else 1,workflow_runs=[run,dict(run,id=43)] if duplicate else [run]),dict(total_count=0 if missing else 1,artifacts=[] if missing else [artifact]),dict(run,run_attempt=2) if drift else run]
+            def download(repo,run,name,root,**kwargs):
+                self.assertEqual('sha256:'+'b'*64,kwargs['expected_digest']);(root/'deploy.zip').write_bytes(data)
+            with patch.object(m,'fast_track_protect_supersession',return_value=dict(m.PROTECT_FORWARD_68EF,candidateRevision=revision)), \
+                 patch.object(m,'_api_get_uncached',side_effect=reads),patch.object(m,'is_fast_track_producer',return_value=True), \
+                 patch.object(m,'_download_run_artifact',side_effect=download):
+                return m.forward_protect_material('MYLEGND/masterapp',revision,digest or sha,42,'placeholder',first_write=first_write)
+    def test_actual_retained_bytes_seal_final_merge_and_operation(self):
+        value=self.material();self.assertEqual(99,value['packageArtifactId']);self.assertEqual('f'*40,value['applicationRevision'])
+        self.assertEqual(m.retained_operation_id('protect','f'*40,value['packageDigest']),value['operationId'])
+    def test_unknown_changed_or_incomplete_material_refuses(self):
+        for changes in ({'embedded':'a'*40},{'digest':'a'*64},{'expired':True},{'wrong_head':True},{'drift':True},{'missing':True},{'duplicate':True},{'attempt':2,'first_write':True},{'attempt':True}):
+            with self.subTest(changes=changes),self.assertRaises(ValueError):self.material(**changes)
+
+
 if __name__ == "__main__":
     # Individual hosted scenarios explicitly opt in and mock their providers.
     # Synthetic planner revisions must never query the real CI repository.
