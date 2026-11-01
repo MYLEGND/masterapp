@@ -1845,3 +1845,28 @@ f370b3a6cd39bac15c12183e1f7a682fd9276650b938e68aa0ddaf3e3ce79219.
 Verification processes were stopped to leave ports free for the Founder. No
 production deployment, migration, charge, email or cutover was performed. Local
 repair branch still has no remote counterpart; no remote preservation is claimed.
+
+## 2026-11-01 — Local SQLite missing model tables
+
+Founder explicitly authorized local-only continuation despite the unpublished
+repair branch preflight stop and advanced remote fast-track. Base e519ed515534d854d48bd6a9b8cf361ca7127c0e preserved; no push/deployment authorized.
+The existing SQLite bootstrapper now derives physically absent tables and their
+indexes from the EF design-time relational model, using SQLite-generated DDL in
+one transaction after legacy repairs and before existing history stamping. No
+existing table replacement, copied schema, new migration stamp, or SQL Server
+behavior change. EnsureCreated alone had skipped publication tables in the old
+nonempty local database.
+
+Actual test-project compilation passed; nine focused tests passed, including
+canonical schema/index equality, row/history preservation, repeat startup,
+transaction rollback on index collision, SQL Server no-op and existing billing
+schema regressions. Test execution required the normal local test-runner socket.
+Persistent SQLite backup and fingerprints:
+/Users/zacowen/LEGEND-Recovery/sqlite-protect-20261101T144344/.
+Protect normal Development startup reconciled 117 missing model tables. All91
+original table row fingerprints, including migration history, remained identical;
+SQLite integrity passed and foreign-key violations were zero. Home now returns
+intentional503 with no SQLite exception because no local publication exists;
+canonical CSS returns200. This fixes schema initialization, not authored-content
+parity or full business-journey acceptance. No production content was copied and
+no missing-publication gate was bypassed. Production remains untouched.
