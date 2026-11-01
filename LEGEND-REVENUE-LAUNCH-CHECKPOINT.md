@@ -1922,3 +1922,32 @@ Verified before/after SQLite backups and capture are retained at
 This is persistent Mac recovery, not cloud recovery. Temporary capture host
 stopped; normal local Protect host remains running. Browser reinspection was
 unavailable after capture; final route checks used HTTP response evidence.
+
+## 2026-11-01 — Restore bounded automatic local Azure SQL access
+
+Founder explicitly chose existing Azure data with repaired automatic access.
+Preserved base c578417b6cb1058adaaded253638dc128006ca5d and local-only branch;
+preflight currently reports Git connectivity failure. Existing verified external
+bundle preserves prior work; no remote preservation or preflight pass claimed.
+
+The installed five-minute LaunchAgent was stuck nearly27days in an unbounded
+Azure CLI server lookup, leaving its single-IP rule stale. Extended the existing
+sync-local-azure-sql-firewall.sh owner:40-second process-group bounds on Azure
+calls,10-second outer DNS bound, IPv4 detection, exact subscription/server guards,
+both firewall endpoints checked, failed reads fail closed, and one mutation
+followed by reconciliation even when its command reports failure. No immediate
+write retry, broad range, alternate updater or application change introduced.
+Ten focused offline tests pass, including separately spawned descendant timeout,
+wrong identity, read failure, wide endpoint, ambiguous write and readback mismatch.
+
+Stopped only the identified stuck updater tree, performed one authorized rule
+update, and restored the existing LaunchAgent. Independent Azure readback confirms
+ZacLocalDev-AutoSync start=end=45.86.210.87. Automatic RunAtLoad completed exit0;
+existing300-second interval retained. Started the stopped local AgentPortal and
+refreshed the original authenticated https://localhost:6205/ page: Home - LEGEND,
+Quick Launches present, SQL exception absent. Existing Azure database and app
+configuration retained; no credential changes, migrations or deployment.
+
+Future refreshes still depend on Mac running, valid native Azure authentication,
+and working network/provider access. IP changes can require the scheduler interval
+plus Azure propagation; no guarantee of uninterrupted access is claimed.

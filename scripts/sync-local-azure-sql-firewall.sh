@@ -12,18 +12,42 @@ readonly SQL_SERVER="masterapp-sql-prod-1221"
 readonly SQL_SERVER_FQDN="masterapp-sql-prod-1221.database.windows.net"
 readonly FIREWALL_RULE="ZacLocalDev-AutoSync"
 
+resolve_azure_cli() {
 if [[ -x /opt/homebrew/bin/az ]]; then
-    readonly AZ_BIN="/opt/homebrew/bin/az"
+    AZ_BIN="/opt/homebrew/bin/az"
 elif [[ -x /usr/local/bin/az ]]; then
-    readonly AZ_BIN="/usr/local/bin/az"
+    AZ_BIN="/usr/local/bin/az"
 else
     printf 'Azure CLI was not found. Install Azure CLI and sign in before running this synchronizer.\n' >&2
     exit 127
 fi
 
+}
+
 fail() {
     printf '[azure-sql-firewall-sync] %s\n' "$1" >&2
     exit 1
+}
+
+# Bound Azure CLI and its descendants even if network/authentication hangs.
+# A timed-out write is reconciled by readback below, never immediately retried.
+run_bounded() {
+    python3 - "$@" <<'PYTIMEOUT'
+import os, signal, subprocess, sys
+seconds = float(sys.argv[1])
+process = subprocess.Popen(sys.argv[2:], start_new_session=True)
+try:
+    sys.exit(process.wait(timeout=seconds))
+except subprocess.TimeoutExpired:
+    os.killpg(process.pid, signal.SIGKILL)
+    process.wait()
+    print('[azure-sql-firewall-sync] Command timed out; next run will reconcile the rule.', file=sys.stderr)
+    sys.exit(124)
+PYTIMEOUT
+}
+
+azure() {
+    run_bounded 40 "$AZ_BIN" "$@"
 }
 
 is_ipv4() {
@@ -61,9 +85,9 @@ is_public_ipv4() {
 
 current_public_ipv4() {
     local ip
-    ip="$(/usr/bin/curl --fail --silent --connect-timeout 5 --max-time 15 https://api.ipify.org 2>/dev/null || true)"
+    ip="$(/usr/bin/curl -4 --fail --silent --connect-timeout 5 --max-time 15 https://api.ipify.org 2>/dev/null || true)"
     if ! is_ipv4 "$ip"; then
-        ip="$(/usr/bin/dig +short myip.opendns.com @resolver1.opendns.com 2>/dev/null | /usr/bin/awk 'NR == 1 { print; exit }')"
+        ip="$(run_bounded 10 /usr/bin/dig +time=5 +tries=1 +short myip.opendns.com @resolver1.opendns.com 2>/dev/null | /usr/bin/awk 'NR == 1 { print; exit }')"
     fi
     ip="${ip//$'\r'/}"
     ip="${ip//$'\n'/}"
@@ -74,12 +98,12 @@ current_public_ipv4() {
 assert_azure_identity() {
     local active_subscription server_fqdn
 
-    active_subscription="$("$AZ_BIN" account show --query id --output tsv --only-show-errors)" \
+    active_subscription="$(azure account show --query id --output tsv --only-show-errors)" \
         || fail 'Azure CLI is not authenticated.'
     [[ "$active_subscription" == "$SUBSCRIPTION_ID" ]] \
         || fail "Azure CLI is using unexpected subscription $active_subscription."
 
-    server_fqdn="$("$AZ_BIN" sql server show \
+    server_fqdn="$(azure sql server show \
         --subscription "$SUBSCRIPTION_ID" \
         --resource-group "$RESOURCE_GROUP" \
         --name "$SQL_SERVER" \
@@ -93,24 +117,26 @@ assert_azure_identity() {
 main() {
     [[ $# -eq 0 ]] || fail 'This synchronizer does not accept arguments.'
 
-    local current_ip existing_ip
+    resolve_azure_cli
+    local current_ip existing_ip verified_ip
     current_ip="$(current_public_ipv4)"
     assert_azure_identity
 
-    existing_ip="$("$AZ_BIN" sql server firewall-rule show \
+    existing_ip="$(azure sql server firewall-rule show \
         --subscription "$SUBSCRIPTION_ID" \
         --resource-group "$RESOURCE_GROUP" \
         --server "$SQL_SERVER" \
         --name "$FIREWALL_RULE" \
-        --query startIpAddress \
+        --query "{start:startIpAddress,end:endIpAddress}" \
         --output tsv \
-        --only-show-errors 2>/dev/null || true)"
+        --only-show-errors)" || fail 'Unable to read existing firewall rule; no change made.'
 
-    if [[ "$existing_ip" == "$current_ip" ]]; then
+
+    if [[ "$existing_ip" == "$current_ip"$'\t'"$current_ip" ]]; then
         return 0
     fi
 
-    "$AZ_BIN" sql server firewall-rule create \
+    azure sql server firewall-rule create \
         --subscription "$SUBSCRIPTION_ID" \
         --resource-group "$RESOURCE_GROUP" \
         --server "$SQL_SERVER" \
@@ -118,9 +144,19 @@ main() {
         --start-ip-address "$current_ip" \
         --end-ip-address "$current_ip" \
         --output none \
-        --only-show-errors || fail 'Azure SQL firewall-rule synchronization failed.'
+        --only-show-errors || printf '[azure-sql-firewall-sync] Update returned failure; reconciling without retry.\n' >&2
+
+    verified_ip="$(azure sql server firewall-rule show \
+        --subscription "$SUBSCRIPTION_ID" --resource-group "$RESOURCE_GROUP" \
+        --server "$SQL_SERVER" --name "$FIREWALL_RULE" \
+        --query "{start:startIpAddress,end:endIpAddress}" --output tsv --only-show-errors)" \
+        || fail 'Update outcome unverified; next run will reconcile before writing.'
+    [[ "$verified_ip" == "$current_ip"$'\t'"$current_ip" ]] \
+        || fail 'Firewall readback mismatch; no automatic retry performed.'
 
     printf '[azure-sql-firewall-sync] %s synchronized to %s\n' "$FIREWALL_RULE" "$current_ip"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
