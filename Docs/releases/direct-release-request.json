@@ -1,86 +1,119 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Zac explicitly approved this one-release admission-policy change in Sentinel_1a096f6271dc8191808e39cd0e87e11e at 2026-10-31T01:53:42Z. Preserve current security, production, ownership and recovery protections. Exact paired-source trust admission approved in Sentinel_26a83424099081918c5b20a2e2f85669 at 2026-10-31T20:18:21Z, subject to independent review.",
-  "purpose": "Carry exact accepted Portal success without replay and close read-only historical proof scopes before fresh provider checks; deploy only remaining targets through existing protected recovery after zero-target tooling promotion.",
-  "requestId": "stable-base-portal-carry-20261031-v1",
+  "authorization": "Zac approved the permanent per-resource completed-receipt admission policy in Sentinel_84879ea6a8548191abb3fae9d62d1af2, and the exact independently reviewed paired-source/workflow/historical compatibility trust entries in Sentinel_2931e88ea42c8191a9013cbaf7b32250 at 2026-11-01T02:25:17Z. Preserve all production, current-operation, schema, rollback and live-verification controls.",
+  "purpose": "Promote the reviewed permanent completed-resource baseline tooling only. Preserve all four accepted app deployments; no app rebuild, SQL replay, routing publication or inferred Website/Founder acceptance.",
+  "requestId": "permanent-completed-resource-standard-20261101-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
-  "baselineAdoption": {
-    "generation": "stable-base-3243221-20261031-v1",
-    "authorization": "Sentinel_1a096f6271dc8191808e39cd0e87e11e",
-    "materialIdentity": "952f8a78731c151e716f6e03f1623bb0b7fab587abae4b7fabdac9b58d4b4ae4"
+  "perResourceBaselines": {
+    "schemaVersion": 1,
+    "policy": "completed-resource-v1",
+    "root": "41240193444:1:13058045416",
+    "resources": {
+      "portal": {
+        "sourceRevision": "3243221ae661b53d60f78cc2dab108a93bad7632",
+        "runId": 41235118337,
+        "runAttempt": 1,
+        "artifactId": 13055430973,
+        "artifactDigest": "sha256:1be025a9f047228c7ed1599d0406c785d56d78797ef8bf1e4a85b3a3dff081e9",
+        "artifactName": "legend-release-operation-success-274de3b30b337020a30da96e8aec03d5664c1669eaee0849094e4b1c3b8ed240"
+      },
+      "client": {
+        "sourceRevision": "3243221ae661b53d60f78cc2dab108a93bad7632",
+        "runId": 41240193444,
+        "runAttempt": 1,
+        "artifactId": 13056979567,
+        "artifactDigest": "sha256:ccaaaadc7e310049712011ce70c22bf02847993243ff292213ca53e764060d08",
+        "artifactName": "legend-release-operation-success-63bcbb93939b90faa9010f64309b8f343d44866d5e570a200e3e25af53c84a1a"
+      },
+      "protect": {
+        "sourceRevision": "3243221ae661b53d60f78cc2dab108a93bad7632",
+        "runId": 41240193444,
+        "runAttempt": 1,
+        "artifactId": 13057606696,
+        "artifactDigest": "sha256:f9856400f0db7b724940d3f7fdb567cbb1c5055a21df0471d486411a17f92dba",
+        "artifactName": "legend-release-operation-success-ca053279fd3a8892d0a8ab69d2bc7c0a2bbb1c904bbe743b44456fb3cf3a4d00"
+      },
+      "parfait": {
+        "sourceRevision": "3243221ae661b53d60f78cc2dab108a93bad7632",
+        "runId": 41240193444,
+        "runAttempt": 1,
+        "artifactId": 13057074013,
+        "artifactDigest": "sha256:48a1f956189c13ef29356ce1bf44e009933d6a9e02c8d4246d0f1090c2818153",
+        "artifactName": "legend-release-operation-success-c5706545da6cdfecd541252b8c83f91580c7982053c3283ac4e68e29e76782e6"
+      },
+      "schema": {
+        "sourceRevision": "3243221ae661b53d60f78cc2dab108a93bad7632",
+        "runId": 41240193444,
+        "runAttempt": 1,
+        "artifactId": 13056544969,
+        "artifactDigest": "sha256:f3cd53e34e15c9f3d3615833a6ef70fc6bf488f61f97d3c71c907e48e419c176",
+        "artifactName": "legend-retained-schema-proof-2bc7a1d8bda8fb423826f94edf71a1f5f508259acf56b18a4c7b5dd381cbe4e9"
+      },
+      "website": null,
+      "routing": null,
+      "founder": null
+    }
   },
   "trustedToolPromotion": {
     "schemaVersion": 1,
-    "baseRevision": "8f68e9c71c8e0535f46b5094577410ce41feab65",
-    "sourceRevision": "7c81512d6b566e846904fecf658543b0dfd19f0e",
+    "baseRevision": "fd4e2e49b98456604ef2602b8409069b73bab492",
+    "sourceRevision": "def456a11b6af691e3a061b9a4bce3a99fd091f5",
     "files": {
+      ".github/workflows/legend-fast-track-ui.yml": {
+        "mode": "100644",
+        "blob": "6e51ba822d8b6888945672d3cf9a943d0a567eea"
+      },
       "scripts/deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "9028028eb72c139367f6d325dd4c60b088cdd1e1"
+        "blob": "e748a38d1bb91f4d0c1f3f8b601bb0553cf825e1"
       },
       "scripts/release-artifacts/test-transport.cjs": {
         "mode": "100644",
-        "blob": "e84d6ac9ab39979a172c28fa1a0d2138d5144f39"
+        "blob": "a0cadf8111df84ac34d5715e664c1e87276dadc9"
       },
       "scripts/release-artifacts/transport.cjs": {
         "mode": "100644",
-        "blob": "31b551159147f9be0142e05087c7f88fa1c692c3"
+        "blob": "01c6743ead474dd425b0ee125662f401de1e2c6e"
+      },
+      "scripts/release-migration.py": {
+        "mode": "100644",
+        "blob": "795d62671a74a19f6ea26d5374d6234a0b86d46e"
       },
       "scripts/release-operation-evidence.py": {
         "mode": "100644",
-        "blob": "897434fa8c6df3531ef8ed826ab413bb2f4146ec"
+        "blob": "04c9fb83c3301659d56807092d0846687f5046d4"
+      },
+      "scripts/release_policy.py": {
+        "mode": "100644",
+        "blob": "f8bac2b88d9027dae57dbf6f18b6798b309e4684"
       },
       "scripts/test-deploy-approved-app.py": {
         "mode": "100644",
-        "blob": "aeaf4c9cfa1a83fb375e82a30472849b2b299bde"
+        "blob": "2fb46f84b3cb79a3209372099bfd8750616116fc"
       },
-      "scripts/test-release-operation-evidence.py": {
+      "scripts/test-fast-track-release.py": {
         "mode": "100644",
-        "blob": "9c9ab0a79e69d3f2ae3c1ab56e8a3d766c6913bd"
+        "blob": "f54cccd12f6e66659258fbb5cd2e0bec70ff84f7"
+      },
+      "scripts/test-release-children.py": {
+        "mode": "100644",
+        "blob": "9e494f08a732a55c897d3963e71e3d7db6f2725e"
+      },
+      "scripts/test-release-policy.py": {
+        "mode": "100644",
+        "blob": "804b1c472b1e0c5acbbd81b29725e41f0d9ef5a7"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
-        "blob": "5c9224f2ce036126bf265b90c7645558efc873dc"
+        "blob": "dff6616eb66d480d9009231a3047234536c64810"
       },
       "scripts/validation-resume.py": {
         "mode": "100644",
-        "blob": "e7558e787533c0d609b5b107ab88916e87614278"
+        "blob": "f042e75bd29fbe4710d2092dd769a6e46e902422"
       }
     }
-  },
-  "baselineContinuation": {
-    "priorToolRevision": "d0566fc8200699ff8be2d4081a7bb571f3ad460a",
-    "priorPromotionRun": 41166381726,
-    "terminalNonentryRun": 41166598096,
-    "terminalNonentryAttempt": 1,
-    "terminalNonentryIdentity": "b3de59e3b1d6f196abd334767694cb904852ceafcee67c19c76f58d3857de545"
-  },
-  "baselineCurrentStateRoot": {
-    "version": 1,
-    "priorToolRevision": "972772d037f925a104a090d8d7ddcb896aa4e259",
-    "priorPromotionRun": 41210238965,
-    "terminalNonentryRun": 41210428598,
-    "terminalNonentryAttempt": 1,
-    "terminalNonentryIdentity": "5be4498327568c5eb6e9b6705db0bc46f44f54c91b76640fced427a57f8a95ef",
-    "history": {
-      "Legend/fast-track-release": {
-        "count": 249,
-        "identity": "8212daaba44e43271dfa1b82df86e9e2627d370b54badd673b08d9bdf63078b3"
-      },
-      "legend/approved-changes": {
-        "count": 349,
-        "identity": "ebd9f65a17a5167f8f8b13aafb449f0315fcaf47002ddf0da082de63cd9a1050"
-      }
-    }
-  },
-  "baselinePartialContinuation": {
-    "priorToolRevision": "8f68e9c71c8e0535f46b5094577410ce41feab65",
-    "priorPromotionRun": 41234931239,
-    "partialRun": 41235118337,
-    "partialAttempt": 1,
-    "effectsIdentity": "3411a4c51b21e1267265e125cec9fa4c03b8a9ed75f50d61ea8e4811162a2e92"
   }
 }
