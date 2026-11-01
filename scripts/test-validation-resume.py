@@ -2231,6 +2231,19 @@ class FastTrackImpactTests(unittest.TestCase):
             'Legend-Cloudflare/tests/website-routing/bridge.test.mjs',
             'scripts/test-parfait-readonly-workflow.py')['selected'])
 
+    def test_billing_registration_selects_exact_real_hosts_without_admission(self):
+        path = 'Infrastructure/Billing/BillingServiceCollectionExtensions.cs'
+        result = self.scope(path)
+        self.assertEqual({row['target'] for row in result['matrix']['include']},
+                         {'AgentPortal', 'ClientApp', 'Protect', 'Parfait'})
+        for project in ('AgentPortal', 'ClientApp', 'Protect-Website', 'ParfaitApp'):
+            self.assertIn('AddMasterAppBilling(builder.Configuration)',
+                          (ROOT / project / 'Program.cs').read_text())
+        self.assertFalse(result['schema'])
+        self.assertNotIn('releaseAdmission', result)
+        with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+            self.scope('Infrastructure/Billing/UnreviewedRegistration.cs')
+
     def test_unknown_shared_source_blocks_instead_of_blanket_deploy(self):
         with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
             self.scope('Infrastructure/UnreviewedDependency.cs')

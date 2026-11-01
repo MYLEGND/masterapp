@@ -4791,6 +4791,7 @@ def fast_track_scope(paths):
         'Domain/Entities/ReceptionistCoordination.cs',
         'Domain/Entities/ReceptionistManagement.cs',
         'Infrastructure/Billing/BillingEntitlementService.cs',
+        'Infrastructure/Billing/BillingServiceCollectionExtensions.cs',
         'Infrastructure/Billing/BillingStateMapper.cs',
         'Infrastructure/Billing/MasterAppBillingOrchestrator.cs',
         'Infrastructure/Bookings/BusinessBookingAccess.cs',
