@@ -6657,13 +6657,34 @@ class RetainedRecoveryAuthorityTests(unittest.TestCase):
                 m._without_skipped_recovery_job([normal] + bad, source)
 
 class HistoricalRecoveryWorkflowTests(unittest.TestCase):
+    def test_observer_preparation_preserves_exact_predecessors_only(self):
+        current=(ROOT/'.github/workflows'/m.FAST_TRACK_RELEASE_WORKFLOW).read_text()
+        condition="        if: inputs.original_run == '41131223973' && inputs.application_revision == '3243221ae661b53d60f78cc2dab108a93bad7632'\n"
+        old=current.replace('      - name: Install read-only schema observer runtime\n',
+            '      - name: Install read-only schema observer runtime\n'+condition).replace(
+            '      - name: Build read-only retained schema observer without application packages\n',
+            '      - name: Build read-only retained schema observer without application packages\n'+condition)
+        self.assertEqual(hashlib.sha256(old.encode()).hexdigest(),
+            '62980dabd1c0ed2ec843b181a1f92c7c2a922190bbe1773ca9ad9ebb09c18a2e')
+        self.assertTrue(m.historical_recovery_workflow_matches(old,current))
+        self.assertFalse(m.historical_recovery_workflow_matches(current,old))
+        self.assertFalse(m.historical_recovery_workflow_matches(old+'# drift',current))
+        self.assertFalse(m.historical_recovery_workflow_matches(old,current+'# drift'))
+        for prior in ['62980dabd1c0ed2ec843b181a1f92c7c2a922190bbe1773ca9ad9ebb09c18a2e',
+                      '946f12938a47c3009871006969ae9d0ef50e9c0cc67f1df81a202f0a3bacc424',
+                      'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd']:
+            values={b'current':hashlib.sha256(current.encode()).hexdigest(),b'prior':prior}
+            with patch.object(m.hashlib,'sha256',side_effect=lambda value:SimpleNamespace(hexdigest=lambda:values[value])):
+                self.assertTrue(m.historical_recovery_workflow_matches('prior','current'))
+                self.assertFalse(m.historical_recovery_workflow_matches('current','prior'))
+
     def test_exact_current_workflow_and_closed_directional_pair(self):
         from types import SimpleNamespace
         current=(ROOT/'.github/workflows'/m.FAST_TRACK_RELEASE_WORKFLOW).read_text()
         self.assertEqual(hashlib.sha256(current.encode()).hexdigest(),
-            '62980dabd1c0ed2ec843b181a1f92c7c2a922190bbe1773ca9ad9ebb09c18a2e')
+            'c4a64e196d1ed33b90f1574778f02d99c0949907190063543481a7e372f0f10c')
         self.assertTrue(m.historical_recovery_workflow_matches(current,current))
-        values={b'current':'62980dabd1c0ed2ec843b181a1f92c7c2a922190bbe1773ca9ad9ebb09c18a2e',
+        values={b'current':'c4a64e196d1ed33b90f1574778f02d99c0949907190063543481a7e372f0f10c',
                 b'old':'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd',b'unknown':'f'*64}
         with patch.object(m.hashlib,'sha256',side_effect=lambda value:SimpleNamespace(hexdigest=lambda:values[value])):
             self.assertTrue(m.historical_recovery_workflow_matches('old','current'))

@@ -359,6 +359,13 @@ def historical_recovery_workflow_matches(source, current):
         hashlib.sha256(current.encode()).hexdigest(),
         hashlib.sha256(source.encode()).hexdigest(),
     ) in {
+        # Read-only observer preparation changed; retain exact predecessor history only.
+        ('c4a64e196d1ed33b90f1574778f02d99c0949907190063543481a7e372f0f10c',
+         '62980dabd1c0ed2ec843b181a1f92c7c2a922190bbe1773ca9ad9ebb09c18a2e'),
+        ('c4a64e196d1ed33b90f1574778f02d99c0949907190063543481a7e372f0f10c',
+         '946f12938a47c3009871006969ae9d0ef50e9c0cc67f1df81a202f0a3bacc424'),
+        ('c4a64e196d1ed33b90f1574778f02d99c0949907190063543481a7e372f0f10c',
+         'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd'),
         ('946f12938a47c3009871006969ae9d0ef50e9c0cc67f1df81a202f0a3bacc424',
          'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd'),
         # Sentinel_2931e88: exact completed-resource reader, history only.
