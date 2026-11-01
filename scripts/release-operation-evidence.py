@@ -125,9 +125,10 @@ def readiness_refresh_once(identity, *, lookup, observe, execute, publisher=publ
 class OperationJournal:
     _publish = staticmethod(publish_record)
     def __init__(self, *, target, application_revision, package_digest, baseline,
-                 authority=None, publisher=None, environment=None, candidate_revision=None, component_source=None, supersession=None, replacement=None):
+                 authority=None, publisher=None, environment=None, candidate_revision=None, component_source=None, supersession=None, replacement=None, before_new_intent=None):
         env = os.environ if environment is None else environment
         self.authority = authority or _authority()
+        self.forward_before_new_intent = before_new_intent
         if target not in self.authority.RELEASE_TARGETS:
             raise ValueError("Unknown canonical release target")
         for value, size in ((application_revision, 40), (package_digest, 64), (baseline, 40)):
@@ -278,6 +279,8 @@ class OperationJournal:
             run = self.authority.assert_fast_track_release_execution(target='protect')
             if run['head_sha'] != self.identity['applicationRevision'] or run['id'] != self.run:
                 raise ValueError('Replacement write authority changed')
+        if self.forward_before_new_intent is not None:
+            self.forward_before_new_intent(self._ids(baseline_ids))
         record = self.intent_record(baseline_ids, submission_kind=submission_kind)
         self.publisher('legend-release-operation-intent-' + self.operation_id, record)
         self.intent = record

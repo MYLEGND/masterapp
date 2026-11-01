@@ -852,7 +852,7 @@ def _baseline_map(raw: str):
     return result
 
 
-def operation_journal(key, revision, digest, baseline, *, candidate_revision=None, component_source=None, supersession=None):
+def operation_journal(key, revision, digest, baseline, *, candidate_revision=None, component_source=None, supersession=None, before_new_intent=None):
     if os.environ.get('GITHUB_ACTIONS') != 'true':
         return None
     if baseline is None:
@@ -861,7 +861,8 @@ def operation_journal(key, revision, digest, baseline, *, candidate_revision=Non
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module.OperationJournal(target=key, application_revision=revision, package_digest=digest, baseline=baseline, authority=_RELEASE_AUTHORITY,
-                                   candidate_revision=candidate_revision, component_source=component_source, supersession=supersession)
+                                   candidate_revision=candidate_revision, component_source=component_source, supersession=supersession,
+                                   before_new_intent=before_new_intent)
 
 
 def deploy_one(key: str, revision: str, package_root: Path, *, baseline=None, reconcile_only=False, journal=None):
@@ -1458,11 +1459,16 @@ def fast_track_deploy(key, package_root):
     """Use the canonical one-upload reconciler from the existing fast-track lane."""
     run = _RELEASE_AUTHORITY.assert_fast_track_release_execution(target=key)
     revision = run['head_sha']
+    forward = _RELEASE_AUTHORITY.completed_resource_execution(key,revision)
     before = os.environ.get('BEFORE', '')
     if not re.fullmatch('[a-f0-9]{40}', before):
         raise ValueError('FAST_TRACK_BASELINE_UNPROVEN')
     changed = subprocess.check_output(['git', 'diff', '--name-only', before, revision], text=True).splitlines()
     scope = _RELEASE_AUTHORITY.fast_track_scope(changed)
+    if forward is not None:
+        if before != forward['proof']['reference']['sourceRevision']:
+            raise ValueError('RESOURCE_BASELINE_DEPLOY_INPUT_CHANGED')
+        scope = forward['selection']
     recovering = _RELEASE_AUTHORITY.attested_website_only_recovery_scope(before,revision,changed)
     if recovering:
         scope = _RELEASE_AUTHORITY.website_only_recovery_scope(scope)
@@ -1498,6 +1504,32 @@ def fast_track_deploy(key, package_root):
     supersession = _RELEASE_AUTHORITY.fast_track_protect_supersession(revision) if key == 'protect' else None
     journal_args = {'supersession': supersession} if supersession is not None else {}
     journal = operation_journal(key, revision, digest, baseline, **journal_args)
+    if forward is not None and journal.intent is None:
+        proof = forward['proof']
+        if baseline != proof['reference']['sourceRevision']:
+            raise DeploymentReconciliationRequired('RESOURCE_BASELINE_LIVE_REVISION_CHANGED')
+        provider_rows = read_deployments_bounded(azure,phase='completed resource baseline')
+        initial = recovery_current_provider_state(provider_rows,baseline)
+        accepted_provider = [row for row in provider_rows if row['id'] == proof['record']['deploymentIds'][0]]
+        if len(accepted_provider) != 1 or accepted_provider[0].get('status') != 4 or accepted_provider[0].get('complete') is not True:
+            raise DeploymentReconciliationRequired('RESOURCE_BASELINE_PROVIDER_SUCCESS_MISSING')
+        expected_ids=sorted(set(proof['record']['baselineDeploymentIds']+proof['record']['deploymentIds']))
+        if initial['deploymentIds']!=expected_ids:
+            raise DeploymentReconciliationRequired('RESOURCE_BASELINE_UNRECONCILED_PROVIDER_EFFECT')
+        rollback = prepare_completed_resource_rollback(key,initial,package_root)
+        if rollback['packageDigest'] != proof['record']['packageDigest']:
+            raise DeploymentReconciliationRequired('RESOURCE_BASELINE_ROLLBACK_BYTES_CHANGED')
+        def before_new_intent(ids):
+            current = _RELEASE_AUTHORITY.completed_resource_execution(key,revision)
+            if current != forward:
+                raise DeploymentReconciliationRequired('RESOURCE_BASELINE_PROOF_DRIFT')
+            closing = recovery_current_provider_state(read_deployments_bounded(azure,phase='completed resource closing'),azure.observed_revision())
+            if closing != initial or sorted(ids) != initial['deploymentIds']:
+                raise DeploymentReconciliationRequired('RESOURCE_BASELINE_PROVIDER_DRIFT')
+            prepare_completed_resource_rollback(key,closing,package_root,expected=rollback)
+        journal.forward_before_new_intent = before_new_intent
+    elif forward is not None and journal.baseline != forward['proof']['reference']['sourceRevision']:
+        raise DeploymentReconciliationRequired('RESOURCE_BASELINE_RETAINED_INTENT_CHANGED')
     if supersession is not None and journal.intent is None:
         prepare_protect_replacement(revision, baseline, azure)
     # Raw current provenance alone cannot erase an unknown earlier upload.
@@ -1744,6 +1776,19 @@ def recovery_preupload_baseline(azure, original, key, *, expected=None):
     if observed == original['run']['head_sha']: raise RecoveryPreflightFailure('runtime-candidate-unproven',observation)
     current_root = ('baselineAdoption' in original and _RELEASE_AUTHORITY.stable_baseline_current_root(
         os.environ['GITHUB_REPOSITORY']) is not None)
+    if 'resourceBaselines' in original:
+        repository=os.environ['GITHUB_REPOSITORY'];token=os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+        reference=original['resourceBaselines']['resources'][key]
+        with _RELEASE_AUTHORITY.recovery_admission_proof():
+            accepted=_RELEASE_AUTHORITY.completed_resource_receipt(repository,key,reference,token)
+        state=recovery_current_provider_state(rows,observed)
+        expected_ids=sorted(set(accepted['record']['baselineDeploymentIds']+accepted['record']['deploymentIds']))
+        provider=[row for row in rows if row['id'] in accepted['record']['deploymentIds']]
+        if (observed!=reference['sourceRevision'] or state['deploymentIds']!=expected_ids
+            or len(provider)!=1 or provider[0].get('status')!=4 or provider[0].get('complete') is not True):
+            raise RecoveryPreflightDrift('baseline-drift',observation)
+        if expected is not None and state!=expected:raise RecoveryPreflightDrift('baseline-drift',observation)
+        return state
     if current_root:
         # The approved current-state root does not require a predecessor SHA or
         # the old upload window. It does require complete known terminal provider
@@ -1776,8 +1821,13 @@ def recovery_preupload_baseline(azure, original, key, *, expected=None):
 
 def prepare_stable_baseline_rollback(original, key, state, package_root, *, expected=None):
     """Recover exact currently serving bytes, without rebuilding or replaying SQL."""
-    if 'baselineAdoption' not in original:
+    if 'baselineAdoption' not in original and 'resourceBaselines' not in original:
         return None
+    return prepare_completed_resource_rollback(key,state,package_root,expected=expected)
+
+
+def prepare_completed_resource_rollback(key, state, package_root, *, expected=None):
+    """Verify exact recoverable bytes; no source-history reconstruction or rebuild."""
     authority = _RELEASE_AUTHORITY
     repository = os.environ['GITHUB_REPOSITORY']; token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
     revision = state['revision']
@@ -1940,6 +1990,54 @@ def recovery_summary_record(original_run, original, revision, observer, records)
                 observer=observer, targets=records)
 
 
+
+def completed_resource_acceptance(original, key, observer, azure, operation_id, rollback, publisher, *, schema_proof=None):
+    """A target advances only after its provider and public obligations succeeded.
+
+    The immutable success journal remains effect evidence. This additional record
+    binds postverification acceptance, including when another target later fails.
+    """
+    authority=_RELEASE_AUTHORITY
+    repository=os.environ['GITHUB_REPOSITORY'];token=os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    revision=original['run']['head_sha']
+    with authority.recovery_admission_proof():
+        success=authority.release_operation_history(repository,operation_id,revision,key,
+            observer['runId'],observer['runAttempt'],token,phase='success')
+        if success is None:raise DeploymentReconciliationRequired('RESOURCE_ACCEPTANCE_SUCCESS_MISSING')
+        producing_run=success['producingRun']
+        rows=authority._completion_inventory(authority.api_get(repository,
+            f'actions/runs/{producing_run}/artifacts?per_page=100',token),'artifacts')
+        name='legend-release-operation-success-'+success['operationId']
+        matches=[a for a in rows if a.get('name')==name and a.get('expired') is False]
+        if len(matches)!=1:raise DeploymentReconciliationRequired('RESOURCE_ACCEPTANCE_SUCCESS_ARTIFACT_UNPROVEN')
+        artifact=matches[0]
+        actual=authority._release_history_json(repository,producing_run,artifact,'operation.json',verify_digest=True)
+        if actual!=success:raise DeploymentDrift('RESOURCE_ACCEPTANCE_SUCCESS_CHANGED')
+    provider_rows=read_deployments_bounded(azure,phase='target acceptance')
+    state=recovery_current_provider_state(provider_rows,azure.observed_revision())
+    accepted=[r for r in provider_rows if r['id'] in success['deploymentIds']]
+    if (state['revision']!=revision or len(accepted)!=1 or accepted[0].get('status')!=4
+        or accepted[0].get('complete') is not True):
+        raise DeploymentReconciliationRequired('RESOURCE_ACCEPTANCE_SERVING_UNPROVEN')
+    if original['scope']['commerce']:
+        if schema_proof is None:raise DeploymentReconciliationRequired('RESOURCE_ACCEPTANCE_SCHEMA_MISSING')
+        crm_retained_schema_fresh(schema_proof,original,observer)
+    from datetime import datetime,timezone
+    record=dict(schemaVersion=1,phase='target-acceptance',target=key,applicationRevision=revision,
+        originalRun=original['run']['id'],originalAttempt=success.get('recoveryEvidence',{}).get('originalAttempt',success['producingAttempt']),
+        producingRun=observer['runId'],producingAttempt=observer['runAttempt'],observer=observer,
+        successReference=dict(sourceRevision=revision,runId=producing_run,runAttempt=success['producingAttempt'],
+            artifactId=artifact['id'],artifactDigest=artifact['digest'],artifactName=artifact['name']),
+        baselineReference=original['resourceBaselines']['resources'][key],rollbackEvidence=rollback,
+        schemaProof=None if schema_proof is None else {k:schema_proof[k] for k in ('artifactId','contentIdentity')},
+        observation=dict(deploymentId=accepted[0]['id'],packageDigest=success['packageDigest'],runtimeRevision=revision,
+            providerInventoryIdentity=state['providerInventoryIdentity'],observedUtc=datetime.now(timezone.utc).isoformat(),
+            publicMetadataVerified=True))
+    identity=hashlib.sha256(json.dumps(record,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    result=publisher('legend-release-target-acceptance-'+identity,record)
+    return dict(record=record,artifact=result)
+
+
 def crm_retained_portal_gate(original, inventory, observer, deadline, *, expected=None):
     """Retained recovery uses its durable receipt, not the failed original job."""
     authority = _RELEASE_AUTHORITY
@@ -1987,28 +2085,44 @@ def crm_retained_schema_gate(original, observer, deadline, publisher):
     authority = _RELEASE_AUTHORITY
     repository = os.environ['GITHUB_REPOSITORY']; token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
     run = original['run']; revision = run['head_sha']
-    if (repository.lower() != 'mylegnd/masterapp' or run['id'] != 41131223973
+    forward='resourceBaselines' in original
+    if not forward and (repository.lower() != 'mylegnd/masterapp' or run['id'] != 41131223973
         or revision != authority.CRM_PREINTENT_REVISION or set(original['targets']) != {'portal','client','protect','parfait'}):
         raise DeploymentReconciliationRequired('CRM_RECOVERY_SCHEMA_SCOPE_UNPROVEN')
     authority.assert_fast_track_recovery_live_execution(run['id'], revision, observer)
     fast_track_migration_gate(run)
-    # Bind to the independently reviewed attempt3 physical schema success, not
-    # the older SQL intent whose original failed outcome remains preserved.
-    rows = [row for row in original['artifacts'] if row.get('id') == 13017640415]
-    if (len(rows) != 1 or rows[0].get('expired') is not False
-        or rows[0].get('digest') != 'sha256:cbe0bd54e2e652908a19d84779ec10f51246cf3e01e3920f8e59d50c70b2a508'):
-        raise DeploymentReconciliationRequired('CRM_RECOVERY_SCHEMA_RECEIPT_UNPROVEN')
-    receipt = authority._release_history_json(repository, run['id'], rows[0], 'operation.json', verify_digest=True)
-    if (receipt.get('producingRun') != run['id'] or receipt.get('producingAttempt') != 3
-        or receipt.get('applicationRevision') != revision or receipt.get('child') != 'migrations'
-        or receipt.get('phase') != 'success' or receipt.get('observation', {}).get('providerVersion') != 'schema-ready-no-write'):
-        raise DeploymentReconciliationRequired('CRM_RECOVERY_SCHEMA_RECEIPT_UNPROVEN')
+    schema_reference=None
+    if forward:
+        receipts=[]
+        for artifact in original['artifacts']:
+            if not artifact.get('name','').startswith('legend-release-child-success-'):continue
+            value=authority._release_history_json(repository,run['id'],artifact,'operation.json',verify_digest=True)
+            if value.get('child')!='migrations':continue
+            reference=dict(sourceRevision=revision,runId=run['id'],runAttempt=value['producingAttempt'],
+                artifactId=artifact['id'],artifactDigest=artifact['digest'],artifactName=artifact['name'])
+            receipts.append((reference,authority.completed_resource_receipt(repository,'schema',reference,token)['record']))
+        if len(receipts)!=1:raise DeploymentReconciliationRequired('RESOURCE_RECOVERY_SCHEMA_RECEIPT_UNPROVEN')
+        schema_reference,receipt=receipts[0]
+    else:
+        # Bind to the independently reviewed attempt3 physical schema success, not
+        # the older SQL intent whose original failed outcome remains preserved.
+        rows = [row for row in original['artifacts'] if row.get('id') == 13017640415]
+        if (len(rows) != 1 or rows[0].get('expired') is not False
+            or rows[0].get('digest') != 'sha256:cbe0bd54e2e652908a19d84779ec10f51246cf3e01e3920f8e59d50c70b2a508'):
+            raise DeploymentReconciliationRequired('CRM_RECOVERY_SCHEMA_RECEIPT_UNPROVEN')
+        receipt = authority._release_history_json(repository, run['id'], rows[0], 'operation.json', verify_digest=True)
+        if (receipt.get('producingRun') != run['id'] or receipt.get('producingAttempt') != 3
+            or receipt.get('applicationRevision') != revision or receipt.get('child') != 'migrations'
+            or receipt.get('phase') != 'success' or receipt.get('observation', {}).get('providerVersion') != 'schema-ready-no-write'):
+            raise DeploymentReconciliationRequired('CRM_RECOVERY_SCHEMA_RECEIPT_UNPROVEN')
     spec = importlib.util.spec_from_file_location('retained_schema_observer', Path(__file__).with_name('release-migration.py'))
     migration = importlib.util.module_from_spec(spec); spec.loader.exec_module(migration)
     audit = migration.history_audit()
     # No current migration is excluded: recovery is not a SQL owner. All normal
     # migration producers must be settled, including the complete original run.
-    if authority.stable_baseline_current_root(repository,observer['toolRevision']) is not None:
+    if forward:
+        report=authority.completed_resource_recovery_currentness(repository,original,observer,token)
+    elif authority.stable_baseline_current_root(repository,observer['toolRevision']) is not None:
         # Reuse the explicit retired-provenance cut, not 241 old migration
         # attempts. Current/changed writers still stop before physical SQL reads.
         with authority.recovery_admission_proof():
@@ -2040,13 +2154,14 @@ def crm_retained_schema_gate(original, observer, deadline, publisher):
         or recovery.get('restoreExecuted') is not False or recovery.get('authorizesMutation') is not False):
         raise DeploymentReconciliationRequired('CRM_RECOVERY_SCHEMA_NOT_READY')
     authority.assert_fast_track_recovery_live_execution(run['id'], revision, observer)
-    record = dict(schemaVersion=1, phase='retained-schema-read-only',
+    record = dict(schemaVersion=2 if forward else 1, phase='retained-schema-read-only',
         applicationRevision=revision, producingRun=observer['runId'], producingAttempt=observer['runAttempt'],
         observation={key:second[key] for key in ('databaseIdentity','schemaIdentity','baselineIdentity',
             'observedUtc','pendingCount','ready','mutationActivity')}, recovery=recovery,
         historyIdentity=hashlib.sha256(json.dumps(report,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
-        originalRun=run['id'], originalSuccessArtifact=13017640415, observer=observer,
+        originalRun=run['id'], originalSuccessArtifact=schema_reference['artifactId'] if forward else 13017640415, observer=observer,
         sqlExecutionAuthorized=False)
+    if forward:record['schemaReference']=schema_reference
     digest = hashlib.sha256(json.dumps(record,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     name = 'legend-retained-schema-proof-' + digest
     recovery_phase_remaining(deadline, 180)
@@ -2068,6 +2183,10 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
     with authority.recovery_admission_proof():
         original = authority.fast_track_completion_original(repository, original_run, revision, token)
         materials = {key: authority.fast_track_recovery_material(repository, original, key, token) for key in original['targets']}
+    if 'resourceBaselines' in original:
+        authority.completed_resource_recovery_currentness(repository,original,observer,token)
+        if 'protect' in original['targets']:
+            raise DeploymentReconciliationRequired('RESOURCE_BASELINE_PROTECT_68EF_DISPOSITION_REQUIRED')
     inventory = {}
     for key, material in materials.items():
         artifact = material['packageArtifact']; directory = package_root / key
@@ -2099,11 +2218,13 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
     publication_deadline = deadline - RECOVERY_FINAL_RESERVE_SECONDS
     crm = original_run == 41131223973 and revision == authority.CRM_PREINTENT_REVISION
     journals = {}; states = {}; rollback = {}; carried_portal = None; key = 'portal' if crm else None
+    schema_proof=None
+    needs_schema=crm or ('resourceBaselines' in original and original['scope']['commerce'])
     def publish_phase_record(name, record):
         return owner.publish_record(name, record, timeout=min(180, recovery_phase_remaining(publication_deadline)))
     # Versioned terminal receipt boundary: every enclosed operation is read-only.
     try:
-        if crm:
+        if needs_schema:
             with authority.evidence_lookup_budget(publication_deadline):
                 schema_proof = crm_retained_schema_gate(original, observer, publication_deadline, publish_phase_record)
         with authority.recovery_admission_proof():
@@ -2161,7 +2282,7 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
                         prepare_protect_retained_replacement(azure, original, materials[key], fresh, package_root)
                         prepare_stable_baseline_rollback(original, key, fresh, package_root, expected=rollback.get(key))
                         recovery_host_flags(key)
-                        if crm:
+                        if needs_schema:
                             crm_retained_schema_fresh(schema_proof, original, observer)
                         recovery_phase_remaining(publication_deadline, RECOVERY_WRITE_RESERVE_SECONDS)
                     except Exception as failure:
@@ -2209,7 +2330,7 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
             authority.validate_stable_baseline_admission(record, original, observer)
         publish_phase_record(authority.stable_baseline_admission_name(observer), record)
     def recover_target(key):
-        if crm:
+        if needs_schema:
             crm_retained_schema_fresh(schema_proof, original, observer)
         if crm and key != 'portal':
             crm_retained_portal_gate(original, inventory, observer, publication_deadline,
@@ -2226,6 +2347,9 @@ def _recover_fast_track(original_run, revision, package_root, observer, deadline
                 timeout=min(PUBLICATION_RECONCILE_TIMEOUT_SECONDS, recovery_phase_remaining(publication_deadline)))
         recovery_phase_remaining(deadline - 60, 64)
         verify_fast_track_public_metadata(key)
+        if 'resourceBaselines' in original:
+            completed_resource_acceptance(original,key,observer,azure,inventory[key]['operationId'],
+                rollback[key],publish_phase_record,schema_proof=schema_proof)
         return result
     # Same all-target barrier and bounded parallel composition as normal release;
     # five independent 420s observers must not consume five sequential budgets.

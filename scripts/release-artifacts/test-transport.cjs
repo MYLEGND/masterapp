@@ -21,6 +21,16 @@ test('retained CRM schema proof publishes and reads back exact immutable bytes',
   const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
   const name='legend-retained-schema-proof-'+crypto.createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
   assert.deepEqual(validateRecord(name,value),{filename:'operation.json'});
+  const forward=structuredClone(value);forward.schemaVersion=2;forward.originalRun=200;forward.applicationRevision='d'.repeat(40);forward.originalSuccessArtifact=201;
+  forward.observation.schemaIdentity='e'.repeat(64);
+  forward.schemaReference={sourceRevision:forward.applicationRevision,runId:200,runAttempt:1,artifactId:201,artifactDigest:'sha256:'+'f'.repeat(64),artifactName:'legend-release-child-success-'+'1'.repeat(64)};
+  const forwardName=v=>'legend-retained-schema-proof-'+crypto.createHash('sha256').update(JSON.stringify(canonical(v))).digest('hex');
+  assert.deepEqual(validateRecord(forwardName(forward),forward),{filename:'operation.json'});
+  for(const mutate of [x=>delete x.schemaReference,x=>x.schemaReference.runId=202,x=>x.schemaReference.artifactId=202,
+      x=>x.schemaReference.sourceRevision='a'.repeat(40),x=>x.sqlExecutionAuthorized=true,x=>x.recovery.restoreExecuted=true,
+      x=>x.observation.pendingCount=1,x=>x.schemaVersion=3]) {
+    const bad=structuredClone(forward);mutate(bad);assert.throws(()=>validateRecord(forwardName(bad),bad));
+  }
   let stored;const calls=[];
   const client={async listArtifacts(){calls.push('list');return {artifacts:[]};},
     async uploadArtifact(n,files){calls.push('upload');assert.equal(n,name);stored=await fs.readFile(files[0]);return {id:42};},
@@ -1019,4 +1029,27 @@ test('stable baseline admission is four-target durable evidence, never live comp
   }
   client.downloadArtifact=async(id,options)=>{await fs.mkdir(options.path);await fs.writeFile(path.join(options.path,'operation.json'),'changed');};
   await assert.rejects(publish(client,name,value),/readback mismatch/);
+});
+
+test('completed target acceptance is separate from provider success and binds all material', () => {
+  const crypto=require('node:crypto');
+  const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
+  const ref=(revision,name)=>({sourceRevision:revision,runId:100,runAttempt:1,artifactId:101,artifactDigest:'sha256:'+'a'.repeat(64),artifactName:name});
+  const revision='b'.repeat(40),baseline='c'.repeat(40);
+  const value={schemaVersion:1,phase:'target-acceptance',target:'client',applicationRevision:revision,
+    originalRun:90,originalAttempt:1,producingRun:200,producingAttempt:1,
+    observer:{runId:200,runAttempt:1,jobId:201,toolRevision:'d'.repeat(40),promotionRunId:199},
+    successReference:ref(revision,'legend-release-operation-success-'+'e'.repeat(64)),
+    baselineReference:ref(baseline,'legend-release-operation-success-'+'f'.repeat(64)),
+    rollbackEvidence:{revision:baseline,artifactId:102,artifactDigest:'sha256:'+'a'.repeat(64),artifact:`fast-track-package-${baseline}-client`,runId:99,packageDigest:'1'.repeat(64)},
+    schemaProof:{artifactId:103,contentIdentity:'4'.repeat(64)},
+    observation:{deploymentId:'provider-id',packageDigest:'2'.repeat(64),runtimeRevision:revision,providerInventoryIdentity:'3'.repeat(64),observedUtc:'2026-11-01T00:00:00Z',publicMetadataVerified:true}};
+  const name=v=>'legend-release-target-acceptance-'+crypto.createHash('sha256').update(JSON.stringify(canonical(v))).digest('hex');
+  assert.deepEqual(validateRecord(name(value),value),{filename:'operation.json'});
+  for(const mutate of [v=>v.phase='success',v=>v.observation.publicMetadataVerified=false,v=>v.observation.runtimeRevision=baseline,
+      v=>v.successReference.artifactName='legend-release-operation-intent-'+'e'.repeat(64),v=>v.rollbackEvidence.revision=revision,
+      v=>v.observer.runId=999,v=>delete v.baselineReference,v=>v.observation.extra=true]) {
+    const bad=structuredClone(value);mutate(bad);assert.throws(()=>validateRecord(name(bad),bad));
+  }
+  const bad=structuredClone(value);bad.observation.deploymentId='different';assert.throws(()=>validateRecord(name(value),bad));
 });

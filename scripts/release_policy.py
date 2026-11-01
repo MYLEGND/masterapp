@@ -22,6 +22,60 @@ def stable_baseline_adoption(repository, original_run, application_revision):
 
 
 
+# The permanent forward contract references existing immutable completion receipts.
+# References are inputs, not authority: every consumer authenticates their producer,
+# bytes, currentness and live state. Unknown resources never inherit an app baseline.
+COMPLETED_RESOURCE_POLICY = 'completed-resource-v1'
+COMPLETED_RESOURCE_AUTHORIZATION = 'Sentinel_84879ea6a8548191abb3fae9d62d1af2'
+COMPLETED_RESOURCE_ROOT = '41240193444:1:13058045416'
+COMPLETED_RESOURCE_ROOT_TOOL = 'fd4e2e49b98456604ef2602b8409069b73bab492'
+COMPLETED_RESOURCE_ROOT_REFS = {'portal': {'sourceRevision': '3243221ae661b53d60f78cc2dab108a93bad7632', 'runId': 41235118337, 'runAttempt': 1, 'artifactId': 13055430973, 'artifactDigest': 'sha256:1be025a9f047228c7ed1599d0406c785d56d78797ef8bf1e4a85b3a3dff081e9', 'artifactName': 'legend-release-operation-success-274de3b30b337020a30da96e8aec03d5664c1669eaee0849094e4b1c3b8ed240'}, 'client': {'sourceRevision': '3243221ae661b53d60f78cc2dab108a93bad7632', 'runId': 41240193444, 'runAttempt': 1, 'artifactId': 13056979567, 'artifactDigest': 'sha256:ccaaaadc7e310049712011ce70c22bf02847993243ff292213ca53e764060d08', 'artifactName': 'legend-release-operation-success-63bcbb93939b90faa9010f64309b8f343d44866d5e570a200e3e25af53c84a1a'}, 'protect': {'sourceRevision': '3243221ae661b53d60f78cc2dab108a93bad7632', 'runId': 41240193444, 'runAttempt': 1, 'artifactId': 13057606696, 'artifactDigest': 'sha256:f9856400f0db7b724940d3f7fdb567cbb1c5055a21df0471d486411a17f92dba', 'artifactName': 'legend-release-operation-success-ca053279fd3a8892d0a8ab69d2bc7c0a2bbb1c904bbe743b44456fb3cf3a4d00'}, 'parfait': {'sourceRevision': '3243221ae661b53d60f78cc2dab108a93bad7632', 'runId': 41240193444, 'runAttempt': 1, 'artifactId': 13057074013, 'artifactDigest': 'sha256:48a1f956189c13ef29356ce1bf44e009933d6a9e02c8d4246d0f1090c2818153', 'artifactName': 'legend-release-operation-success-c5706545da6cdfecd541252b8c83f91580c7982053c3283ac4e68e29e76782e6'}, 'schema': {'sourceRevision': '3243221ae661b53d60f78cc2dab108a93bad7632', 'runId': 41240193444, 'runAttempt': 1, 'artifactId': 13056544969, 'artifactDigest': 'sha256:f3cd53e34e15c9f3d3615833a6ef70fc6bf488f61f97d3c71c907e48e419c176', 'artifactName': 'legend-retained-schema-proof-2bc7a1d8bda8fb423826f94edf71a1f5f508259acf56b18a4c7b5dd381cbe4e9'}, 'website': None, 'routing': None, 'founder': None}
+
+
+def completed_resource_baselines(request):
+    """Validate the versioned existing-request reference vector, never accept it."""
+    import copy
+    import re
+    value = request.get('perResourceBaselines')
+    if value is None:
+        if 'perResourceBaselines' in request:
+            raise ValueError('RESOURCE_BASELINE_CONTRACT_INVALID')
+        return None
+    if (not isinstance(value, dict) or set(value) != {'schemaVersion', 'policy', 'root', 'resources'}
+        or type(value['schemaVersion']) is not int or value['schemaVersion'] != 1
+        or value['policy'] != COMPLETED_RESOURCE_POLICY or value['root'] != COMPLETED_RESOURCE_ROOT
+        or not isinstance(value['resources'], dict)
+        or set(value['resources']) != set(COMPLETED_RESOURCE_ROOT_REFS)):
+        raise ValueError('RESOURCE_BASELINE_CONTRACT_INVALID')
+    fields = {'sourceRevision','runId','runAttempt','artifactId','artifactDigest','artifactName'}
+    for resource, ref in value['resources'].items():
+        if ref is None:
+            if COMPLETED_RESOURCE_ROOT_REFS[resource] is not None:
+                raise ValueError('RESOURCE_BASELINE_VERIFIED_RESOURCE_DROPPED')
+            continue
+        if (not isinstance(ref, dict) or set(ref) != fields
+            or any(type(ref[k]) is not int or ref[k] < 1 for k in ('runId','runAttempt','artifactId'))
+            or not re.fullmatch('[a-f0-9]{40}', str(ref['sourceRevision']))
+            or not re.fullmatch('sha256:[a-f0-9]{64}', str(ref['artifactDigest']))
+            or not re.fullmatch('[a-zA-Z0-9_.-]{1,256}', str(ref['artifactName']))):
+            raise ValueError('RESOURCE_BASELINE_REFERENCE_INVALID')
+        prefix = ('legend-release-operation-success-' if resource in {'portal','client','protect','parfait','website'}
+                  else 'legend-release-child-success-')
+        if (not ref['artifactName'].startswith(prefix)
+            and not (resource in {'portal','client','protect','parfait','website'}
+                     and ref['artifactName'].startswith('legend-release-target-acceptance-'))
+            and ref != COMPLETED_RESOURCE_ROOT_REFS[resource]):
+            raise ValueError('RESOURCE_BASELINE_NOT_COMPLETION')
+    return copy.deepcopy(value)
+
+
+def initial_completed_resource_baselines():
+    import copy
+    return dict(schemaVersion=1, policy=COMPLETED_RESOURCE_POLICY, root=COMPLETED_RESOURCE_ROOT,
+                resources=copy.deepcopy(COMPLETED_RESOURCE_ROOT_REFS))
+
+
+
 def read_request(sha=None):
     if sha is None:
         value = Path(REQUEST).read_text()

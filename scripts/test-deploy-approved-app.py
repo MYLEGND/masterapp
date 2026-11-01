@@ -274,6 +274,7 @@ class CrmPortalFirstGateTests(unittest.TestCase):
     def test_failed_gate_blocks_target_effects_at_actual_entry(self):
         scope=dict(commerce=False,matrix=dict(include=[dict(azure_app=deploy.TARGETS['client']['releaseName'])]))
         with patch.dict(os.environ,BEFORE='b'*40), patch.object(deploy._RELEASE_AUTHORITY,'fast_track_scope',return_value=scope), \
+             patch.object(deploy._RELEASE_AUTHORITY,'completed_resource_execution',return_value=None), \
              patch.object(deploy._RELEASE_AUTHORITY,'attested_website_only_recovery_scope',return_value=False), \
              patch.object(deploy._RELEASE_AUTHORITY,'fast_track_source_admission'), \
              patch.object(deploy,'verify_package',return_value='d'*64), \
@@ -4440,6 +4441,76 @@ class CurrentRootSchemaTests(CrmRetainedSchemaTests):
         with patch.object(self.authority,'stable_baseline_current_inventory',side_effect=RuntimeError('changed writer')):
             with self.assertRaises(RuntimeError):self.call()
         self.module.observe.assert_not_called()
+
+
+class CompletedTargetAcceptanceTests(unittest.TestCase):
+    def test_provider_failure_cannot_be_accepted_even_with_success_artifact(self):
+        import contextlib
+        authority=Mock();authority.recovery_admission_proof.side_effect=contextlib.nullcontext
+        success=dict(producingRun=10,producingAttempt=1,operationId='a'*64,deploymentIds=['new'],packageDigest='b'*64)
+        artifact=dict(id=12,name='legend-release-operation-success-'+'a'*64,expired=False,digest='sha256:'+'c'*64)
+        authority.release_operation_history.return_value=success
+        authority._completion_inventory.return_value=[artifact]
+        authority._release_history_json.return_value=success
+        azure=Mock();azure.observed_revision.return_value='d'*40
+        publisher=Mock()
+        rows=[dict(id='new',status=3,complete=True,received_time='2026-11-01T00:00:00Z',start_time='2026-11-01T00:00:01Z',end_time='2026-11-01T00:00:02Z')]
+        with patch.object(deploy,'_RELEASE_AUTHORITY',authority),patch.object(deploy,'read_deployments_bounded',return_value=rows), \
+             patch.object(deploy,'recovery_current_provider_state',return_value=dict(revision='d'*40,providerInventoryIdentity='e'*64)), \
+             patch.dict(os.environ,dict(GITHUB_REPOSITORY='MYLEGND/masterapp',GH_TOKEN='fixture')):
+            with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired,'SERVING_UNPROVEN'):
+                deploy.completed_resource_acceptance(dict(run=dict(id=9,head_sha='d'*40)), 'client',
+                    dict(runId=20,runAttempt=1),azure,'a'*64,{},publisher)
+        publisher.assert_not_called()
+
+    def test_partial_recovery_acceptance_preserves_original_producer_and_baseline(self):
+        import contextlib
+        authority=Mock();authority.recovery_admission_proof.side_effect=contextlib.nullcontext
+        success=dict(producingRun=10,producingAttempt=2,operationId='a'*64,deploymentIds=['new'],packageDigest='b'*64,
+            recoveryEvidence={'originalAttempt':1})
+        artifact=dict(id=12,name='legend-release-operation-success-'+'a'*64,expired=False,digest='sha256:'+'c'*64)
+        authority.release_operation_history.return_value=success
+        authority._completion_inventory.return_value=[artifact];authority._release_history_json.return_value=success
+        azure=Mock();azure.observed_revision.return_value='d'*40;publisher=Mock(return_value={'id':30})
+        baseline={'sourceRevision':'f'*40};rollback={'runId':4,'artifactId':5,'sha256':'e'*64}
+        original={'run':{'id':9,'head_sha':'d'*40},'scope':{'commerce':False},
+            'resourceBaselines':{'resources':{'client':baseline}}}
+        rows=[dict(id='new',status=4,complete=True)]
+        with patch.object(deploy,'_RELEASE_AUTHORITY',authority),patch.object(deploy,'read_deployments_bounded',return_value=rows), \
+             patch.object(deploy,'recovery_current_provider_state',return_value=dict(revision='d'*40,providerInventoryIdentity='e'*64)), \
+             patch.dict(os.environ,dict(GITHUB_REPOSITORY='MYLEGND/masterapp',GH_TOKEN='fixture')):
+            result=deploy.completed_resource_acceptance(original,'client',{'runId':20,'runAttempt':1},azure,'a'*64,rollback,publisher)
+        record=result['record'];self.assertEqual(1,record['originalAttempt'])
+        self.assertEqual(10,record['successReference']['runId']);self.assertEqual(20,record['producingRun'])
+        self.assertEqual(baseline,record['baselineReference']);self.assertEqual(rollback,record['rollbackEvidence'])
+        self.assertTrue(record['observation']['publicMetadataVerified']);publisher.assert_called_once()
+        authority.release_operation_history.assert_called_once()  # no new submission or provider write
+
+    def test_late_old_recovery_effect_cannot_hide_behind_newer_accepted_baseline(self):
+        import contextlib
+        from datetime import datetime
+        authority=Mock();authority.recovery_admission_proof.side_effect=contextlib.nullcontext
+        authority._completion_time.side_effect=lambda value:datetime.fromisoformat(value.replace('Z','+00:00'))
+        authority.completed_resource_receipt.return_value={'record':{'baselineDeploymentIds':['A'],'deploymentIds':['B']}}
+        original={'run':{'head_sha':'c'*40},'resourceBaselines':{'resources':{'client':{'sourceRevision':'b'*40}}}}
+        def row(identity):return dict(id=identity,status=4,complete=True,active=False,
+            received_time='2026-11-01T00:00:00Z',start_time='2026-11-01T00:00:01Z',end_time='2026-11-01T00:00:02Z')
+        rows=[row('A'),row('B')];azure=Mock();azure.observed_revision.return_value='b'*40
+        with patch.object(deploy,'_RELEASE_AUTHORITY',authority),patch.object(deploy,'read_deployments_bounded',return_value=rows), \
+             patch.dict(os.environ,dict(GITHUB_REPOSITORY='MYLEGND/masterapp',GH_TOKEN='fixture')):
+            accepted=deploy.recovery_preupload_baseline(azure,original,'client')
+            self.assertEqual(['A','B'],accepted['deploymentIds'])
+            azure.observed_revision.return_value='a'*40
+            with self.assertRaises(deploy.RecoveryPreflightDrift):deploy.recovery_preupload_baseline(azure,original,'client')
+            azure.observed_revision.return_value='b'*40;rows.append(row('late-A'))
+            with self.assertRaises(deploy.RecoveryPreflightDrift):deploy.recovery_preupload_baseline(azure,original,'client')
+
+    def test_forward_rollback_reuses_exact_existing_verifier(self):
+        with patch.object(deploy,'prepare_completed_resource_rollback',return_value={'verified':True}) as verify:
+            self.assertEqual({'verified':True},deploy.prepare_stable_baseline_rollback(
+                {'resourceBaselines':{}},'client',{'revision':'a'*40},Path('/unused')))
+        verify.assert_called_once_with('client',{'revision':'a'*40},Path('/unused'),expected=None)
+
 
 if __name__ == '__main__':
     unittest.main()

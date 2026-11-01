@@ -6417,6 +6417,8 @@ class ReviewedCanonicalPaymentContractTests(unittest.TestCase):
 
 class HistoricalProducerInventoryTests(unittest.TestCase):
     def setUp(self):
+        legacy_contract = patch.object(m,'completed_resource_contract',return_value=None)
+        legacy_contract.start(); self.addCleanup(legacy_contract.stop)
         self.repository='owner/repo';self.revision='a'*40;self.now=0;self.calls=[]
         self.path='actions/runs?branch=Legend%2Ffast-track-release&per_page=100'
         self.run=dict(id=7,head_sha=self.revision,head_branch=m.FAST_TRACK_PR_BASE,event='push',
@@ -6611,9 +6613,9 @@ class HistoricalRecoveryWorkflowTests(unittest.TestCase):
         from types import SimpleNamespace
         current=(ROOT/'.github/workflows'/m.FAST_TRACK_RELEASE_WORKFLOW).read_text()
         self.assertEqual(hashlib.sha256(current.encode()).hexdigest(),
-            '946f12938a47c3009871006969ae9d0ef50e9c0cc67f1df81a202f0a3bacc424')
+            '62980dabd1c0ed2ec843b181a1f92c7c2a922190bbe1773ca9ad9ebb09c18a2e')
         self.assertTrue(m.historical_recovery_workflow_matches(current,current))
-        values={b'current':'946f12938a47c3009871006969ae9d0ef50e9c0cc67f1df81a202f0a3bacc424',
+        values={b'current':'62980dabd1c0ed2ec843b181a1f92c7c2a922190bbe1773ca9ad9ebb09c18a2e',
                 b'old':'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd',b'unknown':'f'*64}
         with patch.object(m.hashlib,'sha256',side_effect=lambda value:SimpleNamespace(hexdigest=lambda:values[value])):
             self.assertTrue(m.historical_recovery_workflow_matches('old','current'))
@@ -7180,8 +7182,8 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         root=Path(__file__).parent
         source=(root/'deploy-approved-app.py').read_text()
         journal=(root/'release-operation-evidence.py').read_text()
-        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'21220b50cf1c6d02e538eb5747c5f5aea46395f2abbfe6b82efbdfb4c585210f')
-        self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'10cb03c9b02afbbb9912ec592757959960c0ea9d139f1280a9dcddfaa4f22351')
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'30d14c75cc1681a8d3c1b24c10b3f372eaa34bcc8ef3d50090a78702bef2f5ce')
+        self.assertEqual(hashlib.sha256(journal.encode()).hexdigest(),'8960dde101f09d6ff3939cf76a7ee0a0787ea961a50a8384e693d5f78bbb7e95')
         self.assertTrue(m._recovery_preflight_source_contract(source,journal))
         for changed in [source+'# unreviewed helper\n',source.replace('reconcile_only=journal.intent is not None','reconcile_only=False')]:
             self.assertNotEqual(changed,source)
@@ -7205,6 +7207,14 @@ class CompletionProofReuseSourceGenerationTests(unittest.TestCase):
         crm=('f639c1dc92e1f382964b2e1aca9b6f1d606eec1ba1c11d492424b298d17628b2',portal[1])
         reuse=('ebf12dabec3e452844376167444ea5e822763fcf246bea68627d2ba9cfcc5dd4',portal[1])
         closed=('21220b50cf1c6d02e538eb5747c5f5aea46395f2abbfe6b82efbdfb4c585210f','10cb03c9b02afbbb9912ec592757959960c0ea9d139f1280a9dcddfaa4f22351')
+        permanent=('30d14c75cc1681a8d3c1b24c10b3f372eaa34bcc8ef3d50090a78702bef2f5ce',
+                   '8960dde101f09d6ff3939cf76a7ee0a0787ea961a50a8384e693d5f78bbb7e95')
+        for source,journal,accepted in [(permanent[0],permanent[1],True),
+                (permanent[0],closed[1],False),(closed[0],permanent[1],False),
+                (permanent[0],'f'*64,False),('f'*64,permanent[1],False)]:
+            values={b'source':source,b'journal':journal}
+            with self.subTest(source=source,journal=journal),patch.object(m.hashlib,'sha256',side_effect=lambda value:SimpleNamespace(hexdigest=lambda:values[value])):
+                self.assertEqual(m._recovery_preflight_source_contract('source','journal'),accepted)
         for source,journal,accepted in [(closed[0],closed[1],True),(closed[0],portal[1],False),(reuse[0],closed[1],False),('f'*64,closed[1],False),(closed[0],'f'*64,False)]:
             values={b'source':source,b'journal':journal}
             with self.subTest(source=source,journal=journal),patch.object(m.hashlib,'sha256',side_effect=lambda value:SimpleNamespace(hexdigest=lambda:values[value])):
@@ -8383,6 +8393,8 @@ class RecoveryAdmissionProofTests(unittest.TestCase):
         print('RECOVERY_NESTED_ORIGINAL_CALL_COUNTS:'+json.dumps(dict(baseline=baseline,reused=reused)))
 
     def setUp(self):
+        legacy_contract = patch.object(m,'completed_resource_contract',return_value=None)
+        legacy_contract.start(); self.addCleanup(legacy_contract.stop)
         self.run = dict(id=10, status='completed', run_attempt=5, head_sha='a'*40)
         self.job = dict(id=30, run_id=10, run_attempt=1, head_sha='a'*40,
             status='completed', conclusion='success', started_at='start', completed_at='end')
@@ -8482,6 +8494,8 @@ class RecoveryAdmissionProofTests(unittest.TestCase):
 
 class RecoveryCompleteHistoryTests(unittest.TestCase):
     def setUp(self):
+        legacy_contract = patch.object(m,'completed_resource_contract',return_value=None)
+        legacy_contract.start(); self.addCleanup(legacy_contract.stop)
         self.repository='owner/repo';self.revision='b'*40;self.application='a'*40
         self.workflow=(ROOT/'.github/workflows'/m.FAST_TRACK_RELEASE_WORKFLOW).read_text()
         self.run=dict(id=20,run_attempt=1,head_sha=self.revision,status='in_progress',conclusion=None,
@@ -9960,6 +9974,318 @@ class StablePartialContinuationTests(unittest.TestCase):
             with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'CONTENT_CHANGED'):m.stable_baseline_partial_effects('MYLEGND/masterapp','fixture')
             runs[runid]['run_attempt']=2
             with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'RUN_CHANGED'):m.stable_baseline_partial_effects('MYLEGND/masterapp','fixture')
+
+
+class CompletedResourceBaselineTests(unittest.TestCase):
+    def contract(self):
+        return m._fast_track_policy().initial_completed_resource_baselines()
+
+    def test_contract_unknown_resources_remain_unknown_and_roots_are_copy_safe(self):
+        policy=m._fast_track_policy(); value=self.contract()
+        self.assertIsNone(value['resources']['website']);self.assertIsNone(value['resources']['routing'])
+        actual=policy.completed_resource_baselines({'perResourceBaselines':value})
+        actual['resources']['portal']['runId']=7
+        self.assertNotEqual(7,value['resources']['portal']['runId'])
+        value['resources']['client']=None
+        with self.assertRaisesRegex(ValueError,'DROPPED'):policy.completed_resource_baselines({'perResourceBaselines':value})
+
+    def test_contract_rejects_wrong_policy_unknown_field_noncompletion_and_bool_id(self):
+        import copy
+        policy=m._fast_track_policy()
+        for change in (lambda v:v.update(policy='reset'),lambda v:v.update(extra=True),
+            lambda v:v['resources']['client'].update(runId=True),
+            lambda v:v['resources']['client'].update(artifactName='legend-release-operation-intent-'+'a'*64)):
+            value=copy.deepcopy(self.contract());change(value)
+            with self.assertRaises(ValueError):policy.completed_resource_baselines({'perResourceBaselines':value})
+
+    def test_scope_uses_each_resource_baseline_and_retains_unchanged_refs(self):
+        value=self.contract();value['resources']['portal']['sourceRevision']='1'*40
+        value['resources']['client']['sourceRevision']='2'*40
+        head='3'*40
+        diffs={'1'*40:['AgentPortal/wwwroot/one.css'],'2'*40:['ClientApp/wwwroot/two.css']}
+        with patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
+            scope=m.completed_resource_scope('4'*40,head,value,diff=lambda a,b:diffs.get(a,[]))
+        self.assertEqual({'portal','client'},{r['key'] for r in scope['matrix']['include']})
+        self.assertEqual({'1'*40,'2'*40},{r['baseline'] for r in scope['matrix']['include']})
+        self.assertEqual('1'*40,value['resources']['portal']['sourceRevision'])
+
+    def test_unknown_pending_website_survives_intervening_tool_parent(self):
+        value=self.contract();root=m._fast_track_policy().COMPLETED_RESOURCE_ROOT_TOOL
+        with patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
+            with self.assertRaisesRegex(ValueError,'UNKNOWN_SELECTED:website'):
+                m.completed_resource_scope('8'*40,'9'*40,value,
+                    diff=lambda a,b:['Legend-Website/scripts/check.mjs'] if a==root else [])
+
+    def test_routing_consumer_is_explicitly_deferred_without_classifier_override(self):
+        value=self.contract();root=m._fast_track_policy().COMPLETED_RESOURCE_ROOT_TOOL
+        with patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
+            with self.assertRaisesRegex(ValueError,'UNKNOWN_SELECTED:routing'):
+                m.completed_resource_scope('8'*40,'9'*40,value,
+                    diff=lambda a,b:['scripts/release-router.py'] if a==root else [])
+        with patch.object(m,'completed_resource_contract',return_value=value), \
+             patch.object(m,'completed_resource_receipt',return_value={}), \
+             patch.object(m,'completed_resource_currentness',return_value={}), \
+             patch.object(m,'completed_resource_scope',return_value={'routing':True}):
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'ROUTING_PARITY_REQUIRED'):
+                m.completed_resource_selection('8'*40,'9'*40,repository='MYLEGND/masterapp',token='token')
+
+    def test_unselected_stale_reference_is_visible_and_never_advanced(self):
+        value=self.contract();value['resources']['client']['sourceRevision']='e'*40
+        holds={};empty=hashlib.sha256(b'[]').hexdigest()
+        def api(repository,endpoint,token):
+            if endpoint.endswith('/jobs?per_page=100'):return {'total_count':0,'jobs':[]}
+            return {'status':'completed','conclusion':'cancelled','run_attempt':1,
+                'head_sha':'40c21d84cfe3c42ecfb48e7940615e603060c765'}
+        with patch.object(m,'completed_resource_other_writers'), \
+             patch.object(m,'_fast_track_history_observation',return_value=[]), \
+             patch.dict(m._RESOURCE_ROOT_HISTORY,{'count':0,'identity':empty}), \
+             patch.object(m,'api_get',side_effect=api):
+            latest=m.completed_resource_currentness('MYLEGND/masterapp','f'*40,value,{},'token',
+                required_resources={'portal','schema'},resource_holds=holds)
+            self.assertIn('client',holds)
+            self.assertEqual(value['resources']['client'],latest['client'])
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'STALE_OR_OMITTED_SUCCESS:client'):
+                m.completed_resource_currentness('MYLEGND/masterapp','f'*40,value,{},'token',required_resources={'client'})
+
+    def test_unknown_writer_is_global_even_for_unrelated_selected_resource(self):
+        with patch.object(m,'completed_resource_other_writers',side_effect=m.ReleaseOperationHistoryUnproven('UNKNOWN_WRITER')):
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'UNKNOWN_WRITER'):
+                m.completed_resource_currentness('MYLEGND/masterapp','f'*40,self.contract(),{},'token',required_resources={'client'})
+
+    def test_selector_authenticates_only_selected_dependencies_and_preserves_scope(self):
+        value=self.contract();scope={'matrix':{'include':[{'key':'client'}]},'commerce':True,'schema':False,'routing':False}
+        calls=[]
+        with patch.object(m,'completed_resource_contract',return_value=value), \
+             patch.object(m,'completed_resource_scope',return_value=scope), \
+             patch.object(m,'completed_resource_receipt',side_effect=lambda repo,key,ref,token:calls.append(key) or {}), \
+             patch.object(m,'completed_resource_currentness',return_value={}):
+            result=m.completed_resource_selection('a'*40,'b'*40,repository='MYLEGND/masterapp',token='token')
+        self.assertEqual({'client','portal','schema'},set(calls))
+        self.assertEqual(scope['matrix'],result['matrix'])
+        self.assertEqual(value,result['resourceBaselines'])
+
+    def test_recovered_a_then_normal_b_does_not_require_current_vector_to_prove_a(self):
+        import contextlib,copy
+        contract=self.contract();policy=m._fast_track_policy();a='a'*40;b='b'*40
+        ref_a=dict(contract['resources']['client'],sourceRevision=a,runId=11)
+        ref_b=dict(contract['resources']['client'],sourceRevision=b,runId=12,runAttempt=1,
+            artifactId=120,artifactDigest='sha256:'+'d'*64,artifactName='legend-release-operation-success-'+'e'*64)
+        contract['resources']['client']=ref_b
+        proof_a={'reference':ref_a,'record':{'operationId':'f'*64,'packageDigest':'c'*64,'deploymentIds':['A']},'acceptance':{'originalRun':10}}
+        title='LEGEND retained recovery original=10 application='+a
+        rows=[dict(id=10,head_sha=a,path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,status='completed',event='push',run_attempt=1),
+              dict(id=11,head_sha='9'*40,path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,status='completed',event='workflow_dispatch',run_attempt=1,display_title=title),
+              dict(id=12,head_sha=b,path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,status='completed',event='push',run_attempt=1)]
+        original={'run':rows[0],'resourceBaselines':self.contract(),'targets':['client']}
+        jobs=[{'name':'Affected App Deploy — ClientApp','status':'completed','conclusion':'success','steps':[
+            {'name':'Publish or reconcile exact application bytes','status':'completed','conclusion':'success'}]},
+            {'name':'Reconcile production schema before publication','status':'completed','conclusion':'skipped'},
+            {'name':'Publish verified website routing','status':'completed','conclusion':'skipped'}]
+        artifact={'id':120,'digest':ref_b['artifactDigest'],'name':ref_b['artifactName']}
+        def api(repo,path,token):
+            if '/artifacts?' in path:return {'total_count':1 if '/12/' in path else 0,'artifacts':[artifact] if '/12/' in path else []}
+            if '/jobs?' in path:return {'total_count':0,'jobs':[]}
+            return {'status':'completed','conclusion':'cancelled','run_attempt':1,'head_sha':'40c21d84cfe3c42ecfb48e7940615e603060c765'}
+        fake=SimpleNamespace(COMPLETED_RESOURCE_ROOT_REFS=policy.COMPLETED_RESOURCE_ROOT_REFS,
+            read_request=lambda sha:{'targets':['masterapp-client']},tool_promotion_requested=lambda sha:False)
+        with contextlib.ExitStack() as stack:
+            patches={'_fast_track_policy':dict(return_value=fake),'completed_resource_other_writers':{},
+                '_fast_track_history_observation':dict(return_value=rows),'api_get':dict(side_effect=api),
+                'is_fast_track_producer':dict(side_effect=lambda repo,run:run['event']=='push'),
+                'completed_resource_contract':dict(return_value=self.contract()),'fast_track_merged_source_proof':{},
+                '_completion_jobs':dict(return_value={1:jobs}),
+                'completed_resource_scope':dict(return_value={'matrix':{'include':[{'key':'client','azure_app':'masterapp-client'}]}}),
+                'fast_track_completion_original':dict(return_value=original),
+                'completed_resource_historical_acceptance':dict(return_value=proof_a),
+                'fast_track_recovery_material':dict(return_value={'originalIntent':{}}),
+                'fast_track_recovery_package_digest':dict(return_value='c'*64),'retained_operation_id':dict(return_value='f'*64),
+                'completed_resource_recovery_attempts':dict(return_value={}), 'completed_resource_attempt_effects':{},
+                '_release_history_json':dict(return_value={'target':'client','producingAttempt':1}),
+                'completed_resource_receipt':dict(return_value={'reference':ref_b,'record':{'target':'client'}})}
+            for name,kwargs in patches.items():stack.enter_context(patch.object(m,name,**kwargs))
+            stack.enter_context(patch.object(m.subprocess,'check_output',side_effect=lambda args,**kw:args[-1]+' '+ '1'*40+' '+ '2'*40))
+            stack.enter_context(patch.dict(m._RESOURCE_ROOT_HISTORY,{'lastRun':0,'count':0,'identity':hashlib.sha256(b'[]').hexdigest()}))
+            result=m.completed_resource_currentness('MYLEGND/masterapp','7'*40,contract,{'client':{'reference':ref_b}},'token')
+            self.assertEqual(ref_b,result['client'])
+            # A newer attempt on the OLD recovery ID is still visited, never
+            # hidden by B's greater run ID or its accepted current reference.
+            rows[1]['run_attempt']=2
+            m.completed_resource_recovery_attempts.side_effect=m.ReleaseOperationHistoryUnproven('LATE_UNRESOLVED_SUBMISSION')
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'LATE_UNRESOLVED_SUBMISSION'):
+                m.completed_resource_currentness('MYLEGND/masterapp','7'*40,contract,{'client':{'reference':ref_b}},'token')
+
+    def test_no_change_tooling_does_not_advance_any_resource(self):
+        value=self.contract();before=json.dumps(value,sort_keys=True)
+        with patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
+            scope=m.completed_resource_scope('8'*40,'9'*40,value,diff=lambda a,b:['scripts/validation-resume.py'])
+        self.assertFalse(scope['selected']);self.assertFalse(scope['schema']);self.assertFalse(scope['routing'])
+        self.assertEqual(before,json.dumps(value,sort_keys=True))
+
+    def test_owner_requires_target_acceptance_but_exact_mixed_root_is_explicit(self):
+        artifact={'created_at':'2026-10-31T20:00:01Z'}
+        job={'name':'owner','status':'completed','conclusion':'failure','steps':[
+            {'name':'publish','status':'completed','conclusion':'failure','started_at':'2026-10-31T20:00:00Z','completed_at':'2026-10-31T20:01:00Z'}]}
+        with self.assertRaisesRegex(ValueError,'ACCEPTANCE'):
+            m._completed_resource_owner([job],{'owner'},{'publish'},artifact)
+        self.assertEqual(job,m._completed_resource_owner([job],{'owner'},{'publish'},artifact,exact_mixed_root=True))
+        job['steps'][0]['conclusion']='success'
+        with self.assertRaisesRegex(ValueError,'SUCCESS_STEP'):
+            m._completed_resource_owner([job],{'owner'},{'publish'},artifact,exact_mixed_root=True)
+
+    def test_execution_rejects_changed_selector_vector_before_any_resource_use(self):
+        value=self.contract();head='1'*40;parent='2'*40
+        with patch.object(m,'completed_resource_contract',return_value=value),patch.object(m.subprocess,'check_output',return_value=f'{head} {parent} '+ '3'*40),patch.dict(os.environ,{
+            'FAST_TRACK_SOURCE_PARENT':parent,'FAST_TRACK_RESOURCE_BASELINES':'{}'}):
+            with self.assertRaisesRegex(ValueError,'SELECTOR_OUTPUT_CHANGED'):m.completed_resource_execution('client',head)
+
+    def test_schema_and_routing_are_separate_from_app_deltas(self):
+        value=self.contract();schema='5'*40;value['resources']['schema']['sourceRevision']=schema
+        with patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
+            scope=m.completed_resource_scope('8'*40,'9'*40,value,
+                diff=lambda a,b:['Infrastructure/Migrations/20261031Example.cs'] if a==schema else [])
+        self.assertTrue(scope['schema']);self.assertTrue(scope['commerce']);self.assertFalse(scope['routing'])
+        self.assertFalse(scope['selected'])
+
+
+    def test_attempt_effects_reject_unjournaled_earlier_entry(self):
+        operation='a'*64
+        success=dict(operationId=operation,target='client',applicationRevision='b'*40,
+            packageDigest='c'*64,baseline='d'*40,baselineDeploymentIds=['old'],deploymentIds=['new'])
+        intent=dict(success,phase='intent',producingRun=42,producingAttempt=2)
+        artifacts=[dict(name='legend-release-operation-intent-'+operation)]
+        def job():return dict(name='Affected App Deploy — ClientApp',conclusion='failure',steps=[
+            dict(name='Publish or reconcile exact application bytes',conclusion='failure')])
+        attempts={1:[job()],2:[job()]}
+        with patch.object(m,'_release_history_json',return_value=intent),patch.object(m,'attested_fast_track_preupload_failure',return_value=False):
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'PRIOR_UNJOURNALED'):
+                m.completed_resource_attempt_effects('MYLEGND/masterapp',dict(id=42),'client',attempts,artifacts,success,'token')
+        with patch.object(m,'_release_history_json',return_value=intent),patch.object(m,'attested_fast_track_preupload_failure',return_value=True):
+            self.assertTrue(m.completed_resource_attempt_effects('MYLEGND/masterapp',dict(id=42),'client',attempts,artifacts,success,'token'))
+
+    def test_attempt_effects_do_not_hide_different_submission(self):
+        operation='a'*64
+        success=dict(operationId=operation,target='client',applicationRevision='b'*40,
+            packageDigest='c'*64,baseline='d'*40,baselineDeploymentIds=['old'],deploymentIds=['new'])
+        submitted=dict(success,phase='submitted',producingRun=42,producingAttempt=1,deploymentId='unresolved')
+        with patch.object(m,'_release_history_json',return_value=submitted):
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'UNRESOLVED_SUBMISSION'):
+                m.completed_resource_attempt_effects('MYLEGND/masterapp',dict(id=42),'client',{1:[]},
+                    [dict(name='legend-release-operation-submitted-'+operation)],success,'token')
+
+
+    def test_new_schema_write_requires_exact_partition_and_distinct_applied_prefix(self):
+        import time
+        revision='b'*40;prior='a'*40
+        partition=hashlib.sha256(json.dumps(dict(resourceGroup='masterapp-rg',authority='masterapp-protect'),sort_keys=True).encode()).hexdigest()
+        forward={'proof':{'reference':{'sourceRevision':prior}}}
+        run={'id':42,'run_attempt':1,'head_sha':revision}
+        observation=dict(databaseIdentity=m._fast_track_policy().STABLE_BASELINE_ADOPTION['databaseIdentity'],
+            historicalExecution='verified-resource-baseline',historicalRunId=42,historicalRunAttempt=1,
+            historicalApplicationRevision=revision,mutationActivity='settled',ready=False,pendingCount=1,historicalObservedAt=time.time())
+        with patch.dict(os.environ,FAST_TRACK_RESOURCE_BASELINES='{}',GITHUB_SHA=revision), \
+             patch.object(m,'completed_resource_execution',return_value=forward),patch.object(m,'api_get',return_value=run), \
+             patch.object(m,'is_fast_track_producer',return_value=True),patch.object(m,'_completion_jobs',return_value={1:[]}), \
+             patch.object(m,'_applied_migration_prefix_separate',return_value=False) as prefix:
+            with self.assertRaisesRegex(RuntimeError,'distinct pending prefix'):
+                m.release_child_first_write_proven('MYLEGND/masterapp','migrations','c'*64,'d'*64,42,1,'fixture',
+                    partition_identity=partition,current_application_revision=revision,historical_observation=observation,
+                    first_pending_migration_id='202611010001_New',last_applied_migration_id='202610310001_Old')
+            prefix.return_value=True
+            self.assertTrue(m.release_child_first_write_proven('MYLEGND/masterapp','migrations','c'*64,'d'*64,42,1,'fixture',
+                partition_identity=partition,current_application_revision=revision,historical_observation=observation,
+                first_pending_migration_id='202611010001_New',last_applied_migration_id='202610310001_Old'))
+            observation['mutationActivity']='active'
+            with self.assertRaisesRegex(RuntimeError,'distinct pending prefix'):
+                m.release_child_first_write_proven('MYLEGND/masterapp','migrations','c'*64,'d'*64,42,1,'fixture',
+                    partition_identity=partition,current_application_revision=revision,historical_observation=observation)
+
+
+
+    def test_resource_artifact_preserves_real_earlier_attempt_after_later_readonly_attempt(self):
+        reference=self.contract()['resources']['client']
+        run=dict(id=reference['runId'],run_attempt=2,status='completed',head_sha='a'*40,
+            head_branch=m.FAST_TRACK_PR_BASE,path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,
+            head_repository={'full_name':'MYLEGND/masterapp'})
+        artifact=dict(id=reference['artifactId'],name=reference['artifactName'],digest=reference['artifactDigest'])
+        job=dict(id=77,run_id=run['id'],run_attempt=1,head_sha=run['head_sha'])
+        def api(repo,path,token):
+            if '/artifacts?' in path:return dict(total_count=1,artifacts=[artifact])
+            if '/attempts/1/jobs?' in path:return dict(total_count=1,jobs=[job])
+            return run
+        with patch.object(m,'api_get',side_effect=api),patch.object(m,'_completion_artifact',return_value=artifact), \
+             patch.object(m,'_release_history_json',return_value={'immutable':'receipt'}):
+            result=m._completed_resource_artifact('MYLEGND/masterapp',reference,'fixture')
+            self.assertEqual(result[3],{'immutable':'receipt'})
+            run['run_attempt']=0
+            with self.assertRaisesRegex(ValueError,'PRODUCER_CHANGED'):
+                m._completed_resource_artifact('MYLEGND/masterapp',reference,'fixture')
+
+
+
+    def test_recovery_attempt_without_intent_needs_positive_scoped_nonentry(self):
+        original={'run':{'id':10,'head_sha':'a'*40,'run_attempt':1}}
+        run=dict(id=20,run_attempt=1,event='workflow_dispatch',path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,
+            display_title='LEGEND retained recovery original=10 application='+'a'*40)
+        owner=dict(id=21,status='completed',steps=[dict(name='Recover exact retained application bytes',status='completed',
+            conclusion='failure',started_at='2026-11-01T00:00:00Z')])
+        def api(repo,path,token):
+            return {'total_count':1,'jobs':[owner]} if '/jobs?' in path else {'total_count':0,'artifacts':[]}
+        with patch.object(m,'release_operation_history',return_value=None),patch.object(m,'api_get',side_effect=api),patch.object(m,'_fast_track_history_observation',return_value=[run]), \
+             patch.object(m,'fast_track_recovery_producer',return_value={'jobId':21}), \
+             patch.object(m,'attested_recovery_terminal_preflight',return_value=False) as nonentry, \
+             patch.object(m,'attested_recovery_preintent_failure',return_value=False), \
+             patch.object(m,'attested_recovery_target_hold',return_value=False):
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'UNJOURNALED'):
+                m.completed_resource_recovery_attempts('MYLEGND/masterapp',original,'client','b'*64,'fixture')
+            nonentry.return_value=True
+            self.assertIsNone(m.completed_resource_recovery_attempts('MYLEGND/masterapp',original,'client','b'*64,'fixture'))
+            run['display_title']='LEGEND retained recovery original=11 application='+'a'*40
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'CONFLICTING_ORIGINAL'):
+                m.completed_resource_recovery_attempts('MYLEGND/masterapp',original,'client','b'*64,'fixture')
+
+
+
+    def test_later_submitted_provider_b_cannot_hide_behind_accepted_provider_a(self):
+        original={'run':{'id':10,'head_sha':'a'*40,'run_attempt':1}}
+        with patch.object(m,'release_operation_history',side_effect=[{'deploymentId':'B'},{'deploymentIds':['A']}]), \
+             patch.object(m,'_fast_track_history_observation') as inventory:
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'UNRESOLVED_SUBMITTED_EFFECT'):
+                m.completed_resource_recovery_attempts('MYLEGND/masterapp',original,'client','b'*64,'fixture')
+        inventory.assert_not_called()
+
+
+
+    def test_versioned_recovery_schema_real_transport_and_temporal_binding(self):
+        import copy
+        revision='a'*40;database=m._fast_track_policy().STABLE_BASELINE_ADOPTION['databaseIdentity']
+        observer=dict(runId=20,runAttempt=1,jobId=21,toolRevision='b'*40,promotionRunId=19)
+        reference=dict(sourceRevision=revision,runId=10,runAttempt=1,artifactId=11,
+            artifactDigest='sha256:'+'c'*64,artifactName='legend-release-child-success-'+'d'*64)
+        record=dict(schemaVersion=2,phase='retained-schema-read-only',originalRun=10,applicationRevision=revision,
+            producingRun=20,producingAttempt=1,observer=observer,originalSuccessArtifact=11,schemaReference=reference,
+            historyIdentity='e'*64,sqlExecutionAuthorized=False,
+            observation=dict(databaseIdentity=database,schemaIdentity='f'*64,baselineIdentity='1'*64,
+                observedUtc='2026-11-01T00:00:02Z',pendingCount=0,ready=True,mutationActivity='settled'),
+            recovery=dict(databaseIdentity=database,observedUtc='2026-11-01T00:00:02Z',restorePointUtc='2026-10-31T23:50:00Z',
+                earliestRestoreUtc='2026-10-25T00:00:00Z',retentionDays=7,restoreWindowVerified=True,restoreExecuted=False,authorizesMutation=False))
+        def artifact():return dict(id=22,name='legend-retained-schema-proof-'+hashlib.sha256(json.dumps(record,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
+            created_at='2026-11-01T00:00:03Z',digest='sha256:'+'2'*64)
+        job=dict(id=21,status='completed',steps=[dict(name='Recover exact retained application bytes',status='completed',
+            started_at='2026-11-01T00:00:01Z',completed_at='2026-11-01T00:01:00Z')])
+        original={'run':{'id':10,'head_sha':revision}}
+        with patch.object(m,'_release_history_json',side_effect=lambda *a,**k:record), \
+             patch.object(m,'completed_resource_receipt',return_value={'record':{'observation':{'schemaIdentity':'f'*64}}}), \
+             patch.object(m,'api_get',return_value={'total_count':1,'jobs':[job]}):
+            self.assertEqual(record,m.completed_resource_schema_proof('MYLEGND/masterapp',original,observer,artifact(),'fixture'))
+            saved=copy.deepcopy(record)
+            for mutation in (lambda:record['observation'].update(databaseIdentity='3'*64),
+                lambda:record['observation'].update(schemaIdentity='4'*64),
+                lambda:record['observation'].update(observedUtc='2026-11-01T00:00:04Z'),
+                lambda:record['schemaReference'].update(runId=99)):
+                record.clear();record.update(copy.deepcopy(saved));mutation()
+                with self.assertRaises((ValueError,RuntimeError)):
+                    m.completed_resource_schema_proof('MYLEGND/masterapp',original,observer,artifact(),'fixture')
+
 
 
 if __name__ == "__main__":

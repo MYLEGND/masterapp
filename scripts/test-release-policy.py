@@ -1360,6 +1360,7 @@ class TrustedToolPromotionPolicyTests(unittest.TestCase):
              patch.object(owner,'read_request',side_effect=lambda sha:request if sha==head else {'requestId':'older'}), \
              patch.object(owner.subprocess,'run',side_effect=git), \
              patch.object(authority,'fast_track_source_admission',return_value=admission) as authenticate, \
+             patch.object(authority.subprocess,'check_output',return_value='# legacy policy fixture'), \
              patch.object(authority,'fast_track_effective_baseline',side_effect=RuntimeError('unresolved predecessor')) as baseline:
             scope=authority.fast_track_selection(base,head)
         authenticate.assert_called_once_with(allow_nonpublishing=True);baseline.assert_not_called()
@@ -1377,6 +1378,7 @@ class TrustedToolPromotionPolicyTests(unittest.TestCase):
         with patch.object(authority,'_fast_track_policy',return_value=owner), \
              patch.object(owner,'read_request',side_effect=lambda sha:release if sha==head else prior), \
              patch.object(authority,'fast_track_source_admission',return_value=admission), \
+             patch.object(authority.subprocess,'check_output',return_value='# legacy policy fixture'), \
              patch.object(authority,'fast_track_effective_baseline',side_effect=RuntimeError('unresolved predecessor')) as baseline:
             with self.assertRaisesRegex(RuntimeError,'unresolved predecessor'):
                 authority.fast_track_selection(base,head)
@@ -1657,7 +1659,7 @@ class FastTrackCompletionAuthorityTests(unittest.TestCase):
                 return dict(jobs=selected,total_count=len(selected))
             return self.run
         def git(*args,**kwargs):return self.sha+' '+'a'*40+' '+'d'*40 if 'rev-list' in args[0] else self.a.RELEASE_REQUEST_PATH+'\n'
-        with patch.object(self.a,'api_get',side_effect=api),patch.object(self.a,'fast_track_merged_source_proof'),patch.object(self.a,'fast_track_effective_baseline',return_value=baseline or 'a'*40),patch.object(self.a.subprocess,'check_output',side_effect=git),patch.object(self.a,'fast_track_scope',return_value=scope),patch.object(self.a,'_release_history_source',return_value=json.dumps(req)):
+        with patch.object(self.a,'completed_resource_contract',return_value=None),patch.object(self.a,'api_get',side_effect=api),patch.object(self.a,'fast_track_merged_source_proof'),patch.object(self.a,'fast_track_effective_baseline',return_value=baseline or 'a'*40),patch.object(self.a.subprocess,'check_output',side_effect=git),patch.object(self.a,'fast_track_scope',return_value=scope),patch.object(self.a,'_release_history_source',return_value=json.dumps(req)):
             return self.a.fast_track_completion_original(self.repo,123,self.sha,'test-only')
     def test_original_requires_all_obligations_and_selected_targets(self):
         self.assertEqual(self.original_call()['targets'],['portal'])
