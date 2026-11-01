@@ -1,10 +1,25 @@
 // Invoked only by the admitted CRM xUnit lane against its synthetic loopback host.
 const assert=require('node:assert/strict'),{spawn}=require('node:child_process'),fs=require('node:fs'),path=require('node:path');
+// Emit only fixed categories and bounded numbers; never driver text, URLs, paths or session IDs.
+function startupDiagnostics(log,driver,elapsedMs){
+  return {
+    ready:/started successfully on port \d+/i.test(log),
+    versionMismatch:/only supports Chrome version|current browser version is/i.test(log),
+    sandboxFailure:/no usable sandbox|running as root without --no-sandbox/i.test(log),
+    resourceFailure:/resource temporarily unavailable|cannot allocate memory|out of memory/i.test(log),
+    chromeExited:/chrome failed to start|chrome not reachable|DevToolsActivePort file doesn't exist/i.test(log),
+    sessionRejected:/session not created/i.test(log),
+    exitCode:Number.isInteger(driver?.exitCode)?driver.exitCode:null,
+    exited:driver?.exitCode!==null && driver?.exitCode!==undefined,
+    signaled:typeof driver?.signalCode==='string',
+    elapsedMs:Number.isFinite(elapsedMs)?Math.max(0,Math.min(150000,Math.trunc(elapsedMs))):null
+  };
+}
 (async()=>{
   assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.GITHUB_REPOSITORY,'MYLEGND/masterapp');assert.equal(process.env.RUNNER_OS,'Linux');
   assert.equal(JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH,'utf8')).repository.private,false);
   const origin=new URL(process.argv[2]);assert.equal(origin.protocol,'http:');assert.equal(origin.hostname,'127.0.0.1');assert.ok(origin.port);
-  const deadline=Date.now()+150000;let driver,session,driverOrigin,log='',stage='startup';
+  const started=Date.now(),deadline=started+150000;let driver,session,driverOrigin,log='',stage='startup';
   const pause=ms=>new Promise(r=>setTimeout(r,ms));
   const command=async(method,endpoint,body)=>{
     assert.ok(Date.now()<deadline,'Browser acceptance deadline exceeded at '+stage);
@@ -73,6 +88,7 @@ const assert=require('node:assert/strict'),{spawn}=require('node:child_process')
     }
     console.log('CRM_HOSTED_BROWSER:PASS:desktop-mobile-keyboard-actual-view-and-endpoints:synthetic-only:not-live');
   }catch(error){
+    if(!session) console.error('CRM_HOSTED_BROWSER:STARTUP_DIAGNOSTICS:'+JSON.stringify(startupDiagnostics(log,driver,Date.now()-started)));
     console.error('CRM_HOSTED_BROWSER:FAIL:'+stage+':'+error.message);
     throw error;
   }finally{

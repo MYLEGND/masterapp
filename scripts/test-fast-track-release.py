@@ -28,7 +28,7 @@ migration = load('release-migration')
 deploy = load('deploy-approved-app')
 
 
-CRM_READ_ONLY_OBSERVER_STEP = "      - name: Build read-only retained schema observer without application packages\n        if: inputs.original_run == '41131223973' && inputs.application_revision == '3243221ae661b53d60f78cc2dab108a93bad7632'\n        run: |\n          dotnet publish scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj -c Release --nologo \\\n            -m:1 -nr:false -p:UseSharedCompilation=false -o /tmp/retained-schema-probe\n"
+CRM_READ_ONLY_OBSERVER_STEP = "      - name: Build read-only retained schema observer without application packages\n        run: |\n          dotnet publish scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj -c Release --nologo \\\n            -m:1 -nr:false -p:UseSharedCompilation=false -o /tmp/retained-schema-probe\n"
 
 
 def assert_retained_recovery_build_boundary(case, recovery):
@@ -41,6 +41,48 @@ def assert_retained_recovery_build_boundary(case, recovery):
 
 
 class RetainedRecoveryBuildBoundaryTests(unittest.TestCase):
+    def assert_schema_prerequisites(self, recovery):
+        self.assertIn("if: github.event_name == 'workflow_dispatch'", recovery)
+        self.assertIn('MIGRATION_PROBE_DLL: /tmp/retained-schema-probe/MigrationReleaseProbe.dll', recovery)
+        prepare = recovery.index('      - name: Validate original authority and restore retained packages without rebuilding')
+        runtime = recovery.index('      - name: Install read-only schema observer runtime')
+        build = recovery.index('      - name: Build read-only retained schema observer without application packages')
+        transport = recovery.index('      - name: Install canonical durable evidence transport')
+        login = recovery.index('      - name: Sign in to Azure Production')
+        execute = recovery.index('      - name: Recover exact retained application bytes')
+        self.assertEqual(sorted([prepare, runtime, build, transport, login, execute]),
+                         [prepare, runtime, build, transport, login, execute])
+        self.assertIn('--prepare-recovery-only', recovery[prepare:runtime])
+        self.assertIn('uses: actions/setup-dotnet@v4', recovery[runtime:build])
+        self.assertIn('dotnet-version: 10.0.x', recovery[runtime:build])
+        self.assertNotIn('if:', recovery[runtime:transport])
+        assert_retained_recovery_build_boundary(self, recovery)
+
+    def test_authenticated_forward_and_legacy_recovery_always_prepare_schema_observer(self):
+        workflow = (Path(__file__).resolve().parents[1]/'.github/workflows/legend-fast-track-ui.yml').read_text()
+        recovery = authority._job_blocks(workflow)['recover-fast-track']
+        self.assert_schema_prerequisites(recovery)
+        # The exact previous workflow fails this contract: f284 commerce recovery
+        # needs the same physical schema observer as the original 324 recovery.
+        legacy = recovery.replace('        uses: actions/setup-dotnet@v4',
+            "        if: inputs.original_run == '41131223973' && inputs.application_revision == '3243221ae661b53d60f78cc2dab108a93bad7632'\n        uses: actions/setup-dotnet@v4")
+        with self.assertRaises(AssertionError):
+            self.assert_schema_prerequisites(legacy)
+
+    def test_missing_disabled_or_late_schema_prerequisites_are_rejected(self):
+        workflow = (Path(__file__).resolve().parents[1]/'.github/workflows/legend-fast-track-ui.yml').read_text()
+        recovery = authority._job_blocks(workflow)['recover-fast-track']
+        variants = [recovery.replace('uses: actions/setup-dotnet@v4','uses: unrelated/action@v4'),
+            recovery.replace('dotnet-version: 10.0.x','dotnet-version: 8.0.x'),
+            recovery.replace('MIGRATION_PROBE_DLL: /tmp/retained-schema-probe/MigrationReleaseProbe.dll',
+                             'MIGRATION_PROBE_DLL: /tmp/missing.dll'),
+            recovery.replace('--prepare-recovery-only','--unproven'),
+            recovery.replace('        uses: actions/setup-dotnet@v4','        if: false\n        uses: actions/setup-dotnet@v4'),
+            recovery.replace(CRM_READ_ONLY_OBSERVER_STEP,'') + CRM_READ_ONLY_OBSERVER_STEP]
+        for value in variants:
+            with self.subTest(value=value), self.assertRaises(AssertionError):
+                self.assert_schema_prerequisites(value)
+
     def test_exact_read_only_observer_is_permitted(self):
         assert_retained_recovery_build_boundary(self, CRM_READ_ONLY_OBSERVER_STEP)
 
@@ -49,8 +91,8 @@ class RetainedRecoveryBuildBoundaryTests(unittest.TestCase):
         variants = {
             'application project': original.replace('scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj', 'AgentPortal/AgentPortal.csproj'),
             'duplicate observer': original + original,
-            'missing condition': '\n'.join(line for line in original.split('\n') if not line.strip().startswith('if:')),
-            'broadened condition': original.replace("inputs.original_run == '41131223973' && inputs.application_revision == '3243221ae661b53d60f78cc2dab108a93bad7632'", 'true'),
+            'legacy-only condition': original.replace('        run: |', "        if: inputs.original_run == '41131223973'\n        run: |"),
+            'disabled observer': original.replace('        run: |', '        if: false\n        run: |'),
             'changed output': original.replace('/tmp/retained-schema-probe', '/tmp/application'),
             'extra app publish': original + '        run: dotnet publish AgentPortal/AgentPortal.csproj\n',
             'extra app build': original + '        run: dotnet build AgentPortal/AgentPortal.csproj\n',
