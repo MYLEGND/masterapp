@@ -78,6 +78,7 @@ class SchemaOnlyActivityFenceTests(unittest.TestCase):
                       baselineIdentity='c'*64, ready=True, pendingCount=0,
                       mutationActivity='settled')
         owner=SimpleNamespace(
+            completed_resource_execution=lambda resource:None,
             evidence_lookup_budget=lambda *args, **kwargs:nullcontext(),
             assert_release_execution=lambda:dict(id=11,run_attempt=1))
         audit=SimpleNamespace(
@@ -126,7 +127,9 @@ class CanonicalWorkflowNoSqlGateTests(unittest.TestCase):
         self.assertIn("if: ${{ steps.migration-plan.outputs.mode == 'no-sql' }}",workflow)
         self.assertIn('run: python3 scripts/release-migration.py --no-sql',workflow)
         self.assertIn('run: python3 scripts/release-migration.py\n',workflow)
-        self.assertIn('FAST_TRACK_RELEASE_BASELINE: ${{ needs.select-targets.outputs.baseline }}',workflow)
+        self.assertIn('FAST_TRACK_RELEASE_BASELINE: ${{ needs.select-targets.outputs.schema-baseline }}',workflow)
+        self.assertIn('FAST_TRACK_SOURCE_PARENT: ${{ needs.select-targets.outputs.source-parent }}',workflow)
+        self.assertIn('FAST_TRACK_RESOURCE_BASELINES: ${{ needs.select-targets.outputs.resource-baselines }}',workflow)
 
 class CurrentStateMigrationPlanTests(unittest.TestCase):
     def setUp(self):

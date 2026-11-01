@@ -336,10 +336,15 @@ def historical_recovery_workflow_matches(source, current):
     return source == current or (
         hashlib.sha256(current.encode()).hexdigest(),
         hashlib.sha256(source.encode()).hexdigest(),
-    ) == (
-        '946f12938a47c3009871006969ae9d0ef50e9c0cc67f1df81a202f0a3bacc424',
-        'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd',
-    )
+    ) in {
+        ('946f12938a47c3009871006969ae9d0ef50e9c0cc67f1df81a202f0a3bacc424',
+         'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd'),
+        # Sentinel_2931e88: exact completed-resource reader, history only.
+        ('62980dabd1c0ed2ec843b181a1f92c7c2a922190bbe1773ca9ad9ebb09c18a2e',
+         '946f12938a47c3009871006969ae9d0ef50e9c0cc67f1df81a202f0a3bacc424'),
+        ('62980dabd1c0ed2ec843b181a1f92c7c2a922190bbe1773ca9ad9ebb09c18a2e',
+         'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd'),
+    }
 
 
 def fast_track_recovery_producer(repository, run, token, *, attempt, live=False):
@@ -357,8 +362,13 @@ def fast_track_recovery_producer(repository, run, token, *, attempt, live=False)
     if source != current and (live or not historical_recovery_workflow_matches(source, current)):
         raise ValueError('FAST_TRACK_RECOVERY_WORKFLOW_CHANGED')
     adopted = stable_baseline_recovery_run(repository, run)
-    if adopted:
-        stable_baseline_continuation_parent(repository, run, token)
+    title = re.fullmatch(r'LEGEND retained recovery original=([1-9][0-9]*) application=([a-f0-9]{40})',str(run.get('display_title','')))
+    forward = completed_resource_contract(title.group(2)) if title else None
+    if forward is not None:
+        if completed_resource_contract(revision) != forward:
+            raise ValueError('RESOURCE_RECOVERY_TOOL_VECTOR_CHANGED')
+    if adopted or forward is not None:
+        if adopted:stable_baseline_continuation_parent(repository, run, token)
         promotions = [r for r in _fast_track_history_observation(repository, token)
                       if r['head_sha'] == revision and is_fast_track_producer(repository, r)]
     else:
@@ -577,6 +587,8 @@ def fast_track_recovery_material(repository, original, key, token):
     if len(intents) > 1:
         raise ValueError('FAST_TRACK_RECOVERY_COMPETING_INTENT')
     material = dict(packageArtifact=package, originalIntent=intents[0] if intents else None)
+    if intents and 'resourceBaselines' in original and intents[0].get('baseline') != original['resourceBaselines']['resources'][key]['sourceRevision']:
+        raise ValueError('RESOURCE_RECOVERY_ORIGINAL_BASELINE_CHANGED')
     if run['id'] == PROTECT_RECOVERY_RUN:
         if key != 'protect' and not intents:
             raise ValueError('PROTECT_RECOVERY_SUCCESSFUL_SIBLING_INTENT_MISSING')
@@ -874,6 +886,11 @@ def recovery_admission_proof():
         # A paginated branch inventory is one observation, never cached pages.
         # Include active/queued rows and reject their drift just like terminal rows.
         for repository, entry in state['histories'].items():
+            if entry.get('kind')=='completed-resource-other-writers':
+                current=_completed_resource_other_writers(entry['repository'],entry['token'])
+                if json.dumps(current,sort_keys=True,separators=(',',':'))!=entry['raw']:
+                    raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_WRITER_CHANGED_AT_BOUNDARY')
+                continue
             if entry.get('kind')=='stable-current-root':
                 current=_stable_root_inventory(entry['repository'],entry['observer'],entry['token'])
                 if json.dumps(current,sort_keys=True,separators=(',',':'))!=entry['raw']:
@@ -1440,6 +1457,12 @@ RECOVERY_PREFLIGHT_PRODUCER_SHA256 = '15ba27c53564223cb41502bb5528949e6435f0e6bc
 
 def _recovery_preflight_source_contract(source, journal_source):
     """Closed reviewed source generation, including every helper and write path."""
+    # Exact independently reviewed permanent-resource producer; no crossed pairs.
+    # Sentinel_2931e88ea42c8191a9013cbaf7b32250, 2026-11-01T02:25:17Z.
+    if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) == (
+        '30d14c75cc1681a8d3c1b24c10b3f372eaa34bcc8ef3d50090a78702bef2f5ce',
+        '8960dde101f09d6ff3939cf76a7ee0a0787ea961a50a8384e693d5f78bbb7e95'):
+        return True
     # Shared serializer preflight; exact paired generation, never arbitrary helpers.
     if (hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(journal_source.encode()).hexdigest()) == ('21220b50cf1c6d02e538eb5747c5f5aea46395f2abbfe6b82efbdfb4c585210f', '10cb03c9b02afbbb9912ec592757959960c0ea9d139f1280a9dcddfaa4f22351'):
         return True  # Exact Portal-proof scope and carried-success continuation.
@@ -1554,6 +1577,10 @@ def attested_recovery_terminal_preflight(repository, run, job, attempt, revision
                 or artifact.get('workflow_run',{}).get('head_sha')!=run['head_sha']
                 or not re.fullmatch('sha256:[a-f0-9]{64}',str(artifact.get('digest','')))):return False
             record=_release_history_json(repository,run['id'],artifact,'operation.json',verify_digest=True)
+            if record.get('phase')=='retained-schema-read-only' and 'resourceBaselines' in original:
+                schema_observer=fast_track_recovery_producer(repository,run,token,attempt=record.get('producingAttempt'))
+                completed_resource_schema_proof(repository,original,schema_observer,artifact,token)
+                continue
             if artifact.get('name')!=validate_recovery_preflight_nonentry(record):return False
             producing=record['producingAttempt']
             if producing in seen or producing>run['run_attempt']:return False
@@ -1667,6 +1694,17 @@ def attested_recovery_target_hold(repository, run, job, attempt, revision, token
             if type(i)is not int or i not in owners:return False
             observer,owner,step=owners[i]
             if not _completion_artifact_in_step(artifact,step):return False
+            if record.get('phase')=='retained-schema-read-only' and 'resourceBaselines' in original:
+                completed_resource_schema_proof(repository,original,observer,artifact,token)
+                continue
+            if record.get('phase')=='target-acceptance' and 'resourceBaselines' in original:
+                accepted_key=record.get('target')
+                if accepted_key not in expected:return False
+                reference=dict(sourceRevision=revision,runId=run['id'],runAttempt=i,
+                    artifactId=artifact['id'],artifactDigest=artifact['digest'],artifactName=artifact['name'])
+                accepted=completed_resource_receipt(repository,accepted_key,reference,token)
+                if accepted['record'].get('operationId')!=expected[accepted_key]['operationId']:return False
+                continue
             if record.get('phase')=='target-preintent-hold':
                 key=record.get('failedTarget')
                 if (artifact.get('name')!=validate_recovery_target_preintent(record) or record['targets']!=expected
@@ -4192,6 +4230,41 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
             or type(current_run) is not int or current_run < 1
             or type(current_attempt) is not int or current_attempt < 1):
         raise ValueError("Invalid release child mutation identity")
+    resource={'migrations':'schema','routing-cloudflare':'routing'}.get(child)
+    if resource is not None and os.environ.get('FAST_TRACK_RESOURCE_BASELINES') not in (None,'null'):
+        forward=completed_resource_execution(resource,current_application_revision or os.environ.get('GITHUB_SHA'))
+        if forward is not None:
+            current=api_get(repository,f'actions/runs/{current_run}',token)
+            if (not is_fast_track_producer(repository,current) or current.get('run_attempt')!=current_attempt
+                or current.get('head_sha')!=os.environ.get('GITHUB_SHA')):
+                raise rejection('Completed resource current child owner changed')
+            # Earlier attempts require their actual positive prewrite proof. A
+            # failed or missing intent is not permission to repeat a side effect.
+            attempts=_completion_jobs(repository,current,token)
+            for attempt,jobs in attempts.items():
+                if attempt==current_attempt:continue
+                if child!='migrations' or not attested_fast_track_migration_prewrite(repository,current,jobs,token,
+                    attempt=attempt,current_run=current_run,current_attempt=current_attempt):
+                    raise rejection('Completed resource prior child attempt unresolved',current_run,attempt)
+            if child=='migrations':
+                observation=historical_observation or {}
+                prior=forward['proof']['reference']['sourceRevision']
+                expected_partition=hashlib.sha256(json.dumps(dict(resourceGroup='masterapp-rg',authority='masterapp-protect'),sort_keys=True).encode()).hexdigest()
+                prior_database=_fast_track_policy().STABLE_BASELINE_ADOPTION['databaseIdentity']
+                if (partition_identity!=expected_partition or observation.get('databaseIdentity')!=prior_database
+                    or observation.get('historicalExecution')!='verified-resource-baseline'
+                    or observation.get('historicalRunId')!=current_run or observation.get('historicalRunAttempt')!=current_attempt
+                    or observation.get('historicalApplicationRevision')!=current_application_revision
+                    or observation.get('mutationActivity')!='settled' or observation.get('ready') is not False
+                    or type(observation.get('pendingCount')) is not int or observation['pendingCount']<1
+                    or type(observation.get('historicalObservedAt')) not in (int,float)
+                    or not 0<=time.time()-observation['historicalObservedAt']<=900
+                    or not _applied_migration_prefix_separate(prior,current_application_revision,
+                        first_pending_migration_id,last_applied_migration_id)):
+                    raise rejection('Completed schema baseline does not prove a distinct pending prefix')
+            # The journal still publishes and reads back exact intent after this
+            # return; provider/physical state is rechecked by its existing owner.
+            return True
     def require_distinct_intent(record, run_id, attempt, *, reconciled=False):
         generation = record['dependencyIdentity']
         if generation == dependency_identity:
@@ -6373,6 +6446,838 @@ def fast_track_protect_supersession(revision, *, request=None):
     return dict(record, candidateRevision=revision)
 
 
+# Per-resource forward baselines. This is the existing release authority, not a
+# second release state store. Legacy readers below retain their historical meaning.
+def completed_resource_contract(revision):
+    return _fast_track_policy().completed_resource_baselines(_fast_track_policy().read_request(revision))
+
+
+def _completed_resource_artifact(repository, reference, token):
+    run = api_get(repository, 'actions/runs/' + str(reference['runId']), token)
+    if (run.get('id') != reference['runId'] or type(run.get('run_attempt')) is not int
+        or type(reference.get('runAttempt')) is not int or not 1<=reference['runAttempt']<=run['run_attempt']
+        or run.get('head_repository', {}).get('full_name', '').lower() != repository.lower()
+        or run.get('head_branch') != FAST_TRACK_PR_BASE or run.get('status') != 'completed'
+        or run.get('path') != '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW):
+        raise ValueError('RESOURCE_BASELINE_PRODUCER_CHANGED')
+    artifacts = _completion_inventory(api_get(repository,
+        'actions/runs/' + str(run['id']) + '/artifacts?per_page=100', token), 'artifacts')
+    artifact = _completion_artifact(artifacts, reference['artifactName'], run)
+    if artifact['id'] != reference['artifactId'] or artifact['digest'] != reference['artifactDigest']:
+        raise ValueError('RESOURCE_BASELINE_ARTIFACT_CHANGED')
+    record = _release_history_json(repository, run['id'], artifact, 'operation.json', verify_digest=True,
+                                  max_bytes=4 * 1024 * 1024)
+    jobs = _completion_inventory(api_get(repository,
+        f"actions/runs/{run['id']}/attempts/{reference['runAttempt']}/jobs?per_page=100", token), 'jobs')
+    if any(j.get('run_id') != run['id'] or j.get('run_attempt') != reference['runAttempt']
+           or j.get('head_sha') != run['head_sha'] for j in jobs):
+        raise ValueError('RESOURCE_BASELINE_JOB_CHANGED')
+    return run, artifacts, artifact, record, jobs
+
+
+def _completed_resource_owner(jobs, names, steps, artifact, *, exact_mixed_root=False):
+    owners = [j for j in jobs if j.get('name') in names]
+    if len(owners) != 1:
+        raise ValueError('RESOURCE_BASELINE_OWNER_UNPROVEN')
+    owner = owners[0]
+    conclusions = {'failure'} if exact_mixed_root else {'success'}
+    if owner.get('status') != 'completed' or owner.get('conclusion') not in conclusions:
+        raise ValueError('RESOURCE_BASELINE_OWNER_ACCEPTANCE_UNPROVEN')
+    matching = [s for s in owner.get('steps', []) if s.get('name') in steps
+                and s.get('status') == 'completed' and s.get('conclusion') in conclusions]
+    if len(matching) != 1 or not _completion_artifact_in_step(artifact, matching[0]):
+        raise ValueError('RESOURCE_BASELINE_SUCCESS_STEP_UNPROVEN')
+    return owner
+
+
+
+
+def completed_resource_schema_proof(repository,original,observer,artifact,token):
+    """Authenticate the versioned existing read-only schema proof, never SQL."""
+    record=_release_history_json(repository,observer['runId'],artifact,'operation.json',verify_digest=True)
+    _completion_journal_owner().validate_record(artifact['name'],record)
+    if (record.get('schemaVersion')!=2 or record.get('originalRun')!=original['run']['id']
+        or record.get('applicationRevision')!=original['run']['head_sha'] or record.get('observer')!=observer
+        or record.get('producingRun')!=observer['runId'] or record.get('producingAttempt')!=observer['runAttempt']):
+        raise ValueError('RESOURCE_RECOVERY_SCHEMA_OWNER_CHANGED')
+    proof=completed_resource_receipt(repository,'schema',record['schemaReference'],token)
+    if (record['schemaReference']['runId']!=original['run']['id']
+        or record['observation']['schemaIdentity']!=proof['record']['observation']['schemaIdentity']):
+        raise ValueError('RESOURCE_RECOVERY_SCHEMA_MATERIAL_CHANGED')
+    jobs=_completion_inventory(api_get(repository,f"actions/runs/{observer['runId']}/attempts/{observer['runAttempt']}/jobs?per_page=100",token),'jobs')
+    owners=[j for j in jobs if j.get('id')==observer['jobId']]
+    steps=[v for j in owners for v in j.get('steps',[]) if v.get('name')=='Recover exact retained application bytes']
+    if len(owners)!=1 or len(steps)!=1:
+        raise ValueError('RESOURCE_RECOVERY_SCHEMA_OUTSIDE_OWNER')
+    step=dict(steps[0])
+    if step.get('status')=='in_progress' and step.get('completed_at') is None:
+        if (str(observer['runId'])!=os.environ.get('GITHUB_RUN_ID')
+            or str(observer['runAttempt'])!=os.environ.get('GITHUB_RUN_ATTEMPT')
+            or owners[0].get('status')!='in_progress'):
+            raise ValueError('RESOURCE_RECOVERY_SCHEMA_ACTIVE_OTHER_OWNER')
+        assert_fast_track_recovery_live_execution(original['run']['id'],original['run']['head_sha'],observer)
+        import datetime
+        step['completed_at']=datetime.datetime.now(datetime.timezone.utc).isoformat()
+    if not _completion_artifact_in_step(artifact,step):
+        raise ValueError('RESOURCE_RECOVERY_SCHEMA_OUTSIDE_OWNER')
+    for observed in (record['observation']['observedUtc'],record['recovery']['observedUtc']):
+        age=(_completion_time(artifact['created_at'])-_completion_time(observed)).total_seconds()
+        if not 0<=age<=900 or _completion_time(observed)<_completion_time(steps[0]['started_at']):
+            raise ValueError('RESOURCE_RECOVERY_SCHEMA_OBSERVATION_STALE')
+    return record
+
+
+def completed_resource_recovery_acceptance(repository,resource,reference,run,artifact,record,jobs,token):
+    """Authenticate postverification acceptance without rewriting effect receipts."""
+    _completion_journal_owner().validate_record(artifact['name'],record)
+    if record.get('target')!=resource or record.get('phase')!='target-acceptance':
+        raise ValueError('RESOURCE_ACCEPTANCE_TARGET_CHANGED')
+    observer=fast_track_recovery_producer(repository,run,token,attempt=reference['runAttempt'])
+    if record.get('observer')!=observer:raise ValueError('RESOURCE_ACCEPTANCE_OBSERVER_CHANGED')
+    owners=[j for j in jobs if j.get('id')==observer['jobId']]
+    if len(owners)!=1 or owners[0].get('status')!='completed':
+        raise ValueError('RESOURCE_ACCEPTANCE_OWNER_INCOMPLETE')
+    steps=[s for s in owners[0].get('steps',[]) if s.get('name')=='Recover exact retained application bytes']
+    if len(steps)!=1 or not _completion_artifact_in_step(artifact,steps[0]):
+        raise ValueError('RESOURCE_ACCEPTANCE_OUTSIDE_OWNER_STEP')
+    observed=_completion_time(record['observation']['observedUtc'])
+    if not _completion_time(steps[0]['started_at'])<=observed<=_completion_time(artifact['created_at']):
+        raise ValueError('RESOURCE_ACCEPTANCE_OBSERVATION_TIME_CHANGED')
+    original=fast_track_completion_original(repository,record['originalRun'],record['applicationRevision'],token)
+    if (original.get('resourceBaselines') is None or resource not in original['targets']
+        or record['baselineReference']!=original['resourceBaselines']['resources'][resource]
+        or type(record['originalAttempt']) is not int or not 1<=record['originalAttempt']<=original['run']['run_attempt']):
+        raise ValueError('RESOURCE_ACCEPTANCE_ORIGINAL_BASELINE_CHANGED')
+    schema_binding=record.get('schemaProof')
+    if original['scope']['commerce']:
+        if not isinstance(schema_binding,dict):raise ValueError('RESOURCE_ACCEPTANCE_SCHEMA_MISSING')
+        schema_rows=_completion_inventory(api_get(repository,f"actions/runs/{observer['runId']}/artifacts?per_page=100",token),'artifacts')
+        schema_matches=[a for a in schema_rows if a.get('id')==schema_binding['artifactId']
+            and a.get('name')=='legend-retained-schema-proof-'+schema_binding['contentIdentity'] and a.get('expired') is False]
+        if len(schema_matches)!=1:raise ValueError('RESOURCE_ACCEPTANCE_SCHEMA_ARTIFACT_CHANGED')
+        schema=completed_resource_schema_proof(repository,original,observer,schema_matches[0],token)
+        for timestamp in (schema['observation']['observedUtc'],schema['recovery']['observedUtc']):
+            if not 0<=(observed-_completion_time(timestamp)).total_seconds()<=900:
+                raise ValueError('RESOURCE_ACCEPTANCE_SCHEMA_STALE')
+        if _completion_time(schema_matches[0]['created_at'])>observed:
+            raise ValueError('RESOURCE_ACCEPTANCE_SCHEMA_AFTER_ACCEPTANCE')
+    elif schema_binding is not None:raise ValueError('RESOURCE_ACCEPTANCE_UNEXPECTED_SCHEMA_PROOF')
+    success_run,success_artifacts,success_artifact,success,success_jobs=_completed_resource_artifact(repository,record['successReference'],token)
+    if success.get('recoveryEvidence') is not None:
+        validate_fast_track_recovery_record(repository,success_run,success_artifact,success,token)
+    else:
+        # The old provider effect may precede a failed metadata check. The NEW
+        # acceptance supplies that missing postcondition without relabelling the
+        # old owner as successful or replaying its upload.
+        if success_run['id']!=original['run']['id']:
+            raise ValueError('RESOURCE_ACCEPTANCE_ORIGINAL_EFFECT_OWNER_CHANGED')
+        original_material=fast_track_completion_material(repository,original,resource,token)
+        _completion_original_artifact_owner(original,resource,success_artifact,
+            'Publish or reconcile exact application bytes',('success','failure','cancelled'))
+        if any(success.get(k)!=v for k,v in original_material['intent'].items() if k not in {'phase','producingAttempt'}):
+            raise ValueError('RESOURCE_ACCEPTANCE_ORIGINAL_EFFECT_CHANGED')
+    if record['originalAttempt']!=success.get('recoveryEvidence',{}).get('originalAttempt',success.get('producingAttempt')):
+        raise ValueError('RESOURCE_ACCEPTANCE_ORIGINAL_SNAPSHOT_CHANGED')
+    reconciled_success=release_operation_history(repository,success['operationId'],record['applicationRevision'],resource,
+        observer['runId'],observer['runAttempt'],token,phase='success')
+    if reconciled_success is None or reconciled_success.get('deploymentIds')!=success.get('deploymentIds'):
+        raise ValueError('RESOURCE_ACCEPTANCE_COMPETING_SUCCESS')
+    material=fast_track_recovery_material(repository,original,resource,token)
+    digest=fast_track_recovery_package_digest(repository,original,material,resource,token)
+    if (success.get('phase')!='success' or success.get('target')!=resource
+        or success.get('applicationRevision')!=record['applicationRevision']
+        or success.get('packageDigest')!=digest or success.get('baseline')!=record['baselineReference']['sourceRevision']
+        or success.get('deploymentIds')!=[record['observation']['deploymentId']]
+        or record['observation']['packageDigest']!=digest
+        or _completion_time(success_artifact['created_at'])>observed):
+        raise ValueError('RESOURCE_ACCEPTANCE_SUCCESS_BINDING_CHANGED')
+    rollback=record['rollbackEvidence']
+    _,_,_,prior_record,_=_completed_resource_artifact(repository,record['baselineReference'],token)
+    prior_digest=(prior_record.get('observation',{}).get('packageDigest')
+                  if prior_record.get('phase')=='target-acceptance' else prior_record.get('packageDigest'))
+    if (prior_record.get('target')!=resource or prior_record.get('applicationRevision')!=rollback['revision']
+        or rollback['packageDigest']!=prior_digest or not re.fullmatch('[a-f0-9]{64}',str(prior_digest))
+        or record['observation'].get('runtimeRevision')!=record['applicationRevision']
+        or record['observation'].get('publicMetadataVerified') is not True):
+        raise ValueError('RESOURCE_ACCEPTANCE_ROLLBACK_MATERIAL_CHANGED')
+    rollback_run=api_get(repository,f"actions/runs/{rollback['runId']}",token)
+    if not is_fast_track_producer(repository,rollback_run) or rollback_run.get('head_sha')!=rollback['revision']:
+        raise ValueError('RESOURCE_ACCEPTANCE_ROLLBACK_PRODUCER_CHANGED')
+    rollback_rows=_completion_inventory(api_get(repository,f"actions/runs/{rollback['runId']}/artifacts?per_page=100",token),'artifacts')
+    rollback_matches=[a for a in rollback_rows if a.get('id')==rollback['artifactId'] and a.get('name')==rollback['artifact']
+                      and a.get('digest')==rollback['artifactDigest'] and a.get('expired') is False]
+    if len(rollback_matches)!=1:raise ValueError('RESOURCE_ACCEPTANCE_ROLLBACK_CHANGED')
+    rollback_original=dict(run=rollback_run,targets=[resource],artifacts=rollback_rows,
+        attempts=_completion_jobs(repository,rollback_run,token))
+    _completion_original_artifact_owner(rollback_original,resource,rollback_matches[0],
+        'Preserve immutable application bytes before upload',('success',))
+    if fast_track_recovery_package_digest(repository,rollback_original,dict(packageArtifact=rollback_matches[0]),resource,token)!=prior_digest:
+        raise ValueError('RESOURCE_ACCEPTANCE_ROLLBACK_BYTES_CHANGED')
+    completed_resource_recovery_attempts(repository,original,resource,success['operationId'],token)
+    return dict(reference=reference,record=success,acceptance=record,
+        packageArtifact=material['packageArtifact'],packageRun=original['run'])
+
+
+def completed_resource_receipt(repository, resource, reference, token):
+    """Authenticate a completed resource without recursively selecting its parent.
+
+    The five approved bootstrap receipts are exact byte roots. Later receipts
+    require the canonical merged source and actual successful owner step. Failed
+    sibling jobs do not invalidate a proven resource or advance their own baseline.
+    """
+    policy = _fast_track_policy()
+    root = policy.COMPLETED_RESOURCE_ROOT_REFS.get(resource)
+    bootstrap = reference == root
+    run, artifacts, artifact, record, jobs = _completed_resource_artifact(repository, reference, token)
+    if (record.get('applicationRevision') != reference['sourceRevision']
+        or record.get('producingRun') != reference['runId']
+        or record.get('producingAttempt') != reference['runAttempt']):
+        raise ValueError('RESOURCE_BASELINE_RECORD_IDENTITY_CHANGED')
+    if reference['artifactName'].startswith('legend-release-target-acceptance-'):
+        return completed_resource_recovery_acceptance(repository,resource,reference,run,artifact,record,jobs,token)
+    if bootstrap:
+        expected_tool = ('8f68e9c71c8e0535f46b5094577410ce41feab65' if resource == 'portal'
+                         else policy.COMPLETED_RESOURCE_ROOT_TOOL)
+        if run.get('event') != 'workflow_dispatch' or run.get('head_sha') != expected_tool:
+            raise ValueError('RESOURCE_BASELINE_BOOTSTRAP_OWNER_CHANGED')
+        _completed_resource_owner(jobs, {FAST_TRACK_RECOVERY_JOB}, {'Recover exact retained application bytes'}, artifact,
+                                  exact_mixed_root=resource == 'portal')
+    else:
+        if not is_fast_track_producer(repository, run) or run['head_sha'] != reference['sourceRevision']:
+            raise ValueError('RESOURCE_BASELINE_CANONICAL_PRODUCER_REQUIRED')
+        fast_track_merged_source_proof(repository, run['head_sha'], token)
+        # Version-gated producer input; never reinterpret an old scalar receipt.
+        if completed_resource_contract(run['head_sha']) is None:
+            raise ValueError('RESOURCE_BASELINE_PRODUCER_CONTRACT_MISSING')
+    if resource in RELEASE_TARGETS:
+        if (record.get('phase') != 'success' or record.get('target') != resource
+            or not re.fullmatch('[a-f0-9]{64}', str(record.get('packageDigest')))
+            or record.get('operationId') != retained_operation_id(resource, reference['sourceRevision'], record['packageDigest'])
+            or artifact['name'] != 'legend-release-operation-success-' + record['operationId']
+            or not isinstance(record.get('deploymentIds'), list) or len(record['deploymentIds']) != 1
+            or not re.fullmatch('[a-zA-Z0-9_.:-]{1,256}', str(record['deploymentIds'][0]))
+            or record['deploymentIds'][0] in record.get('baselineDeploymentIds', [])):
+            raise ValueError('RESOURCE_BASELINE_APP_SUCCESS_INVALID')
+        if bootstrap:
+            material = policy.STABLE_BASELINE_ADOPTION['targets'][resource]
+            if any(record.get(k) != material[k] for k in ('operationId','packageDigest')):
+                raise ValueError('RESOURCE_BASELINE_BOOTSTRAP_PACKAGE_CHANGED')
+            package_run = api_get(repository, 'actions/runs/41131223973', token)
+            package_rows = _completion_inventory(api_get(repository,
+                'actions/runs/41131223973/artifacts?per_page=100', token), 'artifacts')
+            package = _completion_artifact(package_rows, 'fast-track-package-' + reference['sourceRevision'] + '-' + resource, package_run)
+            if package['id'] != material['packageArtifactId'] or package['digest'] != material['packageArtifactDigest']:
+                raise ValueError('RESOURCE_BASELINE_BOOTSTRAP_PACKAGE_CHANGED')
+        else:
+            display = {'portal':'AgentPortal','client':'ClientApp','protect':'Protect','parfait':'Parfait','website':'Website'}[resource]
+            owner = _completed_resource_owner(jobs, {'Affected App Deploy — ' + display},
+                {'Publish or reconcile exact application bytes'}, artifact)
+            package_run = run
+            package = _completion_artifact(artifacts, 'fast-track-package-' + reference['sourceRevision'] + '-' + resource, run)
+            attempts=_completion_jobs(repository,run,token)
+            context=dict(run=run,attempts=attempts)
+            package_attempt,_,_=_completion_original_artifact_owner(context,resource,package,
+                'Preserve immutable application bytes before upload',('success',))
+            intent_artifact = _completion_artifact(artifacts, 'legend-release-operation-intent-' + record['operationId'], run)
+            intent = _release_history_json(repository, run['id'], intent_artifact, 'operation.json', verify_digest=True)
+            intent_attempt,_,_=_completion_original_artifact_owner(context,resource,intent_artifact,
+                'Publish or reconcile exact application bytes',('success','failure','cancelled'))
+            if (any(record.get(k) != v for k,v in intent.items() if k not in {'phase','producingAttempt'})
+                or intent.get('phase') != 'intent' or record.get('packageProducerRun') != run['id']
+                or intent.get('producingAttempt')!=intent_attempt or package_attempt>intent_attempt
+                or intent_attempt>reference['runAttempt']):
+                raise ValueError('RESOURCE_BASELINE_INTENT_CHANGED')
+            submitted_artifact=_completion_artifact(artifacts,'legend-release-operation-submitted-'+record['operationId'],run)
+            submitted=_release_history_json(repository,run['id'],submitted_artifact,'operation.json',verify_digest=True)
+            submitted_attempt,_,_=_completion_original_artifact_owner(context,resource,submitted_artifact,
+                'Publish or reconcile exact application bytes',('success','failure','cancelled'))
+            _completion_journal_owner().validate_original_submission_observation(intent,submitted,run)
+            if (submitted.get('producingAttempt')!=submitted_attempt or submitted.get('deploymentId')!=record['deploymentIds'][0]
+                or not intent_attempt<=submitted_attempt<=reference['runAttempt']):
+                raise ValueError('RESOURCE_BASELINE_SUBMISSION_CHANGED')
+            previous = completed_resource_contract(run['head_sha'])['resources'][resource]
+            if previous is None or record.get('baseline') != previous['sourceRevision']:
+                raise ValueError('RESOURCE_BASELINE_PARENT_REFERENCE_CHANGED')
+            actual = fast_track_recovery_package_digest(repository,
+                dict(run=run, targets=[resource], artifacts=artifacts), dict(packageArtifact=package), resource, token)
+            if actual != record['packageDigest']:
+                raise ValueError('RESOURCE_BASELINE_PACKAGE_BYTES_CHANGED')
+        return dict(reference=reference, record=record, packageArtifact=package, packageRun=package_run)
+    if resource == 'schema' and bootstrap:
+        observation = record.get('observation', {})
+        if (record.get('phase') != 'retained-schema-read-only' or record.get('sqlExecutionAuthorized') is not False
+            or observation.get('ready') is not True or observation.get('pendingCount') != 0
+            or observation.get('mutationActivity') != 'settled'
+            or observation.get('schemaIdentity') != policy.STABLE_BASELINE_ADOPTION['schemaIdentity']
+            or observation.get('databaseIdentity') != policy.STABLE_BASELINE_ADOPTION['databaseIdentity']):
+            raise ValueError('RESOURCE_BASELINE_SCHEMA_ROOT_CHANGED')
+        return dict(reference=reference, record=record)
+    child = {'schema':'migrations','routing':'routing-cloudflare'}.get(resource)
+    if child is None:
+        raise ValueError('RESOURCE_BASELINE_UNSUPPORTED_RESOURCE')
+    _validate_child_generation(repository, run, artifact, record, child, token, phase='success')
+    if resource=='schema':
+        partition=hashlib.sha256(json.dumps(dict(resourceGroup='masterapp-rg',authority='masterapp-protect'),sort_keys=True).encode()).hexdigest()
+        if record.get('partitionIdentity')!=partition:
+            raise ValueError('RESOURCE_BASELINE_DATABASE_PARTITION_CHANGED')
+    names, steps = ({'Reconcile production schema before publication'}, {
+        'Apply or reconcile the exact rehearsed migration bundle',
+        'Reconcile fresh already-ready schema without SQL bundle or mutation'}) if resource == 'schema' else (
+        {'Publish verified website routing'}, {'Publish or reconcile canonical website routing'})
+    _completed_resource_owner(jobs, names, steps, artifact)
+    if resource == 'schema' and record.get('observation',{}).get('providerVersion') == 'schema-ready-no-write':
+        observations=[]
+        for item in artifacts:
+            if not item.get('name','').startswith('legend-migration-observation-'):continue
+            item=_completion_artifact(artifacts,item['name'],run)
+            value=_release_history_json(repository,run['id'],item,'operation.json',verify_digest=True)
+            raw={k:v for k,v in value.items() if k!='observationIdentity'}
+            identity=hashlib.sha256(json.dumps(raw,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            if (value.get('kind')!='current-schema-no-write' or value.get('phase')!='observation'
+                or value.get('observationIdentity')!=identity or item['name']!='legend-migration-observation-'+identity
+                or value.get('producingRun')!=run['id'] or value.get('producingAttempt')!=reference['runAttempt']
+                or value.get('executionAuthority')!=run['head_sha'] or value.get('sqlExecutionAuthorized') is not False
+                or value.get('pendingCount')!=0 or value.get('mutationActivity')!='settled'
+                or value.get('schemaIdentity')!=record['observation']['schemaIdentity']
+                or value.get('databaseIdentity')!=policy.STABLE_BASELINE_ADOPTION['databaseIdentity']):
+                raise ValueError('RESOURCE_BASELINE_SCHEMA_OBSERVATION_CHANGED')
+            _completed_resource_owner(jobs,names,steps,item)
+            observations.append(value)
+        if len(observations)!=1:raise ValueError('RESOURCE_BASELINE_SCHEMA_OBSERVATION_MISSING')
+    else:
+        intent_artifact = _completion_artifact(artifacts, 'legend-release-child-intent-' + record['dependencyIdentity'], run)
+        intent = _release_history_json(repository, run['id'], intent_artifact, 'operation.json', verify_digest=True)
+        _validate_child_generation(repository, run, intent_artifact, intent, child, token)
+        _completed_resource_owner(jobs,names,steps,intent_artifact)
+        if any(record.get(k) != intent.get(k) for k in ('child','applicationRevision','executionAuthority','materialIdentity','partitionIdentity','dependencyIdentity')):
+            raise ValueError('RESOURCE_BASELINE_CHILD_INTENT_CHANGED')
+    if resource == 'schema' and not re.fullmatch('[a-f0-9]{64}', str(record.get('observation', {}).get('schemaIdentity'))):
+        raise ValueError('RESOURCE_BASELINE_SCHEMA_IDENTITY_MISSING')
+    if resource == 'routing' and not record.get('observation', {}).get('providerVersion'):
+        raise ValueError('RESOURCE_BASELINE_ROUTING_VERSION_MISSING')
+    return dict(reference=reference, record=record)
+
+
+def completed_resource_scope(before, head, contract, *, diff=None):
+    """Use ONE ownership classifier over each resource's own source delta."""
+    diff = diff or (lambda a,b: subprocess.check_output(['git','diff','--name-only',a,b], text=True).splitlines())
+    # Unknown resources retain their unresolved root boundary across intervening
+    # tool promotions; an immediate-parent diff cannot erase pending scope.
+    immediate = fast_track_scope(diff(_fast_track_policy().COMPLETED_RESOURCE_ROOT_TOOL, head))
+    result = dict(matrix={'include':[]}, selected=False, commerce=False, schema=False, routing=False, impacts={})
+    for resource, reference in contract['resources'].items():
+        if reference is None:
+            affected = (any(r['key'] == resource for r in immediate['matrix']['include']) if resource in RELEASE_TARGETS
+                        else immediate.get(resource, False))
+            if affected:
+                raise ValueError('RESOURCE_BASELINE_UNKNOWN_SELECTED:' + resource)
+            continue
+        baseline = reference['sourceRevision']
+        if subprocess.run(['git','merge-base','--is-ancestor',baseline,head], capture_output=True).returncode:
+            raise ValueError('RESOURCE_BASELINE_SOURCE_NOT_ANCESTOR')
+        paths = diff(baseline, head)
+        scope = fast_track_scope(paths)
+        if resource in RELEASE_TARGETS:
+            rows = [r for r in scope['matrix']['include'] if r['key'] == resource]
+            if rows:
+                result['matrix']['include'].append(dict(rows[0], baseline=baseline))
+                result['commerce'] = result['commerce'] or scope['commerce']
+        elif resource in {'schema','routing'}:
+            result[resource] = scope[resource]
+            if scope[resource]: result['commerce'] = True
+        for path, owners in scope['impacts'].items():
+            if resource in owners: result['impacts'].setdefault(path, []).append(resource)
+    result['selected'] = bool(result['matrix']['include'])
+    return result
+
+
+_RESOURCE_ROOT_HISTORY_FIELDS = ('id','head_sha','head_branch','path','event','run_attempt','status','conclusion','created_at','updated_at')
+_RESOURCE_ROOT_HISTORY = {'count':253,'lastRun':41240193444,'identity':'16a17b13e7f5ab585ece7bf90beed13e9d51ccfa65ad872b4ab8980be473d43a'}
+
+
+def _completed_resource_other_writers(repository, token):
+    """Current writers and the audited legacy dispatch surface, not all old events.
+
+    At approved5bf the lifecycle can dispatch NEW production runs and rerun only
+    PR validations/read-only readiness. The complete dispatch inventory catches
+    old direct attempts too. An unaudited approved ref cannot inherit this proof.
+    """
+    approved='5bf13a59c7608d87264ffbf280fa3551598ea774'
+    if _api_get_uncached(repository,'git/ref/heads/'+TRUSTED_PR_BASE,token).get('object',{}).get('sha')!=approved:
+        raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_LEGACY_SOURCE_CHANGED')
+    base='actions/runs?branch='+urllib.parse.quote(TRUSTED_PR_BASE,safe='')+'&event=workflow_dispatch&per_page=100'
+    rows=[];seen=set();total=None
+    with evidence_lookup_budget(time.monotonic()+30):
+        for page in range(1,11):
+            evidence_remaining(30)
+            payload=_api_get_uncached(repository,base+(f'&page={page}' if page>1 else ''),token)
+            evidence_remaining(30)
+            batch=payload.get('workflow_runs');count=payload.get('total_count')
+            if (type(count) is not int or not 0<=count<=1000 or total is not None and count!=total
+                or not isinstance(batch,list) or len(batch)!=min(100,count-len(rows))):
+                raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_LEGACY_INVENTORY_INCOMPLETE')
+            total=count
+            for row in batch:
+                if (type(row.get('id')) is not int or row['id'] in seen or row.get('head_branch')!=TRUSTED_PR_BASE
+                    or row.get('event')!='workflow_dispatch' or row.get('head_repository',{}).get('full_name','').lower()!=repository.lower()
+                    or any(k not in row for k in _RESOURCE_ROOT_HISTORY_FIELDS)):
+                    raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_LEGACY_WRITER_UNKNOWN')
+                seen.add(row['id']);rows.append({k:row[k] for k in _RESOURCE_ROOT_HISTORY_FIELDS})
+            if len(rows)==total:break
+        evidence_remaining(30)
+    rows.sort(key=lambda r:r['id'])
+    digest=hashlib.sha256(json.dumps(rows,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    if len(rows)!=349 or digest!='ebd9f65a17a5167f8f8b13aafb449f0315fcaf47002ddf0da082de63cd9a1050':
+        raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_NEW_OR_RETRIED_LEGACY_WRITER')
+    current=int(os.environ.get('GITHUB_RUN_ID','0'))
+    active=[]
+    readers={'masterapp-platform-architecture-validation.yml','approved-release-security-validation.yml',
+             'parfait-isolated-validation.yml'}
+    for status in ('queued','in_progress','waiting','pending','requested'):
+        payload=_api_get_uncached(repository,'actions/runs?status='+status+'&per_page=100',token)
+        batch=payload.get('workflow_runs')
+        if not isinstance(batch,list) or payload.get('total_count')!=len(batch) or len(batch)>100:
+            raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_ACTIVE_INVENTORY_INCOMPLETE')
+        for row in batch:
+            path=row.get('path','');name=path.removeprefix('.github/workflows/')
+            if row.get('head_repository',{}).get('full_name','').lower()!=repository.lower():
+                raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_ACTIVE_OWNER_UNKNOWN')
+            if row.get('id')==current:
+                if row.get('head_sha')!=os.environ.get('GITHUB_SHA') or path!='.github/workflows/'+FAST_TRACK_RELEASE_WORKFLOW:
+                    raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_ACTIVE_OWNER_CHANGED')
+                continue
+            if name in readers and row.get('event') in {'pull_request','push','workflow_dispatch'}:
+                source=_release_history_source(repository,row['head_sha'],path,token)
+                approved_sources=[subprocess.check_output(['git','show',ref+':'+path],text=True)
+                    for ref in (approved,_fast_track_policy().COMPLETED_RESOURCE_ROOT_TOOL)]
+                if source in approved_sources:continue
+            active.append(row.get('id'))
+    if active:
+        raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_COMPETING_ACTIVE_WRITER')
+    return dict(approvedRef=approved,dispatchCount=len(rows),dispatchIdentity=digest,activeWriters=[])
+
+
+def completed_resource_other_writers(repository,token):
+    state=_RECOVERY_PROOF_VIEW.get();key=(repository,'completed-resource-other-writers')
+    if state is not None and key in state['histories']:
+        evidence_remaining(30)
+        return json.loads(state['histories'][key]['raw'])
+    value=_completed_resource_other_writers(repository,token)
+    if state is not None:
+        raw=json.dumps(value,sort_keys=True,separators=(',',':'));size=len(raw.encode())
+        if len(state['histories'])>=4 or state['bytes']+size>32*1024*1024:
+            raise ReleaseOperationHistoryUnproven('RECOVERY_PROOF_STORAGE_BOUND')
+        state['histories'][key]=dict(kind='completed-resource-other-writers',repository=repository,raw=raw,token=token)
+        state['bytes']+=size
+    return value
+
+
+
+def completed_resource_recovery_attempts(repository,original,resource,operation,token,*,current_observer=None):
+    """Reconcile each same-original recovery attempt using existing validators.
+
+    A durable inherited intent means reconcile-only under the authenticated
+    canonical code. Before that intent, every entered attempt needs positive
+    scoped nonentry. Neither a later success nor a missing artifact erases it.
+    """
+    revision=original['run']['head_sha'];original_id=original['run']['id']
+    current_run=current_observer['runId'] if current_observer else original_id
+    current_attempt=current_observer['runAttempt'] if current_observer else original['run']['run_attempt']
+    submitted=release_operation_history(repository,operation,revision,resource,current_run,current_attempt,token,phase='submitted')
+    successful=release_operation_history(repository,operation,revision,resource,current_run,current_attempt,token,phase='success')
+    if submitted is not None and successful is not None and successful.get('deploymentIds')!=[submitted.get('deploymentId')]:
+        raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_UNRESOLVED_SUBMITTED_EFFECT')
+    intent_name='legend-release-operation-intent-'+operation
+    intent_rows=_completion_inventory(api_get(repository,'actions/artifacts?name='+urllib.parse.quote(intent_name,safe='')+'&per_page=100',token),'artifacts')
+    if len(intent_rows)>1:raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_COMPETING_INTENT')
+    intent_artifact=intent_rows[0] if intent_rows else None
+    intent_time=None
+    if intent_artifact is not None:
+        if intent_artifact.get('expired') is not False:raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_INTENT_EXPIRED')
+        intent_run=api_get(repository,f"actions/runs/{intent_artifact['workflow_run']['id']}",token)
+        intent=_release_history_json(repository,intent_run['id'],intent_artifact,'operation.json',verify_digest=True)
+        if intent_run['id']==original_id:
+            material=fast_track_recovery_material(repository,original,resource,token)
+            if material['originalIntent']!=intent:raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_ORIGINAL_INTENT_CHANGED')
+            _completion_original_artifact_owner(original,resource,intent_artifact,
+                'Publish or reconcile exact application bytes',('success','failure','cancelled'))
+        elif not validate_fast_track_recovery_record(repository,intent_run,intent_artifact,intent,token):
+            raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_INTENT_OWNER_UNKNOWN')
+        if intent.get('operationId')!=operation or intent.get('target')!=resource or intent.get('applicationRevision')!=revision:
+            raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_INTENT_SCOPE_CHANGED')
+        intent_time=_completion_time(intent_artifact['created_at'])
+    for run in _fast_track_history_observation(repository,token):
+        if run.get('event')!='workflow_dispatch' or run.get('path')!='.github/workflows/'+FAST_TRACK_RELEASE_WORKFLOW:continue
+        match=re.fullmatch(r'LEGEND retained recovery original=([1-9][0-9]*) application=([a-f0-9]{40})',str(run.get('display_title','')))
+        if not match:raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_SCOPE_UNKNOWN')
+        if match[2]!=revision:continue
+        if int(match[1])!=original_id:raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_CONFLICTING_ORIGINAL')
+        count=run.get('run_attempt')
+        if type(count)is not int or not 1<=count<=100:raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_ATTEMPTS_UNKNOWN')
+        for attempt in range(1,count+1):
+            if current_observer is not None and (run['id'],attempt)==(current_observer['runId'],current_observer['runAttempt']):continue
+            observer=fast_track_recovery_producer(repository,run,token,attempt=attempt)
+            jobs=_completion_inventory(api_get(repository,f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100",token),'jobs')
+            owner=next(j for j in jobs if j['id']==observer['jobId'])
+            steps=[x for x in owner.get('steps',[]) if x.get('name')=='Recover exact retained application bytes']
+            if owner.get('status')!='completed' or len(steps)!=1 or steps[0].get('status')!='completed':
+                raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_ACTIVE_OR_UNKNOWN_ATTEMPT')
+            step=steps[0]
+            if step.get('conclusion')=='skipped':continue
+            if step.get('conclusion') not in {'success','failure','cancelled'}:
+                raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_UNKNOWN_ATTEMPT_OUTCOME')
+            if intent_time is not None and (intent_time<=_completion_time(step['started_at'])
+                or (intent.get('producingRun'),intent.get('producingAttempt'))==(run['id'],attempt)):
+                continue  # Exact canonical journal permits reconciliation, never resubmission.
+            if (attested_recovery_terminal_preflight(repository,run,owner,attempt,revision,token)
+                or attested_recovery_preintent_failure(repository,run,owner,attempt,revision,token,target=resource,operation_id=operation)
+                or attested_recovery_target_hold(repository,run,owner,attempt,revision,token,resource,operation)):
+                continue
+            raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_PRIOR_UNJOURNALED_ENTRY')
+    return intent_artifact
+
+
+def completed_resource_attempt_effects(repository,run,resource,attempts,artifacts,success,token):
+    """One accepted outcome cannot erase an earlier unjournaled submission."""
+    app=resource in RELEASE_TARGETS
+    child={'schema':'migrations','routing':'routing-cloudflare'}.get(resource)
+    identity=success['operationId' if app else 'dependencyIdentity']
+    records=[]
+    for artifact in artifacts:
+        prefix='legend-release-operation-' if app else 'legend-release-child-'
+        if not artifact.get('name','').startswith(prefix):continue
+        value=_release_history_json(repository,run['id'],artifact,'operation.json',verify_digest=True)
+        if (value.get('target') if app else value.get('child')) != (resource if app else child):continue
+        if (value.get('operationId' if app else 'dependencyIdentity')!=identity
+            or value.get('producingRun')!=run['id'] or type(value.get('producingAttempt')) is not int
+            or value['producingAttempt'] not in attempts or value.get('phase') not in {'intent','submitted','success'}):
+            raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_COMPETING_ATTEMPT_EFFECT')
+        if app and any(value.get(k)!=success.get(k) for k in ('target','applicationRevision','packageDigest','baseline','baselineDeploymentIds')):
+            raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_ATTEMPT_MATERIAL_CHANGED')
+        if value.get('phase')=='submitted' and value.get('deploymentId')!=success['deploymentIds'][0]:
+            raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_UNRESOLVED_SUBMISSION')
+        records.append((artifact,value))
+    intents=[v for _,v in records if v['phase']=='intent']
+    no_sql=not app and resource=='schema' and success.get('observation',{}).get('providerVersion')=='schema-ready-no-write'
+    if (not no_sql and len(intents)!=1) or no_sql and intents:
+        raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_ATTEMPT_INTENT_UNPROVEN')
+    first_intent=intents[0]['producingAttempt'] if intents else None
+    name=('Affected App Deploy — '+fast_track_target_label(resource) if app else FAST_TRACK_CHILD_STEPS[child][0])
+    for attempt,jobs in attempts.items():
+        owners=[j for j in jobs if j.get('name')==name]
+        if len(owners)!=1:
+            if not owners and app and fast_track_skipped_matrix(jobs):continue
+            raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_ATTEMPT_OWNER_UNKNOWN')
+        owner=owners[0]
+        if owner.get('conclusion')=='skipped':continue
+        names=({'Publish or reconcile exact application bytes'} if app else
+               {'Apply or reconcile the exact rehearsed migration bundle','Reconcile fresh already-ready schema without SQL bundle or mutation'}
+               if resource=='schema' else {'Publish or reconcile canonical website routing'})
+        entered=[s for s in owner.get('steps',[]) if s.get('name') in names and s.get('conclusion')!='skipped']
+        if not entered:continue
+        if no_sql:
+            if any(s.get('name')!='Reconcile fresh already-ready schema without SQL bundle or mutation' for s in entered):
+                raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_SQL_ATTEMPT_NOT_RECONCILED')
+            # This exact path contains no SQL executor; successful companion proof
+            # is checked separately. It must never stand in for an entered writer.
+            continue
+        if attempt<first_intent:
+            if not app or not attested_fast_track_preupload_failure(repository,run,owner,attempt,resource,identity,token):
+                raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PRIOR_UNJOURNALED_ENTRY')
+    return True
+
+
+def completed_resource_historical_acceptance(repository, original, resource, rows, token):
+    """Resolve a historical target from its own acceptance, never today's vector.
+
+    This finite same-original scan authenticates local operation/material proof;
+    it does not recursively select the predecessor's completed baseline.
+    """
+    title='LEGEND retained recovery original='+str(original['run']['id'])+' application='+original['run']['head_sha']
+    accepted=[]
+    for run in rows:
+        if run.get('display_title')!=title:continue
+        if (run.get('path')!='.github/workflows/'+FAST_TRACK_RELEASE_WORKFLOW
+            or run.get('event')!='workflow_dispatch' or run.get('status')!='completed'):
+            raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_HISTORICAL_ACCEPTANCE_OWNER_UNKNOWN')
+        artifacts=_completion_inventory(api_get(repository,f"actions/runs/{run['id']}/artifacts?per_page=100",token),'artifacts')
+        for artifact in artifacts:
+            if not artifact.get('name','').startswith('legend-release-target-acceptance-'):continue
+            record=_release_history_json(repository,run['id'],artifact,'operation.json',verify_digest=True)
+            if record.get('target')!=resource:continue
+            reference=dict(sourceRevision=original['run']['head_sha'],runId=run['id'],
+                runAttempt=record.get('producingAttempt'),artifactId=artifact['id'],
+                artifactDigest=artifact.get('digest'),artifactName=artifact['name'])
+            proof=completed_resource_receipt(repository,resource,reference,token)
+            if proof.get('acceptance',{}).get('originalRun')!=original['run']['id']:
+                raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_HISTORICAL_ACCEPTANCE_ORIGINAL_CHANGED')
+            accepted.append((_completion_time(artifact['created_at']),proof))
+    if not accepted:return None
+    identities={(p['record']['operationId'],p['record']['packageDigest'],tuple(p['record']['deploymentIds'])) for _,p in accepted}
+    if len(identities)!=1:
+        raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_CONFLICTING_HISTORICAL_ACCEPTANCE')
+    accepted.sort(key=lambda pair:pair[0])
+    return accepted[-1][1]
+
+
+def completed_resource_currentness(repository, revision, contract, proofs, token, *, recovery_original=None, recovery_observer=None, required_resources=None, resource_holds=None):
+    """Authenticate newer effects, not retired source ancestry.
+
+    The fixed root is a metadata cut only, never proof that old submissions have
+    stopped. Fresh provider state, rollback and the explicit old Protect risk are
+    independent controls. New/changed/active attempts cannot be hidden by a ref.
+    """
+    required_resources = set(contract['resources']) if required_resources is None else set(required_resources)
+    resource_holds = {} if resource_holds is None else resource_holds
+    def hold(resource, reason):
+        # Only positively classified target evidence may be isolated. Unknown
+        # actor/attempt/shared effects still raise at their original global gate.
+        resource_holds[resource] = reason
+        if resource in required_resources:
+            raise ReleaseOperationHistoryUnproven(reason)
+    completed_resource_other_writers(repository,token)
+    rows = _fast_track_history_observation(repository, token)
+    old = [{k:r.get(k) for k in _RESOURCE_ROOT_HISTORY_FIELDS} for r in rows if r['id'] <= _RESOURCE_ROOT_HISTORY['lastRun']]
+    old.sort(key=lambda r:r['id'])
+    digest = hashlib.sha256(json.dumps(old,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    if len(old) != _RESOURCE_ROOT_HISTORY['count'] or digest != _RESOURCE_ROOT_HISTORY['identity']:
+        raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_ROOT_ATTEMPT_CHANGED')
+    historical_acceptances={}
+    def historical_acceptance(original, resource):
+        key=(original['run']['id'],resource)
+        if key not in historical_acceptances:
+            historical_acceptances[key]=completed_resource_historical_acceptance(repository,original,resource,rows,token)
+        return historical_acceptances[key]
+    current_run = int(os.environ.get('GITHUB_RUN_ID','0'))
+    current_attempt = int(os.environ.get('GITHUB_RUN_ATTEMPT','0'))
+    latest = {k:v for k,v in _fast_track_policy().COMPLETED_RESOURCE_ROOT_REFS.items() if v is not None}
+    for run in sorted((r for r in rows if r['id'] > _RESOURCE_ROOT_HISTORY['lastRun']),key=lambda r:r['id']):
+        if run['id'] == current_run:
+            if recovery_observer is not None:
+                expected_title='LEGEND retained recovery original='+str(recovery_original['run']['id'])+' application='+revision
+                if (run.get('head_sha')!=recovery_observer['toolRevision'] or run.get('run_attempt')!=current_attempt
+                    or run.get('event')!='workflow_dispatch' or run.get('display_title')!=expected_title
+                    or run['id']!=recovery_observer['runId'] or current_attempt!=recovery_observer['runAttempt']):
+                    raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_CURRENT_RECOVERY_CHANGED')
+            elif (run['head_sha'] != revision or run.get('run_attempt') != current_attempt
+                or not is_fast_track_producer(repository,run)):
+                raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_CURRENT_OWNER_CHANGED')
+            continue
+        if recovery_original is not None and run['id']==recovery_original['run']['id']:
+            if any(run.get(k)!=recovery_original['run'].get(k) for k in _RESOURCE_ROOT_HISTORY_FIELDS) or run.get('status')!='completed':
+                raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_ORIGINAL_CHANGED')
+            continue  # Its exact per-target effects are reconciled at the all-target journal barrier.
+        if run.get('status') != 'completed':
+            raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_ACTIVE_WRITER')
+        # Read-only validations may live on this branch but may not impersonate
+        # the canonical uploader or manufacture a successful deployment baseline.
+        if run['path'] != '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW:
+            if run['path'] not in {'.github/workflows/approved-release-security-validation.yml',
+                '.github/workflows/masterapp-platform-architecture-validation.yml',
+                '.github/workflows/parfait-isolated-validation.yml'}:
+                raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_UNKNOWN_WRITER')
+            source=_release_history_source(repository,run['head_sha'],run['path'],token)
+            expected=subprocess.check_output(['git','show',_fast_track_policy().COMPLETED_RESOURCE_ROOT_TOOL+':'+run['path']],text=True)
+            if source!=expected:raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_READONLY_SOURCE_CHANGED')
+            continue
+        if not is_fast_track_producer(repository,run):
+            match=re.fullmatch(r'LEGEND retained recovery original=([1-9][0-9]*) application=([a-f0-9]{40})',str(run.get('display_title','')))
+            if run.get('event')!='workflow_dispatch' or not match:
+                raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_NEW_RECOVERY_SCOPE_UNKNOWN')
+            if recovery_original is not None and (int(match[1]),match[2])==(recovery_original['run']['id'],revision):
+                for attempt in range(1,run['run_attempt']+1):fast_track_recovery_producer(repository,run,token,attempt=attempt)
+                continue  # Same operation history is checked target-by-target before any new intent.
+            original=fast_track_completion_original(repository,int(match[1]),match[2],token)
+            if original.get('resourceBaselines') is None:
+                raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_NEW_LEGACY_RECOVERY')
+            for resource in original['targets']:
+                proof=historical_acceptance(original,resource);material=fast_track_recovery_material(repository,original,resource,token)
+                digest=fast_track_recovery_package_digest(repository,original,material,resource,token)
+                operation=retained_operation_id(resource,match[2],digest)
+                intent=completed_resource_recovery_attempts(repository,original,resource,operation,token)
+                if intent is None:continue
+                if (proof is None or proof['record'].get('operationId')!=operation
+                    or proof['reference']['sourceRevision']!=match[2]
+                    or proof.get('acceptance',{}).get('originalRun')!=original['run']['id']):
+                    hold(resource,'RESOURCE_BASELINE_RECOVERY_TARGET_NOT_ACCEPTED:'+resource)
+                    continue
+                latest[resource]=proof['reference']
+            continue
+        request = _fast_track_policy().read_request(run['head_sha'])
+        if _fast_track_policy().tool_promotion_requested(run['head_sha']):
+            if fast_track_promotion_parent(repository,run,token) is None:
+                raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PROMOTION_UNPROVEN')
+            continue
+        if completed_resource_contract(run['head_sha']) is None:
+            raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_NEW_LEGACY_WRITER')
+        fast_track_merged_source_proof(repository,run['head_sha'],token)
+        artifacts = _completion_inventory(api_get(repository,f"actions/runs/{run['id']}/artifacts?per_page=100",token),'artifacts')
+        attempts = _completion_jobs(repository,run,token)
+        parents=subprocess.check_output(['git','rev-list','--parents','-n','1',run['head_sha']],text=True).split()
+        if len(parents)!=3:raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PRODUCER_PARENT_UNKNOWN')
+        recorded=completed_resource_scope(parents[1],run['head_sha'],completed_resource_contract(run['head_sha']))
+        selected={r['key'] for r in recorded['matrix']['include']}
+        if set(request.get('targets',[]))!={r['azure_app'] for r in recorded['matrix']['include']}:
+            raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_RECORDED_SCOPE_CHANGED')
+        for resource in ('portal','client','protect','parfait','website','schema','routing'):
+            if resource in RELEASE_TARGETS:
+                display={'portal':'AgentPortal','client':'ClientApp','protect':'Protect','parfait':'Parfait','website':'Website'}[resource]
+                owner_name='Affected App Deploy — '+display
+                step_names={'Publish or reconcile exact application bytes'}
+                prefix='legend-release-operation-success-'
+            else:
+                owner_name='Reconcile production schema before publication' if resource=='schema' else 'Publish verified website routing'
+                step_names=({'Apply or reconcile the exact rehearsed migration bundle','Reconcile fresh already-ready schema without SQL bundle or mutation'}
+                            if resource=='schema' else {'Publish or reconcile canonical website routing'})
+                prefix='legend-release-child-success-'
+            entered=False
+            for jobs in attempts.values():
+                owners=[j for j in jobs if j.get('name')==owner_name]
+                if not owners:
+                    if resource in RELEASE_TARGETS and (resource not in selected or fast_track_skipped_matrix(jobs)):continue
+                    raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_OWNER_INVENTORY_INCOMPLETE')
+                if len(owners)!=1:raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_COMPETING_OWNER')
+                owner=owners[0]
+                if owner.get('status')!='completed' or owner.get('conclusion') not in {'success','failure','cancelled','skipped','timed_out'}:
+                    raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PUBLICATION_STATE_UNKNOWN')
+                if owner.get('conclusion')=='skipped':continue
+                steps=[s for s in owner.get('steps',[]) if s.get('name') in step_names]
+                if not steps:raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PUBLICATION_STATE_UNKNOWN')
+                if any(s.get('status')!='completed' or s.get('conclusion') not in {'success','failure','cancelled','skipped','timed_out'} for s in steps):
+                    raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PUBLICATION_STATE_UNKNOWN')
+                if any(s.get('conclusion')!='skipped' for s in steps):entered=True
+            if not entered:continue
+            resolved=None
+            recovery_title='LEGEND retained recovery original='+str(run['id'])+' application='+run['head_sha']
+            if resource in RELEASE_TARGETS and any(row.get('display_title')==recovery_title for row in rows):
+                original=fast_track_completion_original(repository,run['id'],run['head_sha'],token)
+                resolved=historical_acceptance(original,resource)
+            if resolved is not None:
+                material=fast_track_recovery_material(repository,original,resource,token)
+                if material['originalIntent'] is not None:
+                    completed_resource_attempt_effects(repository,run,resource,attempts,artifacts,resolved['record'],token)
+                else:
+                    for attempt,jobs in attempts.items():
+                        owners=[j for j in jobs if j.get('name')==owner_name]
+                        if not owners and fast_track_skipped_matrix(jobs):continue
+                        if len(owners)!=1:raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_ORIGINAL_OWNER_UNKNOWN')
+                        owner=owners[0]
+                        if owner.get('conclusion')=='skipped':continue
+                        if not attested_fast_track_preupload_failure(repository,run,owner,attempt,resource,resolved['record']['operationId'],token):
+                            raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_ORIGINAL_UNJOURNALED_ENTRY')
+                completed_resource_recovery_attempts(repository,original,resource,resolved['record']['operationId'],token)
+                latest[resource]=resolved['reference']
+                continue
+            successes=[]
+            for a in artifacts:
+                if not a.get('name','').startswith(prefix):continue
+                value=_release_history_json(repository,run['id'],a,'operation.json',verify_digest=True)
+                match=(value.get('target')==resource if resource in RELEASE_TARGETS else
+                       value.get('child')=={'schema':'migrations','routing':'routing-cloudflare'}[resource])
+                if match:
+                    ref=dict(sourceRevision=run['head_sha'],runId=run['id'],runAttempt=value.get('producingAttempt'),
+                        artifactId=a['id'],artifactDigest=a.get('digest'),artifactName=a['name'])
+                    authenticated=completed_resource_receipt(repository,resource,ref,token)
+                    completed_resource_attempt_effects(repository,run,resource,attempts,artifacts,authenticated['record'],token)
+                    successes.append(ref)
+            if len(successes)!=1:
+                hold(resource,'RESOURCE_BASELINE_UNRESOLVED_RESOURCE_OPERATION:'+resource)
+                continue
+            latest[resource]=successes[0]
+    for resource, reference in latest.items():
+        if contract['resources'].get(resource)!=reference:
+            hold(resource,'RESOURCE_BASELINE_STALE_OR_OMITTED_SUCCESS:'+resource)
+    # An unselected hold never silently advances its saved reference.
+    for resource in resource_holds:
+        if resource in contract['resources']:latest[resource]=contract['resources'][resource]
+    # The separate legacy queued operation is not erased by the new source root.
+    queued = api_get(repository,'actions/runs/37642351262',token)
+    if queued.get('status')!='completed' or queued.get('conclusion')!='cancelled':
+        raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_LEGACY_QUEUED_OPERATION_UNRESOLVED')
+    jobs=_completion_inventory(api_get(repository,'actions/runs/37642351262/attempts/1/jobs?per_page=100',token),'jobs')
+    if jobs or queued.get('run_attempt')!=1 or queued.get('head_sha')!='40c21d84cfe3c42ecfb48e7940615e603060c765':
+        raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_LEGACY_CANCELLATION_EFFECTS_UNKNOWN')
+    return latest
+
+
+
+def completed_resource_recovery_currentness(repository,original,observer,token):
+    """Current ownership boundary for the existing retained recovery mode.
+
+    This is not target acceptance or write admission. Exact original effects are
+    independently reconciled by every target journal at the all-target barrier.
+    """
+    contract=original.get('resourceBaselines')
+    if contract is None:raise ValueError('RESOURCE_RECOVERY_CONTRACT_MISSING')
+    required=set(original['targets'])
+    if original['scope']['commerce'] or original['scope']['schema']:required.add('schema')
+    if original['scope']['commerce']:required.add('portal')
+    holds={}
+    with recovery_admission_proof():
+        proofs={key:completed_resource_receipt(repository,key,contract['resources'][key],token)
+                for key in required if contract['resources'].get(key) is not None}
+        latest=completed_resource_currentness(repository,original['run']['head_sha'],contract,proofs,token,
+            recovery_original=original,recovery_observer=observer,required_resources=required,resource_holds=holds)
+    return dict(policy=_fast_track_policy().COMPLETED_RESOURCE_POLICY,originalRun=original['run']['id'],
+        observer=observer,resources=latest,resourceHolds=holds,authenticatedResources=sorted(proofs),sqlExecutionAuthorized=False)
+
+
+def completed_resource_selection(before, head, *, repository=None, token=None):
+    contract = completed_resource_contract(head)
+    if contract is None:
+        raise ValueError('RESOURCE_BASELINE_CONTRACT_REQUIRED')
+    repository = repository or os.environ['GITHUB_REPOSITORY']
+    token = token or os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    scope = completed_resource_scope(before,head,contract)
+    # Routing has no independently accepted bootstrap or integrated permanent
+    # consumer in this bounded app/schema change. Never route it to legacy writes.
+    if scope['routing']:
+        raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_ROUTING_PARITY_REQUIRED')
+    required={row['key'] for row in scope['matrix']['include']}
+    if scope['commerce'] or scope['schema']:required.add('schema')
+    if scope['commerce']:required.add('portal')
+    holds={}
+    with recovery_admission_proof():
+        proofs = {key: completed_resource_receipt(repository,key,contract['resources'][key],token)
+                  for key in required if contract['resources'].get(key) is not None}
+        completed_resource_currentness(repository,head,contract,proofs,token,
+            required_resources=required,resource_holds=holds)
+    # The accepted 324 replacement risk was release-specific, not a permanent
+    # assertion that original 68ef stopped. Future Protect writes require a
+    # separately authenticated disposition of that exact outstanding operation.
+    if 'protect' in {row['key'] for row in scope['matrix']['include']}:
+        raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PROTECT_68EF_DISPOSITION_REQUIRED')
+    return dict(scope, baseline=before, sourceParent=before, resourceBaselines=contract,
+        schemaBaseline=contract['resources']['schema']['sourceRevision'], resourceHolds=holds,
+        authenticatedResources=sorted(proofs), productionEligible=True,promotion=None)
+
+
+def completed_resource_execution(resource, revision=None):
+    """Reauthenticate selector output at the actual existing resource consumer."""
+    revision = revision or os.environ.get('GITHUB_SHA')
+    if revision is None:return None  # Legacy non-fast-track consumer; its own execution gate remains.
+    contract = completed_resource_contract(revision)
+    if contract is None:return None
+    parent = os.environ.get('FAST_TRACK_SOURCE_PARENT','')
+    if not re.fullmatch('[a-f0-9]{40}',parent):
+        raise ValueError('RESOURCE_BASELINE_SOURCE_PARENT_MISSING')
+    parents = subprocess.check_output(['git','rev-list','--parents','-n','1',revision],text=True).split()
+    if len(parents)!=3 or parents[0]!=revision or parents[1]!=parent:
+        raise ValueError('RESOURCE_BASELINE_SOURCE_PARENT_CHANGED')
+    try: supplied=json.loads(os.environ['FAST_TRACK_RESOURCE_BASELINES'])
+    except (KeyError,ValueError):raise ValueError('RESOURCE_BASELINE_SELECTOR_OUTPUT_MISSING') from None
+    if supplied!=contract:raise ValueError('RESOURCE_BASELINE_SELECTOR_OUTPUT_CHANGED')
+    selection=completed_resource_selection(parent,revision)
+    if resource in RELEASE_TARGETS and resource not in {r['key'] for r in selection['matrix']['include']}:
+        raise ValueError('RESOURCE_BASELINE_TARGET_OUTSIDE_SCOPE')
+    reference=contract['resources'].get(resource)
+    if reference is None:raise ValueError('RESOURCE_BASELINE_UNKNOWN_SELECTED:'+resource)
+    repository=os.environ['GITHUB_REPOSITORY'];token=os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    with recovery_admission_proof():
+        proof=completed_resource_receipt(repository,resource,reference,token)
+    return dict(selection=selection,proof=proof)
+
+
 def fast_track_selection(before, head):
     """Own promotion admission before inherited application/routing recovery."""
     if not re.fullmatch('[a-f0-9]{40}', head) or not re.fullmatch('[a-f0-9]{40}', before):
@@ -6387,6 +7292,19 @@ def fast_track_selection(before, head):
         proof = policy.trusted_tool_promotion(before, head, admission)
         return dict(matrix={'include': []}, selected=False, commerce=False, schema=False,
             routing=False, impacts={}, baseline=before, productionEligible=False, promotion=proof)
+    request = policy.read_request(head)
+    contract = policy.completed_resource_baselines(request)
+    source_policy = subprocess.check_output(['git','show',head+':scripts/release_policy.py'],text=True)
+    if contract is not None or "COMPLETED_RESOURCE_POLICY = 'completed-resource-v1'" in source_policy:
+        if contract is None:
+            raise ValueError('RESOURCE_BASELINE_CONTRACT_REQUIRED')
+        fast_track_source_admission()
+        selected = completed_resource_selection(before,head)
+        expected = [r['azure_app'] for r in selected['matrix']['include']]
+        if (request.get('releaseMode') != 'approved-only' or request.get('targets') != expected
+            or request.get('cloudflareWebsiteRouting') is not selected['routing']):
+            raise ValueError('RESOURCE_BASELINE_AUTHORIZED_SCOPE_CHANGED')
+        return selected
     if before != '0' * 40 and policy.tool_promotion_requested(before):
         admission = fast_track_source_admission()
         transition = policy.release_after_tool_promotion(before, head, admission)
@@ -8258,7 +9176,10 @@ def fast_track_completion_original(repository, original_run, revision, token):
         or run.get('head_sha') != revision or run.get('status') != 'completed'
         or run.get('conclusion') not in {'success', 'failure', 'cancelled'}):
         raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_PRODUCER_UNPROVEN')
-    producers = fast_track_historical_producers(repository, revision, token)
+    resource_contract = completed_resource_contract(revision)
+    producers = ([r for r in _fast_track_history_observation(repository, token)
+                  if r.get('head_sha') == revision and is_fast_track_producer(repository, r)]
+                 if resource_contract is not None else fast_track_historical_producers(repository, revision, token))
     if len(producers) != 1 or producers[0].get('id') != original_run:
         raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_PRODUCER_AMBIGUOUS')
     fast_track_merged_source_proof(repository, revision, token)
@@ -8266,7 +9187,11 @@ def fast_track_completion_original(repository, original_run, revision, token):
     if len(parents) != 3 or parents[0] != revision:
         raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_BASELINE_UNPROVEN')
     request = json.loads(_release_history_source(repository, revision, RELEASE_REQUEST_PATH, token))
-    if 'protectSupersession' in request:
+    if resource_contract is not None:
+        # The successful original selector and merged-source proof authenticate
+        # its exact vector; do not recursively select every retired parent.
+        selection_baseline = parents[1]
+    elif 'protectSupersession' in request:
         supersession = fast_track_protect_supersession(revision, request=request)
         if supersession['expectedReleaseParent'] != parents[1]:
             raise ValueError('FAST_TRACK_COMPLETION_ORIGINAL_BASELINE_UNPROVEN')
@@ -8275,7 +9200,8 @@ def fast_track_completion_original(repository, original_run, revision, token):
         selection_baseline = fast_track_effective_baseline(parents[1], revision, repository=repository, token=token)
     baseline = parents[1]
     paths = subprocess.check_output(['git', 'diff', '--name-only', selection_baseline, revision], text=True).splitlines()
-    scope = fast_track_scope(paths)
+    scope = (completed_resource_scope(parents[1], revision, resource_contract)
+             if resource_contract is not None else fast_track_scope(paths))
     selected = [row['key'] for row in scope['matrix']['include']]
     names = [RELEASE_TARGETS[key]['releaseName'] for key in selected]
     if (not selected or request.get('releaseMode') != 'approved-only' or request.get('requestedBy') != 'Founder'
@@ -8344,7 +9270,7 @@ def fast_track_completion_original(repository, original_run, revision, token):
     elif any(next(job for job in jobs if job['name'] == router['name']).get('conclusion') != 'skipped'
              for jobs in attempts.values()):
         raise ValueError('FAST_TRACK_COMPLETION_UNEXPECTED_ROUTING_EXECUTION')
-    if 'protectSupersession' not in request and selection_baseline != parents[1]:
+    if resource_contract is None and 'protectSupersession' not in request and selection_baseline != parents[1]:
         # History proves why intermediate merges never became the app baseline;
         # original successful selector/admission and every genuine upload intent
         # must independently bind that same baseline before it can be returned.
@@ -8383,7 +9309,11 @@ def fast_track_completion_original(repository, original_run, revision, token):
             _COMPLETION_BASELINE_PROVING.reset(mark)
         baseline = selection_baseline
     _completion_original_unchanged(repository, run, token)
-    return dict(context, targets=selected, baseRevision=baseline)
+    result = dict(context, targets=selected, baseRevision=baseline)
+    if resource_contract is not None:
+        result['resourceBaselines'] = resource_contract
+        result['targetBaselines'] = {key: resource_contract['resources'][key]['sourceRevision'] for key in selected}
+    return result
 
 
 def _completion_workflow_source(repository, revision, token):
@@ -13580,7 +14510,9 @@ def _historical_publication_failed_before_first_write(repository, release_job, a
         # Accepted pre-supersession intent: unchanged intent-before-upload boundary.
         'ba734241c9ae81a7184bd8c19980b9443ade2ae1d4bd8115d98153fbd0c68be2',
         # Reviewed pre-builder extraction; exact unchanged write-ahead method.
-        '9614ad2b268bc2d55440c684340432c8ba0c95de7a11c7e8b153fee12741cebf'}
+        '9614ad2b268bc2d55440c684340432c8ba0c95de7a11c7e8b153fee12741cebf',
+        # Exact fd4 historical negative proof; not success or replay authority.
+        '5c0faffc2b6c1ffe7df28e217ebef7e119edd972624074c9c008e09738a3454b'}
     if ((function_dump(historical_deploy, 'reconcile') != function_dump(current_deploy, 'reconcile')
          and not prior_reconcile) or
             ((method_dump(historical_evidence, 'OperationJournal', 'before_submit') !=
@@ -14116,12 +15048,60 @@ def release_operation_history(repository, operation_id, application_revision, ta
         identity_keys = ("operationId", "applicationRevision", "target", "packageDigest", "baseline")
         if any(any(record.get(key) != records[0].get(key) for key in identity_keys) for record in records[1:]):
             raise RuntimeError("Competing deployment intents require reconciliation")
-        if phase == "success" and any("completionEvidence" in r for r in records) and any(r.get("deploymentIds") != records[0].get("deploymentIds") for r in records):
+        if phase == "success" and any(r.get("deploymentIds") != records[0].get("deploymentIds") for r in records):
             raise RuntimeError("Competing completion success evidence requires reconciliation")
         if phase in {"intent", "submitted"} and any(record != records[0] for record in records[1:]):
             raise RuntimeError("Competing deployment intent producers require reconciliation")
         return records[0]
     if phase in {"success", "submitted"}:
+        return None
+
+    if os.environ.get('GITHUB_EVENT_NAME')=='workflow_dispatch' and completed_resource_contract(application_revision) is not None:
+        event=json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text()).get('inputs',{})
+        original_id=event.get('original_run')
+        if not str(original_id).isdigit():raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_ORIGINAL_INPUT_UNKNOWN')
+        original=fast_track_completion_original(repository,int(original_id),application_revision,token)
+        observer=assert_fast_track_recovery_execution(int(original_id),application_revision)
+        if (observer['runId'],observer['runAttempt'])!=(current_run,current_attempt):
+            raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_OWNER_CHANGED')
+        completed_resource_recovery_currentness(repository,original,observer,token)
+        material=fast_track_recovery_material(repository,original,target,token)
+        if material['originalIntent'] is not None:raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_RETAINED_INTENT_MISSING')
+        digest=fast_track_recovery_package_digest(repository,original,material,target,token)
+        if retained_operation_id(target,application_revision,digest)!=operation_id:
+            raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_OPERATION_CHANGED')
+        for attempt,jobs in original['attempts'].items():
+            owners=[j for j in jobs if j.get('name')=='Affected App Deploy — '+fast_track_target_label(target)]
+            if not owners and fast_track_skipped_matrix(jobs):continue
+            if len(owners)!=1:raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_ORIGINAL_OWNER_UNKNOWN')
+            owner=owners[0]
+            if owner.get('conclusion')=='skipped':continue
+            steps=[x for x in owner.get('steps',[]) if x.get('name')=='Publish or reconcile exact application bytes']
+            if len(steps)==1 and steps[0].get('conclusion')=='skipped':continue
+            if not attested_fast_track_preupload_failure(repository,original['run'],owner,attempt,target,operation_id,token):
+                raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_ORIGINAL_UNJOURNALED_ENTRY')
+        if completed_resource_recovery_attempts(repository,original,target,operation_id,token,current_observer=observer) is not None:
+            raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_INTENT_APPEARED_RECONCILE_ONLY')
+        return None
+
+    if os.environ.get('FAST_TRACK_RESOURCE_BASELINES') not in {None,'null'} and completed_resource_contract(application_revision) is not None:
+        # The request's forward resource references replace retired ancestry, not
+        # the current operation journal. Earlier attempts without an intent remain
+        # ambiguous if the actual publication step could have entered.
+        completed_resource_execution(target,application_revision)
+        run=read_api(f'actions/runs/{current_run}')
+        if run.get('run_attempt')!=current_attempt or run.get('head_sha')!=application_revision:
+            raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_OPERATION_OWNER_CHANGED')
+        for attempt in range(1,current_attempt):
+            jobs=_completion_inventory(read_api(f'actions/runs/{current_run}/attempts/{attempt}/jobs?per_page=100'),'jobs')
+            owners=[j for j in jobs if j.get('name')=='Affected App Deploy — '+fast_track_target_label(target)]
+            if not owners and fast_track_skipped_matrix(jobs):continue
+            if len(owners)!=1:raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PRIOR_ATTEMPT_UNKNOWN')
+            owner=owners[0]
+            if owner.get('conclusion')=='skipped':continue
+            steps=[x for x in owner.get('steps',[]) if x.get('name')=='Publish or reconcile exact application bytes']
+            if len(steps)!=1 or steps[0].get('conclusion')!='skipped':
+                raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PRIOR_UNJOURNALED_ENTRY')
         return None
 
     adopted_nonentry = stable_baseline_operation_nonentry(repository, application_revision, target, operation_id, current_run, current_attempt, token)

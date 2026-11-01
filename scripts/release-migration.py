@@ -63,7 +63,7 @@ MIGRATION_ADMISSION_DENIAL_CODES = {
 # This resolver never grants SQL execution; the existing first-write authority
 # remains mandatory even when the result requires a new-write admission.
 def resolve_migration_boundary(history, *, schema='unobserved', activity='unknown', action='validate'):
-    if history not in {'proven-nonentry', 'proven-completion', 'outcome-unknown', 'active', 'invalid'}:
+    if history not in {'proven-nonentry', 'proven-completion', 'verified-resource-baseline', 'outcome-unknown', 'active', 'invalid'}:
         raise ValueError('Unknown migration history state')
     if schema not in {'unobserved', 'complete', 'pending', 'inconsistent'} or activity not in {'unknown', 'active', 'settled'}:
         raise ValueError('Unknown migration observation state')
@@ -79,7 +79,7 @@ def resolve_migration_boundary(history, *, schema='unobserved', activity='unknow
         return dict(result, state='blocked', reason='mutation_activity_unresolved')
     if schema == 'complete':
         return dict(result, state='preserve-without-sql', reason='fresh_history_and_physical_postconditions_complete')
-    if schema == 'pending' and history == 'proven-nonentry':
+    if schema == 'pending' and history in {'proven-nonentry','verified-resource-baseline'}:
         return dict(result, state='requires-first-write-admission', reason='pending_requires_existing_governed_admission')
     return dict(result, state='blocked', reason='historical_execution_requires_reconciliation')
 
@@ -295,19 +295,30 @@ def production_observation(probe, connection, *, schema_only=False, clock=time.m
     authority = release_authority()
     repository = os.environ['GITHUB_REPOSITORY']
     token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
-    audit = history_audit()
-    with authority.evidence_lookup_budget(time.monotonic() + 120):
+    forward = authority.completed_resource_execution('schema')
+    if forward is not None:
+        # Completed schema compatibility is its own resource boundary. Never call
+        # the app SHA an SQL execution receipt or reconstruct retired provenance.
         current = authority.assert_release_execution()
         if current.get('run_attempt') != int(os.environ['GITHUB_RUN_ATTEMPT']):
             raise RuntimeError('Migration stage unresolved: mutation-activity')
-        report = audit.audit(authority, repository, token, current_execution=current)
-    if (report.get('completeHistory') is not True or
-            any(row['code'] in audit.BLOCKED_CODES or row['code'] not in audit.STATUS_CODES
-                for row in report['records'])):
-        raise RuntimeError('Migration stage unresolved: mutation-admission')
-    uncertain = {'HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION',
-                 'POSSIBLE_SQL_WRITE_REQUIRES_LIVE_FENCE', 'EF_MIGRATION_EXECUTION_ENTERED'}
-    history = 'outcome-unknown' if any(row['code'] in uncertain for row in report['records']) else 'proven-nonentry'
+        report = dict(mode='completed-resource-v1', resource=forward['proof']['reference'], records=[])
+        history = 'verified-resource-baseline'
+        uncertain = set()
+    else:
+        audit = history_audit()
+        with authority.evidence_lookup_budget(time.monotonic() + 120):
+            current = authority.assert_release_execution()
+            if current.get('run_attempt') != int(os.environ['GITHUB_RUN_ATTEMPT']):
+                raise RuntimeError('Migration stage unresolved: mutation-activity')
+            report = audit.audit(authority, repository, token, current_execution=current)
+        if (report.get('completeHistory') is not True or
+                any(row['code'] in audit.BLOCKED_CODES or row['code'] not in audit.STATUS_CODES
+                    for row in report['records'])):
+            raise RuntimeError('Migration stage unresolved: mutation-admission')
+        uncertain = {'HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION',
+                     'POSSIBLE_SQL_WRITE_REQUIRES_LIVE_FENCE', 'EF_MIGRATION_EXECUTION_ENTERED'}
+        history = 'outcome-unknown' if any(row['code'] in uncertain for row in report['records']) else 'proven-nonentry'
     # Both observations bracket physical/history reads with activity visibility.
     # A changed applied prefix/target/catalog cannot reuse the first observation.
     # A busy application is not a permanent migration defect. Retry only this
@@ -593,7 +604,7 @@ def reconcile(bundle, probe, connection, *, observer=observe, journal_factory=No
             first_pending_migration_id=before['firstPendingMigrationId'],
             last_applied_migration_id=before['lastAppliedMigrationId'],
         )
-    if before.get('historicalExecution') == 'outcome-unknown':
+    if before.get('historicalExecution') in {'outcome-unknown','verified-resource-baseline'}:
         migration_fence['historical_observation'] = before
     migration_stage('mutation-admission', journal.before_mutation, observation,
                     **migration_fence)
@@ -782,6 +793,9 @@ if __name__ == '__main__':
                 or subprocess.run(['git', 'merge-base', '--is-ancestor', baseline, revision],
                                   capture_output=True).returncode != 0):
                 raise RuntimeError('Migration stage unresolved: preparation')
+            resource = authority.completed_resource_execution('schema',revision)
+            if resource is not None and baseline != resource['proof']['reference']['sourceRevision']:
+                raise RuntimeError('Migration stage unresolved: resource-baseline-changed')
             changed = subprocess.check_output(
                 ['git', 'diff', '--name-only', baseline, revision], text=True).splitlines()
             if str(authority.fast_track_scope(changed)['schema']).lower() != os.environ['FAST_TRACK_SCHEMA_CHANGED']:

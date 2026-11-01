@@ -2105,6 +2105,16 @@ class ChildHistorySafetyTests(unittest.TestCase):
 
 
 class MigrationBoundaryResolutionTests(unittest.TestCase):
+    def test_verified_resource_baseline_is_not_historical_nonentry_or_sql_permission(self):
+        result=migration.resolve_migration_boundary('verified-resource-baseline',schema='pending',activity='settled',action='reconcile')
+        self.assertEqual('verified-resource-baseline',result['historicalExecution'])
+        self.assertEqual('requires-first-write-admission',result['state'])
+        self.assertFalse(result['sqlExecutionAuthorized'])
+        for activity in ('unknown','active'):
+            self.assertEqual('blocked',migration.resolve_migration_boundary('verified-resource-baseline',schema='pending',activity=activity,action='reconcile')['state'])
+        complete=migration.resolve_migration_boundary('verified-resource-baseline',schema='complete',activity='settled',action='reconcile')
+        self.assertEqual('preserve-without-sql',complete['state']);self.assertFalse(complete['sqlExecutionAuthorized'])
+
     def test_uncertain_history_never_becomes_nonentry_or_sql_authority(self):
         value = migration.resolve_migration_boundary('outcome-unknown')
         self.assertEqual('requires-runtime-reconciliation', value['state'])
@@ -2383,6 +2393,7 @@ class MigrationProductionObservationTests(unittest.TestCase):
         self.audit=SimpleNamespace(audit=settle,BLOCKED_CODES={'INVALID'},
             STATUS_CODES={'INVALID','HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION'})
         self.auth=SimpleNamespace(assert_release_execution=lambda:self.current,
+            completed_resource_execution=lambda resource:None,
             evidence_lookup_budget=lambda *args:contextlib.nullcontext())
         def observe(*args,**kwargs):
             self.assertTrue(kwargs['activity']);self.events.append('bracketed-observation');return dict(self.before)
@@ -2449,6 +2460,14 @@ class MigrationProductionObservationTests(unittest.TestCase):
                     sleep=sleep,jitter=lambda low,high:0)
         self.assertEqual(1,observer.call_count)
         sleep.assert_not_called()
+
+
+    def test_forward_schema_observes_twice_without_relabelling_old_execution(self):
+        self.auth.completed_resource_execution=lambda resource:{'proof':{'reference':{'sourceRevision':'e'*40}}}
+        value=migration.production_observation(None,None)
+        self.assertEqual('verified-resource-baseline',value['historicalExecution'])
+        self.assertEqual(self.events,['bracketed-observation','bracketed-observation'])
+        self.assertEqual(0,value['pendingCount'])
 
 
 class MigrationObservationReceiptTests(unittest.TestCase):

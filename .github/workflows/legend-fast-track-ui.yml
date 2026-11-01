@@ -108,6 +108,9 @@ jobs:
       routing: ${{ steps.scope.outputs.routing }}
       schema: ${{ steps.scope.outputs.schema }}
       baseline: ${{ steps.scope.outputs.baseline }}
+      schema-baseline: ${{ steps.scope.outputs.schema-baseline }}
+      resource-baselines: ${{ steps.scope.outputs.resource-baselines }}
+      source-parent: ${{ steps.scope.outputs.source-parent }}
       production-eligible: ${{ steps.scope.outputs.production-eligible }}
       promotion: ${{ steps.scope.outputs.promotion }}
     steps:
@@ -140,6 +143,9 @@ jobs:
               Path(os.environ['RUNNER_TEMP'],'fast-track-admission.json').write_text(json.dumps(proof,sort_keys=True)+'\n')
           with open(os.environ['GITHUB_OUTPUT'],'a') as stream:
               stream.write('baseline='+before+'\n')
+              stream.write('source-parent='+scope.get('sourceParent',before)+'\n')
+              stream.write('schema-baseline='+scope.get('schemaBaseline',before)+'\n')
+              stream.write('resource-baselines='+json.dumps(scope.get('resourceBaselines'),separators=(',',':'))+'\n')
               stream.write('production-eligible='+str(scope['productionEligible']).lower()+'\n')
               stream.write('promotion='+str(scope['promotion'] is not None).lower()+'\n')
               stream.write('selected='+str(scope['selected']).lower()+'\n')
@@ -222,7 +228,9 @@ jobs:
       RELEASE_CANDIDATE_SHA: ${{ needs.commerce-gates.outputs.candidate }}
       SELECTED_TARGETS: ${{ needs.select-targets.outputs.targets }}
       FAST_TRACK_SCHEMA_CHANGED: ${{ needs.select-targets.outputs.schema }}
-      FAST_TRACK_RELEASE_BASELINE: ${{ needs.select-targets.outputs.baseline }}
+      FAST_TRACK_RELEASE_BASELINE: ${{ needs.select-targets.outputs.schema-baseline }}
+      FAST_TRACK_SOURCE_PARENT: ${{ needs.select-targets.outputs.source-parent }}
+      FAST_TRACK_RESOURCE_BASELINES: ${{ needs.select-targets.outputs.resource-baselines }}
       FAST_TRACK_MIGRATION_DIRECTORY: /tmp/fast-track-migration
       MIGRATION_BUNDLE: /tmp/fast-track-migration/masterapp-migrations
       MIGRATION_PROBE_DLL: /tmp/fast-track-probe/MigrationReleaseProbe.dll
@@ -314,7 +322,9 @@ jobs:
       id-token: write
     env:
       GITHUB_TOKEN: ${{ github.token }}
-      BEFORE: ${{ needs.select-targets.outputs.baseline }}
+      BEFORE: ${{ matrix.baseline || needs.select-targets.outputs.baseline }}
+      FAST_TRACK_SOURCE_PARENT: ${{ needs.select-targets.outputs.source-parent }}
+      FAST_TRACK_RESOURCE_BASELINES: ${{ needs.select-targets.outputs.resource-baselines }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select-targets.outputs.matrix) }}

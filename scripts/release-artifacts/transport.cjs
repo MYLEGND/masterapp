@@ -108,6 +108,34 @@ function protectBaselineCorrection(record, value) {
       !sha(auth.originalOperationId,64) || !sha(auth.originalRevision,40) || !sha(auth.expectedReleaseParent,40))
     throw new Error('Invalid Protect baseline correction');
 }
+function completedResourceReference(value) {
+  return exactKeys(value,'sourceRevision,runId,runAttempt,artifactId,artifactDigest,artifactName') &&
+    sha(value.sourceRevision,40) && ['runId','runAttempt','artifactId'].every(k=>positive(value[k])) &&
+    digest(value.artifactDigest) && /^[a-zA-Z0-9_.-]{1,256}$/.test(value.artifactName);
+}
+function targetAcceptance(name,record) {
+  const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
+  const o=record?.observation,r=record?.rollbackEvidence;
+  if(!exactKeys(record,'schemaVersion,phase,target,applicationRevision,originalRun,originalAttempt,producingRun,producingAttempt,observer,successReference,baselineReference,rollbackEvidence,schemaProof,observation') ||
+     record.schemaVersion!==1 || record.phase!=='target-acceptance' || !targets.includes(record.target) ||
+     !sha(record.applicationRevision,40) || !['originalRun','originalAttempt','producingRun','producingAttempt'].every(k=>positive(record[k])) ||
+     !recoveryObserver(record.observer,record.producingRun,record.producingAttempt) ||
+     !completedResourceReference(record.successReference) || !completedResourceReference(record.baselineReference) ||
+     (record.schemaProof===null ? record.target!=='website' : (!exactKeys(record.schemaProof,'artifactId,contentIdentity') || !positive(record.schemaProof.artifactId) || !sha(record.schemaProof.contentIdentity,64))) ||
+     record.successReference.sourceRevision!==record.applicationRevision ||
+     !/^legend-release-operation-success-[a-f0-9]{64}$/.test(record.successReference.artifactName) ||
+     !exactKeys(o,'deploymentId,packageDigest,runtimeRevision,providerInventoryIdentity,observedUtc,publicMetadataVerified') ||
+     !/^[a-zA-Z0-9_.:-]{1,256}$/.test(o.deploymentId) || !sha(o.packageDigest,64) ||
+     o.runtimeRevision!==record.applicationRevision || !sha(o.providerInventoryIdentity,64) ||
+     !Number.isFinite(Date.parse(o.observedUtc)) || o.publicMetadataVerified!==true ||
+     !exactKeys(r,'revision,artifactId,artifactDigest,artifact,runId,packageDigest') ||
+     r.revision!==record.baselineReference.sourceRevision || !positive(r.artifactId) || !positive(r.runId) ||
+     !digest(r.artifactDigest) || !sha(r.packageDigest,64) ||
+     r.artifact!==`fast-track-package-${r.revision}-${record.target}` ||
+     name!=='legend-release-target-acceptance-'+crypto.createHash('sha256').update(JSON.stringify(canonical(record))).digest('hex'))
+    throw new Error('Invalid completed resource acceptance');
+}
+
 function retainedSummary(name, record) {
   if (!exactKeys(record, 'schemaVersion,phase,originalRun,originalAttempt,applicationRevision,producingRun,producingAttempt,observer,targets') ||
       record.schemaVersion !== 1 || record.phase !== 'success' || !sha(record.applicationRevision, 40) ||
@@ -288,10 +316,14 @@ function validateRecord(name, record) {
   if (/^legend-retained-schema-proof-[a-f0-9]{64}$/.test(name)) {
     const canonical = value => Array.isArray(value) ? value.map(canonical) :
       value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key,canonical(value[key])])) : value;
-    const keys='schemaVersion,phase,originalRun,applicationRevision,producingRun,producingAttempt,observer,originalSuccessArtifact,observation,historyIdentity,recovery,sqlExecutionAuthorized';
-    if (!record || !exactKeys(record,keys) || JSON.stringify(record).length>32768 || record.schemaVersion!==1 ||
-        record.phase!=='retained-schema-read-only' || record.originalRun!==41131223973 ||
-        record.applicationRevision!=='3243221ae661b53d60f78cc2dab108a93bad7632' || record.originalSuccessArtifact!==13017640415 ||
+    const forward=record?.schemaVersion===2;
+    const keys='schemaVersion,phase,originalRun,applicationRevision,producingRun,producingAttempt,observer,originalSuccessArtifact,observation,historyIdentity,recovery,sqlExecutionAuthorized'+(forward?',schemaReference':'');
+    if (!record || !exactKeys(record,keys) || JSON.stringify(record).length>32768 || (!forward && record.schemaVersion!==1) ||
+        record.phase!=='retained-schema-read-only' || !positive(record.originalRun) || !sha(record.applicationRevision,40) ||
+        (forward ? (!completedResourceReference(record.schemaReference) || record.schemaReference.runId!==record.originalRun ||
+          record.schemaReference.sourceRevision!==record.applicationRevision || record.schemaReference.artifactId!==record.originalSuccessArtifact ||
+          !/^legend-release-child-success-[a-f0-9]{64}$/.test(record.schemaReference.artifactName)) :
+          (record.originalRun!==41131223973 || record.applicationRevision!=='3243221ae661b53d60f78cc2dab108a93bad7632' || record.originalSuccessArtifact!==13017640415)) ||
         !positive(record.producingRun) || !positive(record.producingAttempt) || record.producingRun===record.originalRun ||
         !recoveryObserver(record.observer,record.producingRun,record.producingAttempt) ||
         !sha(record.historyIdentity,64) || record.sqlExecutionAuthorized!==false)
@@ -299,7 +331,7 @@ function validateRecord(name, record) {
     const o=record.observation,r=record.recovery;
     if (!o || !exactKeys(o,'databaseIdentity,schemaIdentity,baselineIdentity,observedUtc,pendingCount,ready,mutationActivity') ||
         o.databaseIdentity!=='3a055450807aeaa2c6465702b983dc99968329389d7c0ae480c3c72cc3a9ff3b' ||
-        o.schemaIdentity!=='0e4674714d917c5f2dbfa3cd42f2de954e7b3f310c8322c08ec0f427d3615451' ||
+        !sha(o.schemaIdentity,64) || (!forward && o.schemaIdentity!=='0e4674714d917c5f2dbfa3cd42f2de954e7b3f310c8322c08ec0f427d3615451') ||
         !sha(o.baselineIdentity,64) || !Number.isFinite(Date.parse(o.observedUtc)) ||
         o.pendingCount!==0 || o.ready!==true || o.mutationActivity!=='settled' ||
         !r || !exactKeys(r,'databaseIdentity,observedUtc,restorePointUtc,earliestRestoreUtc,retentionDays,restoreWindowVerified,restoreExecuted,authorizesMutation') ||
@@ -310,6 +342,9 @@ function validateRecord(name, record) {
         name!==`legend-retained-schema-proof-${crypto.createHash('sha256').update(JSON.stringify(canonical(record))).digest('hex')}`)
       throw new Error('Invalid retained schema observation');
     return {filename:'operation.json'};
+  }
+  if (/^legend-release-target-acceptance-[a-f0-9]{64}$/.test(name)) {
+    targetAcceptance(name,record); return {filename:'operation.json'};
   }
   const targetHold = /^legend-retained-target-preintent-[a-f0-9]{64}$/.test(name);
   const preflight = /^legend-retained-preflight-nonentry-[a-f0-9]{64}$/.test(name);
@@ -367,7 +402,7 @@ function validateRecord(name, record) {
     if (Object.keys(record).sort().join(',') !== observationKeys.sort().join(',') ||
         record.schemaVersion !== 1 || record.phase !== 'observation' || record.kind !== 'current-schema-no-write' ||
         record.pendingCount !== 0 || record.mutationActivity !== 'settled' || record.sqlExecutionAuthorized !== false ||
-        !['proven-nonentry', 'proven-completion', 'outcome-unknown'].includes(record.historicalExecution) ||
+        !['proven-nonentry', 'proven-completion', 'verified-resource-baseline', 'outcome-unknown'].includes(record.historicalExecution) ||
         ['candidate', 'executionAuthority'].some(key => !/^[a-f0-9]{40}$/.test(record[key])) ||
         ['observationIdentity', 'databaseIdentity', 'schemaIdentity', 'baselineIdentity', 'historicalEvidenceIdentity', 'bundleDigest'].some(key => !/^[a-f0-9]{64}$/.test(record[key])) ||
         ['producingRun', 'producingAttempt'].some(key => !Number.isSafeInteger(record[key]) || record[key] < 1) ||
