@@ -1116,3 +1116,20 @@ test('original no-SQL observation schema proof retains exact run source and immu
     const bad=structuredClone(value);change(bad);assert.throws(()=>validateRecord(name(bad),bad));
   }
 });
+test('shared schema failure serializes actual Python producer without fictitious target or mutation authority',()=>{
+  const payload=JSON.parse(execFileSync('python3',['-c',String.raw`
+import importlib.util,pathlib,json
+root=pathlib.Path.cwd().parent
+s=importlib.util.spec_from_file_location('deploy',root/'deploy-approved-app.py');d=importlib.util.module_from_spec(s);s.loader.exec_module(d)
+a=d._RELEASE_AUTHORITY;revision='a'*40;digest='b'*64
+proof=dict(originalRun=10,originalAttempt=1,applicationRevision=revision,observer=dict(runId=20,runAttempt=1,jobId=30,toolRevision='c'*40,promotionRunId=19),targets=dict(portal=dict(operationId=a.retained_operation_id('portal',revision,digest),packageDigest=digest,packageArtifactId=40,packageArtifactDigest='sha256:'+'d'*64)))
+name,record=d.recovery_preflight_nonentry_record(proof,None,ValueError('schema unavailable'))
+assert a.validate_recovery_preflight_nonentry(record)==name
+print(json.dumps(dict(name=name,record=record)))
+`],{encoding:'utf8',cwd:__dirname}));
+  assert.equal(payload.record.failedTarget,null);assert.equal(payload.record.stage,'shared-schema-preflight');
+  assert.doesNotThrow(()=>validateRecord(payload.name,payload.record));
+  for(const mutate of [r=>r.failedTarget='portal',r=>r.stage='all-target-preflight',r=>r.reason='runtime-unavailable',r=>r.observation.historyReadComplete=true,r=>r.observation.runtimeRevision='a'.repeat(40),r=>r.authorizesMutation=true,r=>r.writePhaseEntered=true,r=>r.targets.portal.packageArtifactId=0]){
+    const changed=structuredClone(payload.record);mutate(changed);assert.throws(()=>validateRecord(payload.name,changed));
+  }
+});
