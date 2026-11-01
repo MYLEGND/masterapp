@@ -1781,3 +1781,36 @@ Native continuity verifies the exact current remote task branch with no local-on
 Validation during reconstruction: Protect .NET10 build succeeded; focused publication/mutation tests passed88/88, expanded publication/runtime-anchor/runtime-binding/inquiry-isolation set passed134/134; shared renderer passed17/17. Full website suite passed703/703 before the final native-style-baseline correction; dependent final checks and exact-candidate independent review remain required. Test fixtures are synthetic. Mobile DOM tests are not Safari/device acceptance.
 
 Canonical affected-app selection includes Portal, Client, Protect, Parfait and Website because the changed publication/mutation authority is shared by the .NET hosts and the renderer/CMS is packaged by Website and Protect. Commerce dependency reconciliation remains applicable; no schema or routing change is requested. The new request `protect-compiled-delivery-training-retirement-20261029-v1` replaces stale PR725-specific request text without waiving architecture-validation, approved-release-security, build-and-focused-tests, existing admission/recovery, selective deployment or actual live code/publication verification. This checkpoint is preparation evidence, not permission to skip those gates.
+
+## 2026-11-01 — Local linked static-asset parity
+
+Base: b5e940d762480ad8722bd86a76b4391864913dc2. Local repair branch:
+isolation/local-static-assets-parity-20261101. Portal's generated assembly already
+identified this base, but localhost /design/legend-web-foundation.css returned404;
+production returned200 with the same canonical Legend-Design source hash. SDK
+manifest discovery assigned linked Content the consuming app's wwwroot physical
+root, while publish correctly copied the original files. This was an asset-mapping
+source defect, not evidence requiring a second theme or replacement business logic.
+
+Directory.Build.props now sets the physical ContentRoot of linked wwwroot Content
+before the existing SDK discovery, preserving explicit roots, logical URLs, source
+identity and output/publish settings. No copied source assets, runtime providers,
+CSS overrides or alternate serving path were added. Local legend.nativeTestingRef
+was corrected from origin/legend/approved-changes to origin/Legend/fast-track-release;
+this machine configuration does not change GitHub or deployment authority.
+
+Validation: real SDK build/publish regression passes for renamed and nested URLs,
+slash/backslash links, ordinary wwwroot, explicit roots and nonweb exclusions;
+published bytes equal canonical inputs. Actual Portal Debug build passed with zero
+warnings/errors. Client/Protect/Parfait discovery checked25/127/6 linked entries
+with zero mismatched physical roots. Local Portal restarted using its existing
+profile; foundation, app-shell, website-management and Shared dashboard CSS all
+returned200 with exact canonical SHA256 matches. Authenticated localhost page
+visually restored readable navigation, heading, layout and canonical styling.
+Canonical resolved fixture paths are required: macOS /var versus /private/var
+aliases expose SDK lexical root matching; no platform-specific workaround added.
+
+This is local development verification, not new production publication or full
+business-journey acceptance. Original fast-track branch remains unchanged. New
+local branch has no remote counterpart, so canonical session preflight reports
+missing remote; no passing session preflight or remote preservation is claimed.
