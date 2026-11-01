@@ -3722,6 +3722,26 @@ class ValidationResumePlannerTests(unittest.TestCase):
         self.assertFalse(plan["gates"]["crm-regressions"]["run"])
         self.assertFalse(plan["gates"]["renderer-tests"]["run"])
 
+    def test_website_repair_test_only_changes_invalidate_selected_gate_and_compile(self):
+        import re
+        workflow = "masterapp-platform-architecture-validation.yml"
+        text = (ROOT / ".github/workflows" / workflow).read_text()
+        filters = re.findall(r'--filter "([^"]+)"', text)
+        website_filter = next(value for value in filters if "FullyQualifiedName~WebsitePublishingAuthorityTests" in value)
+        terms = [term.removeprefix("FullyQualifiedName~") for term in website_filter.split("|")]
+        for name in ("WebsiteNamedDraftReaderTests", "QuoteLegacyLifeRouteTests",
+                     "TrainingEnrollmentDependencyResolutionTests", "CanonicalHumanEligibilityTests"):
+            with self.subTest(suite=name):
+                self.assertTrue(any(term in "AgentPortal.Tests." + name for term in terms))
+                plan = m.compute_plan(workflow, "b" * 40, self.prior(), self.successful_steps(workflow),
+                                      ["AgentPortal.Tests/" + name + ".cs"], "prior_run")
+                self.assertTrue(plan["gates"]["website-regressions"]["run"])
+                self.assertEqual("gate_inputs_changed", plan["gates"]["website-regressions"]["reason"])
+                self.assertTrue(plan["gates"]["compile-regression"]["run"])
+                self.assertTrue(plan["gates"]["restore-dotnet"]["run"])
+                for unrelated in ("founder-diagnostics-regressions", "booking-regressions", "crm-regressions"):
+                    self.assertFalse(plan["gates"][unrelated]["run"], unrelated)
+
     def test_performance_suite_paths_match_saved_workflow_filter_and_planner(self):
         import re
         workflow = "masterapp-platform-architecture-validation.yml"

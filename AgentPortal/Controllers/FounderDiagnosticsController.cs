@@ -20,7 +20,7 @@ namespace AgentPortal.Controllers;
 [Route("founder/diagnostics")]
 public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Controller
 {
-    [HttpGet]
+    [HttpGet(Name = "FounderDiagnosticsIndex")]
     public async Task<IActionResult> Index([FromQuery] int page = 1, CancellationToken cancellationToken = default,
         [FromQuery] string? app = null, [FromQuery] string? category = null)
     {

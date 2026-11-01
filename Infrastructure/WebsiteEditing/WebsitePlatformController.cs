@@ -560,7 +560,7 @@ public class WebsitePlatformController : ControllerBase
                 .SingleOrDefaultAsync(cancellationToken);
 
             timing.Next(Shared.Diagnostics.RuntimeDiagnosticStage.NamedDrafts);
-            var drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc });
+            var drafts = WebsiteNamedDraftReader.ReadMetadata(state);
             timing.Next(Shared.Diagnostics.RuntimeDiagnosticStage.ResponsePreparation);
             return Ok(new
             {
@@ -2055,7 +2055,7 @@ public class WebsitePlatformController : ControllerBase
             document,
             revision = state.Revision,
             savedUtc = state.UpdatedUtc,
-            drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc })
+            drafts = WebsiteNamedDraftReader.ReadMetadata(state)
         });
     }
 
@@ -2252,79 +2252,11 @@ public class WebsitePlatformController : ControllerBase
                 store = result.ChangedScopes.Contains("@store-presentation", StringComparer.Ordinal) ? document.Store : null
             },
             savedUtc = state.UpdatedUtc,
-            drafts = ReadDrafts(state).Select(value => new { value.Id, value.Name, value.UpdatedUtc })
+            drafts = WebsiteNamedDraftReader.ReadMetadata(state)
         });
     }
 
-    private static List<WebsiteNamedDraft> ReadDrafts(WebsiteContentState state)
-    {
-        if (string.IsNullOrWhiteSpace(state.NamedDraftsJson)) return [];
-
-        try
-        {
-            using var parsed = JsonDocument.Parse(state.NamedDraftsJson);
-            if (parsed.RootElement.ValueKind != JsonValueKind.Array) return [];
-            var result = new List<WebsiteNamedDraft>();
-            var identities = new HashSet<Guid>();
-            var ordinal = -1;
-
-            foreach (var item in parsed.RootElement.EnumerateArray())
-            {
-                ordinal++;
-                if (item.ValueKind != JsonValueKind.Object) continue;
-                Guid id = Guid.Empty;
-                string name = "Website draft";
-                var updatedUtc = state.UpdatedUtc;
-                string? documentJson = null;
-
-                foreach (var property in item.EnumerateObject())
-                {
-                    if (property.Name.Equals("id", StringComparison.OrdinalIgnoreCase) &&
-                        Guid.TryParse(property.Value.ToString(), out var parsedId))
-                        id = parsedId;
-                    else if (property.Name.Equals("name", StringComparison.OrdinalIgnoreCase) &&
-                             property.Value.ValueKind == JsonValueKind.String)
-                        name = property.Value.GetString() ?? name;
-                    else if (property.Name.Equals("updatedUtc", StringComparison.OrdinalIgnoreCase) &&
-                             property.Value.ValueKind == JsonValueKind.String &&
-                             property.Value.TryGetDateTime(out var parsedUtc))
-                        updatedUtc = parsedUtc;
-                    else if (property.Name.Equals("documentJson", StringComparison.OrdinalIgnoreCase) &&
-                             property.Value.ValueKind == JsonValueKind.String)
-                        documentJson = property.Value.GetString();
-                    else if (property.Name.Equals("document", StringComparison.OrdinalIgnoreCase) &&
-                             property.Value.ValueKind == JsonValueKind.Object)
-                        documentJson = property.Value.GetRawText();
-                }
-
-                if (string.IsNullOrWhiteSpace(documentJson)) continue;
-                // Missing, malformed, empty, or repeated historical IDs must identify
-                // the same saved entry on every read. Read paths never rewrite the row.
-                if (id == Guid.Empty || !identities.Add(id))
-                {
-                    var attempt = 0;
-                    do
-                    {
-                        var identity = $"legend-named-draft/v1:{state.Id:N}:{ordinal}:{attempt++}";
-                        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(identity));
-                        id = new Guid(bytes.AsSpan(0, 16));
-                    } while (id == Guid.Empty || !identities.Add(id));
-                }
-                result.Add(new WebsiteNamedDraft
-                {
-                    Id = id,
-                    Name = name.Trim().Length is > 0 and <= 100 ? name.Trim() : "Website draft",
-                    DocumentJson = documentJson,
-                    UpdatedUtc = updatedUtc
-                });
-            }
-            return result;
-        }
-        catch (JsonException)
-        {
-            return [];
-        }
-    }
+    private static List<WebsiteNamedDraft> ReadDrafts(WebsiteContentState state) => WebsiteNamedDraftReader.Read(state);
 
     private static bool NamedDraftEntriesAreComplete(WebsiteContentState state, IReadOnlyCollection<WebsiteNamedDraft> drafts)
     {

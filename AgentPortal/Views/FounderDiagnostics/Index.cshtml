@@ -168,10 +168,10 @@
                         <input type="hidden" name="reviewVersion" value="@item.ReviewVersion" />
                         <label for="disposition-@item.Id">Disposition</label>
                         <select id="disposition-@item.Id" name="disposition" class="form-select">
-                            <option value="Observed">Needs review</option>
-                            <option value="ConfirmedDefect">Founder-confirmed defect</option>
-                            <option value="Dismissed">Dismissed</option>
-                            <option value="ManuallyClosed">Manually closed (repair not verified)</option>
+                            <option value="Observed" selected="@(item.Disposition == "Observed")">Needs review</option>
+                            <option value="ConfirmedDefect" selected="@(item.Disposition == "ConfirmedDefect")">Founder-confirmed defect</option>
+                            <option value="Dismissed" selected="@(item.Disposition == "Dismissed")">Dismissed</option>
+                            <option value="ManuallyClosed" selected="@(item.Disposition == "ManuallyClosed")">Manually closed (repair not verified)</option>
                         </select>
                         <div class="form-check my-2">
                             <input type="checkbox" name="confirmDefect" value="true" id="confirm-@item.Id" class="form-check-input" />
@@ -184,11 +184,11 @@
         </article>
     }
     <nav aria-label="Diagnostic pages">
-        @if (details) { <a asp-action="Index">All observations</a> }
+        @if (details) { <a asp-route="FounderDiagnosticsIndex">All observations</a> }
         else
         {
-            @if (page > 1) { <a asp-action="Index" asp-route-page="@(page - 1)" asp-route-app="@(ViewData["AppFilter"] as string)" asp-route-category="@(ViewData["CategoryFilter"] as string)">Previous</a> }
-            @if (ViewData["HasMore"] as bool? == true) { <a asp-action="Index" asp-route-page="@(page + 1)" asp-route-app="@(ViewData["AppFilter"] as string)" asp-route-category="@(ViewData["CategoryFilter"] as string)">Next</a> }
+            @if (page > 1) { <a asp-route="FounderDiagnosticsIndex" asp-route-page="@(page - 1)" asp-route-app="@(ViewData["AppFilter"] as string)" asp-route-category="@(ViewData["CategoryFilter"] as string)">Previous</a> }
+            @if (ViewData["HasMore"] as bool? == true) { <a asp-route="FounderDiagnosticsIndex" asp-route-page="@(page + 1)" asp-route-app="@(ViewData["AppFilter"] as string)" asp-route-category="@(ViewData["CategoryFilter"] as string)">Next</a> }
         }
     </nav>
 </section>
