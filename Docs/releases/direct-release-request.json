@@ -1,12 +1,14 @@
 {
   "requestedBy": "Founder",
   "authorization": "Zac authorized personally diagnosing, surgically repairing, testing and deploying timeout/error fixes in Sentinel_6aa93f2132908191a59300a684120fdc at2026-11-01T05:33:11Z. Preserve exact-head CI, independent review, current-operation, package, database, rollback and Production protections; no queue376 or Protect68ef waiver.",
-  "purpose": "Reduce the incident monitor current/prior AnalyticsEvents transfer to four interaction-count fields while preserving canonical scope, quality filters and in-memory identity/count semantics. Root-correlated operation145a5f9cf1149c6b5c5269bc68f79a9d spent42.76s in these two reads; actual post-fix production latency remains to be verified. No schema, index, deadline, authorization or logging change. Includes the already merged PR746 blank compiled-slot repair for Protect, which remains NOT deployed after run41282447894 stopped at the competing-active-writer selector gate. Both pending resource changes are explicit; authenticated successful baselines are unchanged. No queued376 or Protect68ef risk waiver.",
-  "requestId": "incident-monitor-event-projection-20261101-v2",
+  "purpose": "Publish the reviewed pending website, Studio, diagnostics, analytics and training dependency repairs across their four actual affected application owners. Historical release requests and completed resource references remain unchanged; failed selectors require complete authenticated nonentry evidence. No schema or routing change, no Protect unresolved-operation waiver.",
+  "requestId": "website-studio-diagnostics-four-apps-20261101",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
-    "masterapp-protect"
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,

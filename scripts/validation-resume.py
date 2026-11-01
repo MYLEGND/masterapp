@@ -7182,6 +7182,8 @@ def completed_resource_currentness(repository, revision, contract, proofs, token
         if len(parents)!=3:raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PRODUCER_PARENT_UNKNOWN')
         recorded=completed_resource_scope(parents[1],run['head_sha'],completed_resource_contract(run['head_sha']))
         selected={r['key'] for r in recorded['matrix']['include']}
+        if completed_resource_failed_selector_nonentry(repository, run, revision, token, artifacts):
+            continue  # No downstream owner entered; historical intent remains unchanged.
         if set(request.get('targets',[]))!={r['azure_app'] for r in recorded['matrix']['include']}:
             raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_RECORDED_SCOPE_CHANGED')
         for resource in ('portal','client','protect','parfait','website','schema','routing'):
@@ -8266,6 +8268,17 @@ def attested_fast_track_brand_preupload(repository, run, jobs, token):
     return True
 
 
+def completed_resource_failed_selector_nonentry(repository, run, revision, token, artifacts):
+    """No resource history effect without complete selector-only failure proof.
+
+    Any retained operation/material artifact contradicts selector nonentry. Keep
+    the historical request immutable; this cannot certify publication or advance
+    a resource baseline.
+    """
+    return (artifacts == [] and fast_track_selector_attempts_proven_nonentry(
+        repository, run, revision, token))
+
+
 def fast_track_selector_attempts_proven_nonentry(repository, run, revision, token,
                                                 *, clock=time.monotonic):
     """Carry unpublished scope only after every selector attempt proves nonentry.
@@ -8278,7 +8291,7 @@ def fast_track_selector_attempts_proven_nonentry(repository, run, revision, toke
         or not isinstance(run.get('repository'), dict) or not is_fast_track_producer(repository, run)
         or run.get('repository', {}).get('full_name', '').lower() != repository.lower()
         or run.get('status') != 'completed' or run.get('conclusion') != 'failure'
-        or type(run.get('run_attempt')) is not int or not 2 <= run['run_attempt'] <= 100
+        or type(run.get('run_attempt')) is not int or not 1 <= run['run_attempt'] <= 100
         or type(run.get('workflow_id')) is not int or run['workflow_id'] <= 0):
         return False
     def same_run(value, attempt):
@@ -8293,7 +8306,8 @@ def fast_track_selector_attempts_proven_nonentry(repository, run, revision, toke
     selector = 'Select exact affected applications'
     downstream = {'Admit exact validated fast-track source',
                   'Reconcile production schema before publication',
-                  'Affected App Deploy — ${{ matrix.target }}', 'Publish verified website routing'}
+                  'Affected App Deploy — ${{ matrix.target }}', 'Publish verified website routing',
+                  'Recover retained fast-track application materials'}
     names = downstream | {selector}
     with evidence_lookup_budget(clock() + 30.0, clock=clock):
         def read(endpoint):
