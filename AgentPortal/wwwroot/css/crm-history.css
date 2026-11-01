@@ -5,11 +5,11 @@
     padding: clamp(20px, 3vw, 44px) var(--app-gutter) 56px;
     color: var(--web-ink);
 }
-.history-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+.history-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 24px; padding: clamp(20px, 3vw, 32px); background: var(--legend-app-surface); color: var(--legend-app-on-dark); border: 1px solid var(--legend-app-border); border-top: 3px solid var(--legend-app-accent); border-radius: var(--legend-app-radius); }
 .history-header h1 { font-size: clamp(1.55rem, 2.4vw, 2.25rem); font-weight: 800; letter-spacing: -.045em; line-height: 1.15; margin: 0 0 12px; }
-.history-eyebrow { color: var(--web-muted); font-size: .68rem; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; margin: 0 0 10px; }
-.history-subject { font-size: 1rem; font-weight: 700; overflow-wrap: anywhere; margin: 0 0 4px; }
-.history-caption { font-size: .8rem; color: var(--web-muted); margin: 0; }
+.history-eyebrow { color: var(--legend-app-accent-bright); font-size: .68rem; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; margin: 0 0 10px; }
+.history-subject { font-size: 1rem; font-weight: 700; overflow-wrap: anywhere; margin: 0 0 8px; display: inline-block; padding: 5px 10px; border: 1px solid var(--legend-app-border); border-radius: var(--legend-app-radius-compact); background: var(--legend-app-panel); }
+.history-caption { font-size: .8rem; color: var(--legend-app-on-dark-muted); margin: 0; }
 .history-action { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 8px 14px; border: 1px solid currentColor; border-radius: var(--legend-app-radius-compact); background: transparent; color: inherit; font-size: .76rem; font-weight: 700; text-decoration: none; cursor: pointer; }
 .history-inline-action { margin-inline-start: 8px; }
 .history-action:hover { color: var(--legend-app-accent); }
@@ -40,7 +40,7 @@
 #history-status { color: var(--web-muted); font-size: .74rem; margin-bottom: 16px; overflow-wrap: anywhere; }
 .history-results { display: grid; gap: 10px; }
 .history-date { margin: 12px 0 2px; font-size: .73rem; font-weight: 700; color: var(--web-muted); letter-spacing: .04em; }
-.history-record { display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: left; padding: 18px 20px; cursor: pointer; overflow-wrap: anywhere; }
+.history-record { --history-category-color: var(--legend-app-on-dark-muted); border-inline-start: 3px solid var(--history-category-color); display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: left; padding: 18px 20px; cursor: pointer; overflow-wrap: anywhere; }
 .history-record strong { font-size: .92rem; line-height: 1.4; }
 .history-record span { font-size: .76rem; line-height: 1.5; color: var(--legend-app-on-dark-muted); }
 .history-record:hover { border-color: var(--legend-app-accent); background: var(--legend-app-surface); }
@@ -51,14 +51,26 @@
 .history-tool p, .history-form small { font-size: .75rem; line-height: 1.6; font-weight: 400; color: var(--legend-app-on-dark-muted); }
 .history-form { display: grid; gap: 16px; }
 .history-form textarea { resize: vertical; }
-.history-dialog { width: min(900px, calc(100vw - 32px)); max-height: 88dvh; overflow: auto; padding: clamp(20px, 3vw, 32px); background: var(--legend-modal-surface); color: var(--legend-modal-ink); border: 1px solid var(--legend-modal-line-strong); border-radius: var(--legend-app-radius); box-shadow: var(--legend-modal-shadow); }
+.history-dialog { width: var(--legend-desktop-modal-width); max-width: calc(100vw - 24px); max-height: var(--legend-desktop-modal-height); overflow: auto; padding: clamp(20px, 3vw, 32px); background: var(--legend-modal-surface); color: var(--legend-modal-ink); border: 1px solid var(--legend-modal-line-strong); border-radius: var(--legend-app-radius); box-shadow: var(--legend-modal-shadow); }
 .history-dialog::backdrop { background: color-mix(in srgb, var(--web-navy-deep) 65%, transparent); }
-.history-dialog h2 { font-size: 1.4rem; margin: 12px 0 24px; }
+.history-dialog h2 { font-size: 1.4rem; margin: 0; }
+.history-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; position: sticky; top: 0; background: var(--legend-modal-surface); padding-bottom: 20px; border-bottom: 1px solid var(--legend-modal-line); margin-bottom: 20px; z-index: 1; }
 .history-dialog h3 { color: var(--legend-modal-gold); }
 .history-dialog a { color: var(--legend-modal-gold-strong); }
 .history-dialog details { padding: 14px; border: 1px solid var(--legend-modal-line); border-radius: var(--legend-app-radius-compact); margin-block: 16px; }
-.history-value { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; }
-#history-close { float: right; }
+.history-fact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 12px; }
+.history-fact { min-width: 0; padding: 14px; background: var(--legend-modal-surface-raised); border: 1px solid var(--legend-modal-line); border-radius: var(--legend-app-radius-compact); }
+.history-fact-wide { grid-column: 1 / -1; }
+.history-fact-group { min-width: 0; grid-column: 1 / -1; margin-block: 18px; }
+.history-fact-label { font-size: .76rem; font-weight: 700; margin: 0 0 8px; overflow-wrap: anywhere; }
+.history-value { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; margin: 0; }
+.history-record[data-category="submission"] { --history-category-color: #8bcaff; }
+.history-record[data-category="interaction"] { --history-category-color: #d0b3ff; }
+.history-record[data-category="followup"] { --history-category-color: var(--legend-app-accent-bright); }
+.history-record[data-category="attention"] { --history-category-color: #ffb2a8; }
+.history-record[data-category="evidence"] { --history-category-color: #84ddd3; }
+.history-record .history-category { align-self: flex-start; color: var(--history-category-color); font-size: .65rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+
 @media (max-width: 1000px) {
     .history-content-grid { grid-template-columns: minmax(0, 1fr); }
     .history-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

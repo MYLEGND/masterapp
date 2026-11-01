@@ -1976,3 +1976,29 @@ advanced-filter keyboard expansion and mobile record dialog fit/scroll/close
 verified; Client empty state is readable. No interactions/evidence/corrections
 submitted; normal existing history Backfill/access auditing remains unchanged.
 Only local Portal restarted; no deployment, migration or push.
+
+## 2026-11-01 — Shared CRM modal geometry and category cues
+
+Founder requested wider canonical modals, reduced scrolling, a styled workspace
+header and meaningful color navigation. Preserved base
+9f45fa2583214a3f6eb365aae72b77ec427dfc61 and local-only continuity exception;
+Git preflight still reports connectivity failure. No remote pass claimed.
+
+Replaced the component's900px dialog limit with existing shared desktop modal
+width/height variables. Native dialog heading/close stay available; labeled
+record fields use responsive columns, nested groups and long narratives span
+rows. Original keys, values, null/empty distinctions, safe textContent rendering,
+source/evidence disclaimers and request identity behavior remain unchanged.
+Header now consumes navy/gold panel tokens with a relationship badge. Timeline
+category labels and colored borders distinguish submissions, interactions,
+follow-up activity, complaints and evidence; unknown records remain neutral.
+These cues classify records and never infer provider success or current status.
+
+Actual AgentPortal Razor build passed0warnings/errors. Six focused Node tests
+pass, including nested arrays/objects, false/zero/null/empty/untrusted text,
+long-narrative preservation and category truth. Live local desktop dialog is
+1680px at1728px viewport, matching resolved global token; fields use horizontal
+grid with no overflow. At390px viewport dialog is342px, one column, no horizontal
+overflow; close works. Header computed canonical navy; viewport reset afterward.
+No manual record/evidence writes; existing access auditing remains active.
+No global style overrides, alternate modal engine, backend changes or deployment.

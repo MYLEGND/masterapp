@@ -23,9 +23,25 @@
   const endpoint = (path,params = {}) => '/CrmHistory/'+path+'?'+new URLSearchParams([...scope,...Object.entries(params)]);
   async function json(url, options) { const r = await fetch(url,{credentials:'same-origin',...options}); if(!r.ok){const error=new Error(r.status===403 || r.status===404 ? 'This record is unavailable under your current access.' : 'Request failed. Your existing history has not been changed.');error.status=r.status;throw error;} return r.json(); }
   function renderValue(value, parent, label) {
-    if(label) {const h=document.createElement('h3');h.className='h6 mt-3';h.textContent=label;parent.append(h);}
-    if(value && typeof value==='object') {for(const [key,item] of Object.entries(value)) renderValue(item,parent,key);}
-    else {const p=document.createElement('p');p.className='history-value';p.textContent=value===null ? 'Evidence unavailable' : value==='' ? 'Empty submitted value' : String(value);parent.append(p);}
+    const section=document.createElement('section');section.className=typeof value==='string' && (value.length>180 || value.includes('\n')) ? 'history-fact history-fact-wide' : 'history-fact';
+    if(label) {const h=document.createElement('h3');h.className='history-fact-label';h.textContent=label;section.append(h);}
+    if(value && typeof value==='object') {
+      section.className='history-fact-group';
+      const fields=document.createElement('div');fields.className='history-fact-grid';
+      for(const [key,item] of Object.entries(value)) renderValue(item,fields,key);
+      section.append(fields);
+    }
+    else {const p=document.createElement('p');p.className='history-value';p.textContent=value===null ? 'Evidence unavailable' : value==='' ? 'Empty submitted value' : String(value);section.append(p);}
+    parent.append(section);
+  }
+  function recordCategory(entry) {
+    if(entry.type==='Complaint') return ['attention','Complaint'];
+    if(entry.type==='FollowUp') return ['followup','Follow-up'];
+    if(['TaskCompleted','TaskCanceled'].includes(entry.type)) return ['followup','Follow-up activity'];
+    if(entry.type==='FormSubmission') return ['submission','Submission'];
+    if(entry.type==='Document' || entry.source==='ProtectedDocument') return ['evidence','Evidence'];
+    if(['Note','Call','AttemptedCall','Meeting','Email','Message','Addendum'].includes(entry.type)) return ['interaction','Interaction'];
+    return ['other','Record'];
   }
   function renderSubmission(snapshot) {
     const evidence=snapshot?.SubmittedFormEvidence;
@@ -81,6 +97,8 @@
         if(group==='week' && /^\d{4}-\d{2}-\d{2}$/.test(day)){const d=new Date(day+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);key='Week of '+d.toISOString().slice(0,10);}
         if(group!=='none' && key!==priorGroup){const h=document.createElement('h2');h.className='history-date';h.textContent=key;results.append(h);priorGroup=key;}
         const wrap=document.createElement('div');wrap.className='history-entry';const button=document.createElement('button');button.className='history-record';button.type='button';
+        const [category,categoryLabel]=recordCategory(entry);button.dataset.category=category;
+        const badge=document.createElement('span');badge.className='history-category';badge.textContent=categoryLabel;button.append(badge);
         const title=document.createElement('strong');title.textContent=(entry.formName||entry.type)+(entry.product?' · '+entry.product:'');button.append(title);
         for(const text of [entry.occurredUtc?date(entry.occurredUtc):entry.occurredDate?entry.occurredDate+' · date only':'Unknown event date · time unavailable',entry.source+' · '+entry.status+(entry.formVersion?' · version '+entry.formVersion:entry.type==='FormSubmission'?' · historical version unavailable':''),entry.evidenceStatus,entry.caseReference||'']){const line=document.createElement('span');line.textContent=text;button.append(line);}
         button.addEventListener('click',()=>open(entry));wrap.append(button);results.append(wrap);

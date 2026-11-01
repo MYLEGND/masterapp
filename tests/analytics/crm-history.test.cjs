@@ -61,3 +61,21 @@ test('startup diagnostics classify failures without leaking driver text or ident
   assert.ok(browser.includes('AbortSignal.timeout(8000)'));
   assert.ok(browser.includes('deadline=started+150000'));
 });
+
+test('record field grid preserves nested values, unknown evidence and literal untrusted text',async()=>{
+  const h=harness();await settle();h.click(0);
+  const payload=record('A');payload.entry.contentJson=JSON.stringify({account:'<img src=x onerror=alert(1)>',missing:null,empty:'',count:0,confirmed:false,nested:{original:'retained',items:['first','second']},narrative:'long narrative '.repeat(20)});
+  h.requests.get('A').resolve(payload);await settle();
+  const nodes=[];function visit(node){nodes.push(node);for(const child of node.children||[])visit(child);}visit(h.get('history-detail-content'));
+  const text=nodes.map(n=>n.textContent);
+  for(const value of ['<img src=x onerror=alert(1)>','Evidence unavailable','Empty submitted value','0','false','retained','first','second'])assert.ok(text.includes(value),value);
+  assert.ok(nodes.some(n=>n.className==='history-fact-grid'));
+  assert.ok(nodes.some(n=>n.className==='history-fact history-fact-wide'));
+  assert.ok(nodes.every(n=>n.innerHTML===undefined));
+});
+test('category colors describe record kinds without asserting provider success',()=>{
+  const start=source.indexOf('  function recordCategory('),end=source.indexOf('  function renderSubmission',start);
+  const category=vm.runInNewContext('('+source.slice(start,end).trim()+')');
+  for(const [entry,expected] of [[{type:'FormSubmission'},'Submission'],[{type:'Note'},'Interaction'],[{type:'FollowUp'},'Follow-up'],[{type:'TaskCompleted'},'Follow-up activity'],[{type:'TaskCanceled'},'Follow-up activity'],[{type:'Complaint'},'Complaint'],[{source:'ProtectedDocument'},'Evidence'],[{type:'Access'},'Record']])assert.equal(category(entry)[1],expected);
+  assert.equal(category({type:'Unknown',status:'Succeeded',evidenceStatus:'Unavailable'})[1],'Record');
+});
