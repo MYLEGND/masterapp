@@ -319,8 +319,14 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
 
         // Founder-only system monitor intentionally queries the global monitoring scope.
         var resolvedScope = ScopeContext.Global;
-        var currentEvents = await _analytics.ScopedEvents(currentRange, resolvedScope).ToListAsync(ct);
-        var previousEvents = await _analytics.ScopedEvents(previousRange, resolvedScope).ToListAsync(ct);
+        // Distinct interaction counts need only these fields. Keep canonical query
+        // filters and in-memory identity semantics without loading event payloads.
+        var currentEvents = await _analytics.ScopedEvents(currentRange, resolvedScope)
+            .Select(x => new InteractionUnit(x.EventType, x.SessionId, x.VisitorId, x.EventId))
+            .ToListAsync(ct);
+        var previousEvents = await _analytics.ScopedEvents(previousRange, resolvedScope)
+            .Select(x => new InteractionUnit(x.EventType, x.SessionId, x.VisitorId, x.EventId))
+            .ToListAsync(ct);
 
         var currentLeads = await QueryWebsiteLeads(currentWindowStartUtc, nowUtc).CountAsync(ct);
         var previousLeads = await QueryWebsiteLeads(previousWindowStartUtc, currentWindowStartUtc).CountAsync(ct);
@@ -923,7 +929,9 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
         };
     }
 
-    private static int CountDistinctUnits(IEnumerable<AnalyticsEvent> events, IReadOnlyCollection<string> eventNames)
+    private sealed record InteractionUnit(string EventType, string? SessionId, string? VisitorId, Guid EventId);
+
+    private static int CountDistinctUnits(IEnumerable<InteractionUnit> events, IReadOnlyCollection<string> eventNames)
     {
         if (events == null)
         {
@@ -938,7 +946,7 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
             .Count();
     }
 
-    private static string BuildInteractionUnitKey(AnalyticsEvent analyticsEvent)
+    private static string BuildInteractionUnitKey(InteractionUnit analyticsEvent)
     {
         if (!string.IsNullOrWhiteSpace(analyticsEvent.SessionId))
         {
