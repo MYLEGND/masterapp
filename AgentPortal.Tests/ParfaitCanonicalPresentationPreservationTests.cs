@@ -10,7 +10,7 @@ using Xunit;
 namespace AgentPortal.Tests;
 
 /// <summary>
-/// Pins the original Parfait visual source while moving infrastructure ownership.
+/// Pins reviewed Parfait visual source while moving infrastructure ownership.
 /// Reviewed design changes must update the baseline explicitly.
 /// </summary>
 public sealed partial class ParfaitCanonicalPresentationPreservationTests
@@ -38,15 +38,16 @@ public sealed partial class ParfaitCanonicalPresentationPreservationTests
     [InlineData("Views/Store/Success.cshtml", "c065e8d011b6fc8e74d6293aaf0496244915d75d")]
     [InlineData("wwwroot/css/site.css", "10f00e83c8e9b8a9e7428efebe01a40a0072903d")]
     [InlineData("wwwroot/css/home.css", "00f32a42b0f2f1ea1324c6f8897abe91a130ec94")]
-    [InlineData("wwwroot/css/storefront.css", "e2083eb5314c02427d75280aa0e799aab5c8cfd9")]
-    // Reviewed shared analytics theme: Parfait tokens bind the common analytics renderer.
-    // All public storefront assets and unrelated internal rules remain pinned.
-    [InlineData("wwwroot/css/internal.css", "41fffee56a8fc3cb598b4cb53da5ee94f537c303")]
+    // Founder-requested, independently reviewed Store refinement (5c4617e4e):
+    // compact catalog and management components; scoped palette retains Parfait identity.
+    // Authored presentation remains authoritative. All other visual pins are unchanged.
+    [InlineData("wwwroot/css/storefront.css", "c258f0f30cd691c9769679968028d2e653decd34")]
+    [InlineData("wwwroot/css/internal.css", "86f5a0dcecf52733d117836414e05e3c867b6097")]
     [InlineData("wwwroot/js/storefront.js", "ee0256aa52937cc25831c54b80141b768be72e96")]
     // Reviewed internal health behavior: unavailable identity evidence must not render as zero.
     // CommerceCoreOwnershipContractTests covers the payload; public design assets remain pinned.
     [InlineData("wwwroot/images/favicon/parfait-logo.png", "805aa941827b0bcdeab370d118bec2d297c2e317")]
-    public void ParfaitVisualAssets_MatchPreMigrationGitBlob(string path, string expectedBlobSha)
+    public void ParfaitVisualAssets_MatchReviewedGitBlob(string path, string expectedBlobSha)
     {
         var bytes = File.ReadAllBytes(Path.Combine(FindRepositoryRoot(), "ParfaitApp", path.Replace('/', Path.DirectorySeparatorChar)));
         var header = Encoding.ASCII.GetBytes("blob " + bytes.Length + "\0");
