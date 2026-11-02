@@ -2363,3 +2363,31 @@ payload remains outside source/test fixtures. All 10 focused tests passed; the p
 this correction changes only the renderer and its tests. Independent review
 precedes commit. Production verification of this second correction remains
 pending deployment; source validation alone is not live acceptance.
+
+### Protect production acceptance — 2026-11-02 UTC
+
+Implementation/live revision: 559c460e2550e729205ab20046310c14558a5cc6.
+Independent Astra source acceptance binds the committed three-file diff SHA-256
+ ef9d9737d0182f4ecdfa72d1844f909e5832059f2e15d6c507fa6055dae11987.
+GitHub readback matched before publication. Direct Mac Release publish succeeded;
+the packaged renderer matched source byte-for-byte. ZIP SHA-256:
+b369e2db00ee4b3af7f8bbef12a5d980ee5634e1feaeb8a4c32f1e2d9d4abfc0.
+Azure deployment 5a1b2d390bb343598cff5cf9b108c75d completed with status 4,
+provisioningState Succeeded, and no deployment-log errors. Protect was stopped
+for upload to avoid previously proven locked files, then restarted.
+
+Both protect.mylegnd.com and masterapp-protect.azurewebsites.net runtime provenance
+matched the implementation SHA. The public renderer matched source byte-for-byte.
+All 17 published sitemap routes returned HTTP 200 and passed browser checks for
+rendered content, absence of load errors and absence of canonical-pending state.
+Privacy/Terms aliases and the visible agent-scoped Life destination also rendered.
+Coverage's native Life modal opened and closed with Escape; Microsoft Bookings
+rendered. No booking, inquiry, payment or customer-data submission was performed.
+
+Initial post-restart requests ranged 1.28–14.72 seconds (Risk Assessment slowest);
+a separate warm sweep measured all 17 routes at 1.21–1.88 seconds, zero failures.
+Read-only SQL verification after browser traffic found no publication-read backlog.
+This acceptance covers Protect's observed public routes, not every tenant or app.
+No fast-track merge, migration, production configuration or credential change ran.
+This final documentation-only checkpoint does not change the deployed binaries;
+the deployed implementation remains 559c460e2550e729205ab20046310c14558a5cc6.
