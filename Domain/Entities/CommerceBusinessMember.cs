@@ -21,6 +21,7 @@ public sealed class CommerceBusinessMember
     public bool CanManageStorefront { get; set; } = true;
     public bool CanManageCatalog { get; set; } = true;
     public bool CanManageOrders { get; set; } = true;
+    public bool CanManageCrm { get; set; }
     public bool CanManageAnalytics { get; set; } = true;
     public bool CanManageTeam { get; set; } = true;
 

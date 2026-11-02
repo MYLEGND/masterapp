@@ -14,7 +14,8 @@
         @foreach (var member in Model.Members)
         {
             var locked = member.Role.Equals("owner", StringComparison.OrdinalIgnoreCase) ||
-                         member.Role.Equals("platform-owner", StringComparison.OrdinalIgnoreCase);
+                         member.Role.Equals("platform-owner", StringComparison.OrdinalIgnoreCase) ||
+                         member.Role.Equals("account", StringComparison.OrdinalIgnoreCase);
             <div class="pf-command-card" data-commerce-member="@member.Id">
                 <div class="pf-command-card-heading">
                     <strong>@(string.IsNullOrWhiteSpace(member.DisplayName) ? member.Email : member.DisplayName)</strong>
@@ -37,6 +38,8 @@
                         <label><input type="checkbox" name="CanManageStorefront" value="true" checked="@member.CanManageStorefront" /> Website &amp; storefront</label>
                         <label><input type="checkbox" name="CanManageCatalog" value="true" checked="@member.CanManageCatalog" /> Products &amp; inventory</label>
                         <label><input type="checkbox" name="CanManageOrders" value="true" checked="@member.CanManageOrders" /> Orders &amp; automations</label>
+                        <label><input type="checkbox" name="CanManageCrm" value="true" checked="@member.CanManageCrm" /> Client relationships &amp; CRM</label>
+                        <input type="hidden" name="CanManageCrm" value="false" />
                         <label><input type="checkbox" name="CanManageAnalytics" value="true" checked="@member.CanManageAnalytics" /> Analytics</label>
                         <p>Team administration requires business ownership and cannot be delegated here.</p>
                         <button type="submit" class="pf-action">Save permissions</button>

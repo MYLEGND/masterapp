@@ -6,7 +6,7 @@ public sealed record CommerceBusinessTeamMember(
     Guid Id, string Email, string DisplayName, string Role, string Status,
     bool IsLinked, bool CanManageStorefront, bool CanManageCatalog,
     bool CanManageOrders, bool CanManageAnalytics, bool CanManageTeam,
-    long UpdatedTicks);
+    long UpdatedTicks, bool CanManageCrm);
 
 public sealed record CommerceBusinessTeamViewModel(
     Guid BusinessId, string StoreName, IReadOnlyList<CommerceBusinessTeamMember> Members);
@@ -18,6 +18,7 @@ public sealed class CommerceBusinessTeamPermissionsInput
     public bool CanManageStorefront { get; set; }
     public bool CanManageCatalog { get; set; }
     public bool CanManageOrders { get; set; }
+    public bool? CanManageCrm { get; set; }
     public bool CanManageAnalytics { get; set; }
 }
 

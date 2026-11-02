@@ -232,6 +232,100 @@ public sealed class CommerceManagementCapabilityPolicyTests
         Assert.False(f.Controller.ViewData["CommerceCanSettings"] as bool? ?? false);
     }
 
+    [Theory]
+    [InlineData("staff", "Active", true, false, false)]
+    [InlineData("staff", "Active", false, true, true)]
+    [InlineData("owner", "Active", true, false, false)]
+    [InlineData("account", "Active", false, true, true)]
+    [InlineData("staff", "Inactive", true, true, false)]
+    [InlineData("staff", "Revoked", true, true, false)]
+    public async Task Crm_authority_is_independent_of_orders_and_role(string role, string status,
+        bool orders, bool crm, bool allowed)
+    {
+        await using var f = new NavigationFixture(role, status, true);
+        f.Member.CanManageOrders = orders;
+        f.Member.CanManageCrm = crm;
+        await f.Db.SaveChangesAsync();
+        Assert.Equal(allowed, await BusinessWorkspaceAccess.ResolveAsync(f.Db, f.Business.Id,
+            f.Profile.Id, "actor", null, "crm", default) is not null);
+        var navigation = await new BusinessWorkspaceService(f.Db, null!).NavigationAsync(f.Profile.Id, "actor", null, default);
+        Assert.Equal(allowed, navigation.Any(x => x.CanCrm));
+        Assert.Null(await BusinessWorkspaceAccess.ResolveAsync(f.Db, Guid.NewGuid(), f.Profile.Id, "actor", null, "crm", default));
+        Assert.Null(await BusinessWorkspaceAccess.ResolveAsync(f.Db, f.Business.Id, f.Profile.Id, "outsider", null, "crm", default));
+        f.Member.CanManageOrders = !orders;
+        await f.Db.SaveChangesAsync();
+        Assert.Equal(allowed, BusinessWorkspaceAccess.Allows(f.Member, "crm"));
+    }
+
+    [Theory]
+    [InlineData("valid")]
+    [InlineData("stale")]
+    [InlineData("foreign")]
+    public async Task Team_update_preserves_independent_crm_permission_and_scope(string scenario)
+    {
+        await using var f = new NavigationFixture("owner", "Active", true);
+        var member = new CommerceBusinessMember { CommerceBusinessId = scenario == "foreign" ? Guid.NewGuid() : f.Business.Id,
+            RoleKey = "staff", CanManageCrm = false, UpdatedUtc = DateTime.UtcNow };
+        f.Db.CommerceBusinessMembers.Add(member);
+        await f.Db.SaveChangesAsync();
+        f.Controller.Request.Method = "POST";
+        f.Controller.Request.Path = "/commerce/manage/team/permissions";
+        var result = await f.Controller.SaveTeamPermissions(f.Ticket, new CommerceBusinessTeamPermissionsInput
+        {
+            MemberId = member.Id, ExpectedUpdatedTicks = scenario == "stale" ? member.UpdatedUtc.Ticks - 1 : member.UpdatedUtc.Ticks,
+            CanManageCrm = true, CanManageOrders = false, CanManageStorefront = false
+        });
+        if (scenario == "valid")
+        {
+            Assert.IsType<RedirectToActionResult>(result);
+            Assert.True(member.CanManageCrm);
+            Assert.False(member.CanManageOrders);
+            Assert.False(member.CanManageStorefront);
+        }
+        else
+        {
+            if (scenario == "stale") Assert.IsType<ConflictObjectResult>(result);
+            else Assert.IsType<NotFoundResult>(result);
+            Assert.False(member.CanManageCrm);
+        }
+    }
+
+    [Theory]
+    [InlineData(true, null, true)]
+    [InlineData(false, null, false)]
+    [InlineData(true, false, false)]
+    public async Task Existing_team_clients_preserve_crm_unless_explicitly_changed(bool existing, bool? submitted, bool expected)
+    {
+        await using var f = new NavigationFixture("owner", "Active", true);
+        var member = new CommerceBusinessMember { CommerceBusinessId = f.Business.Id,
+            RoleKey = "staff", CanManageCrm = existing, UpdatedUtc = DateTime.UtcNow };
+        f.Db.Add(member);
+        await f.Db.SaveChangesAsync();
+        f.Controller.Request.Method = "POST";
+        f.Controller.Request.Path = "/commerce/manage/team/permissions";
+        Assert.IsType<RedirectToActionResult>(await f.Controller.SaveTeamPermissions(f.Ticket,
+            new CommerceBusinessTeamPermissionsInput { MemberId = member.Id,
+                ExpectedUpdatedTicks = member.UpdatedUtc.Ticks, CanManageCrm = submitted,
+                CanManageStorefront = true, CanManageOrders = true }));
+        Assert.Equal(expected, member.CanManageCrm);
+        Assert.True(member.CanManageOrders);
+    }
+
+    [Fact]
+    public async Task Account_owner_cannot_regrant_its_protected_membership_crm()
+    {
+        await using var f = new NavigationFixture("account", "Active", true);
+        f.Member.CanManageCrm = false;
+        await f.Db.SaveChangesAsync();
+        f.Controller.Request.Method = "POST";
+        f.Controller.Request.Path = "/commerce/manage/team/permissions";
+        Assert.IsType<ForbidResult>(await f.Controller.SaveTeamPermissions(f.Ticket,
+            new CommerceBusinessTeamPermissionsInput { MemberId = f.Member.Id,
+                ExpectedUpdatedTicks = f.Member.UpdatedUtc.Ticks, CanManageCrm = true,
+                CanManageStorefront = true, CanManageOrders = true }));
+        Assert.False(f.Member.CanManageCrm);
+    }
+
     private sealed class NavigationFixture : IAsyncDisposable
     {
         public MasterAppDbContext Db = ControllerTestHelpers.BuildDb();
@@ -246,6 +340,7 @@ public sealed class CommerceManagementCapabilityPolicyTests
         {
             Member = new() { CommerceBusinessId = Business.Id, ClientProfileId = Profile.Id, RoleKey = role, Status = status, CanManageStorefront = true, CanManageCatalog = true, CanManageTeam = canTeam };
             Db.CommerceBusinesses.Add(Business); Db.ClientProfiles.Add(Profile); Db.CommerceBusinessMembers.Add(Member);
+            Db.CommerceBusinessStorefrontSettings.Add(new() { CommerceBusinessId = Business.Id });
             Db.Set<WebsiteContentState>().Add(new() { OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(Business.Id), SiteKey = WebsiteEditorSiteKeys.Business, CommerceBusinessId = Business.Id, DraftJson = JsonSerializer.Serialize(WebsiteContentSanitizer.Sanitize(new WebsiteContentDocument { Store = new() { Enabled = true } }), new JsonSerializerOptions(JsonSerializerDefaults.Web)) });
             Db.SaveChanges();
             var protection = new EphemeralDataProtectionProvider();
@@ -257,6 +352,7 @@ public sealed class CommerceManagementCapabilityPolicyTests
             var stores = new CommerceStoreContextService(Db, new CommerceBusinessScopeResolver(Db), null!, null!, configuration);
             Controller = new(Tickets, configuration, stores, null!, null!, null!, null!, null!, null!, null!, null!, null!)
             { ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { RequestServices = services } } };
+            Controller.Url = Mock.Of<IUrlHelper>();
             Controller.HttpContext.Request.Method = "GET";
             Controller.TempData = new TempDataDictionary(Controller.HttpContext, Mock.Of<ITempDataProvider>());
         }

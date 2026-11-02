@@ -2414,6 +2414,9 @@ namespace Infrastructure.Migrations
                     b.Property<bool>("CanManageCatalog")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("CanManageCrm")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("CanManageOrders")
                         .HasColumnType("bit");
 

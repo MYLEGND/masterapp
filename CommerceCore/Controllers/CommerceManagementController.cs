@@ -280,7 +280,7 @@ public sealed class CommerceManagementController(
             .Select(x => new CommerceBusinessTeamMember(x.Id, x.Email, x.DisplayName,
                 x.RoleKey, x.Status, x.ClientProfileId.HasValue,
                 x.CanManageStorefront, x.CanManageCatalog, x.CanManageOrders,
-                x.CanManageAnalytics, x.CanManageTeam, x.UpdatedUtc.Ticks))
+                x.CanManageAnalytics, x.CanManageTeam, x.UpdatedUtc.Ticks, x.CanManageCrm))
             .ToListAsync(ct);
         ApplyManagementViewData(store, ticket, "team");
         return View("~/Views/InternalSettings/CanonicalTeam.cshtml",
@@ -302,7 +302,8 @@ public sealed class CommerceManagementController(
             x.Id == input.MemberId && x.CommerceBusinessId == store.CommerceBusinessId, ct);
         if (member is null) return NotFound();
         if (member.RoleKey.Equals("owner", StringComparison.OrdinalIgnoreCase) ||
-            member.RoleKey.Equals("platform-owner", StringComparison.OrdinalIgnoreCase))
+            member.RoleKey.Equals("platform-owner", StringComparison.OrdinalIgnoreCase) ||
+            member.RoleKey.Equals("account", StringComparison.OrdinalIgnoreCase))
             return Forbid();
         if (member.UpdatedUtc.Ticks != input.ExpectedUpdatedTicks)
             return Conflict("Team access changed in another session. Reload to review permissions.");
@@ -311,6 +312,8 @@ public sealed class CommerceManagementController(
         member.CanManageCatalog = input.CanManageCatalog && input.CanManageStorefront;
         member.CanManageOrders = input.CanManageOrders && input.CanManageStorefront;
         member.CanManageAnalytics = input.CanManageAnalytics;
+        if (input.CanManageCrm.HasValue)
+            member.CanManageCrm = input.CanManageCrm.Value;
         // Team administration remains controlled by canonical business ownership.
         member.UpdatedUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);

@@ -156,8 +156,8 @@ public sealed class BusinessWorkspaceTests
         var actor = "navigation-agent";
         db.AddRange(selected, other, profile,
             new AgentClient { AgentUserId = actor, AgentUpn = "agent@example.org", ClientUserId = profile.ClientUserId },
-            new CommerceBusinessMember { CommerceBusinessId = selected.Id, ClientProfileId = profile.Id },
-            new CommerceBusinessMember { CommerceBusinessId = other.Id, ClientProfileId = profile.Id },
+            new CommerceBusinessMember { CanManageCrm = true, CommerceBusinessId = selected.Id, ClientProfileId = profile.Id },
+            new CommerceBusinessMember { CanManageCrm = true, CommerceBusinessId = other.Id, ClientProfileId = profile.Id },
             new CommerceBusinessStorefrontSettings { CommerceBusinessId = selected.Id },
             new CommerceBusinessStorefrontSettings { CommerceBusinessId = other.Id });
         await db.SaveChangesAsync();
@@ -178,7 +178,7 @@ public sealed class BusinessWorkspaceTests
         using var db = ControllerTestHelpers.BuildDb();
         var business = new CommerceBusiness { Key = "navigation" };
         var profile = new ClientProfile { ClientUserId = Guid.NewGuid().ToString(), Email = "owner@example.org" };
-        var member = new CommerceBusinessMember { CommerceBusinessId = business.Id, ClientProfileId = profile.Id };
+        var member = new CommerceBusinessMember { CanManageCrm = true, CommerceBusinessId = business.Id, ClientProfileId = profile.Id };
         db.AddRange(business, profile, member, new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id });
         await db.SaveChangesAsync();
         var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>());
@@ -432,6 +432,7 @@ public sealed class BusinessWorkspaceTests
             {
                 CommerceBusinessId = business.Id,
                 ClientProfileId = memberProfile.Id,
+                CanManageCrm = true,
                 Status = "Active"
             },
             new AgentClient
@@ -593,7 +594,7 @@ public sealed class BusinessWorkspaceTests
         using var db = ControllerTestHelpers.BuildDb();
         var business = new CommerceBusiness { Key = "business", OwnerEmail = "owner@example.org" };
         var profile = new ClientProfile { ClientUserId = Guid.NewGuid().ToString(), Email = business.OwnerEmail };
-        var member = new CommerceBusinessMember { CommerceBusinessId = business.Id, ClientProfileId = profile.Id, DisplayName = "Owner" };
+        var member = new CommerceBusinessMember { CanManageCrm = true, CommerceBusinessId = business.Id, ClientProfileId = profile.Id, DisplayName = "Owner" };
         var settings = new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id, WorkspacePreferencesJson = new BusinessWorkspacePreferences { NotificationMemberId = member.Id }.Write() };
         db.AddRange(business, profile, member, settings); await db.SaveChangesAsync();
         var resolver = new WebsiteIntakeRecipientResolver(db, new ConfigurationBuilder().AddInMemoryCollection(new[] { new System.Collections.Generic.KeyValuePair<string,string?>("Contact:RecipientEmail", "founder@example.org") }).Build());
@@ -612,7 +613,7 @@ public sealed class BusinessWorkspaceTests
         var business = new CommerceBusiness { Key = "business", OwnerEmail = "owner@example.org" };
         var profile = new ClientProfile { ClientUserId = Guid.NewGuid().ToString(), Email = business.OwnerEmail };
         var row = new CommerceWebsiteInquiry { CommerceBusinessId = business.Id, Email = "visitor@example.org", Message = "<script>unsafe</script>" };
-        db.AddRange(business, profile, row, new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id }, new CommerceBusinessMember { CommerceBusinessId = business.Id, ClientProfileId = profile.Id });
+        db.AddRange(business, profile, row, new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id }, new CommerceBusinessMember { CanManageCrm = true, CommerceBusinessId = business.Id, ClientProfileId = profile.Id });
         await db.SaveChangesAsync();
         var sender = new Mock<IWebsiteInquiryEmailSender>();
         sender.Setup(x => x.TrySendAsync(business.OwnerEmail, It.IsAny<string>(), It.Is<string>(s => s.Contains("&lt;script&gt;") && !s.Contains("<script>")), null, row.Email, false, It.IsAny<CancellationToken>())).ReturnsAsync(true);

@@ -73,7 +73,7 @@ public static class BusinessWorkspaceAccess
             "team" => owner && member.CanManageTeam,
             "settings" => owner,
             "analytics" => member.CanManageAnalytics,
-            "crm" => member.CanManageOrders || owner,
+            "crm" => member.CanManageCrm,
             _ => false
         };
     }

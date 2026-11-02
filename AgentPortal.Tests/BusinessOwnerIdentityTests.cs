@@ -53,13 +53,15 @@ public sealed class BusinessOwnerIdentityTests
         var service = new CommerceBusinessProvisioningService(db);
         Assert.Null(await service.ResolveOwnerAsync(invalid.Email));
         var request = new CommerceBusinessProvisioningRequest("Entity", "Entity", "BusinessClient", entity.Email,
-            OwnerRoleKey: "account", OwnerClientProfileId: entity.Id,
+            OwnerRoleKey: "account", OwnerClientProfileId: entity.Id, CanManageCrm: true,
             Owners: new[] { new BusinessOwnerInput(invalid.Id, invalid.Email, 100) });
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(request));
         Assert.Empty(db.CommerceBusinesses);
         var business = await service.CreateAsync(request with { Owners = new[] { new BusinessOwnerInput(personal.Id, personal.Email, 100) } });
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateOwnershipAsync(business.Id, entity.Id, "Entity", request.Owners!));
         Assert.Equal(personal.Id, (await db.CommerceBusinessMembers.SingleAsync(x => x.RoleKey == "owner")).ClientProfileId);
+        Assert.True((await db.CommerceBusinessMembers.SingleAsync(x => x.RoleKey == "owner")).CanManageCrm);
+        Assert.True((await db.CommerceBusinessMembers.SingleAsync(x => x.RoleKey == "account")).CanManageCrm);
     }
 
     [Fact]
