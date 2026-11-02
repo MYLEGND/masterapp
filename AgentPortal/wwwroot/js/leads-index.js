@@ -3740,6 +3740,7 @@ function debounce(fn, ms){
 }
 const renderAllDebounced = debounce(renderAll, 40);
 
+let historyReminderItems = [];
 let initialPipelineRenderPrimed = false;
 function primeInitialPipelineRender(){
   if (initialPipelineRenderPrimed) return;
@@ -4155,7 +4156,6 @@ async function openDrawerForRow(row){
     activeClientId = row.dataset.clientId;
     if (drawer) drawer.dataset.clientId = activeClientId || "";
     activeClientDetail = null;
-    noteSyncLeadField();
     // Load Actions tab (Execution MVP)
     void loadLeadActionsPanel();
 
@@ -4278,7 +4278,6 @@ async function openDrawerForRow(row){
     }, "drawer");
 
     activeClientDetail = detail;
-    noteSyncLeadField();
     const resolvedContactStatus = normalizeContactStatusValue(detail.contactStatus || row.dataset.crmContactStatus || row.dataset.sContactstatus || "NotSet");
     row.dataset.sContactstatus = resolvedContactStatus;
     row.dataset.crmContactStatus = resolvedContactStatus;
@@ -6118,7 +6117,6 @@ async function enableReminders(){
   }
 }
 
-let historyReminderItems = [];
 async function refreshHistoryReminders(){
   try {
     const response = await fetch('/CrmHistory/Reminders',{credentials:'same-origin',cache:'no-store'});

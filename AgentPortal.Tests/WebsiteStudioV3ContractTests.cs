@@ -10,6 +10,39 @@ namespace AgentPortal.Tests;
 public sealed class WebsiteStudioV3ContractTests
 {
     [Fact]
+    public void AgentContract_ExposesExistingReceptionistPresentationWithoutProviderAuthority()
+    {
+        var contract = JsonSerializer.SerializeToElement(WebsiteStudioAgentContract.Payload);
+        var receptionist = contract.GetProperty("nodeAuthoring").GetProperty("canonicalReceptionist");
+        Assert.Equal("receptionist", receptionist.GetProperty("nodeType").GetString());
+        Assert.Contains("existing shell.footer container", receptionist.GetProperty("placement").GetString());
+        Assert.Contains("receptionistSetupUrl", receptionist.GetProperty("operations").GetString());
+        Assert.Contains("server-owned", receptionist.GetProperty("authority").GetString());
+        Assert.Contains("typed receptionist component", WebsiteStudioAgentContract.CompactPromptTemplate);
+    }
+
+    [Fact]
+    public void StandaloneReceptionist_PreservesPresentationAndCanonicalIconWithoutProviderAuthority()
+    {
+        var iconId = Guid.NewGuid();
+        var node = new WebsiteCompositionNode
+        {
+            Id = "shared.receptionist", Type = "receptionist", Tag = "div", Title = "Shayla", Text = "How can we help?",
+            Receptionist = new WebsiteReceptionistPresentation { Enabled = true, Label = "Talk with Shayla", Placement = "after" },
+            Children = [new WebsiteCompositionNode { Id = "shared.receptionist.icon", Type = "image", Tag = "img", MediaAssetId = iconId, Alt = "Shayla" }]
+        };
+        var clean = WebsiteContentSanitizer.SanitizeMutationNode(node, WebsiteStudioContract.DefaultBreakpoints());
+        Assert.Equal("receptionist", clean.Type);
+        Assert.Equal("Shayla", clean.Title);
+        Assert.Equal("How can we help?", clean.Text);
+        Assert.Equal(iconId, Assert.Single(clean.Children).MediaAssetId);
+        Assert.True(clean.Receptionist!.Enabled);
+        Assert.Null(clean.SystemKey);
+        clean.Receptionist.UnexpectedFields = new() { ["endpoint"] = JsonSerializer.SerializeToElement("https://foreign.invalid") };
+        Assert.Throws<ArgumentException>(() => WebsiteContentSanitizer.SanitizeMutationNode(clean, WebsiteStudioContract.DefaultBreakpoints()));
+    }
+
+    [Fact]
     public void CanonicalInquiryVoice_IsOptionalTypedPresentationAndSurvivesSanitizedJson()
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);

@@ -667,6 +667,7 @@ public static class MarketingServiceRegistration
         services.AddScoped<IOpenAiAdsAccountConnectionAuthority, OpenAiAdsAccountConnectionAuthority>();
         services.AddScoped<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority, Infrastructure.Bookings.MicrosoftCalendarConnectionAuthority>();
         services.AddScoped<Infrastructure.Bookings.ReceptionistBookingReadinessReader>();
+        Infrastructure.Leads.WebsiteLeadServiceRegistration.AddConfirmedInquiryPersistence(services);
         services.AddScoped<Infrastructure.Bookings.IReceptionistApplicationBooking, Infrastructure.Bookings.ReceptionistBookingAuthority>();
         services.AddHttpClient<IOpenAiAdsDirectConnectionService, OpenAiAdsDirectConnectionService>(client =>
         {

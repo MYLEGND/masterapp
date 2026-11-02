@@ -169,6 +169,15 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
     };
     compiledCms.runInNewContext(sandbox,{timeout:3000});
     if(window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE!==true)throw new Error('Canonical renderer did not complete.');
+    // Reuse the renderer-selected URL; make its request discoverable before body parsing.
+    const initialImage=doc.querySelector('main img[fetchpriority="high"][src]');
+    if(initialImage){
+      const preload=doc.createElement('link');
+      preload.setAttribute('rel','preload');preload.setAttribute('as','image');
+      preload.setAttribute('href',initialImage.getAttribute('src'));
+      preload.setAttribute('fetchpriority','high');doc.head.appendChild(preload);
+    }
+
 
     const title=dynamicItem?.fields?.name||page.title||`${displayName}${routeKey==='home'?'':' | '+(built?.label||routeKey)}`;
     const description=dynamicItem?.fields?.description||page.description||'';
@@ -242,7 +251,7 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
     const bodyRoots=[...doc.body.children];
     const mainIndex=bodyRoots.indexOf(doc.querySelector('main'));
     result[route]={title:String(title),description:String(description||''),html:doc.toString(),...(protect?{
-      nativeSlot,
+      nativeSlot,initialImageUrl:initialImage?.getAttribute('src') || null,
       header:input.document.shell?.header?.length ? bodyRoots.slice(0,mainIndex).filter(el=>!el.matches('script,style')).map(el=>el.outerHTML).join('') : null,
       footer:input.document.shell?.footer?.length ? bodyRoots.slice(mainIndex+1).filter(el=>!el.matches('script,style')).map(el=>el.outerHTML).join('') : null,
       main:doc.querySelector('main')?.innerHTML||'',

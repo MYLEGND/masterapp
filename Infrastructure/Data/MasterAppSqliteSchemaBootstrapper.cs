@@ -1,6 +1,10 @@
 using System.Data;
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Data;
@@ -325,6 +329,8 @@ public static class MasterAppSqliteSchemaBootstrapper
                 }
             }
 
+            repairs.AddRange(await CreateMissingModelTablesAsync(db, connection, cancellationToken));
+
             await StampMigrationHistoryAsync(db, connection, createdFromModel, logger, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, CommerceBusinessScopeMigrationId, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, CommerceCoreSchemaMigrationId, cancellationToken);
@@ -363,6 +369,45 @@ public static class MasterAppSqliteSchemaBootstrapper
                 await connection.CloseAsync();
             }
         }
+    }
+
+    // EnsureCreated is deliberately a no-op for an existing database. Reconcile only
+    // absent tables from the canonical model; never rebuild existing tables or infer
+    // that SQL Server migrations have run from this SQLite-only operation.
+    private static async Task<IReadOnlyList<string>> CreateMissingModelTablesAsync(
+        MasterAppDbContext db, DbConnection connection, CancellationToken cancellationToken)
+    {
+        var model = db.GetService<IDesignTimeModel>().Model;
+        var operations = db.GetService<IMigrationsModelDiffer>()
+            .GetDifferences(null, model.GetRelationalModel());
+        var missing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var table in operations.OfType<CreateTableOperation>())
+        {
+            if (!await TableExistsAsync(connection, table.Name, cancellationToken))
+                missing.Add(table.Name);
+        }
+
+        if (missing.Count == 0) return Array.Empty<string>();
+
+        var additions = operations.Where(operation => operation switch
+        {
+            CreateTableOperation table => missing.Contains(table.Name),
+            CreateIndexOperation index => missing.Contains(index.Table),
+            _ => false
+        }).ToArray();
+        var commands = db.GetService<IMigrationsSqlGenerator>().Generate(additions, model);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        foreach (var migrationCommand in commands)
+        {
+            if (migrationCommand.TransactionSuppressed)
+                throw new InvalidOperationException("Missing SQLite table creation must be transactional.");
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = migrationCommand.CommandText;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await transaction.CommitAsync(cancellationToken);
+        return missing.OrderBy(name => name, StringComparer.Ordinal).ToArray();
     }
 
     private static async Task<bool> AddColumnIfMissingAsync(

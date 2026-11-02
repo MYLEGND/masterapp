@@ -22,7 +22,7 @@ public sealed class BusinessWorkspaceController(BusinessWorkspaceService workspa
         {
             if (!await WebsiteBusinessAccess.CanManageAsActorAsync(db, businessId, profile, actor, email, ct)) continue;
             var handoff = await WebsiteEditorHandoffService.CreateAsync(db, profile, businessId, actor, email ?? "", ct);
-            var apiBase = (configuration["LandingRoutes:BaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/');
+            var apiBase = (configuration["WebsiteContentApiBaseUrl"] ?? configuration["LandingRoutes:BaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/');
             return Json(new { handoffUrl = $"{apiBase}/api/website-content/handoff", state = handoff.OpaqueState, expiresUtc = handoff.ExpiresUtc });
         }
         return Forbid();

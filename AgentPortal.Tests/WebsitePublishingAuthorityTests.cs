@@ -87,6 +87,7 @@ public sealed class WebsitePublishingAuthorityTests
         var result = await controller.ResolveProtectPageAsync(path, default);
         Assert.NotNull(result); Assert.Equal(version.Id, result.VersionId); Assert.Equal(native, result.NativeSlot);
         Assert.Equal("<p>Published body</p>", result.Main);
+        Assert.Null(result.InitialImageUrl);
         Assert.Equal(version.Id.ToString("D"), controller.Response.Headers["X-Legend-Publication-Id"].ToString());
         Assert.DoesNotContain(typeof(WebsiteContentState), f.Audit.EntityTypes);
         Assert.DoesNotContain(typeof(WebsiteContentVersion), f.Audit.EntityTypes);
@@ -96,6 +97,11 @@ public sealed class WebsitePublishingAuthorityTests
         Assert.Null(await controller.ResolveProtectPageAsync("/not-published", default));
         Assert.Null(await controller.ResolveProtectPageAsync("/trainingpackages", default));
         var persistedVersion = await f.Db.Set<WebsiteContentVersion>().SingleAsync(v => v.Id == version.Id);
+        var compiledWithHint = System.Text.Json.Nodes.JsonNode.Parse(persistedVersion.CompiledPagesJson!)!;
+        compiledWithHint["pages"]![canonical]!["initialImageUrl"] = "https://media.example.test/hero.png?size=large&format=webp";
+        persistedVersion.CompiledPagesJson = compiledWithHint.ToJsonString();
+        await f.Db.SaveChangesAsync();
+        Assert.Equal("https://media.example.test/hero.png?size=large&format=webp", (await controller.ResolveProtectPageAsync(path, default))!.InitialImageUrl);
         persistedVersion.CompiledPagesJson = persistedVersion.CompiledPagesJson!.Replace(version.Id.ToString(), Guid.NewGuid().ToString());
         await f.Db.SaveChangesAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(() => controller.ResolveProtectPageAsync(path, default));
@@ -109,8 +115,8 @@ public sealed class WebsitePublishingAuthorityTests
     [Fact]
     public void ImmutablePublicationLobReadHonorsCancellationBeforeAndAfterWithoutSwallowingErrors()
     {
-        var method = typeof(WebsitePlatformController).GetMethod("ReadImmutablePublication",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var method = typeof(WebsiteContentStore).GetMethod("ReadImmutablePublication",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)!;
         var read = (Func<Func<string>, System.Threading.CancellationToken, string>)method.MakeGenericMethod(typeof(string))
             .CreateDelegate(typeof(Func<Func<string>, System.Threading.CancellationToken, string>));
         using var before = new System.Threading.CancellationTokenSource();

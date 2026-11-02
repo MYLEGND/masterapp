@@ -24,23 +24,23 @@
         if (options.agentHtml) agentProofs.set(host, options.agentHtml);
         host.classList.add('quote-review-host');
         host.innerHTML = `
-            <div class="quote-review" role="region" aria-labelledby="${escape(options.titleId)}">
+            <div data-cms-review-style="surface" class="quote-review" role="region" aria-labelledby="${escape(options.titleId)}">
                 <div class="quote-review-content">
                 ${agentProofs.get(host) || ''}
                 <div class="quote-review-header">
                     <div class="quote-review-status"><span aria-hidden="true">✓</span> ${escape(options.kicker || 'Review saved')}</div>
-                    <h2 class="quote-review-title" id="${escape(options.titleId)}">${escape(options.title)}</h2>
-                    <p class="quote-review-copy">${escape(options.copy)}</p>
+                    <h2 data-cms-review-copy="title" class="quote-review-title" id="${escape(options.titleId)}">${escape(options.title)}</h2>
+                    <p data-cms-review-copy="copy" class="quote-review-copy">${escape(options.copy)}</p>
                     <ul class="quote-review-assurances" aria-label="Review benefits">${(options.benefits || ['Personalized review', 'Licensed guidance', 'No obligation']).map(value => `<li>${escape(value)}</li>`).join('')}</ul>
                 </div>
                 ${metrics.length ? `<dl class="quote-review-metrics" aria-label="Your saved review">${metrics.map((item, index) => `<div class="quote-review-metric${index < 2 ? ' quote-review-metric-featured' : ''}"><dt>${escape(item.label)}</dt><dd>${escape(item.value)}</dd></div>`).join('')}</dl>` : ''}
                 ${snapshot.disclaimer ? `<p class="quote-review-disclaimer">${escape(snapshot.disclaimer)}</p>` : ''}
-                <div class="quote-review-insights">
-                    <div class="quote-review-insight"><h3>What surfaced</h3><p>${escape(options.diagnosis)}</p></div>
-                    <div class="quote-review-insight"><h3>Why timing matters</h3><p>${escape(options.implication)}</p></div>
+                <div data-cms-review-style="insights" class="quote-review-insights">
+                    <div class="quote-review-insight"><h3 data-cms-review-copy="insights-heading">What surfaced</h3><p>${escape(options.diagnosis)}</p></div>
+                    <div class="quote-review-insight"><h3 data-cms-review-copy="timing-heading">Why timing matters</h3><p>${escape(options.implication)}</p></div>
                 </div>
-                <div class="quote-review-details">
-                    <h3>What the review confirms</h3>
+                <div data-cms-review-style="details" class="quote-review-details">
+                    <h3 data-cms-review-copy="details-heading">What the review confirms</h3>
                     <div class="quote-review-details-body">
                         ${(snapshot.details || []).map(value => `<p>${escape(value)}</p>`).join('')}
                         ${options.nextTitle ? `<h4>${escape(options.nextTitle)}</h4>` : ''}
@@ -48,9 +48,9 @@
                         <ul class="quote-review-checklist">${(options.checklist || []).map(value => `<li><span aria-hidden="true">✓</span> ${escape(value)}</li>`).join('')}</ul>
                     </div>
                 </div>
-                <div class="quote-review-booking" aria-label="Schedule your review">
+                <div data-cms-review-style="booking" class="quote-review-booking" aria-label="Schedule your review">
                     <div class="quote-review-booking-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18m-14 5h3m4 0h3"/></svg></div>
-                    <div><span class="quote-review-eyebrow">Finish the review</span><h3>${escape(options.bookingTitle)}</h3><p>${escape(options.bookingCopy)}</p></div>
+                    <div><span class="quote-review-eyebrow">Finish the review</span><h3 data-cms-review-copy="booking-title">${escape(options.bookingTitle)}</h3><p data-cms-review-copy="booking-copy">${escape(options.bookingCopy)}</p></div>
                 </div>
                 </div>
                 ${options.loading ? `<p class="quote-review-message" role="status">${escape(options.loadingText)}</p>` : ''}
@@ -58,6 +58,7 @@
                 ${options.unavailableText ? `<p class="quote-review-message" role="status">${escape(options.unavailableText)}</p>` : ''}
             </div>`;
         host.hidden = false;
+        host.dispatchEvent(new CustomEvent('legend:quote-review-rendered', { bubbles: true }));
     }
     global.LegendQuoteReview = Object.freeze({ readEstimate, render });
 })(window);

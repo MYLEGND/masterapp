@@ -44,10 +44,23 @@ public class ProfileWebsiteFounderTests : System.IDisposable
         Assert.IsType<BadRequestResult>(await controller.WebsiteSession("business"));
     }
 
-    private static AccountController Build(string email, string actor = "11111111-1111-1111-1111-111111111111")
+    [Theory]
+    [InlineData("https://localhost:1111/", "https://localhost:1111")]
+    [InlineData(null, "https://public.example.test")]
+    public async System.Threading.Tasks.Task SessionUsesManagementOriginWithoutChangingPublicEditorDestination(string? apiBase, string expected)
+    {
+        var controller = Build(FounderGuard.FounderEmail, FounderId, apiBase);
+        var result = Assert.IsType<JsonResult>(await controller.WebsiteSession("legend"));
+        var payload = System.Text.Json.JsonSerializer.SerializeToElement(result.Value);
+        Assert.Equal(expected, payload.GetProperty("apiBase").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("ticket").GetString()));
+        Assert.StartsWith("https://www.example.test/?legendEdit=", Assert.IsType<RedirectResult>(controller.EditLegendWebsite()).Url);
+    }
+
+    private static AccountController Build(string email, string actor = "11111111-1111-1111-1111-111111111111", string? apiBase = null)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(
-            new System.Collections.Generic.Dictionary<string, string?> { ["LegendWebsiteBaseUrl"] = "https://www.example.test" }).Build();
+            new System.Collections.Generic.Dictionary<string, string?> { ["LegendWebsiteBaseUrl"] = "https://www.example.test", ["WebsiteContentApiBaseUrl"] = apiBase, ["LandingRoutes:BaseUrl"] = "https://public.example.test" }).Build();
         var services = new ServiceCollection().AddSingleton<IConfiguration>(configuration).BuildServiceProvider();
         return new AccountController(null!, null!, null!, null!, new WebsiteEditorTicketProtector(new EphemeralDataProtectionProvider()), null!)
         {

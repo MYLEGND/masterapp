@@ -194,3 +194,23 @@ test('historical classic handler owns a late canonical module mount and stops it
     f.closeFallback();assert.equal(f.closed(),1);
   }finally{f.close();}
 });
+
+test('standalone receptionist loads the one existing runtime without an inquiry form; preview never loads it',async()=>{
+  const moduleSource=readFileSync(new URL('../../SHARED/WebsitePlatform/public-inquiry-form.mjs',import.meta.url),'utf8');
+  for(const preview of [false,true]) {
+    const dom=new JSDOM(`<div data-legend-receptionist-entry ${preview?'data-preview':''} data-receptionist-title="Shayla"></div>`,{url:'https://site.example/services',runScripts:'outside-only'});
+    try {
+      dom.window.__runtimeImports=[];
+      // Observe only the module-loader boundary; execute the shipped mount/startup logic.
+      dom.window.eval(moduleSource.replaceAll('export function ','function ').replaceAll('import.meta.url',JSON.stringify('https://site.example/public-inquiry-form.mjs')).replace('import(runtimeUrl.href)','Promise.resolve(window.__runtimeImports.push(runtimeUrl.href))'));
+      dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
+      await settle();
+      assert.equal(dom.window.document.querySelector('form'),null);
+      assert.equal(dom.window.document.querySelector('[data-receptionist-start]').disabled,preview);
+      assert.deepEqual([...dom.window.__runtimeImports],preview?[]:['https://site.example/legend-public-inquiry.js']);
+      dom.window.dispatchEvent(new dom.window.Event('legend:website-content-rendered'));
+      await settle();
+      assert.equal(dom.window.__runtimeImports.length,preview?0:1);
+    }finally{dom.window.close();}
+  }
+});

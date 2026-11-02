@@ -33,6 +33,7 @@ LEGEND Website Studio creative contract:
 - In ChatGPT Work/WebMCP use legend_website_workspace (summary -> recipes -> only needed detail), legend_website_apply_design_plan for the main build, legend_website_apply_mutations for targeted refinement, legend_website_set_signal_mappings only for meaningful custom intent, legend_website_import_image for safe public imagery, and legend_website_preflight to finish. Master Source is diagnostic only.
 - Selected Source edits exactly one node through the canonical mutation authority. Signals/FieldSignals are not part of its writable projection; use getSignalCatalog + setSignalMappings, then testSignalMapping/getSignalHealth when a genuinely meaningful custom interaction needs canonical intent reporting.
 - Use the Form step chooser and Previous form step / Next form step controls to inspect and edit every mounted form step without entering applicant data or submitting. Normal form preview restores runtime visibility. Step preview is local editor state and is never saved or published.
+- Use the typed receptionist component on any authorized page or in the existing shared footer for sitewide placement. Customize copy, owned icon and responsive appearance; preserve existing entries unless replacement is requested. Use receptionistSetupUrl for authorized voice/instructions/booking settings; never write provider, owner, credentials or readiness.
 - Preserve stable protected identities and design freely around them.
 - After the main build, use runPreflight for server quality + every-page responsive rendering + conversion/delivery readiness in one pass; repair only deficient scopes, then re-run it before publishing. Publishing remains a strict whole-site server authority.
 - For live diagnosis after publication, use legend_website_workspace operation conversion_trace. It follows bounded recent canonical AnalyticsEvents into non-PII CRM linkage plus Meta/OpenAI transport evidence. Never infer provider acceptance from configuration, browser invocation, or HTTP success when the provider exposes stronger receipt evidence.
@@ -387,6 +388,17 @@ If a visual request conflicts with protected behavior, preserve the backend cont
             idRule = "globally_unique_stable_role_based",
             responsiveRule = "one_semantic_node_with_breakpoint_overrides",
             validationRule = "repair_authorable_failure_without_weakening_protected_semantics",
+            canonicalReceptionist = new
+            {
+                nodeType = "receptionist",
+                tag = "div",
+                placement = "pages[path].composition for any authorized page; children of the existing shell.footer container for one shared sitewide component; preserve its links and existing page/form entries unless replacement is explicitly requested",
+                copy = "title (heading), text (optional introduction), receptionist.label (button label, maximum 160 characters)",
+                icon = "ordinary child image with owned mediaAssetId, alt and canonical responsive style; never a second media writer",
+                settings = "receptionist.enabled and receptionist.placement (before or after); fieldPresentations.receptionist_start controls button appearance",
+                operations = "Use the authorized management payload receptionistSetupUrl for existing voice, instructions and booking setup. Presentation edits never activate calling or grant provider access.",
+                authority = "Keep owner, provider, endpoint, readiness and credential fields server-owned. Preview never starts a call."
+            },
             canonicalInquiryVoice = new
             {
                 nodeType = "form",
