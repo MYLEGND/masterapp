@@ -114,6 +114,44 @@ public sealed class WebsiteDomainImportTests
     }
 
     [Theory]
+    [InlineData("/internal/analytics", "GET", true, 200)]
+    [InlineData("/internal/analytics/marketing-setup", "POST", true, 200)]
+    [InlineData("/internal/login", "GET", true, 200)]
+    [InlineData("/internal/analytics/calendar-callback", "GET", true, 200)]
+    [InlineData("/internal/analytics/external-ads/callback", "GET", true, 200)]
+    [InlineData("/internal/logout", "POST", true, 200)]
+    [InlineData("/css/website-analytics.css", "GET", true, 200)]
+    [InlineData("/js/website-analytics.js", "HEAD", true, 200)]
+    [InlineData("/internal-other", "GET", false, 404)]
+    [InlineData("/js/unregistered.js", "GET", false, 404)]
+    [InlineData("/js/website-analytics.js", "POST", false, 405)]
+    public async Task VerifiedDomainKeepsPrivateStoreAndAssetsOutsidePublicCms(string path, string method, bool expectedForward, int expectedStatus)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var business = new CommerceBusiness { Key = "synthetic-internal", IsActive = true, Status = "Active" };
+        db.Add(business);
+        var binding = new WebsiteDomainBinding { CommerceBusinessId = business.Id, Hostname = "synthetic.example",
+            Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow };
+        db.Add(binding); await db.SaveChangesAsync();
+        var config = new ConfigurationBuilder().Build();
+        var environment = new Mock<IWebHostEnvironment>();
+        environment.SetupGet(x => x.EnvironmentName).Returns("Production");
+        var called = false;
+        var middleware = new BusinessWebsiteMiddleware(_ => { called = true; return Task.CompletedTask; }, environment.Object, config);
+        var context = new DefaultHttpContext();
+        context.Request.Host = new HostString(binding.Hostname); context.Request.Path = path; context.Request.Method = method;
+        await middleware.InvokeAsync(context, db, new WebsiteDomainService(db, Mock.Of<IHttpClientFactory>(), config));
+        Assert.Equal(expectedForward, called);
+        Assert.Equal(expectedStatus, context.Response.StatusCode);
+        if (expectedForward && path.StartsWith("/internal")) Assert.Contains("no-store", context.Response.Headers.CacheControl.ToString());
+        // Forwarding is not authorization: the action/session authority is still next in the pipeline.
+        called = false; binding.Status = "pending"; await db.SaveChangesAsync();
+        await middleware.InvokeAsync(context, db, new WebsiteDomainService(db, Mock.Of<IHttpClientFactory>(), config));
+        Assert.False(called);
+        Assert.Equal(404, context.Response.StatusCode);
+    }
+
+    [Theory]
     [InlineData("https://example.com")]
     [InlineData("example.com/path")]
     [InlineData("127.0.0.1")]

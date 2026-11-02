@@ -325,3 +325,45 @@ test('internal pages and writes retain trusted website scope and bypass public r
     }
   }
 });
+
+
+test('shared internal assets use the website origin on every Store host without CMS or commerce cutover', async () => {
+  for (const host of ['mylegnd.com', 'protect.mylegnd.com', 'tenant.example']) {
+    for (const path of ['/css/internal.css', '/css/website-analytics.css', '/js/website-analytics.js', '/js/website-analytics-kpi-modal.js', '/lib/bootstrap/dist/js/bootstrap.bundle.min.js']) {
+      const response = await handleWebsiteRouting(new Request(`https://${host}${path}?v=synthetic`), env, async (upstream, options) => {
+        assert.equal(new URL(upstream.url).hostname, 'masterapp-protect.azurewebsites.net');
+        assert.equal(new URL(upstream.url).pathname, path);
+        assert.equal(upstream.headers.get('X-Legend-Original-Host'), host);
+        assert.equal(options.cf.cacheEverything, false);
+        return new Response('synthetic asset');
+      });
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get('Cache-Control'), /no-store/);
+    }
+  }
+});
+
+test('internal presentation assets cannot forward writes', async () => {
+  let forwarded = false;
+  const response = await handleWebsiteRouting(new Request('https://tenant.example/js/website-analytics.js', { method: 'POST' }), env, async () => {
+    forwarded = true;
+    return new Response('unexpected');
+  });
+  assert.equal(response.status, 405);
+  assert.equal(forwarded, false);
+});
+
+test('provider callback private adapters retain state and avoid legacy commerce origin', async () => {
+  for (const path of ['/internal/analytics/calendar-callback', '/internal/analytics/external-ads/callback']) {
+    const response = await handleWebsiteRouting(new Request(`https://tenant.example${path}?state=synthetic&code=synthetic`), env, async upstream => {
+      const url = new URL(upstream.url);
+      assert.equal(url.hostname, 'masterapp-protect.azurewebsites.net');
+      assert.equal(url.pathname, path);
+      assert.equal(url.searchParams.get('state'), 'synthetic');
+      assert.equal(upstream.headers.get('X-Legend-Original-Host'), 'tenant.example');
+      return new Response('state rejected', {status: 400});
+    });
+    assert.equal(response.status, 400);
+    assert.match(response.headers.get('Cache-Control'), /no-store/);
+  }
+});

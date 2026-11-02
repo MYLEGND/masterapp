@@ -18,7 +18,11 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.Contains("~/Views/InternalModules/Products.cshtml", controller, StringComparison.Ordinal);
         Assert.Contains("~/Views/InternalModules/Orders.cshtml", controller, StringComparison.Ordinal);
         Assert.Contains("~/Views/InternalModules/Automations.cshtml", controller, StringComparison.Ordinal);
-        Assert.Contains("~/Views/InternalModules/Analytics.cshtml", controller, StringComparison.Ordinal);
+        Assert.Contains("BusinessAnalyticsControllerBase", controller, StringComparison.Ordinal);
+        Assert.Contains("~/Views/WebsiteAnalytics/Index.cshtml", ReadSource("Infrastructure", "Businesses", "BusinessAnalyticsControllerBase.cs"), StringComparison.Ordinal);
+        Assert.Contains("base.Analytics(", ReadSource("ParfaitApp", "Controllers", "InternalModulesController.cs"), StringComparison.Ordinal);
+        foreach (var retired in new[] { "Views/InternalModules/Analytics.cshtml", "wwwroot/css/parfait-agentportal-analytics.css", "wwwroot/js/parfait-agentportal-analytics.js" })
+            Assert.False(File.Exists(Path.Combine(root, "ParfaitApp", retired)));
         Assert.Contains("~/Views/Dashboard/Index.cshtml", controller, StringComparison.Ordinal);
         Assert.Contains("store.CommerceBusinessId", controller, StringComparison.Ordinal);
         Assert.DoesNotContain("CommerceManagementWorkspaceViewModel", controller, StringComparison.Ordinal);

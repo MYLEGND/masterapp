@@ -8,7 +8,7 @@
     var productImageFallback = scopedStoreContext is not null && !scopedStoreContext.IsParfait
         ? (!string.IsNullOrWhiteSpace(scopedStoreContext.LogoUrl)
             ? scopedStoreContext.LogoUrl
-            : "https://www.mylegnd.com/favicon.jpg")
+            : null)
         : "/images/favicon/parfait-logo.png";
     var productSkuFallback = scopedStoreContext?.BusinessKey?.ToUpperInvariant() ?? "PARFAIT";
     var isScopedCommerceManager = (ViewData["CommerceManagerScoped"] as bool? == true || !string.IsNullOrWhiteSpace(commerceManagerTicket));
@@ -410,7 +410,10 @@
                          aria-haspopup="dialog"
                          aria-label="Open @product.Name product editor">
                     <div class="pf-product-summary-main">
-                        <img src="@primaryUrl" alt="@product.Name" />
+                        @if (!string.IsNullOrWhiteSpace(primaryUrl))
+                        { <img src="@primaryUrl" alt="@product.Name" /> }
+                        else
+                        { <span>No product photo</span> }
                         <div class="pf-product-summary-copy">
                             <h3>@product.Name</h3>
                             <span>@product.Slug</span>
@@ -483,7 +486,10 @@
                         <div class="pf-modal-grid">
                             <section class="pf-media-panel">
                                 <div class="pf-primary-preview">
-                                    <img src="@primaryUrl" alt="@product.Name" style="@ImageDisplayStyle(primaryImage?.ObjectFit, primaryImage?.ObjectPositionX ?? 50, primaryImage?.ObjectPositionY ?? 50, primaryImage?.Zoom ?? 1.0m)" />
+                                    @if (!string.IsNullOrWhiteSpace(primaryUrl))
+                                    { <img src="@primaryUrl" alt="@product.Name" style="@ImageDisplayStyle(primaryImage?.ObjectFit, primaryImage?.ObjectPositionX ?? 50, primaryImage?.ObjectPositionY ?? 50, primaryImage?.Zoom ?? 1.0m)" /> }
+                                    else
+                                    { <span>No product photo</span> }
                                 </div>
 
                                 <form method="post"

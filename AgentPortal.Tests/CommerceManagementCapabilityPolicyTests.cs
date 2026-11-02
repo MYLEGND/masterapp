@@ -216,6 +216,9 @@ public sealed partial class CommerceManagementCapabilityPolicyTests
     [InlineData("/commerce/manage/automations", "GET", "automations")]
     [InlineData("/commerce/manage/automations/workflows/delete", "POST", "automations")]
     [InlineData("/commerce/manage/analytics", "GET", "analytics")]
+    [InlineData("/commerce/manage/analytics/advertising/campaign/campaign-123/insights", "GET", "analytics")]
+    [InlineData("/internal/analytics/advertising/campaign/campaign-123/insights", "GET", "analytics")]
+    [InlineData("/internal/analytics/advertising/campaign/campaign-123/insights", "HEAD", "analytics")]
     [InlineData("/commerce/manage/analytics/meta-campaigns", "GET", "analytics")]
     [InlineData("/commerce/manage/analytics/meta-connect", "GET", "settings")]
     [InlineData("/commerce/manage/analytics/meta-callback", "GET", "settings")]
@@ -244,6 +247,11 @@ public sealed partial class CommerceManagementCapabilityPolicyTests
     [InlineData("/commerce/manage/team/permissions", "GET")]
     [InlineData("/commerce/manage/business-profile/unknown", "POST")]
     [InlineData("/commerce/manage/analytics/not-registered", "GET")]
+    [InlineData("/internal/analytics/advertising/campaign//insights", "GET")]
+    [InlineData("/internal/analytics/advertising/campaign/../insights", "GET")]
+    [InlineData("/internal/analytics/advertising/campaign/a/b/insights", "GET")]
+    [InlineData("/internal/analytics/advertising/campaign/a%2fb/insights", "GET")]
+    [InlineData("/internal/analytics/advertising/campaign/campaign-123/insights", "POST")]
     [InlineData("/commerce/manage/automations/secret", "POST")]
     [InlineData("/commerce/manage/order", "PUT")]
     [InlineData("/store/cart", "GET")]
@@ -290,7 +298,7 @@ public sealed partial class CommerceManagementCapabilityPolicyTests
             Assert.NotNull(await WebsiteTicketAuthorization.ResolveAsync(f.Db, f.Tickets, new ConfigurationBuilder().Build(), f.Ticket));
         f.Controller.HttpContext.Request.Path = "/commerce/manage/dashboard";
         var resolver = typeof(CommerceManagementController).GetMethod("ResolveAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var store = await (Task<CommerceStoreContext?>)resolver.Invoke(f.Controller, [f.Ticket, CancellationToken.None])!;
+        var store = await (Task<CommerceStoreContext?>)resolver.Invoke(f.Controller, [f.Ticket, CancellationToken.None, null])!;
         Assert.Equal(status == "Active", store is not null);
         Assert.Equal(expected, f.Controller.ViewData["CommerceCanSettings"] as bool? ?? false);
         if (status == "Active")

@@ -1,9 +1,10 @@
 @model IReadOnlyList<Infrastructure.WebsiteEditing.WebsiteEventMapQuery.Entry>
 @{
     ViewData["Title"] = "Event Map";
+    if (ViewData["AnalyticsLayout"] is string analyticsLayout) Layout = analyticsLayout;
     var agentProfileId = Context.Request.Query["agentProfileId"].ToString();
     var team = Context.Request.Query["team"].ToString();
-    var analyticsUrl = Url.Action("Index", "WebsiteAnalytics", new
+    var analyticsUrl = ViewData["AnalyticsBase"] as string ?? Url.Action("Index", "WebsiteAnalytics", new
     {
         agentProfileId = string.IsNullOrWhiteSpace(agentProfileId) ? null : agentProfileId,
         team = string.IsNullOrWhiteSpace(team) ? null : team

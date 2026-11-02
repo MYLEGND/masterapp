@@ -32,6 +32,20 @@ namespace AgentPortal.Tests;
 // The payment-only diagnostic project links the dependency-light policy cases.
 public sealed partial class CommerceManagementCapabilityPolicyTests
 {
+    [Theory]
+    [InlineData("calendar-callback")]
+    [InlineData("external-ads/callback")]
+    public async Task Analytics_callbacks_use_registered_private_adapter_on_verified_host(string callback)
+    {
+        await using var f = new NavigationFixture("owner", "Active", true);
+        f.Controller.Request.Scheme = "https";
+        f.Controller.Request.Host = new HostString("one.example.invalid");
+        var method = typeof(CommerceManagementController).GetMethod("AnalyticsCallbackUri",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        Assert.Equal("https://one.example.invalid/internal/analytics/" + callback,
+            method.Invoke(f.Controller, new object[] { callback }));
+    }
+
     [Fact]
     public async Task Normal_login_redeems_one_use_handoff_into_host_cookie_and_rechecks_revocation()
     {
@@ -45,6 +59,7 @@ public sealed partial class CommerceManagementCapabilityPolicyTests
         builder.Services.AddSingleton(f.Db);
         builder.Services.AddSingleton(f.Controller.HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>());
         builder.Services.AddSingleton(f.Stores); builder.Services.AddSingleton(f.Tickets);
+        builder.Services.AddSingleton(new WebsiteDomainService(f.Db, Mock.Of<System.Net.Http.IHttpClientFactory>(), new ConfigurationBuilder().Build()));
         builder.Services.AddSingleton(new BusinessWorkspaceService(f.Db, Mock.Of<Infrastructure.Analytics.IAnalyticsQueryService>()));
         builder.Services.AddSingleton(Mock.Of<Infrastructure.Identity.IClientEntraLifecycleService>());
         builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
@@ -52,8 +67,9 @@ public sealed partial class CommerceManagementCapabilityPolicyTests
         builder.Services.AddControllersWithViews().AddApplicationPart(Assembly.Load("ProtectWebsite")).AddLegendCommerceManagementMvc().AddControllersAsServices();
         builder.Services.Replace(ServiceDescriptor.Transient<CommerceManagementController>(_ => f.Controller));
         await using var app = builder.Build();
+        app.UseMiddleware<Infrastructure.WebsiteRuntime.BusinessWebsiteMiddleware>();
         app.UseAuthentication(); app.UseAuthorization(); app.MapControllers();
-        app.MapGet("/test-token", (Microsoft.AspNetCore.Antiforgery.IAntiforgery af, HttpContext c) => af.GetAndStoreTokens(c).RequestToken!);
+        app.MapGet("/internal/test-token", (Microsoft.AspNetCore.Antiforgery.IAntiforgery af, HttpContext c) => af.GetAndStoreTokens(c).RequestToken!);
         await app.StartAsync();
         using var client = app.GetTestClient(); client.BaseAddress = new Uri("https://one.example.invalid");
         var unauthenticated = await client.GetAsync("/internal");
@@ -125,7 +141,7 @@ public sealed partial class CommerceManagementCapabilityPolicyTests
         Assert.Contains("data-cms-store-style=\"title\"", catalogHtml);
         Assert.Empty(await f.Db.AnalyticsEvents.ToListAsync());
 
-        var authenticatedToken = await client.GetAsync("/test-token");
+        var authenticatedToken = await client.GetAsync("/internal/test-token");
         token = await authenticatedToken.Content.ReadAsStringAsync();
         client.DefaultRequestHeaders.Remove("Cookie");
         client.DefaultRequestHeaders.Add("Cookie", session.Split(';')[0] + "; " + string.Join("; ", authenticatedToken.Headers.GetValues("Set-Cookie").Select(x => x.Split(';')[0])));

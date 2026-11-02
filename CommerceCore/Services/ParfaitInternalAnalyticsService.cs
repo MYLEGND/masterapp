@@ -201,6 +201,18 @@ public sealed class ParfaitInternalAnalyticsService
             fromUtc, toUtc, viewerTimeZoneId, viewerTimeZoneOffsetMinutes, ct);
     }
 
+    // Shared scoped reporting projection; excludes provider credentials and customer contact data.
+    public static object StoreReport(ParfaitInternalAnalyticsViewModel model) => new
+        {
+            model.RangeLabel, orderCount = model.Orders, model.PaidOrders, model.Purchases, model.RevenueCents,
+            model.AverageOrderValueCents, model.PaidOrdersWithoutPurchaseEvent, model.PurchaseEventsWithoutPaidOrder,
+            model.CartAbandonmentSessions, model.TopProducts,
+            actions = model.ActionBreakdowns.Select(x => new { x.Label, x.Count, x.UniqueSessions, x.UniqueVisitors, x.ConversionRate }),
+            orders = model.RecentOrders.Select(x => new { x.OrderNumber, x.CreatedUtc, x.PaymentStatus,
+                x.FulfillmentStatus, x.ReturnStatus, x.TotalCents, x.NetRevenueCents, x.ItemSummary }),
+            events = model.RecentEvents.Select(x => new { x.EventUtc, x.EventType, x.ProductName, x.Quantity, x.OrderNumber, x.Source })
+        };
+
     private async Task<ParfaitInternalAnalyticsViewModel> BuildDashboardAsync(
         Guid businessId,
         MarketingOwnerScope marketingOwner,

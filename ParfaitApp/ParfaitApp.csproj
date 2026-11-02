@@ -89,4 +89,12 @@
     <Content Include="../SHARED/WebsitePlatform/public-inquiry-form.css" Link="wwwroot/css/public-inquiry-form.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../Legend-Design/legend-public-inquiry.js" Link="wwwroot/js/legend-public-inquiry.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- The existing analytics document and interactions are shared, not copied. -->
+  <ItemGroup>
+    <Content Include="../AgentPortal/Views/WebsiteAnalytics/EventMap.cshtml" Link="Views/WebsiteAnalytics/EventMap.cshtml" />
+    <Content Include="../AgentPortal/Views/WebsiteAnalytics/Index.cshtml" Link="Views/WebsiteAnalytics/Index.cshtml" />
+    <Content Include="../AgentPortal/Views/WebsiteAnalytics/_AnalyticsIncidentModal.cshtml" Link="Views/WebsiteAnalytics/_AnalyticsIncidentModal.cshtml" />
+    <Content Include="../AgentPortal/wwwroot/css/website-analytics.css" Link="wwwroot/css/website-analytics.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../AgentPortal/wwwroot/js/website-analytics*.js" Link="wwwroot/js/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

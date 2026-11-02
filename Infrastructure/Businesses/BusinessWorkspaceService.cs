@@ -63,9 +63,9 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
     public async Task<object?> AnalyticsDataAsync(Guid businessId, string section, TimeRangeRequest range, TrafficType trafficType,
         string? metric = null, string? visitorId = null, string? sessionId = null,
         string? quoteType = null, string? campaign = null, string? pageMode = null, string? scoreTier = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default, ScopeContext? reportingScope = null)
     {
-        var scope = ScopeContext.ForBusiness(businessId);
+        var scope = ResolveReportingScope(businessId, reportingScope);
         if (section is "kpi-detail" or "visitor-timeline")
         {
             var trust = new AgentPortal.Services.Analytics.VisitorTrustScoringService();
@@ -102,6 +102,16 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
             "DeviceIntelligence" => await analytics.GetDeviceIntelligenceAsync(range, scope, trafficType),
             _ => null
         };
+    }
+
+    private static ScopeContext ResolveReportingScope(Guid businessId, ScopeContext? reportingScope)
+    {
+        if (reportingScope is null) return ScopeContext.ForBusiness(businessId);
+        if (businessId == Guid.Empty || reportingScope.StoreBusinessId != businessId ||
+            (reportingScope.CommerceBusinessId.HasValue && reportingScope.CommerceBusinessId != businessId) ||
+            (reportingScope.ScopeType == ScopeType.Global && !reportingScope.HasSiteScope))
+            throw new ArgumentException("The reporting scope must identify this store.", nameof(reportingScope));
+        return reportingScope;
     }
 
     private IQueryable<WorkstationLeadProfile> Contacts(Guid id) => id != Guid.Empty
@@ -169,11 +179,11 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
     public async Task<BusinessWorkspaceModel> AnalyticsAsync(
         CommerceBusiness business,
         TimeRangeRequest range,
-        CancellationToken ct)
+        CancellationToken ct, ScopeContext? reportingScope = null)
     {
         ArgumentNullException.ThrowIfNull(range);
         var days = range.Preset switch { "7d" => 7, "90d" => 90, _ => 30 };
-        var scope = ScopeContext.ForBusiness(business.Id);
+        var scope = ResolveReportingScope(business.Id, reportingScope);
         var settings = await SettingsAsync(business.Id, ct);
         var model = new BusinessWorkspaceModel { BusinessId = business.Id, BusinessName = business.DisplayName, Tab = "analytics", Days = days,
             Summary = await analytics.GetSummaryAsync(range, scope), Health = await analytics.GetMarketingHealthAsync(range, scope) };

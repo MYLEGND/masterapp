@@ -10,6 +10,18 @@ namespace Legend.Commerce;
 /// </summary>
 public static class CommerceManagementCapabilityPolicy
 {
+    private static readonly string[] AnalyticsReports = ["commerce", "event-map", "summary", "traffic", "page-performance", "cta-performance",
+        "quote-funnel", "marketing-health", "conversions", "leads", "behavior/summary", "behavior/time-on-page",
+        "behavior/exit-analysis", "behavior/journey", "behavior/source-performance", "quote-funnel/abandonment",
+        "deviceintelligence", "meta-signal", "meta-signal-health", "kpi-detail", "visitor-timeline", "advertising",
+        "marketing-manager/context", "ai-review-snapshot", "marketing-manager/performance", "growth-economics",
+        "openai-onboarding", "openai-product-feed"];
+    private static readonly string[] AnalyticsSettingsReads = ["external-ads/connect", "external-ads/accounts", "external-ads/callback", "calendar-connect", "calendar-callback"];
+    private static readonly string[] AnalyticsSettingsWrites = ["marketing-setup", "external-ads/select-account",
+        "external-ads/measurement", "external-ads/disconnect", "calendar-disconnect"];
+    private static readonly string[] AnalyticsCommands = ["advertising/promote/draft", "advertising/promote/propose",
+        "advertising/campaign/status/propose", "advertising/campaign/budget/propose", "advertising/approve",
+        "advertising/execute", "advertising/reject", "marketing-manager/plan", "openai-product-feed/publish"];
     private const string Prefix = "/commerce/manage/";
 
     public static string? ForRequest(PathString path, string method)
@@ -36,6 +48,12 @@ public static class CommerceManagementCapabilityPolicy
             if (route is "products") return "catalog";
             if (route is "orders") return "orders";
             if (route is "automations") return "automations";
+            if (route.StartsWith("analytics/", StringComparison.Ordinal))
+            {
+                var section = route["analytics/".Length..];
+                if (AnalyticsReports.Contains(section) || IsCampaignInsights(section)) return "analytics";
+                if (AnalyticsSettingsReads.Contains(section)) return "settings";
+            }
             if (route is "analytics/meta-connect" or "analytics/meta-callback")
                 return "settings";
             if (route is "analytics" or "analytics/marketing-setup" or
@@ -46,6 +64,12 @@ public static class CommerceManagementCapabilityPolicy
         }
 
         if (!HttpMethods.IsPost(method)) return null;
+        if (route.StartsWith("analytics/", StringComparison.Ordinal))
+        {
+            var section = route["analytics/".Length..];
+            if (AnalyticsSettingsWrites.Contains(section)) return "settings";
+            if (AnalyticsCommands.Contains(section)) return "analytics";
+        }
         if (route is "product" or "product/delete" or
             "product/images/upload" or "product/images/delete" or
             "product/images/reorder" or "product/images/display" or
@@ -103,6 +127,13 @@ public static class CommerceManagementCapabilityPolicy
             Add("POST", "analytics/" + suffix, "analytics/" + suffix);
         foreach (var suffix in new[] { "connect", "resume", "confirm", "default", "disconnect", "refresh", "reconcile", "refund" })
             Add("POST", "settings/payments/" + suffix, "payments/" + suffix);
+        foreach (var suffix in AnalyticsReports.Concat(AnalyticsSettingsReads))
+            Add("GET", "analytics/" + suffix, "analytics/" + suffix);
+        Add("GET", "analytics/advertising/campaign/{campaignId}/insights", "analytics/advertising/campaign/{campaignId}/insights");
+        foreach (var suffix in AnalyticsSettingsWrites.Concat(AnalyticsCommands))
+            Add("POST", "analytics/" + suffix, "analytics/" + suffix);
+        // MVC adapter only; actual section authorization uses the explicit entries above.
+        Add("GET", "analytics/{**section}", "analytics/{**section}");
         return routes.AsReadOnly();
     }
 
@@ -122,7 +153,17 @@ public static class CommerceManagementCapabilityPolicy
     {
         var verb = HttpMethods.IsHead(method) ? "GET" : method;
         if (verb == "GET" && route.StartsWith("preview/product/", StringComparison.Ordinal) && route.Length > "preview/product/".Length) return route;
+        if (verb == "GET" && route.StartsWith("analytics/", StringComparison.Ordinal) &&
+            IsCampaignInsights(route["analytics/".Length..])) return route;
         return InternalRoutes.SingleOrDefault(x => x.Method == verb &&
             string.Equals(x.InternalPath, "/internal/" + route, StringComparison.OrdinalIgnoreCase))?.ActionPath[Prefix.Length..];
+    }
+
+    private static bool IsCampaignInsights(string section)
+    {
+        var segments = section.Split('/');
+        return segments.Length == 4 && segments[0] == "advertising" && segments[1] == "campaign" &&
+            segments[3] == "insights" && segments[2].Length > 0 && segments[2] is not "." and not ".." &&
+            !segments[2].Contains('%') && !segments[2].Contains('\\');
     }
 }

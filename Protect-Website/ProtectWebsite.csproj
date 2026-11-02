@@ -130,11 +130,10 @@
     <Content Include="../ParfaitApp/Views/Home/Terms.cshtml;../ParfaitApp/Views/Home/Privacy.cshtml"
              Link="Views/StoreLegal/%(Filename)%(Extension)" />
     <Content Include="../ParfaitApp/wwwroot/css/**/*"
-             Exclude="../ParfaitApp/wwwroot/css/internal.css;../ParfaitApp/wwwroot/css/parfait-agentportal-analytics.css;../ParfaitApp/wwwroot/css/home.css"
+             Exclude="../ParfaitApp/wwwroot/css/internal.css;../ParfaitApp/wwwroot/css/home.css"
              Link="wwwroot/store-assets/css/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../ParfaitApp/wwwroot/js/**/*"
-             Exclude="../ParfaitApp/wwwroot/js/parfait-agentportal-analytics.js"
              Link="wwwroot/store-assets/js/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../ParfaitApp/wwwroot/lib/**/*" Link="wwwroot/store-assets/lib/%(RecursiveDir)%(Filename)%(Extension)"
@@ -161,12 +160,6 @@
     <Content Include="../ParfaitApp/Views/Shared/_MarketingProviderSetup.cshtml" Link="Views/Shared/_MarketingProviderSetup.cshtml" />
     <Content Include="../ParfaitApp/wwwroot/css/internal.css" Link="wwwroot/css/internal.css"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="../ParfaitApp/wwwroot/css/parfait-agentportal-analytics.css"
-             Link="wwwroot/css/parfait-agentportal-analytics.css"
-             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="../ParfaitApp/wwwroot/js/parfait-agentportal-analytics.js"
-             Link="wwwroot/js/parfait-agentportal-analytics.js"
-             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -190,4 +183,12 @@
   </ItemGroup>
 
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk.Web" />
+  <!-- The existing analytics document and interactions are shared, not copied. -->
+  <ItemGroup>
+    <Content Include="../AgentPortal/Views/WebsiteAnalytics/EventMap.cshtml" Link="Views/WebsiteAnalytics/EventMap.cshtml" />
+    <Content Include="../AgentPortal/Views/WebsiteAnalytics/Index.cshtml" Link="Views/WebsiteAnalytics/Index.cshtml" />
+    <Content Include="../AgentPortal/Views/WebsiteAnalytics/_AnalyticsIncidentModal.cshtml" Link="Views/WebsiteAnalytics/_AnalyticsIncidentModal.cshtml" />
+    <Content Include="../AgentPortal/wwwroot/css/website-analytics.css" Link="wwwroot/css/website-analytics.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../AgentPortal/wwwroot/js/website-analytics*.js" Link="wwwroot/js/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

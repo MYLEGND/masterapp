@@ -38,14 +38,12 @@ public sealed class ParfaitCanonicalPresentationPreservationTests
     [InlineData("wwwroot/css/site.css", "10f00e83c8e9b8a9e7428efebe01a40a0072903d")]
     [InlineData("wwwroot/css/home.css", "00f32a42b0f2f1ea1324c6f8897abe91a130ec94")]
     [InlineData("wwwroot/css/storefront.css", "eae71bcaef491f7d0f4ff0957b6e6b625fb034b2")]
-    // Reviewed shared Team repair: existing modal visibility and dark-card contrast.
+    // Reviewed shared analytics theme: Parfait tokens bind the common analytics renderer.
     // All public storefront assets and unrelated internal rules remain pinned.
-    [InlineData("wwwroot/css/internal.css", "fddcbda027edf4e9dffbdbfb8ee82dc2637b12fa")]
-    [InlineData("wwwroot/css/parfait-agentportal-analytics.css", "a9801e8de3767e36e8fdfe287e4c26575f9700dd")]
+    [InlineData("wwwroot/css/internal.css", "d330c007f04f2548d98908ff603d024d0926956a")]
     [InlineData("wwwroot/js/storefront.js", "ee0256aa52937cc25831c54b80141b768be72e96")]
     // Reviewed internal health behavior: unavailable identity evidence must not render as zero.
     // CommerceCoreOwnershipContractTests covers the payload; public design assets remain pinned.
-    [InlineData("wwwroot/js/parfait-agentportal-analytics.js", "4ac3971da2b37538c87e1a513612f56169bd311f")]
     [InlineData("wwwroot/images/favicon/parfait-logo.png", "805aa941827b0bcdeab370d118bec2d297c2e317")]
     public void ParfaitVisualAssets_MatchPreMigrationGitBlob(string path, string expectedBlobSha)
     {

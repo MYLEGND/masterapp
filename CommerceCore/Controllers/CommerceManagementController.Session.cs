@@ -18,7 +18,9 @@ public sealed partial class CommerceManagementController
 
     public override async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
-        if (Request.Path.StartsWithSegments("/internal") && context.ActionDescriptor.Parameters.Any(p => p.Name == "ticket") &&
+        var sharedAnalytics = (context.ActionDescriptor as Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor)?.MethodInfo.DeclaringType
+            == typeof(Infrastructure.Businesses.BusinessAnalyticsControllerBase);
+        if (Request.Path.StartsWithSegments("/internal") && (sharedAnalytics || context.ActionDescriptor.Parameters.Any(p => p.Name == "ticket")) &&
             (!context.ActionArguments.TryGetValue("ticket", out var suppliedTicket) || string.IsNullOrWhiteSpace(suppliedTicket as string)))
         {
             var session = await HttpContext.AuthenticateAsync(StoreSessionScheme);
@@ -42,6 +44,18 @@ public sealed partial class CommerceManagementController
                 scope.CommerceBusinessId, actor, ActorClientProfileId: profile));
             context.ModelState.Remove("ticket");
             HttpContext.Items["LegendStoreSession"] = true;
+            HttpContext.User = session.Principal;
+        }
+        if (sharedAnalytics)
+        {
+            var ticket = context.ActionArguments.TryGetValue("ticket", out var value) ? value as string : Request.Query["ticket"].ToString();
+            analyticsTicket = ticket ?? "";
+            analyticsStore = await ResolveAsync(analyticsTicket, HttpContext.RequestAborted);
+            if (analyticsStore is null || (context.ActionArguments.TryGetValue("businessId", out var requested) &&
+                requested is Guid id && id != Guid.Empty && id != analyticsStore.CommerceBusinessId))
+            { context.Result = Unauthorized(); return; }
+            context.ActionArguments["businessId"] = analyticsStore.CommerceBusinessId;
+            ApplyManagementViewData(analyticsStore, ticket ?? "", "analytics");
         }
         await next();
     }

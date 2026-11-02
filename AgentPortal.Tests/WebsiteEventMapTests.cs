@@ -12,6 +12,36 @@ namespace AgentPortal.Tests;
 
 public sealed class WebsiteEventMapTests
 {
+    [Fact]
+    public async Task StoreMapExcludesOtherPagesAndOtherStoreBindings()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var business = new CommerceBusiness { Key = "synthetic-store", IsActive = true, Status = "Active" };
+        var state = new WebsiteContentState { SiteKey = WebsiteEditorSiteKeys.Business,
+            OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(business.Id), CommerceBusinessId = business.Id };
+        var document = new WebsiteContentDocument();
+        document.Store.Enabled = true;
+        WebsiteSystemTemplateAuthority.AddStorePage(document);
+        document.Pages["/store"].Composition.Add(new() { Id = "store-action", Type = "cta", Tag = "a",
+            Signals = [new() { EventName = "cta_click", Trigger = "click", DeliveryMode = "analytics" }] });
+        document.Pages["/private-crm"] = new() { Composition = [new() { Id = "crm-action", Type = "cta", Tag = "a",
+            Signals = [new() { EventName = "cta_click", Trigger = "click", DeliveryMode = "analytics" }] }] };
+        document = WebsiteContentSanitizer.Sanitize(document);
+        var version = new WebsiteContentVersion { StateId = state.Id,
+            DocumentJson = JsonSerializer.Serialize(document, new JsonSerializerOptions(JsonSerializerDefaults.Web)) };
+        state.PublishedVersionId = version.Id;
+        db.AddRange(business, state, version);
+        await db.SaveChangesAsync();
+        var query = new WebsiteEventMapQuery(db, new ConfigurationBuilder().Build());
+        var rows = await query.ReadAsync(ScopeContext.ForBusiness(business.Id).ForStore(business.Id));
+        Assert.Contains(rows, row => row.Element == "store-action");
+        Assert.Contains(rows, row => row.Element == "automatic:purchase_completed");
+        Assert.DoesNotContain(rows, row => row.Page == "/private-crm" || row.Element == "automatic:qualified_lead");
+        Assert.Empty(await query.ReadAsync(ScopeContext.ForBusiness(business.Id).ForStore(Guid.NewGuid())));
+        Assert.Empty(await query.ReadAsync(ScopeContext.Global.ForStore(business.Id)));
+        Assert.Contains(await query.ReadAsync(ScopeContext.ForBusiness(business.Id)), row => row.Element == "crm-action");
+    }
+
     [Theory]
     [InlineData("browser", "AnalyticsEvent", "not_observed")]
     [InlineData("server", "unrelated_source", "not_observed")]

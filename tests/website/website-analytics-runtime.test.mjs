@@ -4,12 +4,12 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
 const source = readFileSync(new URL('../../AgentPortal/wwwroot/js/website-analytics.js', import.meta.url), 'utf8');
-async function fixture({ device = true, founder = false, siteKey = 'legend', selectedAgent = false, business = false, global = false, performanceHandler = null, summaryHandler = null, healthHandler = null, captureDeadlines = false } = {}) {
+async function fixture({ device = true, founder = false, siteKey = 'legend', selectedAgent = false, business = false, store = false, global = false, commerceHandler = null, performanceHandler = null, summaryHandler = null, healthHandler = null, captureDeadlines = false } = {}) {
   const founderLinks = { legend: 'https://legend.example.test/', protect: 'https://protect.example.test/' };
   const agentLink = 'https://protect.example.test/a/agent-one';
   const agents = founder ? [{ id: 'founder-profile', primaryUrl: founderLinks[siteKey] }, { id: 'agent-profile', primaryUrl: agentLink }] : [];
   const routes = [{ displayName: 'Life', basePath: '/quote/life', controlPath: '/quote/life', defaultPageVariant: 'landing', availableVariants: [{ variant: 'landing', isControl: true }] }];
-  const dom = new JSDOM(`<!doctype html><div class="fa-shell" data-analytics-base="${business ? '/business/11111111-1111-1111-1111-111111111111/analytics' : '/WebsiteAnalytics'}" data-caller-profile-id="founder-profile" data-initial-scope-profile-id="${global ? '' : selectedAgent ? 'agent-profile' : 'founder-profile'}" data-initial-scope-label="Founder Personal"
+  const dom = new JSDOM(`<!doctype html><div class="fa-shell" data-analytics-base="${store ? '/internal/analytics?businessKey=synthetic-store' : business ? '/business/11111111-1111-1111-1111-111111111111/analytics' : '/WebsiteAnalytics'}" data-analytics-mode="${store ? 'store' : 'website'}" data-caller-profile-id="founder-profile" data-initial-scope-profile-id="${global ? '' : selectedAgent ? 'agent-profile' : 'founder-profile'}" data-initial-scope-label="Founder Personal"
     data-initial-site-key="${siteKey}" data-agent-options='${JSON.stringify(agents)}' data-founder-site-links='${JSON.stringify(founder ? founderLinks : {})}'
     data-personal-link="${founder ? founderLinks[siteKey] : agentLink}" data-landing-routes-base-url="https://protect.example.test/" data-landing-routes='${JSON.stringify(routes)}'></div>
     <span id="growth-base-link"></span><a id="growth-open-base"></a><button id="growth-copy-base"></button>
@@ -31,6 +31,7 @@ async function fixture({ device = true, founder = false, siteKey = 'legend', sel
     <div id="growthEconomicsModal"><div class="modal-body"><div id="growth-economics-grid"></div><div id="growth-economics-spend"></div></div></div>
     <div id="behaviorModal"><div class="modal-body"><span id="bhvr-total-sessions"></span></div></div>
     <div id="convModal"><div class="modal-body"><button class="traffic-type-btn" data-type="paid">Ads</button><span id="conv-total"></span><span id="conv-intent"></span><span id="conv-session"></span><span id="conv-intent-sub"></span></div></div>
+    ${store ? '<div id="quoteModal"><div class="modal-body"><div id="quoteModal-commerce"></div></div></div><div id="leadsModal"><div class="modal-body"><div id="leadsModal-commerce"></div></div></div><div id="convModal-commerce"></div>' : ''}
     <div id="advertisingCommandModal"><button id="advertising-command-refresh">Refresh</button><button id="advertising-command-promote">Promote</button><span id="advertising-command-status"></span><span id="advertising-command-connection"></span><span id="advertising-command-campaign-count"></span><span id="advertising-command-approval-count"></span><span id="advertising-command-audit-count"></span><div id="advertising-command-campaigns"></div><div id="advertising-command-proposals"></div></div>
     <textarea id="marketing-manager-goal">Find the next qualified lead</textarea><button id="marketing-manager-build"></button>
     <input type="hidden" name="__RequestVerificationToken" value="test-request-token" />
@@ -61,6 +62,7 @@ async function fixture({ device = true, founder = false, siteKey = 'legend', sel
     requests.push({ url: String(url), ...options });
     const path = new URL(url, window.location.href).pathname;
     if (path.endsWith('/marketing-manager/performance') && performanceHandler) return performanceHandler(url, options);
+    if (path.endsWith('/commerce') && commerceHandler) return commerceHandler(url, options);
     if (path.endsWith('/summary') && summaryHandler) return summaryHandler(url, options);
     if (path.endsWith('/marketing-health') && healthHandler) return healthHandler(url, options);
     const data = path.endsWith('/summary') ? { isAvailable: true, scopeLabel: 'Founder Personal', pageViews: 7, uniqueVisitors: 2, sessions: 2, verifiedLeads: 0, sessionConversionRate: 0 }
@@ -1180,3 +1182,44 @@ test('Paid Media uses one shared read and preserves provider, account, unknown a
     assert.equal(f.calls.filter(x => x.includes('/meta-campaigns')).length, 0);
   } finally { await f.dispose(); }
 });
+
+
+test('Store analytics requests and detail links preserve the selected Store query scope', async () => {
+  const f = await fixture({ store: true });
+  try {
+    assert.ok(f.calls.length > 0);
+    for (const call of f.calls) {
+      const url = new URL(call, f.window.location.href);
+      assert.ok(url.pathname.startsWith('/internal/analytics/'), url.pathname);
+      assert.equal(url.searchParams.get('businessKey'), 'synthetic-store');
+    }
+    for (const path of ['/kpi-detail', '/visitor-timeline']) {
+      const url = new URL(f.window.websiteAnalyticsBridge.endpoint(path, new f.window.URLSearchParams({ visitorId: 'synthetic-visitor' })), f.window.location.href);
+      assert.equal(url.pathname, '/internal/analytics' + path);
+      assert.equal(url.searchParams.get('businessKey'), 'synthetic-store');
+      assert.equal(url.searchParams.get('visitorId'), 'synthetic-visitor');
+    }
+  } finally { await f.dispose(); }
+});
+
+for (const [modalId, expected] of [['quoteModal', 'Add to cart'], ['leadsModal', '<script>synthetic</script>'], ['convModal', 'SYNTHETIC-ORDER']]) {
+  test(`Store ${modalId} uses scoped commerce evidence and escapes retained values`, async () => {
+    const f = await fixture({ store: true, commerceHandler: async () => new Response(JSON.stringify({
+      rangeLabel: 'Synthetic range', actions: [{ label: 'Add to cart', count: 2, uniqueSessions: 1, uniqueVisitors: 1, conversionRate: 50 }],
+      topProducts: [{ productName: '<script>synthetic</script>', productViews: 3, unitsSold: 1, revenueCents: 1234 }],
+      orders: [{ orderNumber: 'SYNTHETIC-ORDER', totalCents: 1234, netRevenueCents: 1234 }], events: [],
+      revenueCents: 1234, paidOrders: 1, averageOrderValueCents: 1234
+    }), { headers: { 'content-type': 'application/json' } }) });
+    try {
+      f.window.document.getElementById(modalId).dispatchEvent(new f.window.Event('show.bs.modal'));
+      await new Promise(resolve => setTimeout(resolve, 40));
+      const content = f.window.document.getElementById(`${modalId}-commerce`);
+      assert.ok(content.textContent.includes(expected), content.textContent);
+      assert.equal(content.querySelector('script'), null);
+      const requests = f.calls.filter(x => new URL(x, f.window.location.href).pathname.endsWith('/commerce'));
+      assert.equal(requests.length, 1);
+      assert.equal(new URL(requests[0], f.window.location.href).searchParams.get('businessKey'), 'synthetic-store');
+      assert.equal(f.calls.some(x => /\/(quote|conversions|leads)(\?|$)/.test(x)), false);
+    } finally { await f.dispose(); }
+  });
+}

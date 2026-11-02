@@ -151,6 +151,8 @@ public static class CommerceServiceRegistration
     {
         var controller = application.Controllers.SingleOrDefault(c => c.ControllerType.AsType() == typeof(CommerceManagementController));
         if (controller is null) return;
+        // Shared analytics actions are adapters only. Never inherit business callback routes
+        // or compete with the Store's existing protected provider continuation handlers.
         foreach (var action in controller.Actions)
         foreach (var selector in action.Selectors.ToArray())
         {

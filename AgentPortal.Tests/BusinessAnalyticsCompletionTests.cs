@@ -60,11 +60,11 @@ public sealed class BusinessAnalyticsCompletionTests
         var root = RepoRoot();
         var view = File.ReadAllText(Path.Combine(root, "AgentPortal", "Views", "WebsiteAnalytics", "Index.cshtml"));
         var js = File.ReadAllText(Path.Combine(root, "AgentPortal", "wwwroot", "js", "website-analytics.js"));
-        var controller = File.ReadAllText(Path.Combine(root, "Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs"));
+        var controller = File.ReadAllText(Path.Combine(root, "Infrastructure", "Businesses", "BusinessAnalyticsControllerBase.cs"));
 
         Assert.Contains("data-can-meta-ads", view, StringComparison.Ordinal);
         Assert.Contains("data-can-ai-review", view, StringComparison.Ordinal);
-        Assert.Contains("const analyticsEndpoint = path => analyticsBase + path;", js, StringComparison.Ordinal);
+        Assert.Contains("return url.pathname + url.search;", js, StringComparison.Ordinal);
         Assert.Contains("if (!capabilities.aiReview) return;", js, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"analytics/meta-campaigns\")]", controller, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"analytics/meta-connection-status\")]", controller, StringComparison.Ordinal);

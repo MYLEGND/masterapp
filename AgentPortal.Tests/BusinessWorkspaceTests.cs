@@ -36,6 +36,42 @@ namespace AgentPortal.Tests;
 
 public sealed class BusinessWorkspaceTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CalendarCallbackNeverPlacesProviderDiagnosticsInRedirect(bool callbackThrows)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var business = new CommerceBusiness { Key = "calendar-synthetic" };
+        var authority = new Mock<IMicrosoftCalendarConnectionAuthority>(MockBehavior.Strict);
+        var owner = MarketingOwnerScope.Business(business.Id);
+        authority.Setup(x => x.InspectState("protected-state")).Returns(new MicrosoftCalendarOAuthState(
+            owner, "/internal/analytics?businessKey=calendar-synthetic", "https://example.invalid/callback"));
+        const string diagnostic = "SENSITIVE_PROVIDER_DIAGNOSTIC_DO_NOT_REDIRECT";
+        if (callbackThrows)
+            authority.Setup(x => x.CompleteCallbackAsync("code", "protected-state", It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException(diagnostic));
+        using var services = new ServiceCollection().AddSingleton(authority.Object).BuildServiceProvider();
+        var controller = new CalendarPageController(business)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { RequestServices = services } }
+        };
+        var result = Assert.IsType<RedirectResult>(await controller.CalendarCallback("code", "protected-state",
+            callbackThrows ? null : "access_denied", diagnostic));
+        Assert.StartsWith("/internal/analytics?businessKey=calendar-synthetic&calendar=error&reason=", result.Url);
+        Assert.DoesNotContain(diagnostic, result.Url);
+        Assert.DoesNotContain("message=", result.Url);
+    }
+
+    private sealed class CalendarPageController(CommerceBusiness business) : BusinessAnalyticsControllerBase(null)
+    {
+        protected override Task<CommerceBusiness?> ResolveBusinessAsync(Guid id, string capability, CancellationToken ct) =>
+            Task.FromResult<CommerceBusiness?>(id == business.Id ? business : null);
+        protected override Task<(Guid BusinessId, string ReturnUrl)?> ResolveAnalyticsCallbackAsync(
+            MarketingOwnerScope owner, string returnUrl, CancellationToken ct) =>
+            Task.FromResult<(Guid, string)?>(owner == MarketingOwnerScope.Business(business.Id) ? (business.Id, returnUrl) : null);
+    }
+
     [Fact]
     public async Task BulkEditsRejectStaleBatchWithoutChangingAnyContact()
     {
@@ -559,6 +595,28 @@ public sealed class BusinessWorkspaceTests
         Assert.Null(await service.AnalyticsDataAsync(businessId, "unregistered-agent-action", range, TrafficType.All));
         await Assert.ThrowsAsync<ArgumentException>(() => service.AnalyticsDataAsync(Guid.Empty, "summary", range, TrafficType.All));
         analytics.VerifyAll();
+    }
+
+    [Fact]
+    public async Task SharedAnalyticsPreservesStoreAndOwnerDimensionsAndRejectsForeignStore()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var businessId = Guid.NewGuid();
+        var scope = ScopeContext.ForAgent(Guid.NewGuid()).ForStore(businessId);
+        var range = TimeRangeRequest.FromPreset("7d", null, null, TimeZoneInfo.Utc);
+        var analytics = new Mock<IAnalyticsQueryService>(MockBehavior.Strict);
+        var summary = new SummaryKpiDto();
+        analytics.Setup(x => x.GetSummaryAsync(range, scope, TrafficType.All,
+            It.IsAny<System.Threading.CancellationToken>())).ReturnsAsync(summary);
+        var service = new BusinessWorkspaceService(db, analytics.Object);
+        Assert.Same(summary, await service.AnalyticsDataAsync(businessId, "summary", range,
+            TrafficType.All, reportingScope: scope));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.AnalyticsDataAsync(Guid.NewGuid(),
+            "summary", range, TrafficType.All, reportingScope: scope));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.AnalyticsDataAsync(businessId,
+            "summary", range, TrafficType.All, reportingScope: ScopeContext.Global));
+        analytics.VerifyAll();
+        analytics.VerifyNoOtherCalls();
     }
 
     [Fact]

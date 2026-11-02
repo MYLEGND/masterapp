@@ -49,7 +49,7 @@ public sealed class BusinessWebsiteProfileService(MasterAppDbContext db, Marketi
             (!meta.AccessTokenExpiresUtc.HasValue || meta.AccessTokenExpiresUtc > DateTime.UtcNow));
     }
 
-    public async Task SaveAsync(Guid businessId, BusinessWebsiteProfileInput input, CancellationToken ct = default)
+    public async Task SaveAsync(Guid businessId, BusinessWebsiteProfileInput input, CancellationToken ct = default, bool updateBiography = true)
     {
         Validator.ValidateObject(input, new ValidationContext(input), validateAllProperties: true);
         ValidateUrl(input.BookingEmbedUrl);
@@ -58,7 +58,7 @@ public sealed class BusinessWebsiteProfileService(MasterAppDbContext db, Marketi
             throw new ValidationException("Add a booking URL before enabling your scheduler.");
         var settings = await SettingsAsync(businessId, ct);
         if (settings.Revision != input.ProfileRevision) throw new DbUpdateConcurrencyException("The business profile changed. Reload and try again.");
-        settings.ShortBio = Clean(input.ShortBio);
+        if (updateBiography) settings.ShortBio = Clean(input.ShortBio);
         settings.BookingEnabled = input.BookingEnabled;
         settings.BookingEmbedUrl = Clean(input.BookingEmbedUrl);
         settings.BookingFallbackUrl = Clean(input.BookingFallbackUrl);

@@ -1,5 +1,7 @@
 @{
-    ViewData["Title"] = "Website Analytics";
+    var storeAnalytics = ViewData["AnalyticsMode"] as string == "store";
+    if (ViewData["AnalyticsLayout"] is string analyticsLayout) Layout = analyticsLayout;
+    ViewData["Title"] = storeAnalytics ? "Store Analytics" : "Website Analytics";
     var analyticsBase = ViewData["AnalyticsBase"] as string ?? "/WebsiteAnalytics";
     var initialPreset = ViewData["InitialRangePreset"] as string ?? "today";
     var initialLabel = ViewData["InitialRangeLabel"] as string ?? "Today";
@@ -31,7 +33,7 @@
 
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
-<div class="legend-workspace-page mb-4 fa-shell" data-analytics-base="@analyticsBase" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-initial-site-key="@initialSiteKey" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-founder-site-links='@founderSiteLinksJson' data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-can-meta-ads="@(analyticsCanMetaAds ? "true" : "false")" data-can-ai-review="@(analyticsCanAiReview ? "true" : "false")" data-can-agent-performance="@(analyticsCanAgentPerformance ? "true" : "false")" data-can-incident-monitor="@(analyticsCanIncidentMonitor ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
+<div class="legend-workspace-page mb-4 fa-shell" data-analytics-base="@analyticsBase" data-analytics-mode="@(storeAnalytics ? "store" : "website")" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-initial-site-key="@initialSiteKey" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-founder-site-links='@founderSiteLinksJson' data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-can-meta-ads="@(analyticsCanMetaAds ? "true" : "false")" data-can-ai-review="@(analyticsCanAiReview ? "true" : "false")" data-can-agent-performance="@(analyticsCanAgentPerformance ? "true" : "false")" data-can-incident-monitor="@(analyticsCanIncidentMonitor ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
 <div class="modal fade fa-modal" id="marketingSetupModal" tabindex="-1" aria-labelledby="marketingSetupModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
         <div class="modal-content wa-modal-shell">
@@ -73,7 +75,7 @@
                             </div>
                             <div class="marketing-setup-connection" id="marketing-setup-meta-account">Meta Ads status: —</div>
                         </div>
-                        <p class="marketing-setup-help">Leave the Pixel ID blank to keep using the default LEGEND tracking setup. Meta CAPI credentials are never entered here; they are stored securely and managed automatically when the scoped Meta Ads account is connected.</p>
+                        <p class="marketing-setup-help">@(storeAnalytics ? "Use the Pixel ID authorized for this Store’s marketing owner. A blank field does not establish a connected destination." : "Leave the Pixel ID blank to keep using the default LEGEND tracking setup.") Meta CAPI credentials are never entered here; they are stored securely and managed automatically when the scoped Meta Ads account is connected.</p>
                         <div class="marketing-setup-field-grid">
                         <label class="marketing-setup-field" for="marketing-setup-pixel">
                             <span>Meta Pixel ID</span>
@@ -473,12 +475,12 @@
         <div class="hero-link wa-command-dashboard">
             <div class="wa-page-header">
                 <div class="wa-header-copy">
-                    <h2 class="wa-header-title">Website Analytics</h2>
+                    <h2 class="wa-header-title">@(storeAnalytics ? "Store Analytics" : "Website Analytics")</h2>
                     <p class="wa-header-sub"><span id="fa-range-label">@initialLabel</span></p>
                 </div>
                 <div class="hero-link-command-actions" role="group" aria-label="Marketing command shortcuts">
                             <button type="button" class="btn btn-gold" id="analytics-refresh" data-analytics-refresh>Refresh</button>
-                            <a class="btn event-map-trigger" href="@Url.Action("EventMap", "WebsiteAnalytics", new { agentProfileId = Context.Request.Query["agentProfileId"].ToString(), team = Context.Request.Query["team"].ToString() })">Event Map</a>
+                            <a class="btn event-map-trigger" href="@(ViewData["AnalyticsEventMap"] as string ?? Url.Action("EventMap", "WebsiteAnalytics", new { agentProfileId = Context.Request.Query["agentProfileId"].ToString(), team = Context.Request.Query["team"].ToString() }))">Event Map</a>
                             <button type="button"
                                     class="btn marketing-setup-trigger"
                                     id="marketing-setup-open"
@@ -934,13 +936,13 @@
                     <div class="fa-trend-bar"></div>
                 </div>
 
-                <div class="fa-module fa-module-feature fa-module-quote" id="mod-quote" role="button" tabindex="0" aria-label="Open Quote Funnel">
+                <div class="fa-module fa-module-feature fa-module-quote" id="mod-quote" role="button" tabindex="0" aria-label="Open @(storeAnalytics ? "Commerce Funnel" : "Quote Funnel")">
                     <div class="fa-module-head">
                         <div>
-                            <h5>Quote Funnel</h5>
+                            <h5>@(storeAnalytics ? "Commerce Funnel" : "Quote Funnel")</h5>
                         </div>
                     </div>
-                    <div class="fa-module-meta" id="mod-quote-meta">Starts → form starts → submits</div>
+                    <div class="fa-module-meta" id="mod-quote-meta">@(storeAnalytics ? "Product → cart → checkout → purchase" : "Starts → form starts → submits")</div>
                     <div class="fa-trend-bar"></div>
                 </div>
 
@@ -954,13 +956,13 @@
                     <div class="fa-trend-bar"></div>
                 </div>
 
-                <div class="fa-module fa-module-feature fa-module-conv" id="mod-conv" role="button" tabindex="0" aria-label="Open Conversion Center">
+                <div class="fa-module fa-module-feature fa-module-conv" id="mod-conv" role="button" tabindex="0" aria-label="Open @(storeAnalytics ? "Orders & Events" : "Conversion Center")">
                     <div class="fa-module-head">
                         <div>
-                            <h5>Conversion Center</h5>
+                            <h5>@(storeAnalytics ? "Orders & Events" : "Conversion Center")</h5>
                         </div>
                     </div>
-                    <div class="fa-module-meta" id="mod-conv-meta">Lead submits & successes</div>
+                    <div class="fa-module-meta" id="mod-conv-meta">@(storeAnalytics ? "Paid orders, refunds and purchase-event reconciliation" : "Lead submits & successes")</div>
                     <div class="fa-trend-bar"></div>
                 </div>
             </div>
@@ -982,13 +984,13 @@
                     <div class="fa-trend-bar"></div>
                 </div>
 
-                <div class="fa-module fa-module-support" id="mod-leads" role="button" tabindex="0" aria-label="Open Leads Snapshot">
+                <div class="fa-module fa-module-support" id="mod-leads" role="button" tabindex="0" aria-label="Open @(storeAnalytics ? "Products Snapshot" : "Leads Snapshot")">
                     <div class="fa-module-head">
                         <div>
-                            <h5>Leads Snapshot</h5>
+                            <h5>@(storeAnalytics ? "Products Snapshot" : "Leads Snapshot")</h5>
                         </div>
                     </div>
-                    <div class="fa-module-meta" id="mod-leads-meta">Recent captured leads</div>
+                    <div class="fa-module-meta" id="mod-leads-meta">@(storeAnalytics ? "Product views, units and recorded revenue" : "Recent captured leads")</div>
                     <div class="fa-trend-bar"></div>
                 </div>
 
@@ -2170,6 +2172,8 @@
   </div>
 </div>
 
+@if (!storeAnalytics)
+{
 <div class="modal fade fa-modal" id="quoteModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
@@ -2450,6 +2454,25 @@
     </div>
   </div>
 </div>
+
+}
+else
+{
+    foreach (var report in new[] { (Id: "quoteModal", Title: "Commerce Funnel"), (Id: "convModal", Title: "Orders & Events"), (Id: "leadsModal", Title: "Products Snapshot") })
+    {
+        <div class="modal fade fa-modal" id="@report.Id" tabindex="-1" aria-labelledby="@(report.Id)-title" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+                <div class="modal-content wa-modal-shell">
+                    <div class="modal-header wa-modal-header">
+                        <div><h5 class="modal-title" id="@(report.Id)-title">@report.Title</h5><div class="wa-modal-subtitle" data-analytics-view-label></div></div>
+                        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body wa-modal-body"><section class="wa-modal-section" id="@(report.Id)-commerce" aria-live="polite">Open this report to load Store activity.</section></div>
+                </div>
+            </div>
+        </div>
+    }
+}
 
 @if (canDeleteAnalyticsLeads)
 {

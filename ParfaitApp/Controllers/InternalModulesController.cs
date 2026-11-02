@@ -1,4 +1,5 @@
 using System.Globalization;
+using Infrastructure.Businesses;
 using Infrastructure.Analytics;
 using Infrastructure.Security.UploadValidation;
 using Microsoft.AspNetCore.Authorization;
@@ -11,8 +12,9 @@ using Shared.Analytics;
 namespace ParfaitApp.Controllers;
 
 [Authorize]
+[BusinessAnalyticsAdapter]
 [Route("internal")]
-public sealed class InternalModulesController : Controller
+public sealed partial class InternalModulesController : BusinessAnalyticsControllerBase
 {
     private const string ViewerTimezoneIdCookieName = "ParfaitAnalyticsViewerTimeZone";
     private const string ViewerTimezoneOffsetCookieName = "ParfaitAnalyticsViewerOffsetMinutes";
@@ -40,7 +42,7 @@ public sealed class InternalModulesController : Controller
         MarketingConnectionStore marketingConnections,
         MarketingMetaAdsOAuthService metaAdsOAuth,
         ParfaitBusinessScopeService parfaitScope,
-        IMetaAdsService metaAds)
+        IMetaAdsService metaAds) : base(null)
     {
         _products = products;
         _orders = orders;
@@ -326,18 +328,12 @@ public sealed class InternalModulesController : Controller
         [FromQuery] int? timezoneOffsetMinutes = null,
         CancellationToken ct = default)
     {
-        var resolvedQualityMode = ResolveParfaitAnalyticsQualityMode(qualityMode);
-        var timezoneContext = ResolveViewerTimeZoneContext(timezoneId, timezoneOffsetMinutes);
-        return View(await _internalAnalytics.GetDashboardAsync(
-            preset,
-            fromUtc,
-            toUtc,
-            resolvedQualityMode,
-            timezoneContext.ViewerTimeZone,
-            timezoneContext.TimezoneId,
-            timezoneContext.TimezoneOffsetMinutes,
-            ct));
+        var business = await ResolveLegacyAnalyticsBusinessAsync(ct);
+        if (business is null) return Forbid();
+        var days = preset == "7d" ? 7 : preset == "90d" ? 90 : 30;
+        return await base.Analytics(business.Id, days, timezoneId, timezoneOffsetMinutes, ct, preset, fromUtc, toUtc, ResolveParfaitAnalyticsQualityMode(qualityMode));
     }
+
 
     [HttpPost("analytics/meta-settings")]
     [ParfaitInternalPageAccess("/internal/analytics")]
@@ -352,93 +348,13 @@ public sealed class InternalModulesController : Controller
         [FromQuery] int? timezoneOffsetMinutes = null,
         CancellationToken ct = default)
     {
-        var resolvedQualityMode = ResolveParfaitAnalyticsQualityMode(qualityMode);
-        var timezoneContext = ResolveViewerTimeZoneContext(timezoneId, timezoneOffsetMinutes);
-        if (!ModelState.IsValid)
-        {
-            var dashboard = await _internalAnalytics.GetDashboardAsync(
-                preset,
-                fromUtc,
-                toUtc,
-                resolvedQualityMode,
-                timezoneContext.ViewerTimeZone,
-                timezoneContext.TimezoneId,
-                timezoneContext.TimezoneOffsetMinutes,
-                ct);
-            dashboard.MetaSettings.MetaPixelId = model.MetaPixelId;
-            dashboard.MetaSettings.MetaTestEventCode = model.MetaTestEventCode;
-            return View("Analytics", dashboard);
-        }
+        if (await ResolveLegacyAnalyticsBusinessAsync(ct) is null) return Forbid();
+        if (!ModelState.IsValid) return ValidationProblem(ModelState);
 
         await _businessProfile.SaveMetaSettingsAsync(model, ct);
         _internalAnalytics.InvalidateCache();
         TempData["AnalyticsStatus"] = "Meta settings saved.";
         return RedirectToAction(nameof(Analytics), new { preset, fromUtc, toUtc, qualityMode, timezoneId, timezoneOffsetMinutes });
-    }
-
-    [HttpGet("analytics/marketing-setup")]
-    [ParfaitInternalPageAccess("/internal/analytics")]
-    public async Task<IActionResult> MarketingSetup(CancellationToken ct = default)
-    {
-        var owner = MarketingOwnerScope.Business((await _parfaitScope.GetParfaitAsync(ct)).Id);
-        return Json(await HttpContext.RequestServices.GetRequiredService<MarketingProviderSetupProjection>().GetAsync(owner, ct));
-    }
-
-    [HttpPost("analytics/openai-connect")]
-    [ParfaitInternalPageAccess("/internal/analytics")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ConnectOpenAi([FromBody] MarketingProviderApiKeyRequest request, CancellationToken ct = default)
-    {
-        var owner = MarketingOwnerScope.Business((await _parfaitScope.GetParfaitAsync(ct)).Id);
-        try
-        {
-            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsDirectConnectionService>().ConnectAsync(owner, request.AdvertiserApiKey, request.ExpectedRevision, ct);
-            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
-        }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
-        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
-        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
-        catch (HttpRequestException)
-        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
-    }
-
-    [HttpPost("analytics/openai-refresh")]
-    [ParfaitInternalPageAccess("/internal/analytics")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> RefreshOpenAi([FromBody] MarketingProviderRevisionRequest request, CancellationToken ct = default)
-    {
-        var owner = MarketingOwnerScope.Business((await _parfaitScope.GetParfaitAsync(ct)).Id);
-        try
-        {
-            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsDirectConnectionService>().RefreshAsync(owner, request.ConnectionRevision, ct);
-            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
-        }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
-        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
-        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
-        catch (HttpRequestException)
-        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
-    }
-
-    [HttpPost("analytics/openai-disconnect")]
-    [ParfaitInternalPageAccess("/internal/analytics")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> DisconnectOpenAi([FromBody] MarketingProviderRevisionRequest request, CancellationToken ct = default)
-    {
-        var owner = MarketingOwnerScope.Business((await _parfaitScope.GetParfaitAsync(ct)).Id);
-        try
-        {
-            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsAccountConnectionAuthority>().DisconnectAsync(owner, request.ConnectionRevision, ct);
-            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
-        }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
-        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
-        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
-        catch (HttpRequestException)
-        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
     }
 
     [HttpGet("analytics/meta-connect")]

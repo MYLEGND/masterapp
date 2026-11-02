@@ -2202,7 +2202,7 @@ class FastTrackImpactTests(unittest.TestCase):
         self.assertEqual(self.targets('SHARED/wwwroot/js/finance-shell.js'), {'AgentPortal', 'ClientApp'})
 
     def test_linked_storefront_asset_selects_both_runtime_hosts(self):
-        self.assertEqual(self.targets('ParfaitApp/wwwroot/js/parfait-agentportal-analytics.js'), {'Parfait', 'Protect'})
+        self.assertEqual(self.targets('ParfaitApp/wwwroot/js/storefront.js'), {'Parfait', 'Protect'})
 
     def test_reincluded_company_icon_selects_original_presentation_host(self):
         self.assertEqual(self.targets('ParfaitApp/wwwroot/images/company-icons/sample.svg'), {'Parfait', 'Protect'})

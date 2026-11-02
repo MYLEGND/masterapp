@@ -23,6 +23,7 @@ namespace ParfaitApp.Controllers;
 /// the authorized CommerceBusinessId and renders the same InternalModules views
 /// through the same Parfait services used by the Parfait internal console.
 /// </summary>
+[BusinessAnalyticsAdapter]
 [Route("commerce/manage")]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [AutoValidateAntiforgeryToken]
@@ -38,7 +39,7 @@ public sealed partial class CommerceManagementController(
     MarketingConnectionStore marketingConnections,
     MarketingMetaAdsOAuthService metaAdsOAuth,
     IMetaAdsService metaAds,
-    IGraphMailService mail) : Controller
+    IGraphMailService mail) : BusinessAnalyticsControllerBase(null)
 {
     [HttpGet("payments")]
     public async Task<IActionResult> Payments([FromQuery] string ticket,
@@ -395,108 +396,6 @@ public sealed partial class CommerceManagementController(
             ct));
     }
 
-    [HttpGet("analytics")]
-    public async Task<IActionResult> Analytics(
-        [FromQuery] string ticket,
-        [FromQuery] string? preset = "30d",
-        [FromQuery] DateTime? fromUtc = null,
-        [FromQuery] DateTime? toUtc = null,
-        [FromQuery] string? qualityMode = null,
-        [FromQuery] string? timezoneId = null,
-        [FromQuery] int? timezoneOffsetMinutes = null,
-        CancellationToken ct = default)
-    {
-        var store = await ResolveAsync(ticket, ct);
-        if (store is null) return Unauthorized();
-
-        var resolvedQualityMode = ResolveAnalyticsQualityMode(qualityMode);
-        var timezoneContext = ResolveViewerTimeZoneContext(timezoneId, timezoneOffsetMinutes);
-        ApplyManagementViewData(store, ticket, "analytics");
-        var analyticsScope = ResolveAnalyticsScope(store);
-        var marketingOwner = await ResolveMarketingOwnerAsync(store, ct);
-        return View("~/Views/InternalModules/Analytics.cshtml", await internalAnalytics.GetDashboardAsync(
-            store.CommerceBusinessId,
-            analyticsScope,
-            marketingOwner,
-            preset,
-            fromUtc,
-            toUtc,
-            resolvedQualityMode,
-            timezoneContext.ViewerTimeZone,
-            timezoneContext.TimezoneId,
-            timezoneContext.TimezoneOffsetMinutes,
-            ct));
-    }
-
-    [HttpGet("analytics/marketing-setup")]
-    public async Task<IActionResult> MarketingSetup([FromQuery] string ticket, CancellationToken ct = default)
-    {
-        var store = await ResolveAsync(ticket, ct);
-        if (store is null) return Unauthorized();
-        var owner = await ResolveMarketingOwnerAsync(store, ct);
-        return Json(await HttpContext.RequestServices.GetRequiredService<MarketingProviderSetupProjection>().GetAsync(owner, ct));
-    }
-
-    [HttpPost("analytics/openai-connect")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ConnectOpenAi([FromQuery] string ticket, [FromBody] MarketingProviderApiKeyRequest request, CancellationToken ct = default)
-    {
-        var store = await ResolveAsync(ticket, ct);
-        if (store is null) return Unauthorized();
-        var owner = await ResolveMarketingOwnerAsync(store, ct);
-        try
-        {
-            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsDirectConnectionService>().ConnectAsync(owner, request.AdvertiserApiKey, request.ExpectedRevision, ct);
-            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
-        }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
-        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
-        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
-        catch (HttpRequestException)
-        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
-    }
-
-    [HttpPost("analytics/openai-refresh")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> RefreshOpenAi([FromQuery] string ticket, [FromBody] MarketingProviderRevisionRequest request, CancellationToken ct = default)
-    {
-        var store = await ResolveAsync(ticket, ct);
-        if (store is null) return Unauthorized();
-        var owner = await ResolveMarketingOwnerAsync(store, ct);
-        try
-        {
-            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsDirectConnectionService>().RefreshAsync(owner, request.ConnectionRevision, ct);
-            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
-        }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
-        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
-        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
-        catch (HttpRequestException)
-        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
-    }
-
-    [HttpPost("analytics/openai-disconnect")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> DisconnectOpenAi([FromQuery] string ticket, [FromBody] MarketingProviderRevisionRequest request, CancellationToken ct = default)
-    {
-        var store = await ResolveAsync(ticket, ct);
-        if (store is null) return Unauthorized();
-        var owner = await ResolveMarketingOwnerAsync(store, ct);
-        try
-        {
-            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsAccountConnectionAuthority>().DisconnectAsync(owner, request.ConnectionRevision, ct);
-            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
-        }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
-        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
-        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
-        catch (HttpRequestException)
-        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
-    }
-
     [HttpGet("analytics/meta-connect")]
     public async Task<IActionResult> MetaConnect(
         [FromQuery] string ticket,
@@ -525,7 +424,7 @@ public sealed partial class CommerceManagementController(
 
     [AllowAnonymous]
     [HttpGet("analytics/meta-callback")]
-    public async Task<IActionResult> MetaCallback(
+    public new async Task<IActionResult> MetaCallback(
         [FromQuery] string? code = null,
         [FromQuery] string? state = null,
         [FromQuery] string? error = null,
@@ -1157,7 +1056,7 @@ public sealed partial class CommerceManagementController(
         return url;
     }
 
-    private async Task<CommerceStoreContext?> ResolveAsync(string ticket, CancellationToken ct)
+    private async Task<CommerceStoreContext?> ResolveAsync(string ticket, CancellationToken ct, string? requiredCapability = null)
     {
         var actor = tickets.TryUnprotect(ticket);
         if (actor is null || string.IsNullOrWhiteSpace(actor.ActorUserId)) return null;
@@ -1165,7 +1064,9 @@ public sealed partial class CommerceManagementController(
         if (Request.Path.StartsWithSegments("/internal"))
         {
             var scope = await stores.ResolveManagementScopeAsync(HttpContext, Request.Query["businessKey"].ToString(), ct);
-            var capability = CommerceManagementCapabilityPolicy.ForRequest(Request.Path, Request.Method);
+            var routeCapability = CommerceManagementCapabilityPolicy.ForRequest(Request.Path, Request.Method);
+            if (routeCapability is null) return null;
+            var capability = requiredCapability ?? routeCapability;
             if (scope is null || capability is null || (actor.SiteKey == WebsiteEditorSiteKeys.Business && scope.CommerceBusinessId != actor.CommerceBusinessId) ||
                 (actor.CommerceBusinessId.HasValue && scope.CommerceBusinessId != actor.CommerceBusinessId) ||
                 scope.WebsiteSiteKey != actor.SiteKey || scope.WebsiteOwnerKey != actor.OwnerUserId)
@@ -1185,7 +1086,9 @@ public sealed partial class CommerceManagementController(
                 actor.CommerceBusinessId != store.CommerceBusinessId)
                 return null;
 
-            var capability = CommerceManagementCapabilityPolicy.ForRequest(Request.Path, Request.Method);
+            var routeCapability = CommerceManagementCapabilityPolicy.ForRequest(Request.Path, Request.Method);
+            if (routeCapability is null) return null;
+            var capability = requiredCapability ?? routeCapability;
             if (capability is null) return null;
 
             var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
