@@ -110,6 +110,7 @@ public sealed class CommerceManagementCapabilityPolicyTests
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.WebHost.UseTestServer();
         builder.Services.AddSingleton(f.Db);
+        builder.Services.AddSingleton(f.Controller.HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>());
         builder.Services.AddSingleton(f.Stores); builder.Services.AddSingleton(f.Tickets);
         builder.Services.AddSingleton(new BusinessWorkspaceService(f.Db, Mock.Of<Infrastructure.Analytics.IAnalyticsQueryService>()));
         builder.Services.AddSingleton(Mock.Of<Infrastructure.Identity.IClientEntraLifecycleService>());
@@ -233,6 +234,17 @@ public sealed class CommerceManagementCapabilityPolicyTests
         Assert.Equal(System.Net.HttpStatusCode.OK, teamPage.StatusCode);
         var renderedTeam = await teamPage.Content.ReadAsStringAsync();
         Assert.Contains("http-staff@example.invalid", renderedTeam);
+        Assert.Contains("pf-team-card", renderedTeam);
+        Assert.Contains("data-pf-open=", renderedTeam);
+        Assert.DoesNotContain("pf-command-panel", renderedTeam);
+        Assert.DoesNotContain("--pf-cream:", renderedTeam);
+        var paymentsPage = await client.GetAsync("/internal/settings/payments");
+        Assert.Equal(System.Net.HttpStatusCode.OK, paymentsPage.StatusCode);
+        var paymentsHtml = await paymentsPage.Content.ReadAsStringAsync();
+        Assert.Contains("/internal/settings/payments?environment=Sandbox", paymentsHtml);
+        Assert.Contains("/internal/settings/payments?environment=Production", paymentsHtml);
+        Assert.DoesNotContain("/internal/settings/payments&amp;environment=", paymentsHtml);
+
         var renderedTicks = System.Text.RegularExpressions.Regex.Match(renderedTeam,
             "name=\"ExpectedUpdatedTicks\" value=\"([0-9]+)\"").Groups[1].Value;
         Assert.Equal(staffMember.UpdatedUtc.Ticks.ToString(), renderedTicks);

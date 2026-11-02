@@ -138,7 +138,7 @@ html {
     min-width: 0;
 }
 
-.pf-team-field label {
+.pf-team-page .pf-team-field label {
     color: #e7bf8b;
     font-size: .66rem;
     font-weight: 900;
@@ -2491,7 +2491,8 @@ html {
 
 
 .pf-product-modal,
-.pf-image-editor-modal {
+.pf-image-editor-modal,
+.pf-team-modal {
     position: fixed;
     inset: 0;
     z-index: 1800;
@@ -2505,7 +2506,8 @@ html {
 }
 
 .pf-product-modal.is-open,
-.pf-image-editor-modal.is-open {
+.pf-image-editor-modal.is-open,
+.pf-team-modal.is-open {
     display: flex;
 }
 
@@ -3451,7 +3453,6 @@ main.pf-internal-main {
 /* Products / Orders: clean light cards inside dark operations panels */
 .pf-product-card,
 .pf-product-row,
-.pf-team-card,
 .pf-automation-card,
 .pf-image-card,
 .pf-settings-card,
@@ -3577,7 +3578,6 @@ button.pf-secondary-action,
 
 .pf-product-card .pf-secondary-action,
 .pf-product-row .pf-secondary-action,
-.pf-team-card .pf-secondary-action,
 .pf-product-card .pf-mini-action,
 .pf-product-row .pf-mini-action {
     background: rgba(43,25,17,.06);

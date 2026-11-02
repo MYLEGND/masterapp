@@ -5,28 +5,53 @@
     var ticket = ViewData["CommerceManagerTicket"] as string ?? "";
     var saveUrl = Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, "/commerce/manage/team/permissions", ticket, "POST");
 }
-<section class="pf-command-page">
-    <div class="pf-command-heading">
-        <h1>Team access</h1>
-        <p>Manage permissions for @Model.StoreName with the same LEGEND® business membership authority used by ClientApp.</p>
-    </div>
-    <div class="pf-command-panel">
-        <form method="post" action="@Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, "/commerce/manage/team/add", ticket, "POST")" class="pf-command-form">
+<section class="pf-command-page pf-team-page">
+    <header class="pf-command-head">
+        <div class="pf-command-copy">
+        <h1 class="pf-command-title">Team access</h1>
+        <p class="pf-command-text">Manage team access for @Model.StoreName.</p>
+        </div>
+    </header>
+    <div class="pf-module-card">
+        <form method="post" action="@Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, "/commerce/manage/team/add", ticket, "POST")" class="pf-team-invite-form">
             @Html.AntiForgeryToken()
             <h2>Invite a team member</h2>
-            <label>First name <input name="firstName" required maxlength="100" /></label>
-            <label>Last name <input name="lastName" maxlength="100" /></label>
-            <label>Current account email <input name="email" type="email" required maxlength="320" /></label>
+            <div class="pf-team-invite-fields">
+                <div class="pf-team-field"><label for="invite-first">First name</label><input id="invite-first" name="firstName" required maxlength="100" autocomplete="given-name" /></div>
+                <div class="pf-team-field"><label for="invite-last">Last name</label><input id="invite-last" name="lastName" maxlength="100" autocomplete="family-name" /></div>
+                <div class="pf-team-field"><label for="invite-email">Current account email</label><input id="invite-email" name="email" type="email" required maxlength="320" autocomplete="email" /></div>
+                <div class="pf-team-submit-field"><button type="submit" class="pf-action">Create invitation link</button></div>
+            </div>
             <p>New invitations have no permissions until you select them below. The invited person must sign in and accept. Reinviting a pending or revoked member replaces their previous invitation.</p>
-            <button type="submit" class="pf-action">Create invitation link</button>
         </form>
+    </div>
+    <section class="pf-commerce-panel">
+        <div class="pf-commerce-panel-head"><h2>Team members</h2><span>@Model.Members.Count members</span></div>
+        <div class="row g-4">
+        @foreach (var member in Model.Members)
+        {
+            <div class="col-md-6 col-xl-4">
+                @await Html.PartialAsync("_InternalTeamCard", new ParfaitApp.Models.ParfaitTeamCardPresentation(
+                    $"teamMember{member.Id:N}", string.IsNullOrWhiteSpace(member.DisplayName) ? member.Email : member.DisplayName,
+                    member.Email, member.Role,
+                    new System.Collections.Generic.KeyValuePair<string, string>[] {
+                        new("Membership", member.Status),
+                        new("Personal account", member.IsLinked ? "Linked" : "Acceptance required")
+                    }))
+            </div>
+        }
+        </div>
+    </section>
         @foreach (var member in Model.Members)
         {
             var locked = member.Role.Equals("owner", StringComparison.OrdinalIgnoreCase) ||
                          member.Role.Equals("platform-owner", StringComparison.OrdinalIgnoreCase) ||
                          member.Role.Equals("account", StringComparison.OrdinalIgnoreCase);
-            <div class="pf-command-card" data-commerce-member="@member.Id">
-                <div class="pf-command-card-heading">
+            <div class="pf-team-modal" role="dialog" aria-modal="true" aria-label="Team member access" id="teamMember@(member.Id.ToString("N"))" aria-hidden="true" data-commerce-member="@member.Id">
+              <div class="pf-modal-dialog pf-modal-lg"><div class="pf-modal-content">
+                <div class="pf-modal-header"><h2 class="modal-title">@member.DisplayName</h2><button type="button" class="btn-close" data-pf-close aria-label="Close"></button></div>
+                <div class="pf-modal-body">
+                <div class="pf-team-card-head">
                     <strong>@(string.IsNullOrWhiteSpace(member.DisplayName) ? member.Email : member.DisplayName)</strong>
                     <span>@member.Email · @member.Role · @member.Status</span>
                 </div>
@@ -40,16 +65,16 @@
                 }
                 else
                 {
-                    <form method="post" action="@saveUrl" class="pf-command-form">
+                    <form method="post" action="@saveUrl" class="pf-access-grid">
                         @Html.AntiForgeryToken()
                         <input type="hidden" name="MemberId" value="@member.Id" />
                         <input type="hidden" name="ExpectedUpdatedTicks" value="@member.UpdatedTicks" />
-                        <label><input type="checkbox" name="CanManageStorefront" value="true" checked="@member.CanManageStorefront" /> Website &amp; storefront</label>
-                        <label><input type="checkbox" name="CanManageCatalog" value="true" checked="@member.CanManageCatalog" /> Products &amp; inventory</label>
-                        <label><input type="checkbox" name="CanManageOrders" value="true" checked="@member.CanManageOrders" /> Orders &amp; automations</label>
-                        <label><input type="checkbox" name="CanManageCrm" value="true" checked="@member.CanManageCrm" /> Client relationships &amp; CRM</label>
+                        <label class="pf-access-check"><input type="checkbox" name="CanManageStorefront" value="true" checked="@member.CanManageStorefront" /> Website &amp; storefront</label>
+                        <label class="pf-access-check"><input type="checkbox" name="CanManageCatalog" value="true" checked="@member.CanManageCatalog" /> Products &amp; inventory</label>
+                        <label class="pf-access-check"><input type="checkbox" name="CanManageOrders" value="true" checked="@member.CanManageOrders" /> Orders &amp; automations</label>
+                        <label class="pf-access-check"><input type="checkbox" name="CanManageCrm" value="true" checked="@member.CanManageCrm" /> Client relationships &amp; CRM</label>
                         <input type="hidden" name="CanManageCrm" value="false" />
-                        <label><input type="checkbox" name="CanManageAnalytics" value="true" checked="@member.CanManageAnalytics" /> Analytics</label>
+                        <label class="pf-access-check"><input type="checkbox" name="CanManageAnalytics" value="true" checked="@member.CanManageAnalytics" /> Analytics</label>
                         <p>Team administration requires business ownership and cannot be delegated here.</p>
                         <button type="submit" class="pf-action">Save permissions</button>
                     </form>
@@ -60,11 +85,16 @@
                         <button type="submit" class="pf-action">Revoke access and pending invitations</button>
                     </form>
                 }
+                </div>
+              </div></div>
             </div>
         }
         @if (Model.Members.Count == 0)
         {
             <p>No business memberships are available. Assign members through the canonical ClientApp business activation flow.</p>
         }
-    </div>
 </section>
+
+@section Scripts {
+    @await Html.PartialAsync("_InternalTeamInteractions", ("{}", "{}"))
+}

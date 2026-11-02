@@ -15,32 +15,6 @@
         ? Url.Content("~/images/favicon/parfait-logo.png")
         : scopedLogoUrl ?? "https://www.mylegnd.com/favicon.jpg";
     var storeRoot = scopedStore?.StoreRootPath ?? "/store";
-    var theme = scopedStore?.Theme;
-    var primary = theme?.GoldStrong ?? theme?.Gold ?? scopedStore?.AccentColor;
-    var secondary = theme?.NavyDeep ?? theme?.Navy;
-    var surface = theme?.Surface;
-    var text = theme?.Text;
-    var muted = theme?.Muted;
-    var font = theme?.FontFamily;
-    var radius = theme?.BorderRadius;
-    var scopedStyle = scopedManager ? string.Join(";", new[]
-    {
-        string.IsNullOrWhiteSpace(primary) ? null : $"--pf-cocoa:{primary}",
-        string.IsNullOrWhiteSpace(primary) ? null : $"--pf-cocoa-soft:{primary}",
-        string.IsNullOrWhiteSpace(secondary) ? null : $"--pf-nav-bg:linear-gradient(145deg,{secondary} 0%,{secondary} 100%)",
-        string.IsNullOrWhiteSpace(secondary) ? null : $"--pf-nav-bg-strong:linear-gradient(145deg,{secondary} 0%,{secondary} 100%)",
-        string.IsNullOrWhiteSpace(surface) ? null : $"--pf-bg:{surface}",
-        string.IsNullOrWhiteSpace(surface) ? null : $"--pf-surface:{surface}",
-        string.IsNullOrWhiteSpace(surface) ? null : $"--pf-cream:{surface}",
-        string.IsNullOrWhiteSpace(text) ? null : $"--pf-text:{text}",
-        string.IsNullOrWhiteSpace(text) ? null : $"--pf-text-soft:{text}",
-        string.IsNullOrWhiteSpace(muted) ? null : $"--pf-text-muted:{muted}",
-        string.IsNullOrWhiteSpace(font) ? null : $"--pf-font-ui:{font}",
-        radius.HasValue ? $"--pf-radius-sm:{radius.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}px" : null,
-        radius.HasValue ? $"--pf-radius-md:{radius.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}px" : null,
-        radius.HasValue ? $"--pf-radius-lg:{radius.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}px" : null
-    }.Where(value => !string.IsNullOrWhiteSpace(value))) : "";
-
     var visiblePages = scopedManager
         ? Array.Empty<ParfaitApp.Models.ParfaitInternalPageDefinition>()
         : User.Identity?.IsAuthenticated == true
@@ -76,7 +50,7 @@
     @RenderSection("Styles", required: false)
 </head>
 
-<body class="pf-internal-body" style="@scopedStyle" data-commerce-business-key="@(scopedStore?.BusinessKey ?? "parfait")">
+<body class="pf-internal-body" data-commerce-business-key="@(scopedStore?.BusinessKey ?? "parfait")">
     <div class="pf-backdrop" data-pf-nav-close></div>
 
     <aside class="pf-sidebar" id="pfSidebar" aria-label="Internal navigation">

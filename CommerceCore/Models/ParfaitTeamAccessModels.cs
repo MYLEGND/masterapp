@@ -107,3 +107,6 @@ public sealed class ParfaitPageAccessResult
     public string Message { get; init; } = string.Empty;
     public ParfaitInternalPageDefinition? Page { get; init; }
 }
+
+// Presentation only; each membership authority supplies its own factual values.
+public sealed record ParfaitTeamCardPresentation(string ModalId, string DisplayName, string Email, string RoleLabel, System.Collections.Generic.IReadOnlyList<System.Collections.Generic.KeyValuePair<string, string>> Facts);

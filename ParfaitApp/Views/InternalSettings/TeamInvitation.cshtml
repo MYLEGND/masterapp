@@ -1,10 +1,11 @@
 @model Legend.Commerce.CommerceTeamInvitationViewModel
 @{ Layout = "_InternalLayout"; ViewData["Title"] = "Team invitation"; }
-<section class="pf-command-page"><h1>Invitation created</h1>
+<section class="pf-command-page"><header class="pf-command-head"><h1 class="pf-command-title">Invitation created</h1></header>
+<div class="pf-module-card">
 <p>Share this private link with the invited person. It expires @Model.ExpiresUtc.ToString("u"). No invitation message has been sent automatically.</p>
-<label>Acceptance link <input readonly value="@Model.InvitationUrl" /></label>
+<label>Acceptance link <input class="form-control" readonly value="@Model.InvitationUrl" /></label>
 @if (!string.IsNullOrEmpty(Model.IdentityRedemptionUrl)) {
 <p>This new identity must first complete Microsoft's account invitation, then open the acceptance link above.</p>
-<label>Microsoft account setup <input readonly value="@Model.IdentityRedemptionUrl" /></label>
+<label>Microsoft account setup <input class="form-control" readonly value="@Model.IdentityRedemptionUrl" /></label>
 }
-<p>Set the member's permitted work in Team. Acceptance does not grant additional permissions or a personal subscription.</p></section>
+<p>Set the member's permitted work in Team. Acceptance does not grant additional permissions or a personal subscription.</p></div></section>
