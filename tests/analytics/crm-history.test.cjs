@@ -127,3 +127,9 @@ test('reopened uncertain draft retains retry warning alongside required fields a
   h.get('history-interaction').elements.namedItem('type').value='Note';h.get('history-note-open').onclick();
   assert.doesNotMatch(h.get('history-note-status').textContent,/owner and due time/);
 });
+
+test('export suppresses concurrent clicks and unlocks after a failed response',async()=>{
+  const h=harness();await settle();const button=h.get('history-export');
+  const first=button.onclick();const second=button.onclick();await Promise.all([first,second]);
+  assert.equal(h.queries.filter(q=>q.includes('/Export?')).length,1);assert.equal(button.disabled,false);
+});

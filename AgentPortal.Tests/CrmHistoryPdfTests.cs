@@ -35,16 +35,46 @@ public sealed partial class CrmHistoryTests
         var website=new WebsiteLead {FirstName="Synthetic",Email="synthetic@example.test",LeadId=Guid.NewGuid(),CreatedUtc=DateTime.UtcNow};
         db.WebsiteLeads.Add(website);await db.SaveChangesAsync();
         var submission=new WebsiteLeadIntakeLink {Id=Guid.NewGuid(),WebsiteLeadRowId=website.Id,WebsiteLeadPublicId=website.LeadId,WorkstationLeadId="synthetic",AgentUserId="owner",SubmittedUtc=DateTime.UtcNow,SnapshotJson="{\"SubmittedFormEvidence\":{\"completeness\":\"Browser-reported context; authoritative answers retained separately\",\"answer\":false,\"supportingJson\":\"literal non-JSON answer\"}}"};
-        db.WebsiteLeadIntakeLinks.Add(submission);await new CrmHistoryStore(db).StageSubmissionAsync(submission);await db.SaveChangesAsync();
+        db.WebsiteLeadIntakeLinks.Add(submission);await new CrmHistoryStore(db).StageSubmissionAsync(submission);
+        var equal=New("equal-distinct");equal.Type="Note";equal.ContentJson=entry.ContentJson;await new CrmHistoryStore(db).StageAsync(equal);
+        var reference=New("second-reference");reference.SubmissionId=submission.Id;reference.ContentJson="Second independent event referencing same submission";await new CrmHistoryStore(db).StageAsync(reference);
+        await db.SaveChangesAsync();
         Assert.IsType<NotFoundResult>(await BuildController(db,"other").Export("lead","synthetic"));
         Assert.IsType<NotFoundResult>(await BuildController(db,"owner",true).Export("lead","synthetic"));
         var file=Assert.IsType<FileContentResult>(await BuildController(db,"owner").Export("lead","synthetic"));
         Assert.Equal("application/pdf",file.ContentType);Assert.EndsWith(".pdf",file.FileDownloadName);
         Assert.StartsWith("%PDF-",System.Text.Encoding.ASCII.GetString(file.FileContents.Take(8).ToArray()));
         var receipt=await db.Set<CrmHistoryEntry>().SingleAsync(x=>x.Source=="HistoryExport");
-        Assert.Contains("\"count\":6",receipt.ContentJson);
+        Assert.Contains("\"count\":8",receipt.ContentJson);
+        Assert.Contains("\"submissionCount\":1",receipt.ContentJson);
         var output=Environment.GetEnvironmentVariable("LEGEND_CRM_PDF_TEST_OUTPUT");
         if(!string.IsNullOrEmpty(output)) await System.IO.File.WriteAllBytesAsync(output,file.FileContents);
+    }
+
+    [Theory]
+    [InlineData(null)] [InlineData("{}")] [InlineData("malformed retained text")]
+    public void PdfPreservesMissingEmptyAndMalformedSnapshots(string? snapshot)
+    {
+        QuestPDF.Settings.License=QuestPDF.Infrastructure.LicenseType.Community;
+        var report=JsonSerializer.SerializeToElement(new{exportId="synthetic",generatedUtc="2026-11-01T00:00:00Z",relationship="synthetic",entries=Array.Empty<object>(),evidenceIndex=new[]{new{Id="snapshot",SnapshotJson=snapshot}},omittedSubmissions=Array.Empty<object>(),protectedDocuments=Array.Empty<object>(),detailLinks=Array.Empty<object>(),limitations="Synthetic fixture"});
+        var render=typeof(AgentPortal.Controllers.CrmHistoryController).GetMethod("RenderCaseHistoryPdf",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static)!;
+        var bytes=Assert.IsType<byte[]>(render.Invoke(null,new object?[]{report,"Synthetic","Lead","UTC",null}));
+        Assert.StartsWith("%PDF-",System.Text.Encoding.ASCII.GetString(bytes.Take(8).ToArray()));
+    }
+
+    [Theory]
+    [InlineData("entries")]
+    [InlineData("evidenceIndex")]
+    public void PdfRejectsDuplicateIdentityInsteadOfSilentlyMerging(string duplicateSection)
+    {
+        var duplicate = new[]{new{Id="same"},new{Id="same"}};
+        var report=JsonSerializer.SerializeToElement(new System.Collections.Generic.Dictionary<string,object>{
+            ["entries"]=duplicateSection=="entries"?duplicate:Array.Empty<object>(),
+            ["evidenceIndex"]=duplicateSection=="evidenceIndex"?duplicate:Array.Empty<object>()});
+        var render=typeof(AgentPortal.Controllers.CrmHistoryController).GetMethod("RenderCaseHistoryPdf",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static)!;
+        var exception=Assert.Throws<System.Reflection.TargetInvocationException>(()=>render.Invoke(null,new object?[]{report,"Synthetic","Lead","UTC",null}));
+        Assert.IsType<InvalidOperationException>(exception.InnerException);
+        Assert.Contains("Duplicate record identity",exception.InnerException!.Message);
     }
 
     [Theory]

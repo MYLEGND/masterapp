@@ -439,7 +439,12 @@ public sealed partial class CrmHistoryController(MasterAppDbContext db, Effectiv
                 downloadPath = "/CrmHistory/Evidence/" + x.Id + "?kind=" + Uri.EscapeDataString(kind) + "&id=" + Uri.EscapeDataString(id),
                 exportState = "Protected version reference included; bytes are verified on authenticated download, not embedded in this PDF export." }),
             limitations = "Binary bytes and external reference contents are not embedded; protected document versions include authenticated access and integrity receipts. Manual evidence is the recorder's account, not an independently captured client signature. Protected detail links require current authorization." });
-        var pdf = RenderCaseHistoryPdf(report, HistoryDisplayName(relationship, kind == "lead"), kind == "lead" ? "Lead" : "Client", exportZone.Id);
+        var configuredOrigin = configuration["AgentPortal:BaseUrl"];
+        var sourceBase = Uri.TryCreate(configuredOrigin, UriKind.Absolute, out var portalOrigin)
+            && portalOrigin.Scheme == Uri.UriSchemeHttps && string.IsNullOrEmpty(portalOrigin.UserInfo)
+            && string.IsNullOrEmpty(portalOrigin.Query) && string.IsNullOrEmpty(portalOrigin.Fragment)
+            ? portalOrigin.AbsoluteUri.TrimEnd('/') : null;
+        var pdf = RenderCaseHistoryPdf(report, HistoryDisplayName(relationship, kind == "lead"), kind == "lead" ? "Lead" : "Client", exportZone.Id, sourceBase);
         await new CrmHistoryStore(db).StageAsync(new() { RelationshipKey = relationship.Key, Source = "HistoryExport",
             SourceId = exportId.ToString("N"), Type = "Export", RecordedBy = User.GetStableUserId() ?? Agent,
             RecordedUtc = generatedUtc, OccurredUtc = generatedUtc, TimePrecision = "instant",

@@ -2060,3 +2060,44 @@ overflow; note shortcut selects Note and truthfully reports no matching notes fo
 the inspected relationship. No test note submitted to the existing Azure database;
 normal existing page/access auditing remains active. No production deployment,
 migration, backend/PDF change or full-CI success claim.
+
+## 2026-11-01 — Case report hierarchy, duplicate safeguards and modal contrast
+
+Preserved d577879c9919f22bedeacadbb037ae813a170b26; existing local-only
+exception remains in effect after canonical preflight filesystem/transport block.
+No remote preservation or full-CI claim, migration, merge or deployment.
+
+Existing PDF owner now starts with case/form/note/document counts, recorded
+submission evidence statuses, unavailable snapshots and explicit historical limits.
+Customer records precede once-only authorized submission snapshots and a complete
+access/export appendix. Known tracking and legacy numbered answer fields follow
+primary submitted fields; no values or distinct event identities are coalesced.
+Duplicate immutable IDs fail report generation rather than silently merging.
+Protected receipts render at their owning record once, with appendix references.
+Repeated record headers identify continuation pages; section flow avoids forced
+near-empty pages. Clickable contents, page references, internal receipt/evidence
+links and return links use existing QuestPDF. HTTPS source links use configured
+AgentPortal:BaseUrl only; missing configuration remains explicit relative paths.
+Native sidebar bookmarks are not provided by this existing renderer. Recorder
+names are not inferred from IDs. Local chronology headings show zone and offset;
+original UTC/date-only/unknown fields remain intact. Missing authorization is not
+reconstructed and this work does not prove historical consent or legal sufficiency.
+
+Canonical modal styles now use gold labels, raised input surfaces, section
+headings and corrected sticky-header spacing. No global override or second engine.
+UI prevents concurrent export clicks; separate later requests remain separate
+valid export audit events, not server-idempotent retries.
+
+Validation:6 focused PDF tests and12 Node tests passed; actual test project
+compiled (existing unrelated warnings). Synthetic null/empty/malformed snapshots,
+duplicate-ID rejection, equal-content distinct events and shared snapshot references
+were exercised. Final10-page synthetic PDF rendered and reviewed; text extraction
+proves each source identity once, two distinct equal narratives preserved, one
+snapshot payload and one protected receipt body. Every page has navigation links;
+no nearly-empty final/section-boundary pages remain in that fixture. Existing
+owner/restricted-user export denials pass. No manual case notes/evidence submitted;
+normal existing access/export auditing remains active. Historical authorization,
+recorder identity resolution and cloud release remain outside this presentation fix.
+Final live localhost verification returned200 application/pdf (185667 bytes), with
+PDF magic header in the downloaded report. Modal gold label/raised input styles
+verified;390px modal has no horizontal overflow. Only local AgentPortal restarted.

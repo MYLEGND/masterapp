@@ -51,16 +51,19 @@
             <label>Date (leave blank if unknown)<input name="occurredDate" type="date" class="history-control" /></label>
             <label>Note · what happened<textarea name="account" class="history-control" rows="5" required maxlength="20000"></textarea></label>
             <details id="history-note-options" class="history-note-options"><summary>More details · calls, follow-ups &amp; evidence</summary><div class="history-form">
+            <h3 class="history-form-section">Interaction details</h3>
             <label>Exact event time (UTC, if known; replaces date above)<input name="occurredUtc" type="datetime-local" class="history-control" /><small>Leave blank when only the date is known. Never estimate a missing time.</small></label>
             <label>Channel<input name="channel" class="history-control" maxlength="80" /></label>
             <label>Participants<input name="participants" class="history-control" maxlength="2000" /></label>
             <label>Direction<select name="direction" class="history-control"><option value="">Unknown / not applicable</option><option>Inbound</option><option>Outbound</option></select></label>
+            <h3 class="history-form-section">Outcome &amp; follow-up</h3>
             <label>Outcome<textarea name="outcome" class="history-control" maxlength="4000"></textarea></label>
             <label>Next action<textarea name="nextAction" class="history-control" maxlength="4000"></textarea></label>
             <label>Case / application / policy<input name="caseReference" class="history-control" maxlength="200" /></label>
             <label>Product<input name="product" class="history-control" maxlength="100" /></label>
             <label>Follow-up owner<input name="assignedOwner" class="history-control" maxlength="450" value="@ViewData["AgentId"]" /></label>
             <label>Due time (UTC)<input name="dueUtc" type="datetime-local" class="history-control" /></label>
+            <h3 class="history-form-section">Evidence &amp; supporting records</h3>
             <label>Evidence source (carrier, document or receipt name)<input name="evidenceSource" class="history-control" maxlength="500" /></label>
             <label>Protected source reference (no public file URLs)<input name="evidenceReference" class="history-control" maxlength="2000" /></label>
             <label>Evidence state<select name="evidenceState" class="history-control"><option>Evidence unavailable</option><option>Manual source reference</option><option>Human-reported source inspection</option><option>Later recollection</option></select></label>
