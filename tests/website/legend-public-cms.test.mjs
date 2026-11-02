@@ -508,6 +508,14 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
       const file=init.body?.get?.('file'); const id='33333333-3333-3333-3333-333333333333';
       return {ok:true,status:200,json:async()=>mediaUploadPayload || {id,name:file?.name || 'upload',url:'https://site.example/api/website-content/media/'+id,contentType:file?.type || 'image/png',sizeBytes:file?.size || 1024,createdUtc:'2026-09-28T00:00:00Z'}};
     }
+    if(parsed.pathname.endsWith('/manage/store/enable') && method==='POST'){
+      if(body.expectedRevision!==revisionValue())
+        return {ok:false,status:409,json:async()=>({error:'revision_conflict'})};
+      serverDoc.store={...(serverDoc.store || {}),enabled:true,navigationLabel:body.navigationLabel,cartIcon:body.cartIcon,cartIconSizePx:body.cartIconSizePx};
+      serverDoc.pages['/store'] ||= {title:'Store',navigation:{label:'Store',showInNavigation:true},composition:[]};
+      serverRevision++;
+      return {ok:true,status:200,json:async()=>({revision:revisionValue(),document:structuredClone(serverDoc),store:{...store,enabled:true}})};
+    }
     if(parsed.pathname.endsWith('/manage/mutations') && method==='POST'){
       if(integerRevisions && body?.expectedRevision!==serverRevision)
         return {ok:false,status:409,json:async()=>({error:'scope_revision_conflict',revision:serverRevision})};
@@ -3880,6 +3888,24 @@ test('header and footer edits persist in canonical shared shell composition acro
     assert.equal(header.style.fontSize,31);
     assert.equal(footer.style.fontSize,19);
     assert.equal(Object.hasOwn(saved,'elements'),false);
+  }finally{f.close();}
+});
+
+test('adding Store advances the saved baseline before the next design mutation',async()=>{
+  const f=await domFixture({doc:canonicalBusinessNavigation(canonicalDocument()),siteKey:'business',business:{id:'business-id',displayName:'Business'}});
+  try{
+    f.click('#legend-cms-store-toggle');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.ok(f.serverDocument().pages['/store']);
+    f.click('main h1');
+    f.input('[data-style-key="fontSize"]','24');
+    const saved=await f.save();
+    const mutation=f.calls.find(call=>call.url.endsWith('/manage/mutations'));
+    assert.ok(mutation,'the design edit must persist through canonical mutations');
+    const operations=JSON.parse(mutation.body).operations;
+    assert.equal(operations.some(op=>op.type==='createPage' && op.pagePath==='/store'),false,'Store is already saved by enable');
+    assert.ok(JSON.stringify(saved.pages['/']).includes('"fontSize":24'));
+    assert.ok(saved.pages['/store']);
   }finally{f.close();}
 });
 

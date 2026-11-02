@@ -5699,6 +5699,9 @@
       if(!response.ok) throw new Error(payload.message || payload.error || `Store update failed (${response.status})`);
       revision=payload.revision;
       documentState=normalizeDocument(payload.document || documentState);
+      persistedDocumentState=cloneCanonicalValue(documentState);
+      canonicalSourceDocument=null;
+      canonicalSourceRevision=null;
       storeContext=payload.store || null;
       dirty=false;
       applyStoreNavigation();
