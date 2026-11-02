@@ -4742,13 +4742,14 @@
   // compiled pages omitted its script; reattach the shared transport without
   // creating a scope-specific handler or allowing native form POSTs.
   function ensureCanonicalPublicInquiry() {
-    if (studioIsolationMode || renderInput?.server) return;
+    if (renderInput?.server) return;
+    const receptionistEntries=document.querySelectorAll('[data-legend-receptionist-entry]');
     const forms = document.querySelectorAll(
       '[data-website-inquiry]:not([data-preview]),' +
       '[data-website-experience-form][data-submit-capability="lead_capture"]:not([data-preview])'
     );
-    if (!forms.length) return;
-    for (const form of forms) {
+    if (!forms.length && !receptionistEntries.length) return;
+    for (const form of studioIsolationMode ? [] : forms) {
       if (form.dataset.legendInquiryGuard === 'true') continue;
       form.dataset.legendInquiryGuard = 'true';
       form.addEventListener('submit', event => {
@@ -4767,7 +4768,7 @@
     });
     if (loaded) return;
     const script = document.createElement('script');
-    script.src = '/public-inquiry-form.mjs';
+    script.src = SITE_KEY==='protect' ? '/js/public-inquiry-form.mjs' : '/public-inquiry-form.mjs';
     script.type = 'module';
     document.body.appendChild(script);
   }

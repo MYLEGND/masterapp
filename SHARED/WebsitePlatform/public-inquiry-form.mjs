@@ -67,6 +67,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     mountPublicInquiryForms(document);
     const mounted = mountWebsiteReceptionists(document);
     if (mounted) window.dispatchEvent(new CustomEvent('legend:public-inquiry-mounted'));
+    if (window.LEGEND_WEBSITE_STUDIO_MODE === true) return;
     if (!document.querySelector(
       '[data-website-receptionist]:not([data-preview]),' +
       '[data-website-inquiry]:not([data-preview]),' +

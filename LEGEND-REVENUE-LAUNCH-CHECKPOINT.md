@@ -2500,3 +2500,29 @@ No website draft content was saved or published during live verification.
 Existing Cloudflare publications were not republished. This release proves the
 listed application revisions and focused behavior, not every tenant's provider
 configuration, actual booking/voice availability, or zero cold-start latency.
+
+## 2026-11-01 — Shared website receptionist preview recovery
+
+Base: 1df081810ed8c4ff051715cf6c65437ebcbd34d6, existing
+isolation/local-static-assets-parity-20261101 branch. Canonical preflight
+confirmed authenticated transport and exact remote equality before edits.
+
+The existing CMS loader now initializes receptionist presentation in Studio
+and on standalone receptionist pages, using the existing scope-specific module
+path. The existing module mounts saved presentation before returning in Studio;
+it does not import calling runtime there. Business-owned labels, styles,
+placement and provider bindings remain authoritative. No global Shayla identity,
+second renderer, provider grant, permission change or website draft publication.
+
+Focused validation: 20 inquiry/receptionist/voice tests and 18 website compiler
+tests passed. New regression covers LEGEND, Protect and business scopes, form
+and standalone entries, both loading orders, saved presentation, deduplication
+and inert Studio preview. Astra independently accepted the three-file correction.
+
+Live verification remains pending publication: LEGEND Studio's existing static
+assets are served by the Website origin while public HTML comes from Protect.
+Updating Protect alone does not update those Studio assets. Existing Website
+origin deployment predates the current source; URL version hashes alone do not
+prove served bytes. Preserve existing Cloudflare routing and draft 1635.
+Provider pause/closure and accepted WebRTC readiness remain separate requirements;
+this source repair neither confirms closure nor enables calls.

@@ -8218,3 +8218,34 @@ test('results navigation follows existing redirect templates without adding Prot
     finally{f.close();}
   }
 });
+
+test('voice presentation boot is scope-specific, order-independent and inert throughout Studio',async()=>{
+  const moduleSource=publicInquiryFormSource.replaceAll('export function ','function ').replaceAll('import.meta.url',JSON.stringify('https://site.example/public-inquiry-form.mjs'));
+  for(const siteKey of ['legend','protect','business']) for(const type of ['form','receptionist']) for(const early of [false,true]){
+    const doc=canonicalDocument();
+    doc.pages['/'].composition=[canonicalNode('tenant.voice',type,type==='form'?'form':'div',{
+      ...(type==='form'?{systemKey:'canonical_inquiry'}:{}),title:'Our reception team',
+      receptionist:{enabled:true,label:'Speak with '+siteKey+' team',placement:'before'},
+      fieldPresentations:{receptionist_start:{style:{color:'#123456'}}}
+    })];
+    const f=await domFixture({siteKey,business:siteKey==='business'?{id:'business-id',displayName:'Fixture business'}:null,doc,
+      beforeEval:early?w=>{w.LEGEND_WEBSITE_STUDIO_MODE=true;w.eval(moduleSource);}:null});
+    try{
+      const moduleScripts=()=>[...f.w.document.scripts].filter(s=>/public-inquiry-form\.mjs$/.test(s.getAttribute('src')||''));
+      assert.equal(moduleScripts().length,1,siteKey+' requests exactly one shared presentation module');
+      assert.equal(moduleScripts()[0].getAttribute('src'),siteKey==='protect'?'/js/public-inquiry-form.mjs':'/public-inquiry-form.mjs');
+      if(!early) f.w.eval(moduleSource);
+      for(let i=0;i<3;i++) f.w.dispatchEvent(new f.w.Event('legend:website-content-rendered'));
+      const entries=f.w.document.querySelectorAll('[data-website-receptionist]');
+      assert.equal(entries.length,1);
+      assert.equal(entries[0].hasAttribute('data-preview'),true);
+      const button=entries[0].querySelector('[data-receptionist-start]');
+      assert.equal(button.disabled,true);assert.equal(button.textContent,'Speak with '+siteKey+' team');
+      assert.equal(button.style.color,'rgb(18, 52, 86)');
+      f.click(type==='form'?'form[data-website-inquiry]':'[data-cms-receptionist]');
+      assert.equal(f.w.document.getElementById('legend-cms-receptionist-appearance').disabled,false);
+      assert.equal(f.calls.some(c=>/receptionist\/browser|grant|webrtc/i.test(c.url||'')),false);
+      assert.equal(moduleScripts().length,1);
+    }finally{f.close();}
+  }
+});
