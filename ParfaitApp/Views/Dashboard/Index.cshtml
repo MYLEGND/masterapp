@@ -4,10 +4,10 @@
     Layout = "_InternalLayout";
 
     var commerceManagerTicket = ViewData["CommerceManagerTicket"] as string;
-    var scopedManager = !string.IsNullOrWhiteSpace(commerceManagerTicket);
+    var scopedManager = ViewData["CommerceManagerScoped"] as bool? == true || !string.IsNullOrWhiteSpace(commerceManagerTicket);
     var scopedStore = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
     string CommerceUrl(string internalPath, string scopedPath) => scopedManager
-        ? scopedPath + "?ticket=" + Uri.EscapeDataString(commerceManagerTicket!)
+        ? Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, scopedPath, commerceManagerTicket)
         : internalPath;
     var storeUrl = scopedStore?.StoreRootPath ?? "/store";
     var productsUrl = CommerceUrl("/internal/commerce/products", "/commerce/manage/products");

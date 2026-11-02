@@ -328,6 +328,10 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
                     .ToList();
 
             var normalized = NormalizeProduct(product, existingImages, ResolveTenantBadge(businessId));
+            if (normalized.Images.Select(x => x.Id).Distinct(StringComparer.Ordinal).Count() != normalized.Images.Count ||
+                normalized.InventoryBySize.Select(x => x.Id).Distinct(StringComparer.Ordinal).Count() != normalized.InventoryBySize.Count ||
+                normalized.DiscountCodes.Select(x => x.Id).Distinct(StringComparer.Ordinal).Count() != normalized.DiscountCodes.Count)
+                throw new InvalidOperationException("Product child identifiers must be unique within each collection.");
 
             if (existing is null)
             {
@@ -731,7 +735,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
         };
     }
 
-    private static void ApplyProduct(CommerceProduct entity, ParfaitProductEditorViewModel product)
+    private void ApplyProduct(CommerceProduct entity, ParfaitProductEditorViewModel product)
     {
         entity.ExternalProductKey = product.Id;
         entity.BillingKind = product.BillingKind;
@@ -752,61 +756,75 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
         SyncDiscounts(entity, product.DiscountCodes);
     }
 
-    private static void SyncImages(CommerceProduct entity, IReadOnlyList<ParfaitProductImageEditorViewModel> images)
+    private void SyncImages(CommerceProduct entity, IReadOnlyList<ParfaitProductImageEditorViewModel> images)
     {
         var normalized = NormalizeImages(images, entity.Name);
-        entity.Images.Clear();
+        foreach (var removed in entity.Images.Where(row => !normalized.Any(item => item.Id == row.ExternalImageKey)).ToList())
+            _db.Remove(removed);
 
         foreach (var image in normalized)
         {
-            entity.Images.Add(new CommerceProductImage
+            var row = entity.Images.SingleOrDefault(item => item.ExternalImageKey == image.Id);
+            if (row is null)
             {
-                ExternalImageKey = image.Id,
-                ImageUrl = image.ImageUrl,
-                FileName = image.FileName,
-                AltText = image.AltText,
-                IsPrimary = image.IsPrimary,
-                DisplayOrder = image.DisplayOrder,
-                ObjectFit = image.ObjectFit,
-                ObjectPositionX = image.ObjectPositionX,
-                ObjectPositionY = image.ObjectPositionY,
-                Zoom = image.Zoom
-            });
+                row = new CommerceProductImage { CommerceProductId = entity.Id, ExternalImageKey = image.Id };
+                entity.Images.Add(row);
+                _db.Add(row);
+            }
+            row.ImageUrl = image.ImageUrl;
+            row.FileName = image.FileName;
+            row.AltText = image.AltText;
+            row.IsPrimary = image.IsPrimary;
+            row.DisplayOrder = image.DisplayOrder;
+            row.ObjectFit = image.ObjectFit;
+            row.ObjectPositionX = image.ObjectPositionX;
+            row.ObjectPositionY = image.ObjectPositionY;
+            row.Zoom = image.Zoom;
         }
     }
 
-    private static void SyncInventory(CommerceProduct entity, List<ParfaitProductSizeInventoryEditorViewModel> inventory)
+    private void SyncInventory(CommerceProduct entity, List<ParfaitProductSizeInventoryEditorViewModel> inventory)
     {
-        entity.InventoryItems.Clear();
+        var normalized = NormalizeInventory(inventory);
+        foreach (var removed in entity.InventoryItems.Where(row => !normalized.Any(item => item.Id == row.ExternalInventoryKey)).ToList())
+            _db.Remove(removed);
 
-        foreach (var item in NormalizeInventory(inventory))
+        foreach (var item in normalized)
         {
-            entity.InventoryItems.Add(new CommerceProductInventoryItem
+            var row = entity.InventoryItems.SingleOrDefault(existing => existing.ExternalInventoryKey == item.Id);
+            if (row is null)
             {
-                ExternalInventoryKey = item.Id,
-                Size = item.Size,
-                IsEnabled = item.IsEnabled,
-                StockQuantity = item.StockQuantity,
-                LowStockThreshold = item.LowStockThreshold,
-                DisplayOrder = item.DisplayOrder
-            });
+                row = new CommerceProductInventoryItem { CommerceProductId = entity.Id, ExternalInventoryKey = item.Id };
+                entity.InventoryItems.Add(row);
+                _db.Add(row);
+            }
+            row.Size = item.Size;
+            row.IsEnabled = item.IsEnabled;
+            row.StockQuantity = item.StockQuantity;
+            row.LowStockThreshold = item.LowStockThreshold;
+            row.DisplayOrder = item.DisplayOrder;
         }
     }
 
-    private static void SyncDiscounts(CommerceProduct entity, List<ParfaitProductDiscountCodeEditorViewModel> discounts)
+    private void SyncDiscounts(CommerceProduct entity, List<ParfaitProductDiscountCodeEditorViewModel> discounts)
     {
-        entity.Discounts.Clear();
+        var normalized = NormalizeDiscountCodes(discounts);
+        foreach (var removed in entity.Discounts.Where(row => !normalized.Any(item => item.Id == row.ExternalDiscountKey)).ToList())
+            _db.Remove(removed);
 
-        foreach (var discount in NormalizeDiscountCodes(discounts))
+        foreach (var discount in normalized)
         {
-            entity.Discounts.Add(new CommerceProductDiscount
+            var row = entity.Discounts.SingleOrDefault(item => item.ExternalDiscountKey == discount.Id);
+            if (row is null)
             {
-                ExternalDiscountKey = discount.Id,
-                Code = discount.Code,
-                DiscountType = discount.DiscountType,
-                Amount = discount.Amount,
-                IsActive = discount.IsActive
-            });
+                row = new CommerceProductDiscount { CommerceProductId = entity.Id, ExternalDiscountKey = discount.Id };
+                entity.Discounts.Add(row);
+                _db.Add(row);
+            }
+            row.Code = discount.Code;
+            row.DiscountType = discount.DiscountType;
+            row.Amount = discount.Amount;
+            row.IsActive = discount.IsActive;
         }
     }
 

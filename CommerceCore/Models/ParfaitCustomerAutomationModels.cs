@@ -197,18 +197,18 @@ public sealed class ParfaitAutomationWorkflowEditorInput
 
     [Required]
     [StringLength(140)]
-    public string Subject { get; set; } = "Hey {{first_name}}, Parfait is still with you";
+    public string Subject { get; set; } = "Hey {{first_name}}, thanks for shopping with us";
 
     [Required]
     [StringLength(140)]
-    public string Headline { get; set; } = "Stay locked into Parfait.";
+    public string Headline { get; set; } = "Thank you for your order.";
 
     [Required]
     [StringLength(2400)]
-    public string Body { get; set; } = "We wanted to follow up and keep your Parfait momentum moving. {{product_names}} still looks strong on you.";
+    public string Body { get; set; } = "We hope you are enjoying {{product_names}}. Explore what is new in our store.";
 
     [StringLength(60)]
-    public string CtaLabel { get; set; } = "Open Parfait";
+    public string CtaLabel { get; set; } = "Visit our store";
 
     [StringLength(240)]
     public string CtaUrl { get; set; } = "/store";

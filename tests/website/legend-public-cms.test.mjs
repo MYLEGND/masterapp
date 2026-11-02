@@ -420,7 +420,11 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
     const method=init.method || 'GET';
     const reject=payload=>({ok:false,status:denied?401:400,json:async()=>payload});
     if(denied) return {ok:false,status:401,json:async()=>({error:'unauthorized'})};
-    if(parsed.pathname==='/commerce/manage/preview' && parsed.searchParams.get('catalogOnly')==='true') return {ok:true,status:200,text:async()=>'<article class="sp-shop-card" data-cms-store-style="card"><h2 data-cms-store-style="title">Live synthetic product</h2><a href="/store/product/synthetic">View product</a></article>'};
+    if(parsed.pathname==='/commerce/manage/preview' && parsed.searchParams.get('catalogOnly')==='true') {
+      // The real editor CORS policy does not allow credentialed cross-origin requests.
+      if(parsed.origin!==w.location.origin && init.credentials==='include') throw new TypeError('Credentialed CORS request rejected');
+      return {ok:true,status:200,text:async()=>'<article class="sp-shop-card" data-cms-store-style="card"><h2 data-cms-store-style="title">Live synthetic product</h2><a href="/store/product/synthetic">View product</a></article>'};
+    }
 
     if(parsed.pathname.endsWith('/manage/agent/node') && method==='GET'){
       const id=parsed.searchParams.get('id');
@@ -503,6 +507,14 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
     if(parsed.pathname.endsWith('/manage/media') && method==='POST'){
       const file=init.body?.get?.('file'); const id='33333333-3333-3333-3333-333333333333';
       return {ok:true,status:200,json:async()=>mediaUploadPayload || {id,name:file?.name || 'upload',url:'https://site.example/api/website-content/media/'+id,contentType:file?.type || 'image/png',sizeBytes:file?.size || 1024,createdUtc:'2026-09-28T00:00:00Z'}};
+    }
+    if(parsed.pathname.endsWith('/manage/store/enable') && method==='POST'){
+      if(body.expectedRevision!==revisionValue())
+        return {ok:false,status:409,json:async()=>({error:'revision_conflict'})};
+      serverDoc.store={...(serverDoc.store || {}),enabled:true,navigationLabel:body.navigationLabel,cartIcon:body.cartIcon,cartIconSizePx:body.cartIconSizePx};
+      serverDoc.pages['/store'] ||= {title:'Store',navigation:{label:'Store',showInNavigation:true},composition:[]};
+      serverRevision++;
+      return {ok:true,status:200,json:async()=>({revision:revisionValue(),document:structuredClone(serverDoc),store:{...store,enabled:true}})};
     }
     if(parsed.pathname.endsWith('/manage/mutations') && method==='POST'){
       if(integerRevisions && body?.expectedRevision!==serverRevision)
@@ -3876,6 +3888,24 @@ test('header and footer edits persist in canonical shared shell composition acro
     assert.equal(header.style.fontSize,31);
     assert.equal(footer.style.fontSize,19);
     assert.equal(Object.hasOwn(saved,'elements'),false);
+  }finally{f.close();}
+});
+
+test('adding Store advances the saved baseline before the next design mutation',async()=>{
+  const f=await domFixture({doc:canonicalBusinessNavigation(canonicalDocument()),siteKey:'business',business:{id:'business-id',displayName:'Business'}});
+  try{
+    f.click('#legend-cms-store-toggle');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.ok(f.serverDocument().pages['/store']);
+    f.click('main h1');
+    f.input('[data-style-key="fontSize"]','24');
+    const saved=await f.save();
+    const mutation=f.calls.find(call=>call.url.endsWith('/manage/mutations'));
+    assert.ok(mutation,'the design edit must persist through canonical mutations');
+    const operations=JSON.parse(mutation.body).operations;
+    assert.equal(operations.some(op=>op.type==='createPage' && op.pagePath==='/store'),false,'Store is already saved by enable');
+    assert.ok(JSON.stringify(saved.pages['/']).includes('"fontSize":24'));
+    assert.ok(saved.pages['/store']);
   }finally{f.close();}
 });
 
@@ -8338,7 +8368,7 @@ for(const siteKey of ['business','legend','protect']) test(`Store is an authored
     {id:'store-heading',type:'heading',tag:'h1',text:'Our collection'},
     {id:'store-catalog',type:'container',tag:'div',systemKey:'commerce_catalog',className:'sp-shop-grid',children:[],style:{},layout:{},fieldPresentations:{'store:title':{style:{color:'#ffcc33',fontSize:24}}}}
   ]};
-  const f=await domFixture({siteKey,doc,business:{id:'business-id',displayName:'Business'},store:{enabled:true,storefrontUrl:'/store',previewUrl:'https://site.example/commerce/manage/preview?ticket=ticket',managerUrl:'https://site.example/internal/login'}});
+  const f=await domFixture({siteKey,doc,business:{id:'business-id',displayName:'Business'},store:{enabled:true,storefrontUrl:'/store',previewUrl:'https://manager.example/commerce/manage/preview?ticket=ticket',managerUrl:'https://site.example/internal/login'}});
   try{
     const selector=f.w.document.getElementById('legend-cms-page-select');
     assert.equal([...selector.options].filter(o=>o.value==='/store').length,1);
@@ -8347,6 +8377,10 @@ for(const siteKey of ['business','legend','protect']) test(`Store is an authored
     await new Promise(resolve=>setTimeout(resolve,30));
     assert.equal(f.w.document.querySelector('main h1').textContent,'Our collection');
     assert.equal(f.w.document.querySelectorAll('[data-legend-store-catalog] .sp-shop-card').length,1);
+    const previewRequest=f.calls.find(call=>call.url.includes('catalogOnly=true'));
+    assert.equal(previewRequest.credentials,'omit');
+    assert.equal(previewRequest.cache,'no-store');
+    assert.equal(new URL(previewRequest.url).searchParams.get('ticket'),'ticket');
     assert.equal(f.w.document.querySelector('[data-legend-store-catalog] a').hasAttribute('href'),false);
     assert.match(f.w.document.querySelector('style[data-store-catalog-presentation]').textContent,/color:/);
     assert.equal(f.w.document.querySelector('[data-cms-store-style=title]').dataset.cmsFieldKey,'store:title');

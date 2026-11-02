@@ -3238,7 +3238,8 @@
           const url=storePreviewUrl();
           if(url){
             const target=new URL(url,location.origin);target.searchParams.set('catalogOnly','true');
-            fetch(target.toString(),{credentials:'include'}).then(async response=>{
+            // Preview authority is the scoped ticket, never cross-origin cookies.
+            fetch(target.toString(),{credentials:'omit',cache:'no-store'}).then(async response=>{
               if(!response.ok) throw new Error('Catalog preview unavailable');
               const markup=await response.text();
               if(!el.isConnected)return;
@@ -5698,6 +5699,9 @@
       if(!response.ok) throw new Error(payload.message || payload.error || `Store update failed (${response.status})`);
       revision=payload.revision;
       documentState=normalizeDocument(payload.document || documentState);
+      persistedDocumentState=cloneCanonicalValue(documentState);
+      canonicalSourceDocument=null;
+      canonicalSourceRevision=null;
       storeContext=payload.store || null;
       dirty=false;
       applyStoreNavigation();

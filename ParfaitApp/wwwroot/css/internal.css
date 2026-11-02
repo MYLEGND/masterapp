@@ -1,90 +1,127 @@
+/* Internal commerce palette. Tenant identity selects the palette on the root;
+   components, forms and analytics share these same semantic roles. */
 :root {
-    --pf-cocoa-rgb: 86, 49, 34;
-    --pf-cocoa: rgb(var(--pf-cocoa-rgb));
-    --pf-cocoa-soft: #7d513d;
-    --pf-cream: #ffffff;
-    --pf-surface: #ffffff;
-    --pf-surface-soft: #eddccc;
-    --pf-surface-muted-rgb: 225, 199, 176;
-    --pf-surface-muted: rgb(var(--pf-surface-muted-rgb));
-    --pf-surface-panel: linear-gradient(180deg, rgba(255, 251, 247, 1) 0%, rgba(233, 214, 198, 0.98) 100%);
-    --pf-surface-panel-strong: linear-gradient(180deg, rgba(255, 249, 243, 1) 0%, rgba(223, 198, 177, 0.99) 100%);
-    --pf-surface-panel-soft: linear-gradient(180deg, rgba(255, 253, 250, 1) 0%, rgba(238, 221, 206, 0.97) 100%);
-    --pf-text: #140b08;
-    --pf-text-soft: #241712;
-    --pf-text-muted: #5e483c;
-    --pf-line: rgba(86, 49, 34, 0.32);
-    --pf-line-strong: rgba(86, 49, 34, 0.74);
-    --pf-line-bold: rgba(86, 49, 34, 0.88);
+    color-scheme: dark;
+    --pf-base-rgb: 9, 18, 31;
+    --pf-raised-rgb: 20, 33, 50;
+    --pf-accent-rgb: 213, 181, 119;
+    --pf-text-rgb: 237, 241, 246;
+    --pf-muted-rgb: 166, 180, 198;
+    --pf-cocoa-rgb: var(--pf-accent-rgb);
+    --pf-cocoa: rgb(var(--pf-accent-rgb));
+    --pf-cocoa-soft: var(--pf-cocoa);
+    --pf-bg: rgb(var(--pf-base-rgb));
+    --pf-page: var(--pf-bg);
+    --pf-surface: rgb(var(--pf-raised-rgb));
+    --pf-surface-soft: rgba(var(--pf-text-rgb), .045);
+    --pf-surface-muted-rgb: var(--pf-raised-rgb);
+    --pf-surface-muted: var(--pf-surface);
+    --pf-surface-panel: var(--pf-surface);
+    --pf-surface-panel-strong: var(--pf-surface);
+    --pf-surface-panel-soft: var(--pf-surface-soft);
+    --pf-text: rgb(var(--pf-text-rgb));
+    --pf-text-soft: var(--pf-text);
+    --pf-text-muted: rgb(var(--pf-muted-rgb));
+    --pf-line: rgba(var(--pf-text-rgb), .12);
+    --pf-line-strong: rgba(var(--pf-text-rgb), .24);
+    --pf-line-bold: rgba(var(--pf-accent-rgb), .55);
     --pf-font-ui: "Nunito Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    --pf-shadow-hero: 0 34px 72px rgba(31, 18, 13, 0.22);
-    --pf-shadow-card: 0 20px 44px rgba(31, 18, 13, 0.1);
-    --pf-shadow-card-strong: 0 28px 56px rgba(31, 18, 13, 0.14);
-    --pf-shadow-overlay: 0 36px 90px rgba(27, 15, 11, 0.38);
-    --pf-neutral-bg: rgba(86, 49, 34, 0.2);
-    --pf-neutral-line: rgba(86, 49, 34, 0.62);
-    --pf-neutral-text: #563122;
-    --pf-success-bg: rgba(22, 101, 52, 0.32);
-    --pf-success-line: rgba(22, 101, 52, 0.82);
-    --pf-success-text: #11472a;
-    --pf-info-bg: rgba(29, 78, 216, 0.28);
-    --pf-info-line: rgba(29, 78, 216, 0.8);
-    --pf-info-text: #1a4aa7;
-    --pf-warning-bg: rgba(180, 83, 9, 0.3);
-    --pf-warning-line: rgba(180, 83, 9, 0.78);
-    --pf-warning-text: #8f4a0d;
-    --pf-danger-bg: rgba(185, 28, 28, 0.28);
-    --pf-danger-line: rgba(185, 28, 28, 0.78);
-    --pf-danger-text: #9a1e1e;
-    --pf-tile-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 238, 230, 0.96) 100%);
-    --pf-tile-border: rgba(86, 49, 34, 0.52);
-    --pf-tile-border-strong: rgba(86, 49, 34, 0.72);
-    --pf-tile-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.92),
-        0 14px 28px rgba(31, 18, 13, 0.1);
-    --pf-nav-bg: linear-gradient(145deg, #6d4738 0%, #4a2c21 52%, #271713 100%);
-    --pf-nav-bg-strong: linear-gradient(145deg, #5e3c30 0%, #3d241c 54%, #221311 100%);
-    --pf-nav-line: rgba(255, 235, 221, 0.22);
-    --pf-nav-line-strong: rgba(255, 235, 221, 0.34);
-    --pf-nav-surface: rgba(255, 248, 241, 0.12);
-    --pf-nav-surface-strong: rgba(255, 248, 241, 0.18);
-    --pf-nav-text: #fff8f2;
-    --pf-nav-muted: rgba(255, 236, 222, 0.76);
-    --pf-radius-sm: 16px;
-    --pf-radius-md: 22px;
-    --pf-radius-lg: 28px;
-    --pf-analytics-deep: #0b0705;
-    --pf-analytics-raised: #241711;
-    --pf-analytics-gold: #d7b17a;
-    --pf-analytics-panel: linear-gradient(180deg, #160f0b, #090604);
-    --pf-analytics-card: linear-gradient(180deg, #3b2519, #1c110c);
-    --analytics-surface: var(--pf-analytics-deep);
-    --analytics-surface-rgb: 11, 7, 5;
-    --analytics-accent-rgb: 215, 177, 122;
-    --analytics-label: var(--pf-analytics-gold);
-    --analytics-panel-background: var(--pf-analytics-panel);
-    --analytics-card-background: var(--pf-analytics-card);
-    --analytics-select-background: var(--pf-surface-soft);
+    --pf-shadow-hero: 0 8px 24px rgba(0, 0, 0, .14);
+    --pf-shadow-card: 0 4px 16px rgba(0, 0, 0, .10);
+    --pf-shadow-card-strong: var(--pf-shadow-card);
+    --pf-shadow-overlay: 0 20px 60px rgba(0, 0, 0, .4);
+    --pf-neutral-bg: rgba(var(--pf-text-rgb), .06);
+    --pf-neutral-line: var(--pf-line);
+    --pf-neutral-text: var(--pf-text-muted);
+    --pf-success-bg: rgba(76, 192, 142, .10);
+    --pf-success-line: rgba(76, 192, 142, .3);
+    --pf-success-text: #7ddbb1;
+    --pf-info-bg: rgba(110, 167, 240, .10);
+    --pf-info-line: rgba(110, 167, 240, .3);
+    --pf-info-text: #97c2f7;
+    --pf-warning-bg: rgba(224, 177, 89, .10);
+    --pf-warning-line: rgba(224, 177, 89, .3);
+    --pf-warning-text: #e7c381;
+    --pf-danger-bg: rgba(240, 118, 126, .10);
+    --pf-danger-line: rgba(240, 118, 126, .3);
+    --pf-danger-text: #f4a0a6;
+    --pf-tile-bg: var(--pf-surface);
+    --pf-tile-border: var(--pf-line);
+    --pf-tile-border-strong: var(--pf-line-strong);
+    --pf-tile-shadow: none;
+    --pf-nav-bg: var(--pf-bg);
+    --pf-nav-bg-strong: var(--pf-bg);
+    --pf-nav-line: var(--pf-line);
+    --pf-nav-line-strong: var(--pf-line-strong);
+    --pf-nav-surface: var(--pf-surface-soft);
+    --pf-nav-surface-strong: var(--pf-surface);
+    --pf-nav-text: var(--pf-text);
+    --pf-nav-muted: var(--pf-text-muted);
+    --pf-radius-sm: 8px;
+    --pf-radius-md: 12px;
+    --pf-radius-lg: 16px;
+    --pf-ink: var(--pf-text);
+    --pf-espresso: var(--pf-bg);
+    --pf-panel: var(--pf-surface);
+    --pf-panel-soft: var(--pf-surface);
+    --pf-card: var(--pf-surface);
+    --pf-card-2: var(--pf-surface-soft);
+    --pf-gold: var(--pf-cocoa);
+    --pf-cream: var(--pf-text);
+    --pf-muted-dark: var(--pf-text-muted);
+    --pf-muted-light: var(--pf-text-muted);
+    --pf-analytics-deep: var(--pf-bg);
+    --pf-analytics-raised: var(--pf-surface);
+    --pf-analytics-gold: var(--pf-gold);
+    --pf-analytics-panel: var(--pf-surface);
+    --pf-analytics-card: var(--pf-surface);
+    --analytics-surface: var(--pf-bg);
+    --analytics-surface-rgb: var(--pf-base-rgb);
+    --analytics-accent-rgb: var(--pf-accent-rgb);
+    --analytics-label: var(--pf-gold);
+    --analytics-module-background: var(--pf-surface);
+    --analytics-module-border: var(--pf-line);
+    --analytics-module-bar: rgba(var(--pf-accent-rgb), .4);
+    --analytics-health-action-background: var(--pf-surface);
+    --analytics-health-action-border: var(--pf-line-strong);
+    --analytics-health-action-ink: var(--pf-text);
+    --analytics-health-action-shadow: none;
+    --analytics-panel-background: var(--pf-surface);
+    --analytics-card-background: var(--pf-surface);
+    --analytics-select-background: var(--pf-surface);
     --analytics-select-ink: var(--pf-text);
-    --analytics-action-background: linear-gradient(180deg, #f1dfc8, #c9965f);
-    --analytics-neutral-background: var(--pf-analytics-card);
-    --analytics-neutral-line: rgba(215, 177, 122, .2);
-    --analytics-neutral-ink: var(--pf-nav-muted);
+    --analytics-action-background: var(--pf-gold);
+    --analytics-neutral-background: var(--pf-surface);
+    --analytics-neutral-line: var(--pf-line);
+    --analytics-neutral-ink: var(--pf-text-muted);
     --web-shadow: var(--pf-shadow-overlay);
-    /* Shared analytics consumes the internal shell's existing brand tokens. */
-    --legend-app-surface: var(--pf-analytics-deep);
-    --legend-app-surface-elevated: var(--pf-analytics-raised);
-    --legend-app-on-dark: var(--pf-nav-text);
-    --legend-app-on-dark-muted: var(--pf-nav-muted);
-    --legend-app-accent: var(--pf-analytics-gold);
-    --legend-app-accent-bright: var(--pf-surface-soft);
-    --legend-app-control: var(--pf-analytics-raised);
-    --legend-app-control-line: var(--pf-nav-line-strong);
+    --legend-app-surface: var(--pf-bg);
+    --legend-app-surface-elevated: var(--pf-surface);
+    --legend-app-on-dark: var(--pf-text);
+    --legend-app-on-dark-muted: var(--pf-text-muted);
+    --legend-app-accent: var(--pf-gold);
+    --legend-app-accent-bright: var(--pf-gold);
+    --legend-app-control: var(--pf-surface);
+    --legend-app-control-line: var(--pf-line-strong);
     --legend-app-panel-soft: var(--pf-surface);
     --legend-app-radius: var(--pf-radius-md);
     --legend-app-radius-compact: var(--pf-radius-sm);
     --web-ink: var(--pf-text);
+    --bs-body-color: var(--pf-text);
+    --bs-body-color-rgb: var(--pf-text-rgb);
+    --bs-body-bg: var(--pf-bg);
+    --bs-secondary-color: var(--pf-text-muted);
+    --bs-secondary-color-rgb: var(--pf-muted-rgb);
+    --bs-tertiary-bg: var(--pf-surface);
+    --bs-border-color: var(--pf-line);
+}
 
+:root[data-commerce-theme="parfait"] {
+    --pf-base-rgb: 24, 18, 15;
+    --pf-raised-rgb: 43, 33, 27;
+    --pf-accent-rgb: 217, 177, 122;
+    --pf-text-rgb: 247, 240, 232;
+    --pf-muted-rgb: 190, 173, 157;
 }
 
 *,
@@ -110,14 +147,12 @@ html {
 }
 
 .pf-internal-body {
-    background: var(--pf-bg, #ffffff);
+    background: var(--pf-bg);
 }
 
 
 .pf-internal-auth-body {
-    background:
-        radial-gradient(circle at top, rgba(125, 81, 61, 0.06), transparent 28%),
-        linear-gradient(180deg, #ffffff 0%, #faf8f6 100%);
+    background: transparent;
 }
 
 :where(.pf-internal-body, .pf-internal-auth-body) a {
@@ -131,31 +166,28 @@ html {
 }
 
 .pf-team-page .pf-module-card {
-    background:
-        radial-gradient(circle at 0% 0%, rgba(190,132,84,.18), transparent 22rem),
-        linear-gradient(145deg, #3a2015 0%, #1b0e08 100%);
-    border: 1px solid rgba(218,183,151,.20);
-    color: #fff7ee;
+    background: transparent;
+    border: 1px solid var(--pf-line);
+    color: var(--pf-text);
 }
 
 .pf-team-page .pf-module-title,
 .pf-team-page .pf-commerce-panel h2 {
-    color: #fff7ee;
+    color: var(--pf-text);
 }
 
 .pf-team-page .text-muted,
 .pf-team-page .pf-rail-note {
-    color: rgba(255,239,225,.68) !important;
+    color: var(--pf-text-muted) !important;
 }
 
 .pf-team-invite-form {
     display: grid;
     gap: 12px;
     padding: 14px;
-    border: 1px solid rgba(218,183,151,.20);
-    border-radius: 18px;
-    background:
-        linear-gradient(135deg, rgba(255,248,240,.10), rgba(255,248,240,.035));
+    border: 1px solid var(--pf-line);
+    border-radius: var(--pf-radius-md);
+    background: var(--pf-surface);
 }
 
 .pf-team-invite-fields {
@@ -172,9 +204,9 @@ html {
 }
 
 .pf-team-page .pf-team-field label {
-    color: #e7bf8b;
+    color: var(--pf-gold);
     font-size: .66rem;
-    font-weight: 900;
+    font-weight: 800;
     letter-spacing: .13em;
     text-transform: uppercase;
 }
@@ -183,10 +215,10 @@ html {
 .pf-team-field select {
     width: 100%;
     min-height: 40px;
-    border: 1px solid rgba(218,183,151,.34);
+    border: 1px solid var(--pf-line);
     border-radius: 12px;
-    background: rgba(255,250,245,.96);
-    color: #1d100a;
+    background: var(--pf-surface);
+    color: var(--pf-text);
     font: inherit;
     font-weight: 750;
     padding: 0 12px;
@@ -202,15 +234,15 @@ html {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     overflow: hidden;
-    border: 1px solid rgba(218,183,151,.18);
+    border: 1px solid var(--pf-line);
     border-radius: 14px;
-    background: rgba(8,4,2,.18);
+    background: var(--pf-surface);
 }
 
 .pf-team-role-option {
     min-width: 0;
     padding: 9px 10px;
-    border-right: 1px solid rgba(218,183,151,.14);
+    border-right: 1px solid var(--pf-line);
 }
 
 .pf-team-role-option:last-child {
@@ -219,9 +251,9 @@ html {
 
 .pf-team-role-option strong {
     display: block;
-    color: #f7d3a7;
+    color: var(--pf-gold);
     font-size: .68rem;
-    font-weight: 900;
+    font-weight: 800;
     letter-spacing: .10em;
     text-transform: uppercase;
 }
@@ -229,14 +261,14 @@ html {
 .pf-team-role-option span {
     display: block;
     margin-top: 3px;
-    color: rgba(255,243,232,.72);
+    color: var(--pf-text-muted);
     font-size: .72rem;
     line-height: 1.28;
 }
 
 .pf-team-meta {
     margin: 0;
-    color: rgba(255,243,232,.74);
+    color: var(--pf-text-muted);
     font-size: .76rem;
 }
 
@@ -253,7 +285,7 @@ html {
 
 .pf-founder-lock strong,
 .pf-team-list strong {
-    color: #f7d3a7;
+    color: var(--pf-gold);
     font-size: .74rem;
     font-weight: 850;
 }
@@ -261,7 +293,7 @@ html {
 .pf-founder-lock span,
 .pf-team-list span,
 .pf-team-card-copy {
-    color: rgba(255,243,232,.72);
+    color: var(--pf-text-muted);
     font-size: .82rem;
     line-height: 1.38;
 }
@@ -275,18 +307,18 @@ html {
 
 .pf-team-card-title {
     margin: 0;
-    color: #fff7ee;
+    color: var(--pf-text);
     font-size: 1rem;
-    font-weight: 900;
+    font-weight: 800;
 }
 
 .pf-role-pill {
     display: inline-flex;
     margin-top: 10px;
     padding: 4px 8px;
-    border: 1px solid rgba(218,183,151,.25);
+    border: 1px solid var(--pf-line);
     border-radius: 999px;
-    color: #f7d3a7;
+    color: var(--pf-gold);
     font-size: .7rem;
     font-weight: 850;
 }
@@ -303,9 +335,9 @@ html {
 
 .pf-team-empty {
     padding: 16px;
-    border: 1px dashed rgba(218,183,151,.25);
+    border: 1px dashed var(--pf-line);
     border-radius: 14px;
-    color: rgba(255,243,232,.72);
+    color: var(--pf-text-muted);
 }
 
 @media (max-width: 1100px) {
@@ -323,7 +355,7 @@ html {
 
     .pf-team-role-option {
         border-right: 0;
-        border-bottom: 1px solid rgba(218,183,151,.14);
+        border-bottom: 1px solid var(--pf-line);
     }
 
     .pf-team-role-option:last-child {
@@ -340,19 +372,19 @@ html {
 /* === PARFAIT ACTIVE INTERNAL PAGE SHELL START === */
 .pf-page-shell {
     width: 100%;
-    padding: 22px 18px 48px;
+    padding: 18px 20px 32px;
 }
 
 .pf-shell {
     width: min(100%, 1480px);
     margin: 0 auto;
     display: grid;
-    gap: 22px;
+    gap: 16px;
 }
 
 .pf-shell > .pf-command-page {
     display: grid;
-    gap: 22px;
+    gap: 16px;
 }
 
 .pf-shell > .pf-command-page > header {
@@ -383,10 +415,10 @@ html {
     padding: 0 clamp(1rem, 2vw, 1.45rem);
     border: 1px solid var(--pf-nav-line);
     border-top: 0;
-    border-bottom-left-radius: 28px;
-    border-bottom-right-radius: 28px;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
     background: var(--pf-nav-bg);
-    box-shadow: 0 22px 48px rgba(31, 18, 13, 0.26);
+    box-shadow: none;
     color: var(--pf-nav-text);
 }
 
@@ -394,16 +426,14 @@ html {
     content: "";
     position: absolute;
     inset: 0;
-    background:
-        radial-gradient(circle at top left, rgba(255, 231, 213, 0.12), transparent 30%),
-        linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 36%);
+    background: transparent;
     pointer-events: none;
 }
 
 .pf-header-inner {
     width: min(100%, 1480px);
     margin: 0 auto;
-    padding: 14px 0 16px;
+    padding: 10px 0;
 }
 
 .pf-header-main {
@@ -436,8 +466,8 @@ html {
     padding: 9px;
     border-radius: 14px;
     border: 1px solid var(--pf-nav-line-strong);
-    background: linear-gradient(180deg, rgba(255, 248, 241, 0.2), rgba(255, 248, 241, 0.1));
-    box-shadow: 0 16px 28px rgba(20, 10, 8, 0.22);
+    background: var(--pf-surface);
+    box-shadow: none;
 }
 
 .pf-brand-logo {
@@ -464,41 +494,12 @@ html {
     text-transform: uppercase;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 .pf-shell {
     width: min(100%, 1480px);
     margin: 0 auto;
     display: grid;
     gap: 20px;
 }
-
-.pf-panel,
-
-.pf-panel,
-
 
 .pf-module-link {
     display: block;
@@ -507,13 +508,11 @@ html {
     text-decoration: none;
 }
 
-
-
 .pf-module-title {
     margin: 0 0 0.3rem;
     color: var(--pf-text);
     font-size: 1.2rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.05em;
     line-height: 1.06;
     text-transform: uppercase;
@@ -539,43 +538,41 @@ html {
     padding: 0 0.82rem;
     border-radius: 999px;
     border: 1px solid var(--pf-neutral-line);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(227, 203, 184, 0.96));
+    background: var(--pf-surface);
     color: var(--pf-neutral-text);
     font-size: 0.68rem;
-    font-weight: 980;
+    font-weight: 800;
     letter-spacing: 0.11em;
     text-transform: uppercase;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.86),
-        0 10px 20px rgba(31, 18, 13, 0.08);
+    box-shadow: none;
 }
 
 .pf-status--success,
 .pf-pill.is-live,
 .pf-command-badge.is-success {
     border-color: var(--pf-success-line);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.68), var(--pf-success-bg));
+    background: var(--pf-surface);
     color: var(--pf-success-text);
 }
 
 .pf-status--info,
 .pf-command-badge.is-info {
     border-color: var(--pf-info-line);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.62), var(--pf-info-bg));
+    background: var(--pf-surface);
     color: var(--pf-info-text);
 }
 
 .pf-status--warning,
 .pf-command-badge.is-warning {
     border-color: var(--pf-warning-line);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.64), var(--pf-warning-bg));
+    background: var(--pf-surface);
     color: var(--pf-warning-text);
 }
 
 .pf-status--danger,
 .pf-command-badge.is-danger {
     border-color: var(--pf-danger-line);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.64), var(--pf-danger-bg));
+    background: var(--pf-surface);
     color: var(--pf-danger-text);
 }
 
@@ -583,7 +580,7 @@ html {
 .pf-pill.is-muted,
 .pf-command-badge.is-muted {
     border-color: var(--pf-neutral-line);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), var(--pf-neutral-bg));
+    background: var(--pf-surface);
     color: var(--pf-neutral-text);
 }
 
@@ -610,7 +607,7 @@ html {
 .pf-mini-label {
     color: var(--pf-cocoa);
     font-size: 0.68rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.12em;
     text-transform: uppercase;
 }
@@ -618,7 +615,7 @@ html {
 .pf-mini-value {
     margin-top: 0.4rem;
     color: var(--pf-text);
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: -0.04em;
     font-style: normal;
 }
@@ -627,24 +624,11 @@ html {
     font-size: 1.02rem;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 .pf-rail-label,
 .pf-focus-label {
     color: var(--pf-tone-ink);
     font-size: 0.68rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.16em;
     text-transform: uppercase;
 }
@@ -654,7 +638,7 @@ html {
     margin-top: -0.15rem;
     color: var(--pf-text);
     font-size: clamp(1.85rem, 3.2vw, 2.6rem);
-    font-weight: 980;
+    font-weight: 800;
     font-style: normal;
     letter-spacing: -0.04em;
     line-height: 0.96;
@@ -671,19 +655,25 @@ html {
     line-height: 1.48;
 }
 
-.pf-rail-grid,
+.pf-rail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
 
-.pf-rail-grid > div,
+.pf-rail-grid > div {
+    display: grid;
+    gap: 3px;
+}
 
+.pf-rail-grid span {
+    color: var(--pf-text-muted);
+    font-size: .75rem;
+}
 
-.pf-rail-grid span,
-
-.pf-rail-grid strong,
-
-
-
-
-
+.pf-rail-grid strong {
+    font-size: .9rem;
+}
 
 .pf-analytics-command-shell {
     display: flex;
@@ -703,7 +693,7 @@ html {
 .pf-analytics-band-label {
     color: var(--pf-cocoa);
     font-size: 0.7rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.16em;
     text-transform: uppercase;
 }
@@ -712,7 +702,7 @@ html {
     margin: 0.42rem 0 0;
     color: var(--pf-text);
     font-size: clamp(1.52rem, 2.7vw, 2rem);
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.05em;
     line-height: 1.03;
     text-transform: uppercase;
@@ -744,7 +734,7 @@ html {
     gap: 0.35rem;
     padding: 0.95rem 1rem;
     border: 1.6px solid var(--pf-line-strong);
-    border-radius: 18px;
+    border-radius: var(--pf-radius-md);
     background: var(--pf-tile-bg);
     box-shadow: var(--pf-tile-shadow);
 }
@@ -753,7 +743,7 @@ html {
 .pf-analytics-board-chip {
     color: var(--pf-cocoa);
     font-size: 0.7rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.14em;
     line-height: 1.3;
     text-transform: uppercase;
@@ -762,7 +752,7 @@ html {
 .pf-analytics-quality-card strong {
     color: var(--pf-text);
     font-size: 0.94rem;
-    font-weight: 900;
+    font-weight: 800;
     letter-spacing: -0.03em;
     line-height: 1.25;
 }
@@ -802,57 +792,43 @@ html {
 }
 
 .pf-analytics-module-card {
-    --pf-module-surface: rgba(86, 49, 34, 0.26);
     --pf-module-line: var(--pf-neutral-line);
     --pf-module-text: var(--pf-neutral-text);
-    --pf-module-shadow: rgba(67, 41, 29, 0.16);
     grid-column: span 12;
     display: grid;
     gap: 0.75rem;
     padding: 1.1rem 1.15rem;
     border: 2px solid var(--pf-module-line);
-    border-radius: 22px;
-    background:
-        linear-gradient(0deg, var(--pf-module-surface), var(--pf-module-surface)),
-        var(--pf-surface-panel);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.56),
-        0 18px 34px var(--pf-module-shadow);
+    border-radius: var(--pf-radius-md);
+    background: var(--pf-surface);
+    box-shadow: none;
 }
 
 .pf-analytics-module-card.is-success {
-    --pf-module-surface: rgba(22, 101, 52, 0.38);
     --pf-module-line: var(--pf-success-line);
     --pf-module-text: var(--pf-success-text);
-    --pf-module-shadow: rgba(17, 71, 42, 0.12);
 }
 
 .pf-analytics-module-card.is-info {
-    --pf-module-surface: rgba(29, 78, 216, 0.34);
     --pf-module-line: var(--pf-info-line);
     --pf-module-text: var(--pf-info-text);
-    --pf-module-shadow: rgba(26, 74, 167, 0.12);
 }
 
 .pf-analytics-module-card.is-warning {
-    --pf-module-surface: rgba(180, 83, 9, 0.38);
     --pf-module-line: var(--pf-warning-line);
     --pf-module-text: var(--pf-warning-text);
-    --pf-module-shadow: rgba(143, 74, 13, 0.12);
 }
 
 .pf-analytics-module-card.is-danger {
-    --pf-module-surface: rgba(185, 28, 28, 0.34);
     --pf-module-line: var(--pf-danger-line);
     --pf-module-text: var(--pf-danger-text);
-    --pf-module-shadow: rgba(154, 30, 30, 0.12);
 }
 
 .pf-analytics-module-card h3 {
     margin: 0;
     color: var(--pf-text);
     font-size: 1.18rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.05em;
     line-height: 1.05;
     text-transform: uppercase;
@@ -879,10 +855,10 @@ html {
     padding: 0 0.76rem;
     border: 1px solid var(--pf-module-line);
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.9);
+    background: var(--pf-surface);
     color: var(--pf-module-text);
     font-size: 0.68rem;
-    font-weight: 900;
+    font-weight: 800;
     letter-spacing: 0.12em;
     text-transform: uppercase;
 }
@@ -893,19 +869,11 @@ html {
     grid-column: span 4;
 }
 
-
-
-
-
-
-
-
-
 .pf-focus-title {
     margin: 0;
     color: var(--pf-text);
     font-size: 1.26rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.05em;
     line-height: 1.06;
     text-transform: uppercase;
@@ -914,8 +882,8 @@ html {
 
 .pf-focus-value {
     color: var(--pf-text);
-    font-size: clamp(1.45rem, 2.6vw, 2rem);
-    font-weight: 980;
+    font-size: clamp(1.2rem, 2vw, 1.5rem);
+    font-weight: 800;
     font-style: normal;
     letter-spacing: -0.04em;
     line-height: 0.98;
@@ -926,35 +894,65 @@ html {
     gap: 8px;
 }
 
+.pf-focus-list > div {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+}
 
+.pf-focus-list > div > span { color: var(--pf-text-muted); }
 
-
-
-
+.pf-payment-environments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+}
 
 .pf-alert-success {
     padding: 0.95rem 1rem;
     border-color: var(--pf-success-line);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(22, 101, 52, 0.28));
+    background: var(--pf-surface);
     color: var(--pf-success-text);
     font-weight: 800;
 }
 
 .pf-alert-danger {
     padding: 0.95rem 1rem;
-    border-radius: 24px;
+    border-radius: var(--pf-radius-lg);
     border: 1px solid var(--pf-danger-line);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(185, 28, 28, 0.24));
+    background: var(--pf-surface);
     color: var(--pf-danger-text);
     font-weight: 800;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.78),
-        var(--pf-shadow-card);
+    box-shadow: none;
 }
 
 
 .pf-automation-board {
-    background: linear-gradient(180deg, rgba(255, 250, 245, 1), rgba(233, 214, 198, 0.98));
+    background: var(--pf-surface);
+}
+
+.pf-automation-surface-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px 16px;
+    margin-bottom: 14px;
+}
+
+.pf-automation-surface-head h2 {
+    margin: 0 0 6px;
+    font-size: 1.1rem;
+    font-weight: 800;
+}
+
+.pf-automation-surface-head p,
+.pf-automation-surface-head > span {
+    margin: 0;
+    color: var(--pf-text-muted);
+    font-size: 0.875rem;
 }
 
 .pf-automation-grid,
@@ -970,7 +968,7 @@ html {
     display: grid;
     gap: 0.9rem;
     padding: 18px 18px 16px;
-    border-radius: 24px;
+    border-radius: var(--pf-radius-lg);
     border: 1px solid var(--pf-line-bold);
     background: var(--pf-tile-bg);
     color: inherit;
@@ -983,31 +981,31 @@ html {
 .pf-automation-card:hover,
 .pf-automation-customer-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 18px 34px rgba(31, 18, 13, 0.12);
+    box-shadow: none;
 }
 
 .pf-automation-card.is-success,
 .pf-automation-customer-card.is-success {
     border-color: var(--pf-success-line);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(219, 241, 227, 0.94));
+    background: var(--pf-surface);
 }
 
 .pf-automation-card.is-warning,
 .pf-automation-customer-card.is-warning {
     border-color: var(--pf-warning-line);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 232, 209, 0.94));
+    background: var(--pf-surface);
 }
 
 .pf-automation-card.is-info,
 .pf-automation-customer-card.is-info {
     border-color: var(--pf-info-line);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(224, 233, 251, 0.94));
+    background: var(--pf-surface);
 }
 
 .pf-automation-card.is-danger,
 .pf-automation-customer-card.is-danger {
     border-color: var(--pf-danger-line);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(251, 226, 226, 0.94));
+    background: var(--pf-surface);
 }
 
 .pf-automation-card-top,
@@ -1027,7 +1025,7 @@ html {
 .pf-automation-activity-meta span {
     color: var(--pf-cocoa);
     font-size: 0.7rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.14em;
     text-transform: uppercase;
 }
@@ -1039,7 +1037,7 @@ html {
     margin: 0;
     color: var(--pf-text);
     font-size: 1.08rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.05em;
     line-height: 1.04;
     text-transform: uppercase;
@@ -1068,10 +1066,10 @@ html {
 .pf-automation-order-card,
 .pf-automation-activity-card {
     padding: 12px 13px;
-    border-radius: 18px;
+    border-radius: var(--pf-radius-md);
     border: 1px solid var(--pf-tile-border);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 238, 230, 0.96));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
+    background: var(--pf-surface);
+    box-shadow: none;
 }
 
 .pf-automation-stat-grid span,
@@ -1092,15 +1090,15 @@ html {
     margin-top: 0.28rem;
     color: var(--pf-text);
     font-size: 0.95rem;
-    font-weight: 950;
+    font-weight: 800;
     line-height: 1.2;
 }
 
 .pf-automation-empty {
     padding: 1.05rem 1.15rem;
-    border-radius: 20px;
+    border-radius: var(--pf-radius-md);
     border: 1px dashed var(--pf-line-strong);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(244, 233, 223, 0.92));
+    background: var(--pf-surface);
     color: var(--pf-text-soft);
 }
 
@@ -1147,8 +1145,8 @@ html {
     display: none;
     align-items: center;
     justify-content: center;
-    padding: 24px;
-    background: rgba(18, 9, 8, 0.54);
+    padding: 16px;
+    background: rgba(0, 0, 0, .6);
     backdrop-filter: blur(10px);
 }
 
@@ -1157,7 +1155,7 @@ html {
 }
 
 .pf-automation-modal-shell {
-    background: linear-gradient(180deg, rgba(255, 250, 246, 1), rgba(228, 205, 186, 0.99));
+    background: var(--pf-surface);
 }
 
 .pf-automation-form,
@@ -1205,13 +1203,13 @@ html {
 
 .pf-internal-body .form-control,
 .pf-internal-body .form-select {
-    min-height: 48px;
+    min-height: 42px;
     border: 1.3px solid var(--pf-line-strong);
-    border-radius: 15px;
+    border-radius: var(--pf-radius-sm);
     background: var(--pf-surface);
     color: var(--pf-text);
     font-weight: 700;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+    box-shadow: none;
 }
 
 .pf-internal-body textarea.form-control {
@@ -1222,7 +1220,7 @@ html {
 .pf-internal-body .form-control:focus,
 .pf-internal-body .form-select:focus {
     border-color: var(--pf-cocoa-soft);
-    box-shadow: 0 0 0 3px rgba(125, 81, 61, 0.18);
+    box-shadow: none;
 }
 
 .pf-internal-body .form-text,
@@ -1243,9 +1241,6 @@ html {
     gap: 18px;
 }
 
-
-
-
 .pf-commerce-settings-strip {
     margin-bottom: 16px;
 }
@@ -1255,9 +1250,9 @@ html {
     gap: 12px;
     padding: 14px 16px;
     border: 1px solid var(--pf-line-bold);
-    border-radius: 22px;
+    border-radius: var(--pf-radius-md);
     background: var(--pf-surface-panel);
-    box-shadow: 0 16px 32px rgba(31, 18, 13, 0.06);
+    box-shadow: none;
 }
 
 .pf-commerce-settings-summary {
@@ -1274,7 +1269,7 @@ html {
 
 .pf-commerce-settings-grid label {
     font-size: 0.72rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.1em;
     text-transform: uppercase;
 }
@@ -1299,7 +1294,7 @@ html {
     color: var(--pf-cocoa);
     cursor: pointer;
     font-size: 0.76rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.14em;
     text-transform: uppercase;
 }
@@ -1325,7 +1320,7 @@ html {
 .pf-product-create-form label,
 .pf-product-edit-form label {
     font-size: 0.72rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.1em;
     text-transform: uppercase;
 }
@@ -1344,9 +1339,9 @@ html {
 
 .pf-product-accordion {
     border: 1px solid var(--pf-line-bold);
-    border-radius: 22px;
+    border-radius: var(--pf-radius-md);
     background: var(--pf-surface-panel);
-    box-shadow: 0 16px 36px rgba(31, 18, 13, 0.07);
+    box-shadow: none;
     overflow: hidden;
 }
 
@@ -1375,7 +1370,7 @@ html {
     border-radius: 999px;
     color: var(--pf-text-soft);
     font-size: 1rem;
-    font-weight: 900;
+    font-weight: 800;
     line-height: 1;
 }
 
@@ -1391,7 +1386,7 @@ html {
 .pf-product-accordion-copy strong {
     color: var(--pf-text);
     font-size: 0.84rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.12em;
     text-transform: uppercase;
 }
@@ -1429,7 +1424,7 @@ html {
     display: block;
     color: var(--pf-text);
     font-size: 0.88rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
 }
@@ -1465,9 +1460,9 @@ html {
     align-items: center;
     padding: 0.68rem;
     border: 1px solid var(--pf-line-strong);
-    border-radius: 18px;
+    border-radius: var(--pf-radius-md);
     background: var(--pf-surface-panel);
-    box-shadow: 0 10px 22px rgba(31, 18, 13, 0.05);
+    box-shadow: none;
 }
 
 .pf-discount-row {
@@ -1477,34 +1472,34 @@ html {
     align-items: center;
     padding: 0.72rem;
     border: 1px solid var(--pf-line-strong);
-    border-radius: 18px;
+    border-radius: var(--pf-radius-md);
     background: var(--pf-surface-panel);
-    box-shadow: 0 10px 22px rgba(31, 18, 13, 0.05);
+    box-shadow: none;
 }
 
 .pf-variant-row.is-success {
     border-color: var(--pf-success-line);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(22, 101, 52, 0.34));
+    background: var(--pf-surface);
 }
 
 .pf-variant-row.is-info {
     border-color: var(--pf-info-line);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(29, 78, 216, 0.32));
+    background: var(--pf-surface);
 }
 
 .pf-variant-row.is-warning {
     border-color: var(--pf-warning-line);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(180, 83, 9, 0.34));
+    background: var(--pf-surface);
 }
 
 .pf-variant-row.is-danger {
     border-color: var(--pf-danger-line);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(185, 28, 28, 0.32));
+    background: var(--pf-surface);
 }
 
 .pf-variant-row.is-muted {
     border-color: var(--pf-neutral-line);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(86, 49, 34, 0.22));
+    background: var(--pf-surface);
 }
 
 .pf-variant-status {
@@ -1535,7 +1530,7 @@ html {
     background: var(--pf-surface);
     color: var(--pf-text-soft);
     font-size: 0.68rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.1em;
     text-transform: uppercase;
 }
@@ -1543,7 +1538,7 @@ html {
 .pf-text-link {
     color: var(--pf-cocoa);
     font-size: 0.76rem;
-    font-weight: 900;
+    font-weight: 800;
     letter-spacing: 0.08em;
     text-decoration: none;
     text-transform: uppercase;
@@ -1560,7 +1555,7 @@ html {
     gap: 7px;
     margin: 0;
     font-size: 0.72rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.1em;
     text-transform: uppercase;
 }
@@ -1593,7 +1588,7 @@ html {
     padding: 0 12px 6px;
     color: var(--pf-cocoa);
     font-size: 0.7rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.14em;
     text-transform: uppercase;
     white-space: nowrap;
@@ -1610,7 +1605,7 @@ html {
     font-size: 0.94rem;
     font-weight: 800;
     line-height: 1.38;
-    box-shadow: 0 10px 24px rgba(31, 18, 13, 0.04);
+    box-shadow: none;
 }
 
 .pf-analytics-table td:first-child {
@@ -1629,7 +1624,7 @@ html {
 
 .pf-analytics-table strong {
     color: var(--pf-text);
-    font-weight: 900;
+    font-weight: 800;
     font-style: normal;
 }
 
@@ -1637,7 +1632,7 @@ html {
     margin-bottom: 14px;
     padding: 14px 16px;
     border: 1px solid var(--pf-line-strong);
-    border-radius: 18px;
+    border-radius: var(--pf-radius-md);
     background: var(--pf-surface-panel);
     color: var(--pf-muted);
     font-size: 0.86rem;
@@ -1647,18 +1642,18 @@ html {
 }
 
 .pf-analytics-fetch-state.is-success {
-    border-color: rgba(39, 119, 73, 0.32);
-    color: #245f3b;
+    border-color: var(--pf-line);
+    color: var(--pf-success-text);
 }
 
 .pf-analytics-fetch-state.is-warning {
-    border-color: rgba(176, 91, 26, 0.28);
-    color: #8b541f;
+    border-color: var(--pf-line);
+    color: var(--pf-warning-text);
 }
 
 .pf-analytics-fetch-state.is-danger {
-    border-color: rgba(181, 61, 46, 0.28);
-    color: #962e23;
+    border-color: var(--pf-line);
+    color: var(--pf-danger-text);
 }
 
 .pf-product-summary-list {
@@ -1667,22 +1662,16 @@ html {
 }
 
 .pf-product-summary-card {
-    --pf-summary-surface: rgba(86, 49, 34, 0.24);
     --pf-summary-line: var(--pf-neutral-line);
-    --pf-summary-shadow: rgba(67, 41, 29, 0.14);
     display: grid;
     grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.92fr) auto;
     gap: 14px 16px;
     align-items: center;
     padding: 16px 18px;
     border: 2px solid var(--pf-summary-line);
-    border-radius: 24px;
-    background:
-        linear-gradient(0deg, var(--pf-summary-surface), var(--pf-summary-surface)),
-        var(--pf-surface-panel);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.58),
-        0 20px 34px var(--pf-summary-shadow);
+    border-radius: var(--pf-radius-lg);
+    background: var(--pf-surface);
+    box-shadow: none;
     cursor: pointer;
     user-select: none;
     transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
@@ -1690,42 +1679,29 @@ html {
 
 .pf-product-summary-card:hover {
     transform: translateY(-1px);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.58),
-        0 24px 38px rgba(60, 37, 25, 0.18);
+    box-shadow: none;
 }
 
 .pf-product-summary-card:focus-visible {
     outline: none;
     border-color: var(--pf-cocoa);
-    box-shadow:
-        inset 0 0 0 1px rgba(111, 75, 59, 0.22),
-        0 0 0 3px rgba(111, 75, 59, 0.16),
-        0 22px 36px rgba(60, 37, 25, 0.18);
+    box-shadow: none;
 }
 
 .pf-product-summary-card.is-success {
-    --pf-summary-surface: rgba(22, 101, 52, 0.34);
     --pf-summary-line: var(--pf-success-line);
-    --pf-summary-shadow: rgba(17, 71, 42, 0.12);
 }
 
 .pf-product-summary-card.is-info {
-    --pf-summary-surface: rgba(29, 78, 216, 0.3);
     --pf-summary-line: var(--pf-info-line);
-    --pf-summary-shadow: rgba(26, 74, 167, 0.12);
 }
 
 .pf-product-summary-card.is-warning {
-    --pf-summary-surface: rgba(180, 83, 9, 0.34);
     --pf-summary-line: var(--pf-warning-line);
-    --pf-summary-shadow: rgba(143, 74, 13, 0.12);
 }
 
 .pf-product-summary-card.is-danger {
-    --pf-summary-surface: rgba(185, 28, 28, 0.32);
     --pf-summary-line: var(--pf-danger-line);
-    --pf-summary-shadow: rgba(154, 30, 30, 0.12);
 }
 
 .pf-product-summary-main {
@@ -1739,11 +1715,11 @@ html {
 .pf-product-summary-main img {
     width: 86px;
     height: 86px;
-    border-radius: 20px;
+    border-radius: var(--pf-radius-md);
     object-fit: cover;
-    border: 1.5px solid rgba(111, 75, 59, 0.2);
-    background: rgba(255, 255, 255, 0.94);
-    box-shadow: 0 16px 30px rgba(31, 18, 13, 0.08);
+    border: 1.5px solid var(--pf-line);
+    background: var(--pf-surface);
+    box-shadow: none;
 }
 
 .pf-product-summary-copy {
@@ -1754,7 +1730,7 @@ html {
     margin: 0 0 0.2rem;
     color: var(--pf-text);
     font-size: 1.36rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.04em;
     line-height: 1.02;
     text-transform: uppercase;
@@ -1796,16 +1772,16 @@ html {
     min-width: 0;
     padding: 12px 14px;
     border: 1.5px solid var(--pf-summary-line);
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.88);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+    border-radius: var(--pf-radius-md);
+    background: var(--pf-surface);
+    box-shadow: none;
 }
 
 .pf-product-summary-metric span {
     display: block;
     color: var(--pf-cocoa);
     font-size: 0.68rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.12em;
     line-height: 1.2;
     text-transform: uppercase;
@@ -1816,7 +1792,7 @@ html {
     margin-top: 0.34rem;
     color: var(--pf-text);
     font-size: 1rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: -0.04em;
     line-height: 1.04;
 }
@@ -1856,10 +1832,10 @@ html {
     padding: 0 0.72rem;
     border: 1px solid var(--pf-summary-line);
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.88);
+    background: var(--pf-surface);
     color: var(--pf-cocoa);
     font-size: 0.64rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.12em;
     text-transform: uppercase;
 }
@@ -1891,52 +1867,15 @@ html {
 
 .pf-product-summary-card.is-drop-target {
     border-color: var(--pf-cocoa);
-    box-shadow:
-        inset 0 0 0 1px rgba(111, 75, 59, 0.22),
-        0 18px 32px rgba(60, 37, 25, 0.14);
+    box-shadow: none;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 .pf-order-detail-list strong {
     display: block;
     margin-top: 0.18rem;
     color: var(--pf-text);
     font-size: 0.98rem;
-    font-weight: 900;
+    font-weight: 800;
     line-height: 1.45;
 }
 
@@ -1950,15 +1889,6 @@ html {
     gap: 0.5rem;
 }
 
-
-
-
-
-
-
-
-
-
 .pf-analytics-stat-strip {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -1970,17 +1900,17 @@ html {
     gap: 0.3rem;
     padding: 1rem 1.05rem;
     border: 1px solid var(--pf-analytics-line);
-    border-radius: 18px;
+    border-radius: var(--pf-radius-md);
     background:
         linear-gradient(0deg, var(--pf-analytics-bg), var(--pf-analytics-bg)),
         linear-gradient(180deg, var(--pf-surface), var(--pf-surface));
-    box-shadow: 0 12px 26px rgba(31, 18, 13, 0.05);
+    box-shadow: none;
 }
 
 .pf-analytics-stat-strip span {
     color: var(--pf-analytics-text);
     font-size: 0.66rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.16em;
     text-transform: uppercase;
 }
@@ -1988,7 +1918,7 @@ html {
 .pf-analytics-stat-strip strong {
     color: var(--pf-analytics-strong);
     font-size: clamp(1.3rem, 2.4vw, 1.9rem);
-    font-weight: 980;
+    font-weight: 800;
     font-style: normal;
     letter-spacing: -0.05em;
     line-height: 1;
@@ -2013,11 +1943,11 @@ html {
     gap: 0.55rem;
     padding: 1rem 1.05rem;
     border: 1px solid var(--pf-analytics-line);
-    border-radius: 18px;
+    border-radius: var(--pf-radius-md);
     background:
         linear-gradient(0deg, var(--pf-analytics-bg), var(--pf-analytics-bg)),
         linear-gradient(180deg, var(--pf-surface), var(--pf-surface));
-    box-shadow: 0 12px 26px rgba(31, 18, 13, 0.05);
+    box-shadow: none;
 }
 
 .pf-analytics-product-card strong {
@@ -2043,7 +1973,7 @@ html {
     padding: 0 0.72rem;
     border: 1px solid var(--pf-analytics-line);
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.92);
+    background: var(--pf-surface);
     color: var(--pf-analytics-text);
     font-size: 0.68rem;
     font-weight: 840;
@@ -2067,8 +1997,8 @@ html {
     margin: 0;
     padding: 0.9rem 0.95rem;
     border: 1px solid var(--pf-analytics-line);
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.94);
+    border-radius: var(--pf-radius-md);
+    background: var(--pf-surface);
     color: var(--pf-analytics-strong);
     font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
     font-size: 0.74rem;
@@ -2129,11 +2059,6 @@ html {
     gap: 18px;
 }
 
-
-
-
-
-
 .pf-orders-kpis {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2143,11 +2068,11 @@ html {
 .pf-orders-kpi {
     min-height: 116px;
     padding: 17px 18px;
-    border: 1px solid rgba(105,68,43,.22);
-    border-radius: 18px;
-    background: linear-gradient(145deg, #5d3c2a 0%, #382016 100%);
-    color: #fffaf5;
-    box-shadow: 0 12px 26px rgba(52,31,18,.12);
+    border: 1px solid var(--pf-line);
+    border-radius: var(--pf-radius-md);
+    background: var(--pf-surface);
+    color: var(--pf-text);
+    box-shadow: none;
 }
 
 .pf-orders-kpi span,
@@ -2157,9 +2082,9 @@ html {
 .pf-order-modal-summary span,
 .pf-order-detail-list span {
     display: block;
-    color: #e8c99f;
+    color: var(--pf-gold);
     font-size: .69rem;
-    font-weight: 900;
+    font-weight: 800;
     letter-spacing: .13em;
     text-transform: uppercase;
 }
@@ -2167,26 +2092,26 @@ html {
 .pf-orders-kpi strong {
     display: block;
     margin-top: 6px;
-    color: #fffaf6;
+    color: var(--pf-text);
     font-size: clamp(1.8rem, 2.7vw, 2.5rem);
-    font-weight: 900;
+    font-weight: 800;
     line-height: 1;
 }
 
 .pf-orders-kpi small {
     display: block;
     margin-top: 9px;
-    color: rgba(255,248,240,.76);
+    color: var(--pf-text-muted);
     font-size: .8rem;
     font-weight: 700;
 }
 
 .pf-orders-surface {
     padding: 18px;
-    border: 1px solid rgba(109,73,47,.22);
-    border-radius: 24px;
-    background: linear-gradient(180deg, #2a1810, #170d08);
-    box-shadow: 0 22px 54px rgba(43,25,17,.18);
+    border: 1px solid var(--pf-line);
+    border-radius: var(--pf-radius-lg);
+    background: var(--pf-surface);
+    box-shadow: none;
 }
 
 .pf-orders-surface-head {
@@ -2196,19 +2121,20 @@ html {
     align-items: start;
     padding-bottom: 16px;
     margin-bottom: 14px;
-    border-bottom: 1px solid rgba(255,248,239,.16);
-    color: #fff8ef;
+    border-bottom: 1px solid var(--pf-line);
+    color: var(--pf-text);
 }
 
 .pf-orders-surface-head h2 {
+    font-size: 1.1rem;
     margin: 0;
-    color: #fff8ef;
-    font-weight: 900;
+    color: var(--pf-text);
+    font-weight: 800;
 }
 
 .pf-orders-surface-head p {
     margin: 5px 0 0;
-    color: rgba(255,248,239,.68);
+    color: var(--pf-text-muted);
 }
 
 .pf-orders-list {
@@ -2223,16 +2149,16 @@ html {
     align-items: center;
     min-height: 92px;
     padding: 12px 14px;
-    border: 1px solid rgba(146,105,80,.28);
-    border-radius: 18px;
-    background: linear-gradient(180deg, #fffaf4, #f1e3d4);
-    color: #140d09;
+    border: 1px solid var(--pf-line);
+    border-radius: var(--pf-radius-md);
+    background: var(--pf-surface);
+    color: var(--pf-text);
     cursor: pointer;
-    box-shadow: 0 10px 22px rgba(43,25,17,.10);
+    box-shadow: none;
 }
 
 .pf-order-row:hover {
-    border-color: rgba(146,105,80,.48);
+    border-color: var(--pf-line);
     transform: translateY(-1px);
 }
 
@@ -2241,16 +2167,16 @@ html {
 }
 
 .pf-order-cell span {
-    color: #8a5a3d;
+    color: var(--pf-text);
 }
 
 .pf-order-cell strong {
     display: block;
     margin-top: 4px;
     overflow: hidden;
-    color: #140d09;
+    color: var(--pf-text);
     font-size: .94rem;
-    font-weight: 900;
+    font-weight: 800;
     line-height: 1.2;
     text-overflow: ellipsis;
 }
@@ -2259,7 +2185,7 @@ html {
     display: block;
     margin-top: 4px;
     overflow: hidden;
-    color: rgba(20,13,9,.66);
+    color: var(--pf-text-muted);
     font-size: .76rem;
     font-weight: 750;
     line-height: 1.3;
@@ -2273,13 +2199,21 @@ html {
     align-items: center;
 }
 
-.pf-order-item img {
+.pf-order-image-placeholder {
+    display: grid;
+    place-items: center;
+    color: var(--pf-text-muted);
+    background: var(--pf-surface);
+}
+
+.pf-order-item img,
+.pf-order-item .pf-order-image-placeholder {
     width: 52px;
     height: 52px;
-    border: 1px solid rgba(146,105,80,.24);
+    border: 1px solid var(--pf-line);
     border-radius: 14px;
     object-fit: cover;
-    background: #fff;
+    background: var(--pf-surface);
 }
 
 .pf-order-status-stack {
@@ -2289,7 +2223,7 @@ html {
 }
 
 .pf-order-receipt .pf-text-link {
-    font-weight: 900;
+    font-weight: 800;
 }
 
 .pf-order-modal {
@@ -2297,9 +2231,9 @@ html {
     inset: 0;
     z-index: 1600;
     display: none;
-    padding: 28px;
+    padding: 16px;
     overflow: auto;
-    background: rgba(9,6,4,.62);
+    background: rgba(0, 0, 0, .6);
     backdrop-filter: blur(10px);
 }
 
@@ -2314,11 +2248,11 @@ html {
 
 .pf-order-modal-shell {
     overflow: hidden;
-    border: 1px solid rgba(146,105,80,.32);
-    border-radius: 24px;
-    background: #fffaf4;
-    color: #140d09;
-    box-shadow: 0 34px 90px rgba(18,11,8,.42);
+    border: 1px solid var(--pf-line);
+    border-radius: var(--pf-radius-lg);
+    background: var(--pf-surface);
+    color: var(--pf-text);
+    box-shadow: none;
 }
 
 .pf-order-modal-head {
@@ -2327,15 +2261,15 @@ html {
     gap: 18px;
     align-items: start;
     padding: 18px 22px;
-    border-bottom: 1px solid rgba(146,105,80,.22);
-    background: linear-gradient(180deg, #fffdf9, #f3e6d9);
+    border-bottom: 1px solid var(--pf-line);
+    background: var(--pf-surface);
 }
 
 .pf-order-modal-head h2 {
     margin: 4px 0 0;
-    color: #140d09;
+    color: var(--pf-text);
     font-size: clamp(1.45rem, 2.6vw, 2.25rem);
-    font-weight: 900;
+    font-weight: 800;
     letter-spacing: -.035em;
 }
 
@@ -2353,27 +2287,27 @@ html {
 
 .pf-order-modal-summary article,
 .pf-order-detail-panel {
-    border: 1px solid rgba(146,105,80,.24);
-    border-radius: 18px;
-    background: #fffdf9;
+    border: 1px solid var(--pf-line);
+    border-radius: var(--pf-radius-md);
+    background: var(--pf-surface);
     padding: 15px;
 }
 
 .pf-order-modal-summary span,
 .pf-order-detail-list span {
-    color: #8a5a3d;
+    color: var(--pf-text);
 }
 
 .pf-order-modal-summary strong {
     display: block;
     margin-top: 6px;
-    color: #140d09;
+    color: var(--pf-text);
     font-size: 1.35rem;
-    font-weight: 900;
+    font-weight: 800;
 }
 
 .pf-order-modal-summary small {
-    color: rgba(20,13,9,.66);
+    color: var(--pf-text-muted);
     font-weight: 750;
 }
 
@@ -2385,9 +2319,9 @@ html {
 
 .pf-order-panel-head h3 {
     margin: 0 0 12px;
-    color: #140d09;
+    color: var(--pf-text);
     font-size: 1.05rem;
-    font-weight: 900;
+    font-weight: 800;
 }
 
 .pf-order-detail-list {
@@ -2398,7 +2332,7 @@ html {
 .pf-order-detail-list strong {
     display: block;
     margin-top: 3px;
-    color: #140d09;
+    color: var(--pf-text);
     font-weight: 850;
     line-height: 1.35;
 }
@@ -2415,12 +2349,13 @@ html {
     gap: 10px;
     align-items: center;
     padding: 10px;
-    border: 1px solid rgba(146,105,80,.20);
+    border: 1px solid var(--pf-line);
     border-radius: 14px;
-    background: #f8eee5;
+    background: var(--pf-surface);
 }
 
-.pf-order-items img {
+.pf-order-items img,
+.pf-order-items .pf-order-image-placeholder {
     width: 54px;
     height: 54px;
     border-radius: 12px;
@@ -2429,13 +2364,13 @@ html {
 
 .pf-order-items strong,
 .pf-order-items b {
-    color: #140d09;
-    font-weight: 900;
+    color: var(--pf-text);
+    font-weight: 800;
 }
 
-.pf-order-items span {
+.pf-order-items article > div > span {
     display: block;
-    color: rgba(20,13,9,.64);
+    color: var(--pf-text-muted);
     font-size: .76rem;
     font-weight: 750;
 }
@@ -2454,9 +2389,9 @@ html {
 .pf-order-form-grid label {
     display: grid;
     gap: 6px;
-    color: #8a5a3d;
+    color: var(--pf-text);
     font-size: .72rem;
-    font-weight: 900;
+    font-weight: 800;
     letter-spacing: .11em;
     text-transform: uppercase;
 }
@@ -2468,10 +2403,10 @@ html {
 .pf-order-form-grid input,
 .pf-order-form-grid select,
 .pf-order-form-grid textarea {
-    border: 1px solid rgba(146,105,80,.30);
+    border: 1px solid var(--pf-line);
     border-radius: 12px;
-    background: #fff;
-    color: #140d09;
+    background: var(--pf-surface);
+    color: var(--pf-text);
 }
 
 .pf-order-actions,
@@ -2502,7 +2437,6 @@ html {
 }
 
 @media (max-width: 680px) {
-    .pf-orders-kpis,
     .pf-order-row,
     .pf-order-modal-summary,
     .pf-order-modal-grid,
@@ -2532,9 +2466,9 @@ html {
     display: none;
     align-items: flex-start;
     justify-content: center;
-    padding: 28px;
+    padding: 16px;
     overflow: auto;
-    background: rgba(9, 6, 4, 0.62);
+    background: rgba(0, 0, 0, .6);
     backdrop-filter: blur(10px);
 }
 
@@ -2569,11 +2503,16 @@ html {
     max-height: 100%;
     display: flex;
     flex-direction: column;
-    border-radius: 22px;
+    border-radius: var(--pf-radius-md);
     border: 1px solid var(--pf-line-strong);
-    background: linear-gradient(180deg, rgba(255, 250, 246, 1), rgba(225, 200, 180, 0.98));
+    background: var(--pf-surface);
     box-shadow: var(--pf-shadow-overlay);
     overflow: hidden;
+}
+
+.pf-internal-body .btn-close {
+    filter: invert(1) grayscale(1) brightness(2);
+    opacity: .75;
 }
 
 .pf-modal-header {
@@ -2588,8 +2527,8 @@ html {
 .pf-modal-header .modal-title {
     margin: 0;
     color: var(--pf-text);
-    font-size: clamp(1.45rem, 2.6vw, 2rem);
-    font-weight: 980;
+    font-size: clamp(1.2rem, 2vw, 1.5rem);
+    font-weight: 800;
     font-style: normal;
     letter-spacing: 0.05em;
     line-height: 1.04;
@@ -2621,7 +2560,7 @@ html {
 .pf-modal-grid > *,
 .pf-modal-body section,
 .pf-modal-body article {
-    border-radius: 16px;
+    border-radius: var(--pf-radius-md);
 }
 
 .pf-modal-body textarea {
@@ -2631,10 +2570,10 @@ html {
 .pf-media-panel,
 .pf-editor-panel {
     border: 1px solid var(--pf-line-strong);
-    border-radius: 20px;
+    border-radius: var(--pf-radius-md);
     padding: 12px;
     background: var(--pf-surface-panel-strong);
-    box-shadow: 0 12px 26px rgba(31, 18, 13, 0.05);
+    box-shadow: none;
 }
 
 .pf-media-panel {
@@ -2644,12 +2583,14 @@ html {
 }
 
 .pf-primary-preview {
+    display: grid;
+    place-items: center;
     width: 100%;
     aspect-ratio: 1 / 0.8;
     overflow: hidden;
     border: 1px solid var(--pf-line);
-    border-radius: 18px;
-    background: #fff;
+    border-radius: var(--pf-radius-md);
+    background: var(--pf-surface);
 }
 
 .pf-primary-preview img {
@@ -2666,12 +2607,12 @@ html {
     display: grid;
     place-items: center;
     border: 1.5px dashed var(--pf-line-strong);
-    border-radius: 18px;
+    border-radius: var(--pf-radius-md);
     background: var(--pf-surface);
     color: var(--pf-cocoa);
     cursor: pointer;
     font-size: 0.74rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.12em;
     text-transform: uppercase;
 }
@@ -2695,10 +2636,10 @@ html {
     display: grid;
     gap: 6px;
     border: 1px solid var(--pf-line-strong);
-    border-radius: 16px;
+    border-radius: var(--pf-radius-md);
     padding: 6px;
     background: var(--pf-surface-panel-strong);
-    box-shadow: 0 10px 22px rgba(31, 18, 13, 0.05);
+    box-shadow: none;
     cursor: grab;
     user-select: none;
 }
@@ -2708,7 +2649,7 @@ html {
     overflow: hidden;
     border-radius: 14px;
     border: 1px solid var(--pf-line);
-    background: #fff;
+    background: var(--pf-surface);
 }
 
 .pf-photo-thumb > img {
@@ -2727,11 +2668,11 @@ html {
     min-height: 24px;
     padding: 0 0.55rem;
     border-radius: 999px;
-    border: 1px solid rgba(40, 116, 78, 0.22);
-    background: rgba(246, 255, 250, 0.96);
+    border: 1px solid var(--pf-line);
+    background: var(--pf-surface);
     color: var(--pf-success-text);
     font-size: 0.58rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.12em;
     text-transform: uppercase;
 }
@@ -2745,19 +2686,19 @@ html {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(172, 64, 48, 0.22);
+    border: 1px solid var(--pf-line);
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.94);
+    background: var(--pf-surface);
     color: var(--pf-danger-text);
     font-size: 1rem;
-    font-weight: 950;
+    font-weight: 800;
     line-height: 1;
 }
 
 .pf-photo-delete:hover,
 .pf-photo-delete:focus-visible {
-    background: rgba(255, 243, 241, 0.98);
-    border-color: rgba(172, 64, 48, 0.38);
+    background: var(--pf-surface);
+    border-color: var(--pf-line);
     outline: none;
 }
 
@@ -2769,7 +2710,7 @@ html {
     background: var(--pf-surface);
     color: var(--pf-cocoa);
     font-size: 0.68rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
 }
@@ -2793,7 +2734,7 @@ html {
     background: var(--pf-surface);
     color: var(--pf-text-soft);
     font-size: 0.66rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.06em;
     text-transform: uppercase;
 }
@@ -2805,9 +2746,7 @@ html {
 
 .pf-photo-tile.is-drop-target {
     border-color: var(--pf-cocoa);
-    box-shadow:
-        inset 0 0 0 1px rgba(111, 75, 59, 0.22),
-        0 18px 30px rgba(60, 37, 25, 0.12);
+    box-shadow: none;
 }
 
 .pf-danger-zone {
@@ -2838,42 +2777,18 @@ html {
     color: var(--pf-danger-text);
 }
 
-
-
-
-
-
-
-
-
 .pf-team-card-copy,
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 .pf-role-summary-card strong,
 .pf-access-toolbar strong {
     color: var(--pf-text);
     font-size: 0.82rem;
-    font-weight: 900;
+    font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
 }
 
 .pf-role-summary-card span,
-
-
-
 
 .pf-access-toolbar {
     display: flex;
@@ -2897,7 +2812,7 @@ html {
     margin: 0;
     color: var(--pf-text);
     font-size: 0.88rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.1em;
     text-transform: uppercase;
 }
@@ -2909,9 +2824,9 @@ html {
     align-items: start;
     padding: 0.9rem 0.95rem;
     border: 1px solid var(--pf-line-strong);
-    border-radius: 18px;
+    border-radius: var(--pf-radius-md);
     background: var(--pf-surface-panel-strong);
-    box-shadow: 0 10px 22px rgba(31, 18, 13, 0.04);
+    box-shadow: none;
 }
 
 .pf-access-check input {
@@ -2922,7 +2837,7 @@ html {
     display: block;
     color: var(--pf-text);
     font-size: 0.88rem;
-    font-weight: 900;
+    font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }
@@ -2960,7 +2875,7 @@ html {
 
 .pf-danger-zone button {
     border-color: var(--pf-danger-line);
-    background: rgba(255, 255, 255, 0.9);
+    background: var(--pf-surface);
     color: var(--pf-danger-text);
 }
 
@@ -2976,11 +2891,11 @@ html {
     aspect-ratio: 1 / 0.8;
     overflow: hidden;
     border: 1.5px solid var(--pf-line-strong);
-    border-radius: 22px;
+    border-radius: var(--pf-radius-md);
     background:
-        linear-gradient(90deg, rgba(134, 94, 73, 0.16) 1px, transparent 1px),
-        linear-gradient(180deg, rgba(134, 94, 73, 0.16) 1px, transparent 1px),
-        #fff;
+        linear-gradient(to right, var(--pf-line-strong) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--pf-line-strong) 1px, transparent 1px),
+        var(--pf-bg);
     background-size: 33.333% 33.333%;
     cursor: grab;
     user-select: none;
@@ -3006,11 +2921,11 @@ html {
     bottom: 12px;
     padding: 6px 9px;
     border-radius: 999px;
-    border: 1px solid rgba(134, 94, 73, 0.2);
-    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid var(--pf-line);
+    background: var(--pf-surface);
     color: var(--pf-cocoa);
     font-size: 0.62rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
 }
@@ -3022,7 +2937,7 @@ html {
     gap: 8px;
     color: var(--pf-cocoa);
     font-size: 0.68rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.1em;
     text-transform: uppercase;
 }
@@ -3053,13 +2968,10 @@ html {
     overflow: hidden;
     padding: clamp(28px, 4vw, 42px);
     border-radius: 30px;
-    border: 1.5px solid rgba(242, 223, 207, 0.18);
-    background:
-        radial-gradient(circle at top left, rgba(242, 223, 207, 0.16), transparent 32%),
-        radial-gradient(circle at bottom right, rgba(197, 150, 116, 0.18), transparent 28%),
-        linear-gradient(155deg, #6c4738 0%, #4c2f24 54%, #2e1b16 100%);
+    border: 1.5px solid var(--pf-line);
+    background: transparent;
     box-shadow: var(--pf-shadow-hero);
-    color: #fff8f4;
+    color: var(--pf-text);
 }
 
 .pf-auth-intro::after {
@@ -3070,14 +2982,14 @@ html {
     width: 220px;
     height: 220px;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(242, 223, 207, 0.14), transparent 68%);
+    background: transparent;
 }
 
 .pf-auth-brand {
     margin-top: 1rem;
-    color: #fff8f4;
+    color: var(--pf-text);
     font-size: clamp(2.6rem, 5vw, 4.6rem);
-    font-weight: 980;
+    font-weight: 800;
     font-style: italic;
     letter-spacing: 0.08em;
     line-height: 0.92;
@@ -3087,7 +2999,7 @@ html {
 
 .pf-auth-title {
     margin: 1rem 0 0.55rem;
-    color: #fff8f4;
+    color: var(--pf-text);
     font-size: clamp(1.7rem, 3vw, 2.35rem);
     font-weight: 920;
     letter-spacing: 0.06em;
@@ -3099,7 +3011,7 @@ html {
 .pf-auth-copy {
     max-width: 42ch;
     margin: 0;
-    color: rgba(255, 239, 228, 0.86);
+    color: var(--pf-text-muted);
     font-size: 1rem;
     font-weight: 700;
     font-style: normal;
@@ -3111,7 +3023,7 @@ html {
     padding: 28px 26px;
     border-radius: 30px;
     border: 1px solid var(--pf-line-strong);
-    background: linear-gradient(180deg, rgba(255, 250, 245, 1), rgba(228, 206, 187, 0.98));
+    background: var(--pf-surface);
     box-shadow: var(--pf-shadow-card-strong);
 }
 
@@ -3119,7 +3031,7 @@ html {
     margin: 0;
     color: var(--pf-text);
     font-size: 2rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: 0.05em;
     line-height: 1.04;
     text-transform: uppercase;
@@ -3199,8 +3111,6 @@ html {
     .pf-automation-form-grid,
     .pf-automation-customer-modal-grid,
 
-
-
     .pf-product-summary-card {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -3232,10 +3142,8 @@ html {
     }
 
     .pf-header-inner {
-        padding: 14px 0 16px;
+        padding: 10px 0;
     }
-
-
 
     .pf-analytics-command-actions,
     .pf-analytics-toolbar-actions {
@@ -3271,8 +3179,8 @@ html {
     }
 
     .pf-header-card {
-        border-bottom-left-radius: 26px;
-        border-bottom-right-radius: 26px;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
     }
 
     .pf-panel,
@@ -3325,8 +3233,6 @@ html {
         height: 74px;
     }
 
-
-
     .pf-product-summary-metrics {
         grid-template-columns: 1fr;
     }
@@ -3354,10 +3260,6 @@ html {
         border-radius: 14px;
     }
 
-    .pf-header-left,
-
-
-
     .pf-modal-dialog,
     .pf-modal-xl,
     .pf-modal-lg {
@@ -3367,35 +3269,21 @@ html {
 
     .pf-product-modal,
     .pf-automation-modal,
-
-    .pf-auth-card {
-        padding: 24px 20px;
+    .pf-image-editor-modal,
+    .pf-team-modal {
+        padding: 12px;
     }
+
+    .pf-auth-card { padding: 20px; }
 }
 
 
 /* === PARFAIT CLEAN GLOBAL INTERNAL UI SYSTEM START === */
 /* Single active internal theme. Shared WebsiteAnalytics consumes the Parfait tokens above. */
 
-:root {
-    --pf-page: #f8f5ef;
-    --pf-ink: #140d09;
-    --pf-espresso: #170d08;
-    --pf-panel: #2a1810;
-    --pf-panel-soft: #3b2418;
-    --pf-card: #fff8ef;
-    --pf-card-2: #f2e4d6;
-    --pf-line: rgba(146, 105, 80, .34);
-    --pf-line-strong: rgba(146, 105, 80, .58);
-    --pf-gold: #c99a66;
-    --pf-cream: #fff8ef;
-    --pf-muted-dark: rgba(20, 13, 9, .68);
-    --pf-muted-light: rgba(255, 248, 239, .76);
-}
-
 .pf-internal-main,
 main.pf-internal-main {
-    background: radial-gradient(circle at 50% 0%, rgba(146,105,80,.10), transparent 34rem), var(--pf-page);
+    background: var(--pf-page);
 }
 
 /* Smart grids */
@@ -3409,7 +3297,7 @@ main.pf-internal-main {
     grid-template-columns: repeat(12, minmax(0, 1fr));
     gap: 18px;
     align-items: stretch;
-    margin-bottom: 24px;
+    margin-bottom: 16px;
 }
 
 .pf-span-2 { grid-column: span 2; }
@@ -3430,11 +3318,11 @@ main.pf-internal-main {
 .pf-command-board {
     background: linear-gradient(180deg, var(--pf-panel), var(--pf-espresso));
     border: 1px solid var(--pf-line);
-    border-radius: 24px;
+    border-radius: var(--pf-radius-lg);
     color: var(--pf-cream);
-    padding: 24px;
-    box-shadow: 0 22px 54px rgba(43,25,17,.18);
-    margin-bottom: 24px;
+    padding: 16px;
+    box-shadow: none;
+    margin-bottom: 16px;
 }
 
 .pf-commerce-panel-head,
@@ -3445,7 +3333,7 @@ main.pf-internal-main {
     gap: 18px;
     padding-bottom: 16px;
     margin-bottom: 20px;
-    border-bottom: 1px solid rgba(255,248,239,.16);
+    border-bottom: 1px solid var(--pf-line);
 }
 
 .pf-commerce-panel-head h2,
@@ -3453,34 +3341,36 @@ main.pf-internal-main {
 .pf-module-card h2,
 .pf-module-card h3 {
     color: var(--pf-cream);
-    font-weight: 900;
+    font-weight: 800;
+    font-size: 1.1rem;
+    line-height: 1.3;
 }
 
 /* KPI cards */
 .pf-rail-card,
 .pf-focus-card {
-    background: linear-gradient(180deg, #4a2f20, #24140d);
+    background: var(--pf-surface);
     border: 1px solid var(--pf-line);
-    border-radius: 20px;
+    border-radius: var(--pf-radius-md);
     color: var(--pf-cream);
     padding: 18px;
-    min-height: 118px;
+    min-height: 92px;
     display: grid;
     align-content: space-between;
 }
 
 .pf-rail-card span,
 .pf-focus-card span {
-    color: #e0bd91;
+    color: var(--pf-gold);
     font-size: .72rem;
-    font-weight: 900;
+    font-weight: 800;
     letter-spacing: .12em;
     text-transform: uppercase;
 }
 
 .pf-rail-card strong,
 .pf-focus-card strong {
-    color: #fffaf5;
+    color: var(--pf-text);
 }
 
 /* Products / Orders: clean light cards inside dark operations panels */
@@ -3492,32 +3382,18 @@ main.pf-internal-main {
 .pf-editor-card,
 .pf-list-card,
 .pf-commerce-panel form {
-    background: linear-gradient(180deg, #fffaf4, #f1e3d4);
-    border: 1px solid rgba(146,105,80,.30);
-    border-radius: 18px;
+    background: var(--pf-surface);
+    border: 1px solid var(--pf-line);
+    border-radius: var(--pf-radius-md);
     color: var(--pf-ink);
     padding: 16px;
-    box-shadow: 0 12px 28px rgba(43,25,17,.10);
+    box-shadow: none;
 }
 
 .pf-product-card,
 .pf-product-row {
     margin-bottom: 14px;
 }
-
-.pf-product-card h3,
-.pf-product-row h3,
-
-
-.pf-product-card p,
-.pf-product-row p,
-
-
-/* Compact product/order metric cells */
-.pf-product-card article,
-.pf-product-card .pf-mini-card,
-.pf-product-row article,
-
 
 /* Forms */
 .pf-commerce-panel form {
@@ -3533,25 +3409,25 @@ main.pf-internal-main {
 .pf-commerce-panel label,
 .pf-module-card label,
 .pf-product-card label {
-    color: #8a5a3d;
+    color: var(--pf-text);
     font-size: .72rem;
-    font-weight: 900;
+    font-weight: 800;
     letter-spacing: .11em;
     text-transform: uppercase;
     margin-bottom: 6px;
 }
 
-.pf-commerce-panel input,
+.pf-commerce-panel input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
 .pf-commerce-panel select,
 .pf-commerce-panel textarea,
-.pf-module-card input,
+.pf-module-card input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
 .pf-module-card select,
 .pf-module-card textarea,
-.pf-product-card input,
+.pf-product-card input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
 .pf-product-card select,
 .pf-product-card textarea {
-    background: rgba(255,255,255,.86);
-    border: 1px solid rgba(146,105,80,.30);
+    background: var(--pf-surface);
+    border: 1px solid var(--pf-line);
     border-radius: 12px;
     color: var(--pf-ink);
     min-height: 40px;
@@ -3588,7 +3464,7 @@ button.pf-secondary-action,
     white-space: nowrap;
     border-radius: 999px;
     padding: 9px 15px;
-    font-weight: 900;
+    font-weight: 800;
     line-height: 1;
     text-decoration: none;
     margin: 0;
@@ -3596,16 +3472,16 @@ button.pf-secondary-action,
 
 .pf-action,
 button.pf-action {
-    background: linear-gradient(180deg, #fff4e5, #c9965f);
-    border: 1px solid rgba(146,105,80,.58);
-    color: var(--pf-ink);
+    background: var(--pf-gold);
+    border: 1px solid var(--pf-gold);
+    color: var(--pf-bg);
 }
 
 .pf-secondary-action,
 button.pf-secondary-action,
 .pf-mini-action {
-    background: rgba(255,248,239,.08);
-    border: 1px solid rgba(255,248,239,.32);
+    background: var(--pf-surface);
+    border: 1px solid var(--pf-line);
     color: var(--pf-cream);
 }
 
@@ -3613,24 +3489,35 @@ button.pf-secondary-action,
 .pf-product-row .pf-secondary-action,
 .pf-product-card .pf-mini-action,
 .pf-product-row .pf-mini-action {
-    background: rgba(43,25,17,.06);
-    border-color: rgba(146,105,80,.30);
+    background: var(--pf-surface);
+    border-color: var(--pf-line);
     color: var(--pf-ink);
+}
+
+:where(.pf-internal-body, .pf-internal-auth-body) :is(button, a, input, select, textarea):focus-visible {
+    outline: 2px solid var(--pf-gold);
+    outline-offset: 3px;
+}
+
+.pf-action:disabled,
+.pf-secondary-action:disabled {
+    opacity: .45;
+    cursor: not-allowed;
 }
 
 /* Tables */
 .pf-commerce-panel .table-responsive,
 .pf-module-card .table-responsive {
-    background: rgba(255,250,244,.96);
-    border: 1px solid rgba(146,105,80,.22);
-    border-radius: 16px;
+    background: var(--pf-surface);
+    border: 1px solid var(--pf-line);
+    border-radius: var(--pf-radius-md);
     overflow-x: auto;
 }
 
 .pf-commerce-panel th,
 .pf-module-card th {
-    color: #8a5a3d;
-    background: rgba(146,105,80,.09);
+    color: var(--pf-text);
+    background: var(--pf-surface);
 }
 
 .pf-commerce-panel td,
@@ -3696,18 +3583,18 @@ button.pf-secondary-action,
 .pf-menu-button {
     width: 46px;
     height: 46px;
-    border-radius: 16px;
-    border: 1px solid rgba(255, 248, 239, .34);
-    background: rgba(255, 248, 239, .10);
+    border-radius: var(--pf-radius-md);
+    border: 1px solid var(--pf-line);
+    background: var(--pf-surface);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    box-shadow: inset 0 1px 0 rgba(255, 248, 239, .10);
+    box-shadow: none;
 }
 
 .pf-menu-button:hover {
-    background: rgba(255, 248, 239, .16);
-    border-color: rgba(255, 248, 239, .54);
+    background: var(--pf-surface);
+    border-color: var(--pf-line);
 }
 
 .pf-menu-button span,
@@ -3716,7 +3603,7 @@ button.pf-secondary-action,
     width: 18px;
     height: 2px;
     border-radius: 999px;
-    background: #fff8ef;
+    background: var(--pf-text);
     display: block;
     position: relative;
 }
@@ -3742,12 +3629,12 @@ button.pf-secondary-action,
     justify-content: space-between;
     gap: 1.25rem;
     min-width: 0;
-    padding: 1.3rem 1.45rem;
-    border: 1px solid rgba(122, 83, 58, .30);
-    border-radius: 22px;
-    background: linear-gradient(135deg, rgba(84, 50, 35, .98), rgba(42, 23, 16, .98));
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 16px 34px rgba(44,25,17,.14);
-    color: #fff8ef;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--pf-line);
+    border-radius: var(--pf-radius-md);
+    background: var(--pf-surface);
+    box-shadow: none;
+    color: var(--pf-text);
 }
 
 .pf-command-copy,
@@ -3763,9 +3650,9 @@ button.pf-secondary-action,
 .pf-automation-head h1,
 .pf-dashboard-head h1 {
     margin: 0;
-    color: #fff9f4;
-    font-size: clamp(1.85rem, 3vw, 2.7rem);
-    font-weight: 900;
+    color: var(--pf-text);
+    font-size: clamp(1.4rem, 2.3vw, 1.85rem);
+    font-weight: 800;
     letter-spacing: -.045em;
     line-height: 1;
 }
@@ -3776,7 +3663,7 @@ button.pf-secondary-action,
 .pf-dashboard-intro {
     max-width: 68ch;
     margin: .45rem 0 0;
-    color: rgba(255,242,232,.76);
+    color: var(--pf-text-muted);
     font-size: .94rem;
     font-weight: 600;
     line-height: 1.45;
@@ -3786,9 +3673,9 @@ button.pf-secondary-action,
 .pf-automation-eyebrow,
 .pf-dashboard-eyebrow {
     margin: 0 0 .38rem;
-    color: #e7bf8b;
+    color: var(--pf-gold);
     font-size: .67rem;
-    font-weight: 900;
+    font-weight: 800;
     letter-spacing: .14em;
     text-transform: uppercase;
 }
@@ -3815,11 +3702,7 @@ button.pf-secondary-action,
 .pf-dashboard-head .pf-secondary-action {
     min-height: 34px;
     padding: .45rem .8rem;
-    border: 1px solid rgba(255,237,219,.34);
     border-radius: 10px;
-    background: rgba(255,248,241,.10);
-    color: #fffaf6;
-    box-shadow: none;
 }
 
 @media (max-width: 760px) {
@@ -3838,7 +3721,7 @@ button.pf-secondary-action,
     position: fixed;
     inset: 0;
     z-index: 1030;
-    background: rgba(9, 6, 4, .58);
+    background: rgba(0, 0, 0, .6);
     backdrop-filter: blur(12px);
     opacity: 0;
     pointer-events: none;
@@ -3854,13 +3737,11 @@ button.pf-secondary-action,
     z-index: 1040;
     display: flex;
     flex-direction: column;
-    border-radius: 28px;
-    border: 1px solid rgba(234, 213, 189, .30);
-    background:
-        radial-gradient(circle at 18% 0%, rgba(234, 213, 189, .14), transparent 24rem),
-        linear-gradient(180deg, #5e3a2a 0%, #2a1810 48%, #120b08 100%);
-    color: #fff8ef;
-    box-shadow: 0 34px 90px rgba(18, 11, 8, .56);
+    border-radius: var(--pf-radius-lg);
+    border: 1px solid var(--pf-line);
+    background: transparent;
+    color: var(--pf-text);
+    box-shadow: none;
     transform: translateX(calc(-100% - 42px));
     transition: transform .22s ease;
     overflow: hidden;
@@ -3881,23 +3762,23 @@ button.pf-secondary-action,
     justify-content: space-between;
     gap: 18px;
     padding: 24px 22px 18px;
-    border-bottom: 1px solid rgba(234, 213, 189, .18);
+    border-bottom: 1px solid var(--pf-line);
 }
 
 .pf-sidebar-title {
     font-size: 1.35rem;
     line-height: 1;
-    color: #fff8ef;
-    font-weight: 950;
+    color: var(--pf-text);
+    font-weight: 800;
     letter-spacing: .22em;
     font-style: italic;
 }
 
 .pf-sidebar-sub {
     margin-top: 8px;
-    color: rgba(255, 248, 239, .72);
+    color: var(--pf-text-muted);
     font-size: .78rem;
-    font-weight: 900;
+    font-weight: 800;
     letter-spacing: .18em;
     text-transform: uppercase;
 }
@@ -3905,17 +3786,17 @@ button.pf-secondary-action,
 .pf-close {
     width: 42px;
     height: 42px;
-    border-radius: 15px;
-    border: 1px solid rgba(255, 248, 239, .28);
-    background: rgba(255, 248, 239, .10);
-    color: #fff8ef;
+    border-radius: var(--pf-radius-sm);
+    border: 1px solid var(--pf-line);
+    background: var(--pf-surface);
+    color: var(--pf-text);
     font-size: 1.15rem;
-    font-weight: 900;
+    font-weight: 800;
     line-height: 1;
 }
 
 .pf-close:hover {
-    background: rgba(255, 248, 239, .18);
+    background: var(--pf-surface);
 }
 
 .pf-nav {
@@ -3930,9 +3811,9 @@ button.pf-secondary-action,
 
 .pf-nav-section {
     padding: 0 4px 8px;
-    color: #ead5bd;
+    color: var(--pf-gold);
     font-size: .72rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: .18em;
     text-transform: uppercase;
 }
@@ -3940,34 +3821,34 @@ button.pf-secondary-action,
 .pf-nav a {
     display: flex;
     align-items: center;
-    min-height: 48px;
-    border-radius: 16px;
+    min-height: 42px;
+    border-radius: var(--pf-radius-md);
     padding: 0 16px;
     margin-bottom: 8px;
-    color: #fff8ef;
+    color: var(--pf-text);
     text-decoration: none;
-    font-weight: 900;
-    border: 1px solid rgba(234, 213, 189, .18);
-    background: rgba(255, 248, 239, .065);
+    font-weight: 800;
+    border: 1px solid var(--pf-line);
+    background: var(--pf-surface);
     transition: background .16s ease, border-color .16s ease, transform .16s ease;
 }
 
 .pf-nav a:hover {
-    background: rgba(255, 248, 239, .12);
-    border-color: rgba(234, 213, 189, .34);
+    background: var(--pf-surface);
+    border-color: var(--pf-line);
     transform: translateX(2px);
 }
 
 .pf-nav a.is-active {
-    background: linear-gradient(180deg, #fff4e5, #d8b892);
-    border-color: rgba(255, 248, 239, .68);
-    color: #2a1810;
+    background: var(--pf-surface);
+    border-color: var(--pf-line);
+    color: var(--pf-text);
 }
 
 .pf-sidebar-footer {
     padding: 16px;
-    border-top: 1px solid rgba(234, 213, 189, .18);
-    background: rgba(18, 11, 8, .18);
+    border-top: 1px solid var(--pf-line);
+    background: rgba(0, 0, 0, .6);
 }
 
 .pf-sidebar-utility-grid {
@@ -3983,29 +3864,29 @@ button.pf-secondary-action,
 
 .pf-sidebar-utility {
     min-height: 42px;
-    border-radius: 15px;
-    border: 1px solid rgba(234, 213, 189, .28);
-    background: rgba(255, 248, 239, .10);
-    color: #fff8ef;
+    border-radius: var(--pf-radius-sm);
+    border: 1px solid var(--pf-line);
+    background: var(--pf-surface);
+    color: var(--pf-text);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     text-decoration: none;
     font-size: .78rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: .08em;
     text-transform: uppercase;
 }
 
 .pf-sidebar-utility:hover {
-    background: rgba(255, 248, 239, .16);
-    color: #fff8ef;
+    background: var(--pf-surface);
+    color: var(--pf-text);
 }
 
 .pf-sidebar-logout {
     width: 100%;
-    background: linear-gradient(180deg, #fff4e5, #d8b892);
-    color: #2a1810;
+    background: var(--pf-surface);
+    color: var(--pf-text);
 }
 
 /* Mobile */
@@ -4015,7 +3896,7 @@ button.pf-secondary-action,
         left: 12px;
         bottom: 12px;
         width: calc(100vw - 24px);
-        border-radius: 22px;
+        border-radius: var(--pf-radius-md);
     }
 
     .pf-sidebar-head {
@@ -4034,34 +3915,23 @@ button.pf-secondary-action,
 /* Dashboard-only compact executive layout. Single source, no stacked override. */
 
 .pf-dashboard-command {
-    gap: 20px;
-    padding-top: 18px;
-}
-
-.pf-dashboard-command {
     display: grid;
-    gap: 22px;
+    gap: 16px;
 }
-
-
-
-
-
-
 
 .pf-dashboard-command .pf-secondary-action {
     min-height: 36px;
     padding: 8px 13px;
-    border: 1px solid rgba(110, 75, 52, .30);
-    background: #fffdf9;
-    color: #3c261a;
+    border: 1px solid var(--pf-line);
+    background: var(--pf-surface);
+    color: var(--pf-text);
     box-shadow: none;
 }
 
 .pf-dashboard-command .pf-secondary-action:hover {
-    border-color: rgba(110, 75, 52, .52);
-    background: #f4e9df;
-    color: #24150e;
+    border-color: var(--pf-line);
+    background: var(--pf-surface);
+    color: var(--pf-text);
 }
 
 .pf-dashboard-kpis {
@@ -4071,26 +3941,26 @@ button.pf-secondary-action,
 }
 
 .pf-dashboard-kpi {
-    min-height: 126px;
-    padding: 18px 20px;
-    border: 1px solid rgba(105, 68, 43, .22);
-    border-radius: 18px;
-    background: linear-gradient(145deg, #5d3c2a 0%, #382016 100%);
-    box-shadow: 0 12px 26px rgba(52, 31, 18, .12);
-    color: #fffaf5;
+    min-height: 100px;
+    padding: 14px 16px;
+    border: 1px solid var(--pf-line);
+    border-radius: var(--pf-radius-md);
+    background: var(--pf-surface);
+    box-shadow: none;
+    color: var(--pf-text);
 }
 
 .pf-dashboard-kpi span {
     display: block;
-    color: #e8c99f;
+    color: var(--pf-gold);
 }
 
 .pf-dashboard-kpi strong {
     display: block;
     margin: 0;
-    color: #fffaf6;
-    font-size: clamp(1.8rem, 2.7vw, 2.55rem);
-    font-weight: 900;
+    color: var(--pf-text);
+    font-size: clamp(1.5rem, 2.4vw, 2rem);
+    font-weight: 800;
     letter-spacing: -.045em;
     line-height: 1;
 }
@@ -4098,7 +3968,7 @@ button.pf-secondary-action,
 .pf-dashboard-kpi small {
     display: block;
     margin-top: 10px;
-    color: rgba(255, 248, 240, .77);
+    color: var(--pf-text-muted);
     font-size: .82rem;
     font-weight: 700;
     line-height: 1.35;
@@ -4121,12 +3991,12 @@ button.pf-secondary-action,
     display: grid;
     grid-template-rows: auto auto 1fr auto auto;
     gap: 14px;
-    min-height: 320px;
-    padding: 25px;
-    border: 1px solid rgba(109, 73, 47, .24);
-    border-radius: 22px;
-    background: linear-gradient(145deg, #fffdf9 0%, #f5e8dc 100%);
-    box-shadow: 0 14px 32px rgba(52, 31, 18, .10);
+    min-height: 0;
+    padding: 16px;
+    border: 1px solid var(--pf-line);
+    border-radius: var(--pf-radius-md);
+    background: var(--pf-surface);
+    box-shadow: none;
 }
 
 .pf-dashboard-card-topline {
@@ -4141,28 +4011,28 @@ button.pf-secondary-action,
 }
 
 .pf-dashboard-card-topline strong {
-    color: #5b3825;
+    color: var(--pf-text);
     font-size: .78rem;
-    font-weight: 900;
+    font-weight: 800;
     white-space: nowrap;
 }
 
 .pf-dashboard-card-topline strong.is-attention {
-    color: #a24b1c;
+    color: var(--pf-warning-text);
 }
 
 .pf-dashboard-primary-card h2 {
     margin: 0;
-    color: #26170f;
-    font-size: 1.8rem;
-    font-weight: 900;
+    color: var(--pf-text);
+    font-size: 1.35rem;
+    font-weight: 800;
     letter-spacing: -.04em;
     line-height: 1;
 }
 
 .pf-dashboard-primary-card p {
     margin: 0;
-    color: #654d3e;
+    color: var(--pf-text);
     font-size: .93rem;
     line-height: 1.52;
 }
@@ -4172,18 +4042,18 @@ button.pf-secondary-action,
     align-items: baseline;
     gap: 8px;
     padding-top: 12px;
-    border-top: 1px solid rgba(109, 73, 47, .16);
+    border-top: 1px solid var(--pf-line);
 }
 
 .pf-dashboard-card-stat b {
-    color: #2c1a10;
+    color: var(--pf-text);
     font-size: 1.35rem;
-    font-weight: 900;
+    font-weight: 800;
 }
 
 .pf-dashboard-card-stat span {
     margin: 0;
-    color: #765a49;
+    color: var(--pf-text);
     font-size: .79rem;
     font-weight: 800;
 }
@@ -4195,39 +4065,31 @@ button.pf-secondary-action,
     width: auto;
     min-height: 40px;
     padding: 9px 15px;
-    border: 1px solid #70452e;
     border-radius: 11px;
-    background: #70452e;
-    box-shadow: none;
-    color: #fffaf5;
-    font-weight: 900;
-}
-
-.pf-dashboard-command .pf-action:hover {
-    border-color: #4d2d1d;
-    background: #4d2d1d;
-    color: #fffaf5;
+    font-weight: 800;
 }
 
 .pf-dashboard-operations {
     display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
     padding: 12px;
-    border: 1px solid rgba(109, 73, 47, .18);
-    border-radius: 22px;
-    background: #f7ede4;
+    border: 1px solid var(--pf-line);
+    border-radius: var(--pf-radius-md);
+    background: var(--pf-surface);
 }
 
 .pf-dashboard-operation {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 16px;
     min-height: 68px;
     padding: 15px 14px 15px 16px;
-    border: 1px solid rgba(109, 73, 47, .16);
+    border: 1px solid var(--pf-line);
     border-radius: 14px;
-    background: #fffdf9;
+    background: var(--pf-surface);
 }
 
 .pf-dashboard-operation span {
@@ -4237,15 +4099,15 @@ button.pf-secondary-action,
 
 .pf-dashboard-operation h3 {
     margin: 0;
-    color: #2b1a11;
+    color: var(--pf-text);
     font-size: 1rem;
-    font-weight: 900;
+    font-weight: 800;
     line-height: 1.2;
 }
 
 .pf-dashboard-operation p {
     margin: 4px 0 0;
-    color: #765d4d;
+    color: var(--pf-text);
     font-size: .79rem;
     font-weight: 700;
     line-height: 1.35;
@@ -4263,9 +4125,9 @@ button.pf-secondary-action,
 
 .pf-dashboard-activity article {
     padding: 14px 16px;
-    border: 1px solid rgba(109, 73, 47, .16);
+    border: 1px solid var(--pf-line);
     border-radius: 14px;
-    background: #fffdf9;
+    background: var(--pf-surface);
 }
 
 .pf-dashboard-activity span {
@@ -4276,9 +4138,9 @@ button.pf-secondary-action,
 .pf-dashboard-activity strong {
     display: block;
     margin-top: 6px;
-    color: #2c1a10;
+    color: var(--pf-text);
     font-size: 1.35rem;
-    font-weight: 900;
+    font-weight: 800;
     line-height: 1;
 }
 
@@ -4302,12 +4164,8 @@ button.pf-secondary-action,
         gap: 16px;
     }
 
-
-
-
-    .pf-dashboard-kpis,
     .pf-dashboard-primary-grid,
-    .pf-dashboard-activity {
+    .pf-dashboard-operations {
         grid-template-columns: 1fr;
     }
 
@@ -4330,24 +4188,24 @@ button.pf-secondary-action,
 
 .pf-business-platform-page .pf-command-head,
 .pf-business-platform-page .pf-command-rail .pf-rail-card {
-    color: #fff;
+    color: var(--pf-text);
 }
 
 .pf-business-platform-page .pf-command-text,
 .pf-business-platform-page .pf-rail-note {
-    color: rgba(255, 255, 255, .82);
+    color: var(--pf-text-muted);
 }
 
 .pf-business-platform-page > .pf-workspace-grid > .pf-module-card {
-    background: #fffaf6;
+    background: var(--pf-surface);
     color: var(--pf-text);
 }
 
 .pf-business-platform-eyebrow {
     margin: 0 0 6px;
-    color: #b98968;
+    color: var(--pf-gold);
     font-size: .68rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: .14em;
     text-transform: uppercase;
 }
@@ -4383,11 +4241,11 @@ button.pf-secondary-action,
 }
 
 .pf-business-account-card {
-    border: 1px solid rgba(86, 49, 34, .18);
-    border-radius: 22px;
+    border: 1px solid var(--pf-line);
+    border-radius: var(--pf-radius-md);
     padding: 16px;
-    background: #fff;
-    box-shadow: 0 14px 30px rgba(31, 18, 13, .08);
+    background: var(--pf-surface);
+    box-shadow: none;
 }
 
 .pf-business-account-main {
@@ -4400,7 +4258,7 @@ button.pf-secondary-action,
     margin: 0 0 4px;
     color: var(--pf-cocoa);
     font-size: .68rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: .12em;
     text-transform: uppercase;
 }
@@ -4409,7 +4267,7 @@ button.pf-secondary-action,
     margin: 0;
     color: var(--pf-text);
     font-size: 1.18rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: -.03em;
 }
 
@@ -4436,17 +4294,17 @@ button.pf-secondary-action,
 
 .pf-business-account-metrics div {
     min-width: 0;
-    border: 1px solid rgba(86, 49, 34, .14);
-    border-radius: 16px;
+    border: 1px solid var(--pf-line);
+    border-radius: var(--pf-radius-md);
     padding: 10px 11px;
-    background: #fffaf6;
+    background: var(--pf-surface);
 }
 
 .pf-business-account-metrics span {
     display: block;
     color: var(--pf-cocoa);
     font-size: .66rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: .1em;
     text-transform: uppercase;
 }
@@ -4457,7 +4315,7 @@ button.pf-secondary-action,
     margin-top: 4px;
     color: var(--pf-text);
     font-size: .84rem;
-    font-weight: 950;
+    font-weight: 800;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -4478,7 +4336,7 @@ button.pf-secondary-action,
     margin: 4px 0 -4px;
     color: var(--pf-cocoa);
     font-size: .72rem;
-    font-weight: 950;
+    font-weight: 800;
     letter-spacing: .08em;
     text-transform: uppercase;
 }
@@ -4486,9 +4344,9 @@ button.pf-secondary-action,
 .pf-business-create-form .form-control,
 .pf-business-create-form .form-select {
     min-height: 44px;
-    border-radius: 15px;
-    border-color: rgba(86, 49, 34, .22);
-    background: #fff;
+    border-radius: var(--pf-radius-sm);
+    border-color: var(--pf-line);
+    background: var(--pf-surface);
     color: var(--pf-text);
     font-weight: 800;
 }
