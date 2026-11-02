@@ -16,7 +16,7 @@ namespace Infrastructure.Businesses;
 /// <summary>Shared business analytics actions. Hosts resolve access and scope before reads or writes.</summary>
 public abstract class BusinessAnalyticsControllerBase(BusinessWorkspaceService? workspace) : Controller
 {
-    private BusinessWorkspaceService Workspace => workspace ?? HttpContext.RequestServices.GetRequiredService<BusinessWorkspaceService>();
+    protected BusinessWorkspaceService WorkspaceService => workspace ?? HttpContext.RequestServices.GetRequiredService<BusinessWorkspaceService>();
     protected abstract Task<CommerceBusiness?> ResolveBusinessAsync(Guid id, string capability, CancellationToken ct);
 
     protected virtual ScopeContext ResolveAnalyticsScope(Guid businessId) => ScopeContext.ForBusiness(businessId);
@@ -69,7 +69,7 @@ public abstract class BusinessAnalyticsControllerBase(BusinessWorkspaceService? 
         var resolvedPreset = preset ?? (days == 7 ? "7d" : days == 90 ? "90d" : "30d");
         var timezone = AnalyticsViewerTimeZoneResolver.Resolve(timezoneId, timezoneOffsetMinutes);
         var range = TimeRangeRequest.FromPreset(resolvedPreset, fromUtc, toUtc, timezone, qualityMode);
-        var model = await Workspace.AnalyticsAsync(business, range, cancellationToken, StoreReportingScope(businessId));
+        var model = await WorkspaceService.AnalyticsAsync(business, range, cancellationToken, StoreReportingScope(businessId));
 
         model.CanCustomize = await ResolveBusinessAsync(businessId, "settings", cancellationToken) is not null;
         ViewData["AnalyticsBase"] = AnalyticsRoute(businessId);
@@ -1120,7 +1120,7 @@ public abstract class BusinessAnalyticsControllerBase(BusinessWorkspaceService? 
         { return BadRequest("Choose a valid time range and time zone."); }
         try
         {
-            var result = await Workspace.AnalyticsDataAsync(businessId, section, range, trafficType,
+            var result = await WorkspaceService.AnalyticsDataAsync(businessId, section, range, trafficType,
                 metric, visitorId, sessionId, quoteType, campaign, pageMode, scoreTier, cancellationToken, StoreReportingScope(businessId));
             return result is null ? NotFound() : Json(result);
         }

@@ -331,6 +331,8 @@ public class WebsiteAnalyticsInitialQualityModeTests
         var services = new ServiceCollection();
         services.AddSingleton(new Infrastructure.Analytics.MarketingConnectionStore(db,
             new Infrastructure.Analytics.MarketingCredentialProtector(DataProtectionProvider.Create("AgentPortal.Tests"))));
+        services.AddSingleton(provider => new Infrastructure.Analytics.AgentMarketingProfileService(db,
+            provider.GetRequiredService<Infrastructure.Analytics.MarketingConnectionStore>(), new EphemeralDataProtectionProvider()));
         var http = new DefaultHttpContext { User = user, RequestServices = services.BuildServiceProvider() };
         var accessor = new HttpContextAccessor { HttpContext = http };
         var effective = new EffectiveAgentContext(accessor, tracking.Object, NullLogger<EffectiveAgentContext>.Instance);

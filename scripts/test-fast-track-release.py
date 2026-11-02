@@ -126,7 +126,8 @@ class UniversalFastTrackAdmissionTests(unittest.TestCase):
             authority.fast_track_scope(['Domain/Entities/UnreviewedContinuation.cs'])
 
     def test_scoped_store_shared_owners_select_all_managed_hosts(self):
-        paths = ['Infrastructure/Businesses/BusinessWorkspaceService.cs',
+        paths = ['Infrastructure/Businesses/BusinessAnalyticsControllerBase.cs',
+                 'Infrastructure/Businesses/BusinessWorkspaceService.cs',
                  'Infrastructure/Businesses/BusinessWorkspaceService.Team.cs',
                  'Infrastructure/Identity/ClientEntraLifecycleService.cs',
                  'SHARED/Analytics/ScopeContext.cs', 'SHARED/Crm/BusinessWorkspaceModels.cs']

@@ -4922,6 +4922,7 @@ def fast_track_scope(paths):
         'Infrastructure/Bookings/ReceptionistBookingContracts.cs',
         'Infrastructure/Bookings/ReceptionistBookingReadinessReader.cs',
         'Infrastructure/Businesses/BusinessWorkspaceControllerBase.cs',
+        'Infrastructure/Businesses/BusinessAnalyticsControllerBase.cs',
         'Infrastructure/Businesses/BusinessWorkspaceControllerBase.Receptionist.cs',
         'Infrastructure/Businesses/BusinessWorkspaceControllerBase.ReceptionistManagement.cs',
         'Infrastructure/Businesses/CommerceBusinessProvisioningService.cs',

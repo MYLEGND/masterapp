@@ -33,7 +33,7 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
     public async Task<IActionResult> ClientQuickView(Guid businessId, string clientUserId, CancellationToken cancellationToken)
     {
         if (await ResolveBusinessAsync(businessId, "crm", cancellationToken) is null) return Forbid();
-        var result = await workspace.QuickViewAsync(businessId, clientUserId, "Client", cancellationToken);
+        var result = await WorkspaceService.QuickViewAsync(businessId, clientUserId, "Client", cancellationToken);
         return result is null ? NotFound() : Json(result);
     }
 
@@ -41,26 +41,26 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
     public async Task<IActionResult> LeadQuickView(Guid businessId, string id, CancellationToken cancellationToken)
     {
         if (await ResolveBusinessAsync(businessId, "crm", cancellationToken) is null) return Forbid();
-        var result = await workspace.QuickViewAsync(businessId, id, "Lead", cancellationToken);
+        var result = await WorkspaceService.QuickViewAsync(businessId, id, "Lead", cancellationToken);
         return result is null ? NotFound() : Json(result);
     }
 
     [HttpPost("crm/api/{recordSet:regex(^(Clients|Leads)$)}/SaveQuickView")]
     [ValidateAntiForgeryToken]
     public Task<IActionResult> SaveQuickView(Guid businessId, string recordSet, [FromBody] BusinessCrmQuickViewRequest input,
-        CancellationToken cancellationToken) => ExecuteCrmWrite(businessId, () => workspace.SaveQuickViewAsync(businessId,
+        CancellationToken cancellationToken) => ExecuteCrmWrite(businessId, () => WorkspaceService.SaveQuickViewAsync(businessId,
             recordSet == "Clients" ? "Client" : "Lead", input, User.GetCanonicalUserId(), cancellationToken), cancellationToken);
 
     [HttpPost("crm/api/Clients/AddActivity")]
     [ValidateAntiForgeryToken]
     public Task<IActionResult> AddActivity(Guid businessId, [FromBody] BusinessCrmActivityRequest input,
-        CancellationToken cancellationToken) => ExecuteCrmWrite(businessId, () => workspace.AddActivityAsync(businessId,
+        CancellationToken cancellationToken) => ExecuteCrmWrite(businessId, () => WorkspaceService.AddActivityAsync(businessId,
             input, User.GetCanonicalUserId(), cancellationToken), cancellationToken);
 
     [HttpPost("crm/api/{recordSet:regex(^(Clients|Leads)$)}/Reorder")]
     [ValidateAntiForgeryToken]
     public Task<IActionResult> Reorder(Guid businessId, string recordSet, [FromBody] BusinessCrmReorderRequest input,
-        CancellationToken cancellationToken) => ExecuteCrmWrite(businessId, () => workspace.ReorderAsync(businessId,
+        CancellationToken cancellationToken) => ExecuteCrmWrite(businessId, () => WorkspaceService.ReorderAsync(businessId,
             recordSet == "Clients" ? "Client" : "Lead", input, User.GetCanonicalUserId(), cancellationToken), cancellationToken);
 
     private async Task<IActionResult> ExecuteCrmWrite(Guid businessId, Func<Task<object?>> write, CancellationToken ct)
@@ -79,7 +79,7 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
     [HttpPost("crm/api/Clients/BulkUpdate")]
     [ValidateAntiForgeryToken]
     public Task<IActionResult> BulkUpdate(Guid businessId, [FromBody] BusinessCrmBulkRequest input,
-        CancellationToken cancellationToken) => ExecuteCrmWrite(businessId, () => workspace.BulkUpdateAsync(businessId,
+        CancellationToken cancellationToken) => ExecuteCrmWrite(businessId, () => WorkspaceService.BulkUpdateAsync(businessId,
             input, User.GetCanonicalUserId(), cancellationToken), cancellationToken);
 
     [HttpGet("clients")]
@@ -110,7 +110,7 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
     {
         var business = await ResolveBusinessAsync(businessId, "crm", cancellationToken);
         if (business is null) return Forbid();
-        var model = await workspace.CrmAsync(business, kind, search, page, contactId, cancellationToken);
+        var model = await WorkspaceService.CrmAsync(business, kind, search, page, contactId, cancellationToken);
         model.CanCustomize = await ResolveBusinessAsync(businessId, "settings", cancellationToken) is not null;
         if (contactId is not null && model.Selected is null) return NotFound();
         ViewData["BusinessWorkspace"] = model;
@@ -126,7 +126,7 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
     {
         if (await ResolveBusinessAsync(businessId, "crm", cancellationToken) is null) return Forbid();
         if (!ModelState.IsValid) return BadRequest(ModelState);
-        try { if (!await workspace.UpdateAsync(businessId, contactId, input, User.GetCanonicalUserId(), cancellationToken)) return NotFound(); }
+        try { if (!await WorkspaceService.UpdateAsync(businessId, contactId, input, User.GetCanonicalUserId(), cancellationToken)) return NotFound(); }
         catch (DbUpdateConcurrencyException) { return Conflict("This contact changed in another session. Reload before saving."); }
         catch (ArgumentException ex) { return BadRequest(ex.Message); }
         return RedirectToAction(input.Kind == "Client" ? nameof(Clients) : nameof(Leads), new { businessId, contactId });
@@ -137,7 +137,7 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
     {
         var business = await ResolveBusinessAsync(businessId, "settings", cancellationToken);
         if (business is null) return Forbid();
-        return View("~/Views/Shared/BusinessWorkspaceSettings.cshtml", await workspace.CustomizeAsync(business, cancellationToken));
+        return View("~/Views/Shared/BusinessWorkspaceSettings.cshtml", await WorkspaceService.CustomizeAsync(business, cancellationToken));
     }
 
     [HttpPost("settings")]
@@ -146,7 +146,7 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
     {
         if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
         if (!ModelState.IsValid) return BadRequest(ModelState);
-        try { await workspace.CustomizeAsync(businessId, input, cancellationToken); }
+        try { await WorkspaceService.CustomizeAsync(businessId, input, cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict("Settings changed in another session. Reload before saving."); }
         catch (ValidationException ex) { return BadRequest(ex.Message); }
         return RedirectToAction(nameof(Settings), new { businessId });
