@@ -7079,7 +7079,7 @@ function assertRetainedProtectShell(w,shell,expectedHeight='520.856px'){
   assert.equal(w.document.querySelector('.site-footer').style.height,expectedHeight);
 }
 
-for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserves native CSS modal identity and scoped links: '+(prefix||'root'),async()=>{
+for(const prefix of ['', '/a/synthetic-agent']) for(const placeholderTag of ['p','iframe']) test('Coverage template preserves native CSS modal identity and scoped links: '+(prefix||'root')+' '+placeholderTag,async()=>{
   const style=coverageIndexView.match(/<style>[\s\S]*?<\/style>/)?.[0].replaceAll('@@media','@media');
   const script=coverageIndexView.match(/<script>([\s\S]*?)<\/script>/)?.[1];
   const pageStart=coverageIndexView.indexOf('<div class="quote-page">');
@@ -7124,6 +7124,7 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
         Object.assign(node,retained.find(child=>child.id===id));
       }
     }
+    captured.get('quote_index.div.node.node22.child.2').tag=placeholderTag;
     const savedModal=captured.get('quote_index.div.node.node28');
     savedModal.style={...savedModal.style,offsetXPercent:0};
     savedModal.breakpointStyles=Object.fromEntries(['desktop','tablet','mobile'].map(key=>[key,{offsetXPercent:0}]));
@@ -7258,7 +7259,7 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
       assert.equal(fetches,0);
     }finally{w.close();}
   }
-  for(const change of ['omit-modal','omit-calendar','omit-prayer','duplicate-modal','move-calendar','remove-close','authored-booking-text','authored-booking-style','pre-booking-edit-add-omit','extra-native-root','authored-booking-breakpoint','authored-booking-color','authored-booking-numeric-string','authored-booking-layout','authored-booking-binding','authored-booking-signal','authored-booking-div-typography','authored-booking-tag','authored-booking-children']){
+  for(const change of ['omit-modal','omit-calendar','omit-prayer','duplicate-modal','move-calendar','remove-close','authored-booking-text','authored-booking-style','pre-booking-edit-add-omit','extra-native-root','authored-booking-breakpoint','authored-booking-color','authored-booking-numeric-string','authored-booking-layout','authored-booking-binding','authored-booking-signal','authored-booking-div-typography','authored-booking-tag','authored-booking-src','authored-booking-href','authored-booking-media','authored-booking-children']){
     const changed=structuredClone(doc),nodes=changed.pages['/quote'].composition;
     const pageNode=nodes.find(node=>node.className==='quote-page');
     const modalNode=nodes.find(node=>node.className==='life-modal');
@@ -7279,7 +7280,10 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
       else if(change==='authored-booking-binding')frame.dataBinding={source:'untrusted'};
       else if(change==='authored-booking-signal')frame.signals=[{eventName:'untrusted'}];
       else if(change==='authored-booking-div-typography')canonicalNodeById(changed,'quote_index.div.node.node23','/quote').style.fontSize=17;
-      else if(change==='authored-booking-tag')frame.tag='iframe';
+      else if(change==='authored-booking-tag')frame.tag='object';
+      else if(change==='authored-booking-src')frame.src='https://untrusted.example.test';
+      else if(change==='authored-booking-href')frame.href='https://untrusted.example.test';
+      else if(change==='authored-booking-media')frame.mediaUrl='https://untrusted.example.test';
       else if(change==='authored-booking-children')frame.children.push(canonicalNode('unexpected.child','text','p',{text:'Must not disappear'}));
     }
     if(change==='pre-booking-edit-add-omit'){

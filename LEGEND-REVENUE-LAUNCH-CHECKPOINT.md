@@ -2192,3 +2192,30 @@ No renderer safeguards removed, production configuration changed, Cloudflare
 publication, migration, fast-track merge or deployment performed. Preserve
 original local draft and immutable publication while preparing a reviewable
 content-preserving recovery through the existing authority.
+
+## 2026-11-01 — Complete local published-route rendering sweep
+
+Continued exact isolation checkpoint0af610df05a2253bc872adfdd8c14fc27c8c1592.
+The complete25-route local immutable publication sweep identified /quote as the
+remaining public rendering failure. Its raw captured booking placeholder uses
+text/iframe while the existing safe projection expected sanitized text/p.
+Corrected only that exact placeholder representation check in the canonical CMS
+renderer. Saved children remain inert: they are never mounted, their URLs never
+applied, and the current request-owned booking node remains authoritative.
+Nonempty content, URLs, children, signals and bindings still fail closed. No
+stored draft, immutable publication, generic tag policy or renderer was replaced.
+
+Ten focused renderer tests passed, including both representations across root
+and agent scope, embed/fallback/disabled booking states, compiler/hydration,
+unsafe-field rejection and native identity preservation. Protect compiled with
+zero warnings/errors. Refreshed local process/packaged assets; served renderer
+hash matches source. Browser verification passed all25published routes and all25
+agent-prefixed routes (50checks), with main content and no unavailable/pending
+screen. Coverage life chooser opens and existing booking widget loads; no forms
+submitted or bookings made. This verifies public rendering, not every business
+journey or production deployment.
+
+Prior management blockers (noncanonical stored draft and Founder401) remain
+separate and unresolved. No management recovery, production publication,
+fast-track merge or deployment performed. Existing source/release authority and
+saved content remain preserved.

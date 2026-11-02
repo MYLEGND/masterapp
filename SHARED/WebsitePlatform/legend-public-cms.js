@@ -764,10 +764,12 @@
     const safeBookingProjection=node=>{
       const children=node.children || [];
       // The historical safe projection contains a hidden diagnostic DIV and a
-      // non-executable whitespace frame placeholder. Never turn saved markup or
+      // non-executable whitespace frame placeholder. Raw captures retain an iframe
+      // tag; sanitized captures use p. Neither is mounted: only the current
+      // request owns the live booking node. Never turn saved markup or
       // a modified child into a runtime iframe, nor silently discard authored data.
       if(children.length!==2 || children[0].type!=='container' || children[0].tag!=='div' ||
-        classes(children[0]).length || children[1].type!=='text' || children[1].tag!=='p' ||
+        classes(children[0]).length || children[1].type!=='text' || !['p','iframe'].includes(children[1].tag) ||
         classes(children[1]).join(' ')!=='booking-frame')fail();
       const record=value=>value && typeof value==='object' && !Array.isArray(value);
       const layout=value=>record(value) && Object.entries(value).every(([name,item])=>
