@@ -8168,7 +8168,7 @@ test('native results and option tiles persist presentation without changing subm
   const reviewSource=readFileSync(new URL('../../Protect-Website/wwwroot/js/quote-final-review.js',import.meta.url),'utf8');
   const doc=canonicalDocument(),path='/quote/life',id='signal:quote_life.form.lifewizardform.0';
   doc.pages[path]={title:'Life',systemTemplateKey:'protect_template:life_wizard',navigation:{isDeleted:false},composition:[canonicalNode(id,'container','div',{systemKey:'protect_runtime_form:quote_life',fieldPresentations:{},fieldLabels:{}})]};
-  const html=`<!doctype html><html><body><main><form id="lifeWizardForm" data-form-key="quote_life" data-cms-presentation="quote" data-cms-contact-id="contact" data-cms-results-id="results"><div id="contact"><label><input type="radio" name="Goal" value="family" required><span class="lq-card-title">Family</span></label><div id="results" hidden></div></div></form></main></body></html>`;
+  const html=`<!doctype html><html><body><main><form id="lifeWizardForm" data-form-key="quote_life" data-cms-presentation="quote" data-cms-contact-id="contact" data-cms-results-id="results"><div id="contact"><label style="display:grid!important"><input type="radio" name="Goal" value="family" required><span class="lq-card-title">Family</span></label><div id="results" hidden></div></div></form></main></body></html>`;
   const fixture=doc=>domFixture({siteKey:'protect',doc,pathname:path,html,beforeEval:w=>w.eval(reviewSource)});
   let saved;
   const f=await fixture(doc);
@@ -8176,9 +8176,14 @@ test('native results and option tiles persist presentation without changing subm
     const control=f.w.document.querySelector('input[name="Goal"]');
     f.click('label:has(input[name="Goal"])');
     f.input('[data-style-key="backgroundColor"]','#123456');
+    const priorDisplayPriority=control.closest('label').style.getPropertyPriority('display');
     const select=f.w.document.querySelector('#legend-cms-form-navigator select');
     const result=[...select.options].find(x=>x.textContent.includes('Results + scheduling'));
     assert.ok(result);f.change('#legend-cms-form-navigator select',result.value);
+    const optionLabel=control.closest('label');
+    assert.equal(optionLabel.hidden,true);
+    assert.equal(optionLabel.style.getPropertyValue('display'),'none');
+    assert.equal(optionLabel.style.getPropertyPriority('display'),'important');
     assert.ok(f.w.document.querySelector('#results .quote-review'));
     assert.equal(f.w.document.querySelector('#results iframe'),null);
     f.click('[data-cms-review-style="booking"]');f.input('[data-style-key="backgroundColor"]','#456789');
@@ -8191,6 +8196,10 @@ test('native results and option tiles persist presentation without changing subm
     assert.equal(control.name,'Goal');assert.equal(control.value,'family');assert.equal(control.required,true);assert.equal(control.checked,false);
     assert.doesNotMatch(JSON.stringify(saved),/Illustrative preview|studio-results/);
     assert.equal(f.calls.some(call=>/submit|booking/i.test(call.url||'')&&call.method==='POST'),false);
+    f.change('#legend-cms-form-navigator select','-1');
+    assert.equal(optionLabel.hidden,false);
+    assert.equal(optionLabel.style.getPropertyValue('display'),'grid');
+    assert.equal(optionLabel.style.getPropertyPriority('display'),priorDisplayPriority);
   }finally{f.close();}
   const f2=await fixture(saved);
   try{

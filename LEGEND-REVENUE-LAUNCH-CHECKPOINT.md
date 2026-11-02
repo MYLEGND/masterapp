@@ -2589,3 +2589,30 @@ Local pretest used a fresh synthetic SQLite database and the existing loopback G
 Prior required architecture run41396288894 failed because its source-component fixture expected ten navigator options, while the accepted Results + scheduling option makes eleven. The existing fixture now loads the actual shared quote-review renderer, asserts the exact option inventory and verifies results/scheduling preview rather than skipping it. Genuine hosted browser acceptance remains required.
 
 NOT DEPLOYED for this repair. Remaining: all affected mobile/desktop journeys, exact-candidate hosted checks, production operation reconciliation/admission, affected-target deployment, live provenance/journeys and fast-track integration. No production content, leads, permissions or provider settings changed.
+
+### 2026-11-02 — native Results preview visibility correction
+
+Candidate base 56569e112235598bafffb467a4a192453e498d82 is preserved remotely.
+PR validation 41409058695 and security 41409058651 passed. Native component
+acceptance in architecture run 41409058583 exposed Disability Results phase 9:
+contact controls retained layout under hidden ancestors because authored display
+rules defeated HTML hidden. The Results renderer also reapplied presentation after
+visibility projection. Corrected the existing reversible Studio projection to
+apply visibility after rendering, retaining and restoring original display and
+priority before capture or phase changes. Public submission behavior is unchanged.
+The focused regression and all 415 shared CMS tests passed. Hosted native browser
+acceptance must run on the next exact candidate; no failed gate is waived.
+
+Additional safe localhost coverage used the supported read-only capture mode and
+synthetic SQLite, with no submissions: all Auto and Commercial steps at 320/1280;
+Disability and Dental/Vision/Hearing discovery through contact, with desktop Back
+navigation. Dental's five steps measured no horizontal overflow at 320/1280.
+Full persisted submission/results acceptance is not established by capture mode.
+
+Read-only Azure observation still reports Protect5186d94860e529c71406a8418bd8673af1ae706a
+and Website68519f934c56a7aada192fb0fdee20fcf3b6cc39. Latest known operation IDs
+92eceaa9bf114518876bf2b9a6f637ea and 3dad08af10224e709b4f89952b0e5aed report status4.
+Observation is not a new release receipt. Founder reiterated direct Mac deployment;
+reuse the previously documented native Mac publication route, not fast-track
+execution. Required review/testing, operation reconciliation and live verification
+remain required. No new deployment, merge or fast-track sync occurred here.

@@ -408,10 +408,11 @@
     if(results) {
       const host=find('cmsResultsId');
       if(host && host.closest('form')===form) {
+        projection.results(host,form);
         for(let child=host;child && child!==contact && child!==form;child=child.parentElement)
           for(const sibling of child.parentElement?.children || [])
             if(sibling!==child) operations.hidden(sibling,true);
-        operations.hidden(host,false);projection.results(host,form);
+        operations.hidden(host,false);
       }
     }
     const steps=[...form.querySelectorAll('[data-cms-native-step]')];
@@ -9985,7 +9986,16 @@
     try{return capture();}finally{previewFormStep(index);}
   }
   const formPreviewProjection={
-    hidden(element,value){if(element){rememberFormPreview(element);element.hidden=value;}},
+    hidden(element,value){
+      if(!element) return;
+      const state=rememberFormPreview(element);
+      element.hidden=value;
+      // Authored display rules can outrank the browser's [hidden] rule.
+      // This transient projection is restored before capture or phase changes.
+      if(value) element.style.setProperty('display','none','important');
+      else if(state.display) element.style.setProperty('display',state.display,state.displayPriority);
+      else element.style.removeProperty('display');
+    },
     attribute(element,key,value){if(element){const state=rememberFormPreview(element);if(!state.attributes.has(key))state.attributes.set(key,element.getAttribute(key));element.setAttribute(key,value);}},
     class(element,key,value){if(element && key){const state=rememberFormPreview(element);if(!state.classes.has(key))state.classes.set(key,element.classList.contains(key));element.classList.toggle(key,value);}},
     text(element,value){if(element){const state=rememberFormPreview(element);if(state.text===null)state.text={value:element.textContent,preserve:element.getAttribute('data-cms-preserve-whitespace')};setContentText(element,value,true);}},
