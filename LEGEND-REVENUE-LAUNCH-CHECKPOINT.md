@@ -2299,3 +2299,38 @@ login does not supply its source/security/schema admission, writer exclusion or
 receipt proofs. No direct upload, environment spoofing, fast-track merge, workflow
 deployment, configuration change or migration was performed. Local deployment
 requires a bounded canonical supported-mode design, not bypassing the guard.
+
+## 2026-11-01 — Protect production publication-read pressure repair
+
+Founder authorized direct Mac deployment and correction of production-wide page
+latency. The previous prepared 7b54b806 package was successfully recovered by
+stopping Protect before ZIP publication: an active stdout file inside wwwroot had
+caused KuduSync to fail despite the provider's outer success receipt. Recovery
+receipt 37a9b9ae23b84e29b3d815e9bdee70fe and origin/public runtime provenance
+confirmed 7b54b806b7d1afb1e0a2ddeb2b6da672ceec08f9. No fast-track merge ran.
+
+A subsequent 17-route sweep found 16 requests exceeding 45 seconds and one taking
+40 seconds. Read-only SQL evidence identified 40 concurrent whole-publication
+reads (including DocumentJson and CompiledPagesJson), all waiting on
+ASYNC_NETWORK_IO, oldest over 540 seconds. Protect memory rose from roughly
+727 MB to 1,096 MB while completed request volume stayed low. The largest active
+Protect compiled snapshot occupied 27,983,100 SQL bytes. Direct metadata reads
+completed around one second; the small indexed Founder lookup was not proven to
+be the cause and was not altered.
+
+The existing PublicWebsiteRuntimeScopeResolver LEGEND/Protect publication query
+now projects original document and version metadata without unused compiled HTML.
+It reuses the existing synchronous large-text reader, moved unchanged into
+WebsiteContentStore; cancellation before/after read, owner/site/state-version
+joins, strict cardinality and exception behavior remain. Business publication
+and Parfait reads remain unchanged because business route checks consume compiled
+pages. No cache, fallback, alternate authority, schema or credential changes.
+
+Focused validation: 128 existing publication, tracking, inquiry-isolation and
+marketing cases passed; two new SQLite command-interceptor regressions passed
+for LEGEND/Protect projection, synchronous read, metadata, cross-owner/site denial,
+cancellation, corrupted-schema duplicate cardinality and version/state mismatch.
+Only the disposable test database drops its unique index to simulate corruption.
+Production schema remains unchanged. Existing helper cancellation tests passed.
+Deployment and post-repair route/SQL-pressure verification are the next step;
+source test success alone does not establish restored live performance.
