@@ -14,7 +14,7 @@
 @if (ViewData["CommerceStoreContext"] is ParfaitApp.Services.CommerceStoreContext { StorePageBeforeCatalog: not null, StorePageAfterCatalog: not null } authored)
 {
     @Html.Raw(authored.StorePageBeforeCatalog)
-    <partial name="~/Views/Store/_CatalogCards.cshtml" model="Model" />
+    @await Html.PartialAsync("~/Views/Store/_CatalogCards.cshtml", Model)
     @Html.Raw(authored.StorePageAfterCatalog)
 }
 else
@@ -26,7 +26,7 @@ else
         </header>
 
         <section class="sp-shop-grid" aria-label="@Model.StoreName products">
-            <partial name="~/Views/Store/_CatalogCards.cshtml" model="Model" />
+            @await Html.PartialAsync("~/Views/Store/_CatalogCards.cshtml", Model)
         </section>
     </div>
 </section>

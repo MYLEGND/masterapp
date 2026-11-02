@@ -208,7 +208,7 @@
                 itemsHost.innerHTML = items.map(item => `
                     <article class="sp-cart-item">
                         <a class="sp-cart-media" href="${productUrl(item)}" aria-label="View ${item.name || "product"}">
-                            <img src="${item.imageUrl || "/store-assets/images/favicon/parfait-logo.png"}" alt="${item.name || "Product"}" />
+                            ${item.imageUrl ? `<img src="${item.imageUrl}" alt="${item.name || "Product"}" />` : '<span class="sp-product-no-photo" role="img" aria-label="No product photo">No product photo</span>'}
                         </a>
                         <div class="sp-cart-body">
                             <div class="sp-cart-top">

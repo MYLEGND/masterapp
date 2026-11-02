@@ -110,7 +110,7 @@ public sealed class ParfaitStoreProductViewModel
         ?? Sizes.FirstOrDefault(size => size.IsEnabled)
         ?? Sizes.OrderBy(size => size.DisplayOrder).FirstOrDefault();
 
-    public string PrimaryImageUrl => PrimaryImage?.ImageUrl ?? "/images/favicon/parfait-logo.png";
+    public string PrimaryImageUrl => PrimaryImage?.ImageUrl ?? "";
     public string PrimaryImageObjectFit => PrimaryImage?.ObjectFit ?? "cover";
     public int PrimaryImageObjectPositionX => PrimaryImage?.ObjectPositionX ?? 50;
     public int PrimaryImageObjectPositionY => PrimaryImage?.ObjectPositionY ?? 50;

@@ -25,9 +25,16 @@
                         {
                             <span class="sp-shop-badge" data-cms-store-style="badge">@product.Badge</span>
                         }
+                        @if (!string.IsNullOrWhiteSpace(product.PrimaryImageUrl))
+                        {
                         <img src="@product.PrimaryImageUrl"
                              alt="@product.Name"
                              style="@ImageDisplayStyle(product.PrimaryImageObjectFit, product.PrimaryImageObjectPositionX, product.PrimaryImageObjectPositionY, product.PrimaryImageZoom)" />
+                        }
+                        else
+                        {
+                            <span class="sp-product-no-photo" role="img" aria-label="No product photo">No product photo</span>
+                        }
                     </a>
 
                     <div class="sp-shop-content" data-cms-store-style="content">
