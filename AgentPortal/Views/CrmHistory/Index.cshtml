@@ -44,13 +44,15 @@
     </section>
     <aside class="history-tools" aria-label="Case notes and evidence">
     <div class="history-section-heading"><h2>Case notes &amp; evidence</h2></div>
-    <details class="history-tool"><summary>Log interaction <span>Notes, calls &amp; follow-ups</span></summary>
+    <div class="history-note-actions"><button type="button" id="history-note-open" class="btn btn-primary">Add case note</button><button type="button" id="history-notes-find" class="history-action">Find saved notes</button></div><p>Notes are filed in the activity timeline. Search or filter to find them.</p>
+    <dialog id="history-note-dialog" class="history-dialog" aria-labelledby="history-note-title"><div class="history-dialog-heading"><h2 id="history-note-title">Add case note</h2><button type="button" id="history-note-close" class="history-action">Close · keep draft</button></div><p id="history-note-status" role="status" aria-live="polite"></p>
         <form id="history-interaction" class="history-form">
             <label>Type<select name="type" class="history-control">@foreach(var type in new[]{"Note","Call","AttemptedCall","Meeting","Email","Message","Document","Milestone","FollowUp","Complaint","Addendum","TaskCompleted","TaskCanceled"}) {<option>@type</option>}</select></label>
             <label>Date (leave blank if unknown)<input name="occurredDate" type="date" class="history-control" /></label>
+            <label>Note · what happened<textarea name="account" class="history-control" rows="5" required maxlength="20000"></textarea></label>
+            <details id="history-note-options" class="history-note-options"><summary>More details · calls, follow-ups &amp; evidence</summary><div class="history-form">
             <label>Exact event time (UTC, if known; replaces date above)<input name="occurredUtc" type="datetime-local" class="history-control" /><small>Leave blank when only the date is known. Never estimate a missing time.</small></label>
             <label>Channel<input name="channel" class="history-control" maxlength="80" /></label>
-            <label>Factual account<textarea name="account" class="history-control" rows="5" required maxlength="20000"></textarea></label>
             <label>Participants<input name="participants" class="history-control" maxlength="2000" /></label>
             <label>Direction<select name="direction" class="history-control"><option value="">Unknown / not applicable</option><option>Inbound</option><option>Outbound</option></select></label>
             <label>Outcome<textarea name="outcome" class="history-control" maxlength="4000"></textarea></label>
@@ -64,9 +66,10 @@
             <label>Evidence state<select name="evidenceState" class="history-control"><option>Evidence unavailable</option><option>Manual source reference</option><option>Human-reported source inspection</option><option>Later recollection</option></select></label>
             <p>Manual evidence is the recorder's account. It is not an independently captured client signature, carrier approval or active coverage.</p>
             <label>Related entry ID for addendum or follow-up<input name="relatedEntryId" class="history-control" /></label>
-            <div><button class="btn btn-primary">File interaction</button></div>
+            </div></details>
+            <div><button type="submit" class="btn btn-primary">Save case note</button></div>
         </form>
-    </details>
+    </dialog>
     <details class="history-tool"><summary>Attach protected evidence</summary>
         <p>Upload an original PDF (maximum 20 MB). Each upload files an immutable version. A later version links to the original; it does not replace it. Identify missing pages or unavailable signature evidence explicitly.</p>
         <form id="history-evidence" class="history-form">

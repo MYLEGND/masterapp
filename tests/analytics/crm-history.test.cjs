@@ -1,10 +1,11 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync('AgentPortal/wwwroot/js/crm-history.js','utf8');
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
-function harness({count=2,pageSize=10}={}){
+function harness({count=2,pageSize=10,draft=null}={}){
   class Element{
-    constructor(){this.children=[];this.dataset={};this.style={};this.listeners={};this.fields=new Map();this.elements={namedItem:n=>{if(!this.fields.has(n))this.fields.set(n,{value:n==='group'?'none':''});return this.fields.get(n);}};this.open=false;}
+    constructor(){this.children=[];this.dataset={};this.style={};this.listeners={};this.fields=new Map();this.elements={namedItem:n=>{if(!this.fields.has(n))this.fields.set(n,{value:n==='group'?'none':'',addEventListener(){}});return this.fields.get(n);}};this.open=false;}
     addEventListener(n,f){(this.listeners[n]??=[]).push(f);}
+    reset(){this.emit('reset');}
     emit(n){for(const f of this.listeners[n]||[])f({preventDefault(){}});}
     append(...v){this.children.push(...v);}replaceChildren(){this.children=[];this.textContent='';}
     querySelector(){return {value:'synthetic',disabled:false};}showModal(){this.open=true;}close(){this.open=false;this.emit('close');}
@@ -17,7 +18,7 @@ function harness({count=2,pageSize=10}={}){
     if(url.includes('/Entry/'))return new Promise((resolve,reject)=>requests.set(url.match(/Entry\/([^?]+)/)[1],{resolve:data=>resolve({ok:true,json:async()=>data}),reject}));
     return {ok:true,json:async()=>url.includes('/Entries?')?{entries:['A','B'].map(id=>({id,type:'FormSubmission',source:'WebsiteSubmission',status:'Filed',occurredDate:'2026-10-30'})),count,pageSize,snapshotUtc:'2026-10-30T00:00:00Z',activeHolds:[],openObligations:0,overdueObligations:0}:{}};
   };
-  vm.runInNewContext(source,{document:{getElementById:get,createElement:()=>new Element()},window:{addEventListener(){}},location:{search:''},sessionStorage:{getItem(){return null;},setItem(){},removeItem(){}},crypto:{randomUUID:()=> 'synthetic'},URLSearchParams,URL,fetch,Intl,Date,setTimeout,FormData:class{*[Symbol.iterator](){}},console});
+  vm.runInNewContext(source,{document:{getElementById:get,createElement:()=>new Element()},window:{addEventListener(){}},location:{search:''},sessionStorage:{getItem(key){return key.endsWith(':evidence') || key.endsWith(':association') || key.endsWith(':preservation')?null:JSON.stringify(draft);},setItem(){},removeItem(){}},crypto:{randomUUID:()=> 'synthetic'},URLSearchParams,URL,fetch,Intl,Date,setTimeout,FormData:class{*[Symbol.iterator](){}},console});
   return {get,requests,queries,click:index=>get('history-results').children[index].children[0].emit('click')};
 }
 const record=id=>({entry:{id,source:'WebsiteSubmission',submissionId:id,contentJson:JSON.stringify({account:id})},submission:{associationVersion:'version-'+id,snapshotJson:'{}'}});
@@ -93,4 +94,36 @@ test('history requests bounded selected pages and uses server size for navigatio
   h.get('history-next').onclick();await settle();
   assert.equal(h.get('history-next').disabled,true);
   assert.ok(h.queries.some(q=>q.includes('page=1')&&q.includes('pageSize=25')));
+});
+
+test('note composer opens separately and closes without clearing its draft',async()=>{
+  const h=harness();await settle();
+  const form=h.get('history-interaction');form.elements.namedItem('account').value='Unfiled factual note';
+  h.get('history-note-open').onclick();assert.equal(h.get('history-note-dialog').open,true);
+  h.get('history-note-close').onclick();assert.equal(h.get('history-note-dialog').open,false);
+  assert.equal(form.elements.namedItem('account').value,'Unfiled factual note');
+});
+test('note detail prioritizes narrative while retaining complete original fields',async()=>{
+  const h=harness();await settle();h.click(0);
+  h.requests.get('A').resolve({entry:{id:'A',type:'Note',source:'Manual',contentJson:JSON.stringify({account:'Factual note',outcome:'Spoke',nextAction:'Call',unknown:null,confirmed:false,count:0})}});await settle();
+  const nodes=[];function visit(n){nodes.push(n);for(const c of n.children||[])visit(c);}visit(h.get('history-detail-content'));
+  const text=nodes.map(n=>n.textContent);
+  for(const value of ['Factual note','Complete filed note · details & evidence','Evidence unavailable','false','0'])assert.ok(text.includes(value));
+});
+
+test('note quick-find reuses one reset load and opens required follow-up details',async()=>{
+  const h=harness();await settle();const before=h.queries.length;
+  h.get('history-notes-find').onclick();await new Promise(resolve=>setTimeout(resolve,10));
+  assert.equal(h.queries.length,before+1);assert.ok(h.queries.at(-1).includes('type=Note'));
+  h.get('history-interaction').elements.namedItem('type').value='FollowUp';
+  h.get('history-note-open').onclick();assert.equal(h.get('history-note-options').open,true);
+  assert.match(h.get('history-note-status').textContent,/owner and due time/);
+});
+
+test('reopened uncertain draft retains retry warning alongside required fields and UTC guidance',async()=>{
+  const h=harness({draft:{requestId:'same',savedPayload:'pending',fields:{type:'FollowUp',occurredUtc:'2026-11-01T12:00'}}});await settle();
+  h.get('history-note-open').onclick();const text=h.get('history-note-status').textContent;
+  assert.match(text,/Retry the unchanged uncertain save/);assert.match(text,/owner and due time/);assert.match(text,/exact UTC time/);
+  h.get('history-interaction').elements.namedItem('type').value='Note';h.get('history-note-open').onclick();
+  assert.doesNotMatch(h.get('history-note-status').textContent,/owner and due time/);
 });

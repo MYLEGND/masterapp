@@ -2036,3 +2036,27 @@ and a genuine PDF download. Desktop columns measured763.609px each;390px mobile
 stacked without horizontal overflow. Explicit case view showed2 relevant records;
 all view paged10 records. Existing page/access/export auditing remains active;
 no manual case notes or protected evidence were submitted during verification.
+
+## 2026-11-01 — Streamlined record details and case-note composer
+
+Preserved c2bb6c354a31a2e8e4492ae319b334689a414866 on the existing local
+isolation branch. Preflight remains blocked by filesystem/transport verification;
+existing local-only exception and persistent recovery procedure apply. No push.
+
+Canonical shared CRM presentation now uses quiet two-column labeled rows instead
+of a tile wall. Original values remain available in clearly labeled disclosures;
+submitted evidence, browser-reported context, authorization and metadata remain
+distinct. Note narrative is primary; complete original fields remain accessible.
+The same note form opens in the shared native modal with note/type/date visible,
+optional fields expandable, required-type and exact-UTC guidance automatically
+revealed. Closing preserves the existing draft/request identity. Find saved notes
+uses the existing type filter and one canonical reset/load; no new storage/query
+owner. Save confirmation, uncertain-save handling and server validation unchanged.
+
+Actual AgentPortal build passed with zero warnings/errors;11 focused Node tests
+passed including draft-close preservation, complete note detail and single-load
+quick-find. Live local composer opens, desktop and390px mobile have no horizontal
+overflow; note shortcut selects Note and truthfully reports no matching notes for
+the inspected relationship. No test note submitted to the existing Azure database;
+normal existing page/access auditing remains active. No production deployment,
+migration, backend/PDF change or full-CI success claim.

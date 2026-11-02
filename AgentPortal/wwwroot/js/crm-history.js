@@ -23,9 +23,22 @@
   const date = value => value ? new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short',timeZone:zone}).format(toDate(value)) : 'Time unavailable';
   const endpoint = (path,params = {}) => '/CrmHistory/'+path+'?'+new URLSearchParams([...scope,...Object.entries(params)]);
   async function json(url, options) { const r = await fetch(url,{credentials:'same-origin',...options}); if(!r.ok){const error=new Error(r.status===403 || r.status===404 ? 'This record is unavailable under your current access.' : 'Request failed. Your existing history has not been changed.');error.status=r.status;throw error;} return r.json(); }
+  const noteDialog=document.getElementById('history-note-dialog'), noteStatus=document.getElementById('history-note-status');
+  function showNoteRequirements(){
+    const guidance={FollowUp:'Set the follow-up owner and due time.',Complaint:'Set the assigned owner and due time.',Document:'Identify the evidence source.',Addendum:'Identify the related entry.',TaskCompleted:'Identify the related entry.',TaskCanceled:'Identify the related entry.'}[field(form,'type')];
+    const utc=field(form,'occurredUtc')?'The recorded exact UTC time replaces the date above.':'';
+    if(guidance || utc)document.getElementById('history-note-options').open=true;
+    noteStatus.textContent=[savedPayload?'Retry the unchanged uncertain save.':'Write your note. Add optional details only when needed.',guidance,utc].filter(Boolean).join(' ');
+  }
+  form.elements.namedItem('type').addEventListener('change',showNoteRequirements);
+  document.getElementById('history-note-open').onclick=()=>{showNoteRequirements();noteDialog.showModal();};
+  document.getElementById('history-note-close').onclick=()=>noteDialog.close();
+  document.getElementById('history-notes-find').onclick=()=>{filters.reset();filters.elements.namedItem('type').value='Note';};
+  const humanLabel=value=>String(value).replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/[_-]/g,' ').replace(/^./,c=>c.toUpperCase());
+  function disclosure(parent,title){const box=document.createElement('details'),summary=document.createElement('summary');summary.textContent=title;box.append(summary);parent.append(box);return box;}
   function renderValue(value, parent, label) {
     const section=document.createElement('section');section.className=typeof value==='string' && (value.length>180 || value.includes('\n')) ? 'history-fact history-fact-wide' : 'history-fact';
-    if(label) {const h=document.createElement('h3');h.className='history-fact-label';h.textContent=label;section.append(h);}
+    if(label) {const h=document.createElement('h3');h.className='history-fact-label';h.textContent=humanLabel(label);h.title=label;section.append(h);}
     if(value && typeof value==='object') {
       section.className='history-fact-group';
       const fields=document.createElement('div');fields.className='history-fact-grid';
@@ -46,24 +59,26 @@
   }
   function renderSubmission(snapshot) {
     const evidence=snapshot?.SubmittedFormEvidence;
-    if(!evidence){renderValue(snapshot,detail,'Original captured fields — historical question wording may be unavailable');return;}
+    if(!evidence){renderValue('Historical question wording and authorization evidence may be unavailable.',detail,'Record limitation');renderValue(snapshot,disclosure(detail,'View original submitted answers'),'Original captured fields');return;}
     renderValue(evidence.formType,detail,'Submitted form');
     renderValue(evidence.completeness,detail,'Evidence completeness');
-    renderValue(evidence.answers,detail,'Validated submitted answers — authoritative captured values');
-    renderValue('The presentation below is browser-reported context. It may differ from the validated answers above and does not independently establish what was shown or selected.',detail,'Presentation evidence limitation');
+    renderValue(evidence.answers,disclosure(detail,'Submitted answers'),'Validated submitted answers — authoritative captured values');
+    const presentation=disclosure(detail,'Browser-reported presentation · supporting context');
+    renderValue('The presentation below is browser-reported context. It may differ from the validated answers above and does not independently establish what was shown or selected.',presentation,'Presentation evidence limitation');
     for(const field of evidence.presentationEvidence?.fields || []){
-      renderValue(field.question || field.name+' — question wording unavailable',detail,'Question');
-      renderValue(field.answer,detail,'Browser-reported response — not authoritative');
-      if(field.optionLabel)renderValue(field.optionLabel,detail,'Browser-reported option label');
-      if(field.choiceValue!==null)renderValue(field.choiceValue,detail,'Browser-reported option value');
-      renderValue(field.state,detail,'Presentation / answer state (browser-reported)');
-      if(field.choices?.length)for(const option of field.choices)renderValue(option.label+' — '+(option.selected?'Selected':'Not selected'),detail,'Available choice');
+      renderValue(field.question || field.name+' — question wording unavailable',presentation,'Question');
+      renderValue(field.answer,presentation,'Browser-reported response — not authoritative');
+      if(field.optionLabel)renderValue(field.optionLabel,presentation,'Browser-reported option label');
+      if(field.choiceValue!==null)renderValue(field.choiceValue,presentation,'Browser-reported option value');
+      renderValue(field.state,presentation,'Presentation / answer state (browser-reported)');
+      if(field.choices?.length)for(const option of field.choices)renderValue(option.label+' — '+(option.selected?'Selected':'Not selected'),presentation,'Available choice');
     }
+    const authorizations=disclosure(detail,'Authorization evidence · recorded disclosures');
     for(const authorization of evidence.authorizations || []){
-      renderValue(authorization.text,detail,'Authorization disclosure');
-      renderValue(authorization.status,detail,'Submitted checkbox state');
-      renderValue(authorization.source,detail,'Disclosure evidence');
-      renderValue(authorization.signatureEvidence,detail,'Signature evidence');
+      renderValue(authorization.text,authorizations,'Authorization disclosure');
+      renderValue(authorization.status,authorizations,'Submitted checkbox state');
+      renderValue(authorization.source,authorizations,'Disclosure evidence');
+      renderValue(authorization.signatureEvidence,authorizations,'Signature evidence');
     }
     const raw=document.createElement('details'),rawTitle=document.createElement('summary');rawTitle.textContent='Original captured fields and provenance';raw.append(rawTitle);renderValue(snapshot,raw);detail.append(raw);
   }
@@ -77,12 +92,22 @@
       if (current !== detailGeneration || !dialog.open) return;
       detail.replaceChildren();
       const {contentJson, ...provenance}=data.entry;const provenanceBox=document.createElement('details'),provenanceTitle=document.createElement('summary');provenanceTitle.textContent='Record provenance and original IDs';provenanceBox.append(provenanceTitle);renderValue(provenance,provenanceBox);detail.append(provenanceBox);const permalink=document.createElement('a');permalink.textContent='Link to this record';permalink.href='/CrmHistory?'+new URLSearchParams([...scope,['entry',entry.id]]);detail.append(permalink);
-      try {renderValue(JSON.parse(data.entry.contentJson),detail,'Filed content');}catch {renderValue(data.entry.contentJson,detail,'Filed content');}
+      renderValue(data.entry.type || entry.type,detail,'Record type');
+      const filedParent=data.submission?disclosure(detail,'Filing details'):detail;
+      try {
+        const content=JSON.parse(data.entry.contentJson);
+        if(!data.submission && content && typeof content==='object' && !Array.isArray(content) && Object.hasOwn(content,'account')){
+          renderValue(content.account,detail,'Note');
+          for(const key of ['outcome','nextAction'])if(content[key])renderValue(content[key],detail,humanLabel(key));
+          renderValue(content,disclosure(detail,'Complete filed note · details & evidence'),'Original recorded fields');
+        }else renderValue(content,filedParent,'Filed content');
+      }catch {renderValue(data.entry.contentJson,filedParent,'Filed content');}
+      renderValue(data.entry.evidenceStatus || 'Evidence status unavailable',detail,'Evidence status');
       if(data.entry.source==='ProtectedDocument'){const download=document.createElement('a');download.textContent='Download verified original evidence';download.href=endpoint('Evidence/'+data.entry.id);download.className='history-action';detail.append(download);}
-      if(data.association)renderValue(data.association,detail,'Association');
+      if(data.association)renderValue(data.association,disclosure(detail,'Relationship association'),'Association');
       if(data.submission){const association=document.getElementById('history-association');association.elements.namedItem('submissionId').value=data.entry.submissionId;association.dataset.expectedVersion=data.submission.associationVersion;}
       else delete document.getElementById('history-association').dataset.expectedVersion;
-      if(data.submission){const {snapshotJson,...meta}=data.submission;renderValue(meta,detail,'Submission');try{renderSubmission(JSON.parse(snapshotJson));}catch{renderValue(snapshotJson,detail,'Original captured fields');}}
+      if(data.submission){const {snapshotJson,...meta}=data.submission;renderValue(meta,disclosure(detail,'Submission identity & timing'),'Submission');try{renderSubmission(JSON.parse(snapshotJson));}catch{renderValue(snapshotJson,detail,'Original captured fields');}}
     } catch(e){if(current===detailGeneration && dialog.open)detail.textContent=e.message;}
   }
   async function load() {
@@ -112,9 +137,9 @@
   document.getElementById('history-previous').onclick=()=>{if(page>0){page--;load();}};document.getElementById('history-next').onclick=()=>{page++;load();};document.getElementById('history-close').onclick=()=>{invalidateDetail();dialog.close();};
   form.addEventListener('submit',async e=>{e.preventDefault();const submit=form.querySelector('button');submit.disabled=true;
     const payload={requestId,type:field(form,'type'),account:field(form,'account'),occurredDate:field(form,'occurredUtc')?null:field(form,'occurredDate')||null,occurredUtc:field(form,'occurredUtc')?field(form,'occurredUtc')+':00Z':null,timeZoneId:zone,channel:field(form,'channel'),direction:field(form,'direction'),participants:field(form,'participants'),outcome:field(form,'outcome'),nextAction:field(form,'nextAction'),caseReference:field(form,'caseReference'),product:field(form,'product'),relatedEntryId:field(form,'relatedEntryId')||null,assignedOwner:field(form,'assignedOwner')||null,dueUtc:field(form,'dueUtc')?field(form,'dueUtc')+':00Z':null,evidenceSource:field(form,'evidenceSource'),evidenceReference:field(form,'evidenceReference'),evidenceState:field(form,'evidenceState')};
-    if(savedPayload && JSON.stringify(payload)!==savedPayload){status.textContent='The prior save is uncertain. Retry the unchanged entry before editing it.';submit.disabled=false;return;}
-    savedPayload=JSON.stringify(payload);rememberDraft();status.textContent='Saving…';
-    try{const response=await json(endpoint('Entries'),{method:'POST',headers:{'Content-Type':'application/json','RequestVerificationToken':token},body:savedPayload});if(!response.saved||!response.id)throw new Error('Save confirmation missing; retry this entry.');form.reset();requestId=crypto.randomUUID();savedPayload=null;try{sessionStorage.removeItem(draftKey);}catch{}page=0;snapshotUtc=null;await load();status.textContent='Filed · '+response.id;}catch(error){if([400,403,404,422].includes(error.status)){savedPayload=null;rememberDraft();status.textContent='Not saved. '+error.message;}else status.textContent=error.message+' Save may be uncertain; retry the unchanged entry.';}finally{submit.disabled=false;}
+    if(savedPayload && JSON.stringify(payload)!==savedPayload){status.textContent='The prior save is uncertain. Retry the unchanged entry before editing it.';noteStatus.textContent=status.textContent;submit.disabled=false;return;}
+    savedPayload=JSON.stringify(payload);rememberDraft();status.textContent='Saving…';noteStatus.textContent='Saving…';
+    try{const response=await json(endpoint('Entries'),{method:'POST',headers:{'Content-Type':'application/json','RequestVerificationToken':token},body:savedPayload});if(!response.saved||!response.id)throw new Error('Save confirmation missing; retry this entry.');form.reset();requestId=crypto.randomUUID();savedPayload=null;try{sessionStorage.removeItem(draftKey);}catch{}page=0;snapshotUtc=null;await load();status.textContent='Case note saved · '+response.id;noteDialog.close();}catch(error){if([400,403,404,422].includes(error.status)){savedPayload=null;rememberDraft();status.textContent='Not saved. '+error.message;}else status.textContent=error.message+' Save may be uncertain; retry the unchanged entry.';}finally{noteStatus.textContent=status.textContent;submit.disabled=false;}
   });
   const evidenceForm=document.getElementById('history-evidence');
   const evidenceDraftKey=draftKey+':evidence';

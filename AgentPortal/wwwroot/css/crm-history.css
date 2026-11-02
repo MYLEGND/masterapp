@@ -54,6 +54,9 @@
 .history-tool p, .history-form small { font-size: .75rem; line-height: 1.6; font-weight: 400; color: var(--legend-app-on-dark-muted); }
 .history-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .history-form > :is(p, div), .history-form > label:has(textarea), .history-form > label:has(input[type="file"]) { grid-column: 1 / -1; }
+.history-note-options { grid-column: 1 / -1; }
+.history-note-options > .history-form { margin-top: 16px; }
+.history-note-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
 .history-form textarea { resize: vertical; }
 .history-dialog { width: var(--legend-desktop-modal-width); max-width: calc(100vw - 24px); max-height: var(--legend-desktop-modal-height); overflow: auto; padding: clamp(20px, 3vw, 32px); background: var(--legend-modal-surface); color: var(--legend-modal-ink); border: 1px solid var(--legend-modal-line-strong); border-radius: var(--legend-app-radius); box-shadow: var(--legend-modal-shadow); }
 .history-dialog::backdrop { background: color-mix(in srgb, var(--web-navy-deep) 65%, transparent); }
@@ -62,8 +65,8 @@
 .history-dialog h3 { color: var(--legend-modal-gold); }
 .history-dialog a { color: var(--legend-modal-gold-strong); }
 .history-dialog details { padding: 14px; border: 1px solid var(--legend-modal-line); border-radius: var(--legend-app-radius-compact); margin-block: 16px; }
-.history-fact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 12px; }
-.history-fact { min-width: 0; padding: 14px; background: var(--legend-modal-surface-raised); border: 1px solid var(--legend-modal-line); border-radius: var(--legend-app-radius-compact); }
+.history-fact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.history-fact { min-width: 0; padding: 10px 0; border-bottom: 1px solid var(--legend-modal-line); }
 .history-fact-wide { grid-column: 1 / -1; }
 .history-fact-group { min-width: 0; grid-column: 1 / -1; margin-block: 18px; }
 .history-fact-label { font-size: .76rem; font-weight: 700; margin: 0 0 8px; overflow-wrap: anywhere; }
@@ -86,5 +89,5 @@
     .history-record { padding: 12px; grid-template-columns: minmax(0, 1fr); }
     .history-record-time { grid-column: 1; grid-row: auto; text-align: left; }
     .history-workspace { padding-inline: 16px; }
-    .history-form { grid-template-columns: minmax(0, 1fr); }
+    .history-form, .history-fact-grid { grid-template-columns: minmax(0, 1fr); }
 }
