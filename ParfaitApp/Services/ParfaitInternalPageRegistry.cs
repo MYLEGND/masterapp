@@ -93,6 +93,9 @@ public sealed class ParfaitInternalPageRegistry : IParfaitInternalPageRegistry
 
         foreach (var action in _actions.ActionDescriptors.Items.OfType<ControllerActionDescriptor>())
         {
+            // Analytics APIs remain under the existing Analytics page grant and navigation entry.
+            if (action.MethodInfo.DeclaringType == typeof(Infrastructure.Businesses.BusinessAnalyticsControllerBase))
+                continue;
             var template = action.AttributeRouteInfo?.Template;
             if (string.IsNullOrWhiteSpace(template))
                 continue;
@@ -107,7 +110,8 @@ public sealed class ParfaitInternalPageRegistry : IParfaitInternalPageRegistry
             if (ExcludedExactRoutes.Any(excluded => route.Equals(excluded, StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            if (route.Contains("/meta-", StringComparison.OrdinalIgnoreCase) ||
+            if (route.StartsWith("/internal/analytics/", StringComparison.OrdinalIgnoreCase) ||
+                route.Contains("/meta-", StringComparison.OrdinalIgnoreCase) ||
                 route.EndsWith("/logout", StringComparison.OrdinalIgnoreCase))
             {
                 continue;

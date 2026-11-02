@@ -27,6 +27,9 @@ public sealed record ClientEntraIdentitySynchronizationResult(
 
 public interface IClientEntraLifecycleService
 {
+    Task<ClientEntraIdentityResult> EnsureBusinessTeamIdentityAsync(string firstName, string lastName, string email,
+        CancellationToken cancellationToken = default);
+
     Task<ClientEntraIdentityResult> EnsureClientIdentityAsync(
         Guid clientProfileId,
         CancellationToken cancellationToken = default);
@@ -146,6 +149,36 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
                 credential,
                 new[] { "https://graph.microsoft.com/.default" });
         });
+    }
+
+    public async Task<ClientEntraIdentityResult> EnsureBusinessTeamIdentityAsync(string firstName, string lastName,
+        string email, CancellationToken cancellationToken = default)
+    {
+        var normalized = NormalizeEmail(email);
+        if (string.IsNullOrWhiteSpace(normalized)) throw new ArgumentException("An account email is required.");
+        var existing = await FindByEmailAsync(normalized, cancellationToken, requireUnique: true);
+        var created = existing is null;
+        string? redemption = null;
+        if (existing is null)
+        {
+            var invitation = await _graph.Invitations.PostAsync(new Invitation
+            {
+                InvitedUserEmailAddress = normalized,
+                InvitedUserDisplayName = (firstName.Trim() + " " + lastName.Trim()).Trim(),
+                InviteRedirectUrl = _inviteRedirectUrl, SendInvitationMessage = false
+            }, cancellationToken: cancellationToken);
+            existing = invitation?.InvitedUser;
+            redemption = ValidateRedemptionUrl(invitation?.InviteRedeemUrl);
+        }
+        var id = NormalizeToken(existing?.Id);
+        if (string.IsNullOrWhiteSpace(id)) throw new InvalidOperationException("Entra did not confirm the team identity.");
+        // Team membership never synchronizes another person's profile or assigns
+        // ClientApp entitlement. The accepted OIDC subject authorizes acceptance.
+        var verified = await GetVerifiedExternalUserAsync(id, normalized, cancellationToken);
+        var pending = IsPendingAcceptance(verified);
+        if (pending && redemption is null)
+            redemption = await CreateRedemptionInvitationAsync(id, normalized, cancellationToken);
+        return new(id, normalized, created, false, redemption, pending);
     }
 
     public async Task<ClientEntraIdentityResult> EnsureClientIdentityAsync(
@@ -517,7 +550,7 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
 
     private async Task<User?> FindByEmailAsync(
         string email,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool requireUnique = false)
     {
         if (string.IsNullOrWhiteSpace(email))
             return null;
@@ -539,11 +572,13 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
                     "userType",
                     "externalUserState"
                 };
-                request.QueryParameters.Top = 1;
+                request.QueryParameters.Top = requireUnique ? 2 : 1;
                 request.Headers.Add("ConsistencyLevel", "eventual");
             },
             cancellationToken);
 
+        if (requireUnique && (response?.Value?.Count > 1 || !string.IsNullOrEmpty(response?.OdataNextLink)))
+            throw new InvalidOperationException("Multiple Entra identities use this email. Resolve the identity before inviting a member.");
         return response?.Value?.FirstOrDefault();
     }
 

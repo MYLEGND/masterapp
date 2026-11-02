@@ -40,7 +40,7 @@ public sealed class AdvertisingCommandCenterCentralizationTests
     {
         var root = Root();
         var agent = Read(root, "AgentPortal", "Controllers", "WebsiteAnalyticsController.cs");
-        var business = Read(root, "Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs");
+        var business = Read(root, "Infrastructure", "Businesses", "BusinessAnalyticsControllerBase.cs");
 
         Assert.Contains("IAdvertisingCommandCenterService", agent, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"advertising\")]", agent, StringComparison.Ordinal);

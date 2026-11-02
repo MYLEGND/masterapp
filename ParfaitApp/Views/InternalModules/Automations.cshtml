@@ -3,10 +3,10 @@
     ViewData["Title"] = "Automations";
     Layout = "_InternalLayout";
     var commerceManagerTicket = ViewData["CommerceManagerTicket"] as string;
-    var isScopedCommerceManager = !string.IsNullOrWhiteSpace(commerceManagerTicket);
+    var isScopedCommerceManager = (ViewData["CommerceManagerScoped"] as bool? == true || !string.IsNullOrWhiteSpace(commerceManagerTicket));
     string CommerceAction(string internalPath, string scopedPath) =>
         isScopedCommerceManager
-            ? scopedPath + "?ticket=" + Uri.EscapeDataString(commerceManagerTicket!)
+            ? Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, scopedPath, commerceManagerTicket, scopedPath == "/commerce/manage/products" ? "GET" : "POST")
             : internalPath;
     var workflowAction = CommerceAction("/internal/automations/workflows", "/commerce/manage/automations/workflows");
     var workflowDeleteAction = CommerceAction("/internal/automations/workflows/delete", "/commerce/manage/automations/workflows/delete");

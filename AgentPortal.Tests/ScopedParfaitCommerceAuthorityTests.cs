@@ -18,7 +18,11 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.Contains("~/Views/InternalModules/Products.cshtml", controller, StringComparison.Ordinal);
         Assert.Contains("~/Views/InternalModules/Orders.cshtml", controller, StringComparison.Ordinal);
         Assert.Contains("~/Views/InternalModules/Automations.cshtml", controller, StringComparison.Ordinal);
-        Assert.Contains("~/Views/InternalModules/Analytics.cshtml", controller, StringComparison.Ordinal);
+        Assert.Contains("BusinessAnalyticsControllerBase", controller, StringComparison.Ordinal);
+        Assert.Contains("~/Views/WebsiteAnalytics/Index.cshtml", ReadSource("Infrastructure", "Businesses", "BusinessAnalyticsControllerBase.cs"), StringComparison.Ordinal);
+        Assert.Contains("base.Analytics(", ReadSource("ParfaitApp", "Controllers", "InternalModulesController.cs"), StringComparison.Ordinal);
+        foreach (var retired in new[] { "Views/InternalModules/Analytics.cshtml", "wwwroot/css/parfait-agentportal-analytics.css", "wwwroot/js/parfait-agentportal-analytics.js" })
+            Assert.False(File.Exists(Path.Combine(root, "ParfaitApp", retired)));
         Assert.Contains("~/Views/Dashboard/Index.cshtml", controller, StringComparison.Ordinal);
         Assert.Contains("store.CommerceBusinessId", controller, StringComparison.Ordinal);
         Assert.DoesNotContain("CommerceManagementWorkspaceViewModel", controller, StringComparison.Ordinal);
@@ -47,9 +51,8 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         var routingConfig = ReadSource("Legend-Cloudflare", "wrangler.website-routing.jsonc");
 
         Assert.Contains("ResolveCanonicalStoreRootAsync", platform, StringComparison.Ordinal);
-        Assert.Contains("Commerce:LegendPublicBaseUrl", platform, StringComparison.Ordinal);
-        Assert.Contains("WebsiteDomainBinding", platform, StringComparison.Ordinal);
-        Assert.Contains("managerBase + \"/commerce/manage/products?ticket=\"", platform, StringComparison.Ordinal);
+        Assert.Contains("CommerceStoreContextService.ManagementEntry(root", platform, StringComparison.Ordinal);
+        Assert.DoesNotContain("managerBase + \"/commerce/manage/products?ticket=\"", platform, StringComparison.Ordinal);
         Assert.Contains("managerBase + \"/commerce/manage/preview?ticket=\"", platform, StringComparison.Ordinal);
         Assert.DoesNotContain(": \"/commerce/manage/products?ticket=\"", platform, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorDataProtection:BlobUri", tickets, StringComparison.Ordinal);

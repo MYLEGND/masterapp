@@ -48,7 +48,8 @@ public sealed record CommerceBusinessProvisioningRequest(
     CommerceBusinessStorefrontProvisioning? Storefront = null,
     Guid? OwnerClientProfileId = null,
     IReadOnlyList<BusinessOwnerInput>? Owners = null,
-    string? ActorAgentUserId = null);
+    string? ActorAgentUserId = null,
+    bool CanManageCrm = false);
 
 public sealed record CommerceBusinessSubscriptionProvisioning(
     string PlanKey,
@@ -148,6 +149,7 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
             CanManageStorefront = request.CanManageStorefront,
             CanManageCatalog = request.CanManageCatalog,
             CanManageOrders = request.CanManageOrders,
+            CanManageCrm = request.CanManageCrm,
             CanManageAnalytics = request.CanManageAnalytics,
             CanManageTeam = request.CanManageTeam,
             CreatedUtc = now,
@@ -386,7 +388,7 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
         NormalizedEmail = profile.Email.Trim().ToUpperInvariant(), DisplayName = $"{profile.FirstName} {profile.LastName}".Trim(),
         RoleKey = "owner", Status = "Active", OwnershipPercentage = percentage,
         CanManageStorefront = true, CanManageAnalytics = true, CanManageTeam = true,
-        CanManageCatalog = false, CanManageOrders = false, CreatedUtc = now, UpdatedUtc = now
+        CanManageCatalog = false, CanManageOrders = false, CanManageCrm = true, CreatedUtc = now, UpdatedUtc = now
     };
 
     private async Task<string> GenerateUniqueKeyAsync(

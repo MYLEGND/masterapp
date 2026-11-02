@@ -1,0 +1,15 @@
+@model ParfaitApp.Models.ParfaitTeamCardPresentation
+<div class="pf-module-card pf-team-card">
+    <div class="pf-team-card-head">
+        <h3 class="pf-team-card-title">@Model.DisplayName</h3>
+        <button type="button" class="pf-secondary-action" data-pf-open="@Model.ModalId">Open Access</button>
+    </div>
+    <div class="pf-role-pill">Role: @Model.RoleLabel</div>
+    <p class="pf-team-card-copy">@Model.Email</p>
+    <div class="pf-team-list">
+        @foreach (var fact in Model.Facts)
+        {
+            <div><strong>@fact.Key</strong><span>@fact.Value</span></div>
+        }
+    </div>
+</div>

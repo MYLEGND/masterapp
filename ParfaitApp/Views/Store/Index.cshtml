@@ -4,22 +4,21 @@
     ViewData["BodyClass"] = "sp-body";
     ViewData["ContentContainerClass"] = "container-fluid";
     ViewData["LayoutContentClass"] = "sp-layout-content";
-    var storeRoot = ViewData["StoreRootPath"] as string ?? "/store";
-    var productBase = ViewData["StoreProductBasePath"] as string ?? (storeRoot + "/product");
-    var previewQuery = ViewData["StorePreviewQuery"] as string ?? "";
 
-    static string ImageDisplayStyle(string? fit, int positionX, int positionY, decimal zoom)
-    {
-        var safeFit = string.Equals(fit, "contain", StringComparison.OrdinalIgnoreCase) ? "contain" : "cover";
-        var safeZoom = zoom <= 0 ? 1.0m : zoom;
-        return $"object-fit:{safeFit}; object-position:{positionX}% {positionY}%; transform-origin:{positionX}% {positionY}%; transform:scale({safeZoom.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)});";
-    }
 }
 
 @section Styles {
     <link rel="stylesheet" href="/store-assets/css/storefront.css" asp-append-version="true" />
 }
 
+@if (ViewData["CommerceStoreContext"] is ParfaitApp.Services.CommerceStoreContext { StorePageBeforeCatalog: not null, StorePageAfterCatalog: not null } authored)
+{
+    @Html.Raw(authored.StorePageBeforeCatalog)
+    @await Html.PartialAsync("~/Views/Store/_CatalogCards.cshtml", Model)
+    @Html.Raw(authored.StorePageAfterCatalog)
+}
+else
+{
 <section class="sp-store-page">
     <div class="sp-shell sp-shell--wide">
         <header class="sp-store-hero sp-store-hero--collection">
@@ -27,44 +26,9 @@
         </header>
 
         <section class="sp-shop-grid" aria-label="@Model.StoreName products">
-            @foreach (var product in Model.Products)
-            {
-                <article class="sp-shop-card">
-                    <a class="sp-shop-media" href="@($"{productBase}/{product.Slug}{previewQuery}")" aria-label="View @product.Name">
-                        @if (!string.IsNullOrWhiteSpace(product.Badge))
-                        {
-                            <span class="sp-shop-badge">@product.Badge</span>
-                        }
-                        <img src="@product.PrimaryImageUrl"
-                             alt="@product.Name"
-                             style="@ImageDisplayStyle(product.PrimaryImageObjectFit, product.PrimaryImageObjectPositionX, product.PrimaryImageObjectPositionY, product.PrimaryImageZoom)" />
-                    </a>
-
-                    <div class="sp-shop-content">
-                        <div class="sp-shop-copy">
-                            <h2>@product.Name</h2>
-                        </div>
-
-                        <div class="sp-shop-meta">
-                            <div class="sp-shop-price-stack">
-                                @if (product.HasDisplaySalePrice)
-                                {
-                                    <span class="sp-shop-compare-price">@product.DisplayCompareAtPriceLabel</span>
-                                }
-                                <span class="sp-shop-price">@product.DisplayPriceLabel</span>
-                                @if (product.HasDisplayDiscountLabel)
-                                {
-                                    <span class="sp-shop-discount">@product.DisplayDiscountLabel</span>
-                                }
-                            </div>
-                        </div>
-
-                        <div class="sp-shop-actions">
-                            <a class="sp-button sp-button--primary sp-shop-link" href="@($"{productBase}/{product.Slug}{previewQuery}")">View Product</a>
-                        </div>
-                    </div>
-                </article>
-            }
+            @await Html.PartialAsync("~/Views/Store/_CatalogCards.cshtml", Model)
         </section>
     </div>
 </section>
+
+}

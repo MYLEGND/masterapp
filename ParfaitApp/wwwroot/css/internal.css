@@ -1,10 +1,12 @@
 :root {
-    --pf-cocoa: #563122;
+    --pf-cocoa-rgb: 86, 49, 34;
+    --pf-cocoa: rgb(var(--pf-cocoa-rgb));
     --pf-cocoa-soft: #7d513d;
     --pf-cream: #ffffff;
     --pf-surface: #ffffff;
     --pf-surface-soft: #eddccc;
-    --pf-surface-muted: #e1c7b0;
+    --pf-surface-muted-rgb: 225, 199, 176;
+    --pf-surface-muted: rgb(var(--pf-surface-muted-rgb));
     --pf-surface-panel: linear-gradient(180deg, rgba(255, 251, 247, 1) 0%, rgba(233, 214, 198, 0.98) 100%);
     --pf-surface-panel-strong: linear-gradient(180deg, rgba(255, 249, 243, 1) 0%, rgba(223, 198, 177, 0.99) 100%);
     --pf-surface-panel-soft: linear-gradient(180deg, rgba(255, 253, 250, 1) 0%, rgba(238, 221, 206, 0.97) 100%);
@@ -51,6 +53,38 @@
     --pf-radius-sm: 16px;
     --pf-radius-md: 22px;
     --pf-radius-lg: 28px;
+    --pf-analytics-deep: #0b0705;
+    --pf-analytics-raised: #241711;
+    --pf-analytics-gold: #d7b17a;
+    --pf-analytics-panel: linear-gradient(180deg, #160f0b, #090604);
+    --pf-analytics-card: linear-gradient(180deg, #3b2519, #1c110c);
+    --analytics-surface: var(--pf-analytics-deep);
+    --analytics-surface-rgb: 11, 7, 5;
+    --analytics-accent-rgb: 215, 177, 122;
+    --analytics-label: var(--pf-analytics-gold);
+    --analytics-panel-background: var(--pf-analytics-panel);
+    --analytics-card-background: var(--pf-analytics-card);
+    --analytics-select-background: var(--pf-surface-soft);
+    --analytics-select-ink: var(--pf-text);
+    --analytics-action-background: linear-gradient(180deg, #f1dfc8, #c9965f);
+    --analytics-neutral-background: var(--pf-analytics-card);
+    --analytics-neutral-line: rgba(215, 177, 122, .2);
+    --analytics-neutral-ink: var(--pf-nav-muted);
+    --web-shadow: var(--pf-shadow-overlay);
+    /* Shared analytics consumes the internal shell's existing brand tokens. */
+    --legend-app-surface: var(--pf-analytics-deep);
+    --legend-app-surface-elevated: var(--pf-analytics-raised);
+    --legend-app-on-dark: var(--pf-nav-text);
+    --legend-app-on-dark-muted: var(--pf-nav-muted);
+    --legend-app-accent: var(--pf-analytics-gold);
+    --legend-app-accent-bright: var(--pf-surface-soft);
+    --legend-app-control: var(--pf-analytics-raised);
+    --legend-app-control-line: var(--pf-nav-line-strong);
+    --legend-app-panel-soft: var(--pf-surface);
+    --legend-app-radius: var(--pf-radius-md);
+    --legend-app-radius-compact: var(--pf-radius-sm);
+    --web-ink: var(--pf-text);
+
 }
 
 *,
@@ -86,8 +120,7 @@ html {
         linear-gradient(180deg, #ffffff 0%, #faf8f6 100%);
 }
 
-.pf-internal-body a,
-.pf-internal-auth-body a {
+:where(.pf-internal-body, .pf-internal-auth-body) a {
     color: inherit;
 }
 
@@ -138,7 +171,7 @@ html {
     min-width: 0;
 }
 
-.pf-team-field label {
+.pf-team-page .pf-team-field label {
     color: #e7bf8b;
     font-size: .66rem;
     font-weight: 900;
@@ -2491,7 +2524,8 @@ html {
 
 
 .pf-product-modal,
-.pf-image-editor-modal {
+.pf-image-editor-modal,
+.pf-team-modal {
     position: fixed;
     inset: 0;
     z-index: 1800;
@@ -2505,7 +2539,8 @@ html {
 }
 
 .pf-product-modal.is-open,
-.pf-image-editor-modal.is-open {
+.pf-image-editor-modal.is-open,
+.pf-team-modal.is-open {
     display: flex;
 }
 
@@ -3340,7 +3375,7 @@ html {
 
 
 /* === PARFAIT CLEAN GLOBAL INTERNAL UI SYSTEM START === */
-/* Single active global internal UI system. Analytics remains isolated in parfait-agentportal-analytics.css. */
+/* Single active internal theme. Shared WebsiteAnalytics consumes the Parfait tokens above. */
 
 :root {
     --pf-page: #f8f5ef;
@@ -3451,7 +3486,6 @@ main.pf-internal-main {
 /* Products / Orders: clean light cards inside dark operations panels */
 .pf-product-card,
 .pf-product-row,
-.pf-team-card,
 .pf-automation-card,
 .pf-image-card,
 .pf-settings-card,
@@ -3577,7 +3611,6 @@ button.pf-secondary-action,
 
 .pf-product-card .pf-secondary-action,
 .pf-product-row .pf-secondary-action,
-.pf-team-card .pf-secondary-action,
 .pf-product-card .pf-mini-action,
 .pf-product-row .pf-mini-action {
     background: rgba(43,25,17,.06);

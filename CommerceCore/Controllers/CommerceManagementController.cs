@@ -23,10 +23,11 @@ namespace ParfaitApp.Controllers;
 /// the authorized CommerceBusinessId and renders the same InternalModules views
 /// through the same Parfait services used by the Parfait internal console.
 /// </summary>
+[BusinessAnalyticsAdapter]
 [Route("commerce/manage")]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-[IgnoreAntiforgeryToken]
-public sealed class CommerceManagementController(
+[AutoValidateAntiforgeryToken]
+public sealed partial class CommerceManagementController(
     WebsiteEditorTicketProtector tickets,
     IConfiguration configuration,
     CommerceStoreContextService stores,
@@ -38,7 +39,7 @@ public sealed class CommerceManagementController(
     MarketingConnectionStore marketingConnections,
     MarketingMetaAdsOAuthService metaAdsOAuth,
     IMetaAdsService metaAds,
-    IGraphMailService mail) : Controller
+    IGraphMailService mail) : BusinessAnalyticsControllerBase(null)
 {
     [HttpGet("payments")]
     public async Task<IActionResult> Payments([FromQuery] string ticket,
@@ -87,7 +88,7 @@ public sealed class CommerceManagementController(
             TempData["MerchantRefundStatus"] = evidence?.State == "Captured"
                 ? "Processor payment status verified. Review payment and refund status below."
                 : "Processor check completed. Payment is not yet verified as captured; review its status below.";
-            return RedirectToAction(nameof(Payments), new { ticket, environment });
+            return ManagerRedirect(nameof(Payments), new { ticket, environment });
         }
         catch (MerchantPaymentException)
         { return BadRequest("Processor status could not be verified. The original payment remains recorded; check it again without starting a new charge."); }
@@ -119,7 +120,7 @@ public sealed class CommerceManagementController(
             TempData["MerchantRefundStatus"] = result.State == "Unknown"
                 ? "Refund outcome is unknown. The request is saved. Reconcile it before starting another refund."
                 : "Refund request recorded. Status: " + result.State;
-            return RedirectToAction(nameof(Payments), new { ticket, environment });
+            return ManagerRedirect(nameof(Payments), new { ticket, environment });
         }
         catch (MerchantPaymentException)
         { return BadRequest("Refund was not completed. Refresh Payments and review existing refund requests before retrying."); }
@@ -140,7 +141,7 @@ public sealed class CommerceManagementController(
         {
             var redirect = await HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>()
                 .BeginAsync(store.CommerceBusinessId, profileId, actor.ActorUserId, actor.ActorEmail,
-                    provider, environment, callback, ticket, ct);
+                    provider, environment, callback, await ProviderContinuationAsync(ticket, "settings", 10, ct), ct);
             return Redirect(redirect);
         }
         catch (MerchantPaymentException)
@@ -161,7 +162,7 @@ public sealed class CommerceManagementController(
         {
             return Redirect(await HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>()
                 .ResumeAsync(store.CommerceBusinessId, profileId, actor.ActorUserId, actor.ActorEmail,
-                    connectionId, revision, callback, ticket, ct));
+                    connectionId, revision, callback, await ProviderContinuationAsync(ticket, "settings", 10, ct), ct));
         }
         catch (MerchantPaymentException)
         { return BadRequest("Onboarding could not resume. Refresh Payments and review the connection status."); }
@@ -176,14 +177,17 @@ public sealed class CommerceManagementController(
         try
         {
             var ticket = service.InspectTicket(state);
-            var store = await ResolveAsync(ticket, ct);
-            var actor = tickets.TryUnprotect(ticket);
+            var continuation = await ResolveProviderContinuationAsync(ticket, "settings", "/internal/settings/payments", ct);
+            var store = continuation?.Store ?? await ResolveAsync(ticket, ct);
+            var actor = continuation?.Actor ?? tickets.TryUnprotect(ticket);
             if (store is null || actor?.ActorClientProfileId is not Guid profileId || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
             if (!string.IsNullOrEmpty(error))
                 return BadRequest("Provider authorization was not completed. Return to Payments to try again.");
             await service.CompleteAsync(store.CommerceBusinessId, profileId, actor.ActorUserId,
                 actor.ActorEmail, state, code ?? "", ct);
-            return RedirectToAction(nameof(Payments), new { ticket, environment = service.InspectEnvironment(state) });
+            if (continuation is not null)
+                return Redirect(QueryHelpers.AddQueryString(continuation.Value.ReturnUrl, "environment", service.InspectEnvironment(state)));
+            return ManagerRedirect(nameof(Payments), new { ticket, environment = service.InspectEnvironment(state) });
         }
         catch (MerchantPaymentException)
         { return BadRequest("Payment authorization could not be verified. Return to Payments and restart the connection."); }
@@ -224,7 +228,7 @@ public sealed class CommerceManagementController(
             else
                 await service.RefreshAsync(store.CommerceBusinessId, profileId, actor.ActorUserId,
                     actor.ActorEmail, connectionId, revision, ct);
-            return RedirectToAction(nameof(Payments), new { ticket, environment });
+            return ManagerRedirect(nameof(Payments), new { ticket, environment });
         }
         catch (DbUpdateConcurrencyException)
         { return Conflict("Payments changed in another session. Reload Payments before making another change."); }
@@ -265,7 +269,7 @@ public sealed class CommerceManagementController(
         business.BusinessType = input.BusinessType.Trim();
         business.UpdatedUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-        return RedirectToAction(nameof(BusinessProfile), new { ticket });
+        return ManagerRedirect(nameof(BusinessProfile), new { ticket });
     }
 
     [HttpGet("team")]
@@ -277,14 +281,16 @@ public sealed class CommerceManagementController(
         var members = await db.CommerceBusinessMembers.AsNoTracking()
             .Where(x => x.CommerceBusinessId == store.CommerceBusinessId)
             .OrderBy(x => x.DisplayName).ThenBy(x => x.Email)
-            .Select(x => new CommerceBusinessTeamMember(x.Id, x.Email, x.DisplayName,
-                x.RoleKey, x.Status, x.ClientProfileId.HasValue,
-                x.CanManageStorefront, x.CanManageCatalog, x.CanManageOrders,
-                x.CanManageAnalytics, x.CanManageTeam, x.UpdatedUtc.Ticks))
             .ToListAsync(ct);
+        // Calculate the concurrency receipt from the materialized timestamp. Provider
+        // date arithmetic (notably SQLite julianday) can lose sub-millisecond ticks.
+        var memberRows = members.Select(x => new CommerceBusinessTeamMember(x.Id, x.Email, x.DisplayName,
+            x.RoleKey, x.Status, x.ClientProfileId.HasValue,
+            x.CanManageStorefront, x.CanManageCatalog, x.CanManageOrders,
+            x.CanManageAnalytics, x.CanManageTeam, x.UpdatedUtc.Ticks, x.CanManageCrm)).ToList();
         ApplyManagementViewData(store, ticket, "team");
         return View("~/Views/InternalSettings/CanonicalTeam.cshtml",
-            new CommerceBusinessTeamViewModel(store.CommerceBusinessId, store.StoreName, members));
+            new CommerceBusinessTeamViewModel(store.CommerceBusinessId, store.StoreName, memberRows));
     }
 
     [HttpPost("team/permissions")]
@@ -302,7 +308,8 @@ public sealed class CommerceManagementController(
             x.Id == input.MemberId && x.CommerceBusinessId == store.CommerceBusinessId, ct);
         if (member is null) return NotFound();
         if (member.RoleKey.Equals("owner", StringComparison.OrdinalIgnoreCase) ||
-            member.RoleKey.Equals("platform-owner", StringComparison.OrdinalIgnoreCase))
+            member.RoleKey.Equals("platform-owner", StringComparison.OrdinalIgnoreCase) ||
+            member.RoleKey.Equals("account", StringComparison.OrdinalIgnoreCase))
             return Forbid();
         if (member.UpdatedUtc.Ticks != input.ExpectedUpdatedTicks)
             return Conflict("Team access changed in another session. Reload to review permissions.");
@@ -311,10 +318,56 @@ public sealed class CommerceManagementController(
         member.CanManageCatalog = input.CanManageCatalog && input.CanManageStorefront;
         member.CanManageOrders = input.CanManageOrders && input.CanManageStorefront;
         member.CanManageAnalytics = input.CanManageAnalytics;
+        if (input.CanManageCrm.HasValue)
+            member.CanManageCrm = input.CanManageCrm.Value;
         // Team administration remains controlled by canonical business ownership.
         member.UpdatedUtc = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
-        return RedirectToAction(nameof(Team), new { ticket });
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateConcurrencyException) { return Conflict("Team access changed. Reload before saving permissions."); }
+        return ManagerRedirect(nameof(Team), new { ticket });
+    }
+
+    [HttpPost("team/add")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> InviteTeamMember(string ticket, string firstName, string lastName, string email, CancellationToken ct)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        var actor = tickets.TryUnprotect(ticket);
+        var scope = await stores.ResolveManagementScopeAsync(HttpContext, Request.Query["businessKey"].ToString(), ct);
+        if (store is null || scope is null || string.IsNullOrWhiteSpace(actor?.ActorUserId)) return Unauthorized();
+        try
+        {
+            var portal = new Uri(configuration["AgentPortalBaseUrl"] ?? "https://portal.mylegnd.com");
+            if (portal.Scheme != "https" || !string.IsNullOrEmpty(portal.UserInfo)) throw new InvalidOperationException("The central sign-in origin is invalid.");
+            var invitation = await HttpContext.RequestServices.GetRequiredService<BusinessWorkspaceService>()
+                .InviteMemberAsync(stores, scope, actor.ActorUserId, firstName ?? "", lastName ?? "", email ?? "",
+                    HttpContext.RequestServices.GetRequiredService<Infrastructure.Identity.IClientEntraLifecycleService>(), ct);
+            ApplyManagementViewData(store, ticket, "team");
+            Response.Headers.CacheControl = "no-store";
+            return View("~/Views/InternalSettings/TeamInvitation.cshtml", new CommerceTeamInvitationViewModel(
+                Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(portal.GetLeftPart(UriPartial.Authority) + "/Account/BusinessInvitation", "token", invitation.Token),
+                invitation.ExpiresUtc, invitation.IdentityRedemptionUrl));
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (ArgumentException ex) { return BadRequest(ex.Message); }
+        catch (InvalidOperationException ex) { return Conflict(ex.Message); }
+    }
+
+    [HttpPost("team/remove")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveTeamMember(string ticket, Guid memberId, long expectedUpdatedTicks, CancellationToken ct)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        var actor = tickets.TryUnprotect(ticket);
+        var scope = await stores.ResolveManagementScopeAsync(HttpContext, Request.Query["businessKey"].ToString(), ct);
+        if (store is null || scope is null || string.IsNullOrWhiteSpace(actor?.ActorUserId)) return Unauthorized();
+        try
+        {
+            var removed = await HttpContext.RequestServices.GetRequiredService<BusinessWorkspaceService>()
+                .RemoveMemberAsync(stores, scope, actor.ActorUserId, memberId, expectedUpdatedTicks, ct);
+            return removed ? ManagerRedirect(nameof(Team), new { ticket }) : Conflict("Team access changed. Reload before removing the member.");
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
     }
 
     [HttpGet("workspace")]
@@ -324,7 +377,7 @@ public sealed class CommerceManagementController(
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
-        return RedirectToAction(nameof(Dashboard), new { ticket });
+        return ManagerRedirect(nameof(Dashboard), new { ticket });
     }
 
     [HttpGet("dashboard")]
@@ -343,108 +396,6 @@ public sealed class CommerceManagementController(
             ct));
     }
 
-    [HttpGet("analytics")]
-    public async Task<IActionResult> Analytics(
-        [FromQuery] string ticket,
-        [FromQuery] string? preset = "30d",
-        [FromQuery] DateTime? fromUtc = null,
-        [FromQuery] DateTime? toUtc = null,
-        [FromQuery] string? qualityMode = null,
-        [FromQuery] string? timezoneId = null,
-        [FromQuery] int? timezoneOffsetMinutes = null,
-        CancellationToken ct = default)
-    {
-        var store = await ResolveAsync(ticket, ct);
-        if (store is null) return Unauthorized();
-
-        var resolvedQualityMode = ResolveAnalyticsQualityMode(qualityMode);
-        var timezoneContext = ResolveViewerTimeZoneContext(timezoneId, timezoneOffsetMinutes);
-        ApplyManagementViewData(store, ticket, "analytics");
-        var analyticsScope = ResolveAnalyticsScope(store);
-        var marketingOwner = await ResolveMarketingOwnerAsync(store, ct);
-        return View("~/Views/InternalModules/Analytics.cshtml", await internalAnalytics.GetDashboardAsync(
-            store.CommerceBusinessId,
-            analyticsScope,
-            marketingOwner,
-            preset,
-            fromUtc,
-            toUtc,
-            resolvedQualityMode,
-            timezoneContext.ViewerTimeZone,
-            timezoneContext.TimezoneId,
-            timezoneContext.TimezoneOffsetMinutes,
-            ct));
-    }
-
-    [HttpGet("analytics/marketing-setup")]
-    public async Task<IActionResult> MarketingSetup([FromQuery] string ticket, CancellationToken ct = default)
-    {
-        var store = await ResolveAsync(ticket, ct);
-        if (store is null) return Unauthorized();
-        var owner = await ResolveMarketingOwnerAsync(store, ct);
-        return Json(await HttpContext.RequestServices.GetRequiredService<MarketingProviderSetupProjection>().GetAsync(owner, ct));
-    }
-
-    [HttpPost("analytics/openai-connect")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ConnectOpenAi([FromQuery] string ticket, [FromBody] MarketingProviderApiKeyRequest request, CancellationToken ct = default)
-    {
-        var store = await ResolveAsync(ticket, ct);
-        if (store is null) return Unauthorized();
-        var owner = await ResolveMarketingOwnerAsync(store, ct);
-        try
-        {
-            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsDirectConnectionService>().ConnectAsync(owner, request.AdvertiserApiKey, request.ExpectedRevision, ct);
-            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
-        }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
-        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
-        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
-        catch (HttpRequestException)
-        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
-    }
-
-    [HttpPost("analytics/openai-refresh")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> RefreshOpenAi([FromQuery] string ticket, [FromBody] MarketingProviderRevisionRequest request, CancellationToken ct = default)
-    {
-        var store = await ResolveAsync(ticket, ct);
-        if (store is null) return Unauthorized();
-        var owner = await ResolveMarketingOwnerAsync(store, ct);
-        try
-        {
-            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsDirectConnectionService>().RefreshAsync(owner, request.ConnectionRevision, ct);
-            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
-        }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
-        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
-        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
-        catch (HttpRequestException)
-        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
-    }
-
-    [HttpPost("analytics/openai-disconnect")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> DisconnectOpenAi([FromQuery] string ticket, [FromBody] MarketingProviderRevisionRequest request, CancellationToken ct = default)
-    {
-        var store = await ResolveAsync(ticket, ct);
-        if (store is null) return Unauthorized();
-        var owner = await ResolveMarketingOwnerAsync(store, ct);
-        try
-        {
-            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsAccountConnectionAuthority>().DisconnectAsync(owner, request.ConnectionRevision, ct);
-            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
-        }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
-        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
-        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
-        catch (HttpRequestException)
-        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
-    }
-
     [HttpGet("analytics/meta-connect")]
     public async Task<IActionResult> MetaConnect(
         [FromQuery] string ticket,
@@ -455,12 +406,14 @@ public sealed class CommerceManagementController(
         if (store is null) return Unauthorized();
 
         var target = LocalManagerReturnUrl(returnUrl, ticket);
+        var stateReturn = HttpContext.Items.ContainsKey("LegendStoreSession")
+            ? QueryHelpers.AddQueryString(target, "storeContinuation", await ProviderContinuationAsync(ticket, "settings", 20, ct)) : target;
         var redirectUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/commerce/manage/analytics/meta-callback";
         try
         {
             return Redirect(metaAdsOAuth.BuildConnectUrl(
                 await ResolveMarketingOwnerAsync(store, ct),
-                target,
+                stateReturn,
                 redirectUri));
         }
         catch (InvalidOperationException ex)
@@ -471,35 +424,35 @@ public sealed class CommerceManagementController(
 
     [AllowAnonymous]
     [HttpGet("analytics/meta-callback")]
-    public async Task<IActionResult> MetaCallback(
+    public new async Task<IActionResult> MetaCallback(
         [FromQuery] string? code = null,
         [FromQuery] string? state = null,
         [FromQuery] string? error = null,
         [FromQuery(Name = "error_description")] string? errorDescription = null,
         CancellationToken ct = default)
     {
-        if (!string.IsNullOrWhiteSpace(error))
-        {
-            var fallback = "/commerce/manage/analytics";
-            var message = string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription;
-            return Redirect(AppendMetaStatus(fallback, "error", message));
-        }
-
         try
         {
             var inspected = metaAdsOAuth.InspectState(state ?? string.Empty);
+            var query = QueryHelpers.ParseQuery(new Uri("https://local" + inspected.ReturnUrl).Query);
+            var continuation = query.TryGetValue("storeContinuation", out var context)
+                ? await ResolveProviderContinuationAsync(context.ToString(), "settings", "/internal/analytics", ct) : null;
             var ticket = TicketFromReturnUrl(inspected.ReturnUrl);
-            if (string.IsNullOrWhiteSpace(ticket)) return Unauthorized();
+            if (continuation is null && string.IsNullOrWhiteSpace(ticket)) return Unauthorized();
 
-            var store = await ResolveAsync(ticket, ct);
+            var store = continuation?.Store ?? await ResolveAsync(ticket!, ct);
             if (store is null ||
                 !string.Equals(inspected.Owner.Key, (await ResolveMarketingOwnerAsync(store, ct)).Key, StringComparison.Ordinal))
                 return Unauthorized();
 
+            if (!string.IsNullOrWhiteSpace(error))
+                return Redirect(AppendMetaStatus(continuation?.ReturnUrl ?? inspected.ReturnUrl, "error",
+                    string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription));
+
             var result = await metaAdsOAuth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, ct);
             await marketingConnections.SaveAdsAsync(result.Owner, result.Connection, ct);
             internalAnalytics.InvalidateCache();
-            return Redirect(AppendMetaStatus(result.ReturnUrl, "connected"));
+            return Redirect(AppendMetaStatus(continuation?.ReturnUrl ?? result.ReturnUrl, "connected"));
         }
         catch (InvalidOperationException ex)
         {
@@ -654,22 +607,27 @@ public sealed class CommerceManagementController(
     [HttpGet("preview")]
     public async Task<IActionResult> Preview(
         [FromQuery] string ticket,
-        CancellationToken ct = default)
+        CancellationToken ct = default, [FromQuery] bool catalogOnly = false)
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
 
         ApplyFramePolicy();
         ApplyStoreViewData(store);
-        ViewData["StoreProductBasePath"] = "/commerce/manage/preview/product";
-        ViewData["StorePreviewQuery"] = "?ticket=" + Uri.EscapeDataString(ticket);
-        return View("~/Views/Store/Index.cshtml", new ParfaitStorefrontViewModel
+        ViewData["StoreProductBasePath"] = Request.Path.StartsWithSegments("/internal")
+            ? "/internal/preview/product" : "/commerce/manage/preview/product";
+        var previewUrl = CommerceManagementCapabilityPolicy.ManagementUrl(HttpContext, "/commerce/manage/preview", ticket);
+        ViewData["StorePreviewQuery"] = previewUrl.Contains('?') ? previewUrl[previewUrl.IndexOf('?')..] : "";
+        var model = new ParfaitStorefrontViewModel
         {
             StoreName = store.StoreName,
             Headline = store.Headline,
             Subheadline = store.Subheadline,
             Products = products.GetActiveStoreProducts(store.CommerceBusinessId)
-        });
+        };
+        return catalogOnly
+            ? PartialView("~/Views/Store/_CatalogCards.cshtml", model)
+            : View("~/Views/Store/Index.cshtml", model);
     }
 
     [HttpGet("preview/product/{slug}")]
@@ -686,7 +644,7 @@ public sealed class CommerceManagementController(
 
         ApplyFramePolicy();
         ApplyStoreViewData(store);
-        ViewData["StoreRootPath"] = "/commerce/manage/preview?ticket=" + Uri.EscapeDataString(ticket);
+        ViewData["StoreRootPath"] = CommerceManagementCapabilityPolicy.ManagementUrl(HttpContext, "/commerce/manage/preview", ticket);
         ViewData["StorePreviewMode"] = true;
         return View("~/Views/Store/Product.cshtml", product);
     }
@@ -722,7 +680,7 @@ public sealed class CommerceManagementController(
         product.DiscountCodes ??= [];
         products.SaveProduct(store.CommerceBusinessId, product);
         TempData["ProductStatus"] = product.IsActive ? "Product saved and visible." : "Product saved and hidden.";
-        return RedirectToAction(nameof(Products), new { ticket });
+        return ManagerRedirect(nameof(Products), new { ticket });
     }
 
     [HttpPost("product/delete")]
@@ -735,7 +693,7 @@ public sealed class CommerceManagementController(
         if (store is null) return Unauthorized();
         products.DeleteProduct(store.CommerceBusinessId, id);
         TempData["ProductStatus"] = "Product deleted.";
-        return RedirectToAction(nameof(Products), new { ticket });
+        return ManagerRedirect(nameof(Products), new { ticket });
     }
 
     [HttpPost("product/images/upload")]
@@ -769,7 +727,7 @@ public sealed class CommerceManagementController(
         }
 
         TempData["ProductStatus"] = "Images uploaded.";
-        return RedirectToAction(nameof(Products), new { ticket });
+        return ManagerRedirect(nameof(Products), new { ticket });
     }
 
     [HttpPost("product/images/delete")]
@@ -783,7 +741,7 @@ public sealed class CommerceManagementController(
         if (store is null) return Unauthorized();
         products.DeleteImage(store.CommerceBusinessId, productId, imageId);
         TempData["ProductStatus"] = "Image deleted.";
-        return RedirectToAction(nameof(Products), new { ticket });
+        return ManagerRedirect(nameof(Products), new { ticket });
     }
 
     [HttpPost("product/images/reorder")]
@@ -797,7 +755,7 @@ public sealed class CommerceManagementController(
         if (store is null) return Unauthorized();
         products.ReorderImages(store.CommerceBusinessId, productId, imageIds ?? []);
         TempData["ProductStatus"] = "Image order updated.";
-        return RedirectToAction(nameof(Products), new { ticket });
+        return ManagerRedirect(nameof(Products), new { ticket });
     }
 
     [HttpPost("product/images/display")]
@@ -815,7 +773,7 @@ public sealed class CommerceManagementController(
         if (store is null) return Unauthorized();
         products.SaveImageDisplaySettings(store.CommerceBusinessId, productId, imageId, objectFit, objectPositionX, objectPositionY, zoom);
         TempData["ProductStatus"] = "Image display settings saved.";
-        return RedirectToAction(nameof(Products), new { ticket });
+        return ManagerRedirect(nameof(Products), new { ticket });
     }
 
     [HttpPost("products/reorder")]
@@ -828,7 +786,7 @@ public sealed class CommerceManagementController(
         if (store is null) return Unauthorized();
         products.ReorderProducts(store.CommerceBusinessId, productIds ?? []);
         TempData["ProductStatus"] = "Store order updated.";
-        return RedirectToAction(nameof(Products), new { ticket });
+        return ManagerRedirect(nameof(Products), new { ticket });
     }
 
     [HttpPost("settings/commerce")]
@@ -843,7 +801,7 @@ public sealed class CommerceManagementController(
         settings.GlobalDiscount.IsActive = HasCheckedValue(Request.Form, "GlobalDiscount.IsActive");
         products.SaveCommerceSettings(store.CommerceBusinessId, settings);
         TempData["ProductStatus"] = "Commerce settings saved.";
-        return RedirectToAction(nameof(Products), new { ticket });
+        return ManagerRedirect(nameof(Products), new { ticket });
     }
 
     [HttpPost("order")]
@@ -857,7 +815,7 @@ public sealed class CommerceManagementController(
         if (!orders.UpdateOrder(store.CommerceBusinessId, request))
             return NotFound();
         TempData["OrderStatus"] = $"Order {request.OrderNumber} updated.";
-        return RedirectToAction(nameof(Orders), new { ticket });
+        return ManagerRedirect(nameof(Orders), new { ticket });
     }
 
     [HttpPost("order/receipt")]
@@ -881,7 +839,7 @@ public sealed class CommerceManagementController(
             TempData["OrderStatus"] = $"Receipt resend failed for {order.OrderNumber}.";
         }
 
-        return RedirectToAction(nameof(Orders), new { ticket });
+        return ManagerRedirect(nameof(Orders), new { ticket });
     }
 
     [HttpPost("automations/workflows")]
@@ -895,7 +853,7 @@ public sealed class CommerceManagementController(
         automations.SaveWorkflow(store.CommerceBusinessId, input);
         TempData["AutomationStatus"] = "Automation saved.";
         TempData["AutomationStatusTone"] = "success";
-        return RedirectToAction(nameof(Automations), new { ticket });
+        return ManagerRedirect(nameof(Automations), new { ticket });
     }
 
     [HttpPost("automations/workflows/delete")]
@@ -909,7 +867,7 @@ public sealed class CommerceManagementController(
         automations.DeleteWorkflow(store.CommerceBusinessId, id);
         TempData["AutomationStatus"] = "Automation deleted.";
         TempData["AutomationStatusTone"] = "success";
-        return RedirectToAction(nameof(Automations), new { ticket });
+        return ManagerRedirect(nameof(Automations), new { ticket });
     }
 
     private static ScopeContext ResolveAnalyticsScope(CommerceStoreContext store)
@@ -918,13 +876,13 @@ public sealed class CommerceManagementController(
         {
             if (!store.AgentTrackingProfileId.HasValue)
                 throw new InvalidOperationException("Protect commerce analytics requires the canonical agent owner.");
-            return ScopeContext.ForAgent(store.AgentTrackingProfileId.Value);
+            return ScopeContext.ForAgent(store.AgentTrackingProfileId.Value).ForStore(store.CommerceBusinessId);
         }
 
         if (string.Equals(store.WebsiteSiteKey, WebsiteEditorSiteKeys.Legend, StringComparison.OrdinalIgnoreCase))
-            return ScopeContext.ForSite(store.WebsiteSiteKey, store.BusinessKey);
+            return ScopeContext.ForSite(store.WebsiteSiteKey, store.BusinessKey).ForStore(store.CommerceBusinessId);
 
-        return ScopeContext.ForBusiness(store.CommerceBusinessId);
+        return ScopeContext.ForBusiness(store.CommerceBusinessId).ForStore(store.CommerceBusinessId);
     }
 
     private async Task<MarketingOwnerScope> ResolveMarketingOwnerAsync(CommerceStoreContext store, CancellationToken ct) =>
@@ -1057,9 +1015,23 @@ public sealed class CommerceManagementController(
         };
     }
 
+    private IActionResult ManagerRedirect(string action, object values)
+    {
+        if (!Request.Path.StartsWithSegments("/internal")) return RedirectToAction(action, values);
+        var template = typeof(CommerceManagementController).GetMethod(action)?
+            .GetCustomAttributes(typeof(HttpGetAttribute), true).OfType<HttpGetAttribute>().SingleOrDefault()?.Template;
+        if (template is null) throw new InvalidOperationException("Management destination has no canonical read route.");
+        var routeValues = new Microsoft.AspNetCore.Routing.RouteValueDictionary(values);
+        var target = CommerceManagementCapabilityPolicy.ManagementUrl(HttpContext, "/commerce/manage/" + template,
+            routeValues["ticket"] as string);
+        var query = routeValues.Where(x => x.Key != "ticket" && x.Value is not null)
+            .ToDictionary(x => x.Key, x => (string?)Convert.ToString(x.Value, CultureInfo.InvariantCulture));
+        return Redirect(QueryHelpers.AddQueryString(target, query));
+    }
+
     private string LocalManagerReturnUrl(string? returnUrl, string ticket)
     {
-        var fallback = Url.Action(nameof(Analytics), new { ticket }) ?? $"/commerce/manage/analytics?ticket={Uri.EscapeDataString(ticket)}";
+        var fallback = CommerceManagementCapabilityPolicy.ManagementUrl(HttpContext, "/commerce/manage/analytics", ticket);
         if (string.IsNullOrWhiteSpace(returnUrl) || !Url.IsLocalUrl(returnUrl)) return fallback;
         var parsedTicket = TicketFromReturnUrl(returnUrl);
         return string.Equals(parsedTicket, ticket, StringComparison.Ordinal) ? returnUrl : fallback;
@@ -1084,15 +1056,26 @@ public sealed class CommerceManagementController(
         return url;
     }
 
-    private async Task<CommerceStoreContext?> ResolveAsync(string ticket, CancellationToken ct)
+    private async Task<CommerceStoreContext?> ResolveAsync(string ticket, CancellationToken ct, string? requiredCapability = null)
     {
-        // Resolve the signed website-editor ticket and its live business/website
-        // state first, exactly as before. This is not a second login authority.
-        var store = await stores.ResolveForWebsiteTicketAsync(ticket, tickets, configuration, ct);
-        if (store is null) return null;
-
         var actor = tickets.TryUnprotect(ticket);
         if (actor is null || string.IsNullOrWhiteSpace(actor.ActorUserId)) return null;
+        CommerceStoreContext? store;
+        if (Request.Path.StartsWithSegments("/internal"))
+        {
+            var scope = await stores.ResolveManagementScopeAsync(HttpContext, Request.Query["businessKey"].ToString(), ct);
+            var routeCapability = CommerceManagementCapabilityPolicy.ForRequest(Request.Path, Request.Method);
+            if (routeCapability is null) return null;
+            var capability = requiredCapability ?? routeCapability;
+            if (scope is null || capability is null || (actor.SiteKey == WebsiteEditorSiteKeys.Business && scope.CommerceBusinessId != actor.CommerceBusinessId) ||
+                (actor.CommerceBusinessId.HasValue && scope.CommerceBusinessId != actor.CommerceBusinessId) ||
+                scope.WebsiteSiteKey != actor.SiteKey || scope.WebsiteOwnerKey != actor.OwnerUserId)
+                return null;
+            store = await stores.ResolveManagementAsync(scope, actor.ActorUserId, capability, actor.ActorClientProfileId, ct);
+        }
+        else
+            store = await stores.ResolveForWebsiteTicketAsync(ticket, tickets, configuration, ct);
+        if (store is null) return null;
 
         if (actor.SiteKey == WebsiteEditorSiteKeys.Business)
         {
@@ -1103,7 +1086,9 @@ public sealed class CommerceManagementController(
                 actor.CommerceBusinessId != store.CommerceBusinessId)
                 return null;
 
-            var capability = CommerceManagementCapabilityPolicy.ForRequest(Request.Path, Request.Method);
+            var routeCapability = CommerceManagementCapabilityPolicy.ForRequest(Request.Path, Request.Method);
+            if (routeCapability is null) return null;
+            var capability = requiredCapability ?? routeCapability;
             if (capability is null) return null;
 
             var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
@@ -1125,6 +1110,14 @@ public sealed class CommerceManagementController(
             ViewData["CommerceCanTeam"] = BusinessWorkspaceAccess.Allows(member, "team");
         }
 
+        if (Request.Path.StartsWithSegments("/internal"))
+        {
+            var menuScope = await stores.ResolveManagementScopeAsync(HttpContext, Request.Query["businessKey"].ToString(), ct);
+            foreach (var entry in new[] { ("Catalog", "catalog"), ("Orders", "orders"), ("Automations", "automations"),
+                ("Analytics", "analytics"), ("Settings", "settings"), ("Team", "team"), ("Website", "website") })
+                ViewData["CommerceCan" + entry.Item1] = menuScope is not null &&
+                    await stores.ResolveManagementActorAsync(menuScope, actor.ActorUserId, entry.Item2, actor.ActorClientProfileId, ct) is not null;
+        }
         return store;
     }
 
@@ -1132,7 +1125,7 @@ public sealed class CommerceManagementController(
     {
         ApplyFramePolicy();
         ApplyStoreViewData(store);
-        ViewData["CommerceManagerTicket"] = ticket;
+        ViewData["CommerceManagerTicket"] = HttpContext.Items.ContainsKey("LegendStoreSession") ? "" : ticket;
         ViewData["CommerceManagerActivePage"] = activePage;
         ViewData["CommerceManagerScoped"] = true;
     }

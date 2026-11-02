@@ -448,3 +448,25 @@ test('shared receptionist is compiled on every published route without a form or
     }
   }
 });
+
+for(const siteKey of ['business','legend','protect']) test(`authored Store compiles protected catalog and presentation for ${siteKey}`,async()=>{
+  const doc={version:3,store:{enabled:true},shell:{header:[],footer:[]},pages:{
+    '/':{title:'Home',composition:[]},
+    '/store':{title:'Our collection',composition:[
+      {id:'store-heading',type:'heading',tag:'h1',text:'Our collection'},
+      {id:'store-catalog',type:'container',tag:'div',systemKey:'commerce_catalog',className:'sp-shop-grid',children:[],
+       fieldPresentations:{'store:title':{style:{color:'#ffcc33',fontSize:24}}}}
+    ]}
+  }};
+  const result=await compileWebsite({siteKey,business,document:doc});
+  const html=result.pages['/store'].html;
+  const dom=parseHTML(html).document;
+  assert.equal(dom.querySelector('main h1').textContent,'Our collection');
+  assert.match(html,/<!--legend:store:catalog:start--><!--legend:store:catalog:end-->/);
+  assert.equal(dom.querySelectorAll('.sp-shop-card').length,0,'Catalog records must never be compiled into the document');
+  assert.match(dom.querySelector('style[data-store-catalog-presentation]').textContent,/color:/);
+  doc.store.enabled=false;
+  const removed=await compileWebsite({siteKey,business,document:doc});
+  assert.equal(removed.pages['/store'],undefined);
+  assert.equal(doc.pages['/store'].title,'Our collection');
+});

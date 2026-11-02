@@ -899,3 +899,10 @@ test('mobile hamburger toggles the same sidebar and visual viewport scroll updat
   vm.runInContext(handler,context);click();assert.equal(open,true);click();assert.equal(open,false);
   assert.match(js,/visualViewport\?\.addEventListener\('scroll', syncViewportHeight\)/);
 });
+
+test('Store shell without Portal header still receives canonical viewport region',()=>{
+  const f=fixture();f.context.header=null;f.context.footer=null;f.context.content=null;f.refresh();
+  assert.equal(f.attributes['data-legend-modal-region'],'');
+  assert.equal(f.number('--legend-modal-area-start'),24);
+  assert.equal(f.number('--legend-modal-safe-height'),852);
+});

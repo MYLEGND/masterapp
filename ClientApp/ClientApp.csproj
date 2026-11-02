@@ -65,6 +65,7 @@
 
   <!-- Compile and publish the canonical analytics view/assets; no business copy. -->
   <ItemGroup>
+    <Content Include="../AgentPortal/Views/WebsiteAnalytics/EventMap.cshtml" Link="Views/WebsiteAnalytics/EventMap.cshtml" />
     <Content Include="../AgentPortal/Views/WebsiteAnalytics/Index.cshtml" Link="Views/WebsiteAnalytics/Index.cshtml" />
     <Content Include="../AgentPortal/Views/WebsiteAnalytics/_AnalyticsIncidentModal.cshtml" Link="Views/WebsiteAnalytics/_AnalyticsIncidentModal.cshtml" />
     <Content Include="../AgentPortal/wwwroot/css/website-analytics.css" Link="wwwroot/css/website-analytics.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

@@ -142,8 +142,13 @@
   let marketingPerformanceRenderedKey = null;
 
   const analyticsBase = shell?.dataset.analyticsBase || '/WebsiteAnalytics';
-  const isBusinessAnalytics = /^\/business\/[0-9a-f-]+\/analytics\/?$/i.test(analyticsBase);
-  const analyticsEndpoint = path => analyticsBase + path;
+  const isStoreAnalytics = shell?.dataset.analyticsMode === 'store';
+  const isBusinessAnalytics = isStoreAnalytics || /^\/business\/[0-9a-f-]+\/analytics\/?$/i.test(analyticsBase);
+  const analyticsEndpoint = path => {
+    const url = new URL(analyticsBase, window.location.origin);
+    url.pathname = url.pathname.replace(/\/$/, '') + path;
+    return url.pathname + url.search;
+  };
   const endpoints = {
     summary: analyticsEndpoint('/summary'),
     traffic: analyticsEndpoint('/traffic'),
@@ -254,7 +259,7 @@
     const scopeVersion = params.preset ? analyticsScopeVersion : null;
     if (scopeVersion !== null) analyticsReadControllers.set(key, ctrl);
     const isCurrent = () => (scopeVersion === null || scopeVersion === analyticsScopeVersion) && state.controllers[key] === ctrl;
-    const qs = new URLSearchParams(params).toString();
+    const requestUrl = buildUrlWithParams(url, params);
     let timedOut = false;
     const timeoutHandle = timeoutMs > 0
       ? window.setTimeout(() => {
@@ -264,7 +269,7 @@
       : null;
 
     try {
-      const res = await fetchOnce(String(`${url}?${qs}`), () => fetch(`${url}?${qs}`, { signal: ctrl.signal }));
+      const res = await fetchOnce(requestUrl, () => fetch(requestUrl, { signal: ctrl.signal }));
       if (!isCurrent()) return null;
       if (!res.ok) {
         let payload = null;
@@ -343,8 +348,9 @@
   }
 
   function buildUrlWithParams(url, params = {}) {
-    const qs = new URLSearchParams(params).toString();
-    return qs ? `${url}?${qs}` : url;
+    const target = new URL(url, window.location.origin);
+    new URLSearchParams(params).forEach((value, key) => target.searchParams.set(key, value));
+    return target.pathname + target.search + target.hash;
   }
 
   function getRequestVerificationToken() {
@@ -3213,7 +3219,41 @@ function escapeHtml(value) {
       console.error(err);
     }
   }
+  async function loadStoreCommerce(modalId) {
+    const detail = beginAnalyticsDetail(modalId);
+    const content = document.getElementById(`${modalId}-commerce`);
+    if (!content) return false;
+    content.textContent = 'Loading Store activity…';
+    const text = value => escapeHtml(value == null ? 'Unavailable' : String(value));
+    const money = value => Number.isFinite(value) ? text((value / 100).toLocaleString(undefined, { style: 'currency', currency: 'USD' })) : 'Unavailable';
+    const table = (title, rows, columns) => `<h6>${text(title)}</h6><div class="table-responsive"><table class="table table-sm"><thead><tr>${columns.map(c => `<th>${text(c[0])}</th>`).join('')}</tr></thead><tbody>${rows?.length ? rows.map(row => `<tr>${columns.map(c => `<td>${c[2] ? c[2](row[c[1]]) : text(row[c[1]])}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${columns.length}" class="fa-empty">No records in this range.</td></tr>`}</tbody></table></div>`;
+    try {
+      const data = await fetchJson('store-commerce', analyticsEndpoint('/commerce'), rangeParams({ modal: modalId }));
+      if (!detail.isCurrent() || !data) return false;
+      let html = `<p>${text(data.rangeLabel)}</p>`;
+      if (modalId === 'quoteModal') {
+        html += table('Commerce activity', data.actions, [['Action', 'label'], ['Events', 'count'], ['Sessions', 'uniqueSessions'], ['Visitors', 'uniqueVisitors'], ['Conversion %', 'conversionRate']]);
+        html += `<p>Cart abandonment sessions: ${text(data.cartAbandonmentSessions)}</p>`;
+      } else if (modalId === 'leadsModal') {
+        html += table('Products', data.topProducts, [['Product', 'productName'], ['Views', 'productViews'], ['Units sold', 'unitsSold'], ['Recorded revenue', 'revenueCents', money]]);
+      } else {
+        html += `<div class="row row-cols-1 row-cols-md-3 g-3"><div class="col"><h6>Recorded net order revenue</h6><strong>${money(data.revenueCents)}</strong></div><div class="col"><h6>Paid orders</h6><strong>${text(data.paidOrders)}</strong></div><div class="col"><h6>Average order value</h6><strong>${money(data.averageOrderValueCents)}</strong></div></div><p class="mt-3">Paid orders without purchase events: ${text(data.paidOrdersWithoutPurchaseEvent)} · Purchase events without paid orders: ${text(data.purchaseEventsWithoutPaidOrder)}. Order records and analytics events are separate evidence; these totals do not establish merchant settlement.</p>`;
+        html += table('Recent orders', data.orders, [['Order', 'orderNumber'], ['Created', 'createdUtc', value => text(new Date(value).toLocaleString())], ['Payment', 'paymentStatus'], ['Fulfillment', 'fulfillmentStatus'], ['Return', 'returnStatus'], ['Total', 'totalCents', money], ['Net revenue', 'netRevenueCents', money], ['Items', 'itemSummary']]);
+        html += table('Recent Store events', data.events, [['When', 'eventUtc', value => text(new Date(value).toLocaleString())], ['Event', 'eventType'], ['Product', 'productName'], ['Quantity', 'quantity'], ['Order', 'orderNumber'], ['Source', 'source']]);
+      }
+      content.innerHTML = html;
+      detail.complete(true);
+      return true;
+    } catch (error) {
+      if (!detail.isCurrent()) return false;
+      content.textContent = error?.message || 'Store activity is unavailable. Refresh to retry.';
+      detail.complete(false);
+      return false;
+    }
+  }
+
   async function loadQuote() {
+    if (isStoreAnalytics) return loadStoreCommerce('quoteModal');
     const detail = beginAnalyticsDetail('quoteModal');
     try {
       const results = await Promise.allSettled([
@@ -3298,6 +3338,7 @@ function escapeHtml(value) {
     }
   }
   async function loadConv() {
+    if (isStoreAnalytics) return loadStoreCommerce('convModal');
     const detail = beginAnalyticsDetail('convModal');
     try {
       const params = rangeParams({ modal: 'convModal' });
@@ -3337,6 +3378,7 @@ function escapeHtml(value) {
     }
   }
   async function loadLeads() {
+    if (isStoreAnalytics) return loadStoreCommerce('leadsModal');
     const detail = beginAnalyticsDetail('leadsModal');
     try {
       const data = await fetchJson('leads', endpoints.leads, rangeParams({ modal: 'leadsModal' }));
@@ -4593,8 +4635,8 @@ function escapeHtml(value) {
       getRangeParams(options) {
         return rangeParams(options || {});
       },
-      endpoint(path) {
-        return analyticsEndpoint(path);
+      endpoint(path, params) {
+        return buildUrlWithParams(analyticsEndpoint(path), params);
       }
     };
   }
@@ -5482,7 +5524,7 @@ function escapeHtml(value) {
     const params = new URLSearchParams();
     params.set('returnUrl', window.location.pathname + window.location.search);
     if (profileId) params.set('agentProfileId', profileId);
-    return `${endpoints.metaConnect}?${params.toString()}`;
+    return buildUrlWithParams(endpoints.metaConnect, params);
   }
 
   const externalMarketingProviderControls = {
@@ -5519,14 +5561,14 @@ function escapeHtml(value) {
     params.set('provider', provider);
     params.set('returnUrl', window.location.pathname + window.location.search + window.location.hash);
     if (profileId && !isBusinessAnalytics) params.set('agentProfileId', profileId);
-    return `${endpoints.externalAdsConnect}?${params.toString()}`;
+    return buildUrlWithParams(endpoints.externalAdsConnect, params);
   }
 
   function marketingSetupCalendarConnectUrl(profileId) {
     const params = new URLSearchParams();
     params.set('returnUrl', window.location.pathname + window.location.search);
     if (profileId && !isBusinessAnalytics) params.set('agentProfileId', profileId);
-    return `${endpoints.calendarConnect}?${params.toString()}`;
+    return buildUrlWithParams(endpoints.calendarConnect, params);
   }
 
   function renderMarketingSetup(payload) {
@@ -5557,7 +5599,7 @@ function escapeHtml(value) {
     }
 
     setMarketingSetupChip('publicReady', status.publicReady, 'Ready', 'Needs attention', true);
-    setMarketingSetupChip('metaCustomPixel', status.metaCustomPixel, 'Custom pixel', 'LEGEND default');
+    setMarketingSetupChip('metaCustomPixel', status.metaCustomPixel, 'Custom pixel', isStoreAnalytics ? 'No custom pixel' : 'LEGEND default');
     setMarketingSetupChip('openAiReady', status.openAiReady, 'Configured', 'Needs configuration', true);
     setMarketingSetupChip('googleReady', status.googleReady, 'Connected', 'Not connected');
     setMarketingSetupChip('tiktokReady', status.tiktokReady, 'Connected', 'Not connected');
@@ -5565,7 +5607,7 @@ function escapeHtml(value) {
       'bookingPersonalLive',
       status.bookingPersonalLive,
       'Personal live',
-      booking.enabled ? 'Needs scheduler' : 'Shared scheduler',
+      booking.enabled ? 'Needs scheduler' : isStoreAnalytics ? 'Not enabled' : 'Shared scheduler',
       booking.enabled && !status.bookingPersonalLive);
     setMarketingSetupChip('calendarLinked', status.calendarLinked, 'Linked', 'Not linked');
 
@@ -7334,10 +7376,9 @@ function escapeHtml(value) {
     if (button) button.disabled = true;
     marketingManagerSetStatus('Reading the current scoped business evidence and building a governed plan…');
     try {
-      const siteQuery = new URLSearchParams(marketingManagerSiteParams()).toString();
       const plan = await fetchPostJson(
         'marketingManagerPlan',
-        siteQuery ? `${endpoints.marketingManagerPlan}?${siteQuery}` : endpoints.marketingManagerPlan,
+        buildUrlWithParams(endpoints.marketingManagerPlan, marketingManagerSiteParams()),
         marketingManagerRequestBody({ goal }),
         20000);
       renderMarketingManagerPlan(plan);

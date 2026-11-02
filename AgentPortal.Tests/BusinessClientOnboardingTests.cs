@@ -127,6 +127,7 @@ public sealed class BusinessClientOnboardingTests
     [InlineData("team")]
     [InlineData("website")]
     [InlineData("analytics")]
+    [InlineData("crm")]
     public async Task AccountRole_DoesNotOverrideCapabilityRevocation(string capability)
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -136,6 +137,7 @@ public sealed class BusinessClientOnboardingTests
         member.CanManageTeam = false;
         member.CanManageStorefront = false;
         member.CanManageAnalytics = false;
+        member.CanManageCrm = false;
         await db.SaveChangesAsync();
         Assert.Null(await BusinessWorkspaceAccess.ResolveAsync(db, business.Id, profile.Id,
             profile.ClientUserId, profile.Email, capability, CancellationToken.None));
@@ -471,7 +473,7 @@ public sealed class BusinessClientOnboardingTests
         db.Add(b);
         db.Add(new CommerceBusinessMember { CommerceBusinessId = b.Id, ClientProfileId = profile.Id,
             Email = profile.Email, NormalizedEmail = profile.Email.ToUpperInvariant(), RoleKey = role,
-            CanManageCatalog = false, CanManageOrders = false, DisplayName = "Account" });
+            CanManageCatalog = false, CanManageOrders = false, CanManageCrm = true, DisplayName = "Account" });
         db.Add(new CommerceBusinessStorefrontSettings { CommerceBusinessId = b.Id, BrandHeadline = "Original site" });
         db.Add(new CommerceBusinessSubscription { CommerceBusinessId = b.Id, PlanName = "Original plan" });
         await db.SaveChangesAsync(); return b;

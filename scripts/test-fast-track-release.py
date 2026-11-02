@@ -113,6 +113,34 @@ class UniversalFastTrackAdmissionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
             authority.fast_track_scope(['scripts/unreviewed-local-tool.sh'])
 
+    def test_identity_continuation_selects_all_managed_hosts_and_preserves_schema_gate(self):
+        path = 'Domain/Entities/ClientIdentityContinuation.cs'
+        expected = {'portal', 'client', 'protect', 'parfait'}
+        scope = authority.fast_track_scope([path])
+        self.assertEqual(expected, {row['key'] for row in scope['matrix']['include']})
+        migrated = authority.fast_track_scope([path,
+            'Infrastructure/Migrations/20261102062753_ScopedStoreContinuations.cs'])
+        self.assertEqual(expected, {row['key'] for row in migrated['matrix']['include']})
+        self.assertTrue(migrated['schema'])
+        with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+            authority.fast_track_scope(['Domain/Entities/UnreviewedContinuation.cs'])
+
+    def test_scoped_store_shared_owners_select_all_managed_hosts(self):
+        paths = ['Infrastructure/Businesses/BusinessAnalyticsControllerBase.cs',
+                 'Infrastructure/Businesses/BusinessWorkspaceActionsController.cs',
+                 'Infrastructure/Businesses/BusinessWorkspaceCommitmentsController.cs',
+                 'Infrastructure/Businesses/BusinessWorkspaceService.cs',
+                 'Infrastructure/Businesses/BusinessWorkspaceService.Team.cs',
+                 'Infrastructure/Identity/ClientEntraLifecycleService.cs',
+                 'SHARED/Analytics/ScopeContext.cs', 'SHARED/Crm/BusinessWorkspaceModels.cs']
+        for path in paths:
+            with self.subTest(path=path):
+                scope = authority.fast_track_scope([path])
+                self.assertEqual({'portal', 'client', 'protect', 'parfait'},
+                                 {row['key'] for row in scope['matrix']['include']})
+        with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+            authority.fast_track_scope(['Infrastructure/Businesses/UnreviewedService.cs'])
+
     def test_shared_build_props_selects_all_managed_apps_only(self):
         scope = authority.fast_track_scope(['Directory.Build.props'])
         self.assertEqual({'portal', 'client', 'protect', 'parfait'},
@@ -346,10 +374,9 @@ class FoundationCssImpactTests(unittest.TestCase):
     def test_shared_foundation_targets_only_actual_public_and_authenticated_consumers(self):
         scope=authority.fast_track_scope(['Legend-Design/legend-web-foundation.css'])
         self.assertEqual(set(scope['impacts']['Legend-Design/legend-web-foundation.css']),
-                         {'website','protect','portal','client'})
+                         {'website','protect','portal','client','parfait'})
         self.assertEqual({row['key'] for row in scope['matrix']['include']},
-                         {'website','protect','portal','client'})
-        self.assertNotIn('parfait', scope['impacts']['Legend-Design/legend-web-foundation.css'])
+                         {'website','protect','portal','client','parfait'})
 
 
 

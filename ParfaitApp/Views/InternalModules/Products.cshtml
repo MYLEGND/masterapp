@@ -8,13 +8,14 @@
     var productImageFallback = scopedStoreContext is not null && !scopedStoreContext.IsParfait
         ? (!string.IsNullOrWhiteSpace(scopedStoreContext.LogoUrl)
             ? scopedStoreContext.LogoUrl
-            : "https://www.mylegnd.com/favicon.jpg")
+            : null)
         : "/images/favicon/parfait-logo.png";
     var productSkuFallback = scopedStoreContext?.BusinessKey?.ToUpperInvariant() ?? "PARFAIT";
-    var isScopedCommerceManager = !string.IsNullOrWhiteSpace(commerceManagerTicket);
+    var isScopedCommerceManager = (ViewData["CommerceManagerScoped"] as bool? == true || !string.IsNullOrWhiteSpace(commerceManagerTicket));
+    var supportsTrainingProducts = !isScopedCommerceManager || scopedStoreContext?.IsParfait == true;
     string CommerceAction(string internalPath, string scopedPath) =>
         isScopedCommerceManager
-            ? scopedPath + "?ticket=" + Uri.EscapeDataString(commerceManagerTicket!)
+            ? Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, scopedPath, commerceManagerTicket, scopedPath == "/commerce/manage/products" ? "GET" : "POST")
             : internalPath;
     var commerceSettingsAction = CommerceAction("/internal/commerce/products/settings", "/commerce/manage/settings/commerce");
     var productSaveAction = CommerceAction("/internal/commerce/products", "/commerce/manage/product");
@@ -252,9 +253,15 @@
 
                         <label>Billing type <select class="form-select" name="BillingKind">
                             <option value="OneTime" selected="@(newProduct.BillingKind == "OneTime")">One-time product</option>
+                            @if (supportsTrainingProducts)
+                            {
                             <option value="MonthlyTraining" selected="@(newProduct.BillingKind == "MonthlyTraining")">Monthly training subscription</option>
+                            }
                         </select></label>
+                        @if (supportsTrainingProducts)
+                        {
                         <p class="pf-full">Training prices and product discount codes apply to every monthly renewal for new enrollments. Existing subscribers keep their accepted terms. Global merchandise discounts and stock do not apply to training.</p>
+                        }
                         <label class="pf-full">Description <textarea class="form-control" name="Description" rows="4" required>@newProduct.Description</textarea></label>
                     </div>
                 </details>
@@ -403,7 +410,10 @@
                          aria-haspopup="dialog"
                          aria-label="Open @product.Name product editor">
                     <div class="pf-product-summary-main">
-                        <img src="@primaryUrl" alt="@product.Name" />
+                        @if (!string.IsNullOrWhiteSpace(primaryUrl))
+                        { <img src="@primaryUrl" alt="@product.Name" /> }
+                        else
+                        { <span>No product photo</span> }
                         <div class="pf-product-summary-copy">
                             <h3>@product.Name</h3>
                             <span>@product.Slug</span>
@@ -476,7 +486,10 @@
                         <div class="pf-modal-grid">
                             <section class="pf-media-panel">
                                 <div class="pf-primary-preview">
-                                    <img src="@primaryUrl" alt="@product.Name" style="@ImageDisplayStyle(primaryImage?.ObjectFit, primaryImage?.ObjectPositionX ?? 50, primaryImage?.ObjectPositionY ?? 50, primaryImage?.Zoom ?? 1.0m)" />
+                                    @if (!string.IsNullOrWhiteSpace(primaryUrl))
+                                    { <img src="@primaryUrl" alt="@product.Name" style="@ImageDisplayStyle(primaryImage?.ObjectFit, primaryImage?.ObjectPositionX ?? 50, primaryImage?.ObjectPositionY ?? 50, primaryImage?.Zoom ?? 1.0m)" /> }
+                                    else
+                                    { <span>No product photo</span> }
                                 </div>
 
                                 <form method="post"
@@ -552,11 +565,25 @@
                                             <label>Slug <input class="form-control" name="Slug" value="@product.Slug" required /></label>
                                             <label>Price <input class="form-control pf-money-display" type="number" min="0" step="0.01" value="@MoneyField(product.PriceCents)" /><input type="hidden" name="PriceCents" value="@product.PriceCents" class="pf-money-hidden" /></label>
                                             <label>Badge <input class="form-control" name="Badge" value="@product.Badge" /></label>
+                                            @if (!supportsTrainingProducts && product.BillingKind == "MonthlyTraining")
+                                            {
+                                                <input type="hidden" name="BillingKind" value="MonthlyTraining" />
+                                                <p class="pf-full">This existing training subscription is not supported for this store. Its billing type is preserved; contact support before changing it.</p>
+                                            }
+                                            else
+                                            {
                                             <label>Billing type <select class="form-select" name="BillingKind">
                                                 <option value="OneTime" selected="@(product.BillingKind == "OneTime")">One-time product</option>
+                                                @if (supportsTrainingProducts)
+                                                {
                                                 <option value="MonthlyTraining" selected="@(product.BillingKind == "MonthlyTraining")">Monthly training subscription</option>
+                                                }
                                             </select></label>
+                                            }
+                                            @if (supportsTrainingProducts)
+                                            {
                                             <p class="pf-full">Training prices and product discount codes apply to every monthly renewal for new enrollments. Existing subscribers keep their accepted terms. Global merchandise discounts and stock do not apply to training.</p>
+                                            }
                                             <label class="pf-full">Description <textarea class="form-control" name="Description" rows="5" required>@product.Description</textarea></label>
                                         </div>
 

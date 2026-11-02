@@ -596,8 +596,17 @@ builder.Services.Configure<OpenIdConnectOptions>(OpenIdConnectDefaults.Authentic
         OidcTransientCookieCleanup.Clear(ctx.HttpContext, callbackPath);
         if (original != null) await original(ctx);
     };
+    oidcOptions.Events.OnTicketReceived = AccountController.StoreTicketHandler(oidcOptions.Events.OnTicketReceived);
     oidcOptions.Events.OnRemoteFailure = async ctx =>
     {
+        if (ctx.Properties?.Items.ContainsKey("legend.store.request") == true ||
+            ctx.Properties?.Items.ContainsKey("legend.business.invitation") == true)
+        {
+            ctx.HandleResponse();
+            ctx.Response.StatusCode = 403;
+            OidcTransientCookieCleanup.Clear(ctx.HttpContext, callbackPath);
+            return;
+        }
         LogOidcCallbackFailure(ctx);
         OidcTransientCookieCleanup.Clear(ctx.HttpContext, callbackPath);
 
@@ -726,6 +735,11 @@ builder.Services.AddAuthorization();
 builder.Services.AddRuntimeDiagnostics(builder.Configuration, builder.Environment);
 
 AgentPortal.Services.Telemetry.RoutineSqlLogging.AddRoutineSqlLogReduction(builder.Services, builder.Configuration);
+
+builder.Services.TryAddScoped<ParfaitApp.Services.CommerceStoreContextService>();
+builder.Services.TryAddScoped<Infrastructure.Businesses.CommerceBusinessScopeResolver>();
+builder.Services.TryAddScoped<ParfaitApp.Services.ParfaitBusinessScopeService>();
+builder.Services.TryAddScoped<Infrastructure.WebsiteEditing.WebsiteDomainService>();
 
 var app = builder.Build();
 await app.Services

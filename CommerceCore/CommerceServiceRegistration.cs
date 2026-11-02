@@ -15,6 +15,25 @@ namespace Legend.Commerce;
 /// </summary>
 public static class CommerceServiceRegistration
 {
+    public static IServiceCollection AddLegendCommerceSessions(this IServiceCollection services)
+    {
+        services.AddAuthentication(CommerceManagementController.StoreSessionScheme)
+            .AddCookie(CommerceManagementController.StoreSessionScheme, options =>
+            {
+                options.Cookie.Name = "__Host-LEGEND.StoreSession";
+                options.Cookie.Path = "/";
+                options.Cookie.HttpOnly = true;
+                options.Cookie.SecurePolicy = Microsoft.AspNetCore.Http.CookieSecurePolicy.Always;
+                options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax;
+                options.ExpireTimeSpan = TimeSpan.FromHours(1);
+                options.SlidingExpiration = false;
+                options.Events.OnRedirectToLogin = context => { context.Response.StatusCode = 401; return Task.CompletedTask; };
+                options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = 403; return Task.CompletedTask; };
+            });
+        services.AddAuthorization();
+        return services;
+    }
+
     /// <summary>Registers exactly the same shared controllers with any MVC host.</summary>
     public static IMvcBuilder AddLegendCommerceMvc(this IMvcBuilder builder)
     {
@@ -60,6 +79,7 @@ public static class CommerceServiceRegistration
     {
         public void Apply(Microsoft.AspNetCore.Mvc.ApplicationModels.ApplicationModel application)
         {
+            ApplyInternalRoutes(application);
             var assembly = typeof(StoreController).Assembly;
             foreach (var controller in application.Controllers.Where(c =>
                 c.ControllerType.Assembly == assembly &&
@@ -86,6 +106,7 @@ public static class CommerceServiceRegistration
     {
         public void Apply(Microsoft.AspNetCore.Mvc.ApplicationModels.ApplicationModel application)
         {
+            ApplyInternalRoutes(application);
             var assembly = typeof(StoreController).Assembly;
             foreach (var controller in application.Controllers
                 .Where(c => c.ControllerType.Assembly == assembly &&
@@ -112,6 +133,7 @@ public static class CommerceServiceRegistration
     {
         public void Apply(Microsoft.AspNetCore.Mvc.ApplicationModels.ApplicationModel application)
         {
+            ApplyInternalRoutes(application);
             var allowed = new[] {
                 typeof(StoreController), typeof(StoreCartController),
                 typeof(StoreCheckoutController), typeof(TrainingSubscriptionsController), typeof(MerchantPaymentWebhookController), typeof(ParfaitPublicPreviewController),
@@ -122,6 +144,33 @@ public static class CommerceServiceRegistration
                 c.ControllerType.Assembly == assembly &&
                 !allowed.Contains(c.ControllerType.AsType())).ToArray())
                 application.Controllers.Remove(controller);
+        }
+    }
+
+    private static void ApplyInternalRoutes(Microsoft.AspNetCore.Mvc.ApplicationModels.ApplicationModel application)
+    {
+        var controller = application.Controllers.SingleOrDefault(c => c.ControllerType.AsType() == typeof(CommerceManagementController));
+        if (controller is null) return;
+        // Shared analytics actions are adapters only. Never inherit business callback routes
+        // or compete with the Store's existing protected provider continuation handlers.
+        foreach (var action in controller.Actions)
+        foreach (var selector in action.Selectors.ToArray())
+        {
+            var template = selector.AttributeRouteModel?.Template;
+            if (template is null || template.StartsWith("/internal/", StringComparison.Ordinal)) continue;
+            var methods = selector.ActionConstraints.OfType<Microsoft.AspNetCore.Mvc.ActionConstraints.HttpMethodActionConstraint>()
+                .SelectMany(x => x.HttpMethods).ToArray();
+            foreach (var route in CommerceManagementCapabilityPolicy.InternalRoutes.Concat(CommerceManagementCapabilityPolicy.AuthenticationRoutes).Where(x =>
+                x.ActionPath == "/commerce/manage/" + template && methods.Contains(x.Method)))
+            {
+                if (action.Selectors.Any(x => x.AttributeRouteModel?.Template == route.InternalPath)) continue;
+                var alias = new Microsoft.AspNetCore.Mvc.ApplicationModels.SelectorModel(selector)
+                {
+                    AttributeRouteModel = new Microsoft.AspNetCore.Mvc.ApplicationModels.AttributeRouteModel(
+                        new Microsoft.AspNetCore.Mvc.RouteAttribute(route.InternalPath)) { Order = 1 }
+                };
+                action.Selectors.Add(alias);
+            }
         }
     }
 
@@ -162,6 +211,7 @@ public static class CommerceServiceRegistration
         services.AddScoped<CommerceSignalService>();
         services.AddSingleton<ParfaitInternalAnalyticsCacheStamp>();
         services.AddScoped<ParfaitInternalAnalyticsService>();
+        services.TryAddScoped<Infrastructure.Businesses.BusinessWorkspaceService>();
         services.AddScoped<ParfaitInternalWorkspaceService>();
         return services;
     }

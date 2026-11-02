@@ -45,6 +45,7 @@ internal static partial class CandidateContract
 
     internal static Entry Describe(string id, IReadOnlyList<MigrationOperation> operations)
     {
+        if (IsStoreMigration(id)) return StoreEntry(id, ExactStoreOperations(id, operations));
         if (id == BrowserMigration) return BrowserEntry(ExactBrowserOperations(operations));
         if (id == CrmMigration) return CrmEntry(ExactCrmOperations(operations));
         var columns = operations.OfType<AddColumnOperation>().Select(DescribeColumn).ToArray();
@@ -124,6 +125,7 @@ internal static partial class CandidateContract
             "5a543b02a2a1ae2f2bb35d5e2a8fb51f41e9601b1ef4de2707ec6db51029be10") return false;
         if (m.Id == BrowserMigration && m.Supported) return ExactBrowserEntry(m);
         if (m.Id == CrmMigration && m.Supported) return ExactCrmEntry(m);
+        if (IsStoreMigration(m.Id) && m.Supported) return ExactStoreEntry(m);
         // Unsupported historical migrations remain opaque and cannot become pending supported operations.
         if (!m.Supported) return true;
         if (m.Guards.Length > 1 || m.Columns.Any(c => !ValidColumn(c)) || m.Guards.Any(g => g != CheckoutGuard && !(g == TrainingIndexTransition && m.Id == TrainingMigration)) ||
@@ -691,6 +693,16 @@ internal static partial class CandidateContract
             try
             {
                 if (Take("(")) { var value = Or(); Require(")"); return value; }
+                if (Take("LTRIM") || Take("RTRIM"))
+                {
+                    var function = tokens[position - 1].Text;
+                    Require("("); var value = Primary(); Require(")");
+                    bool TextValue(Expression e) => e.Kind == "column" ?
+                        columns[e.Value].Type.StartsWith("nvarchar(", StringComparison.Ordinal) || columns[e.Value].Type.StartsWith("varchar(", StringComparison.Ordinal) :
+                        e.Kind is "LTRIM" or "RTRIM" && e.Children.Length == 1 && TextValue(e.Children[0]);
+                    if (!TextValue(value)) throw new InvalidOperationException();
+                    return new(function, "", [value]);
+                }
                 if (Take("LEN"))
                 {
                     Require("("); var value = Primary(); Require(")");

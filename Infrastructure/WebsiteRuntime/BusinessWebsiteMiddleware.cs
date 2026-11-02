@@ -35,6 +35,33 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
 
         var binding = await domains.ResolveAsync(host, context.RequestAborted);
         if (binding is null) { await Unavailable(context, bridged, "binding"); return; }
+        // Private Store routes use their own current session/membership authority, including
+        // retained historical Stores. A public publication must not capture these requests.
+        if (context.Request.Path.StartsWithSegments("/internal", StringComparison.OrdinalIgnoreCase))
+        {
+            Task PrivateResponse()
+            {
+                context.Response.Headers.CacheControl = "private,no-store,no-cache,must-revalidate";
+                context.Response.Headers.Pragma = "no-cache";
+                return Task.CompletedTask;
+            }
+            await PrivateResponse();
+            context.Response.OnStarting(PrivateResponse);
+            await next(context);
+            return;
+        }
+        // Public application assets contain no tenant records or credentials.
+        if (path is "/design/legend-web-foundation.css" or "/design/legend-app-shell.css" or "/_content/Shared/css/dashboard-home-shared.css" or
+                "/_content/Shared/js/legend-modal.js" or "/css/internal.css" or "/css/website-analytics.css" or
+                "/js/website-analytics.js" or "/js/website-analytics-kpi-modal.js" or
+                "/js/website-analytics-ai.js" or "/js/website-analytics-incidents.js" or
+                "/lib/bootstrap/dist/css/bootstrap.min.css" or "/lib/bootstrap/dist/js/bootstrap.bundle.min.js")
+        {
+            if (!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method))
+            { context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed; return; }
+            await next(context);
+            return;
+        }
         var version = await WebsiteContentStore.PublishedBusinessAsync(db, binding.Value, context.RequestAborted);
         if (string.IsNullOrWhiteSpace(version?.CompiledPagesJson)) { await Unavailable(context, bridged, "publication"); return; }
         // The production shared commerce manager is private, not part of the
@@ -77,8 +104,7 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         // Keep static assets read-only and available on the admitted hostname.
         if (CommerceSharedHostCutoverGate.IsAdmitted(configuration, binding.Value, host) &&
             (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)) &&
-            (path is "/css/internal.css" or "/css/parfait-agentportal-analytics.css" or
-                     "/js/parfait-agentportal-analytics.js" or "/images/favicon/parfait-logo.png" ||
+            (path is "/images/favicon/parfait-logo.png" ||
              path.StartsWith("/lib/bootstrap/", StringComparison.OrdinalIgnoreCase)))
         {
             await next(context);

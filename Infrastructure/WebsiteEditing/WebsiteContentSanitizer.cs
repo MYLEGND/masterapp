@@ -447,6 +447,7 @@ public static class WebsiteContentSanitizer
 
     public static WebsiteContentDocument Sanitize(WebsiteContentDocument source)
     {
+        WebsiteSystemTemplateAuthority.ValidateStorePage(source);
         if (source.LegacyMigration is not null)
             throw new InvalidOperationException("website_legacy_migration_cannot_be_saved");
 
@@ -920,6 +921,8 @@ public static class WebsiteContentSanitizer
                 "container" when string.Equals(tag, "nav", StringComparison.Ordinal) &&
                                  string.Equals(node.SystemKey, "primary_navigation", StringComparison.Ordinal) =>
                     "primary_navigation",
+                "container" when node.SystemKey == WebsiteSystemTemplateAuthority.StoreCatalogKey =>
+                    WebsiteSystemTemplateAuthority.StoreCatalogKey,
                 "container" when WebsiteSystemTemplateAuthority.IsRuntimeFormSystemKey(node.SystemKey) =>
                     node.SystemKey!.Trim(),
                 _ => null

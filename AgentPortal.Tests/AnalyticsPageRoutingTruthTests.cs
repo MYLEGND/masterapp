@@ -20,7 +20,7 @@ public sealed class AnalyticsPageRoutingTruthTests
         var ui = File.ReadAllText(Path.Combine(root, "AgentPortal", "wwwroot", "js", "website-analytics.js"));
         var kpi = File.ReadAllText(Path.Combine(root, "AgentPortal", "wwwroot", "js", "website-analytics-kpi-modal.js"));
         var controller = File.ReadAllText(Path.Combine(root, "AgentPortal", "Controllers", "WebsiteAnalyticsController.cs"));
-        var businessController = File.ReadAllText(Path.Combine(root, "Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs"));
+        var businessController = File.ReadAllText(Path.Combine(root, "Infrastructure", "Businesses", "BusinessAnalyticsControllerBase.cs"));
         var businessService = File.ReadAllText(Path.Combine(root, "Infrastructure", "Businesses", "BusinessWorkspaceService.cs"));
 
         var sharedReadRoutes = new[]
@@ -53,9 +53,9 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("\"DeviceIntelligence\"", businessService, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"DeviceIntelligence\")]", controller, StringComparison.Ordinal);
 
-        Assert.Contains("dataset.analyticsBase", kpi, StringComparison.Ordinal);
-        Assert.Contains("/kpi-detail?", kpi, StringComparison.Ordinal);
-        Assert.Contains("/visitor-timeline?", kpi, StringComparison.Ordinal);
+        Assert.Contains("window.websiteAnalyticsBridge.endpoint", kpi, StringComparison.Ordinal);
+        Assert.Contains("/kpi-detail", kpi, StringComparison.Ordinal);
+        Assert.Contains("/visitor-timeline", kpi, StringComparison.Ordinal);
         Assert.Contains("section is \"kpi-detail\" or \"visitor-timeline\"", businessService, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"kpi-detail\")]", controller, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"visitor-timeline\")]", controller, StringComparison.Ordinal);
@@ -244,8 +244,8 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.DoesNotContain("ResolveByUpnAsync", proxy, StringComparison.Ordinal);
         Assert.DoesNotContain("ForwardAsync(\"/api/analytics/ingest\"", proxy, StringComparison.Ordinal);
         Assert.Contains("siteKey = Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect", layout, StringComparison.Ordinal);
-        Assert.Contains("endpoint(path)", analyticsJs, StringComparison.Ordinal);
-        Assert.Contains("return analyticsEndpoint(path);", analyticsJs, StringComparison.Ordinal);
+        Assert.Contains("endpoint(path, params)", analyticsJs, StringComparison.Ordinal);
+        Assert.Contains("buildUrlWithParams(analyticsEndpoint(path), params)", analyticsJs, StringComparison.Ordinal);
         Assert.Contains("getRangeParams(options)", analyticsJs, StringComparison.Ordinal);
         Assert.Contains("return rangeParams(options || {});", analyticsJs, StringComparison.Ordinal);
     }

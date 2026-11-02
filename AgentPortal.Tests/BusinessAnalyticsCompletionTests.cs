@@ -60,11 +60,11 @@ public sealed class BusinessAnalyticsCompletionTests
         var root = RepoRoot();
         var view = File.ReadAllText(Path.Combine(root, "AgentPortal", "Views", "WebsiteAnalytics", "Index.cshtml"));
         var js = File.ReadAllText(Path.Combine(root, "AgentPortal", "wwwroot", "js", "website-analytics.js"));
-        var controller = File.ReadAllText(Path.Combine(root, "Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs"));
+        var controller = File.ReadAllText(Path.Combine(root, "Infrastructure", "Businesses", "BusinessAnalyticsControllerBase.cs"));
 
         Assert.Contains("data-can-meta-ads", view, StringComparison.Ordinal);
         Assert.Contains("data-can-ai-review", view, StringComparison.Ordinal);
-        Assert.Contains("const analyticsEndpoint = path => analyticsBase + path;", js, StringComparison.Ordinal);
+        Assert.Contains("return url.pathname + url.search;", js, StringComparison.Ordinal);
         Assert.Contains("if (!capabilities.aiReview) return;", js, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"analytics/meta-campaigns\")]", controller, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"analytics/meta-connection-status\")]", controller, StringComparison.Ordinal);
@@ -271,8 +271,11 @@ public sealed class BusinessAnalyticsCompletionTests
         Assert.Equal(2000, financial.RevenueCents);
         foreach (var name in new[] { "CheckoutStarted", "InitiateCheckout", "Purchase" })
             db.AnalyticsEvents.Add(new AnalyticsEvent { CommerceBusinessId = business, EventUtc = now, EventType = name,
-                SessionId = "test-session", VisitorId = "test-visitor", EventId = Guid.NewGuid(), MetadataJson = "{\"orderNumber\":\"test-order\"}" });
+                SessionId = "test-session", VisitorId = "test-visitor", EventId = Guid.NewGuid(), MetadataJson = System.Text.Json.JsonSerializer.Serialize(new { orderNumber = "test-order", commerceBusinessId = business }) });
         db.AnalyticsEvents.Add(new AnalyticsEvent { CommerceBusinessId = Guid.NewGuid(), EventUtc = now, EventType = "Purchase", EventId = Guid.NewGuid() });
+        // Same business ownership alone must not turn website/CRM telemetry into Store activity.
+        db.AnalyticsEvents.Add(new AnalyticsEvent { CommerceBusinessId = business, EventUtc = now, EventType = "Purchase",
+            EventId = Guid.NewGuid(), MetadataJson = "{\"orderNumber\":\"test-order\"}" });
         await db.SaveChangesAsync();
         var fresh = await service.GetWorkspaceSummaryAsync(business, qualityMode: TrafficQualityMode.AllTraffic);
         var measured = await service.GetDashboardAsync(business, qualityMode: TrafficQualityMode.AllTraffic);

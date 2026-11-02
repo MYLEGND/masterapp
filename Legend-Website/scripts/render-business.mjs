@@ -97,7 +97,7 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
     };
   };
 
-  const manifest=[...descriptors.values()].map(descriptorMeta).filter(page=>!page.isDeleted)
+  const manifest=[...descriptors.values()].map(descriptorMeta).filter(page=>!page.isDeleted && (page.route!=='/store' || input.document?.store?.enabled===true))
     .sort((a,b)=>a.order-b.order||a.route.localeCompare(b.route));
   const navEntries=manifest.filter(page=>page.showInNavigation);
   const pageCatalog=manifest.map(page=>({

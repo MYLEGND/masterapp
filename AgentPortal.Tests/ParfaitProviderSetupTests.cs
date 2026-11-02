@@ -1,3 +1,4 @@
+using System.Linq;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
@@ -16,6 +17,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using ParfaitApp.Controllers;
+using ParfaitApp.Models;
+using System.Security.Claims;
 using ParfaitApp.Security;
 using ParfaitApp.Services;
 using Shared.Analytics;
@@ -31,13 +34,13 @@ public sealed class ParfaitProviderSetupTests
         Assert.NotNull(typeof(InternalModulesController).GetCustomAttribute<AuthorizeAttribute>());
         foreach (var action in new[] { "MarketingSetup", "ConnectOpenAi", "RefreshOpenAi", "DisconnectOpenAi" })
         {
-            var method = typeof(InternalModulesController).GetMethod(action)!;
+            var method = typeof(InternalModulesController).GetMethods().Single(m => m.Name == action && m.DeclaringType == typeof(InternalModulesController));
             Assert.Null(method.GetCustomAttribute<AllowAnonymousAttribute>());
             Assert.Equal("/internal/analytics", method.GetCustomAttribute<ParfaitInternalPageAccessAttribute>()?.PageKey);
             if (action != "MarketingSetup")
             {
                 Assert.NotNull(method.GetCustomAttribute<ValidateAntiForgeryTokenAttribute>());
-                Assert.NotNull(typeof(CommerceManagementController).GetMethod(action)!.GetCustomAttribute<ValidateAntiForgeryTokenAttribute>());
+                Assert.NotNull(typeof(CommerceManagementController).GetMethods().Single(m => m.Name == action && m.DeclaringType == typeof(CommerceManagementController)).GetCustomAttribute<ValidateAntiForgeryTokenAttribute>());
             }
         }
     }
@@ -71,9 +74,12 @@ public sealed class ParfaitProviderSetupTests
         var direct = new Mock<IOpenAiAdsDirectConnectionService>(MockBehavior.Strict);
         direct.Setup(service => service.ConnectAsync(owner, "key", null, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new ArgumentException("No provider call in test."));
+        var access = new Mock<IParfaitTeamAccessService>();
+        access.Setup(service => service.AuthorizePageAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<string>(), "/internal/analytics", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ParfaitPageAccessResult { Allowed = true });
         var controller = new InternalModulesController(null!, null!, null!, null!, null!, null!, null!, null!, null!, new ParfaitBusinessScopeService(db), null!);
         controller.ControllerContext = new() { HttpContext = new DefaultHttpContext {
-            RequestServices = new ServiceCollection().AddSingleton(direct.Object).BuildServiceProvider() } };
+            RequestServices = new ServiceCollection().AddSingleton(direct.Object).AddSingleton(access.Object).BuildServiceProvider() } };
         Assert.IsType<BadRequestObjectResult>(await controller.ConnectOpenAi(new("key", null)));
         direct.Verify(service => service.ConnectAsync(owner, "key", null, It.IsAny<CancellationToken>()), Times.Once);
         Assert.Empty(db.MarketingConnections);
@@ -100,6 +106,8 @@ public sealed class ParfaitProviderSetupTests
         var controller = Commerce(tickets, config, stores);
         controller.ControllerContext = new() { HttpContext = new DefaultHttpContext {
             RequestServices = new ServiceCollection().AddSingleton(db).AddSingleton(direct.Object).BuildServiceProvider() } };
+        controller.Request.Path = "/commerce/manage/analytics/openai-connect";
+        controller.Request.Method = "POST";
         var token = tickets.Protect(new WebsiteEditorTicket(WebsiteEditorSiteKeys.Protect, "actor", "actor", founder, DateTime.UtcNow.AddMinutes(5), ActorUserId: "actor"));
         Assert.IsType<BadRequestObjectResult>(await controller.ConnectOpenAi(token, new("key", null)));
         direct.Verify(service => service.ConnectAsync(owner, "key", null, It.IsAny<CancellationToken>()), Times.Once);

@@ -77,7 +77,7 @@ namespace AgentPortal.Controllers;
             await service.CreateAsync(new Infrastructure.Businesses.CommerceBusinessProvisioningRequest(
                 DisplayName: model.EntityName!, LegalName: model.EntityName!, BusinessType: "BusinessClient",
                 OwnerEmail: profile.Email, OwnerDisplayName: model.EntityName!,
-                OwnerRoleKey: "account", CanManageCatalog: false, CanManageOrders: false,
+                OwnerRoleKey: "account", CanManageCatalog: false, CanManageOrders: false, CanManageCrm: true,
                 OwnerClientProfileId: profile.Id, Owners: model.BusinessOwners, ActorAgentUserId: agentOid),
                 HttpContext.RequestAborted);
         }

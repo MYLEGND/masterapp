@@ -4,7 +4,8 @@
 @inject Microsoft.Extensions.Logging.ILoggerFactory LoggerFactory
 @{
     var commerce = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
-    var isManagementPreview = Context.Request.Path.StartsWithSegments("/commerce/manage");
+    var isManagementPreview = Context.Request.Path.StartsWithSegments("/commerce/manage") ||
+        Context.Request.Path.StartsWithSegments("/internal/preview");
     string metaPixelId = string.Empty;
     string openAiPixelId = string.Empty;
     string? attributionScope = null;

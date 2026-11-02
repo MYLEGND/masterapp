@@ -9,6 +9,13 @@ using Microsoft.Extensions.Configuration;
 
 namespace ParfaitApp.Services;
 
+// Scope identity only; membership, capability and retained-store entitlement are checked separately.
+public sealed record CommerceManagementScope(
+    Guid CommerceBusinessId, string BusinessKey, Guid WebsiteStateId,
+    string WebsiteSiteKey, string WebsiteOwnerKey, string DestinationOrigin);
+
+public sealed record CommerceManagementActor(string ActorUserId, Guid? ClientProfileId, string? AgentSlug);
+
 public sealed record CommerceStoreContext(
     Guid CommerceBusinessId,
     Guid? WebsiteContentVersionId,
@@ -31,7 +38,11 @@ public sealed record CommerceStoreContext(
     string? GlobalCheckoutUrl,
     WebsiteDesignTheme Theme,
     string? WebsiteShellPrefix,
-    string? WebsiteShellSuffix);
+    string? WebsiteShellSuffix,
+    string? StorePageShellPrefix = null,
+    string? StorePageShellSuffix = null,
+    string? StorePageBeforeCatalog = null,
+    string? StorePageAfterCatalog = null);
 
 /// <summary>
 /// One public storefront scope resolver for Parfait and every website-linked commerce tenant.
@@ -48,6 +59,162 @@ public sealed class CommerceStoreContextService(
 {
     private const string ProtectHost = "protect.mylegnd.com";
     private const string ParfaitAzureHost = "masterapp-parfait.azurewebsites.net";
+
+    public static async Task<string?> PublishedManagementEntryAsync(MasterAppDbContext db, IConfiguration? configuration,
+        string site, string owner, CancellationToken ct = default)
+    {
+        var states = await db.Set<WebsiteContentState>().AsNoTracking().Where(x => x.SiteKey == site && x.OwnerKey == owner)
+            .Select(x => new { x.Id, x.CommerceBusinessId, x.ProvisionedStoreBusinessId, x.PublishedVersionId }).Take(2).ToListAsync(ct);
+        if (states.Count != 1) return null;
+        var state = states[0];
+        if (state.CommerceBusinessId is not Guid businessId || state.ProvisionedStoreBusinessId != businessId || state.PublishedVersionId is not Guid versionId) return null;
+        var document = WebsiteContentStore.ReadImmutablePublication(() => db.Set<WebsiteContentVersion>().AsNoTracking()
+            .Where(x => x.Id == versionId && x.StateId == state.Id && x.SnapshotRetiredUtc == null)
+            .Select(x => x.DocumentJson).SingleOrDefault(), ct);
+        if (document is null || !Deserialize(document).Store.Enabled) return null;
+        var business = await db.CommerceBusinesses.AsNoTracking().SingleOrDefaultAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", ct);
+        if (business is null) return null;
+        var root = await WebsiteStoreRootAsync(db, configuration, site, businessId, business.Key, ct);
+        return ManagementEntry(root, site == WebsiteEditorSiteKeys.Protect ? business.Key : null);
+    }
+
+    public static string? ManagementEntry(string? root, string? businessKey = null)
+    {
+        if (!Uri.TryCreate(root, UriKind.Absolute, out var uri) || uri.Scheme != "https" || !uri.IsDefaultPort || !string.IsNullOrEmpty(uri.UserInfo)) return null;
+        var target = uri.GetLeftPart(UriPartial.Authority) + "/internal/login";
+        return string.IsNullOrEmpty(businessKey) ? target : Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(target, "businessKey", businessKey);
+    }
+
+    public static async Task<string?> WebsiteStoreRootAsync(MasterAppDbContext db, IConfiguration? configuration,
+        string site, Guid businessId, string businessKey, CancellationToken ct = default)
+    {
+        if (site == WebsiteEditorSiteKeys.Legend) return (configuration?["Commerce:LegendPublicBaseUrl"] ?? "https://mylegnd.com").TrimEnd('/') + "/store";
+        if (site == WebsiteEditorSiteKeys.Protect) return (configuration?["Commerce:ProtectPublicBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/') + "/store/s/" + Uri.EscapeDataString(businessKey);
+        if (site != WebsiteEditorSiteKeys.Business) return null;
+        var cutoff = DateTime.UtcNow.AddHours(-24);
+        var hostname = await db.Set<WebsiteDomainBinding>().AsNoTracking().Where(x => x.CommerceBusinessId == businessId &&
+            x.Status == "active" && x.CertificateStatus == "active" && x.LastCheckedUtc >= cutoff)
+            .OrderBy(x => x.CreatedUtc).Select(x => x.Hostname).FirstOrDefaultAsync(ct);
+        return string.IsNullOrWhiteSpace(hostname) ? null : "https://" + hostname.Trim().TrimEnd('.') + "/store";
+    }
+
+    public async Task<CommerceManagementScope?> ResolveManagementScopeAsync(
+        HttpContext context, string? businessKey, CancellationToken ct = default)
+    {
+        // Scheme is established by the host's trusted forwarding middleware, never a
+        // caller-supplied forwarding header interpreted here.
+        if (!context.Request.IsHttps || context.Request.Host.Port is not (null or 443)) return null;
+        var host = WebsiteRequestHostResolver.Resolve(context, configuration, allowLegendCommerceHost: true);
+        var key = NormalizeKey(businessKey);
+        CommerceBusiness? business;
+        IQueryable<WebsiteContentState> states = db.Set<WebsiteContentState>().AsNoTracking();
+        if (string.Equals(host, ProtectHost, StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrEmpty(key)) return null;
+            business = await businesses.ResolveActiveByKeyAsync(key, ct);
+            if (business is null) return null;
+            states = states.Where(x => x.CommerceBusinessId == business.Id &&
+                x.SiteKey == WebsiteEditorSiteKeys.Protect);
+        }
+        else if (PublicWebsiteRuntimeScopeResolver.IsLegendHost(host))
+        {
+            if (!string.IsNullOrEmpty(key)) return null;
+            states = states.Where(x => x.SiteKey == WebsiteEditorSiteKeys.Legend &&
+                x.OwnerKey == WebsiteEditorSiteKeys.GlobalOwnerKey);
+            var bindings = await states.Select(x => x.CommerceBusinessId).Take(2).ToListAsync(ct);
+            if (bindings.Count != 1 || bindings[0] is not Guid id || id == Guid.Empty) return null;
+            business = await businesses.ResolveActiveByIdAsync(id, ct);
+        }
+        else
+        {
+            // No default tenant, Parfait provisioning or caller-supplied business selection.
+            if (!string.IsNullOrEmpty(key)) return null;
+            var id = await domains.ResolveAsync(host, ct);
+            if (!id.HasValue) return null;
+            business = await businesses.ResolveActiveByIdAsync(id.Value, ct);
+            if (business is null) return null;
+            var owner = WebsiteEditorSiteKeys.BusinessOwnerKey(business.Id);
+            states = states.Where(x => x.CommerceBusinessId == business.Id &&
+                x.SiteKey == WebsiteEditorSiteKeys.Business && x.OwnerKey == owner);
+        }
+        if (business is null) return null;
+        // Deliberately avoid draft/published document loading. A retained binding survives
+        // Remove Store; it does not itself grant access or prove a store was ever published.
+        var matches = await states.Select(x => new { x.Id, x.CommerceBusinessId, x.SiteKey, x.OwnerKey })
+            .Take(2).ToListAsync(ct);
+        if (matches.Count != 1 || matches[0].CommerceBusinessId != business.Id ||
+            string.IsNullOrWhiteSpace(matches[0].OwnerKey)) return null;
+        var state = matches[0];
+        return new(business.Id, business.Key, state.Id, state.SiteKey, state.OwnerKey, "https://" + host);
+    }
+
+    public async Task<CommerceManagementScope?> ResolveManagementScopeAsync(
+        StoreManagementLoginRequest request, CancellationToken ct = default)
+    {
+        if (!Uri.TryCreate(request.DestinationOrigin, UriKind.Absolute, out var origin) ||
+            origin.Scheme != "https" || !origin.IsDefaultPort || origin.AbsolutePath != "/" ||
+            origin.UserInfo.Length != 0 || origin.Query.Length != 0 || origin.Fragment.Length != 0 ||
+            request.DestinationOrigin != origin.GetLeftPart(UriPartial.Authority)) return null;
+        var key = await db.CommerceBusinesses.AsNoTracking().Where(b => b.Id == request.CommerceBusinessId)
+            .Select(b => b.Key).SingleOrDefaultAsync(ct);
+        if (key is null) return null;
+        var context = new DefaultHttpContext();
+        context.Request.Scheme = "https";
+        context.Request.Host = new HostString(origin.IdnHost);
+        var scope = await ResolveManagementScopeAsync(context, origin.IdnHost == ProtectHost ? key : null, ct);
+        return scope is not null && scope.CommerceBusinessId == request.CommerceBusinessId &&
+            scope.WebsiteSiteKey == request.SiteKey && scope.WebsiteOwnerKey == request.OwnerKey &&
+            scope.DestinationOrigin == request.DestinationOrigin ? scope : null;
+    }
+
+    public async Task<CommerceManagementActor?> ResolveManagementActorAsync(
+        CommerceManagementScope scope, string actorUserId, string capability,
+        Guid? selectedProfileId = null, CancellationToken ct = default)
+    {
+        var current = await ResolveManagementScopeAsync(new StoreManagementLoginRequest(
+            scope.CommerceBusinessId, scope.WebsiteSiteKey, scope.WebsiteOwnerKey, scope.DestinationOrigin,
+            "/internal", new string('0', 64), DateTime.UtcNow.AddMinutes(1)), ct);
+        if (current != scope) return null;
+        if (!await HasProvisionedStoreAsync(scope, ct) ||
+            !await db.CommerceBusinesses.AnyAsync(b => b.Id == scope.CommerceBusinessId && b.IsActive && b.Status.ToLower() == "active", ct))
+            return null;
+        var actor = Shared.Auth.IdentityKey.Normalize(actorUserId);
+        if (string.IsNullOrWhiteSpace(actor)) return null;
+        var member = await BusinessWorkspaceAccess.ResolveActorMembershipAsync(db, scope.CommerceBusinessId,
+            actor, capability, selectedProfileId, ct);
+        if (member is not null) return new(actor, member.ClientProfileId, null);
+        if (selectedProfileId.HasValue) return null;
+        // These are the existing website-owner scopes, never platform-wide business grants.
+        var founder = configuration["Founder:Oid"] ?? configuration["FOUNDER_OID"] ?? Environment.GetEnvironmentVariable("FOUNDER_OID");
+        string? slug = null;
+        if (scope.WebsiteSiteKey == WebsiteEditorSiteKeys.Legend)
+        {
+            if (scope.WebsiteOwnerKey != WebsiteEditorSiteKeys.GlobalOwnerKey ||
+                !Shared.Auth.FounderAuthority.IsConfiguredFounderIdentity(actor, founder)) return null;
+        }
+        else if (scope.WebsiteSiteKey == WebsiteEditorSiteKeys.Protect)
+        {
+            if (!string.Equals(scope.WebsiteOwnerKey, actor, StringComparison.OrdinalIgnoreCase)) return null;
+            var tracking = await db.AgentTrackingProfiles.AsNoTracking().Where(p =>
+                p.AgentUserId.ToLower() == actor && p.Status.ToLower() == "active").Take(2).ToListAsync(ct);
+            if (tracking.Count != 1) return null;
+            slug = tracking[0].Slug;
+        }
+        else return null;
+        if (!BusinessWorkspaceAccess.IsKnownCapability(capability)) return null;
+        var agents = await db.AgentProfiles.AsNoTracking().Where(p => p.AgentUserId.ToLower() == actor && p.IsActive)
+            .Take(2).ToListAsync(ct);
+        if (agents.Count != 1 || !(await Infrastructure.Identity.AccountLifecycleService.ReadAsync(db,
+            new Domain.Accounts.AccountLifecycleSubject(actor, Domain.Messaging.MessagingParticipantTypes.Agent, agents[0].Id), ct)).AllowsFullAccess)
+            return null;
+        return new(actor, null, slug);
+    }
+
+    public Task<bool> HasProvisionedStoreAsync(CommerceManagementScope scope, CancellationToken ct = default) =>
+        db.Set<WebsiteContentState>().AsNoTracking().AnyAsync(state =>
+            state.Id == scope.WebsiteStateId && state.SiteKey == scope.WebsiteSiteKey &&
+            state.OwnerKey == scope.WebsiteOwnerKey && state.CommerceBusinessId == scope.CommerceBusinessId &&
+            state.ProvisionedStoreBusinessId == scope.CommerceBusinessId, ct);
 
     public async Task<CommerceStoreContext?> ResolvePublicAsync(string? businessKey, CancellationToken ct = default)
     {
@@ -125,6 +292,19 @@ public sealed class CommerceStoreContextService(
         if (scopedBusiness is null) return null;
 
         return await BuildAsync(scopedBusiness, publishedOnly: true, ct, useScopedPath: false);
+    }
+
+    public async Task<CommerceStoreContext?> ResolveManagementAsync(CommerceManagementScope scope,
+        string actorUserId, string capability, Guid? profileId, CancellationToken ct = default)
+    {
+        if (await ResolveManagementActorAsync(scope, actorUserId, capability, profileId, ct) is null) return null;
+        var business = await businesses.ResolveActiveByIdAsync(scope.CommerceBusinessId, ct);
+        var state = await db.Set<WebsiteContentState>().SingleOrDefaultAsync(x => x.Id == scope.WebsiteStateId &&
+            x.CommerceBusinessId == scope.CommerceBusinessId && x.ProvisionedStoreBusinessId == scope.CommerceBusinessId, ct);
+        if (business is null || state is null) return null;
+        return await BuildAsync(business, publishedOnly: false, ct, explicitDocument: Deserialize(state.DraftJson),
+            explicitSiteKey: scope.WebsiteSiteKey, explicitState: state,
+            useScopedPath: new Uri(scope.DestinationOrigin).Host == ProtectHost);
     }
 
     public async Task<CommerceStoreContext?> ResolveForWebsiteTicketAsync(
@@ -243,6 +423,7 @@ public sealed class CommerceStoreContextService(
         Guid? publishedVersionId = null;
         string? websiteShellPrefix = null;
         string? websiteShellSuffix = null;
+        string? storeShellPrefix = null, storeShellSuffix = null, storeBefore = null, storeAfter = null;
         var websiteSiteKey = !string.IsNullOrWhiteSpace(explicitSiteKey)
             ? explicitSiteKey.Trim().ToLowerInvariant()
             : linkedState?.SiteKey?.Trim().ToLowerInvariant()
@@ -253,15 +434,21 @@ public sealed class CommerceStoreContextService(
             if (publishedOnly)
             {
                 if (!linkedState.PublishedVersionId.HasValue) return null;
-                var version = await db.Set<WebsiteContentVersion>().AsNoTracking()
-                    .SingleOrDefaultAsync(
-                        x => x.Id == linkedState.PublishedVersionId.Value && x.StateId == linkedState.Id,
-                        ct);
+                var version = WebsiteContentStore.ReadImmutablePublication(() => db.Set<WebsiteContentVersion>().AsNoTracking()
+                    .Where(x => x.Id == linkedState.PublishedVersionId.Value && x.StateId == linkedState.Id && x.SnapshotRetiredUtc == null)
+                    .Select(x => new { x.Id, x.DocumentJson, x.CompiledPagesJson }).SingleOrDefault(), ct);
                 if (version is null) return null;
                 publishedVersionId = version.Id;
                 websiteDocument = Deserialize(version.DocumentJson);
                 if (websiteDocument.Store?.Enabled != true) return null;
                 TryExtractPublishedWebsiteShell(version.CompiledPagesJson, out websiteShellPrefix, out websiteShellSuffix);
+                if (websiteDocument.Pages.ContainsKey("/store"))
+                {
+                    WebsiteSystemTemplateAuthority.ValidateStorePage(websiteDocument);
+                    TryExtractPublishedWebsiteShell(version.CompiledPagesJson, out storeShellPrefix, out storeShellSuffix,
+                        "/store", out storeBefore, out storeAfter);
+                    if (storeBefore is null || storeAfter is null) return null;
+                }
             }
             else
             {
@@ -322,15 +509,20 @@ public sealed class CommerceStoreContextService(
             string.IsNullOrWhiteSpace(settings?.GlobalStoreCheckoutUrl) ? null : settings!.GlobalStoreCheckoutUrl.Trim(),
             theme,
             isParfait ? null : websiteShellPrefix,
-            isParfait ? null : websiteShellSuffix);
+            isParfait ? null : websiteShellSuffix,
+            storeShellPrefix, storeShellSuffix, storeBefore, storeAfter);
     }
 
 
     private static void TryExtractPublishedWebsiteShell(
         string? compiledPagesJson,
         out string? prefix,
-        out string? suffix)
+        out string? suffix) => TryExtractPublishedWebsiteShell(compiledPagesJson, out prefix, out suffix, "/", out _, out _);
+
+    private static void TryExtractPublishedWebsiteShell(string? compiledPagesJson, out string? prefix,
+        out string? suffix, string route, out string? before, out string? after)
     {
+        before = null; after = null;
         prefix = null;
         suffix = null;
         if (string.IsNullOrWhiteSpace(compiledPagesJson)) return;
@@ -339,7 +531,7 @@ public sealed class CommerceStoreContextService(
         {
             using var compiled = JsonDocument.Parse(compiledPagesJson);
             if (!compiled.RootElement.TryGetProperty("pages", out var pages) ||
-                !pages.TryGetProperty("/", out var home) ||
+                !pages.TryGetProperty(route, out var home) ||
                 !home.TryGetProperty("html", out var htmlValue))
                 return;
 
@@ -353,6 +545,17 @@ public sealed class CommerceStoreContextService(
             var mainClose = html.IndexOf("</main>", mainOpenEnd + 1, StringComparison.OrdinalIgnoreCase);
             if (mainClose < 0) return;
 
+            if (route == "/store")
+            {
+                const string begin = "<!--legend:store:catalog:start-->";
+                const string end = "<!--legend:store:catalog:end-->";
+                var beginIndex = html.IndexOf(begin, mainOpenEnd, StringComparison.Ordinal);
+                var endIndex = html.IndexOf(end, mainOpenEnd, StringComparison.Ordinal);
+                if (beginIndex < 0 || endIndex != beginIndex + begin.Length || endIndex >= mainClose ||
+                    html.IndexOf(begin, beginIndex + begin.Length, StringComparison.Ordinal) >= 0) return;
+                before = html[(mainOpenEnd + 1)..beginIndex];
+                after = html[(endIndex + end.Length)..mainClose];
+            }
             prefix = html[..(mainOpenEnd + 1)];
             suffix = html[(mainClose + "</main>".Length)..];
 

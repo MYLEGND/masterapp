@@ -20,8 +20,8 @@ public abstract partial class BusinessWorkspaceControllerBase
     public async Task<IActionResult> Commitments(Guid businessId, string recordSet, string id, CancellationToken cancellationToken)
     {
         if (await ResolveBusinessAsync(businessId, "crm", cancellationToken) is null) return Forbid();
-        if (await workspace.QuickViewAsync(businessId, id, recordSet == "Clients" ? "Client" : "Lead", cancellationToken) is null) return NotFound();
-        var items = await workspace.BusinessCommitments(businessId).GetByEntityForActorAsync(RelatedEntityType.BusinessContact,
+        if (await WorkspaceService.QuickViewAsync(businessId, id, recordSet == "Clients" ? "Client" : "Lead", cancellationToken) is null) return NotFound();
+        var items = await WorkspaceService.BusinessCommitments(businessId).GetByEntityForActorAsync(RelatedEntityType.BusinessContact,
             id, User.GetCanonicalUserId(), cancellationToken);
         ViewBag.ClientId = id;
         ViewBag.LeadId = id;
@@ -37,8 +37,8 @@ public abstract partial class BusinessWorkspaceControllerBase
         if (!ModelState.IsValid || !input.DueDateUtc.HasValue) return BadRequest(ModelState);
         var contact = recordSet == "Clients" ? input.ClientId : input.LeadId;
         if (string.IsNullOrWhiteSpace(contact)) return BadRequest("Choose a contact.");
-        if (await workspace.QuickViewAsync(businessId, contact, recordSet == "Clients" ? "Client" : "Lead", cancellationToken) is null) return NotFound();
-        await workspace.BusinessCommitments(businessId).CreateCommitmentAsync(new CommitmentCreateRequest(
+        if (await WorkspaceService.QuickViewAsync(businessId, contact, recordSet == "Clients" ? "Client" : "Lead", cancellationToken) is null) return NotFound();
+        await WorkspaceService.BusinessCommitments(businessId).CreateCommitmentAsync(new CommitmentCreateRequest(
             RelatedEntityType.BusinessContact, contact, ActionOwnerType.Business, businessId.ToString(),
             ActionOwnerType.Client, contact, input.PromiseText.Trim(), input.DueDateUtc.Value.ToUniversalTime(),
             User.GetCanonicalUserId()), cancellationToken);
@@ -58,9 +58,9 @@ public abstract partial class BusinessWorkspaceControllerBase
     private async Task<IActionResult> ChangeCommitment(Guid businessId, string recordSet, Guid id, bool fulfilled, CancellationToken ct)
     {
         if (await ResolveBusinessAsync(businessId, "crm", ct) is null) return Forbid();
-        var service = workspace.BusinessCommitments(businessId);
+        var service = WorkspaceService.BusinessCommitments(businessId);
         var item = await service.GetByIdForActorAsync(id, User.GetCanonicalUserId(), ct);
-        if (item is null || await workspace.QuickViewAsync(businessId, item.RelatedEntityId, recordSet == "Clients" ? "Client" : "Lead", ct) is null)
+        if (item is null || await WorkspaceService.QuickViewAsync(businessId, item.RelatedEntityId, recordSet == "Clients" ? "Client" : "Lead", ct) is null)
             return NotFound();
         if (fulfilled) await service.FulfillCommitmentAsync(id, User.GetCanonicalUserId(), ct);
         else await service.BreakCommitmentAsync(id, User.GetCanonicalUserId(), ct);

@@ -13,6 +13,13 @@ function isPlatformHost(hostname) {
   return host === PLATFORM_ZONE || host.endsWith("." + PLATFORM_ZONE);
 }
 
+const INTERNAL_ASSETS = new Set([
+  '/design/legend-web-foundation.css', '/design/legend-app-shell.css', '/_content/Shared/css/dashboard-home-shared.css', '/_content/Shared/js/legend-modal.js',
+  '/css/internal.css', '/css/website-analytics.css', '/js/website-analytics.js',
+  '/js/website-analytics-kpi-modal.js', '/js/website-analytics-ai.js', '/js/website-analytics-incidents.js',
+  '/lib/bootstrap/dist/css/bootstrap.min.css', '/lib/bootstrap/dist/js/bootstrap.bundle.min.js'
+]);
+
 function isCommerceTransportPath(pathname) {
   const path = pathname || "/";
   return path === "/store" ||
@@ -113,7 +120,7 @@ function isCompanyDocument(url) {
   const path=companyDocumentPath(url);
   return (url.hostname === 'mylegnd.com' || url.hostname === 'www.mylegnd.com') &&
     /^\/(?:[a-z0-9_-]+\/)*[a-z0-9_-]*$/.test(path) &&
-    !/^\/(?:api|business-preview|commerce|store|store-assets|uploads|parfait-analytics)(?:\/|$)/.test(path) &&
+    !/^\/(?:api|internal|business-preview|commerce|store|store-assets|uploads|parfait-analytics)(?:\/|$)/.test(path) &&
     !url.searchParams.has('legendEdit');
 }
 
@@ -125,6 +132,23 @@ export async function handleWebsiteRouting(request, env, fetchImpl = fetch) {
   if (incoming.protocol !== "https:") {
     incoming.protocol = "https:";
     return Response.redirect(incoming.toString(), 308);
+  }
+
+  if (INTERNAL_ASSETS.has(incoming.pathname) && !['GET', 'HEAD'].includes(request.method) &&
+      (!isPlatformHost(hostname) || COMMERCE_PLATFORM_HOSTS.has(hostname)))
+    return new Response('Method not allowed.', { status: 405 });
+
+  // Private scoped workspace requests never pass through public CMS rendering or caching.
+  if ((incoming.pathname === "/internal" || incoming.pathname.startsWith("/internal/") ||
+      INTERNAL_ASSETS.has(incoming.pathname) && ["GET", "HEAD"].includes(request.method)) &&
+      (!isPlatformHost(hostname) || COMMERCE_PLATFORM_HOSTS.has(hostname))) {
+    const bridged = buildBridgeRequest(request, env);
+    if (bridged.error) return bridged.error;
+    const response = await fetchImpl(bridged.request, { cf: { cacheTtl: 0, cacheEverything: false } });
+    const headers = new Headers(response.headers);
+    headers.set("Cache-Control", "private, no-store, no-cache, must-revalidate");
+    headers.set("Pragma", "no-cache");
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   }
 
   if (isCompanyDocument(incoming)) {

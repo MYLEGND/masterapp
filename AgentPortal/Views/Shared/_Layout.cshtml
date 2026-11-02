@@ -1,3 +1,4 @@
+@using Microsoft.Extensions.DependencyInjection
 @using Microsoft.AspNetCore.Http
 @using System.Security.Claims
 @using AgentPortal.Security
@@ -263,11 +264,19 @@
                 if (websiteProfile is not null && string.Equals(websiteProfile.Status, "active", StringComparison.OrdinalIgnoreCase))
                 {
                     var websiteUrls = await WebsiteTracking.GetPersonalUrlsAsync(websiteProfile, Context.RequestAborted);
+                    var storeEntry = await ParfaitApp.Services.CommerceStoreContextService.PublishedManagementEntryAsync(
+                        Context.RequestServices.GetRequiredService<MasterAppDbContext>(), WebsiteConfiguration, "protect", websiteProfile.AgentUserId.Trim().ToLowerInvariant(), Context.RequestAborted);
+                    if (storeEntry is not null) { <a class="explore-item" data-tone="ops" href="@storeEntry" target="_blank" rel="noopener"><span>Manage Store</span><small>@websiteProfile.DisplayName</small></a> }
+
                     @await Html.PartialAsync("~/Views/Shared/_WebsiteQuickFind.cshtml", new Shared.Crm.WebsiteQuickFindLink(
                         "Edit Protect website", websiteProfile.DisplayName ?? "Your agent website", "/Account/WebsiteSession?site=protect", "/Account/EditProtectWebsite", websiteUrls.PrimaryUrl, "agent"))
                 }
                 if (isFounder)
                 {
+                    var founderStoreEntry = await ParfaitApp.Services.CommerceStoreContextService.PublishedManagementEntryAsync(
+                        Context.RequestServices.GetRequiredService<MasterAppDbContext>(), WebsiteConfiguration, "legend", Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.GlobalOwnerKey, Context.RequestAborted);
+                    if (founderStoreEntry is not null) { <a class="explore-item" data-tone="ops" href="@founderStoreEntry" target="_blank" rel="noopener"><span>Manage Store</span><small>LEGEND®</small></a> }
+
                     @await Html.PartialAsync("~/Views/Shared/_WebsiteQuickFind.cshtml", new Shared.Crm.WebsiteQuickFindLink(
                         $"Edit {Shared.Branding.LegendBrand.RegisteredUpper} website", "Founder", "/Account/WebsiteSession?site=legend", "/Account/EditLegendWebsite", (WebsiteConfiguration["LegendWebsiteBaseUrl"] ?? "https://www.mylegnd.com").TrimEnd('/'), "founder"))
                 }

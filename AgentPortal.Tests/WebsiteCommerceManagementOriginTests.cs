@@ -19,7 +19,7 @@ public sealed class WebsiteCommerceManagementOriginTests
     [Theory]
     [InlineData(null, "https://masterapp-protect.azurewebsites.net")]
     [InlineData("https://protect.mylegnd.com/", "https://protect.mylegnd.com")]
-    public async Task PrivateManagementUsesSharedApiWhilePublicLinksKeepBusinessDomain(string? apiBase, string expected)
+    public async Task ManagementUsesNormalScopedLoginWhileDesignPreviewRetainsSharedApi(string? apiBase, string expected)
     {
         await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -39,8 +39,9 @@ public sealed class WebsiteCommerceManagementOriginTests
         var payload = JsonSerializer.SerializeToElement(result);
         Assert.Equal("https://store.example.org/store", payload.GetProperty("storefrontUrl").GetString());
         Assert.Equal("https://store.example.org/store/cart", payload.GetProperty("cartUrl").GetString());
-        foreach (var (field,path) in new[]{("managerUrl","products"),("paymentsUrl","payments"),("previewUrl","preview")})
-            Assert.Equal(expected + "/commerce/manage/" + path + "?ticket=synthetic%2Bticket", payload.GetProperty(field).GetString());
+        foreach (var field in new[]{"managerUrl", "paymentsUrl"})
+            Assert.Equal("https://store.example.org/internal/login", payload.GetProperty(field).GetString());
+        Assert.Equal(expected + "/commerce/manage/preview?ticket=synthetic%2Bticket", payload.GetProperty("previewUrl").GetString());
         Assert.Equal(businessId, payload.GetProperty("commerceBusinessId").GetGuid());
     }
 }

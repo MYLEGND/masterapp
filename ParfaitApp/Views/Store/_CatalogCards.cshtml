@@ -1,0 +1,64 @@
+@model ParfaitApp.Models.ParfaitStorefrontViewModel
+@{
+    ViewData["Title"] = "Collection";
+    ViewData["BodyClass"] = "sp-body";
+    ViewData["ContentContainerClass"] = "container-fluid";
+    ViewData["LayoutContentClass"] = "sp-layout-content";
+    var storeRoot = ViewData["StoreRootPath"] as string ?? "/store";
+    var productBase = ViewData["StoreProductBasePath"] as string ?? (storeRoot + "/product");
+    var previewQuery = ViewData["StorePreviewQuery"] as string ?? "";
+
+    static string ImageDisplayStyle(string? fit, int positionX, int positionY, decimal zoom)
+    {
+        var safeFit = string.Equals(fit, "contain", StringComparison.OrdinalIgnoreCase) ? "contain" : "cover";
+        var safeZoom = zoom <= 0 ? 1.0m : zoom;
+        return $"object-fit:{safeFit}; object-position:{positionX}% {positionY}%; transform-origin:{positionX}% {positionY}%; transform:scale({safeZoom.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)});";
+    }
+}
+
+
+            @foreach (var product in Model.Products)
+            {
+                <article class="sp-shop-card" data-cms-store-style="card">
+                    <a class="sp-shop-media" data-cms-store-style="media" href="@($"{productBase}/{product.Slug}{previewQuery}")" aria-label="View @product.Name">
+                        @if (!string.IsNullOrWhiteSpace(product.Badge))
+                        {
+                            <span class="sp-shop-badge" data-cms-store-style="badge">@product.Badge</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(product.PrimaryImageUrl))
+                        {
+                        <img src="@product.PrimaryImageUrl"
+                             alt="@product.Name"
+                             style="@ImageDisplayStyle(product.PrimaryImageObjectFit, product.PrimaryImageObjectPositionX, product.PrimaryImageObjectPositionY, product.PrimaryImageZoom)" />
+                        }
+                        else
+                        {
+                            <span class="sp-product-no-photo" role="img" aria-label="No product photo">No product photo</span>
+                        }
+                    </a>
+
+                    <div class="sp-shop-content" data-cms-store-style="content">
+                        <div class="sp-shop-copy">
+                            <h2 data-cms-store-style="title">@product.Name</h2>
+                        </div>
+
+                        <div class="sp-shop-meta">
+                            <div class="sp-shop-price-stack" data-cms-store-style="price">
+                                @if (product.HasDisplaySalePrice)
+                                {
+                                    <span class="sp-shop-compare-price">@product.DisplayCompareAtPriceLabel</span>
+                                }
+                                <span class="sp-shop-price">@product.DisplayPriceLabel</span>
+                                @if (product.HasDisplayDiscountLabel)
+                                {
+                                    <span class="sp-shop-discount">@product.DisplayDiscountLabel</span>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="sp-shop-actions" data-cms-store-style="actions">
+                            <a class="sp-button sp-button--primary sp-shop-link" data-cms-store-style="button" href="@($"{productBase}/{product.Slug}{previewQuery}")">View Product</a>
+                        </div>
+                    </div>
+                </article>
+            }

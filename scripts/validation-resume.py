@@ -4907,6 +4907,7 @@ def fast_track_scope(paths):
         'Domain/Entities/SubscriptionPaymentCompletionEffect.cs',
         'Domain/Entities/SubscriptionPaymentRefund.cs',
         'Infrastructure/Billing/BillingReconciliationService.cs',
+        'Domain/Entities/ClientIdentityContinuation.cs',
         'Domain/Entities/ClientSubscriptionOffer.cs',
         'Domain/Entities/MarketingConnection.cs',
         'Domain/Entities/ReceptionistCoordination.cs',
@@ -4921,12 +4922,20 @@ def fast_track_scope(paths):
         'Infrastructure/Bookings/ReceptionistBookingContracts.cs',
         'Infrastructure/Bookings/ReceptionistBookingReadinessReader.cs',
         'Infrastructure/Businesses/BusinessWorkspaceControllerBase.cs',
+        'Infrastructure/Businesses/BusinessAnalyticsControllerBase.cs',
+        'Infrastructure/Businesses/BusinessWorkspaceActionsController.cs',
+        'Infrastructure/Businesses/BusinessWorkspaceCommitmentsController.cs',
         'Infrastructure/Businesses/BusinessWorkspaceControllerBase.Receptionist.cs',
         'Infrastructure/Businesses/BusinessWorkspaceControllerBase.ReceptionistManagement.cs',
         'Infrastructure/Businesses/CommerceBusinessProvisioningService.cs',
         'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.cs',
         'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Management.cs',
         'Infrastructure/Households/HouseholdMembershipService.cs',
+        'Infrastructure/Businesses/BusinessWorkspaceService.cs',
+        'Infrastructure/Businesses/BusinessWorkspaceService.Team.cs',
+        'Infrastructure/Identity/ClientEntraLifecycleService.cs',
+        'SHARED/Analytics/ScopeContext.cs',
+        'SHARED/Crm/BusinessWorkspaceModels.cs',
         'Infrastructure/Identity/RestrictedAiAccessBoundary.cs',
         'Infrastructure/Infrastructure.csproj',
         'Infrastructure/Diagnostics/RoutineSqlPolling.cs',
@@ -11748,6 +11757,18 @@ REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS = frozenset({
      'e097be398e774e6226b9a7cb72b41b7eec92eb8a3043af8e16e412381ca0051f')
 })
 
+
+# Exact Store descriptors; these pins do not authorize runtime/tool promotion.
+REVIEWED_STORE_ENTRIES = (
+    ('20261102062753_ScopedStoreContinuations',
+     'e18146d03a4e95e07bb8a16258a0f04b81bebdd9123870d047f77fa78f123be9'),
+    ('20261102064637_ExplicitBusinessCrmCapability',
+     '218a95dc91fa8d68acff565639529275109bbc67a29e613d298df9cc59fb411b'),
+    ('20261102085754_ScopedStoreProvisioningEvidence',
+     '5af28a808d8b47adda99aa7ef033554c0abb0a54a6084d4652a034348a77e5f6'),
+    ('20261102160514_ScopedStoreMembershipInvitations',
+     'e61bb077eb328f1682b7aeb77b532867e7475e9dc816c2629c8d10a8538891c5'),
+)
 
 REVIEWED_CRM_ENTRY = 'b2654e654640d238a5eb818558bd0ce149a5aefc78d3189489aef0b736447ac4'
 # Exact proposed runtime closures; promotion still requires independent review,

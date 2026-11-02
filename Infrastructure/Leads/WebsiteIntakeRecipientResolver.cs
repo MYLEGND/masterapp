@@ -16,20 +16,20 @@ public sealed class WebsiteIntakeRecipientResolver(MasterAppDbContext db, IConfi
     {
         if (businessId == Guid.Empty || !await db.CommerceBusinesses.AnyAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", ct)) return [];
         var members = await db.CommerceBusinessMembers.AsNoTracking().Where(x => x.CommerceBusinessId == businessId && x.Status == "Active" &&
-            (x.RoleKey == "owner" || x.CanManageOrders)).ToListAsync(ct);
+            x.CanManageCrm).ToListAsync(ct);
         var result = new List<BusinessIntakeRecipient>();
         foreach (var member in members)
         {
             if (member.ClientProfileId is not { } profileId) continue;
             var profile = await db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == profileId, ct);
-            if (profile is null || !await WebsiteBusinessAccess.CanManageAsActorAsync(db, businessId, profileId, profile.ClientUserId, profile.Email, ct)) continue;
+            if (profile is null || !await WebsiteBusinessAccess.CanAccessBusinessAsActorAsync(db, businessId, profileId, profile.ClientUserId, profile.Email, ct)) continue;
             if (ValidEmail(profile.Email)) result.Add(new("member:" + member.Id.ToString("D"), member.DisplayName + " · team", profile.Email.Trim()));
             var links = await db.AgentClients.AsNoTracking().Where(x => x.ClientUserId == profile.ClientUserId).ToListAsync(ct);
             foreach (var link in links)
             {
                 var agent = await db.AgentTrackingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.AgentUserId == link.AgentUserId && x.Status == "active", ct);
                 if (agent is null || !ValidEmail(agent.AgentUpn) ||
-                    !await WebsiteBusinessAccess.CanManageAsActorAsync(db, businessId, profileId, agent.AgentUserId, agent.AgentUpn, ct)) continue;
+                    !await WebsiteBusinessAccess.CanAccessBusinessAsActorAsync(db, businessId, profileId, agent.AgentUserId, agent.AgentUpn, ct)) continue;
                 var key = "agent:" + agent.Id.ToString("D");
                 if (result.All(x => x.Key != key)) result.Add(new(key, (agent.DisplayName ?? agent.AgentUpn) + " · assigned agent", agent.AgentUpn.Trim()));
             }

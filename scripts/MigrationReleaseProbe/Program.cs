@@ -551,6 +551,17 @@ internal static class TrustedCandidateContract
             throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
         if (JsonSerializer.Serialize(trusted, CandidateContract.Json) == JsonSerializer.Serialize(candidate, CandidateContract.Json))
             return "approved-definitions-exact";
+        var storeStart = Array.IndexOf(CandidateContract.StoreMigrations, trusted.Migrations[^1].Id) + 1;
+        if (trusted.Migrations[^1].Id == CandidateContract.CrmMigration || storeStart > 0)
+        {
+            var count = candidate.Migrations.Length - trusted.Migrations.Length;
+            if (count > 0 && storeStart + count <= CandidateContract.StoreMigrations.Length &&
+                candidate.Migrations.Take(trusted.Migrations.Length).Zip(trusted.Migrations).All(pair =>
+                    JsonSerializer.Serialize(pair.First, CandidateContract.Json) == JsonSerializer.Serialize(pair.Second, CandidateContract.Json)) &&
+                candidate.Migrations.Skip(trusted.Migrations.Length).Select(e => e.Id).SequenceEqual(CandidateContract.StoreMigrations.Skip(storeStart).Take(count)) &&
+                candidate.Migrations.Skip(trusted.Migrations.Length).All(CandidateContract.ExactStoreEntry))
+                return "approved-prefix-reviewed-store-entries";
+        }
         // Exact combined release suffix. The old prefix remains byte-identical;
         // neither a skipped diagnostic migration nor an arbitrary append is accepted.
         if (candidate.Migrations.Length == trusted.Migrations.Length + 2 &&
@@ -744,7 +755,7 @@ internal static class TrustedCandidateContract
             Reject(() => Prove(prefix, current with { Migrations = [..prefix.Migrations, null!] }));
             Console.WriteLine("LEGEND_DIAGNOSTICS_APPEND_TEST:PROVEN");
         }
-        current = complete;
+        current = complete with { Migrations = complete.Migrations.TakeWhile(m => m.Id != CandidateContract.StoreContinuationMigration).ToArray() };
         if (current.Migrations[^1].Id == CandidateContract.CrmMigration)
         {
             var prefix = current with { Migrations = current.Migrations[..^2] };
@@ -761,6 +772,31 @@ internal static class TrustedCandidateContract
             var changed = prefix.Migrations.ToArray(); changed[0] = changed[0] with { Supported = !changed[0].Supported };
             Reject(() => Prove(prefix, current with { Migrations = [..changed, current.Migrations[^2], entry] }));
             Console.WriteLine("LEGEND_CRM_APPEND_TEST:PROVEN");
+        }
+        current = complete;
+        var storeIndex = Array.FindIndex(current.Migrations, m => m.Id == CandidateContract.StoreContinuationMigration);
+        if (storeIndex >= 0)
+        {
+            Require(current.Migrations.Skip(storeIndex).Select(m => m.Id).SequenceEqual(CandidateContract.StoreMigrations));
+            for (var start = storeIndex; start < current.Migrations.Length; start++)
+            {
+                var prefix = current with { Migrations = current.Migrations[..start] };
+                for (var end = start + 1; end <= current.Migrations.Length; end++)
+                {
+                    var tail = current with { Migrations = current.Migrations[..end] };
+                    Require(Prove(prefix, tail) == "approved-prefix-reviewed-store-entries");
+                    var entry = tail.Migrations[^1];
+                    foreach (var bad in new[] { entry with { Supported = false }, entry with { Guards = [] },
+                        entry with { Columns = [] }, entry with { Columns = [entry.Columns[0] with { Nullable = !entry.Columns[0].Nullable }] } })
+                        Reject(() => Prove(prefix, tail with { Migrations = [..tail.Migrations[..^1], bad] }));
+                    Reject(() => Prove(prefix, tail with { Migrations = [..tail.Migrations, unknown] }));
+                }
+                if (start + 1 < current.Migrations.Length)
+                    Reject(() => Prove(prefix, current with { Migrations = [..prefix.Migrations, ..current.Migrations[(start + 1)..]] }));
+                var changed = prefix.Migrations.ToArray(); changed[0] = changed[0] with { Supported = !changed[0].Supported };
+                Reject(() => Prove(prefix, current with { Migrations = [..changed, ..current.Migrations[start..]] }));
+            }
+            Console.WriteLine("LEGEND_STORE_APPEND_TEST:PROVEN");
         }
         var path = Path.Combine(Path.GetTempPath(), "legend-contract-test-" + Guid.NewGuid().ToString("N") + ".json");
         try

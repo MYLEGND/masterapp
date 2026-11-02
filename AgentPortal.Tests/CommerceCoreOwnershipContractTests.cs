@@ -123,7 +123,7 @@ public sealed class CommerceCoreOwnershipContractTests
         Assert.Contains("../ParfaitApp/Views/InternalModules/*.cshtml", protect, StringComparison.Ordinal);
         Assert.Contains("../ParfaitApp/Views/Shared/_InternalLayout.cshtml", protect, StringComparison.Ordinal);
         Assert.Contains("wwwroot/css/internal.css", protect, StringComparison.Ordinal);
-        Assert.Contains("wwwroot/js/parfait-agentportal-analytics.js", protect, StringComparison.Ordinal);
+        Assert.Contains("wwwroot/js/website-analytics*.js", protect, StringComparison.Ordinal);
         var host = File.ReadAllText(Path.Combine(Root(), "Protect-Website", "Program.cs"));
         Assert.Contains("AddLegendCommerceManagementMvc()", host, StringComparison.Ordinal);
         Assert.Contains("CommerceSharedHostCutoverGate.IsConfigured", host, StringComparison.Ordinal);

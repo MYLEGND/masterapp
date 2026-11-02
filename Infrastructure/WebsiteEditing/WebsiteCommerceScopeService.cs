@@ -76,6 +76,7 @@ public sealed class WebsiteCommerceScopeService(
                     Key: key,
                     OwnerDisplayName: ownerEmail,
                     OwnerRoleKey: "platform-owner",
+                    CanManageCrm: true,
                     CanManageStorefront: true,
                     CanManageCatalog: true,
                     CanManageOrders: true,

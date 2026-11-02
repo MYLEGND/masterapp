@@ -1,5 +1,6 @@
 using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
 using ProtectWebsite.Controllers;
 using System;
 using System.Collections.Generic;
@@ -79,6 +80,63 @@ public class WebsiteTrackingIngestTests
         var resolver = new Infrastructure.Analytics.AgentTrackingResolver(db,
             NullLogger<Infrastructure.Analytics.AgentTrackingResolver>.Instance);
         Assert.False((await resolver.ResolveAsync(founder.Slug, Guid.NewGuid())).Found);
+    }
+
+    [Fact]
+    public async Task StoreIngestRetainsVerifiedBusinessAndUsesSynchronousNarrowPublicationRead()
+    {
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var observer = new PublicationReadObserver();
+        var options = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<MasterAppDbContext>();
+        Microsoft.EntityFrameworkCore.SqliteDbContextOptionsBuilderExtensions.UseSqlite(options, connection);
+        options.AddInterceptors(observer);
+        await using var db = new MasterAppDbContext(options.Options);
+        await db.Database.EnsureCreatedAsync();
+        var business = new CommerceBusiness { Key = "synthetic-store", DisplayName = "Synthetic Store", IsActive = true, Status = "Active" };
+        var state = new WebsiteContentState { SiteKey = "business", OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(business.Id), CommerceBusinessId = business.Id };
+        var version = new WebsiteContentVersion { StateId = state.Id,
+            DocumentJson = JsonSerializer.Serialize(new WebsiteContentDocument { Store = new() { Enabled = true } }, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+            CompiledPagesJson = "{}" };
+        state.PublishedVersionId = version.Id;
+        db.AddRange(business, state, version, new WebsiteDomainBinding { CommerceBusinessId = business.Id,
+            Hostname = "store.example.invalid", Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow });
+        await db.SaveChangesAsync();
+        var controller = BuildController(db);
+        var configuration = new ConfigurationBuilder().Build();
+        var stores = new ParfaitApp.Services.CommerceStoreContextService(db, new Infrastructure.Businesses.CommerceBusinessScopeResolver(db),
+            new ParfaitApp.Services.ParfaitBusinessScopeService(db), new WebsiteDomainService(db, Moq.Mock.Of<System.Net.Http.IHttpClientFactory>(), configuration), configuration);
+        controller.HttpContext.RequestServices = new ServiceCollection().AddSingleton(db).AddSingleton(stores).BuildServiceProvider();
+        controller.Request.Headers.Origin = "https://store.example.invalid";
+        var request = new TrackingProxyController.AnalyticsEventRequest { SiteKey = "commerce", Path = "/store", EventType = "page_view", ClientEventId = Guid.NewGuid(), EventUtc = DateTime.UtcNow };
+        Assert.IsType<OkObjectResult>(await controller.Ingest(request, default));
+        var row = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.SingleAsync(db.AnalyticsEvents);
+        Assert.Equal(business.Id.ToString("D"), MasterAppDbContext.JsonValue(row.MetadataJson, "$.commerceBusinessId"));
+        Assert.True(observer.NarrowRead);
+        version.SnapshotRetiredUtc = DateTime.UtcNow; await db.SaveChangesAsync();
+        request.ClientEventId = Guid.NewGuid();
+        Assert.IsType<BadRequestObjectResult>(await controller.Ingest(request, default));
+        Assert.Equal(1, await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.AnalyticsEvents));
+    }
+
+    private sealed class PublicationReadObserver : Microsoft.EntityFrameworkCore.Diagnostics.DbCommandInterceptor
+    {
+        public bool NarrowRead;
+        public override Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> ReaderExecuting(
+            System.Data.Common.DbCommand command, Microsoft.EntityFrameworkCore.Diagnostics.CommandEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> result)
+        {
+            if (command.CommandText.Contains("DocumentJson") && !command.CommandText.Contains("CompiledPagesJson")) NarrowRead = true;
+            return result;
+        }
+        public override System.Threading.Tasks.ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader>> ReaderExecutingAsync(
+            System.Data.Common.DbCommand command, Microsoft.EntityFrameworkCore.Diagnostics.CommandEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> result, System.Threading.CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.StartsWith("SELECT") && command.CommandText.Contains("DocumentJson"))
+                throw new InvalidOperationException("Publication LOB must use the canonical synchronous reader.");
+            return new(result);
+        }
     }
 
     private static string? ReadStatus(object? value)

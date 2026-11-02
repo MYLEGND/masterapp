@@ -69,8 +69,83 @@ public static class WebsiteSystemTemplateAuthority
         foreach (var (path, page) in document.Pages)
             page.SystemTemplateKey = Resolve(siteKey, path);
 
+        ValidateStorePage(document);
         ApplySharedShellAuthority(siteKey, document);
         return document;
+    }
+
+    public const string StoreCatalogKey = "commerce_catalog";
+
+    public static void AddStorePage(WebsiteContentDocument document)
+    {
+        if (document.Pages.ContainsKey("/store"))
+        {
+            ValidateStorePage(document);
+            return;
+        }
+        document.Pages["/store"] = new WebsitePageDocument
+        {
+            Title = document.Store.NavigationLabel,
+            Navigation = new WebsitePageNavigation { Label = document.Store.NavigationLabel, ShowInNavigation = false },
+            Composition = [new WebsiteCompositionNode
+            {
+                Id = "store-page", Type = "section", Tag = "section", ClassName = "sp-store-page",
+                Children = [new WebsiteCompositionNode
+                {
+                    Id = "store-shell", Type = "container", Tag = "div", ClassName = "sp-shell sp-shell--wide",
+                    Children = [new WebsiteCompositionNode
+                    {
+                        Id = "store-hero", Type = "container", Tag = "header", ClassName = "sp-store-hero sp-store-hero--collection",
+                        Children = [new WebsiteCompositionNode
+                        {
+                            Id = "store-title", Type = "heading", Tag = "h1", Text = document.Store.NavigationLabel
+                        }]
+                    }, new WebsiteCompositionNode
+                    {
+                        Id = "store-catalog", Type = "container", Tag = "div", ClassName = "sp-shop-grid",
+                        SystemKey = StoreCatalogKey
+                    }]
+                }]
+            }]
+        };
+    }
+
+    public static void ValidateStorePage(WebsiteContentDocument document)
+    {
+        static IEnumerable<WebsiteCompositionNode> Walk(IEnumerable<WebsiteCompositionNode> nodes)
+        {
+            foreach (var node in nodes)
+            {
+                yield return node;
+                foreach (var child in Walk(node.Children ?? [])) yield return child;
+            }
+        }
+        var slots = document.Pages.SelectMany(page => Walk(page.Value.Composition ?? [])
+            .Where(node => node.SystemKey == StoreCatalogKey).Select(node => (page.Key, Node: node))).ToList();
+        if (Walk(document.Shell.Header.Concat(document.Shell.Footer)).Any(node => node.SystemKey == StoreCatalogKey) ||
+            document.ReusableComponents.Values.Any(component => Walk(component.Composition).Any(node => node.SystemKey == StoreCatalogKey)))
+            throw new ArgumentException("The live catalog cannot be copied into shared components.");
+        if (!document.Pages.ContainsKey("/store"))
+        {
+            if (slots.Count != 0) throw new ArgumentException("The live catalog belongs to the Store page.");
+            return;
+        }
+        if (slots.Count != 1 || slots[0].Key != "/store")
+            throw new ArgumentException("The Store page must retain exactly one live catalog.");
+        var catalog = slots[0].Node;
+        var presentationParts = new HashSet<string>(StringComparer.Ordinal)
+            { "store:card", "store:media", "store:badge", "store:content", "store:title", "store:price", "store:actions", "store:button" };
+        if (catalog.Type != "container" || catalog.Tag != "div" || catalog.Hidden == true ||
+            (catalog.Children?.Count ?? 0) != 0 || catalog.DataBinding is not null ||
+            catalog.Experience is not null || catalog.Receptionist is not null ||
+            catalog.MediaAssetId is not null || !string.IsNullOrEmpty(catalog.MediaUrl) ||
+            !string.IsNullOrEmpty(catalog.SyncSourceId) ||
+            (catalog.Signals?.Count ?? 0) != 0 || (catalog.FieldSignals?.Count ?? 0) != 0 ||
+            (catalog.FieldLabels?.Count ?? 0) != 0 ||
+            (catalog.FieldPresentations?.Keys.Any(key => !presentationParts.Contains(key)) ?? false) ||
+            !string.IsNullOrEmpty(catalog.Text) || !string.IsNullOrEmpty(catalog.Href) ||
+            !string.IsNullOrEmpty(catalog.ActionKey) || !string.IsNullOrEmpty(catalog.SystemBinding))
+            throw new ArgumentException("Catalog identity, products and actions are server-owned; edit its presentation only.");
     }
 
     private static void ApplySharedShellAuthority(string siteKey, WebsiteContentDocument document)

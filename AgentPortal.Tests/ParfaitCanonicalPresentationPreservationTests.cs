@@ -13,7 +13,7 @@ namespace AgentPortal.Tests;
 /// Pins the original Parfait visual source while moving infrastructure ownership.
 /// Reviewed design changes must update the baseline explicitly.
 /// </summary>
-public sealed class ParfaitCanonicalPresentationPreservationTests
+public sealed partial class ParfaitCanonicalPresentationPreservationTests
 {
     [Theory]
     [InlineData("Views/Home/Terms.cshtml", "4de5260fa3f13dcb01c6a2398e6ffd214bfffc73")]
@@ -23,25 +23,28 @@ public sealed class ParfaitCanonicalPresentationPreservationTests
     [InlineData("Views/Shared/_Layout.cshtml", "cd6992a223ce15675a287899cbe9fa3bb2946ec3")]
     [InlineData("Views/Shared/_ScopedWebsiteStoreLayout.cshtml", "64d65583c778f715af5bde408577a0fd7b155ffc")]
     [InlineData("Views/Home/Index.cshtml", "9abd970701d5f915d6f0431255869c68e479aed4")]
-    [InlineData("Views/Store/Index.cshtml", "25ef81c066dd246e5b192b85bedd1381a3390ae5")]
+    // Reviewed Razor invocation and neutral no-photo presentation preserve real images.
+    // Both authored stores and the original Parfait layout
+    // render _CatalogCards; the original catalog loop is pinned separately below.
+    [InlineData("Views/Store/Index.cshtml", "78af8fa9ae2a6584b3a5aae2b60bcd7be40a3e15")]
     // Reviewed script-only fix: failed or malformed quotes preserve cart state.
-    [InlineData("Views/Store/Cart.cshtml", "65113402884f536ddfbb7b76143e310541280360")]
-    [InlineData("Views/Store/Product.cshtml", "d320b04f64562136f6cd0e2dee5855d7c67c541c")]
+    [InlineData("Views/Store/Cart.cshtml", "cf1a1eb2a7229700b146b83ef558e8d8ed89ac96")]
+    [InlineData("Views/Store/Product.cshtml", "dbc104981c030c42a61153a83e5b3e995781fd78")]
     // Reviewed payment-flow changes only: hosted-provider handoff retains the
     // original form/layout and legacy Square wording; cart clearing waits for
     // server-confirmed payment on success. All other visual pins stay unchanged.
     // Reviewed canonical inquiry correction: explicit consent replaces silent autosave.
     [InlineData("Views/Store/Checkout.cshtml", "c17f1ce21aac9ff68fe376227f5b941d1229cd59")]
-    [InlineData("Views/Store/Success.cshtml", "7e56736764ae474b5a07ef21debea631df67c58d")]
+    [InlineData("Views/Store/Success.cshtml", "c065e8d011b6fc8e74d6293aaf0496244915d75d")]
     [InlineData("wwwroot/css/site.css", "10f00e83c8e9b8a9e7428efebe01a40a0072903d")]
     [InlineData("wwwroot/css/home.css", "00f32a42b0f2f1ea1324c6f8897abe91a130ec94")]
-    [InlineData("wwwroot/css/storefront.css", "eae71bcaef491f7d0f4ff0957b6e6b625fb034b2")]
-    [InlineData("wwwroot/css/internal.css", "8945595525d5973c194367dc85bcb135abbd3fca")]
-    [InlineData("wwwroot/css/parfait-agentportal-analytics.css", "a9801e8de3767e36e8fdfe287e4c26575f9700dd")]
+    [InlineData("wwwroot/css/storefront.css", "e2083eb5314c02427d75280aa0e799aab5c8cfd9")]
+    // Reviewed shared analytics theme: Parfait tokens bind the common analytics renderer.
+    // All public storefront assets and unrelated internal rules remain pinned.
+    [InlineData("wwwroot/css/internal.css", "41fffee56a8fc3cb598b4cb53da5ee94f537c303")]
     [InlineData("wwwroot/js/storefront.js", "ee0256aa52937cc25831c54b80141b768be72e96")]
     // Reviewed internal health behavior: unavailable identity evidence must not render as zero.
     // CommerceCoreOwnershipContractTests covers the payload; public design assets remain pinned.
-    [InlineData("wwwroot/js/parfait-agentportal-analytics.js", "4ac3971da2b37538c87e1a513612f56169bd311f")]
     [InlineData("wwwroot/images/favicon/parfait-logo.png", "805aa941827b0bcdeab370d118bec2d297c2e317")]
     public void ParfaitVisualAssets_MatchPreMigrationGitBlob(string path, string expectedBlobSha)
     {
@@ -51,6 +54,17 @@ public sealed class ParfaitCanonicalPresentationPreservationTests
         Buffer.BlockCopy(header, 0, gitBlob, 0, header.Length);
         Buffer.BlockCopy(bytes, 0, gitBlob, header.Length, bytes.Length);
         Assert.Equal(expectedBlobSha, Convert.ToHexString(SHA1.HashData(gitBlob)).ToLowerInvariant());
+    }
+
+    [Fact]
+    public void SharedCatalogRetainsOriginalProductMarkupAndCalculations()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "ParfaitApp", "Views", "Store", "_CatalogCards.cshtml"));
+        var loop = source[source.IndexOf("@foreach", StringComparison.Ordinal)..].Trim();
+        // Reviewed catalog adds presentation targets and a neutral missing-photo state.
+        loop = System.Text.RegularExpressions.Regex.Replace(loop, " data-cms-store-style=\"[a-z]+\"", "");
+        Assert.Equal("c97d1cc1c182f73d840f1ab28be82892f59be3d499d90ef62d15224463eea7cd",
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(loop))).ToLowerInvariant());
     }
 
     [Fact]

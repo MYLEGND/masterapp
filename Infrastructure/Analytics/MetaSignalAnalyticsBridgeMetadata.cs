@@ -41,6 +41,7 @@ internal static class MetaSignalAnalyticsBridgeMetadata
             ["behaviorKey"] = AnalyticsEventCatalog.TryGetBehavior(source.EventType, out var behavior) ? behavior.Key : null,
             ["actionKey"] = ReadString(source.MetadataJson, "actionKey"),
             ["siteKey"] = MetaSignalSingleTruthPolicy.ReadString(source.MetadataJson, "siteKey"),
+            ["commerceBusinessId"] = MetaSignalSingleTruthPolicy.ReadString(source.MetadataJson, "commerceBusinessId"),
             ["sourceAnalyticsEventUtc"] = source.EventUtc,
             ["sourceAnalyticsReceivedUtc"] = source.ReceivedUtc,
             ["mappedMetaSignalEventName"] = mappedEventName,

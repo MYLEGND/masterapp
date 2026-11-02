@@ -180,6 +180,7 @@ public static class UnifiedEventMapper
 
     private static object BuildAnalyticsMetadata(UnifiedEventContext ctx) => new
     {
+        commerceBusinessId = ctx.StoreBusinessId,
         siteKey = string.IsNullOrWhiteSpace(ctx.SiteKey)
             ? (ctx.CommerceBusinessId.HasValue ? "BusinessWebsite" : SiteKey)
             : ctx.SiteKey,

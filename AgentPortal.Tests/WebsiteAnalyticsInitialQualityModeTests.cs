@@ -266,6 +266,7 @@ public class WebsiteAnalyticsInitialQualityModeTests
         var providerConfiguration = new ConfigurationBuilder().Build();
         var externalClients = new Mock<System.Net.Http.IHttpClientFactory>(MockBehavior.Strict);
         controller.HttpContext.RequestServices = new ServiceCollection().AddSingleton(store).AddSingleton(pixels.Object)
+            .AddSingleton(new Infrastructure.Analytics.AgentMarketingProfileService(db, store, new EphemeralDataProtectionProvider()))
             .AddSingleton(openAi.Object).AddSingleton(health.Object).AddSingleton(calendar.Object)
             .AddSingleton(new Infrastructure.Analytics.MarketingExternalAdsOAuthService(
                 externalClients.Object, providerConfiguration, new EphemeralDataProtectionProvider(), store,
@@ -330,6 +331,8 @@ public class WebsiteAnalyticsInitialQualityModeTests
         var services = new ServiceCollection();
         services.AddSingleton(new Infrastructure.Analytics.MarketingConnectionStore(db,
             new Infrastructure.Analytics.MarketingCredentialProtector(DataProtectionProvider.Create("AgentPortal.Tests"))));
+        services.AddSingleton(provider => new Infrastructure.Analytics.AgentMarketingProfileService(db,
+            provider.GetRequiredService<Infrastructure.Analytics.MarketingConnectionStore>(), new EphemeralDataProtectionProvider()));
         var http = new DefaultHttpContext { User = user, RequestServices = services.BuildServiceProvider() };
         var accessor = new HttpContextAccessor { HttpContext = http };
         var effective = new EffectiveAgentContext(accessor, tracking.Object, NullLogger<EffectiveAgentContext>.Instance);
