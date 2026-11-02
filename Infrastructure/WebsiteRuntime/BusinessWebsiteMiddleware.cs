@@ -51,7 +51,8 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
             return;
         }
         // Public application assets contain no tenant records or credentials.
-        if (path is "/css/internal.css" or "/css/website-analytics.css" or
+        if (path is "/design/legend-web-foundation.css" or "/design/legend-app-shell.css" or "/_content/Shared/css/dashboard-home-shared.css" or
+                "/_content/Shared/js/legend-modal.js" or "/css/internal.css" or "/css/website-analytics.css" or
                 "/js/website-analytics.js" or "/js/website-analytics-kpi-modal.js" or
                 "/js/website-analytics-ai.js" or "/js/website-analytics-incidents.js" or
                 "/lib/bootstrap/dist/css/bootstrap.min.css" or "/lib/bootstrap/dist/js/bootstrap.bundle.min.js")

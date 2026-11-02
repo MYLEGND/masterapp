@@ -2596,7 +2596,7 @@ body {
 }
 
 .hero-link .btn-gold {
-    background: linear-gradient(180deg, #f1d27c 0%, #d7af4d 100%);
+    background: var(--analytics-action-background, linear-gradient(180deg, #f1d27c 0%, #d7af4d 100%));
     border-color: #f2da93;
     color: var(--analytics-surface, #13203f);
     box-shadow:
@@ -2957,9 +2957,9 @@ body {
     padding: 1.15rem 1.2rem 1.05rem;
     border-radius: 10px;
     border: 1px solid rgba(166,128,35,.65);
-    background: radial-gradient(920px 320px at -4% 0%, rgba(var(--analytics-accent-rgb, 199, 153, 49), .12), transparent 55%),
+    background: var(--analytics-panel-background, radial-gradient(920px 320px at -4% 0%, rgba(var(--analytics-accent-rgb, 199, 153, 49), .12), transparent 55%),
         radial-gradient(760px 300px at 104% 0%, rgba(var(--analytics-surface-rgb, 55, 91, 154), .18), transparent 58%),
-        linear-gradient(158deg, var(--analytics-surface, #0b1530) 0%, var(--analytics-surface, #0f1d3c) 52%, var(--analytics-surface, #0b1530) 100%);
+        linear-gradient(158deg, var(--analytics-surface, #0b1530) 0%, var(--analytics-surface, #0f1d3c) 52%, var(--analytics-surface, #0b1530) 100%));
     box-shadow: 0 2px 6px rgba(0,0,0,.12),
         inset 0 1px 0 rgba(255,255,255,.05),
         inset 0 0 0 1px rgba(var(--analytics-accent-rgb, 199, 153, 49), .08);
@@ -3136,17 +3136,17 @@ body {
     padding: 0 .55rem;
     border: 1px solid rgba(231,196,103,.3);
     border-radius: 8px;
-    background: var(--legend-app-surface-elevated);
-    color: var(--analytics-label, #7a5a14) !important;
+    background: var(--analytics-select-background, var(--legend-app-surface-elevated));
+    color: var(--analytics-select-ink, var(--analytics-label, #7a5a14)) !important;
     font-size: .76rem;
     font-weight: 900;
     outline: none;
-    -webkit-text-fill-color: var(--analytics-label, #7a5a14);
+    -webkit-text-fill-color: var(--analytics-select-ink, var(--analytics-label, #7a5a14));
 }
 
 .wa-quality-select option {
-    background: var(--legend-app-surface-elevated);
-    color: var(--analytics-label, #7a5a14);
+    background: var(--analytics-select-background, var(--legend-app-surface-elevated));
+    color: var(--analytics-select-ink, var(--analytics-label, #7a5a14));
 }
 
 .wa-quality-select:focus {
@@ -3935,7 +3935,7 @@ body {
     padding: .85rem .9rem .8rem;
     border: 1.4px solid rgba(var(--analytics-accent-rgb, 199, 153, 49), .34);
     border-radius: 14px;
-    background: var(--analytics-surface, #18284c);
+    background: var(--analytics-card-background, var(--analytics-surface, #18284c));
     color: var(--legend-ink);
     box-shadow: 0 14px 26px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.05);
     transition: transform .15s ease, box-shadow .15s ease;
@@ -4274,15 +4274,6 @@ body {
 /* Canonical Website Analytics modal system.
    Event Map visual language is the single shell authority for every modal. */
 
-/* The shared analytics dialog owns its sizing in every host. */
-.wa-modal-dialog {
-    max-width: var(--legend-desktop-modal-width, min(1360px, calc(100vw - 2rem)));
-}
-
-.wa-modal-dialog.wa-modal-dialog-compact {
-    max-width: min(720px, calc(100vw - 2rem));
-}
-
 .wa-modal-shell {
     color: #eef7ff;
     border: 1px solid rgba(var(--analytics-accent-rgb, 199, 153, 49), .32);
@@ -4324,7 +4315,7 @@ body {
 
 .wa-modal-kicker {
     margin-bottom: .22rem;
-    color: #f2c75f;
+    color: var(--legend-app-accent-bright, #f2c75f);
     font-size: .64rem;
     font-weight: 900;
     letter-spacing: .16em;
@@ -4478,7 +4469,7 @@ body {
     padding: .65rem;
     border: 1px solid rgba(var(--analytics-accent-rgb, 199, 153, 49), .14);
     border-radius: 10px;
-    background: rgba(var(--analytics-surface-rgb, 8, 20, 43), .56);
+    background: var(--analytics-card-background, rgba(var(--analytics-surface-rgb, 8, 20, 43), .56));
     box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
 }
 
@@ -4559,7 +4550,7 @@ body {
 }
 
 .wa-modal-shell .nav-tabs .nav-link.active {
-    color: #f2c75f;
+    color: var(--legend-app-accent-bright, #f2c75f);
     background: rgba(var(--analytics-accent-rgb, 199, 153, 49), .08);
     box-shadow: inset 0 -2px 0 rgba(242,199,95,.7);
 }
@@ -7032,9 +7023,9 @@ body {
 .marketing-setup-delivery-grid > div.is-neutral,
 .marketing-setup-lineage-grid > div.is-neutral,
 .marketing-setup-connection.is-neutral {
-  border-color: rgba(96,165,250,.2);
-  background: rgba(30,64,175,.08);
-  color: #bfdbfe;
+  border-color: var(--analytics-neutral-line, rgba(96,165,250,.2));
+  background: var(--analytics-neutral-background, rgba(30,64,175,.08));
+  color: var(--analytics-neutral-ink, #bfdbfe);
 }
 
 .marketing-setup-section {
@@ -8103,7 +8094,7 @@ body {
 
 .wa-event-map-title {
   margin: .15rem 0 .4rem;
-  color: #f2c75f;
+  color: var(--legend-app-accent-bright, #f2c75f);
   font-size: clamp(1.75rem, 2.5vw, 2.55rem);
   font-weight: 950;
   letter-spacing: -.025em;

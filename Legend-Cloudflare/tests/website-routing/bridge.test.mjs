@@ -329,7 +329,7 @@ test('internal pages and writes retain trusted website scope and bypass public r
 
 test('shared internal assets use the website origin on every Store host without CMS or commerce cutover', async () => {
   for (const host of ['mylegnd.com', 'protect.mylegnd.com', 'tenant.example']) {
-    for (const path of ['/css/internal.css', '/css/website-analytics.css', '/js/website-analytics.js', '/js/website-analytics-kpi-modal.js', '/lib/bootstrap/dist/js/bootstrap.bundle.min.js']) {
+    for (const path of ['/design/legend-app-shell.css', '/_content/Shared/css/dashboard-home-shared.css', '/_content/Shared/js/legend-modal.js', '/css/internal.css', '/css/website-analytics.css', '/js/website-analytics.js', '/js/website-analytics-kpi-modal.js', '/lib/bootstrap/dist/js/bootstrap.bundle.min.js']) {
       const response = await handleWebsiteRouting(new Request(`https://${host}${path}?v=synthetic`), env, async (upstream, options) => {
         assert.equal(new URL(upstream.url).hostname, 'masterapp-protect.azurewebsites.net');
         assert.equal(new URL(upstream.url).pathname, path);

@@ -43,6 +43,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="@faviconUrl" />
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" asp-append-version="true" />
+    @if (ViewData["AnalyticsMode"] as string == "store")
+    {
+        <link rel="stylesheet" href="~/design/legend-web-foundation.css" asp-append-version="true" />
+        <link rel="stylesheet" href="~/design/legend-app-shell.css" asp-append-version="true" />
+        <link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
+    }
     <link rel="stylesheet" href="~/css/internal.css" asp-append-version="true" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -50,7 +56,7 @@
     @RenderSection("Styles", required: false)
 </head>
 
-<body class="pf-internal-body" data-commerce-business-key="@(scopedStore?.BusinessKey ?? "parfait")">
+<body class="pf-internal-body @(ViewData["AnalyticsMode"] as string == "store" ? "legend-app" : "")" data-commerce-business-key="@(scopedStore?.BusinessKey ?? "parfait")">
     <div class="pf-backdrop" data-pf-nav-close></div>
 
     <aside class="pf-sidebar" id="pfSidebar" aria-label="Internal navigation">
@@ -177,6 +183,10 @@
     </div>
 
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js" asp-append-version="true"></script>
+    @if (ViewData["AnalyticsMode"] as string == "store")
+    {
+        <script src="~/_content/Shared/js/legend-modal.js" asp-append-version="true"></script>
+    }
     <script>
         (() => {
             const body = document.body;

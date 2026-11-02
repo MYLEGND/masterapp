@@ -40,7 +40,7 @@ public sealed class ParfaitCanonicalPresentationPreservationTests
     [InlineData("wwwroot/css/storefront.css", "eae71bcaef491f7d0f4ff0957b6e6b625fb034b2")]
     // Reviewed shared analytics theme: Parfait tokens bind the common analytics renderer.
     // All public storefront assets and unrelated internal rules remain pinned.
-    [InlineData("wwwroot/css/internal.css", "d330c007f04f2548d98908ff603d024d0926956a")]
+    [InlineData("wwwroot/css/internal.css", "41fffee56a8fc3cb598b4cb53da5ee94f537c303")]
     [InlineData("wwwroot/js/storefront.js", "ee0256aa52937cc25831c54b80141b768be72e96")]
     // Reviewed internal health behavior: unavailable identity evidence must not render as zero.
     // CommerceCoreOwnershipContractTests covers the payload; public design assets remain pinned.

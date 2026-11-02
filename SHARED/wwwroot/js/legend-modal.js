@@ -561,7 +561,7 @@
   function syncViewportOffsets(){
     syncMobileSheetViewport();
     const root = document.documentElement;
-    if (!root || !header) return;
+    if (!root) return;
     const viewport = window.visualViewport;
     const viewportTop = viewport?.offsetTop || 0;
     const viewportBottom = viewportTop + (viewport?.height || window.innerHeight);
@@ -739,7 +739,7 @@
     footer = document.querySelector('body > footer.footer');
     content = document.querySelector('body > .layout-content');
     impersonation = document.querySelector('body > .impersonation-banner');
-    if (!header) return;
+    // Dialog ownership is independent of the optional Portal header layout.
     registerDialogs(document.body);
     registerMobileSheets(document.body);
     syncViewportOffsets();

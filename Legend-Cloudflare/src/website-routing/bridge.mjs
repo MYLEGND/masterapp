@@ -14,6 +14,7 @@ function isPlatformHost(hostname) {
 }
 
 const INTERNAL_ASSETS = new Set([
+  '/design/legend-web-foundation.css', '/design/legend-app-shell.css', '/_content/Shared/css/dashboard-home-shared.css', '/_content/Shared/js/legend-modal.js',
   '/css/internal.css', '/css/website-analytics.css', '/js/website-analytics.js',
   '/js/website-analytics-kpi-modal.js', '/js/website-analytics-ai.js', '/js/website-analytics-incidents.js',
   '/lib/bootstrap/dist/css/bootstrap.min.css', '/lib/bootstrap/dist/js/bootstrap.bundle.min.js'
