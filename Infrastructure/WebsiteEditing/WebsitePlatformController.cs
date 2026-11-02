@@ -738,6 +738,7 @@ public class WebsitePlatformController : ControllerBase
 
         document = WebsiteContentSanitizer.Sanitize(document);
         WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+        state.ProvisionedStoreBusinessId = scope.CommerceBusinessId;
         state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
         state.Revision++;
         state.UpdatedUtc = DateTime.UtcNow;
@@ -2000,6 +2001,8 @@ public class WebsitePlatformController : ControllerBase
         try
         {
             document = WebsiteContentSanitizer.Sanitize(request.Document);
+            if (document.Store.Enabled != baseline.Store.Enabled)
+                throw new WebsiteSiteSourceProtectionException("Enable or remove Store through the canonical Store controls.");
             if (document.LegacyMigration is not null ||
                 document.Version != WebsiteStudioContract.CurrentDocumentVersion)
                 return BadRequest(new

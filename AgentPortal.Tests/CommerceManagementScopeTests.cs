@@ -131,6 +131,33 @@ public sealed class CommerceManagementScopeTests
         Assert.Equal(two.Id, (await service.ResolveManagementScopeAsync(request, null))!.CommerceBusinessId);
     }
 
+    [Theory]
+    [InlineData("legend")]
+    [InlineData("protect")]
+    public async Task Website_owner_management_requires_exact_scope_and_current_agent_lifecycle(string site)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var actor = Guid.NewGuid().ToString();
+        var (business, state) = Seed(db, site, "synthetic-owner-store");
+        if (site == "protect") state.OwnerKey = actor;
+        state.ProvisionedStoreBusinessId = business.Id;
+        var agent = new AgentProfile { AgentUserId = actor, IsActive = true };
+        db.Add(agent);
+        db.Add(new AgentTrackingProfile { AgentUserId = actor, AgentUpn = "synthetic-owner@example.invalid", Slug = "synthetic-owner", Status = "active" });
+        await db.SaveChangesAsync();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?> { ["Founder:Oid"] = actor }).Build();
+        var service = Service(db, config);
+        var scope = (await service.ResolveManagementScopeAsync(Request(site == "legend" ? "mylegnd.com" : "protect.mylegnd.com"),
+            site == "protect" ? business.Key : null))!;
+        Assert.NotNull(await service.ResolveManagementActorAsync(scope, actor, "analytics"));
+        Assert.Null(await service.ResolveManagementActorAsync(scope, Guid.NewGuid().ToString(), "analytics"));
+        Assert.Null(await service.ResolveManagementActorAsync(scope, actor, "unknown"));
+        db.Add(new AccountLifecycleRecord { UserId = actor, ParticipantType = Domain.Messaging.MessagingParticipantTypes.Agent,
+            ProfileId = agent.Id, State = Domain.Accounts.AccountLifecycleStates.Paused });
+        await db.SaveChangesAsync();
+        Assert.Null(await service.ResolveManagementActorAsync(scope, actor, "analytics"));
+    }
+
     private static (CommerceBusiness, WebsiteContentState) Seed(MasterAppDbContext db, string site, string key)
     {
         var business = new CommerceBusiness { Key = key, Status = "Active", IsActive = true };

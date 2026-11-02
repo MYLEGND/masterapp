@@ -48,6 +48,49 @@ public static class BusinessWorkspaceAccess
         return new OwnedBusinessAccountAccess(actor, businessId);
     }
 
+    // Resolves the stable signed-in identity, never the displayed email. Explicit
+    // profile selection is still reauthorized; it cannot manufacture membership.
+    public static async Task<CommerceBusinessMember?> ResolveActorMembershipAsync(
+        MasterAppDbContext db, Guid businessId, string actorUserId, string capability,
+        Guid? selectedProfileId = null, CancellationToken ct = default)
+    {
+        var actor = Shared.Auth.IdentityKey.Normalize(actorUserId);
+        if (businessId == Guid.Empty || string.IsNullOrWhiteSpace(actor)) return null;
+        var identityMatches = await db.ClientProfiles.AsNoTracking().Where(p => p.ClientUserId.ToLower() == actor ||
+            (p.ExternalIdentityObjectId ?? "").ToLower() == actor).Select(p => p.Id).Take(2).ToListAsync(ct);
+        if (identityMatches.Count > 1) return null;
+        var profiles = db.ClientProfiles.AsNoTracking();
+        if (selectedProfileId.HasValue)
+            profiles = profiles.Where(p => p.Id == selectedProfileId.Value);
+        else
+            profiles = profiles.Where(p => p.ClientUserId.ToLower() == actor ||
+                (p.ExternalIdentityObjectId ?? "").ToLower() == actor);
+        var candidates = await profiles.Where(p => db.CommerceBusinessMembers.Any(m =>
+                m.CommerceBusinessId == businessId && m.ClientProfileId == p.Id && m.Status == "Active"))
+            .Take(2).ToListAsync(ct);
+        if (candidates.Count != 1) return null;
+        var profile = candidates[0];
+        var direct = Shared.Auth.IdentityKey.NormalizeSet(new[] { profile.ClientUserId, profile.ExternalIdentityObjectId }).Contains(actor);
+        if (!direct)
+        {
+            // Delegation is an explicit existing agent/client relationship, not an
+            // email match, and both the agent and client lifecycle remain active.
+            var agents = await db.AgentProfiles.AsNoTracking().Where(a => a.AgentUserId.ToLower() == actor && a.IsActive)
+                .Take(2).ToListAsync(ct);
+            if (agents.Count != 1 || !(await Infrastructure.Identity.AccountLifecycleService.ReadAsync(db,
+                new Domain.Accounts.AccountLifecycleSubject(actor, Domain.Messaging.MessagingParticipantTypes.Agent, agents[0].Id), ct)).AllowsFullAccess)
+                return null;
+        }
+        foreach (var subject in Shared.Auth.IdentityKey.NormalizeSet(new[] { profile.ClientUserId, profile.ExternalIdentityObjectId }))
+            if (!(await Infrastructure.Identity.AccountLifecycleService.ReadAsync(db,
+                new Domain.Accounts.AccountLifecycleSubject(subject, Domain.Messaging.MessagingParticipantTypes.Client, profile.Id), ct)).AllowsFullAccess)
+                return null;
+        var members = await db.CommerceBusinessMembers.AsNoTracking().Where(m =>
+            m.CommerceBusinessId == businessId && m.ClientProfileId == profile.Id && m.Status == "Active").Take(2).ToListAsync(ct);
+        if (members.Count != 1 || await ResolveAsync(db, businessId, profile.Id, actor, null, capability, ct) is null) return null;
+        return members[0];
+    }
+
     public static async Task<CommerceBusiness?> ResolveAsync(MasterAppDbContext db, Guid businessId, Guid profileId,
         string actor, string? email, string capability, CancellationToken ct)
     {
@@ -57,6 +100,9 @@ public static class BusinessWorkspaceAccess
         if (member is null) return null;
         return Allows(member, capability) ? await db.CommerceBusinesses.AsNoTracking().SingleOrDefaultAsync(x => x.Id == businessId, ct) : null;
     }
+    public static bool IsKnownCapability(string capability) => capability is
+        "website" or "catalog" or "orders" or "automations" or "team" or "settings" or "analytics" or "crm";
+
     // Shared by route authorization and navigation after actor/business resolution.
     public static bool Allows(CommerceBusinessMember member, string capability)
     {

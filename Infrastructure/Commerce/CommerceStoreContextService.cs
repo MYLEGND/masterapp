@@ -14,6 +14,8 @@ public sealed record CommerceManagementScope(
     Guid CommerceBusinessId, string BusinessKey, Guid WebsiteStateId,
     string WebsiteSiteKey, string WebsiteOwnerKey, string DestinationOrigin);
 
+public sealed record CommerceManagementActor(string ActorUserId, Guid? ClientProfileId, string? AgentSlug);
+
 public sealed record CommerceStoreContext(
     Guid CommerceBusinessId,
     Guid? WebsiteContentVersionId,
@@ -103,6 +105,74 @@ public sealed class CommerceStoreContextService(
         var state = matches[0];
         return new(business.Id, business.Key, state.Id, state.SiteKey, state.OwnerKey, "https://" + host);
     }
+
+    public async Task<CommerceManagementScope?> ResolveManagementScopeAsync(
+        StoreManagementLoginRequest request, CancellationToken ct = default)
+    {
+        if (!Uri.TryCreate(request.DestinationOrigin, UriKind.Absolute, out var origin) ||
+            origin.Scheme != "https" || !origin.IsDefaultPort || origin.AbsolutePath != "/" ||
+            origin.UserInfo.Length != 0 || origin.Query.Length != 0 || origin.Fragment.Length != 0 ||
+            request.DestinationOrigin != origin.GetLeftPart(UriPartial.Authority)) return null;
+        var key = await db.CommerceBusinesses.AsNoTracking().Where(b => b.Id == request.CommerceBusinessId)
+            .Select(b => b.Key).SingleOrDefaultAsync(ct);
+        if (key is null) return null;
+        var context = new DefaultHttpContext();
+        context.Request.Scheme = "https";
+        context.Request.Host = new HostString(origin.IdnHost);
+        var scope = await ResolveManagementScopeAsync(context, origin.IdnHost == ProtectHost ? key : null, ct);
+        return scope is not null && scope.CommerceBusinessId == request.CommerceBusinessId &&
+            scope.WebsiteSiteKey == request.SiteKey && scope.WebsiteOwnerKey == request.OwnerKey &&
+            scope.DestinationOrigin == request.DestinationOrigin ? scope : null;
+    }
+
+    public async Task<CommerceManagementActor?> ResolveManagementActorAsync(
+        CommerceManagementScope scope, string actorUserId, string capability,
+        Guid? selectedProfileId = null, CancellationToken ct = default)
+    {
+        var current = await ResolveManagementScopeAsync(new StoreManagementLoginRequest(
+            scope.CommerceBusinessId, scope.WebsiteSiteKey, scope.WebsiteOwnerKey, scope.DestinationOrigin,
+            "/internal", new string('0', 64), DateTime.UtcNow.AddMinutes(1)), ct);
+        if (current != scope) return null;
+        if (!await HasProvisionedStoreAsync(scope, ct) ||
+            !await db.CommerceBusinesses.AnyAsync(b => b.Id == scope.CommerceBusinessId && b.IsActive && b.Status.ToLower() == "active", ct))
+            return null;
+        var actor = Shared.Auth.IdentityKey.Normalize(actorUserId);
+        if (string.IsNullOrWhiteSpace(actor)) return null;
+        var member = await BusinessWorkspaceAccess.ResolveActorMembershipAsync(db, scope.CommerceBusinessId,
+            actor, capability, selectedProfileId, ct);
+        if (member is not null) return new(actor, member.ClientProfileId, null);
+        if (selectedProfileId.HasValue) return null;
+        // These are the existing website-owner scopes, never platform-wide business grants.
+        var founder = configuration["Founder:Oid"] ?? configuration["FOUNDER_OID"] ?? Environment.GetEnvironmentVariable("FOUNDER_OID");
+        string? slug = null;
+        if (scope.WebsiteSiteKey == WebsiteEditorSiteKeys.Legend)
+        {
+            if (scope.WebsiteOwnerKey != WebsiteEditorSiteKeys.GlobalOwnerKey ||
+                !Shared.Auth.FounderAuthority.IsConfiguredFounderIdentity(actor, founder)) return null;
+        }
+        else if (scope.WebsiteSiteKey == WebsiteEditorSiteKeys.Protect)
+        {
+            if (!string.Equals(scope.WebsiteOwnerKey, actor, StringComparison.OrdinalIgnoreCase)) return null;
+            var tracking = await db.AgentTrackingProfiles.AsNoTracking().Where(p =>
+                p.AgentUserId.ToLower() == actor && p.Status.ToLower() == "active").Take(2).ToListAsync(ct);
+            if (tracking.Count != 1) return null;
+            slug = tracking[0].Slug;
+        }
+        else return null;
+        if (!BusinessWorkspaceAccess.IsKnownCapability(capability)) return null;
+        var agents = await db.AgentProfiles.AsNoTracking().Where(p => p.AgentUserId.ToLower() == actor && p.IsActive)
+            .Take(2).ToListAsync(ct);
+        if (agents.Count != 1 || !(await Infrastructure.Identity.AccountLifecycleService.ReadAsync(db,
+            new Domain.Accounts.AccountLifecycleSubject(actor, Domain.Messaging.MessagingParticipantTypes.Agent, agents[0].Id), ct)).AllowsFullAccess)
+            return null;
+        return new(actor, null, slug);
+    }
+
+    public Task<bool> HasProvisionedStoreAsync(CommerceManagementScope scope, CancellationToken ct = default) =>
+        db.Set<WebsiteContentState>().AsNoTracking().AnyAsync(state =>
+            state.Id == scope.WebsiteStateId && state.SiteKey == scope.WebsiteSiteKey &&
+            state.OwnerKey == scope.WebsiteOwnerKey && state.CommerceBusinessId == scope.CommerceBusinessId &&
+            state.ProvisionedStoreBusinessId == scope.CommerceBusinessId, ct);
 
     public async Task<CommerceStoreContext?> ResolvePublicAsync(string? businessKey, CancellationToken ct = default)
     {

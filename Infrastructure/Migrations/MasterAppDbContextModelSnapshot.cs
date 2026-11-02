@@ -14401,6 +14401,9 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<Guid?>("ProvisionedStoreBusinessId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid?>("PublishedVersionId")
                         .HasColumnType("uniqueidentifier");
 
