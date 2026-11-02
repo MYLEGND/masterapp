@@ -115,7 +115,7 @@ public sealed class ParfaitCustomerAutomationService
                 Customers = customers,
                 Activity = activity,
                 DiscountOptions = BuildDiscountOptions(businessId),
-                NewWorkflow = CreateDefaultWorkflow(),
+                NewWorkflow = new ParfaitAutomationWorkflowEditorInput(),
                 ActiveWorkflowCount = store.Workflows.Count(workflow => workflow.IsActive),
                 AudienceCount = customers.Count,
                 OpenCartLeadCount = store.CartLeads.Count(lead => !lead.IsConverted),
@@ -618,37 +618,22 @@ $"""
 """;
     }
 
-    private ParfaitAutomationWorkflowEditorInput CreateDefaultWorkflow()
-    {
-        return new ParfaitAutomationWorkflowEditorInput
-        {
-            TriggerType = ParfaitAutomationTriggerTypes.PostPurchase,
-            DelayAmount = 2,
-            DelayUnit = ParfaitAutomationDelayUnits.Days,
-            Subject = "Hey {{first_name}}, Parfait is still moving with you",
-            Headline = "Stay locked into Parfait.",
-            Body = "We wanted to follow up and keep your Parfait momentum moving. {{product_names}} still belongs in your rotation.",
-            CtaLabel = "Open Parfait",
-            CtaUrl = "/store",
-            IsActive = true
-        };
-    }
-
     private static ParfaitAutomationWorkflowRecord NormalizeWorkflow(ParfaitAutomationWorkflowEditorInput input)
     {
         var now = DateTime.UtcNow;
+        var defaults = new ParfaitAutomationWorkflowEditorInput();
         return new ParfaitAutomationWorkflowRecord
         {
             Id = input.Id.GetValueOrDefault() == Guid.Empty ? Guid.NewGuid() : input.Id!.Value,
-            Name = CleanRequired(input.Name, "Customer Flow"),
+            Name = CleanRequired(input.Name, defaults.Name),
             TriggerType = ParfaitAutomationTriggerTypes.Normalize(input.TriggerType),
             DelayAmount = Math.Clamp(input.DelayAmount, 1, 30),
             DelayUnit = ParfaitAutomationDelayUnits.Normalize(input.DelayUnit),
-            Subject = CleanRequired(input.Subject, "Parfait Update"),
-            Headline = CleanRequired(input.Headline, "Stay locked into Parfait."),
-            Body = CleanRequired(input.Body, "Parfait is still moving with you."),
-            CtaLabel = CleanRequired(input.CtaLabel, "Open Parfait"),
-            CtaUrl = CleanRequired(input.CtaUrl, "/store"),
+            Subject = CleanRequired(input.Subject, defaults.Subject),
+            Headline = CleanRequired(input.Headline, defaults.Headline),
+            Body = CleanRequired(input.Body, defaults.Body),
+            CtaLabel = CleanRequired(input.CtaLabel, defaults.CtaLabel),
+            CtaUrl = CleanRequired(input.CtaUrl, defaults.CtaUrl),
             DiscountCode = CleanOptional(input.DiscountCode) ?? "",
             IsActive = input.IsActive,
             UpdatedUtc = now,

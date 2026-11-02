@@ -420,7 +420,11 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
     const method=init.method || 'GET';
     const reject=payload=>({ok:false,status:denied?401:400,json:async()=>payload});
     if(denied) return {ok:false,status:401,json:async()=>({error:'unauthorized'})};
-    if(parsed.pathname==='/commerce/manage/preview' && parsed.searchParams.get('catalogOnly')==='true') return {ok:true,status:200,text:async()=>'<article class="sp-shop-card" data-cms-store-style="card"><h2 data-cms-store-style="title">Live synthetic product</h2><a href="/store/product/synthetic">View product</a></article>'};
+    if(parsed.pathname==='/commerce/manage/preview' && parsed.searchParams.get('catalogOnly')==='true') {
+      // The real editor CORS policy does not allow credentialed cross-origin requests.
+      if(parsed.origin!==w.location.origin && init.credentials==='include') throw new TypeError('Credentialed CORS request rejected');
+      return {ok:true,status:200,text:async()=>'<article class="sp-shop-card" data-cms-store-style="card"><h2 data-cms-store-style="title">Live synthetic product</h2><a href="/store/product/synthetic">View product</a></article>'};
+    }
 
     if(parsed.pathname.endsWith('/manage/agent/node') && method==='GET'){
       const id=parsed.searchParams.get('id');
@@ -8338,7 +8342,7 @@ for(const siteKey of ['business','legend','protect']) test(`Store is an authored
     {id:'store-heading',type:'heading',tag:'h1',text:'Our collection'},
     {id:'store-catalog',type:'container',tag:'div',systemKey:'commerce_catalog',className:'sp-shop-grid',children:[],style:{},layout:{},fieldPresentations:{'store:title':{style:{color:'#ffcc33',fontSize:24}}}}
   ]};
-  const f=await domFixture({siteKey,doc,business:{id:'business-id',displayName:'Business'},store:{enabled:true,storefrontUrl:'/store',previewUrl:'https://site.example/commerce/manage/preview?ticket=ticket',managerUrl:'https://site.example/internal/login'}});
+  const f=await domFixture({siteKey,doc,business:{id:'business-id',displayName:'Business'},store:{enabled:true,storefrontUrl:'/store',previewUrl:'https://manager.example/commerce/manage/preview?ticket=ticket',managerUrl:'https://site.example/internal/login'}});
   try{
     const selector=f.w.document.getElementById('legend-cms-page-select');
     assert.equal([...selector.options].filter(o=>o.value==='/store').length,1);
@@ -8347,6 +8351,10 @@ for(const siteKey of ['business','legend','protect']) test(`Store is an authored
     await new Promise(resolve=>setTimeout(resolve,30));
     assert.equal(f.w.document.querySelector('main h1').textContent,'Our collection');
     assert.equal(f.w.document.querySelectorAll('[data-legend-store-catalog] .sp-shop-card').length,1);
+    const previewRequest=f.calls.find(call=>call.url.includes('catalogOnly=true'));
+    assert.equal(previewRequest.credentials,'omit');
+    assert.equal(previewRequest.cache,'no-store');
+    assert.equal(new URL(previewRequest.url).searchParams.get('ticket'),'ticket');
     assert.equal(f.w.document.querySelector('[data-legend-store-catalog] a').hasAttribute('href'),false);
     assert.match(f.w.document.querySelector('style[data-store-catalog-presentation]').textContent,/color:/);
     assert.equal(f.w.document.querySelector('[data-cms-store-style=title]').dataset.cmsFieldKey,'store:title');

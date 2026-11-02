@@ -94,7 +94,14 @@
                         </div>
 
                         <div class="pf-order-cell pf-order-item">
-                            <img src="@(primaryItem?.ImageUrl ?? "/images/favicon/parfait-logo.png")" alt="@(primaryItem?.Name ?? "Order item")" />
+                            @if (!string.IsNullOrWhiteSpace(primaryItem?.ImageUrl))
+                            {
+                                <img src="@primaryItem.ImageUrl" alt="@primaryItem.Name" />
+                            }
+                            else
+                            {
+                                <span class="pf-order-image-placeholder" aria-label="No product photo">—</span>
+                            }
                             <div>
                                 <strong>@(primaryItem?.Name ?? "No line items")</strong>
                                 <small>@totalUnits unit@(totalUnits == 1 ? "" : "s") · @order.Items.Count line@(order.Items.Count == 1 ? "" : "s")</small>
@@ -161,7 +168,14 @@
                                 @foreach (var item in order.Items)
                                 {
                                     <article>
-                                        <img src="@(item.ImageUrl ?? "/images/favicon/parfait-logo.png")" alt="@item.Name" />
+                                        @if (!string.IsNullOrWhiteSpace(item.ImageUrl))
+                                        {
+                                            <img src="@item.ImageUrl" alt="@item.Name" />
+                                        }
+                                        else
+                                        {
+                                            <span class="pf-order-image-placeholder" aria-label="No product photo">—</span>
+                                        }
                                         <div>
                                             <strong>@item.Name</strong>
                                             <span>Size @item.Size · Qty @item.Quantity · @Money(item.UnitPriceCents) each</span>
