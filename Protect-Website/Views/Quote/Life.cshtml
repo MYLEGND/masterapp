@@ -909,10 +909,9 @@
    ================================================================ */
 body { background: radial-gradient(120% 140% at 50% 0%, #12203c 0%, #0b1529 40%, #0a1121 100%); color: #f8fafc; }
 
-/* site.css forces background:#fff !important on main, .layout-content, and .container.
-   Override on this page so the dark hero shell and body gradient are visible. */
+/* Inherit the page shell while allowing authored Studio presentation. */
 main.layout-content,
-.lq-container { background: inherit !important; }
+.lq-container { background: inherit; }
 
 /* Page-scoped nav softening for paid landing */
 body.life-landing.page-mode-paid-landing header .navbar {
@@ -3581,10 +3580,10 @@ body.page-variant-contact-first-education-v1 .lq-education-trust-card,
 body.page-variant-contact-first-education-v1 .lq-education-panel {
     background:
         radial-gradient(circle at top right, rgba(224,177,74,0.11), transparent 34%),
-        var(--cf-panel-bg) !important;
-    background-color: #101b31 !important;
-    color: var(--cf-ink) !important;
-    border-color: var(--cf-panel-border) !important;
+        var(--cf-panel-bg);
+    background-color: #101b31;
+    color: var(--cf-ink);
+    border-color: var(--cf-panel-border);
     box-shadow:
         0 22px 36px rgba(4,8,18,0.34),
         inset 0 1px 0 rgba(255,255,255,0.04) !important;
@@ -3596,22 +3595,22 @@ body.page-variant-contact-first-education-v1 .lq-education-trust-avatar {
         inset 0 1px 0 rgba(255,255,255,0.08);
 }
 body.page-variant-contact-first-education-v1 .lq-education-kicker {
-    color: rgba(240,198,109,0.82) !important;
+    color: rgba(240,198,109,0.82);
 }
 body.page-variant-contact-first-education-v1 .lq-education-intro,
 body.page-variant-contact-first-education-v1 .lq-education-form-title {
-    color: var(--cf-accent) !important;
+    color: var(--cf-accent);
     text-shadow: none;
 }
 body.page-variant-contact-first-education-v1 .lq-education-intro {
-    color: #fff6dd !important;
+    color: #fff6dd;
 }
 body.page-variant-contact-first-education-v1 .lq-education-intro-sub,
 body.page-variant-contact-first-education-v1 .lq-education-form-copy {
-    color: var(--cf-ink-soft) !important;
+    color: var(--cf-ink-soft);
 }
 body.page-variant-contact-first-education-v1 .lq-education-soft-note {
-    color: var(--cf-accent-strong) !important;
+    color: var(--cf-accent-strong);
 }
 body.page-variant-contact-first-education-v1 .lq-education-panel .form-control::placeholder {
     color: rgba(16,32,58,0.42);
@@ -3620,7 +3619,7 @@ body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-subm
     border-top: 1px solid rgba(208,154,53,0.22);
 }
 body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-trust-note {
-    color: rgba(221,228,239,0.66) !important;
+    color: rgba(221,228,239,0.66);
     font-weight: 760;
 }
 body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .btn-gold:not(form[data-form-key] *) {
@@ -3673,7 +3672,7 @@ body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-cont
     grid-template-columns: 42px minmax(0, 1fr) !important;
     align-items: center !important;
     gap: 14px !important;
-    background: inherit !important;
+    background: inherit;
     border: 0 !important;
     border-bottom: 1px solid rgba(59,130,246,.14) !important;
     padding: 4px 0 16px !important;
@@ -3707,9 +3706,9 @@ body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-cont
 body.page-variant-contact-first-education-v1 .lq-education-panel.lq-options-summary {
     background:
         radial-gradient(circle at top right, rgba(223,179,78,0.12), transparent 32%),
-        linear-gradient(180deg, #101a31 0%, #0e1830 100%) !important;
-    background-color: #101a31 !important;
-    border-color: rgba(198,146,44,0.62) !important;
+        linear-gradient(180deg, #101a31 0%, #0e1830 100%);
+    background-color: #101a31;
+    border-color: rgba(198,146,44,0.62);
     box-shadow:
         0 22px 36px rgba(3,8,18,0.34),
         inset 0 1px 0 rgba(255,255,255,0.03) !important;
@@ -3719,7 +3718,7 @@ body.page-variant-contact-first-education-v1 .lq-next-summary .lq-step-title {
     text-transform: uppercase;
 }
 body.page-variant-contact-first-education-v1 .lq-options-summary-copy {
-    color: rgba(233,236,242,0.78) !important;
+    color: rgba(233,236,242,0.78);
     max-width: 48ch;
 }
 body.page-variant-contact-first-education-v1 .lq-contact-first-proof-chip {
@@ -3757,13 +3756,13 @@ body.page-variant-contact-first-education-v1 .lq-option-summary-top {
 }
 body.page-variant-contact-first-education-v1 .lq-option-title {
     font-size: 1.34rem;
-    color: #f8fafc !important;
+    color: #f8fafc;
 }
 body.page-variant-contact-first-education-v1 .lq-option-copy {
-    color: rgba(229,233,240,0.84) !important;
+    color: rgba(229,233,240,0.84);
 }
 body.page-variant-contact-first-education-v1 .lq-option-bullets li {
-    color: rgba(236,240,247,0.9) !important;
+    color: rgba(236,240,247,0.9);
 }
 body.page-variant-contact-first-education-v1 .lq-option-visual {
     width: 56px;
@@ -3799,7 +3798,7 @@ body.page-variant-contact-first-education-v1 .lq-next-summary {
 body.page-variant-contact-first-education-v1 .lq-next-summary-copy {
     margin: 0;
     max-width: 56ch;
-    color: rgba(230,235,244,0.84) !important;
+    color: rgba(230,235,244,0.84);
     font-size: 1rem;
     line-height: 1.65;
     font-weight: 700;
@@ -4134,7 +4133,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     padding: 12px 13px 11px;
     border-radius: 16px;
     border: 1px solid rgba(208, 162, 68, 0.28);
-    background-color: rgba(10, 14, 24, 0.72) !important;
+    background-color: rgba(10, 14, 24, 0.72);
     background-image:
         radial-gradient(circle at top right, rgba(208, 162, 68, 0.10), transparent 34%),
         linear-gradient(180deg, rgba(15, 20, 33, 0.92) 0%, rgba(8, 11, 19, 0.94) 100%) !important;
@@ -4161,7 +4160,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     padding: 10px 11px 10px;
     border-radius: 14px;
     border-color: rgba(208, 162, 68, 0.20);
-    background-color: rgba(9, 12, 21, 0.68) !important;
+    background-color: rgba(9, 12, 21, 0.68);
     background-image:
         linear-gradient(180deg, rgba(14, 19, 31, 0.88) 0%, rgba(8, 11, 19, 0.90) 100%) !important;
     box-shadow:
@@ -4242,7 +4241,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     justify-content: center;
     border-radius: 13px;
     border: 1px solid rgba(205, 159, 68, 0.28);
-    background-color: rgba(14, 18, 30, 0.94) !important;
+    background-color: rgba(14, 18, 30, 0.94);
     background-image:
         linear-gradient(180deg, rgba(45, 54, 73, 0.20) 0%, rgba(9, 13, 22, 0.16) 100%) !important;
     box-shadow:
@@ -4736,13 +4735,13 @@ body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-a
 body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-title {
     font-size: .92rem !important;
     line-height: 1.12 !important;
-    color: #fff7df !important;
+    color: #fff7df;
 }
 
 body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-text {
     font-size: .72rem !important;
     line-height: 1.22 !important;
-    color: rgba(248,250,252,0.68) !important;
+    color: rgba(248,250,252,0.68);
 }
 
 
@@ -4756,13 +4755,13 @@ body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat
 body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat {
     padding: 7px 8px !important;
     border-radius: 10px !important;
-    background: rgba(8,16,30,0.55) !important;
+    background: rgba(8,16,30,0.55);
     border: 1px solid rgba(199,153,49,0.16) !important;
 }
 
 body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat strong,
 body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat .value {
-    color: #f7d780 !important;
+    color: #f7d780;
     font-weight: 900 !important;
 }
 
@@ -4776,11 +4775,11 @@ body.life-final-step-active #lifeEducationContactPanel .lq-consent-box {
 body.life-final-step-active #lifeEducationContactPanel .consent-main {
     font-size: .72rem !important;
     line-height: 1.28 !important;
-    color: rgba(248,250,252,0.72) !important;
+    color: rgba(248,250,252,0.72);
 }
 
 body.life-final-step-active #lifeSubmitTrustNote {
-    color: #f3d688 !important;
+    color: #f3d688;
     font-size: .8rem !important;
     font-weight: 860 !important;
     margin-bottom: 6px !important;
@@ -4879,8 +4878,8 @@ body.page-variant-contact-first-education-v1.life-landing:not(.life-quote-starte
     border: 1.7px solid rgba(218,155,39,0.94) !important;
     background:
         radial-gradient(circle at 50% 0%, rgba(255,221,135,0.07), transparent 62%),
-        linear-gradient(180deg, rgba(18,29,45,0.98) 0%, rgba(7,16,31,0.98) 100%) !important;
-    color: rgba(255,250,235,0.98) !important;
+        linear-gradient(180deg, rgba(18,29,45,0.98) 0%, rgba(7,16,31,0.98) 100%);
+    color: rgba(255,250,235,0.98);
     font-size: .96rem;
     font-weight: 930;
     letter-spacing: .002em;
@@ -4999,7 +4998,7 @@ body.page-variant-contact-first-education-v1.life-landing:not(.life-quote-starte
 }
 
 .lq-primary-start-note {
-    color: rgba(248,250,252,0.82) !important;
+    color: rgba(248,250,252,0.82);
     font-size: .93rem;
     font-weight: 780;
     line-height: 1.45;
@@ -5376,7 +5375,7 @@ input:checked + .lq-answer-card {
             </div>
         }
     </div>
-<form data-insurance-history="true" asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-cms-presentation="quote" data-cms-review-kind="life" data-cms-review-metrics="Monthly range|Coverage range" data-cms-entry-id="lifeHeroEntryPanel" data-cms-education-id="lifeEducationContactPanel" data-cms-question-id="lifeStep1Panel" data-cms-processing-id="lifeProcessingPanel" data-cms-contact-id="lifeStep2Panel" data-cms-review-id="lifeStep2EstimateSlot" data-cms-progress-id="lifeStep1Progress" data-cms-progress-fill-id="lifeStep1ProgressFill" data-cms-processing-fill-id="lifeProcessingFill" data-cms-trust-id="lifeHeroTrustStrip" data-cms-started-class="life-quote-started" data-cms-final-class="life-final-step-active" data-form-key="@pageKey" data-ajax-submit="true" novalidate>
+<form data-insurance-history="true" asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-cms-presentation="quote" data-cms-results-id="lifePostSubmitSlot" data-cms-review-kind="life" data-cms-review-metrics="Monthly range|Coverage range" data-cms-entry-id="lifeHeroEntryPanel" data-cms-education-id="lifeEducationContactPanel" data-cms-question-id="lifeStep1Panel" data-cms-processing-id="lifeProcessingPanel" data-cms-contact-id="lifeStep2Panel" data-cms-review-id="lifeStep2EstimateSlot" data-cms-progress-id="lifeStep1Progress" data-cms-progress-fill-id="lifeStep1ProgressFill" data-cms-processing-fill-id="lifeProcessingFill" data-cms-trust-id="lifeHeroTrustStrip" data-cms-started-class="life-quote-started" data-cms-final-class="life-final-step-active" data-form-key="@pageKey" data-ajax-submit="true" novalidate>
 <input type="hidden" name="HistoryDisclosureToken" value="@(Infrastructure.Leads.WebsiteSubmissionEvidence.ProtectAuthorization(HistoryProtection, typeof(Protect_Website.Models.LifeQuoteFormModel).FullName!, "MarketingEmailConsent", Shared.Crm.InsuranceFormDisclosures.Life))" />
         @Html.AntiForgeryToken()
         <input type="hidden" name="SubmissionId" value="@(Context?.Request is { HasFormContentType: true } submissionRequest && Guid.TryParse(submissionRequest.Form["SubmissionId"], out var submissionToken) ? submissionToken : Guid.NewGuid())" />
@@ -6501,7 +6500,7 @@ input:checked + .lq-answer-card {
 #lifeEducationContactPanel.lq-final-panel-no-chrome .lq-final-surface-no-chrome,
 #lifeEducationContactPanel.lq-final-panel-no-chrome #lifeStep2Panel,
 #lifeEducationContactPanel.lq-final-panel-no-chrome .lq-step-panel-pad {
-    background: inherit !important;
+    background: inherit;
     border: 0 !important;
     box-shadow: none !important;
     padding: 0 !important;
@@ -6534,8 +6533,8 @@ input:checked + .lq-answer-card {
     padding: 10px 12px !important;
     border-radius: 14px !important;
     border: 1px solid rgba(243,214,136,.22) !important;
-    background: rgba(4,16,32,.38) !important;
-    color: rgba(248,250,252,.82) !important;
+    background: rgba(4,16,32,.38);
+    color: rgba(248,250,252,.82);
     font-size: .86rem !important;
     font-weight: 760 !important;
 }
@@ -6545,7 +6544,7 @@ input:checked + .lq-answer-card {
     min-height: 860px !important;
     margin: 14px 0 0 !important;
     padding: 0 !important;
-    background: inherit !important;
+    background: inherit;
     border: 0 !important;
     box-shadow: none !important;
     overflow: auto !important;
@@ -6560,7 +6559,7 @@ input:checked + .lq-answer-card {
     height: 860px !important;
     border-radius: 18px !important;
     border: 1px solid rgba(199,153,49,.28) !important;
-    background: #ffffff !important;
+    background: #ffffff;
     box-shadow: 0 16px 34px rgba(2,12,27,.22) !important;
 }
 
@@ -6573,8 +6572,8 @@ input:checked + .lq-answer-card {
     margin-top: 10px !important;
     border-radius: 14px !important;
     border: 1px solid rgba(243,214,136,.34) !important;
-    color: #f3d688 !important;
-    background: rgba(4,16,32,.38) !important;
+    color: #f3d688;
+    background: rgba(4,16,32,.38);
     font-size: .86rem !important;
     font-weight: 900 !important;
     text-decoration: none !important;
@@ -6729,7 +6728,7 @@ input:checked + .lq-answer-card {
 }
 
 #lifeProcessingPanel .lq-processing-note {
-    color: #f3d688 !important;
+    color: #f3d688;
 
 }
 
@@ -6765,7 +6764,7 @@ input:checked + .lq-answer-card {
 
     background:
         radial-gradient(circle at 50% 0%, rgba(243,214,136,.08), transparent 38%),
-        linear-gradient(180deg, rgba(8,27,56,.84) 0%, rgba(6,19,39,.92) 100%) !important;
+        linear-gradient(180deg, rgba(8,27,56,.84) 0%, rgba(6,19,39,.92) 100%);
 
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,.045),
@@ -11218,7 +11217,7 @@ body.life-landing.life-quote-started .lq-contact-first-proof-chips {
 
 main.layout-content,
 .lq-container {
-    background: transparent !important;
+    background: transparent;
 }
 
 .lq-container {
@@ -11261,7 +11260,7 @@ body.life-final-step-active .lq-hero-shell {
 #lifeEducationContactPanel .lq-contact-first-proof-row,
 .lq-agent-handoff,
 #lifeStep2EstimateSummary {
-    background: transparent !important;
+    background: transparent;
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
@@ -11299,7 +11298,7 @@ body.life-final-step-active .lq-hero-shell {
 }
 
 .lq-agent-name {
-    color: var(--lq-cream) !important;
+    color: var(--lq-cream);
 
 }
 
@@ -11311,7 +11310,7 @@ body.life-final-step-active .lq-hero-shell {
 #lifeStep2EstimateSummary .lq-contact-estimate-signal-copy,
 #lifeStep2EstimateSummary .lq-contact-estimate-personal-copy,
 #lifeStep2EstimateSummary .lq-contact-review-list li {
-    color: var(--lq-muted) !important;
+    color: var(--lq-muted);
 
 }
 
@@ -11364,7 +11363,7 @@ body.life-final-step-active .lq-hero-shell {
     padding: 18px 22px !important;
     border: 1px solid rgba(244, 210, 124, 0.48) !important;
     border-radius: 18px !important;
-    background: rgba(5, 18, 39, 0.28) !important;
+    background: rgba(5, 18, 39, 0.28);
 }
 
 #lifeContactCaptureWrap .lq-contact-agent-card .lq-agent-handoff-head {
@@ -11385,17 +11384,17 @@ body.life-final-step-active .lq-hero-shell {
 #lifeContactCaptureWrap .lq-contact-agent-card .lq-agent-name {
     font-size: 1.18rem !important;
     font-weight: 940 !important;
-    color: var(--lq-cream) !important;
+    color: var(--lq-cream);
 }
 
 #lifeContactCaptureWrap .lq-contact-agent-card .lq-agent-bio {
-    color: rgba(248, 250, 252, 0.86) !important;
+    color: rgba(248, 250, 252, 0.86);
     font-size: .96rem !important;
     line-height: 1.45 !important;
 }
 
 #lifeContactCaptureWrap .lq-contact-agent-card .lq-agent-license {
-    color: var(--lq-gold) !important;
+    color: var(--lq-gold);
     font-weight: 900 !important;
 }
 
@@ -11404,7 +11403,7 @@ body.life-final-step-active .lq-hero-shell {
 }
 
 #lifeStep2EstimateSummary .lq-contact-estimate-kicker {
-    color: var(--lq-gold) !important;
+    color: var(--lq-gold);
     font-size: .78rem !important;
     font-weight: 940 !important;
     letter-spacing: .08em !important;
@@ -11427,7 +11426,7 @@ body.life-final-step-active .lq-hero-shell {
     width: 44px !important;
     height: 3px !important;
     border-radius: 999px !important;
-    background: var(--lq-gold) !important;
+    background: var(--lq-gold);
 }
 
 #lifeContactCaptureWrap .lq-contact-capture-copy {
@@ -11476,7 +11475,7 @@ body.life-final-step-active .lq-hero-shell {
     margin: 4px auto 0 !important;
     padding: 14px 0 0 !important;
     border-top: 1px solid rgba(244, 210, 124, 0.16) !important;
-    background: transparent !important;
+    background: transparent;
     box-shadow: none !important;
 }
 
@@ -11488,7 +11487,7 @@ body.life-final-step-active .lq-hero-shell {
 }
 
 #lifeStep2EstimateSummary .lq-contact-estimate-kicker {
-    color: var(--lq-gold) !important;
+    color: var(--lq-gold);
     font-size: .76rem !important;
     font-weight: 920 !important;
     letter-spacing: .08em !important;
@@ -11496,7 +11495,7 @@ body.life-final-step-active .lq-hero-shell {
 }
 
 #lifeStep2EstimateSummary .lq-contact-preview-mini-copy {
-    color: rgba(248, 250, 252, 0.74) !important;
+    color: rgba(248, 250, 252, 0.74);
     font-size: .88rem !important;
     font-weight: 720 !important;
     line-height: 1.35 !important;
@@ -11515,12 +11514,12 @@ body.life-final-step-active .lq-hero-shell {
     padding: 10px 12px !important;
     border: 1px solid rgba(244, 210, 124, 0.18) !important;
     border-radius: 12px !important;
-    background: rgba(5, 16, 34, 0.24) !important;
+    background: rgba(5, 16, 34, 0.24);
     text-align: center !important;
 }
 
 #lifeStep2EstimateSummary .lq-contact-preview-mini-metric span {
-    color: rgba(248, 250, 252, 0.58) !important;
+    color: rgba(248, 250, 252, 0.58);
     font-size: .68rem !important;
     font-weight: 860 !important;
     letter-spacing: .06em !important;
@@ -11528,7 +11527,7 @@ body.life-final-step-active .lq-hero-shell {
 }
 
 #lifeStep2EstimateSummary .lq-contact-preview-mini-metric strong {
-    color: var(--lq-cream) !important;
+    color: var(--lq-cream);
     font-size: 1rem !important;
     font-weight: 940 !important;
 }
@@ -11538,7 +11537,7 @@ body.life-final-step-active .lq-hero-shell {
     margin-top: 10px !important;
     border-radius: 18px !important;
     overflow: hidden !important;
-    background: #ffffff !important;
+    background: #ffffff;
 }
 
 #lifePostSubmitSlot .lq-booking-iframe {
@@ -11546,12 +11545,12 @@ body.life-final-step-active .lq-hero-shell {
     min-height: 720px !important;
     border: 0 !important;
     border-radius: 18px !important;
-    background: #ffffff !important;
+    background: #ffffff;
     box-shadow: none !important;
 }
 
 #lifeProcessingPanel .lq-processing-bridge {
-    background: transparent !important;
+    background: transparent;
     border: 0 !important;
     box-shadow: none !important;
 }
@@ -11711,7 +11710,7 @@ body.life-final-step-active .lq-hero-shell {
         min-height: 58px !important;
         padding: 8px 8px !important;
         border-radius: 12px !important;
-        background: rgba(5, 16, 34, 0.18) !important;
+        background: rgba(5, 16, 34, 0.18);
     }
 
     #lifeStep2EstimateSummary .lq-contact-preview-mini-metric span {

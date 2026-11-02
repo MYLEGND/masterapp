@@ -391,7 +391,8 @@
       text:(element,value)=>{if(element) setContentText(element,value,true);},
       style:(element,key,value)=>{if(element) element.style.setProperty(key,value);}
     };
-    const started=phase!=='intro', final=phase==='contact' || phase==='review';
+    const results=phase==='results' && !!projection;
+    const started=phase!=='intro', final=phase==='contact' || phase==='review' || results;
     operations.class(document.body,data.cmsStartedClass,started);
     operations.class(document.body,data.cmsFinalClass,final);
     const entry=find('cmsEntryId'), education=find('cmsEducationId');
@@ -403,6 +404,15 @@
     operations.hidden(processing,phase!=='processing');
     operations.hidden(contact,!final);
     operations.hidden(find('cmsTrustId'),final);
+    if(results) {
+      const host=find('cmsResultsId');
+      if(host && host.closest('form')===form) {
+        for(let child=host;child && child!==contact && child!==form;child=child.parentElement)
+          for(const sibling of child.parentElement?.children || [])
+            if(sibling!==child) operations.hidden(sibling,true);
+        operations.hidden(host,false);projection.results(host,form);
+      }
+    }
     const steps=[...form.querySelectorAll('[data-cms-native-step]')];
     const step=steps.find(element=>element.dataset.cmsNativeStep===String(state?.step ?? '0')) || steps[0];
     const group=nativeSequenceByStep.get(step);
@@ -421,7 +431,7 @@
     if(phase==='processing') operations.style(find('cmsProcessingFillId'),'width','100%');
     // Sample content exists only in the reversible editor projection, never in
     // answers, hidden fields, saved composition or an actual estimate response.
-    if(projection && final) {
+    if(projection && final && !results) {
       const review=find('cmsReviewId');
       if(review){
         operations.hidden(review,false);
@@ -1994,13 +2004,13 @@
   function nativeFormPresentationTargets(form,node) {
     if(!String(node?.systemKey || '').startsWith('protect_runtime_form:')) return [];
     const candidates=[];
-    const add=(element,key)=>{
+    const add=(element,key,styleOnly=false)=>{
       // Runtime structure is not an editable graph. Bind only unambiguous copy
       // leaves to the existing protected owner's typed presentation maps.
-      if(!element || element.children.length || !element.textContent.trim() ||
+      if(!element || (!styleOnly && (element.children.length || !element.textContent.trim())) ||
          compositionNode(element.dataset.cmsCompositionId || element.dataset.cmsId)) return;
       key=safeId(key);
-      if(key) candidates.push({element,key});
+      if(key) candidates.push({element,key,styleOnly});
     };
     form.querySelectorAll('[role="radiogroup"][aria-labelledby]').forEach(group=>{
       const id=group.getAttribute('aria-labelledby');
@@ -2011,11 +2021,22 @@
     form.querySelectorAll('input[type="radio"][name],input[type="checkbox"][name]').forEach(control=>{
       const label=control.labels?.[0] || control.closest('label');
       if(!label) return;
+      add(label,'presentation:option:'+control.name+':'+control.value+':tile',true);
       for(const kind of ['title','kicker','helper']){
         const leaves=label.querySelectorAll('.lq-card-'+kind);
         if(leaves.length===1) add(leaves[0],'presentation:option:'+control.name+':'+control.value+':'+kind);
       }
     });
+    for(const element of form.querySelectorAll('[data-cms-review-style]')) {
+      const key=element.dataset.cmsReviewStyle;
+      if(['surface','insights','details','booking'].includes(key) && element.closest('.quote-review'))
+        add(element,'presentation:result:'+key,true);
+    }
+    const reviewKeys=['title','copy','insights-heading','timing-heading','details-heading','booking-title','booking-copy'];
+    for(const element of form.querySelectorAll('.quote-review [data-cms-review-copy]')) {
+      const key=element.dataset.cmsReviewCopy;
+      if(reviewKeys.includes(key)) add(element,'presentation:result:'+key);
+    }
     return candidates.filter(item=>candidates.filter(other=>other.key===item.key).length===1);
   }
 
@@ -2071,7 +2092,7 @@
   }
 
   function isInlineEditable(el) {
-    if(nativeFormPresentationOwner(el)) return true;
+    if(nativeFormPresentationOwner(el)) return !nativeFormPresentationBindings.get(el)?.styleOnly;
     if (!el || el.dataset.cmsSignalOnly || el.dataset.cmsSection) return false;
     // Entity-owned names and commerce controls expose presentation editing only.
     // Their text/destination remains owned by the Business Profile / Store contract.
@@ -2672,9 +2693,9 @@
       const label=control.labels?.[0] || control.closest('label');
       if(label && labels[key]) applyFormFieldLabel(label,labels[key]);
     });
-    nativeFormPresentationTargets(form,node).forEach(({element,key})=>{
+    nativeFormPresentationTargets(form,node).forEach(({element,key,styleOnly})=>{
       if(!nativeFormOriginalLabels.has(element)) nativeFormOriginalLabels.set(element,element.textContent);
-      nativeFormPresentationBindings.set(element,{form,ownerId:node.id,key});
+      nativeFormPresentationBindings.set(element,{form,ownerId:node.id,key,styleOnly});
       element.dataset.cmsPresentationKey=key;
       element.dataset.cmsSignalOnly='true';
       element.dataset.cmsEditable='true';
@@ -2689,10 +2710,17 @@
         nativeFormPresentationStyles.set(element,Object.fromEntries(styleProperties.map(name=>[name,element.style[name]])));
         for(const [name,value] of Object.entries(runtimeStyles)) element.style[name]=value;
       }
-      if(labels[key]) applyFormFieldLabel(element,labels[key]);
-      else if(formFieldPresentationLabels.has(element)) applyFormFieldLabel(element,nativeFormOriginalLabels.get(element));
+      if(!styleOnly && labels[key]) applyFormFieldLabel(element,labels[key]);
+      else if(!styleOnly && formFieldPresentationLabels.has(element)) applyFormFieldLabel(element,nativeFormOriginalLabels.get(element));
     });
   }
+
+  document.addEventListener('legend:quote-review-rendered',event=>{
+    const form=event.target.closest?.('form[data-cms-composition-id]');
+    const node=compositionNode(form?.dataset.cmsCompositionId);
+    if(form && String(node?.systemKey || '').startsWith('protect_runtime_form:'))
+      applyFormFieldPresentations(form,node);
+  });
 
   function experienceValue(raw) {
     if(raw == null) return null;
@@ -9945,6 +9973,16 @@
     class(element,key,value){if(element && key){const state=rememberFormPreview(element);if(!state.classes.has(key))state.classes.set(key,element.classList.contains(key));element.classList.toggle(key,value);}},
     text(element,value){if(element){const state=rememberFormPreview(element);if(state.text===null)state.text={value:element.textContent,preserve:element.getAttribute('data-cms-preserve-whitespace')};setContentText(element,value,true);}},
     style(element,key,value){if(element){const state=rememberFormPreview(element);if(!state.styles.has(key))state.styles.set(key,{value:element.style.getPropertyValue(key),priority:element.style.getPropertyPriority(key)});element.style.setProperty(key,value);}},
+    results(element,form){
+      if(!window.LegendQuoteReview || element.querySelector('.quote-review')) return;
+      const sample=document.createElement('div');sample.dataset.cmsPreviewOnly='true';
+      element.appendChild(sample);formPreviewSamples.push(sample);
+      window.LegendQuoteReview.render(sample,{titleId:form.id+'-studio-results',
+        kicker:'Studio preview',title:'Your review',copy:'Customize your results and scheduling presentation.',
+        diagnosis:'Illustrative preview; no answers submitted.',implication:'Actual results come from the completed request.',
+        bookingTitle:'Schedule your review',bookingCopy:'Choose a time with your team.',
+        showCalendar:false});
+    },
     sample(element,form){
       const sample=document.createElement('div');sample.dataset.cmsPreviewOnly='true';
       sample.setAttribute('role','note');
@@ -9970,6 +10008,7 @@
         add('processing',form.dataset.cmsProcessingId,'Processing preview');
         add('review',form.dataset.cmsContactId,'Review / starting estimate');
         add('contact',form.dataset.cmsContactId,'Contact details');
+        add('results',form.dataset.cmsResultsId,'Results + scheduling');
         continue;
       }
       const candidates = [...form.querySelectorAll(selector)];
@@ -10120,6 +10159,9 @@
     stepOrder.querySelector('[data-native-step-before]').disabled = !stepContext || stepContext.index === 0 || !!beforeError;
     stepOrder.querySelector('[data-native-step-after]').disabled = !stepContext || stepContext.index === stepContext.steps.length - 1 || !!afterError;
     stepOrder.querySelector('[data-native-step-order-status]').textContent = [...new Set([beforeError,afterError].filter(Boolean))].join(' ');
+    const resultLink=host.querySelector('[data-form-results-page]');
+    const redirectTemplates=['auto_quote','home_quote','commercial_quote','risk_assessment'];
+    resultLink.hidden=SITE_KEY!=='protect' || !redirectTemplates.some(key=>pageState().systemTemplateKey==='protect_template:'+key);
     host.querySelector('[role="status"]').textContent = formPreviewIndex < 0
       ? entries.length + ' form steps available to edit.'
       : 'Editing step ' + (formPreviewIndex + 1) + ' of ' + entries.length + '. Preview only; no answers or submission.';
@@ -10131,6 +10173,11 @@
     host.setAttribute('aria-label', 'Form step editor');
     host.innerHTML = '<label class="legend-cms-group">Form step<select aria-label="Form step to edit"></select></label><div class="legend-cms-row"><button type="button" data-form-preview-back>Previous form step</button><button type="button" data-form-preview-next>Next form step</button></div><small role="status" aria-live="polite"></small>';
     panel.querySelector('.legend-cms-navigation').appendChild(host);
+    const resultLink=document.createElement('button');
+    resultLink.type='button';resultLink.dataset.formResultsPage='';
+    resultLink.textContent='Edit results + scheduling page';
+    resultLink.addEventListener('click',()=>void navigateToEditorPage('/thankyou'));
+    host.appendChild(resultLink);
     const order = document.createElement('div');
     order.id = 'legend-cms-field-order';
     order.hidden = true;

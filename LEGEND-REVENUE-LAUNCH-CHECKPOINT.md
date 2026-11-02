@@ -2439,3 +2439,32 @@ Protect remains 559c460e2550e729205ab20046310c14558a5cc6. No Cloudflare publicat
 other application deployment, republishing of immutable websites, migration or
 credential change occurred. Live Studio transitions, image LCP and operational
 calling readiness are not established by these focused source checks.
+
+## Studio form presentation and final results — 2026-11-02
+
+Founder scope: repair Studio presentation before direct Mac deployment of
+AgentPortal and Protect; no fast-track merge, migration, credential change or
+Cloudflare website publication. Base: 9ed39db2a10f8e4f83ae69be61f3413e55a9ff62.
+
+- Existing native form field presentation maps now include style-only option
+  tiles and result surfaces, plus explicitly allowed static result copy. Runtime
+  values, disclaimers, provider destinations and status remain runtime-owned.
+- Life variants, Disability and DVH expose Results + scheduling through the
+  existing reversible form preview. The same result renderer supplies illustrative
+  preview content without submission, calendar network requests or captured samples.
+  Real result rerenders reapply the same saved presentation authority.
+- Auto, Home, Commercial and Risk Assessment offer the existing /ThankYou editor
+  in the form navigator. Other website scopes retain their actual form capabilities.
+- Native template default paint priorities no longer defeat authored colors;
+  selected/hover/runtime chrome state remains intact. Desktop AI logo fills its
+  existing button, and shield artwork is enlarged within unchanged shell geometry.
+
+Validation: 69 focused .NET tests passed (actual project/referenced apps compiled),
+18 compiler tests passed. Native Studio regressions cover eight insurance routes,
+preview restoration/capture isolation and no submitted answers. New tests verify
+saved tile/result colors and copy survive reopening and repeated real renders;
+redirect availability is checked across four Protect templates and other scopes.
+Real Chrome synthetic fixtures using actual template CSS verified authored Life,
+Disability and DVH contact/result colors and the Life selected-tile indicator.
+No real inquiry, estimate, booking or payment was executed. Source acceptance and
+exact deployment receipts/runtime readback must be recorded after completion.

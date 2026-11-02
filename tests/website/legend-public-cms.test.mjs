@@ -6513,7 +6513,7 @@ for(const [route,key] of [['iul','life'],['life','life'],['term-life','life'],['
     const progressLabels=[...(goalFirst?['What matters most','Who depends on this']:['Who depends on this','What matters most']),'Coverage range','Age','Health profile'];
     const progressText=index=>key==='life'?progressLabels[index-1]+' · '+index+' of 5':'Question '+index+' of 5';
     const steps=Array.from({length:5},(_,index)=>'<div class="lq-micro-step" data-micro-step="'+index+'" data-cms-native-step="'+index+'" '+(key==='life'?'data-cms-progress-label="'+progressLabels[index]+'" ':'')+(index?'hidden':'')+'><div class="lq-choice-label">Question title '+(index+1)+'</div><input name="answer'+index+'" value="kept'+index+'" required></div>').join('');
-    const html='<!doctype html><html><body><main><div data-protect-form-shell><div id="'+metadata.cmsEntryId+'">Intro</div>'+formTag+'<div id="'+metadata.cmsEducationId+'"><div id="'+metadata.cmsQuestionId+'"><div id="'+metadata.cmsProgressId+'">Native progress</div><span id="'+metadata.cmsProgressFillId+'" style="width:20%"></span><div>'+steps+'</div></div><div id="'+metadata.cmsProcessingId+'" hidden><h2>Processing</h2><span id="'+metadata.cmsProcessingFillId+'"></span></div><div id="'+metadata.cmsContactId+'" hidden>'+reviewMarkup+'<input name="FirstName" value="Kept name" required><input type="hidden" name="Estimate" value="unchanged"></div></div></form></div></main></body></html>';
+    const html='<!doctype html><html><body><main><div data-protect-form-shell><div id="'+metadata.cmsEntryId+'">Intro</div>'+formTag+'<div id="'+metadata.cmsEducationId+'"><div id="'+metadata.cmsQuestionId+'"><div id="'+metadata.cmsProgressId+'">Native progress</div><span id="'+metadata.cmsProgressFillId+'" style="width:20%"></span><div>'+steps+'</div></div><div id="'+metadata.cmsProcessingId+'" hidden><h2>Processing</h2><span id="'+metadata.cmsProcessingFillId+'"></span></div><div id="'+metadata.cmsContactId+'" hidden>'+reviewMarkup+'<input name="FirstName" value="Kept name" required><input type="hidden" name="Estimate" value="unchanged"><div id="'+metadata.cmsResultsId+'" hidden></div></div></div></form></div></main></body></html>';
     doc.pages[path]={title:route,systemTemplateKey:key==='life'?'protect_template:life_wizard':key==='dvh'?'protect_template:dvh_quote':'protect_template:disability_quote',navigation:{isDeleted:false},composition:[]};
     let snapshot;
     const capture=await domFixture({siteKey:'protect',doc,legacyMigration:{},pathname:path,html,search:'?legendEdit=ticket&legendMaterialize=1',beforeEval:w=>{w.postMessage=payload=>{snapshot=payload;};}});
@@ -6521,6 +6521,7 @@ for(const [route,key] of [['iul','life'],['life','life'],['term-life','life'],['
     for(const initial of ['question','contact']){
       let nativeControls,nativeEvents=0,storageWrites=0;
       const f=await domFixture({siteKey:'protect',doc,pathname:path,html,captureNativePage:true,beforeEval:w=>{
+        w.eval(readFileSync(new URL('../../Protect-Website/wwwroot/js/quote-final-review.js',import.meta.url),'utf8'));
         nativeControls=[...w.document.querySelectorAll('input')];
         for(const event of ['input','change','submit'])w.document.getElementById(formId).addEventListener(event,()=>nativeEvents++);
         w.sessionStorage.setItem('existing-native-state','kept');
@@ -6537,7 +6538,7 @@ for(const [route,key] of [['iul','life'],['life','life'],['term-life','life'],['
         const captureBefore=JSON.parse(JSON.stringify(w.__captureNativePage()));
         const state=()=>[w.document.body,...w.document.querySelectorAll('main [id],main [data-cms-native-step]')].map(element=>({element,hidden:element.hidden,display:element.style.getPropertyValue('display'),priority:element.style.getPropertyPriority('display'),width:element.style.getPropertyValue('width'),started:element.classList.contains(metadata.cmsStartedClass),final:element.classList.contains(metadata.cmsFinalClass),aria:element.getAttribute('aria-hidden'),label:element.getAttribute('aria-label'),text:element.id===metadata.cmsProgressId?element.textContent:null}));
         const original=state();
-        assert.equal(w.document.querySelectorAll('#legend-cms-form-navigator option').length,10);
+        assert.equal(w.document.querySelectorAll('#legend-cms-form-navigator option').length,11);
         for(let index=1;index<=5;index++){
           f.change('#legend-cms-form-navigator select',String(index));
           assert.equal(get('cmsEntryId').hidden,true);assert.equal(get('cmsEducationId').hidden,false);
@@ -6550,6 +6551,10 @@ for(const [route,key] of [['iul','life'],['life','life'],['term-life','life'],['
         assert.match(get('cmsReviewId').textContent,/Illustrative Studio review/);
         assert.equal(get('cmsReviewId').querySelectorAll(key==='life'?'.lq-contact-preview-mini-metric':'.dq-review-stat').length,key==='life'?2:3);
         assert.match(get('cmsReviewId').textContent,/Example — not calculated/);
+        f.change('#legend-cms-form-navigator select','9');
+        assert.equal(get('cmsResultsId').hidden,false);
+        assert.ok(get('cmsResultsId').querySelector('.quote-review'));
+        assert.equal(get('cmsResultsId').querySelector('iframe'),null);
         assert.deepEqual(JSON.parse(JSON.stringify(w.__captureNativePage())),captureBefore,'active sample/progress never joins canonical capture');
         assert.equal(f.calls.slice(calls).some(call=>call.method==='POST'),false);
         const saved=await f.save();assert.deepEqual(saved,before);const afterSaveRevision=f.serverRevision(),afterSaveCalls=f.calls.length;
@@ -8157,4 +8162,59 @@ test('published hydration promotes the existing reusable marketing image without
     assert.equal(w.document.querySelectorAll('img[fetchpriority="high"]').length,1);
     assert.equal(w.LEGEND_PUBLIC_CMS_RENDER_COMPLETE,true);
   }finally{dom.window.close();}
+});
+
+test('native results and option tiles persist presentation without changing submission or booking authority',async()=>{
+  const reviewSource=readFileSync(new URL('../../Protect-Website/wwwroot/js/quote-final-review.js',import.meta.url),'utf8');
+  const doc=canonicalDocument(),path='/quote/life',id='signal:quote_life.form.lifewizardform.0';
+  doc.pages[path]={title:'Life',systemTemplateKey:'protect_template:life_wizard',navigation:{isDeleted:false},composition:[canonicalNode(id,'container','div',{systemKey:'protect_runtime_form:quote_life',fieldPresentations:{},fieldLabels:{}})]};
+  const html=`<!doctype html><html><body><main><form id="lifeWizardForm" data-form-key="quote_life" data-cms-presentation="quote" data-cms-contact-id="contact" data-cms-results-id="results"><div id="contact"><label><input type="radio" name="Goal" value="family" required><span class="lq-card-title">Family</span></label><div id="results" hidden></div></div></form></main></body></html>`;
+  const fixture=doc=>domFixture({siteKey:'protect',doc,pathname:path,html,beforeEval:w=>w.eval(reviewSource)});
+  let saved;
+  const f=await fixture(doc);
+  try{
+    const control=f.w.document.querySelector('input[name="Goal"]');
+    f.click('label:has(input[name="Goal"])');
+    f.input('[data-style-key="backgroundColor"]','#123456');
+    const select=f.w.document.querySelector('#legend-cms-form-navigator select');
+    const result=[...select.options].find(x=>x.textContent.includes('Results + scheduling'));
+    assert.ok(result);f.change('#legend-cms-form-navigator select',result.value);
+    assert.ok(f.w.document.querySelector('#results .quote-review'));
+    assert.equal(f.w.document.querySelector('#results iframe'),null);
+    f.click('[data-cms-review-style="booking"]');f.input('[data-style-key="backgroundColor"]','#456789');
+    f.click('[data-cms-review-copy="booking-title"]');f.editSelected('Choose your review time');
+    f.input('[data-style-key="color"]','#abcdef');
+    saved=await f.save();
+    const owner=canonicalNodeById(saved,id,path);
+    assert.equal(owner.fieldLabels['presentation:result:booking-title'],'Choose your review time');
+    assert.equal(owner.fieldPresentations['presentation:option:goal:family:tile'].style.backgroundColor,'#123456');
+    assert.equal(control.name,'Goal');assert.equal(control.value,'family');assert.equal(control.required,true);assert.equal(control.checked,false);
+    assert.doesNotMatch(JSON.stringify(saved),/Illustrative preview|studio-results/);
+    assert.equal(f.calls.some(call=>/submit|booking/i.test(call.url||'')&&call.method==='POST'),false);
+  }finally{f.close();}
+  const f2=await fixture(saved);
+  try{
+    assert.equal(f2.w.document.querySelector('label:has(input)').style.backgroundColor,'rgb(18, 52, 86)');
+    const host=f2.w.document.getElementById('results');
+    for(let i=0;i<2;i++){
+      f2.w.LegendQuoteReview.render(host,{titleId:'actual-result',title:'Actual result',bookingTitle:'Default heading',snapshot:{metrics:[{label:'Runtime value',value:'untouched'}]},showCalendar:false});
+      assert.equal(host.querySelector('[data-cms-review-copy="booking-title"]').textContent,'Choose your review time');
+      assert.equal(host.querySelector('[data-cms-review-copy="booking-title"]').style.color,'rgb(171, 205, 239)');
+      assert.equal(host.querySelector('[data-cms-review-style="booking"]').style.backgroundColor,'rgb(69, 103, 137)');
+      assert.equal(host.querySelector('dd').textContent,'untouched');
+    }
+  }finally{f2.close();}
+});
+
+test('results navigation follows existing redirect templates without adding Protect routes to other scopes',async()=>{
+  for(const [siteKey,path,template] of [
+    ['protect','/quote/auto','auto_quote'],['protect','/quote/home','home_quote'],
+    ['protect','/quote/commercial','commercial_quote'],['protect','/riskassessment','risk_assessment'],
+    ['legend','/contact',null],['business','/contact',null]]){
+    const doc=canonicalDocument();
+    doc.pages[path]={title:'Form',systemTemplateKey:template?'protect_template:'+template:null,navigation:{isDeleted:false},composition:[]};
+    const f=await domFixture({siteKey,business:siteKey==='business'?{id:'business-id',displayName:'Fixture business'}:null,doc,pathname:path,html:'<!doctype html><html><body><main><form data-form-key="contact"><input name="Name"></form></main></body></html>'});
+    try{const link=f.w.document.querySelector('[data-form-results-page]');assert.ok(link,siteKey+path);assert.equal(link.hidden,siteKey!=='protect');}
+    finally{f.close();}
+  }
 });
