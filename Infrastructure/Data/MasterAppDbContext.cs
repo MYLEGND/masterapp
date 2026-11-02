@@ -1153,13 +1153,25 @@ public class MasterAppDbContext : DbContext
         modelBuilder.Entity<ClientIdentityContinuation>(e =>
         {
             e.HasKey(x => x.Id);
-            e.ToTable("ClientIdentityContinuations");
+            e.ToTable("ClientIdentityContinuations", t => t.HasCheckConstraint(
+                "CK_ClientIdentityContinuations_PurposeBinding",
+                "(([Purpose] IN ('Activation', 'SignIn', 'WebsiteEditor', 'TrainingBilling') AND [ClientProfileId] IS NOT NULL AND [ClientProfileId] <> '00000000-0000-0000-0000-000000000000') OR " +
+                "([Purpose] = 'StoreManagement' AND [CommerceBusinessId] IS NOT NULL AND [CommerceBusinessId] <> '00000000-0000-0000-0000-000000000000' AND " +
+                "[ActorUserId] IS NOT NULL AND LTRIM(RTRIM([ActorUserId])) <> '' AND " +
+                "[DestinationOrigin] IS NOT NULL AND LTRIM(RTRIM([DestinationOrigin])) <> '' AND " +
+                "[WebsiteSiteKey] IS NOT NULL AND LTRIM(RTRIM([WebsiteSiteKey])) <> '' AND " +
+                "[WebsiteOwnerKey] IS NOT NULL AND LTRIM(RTRIM([WebsiteOwnerKey])) <> '' AND " +
+                "[BrowserCorrelationHash] IS NOT NULL AND LTRIM(RTRIM([BrowserCorrelationHash])) <> ''))"));
             e.Property(x => x.Purpose).HasConversion<string>().HasMaxLength(32).IsRequired();
             e.Property(x => x.TokenHash).HasMaxLength(128).IsRequired();
             e.Property(x => x.IntendedNormalizedEmail).HasMaxLength(320).IsRequired();
             e.Property(x => x.ReturnUrl).HasMaxLength(2048).IsRequired();
             e.Property(x => x.ActorUserId).HasMaxLength(450);
             e.Property(x => x.ActorEmail).HasMaxLength(320);
+            e.Property(x => x.DestinationOrigin).HasMaxLength(512);
+            e.Property(x => x.WebsiteSiteKey).HasMaxLength(64);
+            e.Property(x => x.WebsiteOwnerKey).HasMaxLength(450);
+            e.Property(x => x.BrowserCorrelationHash).HasMaxLength(128);
 
             e.HasIndex(x => x.TokenHash).IsUnique();
             e.HasIndex(x => new { x.ClientProfileId, x.ExpiresUtc });

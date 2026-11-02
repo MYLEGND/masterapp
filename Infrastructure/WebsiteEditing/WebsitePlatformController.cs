@@ -56,6 +56,8 @@ public class WebsitePlatformController : ControllerBase
                 cancellationToken);
 
         if (continuation is null ||
+            !continuation.ClientProfileId.HasValue ||
+            continuation.ClientProfileId == Guid.Empty ||
             !continuation.CommerceBusinessId.HasValue ||
             continuation.CommerceBusinessId == Guid.Empty ||
             string.IsNullOrWhiteSpace(continuation.ActorUserId))
@@ -68,7 +70,7 @@ public class WebsitePlatformController : ControllerBase
         if (!await WebsiteBusinessAccess.CanManageAsActorAsync(
                 _db,
                 continuation.CommerceBusinessId.Value,
-                continuation.ClientProfileId,
+                continuation.ClientProfileId.Value,
                 continuation.ActorUserId,
                 actorEmail,
                 cancellationToken))

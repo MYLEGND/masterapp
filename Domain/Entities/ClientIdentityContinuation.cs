@@ -6,7 +6,7 @@ public sealed class ClientIdentityContinuation
 {
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    public Guid ClientProfileId { get; set; }
+    public Guid? ClientProfileId { get; set; }
     public ClientProfile? ClientProfile { get; set; }
 
     public Guid? SubscriptionActivationInvitationId { get; set; }
@@ -18,6 +18,10 @@ public sealed class ClientIdentityContinuation
     public Guid? CommerceBusinessId { get; set; }
     public string? ActorUserId { get; set; }
     public string? ActorEmail { get; set; }
+    public string? DestinationOrigin { get; set; }
+    public string? WebsiteSiteKey { get; set; }
+    public string? WebsiteOwnerKey { get; set; }
+    public string? BrowserCorrelationHash { get; set; }
 
     public ClientIdentityContinuationPurpose Purpose { get; set; } = ClientIdentityContinuationPurpose.Activation;
     public string TokenHash { get; set; } = string.Empty;
