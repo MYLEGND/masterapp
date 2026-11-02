@@ -374,10 +374,9 @@ class FoundationCssImpactTests(unittest.TestCase):
     def test_shared_foundation_targets_only_actual_public_and_authenticated_consumers(self):
         scope=authority.fast_track_scope(['Legend-Design/legend-web-foundation.css'])
         self.assertEqual(set(scope['impacts']['Legend-Design/legend-web-foundation.css']),
-                         {'website','protect','portal','client'})
+                         {'website','protect','portal','client','parfait'})
         self.assertEqual({row['key'] for row in scope['matrix']['include']},
-                         {'website','protect','portal','client'})
-        self.assertNotIn('parfait', scope['impacts']['Legend-Design/legend-web-foundation.css'])
+                         {'website','protect','portal','client','parfait'})
 
 
 
