@@ -1309,9 +1309,9 @@ public static class WebsiteContentSanitizer
         WebsiteReceptionistPresentation? source, string type, string? systemKey)
     {
         if (source is null) return null;
-        if (type != "form" || systemKey != "canonical_inquiry" ||
+        if ((type != "receptionist" && (type != "form" || systemKey != "canonical_inquiry")) ||
             source.UnexpectedFields is { Count: > 0 } || source.Placement is not ("before" or "after"))
-            throw new ArgumentException("Website voice presentation requires a canonical inquiry and a valid placement.");
+            throw new ArgumentException("Website voice presentation requires a receptionist component or canonical inquiry and a valid placement.");
         var label = ClampText(source.Label);
         return new WebsiteReceptionistPresentation
         {

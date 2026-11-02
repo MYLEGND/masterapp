@@ -44,8 +44,8 @@ function startupDiagnostics(log,driver,elapsedMs){
       await command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setDeviceMetricsOverride',params:{width,height:800,deviceScaleFactor:1,mobile:width<600}});
       await command('POST','/session/'+session+'/url',{url:origin.origin+'/__synthetic/signin'});
       await wait('!!document.getElementById("crm-history")');
-      await execute('document.querySelector("#history-filters [name=type]").value="FormSubmission";const viewport=document.createElement("meta");viewport.name="viewport";viewport.content="width=device-width, initial-scale=1";document.head.append(viewport);const css=document.createElement("link");css.onload=()=>window.__crmCssReady=true;css.rel="stylesheet";css.href="/lib/bootstrap/dist/css/bootstrap.min.css";document.head.append(css);const js=document.createElement("script");js.src="/js/crm-history.js";document.body.append(js);');
-      await wait('window.__crmCssReady===true');assert.equal(await execute('return innerWidth'),width);
+      await execute('document.querySelector("#history-filters [name=type]").value="FormSubmission";const viewport=document.createElement("meta");viewport.name="viewport";viewport.content="width=device-width, initial-scale=1";document.head.append(viewport);window.__crmCssReady=0;for(const href of ["/lib/bootstrap/dist/css/bootstrap.min.css","/design/legend-web-foundation.css","/design/legend-app-shell.css","/css/site.css","/css/crm-history.css"]){const css=document.createElement("link");css.onload=()=>window.__crmCssReady++;css.rel="stylesheet";css.href=href;document.head.append(css);}const js=document.createElement("script");js.src="/js/crm-history.js";document.body.append(js);');
+      await wait('window.__crmCssReady===5');assert.equal(await execute('return innerWidth'),width);
       assert.equal(await execute('return document.getElementById("history-subject").textContent'),'Lead: Synthetic Lead <safe>');
       assert.equal(await execute('return document.querySelectorAll("#history-subject safe").length'),0);
       for(const zoom of ['1','2']){
@@ -60,7 +60,9 @@ function startupDiagnostics(log,driver,elapsedMs){
       assert.equal(await execute('return document.activeElement.id'),'history-close');
       const text=await execute('return document.getElementById("history-detail-content").textContent');
       for(const value of ['FINAL-SYNTHETIC-ANSWER','Original synthetic disclosure.','END-OF-DISCLOSURE','Not checked','Evidence unavailable','false','Amount','Empty submitted value'])assert.ok(text.includes(value),value);
-      assert.ok(await execute('const d=document.getElementById("history-detail"),r=d.getBoundingClientRect();return d.scrollHeight>d.clientHeight&&r.left>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1;'));
+      assert.ok(await execute('const d=document.getElementById("history-detail"),r=d.getBoundingClientRect();return r.top>=0&&r.left>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1;'));
+      await execute('for(const title of ["Submitted answers","Authorization evidence · recorded disclosures"]){const summary=[...document.querySelectorAll("#history-detail-content summary")].find(x=>x.textContent===title);if(!summary)throw new Error("Missing evidence disclosure");summary.click();}');
+      assert.ok(await execute('const d=document.getElementById("history-detail");return d.scrollHeight>d.clientHeight;'));
       await execute('const p=[...document.querySelectorAll("#history-detail-content p")].find(x=>x.textContent.includes("END-OF-DISCLOSURE"));p.scrollIntoView({block:"end"});');
       assert.ok(await execute('const p=[...document.querySelectorAll("#history-detail-content p")].find(x=>x.textContent.includes("END-OF-DISCLOSURE")),d=document.getElementById("history-detail");return p.getBoundingClientRect().bottom<=d.getBoundingClientRect().bottom+1;'));
       await keys(['\uE004']);assert.ok(await execute('return document.getElementById("history-detail").contains(document.activeElement)'));
@@ -78,8 +80,8 @@ function startupDiagnostics(log,driver,elapsedMs){
       await command('POST','/session/'+session+'/url',{url:origin.origin+'/CrmHistory?kind=profile&id=11111111111111111111111111111111'});
       await wait('!!document.getElementById("history-subject")');
       assert.equal(await execute('return document.getElementById("history-subject").textContent'),'Client: Synthetic Client <safe>');
-      await execute('const css=document.createElement("link");css.onload=()=>window.__crmCssReady=true;css.rel="stylesheet";css.href="/lib/bootstrap/dist/css/bootstrap.min.css";document.head.append(css);');
-      await wait('window.__crmCssReady===true');
+      await execute('window.__crmCssReady=0;for(const href of ["/lib/bootstrap/dist/css/bootstrap.min.css","/design/legend-web-foundation.css","/design/legend-app-shell.css","/css/site.css","/css/crm-history.css"]){const css=document.createElement("link");css.onload=()=>window.__crmCssReady++;css.rel="stylesheet";css.href=href;document.head.append(css);}');
+      await wait('window.__crmCssReady===5');
       for(const zoom of ['1','2']){
         await execute('document.body.style.zoom='+JSON.stringify(zoom));
         assert.ok(await execute('const s=document.getElementById("history-subject"),r=s.getBoundingClientRect();return r.width>0&&r.height>0&&r.left>=0&&r.right<=innerWidth+1&&s.scrollWidth<=s.clientWidth+1;'));

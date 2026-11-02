@@ -214,7 +214,7 @@ public class WebsitePlatformController : ControllerBase
         if (route.Length == 0) route = "/";
         // Resolve exactly one immutable published snapshot. The visitor path must
         // never rebuild the entire public API envelope or launch a Node compiler.
-        var publication = ReadImmutablePublication(() => (
+        var publication = WebsiteContentStore.ReadImmutablePublication(() => (
             from state in _db.Set<WebsiteContentState>().AsNoTracking()
             join version in _db.Set<WebsiteContentVersion>().AsNoTracking()
                 on state.PublishedVersionId equals version.Id
@@ -301,7 +301,7 @@ public class WebsitePlatformController : ControllerBase
         if (route == "/terms") route = "/home/terms";
         if (route.EndsWith("/index", StringComparison.Ordinal)) route = route[..^6];
         if (route == "/trainingpackages") return null;
-        var publication = ReadImmutablePublication(() => (
+        var publication = WebsiteContentStore.ReadImmutablePublication(() => (
             from state in _db.Set<WebsiteContentState>().AsNoTracking()
             join version in _db.Set<WebsiteContentVersion>().AsNoTracking() on state.PublishedVersionId equals version.Id
             where state.SiteKey == WebsiteEditorSiteKeys.Protect && state.OwnerKey == ownerKey &&
@@ -576,6 +576,7 @@ public class WebsitePlatformController : ControllerBase
                 publishedRevision = history.FirstOrDefault(v => v.versionId == state.PublishedVersionId)?.Revision,
                 publicationScopeId = state.Id,
                 facts,
+                receptionistSetupUrl = await ReceptionistSetupUrlAsync(actor, cancellationToken),
                 editorBaseUrl = actor.SiteKey == WebsiteEditorSiteKeys.Business
                     ? (_configuration["LegendWebsiteBaseUrl"] ?? "https://www.mylegnd.com").TrimEnd('/')
                     : null,
@@ -2679,6 +2680,55 @@ public class WebsitePlatformController : ControllerBase
             ? new { disposition = "rejected_before_commit", requestId = id, expectedRevision }
             : null;
 
+    public sealed record LocalProtectCapture(string Schema, string OwnerUserId, WebsiteContentDocument Document);
+
+    [NonAction]
+    public async Task<IActionResult> BootstrapLocalProtectAsync(
+        string databasePath, LocalProtectCapture capture, CancellationToken cancellationToken = default)
+    {
+        var environment = HttpContext.RequestServices.GetRequiredService<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>();
+        if (environment.EnvironmentName != "Development" || !_db.Database.IsSqlite() ||
+            !Path.IsPathFullyQualified(databasePath) ||
+            Path.GetFullPath(_db.Database.GetDbConnection().DataSource) != Path.GetFullPath(databasePath))
+            throw new InvalidOperationException("local_website_database_scope_required");
+        var upn = (_configuration["Founder:Upn"] ?? "").Trim().ToLowerInvariant();
+        if (upn.Length == 0) throw new InvalidOperationException("local_website_owner_required");
+        var owner = await _db.AgentTrackingProfiles.AsNoTracking().SingleOrDefaultAsync(
+            p => p.AgentUpn.ToLower() == upn && p.Status.ToLower() == "active", cancellationToken);
+        if (owner is null || string.IsNullOrWhiteSpace(owner.AgentUserId))
+            throw new InvalidOperationException("local_website_active_owner_required");
+        var ownerKey = NormalizeOwner(owner.AgentUserId);
+        if (capture.Schema != "legend-local-protect/v1" || capture.OwnerUserId != ownerKey)
+            throw new InvalidOperationException("local_website_capture_owner_mismatch");
+        // Captures enter through the same normalization boundary as materialization.
+        // Persisted drafts are never normalized during reads or overwritten here.
+        WebsiteContentDocument document;
+        try
+        {
+            WebsiteContentSanitizer.EnsureUniqueCanonicalNodeIds(capture.Document);
+            document = WebsiteContentSanitizer.Sanitize(capture.Document);
+            WebsiteSystemTemplateAuthority.Apply(WebsiteEditorSiteKeys.Protect, document);
+            _ = WebsiteContentSanitizer.ReadPersisted(JsonSerializer.Serialize(document, JsonOptions), JsonOptions);
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        {
+            return BadRequest(new { error = "local_website_capture_invalid" });
+        }
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+        if (await _db.Set<WebsiteContentState>().AnyAsync(
+                p => p.OwnerKey == ownerKey && p.SiteKey == WebsiteEditorSiteKeys.Protect, cancellationToken))
+            throw new InvalidOperationException("local_website_already_exists");
+        var state = new WebsiteContentState { OwnerKey = ownerKey, SiteKey = WebsiteEditorSiteKeys.Protect, DraftJson = "{}" };
+        _db.Add(state);
+        // This scope is local operator input, never a protected editor credential.
+        // HTTP callers retain their normal ticket and publication authorization.
+        var scope = new WebsiteEditorTicket(WebsiteEditorSiteKeys.Protect, ownerKey, owner.Slug,
+            false, DateTime.UtcNow.AddMinutes(1), ActorUserId: owner.AgentUserId);
+        var result = await PublishDocumentAsync(scope, state, document, null, cancellationToken);
+        if (result is OkObjectResult) await transaction.CommitAsync(cancellationToken);
+        return result;
+    }
+
     private async Task<IActionResult> PublishDocumentAsync(
         WebsiteEditorTicket actor, WebsiteContentState state, WebsiteContentDocument document,
         string? importReportJson, CancellationToken cancellationToken, Guid? requestId = null)
@@ -4051,6 +4101,34 @@ public class WebsitePlatformController : ControllerBase
         }
     }
 
+    private async Task<string?> ReceptionistSetupUrlAsync(WebsiteEditorTicket actor, CancellationToken ct)
+    {
+        // Navigation only. The destination independently rechecks settings membership
+        // and antiforgery; a website ticket never grants receptionist operation rights.
+        if (!Uri.TryCreate(_configuration["AgentPortalBaseUrl"], UriKind.Absolute, out var portal) ||
+            portal.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(portal.UserInfo)) return null;
+        var owner = await ResolveAdvertisingOwnerAsync(actor, ct);
+        if (owner is null) return null;
+        string? path = null;
+        if (owner.CommerceBusinessId is Guid businessId)
+            path = $"/business/{businessId:D}/receptionist";
+        else
+        {
+            var profileId = owner.AgentTrackingProfileId;
+            if (owner == Shared.Analytics.MarketingOwnerScope.Founder)
+            {
+                var profiles = new Infrastructure.Analytics.AgentTrackingResolver(_db,
+                    Microsoft.Extensions.Logging.Abstractions.NullLogger<Infrastructure.Analytics.AgentTrackingResolver>.Instance);
+                var founder = await Infrastructure.Analytics.ProtectWebsiteOwnerResolver.ResolveLeadAsync(
+                    profiles, _configuration["Founder:Upn"], null, null, true, ct);
+                profileId = founder?.Profile.Id;
+            }
+            if (profileId is Guid id && id != Guid.Empty)
+                path = $"/WebsiteAnalytics/receptionist?agentProfileId={id:D}";
+        }
+        return path is null ? null : new Uri(portal, path).AbsoluteUri;
+    }
+
     private Task<Shared.Analytics.MarketingOwnerScope?> ResolveAdvertisingOwnerAsync(
         WebsiteEditorTicket actor, CancellationToken cancellationToken) =>
         Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ResolveOwnerAsync(_db, _configuration, actor, cancellationToken);
@@ -4125,18 +4203,6 @@ public class WebsitePlatformController : ControllerBase
     private async Task<WebsiteContentDocument?> LoadAsync(string ownerUserId, string siteKey, CancellationToken cancellationToken)
         => (await LoadPublicationAsync(ownerUserId, siteKey, cancellationToken)).Document;
 
-    // Immutable publication payloads are also large SQL text values. Reuse the
-    // StateAsync large-LOB workaround without changing predicates, cardinality,
-    // command timeout, or async writes. The blocking read cannot cancel midway;
-    // never return its payload if request cancellation arrived while it ran.
-    private static T ReadImmutablePublication<T>(Func<T> read, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        var result = read();
-        cancellationToken.ThrowIfCancellationRequested();
-        return result;
-    }
-
     private async Task<(WebsiteContentDocument? Document, Guid? VersionId, long? Revision)> LoadPublicationAsync(
         string ownerUserId, string siteKey, CancellationToken cancellationToken)
     {
@@ -4149,7 +4215,7 @@ public class WebsitePlatformController : ControllerBase
         if (state is not null)
         {
             if (!state.PublishedVersionId.HasValue) return (null, null, null);
-            var version = ReadImmutablePublication(() => _db.Set<WebsiteContentVersion>().AsNoTracking()
+            var version = WebsiteContentStore.ReadImmutablePublication(() => _db.Set<WebsiteContentVersion>().AsNoTracking()
                 .Where(v => v.Id == state.PublishedVersionId && v.StateId == state.Id)
                 .Select(v => new { v.Id, v.Revision, v.DocumentJson, v.SnapshotRetiredUtc })
                 .Single(), cancellationToken);

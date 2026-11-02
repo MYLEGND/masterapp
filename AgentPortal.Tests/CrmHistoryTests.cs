@@ -370,6 +370,7 @@ public sealed partial class CrmHistoryTests
             Assert.IsType<Microsoft.AspNetCore.Mvc.ViewResult>(await controller.Index(subject.Item1, subject.Item2));
             Assert.Equal(subject.Item3, controller.ViewData["RelationshipType"]);
             Assert.Equal(subject.Item3 + " Subject", controller.ViewData["RelationshipName"]);
+            Assert.Equal(subject.Item3 + " Subject", controller.ViewData["SuggestedParticipants"]);
             Assert.Equal(subject.Item2, controller.ViewData["RelationshipId"]);
             Assert.IsType<Microsoft.AspNetCore.Mvc.NotFoundResult>(await BuildController(db, "other").Index(subject.Item1, subject.Item2));
         }
@@ -379,6 +380,7 @@ public sealed partial class CrmHistoryTests
         var unnamed = BuildController(db, "owner");
         Assert.IsType<Microsoft.AspNetCore.Mvc.ViewResult>(await unnamed.Index("lead", lead.LeadId));
         Assert.Equal("Name unavailable", unnamed.ViewData["RelationshipName"]);
+        Assert.Equal("", unnamed.ViewData["SuggestedParticipants"]);
     }
 
     private static AgentPortal.Controllers.CrmHistoryController BuildController(MasterAppDbContext db, string owner, bool restricted = false, bool nativeEnabled = true)

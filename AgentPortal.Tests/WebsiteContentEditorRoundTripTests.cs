@@ -32,6 +32,55 @@ public sealed class WebsiteContentEditorRoundTripTests
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     [Fact]
+    public async Task StandaloneReceptionist_UsesExistingMutationAndReadbackAuthority()
+    {
+        using var fixture = new Fixture("business");
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        await SeedCanonicalDraftAsync(fixture, ticket, CanonicalDocument(), revision: 1);
+        var node = new WebsiteCompositionNode { Id = "shared.voice", Type = "receptionist", Tag = "div", Title = "Shayla",
+            Receptionist = new() { Enabled = true, Label = "Talk", Placement = "after" } };
+        var result = await fixture.CreateController().ApplyMutations(new WebsitePlatformController.WebsiteMutationRequest(ticket, 1,
+            [new WebsiteMutationOperation { Type = "insertNode", Scope = "shell.footer", Node = node }]));
+        Assert.IsType<OkObjectResult>(result);
+        var saved = ReadDocument(await fixture.CreateController().Manage(ticket));
+        var voice = Assert.Single(saved.Shell.Footer);
+        Assert.Equal(node.Id, voice.Id);Assert.Equal("receptionist", voice.Type);Assert.Equal("Shayla", voice.Title);
+        Assert.True(voice.Receptionist!.Enabled);
+    }
+
+    [Theory]
+    [InlineData("legend")]
+    [InlineData("protect")]
+    [InlineData("business")]
+    public async Task ReceptionistSetupLink_UsesExactServerOwnerAndNeverCarriesEditorTicket(string siteKey)
+    {
+        using var fixture = new Fixture(siteKey, receptionistSetup: true);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        await SeedCanonicalDraftAsync(fixture, ticket, CanonicalDocument(), revision: 1);
+        var result = Assert.IsType<OkObjectResult>(await fixture.CreateController().Manage(ticket));
+        var payload = JsonSerializer.SerializeToElement(result.Value, JsonOptions);
+        var url = payload.GetProperty("receptionistSetupUrl").GetString();
+        var expected = siteKey == "business"
+            ? $"https://portal.example.test/business/{fixture.BusinessId:D}/receptionist"
+            : $"https://portal.example.test/WebsiteAnalytics/receptionist?agentProfileId={(await fixture.Db.AgentTrackingProfiles.SingleAsync()).Id:D}";
+        Assert.Equal(expected, url);
+        Assert.DoesNotContain(ticket, url!);
+        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().Manage("invalid-ticket"));
+    }
+
+    [Fact]
+    public async Task ReceptionistSetupLink_MissingFounderIdentityDoesNotFallBackToCaller()
+    {
+        using var fixture = new Fixture("legend", receptionistSetup: true);
+        fixture.Db.AgentTrackingProfiles.RemoveRange(fixture.Db.AgentTrackingProfiles);
+        await fixture.Db.SaveChangesAsync();
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        await SeedCanonicalDraftAsync(fixture, ticket, CanonicalDocument(), revision: 1);
+        var result = Assert.IsType<OkObjectResult>(await fixture.CreateController().Manage(ticket));
+        Assert.Equal(JsonValueKind.Null, JsonSerializer.SerializeToElement(result.Value, JsonOptions).GetProperty("receptionistSetupUrl").ValueKind);
+    }
+
+    [Fact]
     public async Task RuntimeAnchorRecovery_ReviewsNoDuplicatePlanAndPreservesSnapshotRevisionAndReplay()
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Protect);
@@ -2327,11 +2376,13 @@ public sealed class WebsiteContentEditorRoundTripTests
         public MasterAppDbContext Db { get; }
         public WebsitePlatformController Controller { get; }
 
-        public Fixture(string siteKey)
+        public Fixture(string siteKey, bool receptionistSetup = false)
         {
             _configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?>
             {
                 ["Founder:Oid"] = _actor,
+                ["AgentPortalBaseUrl"] = receptionistSetup ? "https://portal.example.test" : null,
+                ["Founder:Upn"] = receptionistSetup ? (siteKey == WebsiteEditorSiteKeys.Protect ? "other-founder@example.test" : "founder@example.test") : null,
                 ["WebsitePublishing:CompilerRoot"] = Path.GetFullPath(Path.Combine(SourceDirectory(), "..", "Legend-Website"))
             }).Build();
             _siteKey = siteKey;

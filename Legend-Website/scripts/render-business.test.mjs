@@ -428,3 +428,23 @@ test('Protect shell fragments retain every root on its original side of main',as
     if(!header.length)assert.equal(page.header,null);else{assert.match(page.header,/Header one/);assert.match(page.header,/Header two/);}
   }
 });
+
+test('shared receptionist is compiled on every published route without a form or network-loading gate',async()=>{
+  for(const siteKey of ['legend','business','protect']) {
+    const document={version:3,shell:{header:[],footer:[{id:'footer',type:'container',tag:'footer',children:[
+      {id:'terms',type:'link',tag:'a',text:'Terms',href:'/terms'},
+      {id:'voice',type:'receptionist',tag:'div',title:'Shayla',text:'Welcome',receptionist:{enabled:true,label:'Talk with Shayla',placement:'after'},fieldPresentations:{receptionist_start:{style:{color:'#123456'}}},children:[]}
+    ]}]},pages:{'/':{composition:[{id:'home',type:'heading',tag:'h1',text:'Home'}]},'/services':{composition:[{id:'services',type:'heading',tag:'h1',text:'Services'}]}}};
+    const result=await compileWebsite({siteKey,business,document});
+    for(const path of ['/','/services']) {
+      const page=parseHTML(result.pages[path].html).document;
+      assert.equal(page.querySelectorAll('[data-website-receptionist]').length,1);
+      assert.equal(page.querySelector('[data-website-receptionist] h2').textContent,'Shayla');
+      assert.equal(page.querySelector('[data-receptionist-start]').textContent,'Talk with Shayla');
+      assert.equal(page.querySelector('[data-receptionist-start]').hasAttribute('disabled'),false);
+      assert.equal(page.querySelector('footer a').textContent,'Terms');
+      assert.equal(page.querySelector('form[data-website-inquiry]'),null);
+      assert.equal(page.documentElement.hasAttribute('data-legend-canonical-pending'),false);
+    }
+  }
+});

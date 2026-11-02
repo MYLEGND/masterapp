@@ -5004,7 +5004,7 @@ def fast_track_scope(paths):
         expression = expression.replace(r'\*\*', '.*').replace(r'\*', '[^/]*').replace(r'\?', '[^/]')
         return re.fullmatch(expression, path) is not None
     def owners(path):
-        if path in shared_server:
+        if path == 'Directory.Build.props' or path in shared_server:
             return set(dotnet)
         if path.startswith(('CommerceCore/', 'Infrastructure/Commerce/')):
             return set(commerce)
@@ -5062,6 +5062,10 @@ def fast_track_scope(paths):
             'diagnostics/MerchantPaymentCoreTests/', 'diagnostics/MerchantPaymentAdapterChecks/')) or path in {
             'Legend-Cloudflare/tests/runtime/runtime.test.mjs',
             'scripts/recovery-replacement-admission.py',
+            # Local operator tooling and tests are not application package inputs.
+            'scripts/sync-local-azure-sql-firewall.sh',
+            'scripts/test-local-azure-sql-firewall.py',
+            'scripts/test-linked-web-assets.py',
             'MASTERAPP.sln', 'MasterApp.slnx', 'scripts/test-migration-probe-package.py',
             'scripts/test-parfait-readonly-workflow.py'}:
             return set()

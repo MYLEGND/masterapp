@@ -2946,8 +2946,8 @@ for (const siteKey of ['legend', 'protect', 'business']) {
   test(`${siteKey}: shared studio keeps navigation, theme and metadata available without selection`, async () => {
     const f = await domFixture({siteKey, business: siteKey === 'business' ? {id: 'business-id', displayName: 'Fixture business'} : null});
     try {
-      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 5);
-      assert.deepEqual([...f.w.document.querySelectorAll('.legend-cms-tabs [data-open]')].map(button=>button.textContent),['GPT Workspace','Source','Media','Publish','Advanced']);
+      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 6);
+      assert.deepEqual([...f.w.document.querySelectorAll('.legend-cms-tabs [data-open]')].map(button=>button.textContent),['GPT Workspace','Receptionist','Source','Media','Publish','Advanced']);
       assert.ok(f.w.document.querySelector('[data-open="signals"]'));
       assert.ok(f.w.document.querySelector('[data-open="quality"]'));
       assert.ok(f.w.document.querySelector('[data-open="collaboration"]'));
@@ -7079,7 +7079,7 @@ function assertRetainedProtectShell(w,shell,expectedHeight='520.856px'){
   assert.equal(w.document.querySelector('.site-footer').style.height,expectedHeight);
 }
 
-for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserves native CSS modal identity and scoped links: '+(prefix||'root'),async()=>{
+for(const prefix of ['', '/a/synthetic-agent']) for(const placeholderTag of ['p','iframe']) test('Coverage template preserves native CSS modal identity and scoped links: '+(prefix||'root')+' '+placeholderTag,async()=>{
   const style=coverageIndexView.match(/<style>[\s\S]*?<\/style>/)?.[0].replaceAll('@@media','@media');
   const script=coverageIndexView.match(/<script>([\s\S]*?)<\/script>/)?.[1];
   const pageStart=coverageIndexView.indexOf('<div class="quote-page">');
@@ -7124,12 +7124,17 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
         Object.assign(node,retained.find(child=>child.id===id));
       }
     }
+    captured.get('quote_index.div.node.node22.child.2').tag=placeholderTag;
     const savedModal=captured.get('quote_index.div.node.node28');
     savedModal.style={...savedModal.style,offsetXPercent:0};
     savedModal.breakpointStyles=Object.fromEntries(['desktop','tablet','mobile'].map(key=>[key,{offsetXPercent:0}]));
     doc.pages['/quote'].composition=savedCoverageShape.filter(row=>row[3]===null).map(row=>structuredClone(captured.get(row[0])));
     assert.equal(captured.get('quote_index.button.node.35').tag,'span');
   }finally{capture.close();}
+  const authoredPrayer=canonicalNodeById(doc,'quote_index.div.node.node24','/quote');
+  authoredPrayer.className='blessing-theme-card reveal';
+  authoredPrayer.style.color='#aabbcc';
+  canonicalNodeById(doc,'quote_index.p.node.34','/quote').text='Synthetic authored blessing';
   doc.shell=retainedProtectShellFixture();
   assert.equal(canonicalNodes(doc,'/quote').length,76);
   assert.equal(canonicalNodes(doc,'/quote').some(node=>String(node.systemKey||'').startsWith('protect_runtime_form:')),false);
@@ -7143,6 +7148,10 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
     }});
     try{
       const verify=(expectedHeight='520.856px')=>{
+        const prayer=f.w.document.querySelector('[data-cms-id="quote_index.div.node.node24"]');
+        assert.ok(prayer.classList.contains('prayer-card'),'Native template CSS remains owned by the native renderer');
+        assert.equal(prayer.style.color,'rgb(170, 187, 204)');
+        assert.equal(f.w.document.querySelector('[data-cms-id="quote_index.p.node.34"]').textContent,'Synthetic authored blessing');
         assertRetainedProtectShell(f.w,doc.shell,expectedHeight);
         assert.equal(f.w.document.querySelector('.life-tile'),original.tile);
         assert.equal(f.w.document.getElementById('lifeModal'),original.modal);
@@ -7258,7 +7267,7 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
       assert.equal(fetches,0);
     }finally{w.close();}
   }
-  for(const change of ['omit-modal','omit-calendar','omit-prayer','duplicate-modal','move-calendar','remove-close','authored-booking-text','authored-booking-style','pre-booking-edit-add-omit','extra-native-root','authored-booking-breakpoint','authored-booking-color','authored-booking-numeric-string','authored-booking-layout','authored-booking-binding','authored-booking-signal','authored-booking-div-typography','authored-booking-tag','authored-booking-children']){
+  for(const change of ['omit-modal','omit-calendar','omit-prayer','duplicate-modal','move-calendar','remove-close','authored-booking-text','authored-booking-style','pre-booking-edit-add-omit','extra-native-root','authored-booking-breakpoint','authored-booking-color','authored-booking-numeric-string','authored-booking-layout','authored-booking-binding','authored-booking-signal','authored-booking-div-typography','authored-booking-tag','authored-booking-src','authored-booking-href','authored-booking-media','authored-booking-children','renamed-modal-control','renamed-booking-anchor','interactive-prayer','prayer-action','native-prayer-action']){
     const changed=structuredClone(doc),nodes=changed.pages['/quote'].composition;
     const pageNode=nodes.find(node=>node.className==='quote-page');
     const modalNode=nodes.find(node=>node.className==='life-modal');
@@ -7268,6 +7277,10 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
     if(change==='duplicate-modal'){const extra=structuredClone(modalNode);extra.id+='-duplicate';nodes.push(extra);}
     if(change==='move-calendar'){const calendar=pageNode.children.find(node=>node.className?.includes('calendar-section'));pageNode.children=pageNode.children.filter(node=>node!==calendar);nodes.push(calendar);}
     if(change==='remove-close')modalNode.children[0].children=modalNode.children[0].children.filter(node=>node.id!=='quote_index.button.node.35');
+    if(change==='renamed-modal-control')canonicalNodeById(changed,'quote_index.button.node.35','/quote').className='different-control';
+    if(change==='renamed-booking-anchor')canonicalNodeById(changed,'quote_index.div.node.node22','/quote').className='different-booking';
+    if(change==='prayer-action')canonicalNodeById(changed,'quote_index.div.node.node24','/quote').actionKey='unexpected';
+    if(change==='interactive-prayer')canonicalNodeById(changed,'quote_index.div.node.node24','/quote').systemKey='protect_runtime_form:unexpected';
     if(change.startsWith('authored-booking')){
       const frame=canonicalNodeById(changed,'quote_index.div.node.node22.child.2','/quote');
       if(change==='authored-booking-text')frame.text='An authored change must not be silently discarded';
@@ -7279,7 +7292,10 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
       else if(change==='authored-booking-binding')frame.dataBinding={source:'untrusted'};
       else if(change==='authored-booking-signal')frame.signals=[{eventName:'untrusted'}];
       else if(change==='authored-booking-div-typography')canonicalNodeById(changed,'quote_index.div.node.node23','/quote').style.fontSize=17;
-      else if(change==='authored-booking-tag')frame.tag='iframe';
+      else if(change==='authored-booking-tag')frame.tag='object';
+      else if(change==='authored-booking-src')frame.src='https://untrusted.example.test';
+      else if(change==='authored-booking-href')frame.href='https://untrusted.example.test';
+      else if(change==='authored-booking-media')frame.mediaUrl='https://untrusted.example.test';
       else if(change==='authored-booking-children')frame.children.push(canonicalNode('unexpected.child','text','p',{text:'Must not disappear'}));
     }
     if(change==='pre-booking-edit-add-omit'){
@@ -7288,7 +7304,7 @@ for(const prefix of ['', '/a/synthetic-agent']) test('Coverage template preserve
       parent.children=parent.children.filter(node=>node.id!=='quote_index.p.node.4');
       parent.children.push(canonicalNode('authored.coverage.note','text','p',{text:'An ordinary new note'}));
     }
-    const changedHtml=change==='extra-native-root'?markup('disabled').replace('</main>','<aside><p>An unexpected native root</p></aside></main>'):markup('disabled');
+    const changedHtml=change==='native-prayer-action'?markup('disabled').replace('class="prayer-card reveal"','class="prayer-card reveal" data-website-action-key="unexpected"'):change==='extra-native-root'?markup('disabled').replace('</main>','<aside><p>An unexpected native root</p></aside></main>'):markup('disabled');
     const compiler=canonicalCompilerFixture(changedHtml);
     try{
       const w=compiler.window;w.CSS={escape:value=>String(value)};
@@ -7380,7 +7396,7 @@ for(const collision of [false,true]) test('Commercial Studio progress is scoped 
 });
 
 test('Protect Studio skips only published SEO hydration while retaining public SEO and owner identity',()=>{
-  assert.match(protectLayoutSource,/var websiteStudioMode =\s*Context\.Request\.Query\.ContainsKey\("legendEdit"\) \|\|\s*Context\.Request\.Query\.ContainsKey\("legendMaterialize"\)/);
+  assert.match(protectLayoutSource,/var websiteStudioMode =\s*localWebsiteCapture \|\|\s*Context\.Request\.Query\.ContainsKey\("legendEdit"\) \|\|\s*Context\.Request\.Query\.ContainsKey\("legendMaterialize"\)/);
   assert.match(protectLayoutSource,/if \(!websiteStudioMode && Guid\.TryParse\(trackingProfileId, out var seoProfileId\)\)/);
   const start=protectLayoutSource.indexOf('if (!websiteStudioMode && Guid.TryParse');
   const end=protectLayoutSource.indexOf('var seoRawTitle',start);
@@ -7922,4 +7938,142 @@ test('Protect request-native context uses serialized existing server template au
   assert.match(protectLayoutSource,/requestNativeView: @Html.Raw\(JsonSerializer.Serialize\(new \{/);
   assert.match(protectLayoutSource,/pageKey = ViewData\["PageKey"\]\?\.ToString\(\)/);
   assert.match(protectLayoutSource,/templateKey = Infrastructure.WebsiteEditing.WebsiteSystemTemplateAuthority.Resolve\(\s*Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect, requestPath\)/);
+});
+
+test('local native capture uses the canonical materializer without management or provider requests', async()=>{
+  let captured;
+  const f=await domFixture({siteKey:'protect',search:'?legendLocalCapturePage=1',beforeEval:w=>{
+    w.LEGEND_PUBLIC_CMS_CONTEXT.localCapture=true;
+    w.postMessage=value=>{captured=value;};
+  }});
+  try {
+    assert.equal(captured.type,'legend-site-materialized-page');
+    assert.ok(captured.composition.length>0);
+    assert.equal(f.calls.length,0);
+    const event=new f.w.Event('submit',{bubbles:true,cancelable:true});
+    f.w.document.body.dispatchEvent(event);
+    assert.equal(event.defaultPrevented,true);
+  } finally { f.close(); }
+});
+
+test('standalone receptionist uses the shared footer across scopes and pages with editable copy and inert preview',async()=>{
+  for(const siteKey of ['legend','protect','business']) {
+    const doc=canonicalDocument();
+    doc.shell.footer=[canonicalNode('shared.footer','container','footer',{children:[canonicalNode('footer.terms','link','a',{href:'/terms',text:'Terms'})]})];
+    const prepare=w=>{w.LegendPublicInquiryForm={mountWebsiteReceptionists};};
+    const f=await domFixture({siteKey,doc,business:siteKey==='business'?{id:'business-id',displayName:'Fixture business'}:null,beforeEval:prepare});let saved;
+    try {
+      f.click('#legend-cms-receptionist-sitewide');
+      const node=f.w.document.querySelector('[data-cms-receptionist]');
+      assert.ok(node);assert.ok(node.closest('footer'));
+      assert.equal(f.w.document.querySelector('footer a').textContent,'Terms');
+      assert.equal(node.querySelector('[data-receptionist-start]').disabled,true);
+      f.change('#legend-cms-receptionist-title','Shayla');
+      f.change('#legend-cms-receptionist-description','How can we help?');
+      f.change('#legend-cms-receptionist-label','Talk with Shayla');
+      f.click('#legend-cms-receptionist-appearance');
+      f.input('#legend-cms-width','65');
+      assert.equal(f.w.document.querySelector('[data-receptionist-start]').style.width,'65%');
+      f.click('#legend-cms-receptionist-sitewide');
+      assert.equal(f.w.document.querySelectorAll('[data-cms-receptionist]').length,1);
+      saved=await f.save();
+      assert.equal(saved.shell.footer[0].children[0].id,'footer.terms');
+      const voice=saved.shell.footer[0].children[1];
+      assert.equal(voice.title,'Shayla');assert.equal(voice.text,'How can we help?');
+      assert.equal(voice.receptionist.label,'Talk with Shayla');
+      assert.equal(voice.fieldPresentations.receptionist_start.style.widthPercent,65);
+      assert.equal(f.calls.some(call=>/receptionist.*\/(grant|start)/.test(call.url)),false);
+    } finally {f.close();}
+    saved.pages['/services']=structuredClone(saved.pages['/']);
+    const reopened=await domFixture({siteKey,doc:saved,business:siteKey==='business'?{id:'business-id',displayName:'Fixture business'}:null,pathname:'/services',beforeEval:prepare});
+    try {
+      assert.equal(reopened.w.document.querySelector('[data-website-receptionist] h2').textContent,'Shayla');
+      assert.equal(reopened.w.document.querySelectorAll('[data-website-receptionist]').length,1);
+      assert.equal(reopened.w.document.querySelector('[data-receptionist-start]').textContent,'Talk with Shayla');
+      assert.equal(reopened.w.document.querySelector('footer a').textContent,'Terms');
+    } finally {reopened.close();}
+  }
+});
+
+test('page receptionist needs no inquiry form and escapes custom copy',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition.push(canonicalNode('page.voice','receptionist','div',{
+    title:'<script>bad()</script>',text:'Ask <our> team',receptionist:{enabled:true,label:'Speak',placement:'after'}
+  }));
+  const f=await domFixture({doc,beforeEval:w=>{w.LegendPublicInquiryForm={mountWebsiteReceptionists};}});
+  try {
+    assert.equal(f.w.document.querySelectorAll('form[data-website-inquiry]').length,0);
+    assert.equal(f.w.document.querySelector('[data-website-receptionist] h2').textContent,'<script>bad()</script>');
+    assert.equal(f.w.document.querySelector('[data-website-receptionist] script'),null);
+    assert.equal(f.w.document.querySelector('[data-receptionist-start]').disabled,true);
+  } finally {f.close();}
+});
+
+test('sitewide receptionist captures the existing native footer without losing its links and retains typed capture',async()=>{
+  const f=await domFixture({captureNativePage:true,beforeEval:w=>{w.LegendPublicInquiryForm={mountWebsiteReceptionists};},html:'<!doctype html><html><head></head><body><main><section><h1>Home</h1></section></main><footer class="site-footer" data-cms-id="home.section.1"><a data-cms-id="home.h1.node.1" href="/privacy">Privacy</a></footer></body></html>'});
+  try {
+    f.click('#legend-cms-receptionist-sitewide');
+    assert.equal(f.w.document.querySelector('footer a').textContent,'Privacy');
+    const saved=await f.save();
+    assert.equal(saved.shell.footer[0].tag,'footer');
+    assert.notEqual(saved.shell.footer[0].id,'home.section.1');
+    assert.notEqual(saved.shell.footer[0].children[0].id,'home.h1.node.1');
+    assert.ok(canonicalNodeById(saved,'home.h1.node.1'));
+    assert.ok(saved.shell.footer[0].children.some(node=>node.type==='receptionist'));
+    const captured=f.w.__captureNativePage();
+    assert.ok(captured.shell.footer[0].children.some(node=>node.type==='receptionist'));
+  }finally{f.close();}
+});
+
+test('shared receptionist replacement requires an explicit choice and retains former page settings',async()=>{
+  const doc=canonicalDocument();
+  doc.shell.footer=[canonicalNode('footer','container','footer')];
+  doc.pages['/'].composition.push(canonicalNode('old.voice','form','form',{systemKey:'canonical_inquiry',receptionist:{enabled:true,label:'Existing voice',placement:'before'}}));
+  const f=await domFixture({doc,beforeEval:w=>{w.LegendPublicInquiryForm={mountWebsiteReceptionists};w.confirm=()=>false;}});
+  try {
+    f.click('#legend-cms-receptionist-sitewide');
+    assert.equal(f.w.document.querySelector('[data-cms-receptionist]'),null);
+    assert.equal(f.w.document.querySelector('[data-receptionist-start]').textContent,'Existing voice');
+    f.w.confirm=()=>true;
+    f.click('#legend-cms-receptionist-sitewide');
+    assert.equal(f.w.document.querySelectorAll('[data-website-receptionist]').length,1);
+    const saved=await f.save();
+    const old=canonicalNodeById(saved,'old.voice');
+    assert.deepEqual(old.receptionist,{enabled:false,label:'Existing voice',placement:'before'});
+  }finally{f.close();}
+});
+
+test('receptionist icon upload retains owned asset and allocates a unique canonical child identity',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition.push(canonicalNode('voice.icon','text','p',{text:'Retained existing content'}));
+  doc.pages['/'].composition.push(canonicalNode('voice','receptionist','div',{title:'Shayla',receptionist:{enabled:true,label:'Talk',placement:'after'}}));
+  const asset={id:'33333333-3333-3333-3333-333333333333',name:'Receptionist icon',url:'https://site.example/api/website-content/media/33333333-3333-3333-3333-333333333333',contentType:'image/png',sizeBytes:2048};
+  const f=await domFixture({doc,mediaUploadPayload:asset,beforeEval:w=>{w.LegendPublicInquiryForm={mountWebsiteReceptionists};}});
+  try {
+    f.click('[data-cms-receptionist]');
+    await selectFixtureMediaFile(f,'#legend-cms-receptionist-icon');
+    const saved=await f.save();
+    const icon=canonicalNodeById(saved,'voice').children[0];
+    assert.notEqual(icon.id,'voice.icon');
+    assert.equal(icon.mediaAssetId,asset.id);
+    assert.equal(icon.style.maxWidthPx,64);
+    assert.equal(icon.style.minWidthPx,64);
+    assert.equal(icon.style.widthPx,undefined);
+    assert.equal(canonicalNodeById(saved,'voice.icon').text,'Retained existing content');
+    assert.equal(JSON.stringify(saved).includes('ticket='),false);
+  }finally{f.close();}
+});
+
+test('receptionist heading edits synchronize Selected Source without losing the canonical component',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition.push(canonicalNode('voice','receptionist','div',{title:'Before',receptionist:{enabled:true,label:'Talk',placement:'after'}}));
+  const f=await domFixture({doc,beforeEval:w=>{w.LegendPublicInquiryForm={mountWebsiteReceptionists};}});
+  try {
+    f.click('[data-cms-receptionist]');f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));
+    f.change('#legend-cms-receptionist-title','Shayla');
+    const source=JSON.parse(f.w.document.querySelector('#legend-cms-site-source').value);
+    assert.equal(source.title,'Shayla');assert.equal(source.id,'voice');assert.equal(source.type,'receptionist');
+    await new Promise(resolve=>setTimeout(resolve,0));
+  }finally{f.close();}
 });

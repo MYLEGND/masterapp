@@ -47,7 +47,14 @@
     var hasMetaPixel = !string.IsNullOrWhiteSpace(metaPixelId);
     var openAiPixelId = (ViewData["ResolvedOpenAiPixelId"]?.ToString() ?? string.Empty).Trim();
     var hasOpenAiPixel = !string.IsNullOrWhiteSpace(openAiPixelId);
-    var websiteStudioMode =
+    var localWebsiteCapture = Env.EnvironmentName == "Development" && WebsiteSeoDb.Database.IsSqlite() &&
+        Config.GetValue<bool>("LocalWebsite:Capture") && Context.Connection.RemoteIpAddress is { } remoteAddress &&
+        System.Net.IPAddress.IsLoopback(remoteAddress);
+    var localCaptureProfile = Context.Items["TrackingProfile"] as Domain.Entities.AgentTrackingProfile;
+    if (localWebsiteCapture && (localCaptureProfile is null ||
+        !string.Equals(localCaptureProfile.AgentUpn, Config["Founder:Upn"], StringComparison.OrdinalIgnoreCase)))
+        throw new InvalidOperationException("Local capture requires the configured Founder profile.");
+    var websiteStudioMode = localWebsiteCapture ||
         Context.Request.Query.ContainsKey("legendEdit") ||
         Context.Request.Query.ContainsKey("legendMaterialize");
     Infrastructure.WebsiteEditing.Controllers.WebsitePlatformController.ProtectPublishedPage? compiledPublication = null;
@@ -671,6 +678,8 @@ else
 </script>
 <script>
     window.LEGEND_PUBLIC_CMS_CONTEXT = {
+        localCapture: @localWebsiteCapture.ToString().ToLowerInvariant(),
+        localCaptureOwner: @Html.Raw(JsonSerializer.Serialize(localWebsiteCapture ? localCaptureProfile!.AgentUserId.Trim().ToLowerInvariant() : null)),
         siteKey: "protect",
         apiBase: "",
         editorAuthorizationUrl: @Html.Raw(JsonSerializer.Serialize($"{agentPortalBaseUrl}/Account/EditProtectWebsite")),

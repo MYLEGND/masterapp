@@ -109,8 +109,8 @@ public sealed class WebsitePublishingAuthorityTests
     [Fact]
     public void ImmutablePublicationLobReadHonorsCancellationBeforeAndAfterWithoutSwallowingErrors()
     {
-        var method = typeof(WebsitePlatformController).GetMethod("ReadImmutablePublication",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var method = typeof(WebsiteContentStore).GetMethod("ReadImmutablePublication",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)!;
         var read = (Func<Func<string>, System.Threading.CancellationToken, string>)method.MakeGenericMethod(typeof(string))
             .CreateDelegate(typeof(Func<Func<string>, System.Threading.CancellationToken, string>));
         using var before = new System.Threading.CancellationTokenSource();

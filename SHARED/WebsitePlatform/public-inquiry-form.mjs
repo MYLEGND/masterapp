@@ -1,8 +1,10 @@
-export function websiteReceptionist({ preview = false, label = null } = {}) {
+export function websiteReceptionist({ preview = false, label = null, title = null, description = null } = {}) {
   const previewAttrs = preview ? ' data-preview' : '';
   const disabled = preview ? ' disabled' : '';
-  const safeLabel = escapeHtml(typeof label === 'string' && label.trim() ? label.trim().slice(0, 160) : 'Speak inside the website');
-  return `<section class="public-receptionist" data-website-receptionist${previewAttrs}><h2>Speak inside the website</h2><p>Talk with our AI receptionist without leaving this page. Voice availability is checked when you choose to speak. Microphone access is optional; you can send a written inquiry on this page.</p><button class="btn primary" type="button" data-receptionist-start data-cms-field-key="receptionist_start"${disabled}>${safeLabel}</button><button class="btn" type="button" data-receptionist-end hidden>End conversation</button><audio data-receptionist-audio controls autoplay hidden></audio><p data-receptionist-status aria-live="polite"></p></section>`;
+  const safeLabel = escapeHtml(typeof label === 'string' && label.trim() ? label.trim().slice(0, 160) : 'Talk with our AI receptionist');
+  const heading = typeof title === 'string' ? title.trim() : 'AI receptionist';
+  const introduction = typeof description === 'string' ? description.trim() : '';
+  return `<section class="public-receptionist" data-website-receptionist${previewAttrs}>${heading ? `<h2>${escapeHtml(heading)}</h2>` : ''}${introduction ? `<p>${escapeHtml(introduction)}</p>` : ''}<button class="btn primary" type="button" data-receptionist-start data-cms-field-key="receptionist_start"${disabled}>${safeLabel}</button><button class="btn" type="button" data-receptionist-end hidden>End conversation</button><audio data-receptionist-audio controls autoplay hidden></audio><p data-receptionist-status aria-live="polite"></p></section>`;
 }
 
 // Only explicit canonical placeholders are mounted. Existing forms and their
@@ -12,7 +14,7 @@ export function mountWebsiteReceptionists(root = document) {
   let mounted = 0;
   root.querySelectorAll('[data-legend-receptionist-entry]').forEach(host => {
     if (host.querySelector('[data-website-receptionist]')) return;
-    host.innerHTML = websiteReceptionist({preview:host.hasAttribute('data-preview'),label:host.dataset.receptionistLabel});
+    host.innerHTML = websiteReceptionist({preview:host.hasAttribute('data-preview'),label:host.dataset.receptionistLabel,title:host.dataset.receptionistTitle,description:host.dataset.receptionistDescription});
     mounted += 1;
   });
   return mounted;
@@ -66,6 +68,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     const mounted = mountWebsiteReceptionists(document);
     if (mounted) window.dispatchEvent(new CustomEvent('legend:public-inquiry-mounted'));
     if (!document.querySelector(
+      '[data-website-receptionist]:not([data-preview]),' +
       '[data-website-inquiry]:not([data-preview]),' +
       '[data-website-experience-form][data-submit-capability="lead_capture"]:not([data-preview])'
     )) return;

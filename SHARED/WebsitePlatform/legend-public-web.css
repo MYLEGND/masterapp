@@ -427,20 +427,22 @@ main :is(img,video)[data-legend-content-role="media"]{
 /* Canonical public publication gate: never show an older template while reading the published revision. */
 html[data-legend-canonical-pending="true"] body { visibility: hidden !important; }
 html[data-legend-canonical-pending="true"] body::before {
-  content: "Loading the latest published website…";
+  content: "Opening website…";
   visibility: visible !important;
   position: fixed;
-  inset: 0;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 2147483640;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  box-sizing: border-box;
-  background: #081a32;
-  color: #f7f6f2;
-  font: 600 16px/1.5 system-ui, sans-serif;
+  padding: 12px 20px;
+  border: 1px solid #d8dce4;
+  border-radius: 24px;
+  background: #ffffff;
+  color: #17263d;
+  font: 500 14px/1.5 system-ui, sans-serif;
   text-align: center;
 }
+
 .legend-canonical-unavailable {
   min-height: 75dvh;
   display: flex;

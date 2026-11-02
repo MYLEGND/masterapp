@@ -1781,3 +1781,613 @@ Native continuity verifies the exact current remote task branch with no local-on
 Validation during reconstruction: Protect .NET10 build succeeded; focused publication/mutation tests passed88/88, expanded publication/runtime-anchor/runtime-binding/inquiry-isolation set passed134/134; shared renderer passed17/17. Full website suite passed703/703 before the final native-style-baseline correction; dependent final checks and exact-candidate independent review remain required. Test fixtures are synthetic. Mobile DOM tests are not Safari/device acceptance.
 
 Canonical affected-app selection includes Portal, Client, Protect, Parfait and Website because the changed publication/mutation authority is shared by the .NET hosts and the renderer/CMS is packaged by Website and Protect. Commerce dependency reconciliation remains applicable; no schema or routing change is requested. The new request `protect-compiled-delivery-training-retirement-20261029-v1` replaces stale PR725-specific request text without waiving architecture-validation, approved-release-security, build-and-focused-tests, existing admission/recovery, selective deployment or actual live code/publication verification. This checkpoint is preparation evidence, not permission to skip those gates.
+
+## 2026-11-01 — Local linked static-asset parity
+
+Base: b5e940d762480ad8722bd86a76b4391864913dc2. Local repair branch:
+isolation/local-static-assets-parity-20261101. Portal's generated assembly already
+identified this base, but localhost /design/legend-web-foundation.css returned404;
+production returned200 with the same canonical Legend-Design source hash. SDK
+manifest discovery assigned linked Content the consuming app's wwwroot physical
+root, while publish correctly copied the original files. This was an asset-mapping
+source defect, not evidence requiring a second theme or replacement business logic.
+
+Directory.Build.props now sets the physical ContentRoot of linked wwwroot Content
+before the existing SDK discovery, preserving explicit roots, logical URLs, source
+identity and output/publish settings. No copied source assets, runtime providers,
+CSS overrides or alternate serving path were added. Local legend.nativeTestingRef
+was corrected from origin/legend/approved-changes to origin/Legend/fast-track-release;
+this machine configuration does not change GitHub or deployment authority.
+
+Validation: real SDK build/publish regression passes for renamed and nested URLs,
+slash/backslash links, ordinary wwwroot, explicit roots and nonweb exclusions;
+published bytes equal canonical inputs. Actual Portal Debug build passed with zero
+warnings/errors. Client/Protect/Parfait discovery checked25/127/6 linked entries
+with zero mismatched physical roots. Local Portal restarted using its existing
+profile; foundation, app-shell, website-management and Shared dashboard CSS all
+returned200 with exact canonical SHA256 matches. Authenticated localhost page
+visually restored readable navigation, heading, layout and canonical styling.
+Canonical resolved fixture paths are required: macOS /var versus /private/var
+aliases expose SDK lexical root matching; no platform-specific workaround added.
+
+This is local development verification, not new production publication or full
+business-journey acceptance. Original fast-track branch remains unchanged. New
+local branch has no remote counterpart, so canonical session preflight reports
+missing remote; no passing session preflight or remote preservation is claimed.
+
+## 2026-11-01 — Protect development dependency closure
+
+Local base635d55ab8d48d67a7dada0125a6b8dcb39d1379c preserved. Protect's normal
+Development startup failed ValidateOnBuild: marketing registered receptionist
+booking without its canonical inquiry dependency; shared commerce registered
+training enrollment while Protect gated its billing dependency behind cutover.
+AddMarketingConnections now calls the existing idempotent confirmed-inquiry
+registration adjacent to booking. Protect's single AddMasterAppBilling call now
+accompanies its unconditional commerce core registration. MVC cutover/preview,
+financial intelligence, automation worker, startup proof, training rollout and
+Development SQL refusal are unchanged. No runtime worker/provider activation or
+validation suppression was added.
+
+Actual Protect and test-project compilation passed (existing unrelated test
+obsolete API/nullable warnings remain).32unique focused dependency, training and
+cutover cases passed: initial31passes retained; final4dependency cases reran after
+correcting the no-new-worker assertion to preserve the existing DataProtection
+hosted service. The marketing regression asserts inquiry registration BEFORE an
+idempotency repeat so it cannot mask the original missing dependency. Test runner
+required permitted local sockets; no production providers or writes were tested.
+
+Protect then started on its unchanged Development profile at1111/1112 with normal
+DI validation. HTTP verification exposed missing local Founder:Upn; the existing
+production Founder__Upn was copied without disclosure into native local user-secrets,
+not source, and production configuration was untouched. Final startup succeeded;
+/design/legend-web-foundation.css returned200 and canonical SHA256
+f370b3a6cd39bac15c12183e1f7a682fd9276650b938e68aa0ddaf3e3ce79219.
+Verification processes were stopped to leave ports free for the Founder. No
+production deployment, migration, charge, email or cutover was performed. Local
+repair branch still has no remote counterpart; no remote preservation is claimed.
+
+## 2026-11-01 — Local SQLite missing model tables
+
+Founder explicitly authorized local-only continuation despite the unpublished
+repair branch preflight stop and advanced remote fast-track. Base e519ed515534d854d48bd6a9b8cf361ca7127c0e preserved; no push/deployment authorized.
+The existing SQLite bootstrapper now derives physically absent tables and their
+indexes from the EF design-time relational model, using SQLite-generated DDL in
+one transaction after legacy repairs and before existing history stamping. No
+existing table replacement, copied schema, new migration stamp, or SQL Server
+behavior change. EnsureCreated alone had skipped publication tables in the old
+nonempty local database.
+
+Actual test-project compilation passed; nine focused tests passed, including
+canonical schema/index equality, row/history preservation, repeat startup,
+transaction rollback on index collision, SQL Server no-op and existing billing
+schema regressions. Test execution required the normal local test-runner socket.
+Persistent SQLite backup and fingerprints:
+/Users/zacowen/LEGEND-Recovery/sqlite-protect-20261101T144344/.
+Protect normal Development startup reconciled 117 missing model tables. All91
+original table row fingerprints, including migration history, remained identical;
+SQLite integrity passed and foreign-key violations were zero. Home now returns
+intentional503 with no SQLite exception because no local publication exists;
+canonical CSS returns200. This fixes schema initialization, not authored-content
+parity or full business-journey acceptance. No production content was copied and
+no missing-publication gate was bypassed. Production remains untouched.
+
+## 2026-11-01 — Leads CRM Quick View canonical cleanup
+
+Local base ce4ee617bb566b56ca9a574ea9468a32e028262a preserved. Continuing the
+Founder-authorized local-only repair scope; canonical preflight still reports
+missing remote for this local branch, with no passing remote gate claimed.
+Quick View failed before opening because the shared history migration removed
+noteSyncLeadField but left two calls in openDrawerForRow. Removed those obsolete
+calls; canonical /CrmHistory navigation and active selection remain unchanged.
+The same migration initialized historyReminderItems after initial rendering;
+moved its single declaration before that render in Leads and Clients. No stub,
+error suppression, alternate history owner, or delayed-render workaround added.
+
+Eleven focused CRM Node tests passed. New regressions execute the actual drawer
+function through shell and asynchronous detail hydration, preserve failure
+reporting and active identity, and exercise reminder initialization order for
+both pages. Original source reproduced undefined-helper failure and startup TDZ.
+Both scripts pass syntax checks. Authenticated localhost /Leads test-record
+Quick View now opens (aria-hidden=false) and reaches Loaded. No record editing,
+production deployment, database migration, or push performed. Browser diagnostics
+correlate the running server assembly to635d55; the local static JavaScript repair
+was loaded by page refresh without claiming a server redeployment.
+
+## 2026-11-01 — Local Protect database publication
+
+Founder requested a local database website. Preserved local base
+99c45c91c7989496137ad7e1a5b7dff52c8b306f and the existing local-only continuity
+exception: this branch has no remote counterpart; no remote preflight pass,
+push, deployment, or production parity is claimed.
+
+Extended existing materialization and publication owners with explicit
+Development/SQLite/exact-path/active-owner guards. Capture is loopback-only,
+GET/HEAD-only, reuses native Protect pages and existing materializer, and
+isolates external workers and management writes. One-shot publication calls the
+existing canonical validator/compiler/publisher in a transaction and refuses an
+existing publication. Normal HTTP authorization and production behavior remain.
+
+Eight database guard/rollback tests and eight focused website materializer tests
+passed; Protect and the actual AgentPortal.Tests project compiled. Astra reviewed
+the bounded source and accepted one local publication after verified backup.
+The unchanged captured v3 document contains25 native pages; SHA256
+ debb5f5719654f00f82cf91bb036a9e41c59937919cd9f85f5432b41bb4b8183.
+Canonical publication succeeded once: revision1, published pointer matches its
+immutable version,25 compiled pages, SQLite integrity_check=ok. Local HTTPS1111
+home, /quote/term-life and /contact return200; both latter pages contain native
+forms. No form submitted or production provider operation performed.
+
+Verified before/after SQLite backups and capture are retained at
+/Users/zacowen/LEGEND-Recovery/protect-local-publication-20261101T152050/.
+This is persistent Mac recovery, not cloud recovery. Temporary capture host
+stopped; normal local Protect host remains running. Browser reinspection was
+unavailable after capture; final route checks used HTTP response evidence.
+
+## 2026-11-01 — Restore bounded automatic local Azure SQL access
+
+Founder explicitly chose existing Azure data with repaired automatic access.
+Preserved base c578417b6cb1058adaaded253638dc128006ca5d and local-only branch;
+preflight currently reports Git connectivity failure. Existing verified external
+bundle preserves prior work; no remote preservation or preflight pass claimed.
+
+The installed five-minute LaunchAgent was stuck nearly27days in an unbounded
+Azure CLI server lookup, leaving its single-IP rule stale. Extended the existing
+sync-local-azure-sql-firewall.sh owner:40-second process-group bounds on Azure
+calls,10-second outer DNS bound, IPv4 detection, exact subscription/server guards,
+both firewall endpoints checked, failed reads fail closed, and one mutation
+followed by reconciliation even when its command reports failure. No immediate
+write retry, broad range, alternate updater or application change introduced.
+Ten focused offline tests pass, including separately spawned descendant timeout,
+wrong identity, read failure, wide endpoint, ambiguous write and readback mismatch.
+
+Stopped only the identified stuck updater tree, performed one authorized rule
+update, and restored the existing LaunchAgent. Independent Azure readback confirms
+ZacLocalDev-AutoSync start=end=45.86.210.87. Automatic RunAtLoad completed exit0;
+existing300-second interval retained. Started the stopped local AgentPortal and
+refreshed the original authenticated https://localhost:6205/ page: Home - LEGEND,
+Quick Launches present, SQL exception absent. Existing Azure database and app
+configuration retained; no credential changes, migrations or deployment.
+
+Future refreshes still depend on Mac running, valid native Azure authentication,
+and working network/provider access. IP changes can require the scheduler interval
+plus Azure propagation; no guarantee of uninterrupted access is claimed.
+
+## 2026-11-01 — Canonical CRM history presentation
+
+Founder requested direct styling replacement for shared Clients/Leads activity
+and case notes. Preserved base2b3d3cd652e80f7d9c6538cb6d5d163980c3ab0c and local
+branch/recovery exception; Git preflight reports connectivity failure, no remote
+preservation or passing gate claimed.
+
+Replaced generic Bootstrap presentation at CrmHistory/Index.cshtml with one
+component stylesheet consuming the existing LEGEND app-shell palette. Compact
+primary filters, expandable advanced filters, timeline and case-note/evidence
+panel share responsive geometry. Replaced old control/action/card classes and
+inline dialog/value styles directly; no global token changes, !important,
+stacked override blocks or alternate history implementation. JavaScript changes
+are emitted presentation classes only. Every existing ID, field name, scope
+attribute, antiforgery token, permission gate and evidence wording is retained.
+
+Actual AgentPortal Razor build passed with0warnings/errors; four existing CRM
+Node regressions and JS syntax passed. Authenticated Lead timeline and Client
+profile route render the shared view. Desktop and390px layout checks have no
+horizontal overflow; final mobile controls use canonical navy palette. Native
+advanced-filter keyboard expansion and mobile record dialog fit/scroll/close
+verified; Client empty state is readable. No interactions/evidence/corrections
+submitted; normal existing history Backfill/access auditing remains unchanged.
+Only local Portal restarted; no deployment, migration or push.
+
+## 2026-11-01 — Shared CRM modal geometry and category cues
+
+Founder requested wider canonical modals, reduced scrolling, a styled workspace
+header and meaningful color navigation. Preserved base
+9f45fa2583214a3f6eb365aae72b77ec427dfc61 and local-only continuity exception;
+Git preflight still reports connectivity failure. No remote pass claimed.
+
+Replaced the component's900px dialog limit with existing shared desktop modal
+width/height variables. Native dialog heading/close stay available; labeled
+record fields use responsive columns, nested groups and long narratives span
+rows. Original keys, values, null/empty distinctions, safe textContent rendering,
+source/evidence disclaimers and request identity behavior remain unchanged.
+Header now consumes navy/gold panel tokens with a relationship badge. Timeline
+category labels and colored borders distinguish submissions, interactions,
+follow-up activity, complaints and evidence; unknown records remain neutral.
+These cues classify records and never infer provider success or current status.
+
+Actual AgentPortal Razor build passed0warnings/errors. Six focused Node tests
+pass, including nested arrays/objects, false/zero/null/empty/untrusted text,
+long-narrative preservation and category truth. Live local desktop dialog is
+1680px at1728px viewport, matching resolved global token; fields use horizontal
+grid with no overflow. At390px viewport dialog is342px, one column, no horizontal
+overflow; close works. Header computed canonical navy; viewport reset afterward.
+No manual record/evidence writes; existing access auditing remains active.
+No global style overrides, alternate modal engine, backend changes or deployment.
+
+## 2026-11-01 — Readable case-history PDF and compact workspace
+
+Preserved base ee64f0e79989f4a2a53a4e7bac064dcf30b41a2e on the existing
+isolated local branch. Canonical preflight remains blocked by remote connectivity;
+the previously authorized local-only preservation exception applies. No push or
+remote-success claim, merge, deployment, migration or governance change.
+
+The existing authorized Export action now returns application/pdf through the
+existing QuestPDF dependency and a presentation-only partial of its controller.
+Complete authorized history, chronology, source identity, evidence snapshots,
+omitted-submission reasons, protected-document receipts and scope limitations
+remain present. Binary attachments remain separate. Unknown, empty, false and zero
+values remain distinct; arbitrary submitted text is not interpreted as markup.
+PDF generation precedes the existing export audit. Tenant and restricted-identity
+authorization remain unchanged. Converted-profile naming follows route kind.
+
+Timeline and case notes now share desktop width equally, with compact horizontal
+record summaries and responsive forms. Existing deterministic paging supports
+10/25/50 records; the UI defaults to10 and all activity. An explicitly selected
+case-activity view excludes only access/export audit records from display, never
+storage. Export includes complete authorized history regardless of screen filters.
+Mobile stacks the panels. No duplicate storage, authority or CSS override added.
+
+Validation: actual AgentPortal build passed;56 focused server tests and7 Node
+regressions passed. The HostedSyntheticHistory Linux/GitHub-only fixture was
+excluded locally because its enforced runner contract cannot run on Mac; full CI
+is not claimed green. Synthetic ten-page PDF passed content-preservation checks
+and first/middle/last-page visual review. Independent Astra source/PDF review found
+no remaining blocker pending final evidence. Live export returned200 application/pdf
+and a genuine PDF download. Desktop columns measured763.609px each;390px mobile
+stacked without horizontal overflow. Explicit case view showed2 relevant records;
+all view paged10 records. Existing page/access/export auditing remains active;
+no manual case notes or protected evidence were submitted during verification.
+
+## 2026-11-01 — Streamlined record details and case-note composer
+
+Preserved c2bb6c354a31a2e8e4492ae319b334689a414866 on the existing local
+isolation branch. Preflight remains blocked by filesystem/transport verification;
+existing local-only exception and persistent recovery procedure apply. No push.
+
+Canonical shared CRM presentation now uses quiet two-column labeled rows instead
+of a tile wall. Original values remain available in clearly labeled disclosures;
+submitted evidence, browser-reported context, authorization and metadata remain
+distinct. Note narrative is primary; complete original fields remain accessible.
+The same note form opens in the shared native modal with note/type/date visible,
+optional fields expandable, required-type and exact-UTC guidance automatically
+revealed. Closing preserves the existing draft/request identity. Find saved notes
+uses the existing type filter and one canonical reset/load; no new storage/query
+owner. Save confirmation, uncertain-save handling and server validation unchanged.
+
+Actual AgentPortal build passed with zero warnings/errors;11 focused Node tests
+passed including draft-close preservation, complete note detail and single-load
+quick-find. Live local composer opens, desktop and390px mobile have no horizontal
+overflow; note shortcut selects Note and truthfully reports no matching notes for
+the inspected relationship. No test note submitted to the existing Azure database;
+normal existing page/access auditing remains active. No production deployment,
+migration, backend/PDF change or full-CI success claim.
+
+## 2026-11-01 — Case report hierarchy, duplicate safeguards and modal contrast
+
+Preserved d577879c9919f22bedeacadbb037ae813a170b26; existing local-only
+exception remains in effect after canonical preflight filesystem/transport block.
+No remote preservation or full-CI claim, migration, merge or deployment.
+
+Existing PDF owner now starts with case/form/note/document counts, recorded
+submission evidence statuses, unavailable snapshots and explicit historical limits.
+Customer records precede once-only authorized submission snapshots and a complete
+access/export appendix. Known tracking and legacy numbered answer fields follow
+primary submitted fields; no values or distinct event identities are coalesced.
+Duplicate immutable IDs fail report generation rather than silently merging.
+Protected receipts render at their owning record once, with appendix references.
+Repeated record headers identify continuation pages; section flow avoids forced
+near-empty pages. Clickable contents, page references, internal receipt/evidence
+links and return links use existing QuestPDF. HTTPS source links use configured
+AgentPortal:BaseUrl only; missing configuration remains explicit relative paths.
+Native sidebar bookmarks are not provided by this existing renderer. Recorder
+names are not inferred from IDs. Local chronology headings show zone and offset;
+original UTC/date-only/unknown fields remain intact. Missing authorization is not
+reconstructed and this work does not prove historical consent or legal sufficiency.
+
+Canonical modal styles now use gold labels, raised input surfaces, section
+headings and corrected sticky-header spacing. No global override or second engine.
+UI prevents concurrent export clicks; separate later requests remain separate
+valid export audit events, not server-idempotent retries.
+
+Validation:6 focused PDF tests and12 Node tests passed; actual test project
+compiled (existing unrelated warnings). Synthetic null/empty/malformed snapshots,
+duplicate-ID rejection, equal-content distinct events and shared snapshot references
+were exercised. Final10-page synthetic PDF rendered and reviewed; text extraction
+proves each source identity once, two distinct equal narratives preserved, one
+snapshot payload and one protected receipt body. Every page has navigation links;
+no nearly-empty final/section-boundary pages remain in that fixture. Existing
+owner/restricted-user export denials pass. No manual case notes/evidence submitted;
+normal existing access/export auditing remains active. Historical authorization,
+recorder identity resolution and cloud release remain outside this presentation fix.
+Final live localhost verification returned200 application/pdf (185667 bytes), with
+PDF magic header in the downloaded report. Modal gold label/raised input styles
+verified;390px modal has no horizontal overflow. Only local AgentPortal restarted.
+
+## 2026-11-01 — Compact case-first history and recognizable notes
+
+Preserved85bbb9dade815f32e2892f82758777710915f56b on the existing local branch.
+Canonical preflight remains blocked; previously authorized local-only exception
+and verified persistent recovery apply. No push, merge, deployment or migration.
+
+Fixed a concrete presentation mismatch: Append stores PascalCase Account/Outcome/
+NextAction, while the simplified viewer checked lowercase only. The reader now
+uses exact PascalCase first with lowercase compatibility and no truthiness
+fallback. Original fields (including conflicting-case keys) remain accessible.
+Notes have a distinct violet-accented panel and timeline category. UI initial and
+reset scope is case activity, explicitly excluding access/export audit from display;
+All activity remains available, API default and full PDF export remain unchanged.
+The status describes the captured request, not an unsubmitted selection.
+
+Short modal fields use4/3/2/1 responsive columns; long notes and narratives retain
+full width. More filters retains native accessible disclosure behavior with
+canonical button styling. The authorized resolved profile name supplies only an
+editable participant suggestion, clearly marked to confirm/remove. Existing agent
+assignment default remains; no guessed date, product, outcome, consent or ownership.
+Recovered drafts and intentionally blank fields override initial defaults.
+
+Validation:16 focused Node tests passed; the focused authorized-route C# regression
+passed for lead, converted client and unnamed profiles, with actual test-project/
+Razor compilation. Initial compiler failure from an accidental second prefill
+insertion was corrected before final passing validation. Live page default/reset
+is case;3 substantive records shown with audit hidden. Existing PascalCase note
+renders distinctly. Desktop4-column,1200px3-column and390px1-column metrics verified;
+mobile modal has no horizontal overflow. Profile suggestion is present and editable.
+No manual note/evidence submission performed; normal page/access auditing remains.
+PDF/backend persistence, immutable identities and authorization remain unchanged.
+
+## 2026-11-01 — GitHub preservation and nondeploying fast-track synchronization preparation
+
+Founder requested GitHub fast-track include accepted local changes without any
+production deployment. Published existing isolation/local-static-assets-parity-20261101
+at db21e0f3b582b00701037373f08605421492dc14; exact remote readback and canonical
+preflight PASS, clean/current. Draft PR754 targets Legend/fast-track-release.
+Fast-track remains3f4953ee733d44bd566f3d1e997f065473dc06d6 and requires PRs,
+architecture-validation, approved-release-security and build-and-focused-tests.
+Initial PR checks rejected missing current fast-track ancestry (FAST_TRACK_BASE_CHANGED).
+
+Prepared a clean merge of fast-track's three existing PR753 commits into isolation,
+with db21e0f3b582b00701037373f08605421492dc14 as first parent and
+3f4953ee733d44bd566f3d1e997f065473dc06d6 as second. Independent review verified
+six incoming paths exactly match fast-track; all accepted local corrections remain.
+No conflict, rewritten commit, new implementation or protection change.
+
+Do not merge PR754 into fast-track yet: active workflow380114158
+(.github/workflows/legend-fast-track-ui.yml) matches affected CRM paths and enters
+the release selector on push. Its inherited zero-target tool-promotion request is
+not fresh authorization for this application candidate; do not rely on failed
+admission as a deployment-prevention mechanism. A separately approved nondeploying
+maintenance procedure and passing exact-candidate checks are required before target
+branch update. No deployment, SQL migration or production governance change performed.
+
+## 2026-11-01 — Local website workspace transport and capture validation (partial)
+
+Continued isolation/local-static-assets-parity-20261101 from exact synchronized
+c52c20d59b06b85a35b2a98b879d69a4b7f1a32f; canonical preflight passed.
+Portal session producers now prefer existing WebsiteContentApiBaseUrl; public
+LandingRoutes remains the compatibility fallback. Founder navigation uses the
+existing LegendWebsiteBaseUrl. Protect permits only the exact HTTPS Portal6205
+and ClientApp5221 origins in its Development editor CORS policy; production CORS,
+ticket authorization and tenant ownership remain unchanged.
+
+Local capture bootstrap now normalizes untrusted capture through the existing
+sanitizer and template authority and proves strict persisted-read compatibility
+before publication. Existing environment/path/owner/no-overwrite/transaction
+guards remain. No existing saved draft or publication was rewritten.
+
+Validation: actual test project compiled;19 focused C# tests passed (including
+capture normalization/rollback and session routing);41 shared management JS tests
+passed. Independent Astra accepted this bounded source correction after diff
+review; this is not acceptance of complete website readiness.
+
+Live local evidence: normal Protect HTTPS1111 homepage renders its existing
+compiled publication.1113 screenshot was the retired temporary capture host.
+After CORS correction, genuine Protect ticket reaches management but existing
+local draft fails strict reading (website_v3_noncanonical_persisted_document).
+Read-only comparison found native tag/child changes; automatic normalization of
+that existing draft is not approved. Founder management returns401: local Founder
+identity configuration still needs reconciliation. Azure-backed Portal and
+SQLite-backed Protect cannot share business handoff records. These remain open;
+no claim that all websites or Website Studio work locally is made.
+
+No renderer safeguards removed, production configuration changed, Cloudflare
+publication, migration, fast-track merge or deployment performed. Preserve
+original local draft and immutable publication while preparing a reviewable
+content-preserving recovery through the existing authority.
+
+## 2026-11-01 — Complete local published-route rendering sweep
+
+Continued exact isolation checkpoint0af610df05a2253bc872adfdd8c14fc27c8c1592.
+The complete25-route local immutable publication sweep identified /quote as the
+remaining public rendering failure. Its raw captured booking placeholder uses
+text/iframe while the existing safe projection expected sanitized text/p.
+Corrected only that exact placeholder representation check in the canonical CMS
+renderer. Saved children remain inert: they are never mounted, their URLs never
+applied, and the current request-owned booking node remains authoritative.
+Nonempty content, URLs, children, signals and bindings still fail closed. No
+stored draft, immutable publication, generic tag policy or renderer was replaced.
+
+Ten focused renderer tests passed, including both representations across root
+and agent scope, embed/fallback/disabled booking states, compiler/hydration,
+unsafe-field rejection and native identity preservation. Protect compiled with
+zero warnings/errors. Refreshed local process/packaged assets; served renderer
+hash matches source. Browser verification passed all25published routes and all25
+agent-prefixed routes (50checks), with main content and no unavailable/pending
+screen. Coverage life chooser opens and existing booking widget loads; no forms
+submitted or bookings made. This verifies public rendering, not every business
+journey or production deployment.
+
+Prior management blockers (noncanonical stored draft and Founder401) remain
+separate and unresolved. No management recovery, production publication,
+fast-track merge or deployment performed. Existing source/release authority and
+saved content remain preserved.
+
+## Website Studio receptionist presentation — 2026-11-01
+
+Continued exact isolation checkpoint 031113a5b4da0b1a2ee5fda5b4a4379fe606bd1e;
+native preflight verified clean/current local and remote ancestry and transport.
+Founder scope: customizable receptionist across all pages or individual pages,
+existing operational setup reachable from Studio, and no blue full-screen loader.
+
+Extended the existing v3 composition grammar with a receptionist component;
+heading, optional introduction, action label, canonical image child, responsive
+styles and field presentation remain in the same document/mutation/compiler.
+Studio has a Receptionist entry and shared-footer/page placement. Shared placement
+preserves footer links and allocates identities against retained page/shell nodes.
+Replacing existing page voice entries requires an explicit choice, retains their
+settings and uses the existing undo checkpoint. Old form-attached presentations
+remain supported. No hidden inquiry form or second voice lifecycle was created.
+Standalone hosts now start the existing runtime without needing an inquiry form;
+preview remains inert. No calls, microphone grants or operational activation ran.
+
+Authenticated management returns a navigation-only setup link bound to the exact
+server-resolved business or agent/Founder tracking profile. Missing identity does
+not fall back to the current caller. Destination settings authorization, review,
+readiness, admission, antiforgery and provider configuration remain authoritative.
+The full-screen blue pending pseudo-element was replaced by compact status;
+hidden-unverified-content, exact-publication reveal and timeout failure remain.
+This does not promise instantaneous authenticated Studio/network reads.
+
+Focused evidence: actual AgentPortal.Tests compilation and 31 selected C# tests
+passed (schema, unexpected authority rejection, exact setup scope, missing owner,
+canonical mutation/readback and existing inquiry compatibility). Seven Studio JS
+tests passed including all three site scopes, second-route shared placement,
+explicit replacement/cancel, icon upload/collision and Canvas/Source sync.
+24 runtime/first-paint tests passed including standalone module startup and inert
+preview. Compiler test passed three scopes x two routes with direct HTML, retained
+footer and no pending gate. Prior 24 focused renderer/loading cases passed,
+including Coverage and stalled-response fail-closed behavior. Protect build:
+zero warnings/errors. Local host restarted; browser /quote shows current content
+with pending=false and no unavailable state. Evidence is synthetic/local, not
+production voice readiness or deployment acceptance.
+
+Unresolved prior local management blockers remain: stored draft fails strict
+noncanonical-document validation; Founder management ticket receives 401. This
+change does not rewrite that stored draft or bypass its recovery/identity gates.
+Consequently full authenticated Studio end-to-end readiness is still PARTIAL.
+Production publication, provider readiness, exact-candidate GitHub checks and
+live provenance remain unverified. No fast-track merge, deployment, credentials,
+production configuration, production content or SQL mutation performed.
+
+## 2026-11-01 — Local deployment verification and bounded CI correction
+
+Founder authorized Portal and Protect deployment from the Mac, excluding the
+GitHub fast-track deployment path. Read-only live provenance found Portal at
+c52c20d59b06b85a35b2a98b879d69a4b7f1a32f and Protect at
+031113a5b4da0b1a2ee5fda5b4a4379fe606bd1e, behind accepted source
+d3f408e7a24c17220890a0e44a9936f6eba96b2e. Protect's downloaded CMS asset
+matched the older revision. No production write was attempted.
+
+Exact-candidate PR checks 41373499261 and 41373499268 exposed missing source
+impact mappings and stale UI fixture expectations. The existing scope owner now
+maps Directory.Build.props to the four managed applications. Three exact local
+tooling/test paths have no application package impact; unknown paths still fail.
+This does not authorize executing the local Azure firewall mutation helper.
+Existing receptionist/navigation/SEO tests now match the accepted canonical UI.
+The synthetic CRM host serves actual shared design styles; the browser fixture
+opens retained disclosures before asserting long-content scrolling, preserving
+viewport, focus trap, Escape, focus restoration and authorization checks.
+
+Focused results: three source-impact regressions passed, seven affected website
+tests passed, actual AgentPortal.Tests build succeeded (zero errors; five existing
+warnings). Browser script syntax and diff whitespace checks passed. Hosted CRM
+browser execution remains pending genuine Linux Actions; no environment identity
+was spoofed. Prior compatible application evidence is preserved. These changes
+are validation corrections, not new production UI behavior.
+
+Deployment remains BLOCKED: the canonical publisher enforces authenticated
+GitHub Actions execution and has no admitted local deployment mode. Native Azure
+login does not supply its source/security/schema admission, writer exclusion or
+receipt proofs. No direct upload, environment spoofing, fast-track merge, workflow
+deployment, configuration change or migration was performed. Local deployment
+requires a bounded canonical supported-mode design, not bypassing the guard.
+
+## 2026-11-01 — Protect production publication-read pressure repair
+
+Founder authorized direct Mac deployment and correction of production-wide page
+latency. The previous prepared 7b54b806 package was successfully recovered by
+stopping Protect before ZIP publication: an active stdout file inside wwwroot had
+caused KuduSync to fail despite the provider's outer success receipt. Recovery
+receipt 37a9b9ae23b84e29b3d815e9bdee70fe and origin/public runtime provenance
+confirmed 7b54b806b7d1afb1e0a2ddeb2b6da672ceec08f9. No fast-track merge ran.
+
+A subsequent 17-route sweep found 16 requests exceeding 45 seconds and one taking
+40 seconds. Read-only SQL evidence identified 40 concurrent whole-publication
+reads (including DocumentJson and CompiledPagesJson), all waiting on
+ASYNC_NETWORK_IO, oldest over 540 seconds. Protect memory rose from roughly
+727 MB to 1,096 MB while completed request volume stayed low. The largest active
+Protect compiled snapshot occupied 27,983,100 SQL bytes. Direct metadata reads
+completed around one second; the small indexed Founder lookup was not proven to
+be the cause and was not altered.
+
+The existing PublicWebsiteRuntimeScopeResolver LEGEND/Protect publication query
+now projects original document and version metadata without unused compiled HTML.
+It reuses the existing synchronous large-text reader, moved unchanged into
+WebsiteContentStore; cancellation before/after read, owner/site/state-version
+joins, strict cardinality and exception behavior remain. Business publication
+and Parfait reads remain unchanged because business route checks consume compiled
+pages. No cache, fallback, alternate authority, schema or credential changes.
+
+Focused validation: 128 existing publication, tracking, inquiry-isolation and
+marketing cases passed; two new SQLite command-interceptor regressions passed
+for LEGEND/Protect projection, synchronous read, metadata, cross-owner/site denial,
+cancellation, corrupted-schema duplicate cardinality and version/state mismatch.
+Only the disposable test database drops its unique index to simulate corruption.
+Production schema remains unchanged. Existing helper cancellation tests passed.
+Deployment and post-repair route/SQL-pressure verification are the next step;
+source test success alone does not establish restored live performance.
+
+### Protect live verification and Coverage presentation identity — 2026-11-02 UTC
+
+03de28033b520080e8fdda165ed76069f411d2bb was committed, pushed and deployed directly
+from the Mac to masterapp-protect. Azure receipt 5e1a98c078a54e149a4517bb224cbb6e
+completed successfully; origin and public runtime provenance matched. The warm
+17-route sweep returned HTTP 200 in 1.6–4.3 seconds and read-only SQL inspection
+showed zero remaining publication-read backlog. Browser verification found a
+separate Coverage /Quote rejection despite HTTP 200; the other 16 routes rendered.
+
+The shared Coverage correspondence check incorrectly treated the native
+prayer-card class as immutable identity when the saved presentation had
+blessing-theme-card, with matching type/tag/structure. The existing matcher now
+permits presentation-class differences only beneath the inert prayer-section
+anchor. Native and saved action/system bindings remain forbidden there; booking,
+modal, root anchors, strict structure and unique correspondence remain enforced.
+No publication data is rewritten and no fallback renderer is introduced. Native
+template classes remain applied; the authored class value remains unchanged in
+the saved document, while authored text and finite styles are applied normally.
+
+The existing Coverage matrix now exercises authored class/text/color across
+root/agent scope, iframe/p placeholders, booking embed/fallback/disabled, editor,
+compiler and published hydration. Negative cases cover renamed modal/booking
+controls, system binding, saved action binding and native action binding. A local
+JSDOM reproduction using the actual public HTML now completes rendering; public
+payload remains outside source/test fixtures. All 10 focused tests passed; the prior 130 .NET tests remain compatible because
+this correction changes only the renderer and its tests. Independent review
+precedes commit. Production verification of this second correction remains
+pending deployment; source validation alone is not live acceptance.
+
+### Protect production acceptance — 2026-11-02 UTC
+
+Implementation/live revision: 559c460e2550e729205ab20046310c14558a5cc6.
+Independent Astra source acceptance binds the committed three-file diff SHA-256
+ ef9d9737d0182f4ecdfa72d1844f909e5832059f2e15d6c507fa6055dae11987.
+GitHub readback matched before publication. Direct Mac Release publish succeeded;
+the packaged renderer matched source byte-for-byte. ZIP SHA-256:
+b369e2db00ee4b3af7f8bbef12a5d980ee5634e1feaeb8a4c32f1e2d9d4abfc0.
+Azure deployment 5a1b2d390bb343598cff5cf9b108c75d completed with status 4,
+provisioningState Succeeded, and no deployment-log errors. Protect was stopped
+for upload to avoid previously proven locked files, then restarted.
+
+Both protect.mylegnd.com and masterapp-protect.azurewebsites.net runtime provenance
+matched the implementation SHA. The public renderer matched source byte-for-byte.
+All 17 published sitemap routes returned HTTP 200 and passed browser checks for
+rendered content, absence of load errors and absence of canonical-pending state.
+Privacy/Terms aliases and the visible agent-scoped Life destination also rendered.
+Coverage's native Life modal opened and closed with Escape; Microsoft Bookings
+rendered. No booking, inquiry, payment or customer-data submission was performed.
+
+Initial post-restart requests ranged 1.28–14.72 seconds (Risk Assessment slowest);
+a separate warm sweep measured all 17 routes at 1.21–1.88 seconds, zero failures.
+Read-only SQL verification after browser traffic found no publication-read backlog.
+This acceptance covers Protect's observed public routes, not every tenant or app.
+No fast-track merge, migration, production configuration or credential change ran.
+This final documentation-only checkpoint does not change the deployed binaries;
+the deployed implementation remains 559c460e2550e729205ab20046310c14558a5cc6.
