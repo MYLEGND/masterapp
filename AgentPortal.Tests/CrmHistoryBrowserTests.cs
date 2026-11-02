@@ -93,6 +93,10 @@ public sealed partial class CrmHistoryTests
                         }
                         await next();
                     });
+                    app.UseStaticFiles(new StaticFileOptions {
+                        FileProvider=new Microsoft.Extensions.FileProviders.PhysicalFileProvider(Path.Combine(repo.FullName,"Legend-Design")),
+                        RequestPath="/design"
+                    });
                     app.UseStaticFiles();app.UseRouting();app.UseAuthentication();app.UseAuthorization();
                     app.UseEndpoints(endpoints=>endpoints.MapControllers());
                 })).StartAsync();

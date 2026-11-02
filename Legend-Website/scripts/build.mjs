@@ -26,6 +26,7 @@ await copyFile(resolve(repoRoot,'SHARED/wwwroot/js/legend-site-tools.js'),resolv
 await writeFile(resolve(dist,'build-provenance.json'),JSON.stringify({gitCommitHash:buildRevision})+'\n');
 await copyFile(resolve(repoRoot,'Legend-ios/Legend/Resources/Assets.xcassets/LegendLogo.imageset/legend-logo.png'),resolve(dist,'assets/legend-logo.png'));
 await copyFile(resolve(root,'public','robots.txt'),resolve(dist,'robots.txt'));
+await copyFile(resolve(root,'public','web.config'),resolve(dist,'web.config'));
 await copyFile(resolve(repoRoot,'Legend-Design/legend-favicon.svg'),resolve(dist,'favicon.svg'));
 await copyFile(resolve(repoRoot,'Legend-Design/legend-favicon.jpg'),resolve(dist,'favicon.jpg'));
 await copyFile(resolve(repoRoot,'Protect-Website/wwwroot/images/company-icons/legend-protect-transparent.png'),resolve(dist,'assets/legend-logo.png'));

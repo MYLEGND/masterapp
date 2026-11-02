@@ -38,7 +38,8 @@
   const materializeMode = !!editorTicket && params.get('legendMaterialize') === '1';
   const auditMode = !!editorTicket && params.get('legendAudit') === '1';
   const editorMode = !!editorTicket && !materializeMode;
-  const studioIsolationMode = editorMode || materializeMode;
+  const localCaptureMode = context.localCapture === true;
+  const studioIsolationMode = editorMode || materializeMode || localCaptureMode;
   let managementPayload = null;
   // Capture the signed Studio authorization into non-visible history state and
   // remove it from the document URL before browser-tool discovery evaluates the page.
@@ -95,6 +96,7 @@
   let historyCheckpointPending = false;
   let suppressHistoryCapture = false;
   const originals = new WeakMap();
+  const nativeProofLabels = new WeakSet();
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
   const studioPerformance = [];
@@ -390,7 +392,8 @@
       text:(element,value)=>{if(element) setContentText(element,value,true);},
       style:(element,key,value)=>{if(element) element.style.setProperty(key,value);}
     };
-    const started=phase!=='intro', final=phase==='contact' || phase==='review';
+    const results=phase==='results' && !!projection;
+    const started=phase!=='intro', final=phase==='contact' || phase==='review' || results;
     operations.class(document.body,data.cmsStartedClass,started);
     operations.class(document.body,data.cmsFinalClass,final);
     const entry=find('cmsEntryId'), education=find('cmsEducationId');
@@ -402,6 +405,16 @@
     operations.hidden(processing,phase!=='processing');
     operations.hidden(contact,!final);
     operations.hidden(find('cmsTrustId'),final);
+    if(results) {
+      const host=find('cmsResultsId');
+      if(host && host.closest('form')===form) {
+        projection.results(host,form);
+        for(let child=host;child && child!==contact && child!==form;child=child.parentElement)
+          for(const sibling of child.parentElement?.children || [])
+            if(sibling!==child) operations.hidden(sibling,true);
+        operations.hidden(host,false);
+      }
+    }
     const steps=[...form.querySelectorAll('[data-cms-native-step]')];
     const step=steps.find(element=>element.dataset.cmsNativeStep===String(state?.step ?? '0')) || steps[0];
     const group=nativeSequenceByStep.get(step);
@@ -420,7 +433,7 @@
     if(phase==='processing') operations.style(find('cmsProcessingFillId'),'width','100%');
     // Sample content exists only in the reversible editor projection, never in
     // answers, hidden fields, saved composition or an actual estimate response.
-    if(projection && final) {
+    if(projection && final && !results) {
       const review=find('cmsReviewId');
       if(review){
         operations.hidden(review,false);
@@ -702,6 +715,13 @@
   function isNativeTemplateFigure(element) {
     return element?.tagName==='FIGURE' && SITE_KEY==='protect' && pageUsesSystemTemplate();
   }
+  function nativeProofLabelText(el, value) {
+    // Native compact labels retain authored internal line breaks, but template
+    // indentation around their decorative SVG is not visible label content.
+    return nativeProofLabels.has(el)
+      ? String(value).replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, '')
+      : value;
+  }
   const boundNativeTemplateRoots = new WeakSet();
   function bindNativeTemplateIdentities() {
     const main=document.querySelector('main');
@@ -710,6 +730,11 @@
     // native icon-bearing spans and figures were never assigned prepareDom IDs.
     // Bind them before reconciliation, without modifying the saved document or
     // matching authored copy/classes. Existing native IDs are never renumbered.
+    main.querySelectorAll('.pcq-proof-pill').forEach(el => {
+      if (el.tagName === 'SPAN' && el.children.length > 0 &&
+          [...el.children].every(child => child.tagName.toLowerCase() === 'svg' && child.getAttribute('aria-hidden') === 'true'))
+        nativeProofLabels.add(el);
+    });
     materializeCurrentPageComposition();
     boundNativeTemplateRoots.add(main);
   }
@@ -763,10 +788,12 @@
     const safeBookingProjection=node=>{
       const children=node.children || [];
       // The historical safe projection contains a hidden diagnostic DIV and a
-      // non-executable whitespace frame placeholder. Never turn saved markup or
+      // non-executable whitespace frame placeholder. Raw captures retain an iframe
+      // tag; sanitized captures use p. Neither is mounted: only the current
+      // request owns the live booking node. Never turn saved markup or
       // a modified child into a runtime iframe, nor silently discard authored data.
       if(children.length!==2 || children[0].type!=='container' || children[0].tag!=='div' ||
-        classes(children[0]).length || children[1].type!=='text' || children[1].tag!=='p' ||
+        classes(children[0]).length || children[1].type!=='text' || !['p','iframe'].includes(children[1].tag) ||
         classes(children[1]).join(' ')!=='booking-frame')fail();
       const record=value=>value && typeof value==='object' && !Array.isArray(value);
       const layout=value=>record(value) && Object.entries(value).every(([name,item])=>
@@ -793,8 +820,18 @@
         }
       }
     };
-    const bindStatic=(native,node)=>{
-      if(!compatible(native,node))fail();
+    const presentationOnly=(native,node)=>{
+      const el=snapshot.elements.get(native.id);
+      const inertTags=['div','p','span','h1','h2','h3','h4','h5','h6'];
+      return el && inertTags.includes(native.tag) && native.type===node.type && native.tag===node.tag &&
+        !el.matches('[role],[tabindex],[data-website-action-key],a,button,input,select,textarea,iframe,form') &&
+        [native,node].every(item=>['systemKey','href','src','mediaUrl','signals','dataBinding','role','tabindex','tabIndex','actionKey','systemBinding','fieldSignals','experience','receptionist']
+          .every(key=>empty(item[key])));
+    };
+    const bindStatic=(native,node,presentation=false)=>{
+      // Only inert content below the prayer anchor may change presentation classes.
+      // Booking, modal controls and structural anchors retain strict identity checks.
+      if(presentation ? !presentationOnly(native,node) : !compatible(native,node))fail();
       const el=snapshot.elements.get(native.id);if(!el)fail();
       pairs.push([el,node]);
       if(native===snapshot.booking){
@@ -805,7 +842,7 @@
       if(a.length!==b.length)fail();
       // Complete static structure is required; an authored deletion/reorder must
       // not make a different interactive child inherit a previous child's ID.
-      for(let i=0;i<a.length;i++)bindStatic(a[i],b[i]);
+      for(let i=0;i<a.length;i++)bindStatic(a[i],b[i],presentation || native===snapshot.prayer);
     };
     const omittedRoot=native=>{
       if(saved.some(node=>node.id===native.id || hasClass(node,classes(native)[0])))fail();
@@ -1073,7 +1110,7 @@
     const fieldKey=['INPUT','SELECT','TEXTAREA','BUTTON'].includes(selected.tagName) && selected.dataset?.cmsFieldKey
       ? formFieldKey(selected)
       : null;
-    const form=fieldKey ? selected.closest?.('form[data-cms-composition-id]') : null;
+    const form=fieldKey ? selected.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]') : null;
     const elementId=fieldKey
       ? form?.dataset?.cmsCompositionId
       : (selected.dataset.cmsCompositionId || selected.dataset.cmsId || null);
@@ -1938,6 +1975,7 @@
   }
 
   function setContentText(el, text, preserveWhitespace = false) {
+    text = nativeProofLabelText(el, text);
     if (preserveWhitespace) el.dataset.cmsPreserveWhitespace = 'true';
     else delete el.dataset.cmsPreserveWhitespace;
     if (!el.children.length || !document.createTreeWalker) { el.textContent = text; return; }
@@ -1981,13 +2019,13 @@
   function nativeFormPresentationTargets(form,node) {
     if(!String(node?.systemKey || '').startsWith('protect_runtime_form:')) return [];
     const candidates=[];
-    const add=(element,key)=>{
+    const add=(element,key,styleOnly=false)=>{
       // Runtime structure is not an editable graph. Bind only unambiguous copy
       // leaves to the existing protected owner's typed presentation maps.
-      if(!element || element.children.length || !element.textContent.trim() ||
+      if(!element || (!styleOnly && (element.children.length || !element.textContent.trim())) ||
          compositionNode(element.dataset.cmsCompositionId || element.dataset.cmsId)) return;
       key=safeId(key);
-      if(key) candidates.push({element,key});
+      if(key) candidates.push({element,key,styleOnly});
     };
     form.querySelectorAll('[role="radiogroup"][aria-labelledby]').forEach(group=>{
       const id=group.getAttribute('aria-labelledby');
@@ -1998,17 +2036,28 @@
     form.querySelectorAll('input[type="radio"][name],input[type="checkbox"][name]').forEach(control=>{
       const label=control.labels?.[0] || control.closest('label');
       if(!label) return;
+      add(label,'presentation:option:'+control.name+':'+control.value+':tile',true);
       for(const kind of ['title','kicker','helper']){
         const leaves=label.querySelectorAll('.lq-card-'+kind);
         if(leaves.length===1) add(leaves[0],'presentation:option:'+control.name+':'+control.value+':'+kind);
       }
     });
+    for(const element of form.querySelectorAll('[data-cms-review-style]')) {
+      const key=element.dataset.cmsReviewStyle;
+      if(['surface','insights','details','booking'].includes(key) && element.closest('.quote-review'))
+        add(element,'presentation:result:'+key,true);
+    }
+    const reviewKeys=['title','copy','insights-heading','timing-heading','details-heading','booking-title','booking-copy'];
+    for(const element of form.querySelectorAll('.quote-review [data-cms-review-copy]')) {
+      const key=element.dataset.cmsReviewCopy;
+      if(reviewKeys.includes(key)) add(element,'presentation:result:'+key);
+    }
     return candidates.filter(item=>candidates.filter(other=>other.key===item.key).length===1);
   }
 
   function nativeFormPresentationOwner(el) {
     if(!el?.dataset?.cmsPresentationKey) return null;
-    const form=el.closest('form[data-cms-composition-id]');
+    const form=el.closest('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]');
     const node=compositionNode(form?.dataset.cmsCompositionId);
     const binding=nativeFormPresentationBindings.get(el);
     return node && binding?.form===form && binding.ownerId===node.id &&
@@ -2034,12 +2083,12 @@
 
   function formFieldPresentationForElement(el, create = true) {
     if(!el || legacyMigration) return null;
-    const form=el.closest?.('form[data-cms-composition-id]');
+    const form=el.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]');
     if(!form || form===el) return null;
     const key=formFieldKey(el);
     if(!key) return null;
     const formNode=compositionNode(form.dataset.cmsCompositionId);
-    if(!formNode || !(formNode.type==='form' || formNode.type==='experience' || String(formNode.systemKey || '').startsWith('protect_runtime_form:'))) return null;
+    if(!formNode || !(formNode.type==='form' || formNode.type==='receptionist' || formNode.type==='experience' || String(formNode.systemKey || '').startsWith('protect_runtime_form:'))) return null;
     if(create){
       formNode.fieldPresentations ||= {};
       formNode.fieldPresentations[key] ||= normalizeControlPresentation(null);
@@ -2058,7 +2107,7 @@
   }
 
   function isInlineEditable(el) {
-    if(nativeFormPresentationOwner(el)) return true;
+    if(nativeFormPresentationOwner(el)) return !nativeFormPresentationBindings.get(el)?.styleOnly;
     if (!el || el.dataset.cmsSignalOnly || el.dataset.cmsSection) return false;
     // Entity-owned names and commerce controls expose presentation editing only.
     // Their text/destination remains owned by the Business Profile / Store contract.
@@ -2362,7 +2411,9 @@
   function materializedTextValue(el, model) {
     // Capture rendered template copy, not HTML indentation. Authored text and
     // explicitly preformatted content retain their exact whitespace contract.
-    if (model.text != null) return model.text;
+    if (model.text != null) return nativeProofLabelText(el, model.text);
+    if (nativeProofLabels.has(el))
+      return nativeProofLabelText(el, [...el.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent).join(''));
     return normalizeTemplateText(el, inlineTextValue(el));
   }
 
@@ -2395,6 +2446,15 @@
     }
 
     const id = materializedNodeId(el, fallbackId, identity);
+    const canonical=compositionNode(el.dataset.cmsCompositionId);
+    if(el.hasAttribute('data-cms-receptionist') && canonical?.type==='receptionist'){
+      const node=cloneCanonicalValue(canonical);node.id=id;
+      walkComposition(node.children || [],child=>{
+        const element=findEditableElement(child.id);
+        child.id=element ? materializedNodeId(element,child.id,identity) : claimMaterializationId(child.id,identity);
+      });
+      return node;
+    }
     const model = legacyMigrationRecordForElement(el) || {};
     const actionKey = model.actionKey || el.dataset.websiteActionKey || null;
     const extra = el.dataset.cmsExtraId ? legacyMigrationExtraById(el.dataset.cmsExtraId) : null;
@@ -2593,7 +2653,7 @@
     const allowed={
       section:['section'],container:['div','article','header','footer','nav','ul','ol','fieldset'],
       heading:['h1','h2','h3','h4','h5','h6'],text:['p','span','small','strong','li','label','blockquote'],
-      cta:['a','button'],link:['a','button'],image:['img'],video:['video'],form:['form'],experience:['form'],embed:['div'],spacer:['div'],reusable:['div']
+      cta:['a','button'],link:['a','button'],image:['img'],video:['video'],form:['form'],experience:['form'],receptionist:['div'],embed:['div'],spacer:['div'],reusable:['div']
     }[type] || ['div'];
     return allowed.includes(tag) ? tag : allowed[0];
   }
@@ -2650,9 +2710,9 @@
       const label=control.labels?.[0] || control.closest('label');
       if(label && labels[key]) applyFormFieldLabel(label,labels[key]);
     });
-    nativeFormPresentationTargets(form,node).forEach(({element,key})=>{
+    nativeFormPresentationTargets(form,node).forEach(({element,key,styleOnly})=>{
       if(!nativeFormOriginalLabels.has(element)) nativeFormOriginalLabels.set(element,element.textContent);
-      nativeFormPresentationBindings.set(element,{form,ownerId:node.id,key});
+      nativeFormPresentationBindings.set(element,{form,ownerId:node.id,key,styleOnly});
       element.dataset.cmsPresentationKey=key;
       element.dataset.cmsSignalOnly='true';
       element.dataset.cmsEditable='true';
@@ -2667,10 +2727,17 @@
         nativeFormPresentationStyles.set(element,Object.fromEntries(styleProperties.map(name=>[name,element.style[name]])));
         for(const [name,value] of Object.entries(runtimeStyles)) element.style[name]=value;
       }
-      if(labels[key]) applyFormFieldLabel(element,labels[key]);
-      else if(formFieldPresentationLabels.has(element)) applyFormFieldLabel(element,nativeFormOriginalLabels.get(element));
+      if(!styleOnly && labels[key]) applyFormFieldLabel(element,labels[key]);
+      else if(!styleOnly && formFieldPresentationLabels.has(element)) applyFormFieldLabel(element,nativeFormOriginalLabels.get(element));
     });
   }
+
+  document.addEventListener('legend:quote-review-rendered',event=>{
+    const form=event.target.closest?.('form[data-cms-composition-id]');
+    const node=compositionNode(form?.dataset.cmsCompositionId);
+    if(form && String(node?.systemKey || '').startsWith('protect_runtime_form:'))
+      applyFormFieldPresentations(form,node);
+  });
 
   function experienceValue(raw) {
     if(raw == null) return null;
@@ -2981,7 +3048,7 @@
 
   function canonicalReceptionist(node) {
     const value=node?.receptionist;
-    return node?.type==='form' && node.systemKey==='canonical_inquiry' && value?.enabled===true &&
+    return (node?.type==='receptionist' || (node?.type==='form' && node.systemKey==='canonical_inquiry')) && value?.enabled===true &&
       ['before','after'].includes(value.placement || 'before') ? value : null;
   }
 
@@ -2991,6 +3058,10 @@
     const host=document.createElement('div');
     host.dataset.legendReceptionistEntry='';
     host.dataset.receptionistLabel=typeof value.label==='string' ? value.label.slice(0,160) : '';
+    if(node.type==='receptionist'){
+      host.dataset.receptionistTitle=node.title || '';
+      host.dataset.receptionistDescription=node.text || '';
+    }
     if(editorMode || studioIsolationMode) host.dataset.preview='';
     if(value.placement==='after') form.appendChild(host);
     else form.insertBefore(host,form.firstChild);
@@ -3000,7 +3071,7 @@
   // A late-loading module fills only the canonical placeholders. Apply the same
   // existing control presentation after mounting; do not rerender/reset forms.
   window.addEventListener('legend:public-inquiry-mounted',()=>{
-    document.querySelectorAll('form[data-cms-composition-id]').forEach(form=>{
+    document.querySelectorAll('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]').forEach(form=>{
       const node=compositionNode(form.dataset.cmsCompositionId);
       if(node) applyFormFieldPresentations(form,node);
     });
@@ -3091,6 +3162,34 @@
     return el;
   }
 
+  let initialMarketingImageId=null;
+  function selectInitialMarketingImage() {
+    const candidates=[];
+    const visit=(nodes,ancestors=new Set())=>{for(const node of nodes || []){
+      if(node.hidden || ['receptionist','form','experience'].includes(node.type)) continue;
+      if(node.type==='reusable'){
+        if(ancestors.has(node.syncSourceId)) continue;
+        const definition=reusableDefinition(node);
+        visit((definition?.composition || []).map(child=>reusableDefinitionClone(child,node.id)),new Set([...ancestors,node.syncSourceId]));
+        continue;
+      }
+      const bound=node.dataBinding?.target==='image' ? resolveDataBinding(node.dataBinding) : null;
+      if(node.type==='image' && (node.mediaAssetId || node.mediaUrl || typeof bound==='string' && safeUrl(bound,true))) candidates.push(node);
+      visit(node.children,ancestors);
+    }};
+    visit(pageState().composition);
+    const hero=candidates.find(node=>String(node.className || '').split(/\s+/)
+      .some(name=>['legend-recipe-hero-media','legend-recipe-hero-cinematic-media'].includes(name)));
+    initialMarketingImageId=(hero || candidates[0])?.id || null;
+  }
+  function applyImageLoadingPriority(el,node) {
+    const priorityMedia=node.id===initialMarketingImageId;
+    el.setAttribute('loading',priorityMedia?'eager':'lazy');
+    el.setAttribute('decoding','async');
+    if(priorityMedia) el.setAttribute('fetchpriority','high');
+    else el.removeAttribute('fetchpriority');
+  }
+
   function buildCompositionNode(node) {
     if (!node?.id) return null;
     let el;
@@ -3105,6 +3204,14 @@
       renderReusableInstance(el, node);
     } else if (node.type === 'form') {
       el = buildCanonicalInquiryForm(node);
+    } else if (node.type === 'receptionist') {
+      el=document.createElement('div');
+      el.dataset.cmsReceptionist='';
+      for(const child of node.children || []){
+        const content=buildCompositionNode(child);
+        if(content) el.appendChild(content);
+      }
+      mountCanonicalReceptionist(el,node);
     } else if (node.type === 'experience') {
       el = buildNativeExperience(node);
     } else if (node.type === 'embed') {
@@ -3114,13 +3221,9 @@
       if (node.className) el.className = node.className;
       if (node.type === 'image') {
         const source = node.mediaAssetId ? API_BASE + '/api/website-content/media/' + node.mediaAssetId : node.mediaUrl;
+        applyImageLoadingPriority(el,node);
         if (source) el.src = mediaUrl(source);
         el.alt = node.alt || '';
-        el.decoding='async';
-        const classes=new Set(String(node.className || '').split(/\s+/).filter(Boolean));
-        const priorityMedia=classes.has('legend-recipe-hero-media') || classes.has('legend-recipe-hero-cinematic-media');
-        el.loading=priorityMedia ? 'eager' : 'lazy';
-        if(priorityMedia) el.setAttribute('fetchpriority','high');
       } else if (node.type === 'video') {
         const source = node.mediaAssetId ? API_BASE + '/api/website-content/media/' + node.mediaAssetId : node.mediaUrl;
         if (source) el.src = mediaUrl(source);
@@ -4146,7 +4249,7 @@
 
   function applyCompositionNode(el, model) {
     if (el?.dataset.cmsSignalOnly && el.tagName!=='FORM') {
-      const form=el.closest('form[data-cms-composition-id]');
+      const form=el.closest('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]');
       const formNode=compositionNode(form?.dataset.cmsCompositionId);
       if(form && formNode) applyFormFieldPresentations(form,formNode);
       return;
@@ -4175,6 +4278,7 @@
       if(el.getAttribute('src')!==nativeProfileField.value)el.setAttribute('src',nativeProfileField.value);
       el.setAttribute('alt',nativeProfileField.alt);
     }else if (el instanceof HTMLImageElement) {
+      applyImageLoadingPriority(el,model);
       const media = model.mediaAssetId ? API_BASE + '/api/website-content/media/' + model.mediaAssetId : model.mediaUrl;
       el.src = media ? mediaUrl(media) : (original.src || '');
     } else if (!entityBound && !commerceControl && !el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName) && !isNativeTemplateFigure(el)) {
@@ -4211,7 +4315,7 @@
       const photo=el.parentElement?.querySelector('img');
       el.hidden=!!photo && photo.style.display!=='none';
     }
-    if (el.tagName === 'FORM') applyFormFieldPresentations(el,model);
+    if (el.tagName === 'FORM' || model.type === 'receptionist') applyFormFieldPresentations(el,model);
     applyAnimations(el, model.animations);
   }
 
@@ -4655,13 +4759,14 @@
   // compiled pages omitted its script; reattach the shared transport without
   // creating a scope-specific handler or allowing native form POSTs.
   function ensureCanonicalPublicInquiry() {
-    if (studioIsolationMode || renderInput?.server) return;
+    if (renderInput?.server) return;
+    const receptionistEntries=document.querySelectorAll('[data-legend-receptionist-entry]');
     const forms = document.querySelectorAll(
       '[data-website-inquiry]:not([data-preview]),' +
       '[data-website-experience-form][data-submit-capability="lead_capture"]:not([data-preview])'
     );
-    if (!forms.length) return;
-    for (const form of forms) {
+    if (!forms.length && !receptionistEntries.length) return;
+    for (const form of studioIsolationMode ? [] : forms) {
       if (form.dataset.legendInquiryGuard === 'true') continue;
       form.dataset.legendInquiryGuard = 'true';
       form.addEventListener('submit', event => {
@@ -4680,7 +4785,7 @@
     });
     if (loaded) return;
     const script = document.createElement('script');
-    script.src = '/public-inquiry-form.mjs';
+    script.src = SITE_KEY==='protect' ? '/js/public-inquiry-form.mjs' : '/public-inquiry-form.mjs';
     script.type = 'module';
     document.body.appendChild(script);
   }
@@ -4690,6 +4795,7 @@
     restoreNativeFormContinuations();
     restoreFormStepPreview();
     documentState=normalizeDocument(doc);
+    selectInitialMarketingImage();
     // Prove Coverage correspondence before applying theme, shell, metadata or
     // page mutations. Preparing native IDs alone does not claim readiness.
     let coveragePlan=null;
@@ -5074,7 +5180,8 @@
 
   async function requestMaterializedPage(route) {
     if(route===currentPageRoute()) return currentMaterializedPage();
-    const url=editorUrlForRoute(route,true);
+    const url=localCaptureMode ? new URL((context.pagePrefix || '') + route, location.origin) : editorUrlForRoute(route,true);
+    if(localCaptureMode) url.searchParams.set('legendLocalCapturePage','1');
     if(!url) throw new Error('Unable to resolve page '+route+' for Site Source migration.');
     return await new Promise((resolve,reject)=>{
       const frame=document.createElement('iframe');
@@ -5218,19 +5325,7 @@
     return result;
   }
 
-  async function materializeCanonicalSite() {
-    if(!legacyMigration) return true;
-    const status=document.getElementById('legend-cms-status');
-    const entries=websitePageEntries(false).filter(entry=>!entry.deleted);
-    const routes=[...new Set([currentPageRoute(),...entries.map(entry=>entry.route).filter(Boolean)])];
-    let completed=0;
-    const snapshots=await mapWithConcurrency(routes,4,async route=>{
-      const snapshot=await requestMaterializedPage(route);
-      completed++;
-      if(status) status.textContent='Preparing canonical Site Source · '+completed+'/'+routes.length;
-      return snapshot;
-    });
-
+  function assembleMaterializedSite(snapshots,entries) {
     const next=normalizeDocument(documentState);
     const firstShell=snapshots.find(snapshot=>snapshot?.shell)?.shell;
     next.shell={
@@ -5256,6 +5351,51 @@
     }
 
     next.version=3;
+    return next;
+  }
+
+  async function captureLocalWebsite() {
+    prepareDom();
+    revealPublishedWebsite();
+    legacyMigration = {};
+    if(params.get('legendLocalCapturePage') === '1') {
+      window.parent.postMessage({type:'legend-site-materialized-page',...currentMaterializedPage()},location.origin);
+      return;
+    }
+    const status=document.createElement('p');
+    status.id='legend-local-capture-status';
+    status.setAttribute('role','status');
+    document.body.prepend(status);
+    try {
+      const entries=websitePageEntries(false).filter(entry=>!entry.deleted);
+      const routes=[...new Set([currentPageRoute(),...entries.map(entry=>entry.route).filter(Boolean)])];
+      status.textContent='Capturing local repository pages';
+      const snapshots=await mapWithConcurrency(routes,4,requestMaterializedPage);
+      const next=assembleMaterializedSite(snapshots,entries);
+      const link=document.createElement('a');
+      link.id='legend-local-capture-download';
+      link.download='protect-local-website.json';
+      link.href=URL.createObjectURL(new Blob([JSON.stringify({schema:"legend-local-protect/v1",ownerUserId:context.localCaptureOwner,document:next})],{type:'application/json'}));
+      link.textContent='Download local website document';
+      status.after(link);
+      status.textContent='Local website capture ready: '+snapshots.length+' pages';
+    } catch(error) { status.textContent='Local capture failed: '+error.message; }
+  }
+
+  async function materializeCanonicalSite() {
+    if(!legacyMigration) return true;
+    const status=document.getElementById('legend-cms-status');
+    const entries=websitePageEntries(false).filter(entry=>!entry.deleted);
+    const routes=[...new Set([currentPageRoute(),...entries.map(entry=>entry.route).filter(Boolean)])];
+    let completed=0;
+    const snapshots=await mapWithConcurrency(routes,4,async route=>{
+      const snapshot=await requestMaterializedPage(route);
+      completed++;
+      if(status) status.textContent='Preparing canonical Site Source · '+completed+'/'+routes.length;
+      return snapshot;
+    });
+
+    const next=assembleMaterializedSite(snapshots,entries);
     legacyMigration=null;
     materializationSavePending=true;
     documentState=normalizeDocument(next);
@@ -6355,7 +6495,7 @@
 
     const selectedFieldPresentation=selected?.dataset?.cmsSignalOnly ? formFieldPresentationForElement(selected,false) : null;
     const selectedFieldCanCreatePresentation=!!selected?.dataset?.cmsSignalOnly &&
-      !!selected?.closest?.('form[data-cms-composition-id]') &&
+      !!selected?.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]') &&
       !!formFieldKey(selected);
     document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || (!!selected.dataset.cmsSignalOnly && !selectedFieldPresentation && !selectedFieldCanCreatePresentation); });
     if (!selected) {
@@ -6363,6 +6503,8 @@
       if (inlineHelp) inlineHelp.hidden = true;
       if (imageGroup) imageGroup.hidden = true;
       if (codeGroup) codeGroup.hidden = true;
+      const voiceGroup=document.getElementById('legend-cms-receptionist');
+      if(voiceGroup) voiceGroup.hidden=true;
       const duplicateButton = document.getElementById('legend-cms-duplicate'); if (duplicateButton) duplicateButton.disabled = true;
       return;
     }
@@ -6388,9 +6530,13 @@
     const serviceCard = businessServiceCardFor(selected);
     const canonicalForm = ov.type === 'form' || String(ov.systemKey || '').startsWith('protect_runtime_form:');
     const voiceGroup=document.getElementById('legend-cms-receptionist');
-    const voiceNode=ov.type==='form' && ov.systemKey==='canonical_inquiry' ? ov : null;
+    const voiceNode=ov.type==='receptionist' || (ov.type==='form' && ov.systemKey==='canonical_inquiry') ? ov : null;
     if(voiceGroup) voiceGroup.hidden=!voiceNode;
     if(voiceNode){
+      document.getElementById('legend-cms-receptionist-copy').hidden=voiceNode.type!=='receptionist';
+      document.getElementById('legend-cms-receptionist-title').value=voiceNode.title || '';
+      document.getElementById('legend-cms-receptionist-description').value=voiceNode.text || '';
+      document.getElementById('legend-cms-receptionist-placement').closest('label').hidden=voiceNode.type==='receptionist';
       document.getElementById('legend-cms-receptionist-enabled').checked=voiceNode.receptionist?.enabled===true;
       document.getElementById('legend-cms-receptionist-label').value=voiceNode.receptionist?.label || '';
       document.getElementById('legend-cms-receptionist-placement').value=voiceNode.receptionist?.placement || 'before';
@@ -7791,7 +7937,7 @@
   }
 
   function sourceSelectedNodeId() {
-    return selected?.dataset?.cmsCompositionId || selected?.closest?.('form[data-cms-composition-id]')?.dataset?.cmsCompositionId || null;
+    return selected?.dataset?.cmsCompositionId || selected?.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]')?.dataset?.cmsCompositionId || null;
   }
 
   function syncSelectedSourcePresentationFromCanvas() {
@@ -7809,7 +7955,7 @@
     // Keep Selected Source visually synchronized with Canvas presentation while
     // retaining the server-projected protected-authority omissions. This is a
     // view synchronization only; persistence still flows through canonical save.
-    for(const key of ['text','className','style','breakpointStyles','layout','breakpointLayouts','animations','hidden','alt','mediaAssetId','mediaUrl','fieldLabels','fieldPresentations','receptionist'])
+    for(const key of ['text','title','className','style','breakpointStyles','layout','breakpointLayouts','animations','hidden','alt','mediaAssetId','mediaUrl','fieldLabels','fieldPresentations','receptionist'])
     {
       if(Object.hasOwn(current,key)) projected[key]=cloneCanonicalValue(current[key]);
       else delete projected[key];
@@ -9064,6 +9210,57 @@
     textarea.focus();
   }
 
+  function addReceptionist(sitewide = true) {
+    let shared=null;
+    walkComposition(documentState.shell?.footer || [],node=>{if(node.type==='receptionist' && node.receptionist?.enabled) shared ||= node;});
+    if(!sitewide && shared){
+      setSelected(findEditableElement(shared.id));showPanel('content');
+      alert('Your shared receptionist is already on this page. Edit this component for every page, or remove the shared placement before creating page-specific entries.');
+      return;
+    }
+    const roots=sitewide ? documentState.shell?.footer || [] : pageState().composition || [];
+    let existing=null;
+    walkComposition(roots,node=>{if(node.type==='receptionist') existing ||= node;});
+    if(existing){
+      setSelected(findEditableElement(existing.id));
+      showPanel('content');
+      return;
+    }
+    if(sitewide && !documentState.shell?.footer?.length && !document.querySelector('.site-footer')){
+      alert('This website needs its shared footer captured before adding a site-wide receptionist. You can place it on this page.');
+      return;
+    }
+    const priorEntries=[];
+    if(sitewide) for(const page of Object.values(documentState.pages || {}))
+      walkComposition(page.composition || [],node=>{if(canonicalReceptionist(node)) priorEntries.push(node);});
+    if(priorEntries.length && !confirm('Replace '+priorEntries.length+' existing page voice entries with one shared receptionist? Their saved copy and styling will be retained, and this draft change can be undone.')) return;
+    checkpoint();
+    for(const entry of priorEntries) entry.receptionist.enabled=false;
+    const id='receptionist.'+crypto.randomUUID().replaceAll('-','');
+    const node={id,type:'receptionist',tag:'div',title:'AI receptionist',text:'',
+      receptionist:{enabled:true,label:'Talk with our AI receptionist',placement:'after'},
+      style:{widthPercent:100},children:[],signals:[],fieldPresentations:{},
+      layout:{mode:'flex',direction:'row',gapPx:16,alignItems:'center',wrap:'wrap'}};
+    if(sitewide){
+      documentState.shell ||= {header:[],footer:[]};
+      if(!documentState.shell.footer?.length){
+        const footer=materializeCompositionNode(document.querySelector('.site-footer'),'shell.footer',createMaterializationIdentityContext(null,true));
+        documentState.shell.footer=footer ? [footer] : [];
+      }
+      const footer=documentState.shell.footer.find(value=>value.tag==='footer');
+      if(footer) (footer.children ||= []).push(node);
+      else documentState.shell.footer.push(node);
+      renderCanonicalShell();
+      if(priorEntries.length) renderCanonicalCompositionPage();
+    } else {
+      (pageState().composition ||= []).push(node);
+      renderCanonicalCompositionPage();
+    }
+    setSelected(findEditableElement(id));
+    showPanel('content');
+    markDirty();
+  }
+
   function addCompositionBlock(type) {
     const sectionEl = selectedSection || document.querySelector('[data-cms-section]');
     if (!sectionEl && type !== 'section') return;
@@ -9145,26 +9342,45 @@
     panel.appendChild(content);
     const voiceControls=document.createElement('section');
     voiceControls.id='legend-cms-receptionist'; voiceControls.hidden=true;
-    voiceControls.innerHTML='<h2>Website voice entry</h2><label class="legend-cms-group"><input id="legend-cms-receptionist-enabled" type="checkbox">Show the website voice option</label><p>This changes the page only. Calls remain subject to the current receptionist permission and readiness. Preview never starts a call.</p><label class="legend-cms-group">Button label<input id="legend-cms-receptionist-label" type="text" maxlength="160" placeholder="Speak inside the website"></label><label class="legend-cms-group">Placement<select id="legend-cms-receptionist-placement"><option value="before">Before written inquiry</option><option value="after">After written inquiry</option></select></label><button id="legend-cms-receptionist-appearance" type="button" disabled>Edit voice button appearance</button><p>Use the existing Appearance controls without starting a preview call.</p>';
+    voiceControls.innerHTML='<h2>AI receptionist</h2><div id="legend-cms-receptionist-copy"><label class="legend-cms-group">Heading<input id="legend-cms-receptionist-title" maxlength="160"></label><label class="legend-cms-group">Introduction (optional)<textarea id="legend-cms-receptionist-description" rows="2" maxlength="2000"></textarea></label><label class="legend-cms-group">Receptionist icon<input id="legend-cms-receptionist-icon" type="file" accept="image/*"></label></div><label class="legend-cms-group"><input id="legend-cms-receptionist-enabled" type="checkbox">Show the website voice option</label><p>Design your receptionist here. Preview calls are disabled.</p><label class="legend-cms-group">Button label<input id="legend-cms-receptionist-label" type="text" maxlength="160" placeholder="Speak inside the website"></label><label class="legend-cms-group">Placement<select id="legend-cms-receptionist-placement"><option value="before">Before written inquiry</option><option value="after">After written inquiry</option></select></label><button id="legend-cms-receptionist-appearance" type="button" disabled>Edit voice button appearance</button><p>Use the existing Appearance controls without starting a preview call.</p>';
     content.appendChild(voiceControls);
     document.getElementById('legend-cms-receptionist-appearance').addEventListener('click',()=>{
       const form=selected;
       const node=compositionNode(form?.dataset?.cmsCompositionId);
-      if(!form?.matches('form[data-website-inquiry]') || !canonicalReceptionist(node)) return;
+      if(!form || !canonicalReceptionist(node)) return;
       const control=form.querySelector('[data-website-receptionist] [data-receptionist-start]');
       if(!control) return;
       setSelected(control);
       showPanel('appearance');
     });
+    document.getElementById('legend-cms-receptionist-icon').addEventListener('change',async event=>{
+      event.stopPropagation();
+      const node=selectedWebsiteModel(false);
+      if(node?.type!=='receptionist') return;
+      const asset=await uploadMedia(event.target.files?.[0]);
+      event.target.value='';
+      if(!asset || !String(asset.contentType).startsWith('image/') || selectedWebsiteModel(false)!==node) return;
+      checkpoint();
+      node.children ||= [];
+      let icon=node.children.find(value=>value.type==='image');
+      if(!icon){icon={id:claimMaterializationId(node.id+'.icon',createMaterializationIdentityContext(null,true)),type:'image',tag:'img',alt:'Receptionist',style:{minWidthPx:64,maxWidthPx:64,heightPx:64},children:[]};node.children.unshift(icon);}
+      icon.mediaAssetId=asset.id; delete icon.mediaUrl;
+      const replacement=buildCompositionNode(node);
+      selected.replaceWith(replacement);setSelected(replacement);markDirty();
+    });
     voiceControls.addEventListener('change',()=>{
       const node=selectedWebsiteModel(false);
-      if(node?.type!=='form' || node.systemKey!=='canonical_inquiry') return;
+      if(node?.type!=='receptionist' && (node?.type!=='form' || node.systemKey!=='canonical_inquiry')) return;
       checkpoint();
       node.receptionist={
         enabled:document.getElementById('legend-cms-receptionist-enabled').checked,
         label:document.getElementById('legend-cms-receptionist-label').value.trim().slice(0,160) || null,
         placement:document.getElementById('legend-cms-receptionist-placement').value==='after'?'after':'before'
       };
+      if(node.type==='receptionist'){
+        node.title=document.getElementById('legend-cms-receptionist-title').value.trim();
+        node.text=document.getElementById('legend-cms-receptionist-description').value.trim();
+      }
       const previous=selected;
       const replacement=buildCompositionNode(node);
       previous.replaceWith(replacement);
@@ -9174,7 +9390,7 @@
     });
     const navigation = document.createElement('nav');
     navigation.className = 'legend-cms-navigation'; navigation.setAttribute('aria-label', 'Website editing tools');
-    navigation.innerHTML = `<div class="legend-cms-device-switch" role="group" aria-label="Editing viewport"><button type="button" data-editor-viewport="desktop" aria-pressed="false">Desktop</button><button type="button" data-editor-viewport="mobile" aria-pressed="false">Mobile</button></div><small class="legend-cms-device-note">Desktop and Mobile styling stay separate; content is shared. Base applies styling to all sizes.</small><div class="legend-cms-tabs legend-cms-primary-tabs"><button type="button" data-open="gpt" data-agent-action="open-workspace">GPT Workspace</button><button type="button" data-open="source" data-agent-action="open-source">Source</button><button type="button" data-open="media" data-agent-action="open-media">Media</button><button type="button" data-open="publish" data-agent-action="open-publish">Publish</button><button type="button" data-open="advanced">Advanced</button></div>`;
+    navigation.innerHTML = `<div class="legend-cms-device-switch" role="group" aria-label="Editing viewport"><button type="button" data-editor-viewport="desktop" aria-pressed="false">Desktop</button><button type="button" data-editor-viewport="mobile" aria-pressed="false">Mobile</button></div><small class="legend-cms-device-note">Desktop and Mobile styling stay separate; content is shared. Base applies styling to all sizes.</small><div class="legend-cms-tabs legend-cms-primary-tabs"><button type="button" data-open="gpt" data-agent-action="open-workspace">GPT Workspace</button><button type="button" data-open="receptionist">Receptionist</button><button type="button" data-open="source" data-agent-action="open-source">Source</button><button type="button" data-open="media" data-agent-action="open-media">Media</button><button type="button" data-open="publish" data-agent-action="open-publish">Publish</button><button type="button" data-open="advanced">Advanced</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="form">Inquiry form</button><button data-add="experience">Interactive experience</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
@@ -9184,6 +9400,23 @@
       <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" data-agent-action="upload-media" accept="image/*,video/*,.heic,.heif,.avif,.mov,.m4v,.webm"><button id="legend-cms-media-refresh" type="button" data-agent-action="refresh-media">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save any non-system canonical block or section once, then insert synchronized references. Protected platform components cannot be copied into reusable content.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Add page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/*,.heic,.heif,.avif"><small>A valid image file. The shared media authority verifies the file bytes; this is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
+    const receptionistView=document.createElement('section');
+    receptionistView.dataset.cmsView='receptionist'; receptionistView.hidden=true;
+    receptionistView.innerHTML='<h2>AI receptionist</h2><p>One shared design across your website, or a component on this page.</p><div class="legend-cms-menu"><button id="legend-cms-receptionist-sitewide" type="button">Set up across all pages</button><button id="legend-cms-receptionist-page" type="button">Place on this page</button></div><p>Choose the component to customize its heading, introduction, button, icon, and responsive appearance.</p>';
+    const setupUrl=managementPayload?.receptionistSetupUrl;
+    if(typeof setupUrl==='string'){
+      const setup=document.createElement('a');
+      setup.href=setupUrl; setup.target='_blank'; setup.rel='noopener';
+      setup.textContent='Voice, instructions, booking & activation';
+      receptionistView.appendChild(setup);
+    } else {
+      const unavailable=document.createElement('p');
+      unavailable.textContent='Receptionist settings are unavailable for this website owner. Open the authorized workspace to verify setup.';
+      receptionistView.appendChild(unavailable);
+    }
+    tools.appendChild(receptionistView);
+    document.getElementById('legend-cms-receptionist-sitewide').addEventListener('click',()=>addReceptionist(true));
+    document.getElementById('legend-cms-receptionist-page').addEventListener('click',()=>addReceptionist(false));
     const sourceView=document.createElement('section'); sourceView.dataset.cmsView='source'; sourceView.hidden=true;
     sourceView.innerHTML='<h2>Canonical Source</h2><p>Master Source is a read-only, color-guided inspection of the canonical v3 graph. Selected Source is the normal editable code surface: click, select, type, paste, use Tab / Shift+Tab to indent or outdent, and Enter to keep indentation. Canvas, Selected Source, drafts, validation, and publish all resolve to the same stable node identities.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Master Source · read only</option><option value="selection">Selected Source · editable</option></select></label><small id="legend-cms-source-location">Master Source · entire website · read only</small><div class="legend-cms-source-key" aria-label="Source color guide"><span data-tone="content">Content</span><span data-tone="style">Typography & style</span><span data-tone="color">Color</span><span data-tone="size">Size & spacing</span><span data-tone="layout">Layout & responsive</span><span data-tone="media">Media</span><span data-tone="behavior">Behavior</span><span data-tone="structure">Authorable structure</span><span data-tone="protected">Protected identity</span></div><div class="legend-cms-source-editor"><pre id="legend-cms-source-highlight" class="legend-cms-source-highlight" aria-hidden="true"></pre><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="soft" aria-label="Canonical source"></textarea></div><small id="legend-cms-source-status" role="status">Master Source is synchronized and read only.</small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply selected source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Refresh from canonical graph</button></div>';
     tools.appendChild(sourceView);
@@ -9753,11 +9986,30 @@
     try{return capture();}finally{previewFormStep(index);}
   }
   const formPreviewProjection={
-    hidden(element,value){if(element){rememberFormPreview(element);element.hidden=value;}},
+    hidden(element,value){
+      if(!element) return;
+      const state=rememberFormPreview(element);
+      element.hidden=value;
+      // Authored display rules can outrank the browser's [hidden] rule.
+      // This transient projection is restored before capture or phase changes.
+      if(value) element.style.setProperty('display','none','important');
+      else if(state.display) element.style.setProperty('display',state.display,state.displayPriority);
+      else element.style.removeProperty('display');
+    },
     attribute(element,key,value){if(element){const state=rememberFormPreview(element);if(!state.attributes.has(key))state.attributes.set(key,element.getAttribute(key));element.setAttribute(key,value);}},
     class(element,key,value){if(element && key){const state=rememberFormPreview(element);if(!state.classes.has(key))state.classes.set(key,element.classList.contains(key));element.classList.toggle(key,value);}},
     text(element,value){if(element){const state=rememberFormPreview(element);if(state.text===null)state.text={value:element.textContent,preserve:element.getAttribute('data-cms-preserve-whitespace')};setContentText(element,value,true);}},
     style(element,key,value){if(element){const state=rememberFormPreview(element);if(!state.styles.has(key))state.styles.set(key,{value:element.style.getPropertyValue(key),priority:element.style.getPropertyPriority(key)});element.style.setProperty(key,value);}},
+    results(element,form){
+      if(!window.LegendQuoteReview || element.querySelector('.quote-review')) return;
+      const sample=document.createElement('div');sample.dataset.cmsPreviewOnly='true';
+      element.appendChild(sample);formPreviewSamples.push(sample);
+      window.LegendQuoteReview.render(sample,{titleId:form.id+'-studio-results',
+        kicker:'Studio preview',title:'Your review',copy:'Customize your results and scheduling presentation.',
+        diagnosis:'Illustrative preview; no answers submitted.',implication:'Actual results come from the completed request.',
+        bookingTitle:'Schedule your review',bookingCopy:'Choose a time with your team.',
+        showCalendar:false});
+    },
     sample(element,form){
       const sample=document.createElement('div');sample.dataset.cmsPreviewOnly='true';
       sample.setAttribute('role','note');
@@ -9783,6 +10035,7 @@
         add('processing',form.dataset.cmsProcessingId,'Processing preview');
         add('review',form.dataset.cmsContactId,'Review / starting estimate');
         add('contact',form.dataset.cmsContactId,'Contact details');
+        add('results',form.dataset.cmsResultsId,'Results + scheduling');
         continue;
       }
       const candidates = [...form.querySelectorAll(selector)];
@@ -9933,6 +10186,9 @@
     stepOrder.querySelector('[data-native-step-before]').disabled = !stepContext || stepContext.index === 0 || !!beforeError;
     stepOrder.querySelector('[data-native-step-after]').disabled = !stepContext || stepContext.index === stepContext.steps.length - 1 || !!afterError;
     stepOrder.querySelector('[data-native-step-order-status]').textContent = [...new Set([beforeError,afterError].filter(Boolean))].join(' ');
+    const resultLink=host.querySelector('[data-form-results-page]');
+    const redirectTemplates=['auto_quote','home_quote','commercial_quote','risk_assessment'];
+    resultLink.hidden=SITE_KEY!=='protect' || !redirectTemplates.some(key=>pageState().systemTemplateKey==='protect_template:'+key);
     host.querySelector('[role="status"]').textContent = formPreviewIndex < 0
       ? entries.length + ' form steps available to edit.'
       : 'Editing step ' + (formPreviewIndex + 1) + ' of ' + entries.length + '. Preview only; no answers or submission.';
@@ -9944,6 +10200,11 @@
     host.setAttribute('aria-label', 'Form step editor');
     host.innerHTML = '<label class="legend-cms-group">Form step<select aria-label="Form step to edit"></select></label><div class="legend-cms-row"><button type="button" data-form-preview-back>Previous form step</button><button type="button" data-form-preview-next>Next form step</button></div><small role="status" aria-live="polite"></small>';
     panel.querySelector('.legend-cms-navigation').appendChild(host);
+    const resultLink=document.createElement('button');
+    resultLink.type='button';resultLink.dataset.formResultsPage='';
+    resultLink.textContent='Edit results + scheduling page';
+    resultLink.addEventListener('click',()=>void navigateToEditorPage('/thankyou'));
+    host.appendChild(resultLink);
     const order = document.createElement('div');
     order.id = 'legend-cms-field-order';
     order.hidden = true;
@@ -10493,7 +10754,7 @@
     applyCanonicalResponsiveAttributes(el,model);
     applyStyle(el,effectiveStyle(model,el));
     applyLayout(el,effectiveLayout(model,el));
-    if (el.tagName === 'FORM') applyFormFieldPresentations(el,model,true);
+    if (el.tagName === 'FORM' || model.type === 'receptionist') applyFormFieldPresentations(el,model,true);
   }
 
   // The same canonical model drives the editor and the immutable public DOM.
@@ -10503,6 +10764,9 @@
     // declarations and use the existing native responsive authority on resize.
     const nativeSlot = SITE_KEY==='protect' && renderInput?.protectNativeSlot;
     if(nativeSlot) refreshResponsiveComposition();
+    document.querySelectorAll('img[data-cms-id]').forEach(el=>{
+      if(!nativeSlot || !el.closest('main')) applyImageLoadingPriority(el,{id:el.dataset.cmsId});
+    });
     restoreNativeFormFrames(true);
     const canonicalNodes=new Map();
     for(const root of allCanonicalRootSets())
@@ -10528,6 +10792,7 @@
   // menu buttons as visitors interact with the page.
   function hydrateCompiledPublication(payload) {
     documentState=normalizeDocument(payload.document || {});
+    selectInitialMarketingImage();
     // The compiler's HTML was emitted with a desktop-sized viewport. Apply
     // the real visitor's breakpoint before running public interactions.
     refreshCompiledResponsivePresentation();
@@ -10638,6 +10903,7 @@
     if (initialLoadStarted) return;
     initialLoadStarted = true;
     injectContentStyles();
+    if (localCaptureMode) { await captureLocalWebsite(); return; }
     if (editorMode || materializeMode) await loadEditor();
     else {
       try {

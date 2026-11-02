@@ -5378,6 +5378,7 @@ body.messaging-command-center-open {
     max-width: 100%;
     height: auto;
     max-height: 100px;
+    transform: scale(1.3);
     filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35));
 }
 
@@ -9217,9 +9218,9 @@ header .legend-global-nav .container-fluid {
     }
 
     body.legend-app .legend-founder-ai-nav-button .legend-founder-ai-logo-image {
-        width: 22px;
-        height: 22px;
-        object-fit: contain;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
     }
 
     body.legend-app .messaging-nav-trigger {

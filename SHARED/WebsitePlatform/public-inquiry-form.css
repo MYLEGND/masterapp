@@ -183,8 +183,8 @@ form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inq
 .legend-experience-progress{margin:0 0 var(--web-form-step-gap)}
 .legend-experience-progress>span{display:block;height:100%;width:0;background:var(--web-gold,#c9a55d);transition:width .22s ease}
 .pcq-form-shell .wizard-top{gap:var(--web-form-label-gap);max-width:var(--web-form-max-width);margin-inline:auto}
-.pcq-form-shell .wizard-steps,.ra-shell .stepper{gap:var(--web-form-label-gap);margin:0 auto var(--web-form-step-gap);padding:0}
-.pcq-form-shell .wizard-pill,.ra-shell .step-pill,:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .lq-step-progress{
+.pcq-form-shell .wizard-steps,.ra-shell .wizard-steps{gap:var(--web-form-label-gap);margin:0 auto var(--web-form-step-gap);padding:0}
+.pcq-form-shell .wizard-pill,.ra-shell .wizard-pill,:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) .lq-step-progress{
   padding:calc(var(--web-form-control-padding-block) / 2) var(--web-form-control-padding-inline);
   min-height:0;border-radius:var(--web-button-radius,14px);font-size:var(--web-small-size,.85rem);font-weight:800;line-height:1.4;letter-spacing:normal
 }

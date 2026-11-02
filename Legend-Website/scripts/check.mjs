@@ -126,5 +126,8 @@ for(const route of ['','about','services','contact']){
   if(!html.includes('noindex,nofollow')||!html.includes('data-legend-site="business"')||!/<html lang="en" data-legend-site="business"><head>/.test(html))throw new Error('Business preview must paint immediately while staying noindex and business-scoped: '+route);
 }
 const config=await readFile(resolve(root,'public/web.config'),'utf8');
+const packagedConfig=await readFile(resolve(root,'dist/web.config'),'utf8');
+if(packagedConfig!==config)throw new Error('Published IIS configuration must match its canonical source.');
+if(!packagedConfig.includes('<remove fileExtension=".mjs" />')||!packagedConfig.includes('<mimeMap fileExtension=".mjs" mimeType="text/javascript" />'))throw new Error('Published JavaScript modules require the canonical IIS MIME mapping.');
 if(!config.includes('Reject unrecognized website host'))throw new Error('Static LEGEND origin must reject foreign hosts.');
 console.log('Business page scoping, draft gating, company-fact separation and static host rejection passed.');

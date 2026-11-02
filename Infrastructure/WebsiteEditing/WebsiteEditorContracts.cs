@@ -215,6 +215,7 @@ public static class WebsiteCompositionSchema
             ["video"] = ["video"],
             ["form"] = ["form"],
             ["experience"] = ["form"],
+            ["receptionist"] = ["div"],
             ["embed"] = ["div"],
             ["spacer"] = ["div"],
             ["reusable"] = ["div"]

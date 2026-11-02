@@ -256,20 +256,28 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
         return string.Equals(path, "/contact", StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task<WebsiteContentVersion?> PublishedAsync(
+    private Task<WebsiteContentVersion?> PublishedAsync(
         string ownerKey,
         string siteKey,
         CancellationToken cancellationToken)
     {
-        return await (
+        // LEGEND/Protect scope validation consumes the authored document and
+        // version identity, never compiled HTML. Avoid async SqlClient large-text
+        // materialization and do not transfer every compiled page for each event.
+        return Task.FromResult(WebsiteContentStore.ReadImmutablePublication(() => (
             from state in db.Set<WebsiteContentState>().AsNoTracking()
             join version in db.Set<WebsiteContentVersion>().AsNoTracking()
                 on state.PublishedVersionId equals version.Id
             where state.OwnerKey == ownerKey &&
                   state.SiteKey == siteKey &&
                   version.StateId == state.Id
-            select version)
-            .SingleOrDefaultAsync(cancellationToken);
+            select new WebsiteContentVersion
+            {
+                Id = version.Id, StateId = version.StateId, Revision = version.Revision,
+                DocumentJson = version.DocumentJson, ImportReportJson = version.ImportReportJson,
+                SnapshotRetiredUtc = version.SnapshotRetiredUtc,
+                ActorUserId = version.ActorUserId, CreatedUtc = version.CreatedUtc
+            }).SingleOrDefault(), cancellationToken));
     }
 
     private static string NormalizeSiteKey(string? value)

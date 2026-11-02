@@ -3467,6 +3467,7 @@ function debounce(fn, ms){
 }
 const renderAllDebounced = debounce(renderAll, 40);
 
+let historyReminderItems = [];
 let initialPipelineRenderPrimed = false;
 function primeInitialPipelineRender(){
   if (initialPipelineRenderPrimed) return;
@@ -5816,7 +5817,6 @@ async function enableReminders(){
   }
 }
 
-let historyReminderItems = [];
 async function refreshHistoryReminders(){
   try {
     const response = await fetch('/CrmHistory/Reminders',{credentials:'same-origin',cache:'no-store'});

@@ -324,7 +324,7 @@ public class AccountController : Controller
         else return BadRequest();
         var configuration = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
         return Json(new { ticket = _websiteEditorTickets.Protect(scope),
-            apiBase = (configuration["LandingRoutes:BaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/') });
+            apiBase = (configuration["WebsiteContentApiBaseUrl"] ?? configuration["LandingRoutes:BaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/') });
     }
 
     [HttpPost]

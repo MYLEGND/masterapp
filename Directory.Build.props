@@ -11,4 +11,14 @@
     <ImportProjectExtensionProps Condition="'$(MSBuildProjectName)' != 'AgentPortal.Tests'">false</ImportProjectExtensionProps>
     <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
   </PropertyGroup>
+  <!-- Linked web assets retain one source file for development and publication.
+       SDK discovery otherwise assumes the consuming application's wwwroot. -->
+  <Target Name="ResolveLinkedWebAssetContentRoots" BeforeTargets="ResolveProjectStaticWebAssets">
+    <ItemGroup>
+      <Content Update="@(Content)"
+               Condition="$([System.String]::Copy('%(Content.Link)').Replace('\', '/').StartsWith('wwwroot/')) and '%(Content.ContentRoot)' == ''">
+        <ContentRoot>$([System.IO.Path]::GetDirectoryName('%(Content.FullPath)'))/</ContentRoot>
+      </Content>
+    </ItemGroup>
+  </Target>
 </Project>

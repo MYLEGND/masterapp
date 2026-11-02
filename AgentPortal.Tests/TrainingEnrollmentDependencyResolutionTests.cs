@@ -20,6 +20,27 @@ namespace AgentPortal.Tests;
 public sealed class TrainingEnrollmentDependencyResolutionTests
 {
     [Fact]
+    public void MarketingBookingResolvesCanonicalInquiryWithoutStartingReceptionistRuntime()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
+        services.AddSingleton<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>(
+            new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+        services.AddDbContext<MasterAppDbContext>(options => options.UseSqlite("Data Source=:memory:"));
+        Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(services);
+        Assert.Single(services.Where(x => x.ServiceType == typeof(ReceptionistInquiryAuthority)));
+        // Repeating the intake dependency registration must preserve its single owner.
+        services.AddConfirmedInquiryPersistence();
+        Assert.Single(services.Where(x => x.ServiceType == typeof(ReceptionistInquiryAuthority)));
+        Assert.DoesNotContain(services, x => x.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService));
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+        using var scope = provider.CreateScope();
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<ReceptionistInquiryAuthority>());
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<Infrastructure.Bookings.IReceptionistApplicationBooking>());
+    }
+
+    [Fact]
     public void CanonicalCommerceAndBillingRegistrationsResolveTrainingEnrollmentWithoutExternalEffects()
     {
         var configuration = new ConfigurationBuilder().Build();
@@ -29,7 +50,12 @@ public sealed class TrainingEnrollmentDependencyResolutionTests
         // Construct only: no connection opening, schema creation, query or write.
         services.AddDbContext<MasterAppDbContext>(options => options.UseSqlite("Data Source=:memory:"));
         services.AddLegendCommerceCore();
+        var existingHostedServices = services.Where(x =>
+            x.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService)).ToArray();
         services.AddMasterAppBilling(configuration);
+        Assert.False(Infrastructure.WebsiteRuntime.CommerceSharedHostCutoverGate.IsConfigured(configuration));
+        Assert.Equal(existingHostedServices, services.Where(x =>
+            x.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService)).ToArray());
         var gateway = new Mock<IBillingGateway>(MockBehavior.Strict);
         var mail = new Mock<IWebsiteInquiryEmailSender>(MockBehavior.Strict);
         services.AddScoped<IBillingGateway>(_ => gateway.Object);
@@ -38,6 +64,7 @@ public sealed class TrainingEnrollmentDependencyResolutionTests
         using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         using var scope = provider.CreateScope();
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<TrainingEnrollmentService>());
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<IBillingOrchestrator>());
         gateway.VerifyNoOtherCalls();
         mail.VerifyNoOtherCalls();
     }
