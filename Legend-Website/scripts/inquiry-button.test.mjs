@@ -91,7 +91,10 @@ test('one shared voice component escapes bounded labels and keeps preview inert 
   assert.match(voice,/data-receptionist-start[^>]* disabled/);
   assert.match(voice,/&lt;img src=x onerror=unsafe\(\)&gt; &amp; &quot;Talk&quot;/);
   assert.doesNotMatch(voice,/<img|<form|data-receptionist-test|ownerId|businessId|providerId/);
-  assert.match(voice,/Voice availability is checked/);
+  assert.doesNotMatch(voice,/Voice availability is checked/);
+  const customized=websiteReceptionist({title:'<Help>',description:'Advice & support'});
+  assert.match(customized,/<h2>&lt;Help&gt;<\/h2>/);
+  assert.match(customized,/<p>Advice &amp; support<\/p>/);
   assert.equal((publicInquiryForm().match(/data-website-receptionist/g)||[]).length,1);
   assert.equal((publicInquiryForm().match(/<form /g)||[]).length,1);
   assert.match(websiteReceptionist({label:'x'.repeat(200)}),new RegExp('>'+ 'x'.repeat(160) +'</button>'));

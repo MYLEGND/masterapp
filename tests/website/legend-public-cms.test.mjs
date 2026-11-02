@@ -2946,8 +2946,8 @@ for (const siteKey of ['legend', 'protect', 'business']) {
   test(`${siteKey}: shared studio keeps navigation, theme and metadata available without selection`, async () => {
     const f = await domFixture({siteKey, business: siteKey === 'business' ? {id: 'business-id', displayName: 'Fixture business'} : null});
     try {
-      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 5);
-      assert.deepEqual([...f.w.document.querySelectorAll('.legend-cms-tabs [data-open]')].map(button=>button.textContent),['GPT Workspace','Source','Media','Publish','Advanced']);
+      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 6);
+      assert.deepEqual([...f.w.document.querySelectorAll('.legend-cms-tabs [data-open]')].map(button=>button.textContent),['GPT Workspace','Receptionist','Source','Media','Publish','Advanced']);
       assert.ok(f.w.document.querySelector('[data-open="signals"]'));
       assert.ok(f.w.document.querySelector('[data-open="quality"]'));
       assert.ok(f.w.document.querySelector('[data-open="collaboration"]'));
@@ -7384,7 +7384,7 @@ for(const collision of [false,true]) test('Commercial Studio progress is scoped 
 });
 
 test('Protect Studio skips only published SEO hydration while retaining public SEO and owner identity',()=>{
-  assert.match(protectLayoutSource,/var websiteStudioMode =\s*Context\.Request\.Query\.ContainsKey\("legendEdit"\) \|\|\s*Context\.Request\.Query\.ContainsKey\("legendMaterialize"\)/);
+  assert.match(protectLayoutSource,/var websiteStudioMode =\s*localWebsiteCapture \|\|\s*Context\.Request\.Query\.ContainsKey\("legendEdit"\) \|\|\s*Context\.Request\.Query\.ContainsKey\("legendMaterialize"\)/);
   assert.match(protectLayoutSource,/if \(!websiteStudioMode && Guid\.TryParse\(trackingProfileId, out var seoProfileId\)\)/);
   const start=protectLayoutSource.indexOf('if (!websiteStudioMode && Guid.TryParse');
   const end=protectLayoutSource.indexOf('var seoRawTitle',start);

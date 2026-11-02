@@ -2266,3 +2266,36 @@ Consequently full authenticated Studio end-to-end readiness is still PARTIAL.
 Production publication, provider readiness, exact-candidate GitHub checks and
 live provenance remain unverified. No fast-track merge, deployment, credentials,
 production configuration, production content or SQL mutation performed.
+
+## 2026-11-01 — Local deployment verification and bounded CI correction
+
+Founder authorized Portal and Protect deployment from the Mac, excluding the
+GitHub fast-track deployment path. Read-only live provenance found Portal at
+c52c20d59b06b85a35b2a98b879d69a4b7f1a32f and Protect at
+031113a5b4da0b1a2ee5fda5b4a4379fe606bd1e, behind accepted source
+d3f408e7a24c17220890a0e44a9936f6eba96b2e. Protect's downloaded CMS asset
+matched the older revision. No production write was attempted.
+
+Exact-candidate PR checks 41373499261 and 41373499268 exposed missing source
+impact mappings and stale UI fixture expectations. The existing scope owner now
+maps Directory.Build.props to the four managed applications. Three exact local
+tooling/test paths have no application package impact; unknown paths still fail.
+This does not authorize executing the local Azure firewall mutation helper.
+Existing receptionist/navigation/SEO tests now match the accepted canonical UI.
+The synthetic CRM host serves actual shared design styles; the browser fixture
+opens retained disclosures before asserting long-content scrolling, preserving
+viewport, focus trap, Escape, focus restoration and authorization checks.
+
+Focused results: three source-impact regressions passed, seven affected website
+tests passed, actual AgentPortal.Tests build succeeded (zero errors; five existing
+warnings). Browser script syntax and diff whitespace checks passed. Hosted CRM
+browser execution remains pending genuine Linux Actions; no environment identity
+was spoofed. Prior compatible application evidence is preserved. These changes
+are validation corrections, not new production UI behavior.
+
+Deployment remains BLOCKED: the canonical publisher enforces authenticated
+GitHub Actions execution and has no admitted local deployment mode. Native Azure
+login does not supply its source/security/schema admission, writer exclusion or
+receipt proofs. No direct upload, environment spoofing, fast-track merge, workflow
+deployment, configuration change or migration was performed. Local deployment
+requires a bounded canonical supported-mode design, not bypassing the guard.

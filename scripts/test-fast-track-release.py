@@ -105,6 +105,21 @@ class RetainedRecoveryBuildBoundaryTests(unittest.TestCase):
 
 
 class UniversalFastTrackAdmissionTests(unittest.TestCase):
+    def test_local_operator_tools_do_not_select_application_packages(self):
+        for path in ['scripts/sync-local-azure-sql-firewall.sh',
+                     'scripts/test-local-azure-sql-firewall.py', 'scripts/test-linked-web-assets.py']:
+            with self.subTest(path=path):
+                self.assertEqual([], authority.fast_track_scope([path])['matrix']['include'])
+        with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+            authority.fast_track_scope(['scripts/unreviewed-local-tool.sh'])
+
+    def test_shared_build_props_selects_all_managed_apps_only(self):
+        scope = authority.fast_track_scope(['Directory.Build.props'])
+        self.assertEqual({'portal', 'client', 'protect', 'parfait'},
+                         {row['key'] for row in scope['matrix']['include']})
+        with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+            authority.fast_track_scope(['Directory.Unreviewed.props'])
+
     def test_canonical_diagnostics_select_four_registered_hosts_and_unknown_siblings_fail_closed(self):
         paths = ['Domain/Entities/RuntimeDiagnosticIncident.cs', 'Infrastructure/Diagnostics/RuntimeDiagnosticSanitizer.Performance.cs', 'Infrastructure/Diagnostics/RuntimeDiagnosticSanitizer.cs', 'Infrastructure/Diagnostics/RuntimeDiagnosticStore.cs', 'Infrastructure/Diagnostics/RuntimeDiagnosticsExtensions.cs', 'Infrastructure/Diagnostics/RuntimeDiagnosticDependencyCapture.cs', 'SHARED/Diagnostics/LegendFailureDiagnosticsExtensions.cs', 'SHARED/Diagnostics/RuntimeDiagnosticEvent.cs', 'SHARED/Diagnostics/RuntimeDiagnosticPerformance.cs', 'SHARED/Diagnostics/RuntimeDiagnosticScope.cs']
         for path in paths:
