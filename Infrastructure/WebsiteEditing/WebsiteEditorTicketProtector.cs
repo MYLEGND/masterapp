@@ -14,18 +14,21 @@ public sealed class WebsiteEditorTicketProtector : IDisposable
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly IDataProtector _protector;
     private readonly IDataProtector _storeLoginProtector;
+    private readonly IDataProtector _storeProviderProtector;
     private readonly ServiceProvider? _ownedProvider;
 
     public WebsiteEditorTicketProtector(IDataProtectionProvider provider)
     {
         _protector = provider.CreateProtector(Purpose);
         _storeLoginProtector = provider.CreateProtector("LEGEND.StoreManagement.LoginRequest.v1");
+        _storeProviderProtector = provider.CreateProtector("LEGEND.StoreManagement.ProviderContinuation.v1");
     }
 
     private WebsiteEditorTicketProtector(IDataProtectionProvider provider, ServiceProvider ownedProvider)
     {
         _protector = provider.CreateProtector(Purpose);
         _storeLoginProtector = provider.CreateProtector("LEGEND.StoreManagement.LoginRequest.v1");
+        _storeProviderProtector = provider.CreateProtector("LEGEND.StoreManagement.ProviderContinuation.v1");
         _ownedProvider = ownedProvider;
     }
 
@@ -152,6 +155,33 @@ public sealed class WebsiteEditorTicketProtector : IDisposable
         return (route == "/internal" || route.StartsWith("/internal/", StringComparison.Ordinal)) &&
             !route.Contains('%') && !route.Contains("//", StringComparison.Ordinal) &&
             !route.Split('/').Any(segment => segment is "." or "..");
+    }
+
+    public string ProtectStoreProviderContinuation(StoreProviderContinuation context)
+    {
+        if (!ValidStoreProviderContinuation(context)) throw new ArgumentException("Invalid store provider continuation.", nameof(context));
+        return _storeProviderProtector.Protect(JsonSerializer.Serialize(context, JsonOptions));
+    }
+
+    private static bool ValidStoreProviderContinuation(StoreProviderContinuation? context)
+    {
+        if (context?.Actor is not { } actor || actor.CommerceBusinessId is not Guid businessId || businessId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(actor.ActorUserId) || context.Capability != "settings" ||
+            actor.ExpiresUtc.Kind != DateTimeKind.Utc || actor.ExpiresUtc <= DateTime.UtcNow || actor.ExpiresUtc > DateTime.UtcNow.AddMinutes(20)) return false;
+        return IsValidStoreLoginRequest(new(businessId, actor.SiteKey, actor.OwnerUserId, context.DestinationOrigin,
+            "/internal", new string('0', 64), DateTime.UtcNow.AddMinutes(1)));
+    }
+
+    public StoreProviderContinuation? TryUnprotectStoreProviderContinuation(string? token)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return null;
+        try
+        {
+            var context = JsonSerializer.Deserialize<StoreProviderContinuation>(_storeProviderProtector.Unprotect(token), JsonOptions);
+            return ValidStoreProviderContinuation(context) ? context : null;
+        }
+        catch (System.Security.Cryptography.CryptographicException) { return null; }
+        catch (JsonException) { return null; }
     }
 
     public void Dispose() => _ownedProvider?.Dispose();

@@ -15,6 +15,25 @@ namespace Legend.Commerce;
 /// </summary>
 public static class CommerceServiceRegistration
 {
+    public static IServiceCollection AddLegendCommerceSessions(this IServiceCollection services)
+    {
+        services.AddAuthentication(CommerceManagementController.StoreSessionScheme)
+            .AddCookie(CommerceManagementController.StoreSessionScheme, options =>
+            {
+                options.Cookie.Name = "__Host-LEGEND.StoreSession";
+                options.Cookie.Path = "/";
+                options.Cookie.HttpOnly = true;
+                options.Cookie.SecurePolicy = Microsoft.AspNetCore.Http.CookieSecurePolicy.Always;
+                options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax;
+                options.ExpireTimeSpan = TimeSpan.FromHours(1);
+                options.SlidingExpiration = false;
+                options.Events.OnRedirectToLogin = context => { context.Response.StatusCode = 401; return Task.CompletedTask; };
+                options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = 403; return Task.CompletedTask; };
+            });
+        services.AddAuthorization();
+        return services;
+    }
+
     /// <summary>Registers exactly the same shared controllers with any MVC host.</summary>
     public static IMvcBuilder AddLegendCommerceMvc(this IMvcBuilder builder)
     {
@@ -139,7 +158,7 @@ public static class CommerceServiceRegistration
             if (template is null || template.StartsWith("/internal/", StringComparison.Ordinal)) continue;
             var methods = selector.ActionConstraints.OfType<Microsoft.AspNetCore.Mvc.ActionConstraints.HttpMethodActionConstraint>()
                 .SelectMany(x => x.HttpMethods).ToArray();
-            foreach (var route in CommerceManagementCapabilityPolicy.InternalRoutes.Where(x =>
+            foreach (var route in CommerceManagementCapabilityPolicy.InternalRoutes.Concat(CommerceManagementCapabilityPolicy.AuthenticationRoutes).Where(x =>
                 x.ActionPath == "/commerce/manage/" + template && methods.Contains(x.Method)))
             {
                 if (action.Selectors.Any(x => x.AttributeRouteModel?.Template == route.InternalPath)) continue;

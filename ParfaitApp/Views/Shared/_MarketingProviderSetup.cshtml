@@ -1,9 +1,9 @@
 @{
     var ticket = ViewData["CommerceManagerTicket"] as string;
-    var controller = string.IsNullOrWhiteSpace(ticket) ? "InternalModules" : "CommerceManagement";
+    var controller = (ViewData["CommerceManagerScoped"] as bool? != true && string.IsNullOrWhiteSpace(ticket)) ? "InternalModules" : "CommerceManagement";
     string? Endpoint(string action)
     {
-        if (string.IsNullOrWhiteSpace(ticket)) return Url.Action(action, controller);
+        if ((ViewData["CommerceManagerScoped"] as bool? != true && string.IsNullOrWhiteSpace(ticket))) return Url.Action(action, controller);
         var suffix = action switch { "MarketingSetup" => "marketing-setup", "ConnectOpenAi" => "openai-connect",
             "RefreshOpenAi" => "openai-refresh", "DisconnectOpenAi" => "openai-disconnect", _ => throw new InvalidOperationException("Unknown provider action.") };
         return Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context,

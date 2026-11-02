@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Linq;
 using System.Reflection;
@@ -29,6 +30,173 @@ namespace AgentPortal.Tests;
 
 public sealed class CommerceManagementCapabilityPolicyTests
 {
+    [Fact]
+    public async Task Global_store_entry_requires_exact_current_published_store_and_verified_domain()
+    {
+        await using var f = new NavigationFixture("owner", "Active", true);
+        var state = f.Db.Set<WebsiteContentState>().Single();
+        state.ProvisionedStoreBusinessId = f.Business.Id;
+        var domain = new WebsiteDomainBinding { CommerceBusinessId = f.Business.Id, Hostname = "one.example.invalid",
+            Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow };
+        f.Db.Add(domain); await f.Db.SaveChangesAsync();
+        Task<string?> Entry() => CommerceStoreContextService.PublishedManagementEntryAsync(f.Db, null, state.SiteKey, state.OwnerKey);
+        Assert.Null(await Entry());
+        var published = new WebsiteContentVersion { StateId = state.Id, DocumentJson = state.DraftJson };
+        f.Db.Add(published); state.PublishedVersionId = published.Id; await f.Db.SaveChangesAsync();
+        Assert.Equal("https://one.example.invalid/internal/login", await Entry());
+        published.DocumentJson = "{}"; await f.Db.SaveChangesAsync(); Assert.Null(await Entry());
+        published.DocumentJson = state.DraftJson; published.StateId = Guid.NewGuid(); await f.Db.SaveChangesAsync(); Assert.Null(await Entry());
+        published.StateId = state.Id; published.SnapshotRetiredUtc = DateTime.UtcNow; await f.Db.SaveChangesAsync(); Assert.Null(await Entry());
+        published.SnapshotRetiredUtc = null; domain.Status = "pending"; await f.Db.SaveChangesAsync(); Assert.Null(await Entry());
+    }
+
+    [Fact]
+    public void Provider_continuations_reject_malformed_actor_expiry_and_purpose_confusion()
+    {
+        var provider = new EphemeralDataProtectionProvider(); using var tickets = new WebsiteEditorTicketProtector(provider);
+        var id = Guid.NewGuid();
+        var actor = new WebsiteEditorTicket(WebsiteEditorSiteKeys.Business, WebsiteEditorSiteKeys.BusinessOwnerKey(id), null,
+            false, DateTime.UtcNow.AddMinutes(10), id, "actor", ActorClientProfileId: Guid.NewGuid());
+        var context = new StoreProviderContinuation(actor, "https://one.example.invalid", "settings");
+        var token = tickets.ProtectStoreProviderContinuation(context);
+        Assert.NotNull(tickets.TryUnprotectStoreProviderContinuation(token));
+        Assert.Null(tickets.TryUnprotectStoreProviderContinuation(tickets.Protect(actor)));
+        foreach (var invalid in new[] { context with { Actor = null! }, context with { DestinationOrigin = "https://one.example.invalid/escape" },
+            context with { Capability = "analytics" }, context with { Actor = actor with { ExpiresUtc = DateTime.UtcNow.AddMinutes(-1) } },
+            context with { Actor = actor with { ExpiresUtc = DateTime.UtcNow.AddHours(1) } }, context with { Actor = actor with { CommerceBusinessId = Guid.Empty } } })
+        {
+            Assert.Throws<ArgumentException>(() => tickets.ProtectStoreProviderContinuation(invalid));
+            var malformed = provider.CreateProtector("LEGEND.StoreManagement.ProviderContinuation.v1").Protect(JsonSerializer.Serialize(invalid, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+            Assert.Null(tickets.TryUnprotectStoreProviderContinuation(malformed));
+        }
+    }
+
+    [Fact]
+    public async Task Session_meta_callback_preserves_scope_without_returning_editor_tickets()
+    {
+        await using var f = new NavigationFixture("owner", "Active", true);
+        f.Db.Set<WebsiteContentState>().Single().ProvisionedStoreBusinessId = f.Business.Id;
+        f.Db.Add(new WebsiteDomainBinding { CommerceBusinessId = f.Business.Id, Hostname = "one.example.invalid",
+            Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow });
+        await f.Db.SaveChangesAsync();
+        f.Controller.Request.Scheme = "https"; f.Controller.Request.Host = new HostString("one.example.invalid");
+        f.Controller.Request.Path = "/internal/analytics/meta-connect";
+        f.Controller.HttpContext.Items["LegendStoreSession"] = true;
+        var connect = Assert.IsType<RedirectResult>(await f.Controller.MetaConnect(f.Ticket));
+        var state = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(connect.Url).Query)["state"].ToString();
+        var inspected = f.Meta.InspectState(state);
+        var context = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri("https://local" + inspected.ReturnUrl).Query)["storeContinuation"].ToString();
+        Assert.NotEmpty(context); Assert.Null(f.Tickets.TryUnprotect(context)); Assert.Null(f.Tickets.TryUnprotectStoreLoginRequest(context));
+        Assert.NotNull(f.Tickets.TryUnprotectStoreProviderContinuation(context));
+        f.Controller.Request.Path = "/commerce/manage/analytics/meta-callback";
+        f.Controller.HttpContext.Items.Clear();
+        var returned = Assert.IsType<RedirectResult>(await f.Controller.MetaCallback(state: state, error: "access_denied"));
+        Assert.StartsWith("https://one.example.invalid/internal/analytics?", returned.Url);
+        Assert.DoesNotContain("ticket", returned.Url); Assert.DoesNotContain("storeContinuation", returned.Url);
+        f.Member.RoleKey = "staff"; f.Member.CanManageAnalytics = true; await f.Db.SaveChangesAsync();
+        Assert.True(BusinessWorkspaceAccess.Allows(f.Member, "analytics"));
+        Assert.False(BusinessWorkspaceAccess.Allows(f.Member, "settings"));
+        Assert.IsType<UnauthorizedResult>(await f.Controller.MetaCallback(state: state, error: "access_denied"));
+    }
+
+    [Fact]
+    public async Task Normal_login_redeems_one_use_handoff_into_host_cookie_and_rechecks_revocation()
+    {
+        await using var f = new NavigationFixture("owner", "Active", true, relational: true);
+        f.Db.Set<WebsiteContentState>().Single().ProvisionedStoreBusinessId = f.Business.Id;
+        f.Db.Add(new WebsiteDomainBinding { CommerceBusinessId = f.Business.Id, Hostname = "one.example.invalid",
+            Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow });
+        await f.Db.SaveChangesAsync();
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
+        builder.WebHost.UseTestServer();
+        builder.Services.AddSingleton(f.Db);
+        builder.Services.AddSingleton(f.Stores); builder.Services.AddSingleton(f.Tickets);
+        builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
+        builder.Services.AddLegendCommerceSessions();
+        builder.Services.AddControllersWithViews().AddApplicationPart(Assembly.Load("ProtectWebsite")).AddLegendCommerceManagementMvc().AddControllersAsServices();
+        builder.Services.Replace(ServiceDescriptor.Transient<CommerceManagementController>(_ => f.Controller));
+        await using var app = builder.Build();
+        app.UseAuthentication(); app.UseAuthorization(); app.MapControllers();
+        app.MapGet("/test-token", (Microsoft.AspNetCore.Antiforgery.IAntiforgery af, HttpContext c) => af.GetAndStoreTokens(c).RequestToken!);
+        await app.StartAsync();
+        using var client = app.GetTestClient(); client.BaseAddress = new Uri("https://one.example.invalid");
+        var unauthenticated = await client.GetAsync("/internal");
+        Assert.Equal(System.Net.HttpStatusCode.Redirect, unauthenticated.StatusCode);
+        Assert.StartsWith("/internal/login?", unauthenticated.Headers.Location!.OriginalString);
+        var tokenResponse = await client.GetAsync("/internal/login");
+        Assert.Equal(System.Net.HttpStatusCode.OK, tokenResponse.StatusCode);
+        var loginHtml = await tokenResponse.Content.ReadAsStringAsync();
+        var token = System.Text.RegularExpressions.Regex.Match(loginHtml, "name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"").Groups[1].Value;
+        Assert.NotEmpty(token);
+        var afCookie = string.Join("; ", tokenResponse.Headers.GetValues("Set-Cookie").Select(x => x.Split(';')[0]));
+        client.DefaultRequestHeaders.Add("Cookie", afCookie);
+        System.Net.Http.FormUrlEncodedContent LoginBody(string? state = null) => new(new System.Collections.Generic.Dictionary<string,string> {
+            ["__RequestVerificationToken"] = token, ["state"] = state ?? "", ["returnPath"] = "/internal" });
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, (await client.PostAsync("/internal/login", new System.Net.Http.StringContent(""))).StatusCode);
+        var login = await client.PostAsync("/internal/login", LoginBody());
+        Assert.Equal(System.Net.HttpStatusCode.Redirect, login.StatusCode);
+        Assert.Equal("portal.mylegnd.com", login.Headers.Location!.Host);
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(login.Headers.Location.Query);
+        var callbackHttp = new DefaultHttpContext { RequestServices = app.Services };
+        var properties = new Microsoft.AspNetCore.Authentication.AuthenticationProperties();
+        properties.Items["legend.store.request"] = query["request"].ToString();
+        var principal = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(new[] {
+            new System.Security.Claims.Claim("oid", "actor") }, "synthetic-validated-provider"));
+        var callback = new Microsoft.AspNetCore.Authentication.TicketReceivedContext(callbackHttp,
+            new Microsoft.AspNetCore.Authentication.AuthenticationScheme("OpenIdConnect", null, typeof(Microsoft.AspNetCore.Authentication.OpenIdConnect.OpenIdConnectHandler)),
+            new Microsoft.AspNetCore.Authentication.OpenIdConnect.OpenIdConnectOptions(),
+            new Microsoft.AspNetCore.Authentication.AuthenticationTicket(principal, properties, "OpenIdConnect"));
+        var portalSignInCalled = false;
+        await AccountController.StoreTicketHandler(_ => { portalSignInCalled = true; return Task.CompletedTask; })(callback);
+        Assert.True(callback.Result!.Handled); Assert.False(portalSignInCalled);
+        Assert.Equal(302, callbackHttp.Response.StatusCode);
+        Assert.False(callbackHttp.Response.Headers.ContainsKey("Set-Cookie"));
+        var callbackTarget = new Uri(callbackHttp.Response.Headers.Location.ToString());
+        Assert.Equal("one.example.invalid", callbackTarget.Host);
+        var opaqueState = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(callbackTarget.Query)["state"].ToString();
+        client.DefaultRequestHeaders.Remove("Cookie");
+        client.DefaultRequestHeaders.Add("Cookie", afCookie + "; " + string.Join("; ", login.Headers.GetValues("Set-Cookie").Select(x => x.Split(';')[0])));
+        var prompt = await client.GetAsync(callbackTarget.PathAndQuery);
+        Assert.Equal(System.Net.HttpStatusCode.OK, prompt.StatusCode);
+        Assert.Contains("__RequestVerificationToken", await prompt.Content.ReadAsStringAsync());
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, (await client.PostAsync("/internal/login/complete", new System.Net.Http.FormUrlEncodedContent(new System.Collections.Generic.Dictionary<string,string> { ["state"] = opaqueState }))).StatusCode);
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, (await client.PostAsync("/internal/login/complete", new System.Net.Http.FormUrlEncodedContent(new System.Collections.Generic.Dictionary<string,string> { ["state"] = opaqueState, ["__RequestVerificationToken"] = "forged" }))).StatusCode);
+        var completion = await client.PostAsync("/internal/login/complete", LoginBody(opaqueState));
+        Assert.Equal(System.Net.HttpStatusCode.Redirect, completion.StatusCode);
+        Assert.Equal("/internal/dashboard", completion.Headers.Location!.OriginalString);
+        Assert.DoesNotContain("ticket", completion.Headers.Location.OriginalString);
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, (await client.PostAsync("/internal/login/complete", LoginBody(opaqueState))).StatusCode);
+        client.DefaultRequestHeaders.Remove("Cookie");
+        var session = Assert.Single(completion.Headers.GetValues("Set-Cookie").Where(x => x.StartsWith("__Host-LEGEND.StoreSession=")));
+        Assert.Contains("secure", session, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("httponly", session, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("domain=", session, StringComparison.OrdinalIgnoreCase);
+        client.DefaultRequestHeaders.Add("Cookie", session.Split(';')[0]);
+        var workspace = await client.GetAsync("/internal");
+        Assert.Equal(System.Net.HttpStatusCode.Redirect, workspace.StatusCode);
+        Assert.Equal("/internal/dashboard", workspace.Headers.Location!.OriginalString);
+        var authenticatedToken = await client.GetAsync("/test-token");
+        token = await authenticatedToken.Content.ReadAsStringAsync();
+        client.DefaultRequestHeaders.Remove("Cookie");
+        client.DefaultRequestHeaders.Add("Cookie", session.Split(';')[0] + "; " + string.Join("; ", authenticatedToken.Headers.GetValues("Set-Cookie").Select(x => x.Split(';')[0])));
+        System.Net.Http.FormUrlEncodedContent Profile(string name) => new(new System.Collections.Generic.Dictionary<string,string> {
+            ["__RequestVerificationToken"] = token, ["Name"] = name, ["BusinessType"] = "Retail" });
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, (await client.PostAsync("/internal/settings/business-profile", Profile(""))).StatusCode);
+        var saved = await client.PostAsync("/internal/settings/business-profile", Profile("Synthetic store"));
+        Assert.Equal(System.Net.HttpStatusCode.Redirect, saved.StatusCode);
+        Assert.Equal("/internal/settings/business-profile", saved.Headers.Location!.OriginalString);
+        Assert.Equal("Synthetic store", f.Business.DisplayName);
+        f.Member.Status = "Revoked"; await f.Db.SaveChangesAsync();
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, (await client.GetAsync("/internal")).StatusCode);
+        var deniedHttp = new DefaultHttpContext { RequestServices = app.Services };
+        var deniedCallback = new Microsoft.AspNetCore.Authentication.TicketReceivedContext(deniedHttp, callback.Scheme,
+            new Microsoft.AspNetCore.Authentication.OpenIdConnect.OpenIdConnectOptions(),
+            new Microsoft.AspNetCore.Authentication.AuthenticationTicket(principal, properties, "OpenIdConnect"));
+        await AccountController.StoreTicketHandler(_ => { portalSignInCalled = true; return Task.CompletedTask; })(deniedCallback);
+        Assert.True(deniedCallback.Result!.Handled); Assert.False(portalSignInCalled);
+        Assert.Equal(403, deniedHttp.Response.StatusCode); Assert.False(deniedHttp.Response.Headers.ContainsKey("Set-Cookie"));
+    }
+
     [Fact]
     public async Task Internal_write_executes_Mvc_antiforgery_and_persists_only_valid_scoped_request()
     {
@@ -416,29 +584,40 @@ public sealed class CommerceManagementCapabilityPolicyTests
         public CommerceBusinessMember Member;
         public WebsiteEditorTicketProtector Tickets;
         public CommerceManagementController Controller;
+        public CommerceStoreContextService Stores;
+        public Infrastructure.Analytics.MarketingMetaAdsOAuthService Meta;
         public string Ticket;
         private readonly ServiceProvider services;
-        public NavigationFixture(string role, string status, bool canTeam)
+        private Microsoft.Data.Sqlite.SqliteConnection? connection;
+        public NavigationFixture(string role, string status, bool canTeam, bool relational = false)
         {
+            if (relational)
+            {
+                Db.Dispose();
+                connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:"); connection.Open();
+                Db = new MasterAppDbContext(Microsoft.EntityFrameworkCore.SqliteDbContextOptionsBuilderExtensions.UseSqlite(new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<MasterAppDbContext>(), connection).Options);
+                Db.Database.EnsureCreated();
+            }
             Member = new() { CommerceBusinessId = Business.Id, ClientProfileId = Profile.Id, RoleKey = role, Status = status, CanManageStorefront = true, CanManageCatalog = true, CanManageTeam = canTeam };
             Db.CommerceBusinesses.Add(Business); Db.ClientProfiles.Add(Profile); Db.CommerceBusinessMembers.Add(Member);
             Db.CommerceBusinessStorefrontSettings.Add(new() { CommerceBusinessId = Business.Id });
             Db.Set<WebsiteContentState>().Add(new() { OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(Business.Id), SiteKey = WebsiteEditorSiteKeys.Business, CommerceBusinessId = Business.Id, DraftJson = JsonSerializer.Serialize(WebsiteContentSanitizer.Sanitize(new WebsiteContentDocument { Store = new() { Enabled = true } }), new JsonSerializerOptions(JsonSerializerDefaults.Web)) });
             Db.SaveChanges();
             var protection = new EphemeralDataProtectionProvider();
-            var configuration = new ConfigurationBuilder().Build();
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new System.Collections.Generic.Dictionary<string,string?> { ["MetaAds:AppId"] = "synthetic-app" }).Build();
             Tickets = new(protection);
             Ticket = Tickets.Protect(new(WebsiteEditorSiteKeys.Business, WebsiteEditorSiteKeys.BusinessOwnerKey(Business.Id), null, false, DateTime.UtcNow.AddMinutes(5), Business.Id, "actor", null, Profile.Id));
             services = new ServiceCollection().AddSingleton(Db)
                 .AddSingleton(new MerchantConnectionService(Db, protection, Array.Empty<IMerchantPaymentGateway>(), configuration)).BuildServiceProvider();
-            var stores = new CommerceStoreContextService(Db, new CommerceBusinessScopeResolver(Db), null!, new WebsiteDomainService(Db, Mock.Of<System.Net.Http.IHttpClientFactory>(), configuration), configuration);
-            Controller = new(Tickets, configuration, stores, null!, null!, null!, null!, null!, null!, null!, null!, null!)
+            var stores = Stores = new CommerceStoreContextService(Db, new CommerceBusinessScopeResolver(Db), null!, new WebsiteDomainService(Db, Mock.Of<System.Net.Http.IHttpClientFactory>(), configuration), configuration);
+            Meta = new(configuration, Mock.Of<System.Net.Http.IHttpClientFactory>(), protection, Microsoft.Extensions.Logging.Abstractions.NullLogger<Infrastructure.Analytics.MarketingMetaAdsOAuthService>.Instance);
+            Controller = new(Tickets, configuration, stores, null!, null!, null!, null!, null!, null!, Meta, null!, null!)
             { ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { RequestServices = services } } };
             Controller.Url = Mock.Of<IUrlHelper>();
             Controller.HttpContext.Request.Method = "GET";
             Controller.TempData = new TempDataDictionary(Controller.HttpContext, Mock.Of<ITempDataProvider>());
         }
-        public async ValueTask DisposeAsync() { Tickets.Dispose(); await services.DisposeAsync(); await Db.DisposeAsync(); }
+        public async ValueTask DisposeAsync() { Tickets.Dispose(); await services.DisposeAsync(); await Db.DisposeAsync(); if (connection is not null) await connection.DisposeAsync(); }
     }
 
 }

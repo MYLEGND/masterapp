@@ -11,7 +11,7 @@
             : "https://www.mylegnd.com/favicon.jpg")
         : "/images/favicon/parfait-logo.png";
     var productSkuFallback = scopedStoreContext?.BusinessKey?.ToUpperInvariant() ?? "PARFAIT";
-    var isScopedCommerceManager = !string.IsNullOrWhiteSpace(commerceManagerTicket);
+    var isScopedCommerceManager = (ViewData["CommerceManagerScoped"] as bool? == true || !string.IsNullOrWhiteSpace(commerceManagerTicket));
     string CommerceAction(string internalPath, string scopedPath) =>
         isScopedCommerceManager
             ? Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, scopedPath, commerceManagerTicket, scopedPath == "/commerce/manage/products" ? "GET" : "POST")

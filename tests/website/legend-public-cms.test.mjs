@@ -8299,3 +8299,33 @@ test('native proof labels discard decorative indentation without changing author
     }finally{capture.close();}
   }
 });
+
+
+test('Studio opens the scoped normal workspace and has no embedded manager',async()=>{
+  const doc=canonicalBusinessNavigation(canonicalDocument());
+  doc.store.enabled=true;
+  const store={enabled:true,label:'Store',businessKey:'fixture',storefrontUrl:'/store',cartUrl:'/store/cart',managerUrl:'https://store.example/internal/login'};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Business'},doc,store});
+  try{
+    const controls=f.w.document.querySelector('#legend-cms-store-controls');
+    const entry=[...controls.querySelectorAll('a')].find(a=>a.textContent==='Open store workspace');
+    assert.ok(entry); assert.equal(entry.href,store.managerUrl); assert.equal(entry.target,'_blank');
+    assert.equal(f.w.document.querySelector('.legend-cms-store-manager'),null);
+    assert.doesNotMatch(source,/openStoreManager|legend-cms-store-manager/);
+    assert.ok(![...controls.querySelectorAll('button')].some(b=>['Manage products','Payments'].includes(b.textContent)));
+  }finally{f.close();}
+});
+
+
+test('published person login keeps the exact scoped workspace destination',async()=>{
+  const doc=canonicalBusinessNavigation(canonicalDocument()); doc.store.enabled=true;
+  const store={enabled:true,label:'Store',businessKey:'fixture',storefrontUrl:'/store',cartUrl:'/store/cart',managerUrl:'https://protect.mylegnd.com/internal/login?businessKey=fixture'};
+  const f=await domFixture({siteKey:'business',search:'',business:{id:'business-id',displayName:'Business'},doc,store});
+  try{
+    const login=f.w.document.querySelector('a.login-link');
+    assert.ok(login); assert.equal(login.href,store.managerUrl);
+    assert.equal(login.getAttribute('aria-label'),'Team login');
+    assert.equal(login.querySelectorAll('svg').length,1);
+    assert.equal(f.w.document.querySelectorAll('a.login-link').length,1);
+  }finally{f.close();}
+});

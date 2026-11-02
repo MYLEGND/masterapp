@@ -3,7 +3,7 @@
     var title = ViewData["Title"] as string ?? "Internal";
     var scopedStore = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
     var managerTicket = ViewData["CommerceManagerTicket"] as string;
-    var scopedManager = scopedStore is not null && !string.IsNullOrWhiteSpace(managerTicket);
+    var scopedManager = scopedStore is not null && (ViewData["CommerceManagerScoped"] as bool? == true || !string.IsNullOrWhiteSpace(managerTicket));
     var storeName = scopedStore?.StoreName ?? "Parfait";
     // The one shared internal shell must never render Parfait's icon for another
     // commerce tenant. Parfait's original identity remains byte-for-byte in its
@@ -51,12 +51,13 @@
         .GroupBy(navPage => new { navPage.Group, navPage.GroupOrder })
         .OrderBy(group => group.Key.GroupOrder)
         .ToList();
-    var canCatalog = (ViewData["CommerceCanCatalog"] as bool?) ?? true;
-    var canOrders = (ViewData["CommerceCanOrders"] as bool?) ?? true;
-    var canAutomations = (ViewData["CommerceCanAutomations"] as bool?) ?? true;
-    var canAnalytics = (ViewData["CommerceCanAnalytics"] as bool?) ?? true;
-    var canSettings = (ViewData["CommerceCanSettings"] as bool?) ?? true;
-    var canTeam = (ViewData["CommerceCanTeam"] as bool?) ?? true;
+    var canCatalog = (ViewData["CommerceCanCatalog"] as bool?) ?? !Context.Request.Path.StartsWithSegments("/internal");
+    var canOrders = (ViewData["CommerceCanOrders"] as bool?) ?? !Context.Request.Path.StartsWithSegments("/internal");
+    var canAutomations = (ViewData["CommerceCanAutomations"] as bool?) ?? !Context.Request.Path.StartsWithSegments("/internal");
+    var canAnalytics = (ViewData["CommerceCanAnalytics"] as bool?) ?? !Context.Request.Path.StartsWithSegments("/internal");
+    var canSettings = (ViewData["CommerceCanSettings"] as bool?) ?? !Context.Request.Path.StartsWithSegments("/internal");
+    var canTeam = (ViewData["CommerceCanTeam"] as bool?) ?? !Context.Request.Path.StartsWithSegments("/internal");
+    var canWebsite = (ViewData["CommerceCanWebsite"] as bool?) ?? !Context.Request.Path.StartsWithSegments("/internal");
     string ScopedUrl(string path) => Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, path, managerTicket);
 }
 
@@ -92,7 +93,7 @@
             {
                 <div class="pf-nav-group">
                     <div class="pf-nav-section">Core</div>
-                    <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/dashboard")">Dashboard</a>
+                    @if (canWebsite) { <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/dashboard")">Dashboard</a> }
                 </div>
                 <div class="pf-nav-group">
                     <div class="pf-nav-section">Operations</div>
@@ -134,7 +135,7 @@
                 @if (scopedManager)
                 {
                     <a class="pf-sidebar-utility" href="@storeRoot" target="_blank" rel="noopener">View Store</a>
-                    <a class="pf-sidebar-utility" href="@ScopedUrl("/commerce/manage/preview")" target="commercePreview">Draft Preview</a>
+                    @if (canWebsite) { <a class="pf-sidebar-utility" href="@ScopedUrl("/commerce/manage/preview")" target="commercePreview">Draft Preview</a> }
                 }
                 else
                 {
@@ -143,7 +144,7 @@
                 }
             </div>
 
-            @if (!scopedManager && User.Identity?.IsAuthenticated == true)
+            @if (Context.Items.ContainsKey("LegendStoreSession") || (!scopedManager && User.Identity?.IsAuthenticated == true))
             {
                 <form action="@Url.Content("~/internal/logout")" method="post" class="pf-sidebar-logout-form">
                     @Html.AntiForgeryToken()
@@ -158,7 +159,7 @@
             <div class="pf-header-inner">
                 <div class="pf-header-main">
                     <div class="pf-header-left">
-                        <a class="pf-brandmark" href="@(scopedManager ? ScopedUrl("/commerce/manage/dashboard") : "/internal")">
+                        <a class="pf-brandmark" href="@(scopedManager ? (canWebsite ? ScopedUrl("/commerce/manage/dashboard") : Context.Request.Path + Context.Request.QueryString) : "/internal")">
                             @if (!scopedManager)
                             {
                                 <span class="pf-brand-emblem">

@@ -659,3 +659,5 @@ public static class WebsiteCallToActionCatalog
         return uri.ToString();
     }
 }
+
+public sealed record StoreProviderContinuation(WebsiteEditorTicket Actor, string DestinationOrigin, string Capability);

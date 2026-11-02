@@ -4260,40 +4260,9 @@ public class WebsitePlatformController : ControllerBase
         return profile is null ? null : NormalizeOwner(profile.AgentUserId);
     }
 
-    private async Task<string?> ResolveCanonicalStoreRootAsync(
-        string siteKey,
-        WebsiteCommerceScope scope,
-        CancellationToken cancellationToken)
-    {
-        if (siteKey == WebsiteEditorSiteKeys.Legend)
-            return (_configuration["Commerce:LegendPublicBaseUrl"] ?? "https://mylegnd.com").TrimEnd('/') + "/store";
-
-        if (siteKey == WebsiteEditorSiteKeys.Protect)
-            return (_configuration["Commerce:ProtectPublicBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/') +
-                   "/store/s/" + Uri.EscapeDataString(scope.BusinessKey);
-
-        if (siteKey != WebsiteEditorSiteKeys.Business)
-            return null;
-
-        // Business websites use the same verified custom-domain authority as
-        // the public commerce resolver. Never synthesize a mylegnd.com store
-        // path for a business tenant.
-        var cutoff = DateTime.UtcNow.AddHours(-24);
-        var hostname = await _db.Set<WebsiteDomainBinding>()
-            .AsNoTracking()
-            .Where(binding =>
-                binding.CommerceBusinessId == scope.CommerceBusinessId &&
-                binding.Status == "active" &&
-                binding.CertificateStatus == "active" &&
-                binding.LastCheckedUtc >= cutoff)
-            .OrderBy(binding => binding.CreatedUtc)
-            .Select(binding => binding.Hostname)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        return string.IsNullOrWhiteSpace(hostname)
-            ? null
-            : "https://" + hostname.Trim().TrimEnd('.') + "/store";
-    }
+    private Task<string?> ResolveCanonicalStoreRootAsync(string siteKey, WebsiteCommerceScope scope, CancellationToken cancellationToken)
+        => ParfaitApp.Services.CommerceStoreContextService.WebsiteStoreRootAsync(_db, _configuration, siteKey,
+            scope.CommerceBusinessId, scope.BusinessKey, cancellationToken);
 
     private async Task<object> StorePayloadAsync(
         string siteKey,
@@ -4340,12 +4309,10 @@ public class WebsitePlatformController : ControllerBase
             previewUrl = escapedTicket is null
                 ? null
                 : managerBase + "/commerce/manage/preview?ticket=" + escapedTicket,
-            managerUrl = escapedTicket is null
-                ? null
-                : managerBase + "/commerce/manage/products?ticket=" + escapedTicket,
+            managerUrl = ParfaitApp.Services.CommerceStoreContextService.ManagementEntry(root, siteKey == WebsiteEditorSiteKeys.Protect ? scope.BusinessKey : null),
             paymentsUrl = escapedTicket is null
                 ? null
-                : managerBase + "/commerce/manage/payments?ticket=" + escapedTicket
+                : ParfaitApp.Services.CommerceStoreContextService.ManagementEntry(root, siteKey == WebsiteEditorSiteKeys.Protect ? scope.BusinessKey : null)
         };
     }
 

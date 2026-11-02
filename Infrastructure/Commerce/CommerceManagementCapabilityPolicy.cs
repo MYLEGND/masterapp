@@ -68,6 +68,15 @@ public static class CommerceManagementCapabilityPolicy
     public sealed record RouteAdapter(string Method, string InternalPath, string ActionPath);
     public static IReadOnlyList<RouteAdapter> InternalRoutes { get; } = BuildInternalRoutes();
 
+    public static IReadOnlyList<RouteAdapter> AuthenticationRoutes { get; } = new[] {
+        new RouteAdapter("GET", "/internal/login", "/commerce/manage/session/login"),
+        new RouteAdapter("POST", "/internal/login", "/commerce/manage/session/login"),
+        new RouteAdapter("GET", "/internal/login/complete", "/commerce/manage/session/complete"),
+        new RouteAdapter("POST", "/internal/login/complete", "/commerce/manage/session/complete"),
+        new RouteAdapter("GET", "/internal/denied", "/commerce/manage/session/denied"),
+        new RouteAdapter("POST", "/internal/logout", "/commerce/manage/session/logout")
+    };
+
     private static IReadOnlyList<RouteAdapter> BuildInternalRoutes()
     {
         var routes = new List<RouteAdapter>();
@@ -101,7 +110,8 @@ public static class CommerceManagementCapabilityPolicy
         var target = actionPath;
         if (context.Request.Path.StartsWithSegments("/internal"))
             target = InternalRoutes.SingleOrDefault(x => x.Method == method && x.ActionPath == actionPath)?.InternalPath ?? throw new InvalidOperationException("No canonical internal route exists for this action and method.");
-        var query = new Dictionary<string, string?> { ["ticket"] = ticket };
+        var query = new Dictionary<string, string?>();
+        if (!context.Items.ContainsKey("LegendStoreSession") && !string.IsNullOrEmpty(ticket)) query["ticket"] = ticket;
         var businessKey = context.Request.Query["businessKey"].ToString();
         if (!string.IsNullOrEmpty(businessKey)) query["businessKey"] = businessKey;
         return Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(target, query);

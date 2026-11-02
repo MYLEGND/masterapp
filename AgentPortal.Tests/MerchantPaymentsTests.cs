@@ -1,3 +1,8 @@
+using Infrastructure.Businesses;
+using Infrastructure.WebsiteEditing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,6 +30,42 @@ using Xunit;
 
 public sealed class MerchantPaymentsTests
 {
+    [Fact] public async Task SessionProviderCallbackUsesRetainedScopeAndReturnsWithoutTicket()
+    {
+        using var f = new Fixture(); var profile = f.SeedOwner(f.Business, "owner-one");
+        f.Db.Set<WebsiteContentState>().Add(new() { SiteKey = WebsiteEditorSiteKeys.Business,
+            OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(f.Business), CommerceBusinessId = f.Business,
+            ProvisionedStoreBusinessId = f.Business, DraftJson = "{}" });
+        f.Db.Add(new WebsiteDomainBinding { CommerceBusinessId = f.Business, Hostname = "store.example.test",
+            Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow });
+        await f.Db.SaveChangesAsync();
+        var config = new ConfigurationBuilder().Build();
+        using var tickets = new WebsiteEditorTicketProtector(f.Protection);
+        var stores = new CommerceStoreContextService(f.Db, new CommerceBusinessScopeResolver(f.Db), null!,
+            new WebsiteDomainService(f.Db, Mock.Of<System.Net.Http.IHttpClientFactory>(), config), config);
+        using var services = new ServiceCollection().AddSingleton(f.Db).AddSingleton(f.Connections).BuildServiceProvider();
+        var controller = new ParfaitApp.Controllers.CommerceManagementController(tickets, config, stores,
+            null!, null!, null!, null!, null!, null!, null!, null!, null!);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { RequestServices = services } };
+        controller.Request.Path = "/commerce/manage/payments/callback";
+        var actor = new WebsiteEditorTicket(WebsiteEditorSiteKeys.Business, WebsiteEditorSiteKeys.BusinessOwnerKey(f.Business),
+            null, false, DateTime.UtcNow.AddMinutes(10), f.Business, "owner-one", ActorClientProfileId: profile);
+        var continuation = tickets.ProtectStoreProviderContinuation(new(actor, "https://store.example.test", "settings"));
+        Assert.Null(tickets.TryUnprotect(continuation));
+        await f.Connections.BeginAsync(f.Business, profile, "owner-one", null, "Fake", "Production", "ignored", continuation, default);
+        Assert.Equal("https://example.test/commerce/manage/payments/callback", f.Gateway.AuthorizationCallback);
+        var state = f.Gateway.AuthorizationState!;
+        var returned = Assert.IsType<RedirectResult>(await controller.PaymentCallback(state, code: "synthetic-code"));
+        Assert.Equal("https://store.example.test/internal/settings/payments?environment=Production", returned.Url);
+        Assert.Equal(1, f.Gateway.AuthorizationCompletions);
+        Assert.IsType<BadRequestObjectResult>(await controller.PaymentCallback(state, code: "synthetic-code"));
+        Assert.Equal(1, f.Gateway.AuthorizationCompletions);
+        f.Db.CommerceBusinessMembers.Single(x => x.ClientProfileId == profile).Status = "Revoked";
+        await f.Db.SaveChangesAsync();
+        Assert.IsType<UnauthorizedResult>(await controller.PaymentCallback(state, code: "synthetic-code"));
+        Assert.Equal(1, f.Gateway.AuthorizationCompletions);
+    }
+
     [Fact] public async Task OwnerOnboardingRequiresConfirmationThenCanSelectAndDisconnect()
     {
         using var f=new Fixture();var owner=f.SeedOwner(f.Business,"owner-one");

@@ -26,7 +26,7 @@ namespace ParfaitApp.Controllers;
 [Route("commerce/manage")]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [AutoValidateAntiforgeryToken]
-public sealed class CommerceManagementController(
+public sealed partial class CommerceManagementController(
     WebsiteEditorTicketProtector tickets,
     IConfiguration configuration,
     CommerceStoreContextService stores,
@@ -140,7 +140,7 @@ public sealed class CommerceManagementController(
         {
             var redirect = await HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>()
                 .BeginAsync(store.CommerceBusinessId, profileId, actor.ActorUserId, actor.ActorEmail,
-                    provider, environment, callback, ticket, ct);
+                    provider, environment, callback, await ProviderContinuationAsync(ticket, "settings", 10, ct), ct);
             return Redirect(redirect);
         }
         catch (MerchantPaymentException)
@@ -161,7 +161,7 @@ public sealed class CommerceManagementController(
         {
             return Redirect(await HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>()
                 .ResumeAsync(store.CommerceBusinessId, profileId, actor.ActorUserId, actor.ActorEmail,
-                    connectionId, revision, callback, ticket, ct));
+                    connectionId, revision, callback, await ProviderContinuationAsync(ticket, "settings", 10, ct), ct));
         }
         catch (MerchantPaymentException)
         { return BadRequest("Onboarding could not resume. Refresh Payments and review the connection status."); }
@@ -176,13 +176,16 @@ public sealed class CommerceManagementController(
         try
         {
             var ticket = service.InspectTicket(state);
-            var store = await ResolveAsync(ticket, ct);
-            var actor = tickets.TryUnprotect(ticket);
+            var continuation = await ResolveProviderContinuationAsync(ticket, "settings", "/internal/settings/payments", ct);
+            var store = continuation?.Store ?? await ResolveAsync(ticket, ct);
+            var actor = continuation?.Actor ?? tickets.TryUnprotect(ticket);
             if (store is null || actor?.ActorClientProfileId is not Guid profileId || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
             if (!string.IsNullOrEmpty(error))
                 return BadRequest("Provider authorization was not completed. Return to Payments to try again.");
             await service.CompleteAsync(store.CommerceBusinessId, profileId, actor.ActorUserId,
                 actor.ActorEmail, state, code ?? "", ct);
+            if (continuation is not null)
+                return Redirect(QueryHelpers.AddQueryString(continuation.Value.ReturnUrl, "environment", service.InspectEnvironment(state)));
             return ManagerRedirect(nameof(Payments), new { ticket, environment = service.InspectEnvironment(state) });
         }
         catch (MerchantPaymentException)
@@ -458,12 +461,14 @@ public sealed class CommerceManagementController(
         if (store is null) return Unauthorized();
 
         var target = LocalManagerReturnUrl(returnUrl, ticket);
+        var stateReturn = HttpContext.Items.ContainsKey("LegendStoreSession")
+            ? QueryHelpers.AddQueryString(target, "storeContinuation", await ProviderContinuationAsync(ticket, "settings", 20, ct)) : target;
         var redirectUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/commerce/manage/analytics/meta-callback";
         try
         {
             return Redirect(metaAdsOAuth.BuildConnectUrl(
                 await ResolveMarketingOwnerAsync(store, ct),
-                target,
+                stateReturn,
                 redirectUri));
         }
         catch (InvalidOperationException ex)
@@ -481,28 +486,28 @@ public sealed class CommerceManagementController(
         [FromQuery(Name = "error_description")] string? errorDescription = null,
         CancellationToken ct = default)
     {
-        if (!string.IsNullOrWhiteSpace(error))
-        {
-            var fallback = "/commerce/manage/analytics";
-            var message = string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription;
-            return Redirect(AppendMetaStatus(fallback, "error", message));
-        }
-
         try
         {
             var inspected = metaAdsOAuth.InspectState(state ?? string.Empty);
+            var query = QueryHelpers.ParseQuery(new Uri("https://local" + inspected.ReturnUrl).Query);
+            var continuation = query.TryGetValue("storeContinuation", out var context)
+                ? await ResolveProviderContinuationAsync(context.ToString(), "settings", "/internal/analytics", ct) : null;
             var ticket = TicketFromReturnUrl(inspected.ReturnUrl);
-            if (string.IsNullOrWhiteSpace(ticket)) return Unauthorized();
+            if (continuation is null && string.IsNullOrWhiteSpace(ticket)) return Unauthorized();
 
-            var store = await ResolveAsync(ticket, ct);
+            var store = continuation?.Store ?? await ResolveAsync(ticket!, ct);
             if (store is null ||
                 !string.Equals(inspected.Owner.Key, (await ResolveMarketingOwnerAsync(store, ct)).Key, StringComparison.Ordinal))
                 return Unauthorized();
 
+            if (!string.IsNullOrWhiteSpace(error))
+                return Redirect(AppendMetaStatus(continuation?.ReturnUrl ?? inspected.ReturnUrl, "error",
+                    string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription));
+
             var result = await metaAdsOAuth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, ct);
             await marketingConnections.SaveAdsAsync(result.Owner, result.Connection, ct);
             internalAnalytics.InvalidateCache();
-            return Redirect(AppendMetaStatus(result.ReturnUrl, "connected"));
+            return Redirect(AppendMetaStatus(continuation?.ReturnUrl ?? result.ReturnUrl, "connected"));
         }
         catch (InvalidOperationException ex)
         {
@@ -667,7 +672,7 @@ public sealed class CommerceManagementController(
         ViewData["StoreProductBasePath"] = Request.Path.StartsWithSegments("/internal")
             ? "/internal/preview/product" : "/commerce/manage/preview/product";
         var previewUrl = CommerceManagementCapabilityPolicy.ManagementUrl(HttpContext, "/commerce/manage/preview", ticket);
-        ViewData["StorePreviewQuery"] = previewUrl[previewUrl.IndexOf('?')..];
+        ViewData["StorePreviewQuery"] = previewUrl.Contains('?') ? previewUrl[previewUrl.IndexOf('?')..] : "";
         return View("~/Views/Store/Index.cshtml", new ParfaitStorefrontViewModel
         {
             StoreName = store.StoreName,
@@ -1153,6 +1158,14 @@ public sealed class CommerceManagementController(
             ViewData["CommerceCanTeam"] = BusinessWorkspaceAccess.Allows(member, "team");
         }
 
+        if (Request.Path.StartsWithSegments("/internal"))
+        {
+            var menuScope = await stores.ResolveManagementScopeAsync(HttpContext, Request.Query["businessKey"].ToString(), ct);
+            foreach (var entry in new[] { ("Catalog", "catalog"), ("Orders", "orders"), ("Automations", "automations"),
+                ("Analytics", "analytics"), ("Settings", "settings"), ("Team", "team"), ("Website", "website") })
+                ViewData["CommerceCan" + entry.Item1] = menuScope is not null &&
+                    await stores.ResolveManagementActorAsync(menuScope, actor.ActorUserId, entry.Item2, actor.ActorClientProfileId, ct) is not null;
+        }
         return store;
     }
 
@@ -1160,7 +1173,7 @@ public sealed class CommerceManagementController(
     {
         ApplyFramePolicy();
         ApplyStoreViewData(store);
-        ViewData["CommerceManagerTicket"] = ticket;
+        ViewData["CommerceManagerTicket"] = HttpContext.Items.ContainsKey("LegendStoreSession") ? "" : ticket;
         ViewData["CommerceManagerActivePage"] = activePage;
         ViewData["CommerceManagerScoped"] = true;
     }

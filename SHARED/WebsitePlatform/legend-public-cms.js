@@ -4989,6 +4989,23 @@
     cart.appendChild(count);
 
     cluster.append(store,cart);
+    if(storeContext?.managerUrl && !editorMode){
+      const login=document.querySelector('a.login-link,[data-team-login]') || document.createElement('a');
+      login.href=storeContext.managerUrl;
+      login.classList.add('nav-link','nav-icon-link','login-link');
+      login.setAttribute('aria-label','Team login'); login.target='_blank'; login.rel='noopener';
+      if(!login.firstChild){
+        const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
+        icon.setAttribute('viewBox','0 0 24 24'); icon.setAttribute('width','24'); icon.setAttribute('height','24');
+        icon.setAttribute('fill','none'); icon.setAttribute('stroke','currentColor'); icon.setAttribute('aria-hidden','true');
+        const head=document.createElementNS(icon.namespaceURI,'circle');
+        head.setAttribute('cx','12'); head.setAttribute('cy','8'); head.setAttribute('r','4'); head.setAttribute('stroke-width','2');
+        const body=document.createElementNS(icon.namespaceURI,'path');
+        body.setAttribute('d','M4.5 21a7.5 7.5 0 0 1 15 0'); body.setAttribute('stroke-width','2'); body.setAttribute('stroke-linecap','round');
+        icon.append(head,body); login.appendChild(icon);
+      }
+      if(!login.isConnected){ login.dataset.legendStoreNav='login'; cluster.appendChild(login); }
+    }
     nav.appendChild(cluster);
     applyCompositionNode(store,documentState.store?.storeNavigation || {});
     applyCompositionNode(cart,documentState.store?.cartNavigation || {});
@@ -5601,19 +5618,12 @@
 
     const actions=document.createElement('div');
     actions.className='legend-cms-store-actions';
-    const manage=document.createElement('button');
-    manage.type='button';
-    manage.id='legend-cms-manage-store';
-    manage.textContent='Manage products';
-    manage.disabled=!storeContext?.managerUrl;
-    manage.addEventListener('click',()=>openStoreManager());
-    const payments=document.createElement('button');
-    payments.type='button';
-    payments.id='legend-cms-store-payments';
-    payments.textContent='Payments';
-    payments.disabled=!storeContext?.paymentsUrl;
-    payments.addEventListener('click',()=>openStoreManager(storeContext?.paymentsUrl));
-    actions.append(action,manage,payments);
+    const workspace=document.createElement('a');
+    workspace.textContent='Open store workspace';
+    workspace.target='_blank'; workspace.rel='noopener noreferrer';
+    if(storeContext?.managerUrl) workspace.href=storeContext.managerUrl;
+    else { workspace.setAttribute('aria-disabled','true'); workspace.title='Connect a verified website domain to open the store workspace.'; }
+    actions.append(action,workspace);
     host.insertBefore(actions,settings);
   }
 
@@ -5659,7 +5669,7 @@
       overlay.className='legend-cms-editor legend-cms-store-preview';
       const bar=document.createElement('div'); bar.className='legend-cms-store-preview-bar';
       const title=document.createElement('strong'); title.textContent='Store preview';
-      const manage=document.createElement('button'); manage.type='button'; manage.textContent='Manage Store'; manage.addEventListener('click',openStoreManager);
+      const manage=document.createElement('button'); manage.type='button'; manage.textContent='Manage Store'; manage.addEventListener('click',()=>openStoreWorkspace());
       bar.append(title,manage);
       const frame=document.createElement('iframe'); frame.className='legend-cms-store-preview-frame'; frame.title='Store preview';
       overlay.append(bar,frame);
@@ -5678,26 +5688,11 @@
     if(overlay) overlay.hidden=true;
   }
 
-  function openStoreManager(managerUrl=storeContext?.managerUrl) {
-    if(!managerUrl) return;
-    let modal=document.querySelector('.legend-cms-store-manager');
-    if(!modal) {
-      modal=document.createElement('div');
-      modal.className='legend-cms-editor legend-cms-store-manager';
-      modal.setAttribute('role','dialog');
-      modal.setAttribute('aria-modal','true');
-      modal.setAttribute('aria-label','Manage Store');
-      const shell=document.createElement('div'); shell.className='legend-cms-store-manager-shell';
-      const top=document.createElement('div'); top.className='legend-cms-store-manager-top';
-      const title=document.createElement('strong'); title.textContent='Manage Store';
-      const close=document.createElement('button'); close.type='button'; close.textContent='Close'; close.addEventListener('click',()=>{modal.hidden=true;});
-      top.append(title,close);
-      const frame=document.createElement('iframe'); frame.className='legend-cms-store-manager-frame'; frame.title='Manage Store workspace';
-      shell.append(top,frame); modal.appendChild(shell); document.body.appendChild(modal);
-    }
-    const frame=modal.querySelector('iframe');
-    if(frame) frame.src=managerUrl;
-    modal.hidden=false;
+  function openStoreWorkspace() {
+    if(!storeContext?.managerUrl) return;
+    const destination=new URL(storeContext.managerUrl,location.origin);
+    if(destination.protocol!=='https:' || destination.pathname!=='/internal/login') return;
+    window.open(destination.href,'_blank','noopener,noreferrer');
   }
   function preservePreviewNavigation() {
     if (renderInput || SITE_KEY !== 'business' || !location.pathname.startsWith('/business-preview')) return;
@@ -9752,7 +9747,6 @@
       .legend-cms-store-settings{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px;padding:7px;border:1px solid #344766;border-radius:9px;background:#0d213e}.legend-cms-store-settings label{display:grid;gap:4px;margin:0;font-size:10px;font-weight:800;color:#cbd7e8}.legend-cms-store-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}.legend-cms-store-actions button{min-height:32px!important;padding:6px 8px!important;border-color:#50617e!important;background:#142c50!important;color:#fff!important}.legend-cms-store-controls input,.legend-cms-store-controls select{min-height:32px!important;padding:5px 7px!important;border-color:#50617e!important;background:#142c50!important;color:#fff!important}
       .legend-cms-store-preview{position:absolute!important;inset:0!important;z-index:2147482400!important;display:grid!important;grid-template-rows:auto minmax(0,1fr)!important;background:var(--web-surface,#fff)!important;color:var(--web-ink,#101a35)!important;pointer-events:auto!important}
       .legend-cms-store-preview[hidden]{display:none!important}.legend-cms-store-preview-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border-bottom:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 50%,transparent);background:var(--web-surface,#fff)}.legend-cms-store-preview-frame{width:100%;height:100%;border:0;background:var(--web-surface,#fff)}
-      .legend-cms-store-manager{position:fixed!important;inset:0!important;z-index:2147483640!important;display:grid!important;place-items:center!important;padding:2vmin!important;background:#0009!important;pointer-events:auto!important}.legend-cms-store-manager[hidden]{display:none!important}.legend-cms-store-manager-shell{width:min(98vw,1600px);height:96dvh;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden;border-radius:16px;background:var(--web-surface,#fff);box-shadow:0 24px 70px #0008}.legend-cms-store-manager-top{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 45%,transparent);color:var(--web-ink,#101a35)}.legend-cms-store-manager-frame{width:100%;height:100%;border:0;background:var(--web-surface,#fff)}
       .legend-cms-edge-handle{position:absolute;pointer-events:auto;touch-action:none;margin:0;padding:0;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;min-width:0!important;min-height:0!important}
       .legend-cms-edge-top,.legend-cms-edge-bottom{left:10px;right:10px;height:12px;cursor:ns-resize}
       .legend-cms-edge-top{top:-6px}.legend-cms-edge-bottom{bottom:-6px}

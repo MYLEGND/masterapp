@@ -56,6 +56,44 @@ public sealed class CommerceStoreContextService(
     private const string ProtectHost = "protect.mylegnd.com";
     private const string ParfaitAzureHost = "masterapp-parfait.azurewebsites.net";
 
+    public static async Task<string?> PublishedManagementEntryAsync(MasterAppDbContext db, IConfiguration? configuration,
+        string site, string owner, CancellationToken ct = default)
+    {
+        var states = await db.Set<WebsiteContentState>().AsNoTracking().Where(x => x.SiteKey == site && x.OwnerKey == owner)
+            .Select(x => new { x.Id, x.CommerceBusinessId, x.ProvisionedStoreBusinessId, x.PublishedVersionId }).Take(2).ToListAsync(ct);
+        if (states.Count != 1) return null;
+        var state = states[0];
+        if (state.CommerceBusinessId is not Guid businessId || state.ProvisionedStoreBusinessId != businessId || state.PublishedVersionId is not Guid versionId) return null;
+        var document = WebsiteContentStore.ReadImmutablePublication(() => db.Set<WebsiteContentVersion>().AsNoTracking()
+            .Where(x => x.Id == versionId && x.StateId == state.Id && x.SnapshotRetiredUtc == null)
+            .Select(x => x.DocumentJson).SingleOrDefault(), ct);
+        if (document is null || !Deserialize(document).Store.Enabled) return null;
+        var business = await db.CommerceBusinesses.AsNoTracking().SingleOrDefaultAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", ct);
+        if (business is null) return null;
+        var root = await WebsiteStoreRootAsync(db, configuration, site, businessId, business.Key, ct);
+        return ManagementEntry(root, site == WebsiteEditorSiteKeys.Protect ? business.Key : null);
+    }
+
+    public static string? ManagementEntry(string? root, string? businessKey = null)
+    {
+        if (!Uri.TryCreate(root, UriKind.Absolute, out var uri) || uri.Scheme != "https" || !uri.IsDefaultPort || !string.IsNullOrEmpty(uri.UserInfo)) return null;
+        var target = uri.GetLeftPart(UriPartial.Authority) + "/internal/login";
+        return string.IsNullOrEmpty(businessKey) ? target : Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(target, "businessKey", businessKey);
+    }
+
+    public static async Task<string?> WebsiteStoreRootAsync(MasterAppDbContext db, IConfiguration? configuration,
+        string site, Guid businessId, string businessKey, CancellationToken ct = default)
+    {
+        if (site == WebsiteEditorSiteKeys.Legend) return (configuration?["Commerce:LegendPublicBaseUrl"] ?? "https://mylegnd.com").TrimEnd('/') + "/store";
+        if (site == WebsiteEditorSiteKeys.Protect) return (configuration?["Commerce:ProtectPublicBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/') + "/store/s/" + Uri.EscapeDataString(businessKey);
+        if (site != WebsiteEditorSiteKeys.Business) return null;
+        var cutoff = DateTime.UtcNow.AddHours(-24);
+        var hostname = await db.Set<WebsiteDomainBinding>().AsNoTracking().Where(x => x.CommerceBusinessId == businessId &&
+            x.Status == "active" && x.CertificateStatus == "active" && x.LastCheckedUtc >= cutoff)
+            .OrderBy(x => x.CreatedUtc).Select(x => x.Hostname).FirstOrDefaultAsync(ct);
+        return string.IsNullOrWhiteSpace(hostname) ? null : "https://" + hostname.Trim().TrimEnd('.') + "/store";
+    }
+
     public async Task<CommerceManagementScope?> ResolveManagementScopeAsync(
         HttpContext context, string? businessKey, CancellationToken ct = default)
     {

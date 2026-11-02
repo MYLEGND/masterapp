@@ -4,7 +4,7 @@
     Layout = "_InternalLayout";
 
     var commerceManagerTicket = ViewData["CommerceManagerTicket"] as string;
-    var scopedCommerceManager = !string.IsNullOrWhiteSpace(commerceManagerTicket);
+    var scopedCommerceManager = (ViewData["CommerceManagerScoped"] as bool? == true || !string.IsNullOrWhiteSpace(commerceManagerTicket));
     var scopedStore = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
     var scopedStoreName = scopedStore?.StoreName ?? "Parfait";
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
