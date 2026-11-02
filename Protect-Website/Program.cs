@@ -111,9 +111,15 @@ builder.Services.AddRuntimeDiagnosticPublicWebsiteTransport(publicWebsiteOrigins
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("PublicWebsiteEditor", policy =>
+    {
         policy.WithOrigins(publicWebsiteOrigins)
             .AllowAnyHeader()
-            .WithMethods("GET", "POST"));
+            .WithMethods("GET", "POST");
+        // Local app-to-app management uses the same scoped tickets and tenant
+        // checks. These exact development origins never enter production CORS.
+        if (builder.Environment.IsDevelopment())
+            policy.WithOrigins("https://localhost:6205", "https://localhost:5221");
+    });
 });
 
 builder.Services.AddScoped<Microsoft.AspNetCore.Cors.Infrastructure.ICorsPolicyProvider, Infrastructure.WebsiteEditing.WebsiteCorsPolicyProvider>();

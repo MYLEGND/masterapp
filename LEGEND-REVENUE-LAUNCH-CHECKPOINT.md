@@ -2157,3 +2157,38 @@ not fresh authorization for this application candidate; do not rely on failed
 admission as a deployment-prevention mechanism. A separately approved nondeploying
 maintenance procedure and passing exact-candidate checks are required before target
 branch update. No deployment, SQL migration or production governance change performed.
+
+## 2026-11-01 — Local website workspace transport and capture validation (partial)
+
+Continued isolation/local-static-assets-parity-20261101 from exact synchronized
+c52c20d59b06b85a35b2a98b879d69a4b7f1a32f; canonical preflight passed.
+Portal session producers now prefer existing WebsiteContentApiBaseUrl; public
+LandingRoutes remains the compatibility fallback. Founder navigation uses the
+existing LegendWebsiteBaseUrl. Protect permits only the exact HTTPS Portal6205
+and ClientApp5221 origins in its Development editor CORS policy; production CORS,
+ticket authorization and tenant ownership remain unchanged.
+
+Local capture bootstrap now normalizes untrusted capture through the existing
+sanitizer and template authority and proves strict persisted-read compatibility
+before publication. Existing environment/path/owner/no-overwrite/transaction
+guards remain. No existing saved draft or publication was rewritten.
+
+Validation: actual test project compiled;19 focused C# tests passed (including
+capture normalization/rollback and session routing);41 shared management JS tests
+passed. Independent Astra accepted this bounded source correction after diff
+review; this is not acceptance of complete website readiness.
+
+Live local evidence: normal Protect HTTPS1111 homepage renders its existing
+compiled publication.1113 screenshot was the retired temporary capture host.
+After CORS correction, genuine Protect ticket reaches management but existing
+local draft fails strict reading (website_v3_noncanonical_persisted_document).
+Read-only comparison found native tag/child changes; automatic normalization of
+that existing draft is not approved. Founder management returns401: local Founder
+identity configuration still needs reconciliation. Azure-backed Portal and
+SQLite-backed Protect cannot share business handoff records. These remain open;
+no claim that all websites or Website Studio work locally is made.
+
+No renderer safeguards removed, production configuration changed, Cloudflare
+publication, migration, fast-track merge or deployment performed. Preserve
+original local draft and immutable publication while preparing a reviewable
+content-preserving recovery through the existing authority.

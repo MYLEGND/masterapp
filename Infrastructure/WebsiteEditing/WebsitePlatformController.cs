@@ -2699,7 +2699,20 @@ public class WebsitePlatformController : ControllerBase
         var ownerKey = NormalizeOwner(owner.AgentUserId);
         if (capture.Schema != "legend-local-protect/v1" || capture.OwnerUserId != ownerKey)
             throw new InvalidOperationException("local_website_capture_owner_mismatch");
-        var document = capture.Document;
+        // Captures enter through the same normalization boundary as materialization.
+        // Persisted drafts are never normalized during reads or overwritten here.
+        WebsiteContentDocument document;
+        try
+        {
+            WebsiteContentSanitizer.EnsureUniqueCanonicalNodeIds(capture.Document);
+            document = WebsiteContentSanitizer.Sanitize(capture.Document);
+            WebsiteSystemTemplateAuthority.Apply(WebsiteEditorSiteKeys.Protect, document);
+            _ = WebsiteContentSanitizer.ReadPersisted(JsonSerializer.Serialize(document, JsonOptions), JsonOptions);
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        {
+            return BadRequest(new { error = "local_website_capture_invalid" });
+        }
         await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
         if (await _db.Set<WebsiteContentState>().AnyAsync(
                 p => p.OwnerKey == ownerKey && p.SiteKey == WebsiteEditorSiteKeys.Protect, cancellationToken))

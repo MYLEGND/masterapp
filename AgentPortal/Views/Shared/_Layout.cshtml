@@ -269,7 +269,7 @@
                 if (isFounder)
                 {
                     @await Html.PartialAsync("~/Views/Shared/_WebsiteQuickFind.cshtml", new Shared.Crm.WebsiteQuickFindLink(
-                        $"Edit {Shared.Branding.LegendBrand.RegisteredUpper} website", "Founder", "/Account/WebsiteSession?site=legend", "/Account/EditLegendWebsite", "https://www.mylegnd.com", "founder"))
+                        $"Edit {Shared.Branding.LegendBrand.RegisteredUpper} website", "Founder", "/Account/WebsiteSession?site=legend", "/Account/EditLegendWebsite", (WebsiteConfiguration["LegendWebsiteBaseUrl"] ?? "https://www.mylegnd.com").TrimEnd('/'), "founder"))
                 }
             }
             @if ((ViewData["BusinessWorkspace"] ?? ViewData.Model) is Shared.Crm.BusinessWorkspaceModel selectedBusinessWorkspace)

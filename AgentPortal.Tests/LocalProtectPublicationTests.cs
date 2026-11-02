@@ -57,7 +57,7 @@ public sealed class LocalProtectPublicationTests
             using var protector=new WebsiteEditorTicketProtector(new EphemeralDataProtectionProvider());
             var controller=new WebsitePlatformController(db,protector,config) { ControllerContext=new ControllerContext { HttpContext=new DefaultHttpContext { RequestServices=services } } };
             var document=new WebsiteContentDocument { Pages=new() { ["/"]=new WebsitePageDocument {
-                Title="Local",Composition=[new WebsiteCompositionNode { Id="local.heading",Type="heading",Tag="h1",Text="Local" }] } } };
+                Title="Local",Composition=[new WebsiteCompositionNode { Id="local.heading",Type="heading",Tag="h1",Text="Local" }, new WebsiteCompositionNode { Id="local.capture",Type="text",Tag="figure",Text="Synthetic capture" }] } } };
             if (invalidDocument)
             {
                 document.Pages["/"].Composition.Add(new WebsiteCompositionNode { Id="local.heading",Type="heading",Tag="h1",Text="Duplicate" });
@@ -73,6 +73,15 @@ public sealed class LocalProtectPublicationTests
                 : wrongOwner ? "local_website_capture_owner_mismatch"
                 : existing ? "local_website_already_exists" : "website_compiler_not_configured";
             Assert.Equal(expected,error.Message);
+            if (expected == "website_compiler_not_configured")
+            {
+                var staged = Assert.Single(db.ChangeTracker.Entries<WebsiteContentState>()).Entity;
+                var canonical = WebsiteContentSanitizer.ReadPersisted(staged.DraftJson,
+                    new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+                Assert.Equal("p", canonical.Pages["/"].Composition[1].Tag);
+                Assert.Equal("Synthetic capture", canonical.Pages["/"].Composition[1].Text);
+            }
+
             db.ChangeTracker.Clear();
             Assert.Equal(existing?1:0,await db.Set<WebsiteContentState>().CountAsync());
             Assert.Equal(0,await db.Set<WebsiteContentVersion>().CountAsync());
