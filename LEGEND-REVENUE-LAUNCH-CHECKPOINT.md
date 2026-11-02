@@ -2002,3 +2002,37 @@ grid with no overflow. At390px viewport dialog is342px, one column, no horizonta
 overflow; close works. Header computed canonical navy; viewport reset afterward.
 No manual record/evidence writes; existing access auditing remains active.
 No global style overrides, alternate modal engine, backend changes or deployment.
+
+## 2026-11-01 — Readable case-history PDF and compact workspace
+
+Preserved base ee64f0e79989f4a2a53a4e7bac064dcf30b41a2e on the existing
+isolated local branch. Canonical preflight remains blocked by remote connectivity;
+the previously authorized local-only preservation exception applies. No push or
+remote-success claim, merge, deployment, migration or governance change.
+
+The existing authorized Export action now returns application/pdf through the
+existing QuestPDF dependency and a presentation-only partial of its controller.
+Complete authorized history, chronology, source identity, evidence snapshots,
+omitted-submission reasons, protected-document receipts and scope limitations
+remain present. Binary attachments remain separate. Unknown, empty, false and zero
+values remain distinct; arbitrary submitted text is not interpreted as markup.
+PDF generation precedes the existing export audit. Tenant and restricted-identity
+authorization remain unchanged. Converted-profile naming follows route kind.
+
+Timeline and case notes now share desktop width equally, with compact horizontal
+record summaries and responsive forms. Existing deterministic paging supports
+10/25/50 records; the UI defaults to10 and all activity. An explicitly selected
+case-activity view excludes only access/export audit records from display, never
+storage. Export includes complete authorized history regardless of screen filters.
+Mobile stacks the panels. No duplicate storage, authority or CSS override added.
+
+Validation: actual AgentPortal build passed;56 focused server tests and7 Node
+regressions passed. The HostedSyntheticHistory Linux/GitHub-only fixture was
+excluded locally because its enforced runner contract cannot run on Mac; full CI
+is not claimed green. Synthetic ten-page PDF passed content-preservation checks
+and first/middle/last-page visual review. Independent Astra source/PDF review found
+no remaining blocker pending final evidence. Live export returned200 application/pdf
+and a genuine PDF download. Desktop columns measured763.609px each;390px mobile
+stacked without horizontal overflow. Explicit case view showed2 relevant records;
+all view paged10 records. Existing page/access/export auditing remains active;
+no manual case notes or protected evidence were submitted during verification.

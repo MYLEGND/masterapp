@@ -15,7 +15,7 @@ namespace AgentPortal.Controllers;
 [Authorize]
 [Route("CrmHistory")]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class CrmHistoryController(MasterAppDbContext db, EffectiveAgentContext agents, IConfiguration configuration, IAgentTimeZoneResolver timeZones) : Controller
+public sealed partial class CrmHistoryController(MasterAppDbContext db, EffectiveAgentContext agents, IConfiguration configuration, IAgentTimeZoneResolver timeZones) : Controller
 {
     private string Agent => (agents.EffectiveAgentOid ?? User.GetStableUserId() ?? User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "").Trim();
     private Task<CrmHistoryRelationship?> Resolve(string kind, string id) => RestrictedAiIdentity.IsRestricted(User, configuration)
@@ -27,9 +27,7 @@ public sealed class CrmHistoryController(MasterAppDbContext db, EffectiveAgentCo
         var relationship = await Resolve(kind, id); if (relationship is null) return NotFound();
         if (kind == "client") return RedirectToAction(nameof(Index), new { kind = "profile", id = relationship.Client!.Id.ToString("N") });
         var isLead = kind == "lead";
-        var firstName = isLead ? relationship.Lead!.FirstName : relationship.Client!.FirstName;
-        var lastName = isLead ? relationship.Lead!.LastName : relationship.Client!.LastName;
-        var displayName = string.Join(" ", new[] { firstName, lastName }.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()));
+        var displayName = HistoryDisplayName(relationship, kind == "lead");
         ViewData["RelationshipType"] = isLead ? "Lead" : "Client";
         ViewData["RelationshipName"] = displayName.Length == 0 ? "Name unavailable" : displayName;
         ViewData["TimeZone"] = timeZones.Resolve(HttpContext).Id;
@@ -277,13 +275,14 @@ public sealed class CrmHistoryController(MasterAppDbContext db, EffectiveAgentCo
     public async Task<IActionResult> Entries(string kind, string id, DateTime? fromUtc, DateTime? untilUtc,
         string? type, string? product, string? caseReference, string? owner, string? status, string? evidence,
         string? search, int page = 0, bool recordedTime = false, string range = "all", string? fromDate = null, string? throughDate = null,
-        DateTime? snapshotUtc = null, string? obligations = null)
+        DateTime? snapshotUtc = null, string? obligations = null, int pageSize = 50, string activityView = "all")
     {
         var relationship = await Resolve(kind, id); if (relationship is null) return NotFound();
         var snapshot = snapshotUtc ?? DateTime.UtcNow;
         if (snapshot.Kind == DateTimeKind.Local) snapshot = snapshot.ToUniversalTime();
-        if (snapshot > DateTime.UtcNow || page < 0 || page > 10000) return BadRequest();
+        if (snapshot > DateTime.UtcNow || page < 0 || page > 10000 || pageSize is not (10 or 25 or 50) || activityView is not ("all" or "case")) return BadRequest();
         var query = db.Set<CrmHistoryEntry>().AsNoTracking().Where(x => x.RelationshipKey == relationship.Key && x.FiledUtc <= snapshot);
+        if (activityView == "case") query = query.Where(x => x.Source != "HistoryAccess" && x.Source != "HistoryExport");
         var zone = timeZones.Resolve(HttpContext);
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, zone));
         DateOnly? first = null, last = null;
@@ -326,7 +325,7 @@ public sealed class CrmHistoryController(MasterAppDbContext db, EffectiveAgentCo
             query = query.Where(x => x.ContentJson.Contains(search));
         }
         var count = await query.CountAsync(HttpContext.RequestAborted);
-        var prefix = checked(page * 50 + 50);
+        var prefix = checked(page * pageSize + pageSize);
         System.Linq.Expressions.Expression<Func<CrmHistoryEntry, CrmHistoryListItem>> projection = x => new CrmHistoryListItem(x.Id, x.Type, x.Source, x.OccurredUtc, x.OccurredDate,
             x.RecordedUtc, x.FiledUtc, x.TimeZoneId, x.TimePrecision, x.Product, x.CaseReference,
             x.Status, x.EvidenceStatus, x.AssignedOwner, x.DueUtc, x.SubmissionId, x.FormName, x.FormVersion);
@@ -348,7 +347,7 @@ public sealed class CrmHistoryController(MasterAppDbContext db, EffectiveAgentCo
         var rows = (recordedTime ? candidates.OrderByDescending(x => x.RecordedUtc).ThenBy(x => x.Id, idComparer)
             : candidates.OrderByDescending(x => EventDay(x.OccurredUtc, x.OccurredDate, zone), StringComparer.Ordinal)
                 .ThenByDescending(x => x.OccurredUtc.HasValue).ThenByDescending(x => x.OccurredUtc)
-                .ThenByDescending(x => x.RecordedUtc).ThenBy(x => x.Id, idComparer)).Skip(page * 50).Take(50).ToList();
+                .ThenByDescending(x => x.RecordedUtc).ThenBy(x => x.Id, idComparer)).Skip(page * pageSize).Take(pageSize).ToList();
         var activeHolds = await db.Set<CrmHistoryEntry>().AsNoTracking().Where(x => x.RelationshipKey == relationship.Key &&
             x.Type == "PreservationHold" && x.FiledUtc <= snapshot && !db.Set<CrmHistoryEntry>().Any(release =>
                 release.RelationshipKey == relationship.Key && release.RelatedEntryId == x.Id && release.Type == "PreservationRelease" && release.FiledUtc <= snapshot))
@@ -359,7 +358,7 @@ public sealed class CrmHistoryController(MasterAppDbContext db, EffectiveAgentCo
                 (done.Type == "TaskCompleted" || done.Type == "TaskCanceled")));
         var openObligations = await outstanding.CountAsync(HttpContext.RequestAborted);
         var overdueObligations = await outstanding.CountAsync(x => x.DueUtc < snapshot, HttpContext.RequestAborted);
-        return Ok(new { count, page, pageSize = 50, snapshotUtc = DateTime.SpecifyKind(snapshot, DateTimeKind.Utc), entries = rows, activeHolds, openObligations, overdueObligations });
+        return Ok(new { count, page, pageSize, snapshotUtc = DateTime.SpecifyKind(snapshot, DateTimeKind.Utc), entries = rows, activeHolds, openObligations, overdueObligations });
     }
 
     private static readonly IComparer<Guid> SqlHistoryIdComparer = Comparer<Guid>.Create((left, right) =>
@@ -428,15 +427,9 @@ public sealed class CrmHistoryController(MasterAppDbContext db, EffectiveAgentCo
             submissions = await new CrmHistoryAccess(db).Submissions(relationship).Where(x => submissionIds.Contains(x.Id)).ToListAsync(HttpContext.RequestAborted);
         var included = submissions.Select(x => x.Id).ToHashSet();
         var exportId = Guid.NewGuid();
-        await new CrmHistoryStore(db).StageAsync(new() { RelationshipKey = relationship.Key, Source = "HistoryExport",
-            SourceId = exportId.ToString("N"), Type = "Export", RecordedBy = User.GetStableUserId() ?? Agent,
-            RecordedUtc = DateTime.UtcNow, OccurredUtc = DateTime.UtcNow, TimePrecision = "instant",
-            ContentJson = JsonSerializer.Serialize(new { exportId, count = rows.Count, submissionCount = submissions.Count,
-                omittedSubmissionCount = submissionIds.Count(x => !included.Contains(x)), scope = "Relationship chronology and authorized immutable submission evidence" }) }, HttpContext.RequestAborted);
-        await db.SaveChangesAsync(HttpContext.RequestAborted);
-        var chronology = string.Join("\n\n", rows.Select(x => $"{x.OccurredUtc?.ToString("O") ?? x.OccurredDate ?? "Unknown event date"} | {x.Type} | {x.Id}\nRecorded {x.RecordedUtc:O} by {x.RecordedBy}\n{x.ContentJson}"));
-        return File(JsonSerializer.SerializeToUtf8Bytes(new { exportId, generatedUtc = DateTime.UtcNow,
-            relationship = relationship.Key, chronology, entries = rows,
+        var generatedUtc = DateTime.UtcNow;
+        var report = JsonSerializer.SerializeToElement(new { exportId, generatedUtc,
+            relationship = relationship.Key, entries = rows,
             evidenceIndex = submissions.Select(x => new { x.Id, x.WebsiteLeadPublicId, x.SourcePageKey, x.SubmittedUtc, x.CapturedUtc,
                 x.ProductType, x.SnapshotJson, completeness = "Original captured fields; historical gaps and browser-reported presentation retain their recorded labels." }),
             omittedSubmissions = submissionIds.Where(x => !included.Contains(x)).Select(x => new { id = x, reason = "Not available under this relationship's current association and permissions." }),
@@ -444,8 +437,16 @@ public sealed class CrmHistoryController(MasterAppDbContext db, EffectiveAgentCo
             protectedDocuments = rows.Where(x => x.Source == "ProtectedDocument").Select(x => new { x.Id, x.RelatedEntryId,
                 receipt = JsonSerializer.Deserialize<CrmEvidenceController.Receipt>(x.ContentJson),
                 downloadPath = "/CrmHistory/Evidence/" + x.Id + "?kind=" + Uri.EscapeDataString(kind) + "&id=" + Uri.EscapeDataString(id),
-                exportState = "Protected version reference included; bytes are verified on authenticated download, not embedded in this JSON export." }),
-            limitations = "Binary bytes and external reference contents are not embedded; protected document versions include authenticated access and integrity receipts. Manual evidence is the recorder's account, not an independently captured client signature. Protected detail links require current authorization." }), "application/json", "case-history-" + exportId.ToString("N") + ".json");
+                exportState = "Protected version reference included; bytes are verified on authenticated download, not embedded in this PDF export." }),
+            limitations = "Binary bytes and external reference contents are not embedded; protected document versions include authenticated access and integrity receipts. Manual evidence is the recorder's account, not an independently captured client signature. Protected detail links require current authorization." });
+        var pdf = RenderCaseHistoryPdf(report, HistoryDisplayName(relationship, kind == "lead"), kind == "lead" ? "Lead" : "Client", exportZone.Id);
+        await new CrmHistoryStore(db).StageAsync(new() { RelationshipKey = relationship.Key, Source = "HistoryExport",
+            SourceId = exportId.ToString("N"), Type = "Export", RecordedBy = User.GetStableUserId() ?? Agent,
+            RecordedUtc = generatedUtc, OccurredUtc = generatedUtc, TimePrecision = "instant",
+            ContentJson = JsonSerializer.Serialize(new { exportId, count = rows.Count, submissionCount = submissions.Count,
+                omittedSubmissionCount = submissionIds.Count(x => !included.Contains(x)), scope = "Relationship chronology and authorized immutable submission evidence" }) }, HttpContext.RequestAborted);
+        await db.SaveChangesAsync(HttpContext.RequestAborted);
+        return File(pdf, "application/pdf", "case-history-" + exportId.ToString("N") + ".pdf");
     }
 
     public sealed record Interaction(Guid RequestId, string Type, string Account, DateTime? OccurredUtc,

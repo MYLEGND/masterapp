@@ -11,6 +11,7 @@
   function invalidateDetail() { detailGeneration++; }
   dialog.addEventListener('close', () => { if (!dialog.open) invalidateDetail(); });
   dialog.addEventListener('cancel', invalidateDetail);
+  let pageSize = 10;
   let page = 0, generation = 0, requestId = crypto.randomUUID(), savedPayload = null;
   const draftKey='crm-history-draft:'+root.dataset.draftScope+':'+scope.toString();
   function rememberDraft(){try{sessionStorage.setItem(draftKey,JSON.stringify({requestId,savedPayload,fields:Object.fromEntries(new FormData(form))}));}catch{status.textContent='Draft is open in this page; browser recovery storage is unavailable.';}}
@@ -87,9 +88,9 @@
   async function load() {
     const current=++generation;status.textContent='Loading history…';
     try {
-      const query={page,range:field(filters,'range'),fromDate:field(filters,'from'),throughDate:field(filters,'through'),type:field(filters,'type'),product:field(filters,'product'),owner:field(filters,'owner'),caseReference:field(filters,'caseReference'),search:field(filters,'search'),obligations:field(filters,'obligations'),status:field(filters,'status'),evidence:field(filters,'evidence'),recordedTime:field(filters,'recordedTime'),...(snapshotUtc?{snapshotUtc}:{})};
+      const query={page,pageSize:Number(field(filters,'pageSize'))||10,activityView:field(filters,'activityView')||'all',range:field(filters,'range'),fromDate:field(filters,'from'),throughDate:field(filters,'through'),type:field(filters,'type'),product:field(filters,'product'),owner:field(filters,'owner'),caseReference:field(filters,'caseReference'),search:field(filters,'search'),obligations:field(filters,'obligations'),status:field(filters,'status'),evidence:field(filters,'evidence'),recordedTime:field(filters,'recordedTime'),...(snapshotUtc?{snapshotUtc}:{})};
       const data=await json(endpoint('Entries',query)); if(current!==generation)return;
-      snapshotUtc=data.snapshotUtc;document.getElementById('history-preservation-status').textContent=`${data.openObligations} open follow-ups / complaints · ${data.overdueObligations} overdue`+(data.activeHolds?.length?' · Active preservation instructions: '+data.activeHolds.join(', '):'');
+      pageSize=data.pageSize||10;snapshotUtc=data.snapshotUtc;document.getElementById('history-preservation-status').textContent=`${data.openObligations} open follow-ups / complaints · ${data.overdueObligations} overdue`+(data.activeHolds?.length?' · Active preservation instructions: '+data.activeHolds.join(', '):'');
       results.replaceChildren(); let priorGroup='';
       for(const entry of data.entries){
         const group=field(filters,'group'); const day=field(filters,'recordedTime')==='true' ? new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).format(toDate(entry.recordedUtc)) : entry.occurredDate || (entry.occurredUtc ? new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).format(toDate(entry.occurredUtc)) : 'Unknown date');
@@ -100,11 +101,11 @@
         const [category,categoryLabel]=recordCategory(entry);button.dataset.category=category;
         const badge=document.createElement('span');badge.className='history-category';badge.textContent=categoryLabel;button.append(badge);
         const title=document.createElement('strong');title.textContent=(entry.formName||entry.type)+(entry.product?' · '+entry.product:'');button.append(title);
-        for(const text of [entry.occurredUtc?date(entry.occurredUtc):entry.occurredDate?entry.occurredDate+' · date only':'Unknown event date · time unavailable',entry.source+' · '+entry.status+(entry.formVersion?' · version '+entry.formVersion:entry.type==='FormSubmission'?' · historical version unavailable':''),entry.evidenceStatus,entry.caseReference||'']){const line=document.createElement('span');line.textContent=text;button.append(line);}
+        for(const [index,text] of [entry.occurredUtc?date(entry.occurredUtc):entry.occurredDate?entry.occurredDate+' · date only':'Unknown event date · time unavailable',entry.source+' · '+entry.status+(entry.formVersion?' · version '+entry.formVersion:entry.type==='FormSubmission'?' · historical version unavailable':''),entry.evidenceStatus,entry.caseReference||''].entries()){const line=document.createElement('span');line.className=index===0?'history-record-time':'history-record-meta';line.textContent=text;button.append(line);}
         button.addEventListener('click',()=>open(entry));wrap.append(button);results.append(wrap);
       }
       status.textContent=`${data.count} records · ${zone} · page ${page+1}`+(data.count?'':' · No matching history');
-      document.getElementById('history-previous').disabled=page===0;document.getElementById('history-next').disabled=(page+1)*50>=data.count;
+      document.getElementById('history-previous').disabled=page===0;document.getElementById('history-next').disabled=(page+1)*pageSize>=data.count;
     }catch(e){status.textContent=e.message;}
   }
   filters.addEventListener('submit',e=>{e.preventDefault();page=0;snapshotUtc=null;load();});filters.addEventListener('reset',()=>setTimeout(()=>{page=0;snapshotUtc=null;load();},0));
@@ -158,7 +159,7 @@
   let unlinkedCursor=0;
   document.getElementById('history-unlinked-load').onclick=async()=>{const list=document.getElementById('history-unlinked-results');list.replaceChildren();try{const data=await json(endpoint('UnlinkedSubmissions',{afterRowId:unlinkedCursor}));unlinkedCursor=data.nextAfterRowId||0;document.getElementById('history-unlinked-load').textContent=data.hasMore?'Load next unlinked submissions':'Reload unlinked submissions';for(const item of data.submissions){const row=document.createElement('p');row.textContent=[item.firstName,item.lastName,item.sourcePageKey,date(item.createdUtc)].filter(Boolean).join(' · ');const action=document.createElement('button');action.type='button';action.className='history-action history-inline-action';action.textContent='Reconcile';action.onclick=async()=>{action.disabled=true;try{const saved=await json(endpoint('ReconcileSubmission/'+item.leadId),{method:'POST',headers:{'RequestVerificationToken':token}});if(!saved.saved||!saved.id)throw new Error('No durable reconciliation confirmed.');row.textContent='Reconciled to lead '+saved.id;}catch(error){status.textContent=error.message;action.disabled=false;}};row.append(action);list.append(row);}if(!data.submissions.length)list.textContent='No unlinked submissions in your ownership scope.';if(data.hasMore){const more=document.createElement('p');more.textContent='Showing 100 records. Use Load next to continue; reconciliation does not shift the cursor.';list.append(more);}}catch(error){list.textContent=error.message;}};
   document.getElementById('history-export').onclick=async()=>{
-    try {const r=await fetch(endpoint('Export'),{method:'POST',credentials:'same-origin',headers:{'RequestVerificationToken':token}});if(!r.ok)throw new Error('Export failed; no complete export was produced.');const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='case-history.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);status.textContent='Case history exported. Review the included scope and limitations.';}catch(e){status.textContent=e.message;}
+    try {const r=await fetch(endpoint('Export'),{method:'POST',credentials:'same-origin',headers:{'RequestVerificationToken':token}});if(!r.ok || !r.headers.get('content-type')?.includes('application/pdf'))throw new Error('PDF export failed; no complete report was produced.');const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='case-history.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);status.textContent='Case history PDF exported. Includes complete authorized history; screen filters are not applied.';}catch(e){status.textContent=e.message;}
   };
   json(endpoint('Backfill'),{method:'POST',headers:{'RequestVerificationToken':token}}).then(async()=>{await load();const entryId=new URLSearchParams(location.search).get('entry');if(entryId&&/^[0-9a-f-]{36}$/i.test(entryId))await open({id:entryId});}).catch(e=>status.textContent=e.message);
 })();

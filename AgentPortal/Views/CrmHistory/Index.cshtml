@@ -7,7 +7,7 @@
         <div><p class="history-eyebrow">Relationship workspace</p><h1>Client Activity &amp; Case History</h1>
         <p id="history-subject" class="history-subject">@ViewData["RelationshipType"]: @ViewData["RelationshipName"]</p>
         <p class="history-caption">Internal relationship history · Note to Self</p></div>
-        <button id="history-export" class="history-action" type="button">Export case history</button>
+        <button id="history-export" class="history-action" type="button">Export case history PDF</button>
     </header>
     <form id="history-filters" class="history-filter-panel">
         @Html.AntiForgeryToken()
@@ -28,6 +28,10 @@
         <label class="history-field">Evidence status<input name="evidence" class="history-control" maxlength="80" /></label>
         <label class="history-field">Time basis<select name="recordedTime" class="history-control"><option value="false">Event time</option><option value="true">Recorded time</option></select></label>
         </div></details>
+        <div class="history-filter-grid history-view-options">
+            <label class="history-field">Activity view<select name="activityView" class="history-control"><option value="all">All activity, including access &amp; exports</option><option value="case">Case activity only (excludes access &amp; exports)</option></select></label>
+            <label class="history-field">Records per page<select name="pageSize" class="history-control"><option value="10">10 records</option><option value="25">25 records</option><option value="50">50 records</option></select></label>
+        </div>
         <div class="history-filter-actions"><button class="btn btn-primary">Apply filters</button> <button type="reset" class="history-action">Reset</button></div>
     </form>
     <div class="history-content-grid">
