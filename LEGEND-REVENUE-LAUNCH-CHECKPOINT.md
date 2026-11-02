@@ -2391,3 +2391,51 @@ This acceptance covers Protect's observed public routes, not every tenant or app
 No fast-track merge, migration, production configuration or credential change ran.
 This final documentation-only checkpoint does not change the deployed binaries;
 the deployed implementation remains 559c460e2550e729205ab20046310c14558a5cc6.
+
+### Shared website first-paint and receptionist authoring — November 1, 2026 (Pacific)
+
+Continued on isolation/local-static-assets-parity-20261101 from exact accepted
+7468b36989cdb80a416282a7482d4e88062ac58a; authenticated canonical preflight passed.
+Founder requested removal of transient loading UI, earlier marketing imagery,
+and discoverable shared receptionist customization without parallel owners.
+
+Read-only live navigation notes: Protect Home -> Coverage reached rendered
+content with no pending/error state when inspected. LEGEND Contact -> Home showed
+its marketing image incomplete immediately after navigation, then complete. The
+public 1,724,407-byte PNG measured 0.88-second first byte and 1.39-second total
+transfer, with public max-age=86400. These observations do not constitute a
+frame-by-frame filmstrip or proof of every Studio transition.
+
+Canonical corrections:
+- Deleted the shared pending pseudo-element/loading message. Retained strict
+  publication/draft visibility and honest failure handling; unverified native
+  templates are never exposed. Network wait and a hidden-document background
+  interval remain possible; no claim that every transient blue frame is eliminated.
+- Shared renderer selects one initial main-content marketing image, excluding
+  hidden branches, shell logos and receptionist/form content. Existing reusable
+  clones and resolved collection bindings retain their canonical identity. Eager
+  loading/high priority are assigned before src; other images remain lazy.
+  Existing compiled markup is reprioritized without remounting it.
+- Existing compiler emits a preload from that exact selected image URL. Protect
+  carries an optional encoded InitialImageUrl through its existing publication
+  record/layout. Old snapshots lacking the field remain valid; none are rewritten.
+  New head hints require a newly compiled publication. Request-owned native slots
+  continue client composition and priority; no alternate native renderer is added.
+- Existing AI authoring contract now describes page/shared-footer receptionist
+  placement, heading/introduction/button, owned icon and responsive appearance,
+  including the compact agent prompt. Preserve existing footer/entries unless
+  replacement is requested. Existing authorized receptionistSetupUrl remains the
+  owner for voice/instructions/booking; no provider/credential/readiness bypass.
+
+Validation: actual AgentPortal.Tests project compiled including referenced apps;
+119 focused .NET cases passed. 19 focused shared-renderer cases and 18 compiler
+cases passed; final isolated compiled-hydration regression passed after removing
+an irrelevant analytics bootstrap from its fixture context. Existing receptionist
+page/sitewide/icon/save/reopen and inert-preview cases remain intact. No production
+calls, inquiries, bookings or payments were initiated.
+
+These changes are source-validated, not deployed in this assignment. Current live
+Protect remains 559c460e2550e729205ab20046310c14558a5cc6. No Cloudflare publication,
+other application deployment, republishing of immutable websites, migration or
+credential change occurred. Live Studio transitions, image LCP and operational
+calling readiness are not established by these focused source checks.

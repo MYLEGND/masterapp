@@ -3117,6 +3117,34 @@
     return el;
   }
 
+  let initialMarketingImageId=null;
+  function selectInitialMarketingImage() {
+    const candidates=[];
+    const visit=(nodes,ancestors=new Set())=>{for(const node of nodes || []){
+      if(node.hidden || ['receptionist','form','experience'].includes(node.type)) continue;
+      if(node.type==='reusable'){
+        if(ancestors.has(node.syncSourceId)) continue;
+        const definition=reusableDefinition(node);
+        visit((definition?.composition || []).map(child=>reusableDefinitionClone(child,node.id)),new Set([...ancestors,node.syncSourceId]));
+        continue;
+      }
+      const bound=node.dataBinding?.target==='image' ? resolveDataBinding(node.dataBinding) : null;
+      if(node.type==='image' && (node.mediaAssetId || node.mediaUrl || typeof bound==='string' && safeUrl(bound,true))) candidates.push(node);
+      visit(node.children,ancestors);
+    }};
+    visit(pageState().composition);
+    const hero=candidates.find(node=>String(node.className || '').split(/\s+/)
+      .some(name=>['legend-recipe-hero-media','legend-recipe-hero-cinematic-media'].includes(name)));
+    initialMarketingImageId=(hero || candidates[0])?.id || null;
+  }
+  function applyImageLoadingPriority(el,node) {
+    const priorityMedia=node.id===initialMarketingImageId;
+    el.setAttribute('loading',priorityMedia?'eager':'lazy');
+    el.setAttribute('decoding','async');
+    if(priorityMedia) el.setAttribute('fetchpriority','high');
+    else el.removeAttribute('fetchpriority');
+  }
+
   function buildCompositionNode(node) {
     if (!node?.id) return null;
     let el;
@@ -3148,13 +3176,9 @@
       if (node.className) el.className = node.className;
       if (node.type === 'image') {
         const source = node.mediaAssetId ? API_BASE + '/api/website-content/media/' + node.mediaAssetId : node.mediaUrl;
+        applyImageLoadingPriority(el,node);
         if (source) el.src = mediaUrl(source);
         el.alt = node.alt || '';
-        el.decoding='async';
-        const classes=new Set(String(node.className || '').split(/\s+/).filter(Boolean));
-        const priorityMedia=classes.has('legend-recipe-hero-media') || classes.has('legend-recipe-hero-cinematic-media');
-        el.loading=priorityMedia ? 'eager' : 'lazy';
-        if(priorityMedia) el.setAttribute('fetchpriority','high');
       } else if (node.type === 'video') {
         const source = node.mediaAssetId ? API_BASE + '/api/website-content/media/' + node.mediaAssetId : node.mediaUrl;
         if (source) el.src = mediaUrl(source);
@@ -4209,6 +4233,7 @@
       if(el.getAttribute('src')!==nativeProfileField.value)el.setAttribute('src',nativeProfileField.value);
       el.setAttribute('alt',nativeProfileField.alt);
     }else if (el instanceof HTMLImageElement) {
+      applyImageLoadingPriority(el,model);
       const media = model.mediaAssetId ? API_BASE + '/api/website-content/media/' + model.mediaAssetId : model.mediaUrl;
       el.src = media ? mediaUrl(media) : (original.src || '');
     } else if (!entityBound && !commerceControl && !el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName) && !isNativeTemplateFigure(el)) {
@@ -4724,6 +4749,7 @@
     restoreNativeFormContinuations();
     restoreFormStepPreview();
     documentState=normalizeDocument(doc);
+    selectInitialMarketingImage();
     // Prove Coverage correspondence before applying theme, shell, metadata or
     // page mutations. Preparing native IDs alone does not claim readiness.
     let coveragePlan=null;
@@ -10664,6 +10690,9 @@
     // declarations and use the existing native responsive authority on resize.
     const nativeSlot = SITE_KEY==='protect' && renderInput?.protectNativeSlot;
     if(nativeSlot) refreshResponsiveComposition();
+    document.querySelectorAll('img[data-cms-id]').forEach(el=>{
+      if(!nativeSlot || !el.closest('main')) applyImageLoadingPriority(el,{id:el.dataset.cmsId});
+    });
     restoreNativeFormFrames(true);
     const canonicalNodes=new Map();
     for(const root of allCanonicalRootSets())
@@ -10689,6 +10718,7 @@
   // menu buttons as visitors interact with the page.
   function hydrateCompiledPublication(payload) {
     documentState=normalizeDocument(payload.document || {});
+    selectInitialMarketingImage();
     // The compiler's HTML was emitted with a desktop-sized viewport. Apply
     // the real visitor's breakpoint before running public interactions.
     refreshCompiledResponsivePresentation();

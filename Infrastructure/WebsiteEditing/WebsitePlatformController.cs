@@ -284,7 +284,7 @@ public class WebsitePlatformController : ControllerBase
 
     public sealed record ProtectPublishedPage(Guid VersionId, string Title, string Description,
         string? Header, string? Footer, string Main, string Styles, string HtmlStyle, string BodyStyle,
-        string Payload, bool NativeSlot);
+        string Payload, bool NativeSlot, string? InitialImageUrl = null);
 
     // Called by Protect's request-owned Razor layout, never an alternate public route.
     // Native controls/tokens/ModelState stay in Razor; only immutable authored fragments
@@ -343,7 +343,8 @@ public class WebsitePlatformController : ControllerBase
         Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
         Response.Headers["X-Legend-Publication-Id"] = publication.Id.ToString("D");
         return new(publication.Id, Value("title"), Value("description"), Optional("header"), Optional("footer"),
-            Value("main"), Value("styles"), Value("htmlStyle"), Value("bodyStyle"), Value("payload"), page.GetProperty("nativeSlot").GetBoolean());
+            Value("main"), Value("styles"), Value("htmlStyle"), Value("bodyStyle"), Value("payload"), page.GetProperty("nativeSlot").GetBoolean(),
+            page.TryGetProperty("initialImageUrl", out var initialImage) && initialImage.ValueKind == JsonValueKind.String ? initialImage.GetString() : null);
     }
 
     [HttpGet("public/{siteKey}/favicon")]

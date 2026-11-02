@@ -10,6 +10,18 @@ namespace AgentPortal.Tests;
 public sealed class WebsiteStudioV3ContractTests
 {
     [Fact]
+    public void AgentContract_ExposesExistingReceptionistPresentationWithoutProviderAuthority()
+    {
+        var contract = JsonSerializer.SerializeToElement(WebsiteStudioAgentContract.Payload);
+        var receptionist = contract.GetProperty("nodeAuthoring").GetProperty("canonicalReceptionist");
+        Assert.Equal("receptionist", receptionist.GetProperty("nodeType").GetString());
+        Assert.Contains("existing shell.footer container", receptionist.GetProperty("placement").GetString());
+        Assert.Contains("receptionistSetupUrl", receptionist.GetProperty("operations").GetString());
+        Assert.Contains("server-owned", receptionist.GetProperty("authority").GetString());
+        Assert.Contains("typed receptionist component", WebsiteStudioAgentContract.CompactPromptTemplate);
+    }
+
+    [Fact]
     public void StandaloneReceptionist_PreservesPresentationAndCanonicalIconWithoutProviderAuthority()
     {
         var iconId = Guid.NewGuid();

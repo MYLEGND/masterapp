@@ -1362,8 +1362,6 @@ test('browser creative workspace exposes whole-site quality media and safe-repai
   assert.match(source,/else if\(fullBleedMedia\)[\s\S]*delete style\.maxWidthPx[\s\S]*delete style\.maxHeightPx/);
   assert.match(publicCss,/\.legend-recipe-hero-media:not\(\.legend-recipe-hero-cinematic-media\),\.legend-recipe-feature-media/);
   assert.match(publicCss,/\.legend-recipe-hero-cinematic-media\{[\s\S]*position:absolute[\s\S]*height:100%[\s\S]*border:0[\s\S]*border-radius:0[\s\S]*box-shadow:none/);
-  assert.match(source,/const priorityMedia=classes\.has\('legend-recipe-hero-media'\) \|\| classes\.has\('legend-recipe-hero-cinematic-media'\)/);
-  assert.match(source,/el\.loading=priorityMedia \? 'eager' : 'lazy'/);
   assert.match(source,/if\(priorityMedia\) el\.setAttribute\('fetchpriority','high'\)/);
   assert.match(source,/runPreflight:runWholeSitePreflight/);
   assert.match(source,/runQuality:runWholeSitePreflight/);
@@ -8076,4 +8074,87 @@ test('receptionist heading edits synchronize Selected Source without losing the 
     assert.equal(source.title,'Shayla');assert.equal(source.id,'voice');assert.equal(source.type,'receptionist');
     await new Promise(resolve=>setTimeout(resolve,0));
   }finally{f.close();}
+});
+
+
+test('initial marketing image priority uses the canonical page graph and compiler URL',async()=>{
+  for(const siteKey of ['legend','protect','business']){
+    const doc=canonicalDocument();
+    doc.shell.header=[canonicalNode('logo','image','img',{mediaUrl:'https://example.test/logo.png'})];
+    doc.pages['/'].composition=[
+      canonicalNode('hidden','container','div',{hidden:true,children:[canonicalNode('hidden.image','image','img',{mediaUrl:'https://example.test/hidden.png'})]}),
+      canonicalNode('voice','receptionist','div',{children:[canonicalNode('icon','image','img',{mediaUrl:'https://example.test/icon.png'})]}),
+      canonicalNode('marketing','image','img',{mediaUrl:'https://example.test/marketing.png'}),
+      canonicalNode('later','image','img',{mediaUrl:'https://example.test/later.png'})
+    ];
+    const f=await domFixture({siteKey,doc,search:'',business:siteKey==='business'?{id:'synthetic',key:'synthetic',displayName:'Synthetic'}:null});
+    try{
+      const first=f.w.document.querySelector('[data-cms-id="marketing"]');
+      assert.ok(first,siteKey+' leading image rendered');
+      assert.equal(first.getAttribute('loading'),'eager');assert.equal(first.getAttribute('fetchpriority'),'high');
+      assert.equal(f.w.document.querySelectorAll('img[fetchpriority="high"]').length,1);
+      assert.equal(f.w.document.querySelector('[data-cms-id="later"]').getAttribute('loading'),'lazy');
+      assert.equal(first.getAttribute('src'),'https://example.test/marketing.png');
+    }finally{f.close();}
+    const compiled=await compileWebsite({siteKey,document:doc,business:siteKey==='business'?{id:'synthetic',key:'synthetic',displayName:'Synthetic'}:undefined});
+    const dom=new JSDOM(compiled.pages['/'].html);
+    try{
+      assert.equal(dom.window.document.querySelector('link[rel="preload"][as="image"]').getAttribute('href'),'https://example.test/marketing.png');
+      assert.equal(dom.window.document.querySelectorAll('img[fetchpriority="high"]').length,1);
+      if(siteKey==='protect') assert.equal(compiled.pages['/'].initialImageUrl,'https://example.test/marketing.png');
+    }finally{dom.window.close();}
+  }
+});
+
+test('publication gate has no transient loading surface and receptionist AI contract describes existing standalone owner',()=>{
+  assert.doesNotMatch(publicCss,/body::before/);
+  assert.match(publicCss,/html\[data-legend-canonical-pending="true"\] body \{ visibility: hidden !important;/);
+  assert.match(agentContractSource,/canonicalReceptionist = new/);
+  assert.match(agentContractSource,/receptionistSetupUrl/);
+  assert.match(agentContractSource,/Preview never starts a call/);
+  assert.match(protectLayoutSource,/<link rel="preload" as="image" href="@compiledPublication.InitialImageUrl" fetchpriority="high"/);
+  assert.doesNotMatch(protectLayoutSource,/Html.Raw\(compiledPublication.InitialImageUrl/);
+});
+
+
+test('initial marketing priority respects reusable identities and resolved bindings without duplicate heroes',async()=>{
+  for(const variant of ['reusable','resolved','unresolved']){
+    const doc=canonicalDocument();
+    const binding={collectionId:'images',field:'photo',target:'image'};
+    const collections=[{id:'images',isList:false,items:[{fields:{photo:'https://example.test/bound.png'}}]}];
+    doc.reusableComponents.hero={kind:'section',composition:[canonicalNode('asset','image','img',{mediaUrl:'https://example.test/hero.png',className:'legend-recipe-hero-media'})]};
+    doc.pages['/'].composition=variant==='reusable'?[
+      canonicalNode('hidden.instance','reusable','div',{syncSourceId:'hero',hidden:true}),
+      canonicalNode('first','reusable','div',{syncSourceId:'hero'}),
+      canonicalNode('second','reusable','div',{syncSourceId:'hero'})
+    ]:[canonicalNode('bound','image','img',{dataBinding:binding}),canonicalNode('fallback','image','img',{mediaUrl:'https://example.test/fallback.png'})];
+    const f=await domFixture({doc,search:'',beforeEval:w=>{w.LEGEND_PUBLIC_CMS_RENDER_INPUT={siteKey:'legend',document:doc,pageKey:'home',server:false,collections:variant==='resolved'?collections:[]};}});
+    try{
+      const images=f.w.document.querySelectorAll('img[fetchpriority="high"]');
+      assert.equal(images.length,1,variant);
+      assert.equal(images[0].dataset.cmsId,variant==='reusable'?'first.asset':variant==='resolved'?'bound':'fallback');
+    }finally{f.close();}
+  }
+});
+
+test('published hydration promotes the existing reusable marketing image without remounting',async()=>{
+  const doc=canonicalDocument();
+  doc.reusableComponents.hero={kind:'section',composition:[canonicalNode('image','image','img',{mediaUrl:'https://example.test/hero.png'})]};
+  doc.pages['/'].composition=[canonicalNode('one','reusable','div',{syncSourceId:'hero'}),canonicalNode('two','reusable','div',{syncSourceId:'hero'})];
+  const compiled=await compileWebsite({siteKey:'legend',document:doc});
+  const dom=new JSDOM(compiled.pages['/'].html,{url:'https://example.test/',runScripts:'outside-only'});
+  try{
+    const w=dom.window;w.CSS={escape:value=>String(value)};
+    w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey:'legend',apiBase:'https://example.test'};
+    const images=[...w.document.querySelectorAll('main img')];
+    for(const image of images){image.setAttribute('loading','lazy');image.removeAttribute('fetchpriority');}
+    w.eval(source);
+    assert.deepEqual([...w.document.querySelectorAll('main img')],images);
+    assert.equal(images[0].dataset.cmsId,'one.image');
+    assert.equal(images[0].getAttribute('loading'),'eager');
+    assert.equal(images[0].getAttribute('fetchpriority'),'high');
+    assert.equal(images[1].getAttribute('loading'),'lazy');
+    assert.equal(w.document.querySelectorAll('img[fetchpriority="high"]').length,1);
+    assert.equal(w.LEGEND_PUBLIC_CMS_RENDER_COMPLETE,true);
+  }finally{dom.window.close();}
 });

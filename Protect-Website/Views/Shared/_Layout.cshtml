@@ -259,6 +259,10 @@
 @if (compiledPublication is not null)
 {
     @Html.Raw(compiledPublication.Styles)
+    @if (!string.IsNullOrWhiteSpace(compiledPublication.InitialImageUrl))
+    {
+        <link rel="preload" as="image" href="@compiledPublication.InitialImageUrl" fetchpriority="high" />
+    }
 }
 </head>
 
