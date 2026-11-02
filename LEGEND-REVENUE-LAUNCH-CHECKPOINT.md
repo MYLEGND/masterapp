@@ -2575,3 +2575,17 @@ fixtures and shared compiler checks, not a claim that every tenant has been
 individually exercised live. Provider closure, accepted WebRTC connection/test
 and production microphone policy readiness remain separate unresolved calling
 requirements. Existing business ownership/bindings and provider pause are intact.
+
+### Risk Assessment shared form repair — source validation in progress
+
+Base: 5f9e4431eb35846f88a33517179874719d802377 on the existing local-static-assets-parity branch/PR754. Store PR755/c0a3713 remains separate and undeployed.
+
+Live Risk Assessment proof pills measured approximately 273px tall: generic saved text included decorative SVG indentation, then preserved it as visible whitespace. The shared native proof-label projection now removes only ASCII edge indentation; decorative icons, custom copy, internal line breaks and NBSP remain. Risk's duplicate step-pill paint was removed in favor of the existing wizard presentation, preserving step identities and validation.
+
+Protect build passed (zero warnings/errors). Shared CMS suite: 415 passed. Expanded focused regression passed for public/Studio, compiled native-slot request binding, capture/reopen and authored whitespace preservation. Three native fixture/policy checks passed. Independent read-only reviewer accepted the six-file source/test diff SHA-256 99cf6a26d415ee67962c43b5570136ec3dca72636a9454acd4cd8ea01e7ac747 before this checkpoint update.
+
+Local pretest used a fresh synthetic SQLite database and the existing loopback GET/HEAD-only capture mode at https://localhost:1113. Risk all six steps reached at 390px, no horizontal overflow; missing required coverage choices blocked advancement. Life discovery and contact rendering exercised at 390px without submission. This is not full write/results acceptance or all-form completion.
+
+Prior required architecture run41396288894 failed because its source-component fixture expected ten navigator options, while the accepted Results + scheduling option makes eleven. The existing fixture now loads the actual shared quote-review renderer, asserts the exact option inventory and verifies results/scheduling preview rather than skipping it. Genuine hosted browser acceptance remains required.
+
+NOT DEPLOYED for this repair. Remaining: all affected mobile/desktop journeys, exact-candidate hosted checks, production operation reconciliation/admission, affected-target deployment, live provenance/journeys and fast-track integration. No production content, leads, permissions or provider settings changed.

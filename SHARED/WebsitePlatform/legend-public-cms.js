@@ -96,6 +96,7 @@
   let historyCheckpointPending = false;
   let suppressHistoryCapture = false;
   const originals = new WeakMap();
+  const nativeProofLabels = new WeakSet();
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
   const studioPerformance = [];
@@ -713,6 +714,13 @@
   function isNativeTemplateFigure(element) {
     return element?.tagName==='FIGURE' && SITE_KEY==='protect' && pageUsesSystemTemplate();
   }
+  function nativeProofLabelText(el, value) {
+    // Native compact labels retain authored internal line breaks, but template
+    // indentation around their decorative SVG is not visible label content.
+    return nativeProofLabels.has(el)
+      ? String(value).replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, '')
+      : value;
+  }
   const boundNativeTemplateRoots = new WeakSet();
   function bindNativeTemplateIdentities() {
     const main=document.querySelector('main');
@@ -721,6 +729,11 @@
     // native icon-bearing spans and figures were never assigned prepareDom IDs.
     // Bind them before reconciliation, without modifying the saved document or
     // matching authored copy/classes. Existing native IDs are never renumbered.
+    main.querySelectorAll('.pcq-proof-pill').forEach(el => {
+      if (el.tagName === 'SPAN' && el.children.length > 0 &&
+          [...el.children].every(child => child.tagName.toLowerCase() === 'svg' && child.getAttribute('aria-hidden') === 'true'))
+        nativeProofLabels.add(el);
+    });
     materializeCurrentPageComposition();
     boundNativeTemplateRoots.add(main);
   }
@@ -1961,6 +1974,7 @@
   }
 
   function setContentText(el, text, preserveWhitespace = false) {
+    text = nativeProofLabelText(el, text);
     if (preserveWhitespace) el.dataset.cmsPreserveWhitespace = 'true';
     else delete el.dataset.cmsPreserveWhitespace;
     if (!el.children.length || !document.createTreeWalker) { el.textContent = text; return; }
@@ -2396,7 +2410,9 @@
   function materializedTextValue(el, model) {
     // Capture rendered template copy, not HTML indentation. Authored text and
     // explicitly preformatted content retain their exact whitespace contract.
-    if (model.text != null) return model.text;
+    if (model.text != null) return nativeProofLabelText(el, model.text);
+    if (nativeProofLabels.has(el))
+      return nativeProofLabelText(el, [...el.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent).join(''));
     return normalizeTemplateText(el, inlineTextValue(el));
   }
 

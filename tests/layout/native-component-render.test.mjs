@@ -787,11 +787,13 @@ test('quote breakpoint readiness rejects disabled, unselected and stale preview 
 });
 
 function quotePhaseValid(p,index) {
+  if(!Number.isInteger(index)||index<0||index>9)return false;
   if(!p || p.selected!==String(index) || !Array.isArray(p.steps) || p.steps.length!==5) return false;
   const question=index>=1&&index<=5, final=index>=7;
   if(p.entry!==(index===0)||p.question!==question||p.processing!==(index===6)||p.contact!==final) return false;
   if(question && (!Array.isArray(p.labels)||p.steps.some((v,i)=>v!==(i===index-1)) || p.progress!==(p.labels[index-1]?p.labels[index-1]+' · '+index+' of 5':'Question '+index+' of 5')))return false;
   if(!question&&p.steps.some(Boolean))return false;
+  if(index===9)return p.results===true&&p.resultsSample===true&&p.resultsIllustrative===true&&p.booking===true;
   return !final || (p.review&&p.sample&&p.illustrative&&Number.isInteger(p.expectedMetrics)&&p.expectedMetrics>0&&p.metrics===p.expectedMetrics);
 }
 test('quote phase policy rejects noop navigation, hidden active steps, wrong progress and missing real review',()=>{
@@ -805,6 +807,10 @@ test('quote phase policy rejects noop navigation, hidden active steps, wrong pro
   assert.equal(quotePhaseValid({...review,metrics:3,expectedMetrics:3},7),true);
   assert.equal(quotePhaseValid({...review,metrics:2,expectedMetrics:3},7),false);
   for(const delta of [{review:false},{sample:false},{illustrative:false},{metrics:0}])assert.equal(quotePhaseValid({...review,...delta},7),false);
+  const results={...review,selected:'9',review:false,results:true,resultsSample:true,resultsIllustrative:true,booking:true};
+  assert.equal(quotePhaseValid(results,9),true);
+  for(const key of ['results','resultsSample','resultsIllustrative','booking'])assert.equal(quotePhaseValid({...results,[key]:false},9),false);
+  assert.equal(quotePhaseValid({...results,selected:'10'},10),false);
 });
 
 function quoteControlSnapshots(document,window) {
@@ -878,7 +884,8 @@ const shell=document.querySelector('[data-protect-form-shell]'),canvas=document.
 const css=shell?getComputedStyle(shell):null;const outer=canvas.getBoundingClientRect(),canvasCss=getComputedStyle(canvas),pl=parseFloat(canvasCss.paddingLeft)||0,pr=parseFloat(canvasCss.paddingRight)||0;const canvasBox={x:outer.x+canvas.clientLeft+pl,y:outer.y+canvas.clientTop,width:canvas.clientWidth-pl-pr,height:canvas.clientHeight};canvasBox.right=canvasBox.x+canvasBox.width;canvasBox.bottom=canvasBox.y+canvasBox.height;
 const form=document.querySelector('main form[data-cms-presentation]'),visible=e=>!!(e&&e.getClientRects().length&&getComputedStyle(e).visibility==='visible'&&Number(getComputedStyle(e).opacity)>0),find=key=>document.getElementById(form?.dataset[key]||'');
 const steps=[...document.querySelectorAll('main [data-cms-native-step]')];
-const phase={selected:document.querySelector('#legend-cms-form-navigator select')?.value,entry:visible(find('cmsEntryId')),question:visible(find('cmsQuestionId')),processing:visible(find('cmsProcessingId')),contact:visible(find('cmsContactId')),review:visible(find('cmsReviewId')),steps:steps.map(n=>visible(n)),progress:find('cmsProgressId')?.textContent,labels:steps.map(n=>n.dataset.cmsProgressLabel),sample:!!find('cmsReviewId')?.querySelector('[data-cms-preview-only]'),illustrative:find('cmsReviewId')?.textContent.includes('Illustrative Studio review — not a quote'),expectedMetrics:(form?.dataset.cmsReviewMetrics||'').split('|').filter(Boolean).length,metrics:find('cmsReviewId')?.querySelectorAll('.lq-contact-preview-mini-metric,.dq-review-stat').length};
+const results=find('cmsResultsId');
+const phase={results:visible(results),resultsSample:!!results?.querySelector('[data-cms-preview-only] .quote-review'),resultsIllustrative:results?.textContent.includes('Illustrative preview; no answers submitted.'),booking:!!results?.textContent.includes('Schedule your review'),selected:document.querySelector('#legend-cms-form-navigator select')?.value,entry:visible(find('cmsEntryId')),question:visible(find('cmsQuestionId')),processing:visible(find('cmsProcessingId')),contact:visible(find('cmsContactId')),review:visible(find('cmsReviewId')),steps:steps.map(n=>visible(n)),progress:find('cmsProgressId')?.textContent,labels:steps.map(n=>n.dataset.cmsProgressLabel),sample:!!find('cmsReviewId')?.querySelector('[data-cms-preview-only]'),illustrative:find('cmsReviewId')?.textContent.includes('Illustrative Studio review — not a quote'),expectedMetrics:(form?.dataset.cmsReviewMetrics||'').split('|').filter(Boolean).length,metrics:find('cmsReviewId')?.querySelectorAll('.lq-contact-preview-mini-metric,.dq-review-stat').length};
 const breakpoint=document.querySelector('#legend-cms-breakpoint');
 const layout={selected:!!document.querySelector('main .legend-cms-selected[data-cms-editable="true"]'),disabled:breakpoint?.disabled,value:breakpoint?.value,width:canvas.style.width,maxWidth:canvas.style.maxWidth,justifySelf:canvas.style.justifySelf};
 return {editing:document.body.classList.contains('legend-cms-editing'),layout,phase,canvasOuter:box(canvas),available:box(document.querySelector('.legend-cms-canvas')),shell:box(shell),canvas:canvasBox,panel:box(panel),style:css?{display:css.display,visibility:css.visibility,opacity:css.opacity}:null,
@@ -1280,7 +1287,13 @@ test('actual canonical frontend components render in the existing sandboxed CI b
       await command('POST','/session/'+session+'/url',{url:'http://'+serverHost+route+query});
       if(query.includes('legendMaterialize'))await waitFor('window.__quoteMaterialized!==null');
       else if(query.includes('public=1'))await waitFor('window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE===true');
-      else await waitFor("document.querySelector('#legend-cms-form-navigator select')?.options.length===10");
+      else {
+        await waitFor("document.querySelector('#legend-cms-form-navigator select')?.options.length===11");
+        const options=await execute("return [...document.querySelector('#legend-cms-form-navigator select').options].map(o=>({value:o.value,label:o.textContent}))");
+        assert.deepEqual(options.map(o=>o.value),['-1','0','1','2','3','4','5','6','7','8','9']);
+        for(const [index,label] of [[0,'Normal form preview'],[1,'1. Introduction'],[7,'7. Processing preview'],[8,'8. Review / starting estimate'],[9,'9. Contact details'],[10,'10. Results + scheduling']])assert.equal(options[index].label,label);
+        for(let index=2;index<=6;index++)assert.ok(options[index].label.startsWith(index+'. ')&&options[index].label.length>3,'Missing discovery step label');
+      }
       await waitFor("[...document.querySelectorAll('main img')].every(n=>n.complete&&n.naturalWidth>0)");
       }catch(error){
         try{quoteDiagnostic.navigation=await execute("return {url:location.pathname+location.search,title:document.title,options:document.querySelector('#legend-cms-form-navigator select')?.options.length,errors:(window.__quoteErrors||[]).slice(-8),requests:(window.__quoteRequests||[]).slice(-8),body:document.body?.innerText.slice(0,800)}");}catch{quoteDiagnostic.snapshotUnavailable=true;}
@@ -1345,7 +1358,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
       await metrics(1440);await quoteGo(route,'?legendEdit=ticket&legendMaterialize=1');
       await quoteGo(route,'?legendEdit=ticket');
       const baseline=await inspectQuote(route+':1440:base',{sidebar:true});
-      for(let phase=0;phase<9;phase++){
+      for(let phase=0;phase<10;phase++){
         await click('#legend-cms-form-navigator select option[value="'+phase+'"]');
         const snap=await inspectQuote(route+':1440:phase:'+phase,{sidebar:true});
         assert.ok(quotePhaseValid(snap.phase,phase),'Actual source phase failed: '+JSON.stringify(snap.phase));

@@ -6602,7 +6602,7 @@ test('non-template and Business native figures retain prior text and data bindin
     const f=await domFixture({siteKey,business:siteKey==='business'?{id:'business-id',displayName:'Scoped business'}:null,html,search:'',legacyMigration:{elements:{'generic.figure':{text:'Authored generic caption'}}}});
     try{
       const figure=f.w.document.getElementById('genericFigure');assert.equal(figure.textContent,'Authored generic caption');assert.ok(figure.querySelector('img'));
-      f.w.eval('const SITE_KEY='+JSON.stringify(siteKey)+';function pageUsesSystemTemplate(){return false;}function resolveDataBinding(){return "Bound generic caption";}'+nativeFunction(source,'isNativeTemplateFigure')+nativeFunction(source,'setContentText')+nativeFunction(source,'applyDataBinding'));
+      f.w.eval('const SITE_KEY='+JSON.stringify(siteKey)+';function pageUsesSystemTemplate(){return false;}function resolveDataBinding(){return "Bound generic caption";}'+nativeFunction(source,'isNativeTemplateFigure')+'const nativeProofLabels=new WeakSet();'+nativeFunction(source,'nativeProofLabelText')+nativeFunction(source,'setContentText')+nativeFunction(source,'applyDataBinding'));
       f.w.applyDataBinding(figure,{target:'text'});assert.equal(figure.textContent,'Bound generic caption');assert.ok(figure.querySelector('img'));
     }finally{f.close();}
   }
@@ -8247,5 +8247,46 @@ test('voice presentation boot is scope-specific, order-independent and inert thr
       assert.equal(f.calls.some(c=>/receptionist\/browser|grant|webrtc/i.test(c.url||'')),false);
       assert.equal(moduleScripts().length,1);
     }finally{f.close();}
+  }
+});
+
+test('native proof labels discard decorative indentation without changing authored internal lines or icons',async()=>{
+  const path='/riskassessment';
+  const html='<!doctype html><html><body data-page-key="risk_assessment"><main><span id="proof" class="pcq-proof-pill" data-cms-id="proof.label">\n  <svg aria-hidden="true" viewBox="0 0 24 24">\n    <path d="M1 1L2 2"></path>\n  </svg>\n  Clear insights\n</span><span id="other" data-cms-id="other.label"><svg aria-hidden="true"></svg>Other</span><form id="riskAssessmentForm" data-form-key="risk_assessment_form"><input name="FirstName"></form></main></body></html>';
+  for(const [text,expected] of [['\n    \n  \n  Clear insights\n','Clear insights'],['  Custom first line\n  Intentional second line  ','Custom first line\n  Intentional second line'],['\u00a0Custom\u00a0','\u00a0Custom\u00a0']]){
+    const doc=canonicalDocument();
+    doc.pages[path]={title:'Risk',systemTemplateKey:'protect_template:risk_assessment',composition:[canonicalNode('proof.label','text','span',{text}),canonicalNode('other.label','text','span',{text:'  Other\n  authored  '})]};
+    for(const search of ['', '?legendEdit=ticket']){
+      const f=await domFixture({siteKey:'protect',doc,pathname:path,html,search});
+      try{
+        const pill=f.w.document.getElementById('proof');
+        const visible=()=>[...pill.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join('');
+        assert.equal(visible(),expected);
+        assert.equal(pill.querySelectorAll('svg').length,1);assert.equal(pill.querySelectorAll('path').length,1);
+        assert.equal(f.w.document.getElementById('other').textContent,'  Other\n  authored  ');
+        assert.equal(f.calls.some(call=>call.method==='POST'),false,'rendering never rewrites the saved publication');
+      }finally{f.close();}
+    }
+    const compiled=new JSDOM(html,{url:'https://protect.example.test'+path,runScripts:'outside-only'});
+    try{
+      const w=compiled.window;w.CSS={escape:value=>String(value)};
+      w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey:'protect',apiBase:'',requestNativeView:{templateKey:'protect_template:risk_assessment',pageKey:'risk_assessment'}};
+      w.LEGEND_PUBLIC_CMS_RENDER_INPUT={siteKey:'protect',document:doc,pageKey:'riskassessment',server:false,publishedMarkupReady:true,protectNativeSlot:true};
+      w.eval(source);
+      assert.equal(w.LEGEND_PUBLIC_CMS_RENDER_COMPLETE,true,w.document.body.textContent);
+      assert.equal([...w.document.getElementById('proof').childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join(''),expected);
+      assert.equal(w.document.querySelectorAll('#proof svg').length,1);
+    }finally{compiled.window.close();}
+    let snapshot;
+    const capture=await domFixture({siteKey:'protect',doc,pathname:path,html,search:'?legendEdit=ticket&legendMaterialize=1',beforeEval:w=>{w.postMessage=value=>{snapshot=value;};}});
+    try{
+      assert.ok(snapshot?.composition);
+      const reopened=structuredClone(doc);reopened.pages[path].composition=snapshot.composition;
+      const next=await domFixture({siteKey:'protect',doc:reopened,pathname:path,html,search:''});
+      try{
+        assert.equal([...next.w.document.getElementById('proof').childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join(''),expected);
+        assert.equal(next.w.document.querySelectorAll('#proof svg').length,1);
+      }finally{next.close();}
+    }finally{capture.close();}
   }
 });
