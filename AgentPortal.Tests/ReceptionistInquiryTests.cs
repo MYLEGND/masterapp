@@ -256,6 +256,41 @@ public sealed partial class ReceptionistInquiryTests
         Assert.Null(await other.Inquiries.ReadBackAsync(otherCall.Owner, otherCall.CallId, otherAction));
     }
 
+    [Fact]
+    public async Task ProductionRetirementIsRefusedAndAlreadyClaimedInquiryStillCompletes()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var call = await f.CallAsync(); var facts = Facts(); var action = await f.ClaimAsync(call, facts);
+        f.Clock.Now = f.Clock.Now.AddMinutes(3);
+        await using var db = f.Database();
+        var stored = await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == call.CallId);
+        var connection = await db.MarketingConnections.AsNoTracking().SingleAsync(x => x.Id == stored.MarketingConnectionId);
+        var version = await db.Set<ReceptionistConfigurationVersion>().AsNoTracking().SingleAsync(x => x.Id == stored.ConfigurationVersionId);
+        var funding = await db.Set<ReceptionistCostReservation>().AsNoTracking().Where(x => x.CallId == stored.Id)
+            .Select(x => x.FundingBudgetAccountId).Distinct().ToArrayAsync();
+        var ids = funding.Append(stored.OwnerBudgetAccountId).Distinct().ToArray();
+        var accounts = await db.Set<ReceptionistBudgetAccount>().AsNoTracking().Where(x => ids.Contains(x.Id)).ToArrayAsync();
+        var package = new ReceptionistOperatorPackage
+        {
+            Operation = "retire_stale_test_call", MarketingConnectionId = connection.Id, ExpectedOwnerKey = connection.OwnerKey,
+            Provider = stored.Provider, ProviderProjectKey = stored.ProviderProjectKey, ConfigurationId = version.Id,
+            ConfigurationSha256 = version.ConfigurationSha256, ExpectedConnectionRevision = connection.Revision,
+            CallId = stored.Id, ExpectedCallRevision = stored.Revision, ExpectedProviderSessionId = stored.ProviderSessionId,
+            ExpectedAccountRevisions = accounts.ToDictionary(x => x.Id, x => x.Revision),
+            FundingScopes = accounts.Where(x => x.Kind == "funding").ToDictionary(x => x.Id, x => x.ScopeKey),
+            ReceiptReference = "synthetic-retirement-review"
+        };
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => f.Admission.ReadOperatorStateAsync(
+            package, ReceptionistConfigurationCodec.Hash("synthetic-retirement-package"), CancellationToken.None));
+        Assert.Contains("exact controlled-test", error.Message);
+        Assert.Empty(await db.Set<ReceptionistActionIntent>().AsNoTracking().Where(x => x.LogicalActionKey == "__admin_retire_stale_test_call").ToArrayAsync());
+        await f.Admission.RecordProviderStateAsync(call.CallId, "closed", "synthetic-closure", f.Clock.Now);
+        var result = await f.Inquiries.PersistConfirmedAsync(call, action, facts, Receipt);
+        Assert.True(result.Created);
+        Assert.NotNull(await f.Inquiries.ReadBackAsync(call.Owner, call.CallId, action));
+        Assert.Single(await db.WebsiteLeadIntakeLinks.AsNoTracking().ToArrayAsync());
+    }
+
     [Theory]
     [InlineData("qa_test")]
     [InlineData("wrong_number")]

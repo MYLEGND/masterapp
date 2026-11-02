@@ -12,6 +12,7 @@
         "reconcile_call_cost" => "Reconcile a call's provider charges",
         "reconcile_account_charge" => "Reconcile an account charge",
         "reconcile_dated_voice" => "Reconcile voice usage by service period",
+        "retire_stale_test_call" => "Retire an expired controlled-test call locally; provider closure remains unresolved",
         "record_provider_closure" => "Record verified provider closure",
         "reconcile_booking_action" => "Reconcile the original booking outcome without creating or resending",
         _ => "Review the configured operation"
@@ -46,14 +47,71 @@
             <input id="receptionist-preparation-owner" name="expectedOwnerKey" required maxlength="450" autocomplete="off" />
             <label for="receptionist-preparation-configuration">Configuration ID (original pinned version for recovery)</label>
             <input id="receptionist-preparation-configuration" name="configurationId" required maxlength="36" autocomplete="off" />
-            <label for="receptionist-preparation-call">Original call ID (optional; booking recovery only)</label>
+            <label for="receptionist-preparation-call">Original call ID (required for local retirement)</label>
             <input id="receptionist-preparation-call" name="callId" maxlength="36" autocomplete="off" />
             <button type="submit">Read preparation metadata</button>
             <button type="submit" formaction="@Url.Action("ReceptionistBookingReadiness")">Read saved booking readiness</button>
             <button type="submit" formaction="@Url.Action("ReceptionistBookingRecoveryPreparation")">Read booking recovery metadata</button>
+            <button type="submit" formaction="@Url.Action("ReceptionistRetirementPreparation")">Read local retirement metadata</button>
         </form>
         <p>Independent provider, capability, cost and reviewer evidence is still required before a reviewed operation can be registered. No call test window starts here.</p>
+        <p>Local retirement metadata uses the original call and its pinned historical configuration. It does not contact the provider, release reservations, or establish closure. A separate reviewed retirement package and preview are required.</p>
         <p>Booking recovery metadata can use the original call's pinned configuration ID. It returns scoped action revisions for review and does not contact the calendar. If the result needs a narrower scope, add the original call ID.</p>
+    </section>
+
+    <section class="eng-action-center" aria-labelledby="retire-test-title">
+        <h2 id="retire-test-title">Prepare local retirement of an expired test call</h2>
+        <p>The original call and historical configuration determine all revisions and accounting dimensions. Supply your actual dated evidence and reason. This only prepares a review.</p>
+        <p>Local retirement does not contact the provider or establish provider closure. Unknown voice usage, cash and consumption and all reservations remain held. Accounting may still block another test.</p>
+        <form asp-action="PrepareSavedRetirement" method="post">
+            @Html.AntiForgeryToken()
+            <label>Settings owner key <input name="ExpectedOwnerKey" required maxlength="160" /></label>
+            <label>Original historical configuration ID <input name="ConfigurationId" required /></label>
+            <label>Original call ID <input name="CallId" required /></label>
+            <label>Evidence reference <input name="EvidenceReference" required maxlength="200" /></label>
+            <label>Evidence SHA-256 <input name="EvidenceSha256" required pattern="[a-f0-9]{64}" maxlength="64" /></label>
+            <label>Evidence observed at UTC (YYYY-MM-DDTHH:MM:SSZ) <input name="EvidenceObservedUtc" required placeholder="2026-11-02T12:00:00Z" /></label>
+            <label>Reason <textarea name="Reason" required maxlength="500"></textarea></label>
+            <button type="submit" class="eng-button">Prepare retirement review</button>
+        </form>
+        @if (Model.PendingRetirementReview is { } pending && pending.PendingReviewRevision is { } revision && Guid.TryParseExact(pending.Key.Substring(6), "N", out var pendingId))
+        {
+            <h3>Review exact proposed retirement</h3>
+            <p>This review does not contact the provider or apply retirement. Provider closure and accounting remain unresolved unless separately verified.</p>
+            <dl class="eng-status-card">@foreach (var fact in pending.Facts) { <dt>@fact.Label</dt><dd>@fact.Value</dd> }</dl>
+            <form asp-action="ReviewSavedRetirement" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="Id" value="@pendingId" />
+                <input type="hidden" name="Hash" value="@pending.Sha256" />
+                <input type="hidden" name="Revision" value="@revision" />
+                <button name="Accepted" value="true" type="submit">Accept this exact review</button>
+                <button name="Accepted" value="false" type="submit">Reject this review</button>
+            </form>
+        }
+        @foreach (var saved in Model.SavedRetirements ?? [])
+        {
+            <article class="eng-action-card">
+                <p>Retirement review: @saved.ReviewState; expires @saved.ExpiresUtc.ToString("u")</p>
+                @if (saved.ReviewState == "pending")
+                {
+                    <form asp-action="PreviewSavedRetirement" method="post">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="Id" value="@saved.Key.Substring(6)" />
+                        <input type="hidden" name="Hash" value="@saved.Sha256" />
+                        <button type="submit">Preview review</button>
+                    </form>
+                }
+                @if (saved.ReviewState == "accepted")
+                {
+                    <form asp-action="PlanReceptionist" method="post">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="PackageKey" value="@saved.Key" />
+                        <input type="hidden" name="PackageSha256" value="@saved.Sha256" />
+                        <button type="submit">Preview reviewed retirement</button>
+                    </form>
+                }
+            </article>
+        }
     </section>
 
     @if (Model.Receipt is { } receipt)

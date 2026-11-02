@@ -9,6 +9,71 @@ namespace AgentPortal.Controllers;
 
 public sealed partial class FounderEngineeringController
 {
+    [HttpGet("receptionist/retirement-preparation")]
+    [ReceptionistMetadataRead]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> ReceptionistRetirementPreparation(string expectedOwnerKey, Guid configurationId,
+        Guid callId, CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(User); _ = ReceptionistMetadataAccess.Require(HttpContext);
+        try { return Json(await ReceptionistOperator.PrepareRetirementAsync(expectedOwnerKey, configurationId, callId, cancellationToken)); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or DbUpdateConcurrencyException)
+        { return BadRequest(new { state = "scoped_retirement_metadata_unavailable" }); }
+    }
+
+    [HttpPost("receptionist/retirement/prepare")]
+    [ValidateAntiForgeryToken]
+    [RequestSizeLimit(16384)]
+    public async Task<IActionResult> PrepareSavedRetirement([FromForm] FounderRetirementDraftInput input, CancellationToken ct)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        if (!ModelState.IsValid || input.ConfigurationId == Guid.Empty || input.CallId == Guid.Empty ||
+            !DateTime.TryParseExact(input.EvidenceObservedUtc, "yyyy-MM-dd'T'HH:mm:ss'Z'",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var observed))
+        { Response.StatusCode = 400; return await ReceptionistPageAsync(ct, error: "Supply the exact owner, historical configuration, call, reason and dated evidence in UTC."); }
+        try
+        {
+            var prepared = await ReceptionistOperator.PrepareSavedRetirementAsync(new(input.ExpectedOwnerKey, input.ConfigurationId,
+                input.CallId, input.EvidenceReference, input.EvidenceSha256, observed, input.Reason), ct);
+            var pending = await ReceptionistOperator.PreviewSavedRetirementAsync(prepared.Id, prepared.Sha256, ct);
+            return await ReceptionistPageAsync(ct, pendingReview: pending);
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or DbUpdateException or System.Text.Json.JsonException)
+        { Response.StatusCode = 400; return await ReceptionistPageAsync(ct, error: "The exact call, evidence or current state could not be verified. No retirement was applied."); }
+    }
+
+    [HttpPost("receptionist/retirement/preview-review")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> PreviewSavedRetirement([FromForm] FounderRetirementReviewInput input, CancellationToken ct)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        if (!ModelState.IsValid || input.Id == Guid.Empty) { Response.StatusCode = 400; return await ReceptionistPageAsync(ct, error: "Choose an exact pending review."); }
+        try { return await ReceptionistPageAsync(ct, pendingReview: await ReceptionistOperator.PreviewSavedRetirementAsync(input.Id, input.Hash, ct)); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or DbUpdateException or System.Text.Json.JsonException)
+        { Response.StatusCode = 409; return await ReceptionistPageAsync(ct, error: "The pending review changed or expired. Prepare and review current evidence."); }
+    }
+
+    [HttpPost("receptionist/retirement/review")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ReviewSavedRetirement([FromForm] FounderRetirementReviewInput input, CancellationToken ct)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        if (!ModelState.IsValid || input.Id == Guid.Empty || input.Revision == Guid.Empty)
+        { Response.StatusCode = 400; return await ReceptionistPageAsync(ct, error: "A current exact preview is required."); }
+        try
+        {
+            await ReceptionistOperator.ReviewSavedRetirementAsync(input.Id, input.Revision, input.Hash, input.Accepted, ct);
+            return await ReceptionistPageAsync(ct);
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or DbUpdateException or System.Text.Json.JsonException)
+        { Response.StatusCode = 409; return await ReceptionistPageAsync(ct, error: "The pending review changed or expired. Review a fresh preview."); }
+    }
+
     [HttpGet("receptionist/booking-recovery-preparation")]
     [ReceptionistMetadataRead]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
@@ -144,10 +209,16 @@ public sealed partial class FounderEngineeringController
         HttpContext.RequestServices.GetRequiredService<ReceptionistOperatorService>();
 
     private async Task<IActionResult> ReceptionistPageAsync(CancellationToken cancellationToken,
-        ReceptionistOperatorPlan? plan = null, ReceptionistOperatorReceipt? receipt = null, string? error = null)
+        ReceptionistOperatorPlan? plan = null, ReceptionistOperatorReceipt? receipt = null, string? error = null,
+        Shared.Analytics.ReceptionistOperationReview? pendingReview = null)
     {
         IReadOnlyList<ReceptionistOperatorPackageSummary> packages = [];
-        try { packages = await ReceptionistOperator.CatalogAsync(cancellationToken); }
+        IReadOnlyList<Shared.Analytics.ReceptionistSavedOperationSummary> retirements = [];
+        try
+        {
+            packages = await ReceptionistOperator.CatalogAsync(cancellationToken);
+            retirements = await ReceptionistOperator.SavedRetirementsAsync(cancellationToken);
+        }
         catch (UnauthorizedAccessException) { return Forbid(); }
         catch (Exception failure) when (failure is ArgumentException or InvalidOperationException or System.Text.Json.JsonException or System.Security.Cryptography.CryptographicException or OverflowException)
         {
@@ -155,6 +226,6 @@ public sealed partial class FounderEngineeringController
             error ??= "Reviewed operations are unavailable. Verify the existing operator configuration and reload this page.";
         }
         return View("~/Views/FounderEngineering/Receptionist.cshtml",
-            new FounderReceptionistOperatorViewModel(packages, plan, receipt, error));
+            new FounderReceptionistOperatorViewModel(packages, plan, receipt, error, retirements, pendingReview));
     }
 }

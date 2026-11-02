@@ -25,6 +25,17 @@ public sealed record ReceptionistOperatorPreparation(DateTime ObservedUtc, strin
     bool AdmissionEnabled, bool CurrentBindingAccepted, IReadOnlyList<ReceptionistPreparationAccount> Accounts,
     ReceptionistPreparationHistory? HistoricalAcceptedConfiguration, IReadOnlyList<string> RemainingRequirements);
 
+public sealed record ReceptionistPreparedRetirement(Guid Id, string Sha256);
+public sealed record ReceptionistRetirementDraft(string ExpectedOwnerKey, Guid ConfigurationId, Guid CallId,
+    string EvidenceReference, string EvidenceSha256, DateTime EvidenceObservedUtc, string Reason);
+public sealed record ReceptionistRetirementPreparation(DateTime ObservedUtc, string Status,
+    Guid MarketingConnectionId, string OwnerKey, string Provider, string ProviderProjectKey,
+    Guid ConnectionRevision, Guid ConfigurationId, long ConfigurationVersion, string ConfigurationSha256,
+    Guid CallId, Guid CallRevision, string? ProviderSessionId, DateTime MustStopUtc,
+    DateTime? ProviderClosedUtc, bool ControlledTest, bool ControlledTestBinding,
+    bool LiveExecutionLease, int PendingBusinessActions, bool LocallyRetired,
+    IReadOnlyList<ReceptionistPreparationAccount> Accounts);
+
 public sealed record ReceptionistOperatorPackageSummary(string PackageKey, string PackageSha256, string Label);
 public sealed record ReceptionistOperatorApplyRequest(string PackageKey, string PackageSha256, string ExpectedStateToken);
 public sealed record ReceptionistOperatorFact(string Label, string Value);

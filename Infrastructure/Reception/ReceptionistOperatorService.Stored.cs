@@ -11,6 +11,80 @@ namespace Infrastructure.Reception;
 public sealed partial class ReceptionistOperatorService
 {
     private const string StoredPrefix = "saved-";
+
+    // Founder-only preparation extends the existing reviewed-operation journal. It never contacts the provider.
+    public async Task<ReceptionistPreparedRetirement> PrepareSavedRetirementAsync(ReceptionistRetirementDraft input, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        var actor = RequireFounder();
+        ReceptionistConfigurationCodec.Required(input.Reason, 500, nameof(input.Reason));
+        var observed = await admission.ReadRetirementPreparationAsync(input.ExpectedOwnerKey, input.ConfigurationId, input.CallId, ct);
+        if (observed.ProviderSessionId is null) throw new InvalidOperationException("A known provider session is required.");
+        var now = clock.GetUtcNow().UtcDateTime;
+        var package = new ReceptionistOperatorPackage
+        {
+            Version = 1, Label = "Retire expired controlled-test call locally", Operation = "retire_stale_test_call",
+            ExpiresUtc = now.AddMinutes(30), MarketingConnectionId = observed.MarketingConnectionId,
+            ExpectedOwnerKey = observed.OwnerKey, Provider = observed.Provider, ProviderProjectKey = observed.ProviderProjectKey,
+            ConfigurationId = observed.ConfigurationId, ConfigurationSha256 = observed.ConfigurationSha256,
+            ExpectedConnectionRevision = observed.ConnectionRevision,
+            ExpectedAccountRevisions = observed.Accounts.ToDictionary(x => x.Id, x => x.Revision),
+            FundingScopes = observed.Accounts.Where(x => x.Kind == "funding").ToDictionary(x => x.Id, x => x.ScopeKey),
+            CallId = observed.CallId, ExpectedCallRevision = observed.CallRevision, ExpectedProviderSessionId = observed.ProviderSessionId,
+            RetirementReason = input.Reason, ReceiptReference = input.EvidenceReference,
+            Evidence = [new("retire_stale_test_call", input.EvidenceReference, input.EvidenceSha256, input.EvidenceObservedUtc)]
+        };
+        (package with { ReviewedByFounderOid = actor, ReviewedUtc = now }).Validate(actor, now);
+        var json = JsonSerializer.Serialize(package, ReceptionistConfigurationCodec.Json);
+        var hash = ReceptionistConfigurationCodec.Hash(json);
+        await using var db = new MasterAppDbContext(DatabaseOptions);
+        await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        // Re-read the whole canonical state under the same transaction before persisting the proposal.
+        var checkedPackage = package with { ReviewedByFounderOid = actor, ReviewedUtc = now };
+        var state = await admission.ReadOperatorStateAsync(db, checkedPackage, hash, ct);
+        if (state.CompletedReference is not null) throw new InvalidOperationException("This call is already locally retired.");
+        state.RequirePackageRevisions(checkedPackage);
+        var row = new ReceptionistOperationPackage
+        {
+            MarketingConnectionId = package.MarketingConnectionId, ConfigurationVersionId = package.ConfigurationId,
+            Operation = package.Operation, PayloadJson = json, PayloadSha256 = hash,
+            CreatedByActorId = actor, CreatedUtc = now, ExpiresUtc = package.ExpiresUtc
+        };
+        db.Add(row); await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct);
+        return new(row.Id, hash);
+    }
+
+    public async Task<IReadOnlyList<ReceptionistSavedOperationSummary>> SavedRetirementsAsync(CancellationToken ct = default)
+    {
+        _ = RequireFounder();
+        await using var db = new MasterAppDbContext(DatabaseOptions);
+        var rows = await db.Set<ReceptionistOperationPackage>().AsNoTracking()
+            .Where(x => x.Operation == "retire_stale_test_call").OrderByDescending(x => x.CreatedUtc).Take(100).ToArrayAsync(ct);
+        return rows.Select(x => new ReceptionistSavedOperationSummary(StoredPrefix + x.Id.ToString("N"), x.PayloadSha256,
+            x.Operation, x.RevokedUtc is null ? x.ReviewState : "revoked", x.ExpiresUtc, x.Revision)).ToArray();
+    }
+
+    private async Task<MarketingOwnerScope> RetirementOwnerAsync(Guid id, CancellationToken ct)
+    {
+        _ = RequireFounder();
+        await using var db = new MasterAppDbContext(DatabaseOptions);
+        var row = await db.Set<ReceptionistOperationPackage>().AsNoTracking().SingleAsync(x => x.Id == id && x.Operation == "retire_stale_test_call", ct);
+        var connection = await db.MarketingConnections.AsNoTracking().SingleAsync(x => x.Id == row.MarketingConnectionId, ct);
+        return ReceptionistSql.Owner(connection);
+    }
+
+    public async Task<ReceptionistOperationReview> PreviewSavedRetirementAsync(Guid id, string hash, CancellationToken ct = default)
+    {
+        var owner = await RetirementOwnerAsync(id, ct);
+        return await PreviewPendingForOwnerAsync(owner, id, hash, (_, _) => Task.FromResult(true), ct);
+    }
+
+    public async Task ReviewSavedRetirementAsync(Guid id, Guid revision, string hash, bool accepted, CancellationToken ct = default)
+    {
+        var owner = await RetirementOwnerAsync(id, ct);
+        await ReviewForOwnerAsync(owner, id, revision, hash, accepted, (_, _) => Task.FromResult(true), ct);
+    }
+
     private DbContextOptions<MasterAppDbContext> DatabaseOptions => services?.GetRequiredService<DbContextOptions<MasterAppDbContext>>()
         ?? throw new InvalidOperationException("Receptionist management storage is unavailable.");
 

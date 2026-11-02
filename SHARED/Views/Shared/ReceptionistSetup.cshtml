@@ -63,7 +63,8 @@
             <dt class="dashboard-stat-label col-sm-4">Current carrier route</dt><dd class="col-sm-8">@readiness.CarrierRouteState; @(readiness.CarrierRouteObservedUtc?.ToString("u") ?? "no verified observation")</dd>
             <dt class="dashboard-stat-label col-sm-4">Restricted AI call acceptance</dt><dd class="col-sm-8">@readiness.RestrictedAiAcceptanceState</dd>
             <dt class="dashboard-stat-label col-sm-4">Public AI call acceptance</dt><dd class="col-sm-8">@readiness.PublicAiAcceptanceState</dd>
-            <dt class="dashboard-stat-label col-sm-4">Open call records</dt><dd class="col-sm-8">@(readiness.OpenCalls?.ToString() ?? "unknown")</dd>
+            <dt class="dashboard-stat-label col-sm-4">Active application call records</dt><dd class="col-sm-8">@(readiness.OpenCalls?.ToString() ?? "unknown")</dd>
+            <dt class="dashboard-stat-label col-sm-4">Locally retired; provider closure unresolved</dt><dd class="col-sm-8">@(readiness.LocallyRetiredProviderUnresolvedCalls?.ToString() ?? "unknown")</dd>
             <dt class="dashboard-stat-label col-sm-4">Open without a current stop condition</dt><dd class="col-sm-8">@(readiness.OpenCallsWithoutStopCondition?.ToString() ?? "unknown") — not verified live call activity</dd>
             <dt class="dashboard-stat-label col-sm-4">Awaiting stop or provider closure</dt><dd class="col-sm-8">@(readiness.AwaitingStopOrClosure?.ToString() ?? "unknown")</dd>
             <dt class="dashboard-stat-label col-sm-4">Observed at (UTC)</dt><dd class="col-sm-8">@(readiness.ObservedUtc?.ToString("u") ?? "unknown")</dd>
