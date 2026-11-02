@@ -74,6 +74,51 @@ internal static class CandidateContractTests
                 Crm(assembly.CreateMigration(crm, db.Database.ProviderName!).UpOperations, path);
                 Console.WriteLine("CRM_CONTRACT:PROVEN");
             }
+            foreach (var id in CandidateContract.StoreMigrations)
+            {
+                var store = assembly.CreateMigration(assembly.Migrations[id], db.Database.ProviderName!).UpOperations;
+                Check(CandidateContract.Describe(id, store).Supported, "exact Store operations");
+                Check(!CandidateContract.Describe(id, store.Reverse().ToArray()).Supported, "Store operation ordering");
+                for (var i = 0; i < store.Count; i++)
+                    Check(!CandidateContract.Describe(id, store.Where((_, n) => n != i).ToArray()).Supported, "Store missing operation");
+                var sql = store.OfType<SqlOperation>().Single();
+                sql.SuppressTransaction = true;
+                Check(!CandidateContract.Describe(id, store).Supported, "Store SQL transaction required");
+                sql.SuppressTransaction = false;
+                var original = sql.Sql; sql.Sql += " SELECT 1;";
+                Check(!CandidateContract.Describe(id, store).Supported, "Store SQL exact identity");
+                sql.Sql = original;
+                store[0].AddAnnotation("unreviewed", true);
+                Check(!CandidateContract.Describe(id, store).Supported, "Store annotation rejected");
+                store[0].RemoveAnnotation("unreviewed");
+                if (store.OfType<AlterColumnOperation>().SingleOrDefault() is { } alterStore)
+                {
+                    alterStore.OldColumn.IsNullable = true;
+                    Check(!CandidateContract.Describe(id, store).Supported, "Store prior nullability");
+                    alterStore.OldColumn.IsNullable = false;
+                    alterStore.IsNullable = false;
+                    Check(!CandidateContract.Describe(id, store).Supported, "Store resulting nullability");
+                    alterStore.IsNullable = true;
+                }
+                if (store.OfType<DropCheckConstraintOperation>().SingleOrDefault() is { } dropStore)
+                {
+                    var name = dropStore.Name; dropStore.Name = "WrongConstraint";
+                    Check(!CandidateContract.Describe(id, store).Supported, "Store wrong constraint");
+                    dropStore.Name = name;
+                    var table = dropStore.Table; dropStore.Table = "WrongTable";
+                    Check(!CandidateContract.Describe(id, store).Supported, "Store wrong constraint table");
+                    dropStore.Table = table;
+                }
+                var valid = CandidateContract.Describe(id, store);
+                foreach (var bad in new[] { valid with { Guards = [] }, valid with { Columns = [] },
+                    valid with { Columns = [valid.Columns[0] with { Nullable = !valid.Columns[0].Nullable }] } })
+                {
+                    File.WriteAllText(path, JsonSerializer.Serialize(new CandidateContract.Contract(3, [bad]), CandidateContract.Json));
+                    try { CandidateContract.Read(path); throw new Exception("Malformed Store descriptor accepted"); }
+                    catch (InvalidOperationException) { }
+                }
+            }
+            Console.WriteLine("STORE_CONTRACT:PROVEN");
             PredicateBounds();
             DefaultDefinitions();
             CatalogPlans(CandidateContract.Current(db));

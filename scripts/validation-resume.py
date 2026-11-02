@@ -11758,6 +11758,18 @@ REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS = frozenset({
 })
 
 
+# Exact Store descriptors; these pins do not authorize runtime/tool promotion.
+REVIEWED_STORE_ENTRIES = (
+    ('20261102062753_ScopedStoreContinuations',
+     'e18146d03a4e95e07bb8a16258a0f04b81bebdd9123870d047f77fa78f123be9'),
+    ('20261102064637_ExplicitBusinessCrmCapability',
+     '218a95dc91fa8d68acff565639529275109bbc67a29e613d298df9cc59fb411b'),
+    ('20261102085754_ScopedStoreProvisioningEvidence',
+     '5af28a808d8b47adda99aa7ef033554c0abb0a54a6084d4652a034348a77e5f6'),
+    ('20261102160514_ScopedStoreMembershipInvitations',
+     'e61bb077eb328f1682b7aeb77b532867e7475e9dc816c2629c8d10a8538891c5'),
+)
+
 REVIEWED_CRM_ENTRY = 'b2654e654640d238a5eb818558bd0ce149a5aefc78d3189489aef0b736447ac4'
 # Exact proposed runtime closures; promotion still requires independent review,
 # equal inherited tool/execution identities and the pinned ordered contract.
