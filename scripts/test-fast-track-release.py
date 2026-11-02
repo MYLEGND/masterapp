@@ -127,6 +127,8 @@ class UniversalFastTrackAdmissionTests(unittest.TestCase):
 
     def test_scoped_store_shared_owners_select_all_managed_hosts(self):
         paths = ['Infrastructure/Businesses/BusinessAnalyticsControllerBase.cs',
+                 'Infrastructure/Businesses/BusinessWorkspaceActionsController.cs',
+                 'Infrastructure/Businesses/BusinessWorkspaceCommitmentsController.cs',
                  'Infrastructure/Businesses/BusinessWorkspaceService.cs',
                  'Infrastructure/Businesses/BusinessWorkspaceService.Team.cs',
                  'Infrastructure/Identity/ClientEntraLifecycleService.cs',
