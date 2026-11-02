@@ -2550,3 +2550,28 @@ Static build/check and all 18 compiler tests passed. Missing and altered package
 configuration were rejected. Follow-up deployment is Website-only; preserve the
 successful Protect upload. Live module MIME/bytes and saved Studio presentation
 still require verification after this follow-up.
+
+### Verified live shared-preview recovery
+
+Website-only correction 68519f934c56a7aada192fb0fdee20fcf3b6cc39 was
+preserved on GitHub and deployed once. Receipt 3dad08af10224e709b4f89952b0e5aed
+returned status 4, complete, Succeeded. Package SHA-256:
+347ce174403a5609e0f3f53b4230dcac026e23af4260b7c3e96fae9888a03e65.
+Website origin provenance matches that exact revision; public-inquiry-form.mjs
+returns HTTP 200, Content-Type text/javascript, and exact reviewed bytes
+(SHA-256 61c82eab3c33776cb4f624e8b8a4f5f9cd9e8919f83dfb39072600607581f746).
+Protect public runtime provenance matches 5186d94860e529c71406a8418bd8673af1ae706a;
+its /js/public-inquiry-form.mjs matches the same reviewed bytes. No repeat
+Protect upload was needed for the Website-only configuration correction.
+
+Reopened authenticated LEGEND Contact Studio: saved draft 1635 retained its
+voice label and before-inquiry placement; its formerly empty host now contains
+the shared rendered entry, preview call button disabled, and Edit voice button
+appearance enabled. Draft editor status remained unchanged; no save, publish,
+call, booking or permission change was performed. Controls were left open.
+
+Coverage across LEGEND/Protect/business scopes is established by the focused
+fixtures and shared compiler checks, not a claim that every tenant has been
+individually exercised live. Provider closure, accepted WebRTC connection/test
+and production microphone policy readiness remain separate unresolved calling
+requirements. Existing business ownership/bindings and provider pause are intact.
