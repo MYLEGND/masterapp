@@ -796,8 +796,18 @@
         }
       }
     };
-    const bindStatic=(native,node)=>{
-      if(!compatible(native,node))fail();
+    const presentationOnly=(native,node)=>{
+      const el=snapshot.elements.get(native.id);
+      const inertTags=['div','p','span','h1','h2','h3','h4','h5','h6'];
+      return el && inertTags.includes(native.tag) && native.type===node.type && native.tag===node.tag &&
+        !el.matches('[role],[tabindex],[data-website-action-key],a,button,input,select,textarea,iframe,form') &&
+        [native,node].every(item=>['systemKey','href','src','mediaUrl','signals','dataBinding','role','tabindex','tabIndex','actionKey','systemBinding','fieldSignals','experience','receptionist']
+          .every(key=>empty(item[key])));
+    };
+    const bindStatic=(native,node,presentation=false)=>{
+      // Only inert content below the prayer anchor may change presentation classes.
+      // Booking, modal controls and structural anchors retain strict identity checks.
+      if(presentation ? !presentationOnly(native,node) : !compatible(native,node))fail();
       const el=snapshot.elements.get(native.id);if(!el)fail();
       pairs.push([el,node]);
       if(native===snapshot.booking){
@@ -808,7 +818,7 @@
       if(a.length!==b.length)fail();
       // Complete static structure is required; an authored deletion/reorder must
       // not make a different interactive child inherit a previous child's ID.
-      for(let i=0;i<a.length;i++)bindStatic(a[i],b[i]);
+      for(let i=0;i<a.length;i++)bindStatic(a[i],b[i],presentation || native===snapshot.prayer);
     };
     const omittedRoot=native=>{
       if(saved.some(node=>node.id===native.id || hasClass(node,classes(native)[0])))fail();

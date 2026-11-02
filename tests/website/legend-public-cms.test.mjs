@@ -7131,6 +7131,10 @@ for(const prefix of ['', '/a/synthetic-agent']) for(const placeholderTag of ['p'
     doc.pages['/quote'].composition=savedCoverageShape.filter(row=>row[3]===null).map(row=>structuredClone(captured.get(row[0])));
     assert.equal(captured.get('quote_index.button.node.35').tag,'span');
   }finally{capture.close();}
+  const authoredPrayer=canonicalNodeById(doc,'quote_index.div.node.node24','/quote');
+  authoredPrayer.className='blessing-theme-card reveal';
+  authoredPrayer.style.color='#aabbcc';
+  canonicalNodeById(doc,'quote_index.p.node.34','/quote').text='Synthetic authored blessing';
   doc.shell=retainedProtectShellFixture();
   assert.equal(canonicalNodes(doc,'/quote').length,76);
   assert.equal(canonicalNodes(doc,'/quote').some(node=>String(node.systemKey||'').startsWith('protect_runtime_form:')),false);
@@ -7144,6 +7148,10 @@ for(const prefix of ['', '/a/synthetic-agent']) for(const placeholderTag of ['p'
     }});
     try{
       const verify=(expectedHeight='520.856px')=>{
+        const prayer=f.w.document.querySelector('[data-cms-id="quote_index.div.node.node24"]');
+        assert.ok(prayer.classList.contains('prayer-card'),'Native template CSS remains owned by the native renderer');
+        assert.equal(prayer.style.color,'rgb(170, 187, 204)');
+        assert.equal(f.w.document.querySelector('[data-cms-id="quote_index.p.node.34"]').textContent,'Synthetic authored blessing');
         assertRetainedProtectShell(f.w,doc.shell,expectedHeight);
         assert.equal(f.w.document.querySelector('.life-tile'),original.tile);
         assert.equal(f.w.document.getElementById('lifeModal'),original.modal);
@@ -7259,7 +7267,7 @@ for(const prefix of ['', '/a/synthetic-agent']) for(const placeholderTag of ['p'
       assert.equal(fetches,0);
     }finally{w.close();}
   }
-  for(const change of ['omit-modal','omit-calendar','omit-prayer','duplicate-modal','move-calendar','remove-close','authored-booking-text','authored-booking-style','pre-booking-edit-add-omit','extra-native-root','authored-booking-breakpoint','authored-booking-color','authored-booking-numeric-string','authored-booking-layout','authored-booking-binding','authored-booking-signal','authored-booking-div-typography','authored-booking-tag','authored-booking-src','authored-booking-href','authored-booking-media','authored-booking-children']){
+  for(const change of ['omit-modal','omit-calendar','omit-prayer','duplicate-modal','move-calendar','remove-close','authored-booking-text','authored-booking-style','pre-booking-edit-add-omit','extra-native-root','authored-booking-breakpoint','authored-booking-color','authored-booking-numeric-string','authored-booking-layout','authored-booking-binding','authored-booking-signal','authored-booking-div-typography','authored-booking-tag','authored-booking-src','authored-booking-href','authored-booking-media','authored-booking-children','renamed-modal-control','renamed-booking-anchor','interactive-prayer','prayer-action','native-prayer-action']){
     const changed=structuredClone(doc),nodes=changed.pages['/quote'].composition;
     const pageNode=nodes.find(node=>node.className==='quote-page');
     const modalNode=nodes.find(node=>node.className==='life-modal');
@@ -7269,6 +7277,10 @@ for(const prefix of ['', '/a/synthetic-agent']) for(const placeholderTag of ['p'
     if(change==='duplicate-modal'){const extra=structuredClone(modalNode);extra.id+='-duplicate';nodes.push(extra);}
     if(change==='move-calendar'){const calendar=pageNode.children.find(node=>node.className?.includes('calendar-section'));pageNode.children=pageNode.children.filter(node=>node!==calendar);nodes.push(calendar);}
     if(change==='remove-close')modalNode.children[0].children=modalNode.children[0].children.filter(node=>node.id!=='quote_index.button.node.35');
+    if(change==='renamed-modal-control')canonicalNodeById(changed,'quote_index.button.node.35','/quote').className='different-control';
+    if(change==='renamed-booking-anchor')canonicalNodeById(changed,'quote_index.div.node.node22','/quote').className='different-booking';
+    if(change==='prayer-action')canonicalNodeById(changed,'quote_index.div.node.node24','/quote').actionKey='unexpected';
+    if(change==='interactive-prayer')canonicalNodeById(changed,'quote_index.div.node.node24','/quote').systemKey='protect_runtime_form:unexpected';
     if(change.startsWith('authored-booking')){
       const frame=canonicalNodeById(changed,'quote_index.div.node.node22.child.2','/quote');
       if(change==='authored-booking-text')frame.text='An authored change must not be silently discarded';
@@ -7292,7 +7304,7 @@ for(const prefix of ['', '/a/synthetic-agent']) for(const placeholderTag of ['p'
       parent.children=parent.children.filter(node=>node.id!=='quote_index.p.node.4');
       parent.children.push(canonicalNode('authored.coverage.note','text','p',{text:'An ordinary new note'}));
     }
-    const changedHtml=change==='extra-native-root'?markup('disabled').replace('</main>','<aside><p>An unexpected native root</p></aside></main>'):markup('disabled');
+    const changedHtml=change==='native-prayer-action'?markup('disabled').replace('class="prayer-card reveal"','class="prayer-card reveal" data-website-action-key="unexpected"'):change==='extra-native-root'?markup('disabled').replace('</main>','<aside><p>An unexpected native root</p></aside></main>'):markup('disabled');
     const compiler=canonicalCompilerFixture(changedHtml);
     try{
       const w=compiler.window;w.CSS={escape:value=>String(value)};

@@ -2334,3 +2334,32 @@ Only the disposable test database drops its unique index to simulate corruption.
 Production schema remains unchanged. Existing helper cancellation tests passed.
 Deployment and post-repair route/SQL-pressure verification are the next step;
 source test success alone does not establish restored live performance.
+
+### Protect live verification and Coverage presentation identity — 2026-11-02 UTC
+
+03de28033b520080e8fdda165ed76069f411d2bb was committed, pushed and deployed directly
+from the Mac to masterapp-protect. Azure receipt 5e1a98c078a54e149a4517bb224cbb6e
+completed successfully; origin and public runtime provenance matched. The warm
+17-route sweep returned HTTP 200 in 1.6–4.3 seconds and read-only SQL inspection
+showed zero remaining publication-read backlog. Browser verification found a
+separate Coverage /Quote rejection despite HTTP 200; the other 16 routes rendered.
+
+The shared Coverage correspondence check incorrectly treated the native
+prayer-card class as immutable identity when the saved presentation had
+blessing-theme-card, with matching type/tag/structure. The existing matcher now
+permits presentation-class differences only beneath the inert prayer-section
+anchor. Native and saved action/system bindings remain forbidden there; booking,
+modal, root anchors, strict structure and unique correspondence remain enforced.
+No publication data is rewritten and no fallback renderer is introduced. Native
+template classes remain applied; the authored class value remains unchanged in
+the saved document, while authored text and finite styles are applied normally.
+
+The existing Coverage matrix now exercises authored class/text/color across
+root/agent scope, iframe/p placeholders, booking embed/fallback/disabled, editor,
+compiler and published hydration. Negative cases cover renamed modal/booking
+controls, system binding, saved action binding and native action binding. A local
+JSDOM reproduction using the actual public HTML now completes rendering; public
+payload remains outside source/test fixtures. All 10 focused tests passed; the prior 130 .NET tests remain compatible because
+this correction changes only the renderer and its tests. Independent review
+precedes commit. Production verification of this second correction remains
+pending deployment; source validation alone is not live acceptance.
