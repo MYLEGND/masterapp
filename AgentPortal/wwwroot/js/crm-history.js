@@ -54,7 +54,8 @@
     if(['TaskCompleted','TaskCanceled'].includes(entry.type)) return ['followup','Follow-up activity'];
     if(entry.type==='FormSubmission') return ['submission','Submission'];
     if(entry.type==='Document' || entry.source==='ProtectedDocument') return ['evidence','Evidence'];
-    if(['Note','Call','AttemptedCall','Meeting','Email','Message','Addendum'].includes(entry.type)) return ['interaction','Interaction'];
+    if(entry.type==='Note') return ['note','Case note'];
+    if(['Call','AttemptedCall','Meeting','Email','Message','Addendum'].includes(entry.type)) return ['interaction','Interaction'];
     return ['other','Record'];
   }
   function renderSubmission(snapshot) {
@@ -96,9 +97,15 @@
       const filedParent=data.submission?disclosure(detail,'Filing details'):detail;
       try {
         const content=JSON.parse(data.entry.contentJson);
-        if(!data.submission && content && typeof content==='object' && !Array.isArray(content) && Object.hasOwn(content,'account')){
-          renderValue(content.account,detail,'Note');
-          for(const key of ['outcome','nextAction'])if(content[key])renderValue(content[key],detail,humanLabel(key));
+        if(!data.submission && content && typeof content==='object' && !Array.isArray(content) && (Object.hasOwn(content,'Account') || Object.hasOwn(content,'account'))){
+          const recorded=(pascal,camel)=>Object.hasOwn(content,pascal)?content[pascal]:content[camel];
+          const note=document.createElement('section');note.className='history-case-note';
+          const heading=document.createElement('h3');heading.textContent=(data.entry.type || entry.type)==='Note'?'Case note':'Recorded interaction';note.append(heading);
+          renderValue(recorded('Account','account'),note,'Factual account');
+          for(const [pascal,camel] of [['Outcome','outcome'],['NextAction','nextAction']]){
+            const value=recorded(pascal,camel);if(value!==undefined && value!==null && value!=='')renderValue(value,note,humanLabel(pascal));
+          }
+          detail.append(note);
           renderValue(content,disclosure(detail,'Complete filed note · details & evidence'),'Original recorded fields');
         }else renderValue(content,filedParent,'Filed content');
       }catch {renderValue(data.entry.contentJson,filedParent,'Filed content');}
@@ -113,7 +120,7 @@
   async function load() {
     const current=++generation;status.textContent='Loading history…';
     try {
-      const query={page,pageSize:Number(field(filters,'pageSize'))||10,activityView:field(filters,'activityView')||'all',range:field(filters,'range'),fromDate:field(filters,'from'),throughDate:field(filters,'through'),type:field(filters,'type'),product:field(filters,'product'),owner:field(filters,'owner'),caseReference:field(filters,'caseReference'),search:field(filters,'search'),obligations:field(filters,'obligations'),status:field(filters,'status'),evidence:field(filters,'evidence'),recordedTime:field(filters,'recordedTime'),...(snapshotUtc?{snapshotUtc}:{})};
+      const query={page,pageSize:Number(field(filters,'pageSize'))||10,activityView:field(filters,'activityView')||'case',range:field(filters,'range'),fromDate:field(filters,'from'),throughDate:field(filters,'through'),type:field(filters,'type'),product:field(filters,'product'),owner:field(filters,'owner'),caseReference:field(filters,'caseReference'),search:field(filters,'search'),obligations:field(filters,'obligations'),status:field(filters,'status'),evidence:field(filters,'evidence'),recordedTime:field(filters,'recordedTime'),...(snapshotUtc?{snapshotUtc}:{})};
       const data=await json(endpoint('Entries',query)); if(current!==generation)return;
       pageSize=data.pageSize||10;snapshotUtc=data.snapshotUtc;document.getElementById('history-preservation-status').textContent=`${data.openObligations} open follow-ups / complaints · ${data.overdueObligations} overdue`+(data.activeHolds?.length?' · Active preservation instructions: '+data.activeHolds.join(', '):'');
       results.replaceChildren(); let priorGroup='';
@@ -129,7 +136,7 @@
         for(const [index,text] of [entry.occurredUtc?date(entry.occurredUtc):entry.occurredDate?entry.occurredDate+' · date only':'Unknown event date · time unavailable',entry.source+' · '+entry.status+(entry.formVersion?' · version '+entry.formVersion:entry.type==='FormSubmission'?' · historical version unavailable':''),entry.evidenceStatus,entry.caseReference||''].entries()){const line=document.createElement('span');line.className=index===0?'history-record-time':'history-record-meta';line.textContent=text;button.append(line);}
         button.addEventListener('click',()=>open(entry));wrap.append(button);results.append(wrap);
       }
-      status.textContent=`${data.count} records · ${zone} · page ${page+1}`+(data.count?'':' · No matching history');
+      status.textContent=`${data.count} records · ${zone} · page ${page+1}`+(query.activityView==='case'?' · Case activity (access/export audit hidden)':' · All activity including audit')+(data.count?'':' · No matching history');
       document.getElementById('history-previous').disabled=page===0;document.getElementById('history-next').disabled=(page+1)*pageSize>=data.count;
     }catch(e){status.textContent=e.message;}
   }

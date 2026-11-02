@@ -29,7 +29,7 @@
         <label class="history-field">Time basis<select name="recordedTime" class="history-control"><option value="false">Event time</option><option value="true">Recorded time</option></select></label>
         </div></details>
         <div class="history-filter-grid history-view-options">
-            <label class="history-field">Activity view<select name="activityView" class="history-control"><option value="all">All activity, including access &amp; exports</option><option value="case">Case activity only (excludes access &amp; exports)</option></select></label>
+            <label class="history-field">Activity view<select name="activityView" class="history-control"><option value="case">Case activity (access &amp; exports hidden)</option><option value="all">All activity, including access &amp; exports</option></select></label>
             <label class="history-field">Records per page<select name="pageSize" class="history-control"><option value="10">10 records</option><option value="25">25 records</option><option value="50">50 records</option></select></label>
         </div>
         <div class="history-filter-actions"><button class="btn btn-primary">Apply filters</button> <button type="reset" class="history-action">Reset</button></div>
@@ -54,7 +54,7 @@
             <h3 class="history-form-section">Interaction details</h3>
             <label>Exact event time (UTC, if known; replaces date above)<input name="occurredUtc" type="datetime-local" class="history-control" /><small>Leave blank when only the date is known. Never estimate a missing time.</small></label>
             <label>Channel<input name="channel" class="history-control" maxlength="80" /></label>
-            <label>Participants<input name="participants" class="history-control" maxlength="2000" /></label>
+            <label>Participants<input name="participants" class="history-control" maxlength="2000" value="@ViewData["SuggestedParticipants"]" /><small>Suggested from this profile; edit or remove if not involved.</small></label>
             <label>Direction<select name="direction" class="history-control"><option value="">Unknown / not applicable</option><option>Inbound</option><option>Outbound</option></select></label>
             <h3 class="history-form-section">Outcome &amp; follow-up</h3>
             <label>Outcome<textarea name="outcome" class="history-control" maxlength="4000"></textarea></label>

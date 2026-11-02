@@ -78,14 +78,14 @@ test('record field grid preserves nested values, unknown evidence and literal un
 test('category colors describe record kinds without asserting provider success',()=>{
   const start=source.indexOf('  function recordCategory('),end=source.indexOf('  function renderSubmission',start);
   const category=vm.runInNewContext('('+source.slice(start,end).trim()+')');
-  for(const [entry,expected] of [[{type:'FormSubmission'},'Submission'],[{type:'Note'},'Interaction'],[{type:'FollowUp'},'Follow-up'],[{type:'TaskCompleted'},'Follow-up activity'],[{type:'TaskCanceled'},'Follow-up activity'],[{type:'Complaint'},'Complaint'],[{source:'ProtectedDocument'},'Evidence'],[{type:'Access'},'Record']])assert.equal(category(entry)[1],expected);
+  for(const [entry,expected] of [[{type:'FormSubmission'},'Submission'],[{type:'Note'},'Case note'],[{type:'FollowUp'},'Follow-up'],[{type:'TaskCompleted'},'Follow-up activity'],[{type:'TaskCanceled'},'Follow-up activity'],[{type:'Complaint'},'Complaint'],[{source:'ProtectedDocument'},'Evidence'],[{type:'Access'},'Record']])assert.equal(category(entry)[1],expected);
   assert.equal(category({type:'Unknown',status:'Succeeded',evidenceStatus:'Unavailable'})[1],'Record');
 });
 
 
 test('history requests bounded selected pages and uses server size for navigation',async()=>{
   const h=harness({count:26,pageSize:25});await settle();
-  assert.ok(h.queries.some(q=>q.includes('pageSize=10')&&q.includes('activityView=all')));
+  assert.ok(h.queries.some(q=>q.includes('pageSize=10')&&q.includes('activityView=case')));
   h.get('history-filters').elements.namedItem('pageSize').value='25';
   h.get('history-filters').elements.namedItem('activityView').value='case';
   h.get('history-filters').emit('submit');await settle();
@@ -132,4 +132,28 @@ test('export suppresses concurrent clicks and unlocks after a failed response',a
   const h=harness();await settle();const button=h.get('history-export');
   const first=button.onclick();const second=button.onclick();await Promise.all([first,second]);
   assert.equal(h.queries.filter(q=>q.includes('/Export?')).length,1);assert.equal(button.disabled,false);
+});
+
+test('server PascalCase notes receive distinct presentation without losing original fields',async()=>{
+  const h=harness();await settle();h.click(0);
+  h.requests.get('A').resolve({entry:{id:'A',type:'Note',source:'Manual',contentJson:JSON.stringify({Account:'Retained case note',account:'Original conflicting alias',Outcome:false,NextAction:0})}});await settle();
+  const nodes=[];function visit(n){nodes.push(n);for(const c of n.children||[])visit(c);}visit(h.get('history-detail-content'));
+  const note=nodes.find(n=>n.className==='history-case-note');assert.ok(note);
+  const text=nodes.map(n=>n.textContent);for(const value of ['Case note','Retained case note','Original conflicting alias','false','0'])assert.ok(text.includes(value));
+});
+
+test('restored intentionally blank participant suggestion stays blank when composer reopens',async()=>{
+  const h=harness({draft:{requestId:'retained',savedPayload:'pending',fields:{participants:'',account:'Draft'}}});await settle();
+  h.get('history-note-open').onclick();h.get('history-note-close').onclick();h.get('history-note-open').onclick();
+  assert.equal(h.get('history-interaction').elements.namedItem('participants').value,'');
+  assert.match(h.get('history-note-status').textContent,/unchanged uncertain save/);
+});
+test('all activity remains explicitly selectable without changing the case default',async()=>{
+  const h=harness();await settle();h.get('history-filters').elements.namedItem('activityView').value='all';
+  h.get('history-filters').emit('submit');await settle();assert.ok(h.queries.at(-1).includes('activityView=all'));
+});
+test('activity scope label describes the returned request rather than an unsubmitted selection',async()=>{
+  const h=harness();await settle();h.get('history-filters').elements.namedItem('activityView').value='case';
+  h.get('history-filters').emit('submit');h.get('history-filters').elements.namedItem('activityView').value='all';await settle();
+  assert.match(h.get('history-status').textContent,/Case activity/);
 });

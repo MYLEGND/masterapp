@@ -32,6 +32,10 @@ public sealed partial class CrmHistoryController(MasterAppDbContext db, Effectiv
         ViewData["RelationshipName"] = displayName.Length == 0 ? "Name unavailable" : displayName;
         ViewData["TimeZone"] = timeZones.Resolve(HttpContext).Id;
         ViewData["AgentId"] = Agent;
+        ViewData["SuggestedParticipants"] = string.Join(" ", (isLead
+            ? new[] { relationship.Lead!.FirstName, relationship.Lead.LastName }
+            : new[] { relationship.Client!.FirstName, relationship.Client.LastName })
+            .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()));
         ViewData["DraftScope"] = (User.GetStableUserId() ?? Agent) + ":" + Agent;
         ViewData["MayManageHolds"] = AgentPortal.Security.FounderGuard.IsFounder(User);
         ViewData["Kind"] = kind; ViewData["RelationshipId"] = id;
@@ -57,6 +61,7 @@ public sealed partial class CrmHistoryController(MasterAppDbContext db, Effectiv
     {
         if (!AgentPortal.Security.FounderGuard.IsFounder(User) || RestrictedAiIdentity.IsRestricted(User, configuration)) return NotFound();
         ViewData["AgentId"] = Agent;
+
         ViewData["DraftScope"] = (User.GetStableUserId() ?? Agent) + ":" + Agent;
         return View();
     }

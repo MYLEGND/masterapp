@@ -2101,3 +2101,35 @@ recorder identity resolution and cloud release remain outside this presentation 
 Final live localhost verification returned200 application/pdf (185667 bytes), with
 PDF magic header in the downloaded report. Modal gold label/raised input styles
 verified;390px modal has no horizontal overflow. Only local AgentPortal restarted.
+
+## 2026-11-01 — Compact case-first history and recognizable notes
+
+Preserved85bbb9dade815f32e2892f82758777710915f56b on the existing local branch.
+Canonical preflight remains blocked; previously authorized local-only exception
+and verified persistent recovery apply. No push, merge, deployment or migration.
+
+Fixed a concrete presentation mismatch: Append stores PascalCase Account/Outcome/
+NextAction, while the simplified viewer checked lowercase only. The reader now
+uses exact PascalCase first with lowercase compatibility and no truthiness
+fallback. Original fields (including conflicting-case keys) remain accessible.
+Notes have a distinct violet-accented panel and timeline category. UI initial and
+reset scope is case activity, explicitly excluding access/export audit from display;
+All activity remains available, API default and full PDF export remain unchanged.
+The status describes the captured request, not an unsubmitted selection.
+
+Short modal fields use4/3/2/1 responsive columns; long notes and narratives retain
+full width. More filters retains native accessible disclosure behavior with
+canonical button styling. The authorized resolved profile name supplies only an
+editable participant suggestion, clearly marked to confirm/remove. Existing agent
+assignment default remains; no guessed date, product, outcome, consent or ownership.
+Recovered drafts and intentionally blank fields override initial defaults.
+
+Validation:16 focused Node tests passed; the focused authorized-route C# regression
+passed for lead, converted client and unnamed profiles, with actual test-project/
+Razor compilation. Initial compiler failure from an accidental second prefill
+insertion was corrected before final passing validation. Live page default/reset
+is case;3 substantive records shown with audit hidden. Existing PascalCase note
+renders distinctly. Desktop4-column,1200px3-column and390px1-column metrics verified;
+mobile modal has no horizontal overflow. Profile suggestion is present and editable.
+No manual note/evidence submission performed; normal page/access auditing remains.
+PDF/backend persistence, immutable identities and authorization remain unchanged.
