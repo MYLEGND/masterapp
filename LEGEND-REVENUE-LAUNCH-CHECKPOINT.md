@@ -2526,3 +2526,27 @@ origin deployment predates the current source; URL version hashes alone do not
 prove served bytes. Preserve existing Cloudflare routing and draft 1635.
 Provider pause/closure and accepted WebRTC readiness remain separate requirements;
 this source repair neither confirms closure nor enables calls.
+
+### Approved publication and static-host follow-up
+
+Founder explicitly authorized direct Mac Website and Protect deployment.
+Accepted preview implementation 5186d94860e529c71406a8418bd8673af1ae706a
+was preserved with exact GitHub remote readback.
+- Website receipt 8db7ae36adb34c6e84300a87ed17fc6b: status 4, complete,
+  Succeeded; origin provenance matched. ZIP SHA-256
+  6757520acbb2850530d1bbe32801031c532399e1baa52bf7d15bda4b3019c844.
+- Protect receipt 92eceaa9bf114518876bf2b9a6f637ea: status 4, complete,
+  Succeeded; application restarted. ZIP SHA-256
+  b5093a75df8fe2572be764c277b6238ef13afb075b1069770504d6fd16ccdea5.
+
+Website live verification exposed module HTTP 404. Its existing static build
+omitted public/web.config and the existing IIS configuration lacked .mjs MIME
+mapping. Astra approved repairing those owners: copy the canonical configuration,
+map .mjs to text/javascript after removing an inherited mapping, and validate
+packaged equality. Existing headers and host rules remain intact, including the
+microphone policy; this is not voice-service activation.
+
+Static build/check and all 18 compiler tests passed. Missing and altered packaged
+configuration were rejected. Follow-up deployment is Website-only; preserve the
+successful Protect upload. Live module MIME/bytes and saved Studio presentation
+still require verification after this follow-up.
