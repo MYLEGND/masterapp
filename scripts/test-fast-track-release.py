@@ -113,6 +113,18 @@ class UniversalFastTrackAdmissionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
             authority.fast_track_scope(['scripts/unreviewed-local-tool.sh'])
 
+    def test_identity_continuation_selects_all_managed_hosts_and_preserves_schema_gate(self):
+        path = 'Domain/Entities/ClientIdentityContinuation.cs'
+        expected = {'portal', 'client', 'protect', 'parfait'}
+        scope = authority.fast_track_scope([path])
+        self.assertEqual(expected, {row['key'] for row in scope['matrix']['include']})
+        migrated = authority.fast_track_scope([path,
+            'Infrastructure/Migrations/20261102062753_ScopedStoreContinuations.cs'])
+        self.assertEqual(expected, {row['key'] for row in migrated['matrix']['include']})
+        self.assertTrue(migrated['schema'])
+        with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+            authority.fast_track_scope(['Domain/Entities/UnreviewedContinuation.cs'])
+
     def test_shared_build_props_selects_all_managed_apps_only(self):
         scope = authority.fast_track_scope(['Directory.Build.props'])
         self.assertEqual({'portal', 'client', 'protect', 'parfait'},

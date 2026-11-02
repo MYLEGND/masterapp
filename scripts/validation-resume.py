@@ -4907,6 +4907,7 @@ def fast_track_scope(paths):
         'Domain/Entities/SubscriptionPaymentCompletionEffect.cs',
         'Domain/Entities/SubscriptionPaymentRefund.cs',
         'Infrastructure/Billing/BillingReconciliationService.cs',
+        'Domain/Entities/ClientIdentityContinuation.cs',
         'Domain/Entities/ClientSubscriptionOffer.cs',
         'Domain/Entities/MarketingConnection.cs',
         'Domain/Entities/ReceptionistCoordination.cs',
