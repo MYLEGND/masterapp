@@ -8381,6 +8381,10 @@ for(const siteKey of ['business','legend','protect']) test(`Store is an authored
     assert.equal(previewRequest.credentials,'omit');
     assert.equal(previewRequest.cache,'no-store');
     assert.equal(new URL(previewRequest.url).searchParams.get('ticket'),'ticket');
+    const stylesheet=new URL(f.w.document.querySelector('link[data-store-presentation]').href);
+    assert.equal(stylesheet.origin,'https://manager.example');
+    assert.ok(Number(stylesheet.searchParams.get('studio'))>0,'editor CSS must refresh after native releases');
+    assert.equal(stylesheet.searchParams.has('ticket'),false);
     assert.equal(f.w.document.querySelector('[data-legend-store-catalog] a').hasAttribute('href'),false);
     assert.match(f.w.document.querySelector('style[data-store-catalog-presentation]').textContent,/color:/);
     assert.equal(f.w.document.querySelector('[data-cms-store-style=title]').dataset.cmsFieldKey,'store:title');
@@ -8396,6 +8400,26 @@ for(const siteKey of ['business','legend','protect']) test(`Store is an authored
     assert.equal(catalog.children.length,0);
     assert.doesNotMatch(JSON.stringify(saved),/Live synthetic product/);
 
+  }finally{f.close();}
+});
+
+test('Studio distinguishes a successfully loaded empty catalog from a preview failure',async()=>{
+  const doc=canonicalDocument();doc.store.enabled=true;
+  doc.pages['/store']={title:'Store',navigation:{showInNavigation:false},composition:[
+    {id:'store-catalog',type:'container',tag:'div',systemKey:'commerce_catalog',className:'sp-shop-grid',children:[]}
+  ]};
+  const f=await domFixture({doc,business:{id:'business-id',displayName:'Business'},store:{enabled:true,storefrontUrl:'/store',previewUrl:'https://manager.example/commerce/manage/preview?ticket=ticket'},beforeEval:w=>{
+    const original=w.fetch;w.fetch=(url,init)=>String(url).includes('catalogOnly=true')
+      ? Promise.resolve({ok:true,status:200,text:async()=>String.fromCharCode(10,32,10)}) : original(url,init);
+  }});
+  try{
+    f.change('#legend-cms-page-select','/store');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const catalog=f.w.document.querySelector('[data-legend-store-catalog]');
+    assert.match(catalog.textContent,/No active products yet/);
+    assert.doesNotMatch(catalog.textContent,/unavailable/);
+    assert.equal(catalog.querySelectorAll('.sp-shop-card').length,0);
+    assert.equal(f.calls.some(call=>call.method==='POST'),false,'empty-catalog guidance must not invent products or save content');
   }finally{f.close();}
 });
 
