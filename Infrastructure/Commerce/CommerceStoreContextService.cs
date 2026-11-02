@@ -9,6 +9,11 @@ using Microsoft.Extensions.Configuration;
 
 namespace ParfaitApp.Services;
 
+// Scope identity only; membership, capability and retained-store entitlement are checked separately.
+public sealed record CommerceManagementScope(
+    Guid CommerceBusinessId, string BusinessKey, Guid WebsiteStateId,
+    string WebsiteSiteKey, string WebsiteOwnerKey, string DestinationOrigin);
+
 public sealed record CommerceStoreContext(
     Guid CommerceBusinessId,
     Guid? WebsiteContentVersionId,
@@ -48,6 +53,56 @@ public sealed class CommerceStoreContextService(
 {
     private const string ProtectHost = "protect.mylegnd.com";
     private const string ParfaitAzureHost = "masterapp-parfait.azurewebsites.net";
+
+    public async Task<CommerceManagementScope?> ResolveManagementScopeAsync(
+        HttpContext context, string? businessKey, CancellationToken ct = default)
+    {
+        // Scheme is established by the host's trusted forwarding middleware, never a
+        // caller-supplied forwarding header interpreted here.
+        if (!context.Request.IsHttps || context.Request.Host.Port is not (null or 443)) return null;
+        var host = WebsiteRequestHostResolver.Resolve(context, configuration, allowLegendCommerceHost: true);
+        var key = NormalizeKey(businessKey);
+        CommerceBusiness? business;
+        IQueryable<WebsiteContentState> states = db.Set<WebsiteContentState>().AsNoTracking();
+        if (string.Equals(host, ProtectHost, StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrEmpty(key)) return null;
+            business = await businesses.ResolveActiveByKeyAsync(key, ct);
+            if (business is null) return null;
+            states = states.Where(x => x.CommerceBusinessId == business.Id &&
+                x.SiteKey == WebsiteEditorSiteKeys.Protect);
+        }
+        else if (PublicWebsiteRuntimeScopeResolver.IsLegendHost(host))
+        {
+            if (!string.IsNullOrEmpty(key)) return null;
+            states = states.Where(x => x.SiteKey == WebsiteEditorSiteKeys.Legend &&
+                x.OwnerKey == WebsiteEditorSiteKeys.GlobalOwnerKey);
+            var bindings = await states.Select(x => x.CommerceBusinessId).Take(2).ToListAsync(ct);
+            if (bindings.Count != 1 || bindings[0] is not Guid id || id == Guid.Empty) return null;
+            business = await businesses.ResolveActiveByIdAsync(id, ct);
+        }
+        else
+        {
+            // No default tenant, Parfait provisioning or caller-supplied business selection.
+            if (!string.IsNullOrEmpty(key)) return null;
+            var id = await domains.ResolveAsync(host, ct);
+            if (!id.HasValue) return null;
+            business = await businesses.ResolveActiveByIdAsync(id.Value, ct);
+            if (business is null) return null;
+            var owner = WebsiteEditorSiteKeys.BusinessOwnerKey(business.Id);
+            states = states.Where(x => x.CommerceBusinessId == business.Id &&
+                x.SiteKey == WebsiteEditorSiteKeys.Business && x.OwnerKey == owner);
+        }
+        if (business is null) return null;
+        // Deliberately avoid draft/published document loading. A retained binding survives
+        // Remove Store; it does not itself grant access or prove a store was ever published.
+        var matches = await states.Select(x => new { x.Id, x.CommerceBusinessId, x.SiteKey, x.OwnerKey })
+            .Take(2).ToListAsync(ct);
+        if (matches.Count != 1 || matches[0].CommerceBusinessId != business.Id ||
+            string.IsNullOrWhiteSpace(matches[0].OwnerKey)) return null;
+        var state = matches[0];
+        return new(business.Id, business.Key, state.Id, state.SiteKey, state.OwnerKey, "https://" + host);
+    }
 
     public async Task<CommerceStoreContext?> ResolvePublicAsync(string? businessKey, CancellationToken ct = default)
     {
