@@ -1781,3 +1781,66 @@ Native continuity verifies the exact current remote task branch with no local-on
 Validation during reconstruction: Protect .NET10 build succeeded; focused publication/mutation tests passed88/88, expanded publication/runtime-anchor/runtime-binding/inquiry-isolation set passed134/134; shared renderer passed17/17. Full website suite passed703/703 before the final native-style-baseline correction; dependent final checks and exact-candidate independent review remain required. Test fixtures are synthetic. Mobile DOM tests are not Safari/device acceptance.
 
 Canonical affected-app selection includes Portal, Client, Protect, Parfait and Website because the changed publication/mutation authority is shared by the .NET hosts and the renderer/CMS is packaged by Website and Protect. Commerce dependency reconciliation remains applicable; no schema or routing change is requested. The new request `protect-compiled-delivery-training-retirement-20261029-v1` replaces stale PR725-specific request text without waiving architecture-validation, approved-release-security, build-and-focused-tests, existing admission/recovery, selective deployment or actual live code/publication verification. This checkpoint is preparation evidence, not permission to skip those gates.
+
+## 2026-11-01 — Canonical scoped Store workspace (in progress)
+Founder reassigned sole source-writing ownership to this session, superseding the earlier /root/repair_implementer claim. Independent Astra review is read-only. No old release recovery operation was interrupted or replayed.
+Isolated branch: isolation/scoped-store-workspace-20261101; base: 3f4953ee733d44bd566f3d1e997f065473dc06d6. Native continuity preflight passed. The prior Mac branch and PR754 remain unchanged at 5f9e4431eb35846f88a33517179874719d802377. Its 26 accepted commits include deployed repairs; reconcile that prerequisite separately before releasing an older-base application package.
+### Bounded source/consumer sequence
+1. Extend the existing capability policy with explicit method/route aliases and executable parity/denial tests. This does not activate MVC aliases or grant sessions.
+2. Extend the existing host/store resolver and identity continuation authority for host-bound internal sessions. Resolve actor separately from requested business, reauthorize every request, preserve explicit Protect/agent scope and existing ticket consumers. No default-Parfait or email-derived access.
+3. Separate CRM permission from order management in the existing member/capability authority, with reviewed compatibility migration and migration-first release. Complete invitation/accept/update/revocation through canonical membership.
+4. Wire shared controller actions, antiforgery forms/uploads/scripts, callbacks and existing Parfait views to the scoped route adapter. Keep platform Businesses restricted; preserve Health/Marketing JSON with shared UI.
+5. Instantiate an editable canonical Store document using the shared storefront presentation and protected dynamic catalog binding. Preserve authored stores, undo/history, explicit enable/remove and all commerce records.
+6. Update published-scope navigation and trusted bridge routing; prove replacement before removing Studio manager iframe UI. Scope store analytics to commerce events while retaining canonical CRM links and deduplication.
+7. Execute synthetic isolation/persistence/rendering acceptance across all requested scopes; exact-candidate review/CI/admission/rehearsal; selectively release and verify live. No actual invitations, charges, credential moves or Parfait cutover.
+### Route/capability matrix — first foundation
+Owner for every row below: CommerceManagementController with the single CommerceManagementCapabilityPolicy. Destination is the existing shared action; views/services remain canonical. Current resolver remains signed WebsiteEditorTicket plus CommerceStoreContextService and live business membership. Internal session resolver and actual MVC aliases are NOT implemented/activated. Verification below is executed capability parity (112 focused tests passed, zero failed/skipped, actual AgentPortal.Tests compilation succeeded); it is not HTTP endpoint/authentication acceptance.
+| Method | Requested internal route | Existing shared destination | Capability | Verification |
+|---|---|---|---|---|
+| GET | /internal/dashboard | /commerce/manage/dashboard | website | Policy parity passed; endpoint not activated |
+| GET | /internal/settings/business-profile | /commerce/manage/business-profile | settings | Policy parity passed; endpoint not activated |
+| POST | /internal/settings/business-profile | /commerce/manage/business-profile | settings | Policy parity passed; endpoint not activated |
+| GET | /internal/settings/team | /commerce/manage/team | team | Policy parity passed; endpoint not activated |
+| GET | /internal/commerce/products | /commerce/manage/products | catalog | Policy parity passed; endpoint not activated |
+| POST | /internal/commerce/products | /commerce/manage/product | catalog | Policy parity passed; endpoint not activated |
+| POST | /internal/commerce/products/settings | /commerce/manage/settings/commerce | catalog | Policy parity passed; endpoint not activated |
+| POST | /internal/commerce/products/delete | /commerce/manage/product/delete | catalog | Policy parity passed; endpoint not activated |
+| POST | /internal/commerce/products/images/upload | /commerce/manage/product/images/upload | catalog | Policy parity passed; endpoint not activated |
+| POST | /internal/commerce/products/images/delete | /commerce/manage/product/images/delete | catalog | Policy parity passed; endpoint not activated |
+| POST | /internal/commerce/products/images/reorder | /commerce/manage/product/images/reorder | catalog | Policy parity passed; endpoint not activated |
+| POST | /internal/commerce/products/images/display | /commerce/manage/product/images/display | catalog | Policy parity passed; endpoint not activated |
+| POST | /internal/commerce/products/reorder | /commerce/manage/products/reorder | catalog | Policy parity passed; endpoint not activated |
+| GET | /internal/commerce/orders | /commerce/manage/orders | orders | Policy parity passed; endpoint not activated |
+| POST | /internal/commerce/orders/update | /commerce/manage/order | orders | Policy parity passed; endpoint not activated |
+| POST | /internal/commerce/orders/receipt | /commerce/manage/order/receipt | orders | Policy parity passed; endpoint not activated |
+| GET | /internal/automations | /commerce/manage/automations | automations | Policy parity passed; endpoint not activated |
+| POST | /internal/automations/workflows | /commerce/manage/automations/workflows | automations | Policy parity passed; endpoint not activated |
+| POST | /internal/automations/workflows/delete | /commerce/manage/automations/workflows/delete | automations | Policy parity passed; endpoint not activated |
+| GET | /internal/analytics | /commerce/manage/analytics | analytics | Policy parity passed; endpoint not activated |
+| GET | /internal/analytics/health-monitor | /commerce/manage/analytics/health-monitor | analytics | Policy parity passed; endpoint not activated |
+| GET | /internal/analytics/marketing-setup | /commerce/manage/analytics/marketing-setup | analytics | Policy parity passed; endpoint not activated |
+| GET | /internal/analytics/meta-connect | /commerce/manage/analytics/meta-connect | settings | Policy parity passed; endpoint not activated |
+| GET | /internal/analytics/meta-callback | /commerce/manage/analytics/meta-callback | settings | Policy parity passed; endpoint not activated |
+| GET | /internal/analytics/meta-connection-status | /commerce/manage/analytics/meta-connection-status | analytics | Policy parity passed; endpoint not activated |
+| GET | /internal/analytics/meta-campaigns | /commerce/manage/analytics/meta-campaigns | analytics | Policy parity passed; endpoint not activated |
+| POST | /internal/analytics/meta-disconnect | /commerce/manage/analytics/meta-disconnect | settings | Policy parity passed; endpoint not activated |
+| POST | /internal/analytics/openai-connect | /commerce/manage/analytics/openai-connect | settings | Policy parity passed; endpoint not activated |
+| POST | /internal/analytics/openai-refresh | /commerce/manage/analytics/openai-refresh | settings | Policy parity passed; endpoint not activated |
+| POST | /internal/analytics/openai-disconnect | /commerce/manage/analytics/openai-disconnect | settings | Policy parity passed; endpoint not activated |
+| GET | /internal/settings/payments | /commerce/manage/payments | settings | Policy parity passed; endpoint not activated |
+| GET | /internal/settings/payments/callback | /commerce/manage/payments/callback | settings | Policy parity passed; endpoint not activated |
+| POST | /internal/settings/payments/connect | /commerce/manage/payments/connect | settings | Policy parity passed; endpoint not activated |
+| POST | /internal/settings/payments/resume | /commerce/manage/payments/resume | settings | Policy parity passed; endpoint not activated |
+| POST | /internal/settings/payments/confirm | /commerce/manage/payments/confirm | settings | Policy parity passed; endpoint not activated |
+| POST | /internal/settings/payments/default | /commerce/manage/payments/default | settings | Policy parity passed; endpoint not activated |
+| POST | /internal/settings/payments/disconnect | /commerce/manage/payments/disconnect | settings | Policy parity passed; endpoint not activated |
+| POST | /internal/settings/payments/refresh | /commerce/manage/payments/refresh | settings | Policy parity passed; endpoint not activated |
+| POST | /internal/settings/payments/reconcile | /commerce/manage/payments/reconcile | settings | Policy parity passed; endpoint not activated |
+| POST | /internal/settings/payments/refund | /commerce/manage/payments/refund | settings | Policy parity passed; endpoint not activated |
+
+Auth endpoints /internal, /internal/login, /internal/denied and POST /internal/logout remain separate authentication responsibilities; no implicit management grant. /internal/businesses stays outside tenant policy. Team add/update/remove and analytics/meta-settings remain unsupported by the alias projection until their canonical owners and protections are completed.
+### Current evidence and outstanding boundaries
+Live authenticated Parfait dashboard and Products UI were observed read-only. No operational records were copied into fixtures or source. Missing Library router/COO/baseline/recovery references and Layla/Handoffs route were not supplied through accessible Page links; no delivery or receiver acknowledgment is claimed. Founder ownership reassignment permits implementation, not fabricated missing evidence.
+Existing fast-track recovery run 41356851410 failed at Recover exact retained application bytes; downstream stages were skipped. This feature does not retry that run or infer that prior production writes are settled. No feature migration/deployment is authorized by a successful policy test alone.
+
+PR754 prerequisite check readback: architecture-validation failed (run 41396288894); migration rehearsal/package stages skipped; security and build-and-focused-tests passed. No unrelated repair/retry/merge was performed. This blocks releasing an older baseline over current working deployments; it does not prove this scoped-store feature accepted or live.

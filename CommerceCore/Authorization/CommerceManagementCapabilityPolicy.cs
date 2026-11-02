@@ -15,6 +15,12 @@ public static class CommerceManagementCapabilityPolicy
     public static string? ForRequest(PathString path, string method)
     {
         var raw = path.Value ?? "";
+        if (raw.StartsWith("/internal/", StringComparison.OrdinalIgnoreCase))
+        {
+            var alias = InternalAction(raw["/internal/".Length..].TrimEnd('/').ToLowerInvariant(), method);
+            if (alias is null) return null;
+            raw = Prefix + alias;
+        }
         if (!raw.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase))
             return null;
 
@@ -57,4 +63,46 @@ public static class CommerceManagementCapabilityPolicy
 
         return null;
     }
+    // Route adapters share the existing action policy below; this projection grants
+    // neither a session nor business access and does not register MVC endpoints.
+    private static string? InternalAction(string route, string method)
+    {
+        var read = HttpMethods.IsGet(method) || HttpMethods.IsHead(method);
+        var write = HttpMethods.IsPost(method);
+        if (!read && !write) return null;
+        return route switch
+        {
+            "dashboard" when read => "dashboard",
+            "settings/business-profile" => "business-profile",
+            "settings/team" when read => "team",
+            "commerce/products" => read ? "products" : "product",
+            "commerce/products/settings" when write => "settings/commerce",
+            "commerce/products/delete" when write => "product/delete",
+            "commerce/products/images/upload" when write => "product/images/upload",
+            "commerce/products/images/delete" when write => "product/images/delete",
+            "commerce/products/images/reorder" when write => "product/images/reorder",
+            "commerce/products/images/display" when write => "product/images/display",
+            "commerce/products/reorder" when write => "products/reorder",
+            "commerce/orders" when read => "orders",
+            "commerce/orders/update" when write => "order",
+            "commerce/orders/receipt" when write => "order/receipt",
+            "automations" when read => "automations",
+            "automations/workflows" when write => "automations/workflows",
+            "automations/workflows/delete" when write => "automations/workflows/delete",
+            "analytics" when read => "analytics",
+            "analytics/meta-connect" or "analytics/meta-callback" or
+            "analytics/meta-connection-status" or "analytics/meta-campaigns" or
+            "analytics/health-monitor" or "analytics/marketing-setup" when read => route,
+            "analytics/openai-connect" or "analytics/openai-refresh" or
+            "analytics/openai-disconnect" or "analytics/meta-disconnect" when write => route,
+            "settings/payments" when read => "payments",
+            "settings/payments/callback" when read => "payments/callback",
+            "settings/payments/connect" or "settings/payments/resume" or
+            "settings/payments/confirm" or "settings/payments/default" or
+            "settings/payments/disconnect" or "settings/payments/refresh" or
+            "settings/payments/reconcile" or "settings/payments/refund" when write => route["settings/".Length..],
+            _ => null
+        };
+    }
+
 }

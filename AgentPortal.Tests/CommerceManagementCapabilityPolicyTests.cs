@@ -26,6 +26,77 @@ namespace AgentPortal.Tests;
 public sealed class CommerceManagementCapabilityPolicyTests
 {
     [Theory]
+    [InlineData("dashboard", "dashboard", "GET")]
+    [InlineData("settings/business-profile", "business-profile", "GET")]
+    [InlineData("settings/business-profile", "business-profile", "POST")]
+    [InlineData("settings/team", "team", "GET")]
+    [InlineData("commerce/products", "products", "GET")]
+    [InlineData("commerce/products", "product", "POST")]
+    [InlineData("commerce/products/settings", "settings/commerce", "POST")]
+    [InlineData("commerce/products/delete", "product/delete", "POST")]
+    [InlineData("commerce/products/images/upload", "product/images/upload", "POST")]
+    [InlineData("commerce/products/images/delete", "product/images/delete", "POST")]
+    [InlineData("commerce/products/images/reorder", "product/images/reorder", "POST")]
+    [InlineData("commerce/products/images/display", "product/images/display", "POST")]
+    [InlineData("commerce/products/reorder", "products/reorder", "POST")]
+    [InlineData("commerce/orders", "orders", "GET")]
+    [InlineData("commerce/orders/update", "order", "POST")]
+    [InlineData("commerce/orders/receipt", "order/receipt", "POST")]
+    [InlineData("automations", "automations", "GET")]
+    [InlineData("automations/workflows", "automations/workflows", "POST")]
+    [InlineData("automations/workflows/delete", "automations/workflows/delete", "POST")]
+    [InlineData("analytics", "analytics", "GET")]
+    [InlineData("analytics/health-monitor", "analytics/health-monitor", "GET")]
+    [InlineData("analytics/marketing-setup", "analytics/marketing-setup", "GET")]
+    [InlineData("analytics/meta-connect", "analytics/meta-connect", "GET")]
+    [InlineData("analytics/meta-callback", "analytics/meta-callback", "GET")]
+    [InlineData("analytics/meta-connection-status", "analytics/meta-connection-status", "GET")]
+    [InlineData("analytics/meta-campaigns", "analytics/meta-campaigns", "GET")]
+    [InlineData("analytics/meta-disconnect", "analytics/meta-disconnect", "POST")]
+    [InlineData("analytics/openai-connect", "analytics/openai-connect", "POST")]
+    [InlineData("analytics/openai-refresh", "analytics/openai-refresh", "POST")]
+    [InlineData("analytics/openai-disconnect", "analytics/openai-disconnect", "POST")]
+    [InlineData("settings/payments", "payments", "GET")]
+    [InlineData("settings/payments/callback", "payments/callback", "GET")]
+    [InlineData("settings/payments/connect", "payments/connect", "POST")]
+    [InlineData("settings/payments/resume", "payments/resume", "POST")]
+    [InlineData("settings/payments/confirm", "payments/confirm", "POST")]
+    [InlineData("settings/payments/default", "payments/default", "POST")]
+    [InlineData("settings/payments/disconnect", "payments/disconnect", "POST")]
+    [InlineData("settings/payments/refresh", "payments/refresh", "POST")]
+    [InlineData("settings/payments/reconcile", "payments/reconcile", "POST")]
+    [InlineData("settings/payments/refund", "payments/refund", "POST")]
+    public void InternalAdaptersUseExistingActionCapability(string alias, string action, string method)
+    {
+        var expected = CommerceManagementCapabilityPolicy.ForRequest(new PathString("/commerce/manage/" + action), method);
+        Assert.NotNull(expected);
+        Assert.Equal(expected, CommerceManagementCapabilityPolicy.ForRequest(new PathString("/internal/" + alias), method));
+        if (method == "GET")
+            Assert.Equal(expected, CommerceManagementCapabilityPolicy.ForRequest(new PathString("/internal/" + alias), "HEAD"));
+        Assert.Null(CommerceManagementCapabilityPolicy.ForRequest(new PathString("/internal/" + alias), "DELETE"));
+    }
+
+    [Theory]
+    [InlineData("/internal/businesses", "GET")]
+    [InlineData("/internal/login", "GET")]
+    [InlineData("/internal/logout", "POST")]
+    [InlineData("/internal/denied", "GET")]
+    [InlineData("/internal", "GET")]
+    [InlineData("/internal/settings/team/add", "POST")]
+    [InlineData("/internal/settings/team/00000000-0000-0000-0000-000000000001", "POST")]
+    [InlineData("/internal/analytics/meta-settings", "POST")]
+    [InlineData("/internal/settings/payments/refund", "GET")]
+    [InlineData("/internal/settings/payments/callback", "POST")]
+    [InlineData("/internal/commerce/products/images/upload", "GET")]
+    [InlineData("/internal/commerce/orders", "POST")]
+    [InlineData("/internal/dashboard", "POST")]
+    [InlineData("/internal/commerce/../settings/team", "GET")]
+    [InlineData("/internal//dashboard", "GET")]
+    [InlineData("/internal/unknown", "GET")]
+    public void UnmappedInternalOperationsNeverGainManagementCapability(string route, string method)
+        => Assert.Null(CommerceManagementCapabilityPolicy.ForRequest(new PathString(route), method));
+
+    [Theory]
     [InlineData("/commerce/manage/dashboard", "GET", "website")]
     [InlineData("/commerce/manage/preview/product/leggings", "GET", "website")]
     [InlineData("/commerce/manage/business-profile", "GET", "settings")]
