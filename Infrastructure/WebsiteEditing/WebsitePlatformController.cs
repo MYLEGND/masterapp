@@ -576,6 +576,7 @@ public class WebsitePlatformController : ControllerBase
                 publishedRevision = history.FirstOrDefault(v => v.versionId == state.PublishedVersionId)?.Revision,
                 publicationScopeId = state.Id,
                 facts,
+                receptionistSetupUrl = await ReceptionistSetupUrlAsync(actor, cancellationToken),
                 editorBaseUrl = actor.SiteKey == WebsiteEditorSiteKeys.Business
                     ? (_configuration["LegendWebsiteBaseUrl"] ?? "https://www.mylegnd.com").TrimEnd('/')
                     : null,
@@ -4098,6 +4099,34 @@ public class WebsitePlatformController : ControllerBase
         {
             return BadRequest(new { error = "advertising_rejection_denied", message = ex.Message });
         }
+    }
+
+    private async Task<string?> ReceptionistSetupUrlAsync(WebsiteEditorTicket actor, CancellationToken ct)
+    {
+        // Navigation only. The destination independently rechecks settings membership
+        // and antiforgery; a website ticket never grants receptionist operation rights.
+        if (!Uri.TryCreate(_configuration["AgentPortalBaseUrl"], UriKind.Absolute, out var portal) ||
+            portal.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(portal.UserInfo)) return null;
+        var owner = await ResolveAdvertisingOwnerAsync(actor, ct);
+        if (owner is null) return null;
+        string? path = null;
+        if (owner.CommerceBusinessId is Guid businessId)
+            path = $"/business/{businessId:D}/receptionist";
+        else
+        {
+            var profileId = owner.AgentTrackingProfileId;
+            if (owner == Shared.Analytics.MarketingOwnerScope.Founder)
+            {
+                var profiles = new Infrastructure.Analytics.AgentTrackingResolver(_db,
+                    Microsoft.Extensions.Logging.Abstractions.NullLogger<Infrastructure.Analytics.AgentTrackingResolver>.Instance);
+                var founder = await Infrastructure.Analytics.ProtectWebsiteOwnerResolver.ResolveLeadAsync(
+                    profiles, _configuration["Founder:Upn"], null, null, true, ct);
+                profileId = founder?.Profile.Id;
+            }
+            if (profileId is Guid id && id != Guid.Empty)
+                path = $"/WebsiteAnalytics/receptionist?agentProfileId={id:D}";
+        }
+        return path is null ? null : new Uri(portal, path).AbsoluteUri;
     }
 
     private Task<Shared.Analytics.MarketingOwnerScope?> ResolveAdvertisingOwnerAsync(

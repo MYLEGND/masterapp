@@ -7943,3 +7943,125 @@ test('local native capture uses the canonical materializer without management or
     assert.equal(event.defaultPrevented,true);
   } finally { f.close(); }
 });
+
+test('standalone receptionist uses the shared footer across scopes and pages with editable copy and inert preview',async()=>{
+  for(const siteKey of ['legend','protect','business']) {
+    const doc=canonicalDocument();
+    doc.shell.footer=[canonicalNode('shared.footer','container','footer',{children:[canonicalNode('footer.terms','link','a',{href:'/terms',text:'Terms'})]})];
+    const prepare=w=>{w.LegendPublicInquiryForm={mountWebsiteReceptionists};};
+    const f=await domFixture({siteKey,doc,business:siteKey==='business'?{id:'business-id',displayName:'Fixture business'}:null,beforeEval:prepare});let saved;
+    try {
+      f.click('#legend-cms-receptionist-sitewide');
+      const node=f.w.document.querySelector('[data-cms-receptionist]');
+      assert.ok(node);assert.ok(node.closest('footer'));
+      assert.equal(f.w.document.querySelector('footer a').textContent,'Terms');
+      assert.equal(node.querySelector('[data-receptionist-start]').disabled,true);
+      f.change('#legend-cms-receptionist-title','Shayla');
+      f.change('#legend-cms-receptionist-description','How can we help?');
+      f.change('#legend-cms-receptionist-label','Talk with Shayla');
+      f.click('#legend-cms-receptionist-appearance');
+      f.input('#legend-cms-width','65');
+      assert.equal(f.w.document.querySelector('[data-receptionist-start]').style.width,'65%');
+      f.click('#legend-cms-receptionist-sitewide');
+      assert.equal(f.w.document.querySelectorAll('[data-cms-receptionist]').length,1);
+      saved=await f.save();
+      assert.equal(saved.shell.footer[0].children[0].id,'footer.terms');
+      const voice=saved.shell.footer[0].children[1];
+      assert.equal(voice.title,'Shayla');assert.equal(voice.text,'How can we help?');
+      assert.equal(voice.receptionist.label,'Talk with Shayla');
+      assert.equal(voice.fieldPresentations.receptionist_start.style.widthPercent,65);
+      assert.equal(f.calls.some(call=>/receptionist.*\/(grant|start)/.test(call.url)),false);
+    } finally {f.close();}
+    saved.pages['/services']=structuredClone(saved.pages['/']);
+    const reopened=await domFixture({siteKey,doc:saved,business:siteKey==='business'?{id:'business-id',displayName:'Fixture business'}:null,pathname:'/services',beforeEval:prepare});
+    try {
+      assert.equal(reopened.w.document.querySelector('[data-website-receptionist] h2').textContent,'Shayla');
+      assert.equal(reopened.w.document.querySelectorAll('[data-website-receptionist]').length,1);
+      assert.equal(reopened.w.document.querySelector('[data-receptionist-start]').textContent,'Talk with Shayla');
+      assert.equal(reopened.w.document.querySelector('footer a').textContent,'Terms');
+    } finally {reopened.close();}
+  }
+});
+
+test('page receptionist needs no inquiry form and escapes custom copy',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition.push(canonicalNode('page.voice','receptionist','div',{
+    title:'<script>bad()</script>',text:'Ask <our> team',receptionist:{enabled:true,label:'Speak',placement:'after'}
+  }));
+  const f=await domFixture({doc,beforeEval:w=>{w.LegendPublicInquiryForm={mountWebsiteReceptionists};}});
+  try {
+    assert.equal(f.w.document.querySelectorAll('form[data-website-inquiry]').length,0);
+    assert.equal(f.w.document.querySelector('[data-website-receptionist] h2').textContent,'<script>bad()</script>');
+    assert.equal(f.w.document.querySelector('[data-website-receptionist] script'),null);
+    assert.equal(f.w.document.querySelector('[data-receptionist-start]').disabled,true);
+  } finally {f.close();}
+});
+
+test('sitewide receptionist captures the existing native footer without losing its links and retains typed capture',async()=>{
+  const f=await domFixture({captureNativePage:true,beforeEval:w=>{w.LegendPublicInquiryForm={mountWebsiteReceptionists};},html:'<!doctype html><html><head></head><body><main><section><h1>Home</h1></section></main><footer class="site-footer" data-cms-id="home.section.1"><a data-cms-id="home.h1.node.1" href="/privacy">Privacy</a></footer></body></html>'});
+  try {
+    f.click('#legend-cms-receptionist-sitewide');
+    assert.equal(f.w.document.querySelector('footer a').textContent,'Privacy');
+    const saved=await f.save();
+    assert.equal(saved.shell.footer[0].tag,'footer');
+    assert.notEqual(saved.shell.footer[0].id,'home.section.1');
+    assert.notEqual(saved.shell.footer[0].children[0].id,'home.h1.node.1');
+    assert.ok(canonicalNodeById(saved,'home.h1.node.1'));
+    assert.ok(saved.shell.footer[0].children.some(node=>node.type==='receptionist'));
+    const captured=f.w.__captureNativePage();
+    assert.ok(captured.shell.footer[0].children.some(node=>node.type==='receptionist'));
+  }finally{f.close();}
+});
+
+test('shared receptionist replacement requires an explicit choice and retains former page settings',async()=>{
+  const doc=canonicalDocument();
+  doc.shell.footer=[canonicalNode('footer','container','footer')];
+  doc.pages['/'].composition.push(canonicalNode('old.voice','form','form',{systemKey:'canonical_inquiry',receptionist:{enabled:true,label:'Existing voice',placement:'before'}}));
+  const f=await domFixture({doc,beforeEval:w=>{w.LegendPublicInquiryForm={mountWebsiteReceptionists};w.confirm=()=>false;}});
+  try {
+    f.click('#legend-cms-receptionist-sitewide');
+    assert.equal(f.w.document.querySelector('[data-cms-receptionist]'),null);
+    assert.equal(f.w.document.querySelector('[data-receptionist-start]').textContent,'Existing voice');
+    f.w.confirm=()=>true;
+    f.click('#legend-cms-receptionist-sitewide');
+    assert.equal(f.w.document.querySelectorAll('[data-website-receptionist]').length,1);
+    const saved=await f.save();
+    const old=canonicalNodeById(saved,'old.voice');
+    assert.deepEqual(old.receptionist,{enabled:false,label:'Existing voice',placement:'before'});
+  }finally{f.close();}
+});
+
+test('receptionist icon upload retains owned asset and allocates a unique canonical child identity',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition.push(canonicalNode('voice.icon','text','p',{text:'Retained existing content'}));
+  doc.pages['/'].composition.push(canonicalNode('voice','receptionist','div',{title:'Shayla',receptionist:{enabled:true,label:'Talk',placement:'after'}}));
+  const asset={id:'33333333-3333-3333-3333-333333333333',name:'Receptionist icon',url:'https://site.example/api/website-content/media/33333333-3333-3333-3333-333333333333',contentType:'image/png',sizeBytes:2048};
+  const f=await domFixture({doc,mediaUploadPayload:asset,beforeEval:w=>{w.LegendPublicInquiryForm={mountWebsiteReceptionists};}});
+  try {
+    f.click('[data-cms-receptionist]');
+    await selectFixtureMediaFile(f,'#legend-cms-receptionist-icon');
+    const saved=await f.save();
+    const icon=canonicalNodeById(saved,'voice').children[0];
+    assert.notEqual(icon.id,'voice.icon');
+    assert.equal(icon.mediaAssetId,asset.id);
+    assert.equal(icon.style.maxWidthPx,64);
+    assert.equal(icon.style.minWidthPx,64);
+    assert.equal(icon.style.widthPx,undefined);
+    assert.equal(canonicalNodeById(saved,'voice.icon').text,'Retained existing content');
+    assert.equal(JSON.stringify(saved).includes('ticket='),false);
+  }finally{f.close();}
+});
+
+test('receptionist heading edits synchronize Selected Source without losing the canonical component',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition.push(canonicalNode('voice','receptionist','div',{title:'Before',receptionist:{enabled:true,label:'Talk',placement:'after'}}));
+  const f=await domFixture({doc,beforeEval:w=>{w.LegendPublicInquiryForm={mountWebsiteReceptionists};}});
+  try {
+    f.click('[data-cms-receptionist]');f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));
+    f.change('#legend-cms-receptionist-title','Shayla');
+    const source=JSON.parse(f.w.document.querySelector('#legend-cms-site-source').value);
+    assert.equal(source.title,'Shayla');assert.equal(source.id,'voice');assert.equal(source.type,'receptionist');
+    await new Promise(resolve=>setTimeout(resolve,0));
+  }finally{f.close();}
+});

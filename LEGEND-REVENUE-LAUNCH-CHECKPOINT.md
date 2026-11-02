@@ -2219,3 +2219,50 @@ Prior management blockers (noncanonical stored draft and Founder401) remain
 separate and unresolved. No management recovery, production publication,
 fast-track merge or deployment performed. Existing source/release authority and
 saved content remain preserved.
+
+## Website Studio receptionist presentation — 2026-11-01
+
+Continued exact isolation checkpoint 031113a5b4da0b1a2ee5fda5b4a4379fe606bd1e;
+native preflight verified clean/current local and remote ancestry and transport.
+Founder scope: customizable receptionist across all pages or individual pages,
+existing operational setup reachable from Studio, and no blue full-screen loader.
+
+Extended the existing v3 composition grammar with a receptionist component;
+heading, optional introduction, action label, canonical image child, responsive
+styles and field presentation remain in the same document/mutation/compiler.
+Studio has a Receptionist entry and shared-footer/page placement. Shared placement
+preserves footer links and allocates identities against retained page/shell nodes.
+Replacing existing page voice entries requires an explicit choice, retains their
+settings and uses the existing undo checkpoint. Old form-attached presentations
+remain supported. No hidden inquiry form or second voice lifecycle was created.
+Standalone hosts now start the existing runtime without needing an inquiry form;
+preview remains inert. No calls, microphone grants or operational activation ran.
+
+Authenticated management returns a navigation-only setup link bound to the exact
+server-resolved business or agent/Founder tracking profile. Missing identity does
+not fall back to the current caller. Destination settings authorization, review,
+readiness, admission, antiforgery and provider configuration remain authoritative.
+The full-screen blue pending pseudo-element was replaced by compact status;
+hidden-unverified-content, exact-publication reveal and timeout failure remain.
+This does not promise instantaneous authenticated Studio/network reads.
+
+Focused evidence: actual AgentPortal.Tests compilation and 31 selected C# tests
+passed (schema, unexpected authority rejection, exact setup scope, missing owner,
+canonical mutation/readback and existing inquiry compatibility). Seven Studio JS
+tests passed including all three site scopes, second-route shared placement,
+explicit replacement/cancel, icon upload/collision and Canvas/Source sync.
+24 runtime/first-paint tests passed including standalone module startup and inert
+preview. Compiler test passed three scopes x two routes with direct HTML, retained
+footer and no pending gate. Prior 24 focused renderer/loading cases passed,
+including Coverage and stalled-response fail-closed behavior. Protect build:
+zero warnings/errors. Local host restarted; browser /quote shows current content
+with pending=false and no unavailable state. Evidence is synthetic/local, not
+production voice readiness or deployment acceptance.
+
+Unresolved prior local management blockers remain: stored draft fails strict
+noncanonical-document validation; Founder management ticket receives 401. This
+change does not rewrite that stored draft or bypass its recovery/identity gates.
+Consequently full authenticated Studio end-to-end readiness is still PARTIAL.
+Production publication, provider readiness, exact-candidate GitHub checks and
+live provenance remain unverified. No fast-track merge, deployment, credentials,
+production configuration, production content or SQL mutation performed.

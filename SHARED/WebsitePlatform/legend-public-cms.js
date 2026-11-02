@@ -1076,7 +1076,7 @@
     const fieldKey=['INPUT','SELECT','TEXTAREA','BUTTON'].includes(selected.tagName) && selected.dataset?.cmsFieldKey
       ? formFieldKey(selected)
       : null;
-    const form=fieldKey ? selected.closest?.('form[data-cms-composition-id]') : null;
+    const form=fieldKey ? selected.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]') : null;
     const elementId=fieldKey
       ? form?.dataset?.cmsCompositionId
       : (selected.dataset.cmsCompositionId || selected.dataset.cmsId || null);
@@ -2011,7 +2011,7 @@
 
   function nativeFormPresentationOwner(el) {
     if(!el?.dataset?.cmsPresentationKey) return null;
-    const form=el.closest('form[data-cms-composition-id]');
+    const form=el.closest('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]');
     const node=compositionNode(form?.dataset.cmsCompositionId);
     const binding=nativeFormPresentationBindings.get(el);
     return node && binding?.form===form && binding.ownerId===node.id &&
@@ -2037,12 +2037,12 @@
 
   function formFieldPresentationForElement(el, create = true) {
     if(!el || legacyMigration) return null;
-    const form=el.closest?.('form[data-cms-composition-id]');
+    const form=el.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]');
     if(!form || form===el) return null;
     const key=formFieldKey(el);
     if(!key) return null;
     const formNode=compositionNode(form.dataset.cmsCompositionId);
-    if(!formNode || !(formNode.type==='form' || formNode.type==='experience' || String(formNode.systemKey || '').startsWith('protect_runtime_form:'))) return null;
+    if(!formNode || !(formNode.type==='form' || formNode.type==='receptionist' || formNode.type==='experience' || String(formNode.systemKey || '').startsWith('protect_runtime_form:'))) return null;
     if(create){
       formNode.fieldPresentations ||= {};
       formNode.fieldPresentations[key] ||= normalizeControlPresentation(null);
@@ -2398,6 +2398,15 @@
     }
 
     const id = materializedNodeId(el, fallbackId, identity);
+    const canonical=compositionNode(el.dataset.cmsCompositionId);
+    if(el.hasAttribute('data-cms-receptionist') && canonical?.type==='receptionist'){
+      const node=cloneCanonicalValue(canonical);node.id=id;
+      walkComposition(node.children || [],child=>{
+        const element=findEditableElement(child.id);
+        child.id=element ? materializedNodeId(element,child.id,identity) : claimMaterializationId(child.id,identity);
+      });
+      return node;
+    }
     const model = legacyMigrationRecordForElement(el) || {};
     const actionKey = model.actionKey || el.dataset.websiteActionKey || null;
     const extra = el.dataset.cmsExtraId ? legacyMigrationExtraById(el.dataset.cmsExtraId) : null;
@@ -2596,7 +2605,7 @@
     const allowed={
       section:['section'],container:['div','article','header','footer','nav','ul','ol','fieldset'],
       heading:['h1','h2','h3','h4','h5','h6'],text:['p','span','small','strong','li','label','blockquote'],
-      cta:['a','button'],link:['a','button'],image:['img'],video:['video'],form:['form'],experience:['form'],embed:['div'],spacer:['div'],reusable:['div']
+      cta:['a','button'],link:['a','button'],image:['img'],video:['video'],form:['form'],experience:['form'],receptionist:['div'],embed:['div'],spacer:['div'],reusable:['div']
     }[type] || ['div'];
     return allowed.includes(tag) ? tag : allowed[0];
   }
@@ -2984,7 +2993,7 @@
 
   function canonicalReceptionist(node) {
     const value=node?.receptionist;
-    return node?.type==='form' && node.systemKey==='canonical_inquiry' && value?.enabled===true &&
+    return (node?.type==='receptionist' || (node?.type==='form' && node.systemKey==='canonical_inquiry')) && value?.enabled===true &&
       ['before','after'].includes(value.placement || 'before') ? value : null;
   }
 
@@ -2994,6 +3003,10 @@
     const host=document.createElement('div');
     host.dataset.legendReceptionistEntry='';
     host.dataset.receptionistLabel=typeof value.label==='string' ? value.label.slice(0,160) : '';
+    if(node.type==='receptionist'){
+      host.dataset.receptionistTitle=node.title || '';
+      host.dataset.receptionistDescription=node.text || '';
+    }
     if(editorMode || studioIsolationMode) host.dataset.preview='';
     if(value.placement==='after') form.appendChild(host);
     else form.insertBefore(host,form.firstChild);
@@ -3003,7 +3016,7 @@
   // A late-loading module fills only the canonical placeholders. Apply the same
   // existing control presentation after mounting; do not rerender/reset forms.
   window.addEventListener('legend:public-inquiry-mounted',()=>{
-    document.querySelectorAll('form[data-cms-composition-id]').forEach(form=>{
+    document.querySelectorAll('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]').forEach(form=>{
       const node=compositionNode(form.dataset.cmsCompositionId);
       if(node) applyFormFieldPresentations(form,node);
     });
@@ -3108,6 +3121,14 @@
       renderReusableInstance(el, node);
     } else if (node.type === 'form') {
       el = buildCanonicalInquiryForm(node);
+    } else if (node.type === 'receptionist') {
+      el=document.createElement('div');
+      el.dataset.cmsReceptionist='';
+      for(const child of node.children || []){
+        const content=buildCompositionNode(child);
+        if(content) el.appendChild(content);
+      }
+      mountCanonicalReceptionist(el,node);
     } else if (node.type === 'experience') {
       el = buildNativeExperience(node);
     } else if (node.type === 'embed') {
@@ -4149,7 +4170,7 @@
 
   function applyCompositionNode(el, model) {
     if (el?.dataset.cmsSignalOnly && el.tagName!=='FORM') {
-      const form=el.closest('form[data-cms-composition-id]');
+      const form=el.closest('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]');
       const formNode=compositionNode(form?.dataset.cmsCompositionId);
       if(form && formNode) applyFormFieldPresentations(form,formNode);
       return;
@@ -4214,7 +4235,7 @@
       const photo=el.parentElement?.querySelector('img');
       el.hidden=!!photo && photo.style.display!=='none';
     }
-    if (el.tagName === 'FORM') applyFormFieldPresentations(el,model);
+    if (el.tagName === 'FORM' || model.type === 'receptionist') applyFormFieldPresentations(el,model);
     applyAnimations(el, model.animations);
   }
 
@@ -6392,7 +6413,7 @@
 
     const selectedFieldPresentation=selected?.dataset?.cmsSignalOnly ? formFieldPresentationForElement(selected,false) : null;
     const selectedFieldCanCreatePresentation=!!selected?.dataset?.cmsSignalOnly &&
-      !!selected?.closest?.('form[data-cms-composition-id]') &&
+      !!selected?.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]') &&
       !!formFieldKey(selected);
     document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || (!!selected.dataset.cmsSignalOnly && !selectedFieldPresentation && !selectedFieldCanCreatePresentation); });
     if (!selected) {
@@ -6400,6 +6421,8 @@
       if (inlineHelp) inlineHelp.hidden = true;
       if (imageGroup) imageGroup.hidden = true;
       if (codeGroup) codeGroup.hidden = true;
+      const voiceGroup=document.getElementById('legend-cms-receptionist');
+      if(voiceGroup) voiceGroup.hidden=true;
       const duplicateButton = document.getElementById('legend-cms-duplicate'); if (duplicateButton) duplicateButton.disabled = true;
       return;
     }
@@ -6425,9 +6448,13 @@
     const serviceCard = businessServiceCardFor(selected);
     const canonicalForm = ov.type === 'form' || String(ov.systemKey || '').startsWith('protect_runtime_form:');
     const voiceGroup=document.getElementById('legend-cms-receptionist');
-    const voiceNode=ov.type==='form' && ov.systemKey==='canonical_inquiry' ? ov : null;
+    const voiceNode=ov.type==='receptionist' || (ov.type==='form' && ov.systemKey==='canonical_inquiry') ? ov : null;
     if(voiceGroup) voiceGroup.hidden=!voiceNode;
     if(voiceNode){
+      document.getElementById('legend-cms-receptionist-copy').hidden=voiceNode.type!=='receptionist';
+      document.getElementById('legend-cms-receptionist-title').value=voiceNode.title || '';
+      document.getElementById('legend-cms-receptionist-description').value=voiceNode.text || '';
+      document.getElementById('legend-cms-receptionist-placement').closest('label').hidden=voiceNode.type==='receptionist';
       document.getElementById('legend-cms-receptionist-enabled').checked=voiceNode.receptionist?.enabled===true;
       document.getElementById('legend-cms-receptionist-label').value=voiceNode.receptionist?.label || '';
       document.getElementById('legend-cms-receptionist-placement').value=voiceNode.receptionist?.placement || 'before';
@@ -7828,7 +7855,7 @@
   }
 
   function sourceSelectedNodeId() {
-    return selected?.dataset?.cmsCompositionId || selected?.closest?.('form[data-cms-composition-id]')?.dataset?.cmsCompositionId || null;
+    return selected?.dataset?.cmsCompositionId || selected?.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]')?.dataset?.cmsCompositionId || null;
   }
 
   function syncSelectedSourcePresentationFromCanvas() {
@@ -7846,7 +7873,7 @@
     // Keep Selected Source visually synchronized with Canvas presentation while
     // retaining the server-projected protected-authority omissions. This is a
     // view synchronization only; persistence still flows through canonical save.
-    for(const key of ['text','className','style','breakpointStyles','layout','breakpointLayouts','animations','hidden','alt','mediaAssetId','mediaUrl','fieldLabels','fieldPresentations','receptionist'])
+    for(const key of ['text','title','className','style','breakpointStyles','layout','breakpointLayouts','animations','hidden','alt','mediaAssetId','mediaUrl','fieldLabels','fieldPresentations','receptionist'])
     {
       if(Object.hasOwn(current,key)) projected[key]=cloneCanonicalValue(current[key]);
       else delete projected[key];
@@ -9101,6 +9128,57 @@
     textarea.focus();
   }
 
+  function addReceptionist(sitewide = true) {
+    let shared=null;
+    walkComposition(documentState.shell?.footer || [],node=>{if(node.type==='receptionist' && node.receptionist?.enabled) shared ||= node;});
+    if(!sitewide && shared){
+      setSelected(findEditableElement(shared.id));showPanel('content');
+      alert('Your shared receptionist is already on this page. Edit this component for every page, or remove the shared placement before creating page-specific entries.');
+      return;
+    }
+    const roots=sitewide ? documentState.shell?.footer || [] : pageState().composition || [];
+    let existing=null;
+    walkComposition(roots,node=>{if(node.type==='receptionist') existing ||= node;});
+    if(existing){
+      setSelected(findEditableElement(existing.id));
+      showPanel('content');
+      return;
+    }
+    if(sitewide && !documentState.shell?.footer?.length && !document.querySelector('.site-footer')){
+      alert('This website needs its shared footer captured before adding a site-wide receptionist. You can place it on this page.');
+      return;
+    }
+    const priorEntries=[];
+    if(sitewide) for(const page of Object.values(documentState.pages || {}))
+      walkComposition(page.composition || [],node=>{if(canonicalReceptionist(node)) priorEntries.push(node);});
+    if(priorEntries.length && !confirm('Replace '+priorEntries.length+' existing page voice entries with one shared receptionist? Their saved copy and styling will be retained, and this draft change can be undone.')) return;
+    checkpoint();
+    for(const entry of priorEntries) entry.receptionist.enabled=false;
+    const id='receptionist.'+crypto.randomUUID().replaceAll('-','');
+    const node={id,type:'receptionist',tag:'div',title:'AI receptionist',text:'',
+      receptionist:{enabled:true,label:'Talk with our AI receptionist',placement:'after'},
+      style:{widthPercent:100},children:[],signals:[],fieldPresentations:{},
+      layout:{mode:'flex',direction:'row',gapPx:16,alignItems:'center',wrap:'wrap'}};
+    if(sitewide){
+      documentState.shell ||= {header:[],footer:[]};
+      if(!documentState.shell.footer?.length){
+        const footer=materializeCompositionNode(document.querySelector('.site-footer'),'shell.footer',createMaterializationIdentityContext(null,true));
+        documentState.shell.footer=footer ? [footer] : [];
+      }
+      const footer=documentState.shell.footer.find(value=>value.tag==='footer');
+      if(footer) (footer.children ||= []).push(node);
+      else documentState.shell.footer.push(node);
+      renderCanonicalShell();
+      if(priorEntries.length) renderCanonicalCompositionPage();
+    } else {
+      (pageState().composition ||= []).push(node);
+      renderCanonicalCompositionPage();
+    }
+    setSelected(findEditableElement(id));
+    showPanel('content');
+    markDirty();
+  }
+
   function addCompositionBlock(type) {
     const sectionEl = selectedSection || document.querySelector('[data-cms-section]');
     if (!sectionEl && type !== 'section') return;
@@ -9182,26 +9260,45 @@
     panel.appendChild(content);
     const voiceControls=document.createElement('section');
     voiceControls.id='legend-cms-receptionist'; voiceControls.hidden=true;
-    voiceControls.innerHTML='<h2>Website voice entry</h2><label class="legend-cms-group"><input id="legend-cms-receptionist-enabled" type="checkbox">Show the website voice option</label><p>This changes the page only. Calls remain subject to the current receptionist permission and readiness. Preview never starts a call.</p><label class="legend-cms-group">Button label<input id="legend-cms-receptionist-label" type="text" maxlength="160" placeholder="Speak inside the website"></label><label class="legend-cms-group">Placement<select id="legend-cms-receptionist-placement"><option value="before">Before written inquiry</option><option value="after">After written inquiry</option></select></label><button id="legend-cms-receptionist-appearance" type="button" disabled>Edit voice button appearance</button><p>Use the existing Appearance controls without starting a preview call.</p>';
+    voiceControls.innerHTML='<h2>AI receptionist</h2><div id="legend-cms-receptionist-copy"><label class="legend-cms-group">Heading<input id="legend-cms-receptionist-title" maxlength="160"></label><label class="legend-cms-group">Introduction (optional)<textarea id="legend-cms-receptionist-description" rows="2" maxlength="2000"></textarea></label><label class="legend-cms-group">Receptionist icon<input id="legend-cms-receptionist-icon" type="file" accept="image/*"></label></div><label class="legend-cms-group"><input id="legend-cms-receptionist-enabled" type="checkbox">Show the website voice option</label><p>Design your receptionist here. Preview calls are disabled.</p><label class="legend-cms-group">Button label<input id="legend-cms-receptionist-label" type="text" maxlength="160" placeholder="Speak inside the website"></label><label class="legend-cms-group">Placement<select id="legend-cms-receptionist-placement"><option value="before">Before written inquiry</option><option value="after">After written inquiry</option></select></label><button id="legend-cms-receptionist-appearance" type="button" disabled>Edit voice button appearance</button><p>Use the existing Appearance controls without starting a preview call.</p>';
     content.appendChild(voiceControls);
     document.getElementById('legend-cms-receptionist-appearance').addEventListener('click',()=>{
       const form=selected;
       const node=compositionNode(form?.dataset?.cmsCompositionId);
-      if(!form?.matches('form[data-website-inquiry]') || !canonicalReceptionist(node)) return;
+      if(!form || !canonicalReceptionist(node)) return;
       const control=form.querySelector('[data-website-receptionist] [data-receptionist-start]');
       if(!control) return;
       setSelected(control);
       showPanel('appearance');
     });
+    document.getElementById('legend-cms-receptionist-icon').addEventListener('change',async event=>{
+      event.stopPropagation();
+      const node=selectedWebsiteModel(false);
+      if(node?.type!=='receptionist') return;
+      const asset=await uploadMedia(event.target.files?.[0]);
+      event.target.value='';
+      if(!asset || !String(asset.contentType).startsWith('image/') || selectedWebsiteModel(false)!==node) return;
+      checkpoint();
+      node.children ||= [];
+      let icon=node.children.find(value=>value.type==='image');
+      if(!icon){icon={id:claimMaterializationId(node.id+'.icon',createMaterializationIdentityContext(null,true)),type:'image',tag:'img',alt:'Receptionist',style:{minWidthPx:64,maxWidthPx:64,heightPx:64},children:[]};node.children.unshift(icon);}
+      icon.mediaAssetId=asset.id; delete icon.mediaUrl;
+      const replacement=buildCompositionNode(node);
+      selected.replaceWith(replacement);setSelected(replacement);markDirty();
+    });
     voiceControls.addEventListener('change',()=>{
       const node=selectedWebsiteModel(false);
-      if(node?.type!=='form' || node.systemKey!=='canonical_inquiry') return;
+      if(node?.type!=='receptionist' && (node?.type!=='form' || node.systemKey!=='canonical_inquiry')) return;
       checkpoint();
       node.receptionist={
         enabled:document.getElementById('legend-cms-receptionist-enabled').checked,
         label:document.getElementById('legend-cms-receptionist-label').value.trim().slice(0,160) || null,
         placement:document.getElementById('legend-cms-receptionist-placement').value==='after'?'after':'before'
       };
+      if(node.type==='receptionist'){
+        node.title=document.getElementById('legend-cms-receptionist-title').value.trim();
+        node.text=document.getElementById('legend-cms-receptionist-description').value.trim();
+      }
       const previous=selected;
       const replacement=buildCompositionNode(node);
       previous.replaceWith(replacement);
@@ -9211,7 +9308,7 @@
     });
     const navigation = document.createElement('nav');
     navigation.className = 'legend-cms-navigation'; navigation.setAttribute('aria-label', 'Website editing tools');
-    navigation.innerHTML = `<div class="legend-cms-device-switch" role="group" aria-label="Editing viewport"><button type="button" data-editor-viewport="desktop" aria-pressed="false">Desktop</button><button type="button" data-editor-viewport="mobile" aria-pressed="false">Mobile</button></div><small class="legend-cms-device-note">Desktop and Mobile styling stay separate; content is shared. Base applies styling to all sizes.</small><div class="legend-cms-tabs legend-cms-primary-tabs"><button type="button" data-open="gpt" data-agent-action="open-workspace">GPT Workspace</button><button type="button" data-open="source" data-agent-action="open-source">Source</button><button type="button" data-open="media" data-agent-action="open-media">Media</button><button type="button" data-open="publish" data-agent-action="open-publish">Publish</button><button type="button" data-open="advanced">Advanced</button></div>`;
+    navigation.innerHTML = `<div class="legend-cms-device-switch" role="group" aria-label="Editing viewport"><button type="button" data-editor-viewport="desktop" aria-pressed="false">Desktop</button><button type="button" data-editor-viewport="mobile" aria-pressed="false">Mobile</button></div><small class="legend-cms-device-note">Desktop and Mobile styling stay separate; content is shared. Base applies styling to all sizes.</small><div class="legend-cms-tabs legend-cms-primary-tabs"><button type="button" data-open="gpt" data-agent-action="open-workspace">GPT Workspace</button><button type="button" data-open="receptionist">Receptionist</button><button type="button" data-open="source" data-agent-action="open-source">Source</button><button type="button" data-open="media" data-agent-action="open-media">Media</button><button type="button" data-open="publish" data-agent-action="open-publish">Publish</button><button type="button" data-open="advanced">Advanced</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="form">Inquiry form</button><button data-add="experience">Interactive experience</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
@@ -9221,6 +9318,23 @@
       <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" data-agent-action="upload-media" accept="image/*,video/*,.heic,.heif,.avif,.mov,.m4v,.webm"><button id="legend-cms-media-refresh" type="button" data-agent-action="refresh-media">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save any non-system canonical block or section once, then insert synchronized references. Protected platform components cannot be copied into reusable content.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Add page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/*,.heic,.heif,.avif"><small>A valid image file. The shared media authority verifies the file bytes; this is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
+    const receptionistView=document.createElement('section');
+    receptionistView.dataset.cmsView='receptionist'; receptionistView.hidden=true;
+    receptionistView.innerHTML='<h2>AI receptionist</h2><p>One shared design across your website, or a component on this page.</p><div class="legend-cms-menu"><button id="legend-cms-receptionist-sitewide" type="button">Set up across all pages</button><button id="legend-cms-receptionist-page" type="button">Place on this page</button></div><p>Choose the component to customize its heading, introduction, button, icon, and responsive appearance.</p>';
+    const setupUrl=managementPayload?.receptionistSetupUrl;
+    if(typeof setupUrl==='string'){
+      const setup=document.createElement('a');
+      setup.href=setupUrl; setup.target='_blank'; setup.rel='noopener';
+      setup.textContent='Voice, instructions, booking & activation';
+      receptionistView.appendChild(setup);
+    } else {
+      const unavailable=document.createElement('p');
+      unavailable.textContent='Receptionist settings are unavailable for this website owner. Open the authorized workspace to verify setup.';
+      receptionistView.appendChild(unavailable);
+    }
+    tools.appendChild(receptionistView);
+    document.getElementById('legend-cms-receptionist-sitewide').addEventListener('click',()=>addReceptionist(true));
+    document.getElementById('legend-cms-receptionist-page').addEventListener('click',()=>addReceptionist(false));
     const sourceView=document.createElement('section'); sourceView.dataset.cmsView='source'; sourceView.hidden=true;
     sourceView.innerHTML='<h2>Canonical Source</h2><p>Master Source is a read-only, color-guided inspection of the canonical v3 graph. Selected Source is the normal editable code surface: click, select, type, paste, use Tab / Shift+Tab to indent or outdent, and Enter to keep indentation. Canvas, Selected Source, drafts, validation, and publish all resolve to the same stable node identities.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Master Source · read only</option><option value="selection">Selected Source · editable</option></select></label><small id="legend-cms-source-location">Master Source · entire website · read only</small><div class="legend-cms-source-key" aria-label="Source color guide"><span data-tone="content">Content</span><span data-tone="style">Typography & style</span><span data-tone="color">Color</span><span data-tone="size">Size & spacing</span><span data-tone="layout">Layout & responsive</span><span data-tone="media">Media</span><span data-tone="behavior">Behavior</span><span data-tone="structure">Authorable structure</span><span data-tone="protected">Protected identity</span></div><div class="legend-cms-source-editor"><pre id="legend-cms-source-highlight" class="legend-cms-source-highlight" aria-hidden="true"></pre><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="soft" aria-label="Canonical source"></textarea></div><small id="legend-cms-source-status" role="status">Master Source is synchronized and read only.</small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply selected source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Refresh from canonical graph</button></div>';
     tools.appendChild(sourceView);
@@ -10530,7 +10644,7 @@
     applyCanonicalResponsiveAttributes(el,model);
     applyStyle(el,effectiveStyle(model,el));
     applyLayout(el,effectiveLayout(model,el));
-    if (el.tagName === 'FORM') applyFormFieldPresentations(el,model,true);
+    if (el.tagName === 'FORM' || model.type === 'receptionist') applyFormFieldPresentations(el,model,true);
   }
 
   // The same canonical model drives the editor and the immutable public DOM.
