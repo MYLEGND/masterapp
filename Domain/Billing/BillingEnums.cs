@@ -156,5 +156,6 @@ public enum ClientIdentityContinuationPurpose
     SignIn = 1,
     WebsiteEditor = 2,
     TrainingBilling = 3,
-    StoreManagement = 4
+    StoreManagement = 4,
+    BusinessMembership = 5
 }

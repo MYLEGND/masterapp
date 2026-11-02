@@ -11,6 +11,15 @@
         <p>Manage permissions for @Model.StoreName with the same LEGEND® business membership authority used by ClientApp.</p>
     </div>
     <div class="pf-command-panel">
+        <form method="post" action="@Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, "/commerce/manage/team/add", ticket, "POST")" class="pf-command-form">
+            @Html.AntiForgeryToken()
+            <h2>Invite a team member</h2>
+            <label>First name <input name="firstName" required maxlength="100" /></label>
+            <label>Last name <input name="lastName" maxlength="100" /></label>
+            <label>Current account email <input name="email" type="email" required maxlength="320" /></label>
+            <p>New invitations have no permissions until you select them below. The invited person must sign in and accept. Reinviting a pending or revoked member replaces their previous invitation.</p>
+            <button type="submit" class="pf-action">Create invitation link</button>
+        </form>
         @foreach (var member in Model.Members)
         {
             var locked = member.Role.Equals("owner", StringComparison.OrdinalIgnoreCase) ||
@@ -23,7 +32,7 @@
                 </div>
                 @if (!member.IsLinked)
                 {
-                    <p>Client identity activation is required before this member can sign in through LEGEND® ClientApp.</p>
+                    <p>A linked personal identity and accepted invitation are required before this member can sign in to this Store workspace.</p>
                 }
                 @if (locked)
                 {
@@ -43,6 +52,12 @@
                         <label><input type="checkbox" name="CanManageAnalytics" value="true" checked="@member.CanManageAnalytics" /> Analytics</label>
                         <p>Team administration requires business ownership and cannot be delegated here.</p>
                         <button type="submit" class="pf-action">Save permissions</button>
+                    </form>
+                    <form method="post" action="@Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, "/commerce/manage/team/remove", ticket, "POST")">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="memberId" value="@member.Id" />
+                        <input type="hidden" name="expectedUpdatedTicks" value="@member.UpdatedTicks" />
+                        <button type="submit" class="pf-action">Revoke access and pending invitations</button>
                     </form>
                 }
             </div>

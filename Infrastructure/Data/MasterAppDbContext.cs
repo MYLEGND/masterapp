@@ -780,6 +780,7 @@ public class MasterAppDbContext : DbContext
         modelBuilder.Entity<CommerceBusinessMember>(e =>
         {
             e.Property(x => x.OwnershipPercentage).HasPrecision(5, 2);
+            e.Property(x => x.UpdatedUtc).IsConcurrencyToken();
             e.HasKey(x => x.Id);
             e.Property(x => x.Email).IsRequired().HasMaxLength(320);
             e.Property(x => x.NormalizedEmail).IsRequired().HasMaxLength(320);
@@ -1156,6 +1157,7 @@ public class MasterAppDbContext : DbContext
             e.ToTable("ClientIdentityContinuations", t => t.HasCheckConstraint(
                 "CK_ClientIdentityContinuations_PurposeBinding",
                 "(([Purpose] IN ('Activation', 'SignIn', 'WebsiteEditor', 'TrainingBilling') AND [ClientProfileId] IS NOT NULL AND [ClientProfileId] <> '00000000-0000-0000-0000-000000000000') OR " +
+                "([Purpose] = 'BusinessMembership' AND [ClientProfileId] IS NOT NULL AND [CommerceBusinessId] IS NOT NULL AND [CommerceBusinessMemberId] IS NOT NULL AND [ActorUserId] IS NOT NULL) OR " +
                 "([Purpose] = 'StoreManagement' AND [CommerceBusinessId] IS NOT NULL AND [CommerceBusinessId] <> '00000000-0000-0000-0000-000000000000' AND " +
                 "[ActorUserId] IS NOT NULL AND LTRIM(RTRIM([ActorUserId])) <> '' AND " +
                 "[DestinationOrigin] IS NOT NULL AND LTRIM(RTRIM([DestinationOrigin])) <> '' AND " +

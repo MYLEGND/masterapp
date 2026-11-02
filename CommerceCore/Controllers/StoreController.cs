@@ -62,6 +62,8 @@ public sealed class StoreController : Controller
         var redirect = await CanonicalizeScopedRequestAsync(store, businessKey, "", ct);
         if (redirect is not null) return redirect;
 
+        if (store.StorePageShellPrefix is not null)
+            store = store with { WebsiteShellPrefix = store.StorePageShellPrefix, WebsiteShellSuffix = store.StorePageShellSuffix };
         ApplyStoreContext(store);
         var model = new ParfaitStorefrontViewModel
         {

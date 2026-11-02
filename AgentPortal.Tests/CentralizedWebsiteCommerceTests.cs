@@ -20,6 +20,39 @@ namespace AgentPortal.Tests;
 public sealed class CentralizedWebsiteCommerceTests
 {
     [Fact]
+    public void AuthoredStoreRetainsEditsAcrossEnableRemoveAndRejectsOperationalCopies()
+    {
+        var document = new WebsiteContentDocument { Store = new() { Enabled = true } };
+        WebsiteSystemTemplateAuthority.AddStorePage(document);
+        var page = document.Pages["/store"];
+        page.Title = "Our collection";
+        var catalog = page.Composition[0].Children[0].Children[1];
+        catalog.Layout.Columns = 3;
+        document.Store.Enabled = false;
+        document = WebsiteContentSanitizer.Sanitize(document);
+        document.Store.Enabled = true;
+        WebsiteSystemTemplateAuthority.AddStorePage(document);
+        Assert.Single(document.Pages);
+        Assert.Equal("Our collection", document.Pages["/store"].Title);
+        catalog = document.Pages["/store"].Composition[0].Children[0].Children[1];
+        Assert.Equal(3, catalog.Layout.Columns);
+        catalog.Children.Add(new WebsiteCompositionNode { Id = "fake-product", Type = "text", Text = "$1" });
+        Assert.Throws<ArgumentException>(() => WebsiteContentSanitizer.Sanitize(document));
+        catalog.Children.Clear();
+        document.Pages["/other"] = new WebsitePageDocument { Composition = [catalog] };
+        Assert.Throws<ArgumentException>(() => WebsiteContentSanitizer.Sanitize(document));
+    }
+
+    [Fact]
+    public void AddStoreDoesNotOverwriteConflictingAuthoredPage()
+    {
+        var page = new WebsitePageDocument { Title = "Existing page" };
+        var document = new WebsiteContentDocument { Pages = new() { ["/store"] = page } };
+        Assert.Throws<ArgumentException>(() => WebsiteSystemTemplateAuthority.AddStorePage(document));
+        Assert.Same(page, document.Pages["/store"]);
+    }
+
+    [Fact]
     public void StoreSettingsRoundTripThroughCanonicalWebsiteSanitizer()
     {
         var input = new WebsiteContentDocument
@@ -210,8 +243,10 @@ public sealed class CentralizedWebsiteCommerceTests
         Assert.True(MetaSignalSingleTruthPolicy.CanDispatchServerAuthority(meta.EventName, meta.MetadataJson));
     }
 
-    [Fact]
-    public async Task BusinessStoreResolvesFromAuthenticatedCustomDomainAtRootStorePath()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BusinessStoreResolvesFromAuthenticatedCustomDomainAtRootStorePath(bool authoredStore)
     {
         using var db = ControllerTestHelpers.BuildDb();
         var business = new CommerceBusiness
@@ -247,6 +282,18 @@ public sealed class CentralizedWebsiteCommerceTests
                 }
             })
         };
+        if (authoredStore)
+        {
+            var document = JsonSerializer.Deserialize<WebsiteContentDocument>(version.DocumentJson)!;
+            WebsiteSystemTemplateAuthority.AddStorePage(document);
+            version.DocumentJson = JsonSerializer.Serialize(document, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            var compiled = System.Text.Json.Nodes.JsonNode.Parse(version.CompiledPagesJson)!.AsObject();
+            compiled["pages"]!["/store"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["html"] = "<html><head></head><body><header>Own brand</header><main><h1>Our custom collection</h1><div data-legend-store-catalog><!--legend:store:catalog:start--><!--legend:store:catalog:end--></div><p>Own footer copy</p></main><footer>Own footer</footer></body></html>"
+            };
+            version.CompiledPagesJson = compiled.ToJsonString();
+        }
         state.PublishedVersionId = version.Id;
         db.AddRange(
             business,
@@ -299,6 +346,16 @@ public sealed class CentralizedWebsiteCommerceTests
         Assert.Contains("Published footer", store.WebsiteShellSuffix!, StringComparison.Ordinal);
         Assert.Contains("/store-assets/css/storefront.css", store.WebsiteShellPrefix!, StringComparison.Ordinal);
         Assert.Equal("https://camoexterior.com/store", await service.ResolveCanonicalPublicRootAsync(store));
+        if (authoredStore)
+        {
+            Assert.Contains("Our custom collection", store.StorePageBeforeCatalog);
+            Assert.Contains("Own footer copy", store.StorePageAfterCatalog);
+            Assert.Contains("Own brand", store.StorePageShellPrefix);
+            Assert.Contains("Own footer", store.StorePageShellSuffix);
+            Assert.DoesNotContain("legend:store:catalog", store.StorePageBeforeCatalog + store.StorePageAfterCatalog);
+        }
+        else Assert.Null(store.StorePageBeforeCatalog);
+
     }
 
     [Fact]

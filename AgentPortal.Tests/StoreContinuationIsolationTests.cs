@@ -42,6 +42,7 @@ public sealed class StoreContinuationIsolationTests
     [Theory]
     [InlineData(ClientIdentityContinuationPurpose.WebsiteEditor)]
     [InlineData(ClientIdentityContinuationPurpose.StoreManagement)]
+    [InlineData(ClientIdentityContinuationPurpose.BusinessMembership)]
     [InlineData((ClientIdentityContinuationPurpose)99)]
     public async Task Account_issuer_rejects_other_purposes(ClientIdentityContinuationPurpose purpose)
     {
@@ -190,7 +191,10 @@ public sealed class StoreContinuationIsolationTests
             VALUES ({id},{profile.Id},'SignIn','retained-hash','test@example.invalid','/profile',{expiry},{DateTime.UtcNow})
             """);
         var migration = new ScopedStoreContinuations { ActiveProvider = "Microsoft.EntityFrameworkCore.Sqlite" };
-        var commands = fixture.Db.GetService<IMigrationsSqlGenerator>().Generate(migration.UpOperations,
+        var membershipMigration = new ScopedStoreMembershipInvitations { ActiveProvider = "Microsoft.EntityFrameworkCore.Sqlite" };
+        var operations = new System.Collections.Generic.List<Microsoft.EntityFrameworkCore.Migrations.Operations.MigrationOperation>(migration.UpOperations);
+        operations.AddRange(membershipMigration.UpOperations);
+        var commands = fixture.Db.GetService<IMigrationsSqlGenerator>().Generate(operations,
             fixture.Db.GetService<IDesignTimeModel>().Model);
         foreach (var command in commands)
             await fixture.Db.Database.ExecuteSqlRawAsync(command.CommandText);

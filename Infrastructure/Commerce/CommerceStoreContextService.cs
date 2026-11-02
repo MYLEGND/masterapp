@@ -38,7 +38,11 @@ public sealed record CommerceStoreContext(
     string? GlobalCheckoutUrl,
     WebsiteDesignTheme Theme,
     string? WebsiteShellPrefix,
-    string? WebsiteShellSuffix);
+    string? WebsiteShellSuffix,
+    string? StorePageShellPrefix = null,
+    string? StorePageShellSuffix = null,
+    string? StorePageBeforeCatalog = null,
+    string? StorePageAfterCatalog = null);
 
 /// <summary>
 /// One public storefront scope resolver for Parfait and every website-linked commerce tenant.
@@ -419,6 +423,7 @@ public sealed class CommerceStoreContextService(
         Guid? publishedVersionId = null;
         string? websiteShellPrefix = null;
         string? websiteShellSuffix = null;
+        string? storeShellPrefix = null, storeShellSuffix = null, storeBefore = null, storeAfter = null;
         var websiteSiteKey = !string.IsNullOrWhiteSpace(explicitSiteKey)
             ? explicitSiteKey.Trim().ToLowerInvariant()
             : linkedState?.SiteKey?.Trim().ToLowerInvariant()
@@ -429,15 +434,21 @@ public sealed class CommerceStoreContextService(
             if (publishedOnly)
             {
                 if (!linkedState.PublishedVersionId.HasValue) return null;
-                var version = await db.Set<WebsiteContentVersion>().AsNoTracking()
-                    .SingleOrDefaultAsync(
-                        x => x.Id == linkedState.PublishedVersionId.Value && x.StateId == linkedState.Id,
-                        ct);
+                var version = WebsiteContentStore.ReadImmutablePublication(() => db.Set<WebsiteContentVersion>().AsNoTracking()
+                    .Where(x => x.Id == linkedState.PublishedVersionId.Value && x.StateId == linkedState.Id && x.SnapshotRetiredUtc == null)
+                    .Select(x => new { x.Id, x.DocumentJson, x.CompiledPagesJson }).SingleOrDefault(), ct);
                 if (version is null) return null;
                 publishedVersionId = version.Id;
                 websiteDocument = Deserialize(version.DocumentJson);
                 if (websiteDocument.Store?.Enabled != true) return null;
                 TryExtractPublishedWebsiteShell(version.CompiledPagesJson, out websiteShellPrefix, out websiteShellSuffix);
+                if (websiteDocument.Pages.ContainsKey("/store"))
+                {
+                    WebsiteSystemTemplateAuthority.ValidateStorePage(websiteDocument);
+                    TryExtractPublishedWebsiteShell(version.CompiledPagesJson, out storeShellPrefix, out storeShellSuffix,
+                        "/store", out storeBefore, out storeAfter);
+                    if (storeBefore is null || storeAfter is null) return null;
+                }
             }
             else
             {
@@ -498,15 +509,20 @@ public sealed class CommerceStoreContextService(
             string.IsNullOrWhiteSpace(settings?.GlobalStoreCheckoutUrl) ? null : settings!.GlobalStoreCheckoutUrl.Trim(),
             theme,
             isParfait ? null : websiteShellPrefix,
-            isParfait ? null : websiteShellSuffix);
+            isParfait ? null : websiteShellSuffix,
+            storeShellPrefix, storeShellSuffix, storeBefore, storeAfter);
     }
 
 
     private static void TryExtractPublishedWebsiteShell(
         string? compiledPagesJson,
         out string? prefix,
-        out string? suffix)
+        out string? suffix) => TryExtractPublishedWebsiteShell(compiledPagesJson, out prefix, out suffix, "/", out _, out _);
+
+    private static void TryExtractPublishedWebsiteShell(string? compiledPagesJson, out string? prefix,
+        out string? suffix, string route, out string? before, out string? after)
     {
+        before = null; after = null;
         prefix = null;
         suffix = null;
         if (string.IsNullOrWhiteSpace(compiledPagesJson)) return;
@@ -515,7 +531,7 @@ public sealed class CommerceStoreContextService(
         {
             using var compiled = JsonDocument.Parse(compiledPagesJson);
             if (!compiled.RootElement.TryGetProperty("pages", out var pages) ||
-                !pages.TryGetProperty("/", out var home) ||
+                !pages.TryGetProperty(route, out var home) ||
                 !home.TryGetProperty("html", out var htmlValue))
                 return;
 
@@ -529,6 +545,17 @@ public sealed class CommerceStoreContextService(
             var mainClose = html.IndexOf("</main>", mainOpenEnd + 1, StringComparison.OrdinalIgnoreCase);
             if (mainClose < 0) return;
 
+            if (route == "/store")
+            {
+                const string begin = "<!--legend:store:catalog:start-->";
+                const string end = "<!--legend:store:catalog:end-->";
+                var beginIndex = html.IndexOf(begin, mainOpenEnd, StringComparison.Ordinal);
+                var endIndex = html.IndexOf(end, mainOpenEnd, StringComparison.Ordinal);
+                if (beginIndex < 0 || endIndex != beginIndex + begin.Length || endIndex >= mainClose ||
+                    html.IndexOf(begin, beginIndex + begin.Length, StringComparison.Ordinal) >= 0) return;
+                before = html[(mainOpenEnd + 1)..beginIndex];
+                after = html[(endIndex + end.Length)..mainClose];
+            }
             prefix = html[..(mainOpenEnd + 1)];
             suffix = html[(mainClose + "</main>".Length)..];
 

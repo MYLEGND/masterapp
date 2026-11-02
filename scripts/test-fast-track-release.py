@@ -125,6 +125,19 @@ class UniversalFastTrackAdmissionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
             authority.fast_track_scope(['Domain/Entities/UnreviewedContinuation.cs'])
 
+    def test_scoped_store_shared_owners_select_all_managed_hosts(self):
+        paths = ['Infrastructure/Businesses/BusinessWorkspaceService.cs',
+                 'Infrastructure/Businesses/BusinessWorkspaceService.Team.cs',
+                 'Infrastructure/Identity/ClientEntraLifecycleService.cs',
+                 'SHARED/Analytics/ScopeContext.cs', 'SHARED/Crm/BusinessWorkspaceModels.cs']
+        for path in paths:
+            with self.subTest(path=path):
+                scope = authority.fast_track_scope([path])
+                self.assertEqual({'portal', 'client', 'protect', 'parfait'},
+                                 {row['key'] for row in scope['matrix']['include']})
+        with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+            authority.fast_track_scope(['Infrastructure/Businesses/UnreviewedService.cs'])
+
     def test_shared_build_props_selects_all_managed_apps_only(self):
         scope = authority.fast_track_scope(['Directory.Build.props'])
         self.assertEqual({'portal', 'client', 'protect', 'parfait'},

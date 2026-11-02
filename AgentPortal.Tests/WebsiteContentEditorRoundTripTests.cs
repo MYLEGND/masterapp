@@ -191,6 +191,39 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Empty(await fixture.Db.AgentFinanceToolStates.ToListAsync());
     }
 
+    [Theory]
+    [InlineData("business")]
+    [InlineData("legend")]
+    [InlineData("protect")]
+    public async Task AuthoredStore_SaveReopenPublishRetainsCatalogBindingAndPrivateDraft(string siteKey)
+    {
+        using var fixture = new Fixture(siteKey);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var document = CanonicalDocument();
+        document.Store.Enabled = true;
+        WebsiteSystemTemplateAuthority.AddStorePage(document);
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
+        var initial = ReadDocument(await fixture.CreateController().Manage(ticket));
+        var catalog = initial.Pages["/store"].Composition[0].Children[0].Children[1];
+        var replacement = JsonSerializer.Deserialize<WebsiteCompositionNode>(JsonSerializer.Serialize(catalog, JsonOptions), JsonOptions)!;
+        replacement.FieldPresentations["store:title"] = new WebsiteControlPresentation { Style = new WebsiteVisualStyle { Color = "#123456" } };
+        var saved = await ApplyMutationsAndReadAsync(fixture, ticket, 1, [new WebsiteMutationOperation {
+            Type = "replaceNode", Scope = "page", PagePath = "/store", NodeId = catalog.Id,
+            ExpectedFingerprint = WebsiteCreativeFingerprint.Node(catalog), Node = replacement }]);
+        Assert.Null((await fixture.Db.Set<WebsiteContentState>().SingleAsync()).PublishedVersionId);
+        Assert.Equal("#123456", saved.Pages["/store"].Composition[0].Children[0].Children[1].FieldPresentations["store:title"].Style.Color);
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().Publish(new(ticket, 2)));
+        fixture.Db.ChangeTracker.Clear();
+        var published = ReadDocument(await fixture.CreateController().Public(siteKey, siteKey == WebsiteEditorSiteKeys.Protect ? Fixture.AgentSlug : null, fixture.BusinessId));
+        var liveCatalog = published.Pages["/store"].Composition[0].Children[0].Children[1];
+        Assert.Equal(WebsiteSystemTemplateAuthority.StoreCatalogKey, liveCatalog.SystemKey);
+        Assert.Equal("#123456", liveCatalog.FieldPresentations["store:title"].Style.Color);
+        Assert.Empty(liveCatalog.Children);
+        var snapshot = await fixture.Db.Set<WebsiteContentVersion>().SingleAsync();
+        Assert.Contains("legend:store:catalog:start", snapshot.CompiledPagesJson);
+        Assert.Empty(await fixture.Db.CommerceProducts.ToListAsync());
+    }
+
     private const string ElementId = "home.h1.title";
 
     private static WebsiteContentDocument CanonicalDocument(string text = "Heading")

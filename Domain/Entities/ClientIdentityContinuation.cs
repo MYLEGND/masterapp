@@ -16,6 +16,7 @@ public sealed class ClientIdentityContinuation
     public ClientSubscription? ClientSubscription { get; set; }
 
     public Guid? CommerceBusinessId { get; set; }
+    public Guid? CommerceBusinessMemberId { get; set; }
     public string? ActorUserId { get; set; }
     public string? ActorEmail { get; set; }
     public string? DestinationOrigin { get; set; }

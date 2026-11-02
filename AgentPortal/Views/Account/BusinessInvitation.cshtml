@@ -1,0 +1,8 @@
+@model string
+@{ ViewData["Title"] = "Accept business invitation"; }
+<section><h1>Join your business team</h1><p>Sign in with the personal account the business invited. This grants only the business permissions its owner assigned.</p>
+<form method="post" asp-action="AcceptBusinessInvitation" asp-controller="Account">
+@Html.AntiForgeryToken()
+<input type="hidden" name="token" value="@Model" />
+<button type="submit">Sign in and accept invitation</button>
+</form></section>

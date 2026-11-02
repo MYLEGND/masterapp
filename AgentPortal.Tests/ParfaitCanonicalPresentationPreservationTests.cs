@@ -23,7 +23,9 @@ public sealed class ParfaitCanonicalPresentationPreservationTests
     [InlineData("Views/Shared/_Layout.cshtml", "cd6992a223ce15675a287899cbe9fa3bb2946ec3")]
     [InlineData("Views/Shared/_ScopedWebsiteStoreLayout.cshtml", "64d65583c778f715af5bde408577a0fd7b155ffc")]
     [InlineData("Views/Home/Index.cshtml", "9abd970701d5f915d6f0431255869c68e479aed4")]
-    [InlineData("Views/Store/Index.cshtml", "25ef81c066dd246e5b192b85bedd1381a3390ae5")]
+    // Reviewed extraction: both authored stores and the original Parfait layout
+    // render _CatalogCards; the original catalog loop is pinned separately below.
+    [InlineData("Views/Store/Index.cshtml", "f068693b5a9c117ee4520c397e325f3c6f73425a")]
     // Reviewed script-only fix: failed or malformed quotes preserve cart state.
     [InlineData("Views/Store/Cart.cshtml", "65113402884f536ddfbb7b76143e310541280360")]
     [InlineData("Views/Store/Product.cshtml", "d320b04f64562136f6cd0e2dee5855d7c67c541c")]
@@ -51,6 +53,17 @@ public sealed class ParfaitCanonicalPresentationPreservationTests
         Buffer.BlockCopy(header, 0, gitBlob, 0, header.Length);
         Buffer.BlockCopy(bytes, 0, gitBlob, header.Length, bytes.Length);
         Assert.Equal(expectedBlobSha, Convert.ToHexString(SHA1.HashData(gitBlob)).ToLowerInvariant());
+    }
+
+    [Fact]
+    public void SharedCatalogRetainsOriginalProductMarkupAndCalculations()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "ParfaitApp", "Views", "Store", "_CatalogCards.cshtml"));
+        var loop = source[source.IndexOf("@foreach", StringComparison.Ordinal)..].Trim();
+        // The only catalog additions are style-only native presentation targets.
+        loop = System.Text.RegularExpressions.Regex.Replace(loop, " data-cms-store-style=\"[a-z]+\"", "");
+        Assert.Equal("146451497574ddc404e7d955376872c158018aff3eda20620c55b1d4c5ae94e5",
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(loop))).ToLowerInvariant());
     }
 
     [Fact]

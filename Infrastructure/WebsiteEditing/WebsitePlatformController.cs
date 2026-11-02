@@ -721,10 +721,6 @@ public class WebsitePlatformController : ControllerBase
         if (state.Revision != request.ExpectedRevision)
             return Conflict(new { error = "revision_conflict" });
 
-        var scope = await HttpContext.RequestServices.GetRequiredService<WebsiteCommerceScopeService>()
-            .ResolveAsync(actor, state, createIfMissing: true, cancellationToken)
-            ?? throw new InvalidOperationException("The commerce scope could not be created.");
-
         var document = Read(state.DraftJson);
         if (document.LegacyMigration is not null)
             return Conflict(new { error = "website_materialization_required", message = "Open Website Studio to materialize this legacy draft before changing store settings." });
@@ -736,8 +732,19 @@ public class WebsitePlatformController : ControllerBase
         if (request.CartIconSizePx.HasValue)
             document.Store.CartIconSizePx = request.CartIconSizePx.Value;
 
-        document = WebsiteContentSanitizer.Sanitize(document);
-        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+        try
+        {
+            document = WebsiteContentSanitizer.Sanitize(document);
+            WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+            WebsiteSystemTemplateAuthority.AddStorePage(document);
+        }
+        catch (ArgumentException)
+        {
+            return Conflict(new { error = "store_document_conflict", message = "The Store page must retain its canonical live catalog. Resolve the page conflict before enabling the store." });
+        }
+        var scope = await HttpContext.RequestServices.GetRequiredService<WebsiteCommerceScopeService>()
+            .ResolveAsync(actor, state, createIfMissing: true, cancellationToken)
+            ?? throw new InvalidOperationException("The commerce scope could not be created.");
         state.ProvisionedStoreBusinessId = scope.CommerceBusinessId;
         state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
         state.Revision++;

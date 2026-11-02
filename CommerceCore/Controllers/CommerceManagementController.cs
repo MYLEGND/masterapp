@@ -319,8 +319,52 @@ public sealed partial class CommerceManagementController(
             member.CanManageCrm = input.CanManageCrm.Value;
         // Team administration remains controlled by canonical business ownership.
         member.UpdatedUtc = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateConcurrencyException) { return Conflict("Team access changed. Reload before saving permissions."); }
         return ManagerRedirect(nameof(Team), new { ticket });
+    }
+
+    [HttpPost("team/add")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> InviteTeamMember(string ticket, string firstName, string lastName, string email, CancellationToken ct)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        var actor = tickets.TryUnprotect(ticket);
+        var scope = await stores.ResolveManagementScopeAsync(HttpContext, Request.Query["businessKey"].ToString(), ct);
+        if (store is null || scope is null || string.IsNullOrWhiteSpace(actor?.ActorUserId)) return Unauthorized();
+        try
+        {
+            var portal = new Uri(configuration["AgentPortalBaseUrl"] ?? "https://portal.mylegnd.com");
+            if (portal.Scheme != "https" || !string.IsNullOrEmpty(portal.UserInfo)) throw new InvalidOperationException("The central sign-in origin is invalid.");
+            var invitation = await HttpContext.RequestServices.GetRequiredService<BusinessWorkspaceService>()
+                .InviteMemberAsync(stores, scope, actor.ActorUserId, firstName ?? "", lastName ?? "", email ?? "",
+                    HttpContext.RequestServices.GetRequiredService<Infrastructure.Identity.IClientEntraLifecycleService>(), ct);
+            ApplyManagementViewData(store, ticket, "team");
+            Response.Headers.CacheControl = "no-store";
+            return View("~/Views/InternalSettings/TeamInvitation.cshtml", new CommerceTeamInvitationViewModel(
+                Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(portal.GetLeftPart(UriPartial.Authority) + "/Account/BusinessInvitation", "token", invitation.Token),
+                invitation.ExpiresUtc, invitation.IdentityRedemptionUrl));
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (ArgumentException ex) { return BadRequest(ex.Message); }
+        catch (InvalidOperationException ex) { return Conflict(ex.Message); }
+    }
+
+    [HttpPost("team/remove")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveTeamMember(string ticket, Guid memberId, long expectedUpdatedTicks, CancellationToken ct)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        var actor = tickets.TryUnprotect(ticket);
+        var scope = await stores.ResolveManagementScopeAsync(HttpContext, Request.Query["businessKey"].ToString(), ct);
+        if (store is null || scope is null || string.IsNullOrWhiteSpace(actor?.ActorUserId)) return Unauthorized();
+        try
+        {
+            var removed = await HttpContext.RequestServices.GetRequiredService<BusinessWorkspaceService>()
+                .RemoveMemberAsync(stores, scope, actor.ActorUserId, memberId, expectedUpdatedTicks, ct);
+            return removed ? ManagerRedirect(nameof(Team), new { ticket }) : Conflict("Team access changed. Reload before removing the member.");
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
     }
 
     [HttpGet("workspace")]
@@ -662,7 +706,7 @@ public sealed partial class CommerceManagementController(
     [HttpGet("preview")]
     public async Task<IActionResult> Preview(
         [FromQuery] string ticket,
-        CancellationToken ct = default)
+        CancellationToken ct = default, [FromQuery] bool catalogOnly = false)
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
@@ -673,13 +717,16 @@ public sealed partial class CommerceManagementController(
             ? "/internal/preview/product" : "/commerce/manage/preview/product";
         var previewUrl = CommerceManagementCapabilityPolicy.ManagementUrl(HttpContext, "/commerce/manage/preview", ticket);
         ViewData["StorePreviewQuery"] = previewUrl.Contains('?') ? previewUrl[previewUrl.IndexOf('?')..] : "";
-        return View("~/Views/Store/Index.cshtml", new ParfaitStorefrontViewModel
+        var model = new ParfaitStorefrontViewModel
         {
             StoreName = store.StoreName,
             Headline = store.Headline,
             Subheadline = store.Subheadline,
             Products = products.GetActiveStoreProducts(store.CommerceBusinessId)
-        });
+        };
+        return catalogOnly
+            ? PartialView("~/Views/Store/_CatalogCards.cshtml", model)
+            : View("~/Views/Store/Index.cshtml", model);
     }
 
     [HttpGet("preview/product/{slug}")]
@@ -928,13 +975,13 @@ public sealed partial class CommerceManagementController(
         {
             if (!store.AgentTrackingProfileId.HasValue)
                 throw new InvalidOperationException("Protect commerce analytics requires the canonical agent owner.");
-            return ScopeContext.ForAgent(store.AgentTrackingProfileId.Value);
+            return ScopeContext.ForAgent(store.AgentTrackingProfileId.Value).ForStore(store.CommerceBusinessId);
         }
 
         if (string.Equals(store.WebsiteSiteKey, WebsiteEditorSiteKeys.Legend, StringComparison.OrdinalIgnoreCase))
-            return ScopeContext.ForSite(store.WebsiteSiteKey, store.BusinessKey);
+            return ScopeContext.ForSite(store.WebsiteSiteKey, store.BusinessKey).ForStore(store.CommerceBusinessId);
 
-        return ScopeContext.ForBusiness(store.CommerceBusinessId);
+        return ScopeContext.ForBusiness(store.CommerceBusinessId).ForStore(store.CommerceBusinessId);
     }
 
     private async Task<MarketingOwnerScope> ResolveMarketingOwnerAsync(CommerceStoreContext store, CancellationToken ct) =>

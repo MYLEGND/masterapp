@@ -22,6 +22,18 @@ public class AccountController : Controller
     public static Func<TicketReceivedContext, Task> StoreTicketHandler(Func<TicketReceivedContext, Task>? originalTicketReceived) => async ctx =>
 
     {
+        if (ctx.Properties?.Items.TryGetValue("legend.business.invitation", out var invitationToken) == true)
+        {
+            ctx.HandleResponse();
+            var actor = ctx.Principal?.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value ?? ctx.Principal?.FindFirst("oid")?.Value;
+            var workspace = ctx.HttpContext.RequestServices.GetRequiredService<Infrastructure.Businesses.BusinessWorkspaceService>();
+            var stores = ctx.HttpContext.RequestServices.GetRequiredService<ParfaitApp.Services.CommerceStoreContextService>();
+            var destination = string.IsNullOrWhiteSpace(actor) || string.IsNullOrWhiteSpace(invitationToken) ? null :
+                await workspace.AcceptMemberInvitationAsync(invitationToken, actor, stores, ctx.HttpContext.RequestAborted);
+            if (destination is null) { ctx.Response.StatusCode = 403; return; }
+            ctx.Response.Redirect(destination);
+            return;
+        }
         if (ctx.Properties?.Items.TryGetValue("legend.store.request", out var protectedRequest) == true)
         {
             ctx.HandleResponse(); // A store sign-in must never issue a full Portal session.
@@ -118,6 +130,27 @@ public class AccountController : Controller
         if (parsed is null || await stores.ResolveManagementScopeAsync(parsed, ct) is null) return BadRequest();
         var properties = new AuthenticationProperties { RedirectUri = "/", IsPersistent = false };
         properties.Items["legend.store.request"] = request;
+        return Challenge(properties, OpenIdConnectDefaults.AuthenticationScheme);
+    }
+
+    [HttpGet, AllowAnonymous]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> BusinessInvitation(string token, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(token) || token.Length > 256) return BadRequest();
+        var hash = WebsiteEditorHandoffToken.Hash(token);
+        if (!await _db.ClientIdentityContinuations.AnyAsync(i => i.TokenHash == hash &&
+            i.Purpose == Domain.Billing.ClientIdentityContinuationPurpose.BusinessMembership &&
+            i.ConsumedUtc == null && i.ExpiresUtc > DateTime.UtcNow, ct)) return NotFound();
+        return View("BusinessInvitation", token);
+    }
+
+    [HttpPost, AllowAnonymous, ValidateAntiForgeryToken]
+    public async Task<IActionResult> AcceptBusinessInvitation(string token, CancellationToken ct)
+    {
+        if (await BusinessInvitation(token, ct) is not ViewResult) return BadRequest();
+        var properties = new AuthenticationProperties { RedirectUri = "/", IsPersistent = false };
+        properties.Items["legend.business.invitation"] = token;
         return Challenge(properties, OpenIdConnectDefaults.AuthenticationScheme);
     }
 

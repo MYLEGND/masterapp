@@ -47,9 +47,8 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         var routingConfig = ReadSource("Legend-Cloudflare", "wrangler.website-routing.jsonc");
 
         Assert.Contains("ResolveCanonicalStoreRootAsync", platform, StringComparison.Ordinal);
-        Assert.Contains("Commerce:LegendPublicBaseUrl", platform, StringComparison.Ordinal);
-        Assert.Contains("WebsiteDomainBinding", platform, StringComparison.Ordinal);
-        Assert.Contains("managerBase + \"/commerce/manage/products?ticket=\"", platform, StringComparison.Ordinal);
+        Assert.Contains("CommerceStoreContextService.ManagementEntry(root", platform, StringComparison.Ordinal);
+        Assert.DoesNotContain("managerBase + \"/commerce/manage/products?ticket=\"", platform, StringComparison.Ordinal);
         Assert.Contains("managerBase + \"/commerce/manage/preview?ticket=\"", platform, StringComparison.Ordinal);
         Assert.DoesNotContain(": \"/commerce/manage/products?ticket=\"", platform, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorDataProtection:BlobUri", tickets, StringComparison.Ordinal);

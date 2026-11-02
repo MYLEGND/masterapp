@@ -209,6 +209,7 @@ public static class CommerceServiceRegistration
         services.AddScoped<CommerceSignalService>();
         services.AddSingleton<ParfaitInternalAnalyticsCacheStamp>();
         services.AddScoped<ParfaitInternalAnalyticsService>();
+        services.TryAddScoped<Infrastructure.Businesses.BusinessWorkspaceService>();
         services.AddScoped<ParfaitInternalWorkspaceService>();
         return services;
     }

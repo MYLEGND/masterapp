@@ -599,7 +599,8 @@ builder.Services.Configure<OpenIdConnectOptions>(OpenIdConnectDefaults.Authentic
     oidcOptions.Events.OnTicketReceived = AccountController.StoreTicketHandler(oidcOptions.Events.OnTicketReceived);
     oidcOptions.Events.OnRemoteFailure = async ctx =>
     {
-        if (ctx.Properties?.Items.ContainsKey("legend.store.request") == true)
+        if (ctx.Properties?.Items.ContainsKey("legend.store.request") == true ||
+            ctx.Properties?.Items.ContainsKey("legend.business.invitation") == true)
         {
             ctx.HandleResponse();
             ctx.Response.StatusCode = 403;

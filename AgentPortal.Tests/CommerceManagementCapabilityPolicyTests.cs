@@ -111,6 +111,8 @@ public sealed class CommerceManagementCapabilityPolicyTests
         builder.WebHost.UseTestServer();
         builder.Services.AddSingleton(f.Db);
         builder.Services.AddSingleton(f.Stores); builder.Services.AddSingleton(f.Tickets);
+        builder.Services.AddSingleton(new BusinessWorkspaceService(f.Db, Mock.Of<Infrastructure.Analytics.IAnalyticsQueryService>()));
+        builder.Services.AddSingleton(Mock.Of<Infrastructure.Identity.IClientEntraLifecycleService>());
         builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
         builder.Services.AddLegendCommerceSessions();
         builder.Services.AddControllersWithViews().AddApplicationPart(Assembly.Load("ProtectWebsite")).AddLegendCommerceManagementMvc().AddControllersAsServices();
@@ -175,6 +177,20 @@ public sealed class CommerceManagementCapabilityPolicyTests
         var workspace = await client.GetAsync("/internal");
         Assert.Equal(System.Net.HttpStatusCode.Redirect, workspace.StatusCode);
         Assert.Equal("/internal/dashboard", workspace.Headers.Location!.OriginalString);
+        var otherBusiness = new CommerceBusiness { Key = "disjoint", DisplayName = "Disjoint" };
+        f.Db.Add(otherBusiness);
+        f.Db.AddRange(new CommerceProduct { CommerceBusinessId = f.Business.Id, ExternalProductKey = "own", Name = "Own live catalog item", Slug = "own-item", PriceCents = 8900 },
+            new CommerceProduct { CommerceBusinessId = otherBusiness.Id, ExternalProductKey = "other", Name = "Other tenant private item", Slug = "other-item", PriceCents = 100 });
+        await f.Db.SaveChangesAsync();
+        var catalogResponse = await client.GetAsync("/internal/preview?catalogOnly=true");
+        Assert.Equal(System.Net.HttpStatusCode.OK, catalogResponse.StatusCode);
+        var catalogHtml = await catalogResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Own live catalog item", catalogHtml);
+        Assert.DoesNotContain("Other tenant private item", catalogHtml);
+        Assert.Contains("/internal/preview/product/own-item", catalogHtml);
+        Assert.Contains("data-cms-store-style=\"title\"", catalogHtml);
+        Assert.Empty(await f.Db.AnalyticsEvents.ToListAsync());
+
         var authenticatedToken = await client.GetAsync("/test-token");
         token = await authenticatedToken.Content.ReadAsStringAsync();
         client.DefaultRequestHeaders.Remove("Cookie");
@@ -186,6 +202,38 @@ public sealed class CommerceManagementCapabilityPolicyTests
         Assert.Equal(System.Net.HttpStatusCode.Redirect, saved.StatusCode);
         Assert.Equal("/internal/settings/business-profile", saved.Headers.Location!.OriginalString);
         Assert.Equal("Synthetic store", f.Business.DisplayName);
+        var staffId = Guid.NewGuid().ToString("D");
+        var staff = new ClientProfile { ClientUserId = staffId, ExternalIdentityObjectId = staffId, Email = "http-staff@example.invalid", NormalizedEmail = "http-staff@example.invalid" };
+        f.Db.Add(staff); await f.Db.SaveChangesAsync();
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, (await client.PostAsync("/internal/settings/team/add", new System.Net.Http.StringContent(""))).StatusCode);
+        var invited = await client.PostAsync("/internal/settings/team/add", new System.Net.Http.FormUrlEncodedContent(new System.Collections.Generic.Dictionary<string,string> {
+            ["__RequestVerificationToken"] = token, ["firstName"] = "Synthetic", ["lastName"] = "Staff", ["email"] = staff.Email }));
+        Assert.Equal(System.Net.HttpStatusCode.OK, invited.StatusCode);
+        var receiptHtml = await invited.Content.ReadAsStringAsync();
+        Assert.Contains("Invitation created", receiptHtml);
+        var invitationUrl = System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Match(receiptHtml, "value=\"(https://[^\"]+/Account/BusinessInvitation[^\"]+)\"").Groups[1].Value);
+        Assert.NotEmpty(invitationUrl);
+        var invitationProperties = new Microsoft.AspNetCore.Authentication.AuthenticationProperties();
+        invitationProperties.Items["legend.business.invitation"] = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(invitationUrl).Query)["token"].ToString();
+        var invitationHttp = new DefaultHttpContext { RequestServices = app.Services };
+        var invitationCallback = new Microsoft.AspNetCore.Authentication.TicketReceivedContext(invitationHttp, callback.Scheme,
+            new Microsoft.AspNetCore.Authentication.OpenIdConnect.OpenIdConnectOptions(),
+            new Microsoft.AspNetCore.Authentication.AuthenticationTicket(new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(new[] {
+                new System.Security.Claims.Claim("oid", staffId) }, "synthetic-validated-provider")), invitationProperties, "OpenIdConnect"));
+        await AccountController.StoreTicketHandler(_ => { portalSignInCalled = true; return Task.CompletedTask; })(invitationCallback);
+        Assert.True(invitationCallback.Result!.Handled); Assert.False(portalSignInCalled);
+        Assert.False(invitationHttp.Response.Headers.ContainsKey("Set-Cookie"));
+        Assert.Equal("https://one.example.invalid/internal/login", invitationHttp.Response.Headers.Location.ToString());
+        var staffMember = await f.Db.CommerceBusinessMembers.AsNoTracking().SingleAsync(m => m.ClientProfileId == staff.Id);
+        Assert.Equal("Active", staffMember.Status);
+        var teamPage = await client.GetAsync("/internal/settings/team");
+        Assert.Equal(System.Net.HttpStatusCode.OK, teamPage.StatusCode);
+        Assert.Contains("http-staff@example.invalid", await teamPage.Content.ReadAsStringAsync());
+        var removed = await client.PostAsync("/internal/settings/team/remove", new System.Net.Http.FormUrlEncodedContent(new System.Collections.Generic.Dictionary<string,string> {
+            ["__RequestVerificationToken"] = token, ["memberId"] = staffMember.Id.ToString(), ["expectedUpdatedTicks"] = staffMember.UpdatedUtc.Ticks.ToString() }));
+        Assert.Equal(System.Net.HttpStatusCode.Redirect, removed.StatusCode);
+        Assert.Equal("Revoked", await f.Db.CommerceBusinessMembers.Where(m => m.Id == staffMember.Id).Select(m => m.Status).SingleAsync());
+
         f.Member.Status = "Revoked"; await f.Db.SaveChangesAsync();
         Assert.Equal(System.Net.HttpStatusCode.Unauthorized, (await client.GetAsync("/internal")).StatusCode);
         var deniedHttp = new DefaultHttpContext { RequestServices = app.Services };
@@ -281,6 +329,8 @@ public sealed class CommerceManagementCapabilityPolicyTests
     [InlineData("settings/business-profile", "business-profile", "GET")]
     [InlineData("settings/business-profile", "business-profile", "POST")]
     [InlineData("settings/team", "team", "GET")]
+    [InlineData("settings/team/add", "team/add", "POST")]
+    [InlineData("settings/team/remove", "team/remove", "POST")]
     [InlineData("commerce/products", "products", "GET")]
     [InlineData("commerce/products", "product", "POST")]
     [InlineData("commerce/products/settings", "settings/commerce", "POST")]
@@ -332,7 +382,7 @@ public sealed class CommerceManagementCapabilityPolicyTests
     [InlineData("/internal/login", "GET")]
     [InlineData("/internal/logout", "POST")]
     [InlineData("/internal/denied", "GET")]
-    [InlineData("/internal/settings/team/add", "POST")]
+    [InlineData("/internal/settings/team/add", "GET")]
     [InlineData("/internal/settings/team/00000000-0000-0000-0000-000000000001", "POST")]
     [InlineData("/internal/analytics/meta-settings", "POST")]
     [InlineData("/internal/settings/payments/refund", "GET")]
@@ -576,6 +626,78 @@ public sealed class CommerceManagementCapabilityPolicyTests
         Assert.False(f.Member.CanManageCrm);
     }
 
+    [Fact]
+    public async Task MembershipInvitationRequiresExactIdentityAndRevocationInvalidatesAcceptance()
+    {
+        await using var f = new NavigationFixture("owner", "Active", true, relational: true);
+        var state = await f.Db.Set<WebsiteContentState>().SingleAsync();
+        state.ProvisionedStoreBusinessId = f.Business.Id;
+        f.Db.Add(new WebsiteDomainBinding { CommerceBusinessId = f.Business.Id, Hostname = "store.example.invalid",
+            Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow });
+        var invitee = new ClientProfile { ClientUserId = "f1cb63b0-2ddd-48f7-8e35-253a624eab19", ExternalIdentityObjectId = "f1cb63b0-2ddd-48f7-8e35-253a624eab19",
+            Email = "staff@example.invalid", NormalizedEmail = "staff@example.invalid" };
+        f.Db.Add(invitee); await f.Db.SaveChangesAsync();
+        var scope = new CommerceManagementScope(f.Business.Id, f.Business.Key, state.Id, state.SiteKey, state.OwnerKey, "https://store.example.invalid");
+        var workspace = new BusinessWorkspaceService(f.Db, Mock.Of<Infrastructure.Analytics.IAnalyticsQueryService>());
+        var identities = new Mock<Infrastructure.Identity.IClientEntraLifecycleService>(MockBehavior.Strict);
+        var invitation = await workspace.InviteMemberAsync(f.Stores, scope, "actor", "Test", "Staff", invitee.Email, identities.Object, default);
+        var member = await f.Db.CommerceBusinessMembers.SingleAsync(m => m.ClientProfileId == invitee.Id);
+        Assert.Equal("Pending", member.Status);
+        Assert.False(member.CanManageCrm); Assert.False(member.CanManageOrders); Assert.False(member.CanManageTeam);
+        Assert.Null(await f.Stores.ResolveManagementActorAsync(scope, "f1cb63b0-2ddd-48f7-8e35-253a624eab19", "orders"));
+        Assert.Null(await workspace.AcceptMemberInvitationAsync(invitation.Token, "outsider", f.Stores, default));
+        var replacement = await workspace.InviteMemberAsync(f.Stores, scope, "actor", "Test", "Staff", invitee.Email, identities.Object, default);
+        Assert.Null(await workspace.AcceptMemberInvitationAsync(invitation.Token, "f1cb63b0-2ddd-48f7-8e35-253a624eab19", f.Stores, default));
+        Assert.Equal("https://store.example.invalid/internal/login", await workspace.AcceptMemberInvitationAsync(replacement.Token, "f1cb63b0-2ddd-48f7-8e35-253a624eab19", f.Stores, default));
+        Assert.Null(await workspace.AcceptMemberInvitationAsync(replacement.Token, "f1cb63b0-2ddd-48f7-8e35-253a624eab19", f.Stores, default));
+        await f.Db.Entry(member).ReloadAsync();
+        Assert.Equal("Active", member.Status);
+        member.CanManageStorefront = true; member.CanManageOrders = true; await f.Db.SaveChangesAsync();
+        Assert.NotNull(await f.Stores.ResolveManagementActorAsync(scope, "f1cb63b0-2ddd-48f7-8e35-253a624eab19", "orders"));
+        Assert.Null(await f.Stores.ResolveManagementActorAsync(scope, "f1cb63b0-2ddd-48f7-8e35-253a624eab19", "crm"));
+        Assert.True(await workspace.RemoveMemberAsync(f.Stores, scope, "actor", member.Id, member.UpdatedUtc.Ticks, default));
+        Assert.Null(await f.Stores.ResolveManagementActorAsync(scope, "f1cb63b0-2ddd-48f7-8e35-253a624eab19", "orders"));
+        await f.Db.Entry(member).ReloadAsync();
+        var revoked = await workspace.InviteMemberAsync(f.Stores, scope, "actor", "Test", "Staff", invitee.Email, identities.Object, default);
+        Assert.True(await workspace.RemoveMemberAsync(f.Stores, scope, "actor", member.Id, member.UpdatedUtc.Ticks, default));
+        Assert.Null(await workspace.AcceptMemberInvitationAsync(revoked.Token, "f1cb63b0-2ddd-48f7-8e35-253a624eab19", f.Stores, default));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => workspace.RemoveMemberAsync(f.Stores, scope, "outsider", f.Member.Id, f.Member.UpdatedUtc.Ticks, default));
+        identities.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData("expired")]
+    [InlineData("inviter-revoked")]
+    [InlineData("domain-revoked")]
+    [InlineData("identity-conflict")]
+    [InlineData("wrong-purpose")]
+    public async Task MembershipAcceptanceRechecksCurrentAuthority(string change)
+    {
+        await using var f = new NavigationFixture("owner", "Active", true, relational: true);
+        var state = await f.Db.Set<WebsiteContentState>().SingleAsync();
+        state.ProvisionedStoreBusinessId = f.Business.Id;
+        var domain = new WebsiteDomainBinding { CommerceBusinessId = f.Business.Id, Hostname = "store.example.invalid",
+            Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow };
+        var invitee = new ClientProfile { ClientUserId = "e26d10d7-1e4d-46cf-a536-967c281bdd2e", Email = "invited@example.invalid" };
+        f.Db.Add(domain); f.Db.Add(invitee); await f.Db.SaveChangesAsync();
+        var scope = new CommerceManagementScope(f.Business.Id, f.Business.Key, state.Id, state.SiteKey, state.OwnerKey, "https://store.example.invalid");
+        var workspace = new BusinessWorkspaceService(f.Db, Mock.Of<Infrastructure.Analytics.IAnalyticsQueryService>());
+        var invitation = await workspace.InviteMemberAsync(f.Stores, scope, "actor", "Test", "Invitee", invitee.Email,
+            Mock.Of<Infrastructure.Identity.IClientEntraLifecycleService>(), default);
+        var receipt = await f.Db.ClientIdentityContinuations.SingleAsync();
+        switch (change)
+        {
+            case "expired": receipt.ExpiresUtc = DateTime.UtcNow.AddSeconds(-1); break;
+            case "inviter-revoked": f.Member.Status = "Revoked"; break;
+            case "domain-revoked": domain.CertificateStatus = "pending"; break;
+            case "identity-conflict": f.Db.Add(new ClientProfile { ClientUserId = "another-stable-subject", ExternalIdentityObjectId = invitee.ClientUserId, Email = "conflict@example.invalid" }); break;
+            case "wrong-purpose": receipt.Purpose = Domain.Billing.ClientIdentityContinuationPurpose.SignIn; break;
+        }
+        await f.Db.SaveChangesAsync();
+        Assert.Null(await workspace.AcceptMemberInvitationAsync(invitation.Token, invitee.ClientUserId, f.Stores, default));
+        Assert.Equal("Pending", await f.Db.CommerceBusinessMembers.Where(m => m.ClientProfileId == invitee.Id).Select(m => m.Status).SingleAsync());
+    }
+
     private sealed class NavigationFixture : IAsyncDisposable
     {
         public MasterAppDbContext Db = ControllerTestHelpers.BuildDb();
@@ -611,7 +733,7 @@ public sealed class CommerceManagementCapabilityPolicyTests
                 .AddSingleton(new MerchantConnectionService(Db, protection, Array.Empty<IMerchantPaymentGateway>(), configuration)).BuildServiceProvider();
             var stores = Stores = new CommerceStoreContextService(Db, new CommerceBusinessScopeResolver(Db), null!, new WebsiteDomainService(Db, Mock.Of<System.Net.Http.IHttpClientFactory>(), configuration), configuration);
             Meta = new(configuration, Mock.Of<System.Net.Http.IHttpClientFactory>(), protection, Microsoft.Extensions.Logging.Abstractions.NullLogger<Infrastructure.Analytics.MarketingMetaAdsOAuthService>.Instance);
-            Controller = new(Tickets, configuration, stores, null!, null!, null!, null!, null!, null!, Meta, null!, null!)
+            Controller = new(Tickets, configuration, stores, new ParfaitProductService(null!, Db), null!, null!, null!, null!, null!, Meta, null!, null!)
             { ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { RequestServices = services } } };
             Controller.Url = Mock.Of<IUrlHelper>();
             Controller.HttpContext.Request.Method = "GET";

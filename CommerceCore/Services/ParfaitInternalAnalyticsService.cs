@@ -65,7 +65,7 @@ public sealed class ParfaitInternalAnalyticsService
         CancellationToken ct = default) =>
         GetWorkspaceSummaryAsync(
             businessId,
-            ScopeContext.ForBusiness(businessId),
+            ScopeContext.ForBusiness(businessId).ForStore(businessId),
             MarketingOwnerScope.Business(businessId),
             preset,
             fromUtc,
@@ -91,7 +91,7 @@ public sealed class ParfaitInternalAnalyticsService
             toUtc,
             viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
             qualityMode: qualityMode);
-        var scope = analyticsScope;
+        var scope = analyticsScope.ForStore(businessId);
         // Fresh scoped queries deliberately bypass the cache; zero relative TTL is invalid.
         return await BuildWorkspaceSummaryAsync(businessId, marketingOwner, range, scope, ct);
     }
@@ -166,7 +166,7 @@ public sealed class ParfaitInternalAnalyticsService
         CancellationToken ct = default) =>
         GetDashboardAsync(
             businessId,
-            ScopeContext.ForBusiness(businessId),
+            ScopeContext.ForBusiness(businessId).ForStore(businessId),
             MarketingOwnerScope.Business(businessId),
             preset,
             fromUtc,
@@ -196,7 +196,7 @@ public sealed class ParfaitInternalAnalyticsService
             toUtc,
             viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
             qualityMode: qualityMode);
-        var scope = analyticsScope;
+        var scope = analyticsScope.ForStore(businessId);
         return await BuildDashboardAsync(businessId, marketingOwner, range, scope,
             fromUtc, toUtc, viewerTimeZoneId, viewerTimeZoneOffsetMinutes, ct);
     }

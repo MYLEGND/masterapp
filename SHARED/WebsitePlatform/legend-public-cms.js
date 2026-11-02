@@ -23,7 +23,7 @@
   const AGENT_SLUG = context.agentSlug || '';
   let BUSINESS_ID = context.businessId || '';
   const params = new URLSearchParams(location.search);
-  const requestedPage = SITE_KEY === 'business' && (params.has('legendEdit') || location.pathname.startsWith('/business-preview')) ? params.get('cmsPage') : null;
+  const requestedPage = (params.has('legendEdit') || window.history?.state?.legendStudioTicket || location.pathname.startsWith('/business-preview')) ? params.get('cmsPage') : null;
   const customPage = requestedPage && /^\/(?:[a-z0-9_-]+\/)*[a-z0-9_-]*$/.test(requestedPage) ? requestedPage.replace(/\/$/, '') || '/' : null;
   let activeEditorRoute = customPage;
   let pageKey = (customPage ? customPage.slice(1).replace(/\//g, '-') || 'home' : null) || renderInput?.pageKey || document.body?.dataset?.pageKey
@@ -684,6 +684,9 @@
   }
 
   function currentPageRoute() {
+    const storeRoot=window.PARFAIT_COMMERCE_CONTEXT?.storeRootPath;
+    if(!editorMode && typeof storeRoot==='string' && storeRoot.startsWith('/') &&
+       normalizePageRoute(location.pathname)===normalizePageRoute(storeRoot) && documentState.pages?.['/store']) return '/store';
     const browserPath = (editorMode && activeEditorRoute) || customPage || location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
     return canonicalSiteRoute(browserPath) || '/';
   }
@@ -1110,7 +1113,7 @@
     const fieldKey=['INPUT','SELECT','TEXTAREA','BUTTON'].includes(selected.tagName) && selected.dataset?.cmsFieldKey
       ? formFieldKey(selected)
       : null;
-    const form=fieldKey ? selected.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]') : null;
+    const form=fieldKey ? selected.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id],[data-legend-store-catalog][data-cms-composition-id]') : null;
     const elementId=fieldKey
       ? form?.dataset?.cmsCompositionId
       : (selected.dataset.cmsCompositionId || selected.dataset.cmsId || null);
@@ -2057,7 +2060,7 @@
 
   function nativeFormPresentationOwner(el) {
     if(!el?.dataset?.cmsPresentationKey) return null;
-    const form=el.closest('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]');
+    const form=el.closest('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id],[data-legend-store-catalog][data-cms-composition-id]');
     const node=compositionNode(form?.dataset.cmsCompositionId);
     const binding=nativeFormPresentationBindings.get(el);
     return node && binding?.form===form && binding.ownerId===node.id &&
@@ -2083,12 +2086,12 @@
 
   function formFieldPresentationForElement(el, create = true) {
     if(!el || legacyMigration) return null;
-    const form=el.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]');
+    const form=el.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id],[data-legend-store-catalog][data-cms-composition-id]');
     if(!form || form===el) return null;
     const key=formFieldKey(el);
     if(!key) return null;
     const formNode=compositionNode(form.dataset.cmsCompositionId);
-    if(!formNode || !(formNode.type==='form' || formNode.type==='receptionist' || formNode.type==='experience' || String(formNode.systemKey || '').startsWith('protect_runtime_form:'))) return null;
+    if(!formNode || !(formNode.systemKey==='commerce_catalog' || formNode.type==='form' || formNode.type==='receptionist' || formNode.type==='experience' || String(formNode.systemKey || '').startsWith('protect_runtime_form:'))) return null;
     if(create){
       formNode.fieldPresentations ||= {};
       formNode.fieldPresentations[key] ||= normalizeControlPresentation(null);
@@ -2423,6 +2426,11 @@
 
   function materializeCompositionNodeWithNativeControls(el, fallbackId = null, identity = null) {
     if (!(el instanceof HTMLElement) || el.closest('.legend-cms-editor')) return null;
+    if(el.matches('[data-legend-store-catalog]')) {
+      const saved=compositionNode(el.dataset.cmsId);
+      if(saved?.systemKey==='commerce_catalog') return {...cloneCanonicalValue(saved),children:[]};
+      return null;
+    }
     identity ||= createMaterializationIdentityContext();
     // Template decoration is deliberately presentation-only. Persisting SVG/icon
     // wrappers as ordinary v3 nodes creates empty colored boxes after the SVG is
@@ -3071,7 +3079,7 @@
   // A late-loading module fills only the canonical placeholders. Apply the same
   // existing control presentation after mounting; do not rerender/reset forms.
   window.addEventListener('legend:public-inquiry-mounted',()=>{
-    document.querySelectorAll('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]').forEach(form=>{
+    document.querySelectorAll('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id],[data-legend-store-catalog][data-cms-composition-id]').forEach(form=>{
       const node=compositionNode(form.dataset.cmsCompositionId);
       if(node) applyFormFieldPresentations(form,node);
     });
@@ -3190,10 +3198,58 @@
     else el.removeAttribute('fetchpriority');
   }
 
+  // Catalog values/actions stay server-owned. The existing presentation records
+  // style every instance of a native catalog part, never materialized products.
+  const storePresentationParts=['card','media','badge','content','title','price','actions','button'];
+  function applyStoreCatalogPresentation(catalog,node) {
+    let sheet=catalog.querySelector('style[data-store-catalog-presentation]');
+    if(!sheet){sheet=document.createElement('style');sheet.dataset.storeCatalogPresentation='';catalog.prepend(sheet);}
+    const rules=[];
+    for(const part of storePresentationParts){
+      const key='store:'+part;
+      const presentation=node.fieldPresentations?.[key];
+      if(presentation){
+        const probe=document.createElement('div');
+        applyStyle(probe,effectiveStyle(presentation));applyLayout(probe,effectiveLayout(presentation));
+        rules.push('[data-legend-store-catalog] [data-cms-store-style="'+part+'"]{'+probe.style.cssText+'}');
+      }
+      catalog.querySelectorAll('[data-cms-store-style="'+part+'"]').forEach(element=>{
+        element.dataset.cmsFieldKey=key;element.dataset.cmsSignalOnly='true';element.dataset.cmsEditable='true';
+      });
+    }
+    sheet.textContent=rules.join('\n');
+  }
+
+  let retainedStoreCatalog = null;
   function buildCompositionNode(node) {
     if (!node?.id) return null;
     let el;
-    if (node.type === 'reusable') {
+    if (node.systemKey === 'commerce_catalog') {
+      el=retainedStoreCatalog || document.createElement('div');
+      el.dataset.legendStoreCatalog='';
+      if(editorMode && !document.querySelector('link[data-store-presentation]')) {
+        const css=document.createElement('link'); css.rel='stylesheet';css.dataset.storePresentation='';
+        css.href=new URL('/store-assets/css/storefront.css',storePreviewUrl() || location.origin).toString();document.head.appendChild(css);
+      }
+
+      if(!retainedStoreCatalog){
+        el.append(document.createComment('legend:store:catalog:start'),document.createComment('legend:store:catalog:end'));
+        if(editorMode){
+          const url=storePreviewUrl();
+          if(url){
+            const target=new URL(url,location.origin);target.searchParams.set('catalogOnly','true');
+            fetch(target.toString(),{credentials:'include'}).then(async response=>{
+              if(!response.ok) throw new Error('Catalog preview unavailable');
+              const markup=await response.text();
+              if(!el.isConnected)return;
+              el.innerHTML=markup;
+              applyStoreCatalogPresentation(el,node);
+              el.querySelectorAll('a').forEach(link=>{link.removeAttribute('href');link.setAttribute('aria-disabled','true');});
+            }).catch(()=>{if(el.isConnected)el.textContent='Catalog preview unavailable. Reopen this page to retry.';});
+          }
+        }
+      }
+    } else if (node.type === 'reusable') {
       const definition = reusableDefinition(node);
       el = document.createElement(definition?.kind === 'section' ? 'section' : 'div');
       el.className = 'cms-reusable-instance';
@@ -3276,6 +3332,7 @@
     if(pageUsesSystemTemplate()) { applyTemplateBackedCompositionPage(); return; }
     const main=document.querySelector('main');
     if(!main) return;
+    retainedStoreCatalog=!editorMode && !renderInput?.server ? main.querySelector('[data-legend-store-catalog]') : null;
     main.replaceChildren();
     const roots=pageState().composition || [];
     for(const node of roots){
@@ -4249,9 +4306,12 @@
 
   function applyCompositionNode(el, model) {
     if (el?.dataset.cmsSignalOnly && el.tagName!=='FORM') {
-      const form=el.closest('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]');
+      const form=el.closest('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id],[data-legend-store-catalog][data-cms-composition-id]');
       const formNode=compositionNode(form?.dataset.cmsCompositionId);
-      if(form && formNode) applyFormFieldPresentations(form,formNode);
+      if(form && formNode) {
+        if(formNode.systemKey==='commerce_catalog') applyStoreCatalogPresentation(form,formNode);
+        else applyFormFieldPresentations(form,formNode);
+      }
       return;
     }
     if (!el || !model) return;
@@ -4315,6 +4375,7 @@
       const photo=el.parentElement?.querySelector('img');
       el.hidden=!!photo && photo.style.display!=='none';
     }
+    if(model.systemKey==='commerce_catalog') applyStoreCatalogPresentation(el,model);
     if (el.tagName === 'FORM' || model.type === 'receptionist') applyFormFieldPresentations(el,model);
     applyAnimations(el, model.animations);
   }
@@ -5075,7 +5136,7 @@
       });
     }
     return [...entries.values()]
-      .filter(entry=>includeDeleted || !entry.deleted)
+      .filter(entry=>(includeDeleted || !entry.deleted) && (entry.route!=='/store' || storeIsEnabled()))
       .sort((a,b)=>a.order-b.order || a.route.localeCompare(b.route));
   }
 
@@ -5135,13 +5196,16 @@
       const prefix = SITE_KEY === 'protect' ? (managementPayload?.agentSlug ? `/a/${encodeURIComponent(managementPayload.agentSlug)}` : context.pagePrefix || '') : '';
       url.pathname=prefix + (route==='/'?'/':route);
     }
+    if(route==='/store') {
+      url.pathname=SITE_KEY==='business'?'/business-preview/':(SITE_KEY==='protect' && managementPayload?.agentSlug ? `/a/${encodeURIComponent(managementPayload.agentSlug)}/` : '/');
+      url.searchParams.set('cmsPage','/store');
+    }
     if(editorTicket) url.searchParams.set('legendEdit',editorTicket);
     if(materialize) url.searchParams.set('legendMaterialize','1');
     return url;
   }
 
   async function navigateToEditorPage(route,{replaceHistory=false}={}) {
-    if (route === '__store__') { openStorePreview(); return; }
     closeStorePreview();
     route=normalizePageRoute(route); if(!route) return;
     if (saving) { const status=document.getElementById('legend-cms-status'); if(status) status.textContent='Wait for the current save to finish, then choose a page.'; return; }
@@ -5156,7 +5220,7 @@
     // Switching pages is therefore a local workspace operation, not another
     // /manage bootstrap. Protect keeps navigation reloads where the server must
     // mount a route-specific executable runtime/template.
-    if(editorMode && SITE_KEY==='business' && documentState.pages?.[route]){
+    if(editorMode && (SITE_KEY==='business' || route==='/store') && documentState.pages?.[route]){
       activeEditorRoute=route;
       pageKey=route==='/'?'home':route.slice(1).replace(/\//g,'-');
       setSelected(null);
@@ -5537,14 +5601,7 @@
       option.textContent=entry.label;
       select.appendChild(option);
     }
-    if (storeIsEnabled()) {
-      const option=document.createElement('option');
-      option.value='__store__';
-      option.textContent=effectiveStoreLabel();
-      select.appendChild(option);
-    }
-    if (storePreviewActive && storeIsEnabled()) select.value='__store__';
-    else if ([...select.options].some(option=>option.value===current)) select.value=current;
+    if ([...select.options].some(option=>option.value===current)) select.value=current;
   }
 
   function installPageSelector() {
@@ -6490,7 +6547,7 @@
 
     const selectedFieldPresentation=selected?.dataset?.cmsSignalOnly ? formFieldPresentationForElement(selected,false) : null;
     const selectedFieldCanCreatePresentation=!!selected?.dataset?.cmsSignalOnly &&
-      !!selected?.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]') &&
+      !!selected?.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id],[data-legend-store-catalog][data-cms-composition-id]') &&
       !!formFieldKey(selected);
     document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || (!!selected.dataset.cmsSignalOnly && !selectedFieldPresentation && !selectedFieldCanCreatePresentation); });
     if (!selected) {
@@ -7932,7 +7989,7 @@
   }
 
   function sourceSelectedNodeId() {
-    return selected?.dataset?.cmsCompositionId || selected?.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]')?.dataset?.cmsCompositionId || null;
+    return selected?.dataset?.cmsCompositionId || selected?.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id],[data-legend-store-catalog][data-cms-composition-id]')?.dataset?.cmsCompositionId || null;
   }
 
   function syncSelectedSourcePresentationFromCanvas() {
@@ -9649,7 +9706,8 @@
       const ov=selectedWebsiteModel(); if(!ov) return;
       const style=editingStyle(ov,true);
       if(input.value==='') delete style[key]; else style[key]=value;
-      applyStyle(selected,effectiveStyle(ov));
+      if(selected.closest('[data-legend-store-catalog]') && selected.dataset.cmsSignalOnly) applyCompositionNode(selected,ov);
+      else applyStyle(selected,effectiveStyle(ov));
       updateDirectCanvasUi();
       syncSelectedSourcePresentationFromCanvas();
       syncEditorControls();
@@ -9661,7 +9719,8 @@
       const ov=selectedWebsiteModel(); if(!ov) return;
       const style=editingStyle(ov,true);
       delete style[button.dataset.colorReset];
-      applyStyle(selected,effectiveStyle(ov));
+      if(selected.closest('[data-legend-store-catalog]') && selected.dataset.cmsSignalOnly) applyCompositionNode(selected,ov);
+      else applyStyle(selected,effectiveStyle(ov));
       syncEditorControls();
       markDirty();
     }));
@@ -10748,6 +10807,7 @@
     applyCanonicalResponsiveAttributes(el,model);
     applyStyle(el,effectiveStyle(model,el));
     applyLayout(el,effectiveLayout(model,el));
+    if(model.systemKey==='commerce_catalog') applyStoreCatalogPresentation(el,model);
     if (el.tagName === 'FORM' || model.type === 'receptionist') applyFormFieldPresentations(el,model,true);
   }
 

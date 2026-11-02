@@ -53,7 +53,7 @@ public static class CommerceManagementCapabilityPolicy
             return "catalog";
         if (route is "business-profile" or "payments/connect" or "payments/confirm" or
             "payments/default" or "payments/disconnect" or "payments/refresh" or "payments/resume" or "payments/refund" or "payments/reconcile") return "settings";
-        if (route is "team/permissions") return "team";
+        if (route is "team/permissions" or "team/add" or "team/remove") return "team";
         if (route is "order" or "order/receipt")
             return "orders";
         if (route is "automations/workflows" or "automations/workflows/delete")
@@ -89,6 +89,7 @@ public static class CommerceManagementCapabilityPolicy
             Add("GET", pair.Item1, pair.Item2);
         foreach (var pair in new[] {
             ("settings/business-profile", "business-profile"), ("settings/team/permissions", "team/permissions"),
+            ("settings/team/add", "team/add"), ("settings/team/remove", "team/remove"),
             ("commerce/products", "product"), ("commerce/products/settings", "settings/commerce"),
             ("commerce/products/delete", "product/delete"), ("commerce/products/reorder", "products/reorder"),
             ("commerce/orders/update", "order"), ("commerce/orders/receipt", "order/receipt"),

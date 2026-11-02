@@ -325,6 +325,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     internal static Expression<Func<WebsiteLead, bool>> ScopePredicateLeads(ScopeContext scope, Guid[]? scopedAgentIds)
     {
+        // Website/insurance inquiries are not store conversions. Store checkout and
+        // order activity is reported from its canonical events and orders instead.
+        if (scope.StoreBusinessId.HasValue) return e => false;
         if (scope.ScopeType == ScopeType.Business)
             return e => scope.CommerceBusinessId != null && scope.CommerceBusinessId != Guid.Empty &&
                 !scope.HasSiteScope && scope.AgentTrackingProfileId == null && e.CommerceBusinessId == scope.CommerceBusinessId && e.AgentTrackingProfileId == null;

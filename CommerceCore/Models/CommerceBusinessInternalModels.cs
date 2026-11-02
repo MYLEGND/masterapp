@@ -32,3 +32,5 @@ public sealed class CommerceBusinessProfileInput
     [Required, StringLength(160, MinimumLength = 2)]
     public string BusinessType { get; set; } = "";
 }
+
+public sealed record CommerceTeamInvitationViewModel(string InvitationUrl, DateTime ExpiresUtc, string? IdentityRedemptionUrl);

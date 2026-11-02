@@ -420,6 +420,7 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
     const method=init.method || 'GET';
     const reject=payload=>({ok:false,status:denied?401:400,json:async()=>payload});
     if(denied) return {ok:false,status:401,json:async()=>({error:'unauthorized'})};
+    if(parsed.pathname==='/commerce/manage/preview' && parsed.searchParams.get('catalogOnly')==='true') return {ok:true,status:200,text:async()=>'<article class="sp-shop-card" data-cms-store-style="card"><h2 data-cms-store-style="title">Live synthetic product</h2><a href="/store/product/synthetic">View product</a></article>'};
 
     if(parsed.pathname.endsWith('/manage/agent/node') && method==='GET'){
       const id=parsed.searchParams.get('id');
@@ -2814,7 +2815,8 @@ test('store and cart are presentation-editable controls and SVG clicks never nav
 
 test('store navigation is one far-right website-owned cluster and defaults to the exact Parfait cart glyph',()=>{
   assert.match(source,/cluster\.className='legend-store-nav-cluster'/);
-  assert.match(source,/cluster\.append\(store,cart\);\s*nav\.appendChild\(cluster\)/);
+  assert.match(source,/cluster\.append\(store,cart\);/);
+  assert.match(source,/nav\.appendChild\(cluster\);/);
   assert.match(source,/M6\.5 6\.5h15l-1\.8 8\.2a2 2 0 0 1-2 1\.6H9\.2a2 2 0 0 1-2-1\.7L5\.7 3\.8H3/);
   assert.match(source,/\['cart','bag','basket'\]/);
   assert.match(source,/id='legend-cms-store-cart-icon'/);
@@ -8328,4 +8330,64 @@ test('published person login keeps the exact scoped workspace destination',async
     assert.equal(login.querySelectorAll('svg').length,1);
     assert.equal(f.w.document.querySelectorAll('a.login-link').length,1);
   }finally{f.close();}
+});
+
+for(const siteKey of ['business','legend','protect']) test(`Store is an authored ${siteKey} page with a protected live catalog`,async()=>{
+  const doc=canonicalBusinessNavigation(canonicalDocument());doc.store.enabled=true;
+  doc.pages['/store']={title:'Our store',navigation:{showInNavigation:false},composition:[
+    {id:'store-heading',type:'heading',tag:'h1',text:'Our collection'},
+    {id:'store-catalog',type:'container',tag:'div',systemKey:'commerce_catalog',className:'sp-shop-grid',children:[],style:{},layout:{},fieldPresentations:{'store:title':{style:{color:'#ffcc33',fontSize:24}}}}
+  ]};
+  const f=await domFixture({siteKey,doc,business:{id:'business-id',displayName:'Business'},store:{enabled:true,storefrontUrl:'/store',previewUrl:'https://site.example/commerce/manage/preview?ticket=ticket',managerUrl:'https://site.example/internal/login'}});
+  try{
+    const selector=f.w.document.getElementById('legend-cms-page-select');
+    assert.equal([...selector.options].filter(o=>o.value==='/store').length,1);
+    assert.equal([...selector.options].filter(o=>o.value==='__store__').length,0);
+    selector.value='/store';selector.dispatchEvent(new f.w.Event('change'));
+    await new Promise(resolve=>setTimeout(resolve,30));
+    assert.equal(f.w.document.querySelector('main h1').textContent,'Our collection');
+    assert.equal(f.w.document.querySelectorAll('[data-legend-store-catalog] .sp-shop-card').length,1);
+    assert.equal(f.w.document.querySelector('[data-legend-store-catalog] a').hasAttribute('href'),false);
+    assert.match(f.w.document.querySelector('style[data-store-catalog-presentation]').textContent,/color:/);
+    assert.equal(f.w.document.querySelector('[data-cms-store-style=title]').dataset.cmsFieldKey,'store:title');
+    assert.equal(f.w.document.querySelector('[data-cms-store-style=title]').textContent,'Live synthetic product');
+    assert.equal(f.w.document.querySelector('.legend-cms-store-preview'),null);
+    assert.equal(new URL(f.w.location.href).searchParams.get('cmsPage'),'/store');
+    f.click('[data-cms-store-style="title"]');
+    f.input('[data-style-key="color"]','#abcdef');
+    assert.match(f.w.document.querySelector('style[data-store-catalog-presentation]').textContent,/#abcdef|rgb\(171, 205, 239\)/);
+    const saved=await f.save();
+    const catalog=saved.pages['/store'].composition.find(node=>node.systemKey==='commerce_catalog');
+    assert.equal(catalog.fieldPresentations['store:title'].style.color,'#abcdef');
+    assert.equal(catalog.children.length,0);
+    assert.doesNotMatch(JSON.stringify(saved),/Live synthetic product/);
+
+  }finally{f.close();}
+});
+
+test('scoped public Store hydrates its authored page without replacing live catalog records',async()=>{
+  const doc=canonicalDocument();
+  doc.store.enabled=true;
+  doc.pages['/store']={composition:[{id:'catalog',type:'container',tag:'div',systemKey:'commerce_catalog',
+    layout:{mode:'grid',columns:4},breakpointLayouts:{mobile:{mode:'grid',columns:1}},
+    fieldPresentations:{'store:title':{style:{color:'#123456'},breakpointStyles:{mobile:{color:'#abcdef'}}}}}]};
+  const dom=new JSDOM('<html><body><main><div data-legend-store-catalog data-cms-composition-id="catalog" data-cms-id="catalog"><article class="sp-shop-card"><h2 data-cms-store-style="title">Live product</h2><span>$89.00</span><a href="/store/s/tenant/product/item">View</a></article></div></main><script id="legend-cms-published-document" type="application/json"></script></body></html>',
+    {url:'https://protect.example.test/store/s/tenant',runScripts:'outside-only'});
+  const w=dom.window;w.innerWidth=390;w.CSS={escape:value=>String(value)};
+  w.PARFAIT_COMMERCE_CONTEXT={storeRootPath:'/store/s/tenant'};
+  w.document.querySelector('#legend-cms-published-document').textContent=JSON.stringify({siteKey:'protect',document:doc,pageKey:'store',server:false,publishedMarkupReady:true,runtime:{apiBase:'https://protect.example.test'}});
+  const card=w.document.querySelector('article');const catalog=card.parentElement;
+  try{
+    w.eval(source);
+    assert.equal(w.document.querySelector('article'),card);
+    assert.equal(catalog.style.gridTemplateColumns,'repeat(1,minmax(0,1fr))');
+    assert.match(catalog.querySelector('style').textContent,/rgb\(171, 205, 239\)/);
+    w.innerWidth=1440;w.dispatchEvent(new w.Event('resize'));
+    await new Promise(resolve=>setTimeout(resolve,20));
+    assert.equal(catalog.style.gridTemplateColumns,'repeat(4,minmax(0,1fr))');
+    assert.match(catalog.querySelector('style').textContent,/rgb\(18, 52, 86\)/);
+    assert.equal(w.document.querySelector('article'),card);
+    assert.equal(card.querySelector('span').textContent,'$89.00');
+    assert.equal(card.querySelector('a').getAttribute('href'),'/store/s/tenant/product/item');
+  }finally{w.close();}
 });
