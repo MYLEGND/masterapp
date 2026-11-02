@@ -2133,3 +2133,27 @@ renders distinctly. Desktop4-column,1200px3-column and390px1-column metrics veri
 mobile modal has no horizontal overflow. Profile suggestion is present and editable.
 No manual note/evidence submission performed; normal page/access auditing remains.
 PDF/backend persistence, immutable identities and authorization remain unchanged.
+
+## 2026-11-01 — GitHub preservation and nondeploying fast-track synchronization preparation
+
+Founder requested GitHub fast-track include accepted local changes without any
+production deployment. Published existing isolation/local-static-assets-parity-20261101
+at db21e0f3b582b00701037373f08605421492dc14; exact remote readback and canonical
+preflight PASS, clean/current. Draft PR754 targets Legend/fast-track-release.
+Fast-track remains3f4953ee733d44bd566f3d1e997f065473dc06d6 and requires PRs,
+architecture-validation, approved-release-security and build-and-focused-tests.
+Initial PR checks rejected missing current fast-track ancestry (FAST_TRACK_BASE_CHANGED).
+
+Prepared a clean merge of fast-track's three existing PR753 commits into isolation,
+with db21e0f3b582b00701037373f08605421492dc14 as first parent and
+3f4953ee733d44bd566f3d1e997f065473dc06d6 as second. Independent review verified
+six incoming paths exactly match fast-track; all accepted local corrections remain.
+No conflict, rewritten commit, new implementation or protection change.
+
+Do not merge PR754 into fast-track yet: active workflow380114158
+(.github/workflows/legend-fast-track-ui.yml) matches affected CRM paths and enters
+the release selector on push. Its inherited zero-target tool-promotion request is
+not fresh authorization for this application candidate; do not rely on failed
+admission as a deployment-prevention mechanism. A separately approved nondeploying
+maintenance procedure and passing exact-candidate checks are required before target
+branch update. No deployment, SQL migration or production governance change performed.
