@@ -2468,3 +2468,35 @@ Real Chrome synthetic fixtures using actual template CSS verified authored Life,
 Disability and DVH contact/result colors and the Life selected-tile indicator.
 No real inquiry, estimate, booking or payment was executed. Source acceptance and
 exact deployment receipts/runtime readback must be recorded after completion.
+
+### Verified direct Mac release
+
+Astra accepted the exact eight-file source diff SHA-256
+8d1aa00330220cb7d766690b4d9d95aa7fc20c4e170b9696b67b3b89dc7c5c1c.
+Implementation and verified GitHub source checkpoint:
+7890124af0f53e8862be84d8d7d841b19c6fbac7. Final focused renderer run: 12 passed.
+
+Both applications were published directly from this clean Mac revision, using
+one stop/upload/start attempt per target after reconciling previous operations.
+- Protect receipt: 14c01f08ee9743edb7a6b429535c6251, status 4, complete,
+  Succeeded; ZIP SHA-256 337014c038765a107f6a24b88556e3639efaf5ef5f7c3671f8247d03ab710319.
+- AgentPortal receipt: 244e95bca0964f2dadbf9adaf6350fdc, status 4, complete,
+  Succeeded; ZIP SHA-256 40313de6b904c12083acdce1df85e7136d5f40eef6a9f28260c3516b6bc9f64b.
+- Both public hosts and both Azure origins returned the exact implementation SHA
+  above from /api/runtime-provenance. Initial Portal warmup timed out once; the
+  subsequent readback succeeded without another upload or restart.
+- All 17 known Protect sitemap routes returned HTTP 200 without unavailable or
+  exception bodies (1.65–7.71 seconds in this post-start sweep). Shared CMS and
+  quote-final-review public asset bytes match source.
+- Live authenticated Portal navigation controls retained their dimensions; AI
+  artwork changed from 22 to 36 pixels inside its unchanged 38-pixel button;
+  shield artwork changed from 50 to 65 pixels without changing layout geometry.
+- Live Protect Studio opened normally. Life displayed its tenth Results +
+  scheduling step, with seven editable copy and four style targets, no iframe,
+  no submitted answers, and Draft editor status. Auto's results button opened
+  the existing ThankYou page successfully with the editor active.
+
+No website draft content was saved or published during live verification.
+Existing Cloudflare publications were not republished. This release proves the
+listed application revisions and focused behavior, not every tenant's provider
+configuration, actual booking/voice availability, or zero cold-start latency.
