@@ -116,6 +116,10 @@
     --bs-border-color: var(--pf-line);
 }
 
+:root[data-page-mode="light"] {
+    --pf-page: #fff;
+}
+
 :root[data-commerce-theme="parfait"] {
     --pf-base-rgb: 24, 18, 15;
     --pf-raised-rgb: 43, 33, 27;
@@ -147,7 +151,7 @@ html {
 }
 
 .pf-internal-body {
-    background: var(--pf-bg);
+    background: var(--pf-page);
 }
 
 
@@ -443,13 +447,32 @@ html {
 }
 
 .pf-header-left {
+    width: 100%;
     min-width: 0;
     display: flex;
     align-items: center;
     gap: 0.72rem;
 }
 
+.pf-page-mode {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.pf-page-mode select {
+    min-height: 36px;
+    max-width: 112px;
+    padding: .35rem .5rem;
+    border: 1px solid var(--pf-line);
+    border-radius: var(--pf-radius-sm);
+    background: var(--pf-surface);
+    color: var(--pf-text);
+    font: inherit;
+    font-size: .8rem;
+}
+
 .pf-brandmark {
+    flex: 1 1 auto;
     min-width: 0;
     display: inline-flex;
     align-items: center;
@@ -484,6 +507,9 @@ html {
 }
 
 .pf-brand {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--pf-nav-text);
     font-size: clamp(1.34rem, 1.95vw, 1.68rem);
     font-weight: 800;
@@ -3581,6 +3607,7 @@ button.pf-secondary-action,
 /* Nav-only replacement. Uses existing markup/script. */
 
 .pf-menu-button {
+    flex-shrink: 0;
     width: 46px;
     height: 46px;
     border-radius: var(--pf-radius-md);
@@ -3731,7 +3758,7 @@ button.pf-secondary-action,
 .pf-sidebar {
     position: fixed;
     top: 24px;
-    left: 24px;
+    right: 24px;
     bottom: 24px;
     width: min(360px, calc(100vw - 40px));
     z-index: 1040;
@@ -3739,10 +3766,10 @@ button.pf-secondary-action,
     flex-direction: column;
     border-radius: var(--pf-radius-lg);
     border: 1px solid var(--pf-line);
-    background: transparent;
+    background: var(--pf-nav-bg);
     color: var(--pf-text);
     box-shadow: none;
-    transform: translateX(calc(-100% - 42px));
+    transform: translateX(calc(100% + 42px));
     transition: transform .22s ease;
     overflow: hidden;
 }
@@ -3893,7 +3920,7 @@ button.pf-secondary-action,
 @media (max-width: 520px) {
     .pf-sidebar {
         top: 12px;
-        left: 12px;
+        right: 12px;
         bottom: 12px;
         width: calc(100vw - 24px);
         border-radius: var(--pf-radius-md);

@@ -39,6 +39,11 @@
 <html lang="en" data-commerce-theme="@(scopedStore is null || scopedStore.IsParfait ? "parfait" : "legend")">
 <head>
     <meta charset="utf-8" />
+    <script>
+        try {
+            document.documentElement.dataset.pageMode = localStorage.getItem("legend.store.pageMode") === "light" ? "light" : "dark";
+        } catch { document.documentElement.dataset.pageMode = "dark"; }
+    </script>
     <title>@title - @storeName</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="@faviconUrl" />
@@ -162,6 +167,13 @@
                             </span>
                         </a>
 
+                        <label class="pf-page-mode">
+                            <span class="visually-hidden">Page appearance</span>
+                            <select data-pf-page-mode aria-label="Page appearance">
+                                <option value="dark">Dark mode</option>
+                                <option value="light">Light mode</option>
+                            </select>
+                        </label>
                         <button class="pf-menu-button"
                                 type="button"
                                 aria-label="Open internal navigation"
@@ -190,6 +202,13 @@
     <script>
         (() => {
             const body = document.body;
+            const pageMode = document.querySelector("[data-pf-page-mode]");
+            pageMode.value = document.documentElement.dataset.pageMode || "dark";
+            pageMode.addEventListener("change", () => {
+                const mode = pageMode.value === "light" ? "light" : "dark";
+                document.documentElement.dataset.pageMode = mode;
+                try { localStorage.setItem("legend.store.pageMode", mode); } catch { /* Preference remains active for this page. */ }
+            });
             const toggleButtons = document.querySelectorAll("[data-pf-nav-toggle]");
             const closers = document.querySelectorAll("[data-pf-nav-close]");
             const routeLinks = document.querySelectorAll(".pf-route-link");
