@@ -57,7 +57,7 @@
     var canAnalytics = (ViewData["CommerceCanAnalytics"] as bool?) ?? true;
     var canSettings = (ViewData["CommerceCanSettings"] as bool?) ?? true;
     var canTeam = (ViewData["CommerceCanTeam"] as bool?) ?? true;
-    string ScopedUrl(string path) => path + "?ticket=" + Uri.EscapeDataString(managerTicket ?? "");
+    string ScopedUrl(string path) => Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, path, managerTicket);
 }
 
 <!DOCTYPE html>

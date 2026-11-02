@@ -252,6 +252,19 @@ public sealed class CommerceStoreContextService(
         return await BuildAsync(scopedBusiness, publishedOnly: true, ct, useScopedPath: false);
     }
 
+    public async Task<CommerceStoreContext?> ResolveManagementAsync(CommerceManagementScope scope,
+        string actorUserId, string capability, Guid? profileId, CancellationToken ct = default)
+    {
+        if (await ResolveManagementActorAsync(scope, actorUserId, capability, profileId, ct) is null) return null;
+        var business = await businesses.ResolveActiveByIdAsync(scope.CommerceBusinessId, ct);
+        var state = await db.Set<WebsiteContentState>().SingleOrDefaultAsync(x => x.Id == scope.WebsiteStateId &&
+            x.CommerceBusinessId == scope.CommerceBusinessId && x.ProvisionedStoreBusinessId == scope.CommerceBusinessId, ct);
+        if (business is null || state is null) return null;
+        return await BuildAsync(business, publishedOnly: false, ct, explicitDocument: Deserialize(state.DraftJson),
+            explicitSiteKey: scope.WebsiteSiteKey, explicitState: state,
+            useScopedPath: new Uri(scope.DestinationOrigin).Host == ProtectHost);
+    }
+
     public async Task<CommerceStoreContext?> ResolveForWebsiteTicketAsync(
         string token,
         WebsiteEditorTicketProtector tickets,

@@ -113,7 +113,7 @@ function isCompanyDocument(url) {
   const path=companyDocumentPath(url);
   return (url.hostname === 'mylegnd.com' || url.hostname === 'www.mylegnd.com') &&
     /^\/(?:[a-z0-9_-]+\/)*[a-z0-9_-]*$/.test(path) &&
-    !/^\/(?:api|business-preview|commerce|store|store-assets|uploads|parfait-analytics)(?:\/|$)/.test(path) &&
+    !/^\/(?:api|internal|business-preview|commerce|store|store-assets|uploads|parfait-analytics)(?:\/|$)/.test(path) &&
     !url.searchParams.has('legendEdit');
 }
 
@@ -125,6 +125,18 @@ export async function handleWebsiteRouting(request, env, fetchImpl = fetch) {
   if (incoming.protocol !== "https:") {
     incoming.protocol = "https:";
     return Response.redirect(incoming.toString(), 308);
+  }
+
+  // Private scoped workspace requests never pass through public CMS rendering or caching.
+  if ((incoming.pathname === "/internal" || incoming.pathname.startsWith("/internal/")) &&
+      (!isPlatformHost(hostname) || COMMERCE_PLATFORM_HOSTS.has(hostname))) {
+    const bridged = buildBridgeRequest(request, env);
+    if (bridged.error) return bridged.error;
+    const response = await fetchImpl(bridged.request, { cf: { cacheTtl: 0, cacheEverything: false } });
+    const headers = new Headers(response.headers);
+    headers.set("Cache-Control", "private, no-store, no-cache, must-revalidate");
+    headers.set("Pragma", "no-cache");
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   }
 
   if (isCompanyDocument(incoming)) {

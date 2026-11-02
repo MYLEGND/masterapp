@@ -3,7 +3,7 @@
     Layout = "_InternalLayout";
     ViewData["Title"] = "Team";
     var ticket = ViewData["CommerceManagerTicket"] as string ?? "";
-    var saveUrl = "/commerce/manage/team/permissions?ticket=" + Uri.EscapeDataString(ticket);
+    var saveUrl = Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, "/commerce/manage/team/permissions", ticket, "POST");
 }
 <section class="pf-command-page">
     <div class="pf-command-heading">

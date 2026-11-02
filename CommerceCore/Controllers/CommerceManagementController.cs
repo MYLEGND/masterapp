@@ -25,7 +25,7 @@ namespace ParfaitApp.Controllers;
 /// </summary>
 [Route("commerce/manage")]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-[IgnoreAntiforgeryToken]
+[AutoValidateAntiforgeryToken]
 public sealed class CommerceManagementController(
     WebsiteEditorTicketProtector tickets,
     IConfiguration configuration,
@@ -87,7 +87,7 @@ public sealed class CommerceManagementController(
             TempData["MerchantRefundStatus"] = evidence?.State == "Captured"
                 ? "Processor payment status verified. Review payment and refund status below."
                 : "Processor check completed. Payment is not yet verified as captured; review its status below.";
-            return RedirectToAction(nameof(Payments), new { ticket, environment });
+            return ManagerRedirect(nameof(Payments), new { ticket, environment });
         }
         catch (MerchantPaymentException)
         { return BadRequest("Processor status could not be verified. The original payment remains recorded; check it again without starting a new charge."); }
@@ -119,7 +119,7 @@ public sealed class CommerceManagementController(
             TempData["MerchantRefundStatus"] = result.State == "Unknown"
                 ? "Refund outcome is unknown. The request is saved. Reconcile it before starting another refund."
                 : "Refund request recorded. Status: " + result.State;
-            return RedirectToAction(nameof(Payments), new { ticket, environment });
+            return ManagerRedirect(nameof(Payments), new { ticket, environment });
         }
         catch (MerchantPaymentException)
         { return BadRequest("Refund was not completed. Refresh Payments and review existing refund requests before retrying."); }
@@ -183,7 +183,7 @@ public sealed class CommerceManagementController(
                 return BadRequest("Provider authorization was not completed. Return to Payments to try again.");
             await service.CompleteAsync(store.CommerceBusinessId, profileId, actor.ActorUserId,
                 actor.ActorEmail, state, code ?? "", ct);
-            return RedirectToAction(nameof(Payments), new { ticket, environment = service.InspectEnvironment(state) });
+            return ManagerRedirect(nameof(Payments), new { ticket, environment = service.InspectEnvironment(state) });
         }
         catch (MerchantPaymentException)
         { return BadRequest("Payment authorization could not be verified. Return to Payments and restart the connection."); }
@@ -224,7 +224,7 @@ public sealed class CommerceManagementController(
             else
                 await service.RefreshAsync(store.CommerceBusinessId, profileId, actor.ActorUserId,
                     actor.ActorEmail, connectionId, revision, ct);
-            return RedirectToAction(nameof(Payments), new { ticket, environment });
+            return ManagerRedirect(nameof(Payments), new { ticket, environment });
         }
         catch (DbUpdateConcurrencyException)
         { return Conflict("Payments changed in another session. Reload Payments before making another change."); }
@@ -265,7 +265,7 @@ public sealed class CommerceManagementController(
         business.BusinessType = input.BusinessType.Trim();
         business.UpdatedUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-        return RedirectToAction(nameof(BusinessProfile), new { ticket });
+        return ManagerRedirect(nameof(BusinessProfile), new { ticket });
     }
 
     [HttpGet("team")]
@@ -317,7 +317,7 @@ public sealed class CommerceManagementController(
         // Team administration remains controlled by canonical business ownership.
         member.UpdatedUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-        return RedirectToAction(nameof(Team), new { ticket });
+        return ManagerRedirect(nameof(Team), new { ticket });
     }
 
     [HttpGet("workspace")]
@@ -327,7 +327,7 @@ public sealed class CommerceManagementController(
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
-        return RedirectToAction(nameof(Dashboard), new { ticket });
+        return ManagerRedirect(nameof(Dashboard), new { ticket });
     }
 
     [HttpGet("dashboard")]
@@ -664,8 +664,10 @@ public sealed class CommerceManagementController(
 
         ApplyFramePolicy();
         ApplyStoreViewData(store);
-        ViewData["StoreProductBasePath"] = "/commerce/manage/preview/product";
-        ViewData["StorePreviewQuery"] = "?ticket=" + Uri.EscapeDataString(ticket);
+        ViewData["StoreProductBasePath"] = Request.Path.StartsWithSegments("/internal")
+            ? "/internal/preview/product" : "/commerce/manage/preview/product";
+        var previewUrl = CommerceManagementCapabilityPolicy.ManagementUrl(HttpContext, "/commerce/manage/preview", ticket);
+        ViewData["StorePreviewQuery"] = previewUrl[previewUrl.IndexOf('?')..];
         return View("~/Views/Store/Index.cshtml", new ParfaitStorefrontViewModel
         {
             StoreName = store.StoreName,
@@ -689,7 +691,7 @@ public sealed class CommerceManagementController(
 
         ApplyFramePolicy();
         ApplyStoreViewData(store);
-        ViewData["StoreRootPath"] = "/commerce/manage/preview?ticket=" + Uri.EscapeDataString(ticket);
+        ViewData["StoreRootPath"] = CommerceManagementCapabilityPolicy.ManagementUrl(HttpContext, "/commerce/manage/preview", ticket);
         ViewData["StorePreviewMode"] = true;
         return View("~/Views/Store/Product.cshtml", product);
     }
@@ -725,7 +727,7 @@ public sealed class CommerceManagementController(
         product.DiscountCodes ??= [];
         products.SaveProduct(store.CommerceBusinessId, product);
         TempData["ProductStatus"] = product.IsActive ? "Product saved and visible." : "Product saved and hidden.";
-        return RedirectToAction(nameof(Products), new { ticket });
+        return ManagerRedirect(nameof(Products), new { ticket });
     }
 
     [HttpPost("product/delete")]
@@ -738,7 +740,7 @@ public sealed class CommerceManagementController(
         if (store is null) return Unauthorized();
         products.DeleteProduct(store.CommerceBusinessId, id);
         TempData["ProductStatus"] = "Product deleted.";
-        return RedirectToAction(nameof(Products), new { ticket });
+        return ManagerRedirect(nameof(Products), new { ticket });
     }
 
     [HttpPost("product/images/upload")]
@@ -772,7 +774,7 @@ public sealed class CommerceManagementController(
         }
 
         TempData["ProductStatus"] = "Images uploaded.";
-        return RedirectToAction(nameof(Products), new { ticket });
+        return ManagerRedirect(nameof(Products), new { ticket });
     }
 
     [HttpPost("product/images/delete")]
@@ -786,7 +788,7 @@ public sealed class CommerceManagementController(
         if (store is null) return Unauthorized();
         products.DeleteImage(store.CommerceBusinessId, productId, imageId);
         TempData["ProductStatus"] = "Image deleted.";
-        return RedirectToAction(nameof(Products), new { ticket });
+        return ManagerRedirect(nameof(Products), new { ticket });
     }
 
     [HttpPost("product/images/reorder")]
@@ -800,7 +802,7 @@ public sealed class CommerceManagementController(
         if (store is null) return Unauthorized();
         products.ReorderImages(store.CommerceBusinessId, productId, imageIds ?? []);
         TempData["ProductStatus"] = "Image order updated.";
-        return RedirectToAction(nameof(Products), new { ticket });
+        return ManagerRedirect(nameof(Products), new { ticket });
     }
 
     [HttpPost("product/images/display")]
@@ -818,7 +820,7 @@ public sealed class CommerceManagementController(
         if (store is null) return Unauthorized();
         products.SaveImageDisplaySettings(store.CommerceBusinessId, productId, imageId, objectFit, objectPositionX, objectPositionY, zoom);
         TempData["ProductStatus"] = "Image display settings saved.";
-        return RedirectToAction(nameof(Products), new { ticket });
+        return ManagerRedirect(nameof(Products), new { ticket });
     }
 
     [HttpPost("products/reorder")]
@@ -831,7 +833,7 @@ public sealed class CommerceManagementController(
         if (store is null) return Unauthorized();
         products.ReorderProducts(store.CommerceBusinessId, productIds ?? []);
         TempData["ProductStatus"] = "Store order updated.";
-        return RedirectToAction(nameof(Products), new { ticket });
+        return ManagerRedirect(nameof(Products), new { ticket });
     }
 
     [HttpPost("settings/commerce")]
@@ -846,7 +848,7 @@ public sealed class CommerceManagementController(
         settings.GlobalDiscount.IsActive = HasCheckedValue(Request.Form, "GlobalDiscount.IsActive");
         products.SaveCommerceSettings(store.CommerceBusinessId, settings);
         TempData["ProductStatus"] = "Commerce settings saved.";
-        return RedirectToAction(nameof(Products), new { ticket });
+        return ManagerRedirect(nameof(Products), new { ticket });
     }
 
     [HttpPost("order")]
@@ -860,7 +862,7 @@ public sealed class CommerceManagementController(
         if (!orders.UpdateOrder(store.CommerceBusinessId, request))
             return NotFound();
         TempData["OrderStatus"] = $"Order {request.OrderNumber} updated.";
-        return RedirectToAction(nameof(Orders), new { ticket });
+        return ManagerRedirect(nameof(Orders), new { ticket });
     }
 
     [HttpPost("order/receipt")]
@@ -884,7 +886,7 @@ public sealed class CommerceManagementController(
             TempData["OrderStatus"] = $"Receipt resend failed for {order.OrderNumber}.";
         }
 
-        return RedirectToAction(nameof(Orders), new { ticket });
+        return ManagerRedirect(nameof(Orders), new { ticket });
     }
 
     [HttpPost("automations/workflows")]
@@ -898,7 +900,7 @@ public sealed class CommerceManagementController(
         automations.SaveWorkflow(store.CommerceBusinessId, input);
         TempData["AutomationStatus"] = "Automation saved.";
         TempData["AutomationStatusTone"] = "success";
-        return RedirectToAction(nameof(Automations), new { ticket });
+        return ManagerRedirect(nameof(Automations), new { ticket });
     }
 
     [HttpPost("automations/workflows/delete")]
@@ -912,7 +914,7 @@ public sealed class CommerceManagementController(
         automations.DeleteWorkflow(store.CommerceBusinessId, id);
         TempData["AutomationStatus"] = "Automation deleted.";
         TempData["AutomationStatusTone"] = "success";
-        return RedirectToAction(nameof(Automations), new { ticket });
+        return ManagerRedirect(nameof(Automations), new { ticket });
     }
 
     private static ScopeContext ResolveAnalyticsScope(CommerceStoreContext store)
@@ -1060,9 +1062,23 @@ public sealed class CommerceManagementController(
         };
     }
 
+    private IActionResult ManagerRedirect(string action, object values)
+    {
+        if (!Request.Path.StartsWithSegments("/internal")) return RedirectToAction(action, values);
+        var template = typeof(CommerceManagementController).GetMethod(action)?
+            .GetCustomAttributes(typeof(HttpGetAttribute), true).OfType<HttpGetAttribute>().SingleOrDefault()?.Template;
+        if (template is null) throw new InvalidOperationException("Management destination has no canonical read route.");
+        var routeValues = new Microsoft.AspNetCore.Routing.RouteValueDictionary(values);
+        var target = CommerceManagementCapabilityPolicy.ManagementUrl(HttpContext, "/commerce/manage/" + template,
+            routeValues["ticket"] as string);
+        var query = routeValues.Where(x => x.Key != "ticket" && x.Value is not null)
+            .ToDictionary(x => x.Key, x => (string?)Convert.ToString(x.Value, CultureInfo.InvariantCulture));
+        return Redirect(QueryHelpers.AddQueryString(target, query));
+    }
+
     private string LocalManagerReturnUrl(string? returnUrl, string ticket)
     {
-        var fallback = Url.Action(nameof(Analytics), new { ticket }) ?? $"/commerce/manage/analytics?ticket={Uri.EscapeDataString(ticket)}";
+        var fallback = CommerceManagementCapabilityPolicy.ManagementUrl(HttpContext, "/commerce/manage/analytics", ticket);
         if (string.IsNullOrWhiteSpace(returnUrl) || !Url.IsLocalUrl(returnUrl)) return fallback;
         var parsedTicket = TicketFromReturnUrl(returnUrl);
         return string.Equals(parsedTicket, ticket, StringComparison.Ordinal) ? returnUrl : fallback;
@@ -1089,13 +1105,22 @@ public sealed class CommerceManagementController(
 
     private async Task<CommerceStoreContext?> ResolveAsync(string ticket, CancellationToken ct)
     {
-        // Resolve the signed website-editor ticket and its live business/website
-        // state first, exactly as before. This is not a second login authority.
-        var store = await stores.ResolveForWebsiteTicketAsync(ticket, tickets, configuration, ct);
-        if (store is null) return null;
-
         var actor = tickets.TryUnprotect(ticket);
         if (actor is null || string.IsNullOrWhiteSpace(actor.ActorUserId)) return null;
+        CommerceStoreContext? store;
+        if (Request.Path.StartsWithSegments("/internal"))
+        {
+            var scope = await stores.ResolveManagementScopeAsync(HttpContext, Request.Query["businessKey"].ToString(), ct);
+            var capability = CommerceManagementCapabilityPolicy.ForRequest(Request.Path, Request.Method);
+            if (scope is null || capability is null || (actor.SiteKey == WebsiteEditorSiteKeys.Business && scope.CommerceBusinessId != actor.CommerceBusinessId) ||
+                (actor.CommerceBusinessId.HasValue && scope.CommerceBusinessId != actor.CommerceBusinessId) ||
+                scope.WebsiteSiteKey != actor.SiteKey || scope.WebsiteOwnerKey != actor.OwnerUserId)
+                return null;
+            store = await stores.ResolveManagementAsync(scope, actor.ActorUserId, capability, actor.ActorClientProfileId, ct);
+        }
+        else
+            store = await stores.ResolveForWebsiteTicketAsync(ticket, tickets, configuration, ct);
+        if (store is null) return null;
 
         if (actor.SiteKey == WebsiteEditorSiteKeys.Business)
         {

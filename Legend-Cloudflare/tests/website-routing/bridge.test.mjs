@@ -303,3 +303,25 @@ test('explicit index files cannot expose the old static homepage',async()=>{
     assert.equal(new URL(seen.url).searchParams.get('path'),route);
   }
 });
+
+test('internal pages and writes retain trusted website scope and bypass public renderer/cache', async () => {
+  for (const host of ['mylegnd.com', 'protect.mylegnd.com', 'tenant.example']) {
+    for (const method of ['GET', 'POST']) {
+      const request = new Request(`https://${host}/internal/commerce/products?businessKey=tenant-one`, {
+        method, headers: { Cookie: 'synthetic=session', 'Content-Type': 'application/x-www-form-urlencoded',
+          'X-Legend-Original-Host': 'forged.example' }, ...(method === 'POST' ? { body: 'name=Synthetic' } : {})
+      });
+      const response = await handleWebsiteRouting(request, env, async (upstream, options) => {
+        assert.equal(new URL(upstream.url).hostname, 'masterapp-protect.azurewebsites.net');
+        assert.equal(new URL(upstream.url).pathname, '/internal/commerce/products');
+        assert.equal(upstream.headers.get('X-Legend-Original-Host'), host);
+        assert.equal(upstream.headers.get('Cookie'), 'synthetic=session');
+        assert.equal(options.cf.cacheEverything, false);
+        if (method === 'POST') assert.equal(await upstream.text(), 'name=Synthetic');
+        return new Response('private workspace', {headers: {'Set-Cookie': 'synthetic=new; Secure; HttpOnly'}});
+      });
+      assert.match(response.headers.get('Cache-Control'), /no-store/);
+      assert.equal(response.headers.get('Set-Cookie'), 'synthetic=new; Secure; HttpOnly');
+    }
+  }
+});

@@ -15,6 +15,7 @@ public static class CommerceManagementCapabilityPolicy
     public static string? ForRequest(PathString path, string method)
     {
         var raw = path.Value ?? "";
+        if (raw == "/internal") raw = "/internal/";
         if (raw.StartsWith("/internal/", StringComparison.OrdinalIgnoreCase))
         {
             var alias = InternalAction(raw["/internal/".Length..].TrimEnd('/').ToLowerInvariant(), method);
@@ -63,46 +64,54 @@ public static class CommerceManagementCapabilityPolicy
 
         return null;
     }
-    // Route adapters share the existing action policy below; this projection grants
-    // neither a session nor business access and does not register MVC endpoints.
-    private static string? InternalAction(string route, string method)
+    // The same adapter table drives authorization, MVC registration and generated links.
+    public sealed record RouteAdapter(string Method, string InternalPath, string ActionPath);
+    public static IReadOnlyList<RouteAdapter> InternalRoutes { get; } = BuildInternalRoutes();
+
+    private static IReadOnlyList<RouteAdapter> BuildInternalRoutes()
     {
-        var read = HttpMethods.IsGet(method) || HttpMethods.IsHead(method);
-        var write = HttpMethods.IsPost(method);
-        if (!read && !write) return null;
-        return route switch
-        {
-            "dashboard" when read => "dashboard",
-            "settings/business-profile" => "business-profile",
-            "settings/team" when read => "team",
-            "commerce/products" => read ? "products" : "product",
-            "commerce/products/settings" when write => "settings/commerce",
-            "commerce/products/delete" when write => "product/delete",
-            "commerce/products/images/upload" when write => "product/images/upload",
-            "commerce/products/images/delete" when write => "product/images/delete",
-            "commerce/products/images/reorder" when write => "product/images/reorder",
-            "commerce/products/images/display" when write => "product/images/display",
-            "commerce/products/reorder" when write => "products/reorder",
-            "commerce/orders" when read => "orders",
-            "commerce/orders/update" when write => "order",
-            "commerce/orders/receipt" when write => "order/receipt",
-            "automations" when read => "automations",
-            "automations/workflows" when write => "automations/workflows",
-            "automations/workflows/delete" when write => "automations/workflows/delete",
-            "analytics" when read => "analytics",
-            "analytics/meta-connect" or "analytics/meta-callback" or
-            "analytics/meta-connection-status" or "analytics/meta-campaigns" or
-            "analytics/health-monitor" or "analytics/marketing-setup" when read => route,
-            "analytics/openai-connect" or "analytics/openai-refresh" or
-            "analytics/openai-disconnect" or "analytics/meta-disconnect" when write => route,
-            "settings/payments" when read => "payments",
-            "settings/payments/callback" when read => "payments/callback",
-            "settings/payments/connect" or "settings/payments/resume" or
-            "settings/payments/confirm" or "settings/payments/default" or
-            "settings/payments/disconnect" or "settings/payments/refresh" or
-            "settings/payments/reconcile" or "settings/payments/refund" when write => route["settings/".Length..],
-            _ => null
-        };
+        var routes = new List<RouteAdapter>();
+        void Add(string method, string path, string action) => routes.Add(new(method, "/internal/" + path, Prefix + action));
+        foreach (var pair in new[] {
+            ("", "workspace"), ("dashboard", "dashboard"), ("preview", "preview"), ("preview/product/{slug}", "preview/product/{slug}"), ("settings/business-profile", "business-profile"),
+            ("settings/team", "team"), ("commerce/products", "products"),
+            ("commerce/orders", "orders"), ("automations", "automations"), ("analytics", "analytics"),
+            ("settings/payments", "payments"), ("settings/payments/callback", "payments/callback") })
+            Add("GET", pair.Item1, pair.Item2);
+        foreach (var pair in new[] {
+            ("settings/business-profile", "business-profile"), ("settings/team/permissions", "team/permissions"),
+            ("commerce/products", "product"), ("commerce/products/settings", "settings/commerce"),
+            ("commerce/products/delete", "product/delete"), ("commerce/products/reorder", "products/reorder"),
+            ("commerce/orders/update", "order"), ("commerce/orders/receipt", "order/receipt"),
+            ("automations/workflows", "automations/workflows"), ("automations/workflows/delete", "automations/workflows/delete") })
+            Add("POST", pair.Item1, pair.Item2);
+        foreach (var suffix in new[] { "upload", "delete", "reorder", "display" })
+            Add("POST", "commerce/products/images/" + suffix, "product/images/" + suffix);
+        foreach (var suffix in new[] { "meta-connect", "meta-callback", "meta-connection-status", "meta-campaigns", "health-monitor", "marketing-setup" })
+            Add("GET", "analytics/" + suffix, "analytics/" + suffix);
+        foreach (var suffix in new[] { "openai-connect", "openai-refresh", "openai-disconnect", "meta-disconnect" })
+            Add("POST", "analytics/" + suffix, "analytics/" + suffix);
+        foreach (var suffix in new[] { "connect", "resume", "confirm", "default", "disconnect", "refresh", "reconcile", "refund" })
+            Add("POST", "settings/payments/" + suffix, "payments/" + suffix);
+        return routes.AsReadOnly();
     }
 
+    public static string ManagementUrl(HttpContext context, string actionPath, string? ticket, string method = "GET")
+    {
+        var target = actionPath;
+        if (context.Request.Path.StartsWithSegments("/internal"))
+            target = InternalRoutes.SingleOrDefault(x => x.Method == method && x.ActionPath == actionPath)?.InternalPath ?? throw new InvalidOperationException("No canonical internal route exists for this action and method.");
+        var query = new Dictionary<string, string?> { ["ticket"] = ticket };
+        var businessKey = context.Request.Query["businessKey"].ToString();
+        if (!string.IsNullOrEmpty(businessKey)) query["businessKey"] = businessKey;
+        return Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(target, query);
+    }
+
+    private static string? InternalAction(string route, string method)
+    {
+        var verb = HttpMethods.IsHead(method) ? "GET" : method;
+        if (verb == "GET" && route.StartsWith("preview/product/", StringComparison.Ordinal) && route.Length > "preview/product/".Length) return route;
+        return InternalRoutes.SingleOrDefault(x => x.Method == verb &&
+            string.Equals(x.InternalPath, "/internal/" + route, StringComparison.OrdinalIgnoreCase))?.ActionPath[Prefix.Length..];
+    }
 }

@@ -11,6 +11,10 @@ using Microsoft.Extensions.Configuration;
 using Moq;
 using ParfaitApp.Services;
 using Xunit;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.DependencyInjection;
+using ParfaitApp.Controllers;
 
 namespace AgentPortal.Tests;
 
@@ -150,6 +154,22 @@ public sealed class CommerceManagementScopeTests
         var scope = (await service.ResolveManagementScopeAsync(Request(site == "legend" ? "mylegnd.com" : "protect.mylegnd.com"),
             site == "protect" ? business.Key : null))!;
         Assert.NotNull(await service.ResolveManagementActorAsync(scope, actor, "analytics"));
+        using var tickets = new WebsiteEditorTicketProtector(new EphemeralDataProtectionProvider());
+        await using var services = new ServiceCollection().AddSingleton(db).BuildServiceProvider();
+        var context = Request(site == "legend" ? "mylegnd.com" : "protect.mylegnd.com");
+        context.RequestServices = services;
+        context.Request.Path = "/internal/settings/team";
+        context.Request.Method = "GET";
+        if (site == "protect") context.Request.QueryString = new QueryString("?businessKey=" + business.Key);
+        state.DraftJson = System.Text.Json.JsonSerializer.Serialize(new WebsiteContentDocument(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        await db.SaveChangesAsync();
+        var controller = new CommerceManagementController(tickets, config, service, null!, null!, null!, null!, null!, null!, null!, null!, null!)
+            { ControllerContext = new ControllerContext { HttpContext = context } };
+        controller.TempData = new Microsoft.AspNetCore.Mvc.ViewFeatures.TempDataDictionary(context, Mock.Of<Microsoft.AspNetCore.Mvc.ViewFeatures.ITempDataProvider>());
+        var ownerTicket = new WebsiteEditorTicket(site, state.OwnerKey, "synthetic-owner", site == "legend", DateTime.UtcNow.AddMinutes(5), null, actor);
+        Assert.IsType<ViewResult>(await controller.Team(tickets.Protect(ownerTicket)));
+        Assert.IsType<UnauthorizedResult>(await controller.Team(tickets.Protect(ownerTicket with { CommerceBusinessId = Guid.NewGuid() })));
+
         Assert.Null(await service.ResolveManagementActorAsync(scope, Guid.NewGuid().ToString(), "analytics"));
         Assert.Null(await service.ResolveManagementActorAsync(scope, actor, "unknown"));
         db.Add(new AccountLifecycleRecord { UserId = actor, ParticipantType = Domain.Messaging.MessagingParticipantTypes.Agent,

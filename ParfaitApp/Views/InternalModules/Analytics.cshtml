@@ -64,47 +64,26 @@
         timezoneId = Model.ViewerTimeZoneId,
         timezoneOffsetMinutes = Model.ViewerTimeZoneOffsetMinutes
     };
+    string ScopedAnalyticsUrl(string suffix, string method = "GET", object? values = null)
+    {
+        var target = Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context,
+            "/commerce/manage/analytics" + suffix, commerceManagerTicket, method);
+        var query = new Microsoft.AspNetCore.Routing.RouteValueDictionary(values)
+            .Where(x => x.Value is not null).ToDictionary(x => x.Key, x => (string?)Convert.ToString(x.Value, System.Globalization.CultureInfo.InvariantCulture));
+        return Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(target, query);
+    }
     string AnalyticsPresetUrl(string preset) => scopedCommerceManager
-        ? Url.Action("Analytics", "CommerceManagement", new
-        {
-            ticket = commerceManagerTicket,
-            preset,
-            qualityMode = Model.SelectedQualityMode,
-            timezoneId = Model.ViewerTimeZoneId,
-            timezoneOffsetMinutes = Model.ViewerTimeZoneOffsetMinutes
-        }) ?? "/commerce/manage/analytics"
+        ? ScopedAnalyticsUrl("", values: AnalyticsPresetRouteValues(preset))
         : Url.Action("Analytics", "InternalModules", AnalyticsPresetRouteValues(preset)) ?? "/internal/analytics";
-
-    var analyticsReturnUrl = scopedCommerceManager
-        ? Url.Action("Analytics", "CommerceManagement", new
-        {
-            ticket = commerceManagerTicket,
-            preset = Model.SelectedPreset,
-            fromUtc = string.IsNullOrWhiteSpace(Model.RangeFrom) ? null : Model.RangeFrom,
-            toUtc = string.IsNullOrWhiteSpace(Model.RangeTo) ? null : Model.RangeTo,
-            qualityMode = Model.SelectedQualityMode,
-            timezoneId = Model.ViewerTimeZoneId,
-            timezoneOffsetMinutes = Model.ViewerTimeZoneOffsetMinutes
-        }) ?? "/commerce/manage/analytics"
+    var analyticsReturnUrl = scopedCommerceManager ? ScopedAnalyticsUrl("", values: CurrentAnalyticsRouteValues())
         : Url.Action("Analytics", "InternalModules", CurrentAnalyticsRouteValues()) ?? "/internal/analytics";
-    var analyticsActionUrl = scopedCommerceManager
-        ? Url.Action("Analytics", "CommerceManagement", new { ticket = commerceManagerTicket }) ?? "/commerce/manage/analytics"
-        : Url.Action("Analytics", "InternalModules") ?? "/internal/analytics";
-    var metaConnectUrl = scopedCommerceManager
-        ? Url.Action("MetaConnect", "CommerceManagement", new { ticket = commerceManagerTicket, returnUrl = analyticsReturnUrl }) ?? "/commerce/manage/analytics/meta-connect"
+    var analyticsActionUrl = scopedCommerceManager ? ScopedAnalyticsUrl("") : "/internal/analytics";
+    var metaConnectUrl = scopedCommerceManager ? ScopedAnalyticsUrl("/meta-connect", values: new { returnUrl = analyticsReturnUrl })
         : Url.Action("MetaConnect", "InternalModules", new { returnUrl = analyticsReturnUrl }) ?? "/internal/analytics/meta-connect";
-    var metaConnectionStatusUrl = scopedCommerceManager
-        ? Url.Action("MetaConnectionStatus", "CommerceManagement", new { ticket = commerceManagerTicket }) ?? "/commerce/manage/analytics/meta-connection-status"
-        : "/internal/analytics/meta-connection-status";
-    var metaCampaignsUrl = scopedCommerceManager
-        ? Url.Action("MetaCampaigns", "CommerceManagement", new { ticket = commerceManagerTicket }) ?? "/commerce/manage/analytics/meta-campaigns"
-        : "/internal/analytics/meta-campaigns";
-    var metaDisconnectUrl = scopedCommerceManager
-        ? Url.Action("MetaDisconnect", "CommerceManagement", new { ticket = commerceManagerTicket }) ?? "/commerce/manage/analytics/meta-disconnect"
-        : "/internal/analytics/meta-disconnect";
-    var healthMonitorUrl = scopedCommerceManager
-        ? Url.Action("AnalyticsHealthMonitor", "CommerceManagement", new { ticket = commerceManagerTicket }) ?? "/commerce/manage/analytics/health-monitor"
-        : "/internal/analytics/health-monitor";
+    var metaConnectionStatusUrl = scopedCommerceManager ? ScopedAnalyticsUrl("/meta-connection-status") : "/internal/analytics/meta-connection-status";
+    var metaCampaignsUrl = scopedCommerceManager ? ScopedAnalyticsUrl("/meta-campaigns") : "/internal/analytics/meta-campaigns";
+    var metaDisconnectUrl = scopedCommerceManager ? ScopedAnalyticsUrl("/meta-disconnect", "POST") : "/internal/analytics/meta-disconnect";
+    var healthMonitorUrl = scopedCommerceManager ? ScopedAnalyticsUrl("/health-monitor") : "/internal/analytics/health-monitor";
 
     var checkoutBreakdown = Model.ActionBreakdowns.FirstOrDefault(action => action.Key == "checkout-started");
     var purchaseBreakdown = Model.ActionBreakdowns.FirstOrDefault(action => action.Key == "purchase");

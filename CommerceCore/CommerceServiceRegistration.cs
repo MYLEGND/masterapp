@@ -60,6 +60,7 @@ public static class CommerceServiceRegistration
     {
         public void Apply(Microsoft.AspNetCore.Mvc.ApplicationModels.ApplicationModel application)
         {
+            ApplyInternalRoutes(application);
             var assembly = typeof(StoreController).Assembly;
             foreach (var controller in application.Controllers.Where(c =>
                 c.ControllerType.Assembly == assembly &&
@@ -86,6 +87,7 @@ public static class CommerceServiceRegistration
     {
         public void Apply(Microsoft.AspNetCore.Mvc.ApplicationModels.ApplicationModel application)
         {
+            ApplyInternalRoutes(application);
             var assembly = typeof(StoreController).Assembly;
             foreach (var controller in application.Controllers
                 .Where(c => c.ControllerType.Assembly == assembly &&
@@ -112,6 +114,7 @@ public static class CommerceServiceRegistration
     {
         public void Apply(Microsoft.AspNetCore.Mvc.ApplicationModels.ApplicationModel application)
         {
+            ApplyInternalRoutes(application);
             var allowed = new[] {
                 typeof(StoreController), typeof(StoreCartController),
                 typeof(StoreCheckoutController), typeof(TrainingSubscriptionsController), typeof(MerchantPaymentWebhookController), typeof(ParfaitPublicPreviewController),
@@ -122,6 +125,31 @@ public static class CommerceServiceRegistration
                 c.ControllerType.Assembly == assembly &&
                 !allowed.Contains(c.ControllerType.AsType())).ToArray())
                 application.Controllers.Remove(controller);
+        }
+    }
+
+    private static void ApplyInternalRoutes(Microsoft.AspNetCore.Mvc.ApplicationModels.ApplicationModel application)
+    {
+        var controller = application.Controllers.SingleOrDefault(c => c.ControllerType.AsType() == typeof(CommerceManagementController));
+        if (controller is null) return;
+        foreach (var action in controller.Actions)
+        foreach (var selector in action.Selectors.ToArray())
+        {
+            var template = selector.AttributeRouteModel?.Template;
+            if (template is null || template.StartsWith("/internal/", StringComparison.Ordinal)) continue;
+            var methods = selector.ActionConstraints.OfType<Microsoft.AspNetCore.Mvc.ActionConstraints.HttpMethodActionConstraint>()
+                .SelectMany(x => x.HttpMethods).ToArray();
+            foreach (var route in CommerceManagementCapabilityPolicy.InternalRoutes.Where(x =>
+                x.ActionPath == "/commerce/manage/" + template && methods.Contains(x.Method)))
+            {
+                if (action.Selectors.Any(x => x.AttributeRouteModel?.Template == route.InternalPath)) continue;
+                var alias = new Microsoft.AspNetCore.Mvc.ApplicationModels.SelectorModel(selector)
+                {
+                    AttributeRouteModel = new Microsoft.AspNetCore.Mvc.ApplicationModels.AttributeRouteModel(
+                        new Microsoft.AspNetCore.Mvc.RouteAttribute(route.InternalPath)) { Order = 1 }
+                };
+                action.Selectors.Add(alias);
+            }
         }
     }
 

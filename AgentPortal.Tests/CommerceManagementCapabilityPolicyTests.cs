@@ -15,16 +15,99 @@ using Moq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using ParfaitApp.Controllers;
+using ParfaitApp.Models;
 using ParfaitApp.Services;
 using Infrastructure.Businesses;
 using Legend.Commerce;
 using Microsoft.AspNetCore.Http;
 using Xunit;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace AgentPortal.Tests;
 
 public sealed class CommerceManagementCapabilityPolicyTests
 {
+    [Fact]
+    public async Task Internal_write_executes_Mvc_antiforgery_and_persists_only_valid_scoped_request()
+    {
+        await using var f = new NavigationFixture("owner", "Active", true);
+        f.Db.Set<WebsiteContentState>().Single().ProvisionedStoreBusinessId = f.Business.Id;
+        f.Db.Add(new WebsiteDomainBinding { CommerceBusinessId = f.Business.Id, Hostname = "one.example.invalid",
+            Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow });
+        var target = new CommerceBusinessMember { CommerceBusinessId = f.Business.Id, RoleKey = "staff", CanManageAnalytics = false };
+        f.Db.Add(target);
+        await f.Db.SaveChangesAsync();
+        var builder = Microsoft.AspNetCore.Builder.WebApplication.CreateBuilder(new Microsoft.AspNetCore.Builder.WebApplicationOptions { EnvironmentName = "Testing" });
+        builder.WebHost.UseTestServer();
+        builder.Services.AddSingleton(f.Db);
+        builder.Services.AddControllersWithViews().AddLegendCommerceManagementMvc().AddControllersAsServices();
+        builder.Services.Replace(ServiceDescriptor.Transient<CommerceManagementController>(_ => f.Controller));
+        await using var app = builder.Build();
+        app.MapGet("/test-token", (Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery, HttpContext context) => antiforgery.GetAndStoreTokens(context).RequestToken!);
+        app.MapControllers();
+        await app.StartAsync();
+        using var client = app.GetTestClient();
+        client.BaseAddress = new Uri("https://one.example.invalid");
+        var url = "/internal/settings/team/permissions?ticket=" + Uri.EscapeDataString(f.Ticket);
+        System.Net.Http.FormUrlEncodedContent Body(string? token = null)
+        {
+            var values = new System.Collections.Generic.Dictionary<string, string> {
+                ["MemberId"] = target.Id.ToString(), ["ExpectedUpdatedTicks"] = target.UpdatedUtc.Ticks.ToString(), ["CanManageAnalytics"] = "true" };
+            if (token is not null) values["__RequestVerificationToken"] = token;
+            return new(values);
+        }
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, (await client.PostAsync(url, Body())).StatusCode);
+        Assert.False(target.CanManageAnalytics);
+        foreach (var route in CommerceManagementCapabilityPolicy.InternalRoutes.Where(r => r.Method == "POST"))
+            Assert.Equal(System.Net.HttpStatusCode.BadRequest, (await client.PostAsync(
+                route.InternalPath + "?ticket=" + Uri.EscapeDataString(f.Ticket), Body())).StatusCode);
+        Assert.False(target.CanManageAnalytics);
+        var tokenResponse = await client.GetAsync("/test-token");
+        var token = await tokenResponse.Content.ReadAsStringAsync();
+        client.DefaultRequestHeaders.Add("Cookie", string.Join("; ", tokenResponse.Headers.GetValues("Set-Cookie").Select(x => x.Split(';')[0])));
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, (await client.PostAsync(url, Body("forged"))).StatusCode);
+        Assert.False(target.CanManageAnalytics);
+        var result = await client.PostAsync(url, Body(token));
+        Assert.Equal(System.Net.HttpStatusCode.Redirect, result.StatusCode);
+        Assert.StartsWith("/internal/settings/team?", result.Headers.Location!.OriginalString);
+        Assert.True(target.CanManageAnalytics);
+    }
+
+    [Fact]
+    public async Task Internal_team_reads_only_bound_business_and_rechecks_host_and_revocation()
+    {
+        await using var f = new NavigationFixture("owner", "Active", true);
+        var state = f.Db.Set<WebsiteContentState>().Single();
+        state.ProvisionedStoreBusinessId = f.Business.Id;
+        var other = new CommerceBusiness { Key = "other-store", IsActive = true, Status = "Active" };
+        f.Db.Add(other);
+        f.Db.Add(new WebsiteDomainBinding { CommerceBusinessId = f.Business.Id, Hostname = "one.example.invalid",
+            Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow });
+        f.Db.Add(new WebsiteDomainBinding { CommerceBusinessId = other.Id, Hostname = "two.example.invalid",
+            Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow });
+        f.Db.Add(new WebsiteContentState { CommerceBusinessId = other.Id, ProvisionedStoreBusinessId = other.Id,
+            SiteKey = WebsiteEditorSiteKeys.Business, OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(other.Id) });
+        await f.Db.SaveChangesAsync();
+        f.Controller.Request.Scheme = "https";
+        f.Controller.Request.Host = new HostString("one.example.invalid");
+        f.Controller.Request.Path = "/internal/settings/team";
+        var view = Assert.IsType<ViewResult>(await f.Controller.Team(f.Ticket));
+        var model = Assert.IsType<CommerceBusinessTeamViewModel>(view.Model);
+        Assert.Equal(f.Business.Id, model.BusinessId);
+        state.DraftJson = JsonSerializer.Serialize(WebsiteContentSanitizer.Sanitize(new WebsiteContentDocument
+            { Store = new() { Enabled = false } }), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        await f.Db.SaveChangesAsync();
+        Assert.IsType<ViewResult>(await f.Controller.Team(f.Ticket));
+        f.Controller.Request.Host = new HostString("two.example.invalid");
+        Assert.IsType<UnauthorizedResult>(await f.Controller.Team(f.Ticket));
+        f.Controller.Request.Host = new HostString("one.example.invalid");
+        f.Member.Status = "Revoked";
+        await f.Db.SaveChangesAsync();
+        Assert.IsType<UnauthorizedResult>(await f.Controller.Team(f.Ticket));
+    }
+
     [Theory]
     [InlineData("dashboard", "dashboard", "GET")]
     [InlineData("settings/business-profile", "business-profile", "GET")]
@@ -81,7 +164,6 @@ public sealed class CommerceManagementCapabilityPolicyTests
     [InlineData("/internal/login", "GET")]
     [InlineData("/internal/logout", "POST")]
     [InlineData("/internal/denied", "GET")]
-    [InlineData("/internal", "GET")]
     [InlineData("/internal/settings/team/add", "POST")]
     [InlineData("/internal/settings/team/00000000-0000-0000-0000-000000000001", "POST")]
     [InlineData("/internal/analytics/meta-settings", "POST")]
@@ -349,7 +431,7 @@ public sealed class CommerceManagementCapabilityPolicyTests
             Ticket = Tickets.Protect(new(WebsiteEditorSiteKeys.Business, WebsiteEditorSiteKeys.BusinessOwnerKey(Business.Id), null, false, DateTime.UtcNow.AddMinutes(5), Business.Id, "actor", null, Profile.Id));
             services = new ServiceCollection().AddSingleton(Db)
                 .AddSingleton(new MerchantConnectionService(Db, protection, Array.Empty<IMerchantPaymentGateway>(), configuration)).BuildServiceProvider();
-            var stores = new CommerceStoreContextService(Db, new CommerceBusinessScopeResolver(Db), null!, null!, configuration);
+            var stores = new CommerceStoreContextService(Db, new CommerceBusinessScopeResolver(Db), null!, new WebsiteDomainService(Db, Mock.Of<System.Net.Http.IHttpClientFactory>(), configuration), configuration);
             Controller = new(Tickets, configuration, stores, null!, null!, null!, null!, null!, null!, null!, null!, null!)
             { ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { RequestServices = services } } };
             Controller.Url = Mock.Of<IUrlHelper>();

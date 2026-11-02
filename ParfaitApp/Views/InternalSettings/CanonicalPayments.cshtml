@@ -3,7 +3,7 @@
     Layout = "_InternalLayout";
     ViewData["Title"] = "Payments";
     var ticket = ViewData["CommerceManagerTicket"] as string ?? "";
-    string ActionUrl(string action) => "/commerce/manage/payments" + action + "?ticket=" + Uri.EscapeDataString(ticket);
+    string ActionUrl(string action) => Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, "/commerce/manage/payments" + action, ticket, string.IsNullOrEmpty(action) ? "GET" : "POST");
 }
 <section class="pf-command-page">
     <div class="pf-command-heading">
