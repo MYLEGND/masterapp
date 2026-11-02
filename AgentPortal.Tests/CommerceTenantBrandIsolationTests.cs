@@ -11,6 +11,29 @@ namespace AgentPortal.Tests;
 
 public sealed class CommerceTenantBrandIsolationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TrainingProductWritesRemainParfaitOnlyEvenWhenRolloutIsEnabled(bool active)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var parfait = new CommerceBusiness { Key = "parfait", DisplayName = "Parfait", IsActive = true };
+        var other = new CommerceBusiness { Key = "other-store", DisplayName = "Other", IsActive = true };
+        db.AddRange(parfait, other);
+        db.SaveChanges();
+        var env = new Mock<IWebHostEnvironment>();
+        env.SetupGet(x => x.ContentRootPath).Returns(System.IO.Path.GetTempPath());
+        env.SetupGet(x => x.WebRootPath).Returns(System.IO.Path.GetTempPath());
+        var products = new ParfaitProductService(new ParfaitStoragePaths(env.Object, new ConfigurationBuilder().Build()), db,
+            new Infrastructure.Billing.ClientSubscriptionActivationPolicyOptions { TrainingSubscriptionsEnabled = true });
+        var plan = new ParfaitApp.Models.ParfaitProductEditorViewModel
+        { Name = "Synthetic training", Slug = "training", PriceCents = 2500, BillingKind = "MonthlyTraining", IsActive = active };
+        Assert.Throws<InvalidOperationException>(() => products.SaveProduct(other.Id, plan));
+        Assert.Empty(db.CommerceProducts);
+        products.SaveProduct(parfait.Id, plan);
+        Assert.Equal(parfait.Id, Assert.Single(db.CommerceProducts).CommerceBusinessId);
+    }
+
     [Fact]
     public void MissingBadgeUsesTenantBrandWithoutChangingParfaitBrand()
     {

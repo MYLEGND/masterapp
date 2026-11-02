@@ -308,6 +308,9 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
     {
         lock (Lock)
         {
+            if (product.BillingKind == Domain.Billing.ClientSubscriptionScope.MonthlyTraining &&
+                !_db.CommerceBusinesses.Any(x => x.Id == businessId && x.Key == ParfaitBusinessScopeService.ParfaitBusinessKey))
+                throw new InvalidOperationException("Training subscriptions are available only for the Parfait store.");
             if (product.BillingKind == Domain.Billing.ClientSubscriptionScope.MonthlyTraining && product.IsActive &&
                 !_rollout.TrainingSubscriptionsEnabled)
                 throw new InvalidOperationException("Training plans must remain inactive until training enrollment is available.");
