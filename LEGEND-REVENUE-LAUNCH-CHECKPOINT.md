@@ -2616,3 +2616,88 @@ Observation is not a new release receipt. Founder reiterated direct Mac deployme
 reuse the previously documented native Mac publication route, not fast-track
 execution. Required review/testing, operation reconciliation and live verification
 remain required. No new deployment, merge or fast-track sync occurred here.
+
+## 2026-11-02 — Shayla recovery candidate preserved for Founder Mac continuation
+
+Founder direction: save and preserve this work, then hand it to the Founder's local
+Codex to verify, correct, and deploy through the existing direct Mac deployment
+workflow. This supersedes waiting for a new generic deployment approval. Use the
+current local Mac instructions and preserve/synchronize the canonical fast-track
+history; this checkpoint does not authorize bypassing actual security controls.
+
+Repository: MYLEGND/masterapp. Continuation branch:
+`isolation/shayla-stale-call-retirement-20261102`.
+Base: `199da2cf924bfd9d70a886380af9ff600cebafc3`.
+Implementation: `4b01d4b18d41bddb165fc0ddc20fbc0b1d906db7`.
+The preserved source is frozen candidate C5, whose reviewed full transfer patch
+SHA-256 is `2a7768d0291a199f56815654ac696dac35f28afd67a19e402c1f7f54ef63c0ac`.
+The native worktree's 13 source/test/view file hashes matched that exact candidate.
+
+Implementation scope: existing receptionist admission/operator services, shared
+readiness views, Founder controller/model/view, and two focused test files.
+`retire_stale_test_call` uses the existing action journal and saved operation
+package authority. The Founder flow prepares, reviews, previews, and applies a
+bounded historical controlled-test retirement. It excludes a valid locally
+retired call from application admission/concurrency and new provider work while
+retaining honest provider/accounting uncertainty. It does not invent provider
+closure, release usage/cost holds, enable admission, or declare ads readiness.
+No new schema, registry, release-tool edit, credential, or production mutation.
+Shared application owners are Portal, Client, Protect, and Parfait; derive the
+final exact deployment scope from current source and genuine live provenance.
+
+Independent Astra review accepts exact C5 for remote preservation only. This is
+not merge/deployment acceptance. C5 has not been built or executed. Earlier C4
+compiled the affected applications under .NET SDK 10.0.401, then its focused
+ReceptionistOperatorTests/ReceptionistInquiryTests run reported 156 passed,
+9 failed, 0 skipped, 165 total. Six existing form-source tests could not resolve
+`/SHARED/Views/Shared/ReceptionistManagement.cshtml` with relocated artifacts and
+no GITHUB_WORKSPACE source-root input. Three new retirement tests failed current
+operator review validation. Source inspection suggests SQLite-materialized
+DateTime.Kind=Unspecified entered the synthetic test clock; normalize fixture
+timestamps to UTC and verify, keeping the production UTC validator intact. C5
+contains two additional instances of that fixture pattern. Do not claim a green
+run until the corrected exact candidate actually passes.
+
+Native continuation uses the existing Codespace
+`bookish-fiesta-97pj77j5vpwj3pjv6`, worktree
+`/workspaces/shayla-call-retirement`. The original checkout and branch were not
+switched. A successful canonical native preflight preceded source changes.
+The C4 native evidence was copied to
+`/workspaces/shayla-handoff-evidence-20261102/`:
+- `shayla-retirement-isolated.trx`, 275981 bytes, SHA-256
+  `f9bbce9df380b4720cd76a4f6140846b23f79d5f5905c86b33070199999ad938`.
+- `shayla-retirement-isolated.log`, 23873 bytes, SHA-256
+  `f85e556de29550105163474306fd721aeb2945f64f57cf04e4019bb2cdccdb0c`.
+- `C4-test-summary.json`, exact counters and nine failure messages.
+These runtime evidence copies alone are not external durable preservation.
+
+Mac next steps: fetch this exact continuation without resetting other work; read
+the newest local instructions and this checkpoint; correct the fixture issues;
+run the focused tests with GITHUB_WORKSPACE set only as their source-root input
+and a unique MasterAppArtifactsRoot; perform the applicable localhost functional
+pretest; review the final diff and affected dependencies; use the established
+direct Mac producer, capture exact packages/operations/rollback/provenance, and
+verify the new runtime and Founder recovery flow. Synchronize the accepted fixes
+to Legend/fast-track-release through its authorized source path, accounting for
+automatic deployment triggers and preserving concurrent work. Do not deploy this
+unvalidated checkpoint as if its tests were green.
+
+Operational state at handoff: Shayla remains paused; no new test window, provider
+closure, call retirement, backend deployment, or ads readiness has been verified.
+An already-authorized provider hangup returned HTTP 503 with an empty response;
+do not repeat it unchanged or convert carrier completion into provider closure.
+Private exact call/configuration identities and non-secret receipts are retained
+in the accompanying Founder handoff. Cross-period unresolved usage/accounting may
+still block a fresh test after local retirement and requires a canonical repair.
+
+Preserve the already-published website work: mobile inquiry fields each occupy
+their own row, branded mobile menu, four selected phone CTAs, and removal of the
+unwanted non-call hover effect. The local Mac deployment must retain newer
+Protect/Website and shared form fixes from other work. Existing release-tool
+candidate19 and historical unresolved operations are outside this source scope;
+coordinate any shared production writer through the existing mechanism.
+
+Cloud implementation and production actions stop after exact remote preservation
+and handoff. Local Mac continuation is requested; no receiving model has yet
+acknowledged takeover. Keep the native worktree and evidence until the receiver
+has fetched the saved source and preserved any needed runtime logs.
