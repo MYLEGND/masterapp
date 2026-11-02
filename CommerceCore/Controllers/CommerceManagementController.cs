@@ -280,14 +280,16 @@ public sealed partial class CommerceManagementController(
         var members = await db.CommerceBusinessMembers.AsNoTracking()
             .Where(x => x.CommerceBusinessId == store.CommerceBusinessId)
             .OrderBy(x => x.DisplayName).ThenBy(x => x.Email)
-            .Select(x => new CommerceBusinessTeamMember(x.Id, x.Email, x.DisplayName,
-                x.RoleKey, x.Status, x.ClientProfileId.HasValue,
-                x.CanManageStorefront, x.CanManageCatalog, x.CanManageOrders,
-                x.CanManageAnalytics, x.CanManageTeam, x.UpdatedUtc.Ticks, x.CanManageCrm))
             .ToListAsync(ct);
+        // Calculate the concurrency receipt from the materialized timestamp. Provider
+        // date arithmetic (notably SQLite julianday) can lose sub-millisecond ticks.
+        var memberRows = members.Select(x => new CommerceBusinessTeamMember(x.Id, x.Email, x.DisplayName,
+            x.RoleKey, x.Status, x.ClientProfileId.HasValue,
+            x.CanManageStorefront, x.CanManageCatalog, x.CanManageOrders,
+            x.CanManageAnalytics, x.CanManageTeam, x.UpdatedUtc.Ticks, x.CanManageCrm)).ToList();
         ApplyManagementViewData(store, ticket, "team");
         return View("~/Views/InternalSettings/CanonicalTeam.cshtml",
-            new CommerceBusinessTeamViewModel(store.CommerceBusinessId, store.StoreName, members));
+            new CommerceBusinessTeamViewModel(store.CommerceBusinessId, store.StoreName, memberRows));
     }
 
     [HttpPost("team/permissions")]

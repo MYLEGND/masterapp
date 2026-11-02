@@ -226,9 +226,22 @@ public sealed class CommerceManagementCapabilityPolicyTests
         Assert.Equal("https://one.example.invalid/internal/login", invitationHttp.Response.Headers.Location.ToString());
         var staffMember = await f.Db.CommerceBusinessMembers.AsNoTracking().SingleAsync(m => m.ClientProfileId == staff.Id);
         Assert.Equal("Active", staffMember.Status);
+        // The production request receives a fresh scoped DbContext after atomic acceptance.
+        foreach (var entry in f.Db.ChangeTracker.Entries<CommerceBusinessMember>().Where(e => e.Entity.Id == staffMember.Id).ToList())
+            entry.State = EntityState.Detached;
         var teamPage = await client.GetAsync("/internal/settings/team");
         Assert.Equal(System.Net.HttpStatusCode.OK, teamPage.StatusCode);
-        Assert.Contains("http-staff@example.invalid", await teamPage.Content.ReadAsStringAsync());
+        var renderedTeam = await teamPage.Content.ReadAsStringAsync();
+        Assert.Contains("http-staff@example.invalid", renderedTeam);
+        var renderedTicks = System.Text.RegularExpressions.Regex.Match(renderedTeam,
+            "name=\"ExpectedUpdatedTicks\" value=\"([0-9]+)\"").Groups[1].Value;
+        Assert.Equal(staffMember.UpdatedUtc.Ticks.ToString(), renderedTicks);
+        var savedPermissions = await client.PostAsync("/internal/settings/team/permissions", new System.Net.Http.FormUrlEncodedContent(new System.Collections.Generic.Dictionary<string,string> {
+            ["__RequestVerificationToken"] = token, ["MemberId"] = staffMember.Id.ToString(),
+            ["ExpectedUpdatedTicks"] = renderedTicks, ["CanManageStorefront"] = "true", ["CanManageCatalog"] = "true" }));
+        Assert.Equal(System.Net.HttpStatusCode.Redirect, savedPermissions.StatusCode);
+        staffMember = await f.Db.CommerceBusinessMembers.AsNoTracking().SingleAsync(m => m.Id == staffMember.Id);
+        Assert.True(staffMember.CanManageCatalog);
         var removed = await client.PostAsync("/internal/settings/team/remove", new System.Net.Http.FormUrlEncodedContent(new System.Collections.Generic.Dictionary<string,string> {
             ["__RequestVerificationToken"] = token, ["memberId"] = staffMember.Id.ToString(), ["expectedUpdatedTicks"] = staffMember.UpdatedUtc.Ticks.ToString() }));
         Assert.Equal(System.Net.HttpStatusCode.Redirect, removed.StatusCode);

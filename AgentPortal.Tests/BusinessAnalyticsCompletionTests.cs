@@ -271,8 +271,11 @@ public sealed class BusinessAnalyticsCompletionTests
         Assert.Equal(2000, financial.RevenueCents);
         foreach (var name in new[] { "CheckoutStarted", "InitiateCheckout", "Purchase" })
             db.AnalyticsEvents.Add(new AnalyticsEvent { CommerceBusinessId = business, EventUtc = now, EventType = name,
-                SessionId = "test-session", VisitorId = "test-visitor", EventId = Guid.NewGuid(), MetadataJson = "{\"orderNumber\":\"test-order\"}" });
+                SessionId = "test-session", VisitorId = "test-visitor", EventId = Guid.NewGuid(), MetadataJson = System.Text.Json.JsonSerializer.Serialize(new { orderNumber = "test-order", commerceBusinessId = business }) });
         db.AnalyticsEvents.Add(new AnalyticsEvent { CommerceBusinessId = Guid.NewGuid(), EventUtc = now, EventType = "Purchase", EventId = Guid.NewGuid() });
+        // Same business ownership alone must not turn website/CRM telemetry into Store activity.
+        db.AnalyticsEvents.Add(new AnalyticsEvent { CommerceBusinessId = business, EventUtc = now, EventType = "Purchase",
+            EventId = Guid.NewGuid(), MetadataJson = "{\"orderNumber\":\"test-order\"}" });
         await db.SaveChangesAsync();
         var fresh = await service.GetWorkspaceSummaryAsync(business, qualityMode: TrafficQualityMode.AllTraffic);
         var measured = await service.GetDashboardAsync(business, qualityMode: TrafficQualityMode.AllTraffic);
