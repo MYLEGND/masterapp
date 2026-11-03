@@ -3176,3 +3176,61 @@ push delivery still require the reconciled backend release and live acceptance.
 Fast-track integration remains held for the earlier Store order protections. Mandatory
 session finish will establish source preservation only through exact remote readback;
 this checkpoint does not claim publication or fast-track synchronization.
+
+## 2026-11-03 — Xcode distribution diagnosis and corrected iOS archive
+
+Founder requested investigation/correction of the Xcode Organizer PLA/signing error
+while preparing the latest native release. Continued the same mobile branch after
+mandatory preflight PASS against `aed1e50f6e4b964b29603f2df6e729bd4633b520`.
+No backend, Store worktree, production app, payment or authentication change.
+
+Read-only evidence: today's12:29archive is clean exactaed1e50f6 source, version1.0
+build25. Local keychain has development identities but no local distribution
+identity. Apple Developer account uses the correct MyLegnd, LLC teamZ8XL9RU485,
+shows the agreement accepted and permits certificate-resource access. Existing
+Distribution Managed certificate expires2027-07-30. Do not replace or revoke it.
+The earlier12:37automatic TestFlight-internal upload was rejected by Apple's PLA
+resource response and a missing-local-certificate fallback; its exact original
+server-state cause remains unknown. A fresh automatic Validate request passed those
+stages, selected Apple Distribution, and auto-managed the copied build number to35.
+It then failed Apple90062/90186: approved version1.0's prerelease train is CLOSED.
+The version rejection is directly proven; it is not proof of an application defect.
+
+Canonical correction: `cfe34b09ad98da5ad1dc622b536f0b10bd7068e3` changes only six
+values in Legend-ios/Legend.xcodeproj/project.pbxproj: all three configurations
+MARKETING_VERSION1.0->1.0.1 and CURRENT_PROJECT_VERSION25->35. Existing
+scripts/reserve-ios-build.py reserved35 against local archive inventory under its
+existing lock. App and both extensions inherit these project-owned version settings.
+No copied plist values, new versioning path, identity, signing override, entitlement,
+credential or certificate change. Independent review accepted the exact one-file
+SHA256 `d597c5f2eb115f940b87093a0c38c245105ab801f797c92e695bcfc8b503c575` before
+commit/archive. plutil lint, version consistency/inheritance and diff checks PASS.
+Prior compatible functional/native test evidence remains applicable to this metadata
+change; fresh Release archive/signature/provider validation is the affected proof.
+
+Fresh device archive: `/Users/zacowen/Library/Developer/Xcode/Archives/2026-11-03/Legend-1.0.1-build35-cfe34b09a.xcarchive`.
+xcodebuild Release archive succeeded using the existing task DerivedData/signing
+setup. Log `/private/tmp/legend-ios-archive-1.0.1-35.log`. Verified all three embedded
+bundles1.0.1(35), exactcfe34b09a provenance with hasLocalChanges=false, and
+codesign --verify --deep --strict PASS. Main executable SHA256
+`fb2d1f6f41852bdaa19df8889dbeb4b69a697028f0e2b0571df0af6373a8775b`.
+Organizer selected the new archive and initiated automatic App Store validation.
+Apple validation NOT CONFIRMED. Current attempt log:
+`/var/folders/hc/0s2s2g8s3t9fzhvjsrypdmsr0000gn/T/Legend_2026-11-03_12-54-40.260.xcdistributionlogs`.
+The corrected package reached UPLOAD_COMPLETE with no PLA/certificate/closed-train
+errors, then GET UPLOAD STATE returned401/auth issue and
+DVTITunesSoftwareServiceFoundation.AuthContextDelegateError.reauthenticationNotSupported.
+Cancelled this validation attempt through Organizer rather than blindly resubmitting.
+Existing manual profiles refreshed successfully in Xcode; App Store validation
+reauthentication remains unresolved. Automatic approval review rejected clicking
+Xcode Sign Out as not explicitly authorized and potentially disruptive to the
+existing signing setup. No sign-out or workaround was executed. A scoped Founder
+approval question for Xcode-only sign-out/sign-in is pending; password/2FA must be
+completed by Founder. Preserve current identities/certificates. Refreshing account
+session and retrying corrected-archive validation remain open; no Apple acceptance
+is claimed.
+
+No TestFlight build submission, App Store release, backend deployment or fast-track
+integration is claimed. The earlier Store/mobile integration hold remains unchanged.
+Source preservation is established only by mandatory session-finish exact remote
+readback, separately from Apple validation and later distribution.
