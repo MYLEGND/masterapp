@@ -82,9 +82,14 @@ export function buildBridgeRequest(request, env) {
   const commerce = isCommerceTransportPath(incoming.pathname);
   const sharedCommerce = commerce && isSharedStorefrontPath(incoming.pathname) &&
     isApprovedCommerceCutover(incoming.hostname, env);
+  // LEGEND product uploads are written by the scoped manager on the website
+  // origin. Read their bytes from that same owner, not Parfait's separate disk.
+  const legendProductMedia = (incoming.hostname === 'mylegnd.com' || incoming.hostname === 'www.mylegnd.com') &&
+    incoming.pathname.startsWith('/uploads/parfait-products/');
+  const websiteTransport = sharedCommerce || !commerce || legendProductMedia;
   const origin = validatedOrigin(
-    sharedCommerce || !commerce ? env?.LEGEND_WEBSITE_ORIGIN : env?.LEGEND_COMMERCE_ORIGIN,
-    sharedCommerce || !commerce ? DEFAULT_WEBSITE_ORIGIN : DEFAULT_COMMERCE_ORIGIN
+    websiteTransport ? env?.LEGEND_WEBSITE_ORIGIN : env?.LEGEND_COMMERCE_ORIGIN,
+    websiteTransport ? DEFAULT_WEBSITE_ORIGIN : DEFAULT_COMMERCE_ORIGIN
   );
   if (!origin) {
     return { error: new Response("Website routing is temporarily unavailable.", { status: 503 }) };

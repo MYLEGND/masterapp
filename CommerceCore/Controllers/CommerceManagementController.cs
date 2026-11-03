@@ -658,6 +658,11 @@ public sealed partial class CommerceManagementController(
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
 
+        if (!ModelState.IsValid)
+            return BadRequest(new { error = "product_invalid", message = "Check the product fields and enter valid numbers before saving." });
+        product.InventoryBySize ??= [];
+        product.DiscountCodes ??= [];
+
         product.IsActive = HasCheckedValue(Request.Form, "IsActive");
         product.IsFeatured = HasCheckedValue(Request.Form, "IsFeatured");
 
@@ -666,18 +671,8 @@ public sealed partial class CommerceManagementController(
         for (var index = 0; index < product.DiscountCodes.Count; index++)
             product.DiscountCodes[index].IsActive = HasCheckedValue(Request.Form, $"DiscountCodes[{index}].IsActive");
 
-        var existing = products.GetAllProducts(store.CommerceBusinessId)
-            .FirstOrDefault(x => string.Equals(x.Id, product.Id, StringComparison.OrdinalIgnoreCase));
-        if (existing is not null)
-        {
-            if (product.InventoryBySize is null || product.InventoryBySize.Count == 0)
-                product.InventoryBySize = existing.InventoryBySize;
-            if (product.DiscountCodes is null || product.DiscountCodes.Count == 0)
-                product.DiscountCodes = existing.DiscountCodes;
-        }
-
-        product.InventoryBySize ??= ParfaitProductCatalogDefaults.CreateDefaultInventory();
-        product.DiscountCodes ??= [];
+        // This endpoint receives the full editor. An empty collection means
+        // the owner removed its rows, not a request to restore old discounts.
         products.SaveProduct(store.CommerceBusinessId, product);
         TempData["ProductStatus"] = product.IsActive ? "Product saved and visible." : "Product saved and hidden.";
         return ManagerRedirect(nameof(Products), new { ticket });

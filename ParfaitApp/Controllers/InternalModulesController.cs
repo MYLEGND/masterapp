@@ -82,6 +82,8 @@ public sealed partial class InternalModulesController : BusinessAnalyticsControl
     [ValidateAntiForgeryToken]
     public IActionResult SaveProduct(ParfaitProductEditorViewModel product)
     {
+        product.InventoryBySize ??= [];
+        product.DiscountCodes ??= [];
         product.IsActive = HasCheckedValue(Request.Form, "IsActive");
         product.IsFeatured = HasCheckedValue(Request.Form, "IsFeatured");
 
@@ -97,16 +99,7 @@ public sealed partial class InternalModulesController : BusinessAnalyticsControl
 
         if (!ModelState.IsValid)
         {
-            var products = _products.GetAllProducts().ToList();
-            return View("Products", new ParfaitProductAdminViewModel
-            {
-                Products = products,
-                NewProduct = product,
-                CommerceSettings = _products.GetCommerceSettings(),
-                ActiveProductCount = products.Count(item => item.IsActive),
-                FeaturedProductCount = products.Count(item => item.IsFeatured),
-                TotalImageCount = products.Sum(item => item.Images.Count)
-            });
+            return BadRequest(new { error = "product_invalid", message = "Check the product fields and enter valid numbers before saving." });
         }
 
         _products.SaveProduct(product);

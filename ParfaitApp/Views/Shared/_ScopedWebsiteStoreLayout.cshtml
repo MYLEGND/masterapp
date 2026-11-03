@@ -1,3 +1,5 @@
+@inject Microsoft.AspNetCore.Mvc.ViewFeatures.IFileVersionProvider StoreFileVersions
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment StoreEnvironment
 @using System.Text.Encodings.Web
 @using System.Text.RegularExpressions
 @{
@@ -17,6 +19,13 @@
         "<title>.*?</title>",
         $"<title>{HtmlEncoder.Default.Encode(pageTitle)}</title>",
         RegexOptions.IgnoreCase | RegexOptions.Singleline);
+    // Protect packages the shared asset under store-assets; Parfait maps that
+    // transport prefix to its native web root. Hash the actual owning file.
+    var assetPath = StoreEnvironment.WebRootFileProvider.GetFileInfo("store-assets/css/storefront.css").Exists
+        ? "/store-assets/css/storefront.css" : "/css/storefront.css";
+    var versionedAsset = StoreFileVersions.AddFileVersionToPath(Context.Request.PathBase, assetPath);
+    var stylesheet = "/store-assets/css/storefront.css" + versionedAsset[assetPath.Length..];
+    prefix = prefix.Replace("href=\"/store-assets/css/storefront.css\"", $"href=\"{HtmlEncoder.Default.Encode(stylesheet)}\"", StringComparison.Ordinal);
     IgnoreSection("Styles");
 }
 @Html.Raw(prefix)

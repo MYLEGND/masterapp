@@ -164,7 +164,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
                 Name = product.Name,
                 Slug = product.Slug,
                 Size = selectedSize.Size,
-                Badge = product.Badge,
+                Badge = product.Badge ?? string.Empty,
                 RequestedQuantity = requestedQuantity,
                 Quantity = effectiveQuantity,
                 UnitPriceCents = product.PriceCents,
@@ -429,14 +429,14 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
     public async Task UploadImagesAsync(Guid businessId, string productId, IReadOnlyList<IFormFile> files)
     {
         if (files.Count == 0)
-            return;
+            throw new ArgumentException("Choose at least one image to upload.");
 
         var product = _db.CommerceProducts
             .Include(x => x.Images)
             .SingleOrDefault(x => x.CommerceBusinessId == businessId && x.ExternalProductKey == productId);
 
         if (product is null)
-            return;
+            throw new ArgumentException("The product no longer exists in this store. Reload the catalog before uploading.");
 
         var businessKey = GetBusinessKey(businessId);
         var productFolder = _storagePaths.GetUploadDirectory(businessKey, product.ExternalProductKey);
@@ -444,9 +444,9 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
         Directory.CreateDirectory(productFolder);
 
         var nextOrder = product.Images.Count == 0 ? 10 : product.Images.Max(image => image.DisplayOrder) + 10;
-        var added = false;
-
-        foreach (var file in files.Where(file => file.Length > 0))
+        var uploads = new List<(byte[] Bytes, string Extension)>();
+        // Validate the whole selection before writing any file or tracking a row.
+        foreach (var file in files)
         {
             await using var source = new MemoryStream();
             await file.CopyToAsync(source);
@@ -461,14 +461,20 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
 
             var extension = UploadValidator.CanonicalExtensionForContentType(validation.DetectedContentType)
                 ?? throw new ArgumentException("The product image container is not recognized.");
+            uploads.Add((bytes, extension));
+        }
+
+        foreach (var upload in uploads)
+        {
             var imageId = Guid.NewGuid().ToString("N");
-            var safeFileName = $"{imageId}{extension}";
+            var safeFileName = $"{imageId}{upload.Extension}";
             var physicalPath = Path.Combine(productFolder, safeFileName);
 
-            await File.WriteAllBytesAsync(physicalPath, bytes);
+            await File.WriteAllBytesAsync(physicalPath, upload.Bytes);
 
-            product.Images.Add(new CommerceProductImage
+            var image = new CommerceProductImage
             {
+                CommerceProductId = product.Id,
                 ExternalImageKey = imageId,
                 FileName = safeFileName,
                 ImageUrl = _storagePaths.GetImageUrl(businessKey, product.ExternalProductKey, safeFileName),
@@ -479,13 +485,14 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
                 ObjectPositionX = 50,
                 ObjectPositionY = 50,
                 Zoom = 1.0m
-            });
+            };
+            product.Images.Add(image);
+            _db.CommerceProductImages.Add(image);
 
             nextOrder += 10;
-            added = true;
         }
 
-        if (added)
+        if (uploads.Count > 0)
         {
             EnsureOnePrimaryImage(product);
             product.UpdatedUtc = DateTime.UtcNow;
@@ -681,7 +688,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
             Slug = product.Slug,
             Description = product.Description,
             PriceLabel = product.PriceLabel,
-            Badge = product.Badge,
+            Badge = product.Badge ?? string.Empty,
             PriceCents = product.PriceCents,
             CompareAtPriceCents = product.CompareAtPriceCents,
             IsFeatured = product.IsFeatured,
@@ -743,7 +750,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
         entity.Slug = product.Slug;
         entity.Description = product.Description;
         entity.PriceLabel = product.PriceLabel;
-        entity.Badge = product.Badge;
+        entity.Badge = product.Badge ?? string.Empty;
         entity.PriceCents = product.PriceCents;
         entity.CompareAtPriceCents = product.CompareAtPriceCents;
         entity.IsFeatured = product.IsFeatured;
@@ -903,7 +910,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
             DisplayPriceCents = displayPriceCents > 0 || displayDiscountCents > 0 ? displayPriceCents : product.PriceCents,
             DisplayCompareAtPriceCents = displayDiscountCents > 0 ? product.PriceCents : 0,
             DisplayDiscountLabel = displayDiscount is not null && displayDiscountCents > 0 ? displayDiscount.SummaryLabel : "",
-            Badge = product.Badge,
+            Badge = product.Badge ?? string.Empty,
             IsFeatured = product.IsFeatured,
             Images = product.Images.OrderBy(image => image.DisplayOrder).Select(image => new ParfaitStoreProductImageViewModel
             {

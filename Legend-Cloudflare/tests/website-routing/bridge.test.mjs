@@ -369,3 +369,16 @@ test('provider callback private adapters retain state and avoid legacy commerce 
     assert.match(response.headers.get('Cache-Control'), /no-store/);
   }
 });
+
+
+test('LEGEND uploaded product media reads from its scoped management storage owner', () => {
+  for (const host of ['mylegnd.com', 'www.mylegnd.com']) {
+    const path = '/uploads/parfait-products/tenant/product/photo.png';
+    const result = buildBridgeRequest(new Request('https://' + host + path), env);
+    assert.equal(result.request.url, env.LEGEND_WEBSITE_ORIGIN + path);
+    assert.equal(result.request.headers.get('X-Legend-Original-Host'), host);
+    assert.equal(result.request.headers.get('X-Legend-Website-Bridge'), secret);
+  }
+  const legacy = buildBridgeRequest(new Request('https://camoexterior.com/uploads/parfait-products/product/photo.png'), env);
+  assert.equal(new URL(legacy.request.url).origin, env.LEGEND_COMMERCE_ORIGIN);
+});
