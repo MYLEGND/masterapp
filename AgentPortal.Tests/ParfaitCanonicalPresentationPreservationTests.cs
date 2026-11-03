@@ -21,7 +21,7 @@ public sealed partial class ParfaitCanonicalPresentationPreservationTests
     // Reviewed runtime-only change: version the inquiry module's child dependency;
     // the layout, styles and authored presentation remain unchanged.
     [InlineData("Views/Shared/_Layout.cshtml", "cd6992a223ce15675a287899cbe9fa3bb2946ec3")]
-    [InlineData("Views/Shared/_ScopedWebsiteStoreLayout.cshtml", "64d65583c778f715af5bde408577a0fd7b155ffc")]
+    [InlineData("Views/Shared/_ScopedWebsiteStoreLayout.cshtml", "029fc02fd970ef15d9f6a0cfced6e509fb65620a")]
     [InlineData("Views/Home/Index.cshtml", "9abd970701d5f915d6f0431255869c68e479aed4")]
     // Reviewed Razor invocation and neutral no-photo presentation preserve real images.
     // Both authored stores and the original Parfait layout
@@ -38,10 +38,10 @@ public sealed partial class ParfaitCanonicalPresentationPreservationTests
     [InlineData("Views/Store/Success.cshtml", "c065e8d011b6fc8e74d6293aaf0496244915d75d")]
     [InlineData("wwwroot/css/site.css", "10f00e83c8e9b8a9e7428efebe01a40a0072903d")]
     [InlineData("wwwroot/css/home.css", "00f32a42b0f2f1ea1324c6f8897abe91a130ec94")]
-    // Founder-requested, independently reviewed Store refinement (5c4617e4e):
+    // Founder-requested canonical public journey refinement:
     // compact catalog and management components; scoped palette retains Parfait identity.
     // Authored presentation remains authoritative. All other visual pins are unchanged.
-    [InlineData("wwwroot/css/storefront.css", "c258f0f30cd691c9769679968028d2e653decd34")]
+    [InlineData("wwwroot/css/storefront.css", "cdfdf0cf7e43d93466691be05392257bacc263b5")]
     // Founder-requested compact internal geometry; single shell authority, page-only light mode and right navigation retained.
     [InlineData("wwwroot/css/internal.css", "7f8b866876190ea65b9603d5e3bb35c4c4039eb2")]
     [InlineData("wwwroot/js/storefront.js", "ee0256aa52937cc25831c54b80141b768be72e96")]

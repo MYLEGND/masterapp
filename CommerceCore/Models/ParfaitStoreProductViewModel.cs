@@ -236,7 +236,7 @@ public sealed class ParfaitProductEditorViewModel
     [Required]
     public string PriceLabel { get; set; } = "Coming Soon";
 
-    public string Badge { get; set; } = "";
+    public string? Badge { get; set; }
     [RegularExpression("^(OneTime|MonthlyTraining)$")]
     public string BillingKind { get; set; } = Domain.Billing.ClientSubscriptionScope.OneTimeProduct;
     public int PriceCents { get; set; }

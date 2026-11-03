@@ -504,6 +504,8 @@
                                         Upload Photos
                                         <input type="file" name="images" accept="image/*" multiple data-pf-upload-input />
                                     </label>
+                                    <span class="pf-inline-save-status" data-pf-save-status role="status" aria-live="polite"></span>
+                                    <button type="submit" class="pf-secondary-action" data-pf-upload-retry hidden>Retry upload</button>
                                 </form>
 
                                 <div class="pf-photo-grid"
@@ -744,6 +746,7 @@
 
                         <div class="pf-modal-footer">
                             <button type="button" class="pf-secondary-action" data-pf-close>Cancel</button>
+                            <span class="pf-inline-save-status" data-pf-save-status role="status" aria-live="polite"></span>
                             <button type="submit" class="pf-action">Save Image Position</button>
                         </div>
                     </form>
@@ -970,7 +973,7 @@
                 target.classList.add(`is-${tone}`);
             }
 
-            if (!message) {
+            if (!message || tone === "error" || tone === "saving") {
                 return;
             }
 
@@ -1035,6 +1038,11 @@
             const currentStack = document.querySelector(`[data-pf-product-stack="${productId}"]`);
             const nextStack = doc.querySelector(`[data-pf-product-stack="${productId}"]`);
             if (currentStack && nextStack) {
+                // Keep the live editor and its pending save state. A media response
+                // must never replace fields the owner has changed in the meantime.
+                const currentEditor = currentStack.querySelector("[data-pf-product-edit-form]");
+                const nextEditor = nextStack.querySelector("[data-pf-product-edit-form]");
+                if (currentEditor && nextEditor) nextEditor.replaceWith(currentEditor);
                 currentStack.replaceWith(nextStack);
                 initializeRoot(nextStack);
                 replaced = true;
@@ -1060,7 +1068,9 @@
 
             const payload = await response.text();
             if (!response.ok) {
-                throw new Error(payload || "Request failed.");
+                let message = "The change could not be saved. Your edits are still here; try again.";
+                try { const problem = JSON.parse(payload); if (problem.message) message = problem.message; } catch { }
+                throw new Error(message);
             }
 
             return payload;
@@ -1093,16 +1103,14 @@
 
                 if (refresh && productId) {
                     const replaced = replaceProductUiFromHtml(productId, html, { openModalId: `editProduct${productId}` });
-                    if (!replaced) {
-                        window.location.reload();
-                        return true;
-                    }
+                    if (!replaced) throw new Error("The store session changed. Sign in again before saving; your edits are still here.");
 
                     const freshForm = document.querySelector(`[data-pf-product-stack="${productId}"] [data-pf-product-edit-form]`);
                     renderSaveState(freshForm, "Saved", "success");
                 } else {
                     if (productId) {
-                        replaceProductSummaryFromHtml(productId, html);
+                        if (!replaceProductSummaryFromHtml(productId, html))
+                            throw new Error("The store session changed. Sign in again before saving; your edits are still here.");
                     }
                     renderSaveState(form, "Saved", "success");
                 }
@@ -1110,7 +1118,7 @@
                 return true;
             } catch (error) {
                 console.error(error);
-                renderSaveState(form, "Save failed", "error");
+                renderSaveState(form, error.message || "Save failed", "error");
                 return false;
             } finally {
                 state.saving = false;
@@ -1143,15 +1151,25 @@
         };
 
         const submitRefreshForm = async (form, productId, openModalId) => {
+            const state = getFormState(form);
+            if (state.saving) return;
+            state.saving = true;
+            const body = new FormData(form);
+            const controls = [...form.querySelectorAll('input[type="file"], button[type="submit"]')];
+            controls.forEach(control => control.disabled = true);
+            const retry = form.querySelector("[data-pf-upload-retry]");
+            if (retry) retry.hidden = true;
+            renderSaveState(form, "Uploading and saving…", "saving");
             try {
-                const html = await submitFormRequest(form);
-                const replaced = replaceProductUiFromHtml(productId, html, { openModalId });
-                if (!replaced) {
-                    window.location.reload();
-                }
+                const html = await submitRequest(form.action, body);
+                if (!replaceProductUiFromHtml(productId, html, { openModalId }))
+                    throw new Error("The store session changed. Sign in again before uploading.");
             } catch (error) {
-                console.error(error);
-                window.location.reload();
+                renderSaveState(form, error.message || "Upload failed. Please try again.", "error");
+                if (retry) retry.hidden = false;
+            } finally {
+                controls.forEach(control => control.disabled = false);
+                state.saving = false;
             }
         };
 
@@ -1160,7 +1178,7 @@
             const token = stack?.querySelector('input[name="__RequestVerificationToken"]')?.value;
 
             if (!token) {
-                window.location.reload();
+                renderSaveState(stack?.querySelector("[data-pf-product-edit-form]"), "Sign in again before saving. Your edits are still here.", "error");
                 return;
             }
 
@@ -1180,11 +1198,10 @@
                 const html = await submitRequest(url, formData);
                 const replaced = replaceProductUiFromHtml(productId, html, { openModalId });
                 if (!replaced) {
-                    window.location.reload();
+                    throw new Error("The store session changed. Sign in again before saving.");
                 }
             } catch (error) {
-                console.error(error);
-                window.location.reload();
+                renderSaveState(stack?.querySelector("[data-pf-product-edit-form]"), error.message || "The change could not be saved.", "error");
             }
         };
 
@@ -1643,7 +1660,6 @@
                 }
 
                 submitRefreshForm(form, productId, `editProduct${productId}`);
-                target.value = "";
                 return;
             }
 
@@ -1679,7 +1695,7 @@
                 return;
             }
 
-            if (form.matches("[data-pf-image-editor-form]")) {
+            if (form.matches("[data-pf-image-editor-form], [data-pf-upload-form]")) {
                 event.preventDefault();
                 const productId = form.getAttribute("data-pf-product-id");
                 if (!productId) {
