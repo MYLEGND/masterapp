@@ -416,7 +416,7 @@ html {
 .pf-header-card {
     position: relative;
     overflow: hidden;
-    padding: 0 clamp(1rem, 2vw, 1.45rem);
+    padding: 0 clamp(1.25rem, 2.5vw, 3rem);
     border: 1px solid var(--pf-nav-line);
     border-top: 0;
     border-bottom-left-radius: 0;
@@ -435,9 +435,9 @@ html {
 }
 
 .pf-header-inner {
-    width: min(100%, 1320px);
+    width: 100%;
     margin: 0 auto;
-    padding: 8px 0;
+    padding: 14px 0;
 }
 
 .pf-header-main {
@@ -451,7 +451,7 @@ html {
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 0.72rem;
+    gap: 1rem;
 }
 
 .pf-page-mode {
@@ -460,15 +460,15 @@ html {
 }
 
 .pf-page-mode select {
-    min-height: 36px;
-    max-width: 112px;
-    padding: .35rem .5rem;
+    min-height: 48px;
+    max-width: 132px;
+    padding: .5rem .75rem;
     border: 1px solid var(--pf-line);
     border-radius: var(--pf-radius-sm);
     background: var(--pf-surface);
     color: var(--pf-text);
     font: inherit;
-    font-size: .8rem;
+    font-size: .9rem;
 }
 
 .pf-brandmark {
@@ -481,8 +481,8 @@ html {
 }
 
 .pf-brand-emblem {
-    width: 44px;
-    height: 44px;
+    width: 52px;
+    height: 52px;
     flex: 0 0 auto;
     display: grid;
     place-items: center;
@@ -511,7 +511,7 @@ html {
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--pf-nav-text);
-    font-size: clamp(1rem, 1.7vw, 1.3rem);
+    font-size: clamp(1.125rem, 1.7vw, 1.75rem);
     font-weight: 800;
     letter-spacing: 0.045em;
     line-height: 1;
@@ -3272,6 +3272,17 @@ html {
         padding: 8px 0;
     }
 
+    .pf-header-left {
+        gap: .625rem;
+    }
+
+    .pf-page-mode select {
+        min-height: 44px;
+        max-width: 104px;
+        padding: .4rem .5rem;
+        font-size: .8rem;
+    }
+
     .pf-brand-emblem {
         width: 44px;
         height: 44px;
@@ -3612,8 +3623,8 @@ button.pf-secondary-action,
 
 .pf-menu-button {
     flex-shrink: 0;
-    width: 46px;
-    height: 46px;
+    width: 48px;
+    height: 48px;
     border-radius: var(--pf-radius-md);
     border: 1px solid var(--pf-line);
     background: var(--pf-surface);
