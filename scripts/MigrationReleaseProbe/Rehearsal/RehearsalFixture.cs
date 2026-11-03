@@ -504,8 +504,9 @@ internal static partial class RehearsalFixture
             if (management) await VerifyManagementData(db, timeout.Token);
             if (payments)
             {
-                var orders = await db.CommerceOrders.AsNoTracking().OrderBy(o => o.OrderNumber).ToArrayAsync(timeout.Token);
-                if (orders.Length != 2 || orders.Select(o => o.CommerceBusinessId).Distinct().Count() != 2 ||
+                var allOrders = await db.CommerceOrders.AsNoTracking().OrderBy(o => o.OrderNumber).ToArrayAsync(timeout.Token);
+                var orders = expanded ? allOrders.Where(o => o.CommerceBusinessId != ExpandedBusiness).ToArray() : allOrders;
+                if (allOrders.Length != (expanded ? 3 : 2) || orders.Length != 2 || orders.Select(o => o.CommerceBusinessId).Distinct().Count() != 2 ||
                     orders.Any(o => o.CheckoutAttemptId != "synthetic-shared-attempt" || o.TotalCents != 1234 ||
                         o.SquarePaymentId != "synthetic-legacy-payment" || o.PaymentProvider is not null ||
                         o.PaymentReference is not null || o.PaymentEnvironment is not null))
