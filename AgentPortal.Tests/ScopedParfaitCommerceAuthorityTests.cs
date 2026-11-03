@@ -144,7 +144,7 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.Contains("_ParfaitCommerceTracking", scopedLayout, StringComparison.Ordinal);
         Assert.Contains("TryExtractPublishedWebsiteShell", storeContext, StringComparison.Ordinal);
         Assert.Contains("version.CompiledPagesJson", storeContext, StringComparison.Ordinal);
-        Assert.Contains("--web-gold-strong", storefrontCss, StringComparison.Ordinal);
+        Assert.Contains("--sp-theme-primary: var(--web-gold, var(--sp-cocoa-700))", storefrontCss, StringComparison.Ordinal);
         Assert.Contains("--web-navy-deep", storefrontCss, StringComparison.Ordinal);
         Assert.DoesNotContain("navbar-brand", scopedLayout, StringComparison.Ordinal);
         Assert.DoesNotContain("site-header", scopedLayout, StringComparison.Ordinal);
