@@ -155,7 +155,15 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.Contains("_ParfaitCommerceTracking", scopedLayout, StringComparison.Ordinal);
         Assert.Contains("TryExtractPublishedWebsiteShell", storeContext, StringComparison.Ordinal);
         Assert.Contains("version.CompiledPagesJson", storeContext, StringComparison.Ordinal);
-        Assert.Contains("--sp-theme-primary: var(--web-gold, var(--sp-cocoa-700))", storefrontCss, StringComparison.Ordinal);
+        // Both public shells use the authored strong accent before gold, with the
+        // same contrast authority supplying the foreground consumed by storefront CSS.
+        Assert.Contains("--sp-theme-primary: var(--web-gold-strong, var(--web-gold, var(--sp-cocoa-700)))", storefrontCss, StringComparison.Ordinal);
+        Assert.Contains("theme?.GoldStrong ?? theme?.Gold ?? commerce?.AccentColor", legacyLayout, StringComparison.Ordinal);
+        Assert.Contains("CommerceThemeContrast.Foreground(primary, secondary, \"#6f4b3b\")", legacyLayout, StringComparison.Ordinal);
+        Assert.Contains("--sp-theme-on-accent:{onAccent}", legacyLayout, StringComparison.Ordinal);
+        Assert.Contains("CommerceThemeContrast.Foreground(theme.GoldStrong ?? theme.Gold, theme.NavyDeep ?? theme.Navy, \"#6f4b3b\")", scopedLayout, StringComparison.Ordinal);
+        Assert.Contains("--web-on-accent:", scopedLayout, StringComparison.Ordinal);
+        Assert.Contains("--sp-theme-on-accent: var(--web-on-accent, var(--web-navy-deep, #fff))", storefrontCss, StringComparison.Ordinal);
         Assert.Contains("--web-navy-deep", storefrontCss, StringComparison.Ordinal);
         Assert.DoesNotContain("navbar-brand", scopedLayout, StringComparison.Ordinal);
         Assert.DoesNotContain("site-header", scopedLayout, StringComparison.Ordinal);
