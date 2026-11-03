@@ -775,7 +775,7 @@ enum LegendInAppNotificationProjection {
         accountNotifications: [MobileActivityNotification]
     ) -> [LegendDailyActivityItem] {
         var notifications = accountNotifications
-            .filter { $0.kind.caseInsensitiveCompare("Engineering") != .orderedSame }
+            .filter { $0.channel != "work" && $0.kind.caseInsensitiveCompare("Engineering") != .orderedSame }
             .map {
             LegendDailyActivityItem(
                 id: "account:\($0.id.uuidString)",
@@ -819,6 +819,7 @@ final class LegendDailyActivityStore: ObservableObject {
     private let identity: LogicalParticipantIdentity
     private let social: MobileSocialStore
     private let messages: MessagingStore
+    private let notifications: MobileNotificationStore?
     private let calendar: Calendar
     private var cancellables = Set<AnyCancellable>()
 
@@ -826,12 +827,14 @@ final class LegendDailyActivityStore: ObservableObject {
         identity: LogicalParticipantIdentity,
         social: MobileSocialStore,
         messages: MessagingStore,
+        notifications: MobileNotificationStore? = nil,
         planner: LegendDevicePlannerStore? = nil,
         calendar: Calendar = .autoupdatingCurrent
     ) {
         self.identity = identity
         self.social = social
         self.messages = messages
+        self.notifications = notifications
         self.planner = planner ?? LegendDevicePlannerStore(
             storageScope: "\(identity.participantType.rawValue).\(identity.userID)")
         self.calendar = calendar
@@ -877,7 +880,14 @@ final class LegendDailyActivityStore: ObservableObject {
     }
 
     func markNotificationsViewed() {
-        let identifiers = inAppNotifications.map(\.id) +
+        if let notifications {
+            let visible = Set(inAppNotifications.map(\.id))
+            let ids = notifications.snapshot?.notifications.filter {
+                !$0.isRead && $0.channel != "work" && visible.contains("account:\($0.id.uuidString)")
+            }.map(\.id) ?? []
+            Task { for id in ids { await notifications.markRead(id) } }
+        }
+        let identifiers = inAppNotifications.filter { $0.source != .account }.map(\.id) +
             engineeringActions.map { "engineering:\($0.workItemID.uuidString)" }
         var seen = viewedIdentifiers
         seen.formUnion(identifiers)
@@ -955,6 +965,7 @@ final class LegendDailyActivityStore: ObservableObject {
     }
 
     private func observeSources() {
+        notifications?.$snapshot.receive(on: RunLoop.main).sink { [weak self] _ in self?.rebuild() }.store(in: &cancellables)
         social.$state
             .sink { [weak self] _ in self?.rebuild() }
             .store(in: &cancellables)
@@ -991,8 +1002,11 @@ final class LegendDailyActivityStore: ObservableObject {
                 : nil
         }
 
-        unreadBadgeCount = inAppNotifications.count {
-            !viewedIdentifiers.contains($0.id)
+        let accountUnread = notifications?.snapshot?.notifications.filter {
+            $0.channel != "work" && !$0.isRead && $0.conversationID == nil && $0.kind != "Engineering"
+        }.count ?? 0
+        unreadBadgeCount = accountUnread + inAppNotifications.count {
+            $0.source != .account && !viewedIdentifiers.contains($0.id)
         } + engineeringActions.count {
             !viewedIdentifiers.contains("engineering:\($0.workItemID.uuidString)")
         }

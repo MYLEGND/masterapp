@@ -729,6 +729,8 @@ final class MobileNativeContractTests: XCTestCase {
     }
 
     func testAuthorizedDualRoleSwitchReusesTheCurrentBearerWithoutSigningOut() async throws {
+        let cache = LegendLaunchCache(directoryName: "MobileNativeContractTests-\(UUID().uuidString)")
+        defer { cache.clear() }
         let store = InMemoryTokenStore(
             storedTokens: OAuthTokenSet(
                 accessToken: "stored-access-token",
@@ -740,7 +742,9 @@ final class MobileNativeContractTests: XCTestCase {
             tokenStore: store,
             authorizer: TestAuthorizer(),
             tokenExchanger: TestTokenExchanger(),
-            sessionService: service)
+            sessionService: service,
+            launchCache: cache,
+            biometricSecurity: AcceptingBiometricSecurity())
 
         coordinator.restore()
         try await waitForState(

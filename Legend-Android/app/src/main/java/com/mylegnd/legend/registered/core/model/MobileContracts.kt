@@ -190,7 +190,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class MobileUpcomingAppointment(val id: String, @SerialName("startUtc") val startUtc: String, @SerialName("endUtc") val endUtc: String? = null, val status: String)
 @Serializable data class MobileActionItem(val id: String, val title: String, val status: String, val priority: String, @SerialName("dueDateUtc") val dueDateUtc: String? = null)
 @Serializable data class MobileDailyScripture(val date: String, val reference: String, val translation: String, val verses: List<String> = emptyList(), val text: String = "", val source: String = "DailyCatalog", @SerialName("passageText") val passageText: String = text)
-@Serializable data class MobileAgentClient(@SerialName("profileId") val profileId: String, @SerialName("displayName") val displayName: String, val email: String, @SerialName("crmStatus") val crmStatus: String, val avatar: MobileAvatar? = null, val archived: Boolean = false, val phone: String? = null)
+@Serializable data class MobileAgentClient(@SerialName("profileId") val profileId: String, @SerialName("displayName") val displayName: String, val email: String, @SerialName("crmStatus") val crmStatus: String, val avatar: MobileAvatar? = null, val archived: Boolean = false, val phone: String? = null, val entityName: String? = null)
 @Serializable data class MobileAgentLead(@SerialName("leadId") val leadId: String, @SerialName("displayName") val displayName: String, @SerialName("crmStage") val crmStage: String, @SerialName("updatedUtc") val updatedUtc: String, val archived: Boolean = false, val email: String? = null, val phone: String? = null)
 /**
  * A short-lived, same-origin entry point to the existing AgentPortal client
@@ -373,7 +373,7 @@ internal object FinancialPresentationOrder {
 @Serializable data class VerificationResolutionRequest(val approve: Boolean, val note: String? = null)
 @Serializable data class ControlledResourceGrantRequest(@SerialName("targetUserId") val targetUserId: String, @SerialName("targetParticipantType") val targetParticipantType: String, @SerialName("isGranted") val isGranted: Boolean)
 @Serializable data class MessagingVerificationRequest(val id: String, val status: String, @SerialName("requestedUtc") val requestedUtc: String, @SerialName("resourceType") val resourceType: String)
-@Serializable data class MessagingActivityNotification(val id: String, val kind: String, val title: String, val detail: String, @SerialName("occurredUtc") val occurredUtc: String, @SerialName("controlledResourceRequestId") val controlledResourceRequestId: String? = null)
+@Serializable data class MessagingActivityNotification(val id: String, val kind: String, val title: String, val detail: String, @SerialName("occurredUtc") val occurredUtc: String, @SerialName("controlledResourceRequestId") val controlledResourceRequestId: String? = null, val channel: String = "personal")
 @Serializable data class FounderEngineeringActionItem(
     @SerialName("workItemId") val workItemId: String,
     @SerialName("attentionKind") val attentionKind: String,
@@ -536,7 +536,7 @@ data class SocialVideoEdit(val startSeconds: Double = 0.0, val endSeconds: Doubl
     val availableOutcomes: List<String> = emptyList(), val meetingUrl: String? = null,
     val firstName: String? = null, val lastName: String? = null, val phone2: String? = null,
     val addressLine: String? = null, val city: String? = null, val state: String? = null, val zipCode: String? = null,
-    val updatedUtc: String? = null, val archived: Boolean = false, val userId: String? = null, val canRestore: Boolean = false
+    val updatedUtc: String? = null, val archived: Boolean = false, val userId: String? = null, val canRestore: Boolean = false, val entityName: String? = null, val recordType: String? = null
 )
 
 @Serializable data class MobileBookingAccess(val allowed: Boolean)

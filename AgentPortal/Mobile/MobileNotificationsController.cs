@@ -27,16 +27,17 @@ public sealed class MobileNotificationsController : MobileApiControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> List([FromQuery] int? take, CancellationToken cancellationToken)
+    public async Task<IActionResult> List([FromQuery] int? take, CancellationToken cancellationToken, [FromQuery] string? channel = null)
     {
         var resolved = await ResolveActorAsync(cancellationToken);
         if (resolved.Error is not null)
             return resolved.Error;
 
-        var snapshot = await _notifications.GetSnapshotAsync(
-            resolved.Actor!.Actor,
-            take ?? 50,
-            cancellationToken);
+        if (channel is not (null or "work" or "personal"))
+            return Error(400, "mobile_notification_channel_invalid", "Choose a supported notification channel.");
+        var snapshot = channel == null
+            ? await _notifications.GetSnapshotAsync(resolved.Actor!.Actor, take ?? 50, cancellationToken)
+            : await _notifications.GetChannelSnapshotAsync(resolved.Actor!.Actor, take ?? 50, channel, cancellationToken);
         return Ok(ToResponse(snapshot));
     }
 
@@ -325,11 +326,17 @@ public sealed record MobileNotificationDto(
     Guid? ConversationId,
     DateTime OccurredUtc,
     bool IsRead,
-    bool IsCleared);
+    bool IsCleared)
+{
+    public string Channel => NotificationChannel.ForKind(Kind);
+}
 
 public sealed record MobileNotificationSnapshotDto(
     MobileNotificationUnreadCountDto Badge,
-    IReadOnlyList<MobileNotificationDto> Notifications);
+    IReadOnlyList<MobileNotificationDto> Notifications)
+{
+    public int WorkChannelsVersion => 1;
+}
 
 public sealed record MobileApnsDeviceRegistrationRequest(
     string? DeviceToken,

@@ -22,7 +22,17 @@ public sealed record NotificationLedgerItem(
     Guid? ConversationId,
     DateTime OccurredUtc,
     bool IsRead,
-    bool IsCleared);
+    bool IsCleared)
+{
+    public string Channel => NotificationChannel.ForKind(Kind);
+}
+
+/// <summary>Presentation channels over the existing recipient ledger, never a second inbox.</summary>
+public static class NotificationChannel
+{
+    public static readonly string[] WorkKinds = ["WebsiteLead", "BusinessInquiry", "StoreOrder", "OrderFulfillment"];
+    public static string ForKind(string kind) => WorkKinds.Contains(kind, StringComparer.Ordinal) ? "work" : "personal";
+}
 
 public sealed record NotificationBadgeSnapshot(
     int UnreadCount,
@@ -140,6 +150,9 @@ public interface INotificationEngine
         MessagingActor actor,
         int take,
         CancellationToken cancellationToken = default);
+
+    Task<NotificationSnapshot> GetChannelSnapshotAsync(MessagingActor actor, int take, string? channel,
+        CancellationToken cancellationToken = default) => throw new NotSupportedException("Channel projection is not implemented.");
 
     Task<NotificationBadgeSnapshot> MarkReadAndPublishAsync(
         MessagingActor actor,
@@ -483,19 +496,28 @@ internal sealed class NotificationEngine : INotificationEngine
     public Task<NotificationBadgeSnapshot> GetBadgeSnapshotAsync(MessagingActor actor,
         CancellationToken cancellationToken = default) => ReconcileBadgeAsync(Normalize(actor), cancellationToken);
 
-    public async Task<NotificationSnapshot> GetSnapshotAsync(
+    public Task<NotificationSnapshot> GetSnapshotAsync(
         MessagingActor actor,
         int take,
         CancellationToken cancellationToken = default)
     {
+        return GetChannelSnapshotAsync(actor, take, null, cancellationToken);
+    }
+
+    public async Task<NotificationSnapshot> GetChannelSnapshotAsync(MessagingActor actor, int take, string? channel,
+        CancellationToken cancellationToken = default)
+    {
+        if (channel is not (null or "work" or "personal")) throw new ArgumentException("Unknown channel.", nameof(channel));
         var recipient = Normalize(actor);
-        var rows = await _db.MobileActivityNotifications
+        var query = _db.MobileActivityNotifications
             .AsNoTracking()
             .Where(notification =>
                 notification.RecipientUserId == recipient.UserId &&
                 notification.RecipientParticipantType == recipient.ParticipantType &&
-                !notification.IsCleared)
-            .OrderByDescending(notification => notification.OccurredUtc)
+                !notification.IsCleared);
+        if (channel == "work") query = query.Where(n => NotificationChannel.WorkKinds.Contains(n.Kind));
+        else if (channel == "personal") query = query.Where(n => !NotificationChannel.WorkKinds.Contains(n.Kind));
+        var rows = await query.OrderByDescending(notification => notification.OccurredUtc)
             .ThenByDescending(notification => notification.Id)
             .Take(Math.Clamp(take, 1, 100))
             .Select(notification => new { Item = new NotificationLedgerItem(

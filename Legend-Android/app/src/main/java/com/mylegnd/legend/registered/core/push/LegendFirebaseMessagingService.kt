@@ -84,6 +84,7 @@ class LegendFirebaseMessagingService : FirebaseMessagingService() {
             .setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra(LegendNotificationNavigation.EXTRA_CONVERSATION_ID, conversationId)
             .putExtra(LegendNotificationNavigation.EXTRA_NOTIFICATION_ID, notificationId)
+            .putExtra("channel", message.data["channel"])
         val pendingIntent = PendingIntent.getActivity(
             this,
             (notificationId.ifBlank { conversationId }).hashCode(),

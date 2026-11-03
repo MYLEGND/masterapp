@@ -308,6 +308,9 @@ public sealed class ParfaitOrderService
             if (order is null)
                 return false;
 
+            if (CommerceOrderFulfillment.Validate(order, request.FulfillmentStatus, request.TrackingCarrier,
+                request.TrackingNumber, NormalizePaymentStatus(request.PaymentStatus), request.RefundedCents) != null)
+                return false;
             var now = DateTime.UtcNow;
 
             // Merchant financial state is processor evidence, never an editable order field.
@@ -315,10 +318,7 @@ public sealed class ParfaitOrderService
                 && (NormalizePaymentStatus(request.PaymentStatus) != order.PaymentStatus || request.RefundedCents != order.RefundedCents))
                 return false;
             order.PaymentStatus = NormalizePaymentStatus(request.PaymentStatus);
-            order.FulfillmentStatus = NormalizeFulfillmentStatus(request.FulfillmentStatus);
             order.ReturnStatus = NormalizeReturnStatus(request.ReturnStatus);
-            order.TrackingCarrier = NullIfEmpty(request.TrackingCarrier);
-            order.TrackingNumber = NullIfEmpty(request.TrackingNumber);
             order.AdminNotes = NullIfEmpty(request.AdminNotes);
             order.RefundedCents = Math.Clamp(request.RefundedCents, 0, order.TotalCents);
 
@@ -331,21 +331,12 @@ public sealed class ParfaitOrderService
                 order.PaymentProcessingStartedUtc = null;
             }
 
-            if (string.Equals(order.FulfillmentStatus, "Shipped", StringComparison.OrdinalIgnoreCase))
-                order.ShippedUtc ??= now;
-
-            if (string.Equals(order.FulfillmentStatus, "Fulfilled", StringComparison.OrdinalIgnoreCase))
-            {
-                order.FulfilledUtc ??= now;
-                order.ShippedUtc ??= now;
-            }
-
             if (string.Equals(order.PaymentStatus, "Refunded", StringComparison.OrdinalIgnoreCase) && order.RefundedCents == 0)
                 order.RefundedCents = order.TotalCents;
 
             order.CommerceBusinessId = businessId;
         order.UpdatedUtc = now;
-            order.Status = BuildStatus(MapOrder(order));
+            CommerceOrderFulfillment.Apply(order, request.FulfillmentStatus, request.TrackingCarrier, request.TrackingNumber, now);
 
             _db.SaveChanges();
             return true;
@@ -729,20 +720,7 @@ public sealed class ParfaitOrderService
         };
     }
 
-    private static string NormalizeFulfillmentStatus(string? value)
-    {
-        return Clean(value).ToLowerInvariant() switch
-        {
-            "processing" => "Processing",
-            "packed" => "Packed",
-            "shipped" => "Shipped",
-            "fulfilled" => "Fulfilled",
-            "on hold" => "On Hold",
-            "cancelled" => "Cancelled",
-            "returned" => "Returned",
-            _ => "Unfulfilled"
-        };
-    }
+    private static string NormalizeFulfillmentStatus(string? value) => CommerceOrderFulfillment.Normalize(value);
 
     private static string NormalizeReturnStatus(string? value)
     {
@@ -757,17 +735,8 @@ public sealed class ParfaitOrderService
         };
     }
 
-    private static string BuildStatus(ParfaitOrderRecord order)
-    {
-        if (order.IsPaymentProcessing) return "Payment Processing";
-        if (string.Equals(order.PaymentStatus, "Failed", StringComparison.OrdinalIgnoreCase)) return "Payment Failed";
-        if (string.Equals(order.PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase)) return "Payment Pending";
-        if (string.Equals(order.PaymentStatus, "Refunded", StringComparison.OrdinalIgnoreCase)) return "Refunded";
-        if (!string.Equals(order.ReturnStatus, "None", StringComparison.OrdinalIgnoreCase) && !string.Equals(order.ReturnStatus, "Closed", StringComparison.OrdinalIgnoreCase)) return $"Return {order.ReturnStatus}";
-        if (string.Equals(order.FulfillmentStatus, "Fulfilled", StringComparison.OrdinalIgnoreCase)) return "Fulfilled";
-        if (string.Equals(order.FulfillmentStatus, "Shipped", StringComparison.OrdinalIgnoreCase)) return "Shipped";
-        return "Paid";
-    }
+    private static string BuildStatus(ParfaitOrderRecord order) => CommerceOrderFulfillment.Status(
+        order.IsPaymentProcessing, order.PaymentStatus, order.ReturnStatus, order.FulfillmentStatus);
 
     private static bool IsPaymentProcessingActive(ParfaitOrderRecord order, DateTime now)
     {

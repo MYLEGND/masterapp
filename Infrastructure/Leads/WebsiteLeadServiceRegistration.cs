@@ -27,6 +27,7 @@ public static class WebsiteLeadServiceRegistration
         services.AddWebsiteLeadNotificationTransport();
         services.TryAddScoped<BusinessInquiryNotificationService>();
         services.TryAddScoped<WebsiteLeadAppNotificationService>();
+        services.TryAddScoped<Infrastructure.Commerce.CommerceOrderAppNotificationService>();
         services.AddHostedService<BusinessInquiryNotificationWorker>();
         services.AddHostedService<WebsiteLeadNotificationRecoveryWorker>();
         services.AddHostedService<WebsiteLeadAppNotificationWorker>();

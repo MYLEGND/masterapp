@@ -1429,7 +1429,10 @@ public sealed record MobileActivityNotificationDto(
     string Title,
     string Detail,
     DateTime OccurredUtc,
-    Guid? ControlledResourceRequestId);
+    Guid? ControlledResourceRequestId)
+{
+    public string Channel => Infrastructure.Notifications.NotificationChannel.ForKind(Kind);
+}
 
 public sealed record MobileControlledResourceGrantRequest(
     string? TargetUserId,

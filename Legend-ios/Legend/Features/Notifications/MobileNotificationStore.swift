@@ -22,9 +22,10 @@ struct MobileNotificationItem: Codable, Equatable, Identifiable, Sendable {
     let occurredUTC: Date
     let isRead: Bool
     let isCleared: Bool
+    var channel: String? = nil
 
     private enum CodingKeys: String, CodingKey {
-        case id, kind, title, detail, isRead, isCleared
+        case id, kind, title, detail, isRead, isCleared, channel
         case conversationID = "conversationId"
         case occurredUTC = "occurredUtc"
     }
@@ -33,6 +34,42 @@ struct MobileNotificationItem: Codable, Equatable, Identifiable, Sendable {
 struct MobileNotificationSnapshot: Codable, Equatable, Sendable {
     var badge: MobileNotificationUnreadCount
     var notifications: [MobileNotificationItem]
+    var workChannelsVersion: Int? = nil
+}
+
+struct MobileWorkOrder: Codable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    let businessId: UUID
+    let profileId: UUID
+    let businessName: String?
+    let orderNumber: String
+    let fulfillmentStatus: String
+    let allowedStatuses: [String]
+    let trackingCarrier: String?
+    let trackingNumber: String?
+    let updatedUtc: String?
+    let firstName: String
+    let lastName: String
+    let addressLine1: String
+    let addressLine2: String?
+    let city: String
+    let state: String
+    let postalCode: String
+    let items: [Line]
+    struct Line: Codable, Equatable, Sendable {
+        let productName: String
+        let size: String
+        let quantity: Int
+    }
+}
+
+private struct MobileWorkFulfillmentInput: Encodable {
+    let businessId: UUID
+    let profileId: UUID
+    let status: String
+    let trackingCarrier: String?
+    let trackingNumber: String?
+    let expectedUpdatedUtc: String?
 }
 
 private struct MobileApnsDeviceRegistration: Encodable, Sendable {
@@ -75,6 +112,10 @@ enum MobilePushRegistrationState: Equatable, Sendable {
 }
 
 protocol MobileNotificationAPI: Sendable {
+    func workSnapshot(accessToken: String) async throws -> MobileNotificationSnapshot
+    func workOrders(accessToken: String) async throws -> [MobileWorkOrder]
+    func fulfill(_ order: MobileWorkOrder, status: String, carrier: String?, tracking: String?, accessToken: String) async throws
+
     func snapshot(accessToken: String) async throws -> MobileNotificationSnapshot
     func markRead(id: UUID, accessToken: String) async throws -> MobileNotificationUnreadCount
     func clearBadges(accessToken: String) async throws -> MobileNotificationUnreadCount
@@ -85,6 +126,12 @@ protocol MobileNotificationAPI: Sendable {
     ) async throws -> MobileNotificationUnreadCount
     func deactivateAPNSDevice(token: String, accessToken: String) async throws
     func pushDiagnostic(accessToken: String) async throws -> MobilePushDiagnostic
+}
+
+extension MobileNotificationAPI {
+    func workSnapshot(accessToken: String) async throws -> MobileNotificationSnapshot { throw MobileAPIError.invalidServerResponse }
+    func workOrders(accessToken: String) async throws -> [MobileWorkOrder] { throw MobileAPIError.invalidServerResponse }
+    func fulfill(_ order: MobileWorkOrder, status: String, carrier: String?, tracking: String?, accessToken: String) async throws { throw MobileAPIError.invalidServerResponse }
 }
 
 struct MobileUnavailableNotificationAPI: MobileNotificationAPI {
@@ -123,6 +170,24 @@ struct URLSessionMobileNotificationAPI: MobileNotificationAPI {
 
     private var participantHeader: [String: String] {
         ["X-Legend-Participant-Type": participantType.rawValue]
+    }
+
+    func workOrders(accessToken: String) async throws -> [MobileWorkOrder] {
+        try await client.get("/api/v1/mobile/work/orders", accessToken: accessToken,
+            headers: participantHeader, response: [MobileWorkOrder].self)
+    }
+
+    func fulfill(_ order: MobileWorkOrder, status: String, carrier: String?, tracking: String?, accessToken: String) async throws {
+        try await client.put("/api/v1/mobile/work/orders/\(order.id.uuidString)/fulfillment",
+            body: MobileWorkFulfillmentInput(businessId: order.businessId, profileId: order.profileId,
+                status: status, trackingCarrier: carrier, trackingNumber: tracking, expectedUpdatedUtc: order.updatedUtc),
+            accessToken: accessToken, headers: participantHeader)
+    }
+
+    func workSnapshot(accessToken: String) async throws -> MobileNotificationSnapshot {
+        try await client.get("/api/v1/mobile/notifications", accessToken: accessToken,
+            queryItems: [URLQueryItem(name: "channel", value: "work"), URLQueryItem(name: "take", value: "100")],
+            headers: participantHeader, response: MobileNotificationSnapshot.self)
     }
 
     func snapshot(accessToken: String) async throws -> MobileNotificationSnapshot {
@@ -188,7 +253,15 @@ struct URLSessionMobileNotificationAPI: MobileNotificationAPI {
 /// into the icon and any in-app notification surface.
 @MainActor
 final class MobileNotificationStore: ObservableObject {
+    @Published private(set) var workSnapshot: MobileNotificationSnapshot?
+    @Published private(set) var isLoadingWorkNotifications = false
+    @Published private(set) var workNotificationsFailed = false
+    @Published private(set) var workOrders: [MobileWorkOrder] = []
+    @Published private(set) var workFailure: String?
+    @Published private(set) var isLoadingWork = false
+    @Published private(set) var savingOrderID: UUID?
     @Published private(set) var snapshot: MobileNotificationSnapshot?
+    @Published private(set) var synchronizationFailed = false
     @Published private(set) var isSynchronizing = false
     @Published private(set) var pushDiagnostic: MobilePushDiagnostic?
     @Published private(set) var isRefreshingPushDiagnostic = false
@@ -219,11 +292,52 @@ final class MobileNotificationStore: ObservableObject {
 
         do {
             apply(try await api.snapshot(accessToken: try await accessTokenProvider()))
+            synchronizationFailed = false
         } catch {
+            synchronizationFailed = true
             diagnostics.record(
                 category: .networking,
                 summary: "Notification synchronization was unavailable.",
                 correlationID: (error as? MobileAPIError)?.correlationID)
+        }
+    }
+
+    func loadWorkNotifications() async {
+        guard !isLoadingWorkNotifications else { return }
+        isLoadingWorkNotifications = true
+        defer { isLoadingWorkNotifications = false }
+        do {
+            workSnapshot = try await api.workSnapshot(accessToken: try await accessTokenProvider())
+            workNotificationsFailed = false
+        } catch { workNotificationsFailed = true }
+    }
+
+    func loadWorkOrders() async {
+        guard !isLoadingWork else { return }
+        isLoadingWork = true
+        defer { isLoadingWork = false }
+        do {
+            workOrders = try await api.workOrders(accessToken: try await accessTokenProvider())
+            workFailure = nil
+        } catch { workFailure = LegendLocalized("Orders could not be loaded. Please retry.") }
+    }
+
+    func fulfill(_ order: MobileWorkOrder, status: String, carrier: String?, tracking: String?) async -> Bool {
+        guard savingOrderID == nil else { return false }
+        savingOrderID = order.id
+        defer { savingOrderID = nil }
+        do {
+            try await api.fulfill(order, status: status, carrier: carrier, tracking: tracking,
+                accessToken: try await accessTokenProvider())
+            await loadWorkOrders()
+            return true
+        } catch {
+            if let apiError = error as? MobileAPIError, case .apiServer(_, "mobile_order_validation", let message, _) = apiError {
+                workFailure = message.map { LegendLocalized($0) }
+            } else {
+                workFailure = LegendLocalized("Order was not saved. Refresh and review its current state before retrying.")
+            }
+            return false
         }
     }
 
@@ -243,9 +357,13 @@ final class MobileNotificationStore: ObservableObject {
                         conversationID: notification.conversationID,
                         occurredUTC: notification.occurredUTC,
                         isRead: true,
-                        isCleared: notification.isCleared)
+                        isCleared: notification.isCleared,
+                        channel: notification.channel)
                 }
                 self.snapshot = snapshot
+            }
+            if workSnapshot?.notifications.contains(where: { $0.id == notificationID }) == true {
+                await loadWorkNotifications()
             }
         } catch {
             diagnostics.record(category: .networking, summary: "Notification could not be marked read.")
@@ -269,7 +387,8 @@ final class MobileNotificationStore: ObservableObject {
                         conversationID: notification.conversationID,
                         occurredUTC: notification.occurredUTC,
                         isRead: notification.isRead,
-                        isCleared: true)
+                        isCleared: true,
+                        channel: notification.channel)
                 }
                 self.snapshot = snapshot
             }
@@ -358,7 +477,7 @@ final class MobileNotificationStore: ObservableObject {
     private func apply(badge: MobileNotificationUnreadCount) {
         if let current = snapshot?.badge, badge.revision < current.revision { return }
         if var snapshot {
-            snapshot = MobileNotificationSnapshot(badge: badge, notifications: snapshot.notifications)
+            snapshot = MobileNotificationSnapshot(badge: badge, notifications: snapshot.notifications, workChannelsVersion: snapshot.workChannelsVersion)
             self.snapshot = snapshot
         } else {
             snapshot = MobileNotificationSnapshot(badge: badge, notifications: [])
