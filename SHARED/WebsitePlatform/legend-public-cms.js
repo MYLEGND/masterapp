@@ -3229,7 +3229,10 @@
       el.dataset.legendStoreCatalog='';
       if(editorMode && !document.querySelector('link[data-store-presentation]')) {
         const css=document.createElement('link'); css.rel='stylesheet';css.dataset.storePresentation='';
-        css.href=new URL('/store-assets/css/storefront.css',storePreviewUrl() || location.origin).toString();document.head.appendChild(css);
+        // Studio must show the current deployed presentation, not a heuristically cached prior release.
+        const stylesheet=new URL('/store-assets/css/storefront.css',storePreviewUrl() || location.origin);
+        stylesheet.searchParams.set('studio',String(Date.now()));
+        css.href=stylesheet.toString();document.head.appendChild(css);
       }
 
       if(!retainedStoreCatalog){
@@ -3244,6 +3247,7 @@
               const markup=await response.text();
               if(!el.isConnected)return;
               el.innerHTML=markup;
+              if(!markup.trim()) el.textContent='No active products yet. Add products in your store workspace.';
               applyStoreCatalogPresentation(el,node);
               el.querySelectorAll('a').forEach(link=>{link.removeAttribute('href');link.setAttribute('aria-disabled','true');});
             }).catch(()=>{if(el.isConnected)el.textContent='Catalog preview unavailable. Reopen this page to retry.';});
