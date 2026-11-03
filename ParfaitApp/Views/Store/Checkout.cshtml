@@ -127,6 +127,12 @@
                     </div>
                 </div>
 
+                <div class="sp-checkout-section">
+                    <label for="marketingEmailConsent"><input type="checkbox" id="marketingEmailConsent" />
+                        @ParfaitApp.Services.ParfaitCustomerAutomationService.MarketingConsentText
+                    </label>
+                    <p>Optional. Your order confirmation does not require marketing consent.</p>
+                </div>
                 <div class="sp-checkout-submit-row">
                     <button id="spPayButton" disabled="@(!checkoutAvailable)" class="sp-button sp-button--primary sp-button--checkout sp-button--purchase" type="button">
                         <span class="sp-button-main">
@@ -469,6 +475,7 @@
                         if (result.status !== "OK") throw new Error("Unable to tokenize payment card.");
 
                         const payload = {
+                            marketingEmailConsent: document.getElementById("marketingEmailConsent").checked,
                             sourceId: result.token,
                             checkoutAttemptId: ensureCheckoutAttemptId(),
                             discountCode: store.readDiscountCode(),

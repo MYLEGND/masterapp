@@ -1,4 +1,5 @@
 using System.Text;
+using System.Data;
 using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.Commerce;
@@ -34,6 +35,11 @@ public sealed class ParfaitOrderService
 
     public IReadOnlyList<ParfaitOrderRecord> GetAllOrders(Guid businessId)
     {
+        var processorOrders = _db.CommercePaymentAttempts.AsNoTracking().Where(x => x.CommerceBusinessId == businessId)
+            .Select(x => x.CommerceOrderId).Distinct().ToHashSet();
+        processorOrders.UnionWith(_db.SubscriptionPayments.AsNoTracking()
+            .Where(x => x.CommerceOrderId != null && x.CommerceOrder!.CommerceBusinessId == businessId)
+            .Select(x => x.CommerceOrderId!.Value));
         return _db.CommerceOrders
             .AsNoTracking()
             .Include(x => x.Lines)
@@ -42,6 +48,7 @@ public sealed class ParfaitOrderService
             .ToList()
             .Select(MapOrder)
             .Select(NormalizeOrder)
+            .Select(order => { order.PaymentManagedByProcessor = processorOrders.Contains(order.CommerceOrderId); return order; })
             .OrderByDescending(x => x.CreatedUtc)
             .ToList();
     }
@@ -58,8 +65,15 @@ public sealed class ParfaitOrderService
             .Include(x => x.Lines)
             .FirstOrDefault(x => x.CommerceBusinessId == businessId && x.OrderNumber == cleaned);
 
-        return order is null ? null : NormalizeOrder(MapOrder(order));
+        if (order is null) return null;
+        var result = NormalizeOrder(MapOrder(order));
+        result.PaymentManagedByProcessor = HasProcessorPayment(businessId, order.Id);
+        return result;
     }
+
+    public bool HasProcessorPayment(Guid businessId, Guid orderId) =>
+        _db.CommercePaymentAttempts.Any(x => x.CommerceBusinessId == businessId && x.CommerceOrderId == orderId)
+        || _db.SubscriptionPayments.Any(x => x.CommerceOrderId == orderId && x.CommerceOrder!.CommerceBusinessId == businessId);
 
     public ParfaitOrderRecord CreatePendingOrder(
         ParfaitCheckoutCustomerRequest customer,
@@ -138,7 +152,8 @@ public sealed class ParfaitOrderService
         int discountCents,
         int shippingCents,
         int taxCents,
-        HttpContext httpContext)
+        HttpContext httpContext,
+        Action<ParfaitOrderRecord>? prepareBeforePayment = null)
     {
         var normalizedAttemptId = Clean(checkoutAttemptId);
         if (string.IsNullOrWhiteSpace(normalizedAttemptId))
@@ -212,10 +227,13 @@ public sealed class ParfaitOrderService
             record.SquareError = null;
             StampOrder(record);
 
+            using var preparationTransaction = prepareBeforePayment is not null && _db.Database.IsRelational()
+                ? _db.Database.BeginTransaction(System.Data.IsolationLevel.Serializable) : null;
             ApplyRecordToEntity(order, NormalizeOrder(record));
             try { _db.SaveChanges(); }
             catch (DbUpdateException)
             {
+                preparationTransaction?.Rollback();
                 // The database uniqueness constraint arbitrates across host processes.
                 _db.ChangeTracker.Clear();
                 var winner = _db.CommerceOrders.Include(x => x.Lines).SingleOrDefault(x =>
@@ -226,7 +244,19 @@ public sealed class ParfaitOrderService
                     ? CheckoutPaymentStartState.AlreadyPaid : CheckoutPaymentStartState.AlreadyProcessing, existing);
             }
 
-            return new CheckoutPaymentStartResult(CheckoutPaymentStartState.Ready, NormalizeOrder(MapOrder(order)));
+            var prepared = NormalizeOrder(MapOrder(order));
+            try
+            {
+                prepareBeforePayment?.Invoke(prepared);
+                preparationTransaction?.Commit();
+            }
+            catch
+            {
+                preparationTransaction?.Rollback();
+                _db.ChangeTracker.Clear();
+                throw;
+            }
+            return new CheckoutPaymentStartResult(CheckoutPaymentStartState.Ready, prepared);
         }
     }
 
@@ -297,8 +327,17 @@ public sealed class ParfaitOrderService
 
     public bool UpdateOrder(Guid businessId, ParfaitOrderAdminUpdateRequest request)
     {
+        return UpdateOrder(businessId, request, out _);
+    }
+
+    public bool UpdateOrder(Guid businessId, ParfaitOrderAdminUpdateRequest request, out string? error)
+    {
+        error = null;
         lock (Lock)
         {
+            // Hold the database read through the write across processes, including payment updates.
+            using var transaction = _db.Database.IsRelational()
+                ? _db.Database.BeginTransaction(IsolationLevel.Serializable) : null;
             var cleaned = Clean(request.OrderNumber);
 
             var order = _db.CommerceOrders
@@ -306,16 +345,60 @@ public sealed class ParfaitOrderService
                 .FirstOrDefault(x => x.CommerceBusinessId == businessId && x.OrderNumber == cleaned);
 
             if (order is null)
+            {
+                error = "Order was not found in this store.";
                 return false;
-
+            }
+            // A scoped context can already track this order; never validate a cached revision.
+            _db.Entry(order).Reload();
+            if (request.ExpectedUpdatedTicks is null || request.ExpectedUpdatedTicks != (order.UpdatedUtc?.Ticks ?? 0))
+            {
+                error = "This order changed since you opened it. Review the latest details and try again.";
+                return false;
+            }
+            var fulfillment = NormalizeFulfillmentStatus(request.FulfillmentStatus);
+            if (!string.Equals(fulfillment, request.FulfillmentStatus?.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                error = "Select a valid fulfillment status.";
+                return false;
+            }
+            if (fulfillment != order.FulfillmentStatus && fulfillment is ("Processing" or "Packed" or "Shipped" or "Fulfilled"))
+            {
+                if (NormalizePaymentStatus(request.PaymentStatus) != "Paid" || request.RefundedCents >= order.TotalCents && order.TotalCents > 0)
+                {
+                    error = "Confirm payment before processing or fulfilling this order.";
+                    return false;
+                }
+            }
+            if (fulfillment == "Shipped" && (string.IsNullOrWhiteSpace(request.TrackingCarrier) || string.IsNullOrWhiteSpace(request.TrackingNumber)))
+            {
+                error = "Add the carrier and tracking number before marking this order shipped.";
+                return false;
+            }
+            if ((request.TrackingCarrier?.Trim().Length ?? 0) > 120 || (request.TrackingNumber?.Trim().Length ?? 0) > 160 || (request.AdminNotes?.Trim().Length ?? 0) > 2000)
+            {
+                error = "Carrier, tracking, or notes exceed the allowed length.";
+                return false;
+            }
             var now = DateTime.UtcNow;
 
-            // Merchant financial state is processor evidence, never an editable order field.
-            if (_db.CommercePaymentAttempts.Any(x => x.CommerceOrderId == order.Id && x.CommerceBusinessId == businessId)
-                && (NormalizePaymentStatus(request.PaymentStatus) != order.PaymentStatus || request.RefundedCents != order.RefundedCents))
+            if (fulfillment != order.FulfillmentStatus && CommerceShippingStatePolicy.HasUnresolvedPurchase(order.ShippingLabelStateJson))
+            {
+                error = "A shipping label purchase is awaiting verification. Check its status before changing fulfillment.";
                 return false;
+            }
+            // Both merchant and legacy processor records own financial evidence.
+            if (HasProcessorPayment(businessId, order.Id)
+                && (NormalizePaymentStatus(request.PaymentStatus) != order.PaymentStatus || request.RefundedCents != order.RefundedCents))
+            {
+                error = "Payment and refunds are managed by the payment provider. Refresh the order before saving fulfillment.";
+                return false;
+            }
+            var previousFulfillment = order.FulfillmentStatus;
+            var previousCarrier = order.TrackingCarrier;
+            var previousTracking = order.TrackingNumber;
             order.PaymentStatus = NormalizePaymentStatus(request.PaymentStatus);
-            order.FulfillmentStatus = NormalizeFulfillmentStatus(request.FulfillmentStatus);
+            order.FulfillmentStatus = fulfillment;
             order.ReturnStatus = NormalizeReturnStatus(request.ReturnStatus);
             order.TrackingCarrier = NullIfEmpty(request.TrackingCarrier);
             order.TrackingNumber = NullIfEmpty(request.TrackingNumber);
@@ -337,17 +420,20 @@ public sealed class ParfaitOrderService
             if (string.Equals(order.FulfillmentStatus, "Fulfilled", StringComparison.OrdinalIgnoreCase))
             {
                 order.FulfilledUtc ??= now;
-                order.ShippedUtc ??= now;
             }
 
             if (string.Equals(order.PaymentStatus, "Refunded", StringComparison.OrdinalIgnoreCase) && order.RefundedCents == 0)
                 order.RefundedCents = order.TotalCents;
 
             order.CommerceBusinessId = businessId;
-        order.UpdatedUtc = now;
+            order.UpdatedUtc = now;
             order.Status = BuildStatus(MapOrder(order));
 
+            ParfaitCustomerAutomationService.EnqueueShipmentNotice(_db, order,
+                previousFulfillment, previousCarrier, previousTracking);
+
             _db.SaveChanges();
+            transaction?.Commit();
             return true;
         }
     }
@@ -356,6 +442,19 @@ public sealed class ParfaitOrderService
     public int CountReturnQueue(IEnumerable<ParfaitOrderRecord> orders) => orders.Count(order => order.HasReturnWork);
     public int CountRefunded(IEnumerable<ParfaitOrderRecord> orders) => orders.Count(order => order.IsRefundedPayment);
     public int SumNetRevenueCents(IEnumerable<ParfaitOrderRecord> orders) => orders.Where(order => PaidStatuses.Contains(order.PaymentStatus)).Sum(order => order.NetRevenueCents);
+
+    // Equal elapsed UTC windows, half-open so a boundary order is counted only once.
+    // Uses the same financial eligibility and refund amounts as the headline total.
+    public CommerceRevenuePerformance GetRevenuePerformance(IEnumerable<ParfaitOrderRecord> orders, DateTime asOfUtc)
+    {
+        var currentStart = asOfUtc.AddDays(-30);
+        var previousStart = currentStart.AddDays(-30);
+        var snapshot = orders.ToList();
+        return new CommerceRevenuePerformance(
+            SumNetRevenueCents(snapshot.Where(order => order.CreatedUtc >= currentStart && order.CreatedUtc < asOfUtc)),
+            SumNetRevenueCents(snapshot.Where(order => order.CreatedUtc >= previousStart && order.CreatedUtc < currentStart)));
+    }
+
 
     public int CalculateAverageNetOrderValueCents(IEnumerable<ParfaitOrderRecord> orders)
     {
@@ -632,7 +731,7 @@ public sealed class ParfaitOrderService
             CommerceBusinessId = order.CommerceBusinessId,
             OrderNumber = Clean(order.OrderNumber),
             CreatedUtc = createdUtc,
-            UpdatedUtc = order.UpdatedUtc == default ? createdUtc : order.UpdatedUtc,
+            UpdatedUtc = order.UpdatedUtc,
             PaidUtc = order.PaidUtc,
             ShippedUtc = order.ShippedUtc,
             FulfilledUtc = order.FulfilledUtc,

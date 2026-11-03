@@ -45,9 +45,10 @@
             <small>@Model.BusinessType</small>
         </article>
         <article class="pf-dashboard-kpi">
-            <span>Revenue after refunds</span>
+            <span>Revenue after refunds · all time</span>
             <strong>@Money(Model.RevenueCents)</strong>
             <small>@Model.PaidOrderCount paid · @Money(Model.AverageOrderValueCents) average</small>
+            <partial name="_RevenuePerformance" model="Model.RevenuePerformance" />
         </article>
         <article class="pf-dashboard-kpi">
             <span>Orders</span>

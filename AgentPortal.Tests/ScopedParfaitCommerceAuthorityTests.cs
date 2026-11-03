@@ -38,7 +38,8 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.Contains("GetAllProducts(Guid businessId)", products, StringComparison.Ordinal);
         Assert.Contains("GetAllOrders(Guid businessId)", orders, StringComparison.Ordinal);
         Assert.Contains("GetWorkspaceViewModel(Guid businessId)", automations, StringComparison.Ordinal);
-        Assert.Contains("GetCustomerAutomationsPath(key)", automations, StringComparison.Ordinal);
+        Assert.Contains("CustomerAutomationStateJson", automations, StringComparison.Ordinal);
+        Assert.DoesNotContain("CommerceAutomationFileStore.WriteAtomic", automations, StringComparison.Ordinal);
     }
 
     [Fact]

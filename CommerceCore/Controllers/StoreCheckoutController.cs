@@ -222,7 +222,10 @@ public sealed class StoreCheckoutController : Controller
         if (validatedItems.Count == 0)
             return BadRequest(new ParfaitCheckoutPayResponse { Success = false, Error = "No valid cart items were found." });
 
-        var paymentStart = _orders.BeginCheckoutPayment(
+        CheckoutPaymentStartResult paymentStart;
+        try
+        {
+            paymentStart = _orders.BeginCheckoutPayment(
             store.CommerceBusinessId,
             request.CheckoutAttemptId!,
             request.Customer,
@@ -233,7 +236,24 @@ public sealed class StoreCheckoutController : Controller
             quote.DiscountCents,
             quote.ShippingCents,
             quote.TaxCents,
-            HttpContext);
+            HttpContext,
+            request.MarketingEmailConsent ? order =>
+            {
+                var environment = HttpContext.RequestServices.GetService<IHostEnvironment>();
+                _automations.RecordMarketingOptIn(store.CommerceBusinessId, order, environment?.IsProduction() != true);
+                _automations.CaptureCheckoutLead(store.CommerceBusinessId, new ParfaitAutomationCheckoutLeadCaptureRequest {
+                    CheckoutAttemptId = request.CheckoutAttemptId, Customer = request.Customer, Items = request.Items, DiscountCode = request.DiscountCode
+                }, quote);
+            } : null);
+        }
+        catch (Exception ex) when (ex is Microsoft.EntityFrameworkCore.DbUpdateException or Microsoft.Data.SqlClient.SqlException or InvalidOperationException)
+        {
+            HttpContext.RequestServices.GetService<ILogger<StoreCheckoutController>>()?.LogWarning(
+                "Checkout preparation failed before provider invocation for business {BusinessId}: {FailureType}", store.CommerceBusinessId, ex.GetType().Name);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ParfaitCheckoutPayResponse {
+                Success = false, Error = "Checkout details could not be saved. No payment was started. Please retry."
+            });
+        }
 
         if (paymentStart.State == CheckoutPaymentStartState.AlreadyPaid)
         {
@@ -259,16 +279,14 @@ public sealed class StoreCheckoutController : Controller
             if (await _completion.ResumeLegacyOrderAsync(store.CommerceBusinessId, paymentStart.Order.CommerceOrderId, ct))
                 return Ok(new ParfaitCheckoutPayResponse { Success = true, OrderNumber = paymentStart.Order.OrderNumber,
                     RedirectUrl = SuccessUrl(store, paymentStart.Order.OrderNumber) });
-            return Conflict(new ParfaitCheckoutPayResponse
-            {
-                Success = false,
-                OrderNumber = paymentStart.Order.OrderNumber,
-                Error = "Payment is already processing for this order. Please wait."
-            });
+            // Preparation is durable before the billing receipt exists. A lost response
+            // in that gap may resume the SAME snapshot/key; any receipt forbids a new call.
+            if (_orders.HasProcessorPayment(store.CommerceBusinessId, paymentStart.Order.CommerceOrderId))
+                return PaymentPending(paymentStart.Order.OrderNumber);
         }
 
         var order = paymentStart.Order;
-        var firstItem = validatedItems.FirstOrDefault();
+        var firstItem = order.Items.FirstOrDefault();
         var signalContext = BuildSignalContext(store) with
         {
             OrderId = order.CommerceOrderId, EventUtc = order.CreatedUtc, OrderValueCents = order.TotalCents
@@ -280,9 +298,9 @@ public sealed class StoreCheckoutController : Controller
                 request.CheckoutAttemptId!,
                 signalContext,
                 firstItem is null ? null : ProductSignal(firstItem),
-                CustomerSignal(request.Customer),
+                new CommerceSignalCustomer(order.FirstName, order.LastName, order.Email, order.Phone, order.City, order.State, order.PostalCode),
                 order.OrderNumber,
-                validatedItems.Select(ProductSignal).ToArray(),
+                order.Items.Select(ProductSignal).ToArray(),
                 ct);
         }
 
@@ -303,6 +321,12 @@ public sealed class StoreCheckoutController : Controller
                     BuildPaymentCorrelationId(store, order),
                     CommerceCompletionContextJson: JsonSerializer.Serialize(signalContext)),
                 ct);
+        }
+        catch (Exception ex) when (IsPaymentInsertCollision(ex)
+            && _orders.HasProcessorPayment(store.CommerceBusinessId, order.CommerceOrderId))
+        {
+            // The unique durable receipt owns the gateway invocation. The loser waits.
+            return PaymentPending(order.OrderNumber);
         }
         catch
         {
@@ -341,6 +365,22 @@ public sealed class StoreCheckoutController : Controller
             OrderNumber = order.OrderNumber,
             RedirectUrl = SuccessUrl(store, order.OrderNumber)
         });
+    }
+
+    private IActionResult PaymentPending(string orderNumber) => Conflict(new ParfaitCheckoutPayResponse
+    {
+        Success = false, OrderNumber = orderNumber,
+        Error = "Payment is already processing for this order. Please wait."
+    });
+
+    private static bool IsPaymentInsertCollision(Exception error)
+    {
+        for (Exception? current = error; current is not null; current = current.InnerException)
+        {
+            if (current is Microsoft.Data.SqlClient.SqlException sql && sql.Number is 2601 or 2627) return true;
+            if (current is Microsoft.Data.Sqlite.SqliteException sqlite && sqlite.SqliteExtendedErrorCode is 1555 or 2067) return true;
+        }
+        return false;
     }
 
     private bool UseMerchantCheckout(CommerceStoreContext store) =>

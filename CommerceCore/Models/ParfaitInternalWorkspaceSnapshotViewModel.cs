@@ -28,6 +28,7 @@ public sealed class ParfaitInternalWorkspaceSnapshotViewModel
     public int CustomerCount { get; set; }
     public int RepeatCustomerCount { get; set; }
     public int RevenueCents { get; set; }
+    public CommerceRevenuePerformance RevenuePerformance { get; set; } = new(0, 0);
     public int AverageOrderValueCents { get; set; }
     public DateTime? LatestOrderUtc { get; set; }
 

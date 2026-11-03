@@ -6,7 +6,7 @@ public interface IGraphMailService
 {
     Task SendOrderReceiptAsync(ParfaitOrderRecord order, CancellationToken ct = default);
     Task SendOrderNotificationAsync(ParfaitOrderRecord order, CancellationToken ct = default);
-    Task SendAutomationEmailAsync(string toEmail, string subject, string htmlBody, CancellationToken ct = default);
+    Task SendAutomationEmailAsync(Guid businessId, string toEmail, string subject, string htmlBody, CancellationToken ct = default);
     Task SendParfaitTeamInviteAsync(
         string toEmail,
         string displayName,

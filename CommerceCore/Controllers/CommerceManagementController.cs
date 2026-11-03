@@ -815,6 +815,18 @@ public sealed partial class CommerceManagementController(
         return ManagerRedirect(nameof(Products), new { ticket });
     }
 
+    [HttpGet("order/packing-slip")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> PackingSlip(string ticket, string orderNumber, CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        var order = orders.GetOrder(store.CommerceBusinessId, orderNumber);
+        if (order is null) return NotFound();
+        ApplyManagementViewData(store, ticket, "orders");
+        return View("~/Views/InternalModules/PackingSlip.cshtml", order);
+    }
+
     [HttpPost("order")]
     public async Task<IActionResult> UpdateOrder(
         string ticket,
@@ -823,8 +835,11 @@ public sealed partial class CommerceManagementController(
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
-        if (!orders.UpdateOrder(store.CommerceBusinessId, request))
-            return NotFound();
+        if (!orders.UpdateOrder(store.CommerceBusinessId, request, out var error))
+        {
+            TempData["OrderStatus"] = error;
+            return ManagerRedirect(nameof(Orders), new { ticket });
+        }
         TempData["OrderStatus"] = $"Order {request.OrderNumber} updated.";
         return ManagerRedirect(nameof(Orders), new { ticket });
     }
@@ -853,6 +868,25 @@ public sealed partial class CommerceManagementController(
         return ManagerRedirect(nameof(Orders), new { ticket });
     }
 
+    [HttpPost("automations/email-settings")]
+    public async Task<IActionResult> SaveAutomationEmailSettings(string ticket, [FromForm] CommerceAutomationEmailSettingsInput input, CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        try
+        {
+            automations.SaveEmailSettings(store.CommerceBusinessId, input);
+            TempData["AutomationStatus"] = "Email settings saved.";
+            TempData["AutomationStatusTone"] = "success";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["AutomationStatus"] = ex.Message;
+            TempData["AutomationStatusTone"] = "danger";
+        }
+        return ManagerRedirect(nameof(Automations), new { ticket });
+    }
+
     [HttpPost("automations/workflows")]
     public async Task<IActionResult> SaveAutomationWorkflow(
         string ticket,
@@ -861,9 +895,18 @@ public sealed partial class CommerceManagementController(
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
-        automations.SaveWorkflow(store.CommerceBusinessId, input);
-        TempData["AutomationStatus"] = "Automation saved.";
-        TempData["AutomationStatusTone"] = "success";
+        try
+        {
+            if (!ModelState.IsValid) throw new InvalidOperationException("Complete the required workflow details.");
+            automations.SaveWorkflow(store.CommerceBusinessId, input);
+            TempData["AutomationStatus"] = "Automation saved.";
+            TempData["AutomationStatusTone"] = "success";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["AutomationStatus"] = ex.Message;
+            TempData["AutomationStatusTone"] = "danger";
+        }
         return ManagerRedirect(nameof(Automations), new { ticket });
     }
 
@@ -871,13 +914,22 @@ public sealed partial class CommerceManagementController(
     public async Task<IActionResult> DeleteAutomationWorkflow(
         string ticket,
         [FromForm] Guid id,
+        [FromForm] long expectedUpdatedTicks,
         CancellationToken ct = default)
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
-        automations.DeleteWorkflow(store.CommerceBusinessId, id);
-        TempData["AutomationStatus"] = "Automation deleted.";
-        TempData["AutomationStatusTone"] = "success";
+        try
+        {
+            automations.DeleteWorkflow(store.CommerceBusinessId, id, expectedUpdatedTicks);
+            TempData["AutomationStatus"] = "Automation deleted.";
+            TempData["AutomationStatusTone"] = "success";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["AutomationStatus"] = ex.Message;
+            TempData["AutomationStatusTone"] = "danger";
+        }
         return ManagerRedirect(nameof(Automations), new { ticket });
     }
 

@@ -25,6 +25,7 @@ public sealed class ParfaitCheckoutCustomerRequest
 
 public sealed class ParfaitCheckoutPayRequest
 {
+    public bool MarketingEmailConsent { get; set; }
     public string? SourceId { get; set; }
     public string? CheckoutAttemptId { get; set; }
     public string? DiscountCode { get; set; }
@@ -99,6 +100,7 @@ public sealed class ParfaitCartQuoteResponse
 
 public sealed class ParfaitOrderRecord
 {
+    public bool PaymentManagedByProcessor { get; set; }
     public Guid CommerceOrderId { get; set; }
     public Guid CommerceBusinessId { get; set; }
     public required string OrderNumber { get; set; }
@@ -189,6 +191,7 @@ public sealed class ParfaitOrderSuccessViewModel
 
 public sealed class ParfaitOrderAdminUpdateRequest
 {
+    public long? ExpectedUpdatedTicks { get; set; }
     public string OrderNumber { get; set; } = "";
     public string PaymentStatus { get; set; } = "Pending";
     public string FulfillmentStatus { get; set; } = "Unfulfilled";

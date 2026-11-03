@@ -179,6 +179,9 @@ public sealed class MerchantCheckoutService(MasterAppDbContext db, MerchantConne
             previous = new(existing.ProviderReference ?? existing.Id.ToString("N"), existing.State);
             return;
         }
+        var order = await db.CommerceOrders.SingleAsync(x => x.Id == orderId && x.CommerceBusinessId == businessId, ct);
+        if (Infrastructure.Commerce.CommerceShippingStatePolicy.HasUnresolvedPurchase(order.ShippingLabelStateJson))
+            throw new MerchantPaymentException("SHIPPING_PURCHASE_PENDING");
         var refunds = await db.CommercePaymentRefunds.Where(x => x.AttemptId == attempt.Id && x.State != "Failed").ToListAsync(ct);
         var unresolved = refunds.Where(x => x.State != "Succeeded").Sum(x => x.AmountMinor);
         var succeeded = refunds.Where(x => x.State == "Succeeded").Sum(x => x.AmountMinor);

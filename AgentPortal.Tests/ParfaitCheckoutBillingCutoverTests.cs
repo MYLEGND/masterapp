@@ -27,6 +27,66 @@ namespace AgentPortal.Tests;
 public sealed class ParfaitCheckoutBillingCutoverTests
 {
     [Fact]
+    public async Task PreparedCheckoutWithoutPaymentResumesPersistedSnapshotOnce()
+    {
+        BillingOneTimePaymentRequest? sent = null;
+        using var harness = new CheckoutHarness(gateway => gateway
+            .Setup(x => x.CreateOneTimePaymentAsync(It.IsAny<BillingOneTimePaymentRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<BillingOneTimePaymentRequest, CancellationToken>((request, _) => sent = request)
+            .ReturnsAsync(new BillingOneTimePaymentResult(true, "resumed", "COMPLETED", null,
+                "Completed", "request", false, 2000, "USD", DateTime.UtcNow)), 0, 5);
+        var prepared = Prepare(harness);
+        var retry = harness.BuildPayRequest(quantity: 2);
+        retry.Customer.Email = "different@example.com";
+        Assert.True(ReadResponse(await harness.Controller.Pay(retry, CancellationToken.None), 200).Success);
+        Assert.NotNull(sent);
+        Assert.Equal(2000, sent!.AmountCents);
+        Assert.Equal(prepared.OrderNumber, sent.IdempotencyKey);
+        Assert.Equal("jane@example.com", Assert.Single(harness.Db.CommerceOrders).Email);
+        Assert.True(ReadResponse(await harness.Controller.Pay(retry, CancellationToken.None), 200).Success);
+        Assert.Single(harness.Db.SubscriptionPayments);
+        harness.Gateway.Verify(x => x.CreateOneTimePaymentAsync(It.IsAny<BillingOneTimePaymentRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task PreparedCheckoutWithPendingReceiptDoesNotInvokeGateway()
+    {
+        using var harness = new CheckoutHarness(_ => { }, 0, 3);
+        var prepared = Prepare(harness);
+        harness.Db.SubscriptionPayments.Add(new SubscriptionPayment { CommerceOrderId = prepared.CommerceOrderId,
+            AmountCents = 2000, IdempotencyKey = prepared.OrderNumber });
+        harness.Db.SaveChanges();
+        ReadResponse(await harness.Controller.Pay(harness.BuildPayRequest(), CancellationToken.None), 409);
+        Assert.True(Assert.Single(harness.Db.CommerceOrders).IsPaymentProcessing);
+        harness.Gateway.Verify(x => x.CreateOneTimePaymentAsync(It.IsAny<BillingOneTimePaymentRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ConcurrentReceiptInsertLoserReturnsPendingAndPreservesOrder()
+    {
+        var billing = new Mock<IBillingOrchestrator>(MockBehavior.Strict);
+        using var harness = new CheckoutHarness(_ => { }, 0, 3, billingOverride: billing.Object);
+        var prepared = Prepare(harness);
+        billing.Setup(x => x.ExecuteCommerceOneTimePaymentAsync(It.IsAny<ExecuteCommerceOneTimePaymentCommand>(), It.IsAny<CancellationToken>()))
+            .Callback(() => {
+                harness.Db.SubscriptionPayments.Add(new SubscriptionPayment { CommerceOrderId = prepared.CommerceOrderId,
+                    AmountCents = 2000, IdempotencyKey = prepared.OrderNumber });
+                harness.Db.SaveChanges();
+            })
+            .ThrowsAsync(new Microsoft.EntityFrameworkCore.DbUpdateException("Duplicate receipt",
+                new Microsoft.Data.Sqlite.SqliteException("Unique constraint", 19, 2067)));
+        ReadResponse(await harness.Controller.Pay(harness.BuildPayRequest(), CancellationToken.None), 409);
+        Assert.True(Assert.Single(harness.Db.CommerceOrders).IsPaymentProcessing);
+        Assert.Single(harness.Db.SubscriptionPayments);
+        ReadResponse(await harness.Controller.Pay(harness.BuildPayRequest(), CancellationToken.None), 409);
+        billing.Verify(x => x.ExecuteCommerceOneTimePaymentAsync(It.IsAny<ExecuteCommerceOneTimePaymentCommand>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private static ParfaitOrderRecord Prepare(CheckoutHarness harness) => harness.Orders.BeginCheckoutPayment(
+        "attempt-1", harness.BuildCustomer(), harness.BuildValidatedItems(1), 2000, null, null, 0, 0, 0,
+        harness.Controller.HttpContext).Order;
+
+    [Fact]
     public void Checkout_UsesSharedSquareBillingOptionsForBrowserCredentials()
     {
         using var harness = new CheckoutHarness(
@@ -320,7 +380,8 @@ public sealed class ParfaitCheckoutBillingCutoverTests
             Action<Mock<IBillingGateway>> configureGateway,
             int shippingFeeCents,
             int stockQuantity,
-            Action<Mock<IGraphMailService>>? configureMail = null)
+            Action<Mock<IGraphMailService>>? configureMail = null,
+            IBillingOrchestrator? billingOverride = null)
         {
             Db = ControllerTestHelpers.BuildDb();
             _tempRoot = Path.Combine(Path.GetTempPath(), "masterapp-parfait-checkout-tests", Guid.NewGuid().ToString("N"));
@@ -344,7 +405,7 @@ public sealed class ParfaitCheckoutBillingCutoverTests
             StoragePaths = new ParfaitStoragePaths(environment.Object, Configuration);
             Products = new ParfaitProductService(StoragePaths, Db);
             Orders = new ParfaitOrderService(Db);
-            Automations = new ParfaitCustomerAutomationService(StoragePaths, Configuration, Orders, Products);
+            Automations = new ParfaitCustomerAutomationService(StoragePaths, Configuration, Orders, Products, Db);
             CommerceSignals = new CommerceSignalService(Db);
 
             Gateway = new Mock<IBillingGateway>(MockBehavior.Strict);
@@ -370,7 +431,7 @@ public sealed class ParfaitCheckoutBillingCutoverTests
             _provider = services.BuildServiceProvider();
             _scope = _provider.CreateScope();
 
-            BillingOrchestrator = _scope.ServiceProvider.GetRequiredService<IBillingOrchestrator>();
+            BillingOrchestrator = billingOverride ?? _scope.ServiceProvider.GetRequiredService<IBillingOrchestrator>();
 
             Controller = new StoreCheckoutController(
                 _scope.ServiceProvider.GetRequiredService<SquareBillingOptions>(),

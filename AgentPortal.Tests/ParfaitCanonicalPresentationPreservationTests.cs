@@ -33,8 +33,8 @@ public sealed partial class ParfaitCanonicalPresentationPreservationTests
     // Reviewed payment-flow changes only: hosted-provider handoff retains the
     // original form/layout; reviewed be032 makes processor wording truthful. Cart clearing waits for
     // server-confirmed payment on success. All other visual pins stay unchanged.
-    // Reviewed canonical inquiry correction: explicit consent replaces silent autosave.
-    [InlineData("Views/Store/Checkout.cshtml", "e144a8242269d26c6a60f01cb678477e2478c43d")]
+    // Reviewed explicit optional marketing consent; canonical inquiry consent replaces silent autosave.
+    [InlineData("Views/Store/Checkout.cshtml", "f990f45db222b5df04669e607068a932f2f0471b")]
     [InlineData("Views/Store/Success.cshtml", "c065e8d011b6fc8e74d6293aaf0496244915d75d")]
     [InlineData("wwwroot/css/site.css", "10f00e83c8e9b8a9e7428efebe01a40a0072903d")]
     [InlineData("wwwroot/css/home.css", "00f32a42b0f2f1ea1324c6f8897abe91a130ec94")]
@@ -43,8 +43,8 @@ public sealed partial class ParfaitCanonicalPresentationPreservationTests
     // Reviewed be032 adds scoped payment notices; authored presentation remains authoritative.
     [InlineData("wwwroot/css/storefront.css", "1f2dac2641ba0c9427fd1727239c6364f3d503cf")]
     // Reviewed be032 refines internal header typography and responsive payment-provider cards.
-    // Single shell authority, page-only light mode and right navigation remain intact.
-    [InlineData("wwwroot/css/internal.css", "e8c964eec30db3388f49d6448daa4d99d147a592")]
+    // Reviewed shared premium compact layout; single shell, page-only light mode and right navigation remain intact.
+    [InlineData("wwwroot/css/internal.css", "fc6d957fad171d02efbf2bc676f2f3c97035a5b9")]
     [InlineData("wwwroot/js/storefront.js", "ee0256aa52937cc25831c54b80141b768be72e96")]
     // Reviewed internal health behavior: unavailable identity evidence must not render as zero.
     // CommerceCoreOwnershipContractTests covers the payload; public design assets remain pinned.

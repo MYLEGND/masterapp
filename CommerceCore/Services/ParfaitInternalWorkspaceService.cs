@@ -108,6 +108,7 @@ public sealed class ParfaitInternalWorkspaceService
             CustomerCount = customersByEmail.Count,
             RepeatCustomerCount = customersByEmail.Count(group => group.Count() > 1),
             RevenueCents = _orders.SumNetRevenueCents(orders),
+            RevenuePerformance = _orders.GetRevenuePerformance(orders, DateTime.UtcNow),
             AverageOrderValueCents = _orders.CalculateAverageNetOrderValueCents(orders),
             LatestOrderUtc = orders.Count == 0 ? null : orders.Max(order => order.CreatedUtc),
             Visitors = analytics.Visitors,

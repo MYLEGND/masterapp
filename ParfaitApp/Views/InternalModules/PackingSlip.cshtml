@@ -1,0 +1,31 @@
+@model ParfaitApp.Models.ParfaitOrderRecord
+@{
+    Layout = null;
+    var store = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
+    var storeName = store?.StoreName ?? "Parfait";
+}
+<!doctype html>
+<html lang="en" data-commerce-theme="@(store is null || store.IsParfait ? "parfait" : "legend")"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Packing slip @Model.OrderNumber · @storeName</title>
+<link rel="stylesheet" href="~/css/internal.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/store-assets/css/packing-slip.css" asp-append-version="true" />
+</head><body>
+<section class="print-controls" aria-label="Printing setup">
+    <div><p class="eyebrow">FULFILLMENT DESK</p><h1>Ready to pack</h1><p>Print from the order’s saved details. Printing does not mark it shipped.</p></div>
+    <button type="button" id="packing-print">Print packing slip</button>
+    <p>This document goes inside the package. The carrier shipping label is a separate document containing paid postage and its tracking barcode.</p>
+</section>
+<main class="packing-document">
+    <header><div><strong class="store-name">@storeName</strong><p>Packing slip</p></div><div><strong>@Model.OrderNumber</strong><p>@Model.CreatedUtc.ToString("yyyy-MM-dd")</p></div></header>
+    @if (!Model.IsPaid) { <p class="payment-hold">PAYMENT REVIEW — do not ship until payment is confirmed.</p> }
+    <section class="ship-to"><h2>Ship to</h2><address><strong>@Model.CustomerName</strong><br />@Model.AddressLine1<br />
+    @if (!string.IsNullOrWhiteSpace(Model.AddressLine2)) { @Model.AddressLine2<br /> }
+    @Model.City, @Model.State @Model.PostalCode</address></section>
+    <table><thead><tr><th scope="col">Item</th><th scope="col">Variant</th><th scope="col">Qty</th><th scope="col">Packed</th></tr></thead>
+    <tbody>@foreach (var item in Model.Items) { <tr><td>@item.Name</td><td>@item.Size</td><td>@item.Quantity</td><td><span class="check-box" aria-label="Packing check"></span></td></tr> }</tbody></table>
+    <footer><p>@Model.Items.Sum(item => item.Quantity) units · @Model.Items.Count line items</p>
+    @if (!string.IsNullOrWhiteSpace(Model.TrackingNumber)) { <p>@Model.TrackingCarrier · @Model.TrackingNumber</p> }
+    <p>Packed by: ____________________</p></footer>
+</main>
+<script src="~/store-assets/js/packing-slip.js" asp-append-version="true" defer></script>
+</body></html>
