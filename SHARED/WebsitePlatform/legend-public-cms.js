@@ -5707,6 +5707,9 @@
 
   async function updateStore(enabled,labelValue=null,cartIconValue=null,cartIconSizeValue=null) {
     if (!editorMode || saving) return;
+    // Store operations return the canonical draft. Persist pending canvas edits
+    // first, just as page navigation does, before replacing that local document.
+    if (dirty) { const saved=await save(false); if(!saved || dirty) return; }
     const status=document.getElementById('legend-cms-status');
     if(status) status.textContent=enabled?'Setting up your store…':'Removing Store page…';
     try {

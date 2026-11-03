@@ -3816,7 +3816,7 @@ test('business page list directly manages canonical navigation label visibility 
     const saved=await f.save();
     assert.equal(saved.pages['/about'].navigation.label,'Our Story');
     const refreshed=[...f.w.document.querySelectorAll('#legend-cms-page-list .legend-cms-page-row')].find(row=>row.querySelector('button')?.textContent==='/about');
-    refreshed.querySelector('button:last-child').click();
+    [...refreshed.querySelectorAll('button')].find(button=>button.textContent==='Delete').click();
     const deleted=await f.save();
     assert.equal(deleted.pages['/about'].navigation.isDeleted,true);
     assert.equal([...f.w.document.querySelectorAll('#primary-nav>[data-legend-page-nav="true"]')].some(x=>x.dataset.legendPageRoute==='/about'),false);
@@ -3890,6 +3890,29 @@ test('header and footer edits persist in canonical shared shell composition acro
     assert.equal(Object.hasOwn(saved,'elements'),false);
   }finally{f.close();}
 });
+
+for(const saveFails of [false,true]) {
+  test(`Store action preserves pending page edits when save ${saveFails?'fails':'succeeds'}`,async()=>{
+    const f=await domFixture({doc:canonicalBusinessNavigation(canonicalDocument()),siteKey:'business',business:{id:'business-id',displayName:'Business'},
+      mutationSequence:saveFails?[{status:409,payload:{error:'scope_revision_conflict'}}]:null});
+    try {
+      f.click('main h1');
+      f.input('[data-style-key="fontSize"]','31');
+      f.click('#legend-cms-store-toggle');
+      await new Promise(resolve=>setTimeout(resolve,0));
+      const writes=f.calls.filter(call=>call.method==='POST' && (call.url.endsWith('/manage/mutations') || call.url.endsWith('/manage/store/enable')));
+      assert.ok(writes[0]?.url.endsWith('/manage/mutations'),'pending edits must save before Store changes');
+      if(saveFails){
+        assert.equal(writes.some(call=>call.url.endsWith('/manage/store/enable')),false,'failed save must block Store mutation');
+        assert.equal(f.w.document.querySelector('main h1').style.fontSize,'31px','unsaved local content remains available');
+      }else{
+        assert.ok(writes[1]?.url.endsWith('/manage/store/enable'));
+        assert.ok(JSON.stringify(f.serverDocument().pages['/']).includes('"fontSize":31'));
+        assert.ok(f.serverDocument().pages['/store']);
+      }
+    } finally { f.close(); }
+  });
+}
 
 test('adding Store advances the saved baseline before the next design mutation',async()=>{
   const f=await domFixture({doc:canonicalBusinessNavigation(canonicalDocument()),siteKey:'business',business:{id:'business-id',displayName:'Business'}});
@@ -7901,17 +7924,27 @@ test('Protect native hydration preserves compiled multi-root shell and fails clo
 });
 
 
-test('Protect Studio exposes only the narrowly recoverable obsolete training retirement',async()=>{
+test('Protect Studio deletes and restores fixed pages without deleting their content and protects home',async()=>{
   const doc=canonicalDocument();
   doc.pages['/trainingpackages']={title:'Training',composition:[canonicalNode('training','text','p',{text:'Recovery content'})]};
   const f=await domFixture({siteKey:'protect',doc});
   try{
-    const rows=[...f.w.document.querySelectorAll('.legend-cms-page-row')];
-    const training=rows.find(row=>row.textContent.includes('/trainingpackages'));
-    assert.ok(training);assert.match(training.textContent,/Retire training page/);
-    assert.equal(training.querySelector('button').disabled,true,'removed public route is not navigated');
-    const home=rows.find(row=>row.textContent.startsWith('/Retire')===false && row.querySelector('button')?.textContent==='/');
-    assert.ok(home);assert.equal(home.querySelectorAll('button').length,1,'no arbitrary fixed-page delete');
+    const rowFor=route=>[...f.w.document.querySelectorAll('.legend-cms-page-row')].find(row=>row.querySelector('button')?.textContent===route);
+    const action=(row,label)=>[...row.querySelectorAll('button')].find(button=>button.textContent===label);
+    const training=rowFor('/trainingpackages');
+    assert.ok(training);
+    assert.equal(action(rowFor('/'),'Delete').disabled,true,'home remains required');
+    action(training,'Delete').click();
+    const deleted=await f.save();
+    assert.equal(deleted.pages['/trainingpackages'].navigation.isDeleted,true);
+    assert.deepEqual(deleted.pages['/trainingpackages'].composition,doc.pages['/trainingpackages'].composition);
+    assert.equal(rowFor('/trainingpackages').querySelector('button').disabled,true,'deleted page cannot be opened');
+    action(rowFor('/trainingpackages'),'Restore').click();
+    const restored=await f.save();
+    assert.equal(restored.pages['/trainingpackages'].navigation.isDeleted,false);
+    assert.deepEqual(restored.pages['/trainingpackages'].composition,doc.pages['/trainingpackages'].composition);
+    assert.equal(rowFor('/trainingpackages').querySelector('button').disabled,false);
+    assert.deepEqual(Object.keys(restored.pages).sort(),Object.keys(doc.pages).sort(),'fixed route inventory is preserved');
   }finally{f.close();}
 });
 

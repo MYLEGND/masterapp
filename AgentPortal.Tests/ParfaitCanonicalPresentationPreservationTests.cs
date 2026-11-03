@@ -31,19 +31,20 @@ public sealed partial class ParfaitCanonicalPresentationPreservationTests
     [InlineData("Views/Store/Cart.cshtml", "cf1a1eb2a7229700b146b83ef558e8d8ed89ac96")]
     [InlineData("Views/Store/Product.cshtml", "dbc104981c030c42a61153a83e5b3e995781fd78")]
     // Reviewed payment-flow changes only: hosted-provider handoff retains the
-    // original form/layout and legacy Square wording; cart clearing waits for
+    // original form/layout; reviewed be032 makes processor wording truthful. Cart clearing waits for
     // server-confirmed payment on success. All other visual pins stay unchanged.
     // Reviewed canonical inquiry correction: explicit consent replaces silent autosave.
-    [InlineData("Views/Store/Checkout.cshtml", "c17f1ce21aac9ff68fe376227f5b941d1229cd59")]
+    [InlineData("Views/Store/Checkout.cshtml", "e144a8242269d26c6a60f01cb678477e2478c43d")]
     [InlineData("Views/Store/Success.cshtml", "c065e8d011b6fc8e74d6293aaf0496244915d75d")]
     [InlineData("wwwroot/css/site.css", "10f00e83c8e9b8a9e7428efebe01a40a0072903d")]
     [InlineData("wwwroot/css/home.css", "00f32a42b0f2f1ea1324c6f8897abe91a130ec94")]
     // Founder-requested canonical public journey refinement:
     // compact catalog and management components; scoped palette retains Parfait identity.
-    // Authored presentation remains authoritative. All other visual pins are unchanged.
-    [InlineData("wwwroot/css/storefront.css", "cdfdf0cf7e43d93466691be05392257bacc263b5")]
-    // Founder-requested compact internal geometry; single shell authority, page-only light mode and right navigation retained.
-    [InlineData("wwwroot/css/internal.css", "7f8b866876190ea65b9603d5e3bb35c4c4039eb2")]
+    // Reviewed be032 adds scoped payment notices; authored presentation remains authoritative.
+    [InlineData("wwwroot/css/storefront.css", "1f2dac2641ba0c9427fd1727239c6364f3d503cf")]
+    // Reviewed be032 refines internal header typography and responsive payment-provider cards.
+    // Single shell authority, page-only light mode and right navigation remain intact.
+    [InlineData("wwwroot/css/internal.css", "c2429eaaa4757c1c247c8d9e59f732cf61b9ee6d")]
     [InlineData("wwwroot/js/storefront.js", "ee0256aa52937cc25831c54b80141b768be72e96")]
     // Reviewed internal health behavior: unavailable identity evidence must not render as zero.
     // CommerceCoreOwnershipContractTests covers the payload; public design assets remain pinned.
