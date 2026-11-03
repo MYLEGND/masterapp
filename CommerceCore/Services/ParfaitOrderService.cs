@@ -33,17 +33,38 @@ public sealed class ParfaitOrderService
     public IReadOnlyList<ParfaitOrderRecord> GetAllOrders() =>
         GetAllOrders(GetBusinessId());
 
-    public IReadOnlyList<ParfaitOrderRecord> GetAllOrders(Guid businessId)
+    public IReadOnlyList<ParfaitOrderRecord> GetAllOrders(Guid businessId) => ReadOrders(businessId, null);
+
+    public IReadOnlyList<ParfaitOrderRecord> SearchOrders(string? query) => SearchOrders(GetBusinessId(), query);
+
+    public IReadOnlyList<ParfaitOrderRecord> SearchOrders(Guid businessId, string? query) => ReadOrders(businessId, query);
+
+    private IReadOnlyList<ParfaitOrderRecord> ReadOrders(Guid businessId, string? query)
     {
         var processorOrders = _db.CommercePaymentAttempts.AsNoTracking().Where(x => x.CommerceBusinessId == businessId)
             .Select(x => x.CommerceOrderId).Distinct().ToHashSet();
         processorOrders.UnionWith(_db.SubscriptionPayments.AsNoTracking()
             .Where(x => x.CommerceOrderId != null && x.CommerceOrder!.CommerceBusinessId == businessId)
             .Select(x => x.CommerceOrderId!.Value));
-        return _db.CommerceOrders
-            .AsNoTracking()
+        var scopedOrders = _db.CommerceOrders.AsNoTracking().Where(x => x.CommerceBusinessId == businessId);
+        var term = query?.Trim().ToLowerInvariant();
+        // Only phone-shaped queries use digit matching; words/order references
+        // retain their normal search semantics. Keep normalization SQL-translatable.
+        var phoneTerm = term is not null && term.All(c => char.IsAsciiDigit(c) || "+-(). /\u00a0".Contains(c))
+            ? new string(term.Where(char.IsAsciiDigit).ToArray()) : "";
+        if (phoneTerm.StartsWith("00", StringComparison.Ordinal)) phoneTerm = phoneTerm[2..];
+        if (phoneTerm.Length == 11 && phoneTerm.StartsWith('1')) phoneTerm = phoneTerm[1..];
+        if (!string.IsNullOrEmpty(term))
+        {
+            scopedOrders = scopedOrders.Where(x => x.OrderNumber.ToLower().Contains(term)
+                || (x.FirstName + " " + x.LastName).ToLower().Contains(term)
+                || x.Email.ToLower().Contains(term)
+                || (phoneTerm.Length >= 4 && x.Phone.Replace("+", "").Replace("-", "")
+                    .Replace("(", "").Replace(")", "").Replace(".", "").Replace(" ", "")
+                    .Replace("/", "").Replace("\u00a0", "").Contains(phoneTerm)));
+        }
+        return scopedOrders
             .Include(x => x.Lines)
-            .Where(x => x.CommerceBusinessId == businessId)
             .OrderByDescending(x => x.CreatedUtc)
             .ToList()
             .Select(MapOrder)
@@ -69,6 +90,16 @@ public sealed class ParfaitOrderService
         var result = NormalizeOrder(MapOrder(order));
         result.PaymentManagedByProcessor = HasProcessorPayment(businessId, order.Id);
         return result;
+    }
+
+    public ParfaitOrderRecord? GetOrderByCheckoutAttemptId(Guid businessId, string? attempt)
+    {
+        if (string.IsNullOrWhiteSpace(attempt)) return null;
+        var matches = _db.CommerceOrders.AsNoTracking()
+            .Where(x => x.CommerceBusinessId == businessId && x.CheckoutAttemptId == attempt)
+            .Select(x => new { x.OrderNumber, x.CheckoutAttemptId }).Take(2).ToList();
+        return matches.Count == 1 && string.Equals(matches[0].CheckoutAttemptId, attempt, StringComparison.Ordinal)
+            ? GetOrder(businessId, matches[0].OrderNumber) : null;
     }
 
     public bool HasProcessorPayment(Guid businessId, Guid orderId) =>

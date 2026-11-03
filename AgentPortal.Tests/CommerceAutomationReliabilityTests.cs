@@ -187,7 +187,7 @@ public sealed class CommerceAutomationReliabilityTests
     }
 
     [Fact]
-    public void CheckoutRetryDoesNotReverseUnsubscribeButNewOptInCanResubscribe()
+    public void CheckoutPreferencePreservesUnsubscribeAcrossRetriesAndNewOrders()
     {
         using var f = new Fixture();
         var order = f.Orders.GetOrder(f.Business, f.Order.OrderNumber)!;
@@ -197,9 +197,27 @@ public sealed class CommerceAutomationReliabilityTests
         Assert.True(f.Service.GetEmailPreferences(f.Business, f.Lead.LeadId, Fixture.Token)!.Unsubscribed);
         order.CommerceOrderId = Guid.NewGuid();
         f.Service.RecordMarketingOptIn(f.Business, order, false);
-        Assert.False(f.Service.GetEmailPreferences(f.Business, f.Lead.LeadId, Fixture.Token)!.Unsubscribed);
-        Assert.True(f.Service.Unsubscribe(f.Business, f.Lead.LeadId, Fixture.Token));
+        Assert.True(f.Service.GetEmailPreferences(f.Business, f.Lead.LeadId, Fixture.Token)!.Unsubscribed);
+        Assert.DoesNotContain(f.Db.WebsiteLeads, lead => lead.SourcePageKey == "checkout:" + order.CommerceOrderId.ToString("N"));
         Assert.All(f.Db.WebsiteLeads, lead => Assert.False(lead.MarketingEmailConsent));
+    }
+
+    [Fact]
+    public void NewCheckoutDefaultPreferenceCannotRecreateUnsubscribedCartAudience()
+    {
+        using var f = new Fixture();
+        Assert.True(f.Service.Unsubscribe(f.Business, f.Lead.LeadId, Fixture.Token));
+        var customer = new ParfaitCheckoutCustomerRequest { FirstName = "Test", Email = f.Order.Email };
+        f.Orders.BeginCheckoutPayment(f.Business, "new-default-selected", customer, [], 1000,
+            null, null, 0, 0, 0, new Microsoft.AspNetCore.Http.DefaultHttpContext(), order => {
+                f.Service.RecordMarketingOptIn(f.Business, order, false);
+                f.Service.CaptureCheckoutLead(f.Business, new() { CheckoutAttemptId = "new-default-selected", Customer = customer },
+                    new() { Items = [new() { Key = "test-m", Id = "test", Name = "Test", Slug = "test", Size = "M", Quantity = 1, IsAvailable = true, UnitPriceCents = 1000 }] });
+            });
+        f.Db.ChangeTracker.Clear();
+        Assert.All(f.Db.WebsiteLeads, lead => Assert.False(lead.MarketingEmailConsent));
+        Assert.Equal(0, f.Service.GetWorkspaceViewModel(f.Business).OpenCartLeadCount);
+        Assert.Empty(f.Service.GetDueDispatchCandidates(f.Business));
     }
 
     [Theory]

@@ -47,6 +47,7 @@ public sealed class StoreCartController(
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.ProductId)) return BadRequest();
+        if (request.CurrentQuantity is null or < 0) return Conflict(new { error = "cart_refresh_required" });
 
         var product = products.GetActiveStoreProductById(store.CommerceBusinessId, request.ProductId);
         if (product is null || product.PriceCents <= 0) return BadRequest();
@@ -55,9 +56,9 @@ public sealed class StoreCartController(
         var size = string.IsNullOrWhiteSpace(requestedSize)
             ? product.DefaultSize
             : product.Sizes.FirstOrDefault(x => string.Equals(x.Size, requestedSize, StringComparison.OrdinalIgnoreCase));
-        if (size is null || !size.CanPurchase) return BadRequest();
+        if (size is null) return BadRequest();
 
-        var quantity = Math.Clamp(request.Quantity ?? 1, 1, Math.Max(1, size.StockQuantity));
+        var quantity = Math.Max(request.Quantity ?? 1, 1);
         var unitPrice = product.DisplayPriceCents > 0 ? product.DisplayPriceCents : product.PriceCents;
         var stableIdentity = request.EventId!;
 
@@ -66,24 +67,20 @@ public sealed class StoreCartController(
         try {
         await HttpContext.Session.LoadAsync(ct);
         var receiptKey = $"cart-command:{store.CommerceBusinessId:N}:{request.EventId}";
-        var fingerprint = $"{product.Id}:{size.Size}:{quantity}";
+        var fingerprint = $"{product.Id}:{size.Size}:{quantity}:{request.CurrentQuantity}";
         var existingReceipt = HttpContext.Session.GetString(receiptKey);
         var receipt = existingReceipt is null ? null : System.Text.Json.JsonSerializer.Deserialize<CartReceipt>(existingReceipt);
         if (receipt is not null && receipt.Fingerprint != fingerprint) return Conflict();
-        var cartKey = $"cart:{store.CommerceBusinessId:N}";
-        var cart = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(HttpContext.Session.GetString(cartKey) ?? "{}")!;
-        var itemKey = $"{product.Id}:{size.Size}";
         if (receipt is null) {
-            var previousQuantity = cart.GetValueOrDefault(itemKey);
+            if (!size.CanPurchase) return BadRequest();
+            var previousQuantity = request.CurrentQuantity.Value;
             var acceptedQuantity = Math.Max(0, Math.Min(size.StockQuantity - previousQuantity, quantity));
             receipt = new CartReceipt(fingerprint, acceptedQuantity, DateTime.UtcNow, unitPrice);
-            cart[itemKey] = previousQuantity + acceptedQuantity;
-            HttpContext.Session.SetString(cartKey, System.Text.Json.JsonSerializer.Serialize(cart));
             HttpContext.Session.SetString(receiptKey, System.Text.Json.JsonSerializer.Serialize(receipt));
             await HttpContext.Session.CommitAsync(ct);
         }
         if (receipt.AcceptedQuantity == 0)
-            return Ok(new { success = true, eventId = request.EventId, quantity = cart[itemKey], priceCents = receipt.UnitPrice });
+            return Ok(new { success = true, eventId = request.EventId, acceptedQuantity = receipt.AcceptedQuantity, priceCents = receipt.UnitPrice });
 
         string? Cookie(string name) => Request.Cookies.TryGetValue(name, out var value) ? value : null;
         var sourceUrl = $"https://{stores.ResolveEffectivePublicHost(HttpContext)}{store.StoreRootPath}";
@@ -116,7 +113,7 @@ public sealed class StoreCartController(
                 receipt.AcceptedQuantity,
                 receipt.UnitPrice * receipt.AcceptedQuantity),
             ct: ct);
-        return Ok(new { success = true, eventId = request.EventId, quantity = cart[itemKey], priceCents = receipt.UnitPrice });
+        return Ok(new { success = true, eventId = request.EventId, acceptedQuantity = receipt.AcceptedQuantity, priceCents = receipt.UnitPrice });
         } finally { cartLock.Release(); }
     }
     private sealed record CartReceipt(string Fingerprint, int AcceptedQuantity, DateTime EventUtc, int UnitPrice);
@@ -126,6 +123,7 @@ public sealed class StoreCartController(
         public string? ProductId { get; set; }
         public string? Size { get; set; }
         public int? Quantity { get; set; }
+        public int? CurrentQuantity { get; set; }
         public string? SessionId { get; set; }
         public string? VisitorId { get; set; }
         public string? Referrer { get; set; }

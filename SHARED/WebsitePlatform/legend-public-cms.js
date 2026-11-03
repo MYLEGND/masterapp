@@ -1491,6 +1491,20 @@
     host.appendChild(add);
   }
 
+  // Same opaque-hex contrast contract as CommerceThemeContrast on server-rendered Store pages.
+  function storeThemeForeground(background, preferred, fallbackBackground) {
+    const rgb=value=>/^#[0-9a-f]{6}$/i.test(String(value||''))
+      ? {r:parseInt(value.slice(1,3),16),g:parseInt(value.slice(3,5),16),b:parseInt(value.slice(5,7),16)} : null;
+    if(background&&!rgb(background)&&preferred) return preferred;
+    const bg=rgb(background)||rgb(fallbackBackground);
+    if(!bg) throw new Error('A canonical opaque hex fallback is required.');
+    const luminance=relativeLuminance(bg);
+    const contrast=value=>(Math.max(luminance,value)+.05)/(Math.min(luminance,value)+.05);
+    const candidate=rgb(preferred);
+    if(candidate&&contrast(relativeLuminance(candidate))>=4.5) return preferred;
+    return contrast(1)>=contrast(0)?'#ffffff':'#000000';
+  }
+
   function applyTheme(theme) {
     const root = document.documentElement;
     const strings = {
@@ -1520,6 +1534,14 @@
       if (theme?.[key]) root.style.setProperty(cssVar, theme[key]);
       else root.style.removeProperty(cssVar);
     });
+    const computedTheme=window.getComputedStyle?.(root);
+    const resolved=(key,fallback)=>theme?.[key]||computedTheme?.getPropertyValue(fallback)?.trim()||null;
+    const accent=theme?.goldStrong||theme?.gold||resolved('goldStrong','--web-gold-strong')||resolved('gold','--web-gold');
+    const secondary=theme?.navyDeep||theme?.navy||resolved('navyDeep','--web-navy-deep');
+    const surface=resolved('surface','--web-surface');
+    root.style.setProperty('--web-on-accent',storeThemeForeground(accent,secondary,'#6f4b3b'));
+    root.style.setProperty('--web-on-secondary',storeThemeForeground(secondary,surface,'#1f120d'));
+    root.style.setProperty('--web-on-elevated',storeThemeForeground(theme?.surfaceElevated||surface,resolved('text','--web-ink'),'#ffffff'));
     const numberValue=key=>{
       const value=theme?.[key];
       return value==null || typeof value==='boolean' || (typeof value==='string' && !value.trim())
@@ -5552,7 +5574,10 @@
           applyBusinessPageNavigation();
           refreshPageSelector();
         });
-        row.appendChild(visible);
+        const visibilityLabel=document.createElement('label');
+        visibilityLabel.title='Hide the navigation link only; the published page remains available at its direct address.';
+        visibilityLabel.append(visible,document.createTextNode('Show link'));
+        row.appendChild(visibilityLabel);
 
         const remove=document.createElement('button'); remove.type='button';
         const home=entry.route==='/';
@@ -5585,7 +5610,8 @@
         ensurePageRecord(entry.route).navigation.isPublished=event.target.checked;
         markDirty(); renderPageManager();
       });
-      publicationLabel.append(published,document.createTextNode('Published website'));
+      publicationLabel.title='Unpublish to hide this page from visitors and direct links. Saved content stays available here; publish again to restore it.';
+      publicationLabel.append(published,document.createTextNode('Published page'));
       row.appendChild(publicationLabel);
       host.appendChild(row);
     }
@@ -8581,7 +8607,7 @@
   function relativeLuminance(rgb) {
     const channel=value=>{
       const normalized=Math.max(0,Math.min(255,value))/255;
-      return normalized<=.03928 ? normalized/12.92 : Math.pow((normalized+.055)/1.055,2.4);
+      return normalized<=.04045 ? normalized/12.92 : Math.pow((normalized+.055)/1.055,2.4);
     };
     return .2126*channel(rgb.r)+.7152*channel(rgb.g)+.0722*channel(rgb.b);
   }

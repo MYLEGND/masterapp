@@ -10,6 +10,10 @@
         isScopedCommerceManager
             ? Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, scopedPath, commerceManagerTicket, scopedPath == "/commerce/manage/products" ? "GET" : "POST")
             : internalPath;
+    var displayedOrders = Model.SearchResults ?? Model.Orders;
+    var ordersUrl = isScopedCommerceManager
+        ? Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, "/commerce/manage/orders", commerceManagerTicket, "GET")
+        : "/internal/commerce/orders";
     var productsUrl = CommerceAction("/internal/commerce/products", "/commerce/manage/products");
     var orderUpdateAction = CommerceAction("/internal/commerce/orders/update", "/commerce/manage/order");
     var orderReceiptAction = CommerceAction("/internal/commerce/orders/receipt", "/commerce/manage/order/receipt");
@@ -60,23 +64,35 @@
         <article class="pf-orders-kpi is-@returnQueueTone"><span>Returns</span><strong>@Model.ReturnQueueCount</strong><small>@Model.FailedOrderCount failed payments</small></article>
     </section>
 
+    <form method="get" action="@ordersUrl" class="d-flex flex-wrap align-items-end gap-2" role="search">
+        @if (isScopedCommerceManager && !Context.Items.ContainsKey("LegendStoreSession") && !string.IsNullOrWhiteSpace(commerceManagerTicket))
+        { <input type="hidden" name="ticket" value="@commerceManagerTicket" /> }
+        @if (!string.IsNullOrWhiteSpace(Context.Request.Query["businessKey"].ToString()))
+        { <input type="hidden" name="businessKey" value="@Context.Request.Query["businessKey"]" /> }
+        <label class="flex-grow-1" for="orderSearch">Find an order
+            <input class="form-control" id="orderSearch" type="search" name="search" value="@Model.SearchQuery" placeholder="Order number, name, phone or email" />
+        </label>
+        <button type="submit" class="pf-secondary-action">Search</button>
+        @if (!string.IsNullOrEmpty(Model.SearchQuery)) { <a class="pf-secondary-action" href="@ordersUrl">Clear</a> }
+    </form>
+
     <section class="pf-orders-surface">
         <div class="pf-orders-surface-head">
             <div>
                 <h2>Order Queue</h2>
                 <p>Click any order to inspect, update, resend receipt, or review line items.</p>
             </div>
-            <span>@Model.Orders.Count orders</span>
+            <span>@displayedOrders.Count of @Model.Orders.Count orders</span>
         </div>
 
-        @if (Model.Orders.Count == 0)
+        @if (displayedOrders.Count == 0)
         {
-            <div class="text-muted">No orders yet.</div>
+            <div class="text-muted">@(string.IsNullOrEmpty(Model.SearchQuery) ? "No orders yet." : "No orders match your search.")</div>
         }
         else
         {
             <div class="pf-orders-list">
-                @foreach (var order in Model.Orders)
+                @foreach (var order in displayedOrders)
                 {
                     var modalId = $"orderModal{order.OrderNumber}";
                     var primaryItem = order.Items.FirstOrDefault();
@@ -140,7 +156,7 @@
     </section>
 </section>
 
-@foreach (var order in Model.Orders)
+@foreach (var order in displayedOrders)
 {
     var modalId = $"orderModal{order.OrderNumber}";
 

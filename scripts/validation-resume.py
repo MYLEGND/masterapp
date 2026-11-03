@@ -4873,6 +4873,8 @@ def fast_track_scope(paths):
     # Infrastructure/Domain/Shared ProjectReference dependencies. Keep exact
     # ownership: an unknown sibling is not silently admitted.
     shared_server = {
+        'Infrastructure/Mobile/MobileHomeService.cs',
+        'Infrastructure/Notifications/NotificationEngine.cs',
         # Filed CRM history shares the existing Domain/Infrastructure graph.
         'Domain/Entities/CrmHistoryEntry.cs',
         'Domain/Entities/WebsiteLeadIntakeLink.cs',
@@ -5012,10 +5014,38 @@ def fast_track_scope(paths):
         expression = re.escape(pattern).replace(r'\*\*/', '(?:.*/)?')
         expression = expression.replace(r'\*\*', '.*').replace(r'\*', '[^/]*').replace(r'\?', '[^/]')
         return re.fullmatch(expression, path) is not None
+    # Reviewed native application sources are not inputs to server packages.
+    # Keep this exact: new native files still require ownership review.
+    native_only = {
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/model/LegendActivityProjection.kt',
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/model/MobileContracts.kt',
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/navigation/LegendNotificationNavigation.kt',
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/network/LegendApi.kt',
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/push/LegendFirebaseMessagingService.kt',
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/data/LegendRepositories.kt',
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/feature/LegendFeatureViewModels.kt',
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/ui/LegendApp.kt',
+        'Legend-Android/app/src/test/java/com/mylegnd/legend/registered/WorkNotificationsContractTest.kt',
+        'Legend-ios/Legend/App/LegendPushNotificationDelegate.swift',
+        'Legend-ios/Legend/Features/Home/LegendApplicationShell.swift',
+        'Legend-ios/Legend/Features/Home/LegendDailyActivity.swift',
+        'Legend-ios/Legend/Features/Home/MobileHomeModels.swift',
+        'Legend-ios/Legend/Features/Messaging/MessagingModels.swift',
+        'Legend-ios/Legend/Features/Notifications/MobileNotificationStore.swift',
+        'Legend-ios/Legend/Features/Root/LegendApplicationBootstrapCoordinator.swift',
+        'Legend-ios/Legend/Features/Social/LegendSocialHomeSection.swift',
+        'Legend-ios/LegendTests/LegendTests.swift',
+        'Legend-ios/LegendTests/MobileNativeContractTests.swift',
+    }
     def owners(path):
+        if path in native_only:
+            return set()
         if path == 'Directory.Build.props' or path in shared_server:
             return set(dotnet)
-        if path.startswith(('CommerceCore/', 'Infrastructure/Commerce/')):
+        if path.startswith('CommerceCore/'):
+            # Portal now references LegendCommerce; Client has no dependency.
+            return set(commerce) | {'portal'}
+        if path.startswith('Infrastructure/Commerce/'):
             return set(commerce)
         if path.startswith('Infrastructure/WebsiteRuntime/'):
             return {'protect'}

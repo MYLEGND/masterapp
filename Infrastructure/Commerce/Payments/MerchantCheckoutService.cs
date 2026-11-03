@@ -18,8 +18,19 @@ public sealed class MerchantCheckoutService(MasterAppDbContext db, MerchantConne
     public Task<bool> IsConfiguredAsync(Guid businessId, CancellationToken ct = default) =>
         connections.IsCheckoutConfiguredAsync(businessId, configuration["MerchantPayments:CheckoutEnvironment"] ?? "Production", ct);
 
+    public async Task<MerchantBrowserConfiguration?> GetBrowserConfigurationAsync(Guid businessId, CancellationToken ct = default)
+    {
+        var environment = configuration["MerchantPayments:CheckoutEnvironment"] ?? "Production";
+        if (!await connections.IsCheckoutConfiguredAsync(businessId, environment, ct)) return null;
+        var connection = await connections.ResolveActiveAsync(businessId, environment, ct);
+        if (connection is null) return null;
+        var revision = await db.CommerceMerchantConnectionRevisions.AsNoTracking().SingleAsync(x => x.ConnectionId == connection.Id && x.Revision == connection.Revision, ct);
+        var account = await connections.LoadAccountAsync(revision, ct);
+        return Gateway(revision.Provider, environment).BrowserConfiguration(account, revision.Id);
+    }
+
     public async Task<MerchantPaymentEvidence> BeginAsync(Guid businessId, Guid orderId, string returnUrl,
-        string? signalContextJson = null, CancellationToken ct = default)
+        string? signalContextJson = null, CancellationToken ct = default, string? sourceToken = null, Guid? expectedConnectionRevision = null)
     {
         // The environment is server owned; a browser can never select sandbox for a live store.
         var environment = configuration["MerchantPayments:CheckoutEnvironment"] ?? "Production";
@@ -28,12 +39,20 @@ public sealed class MerchantCheckoutService(MasterAppDbContext db, MerchantConne
         if (old is not null) return await ReconcileAsync(businessId, orderId, ct) ?? Evidence(old); // Never re-submit an interrupted checkout.
         var order = await db.CommerceOrders.AsNoTracking().SingleOrDefaultAsync(x => x.Id == orderId && x.CommerceBusinessId == businessId, ct)
             ?? throw new MerchantPaymentException("ORDER_NOT_FOUND");
-        if (order.PaidUtc.HasValue || order.TotalCents <= 0) throw new MerchantPaymentException("ORDER_NOT_PAYABLE");
+        if (!PayableForNewAttempt(order)) throw new MerchantPaymentException("ORDER_NOT_PAYABLE");
         var connection = await connections.ResolveActiveAsync(businessId, environment, ct)
             ?? throw new MerchantPaymentException("MERCHANT_CONNECTION_REQUIRED");
         var revision = await db.CommerceMerchantConnectionRevisions.AsNoTracking().SingleAsync(x => x.ConnectionId == connection.Id && x.Revision == connection.Revision, ct);
         var gateway = Gateway(revision.Provider, environment);
         var account = await connections.LoadAccountAsync(revision, ct);
+        var browser = gateway.BrowserConfiguration(account, revision.Id);
+        if ((expectedConnectionRevision.HasValue && expectedConnectionRevision != revision.Id) ||
+            (browser is null && !string.IsNullOrWhiteSpace(sourceToken)) ||
+            (browser is not null && (string.IsNullOrWhiteSpace(sourceToken) || expectedConnectionRevision != revision.Id)))
+            throw new MerchantPaymentException("PAYMENT_FORM_CHANGED");
+        if (string.Equals(sourceToken?.Trim(), "CASH", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(sourceToken?.Trim(), "EXTERNAL", StringComparison.OrdinalIgnoreCase))
+            throw new MerchantPaymentException("PAYMENT_TOKEN_INVALID");
         var readiness = await gateway.GetReadinessAsync(account, ct);
         if (!readiness.CanAcceptPayments(revision.Provider) || !readiness.Currencies.Contains("USD", StringComparer.OrdinalIgnoreCase) ||
             (revision.Provider == "Square" && (string.IsNullOrWhiteSpace(revision.LocationId) || !readiness.Locations.Contains(revision.LocationId))))
@@ -47,19 +66,50 @@ public sealed class MerchantCheckoutService(MasterAppDbContext db, MerchantConne
             SignalContextJson = signalContextJson
         };
         attempt.IdempotencyKey = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{businessId:N}:{attempt.Provider}:{attempt.AccountId}:{environment}:{orderId:N}"))).ToLowerInvariant()[..40];
-        db.CommercePaymentAttempts.Add(attempt);
-        try { await db.SaveChangesAsync(ct); }
-        catch (DbUpdateException)
+        CommercePaymentAttempt? concurrentOwner = null;
+        try
         {
-            db.Entry(attempt).State = EntityState.Detached;
+            // Only the durable claim retries. No provider operation runs in this transaction.
+            await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            {
+                db.ChangeTracker.Clear();
+                await using var transaction = db.Database.IsRelational()
+                    ? await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct) : null;
+                concurrentOwner = await GetAttemptAsync(businessId, orderId, ct);
+                if (concurrentOwner is not null) return;
+                var current = await db.CommerceOrders.AsNoTracking().SingleAsync(x => x.Id == orderId && x.CommerceBusinessId == businessId, ct);
+                if (!PayableForNewAttempt(current) || current.TotalCents != attempt.AmountMinor
+                    || current.CheckoutAttemptId != order.CheckoutAttemptId
+                    || await db.SubscriptionPayments.AnyAsync(x => x.CommerceOrderId == orderId, ct))
+                    throw new MerchantPaymentException("ORDER_NOT_PAYABLE");
+                order = current;
+                db.CommercePaymentAttempts.Add(attempt);
+                await db.SaveChangesAsync(ct);
+                if (transaction is not null) await transaction.CommitAsync(ct);
+            });
+            if (concurrentOwner is not null)
+            {
+                if (concurrentOwner.Id != attempt.Id || concurrentOwner.State != "Pending"
+                    || !string.IsNullOrEmpty(concurrentOwner.ProviderReference) || !string.IsNullOrEmpty(concurrentOwner.PaymentReference))
+                    return Evidence(concurrentOwner);
+                // The strategy retried a lost commit acknowledgment for THIS invocation.
+                // Its provider operation has not started; retain the same durable claim/key.
+                attempt = concurrentOwner;
+                db.Attach(attempt);
+            }
+        }
+        catch (Exception error) when (IsClaimCollision(error))
+        {
+            db.ChangeTracker.Clear();
             var winner = await GetAttemptAsync(businessId, orderId, ct);
-            if (winner is null) throw;
+            if (winner is null) throw new MerchantPaymentException("PAYMENT_CLAIM_PENDING");
             return Evidence(winner);
         }
         try
         {
             var result = await gateway.CreateCheckoutAsync(account,
-                new(attempt.Id, attempt.IdempotencyKey, attempt.AmountMinor, attempt.Currency, order.OrderNumber, returnUrl), ct);
+                new(attempt.Id, attempt.IdempotencyKey, attempt.AmountMinor, attempt.Currency, order.OrderNumber, returnUrl, sourceToken,
+                    new(order.Email, order.FirstName, order.LastName, order.AddressLine1, order.AddressLine2, order.City, order.State, order.PostalCode)), ct);
             await ApplyAsync(attempt, result, ct);
             return Evidence(attempt);
         }
@@ -71,6 +121,22 @@ public sealed class MerchantCheckoutService(MasterAppDbContext db, MerchantConne
             return Evidence(attempt);
         }
     }
+
+    private static bool IsClaimCollision(Exception error)
+    {
+        for (Exception? current = error; current is not null; current = current.InnerException)
+        {
+            if (current is Microsoft.Data.SqlClient.SqlException sql && sql.Number is 1205 or 2601 or 2627) return true;
+            if (current is Microsoft.Data.Sqlite.SqliteException sqlite &&
+                (sqlite.SqliteErrorCode is 5 or 6 || sqlite.SqliteExtendedErrorCode is 1555 or 2067)) return true;
+        }
+        return false;
+    }
+
+    private static bool PayableForNewAttempt(CommerceOrder order) =>
+        order.PaymentStatus == "Pending" && order.PaidUtc is null && order.TotalCents > 0 && order.RefundedCents == 0
+        && string.IsNullOrWhiteSpace(order.PaymentReference) && string.IsNullOrWhiteSpace(order.SquarePaymentId)
+        && order.FulfillmentStatus is not ("Cancelled" or "Returned") && order.ReturnStatus is "None" or "Closed";
 
     public async Task<MerchantPaymentEvidence?> ReconcileAsync(Guid businessId, Guid orderId, CancellationToken ct = default)
     {
@@ -235,7 +301,7 @@ public sealed class MerchantCheckoutService(MasterAppDbContext db, MerchantConne
             throw new MerchantPaymentException("PAYMENT_REFERENCE_MISMATCH");
         attempt.ProviderReference = evidence.Reference;
         attempt.PaymentReference = evidence.PaymentReference ?? attempt.PaymentReference;
-        if (attempt.State != "Captured" || evidence.State == "Captured") attempt.State = evidence.State;
+        if (evidence.State == "Captured" || (attempt.State != "Captured" && attempt.State != "Failed")) attempt.State = evidence.State;
         attempt.RefundedMinor = Math.Max(attempt.RefundedMinor, evidence.RefundedMinor);
         attempt.DisputeState = evidence.DisputeState ?? attempt.DisputeState;
         attempt.CheckoutUrl = evidence.CheckoutUrl ?? attempt.CheckoutUrl;

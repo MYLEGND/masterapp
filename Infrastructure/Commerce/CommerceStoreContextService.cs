@@ -235,7 +235,10 @@ public sealed class CommerceStoreContextService(
             state.OwnerKey == scope.WebsiteOwnerKey && state.CommerceBusinessId == scope.CommerceBusinessId &&
             state.ProvisionedStoreBusinessId == scope.CommerceBusinessId, ct);
 
-    public async Task<CommerceStoreContext?> ResolvePublicAsync(string? businessKey, CancellationToken ct = default)
+    public Task<CommerceStoreContext?> ResolvePublicAsync(string? businessKey, CancellationToken ct = default) =>
+        ResolvePublicByKeyAsync(businessKey, ct, false);
+
+    private async Task<CommerceStoreContext?> ResolvePublicByKeyAsync(string? businessKey, CancellationToken ct, bool retainedTransaction)
     {
         var normalized = NormalizeKey(businessKey);
         CommerceBusiness? business;
@@ -243,24 +246,74 @@ public sealed class CommerceStoreContextService(
             normalized == ParfaitBusinessScopeService.ParfaitBusinessKey)
         {
             business = await parfaitScope.GetParfaitAsync(ct);
-            return await BuildAsync(business, publishedOnly: false, ct, useScopedPath: false);
+            return await BuildAsync(business, publishedOnly: false, ct, useScopedPath: false, retainedTransaction: retainedTransaction);
         }
 
         business = await businesses.ResolveActiveByKeyAsync(normalized, ct);
         if (business is null) return null;
-        return await BuildAsync(business, publishedOnly: true, ct, useScopedPath: true);
+        return await BuildAsync(business, publishedOnly: true, ct, useScopedPath: true, retainedTransaction: retainedTransaction);
     }
 
-    public async Task<CommerceStoreContext?> ResolvePublicAsync(
-        HttpContext context,
-        string? businessKey,
-        CancellationToken ct = default)
+    public Task<CommerceStoreContext?> ResolvePublicAsync(HttpContext context, string? businessKey, CancellationToken ct = default) =>
+        ResolvePublicCoreAsync(context, businessKey, ct, false);
+
+    // This is not shopping authorization. Existing order AND bearer attempt proof
+    // are enforced here before a hidden store context can leave the resolver.
+    public async Task<CommerceStoreContext?> ResolveRetainedTransactionAsync(
+        HttpContext context, string? businessKey, string? orderNumber, string? attempt, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(attempt)) return null;
+        var store = await ResolvePublicCoreAsync(context, businessKey, ct, true);
+        if (store is null || !await db.CommerceBusinesses.AsNoTracking().AnyAsync(x =>
+            x.Id == store.CommerceBusinessId && x.IsActive && x.Status.ToLower() == "active", ct)) return null;
+        var candidates = await db.CommerceOrders.AsNoTracking().Where(x =>
+            x.CommerceBusinessId == store.CommerceBusinessId && x.CheckoutAttemptId == attempt
+            && (orderNumber == null || orderNumber == "" || x.OrderNumber == orderNumber)).Take(2).ToListAsync(ct);
+        if (candidates.Count != 1) return null;
+        var order = candidates[0];
+        if (!string.Equals(order.CheckoutAttemptId, attempt, StringComparison.Ordinal)) return null;
+        var retainedPayment = await db.CommercePaymentAttempts.AsNoTracking().AnyAsync(x =>
+                x.CommerceBusinessId == store.CommerceBusinessId && x.CommerceOrderId == order.Id, ct)
+            || await db.SubscriptionPayments.AsNoTracking().AnyAsync(x => x.CommerceOrderId == order.Id
+                && x.CommerceOrder!.CommerceBusinessId == store.CommerceBusinessId
+                && x.Kind == Domain.Billing.SubscriptionPaymentKind.CommerceOneTime
+                && x.ClientSubscriptionId == null, ct);
+        return retainedPayment ? store : null;
+    }
+
+    // Preserve the existing order-number receipt contract, but only for a
+    // captured/refunded processor-backed order. This grants no payment action.
+    public async Task<CommerceStoreContext?> ResolveRetainedPaidReceiptAsync(
+        HttpContext context, string? businessKey, string? orderNumber, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(orderNumber)) return null;
+        var store = await ResolvePublicCoreAsync(context, businessKey, ct, true);
+        if (store is null || !await db.CommerceBusinesses.AsNoTracking().AnyAsync(x =>
+            x.Id == store.CommerceBusinessId && x.IsActive && x.Status.ToLower() == "active", ct)) return null;
+        var order = await db.CommerceOrders.AsNoTracking().SingleOrDefaultAsync(x =>
+            x.CommerceBusinessId == store.CommerceBusinessId && x.OrderNumber == orderNumber, ct);
+        if (order is null || !(string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(order.PaymentStatus, "Refunded", StringComparison.OrdinalIgnoreCase))) return null;
+        var captured = await db.CommercePaymentAttempts.AsNoTracking().AnyAsync(x =>
+            x.CommerceBusinessId == store.CommerceBusinessId && x.CommerceOrderId == order.Id
+            && (x.State == "Captured" || x.RefundedMinor > 0), ct)
+            || await db.SubscriptionPayments.AsNoTracking().AnyAsync(x => x.CommerceOrderId == order.Id
+                && x.CommerceOrder!.CommerceBusinessId == store.CommerceBusinessId
+                && x.Kind == Domain.Billing.SubscriptionPaymentKind.CommerceOneTime && x.ClientSubscriptionId == null
+                && (x.CommerceCaptureVerifiedUtc != null || x.Status == Domain.Billing.SubscriptionPaymentStatus.Completed
+                    || x.Status == Domain.Billing.SubscriptionPaymentStatus.PartiallyRefunded
+                    || x.Status == Domain.Billing.SubscriptionPaymentStatus.Refunded), ct);
+        return captured ? store : null;
+    }
+
+    private async Task<CommerceStoreContext?> ResolvePublicCoreAsync(
+        HttpContext context, string? businessKey, CancellationToken ct, bool retainedTransaction)
     {
         var normalized = NormalizeKey(businessKey);
         var host = WebsiteRequestHostResolver.Resolve(context, configuration, allowLegendCommerceHost: true);
         if (!string.IsNullOrWhiteSpace(normalized))
             return string.Equals(host, ProtectHost, StringComparison.OrdinalIgnoreCase)
-                ? await ResolvePublicAsync(normalized, ct) : null;
+                ? await ResolvePublicByKeyAsync(normalized, ct, retainedTransaction) : null;
 
         if (IsParfaitHost(host))
         {
@@ -273,7 +326,7 @@ public sealed class CommerceStoreContextService(
                 : await parfaitScope.GetParfaitAsync(ct);
             return parfait is null
                 ? null
-                : await BuildAsync(parfait, publishedOnly: false, ct, useScopedPath: false);
+                : await BuildAsync(parfait, publishedOnly: false, ct, useScopedPath: false, retainedTransaction: retainedTransaction);
         }
 
         if (PublicWebsiteRuntimeScopeResolver.IsLegendHost(host))
@@ -295,7 +348,7 @@ public sealed class CommerceStoreContextService(
                 ct,
                 explicitSiteKey: WebsiteEditorSiteKeys.Legend,
                 explicitState: state,
-                useScopedPath: false);
+                useScopedPath: false, retainedTransaction: retainedTransaction);
         }
 
         // Protect is the one shared-host exception. It must retain an explicit scoped
@@ -310,7 +363,7 @@ public sealed class CommerceStoreContextService(
         var scopedBusiness = await businesses.ResolveActiveByIdAsync(businessId.Value, ct);
         if (scopedBusiness is null) return null;
 
-        return await BuildAsync(scopedBusiness, publishedOnly: true, ct, useScopedPath: false);
+        return await BuildAsync(scopedBusiness, publishedOnly: true, ct, useScopedPath: false, retainedTransaction: retainedTransaction);
     }
 
     public async Task<CommerceStoreContext?> ResolveManagementAsync(CommerceManagementScope scope,
@@ -430,7 +483,8 @@ public sealed class CommerceStoreContextService(
         WebsiteContentDocument? explicitDocument = null,
         string? explicitSiteKey = null,
         WebsiteContentState? explicitState = null,
-        bool useScopedPath = false)
+        bool useScopedPath = false,
+        bool retainedTransaction = false)
     {
         var settings = await db.CommerceBusinessStorefrontSettings.AsNoTracking()
             .SingleOrDefaultAsync(x => x.CommerceBusinessId == business.Id, ct);
@@ -459,9 +513,9 @@ public sealed class CommerceStoreContextService(
                 if (version is null) return null;
                 publishedVersionId = version.Id;
                 websiteDocument = Deserialize(version.DocumentJson);
-                if (websiteDocument.Store?.Enabled != true) return null;
+                if (!retainedTransaction && websiteDocument.Store?.Enabled != true) return null;
                 TryExtractPublishedWebsiteShell(version.CompiledPagesJson, out websiteShellPrefix, out websiteShellSuffix);
-                if (websiteDocument.Pages.ContainsKey("/store"))
+                if (!retainedTransaction && websiteDocument.Pages.ContainsKey("/store"))
                 {
                     WebsiteSystemTemplateAuthority.ValidateStorePage(websiteDocument);
                     TryExtractPublishedWebsiteShell(version.CompiledPagesJson, out storeShellPrefix, out storeShellSuffix,
@@ -476,7 +530,8 @@ public sealed class CommerceStoreContextService(
         }
 
         var isParfait = IsParfaitKey(business.Key);
-        if (publishedOnly && !isParfait && (websiteDocument?.Store?.Enabled != true ||
+        if (publishedOnly && !isParfait && websiteDocument is null) return null;
+        if (publishedOnly && !isParfait && !retainedTransaction && (websiteDocument?.Store?.Enabled != true ||
             websiteDocument.Pages.TryGetValue("/store", out var storePage) &&
             (storePage.Navigation.IsDeleted || !storePage.Navigation.IsPublished))) return null;
 

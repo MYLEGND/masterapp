@@ -93,13 +93,64 @@ public sealed class SquareMerchantPaymentGateway(IHttpClientFactory clients, ICo
             transfers);
     }
     public async Task RevokeAsync(MerchantAccount account,CancellationToken ct) => await SendAsync(HttpMethod.Post,Base(account.Environment)+"/oauth2/revoke","",Json(new {client_id=Setting(Provider,account.Environment,"ApplicationId"),access_token=account.Credential.AccessToken,revoke_only_access_token=false}),ct,("Authorization","Client "+Setting(Provider,account.Environment,"ApplicationSecret")));
-    public async Task<MerchantPaymentEvidence> CreateCheckoutAsync(MerchantAccount account, MerchantCheckoutRequest request,CancellationToken ct)
+    public MerchantBrowserConfiguration BrowserConfiguration(MerchantAccount account, Guid revisionId)
     {
-        Require(!string.IsNullOrWhiteSpace(account.LocationId),"LOCATION_REQUIRED");
-        var result = await Api(account.Environment,HttpMethod.Post,"/v2/online-checkout/payment-links",account.Credential.AccessToken,Json(new {idempotency_key=request.IdempotencyKey,order=new {location_id=account.LocationId,reference_id=request.OrderReference,metadata=new {attempt_id=request.AttemptId.ToString("D")},line_items=new[]{new {name="Order "+request.OrderReference,quantity="1",base_price_money=new {amount=request.AmountMinor,currency=request.Currency}}}},checkout_options=new {redirect_url=request.ReturnUrl}}),ct);
-        var link=P(result,"payment_link"); Require(S(link,"order_id") != "" && S(link,"url") != "","PROVIDER_INVALID_RESPONSE");
-        return new(account.AccountId,account.Environment,S(link,"order_id"),null,"Pending",request.AmountMinor,request.Currency,CheckoutUrl:S(link,"url"));
+        var appId = Setting(Provider, account.Environment, "ApplicationId");
+        Require(appId != "" && !string.IsNullOrWhiteSpace(account.LocationId), "MERCHANT_NOT_READY");
+        Require(account.Credential.ApplicationId is null || account.Credential.ApplicationId == appId, "PLATFORM_APPLICATION_MISMATCH");
+        return new(Provider, account.Environment, appId, account.LocationId!, revisionId);
     }
+
+    public async Task<MerchantPaymentEvidence> CreateCheckoutAsync(MerchantAccount account, MerchantCheckoutRequest request, CancellationToken ct)
+    {
+        Require(!string.IsNullOrWhiteSpace(account.LocationId), "LOCATION_REQUIRED");
+        Require(!string.IsNullOrWhiteSpace(request.SourceToken), "PAYMENT_TOKEN_REQUIRED");
+        Require(!string.Equals(request.SourceToken?.Trim(), "CASH", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(request.SourceToken?.Trim(), "EXTERNAL", StringComparison.OrdinalIgnoreCase), "PAYMENT_TOKEN_INVALID");
+        // Both keys derive from the already committed durable attempt. Tokens are request-only.
+        Require(request.IdempotencyKey.Length <= 40, "PAYMENT_IDEMPOTENCY_INVALID");
+        var created = await Api(account.Environment, HttpMethod.Post, "/v2/orders", account.Credential.AccessToken,
+            Json(new { idempotency_key = request.IdempotencyKey + "-ord", order = new {
+                location_id = account.LocationId, reference_id = request.OrderReference,
+                metadata = new { attempt_id = request.AttemptId.ToString("D") },
+                line_items = new[] { new { name = "Order " + request.OrderReference, quantity = "1",
+                    base_price_money = new { amount = request.AmountMinor, currency = request.Currency } } }
+            } }), ct);
+        var order = P(created, "order");
+        var orderId = S(order, "id");
+        Require(orderId != "" && S(order, "location_id") == account.LocationId, "MERCHANT_IDENTITY_MISMATCH");
+        Require(L(P(order, "total_money"), "amount") == request.AmountMinor && S(P(order, "total_money"), "currency") == request.Currency, "PAYMENT_AMOUNT_MISMATCH");
+        try
+        {
+        await Api(account.Environment, HttpMethod.Post, "/v2/payments", account.Credential.AccessToken,
+            Json(new { source_id = request.SourceToken, idempotency_key = request.IdempotencyKey + "-pay",
+                order_id = orderId, location_id = account.LocationId, reference_id = request.AttemptId.ToString("N"),
+                amount_money = new { amount = request.AmountMinor, currency = request.Currency }, autocomplete = true,
+                buyer_email_address = request.Customer?.Email,
+                billing_address = request.Customer is null ? null : new { first_name = request.Customer.FirstName,
+                    last_name = request.Customer.LastName, address_line_1 = request.Customer.AddressLine1,
+                    address_line_2 = request.Customer.AddressLine2, locality = request.Customer.City,
+                    administrative_district_level_1 = request.Customer.State, postal_code = request.Customer.PostalCode, country = "US" }
+            }), ct);
+        }
+        catch (MerchantPaymentException ex) when (ex.Message == "PAYMENT_DECLINED")
+        {
+            return new(account.AccountId, account.Environment, orderId, null, "Failed", request.AmountMinor, request.Currency);
+        }
+        // Existing order/tender reconciliation remains the only capture evidence authority.
+        return await GetPaymentAsync(account, orderId, ct);
+    }
+    protected override bool IsDefinitivePaymentDecline(HttpRequestMessage request, System.Net.HttpStatusCode status, JsonElement body)
+    {
+        if (request.Method != HttpMethod.Post || request.RequestUri?.AbsolutePath != "/v2/payments" ||
+            status != System.Net.HttpStatusCode.BadRequest || !body.TryGetProperty("errors", out var errors) ||
+            errors.ValueKind != JsonValueKind.Array || errors.GetArrayLength() == 0) return false;
+        // Only explicit card rejection is terminal; malformed, mixed and ambiguous responses stay held.
+        return errors.EnumerateArray().All(error => S(error, "category") == "PAYMENT_METHOD_ERROR" &&
+            S(error, "code") is "CARD_DECLINED" or "GENERIC_DECLINE" or "INSUFFICIENT_FUNDS" or
+                "CVV_FAILURE" or "ADDRESS_VERIFICATION_FAILURE" or "CARD_EXPIRED");
+    }
+
     public async Task<MerchantPaymentEvidence?> FindCheckoutAsync(MerchantAccount account,MerchantCheckoutRequest request,CancellationToken ct)
     {
         Require(!string.IsNullOrWhiteSpace(account.LocationId),"LOCATION_REQUIRED");

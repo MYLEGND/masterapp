@@ -203,7 +203,7 @@ public sealed partial class InternalModulesController : BusinessAnalyticsControl
         "Purchase, payment, and fulfillment tracking for the Parfait store.",
         3,
         3)]
-    public IActionResult Orders()
+    public IActionResult Orders(string? search = null)
     {
         var orders = _orders.GetAllOrders().ToList();
         var paidOrders = orders
@@ -214,6 +214,8 @@ public sealed partial class InternalModulesController : BusinessAnalyticsControl
         return View(new ParfaitOrderAdminViewModel
         {
             Orders = orders,
+            SearchQuery = search?.Trim() ?? "",
+            SearchResults = string.IsNullOrWhiteSpace(search) ? orders : _orders.SearchOrders(search).ToList(),
             PaidOrderCount = paidOrders.Count(order => string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)),
             PendingOrderCount = orders.Count(order => string.Equals(order.PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase)),
             FailedOrderCount = orders.Count(order => string.Equals(order.PaymentStatus, "Failed", StringComparison.OrdinalIgnoreCase)),

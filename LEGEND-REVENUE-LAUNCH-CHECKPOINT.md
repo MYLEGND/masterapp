@@ -3467,3 +3467,86 @@ normal fast-forward of the existing PR761 branch, current-head CI, affected four
 and later sourceIntegration request. No release request was edited here. Existing
 Store deployment receipts must not be replayed. Native actual push delivery and
 updated-backend device persistence remain explicit post-release checks.
+
+
+## November 3 continuation: embedded checkout and canonical Store controls
+
+The preserved combined base is `0754318c2aeb591502c5535182121a42e89017ef` on
+`isolation/store-mobile-reconciliation-20261103` and the existing scoped release
+branch. It preserves both reviewed Store and mobile histories. The additions below
+are being reviewed on that base; they are not a production deployment receipt.
+
+Founder explicitly approved the existing Square account/location binding as the
+Store default. That binding is active. Founder completed the live $1 test order
+PF-20261103-678C36; read-only reconciliation confirms Store Paid, attempt Captured,
+Square COMPLETED, amount/location/order matching. Preserve it: no replay, refund,
+credential rotation or replacement binding. The three migrations remain applied
+(history235), and the prior transfer/configuration/upload receipts remain completed.
+
+Embedded Square now uses the existing checkout form and canonical merchant attempt,
+with immutable connection revision validation, ephemeral token handling, stable
+provider idempotency, and reconciliation before any new charge. Definitive declines
+project through the existing serializable completion owner; captured evidence wins.
+New attempt insertion atomically checks payable order state. Cancelled/returned or
+otherwise nonpayable prepared orders cannot start a new payment. Recognized claim
+contention and lost commit acknowledgements preserve the same durable intent.
+Unknown payment results offer status checking, including after page reload, without
+requiring the current cart or another token. Existing legacy receipts retain their
+payment authority and completed orders continue to their receipts.
+
+Browser cart intent is the sole quantity authority. A versioned envelope retains
+quantity lineage, command identities and checkout bindings; Web Locks serialize
+mutations across tabs. Server Add validates current product/stock/price and returns
+an accepted delta rather than maintaining a competing quantity accumulator. Paid
+receipts consume only bound units. Same-SKU replacement/new purchases and old receipt
+visits preserve newer cart items. Missing locks/storage fail before payment effects.
+The compact default-selected marketing preference can be unchecked; prior unsubscribe
+remains authoritative and is not silently reversed by a later checkout.
+
+Product, cart, checkout and receipt presentation use shared Store tokens and the
+canonical Website editor theme. Readable foregrounds derive from the supported opaque
+hex palette; broader authored CSS expressions retain authored foregrounds without an
+unproven contrast guarantee. Compact desktop/mobile cart layout respects hidden rows.
+The existing Orders service supports tenant-scoped order number, name, formatted or
+partial phone, and email search. Queue results filter independently of full-store
+revenue/fulfillment metrics, and existing order detail/tracking controls are retained.
+
+Existing page publication and navigation flags remain the sole visibility authority.
+Editor labels distinguish hiding a navigation link from unpublishing a page. Neither
+operation deletes Store/catalog data. Hidden Stores block new shopping while narrow
+retained-transaction resolution validates tenant, order, unique attempt and processor
+record. Historical paid receipt links retain the existing order-number contract with
+actual captured/refunded processor evidence; this read-only evidence is not payment
+capture authority. Unsubscribe links retain their separate scoped-token authority.
+Legacy original-Parfait draft-theme behavior is unchanged by this bounded release.
+
+Validation so far: 300 combined tests PASS, zero failures/skips; targeted claim fault
+checks PASS. Real disposable SQL Server plus mocked Square HTTP tests prove concurrent
+and repeated claims, prepared-order recovery, declines, lost-response GET reconciliation
+and all four search fields, with exactly five provider order/payment calls for five
+attempts. No real charge, mail, postage or printer action occurred in these tests.
+Rendered localhost confirms embedded payment through Paid receipt, repeat Add quantity1,
+old-receipt/new-cart preservation, cross-tab cleanup, decline/reload recovery, mobile
+and desktop presentation, all search modes, empty search/clear, unchanged metrics and
+order modal access. Hidden-Store HTTP/retained-route/presentation checks passed 30/30.
+Canonical editor theme save/reload and page unpublish/save/reload/restore passed in
+the disposable same-origin fixture; the content fingerprint remained unchanged.
+This proves editor persistence, not a publication-worker run; route admission is
+covered separately by the HTTP tests. The local test theme was restored.
+The presentation preservation pins record these reviewed changes explicitly.
+
+The canonical owner map now admits the preserved mobile backend/native paths without
+weakening unknown-path admission. The new shared CMS edit also owns Website+Protect,
+so final release scope is five targets: Portal, Client, Protect, Parfait and Website.
+Prepared direct-Mac runners retain stop-four-writers/upload-five/restart-five sequencing,
+exact artifact/source binding, no-replay journals and explicit Portal Work push cutoff.
+Their source review is preparation only; no new package or provider action is recorded.
+
+Remaining gates: exact complete source review and normal preservation; current required CI; five exact-candidate packages and
+artifact review; fresh schema/prior-effect/publisher/mutex admission; direct Azure
+publication with reviewed Work push activation; live revision and embedded-checkout
+verification; mandatory request-only sourceIntegration and verified fast-track ancestry.
+Production remains at the previously recorded successful revisions until those gates
+are satisfied. Physical printer/postage integration, actual native push delivery and
+real email delivery are not claimed by mock coverage. Do not replay prior migration,
+transfer, binding or deployment intents while continuing.

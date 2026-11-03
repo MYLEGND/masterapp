@@ -105,6 +105,55 @@ class RetainedRecoveryBuildBoundaryTests(unittest.TestCase):
 
 
 class UniversalFastTrackAdmissionTests(unittest.TestCase):
+    def test_commerce_core_owners_match_actual_transitive_project_consumers(self):
+        import xml.etree.ElementTree as ET
+        root = Path(__file__).resolve().parents[1]
+        commerce_project = (root / 'CommerceCore/LegendCommerce.csproj').resolve()
+        def consumes(project, seen=None):
+            seen = set() if seen is None else seen
+            project = project.resolve()
+            if project == commerce_project:
+                return True
+            if project in seen:
+                return False
+            seen.add(project)
+            return any(consumes(project.parent / node.attrib['Include'].replace(chr(92), '/'), seen)
+                       for node in ET.parse(project).iter('ProjectReference'))
+        consumers = {key for key, row in authority.RELEASE_TARGETS.items()
+                     if not row['static'] and consumes(root / row['project'])}
+        self.assertEqual({'portal', 'protect', 'parfait'}, consumers)
+        scope = authority.fast_track_scope(['CommerceCore/Services/GraphMailService.cs'])
+        self.assertEqual(consumers, {row['key'] for row in scope['matrix']['include']})
+        self.assertFalse(scope['schema'])
+
+    def test_mobile_shared_services_select_all_four_managed_hosts(self):
+        for path in ['Infrastructure/Mobile/MobileHomeService.cs',
+                     'Infrastructure/Notifications/NotificationEngine.cs']:
+            with self.subTest(path=path):
+                scope = authority.fast_track_scope([path])
+                self.assertEqual({'portal', 'client', 'protect', 'parfait'},
+                                 {row['key'] for row in scope['matrix']['include']})
+                self.assertFalse(scope['schema'])
+
+    def test_reviewed_native_sources_select_no_server_packages(self):
+        paths = ['Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/model/LegendActivityProjection.kt', 'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/model/MobileContracts.kt', 'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/navigation/LegendNotificationNavigation.kt', 'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/network/LegendApi.kt', 'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/push/LegendFirebaseMessagingService.kt', 'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/data/LegendRepositories.kt', 'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/feature/LegendFeatureViewModels.kt', 'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/ui/LegendApp.kt', 'Legend-Android/app/src/test/java/com/mylegnd/legend/registered/WorkNotificationsContractTest.kt', 'Legend-ios/Legend/App/LegendPushNotificationDelegate.swift', 'Legend-ios/Legend/Features/Home/LegendApplicationShell.swift', 'Legend-ios/Legend/Features/Home/LegendDailyActivity.swift', 'Legend-ios/Legend/Features/Home/MobileHomeModels.swift', 'Legend-ios/Legend/Features/Messaging/MessagingModels.swift', 'Legend-ios/Legend/Features/Notifications/MobileNotificationStore.swift', 'Legend-ios/Legend/Features/Root/LegendApplicationBootstrapCoordinator.swift', 'Legend-ios/Legend/Features/Social/LegendSocialHomeSection.swift', 'Legend-ios/LegendTests/LegendTests.swift', 'Legend-ios/LegendTests/MobileNativeContractTests.swift']
+        scope = authority.fast_track_scope(paths)
+        self.assertEqual([], scope['matrix']['include'])
+        self.assertFalse(scope['schema'])
+        mixed = authority.fast_track_scope(paths + ['Infrastructure/Mobile/MobileHomeService.cs'])
+        self.assertEqual({'portal', 'client', 'protect', 'parfait'},
+                         {row['key'] for row in mixed['matrix']['include']})
+
+    def test_unknown_mobile_and_notification_siblings_remain_denied(self):
+        for path in ['Infrastructure/Mobile/UnreviewedService.cs',
+                     'Infrastructure/Notifications/UnreviewedEngine.cs',
+                     'Legend-ios/Legend/Features/Home/Unreviewed.swift',
+                     'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/ui/Unreviewed.kt',
+                     'Legend-ios/Legend.xcodeproj/project.pbxproj',
+                     'Legend-Android/app/build.gradle.kts']:
+            with self.subTest(path=path), self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+                authority.fast_track_scope([path])
+
     def test_local_operator_tools_do_not_select_application_packages(self):
         for path in ['scripts/sync-local-azure-sql-firewall.sh',
                      'scripts/test-local-azure-sql-firewall.py', 'scripts/test-linked-web-assets.py']:

@@ -17,6 +17,8 @@ public sealed partial class ParfaitCustomerAutomationService
         if (order.CommerceBusinessId != businessId) throw new InvalidOperationException("Consent must belong to the order's store.");
         using var transaction = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
             ? _db.Database.BeginTransaction(System.Data.IsolationLevel.Serializable) : null;
+        // A preselected checkout preference cannot withdraw an existing unsubscribe.
+        if (LatestMarketingConsent(businessId, order.Email) is { MarketingEmailConsent: false }) return;
         var source = "checkout:" + order.CommerceOrderId.ToString("N");
         // Retrying the same checkout must not undo an unsubscribe.
         if (_db.WebsiteLeads.Any(row => row.CommerceBusinessId == businessId && row.SourceCtaKey == ConsentSource && row.SourcePageKey == source)) return;
@@ -29,6 +31,7 @@ public sealed partial class ParfaitCustomerAutomationService
             CreatedUtc = DateTime.UtcNow, Status = "Subscribed",
             MetadataJson = JsonSerializer.Serialize(new Dictionary<string, string> {
                 ["consentText"] = MarketingConsentText,
+                ["selectionMethod"] = "checkout-submitted-preference",
                 ["unsubscribeToken"] = Convert.ToHexString(RandomNumberGenerator.GetBytes(32))
             })
         });

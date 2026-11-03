@@ -183,6 +183,7 @@ public sealed partial class ParfaitCustomerAutomationService
         var email = NormalizeEmail(request.Customer.Email);
         if (string.IsNullOrWhiteSpace(checkoutAttemptId) || string.IsNullOrWhiteSpace(email))
             return;
+        if (LatestMarketingConsent(businessId, email) is { MarketingEmailConsent: false }) return;
 
         var items = quote.Items
             .Where(item => item.IsAvailable && item.Quantity > 0)

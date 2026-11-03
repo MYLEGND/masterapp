@@ -27,6 +27,7 @@ public sealed class ParfaitCheckoutPayRequest
 {
     public bool MarketingEmailConsent { get; set; }
     public string? SourceId { get; set; }
+    public Guid? MerchantConnectionRevision { get; set; }
     public string? CheckoutAttemptId { get; set; }
     public string? DiscountCode { get; set; }
     public ParfaitCheckoutCustomerRequest Customer { get; set; } = new();
@@ -173,6 +174,8 @@ public sealed class ParfaitOrderRecord
 
 public sealed class ParfaitOrderAdminViewModel
 {
+    public List<ParfaitOrderRecord>? SearchResults { get; set; }
+    public string SearchQuery { get; set; } = "";
     public List<ParfaitOrderRecord> Orders { get; set; } = [];
     public int PaidOrderCount { get; set; }
     public int PendingOrderCount { get; set; }

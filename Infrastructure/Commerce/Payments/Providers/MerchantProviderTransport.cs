@@ -20,6 +20,7 @@ public abstract class MerchantProviderTransport(IHttpClientFactory clients, ICon
     protected static JsonElement P(JsonElement root, string name) => root.ValueKind == JsonValueKind.Object && root.TryGetProperty(name, out var value) ? value : default;
     protected static string Header(IReadOnlyDictionary<string,string> headers, string key) => headers.FirstOrDefault(x => x.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).Value ?? "";
     protected static void Require(bool condition, string code) { if (!condition) throw new MerchantPaymentException(code); }
+    protected virtual bool IsDefinitivePaymentDecline(HttpRequestMessage request, System.Net.HttpStatusCode status, JsonElement body) => false;
     protected async Task<JsonElement> SendAsync(HttpMethod method, string url, string bearer, HttpContent? content, CancellationToken ct, params (string Name,string Value)[] headers)
     {
         using var request = new HttpRequestMessage(method, url) { Content = content };
@@ -30,7 +31,17 @@ public abstract class MerchantProviderTransport(IHttpClientFactory clients, ICon
         try
         {
             using var response = await clients.CreateClient("MerchantPayments").SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
-            if (!response.IsSuccessStatusCode) throw new MerchantPaymentException((int)response.StatusCode >= 500 || (int)response.StatusCode == 429 ? "PROVIDER_UNAVAILABLE" : "PROVIDER_REJECTED_REQUEST");
+            if (!response.IsSuccessStatusCode)
+            {
+                if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+                {
+                    await using var errorStream = await response.Content.ReadAsStreamAsync(timeout.Token);
+                    using var error = await JsonDocument.ParseAsync(errorStream, cancellationToken: timeout.Token);
+                    if (IsDefinitivePaymentDecline(request, response.StatusCode, error.RootElement))
+                        throw new MerchantPaymentException("PAYMENT_DECLINED");
+                }
+                throw new MerchantPaymentException((int)response.StatusCode >= 500 || (int)response.StatusCode == 429 ? "PROVIDER_UNAVAILABLE" : "PROVIDER_REJECTED_REQUEST");
+            }
             if (response.StatusCode == System.Net.HttpStatusCode.NoContent) return JsonDocument.Parse("{}").RootElement.Clone();
             await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: timeout.Token);

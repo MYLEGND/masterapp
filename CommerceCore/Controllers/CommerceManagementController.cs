@@ -580,7 +580,7 @@ public sealed partial class CommerceManagementController(
     [HttpGet("orders")]
     public async Task<IActionResult> Orders(
         [FromQuery] string ticket,
-        CancellationToken ct = default)
+        CancellationToken ct = default, [FromQuery] string? search = null)
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
@@ -595,6 +595,8 @@ public sealed partial class CommerceManagementController(
         return View("~/Views/InternalModules/Orders.cshtml", new ParfaitOrderAdminViewModel
         {
             Orders = scopedOrders,
+            SearchQuery = search?.Trim() ?? "",
+            SearchResults = string.IsNullOrWhiteSpace(search) ? scopedOrders : orders.SearchOrders(store.CommerceBusinessId, search).ToList(),
             PaidOrderCount = paidOrders.Count(order => string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)),
             PendingOrderCount = scopedOrders.Count(order => string.Equals(order.PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase)),
             FailedOrderCount = scopedOrders.Count(order => string.Equals(order.PaymentStatus, "Failed", StringComparison.OrdinalIgnoreCase)),

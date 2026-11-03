@@ -139,7 +139,7 @@ public sealed class ParfaitCheckoutBillingCutoverTests
 
         Assert.True(response.Success);
         Assert.Equal(order.OrderNumber, response.OrderNumber);
-        Assert.Equal($"/store/success?orderNumber={Uri.EscapeDataString(order.OrderNumber)}", response.RedirectUrl);
+        Assert.Equal($"/store/success?orderNumber={Uri.EscapeDataString(order.OrderNumber)}&attempt={Uri.EscapeDataString(order.CheckoutAttemptId!)}", response.RedirectUrl);
 
         Assert.NotNull(capturedGatewayRequest);
         Assert.Equal(2500, capturedGatewayRequest!.AmountCents);

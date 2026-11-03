@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore.Storage;
 using Infrastructure.Businesses;
 using Infrastructure.WebsiteEditing;
 using Microsoft.Extensions.DependencyInjection;
@@ -122,6 +123,9 @@ public sealed class MerchantPaymentsTests
     [InlineData("USD", 0, false, true, "wrong-amount")]
     [InlineData("USD", 0, true, true, "rollback")]
     [InlineData("USD", 0, true, true, "mail-unknown")]
+    [InlineData("USD", 0, true, false, "decline-then-capture")]
+    [InlineData("USD", 0, true, false, "capture-then-late-decline")]
+    [InlineData("USD", 0, true, false, "legacy-capture-blocks-decline")]
     public async Task RepeatedCompletionCommitsInventoryPurchaseAndTenantMailOnce(string currency, long refunded, bool valid, bool legacy, string scenario = "")
     {
         var failure = new CompletionWriteFailure();
@@ -184,7 +188,36 @@ public sealed class MerchantPaymentsTests
                 Assert.Equal(5,(await f.Db.CommerceProductInventoryItems.SingleAsync()).StockQuantity);
                 Assert.Empty(await EffectStates().ToListAsync());
             }
+            if (scenario == "legacy-capture-blocks-decline")
+            {
+                var declined = await f.Db.CommercePaymentAttempts.SingleAsync(); declined.State = "Failed";
+                var captured = new SubscriptionPayment { CommerceOrderId = f.Order, AmountCents = 1000, Currency = "USD", Status = Domain.Billing.SubscriptionPaymentStatus.Completed, ProviderPaymentId = "retained-capture" };
+                f.Db.SubscriptionPayments.Add(captured); await f.Db.SaveChangesAsync();
+                await Complete(); f.Db.ChangeTracker.Clear();
+                Assert.Equal("Pending", (await f.Db.CommerceOrders.SingleAsync()).PaymentStatus);
+                Assert.Empty(await EffectStates().ToListAsync()); mail.VerifyNoOtherCalls();
+                f.Db.SubscriptionPayments.Remove(await f.Db.SubscriptionPayments.SingleAsync());
+                (await f.Db.CommercePaymentAttempts.SingleAsync()).State = "Captured";
+                await f.Db.SaveChangesAsync();
+            }
+            if (scenario == "decline-then-capture")
+            {
+                var declined = await f.Db.CommercePaymentAttempts.SingleAsync(); declined.State = "Failed"; declined.PaymentReference = null;
+                await f.Db.SaveChangesAsync();
+                await Complete(); await Complete(); f.Db.ChangeTracker.Clear();
+                Assert.Equal("Failed", (await f.Db.CommerceOrders.SingleAsync()).PaymentStatus);
+                Assert.Equal(5, (await f.Db.CommerceProductInventoryItems.SingleAsync()).StockQuantity);
+                Assert.Empty(await EffectStates().ToListAsync()); Assert.Empty(await f.Db.AnalyticsEvents.ToListAsync());
+                mail.VerifyNoOtherCalls();
+                await f.Checkout.ReconcileAsync(f.Business, f.Order); // Authenticated capture supersedes decline.
+            }
             await Complete();await Complete();
+            if (scenario == "capture-then-late-decline")
+            {
+                var late = await f.Db.CommercePaymentAttempts.SingleAsync(); late.State = "Failed"; await f.Db.SaveChangesAsync();
+                await Complete(); f.Db.ChangeTracker.Clear();
+                Assert.Equal("Paid", (await f.Db.CommerceOrders.SingleAsync()).PaymentStatus);
+            }
             Assert.Equal(4,(await f.Db.CommerceProductInventoryItems.SingleAsync()).StockQuantity);
             Assert.Equal(1,await f.Db.AnalyticsEvents.CountAsync());
             var purchase=await f.Db.AnalyticsEvents.SingleAsync();Assert.Equal(f.Business,purchase.CommerceBusinessId);
@@ -550,12 +583,121 @@ public sealed class MerchantPaymentsTests
         }
     }
 
+    [Theory]
+    [InlineData("CASH")]
+    [InlineData(" cash ")]
+    [InlineData("ExTeRnAl")]
+    [InlineData("\tEXTERNAL\r\n")]
+    public async Task PublicCheckoutCannotRecordOfflinePayment(string token)
+    {
+        using var f = new Fixture();
+        await Assert.ThrowsAsync<MerchantPaymentException>(() => f.Checkout.BeginAsync(f.Business, f.Order,
+            "https://example.test/return", sourceToken: token));
+        Assert.Empty(f.Db.CommercePaymentAttempts); Assert.Equal(0, f.Gateway.Creates);
+    }
+
+    [Fact]
+    public async Task ChangedBrowserConnectionCannotFallThroughToHostedProvider()
+    {
+        using var f = new Fixture();
+        await Assert.ThrowsAsync<MerchantPaymentException>(() => f.Checkout.BeginAsync(f.Business, f.Order,
+            "https://example.test/return", expectedConnectionRevision: Guid.NewGuid()));
+        Assert.Empty(f.Db.CommercePaymentAttempts); Assert.Equal(0, f.Gateway.Creates);
+    }
+
+    [Fact]
+    public async Task ExistingAttemptReconcilesBeforeAnyNewBrowserTokenValidation()
+    {
+        using var f = new Fixture(); f.Gateway.Pending = true;
+        await f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return");
+        await f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return",
+            sourceToken: "CASH", expectedConnectionRevision: Guid.NewGuid());
+        Assert.Single(f.Db.CommercePaymentAttempts); Assert.Equal(1, f.Gateway.Creates); Assert.Equal(1, f.Gateway.Reads);
+    }
+
+    [Fact]
+    public async Task ProvenDeclineRemainsFailedThroughReconcileAndWebhook()
+    {
+        using var f = new Fixture(); f.Gateway.Failed = true;
+        Assert.Equal("Failed", (await f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return")).State);
+        f.Gateway.Failed = false; f.Gateway.Pending = true;
+        Assert.Equal("Failed", (await f.Checkout.ReconcileAsync(f.Business, f.Order))!.State);
+        await f.Checkout.HandleWebhookAsync("Fake", "Production", "signed", new Dictionary<string,string>(), "https://example.test/hook");
+        f.Db.ChangeTracker.Clear();
+        Assert.Equal("Failed", (await f.Checkout.GetAttemptAsync(f.Business, f.Order))!.State);
+        Assert.Equal(1, f.Gateway.Creates); Assert.Single(f.Db.CommercePaymentReceipts);
+        f.Gateway.Pending = false;
+        Assert.Equal("Captured", (await f.Checkout.ReconcileAsync(f.Business, f.Order))!.State);
+    }
+
+    [Theory]
+    [InlineData("Cancelled", "Pending", "None")]
+    [InlineData("Returned", "Pending", "Closed")]
+    [InlineData("Unfulfilled", "Failed", "None")]
+    [InlineData("Unfulfilled", "Pending", "Requested")]
+    public async Task PreparedNonPayableOrderCannotClaimNewProcessorAttempt(string fulfillment, string payment, string returns)
+    {
+        using var f = new Fixture(true);
+        var order = await f.Db.CommerceOrders.SingleAsync(); order.FulfillmentStatus = fulfillment; order.PaymentStatus = payment; order.ReturnStatus = returns;
+        await f.Db.SaveChangesAsync();
+        Assert.Equal("ORDER_NOT_PAYABLE", (await Assert.ThrowsAsync<MerchantPaymentException>(() => f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return"))).Message);
+        Assert.Empty(f.Db.CommercePaymentAttempts); Assert.Equal(0, f.Gateway.Creates);
+    }
+
+    [Fact]
+    public async Task CancellationDuringReadinessIsRecheckedBeforeDurableClaimButExistingReceiptStillReconciles()
+    {
+        using var f = new Fixture(true);
+        f.Gateway.BeforeReadiness = () => { var order = f.Db.CommerceOrders.Single(); order.FulfillmentStatus = "Cancelled"; f.Db.SaveChanges(); };
+        await Assert.ThrowsAsync<MerchantPaymentException>(() => f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return"));
+        Assert.Empty(f.Db.CommercePaymentAttempts); Assert.Equal(0, f.Gateway.Creates);
+        f.Gateway.BeforeReadiness = null;
+        var restored = await f.Db.CommerceOrders.SingleAsync(); restored.FulfillmentStatus = "Unfulfilled"; await f.Db.SaveChangesAsync();
+        await f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return");
+        restored = await f.Db.CommerceOrders.SingleAsync(); restored.FulfillmentStatus = "Cancelled"; await f.Db.SaveChangesAsync();
+        Assert.Equal("Captured", (await f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return")).State);
+        Assert.Equal(1, f.Gateway.Creates);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ClaimCommitRetryInvokesProviderOnceWithSameDurableAttempt(bool afterCommit)
+    {
+        var fault = new ClaimCommitFault(afterCommit);
+        using var f = new Fixture(true, interceptor: fault, retryClaim: true);
+        fault.Armed = true;
+        Assert.Equal("Captured", (await f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return")).State);
+        Assert.Equal(1, fault.Failures); Assert.Equal(1, f.Gateway.Creates);
+        var attempt = await f.Db.CommercePaymentAttempts.SingleAsync(); Assert.Equal("Captured", attempt.State);
+        await f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return");
+        Assert.Equal(1, f.Gateway.Creates); Assert.Equal(attempt.Id, (await f.Db.CommercePaymentAttempts.SingleAsync()).Id);
+    }
+
+    public sealed class ClaimRetryFactory(ExecutionStrategyDependencies dependencies) : IExecutionStrategyFactory
+    {
+        public IExecutionStrategy Create() => new ClaimRetryStrategy(dependencies);
+    }
+    private sealed class ClaimRetryStrategy(ExecutionStrategyDependencies dependencies) : ExecutionStrategy(dependencies, 2, TimeSpan.Zero)
+    {
+        protected override bool ShouldRetryOn(Exception exception) => exception is TimeoutException;
+    }
+    private sealed class ClaimCommitFault(bool afterCommit) : DbTransactionInterceptor
+    {
+        public bool Armed; public int Failures;
+        private void Fail(bool committed) { if (Armed && Failures == 0 && committed == afterCommit) { Failures++; throw new TimeoutException("Synthetic lost claim acknowledgment"); } }
+        public override ValueTask<InterceptionResult> TransactionCommittingAsync(System.Data.Common.DbTransaction transaction, TransactionEventData eventData, InterceptionResult result, CancellationToken cancellationToken = default)
+        { Fail(false); return ValueTask.FromResult(result); }
+        public override Task TransactionCommittedAsync(System.Data.Common.DbTransaction transaction, TransactionEndEventData eventData, CancellationToken cancellationToken = default)
+        { Fail(true); return Task.CompletedTask; }
+    }
+
     private sealed class Fixture:IDisposable
     {
         public readonly DbContextOptions<MasterAppDbContext> Options; public readonly IDataProtectionProvider Protection=new EphemeralDataProtectionProvider(); public readonly MasterAppDbContext Db; public readonly FakeGateway Gateway,OtherGateway=new("Other"); public readonly Guid Business=Guid.NewGuid(),Order=Guid.NewGuid();
         public readonly MerchantConnectionService Connections; public readonly MerchantCheckoutService Checkout;
         private readonly SqliteConnection? sqlite;
-        public Fixture(bool relational=false, string provider="Fake", IInterceptor? interceptor=null)
+        public Fixture(bool relational=false, string provider="Fake", IInterceptor? interceptor=null, bool retryClaim=false)
         {
             Gateway = new(provider);
             if(relational)
@@ -563,6 +705,7 @@ public sealed class MerchantPaymentsTests
                 sqlite=new SqliteConnection("Data Source=:memory:;Foreign Keys=False");sqlite.Open();
                 var builder=new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(sqlite);
                 if(interceptor is not null) builder.AddInterceptors(interceptor);
+                if(retryClaim) builder.ReplaceService<IExecutionStrategyFactory, ClaimRetryFactory>();
                 Options=builder.Options;
             }
             else Options=new DbContextOptionsBuilder<MasterAppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).ConfigureWarnings(x=>x.Ignore(InMemoryEventId.TransactionIgnoredWarning)).Options;
@@ -596,16 +739,16 @@ public sealed class MerchantPaymentsTests
     private sealed class FakeGateway(string provider="Fake"):IMerchantPaymentGateway
     {
         public string Name=provider; public string Provider=>Name; public string[] Locations=Array.Empty<string>(); public MerchantCapabilities Capabilities=>MerchantCapabilities.Checkout|MerchantCapabilities.Refund|MerchantCapabilities.Reconcile|MerchantCapabilities.Capture;
-        public int Creates,Reads,Refunds,Captures; public bool Available=true,Ready=true,Approved,Pending,SynchronizeReads; private readonly TaskCompletionSource<bool> readsReady=new(TaskCreationOptions.RunContinuationsAsynchronously); public bool ThrowCreate,ThrowRefund; public string? Mismatch,LastAccount;
-        public MerchantReadiness? ReadinessOverride;
+        public int Creates,Reads,Refunds,Captures; public bool Available=true,Ready=true,Approved,Pending,Failed,SynchronizeReads; private readonly TaskCompletionSource<bool> readsReady=new(TaskCreationOptions.RunContinuationsAsynchronously); public bool ThrowCreate,ThrowRefund; public string? Mismatch,LastAccount;
+        public MerchantReadiness? ReadinessOverride; public Action? BeforeReadiness;
         public string? AuthorizationState,AuthorizationCallback; public string ConnectionAccount="merchant-new";public int AuthorizationCompletions;
         public bool IsAvailable(string environment)=>Available;
         public Task<MerchantAuthorization> BeginConnectionAsync(MerchantConnectionRequest r,CancellationToken ct){AuthorizationState=r.State;AuthorizationCallback=r.CallbackUrl;return Task.FromResult(new MerchantAuthorization("https://provider.example.test/authorize",ConnectionAccount));}
         public Task<MerchantConnectionResult> CompleteConnectionAsync(string e,string c,string u,string? a,CancellationToken ct){AuthorizationCompletions++;return Task.FromResult(new MerchantConnectionResult(ConnectionAccount,new MerchantCredential("test-only"),new[]{"checkout"}));}
-        public Task<MerchantReadiness> GetReadinessAsync(MerchantAccount a,CancellationToken ct)=>Task.FromResult(ReadinessOverride ?? new MerchantReadiness(Ready,Ready,new[]{"USD"},new[]{"card"},Locations));
+        public Task<MerchantReadiness> GetReadinessAsync(MerchantAccount a,CancellationToken ct) { BeforeReadiness?.Invoke(); return Task.FromResult(ReadinessOverride ?? new MerchantReadiness(Ready,Ready,new[]{"USD"},new[]{"card"},Locations)); }
         public Task<MerchantCredential> RefreshAsync(MerchantAccount a,CancellationToken ct)=>Task.FromResult(a.Credential);
         public Task RevokeAsync(MerchantAccount a,CancellationToken ct)=>Task.CompletedTask;
-        private MerchantPaymentEvidence Evidence(MerchantAccount a)=>new(Mismatch=="account"?"wrong":a.AccountId,Mismatch=="environment"?"Sandbox":a.Environment,"checkout_test","payment_test",Approved?"Approved":Pending?"Pending":"Captured",Mismatch=="amount"?999:1000,"USD");
+        private MerchantPaymentEvidence Evidence(MerchantAccount a)=>new(Mismatch=="account"?"wrong":a.AccountId,Mismatch=="environment"?"Sandbox":a.Environment,"checkout_test","payment_test",Failed?"Failed":Approved?"Approved":Pending?"Pending":"Captured",Mismatch=="amount"?999:1000,"USD");
         public Task<MerchantPaymentEvidence> CreateCheckoutAsync(MerchantAccount a,MerchantCheckoutRequest r,CancellationToken ct) {Creates++; LastAccount=a.AccountId; if(ThrowCreate)throw new TimeoutException(); return Task.FromResult(Evidence(a));}
         public async Task<MerchantPaymentEvidence> GetPaymentAsync(MerchantAccount a,string r,CancellationToken ct) {var reads=Interlocked.Increment(ref Reads);LastAccount=a.AccountId;if(SynchronizeReads) {if(reads==2)readsReady.TrySetResult(true);await readsReady.Task.WaitAsync(TimeSpan.FromSeconds(10),ct);}return Evidence(a);}
         public Task<MerchantPaymentEvidence> CaptureAsync(MerchantAccount a,string r,string key,CancellationToken ct) {Captures++;throw new TimeoutException();}
