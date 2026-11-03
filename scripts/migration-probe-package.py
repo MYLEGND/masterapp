@@ -153,10 +153,16 @@ def isolated_sql():
                       ';User Id=sa;Password=' + password + ';Encrypt=True;TrustServerCertificate=True')
         end = time.monotonic() + 90
         while True:
-            ready = subprocess.run(['docker', 'exec', '-e', 'SQLCMDPASSWORD', name,
-                '/opt/mssql-tools18/bin/sqlcmd', '-S', 'localhost', '-U', 'sa', '-C', '-Q', 'SELECT 1'],
-                env=env, capture_output=True, timeout=10, check=False)
-            if ready.returncode == 0:
+            remaining = end - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError('Isolated SQL readiness deadline exceeded')
+            try:
+                ready = subprocess.run(['docker', 'exec', '-e', 'SQLCMDPASSWORD', name,
+                    '/opt/mssql-tools18/bin/sqlcmd', '-S', 'localhost', '-U', 'sa', '-C', '-Q', 'SELECT 1'],
+                    env=env, capture_output=True, timeout=min(10, remaining), check=False)
+            except subprocess.TimeoutExpired:
+                ready = None
+            if ready is not None and ready.returncode == 0:
                 break
             if time.monotonic() >= end:
                 raise RuntimeError('Isolated SQL readiness deadline exceeded')

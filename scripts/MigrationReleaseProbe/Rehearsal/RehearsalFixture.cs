@@ -305,8 +305,8 @@ internal static partial class RehearsalFixture
             foreach (var command in db.GetService<IMigrationsSqlGenerator>().Generate(reverse))
                 await db.Database.ExecuteSqlRawAsync(command.CommandText, timeout.Token);
             if (expanded && !payments) await db.Database.ExecuteSqlRawAsync("ALTER TABLE dbo.CommerceMerchantAuthorizations ALTER COLUMN ClientProfileId uniqueidentifier NOT NULL", timeout.Token);
-            if (store) await FinishStoreBaseline(db, pending, timeout.Token);
-            if (store && !crm) await db.Database.ExecuteSqlRawAsync(
+            if (store || expanded) await FinishStoreBaseline(db, pending, timeout.Token);
+            if ((store || expanded) && !crm) await db.Database.ExecuteSqlRawAsync(
                 "ALTER TABLE dbo.WebsiteLeadIntakeLinks ADD CONSTRAINT DF_Rehearsal_AssociationVersion DEFAULT ('00000000-0000-0000-0000-000000000000') FOR AssociationVersion", timeout.Token);
             if (browser && !receptionist) await db.Database.ExecuteSqlRawAsync("""
                 ALTER TABLE dbo.ReceptionistCalls ALTER COLUMN ProviderSessionId nvarchar(200) COLLATE Latin1_General_100_BIN2 NOT NULL;

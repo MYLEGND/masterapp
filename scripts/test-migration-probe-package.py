@@ -237,6 +237,40 @@ class IsolatedSqlTests(unittest.TestCase):
         self.assertIn('127.0.0.1::1433', self.calls[0])
         self.assertIn(m.SQL_REHEARSAL_IMAGE, self.calls[0])
 
+    def test_readiness_timeout_then_ready_stays_within_deadline(self):
+        import time
+        clock = [0.0]; attempts = []
+        def run(args, **kwargs):
+            if args[1] == 'exec':
+                attempts.append(kwargs['timeout'])
+                if len(attempts) == 1:
+                    clock[0] += kwargs['timeout']
+                    raise m.subprocess.TimeoutExpired(args, kwargs['timeout'])
+            return self.command(args, **kwargs)
+        with patch.object(m.subprocess, 'run', side_effect=run), patch.object(time, 'monotonic', side_effect=lambda: clock[0]), \
+             patch.object(time, 'sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0]+seconds)):
+            with m.isolated_sql(): pass
+        self.assertEqual([10,10], attempts)
+        self.assertEqual(12, clock[0])
+        self.assertEqual('rm', self.calls[-1][1])
+
+    def test_readiness_timeouts_exhaust_absolute_deadline_and_dispose(self):
+        import time
+        clock = [0.0]; attempts = []
+        def run(args, **kwargs):
+            if args[1] == 'exec':
+                attempts.append(kwargs['timeout'])
+                clock[0] += kwargs['timeout']
+                raise m.subprocess.TimeoutExpired(args, kwargs['timeout'])
+            return self.command(args, **kwargs)
+        with patch.object(m.subprocess, 'run', side_effect=run), patch.object(time, 'monotonic', side_effect=lambda: clock[0]), \
+             patch.object(time, 'sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0]+seconds)):
+            with self.assertRaisesRegex(RuntimeError, 'readiness deadline exceeded'):
+                with m.isolated_sql(): self.fail('unready server accepted')
+        self.assertEqual(90, clock[0])
+        self.assertEqual(6, attempts[-1])
+        self.assertEqual('rm', self.calls[-1][1])
+
     def test_fixture_failure_still_disposes(self):
         with patch.object(m.subprocess, 'run', side_effect=self.command):
             with self.assertRaisesRegex(ValueError, 'fixture failure'):
