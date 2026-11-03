@@ -106,13 +106,26 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 .ApplySiteScope(scope)
                 .Where(ScopePredicateEvents(scope, scopedAgentIds)));
 
-    public async Task<List<AnalyticsEvent>> LoadFilteredEventsAsync(
+    public Task<List<AnalyticsEvent>> LoadFilteredEventsAsync(
         TimeRangeRequest range,
         ScopeContext scope,
         Guid[]? scopedAgentIds = null,
-        System.Threading.CancellationToken cancellationToken = default)
+        System.Threading.CancellationToken cancellationToken = default) =>
+        LoadFilteredEventsCoreAsync(range, scope, scopedAgentIds, false, cancellationToken);
+
+    // Interaction summaries use the same session evidence and quality authority without
+    // loading event payloads or asking SQL to classify and group the historical corpus.
+    public Task<List<AnalyticsEvent>> LoadFilteredInteractionEventsAsync(
+        TimeRangeRequest range, ScopeContext scope, CancellationToken cancellationToken = default) =>
+        LoadFilteredEventsCoreAsync(range, scope, null, true, cancellationToken);
+
+    private async Task<List<AnalyticsEvent>> LoadFilteredEventsCoreAsync(
+        TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds,
+        bool interactionsOnly, CancellationToken cancellationToken)
     {
-        var rawEvents = await BaseEventsWithoutQualityFilter(range, scope, scopedAgentIds).ToListAsync(cancellationToken);
+        var query = BaseEventsWithoutQualityFilter(range, scope, scopedAgentIds);
+        if (interactionsOnly) query = UnifiedEventMapper.ProjectBehaviorEvidence(query, includeEventType: true);
+        var rawEvents = await query.ToListAsync(cancellationToken);
         return TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, range.QualityMode,
             (await LoadClassificationEvidenceAsync(rawEvents, [], range.QualityMode, scope, scopedAgentIds, cancellationToken)).All);
     }

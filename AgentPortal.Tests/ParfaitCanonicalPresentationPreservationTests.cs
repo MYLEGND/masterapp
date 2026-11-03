@@ -42,8 +42,8 @@ public sealed partial class ParfaitCanonicalPresentationPreservationTests
     // compact catalog and management components; scoped palette retains Parfait identity.
     // Authored presentation remains authoritative. All other visual pins are unchanged.
     [InlineData("wwwroot/css/storefront.css", "c258f0f30cd691c9769679968028d2e653decd34")]
-    // Founder-requested page-only light mode and right-side navigation; component palette retained.
-    [InlineData("wwwroot/css/internal.css", "9568b4d1db7fbfbf4aa3f3e3cfaff144fc6c3a78")]
+    // Founder-requested compact internal geometry; single shell authority, page-only light mode and right navigation retained.
+    [InlineData("wwwroot/css/internal.css", "7f8b866876190ea65b9603d5e3bb35c4c4039eb2")]
     [InlineData("wwwroot/js/storefront.js", "ee0256aa52937cc25831c54b80141b768be72e96")]
     // Reviewed internal health behavior: unavailable identity evidence must not render as zero.
     // CommerceCoreOwnershipContractTests covers the payload; public design assets remain pinned.

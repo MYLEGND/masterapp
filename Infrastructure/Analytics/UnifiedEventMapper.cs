@@ -14,9 +14,9 @@ public static class UnifiedEventMapper
     private const string ReportingOwner = "AgentPortal";
 
     /// <summary>Read-only behavioral projection. No pipeline stamp is granted, so this cannot be persisted as a new fact.</summary>
-    public static IQueryable<AnalyticsEvent> ProjectBehaviorEvidence(IQueryable<AnalyticsEvent> query, bool includeMetadata = false) =>
+    public static IQueryable<AnalyticsEvent> ProjectBehaviorEvidence(IQueryable<AnalyticsEvent> query, bool includeMetadata = false, bool includeEventType = false) =>
         query.Select(e => new AnalyticsEvent {
-            EventId = e.EventId, EventUtc = e.EventUtc, CommerceBusinessId = e.CommerceBusinessId,
+            EventId = e.EventId, EventUtc = e.EventUtc, EventType = includeEventType ? e.EventType : string.Empty, CommerceBusinessId = e.CommerceBusinessId,
             AgentTrackingProfileId = e.AgentTrackingProfileId, SessionId = e.SessionId, VisitorId = e.VisitorId,
             Host = e.Host, Environment = e.Environment, IsInternal = e.IsInternal, UserAgent = e.UserAgent,
             WebDriver = e.WebDriver, IsHeadless = e.IsHeadless, HumanInteractionCount = e.HumanInteractionCount,

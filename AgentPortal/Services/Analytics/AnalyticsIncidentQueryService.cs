@@ -317,11 +317,12 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
 
         // Founder-only system monitor intentionally queries the global monitoring scope.
         var resolvedScope = ScopeContext.Global;
-        // Distinct interaction counts need only these fields. Keep canonical query
-        // filters and in-memory identity semantics without loading event payloads.
-        var windowEvents = await _analytics.ScopedEvents(BuildRange(previousWindowStartUtc, nowUtc), resolvedScope)
+        // Use the canonical bounded session-evidence loader. The SQL bucket projection
+        // groups historical events and is too expensive for this system-wide window.
+        var windowEvents = (await _analytics.LoadFilteredInteractionEventsAsync(
+                BuildRange(previousWindowStartUtc, nowUtc), resolvedScope, ct))
             .Select(x => new { x.EventUtc, Unit = new InteractionUnit(x.EventType, x.SessionId, x.VisitorId, x.EventId) })
-            .ToListAsync(ct);
+            .ToList();
         var currentEvents = windowEvents.Where(x => x.EventUtc >= currentWindowStartUtc).Select(x => x.Unit);
         var previousEvents = windowEvents.Where(x => x.EventUtc <= currentWindowStartUtc).Select(x => x.Unit);
 

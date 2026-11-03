@@ -376,19 +376,19 @@ html {
 /* === PARFAIT ACTIVE INTERNAL PAGE SHELL START === */
 .pf-page-shell {
     width: 100%;
-    padding: 18px 20px 32px;
+    padding: 14px 20px 24px;
 }
 
 .pf-shell {
-    width: min(100%, 1480px);
+    width: min(100%, 1320px);
     margin: 0 auto;
     display: grid;
-    gap: 16px;
+    gap: 12px;
 }
 
 .pf-shell > .pf-command-page {
     display: grid;
-    gap: 16px;
+    gap: 12px;
 }
 
 .pf-shell > .pf-command-page > header {
@@ -435,7 +435,7 @@ html {
 }
 
 .pf-header-inner {
-    width: min(100%, 1480px);
+    width: min(100%, 1320px);
     margin: 0 auto;
     padding: 10px 0;
 }
@@ -520,12 +520,6 @@ html {
     text-transform: uppercase;
 }
 
-.pf-shell {
-    width: min(100%, 1480px);
-    margin: 0 auto;
-    display: grid;
-    gap: 20px;
-}
 
 .pf-module-link {
     display: block;
@@ -661,9 +655,9 @@ html {
 
 .pf-rail-value {
     display: block;
-    margin-top: -0.15rem;
+    margin-top: 0;
     color: var(--pf-text);
-    font-size: clamp(1.85rem, 3.2vw, 2.6rem);
+    font-size: 1.65rem;
     font-weight: 800;
     font-style: normal;
     letter-spacing: -0.04em;
@@ -2092,8 +2086,8 @@ html {
 }
 
 .pf-orders-kpi {
-    min-height: 116px;
-    padding: 17px 18px;
+    min-height: 0;
+    padding: 12px 14px;
     border: 1px solid var(--pf-line);
     border-radius: var(--pf-radius-md);
     background: var(--pf-surface);
@@ -2119,21 +2113,21 @@ html {
     display: block;
     margin-top: 6px;
     color: var(--pf-text);
-    font-size: clamp(1.8rem, 2.7vw, 2.5rem);
+    font-size: 1.65rem;
     font-weight: 800;
     line-height: 1;
 }
 
 .pf-orders-kpi small {
     display: block;
-    margin-top: 9px;
+    margin-top: 6px;
     color: var(--pf-text-muted);
     font-size: .8rem;
     font-weight: 700;
 }
 
 .pf-orders-surface {
-    padding: 18px;
+    padding: 14px;
     border: 1px solid var(--pf-line);
     border-radius: var(--pf-radius-lg);
     background: var(--pf-surface);
@@ -3321,9 +3315,9 @@ main.pf-internal-main {
 .pf-focus-grid {
     display: grid;
     grid-template-columns: repeat(12, minmax(0, 1fr));
-    gap: 18px;
+    gap: 12px;
     align-items: stretch;
-    margin-bottom: 16px;
+    margin-bottom: 0;
 }
 
 .pf-span-2 { grid-column: span 2; }
@@ -3342,13 +3336,13 @@ main.pf-internal-main {
 .pf-commerce-panel,
 .pf-module-card,
 .pf-command-board {
-    background: linear-gradient(180deg, var(--pf-panel), var(--pf-espresso));
+    background: var(--pf-surface);
     border: 1px solid var(--pf-line);
     border-radius: var(--pf-radius-lg);
     color: var(--pf-cream);
-    padding: 16px;
+    padding: 14px;
     box-shadow: none;
-    margin-bottom: 16px;
+    margin-bottom: 0;
 }
 
 .pf-commerce-panel-head,
@@ -3356,9 +3350,9 @@ main.pf-internal-main {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 18px;
-    padding-bottom: 16px;
-    margin-bottom: 20px;
+    gap: 12px;
+    padding-bottom: 10px;
+    margin-bottom: 12px;
     border-bottom: 1px solid var(--pf-line);
 }
 
@@ -3379,8 +3373,8 @@ main.pf-internal-main {
     border: 1px solid var(--pf-line);
     border-radius: var(--pf-radius-md);
     color: var(--pf-cream);
-    padding: 18px;
-    min-height: 92px;
+    padding: 12px 14px;
+    min-height: 0;
     display: grid;
     align-content: space-between;
 }
@@ -3654,9 +3648,9 @@ button.pf-secondary-action,
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1.25rem;
+    gap: 1rem;
     min-width: 0;
-    padding: 1rem 1.1rem;
+    padding: .8rem 1rem;
     border: 1px solid var(--pf-line);
     border-radius: var(--pf-radius-md);
     background: var(--pf-surface);
@@ -3678,7 +3672,7 @@ button.pf-secondary-action,
 .pf-dashboard-head h1 {
     margin: 0;
     color: var(--pf-text);
-    font-size: clamp(1.4rem, 2.3vw, 1.85rem);
+    font-size: clamp(1.25rem, 2vw, 1.55rem);
     font-weight: 800;
     letter-spacing: -.045em;
     line-height: 1;
@@ -3691,7 +3685,7 @@ button.pf-secondary-action,
     max-width: 68ch;
     margin: .45rem 0 0;
     color: var(--pf-text-muted);
-    font-size: .94rem;
+    font-size: .875rem;
     font-weight: 600;
     line-height: 1.45;
 }
@@ -3727,6 +3721,7 @@ button.pf-secondary-action,
 .pf-automation-head .pf-secondary-action,
 .pf-dashboard-head .pf-action,
 .pf-dashboard-head .pf-secondary-action {
+    width: auto;
     min-height: 34px;
     padding: .45rem .8rem;
     border-radius: 10px;
@@ -3943,7 +3938,7 @@ button.pf-secondary-action,
 
 .pf-dashboard-command {
     display: grid;
-    gap: 16px;
+    gap: 12px;
 }
 
 .pf-dashboard-command .pf-secondary-action {
@@ -3964,12 +3959,12 @@ button.pf-secondary-action,
 .pf-dashboard-kpis {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 14px;
+    gap: 10px;
 }
 
 .pf-dashboard-kpi {
-    min-height: 100px;
-    padding: 14px 16px;
+    min-height: 0;
+    padding: 12px 14px;
     border: 1px solid var(--pf-line);
     border-radius: var(--pf-radius-md);
     background: var(--pf-surface);
@@ -3986,7 +3981,7 @@ button.pf-secondary-action,
     display: block;
     margin: 0;
     color: var(--pf-text);
-    font-size: clamp(1.5rem, 2.4vw, 2rem);
+    font-size: 1.6rem;
     font-weight: 800;
     letter-spacing: -.045em;
     line-height: 1;
@@ -3994,32 +3989,32 @@ button.pf-secondary-action,
 
 .pf-dashboard-kpi small {
     display: block;
-    margin-top: 10px;
+    margin-top: 6px;
     color: var(--pf-text-muted);
     font-size: .82rem;
-    font-weight: 700;
+    font-weight: 600;
     line-height: 1.35;
 }
 
 .pf-dashboard-workspace {
     display: grid;
-    grid-template-columns: minmax(0, 1.38fr) minmax(330px, .92fr);
-    gap: 18px;
-    align-items: stretch;
+    grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+    gap: 12px;
+    align-items: start;
 }
 
 .pf-dashboard-primary-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 18px;
+    gap: 12px;
 }
 
 .pf-dashboard-primary-card {
     display: grid;
-    grid-template-rows: auto auto 1fr auto auto;
-    gap: 14px;
+    grid-template-rows: auto auto auto auto auto;
+    gap: 10px;
     min-height: 0;
-    padding: 16px;
+    padding: 14px;
     border: 1px solid var(--pf-line);
     border-radius: var(--pf-radius-md);
     background: var(--pf-surface);
@@ -4051,7 +4046,7 @@ button.pf-secondary-action,
 .pf-dashboard-primary-card h2 {
     margin: 0;
     color: var(--pf-text);
-    font-size: 1.35rem;
+    font-size: 1.1rem;
     font-weight: 800;
     letter-spacing: -.04em;
     line-height: 1;
@@ -4059,8 +4054,8 @@ button.pf-secondary-action,
 
 .pf-dashboard-primary-card p {
     margin: 0;
-    color: var(--pf-text);
-    font-size: .93rem;
+    color: var(--pf-text-muted);
+    font-size: .875rem;
     line-height: 1.52;
 }
 
@@ -4098,24 +4093,24 @@ button.pf-secondary-action,
 
 .pf-dashboard-operations {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-    padding: 12px;
-    border: 1px solid var(--pf-line);
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 0;
+    border: 0;
     border-radius: var(--pf-radius-md);
-    background: var(--pf-surface);
+    background: transparent;
 }
 
 .pf-dashboard-operation {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
+    flex-direction: row;
+    align-items: center;
     justify-content: space-between;
-    gap: 16px;
-    min-height: 68px;
-    padding: 15px 14px 15px 16px;
+    gap: 10px;
+    min-height: 0;
+    padding: 10px 12px;
     border: 1px solid var(--pf-line);
-    border-radius: 14px;
+    border-radius: var(--pf-radius-sm);
     background: var(--pf-surface);
 }
 
@@ -4151,9 +4146,9 @@ button.pf-secondary-action,
 }
 
 .pf-dashboard-activity article {
-    padding: 14px 16px;
+    padding: 10px 14px;
     border: 1px solid var(--pf-line);
-    border-radius: 14px;
+    border-radius: var(--pf-radius-sm);
     background: var(--pf-surface);
 }
 
