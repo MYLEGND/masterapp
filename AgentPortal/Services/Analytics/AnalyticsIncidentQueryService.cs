@@ -118,7 +118,7 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
         {
             activeAlerts = await _db.AnalyticsDriftAlerts.AsNoTracking()
                 .Where(x => x.ScopeKey == GlobalScopeKey && x.IsActive)
-                .OrderByDescending(x => SeverityRank(x.Severity))
+                .OrderByDescending(x => (x.Severity ?? "").Trim().ToLower() == "critical" ? 4 : (x.Severity ?? "").Trim().ToLower() == "high" ? 3 : (x.Severity ?? "").Trim().ToLower() == "medium" ? 2 : (x.Severity ?? "").Trim().ToLower() == "low" ? 1 : 0)
                 .ThenByDescending(x => x.ObservedUtc)
                 .ToListAsync(ct);
 
@@ -314,30 +314,28 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
         var currentWindowStartUtc = nowUtc.AddHours(-MonitorWindowHours);
         var previousWindowStartUtc = currentWindowStartUtc.AddHours(-MonitorWindowHours);
 
-        var currentRange = BuildRange(currentWindowStartUtc, nowUtc);
-        var previousRange = BuildRange(previousWindowStartUtc, currentWindowStartUtc);
 
         // Founder-only system monitor intentionally queries the global monitoring scope.
         var resolvedScope = ScopeContext.Global;
         // Distinct interaction counts need only these fields. Keep canonical query
         // filters and in-memory identity semantics without loading event payloads.
-        var currentEvents = await _analytics.ScopedEvents(currentRange, resolvedScope)
-            .Select(x => new InteractionUnit(x.EventType, x.SessionId, x.VisitorId, x.EventId))
+        var windowEvents = await _analytics.ScopedEvents(BuildRange(previousWindowStartUtc, nowUtc), resolvedScope)
+            .Select(x => new { x.EventUtc, Unit = new InteractionUnit(x.EventType, x.SessionId, x.VisitorId, x.EventId) })
             .ToListAsync(ct);
-        var previousEvents = await _analytics.ScopedEvents(previousRange, resolvedScope)
-            .Select(x => new InteractionUnit(x.EventType, x.SessionId, x.VisitorId, x.EventId))
-            .ToListAsync(ct);
+        var currentEvents = windowEvents.Where(x => x.EventUtc >= currentWindowStartUtc).Select(x => x.Unit);
+        var previousEvents = windowEvents.Where(x => x.EventUtc <= currentWindowStartUtc).Select(x => x.Unit);
 
-        var currentLeads = await QueryWebsiteLeads(currentWindowStartUtc, nowUtc).CountAsync(ct);
-        var previousLeads = await QueryWebsiteLeads(previousWindowStartUtc, currentWindowStartUtc).CountAsync(ct);
-
-        var currentPurchases = await QueryMetaSignalEvents(currentWindowStartUtc, nowUtc)
-            .Where(x => PurchaseEventNames.Contains(x.EventName))
-            .CountAsync(ct);
-
-        var previousPurchases = await QueryMetaSignalEvents(previousWindowStartUtc, currentWindowStartUtc)
-            .Where(x => PurchaseEventNames.Contains(x.EventName))
-            .CountAsync(ct);
+        var leadCounts = await QueryWebsiteLeads(previousWindowStartUtc, nowUtc).GroupBy(x => 1)
+            .Select(g => new { Current = g.Count(x => x.CreatedUtc >= currentWindowStartUtc), Previous = g.Count(x => x.CreatedUtc <= currentWindowStartUtc) })
+            .SingleOrDefaultAsync(ct);
+        var currentLeads = leadCounts?.Current ?? 0;
+        var previousLeads = leadCounts?.Previous ?? 0;
+        var purchaseCounts = await QueryMetaSignalEvents(previousWindowStartUtc, nowUtc)
+            .Where(x => PurchaseEventNames.Contains(x.EventName)).GroupBy(x => 1)
+            .Select(g => new { Current = g.Count(x => x.CreatedUtc >= currentWindowStartUtc), Previous = g.Count(x => x.CreatedUtc <= currentWindowStartUtc) })
+            .SingleOrDefaultAsync(ct);
+        var currentPurchases = purchaseCounts?.Current ?? 0;
+        var previousPurchases = purchaseCounts?.Previous ?? 0;
 
         var currentPageViews = CountDistinctUnits(currentEvents, LandingEventNames);
         var previousPageViews = CountDistinctUnits(previousEvents, LandingEventNames);
@@ -527,22 +525,17 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
         DateTime toUtc,
         CancellationToken ct)
     {
-        var rows = await QueryMetaSignalEvents(fromUtc, toUtc)
-            .Where(x => AttributionEligibleMetaEvents.Contains(x.EventName))
-            .Select(x => new
-            {
-                x.MetaBrowserSent,
-                x.MetaServerSent,
-                x.FbcPresent,
-                x.FbclidPresent
-            })
-            .ToListAsync(ct);
-
-        var eligibleEvents = rows.Count;
-        var browserSentEvents = rows.Count(x => x.MetaBrowserSent);
-        var serverSentEvents = rows.Count(x => x.MetaServerSent);
-        var matchedEvents = rows.Count(x => x.MetaBrowserSent && x.MetaServerSent);
-        var missingAttributionEvents = rows.Count(x => !x.FbcPresent && !x.FbclidPresent);
+        var counts = await QueryMetaSignalEvents(fromUtc, toUtc)
+            .Where(x => AttributionEligibleMetaEvents.Contains(x.EventName)).GroupBy(x => 1)
+            .Select(g => new { Eligible = g.Count(), Browser = g.Count(x => x.MetaBrowserSent),
+                Server = g.Count(x => x.MetaServerSent), Matched = g.Count(x => x.MetaBrowserSent && x.MetaServerSent),
+                Missing = g.Count(x => !x.FbcPresent && !x.FbclidPresent) })
+            .SingleOrDefaultAsync(ct);
+        var eligibleEvents = counts?.Eligible ?? 0;
+        var browserSentEvents = counts?.Browser ?? 0;
+        var serverSentEvents = counts?.Server ?? 0;
+        var matchedEvents = counts?.Matched ?? 0;
+        var missingAttributionEvents = counts?.Missing ?? 0;
 
         return new AnalyticsIncidentAttributionHealthDto
         {

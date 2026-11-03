@@ -31,12 +31,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (owner.CommerceBusinessId is { } business) query = query.Where(e => e.CommerceBusinessId == business);
         else if (owner.AgentTrackingProfileId is { } agent) query = query.Where(e => e.AgentTrackingProfileId == agent && e.CommerceBusinessId == null);
         else query = query.Where(e => e.CommerceBusinessId == null);
-        var result = new List<AnalyticsEvent>();
-        foreach (var group in (await query.ToListAsync(ct)).GroupBy(e => new { e.CommerceBusinessId, e.AgentTrackingProfileId, e.AgentSlug, e.Host, e.WebsiteContentVersionId,
-            SiteKey = CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "siteKey") }))
-            if (await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(_db, _configuration, group.First(), ct) == owner)
-                result.AddRange(group);
-        return result;
+        var sources = await query.ToListAsync(ct);
+        var owners = await CanonicalAdvertisingEventProjection.ResolveOwnersAsync(_db, _configuration, sources, ct);
+        return sources.Where(source => owners[source] == owner).ToList();
     }
 
     public async Task<List<MetaSignalEvent>> LoadScopedMetaEventsAsync(TimeRangeRequest range, ScopeContext scope,

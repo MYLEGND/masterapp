@@ -264,6 +264,8 @@
                         .replaceAll("'", "&#039;");
 
         const model = appointmentPipelineModel(row);
+        // Historical and unset appointments remain in Quick View, not the active card summary.
+        if (["notset", "completed", "cancelled", "noshow"].includes(model.statusKey) && !actionsHtml) return "";
 
         const timeHtml =
             model.time &&
@@ -275,7 +277,7 @@
           <div class="pipeline-card-footer">
             <div class="client-card-actions actions pipeline-card-actions-row">
               <div class="pipeline-card-chips">
-                <span class="meta-chip pipeline-appointment-chip pipeline-appointment-chip-${escape(model.statusKey)}">Appointment: ${escape(model.status)}</span>
+                <span class="meta-chip pipeline-appointment-chip pipeline-appointment-chip-${escape(model.statusKey)}">${escape(model.status)}</span>
               </div>
               ${actionsHtml || ""}
             </div>

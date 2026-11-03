@@ -5214,72 +5214,20 @@ function renderPipelineNav(filteredRows){
 }
 
 function renderLaneCards(rowsForStage){
-  if (!rowsForStage.length){
-    return `<div class="pipeline-empty">No contacts in this stage right now.</div>`;
-  }
-
-  const formatPhone = (raw) => {
-    const digits = (raw || "").replace(/\D/g, "");
-    if (digits.length === 10){
-      return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
-    }
-    return raw || "";
-  };
-
-  return rowsForStage.map(r => {
-    const name = fullName(r);
-    const isStarred = rowIsStarred(r);
-    const email = norm(r.dataset.email);
-    const phone = norm(r.dataset.phone);
-    const stage = norm(r.dataset.crmPipeline);
-    const phoneDisplay = formatPhone(phone);
-    const phoneDigits = phone.replace(/\D/g, "");
-    const shortPhone = phoneDigits ? `···${phoneDigits.slice(-4)}` : "";
-    const displayName = name || (phone ? `Lead • ${shortPhone}` : `Lead • ${r.dataset.clientId.slice(0, 6)}`);
-    const paidAmount = Number(r.dataset.prodPaid || r.dataset.paid || 0);
-    const issuedAmount = Number(r.dataset.prodIssued || 0);
-    const submittedAmount = Number(r.dataset.prodSubmitted || 0);
-    const prodBadgeHtml = renderPipelineProdBadge({
-      paid: paidAmount,
-      issued: issuedAmount,
-      submitted: submittedAmount
-    });
-    const prodBadge = `<div class="lead-prod-badge ${prodBadgeHtml ? "" : "hidden"}" data-prod-card data-card-prod="${safeHtml(r.dataset.clientId)}">${prodBadgeHtml}</div>`;
-    const phoneActions = phone
-      ? `
-          <a class="btn btn-ghost" href="tel:${safeHtml(phone)}">Call</a>
-          <a class="btn btn-ghost" href="sms:${safeHtml(phone)}">Text</a>
-        `
-      : "";
-    const appointmentFooter = renderPipelineAppointmentFooter(r, safeHtml, phoneActions);
-
-    return `
-      <article class="client-card ${pipelineBadgeClass(stage)} ${isStarred ? "is-starred" : ""}"
-               draggable="true"
-               data-cardid="${safeHtml(r.dataset.clientId)}"
-               data-open-card="${safeHtml(r.dataset.clientId)}"
-               role="button"
-               tabindex="0"
-               aria-label="Open Quick View for ${safeHtml(displayName)}">
-        <div class="client-card-head">
-          <div class="client-card-main">
-            <h3 class="cc-name" data-open-card="${safeHtml(r.dataset.clientId)}">${safeHtml(displayName)}</h3>
-            <div class="cc-sub cc-sub-primary">${phone ? `<a class=\"link link-phone\" href=\"tel:${safeHtml(phone)}\">${safeHtml(phoneDisplay)}</a>` : "No phone"}</div>
-            <div class="cc-sub">${renderEmailLinkHtml(email)}</div>
-          </div>
-          <button type="button"
-                  class="crm-star-toggle ${isStarred ? "is-starred" : ""}"
-                  data-star-contact="${safeHtml(r.dataset.clientId)}"
-                  draggable="false"
-                  aria-pressed="${isStarred ? "true" : "false"}"
-                  aria-label="${isStarred ? "Unstar" : "Star"} ${safeHtml(displayName)}"
-                  title="${isStarred ? "Unstar contact" : "Keep contact at top"}">★</button>
-          ${prodBadge}
-        </div>
-        ${appointmentFooter}
-      </article>
-    `;
-  }).join("");
+  if (!rowsForStage.length) return `<div class="pipeline-empty">No contacts in this stage right now.</div>`;
+  return rowsForStage.map(row => window.LegendCrmContactCard.render({
+    id: row.dataset.clientId,
+    name: fullName(row),
+    phone: norm(row.dataset.phone),
+    starred: rowIsStarred(row),
+    stageClass: pipelineBadgeClass(norm(row.dataset.crmPipeline)),
+    productionHtml: renderPipelineProdBadge({
+      paid: Number(row.dataset.prodPaid || row.dataset.paid || 0),
+      issued: Number(row.dataset.prodIssued || 0),
+      submitted: Number(row.dataset.prodSubmitted || 0)
+    }),
+    appointmentHtml: renderPipelineAppointmentFooter(row, safeHtml)
+  })).join("");
 }
 
 function renderCards(filteredRows){

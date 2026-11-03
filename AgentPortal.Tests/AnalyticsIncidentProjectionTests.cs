@@ -75,14 +75,14 @@ public sealed class AnalyticsIncidentProjectionTests
         Assert.Equal(2m, starts.CurrentValue); // Form starts also count as funnel starts.
         Assert.Equal(1m, starts.PreviousValue);
         Assert.Empty(db.ChangeTracker.Entries());
-        Assert.Equal(2, reads.Commands.Count);
+        Assert.Single(reads.Commands);
         foreach (var sql in reads.Commands)
         {
             // Only the outer SELECT is narrowed: canonical quality filtering may
             // still use other columns within its existing SQL predicates/joins.
             var columns = sql[..sql.IndexOf("\nFROM", StringComparison.Ordinal)];
-            Assert.Equal(4, columns.Split(',').Length);
-            foreach (var required in new[] { "EventType", "SessionId", "VisitorId", "EventId" })
+            Assert.Equal(5, columns.Split(',').Length);
+            foreach (var required in new[] { "EventUtc", "EventType", "SessionId", "VisitorId", "EventId" })
                 Assert.Contains("\"" + required + "\"", columns);
             foreach (var unused in new[] { "MetadataJson", "Url", "UserAgent", "ButtonLabel", "UtmCampaign", "Id" })
                 Assert.DoesNotContain("\"" + unused + "\"", columns);

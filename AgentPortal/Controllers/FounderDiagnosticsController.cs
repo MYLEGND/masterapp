@@ -22,12 +22,16 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
 {
     [HttpGet(Name = "FounderDiagnosticsIndex")]
     public async Task<IActionResult> Index([FromQuery] int page = 1, CancellationToken cancellationToken = default,
-        [FromQuery] string? app = null, [FromQuery] string? category = null)
+        [FromQuery] string? app = null, [FromQuery] string? category = null, [FromQuery] string? state = null)
     {
         FounderGuard.EnsureFounderOrThrow(User);
         page = Math.Clamp(page, 1, 1000);
         var now = DateTime.UtcNow;
         var query = db.RuntimeDiagnosticIncidents.AsNoTracking().Where(row => row.ExpiresUtc > now);
+        state = state is "all" or "resolved" ? state : "outstanding";
+        if (state == "outstanding") query = query.Where(row => row.Recurred || (row.Disposition != "Dismissed" && row.Disposition != "ManuallyClosed"));
+        else if (state == "resolved") query = query.Where(row => !row.Recurred && (row.Disposition == "Dismissed" || row.Disposition == "ManuallyClosed"));
+        ViewData["StateFilter"] = state;
         if (app is "AgentPortal" or "ClientApp" or "ParfaitApp" or "ProtectWebsite") query = query.Where(row => row.AppIdentifier == app);
         else app = null;
         if (category is "Performance" or "NetworkOrCapacity" or "Network" or "ExpectedCancellation" or "SuspectedDefect" or "Authentication") query = query.Where(row => row.Category == category);
