@@ -23,6 +23,11 @@
     @if (!details)
     {
         <form method="get" class="mb-3" aria-label="Diagnostic observation filters">
+            <label>Status <select name="state">
+                <option value="outstanding" selected="@(ViewData["StateFilter"] as string == "outstanding")">Outstanding</option>
+                <option value="resolved" selected="@(ViewData["StateFilter"] as string == "resolved")">Resolved / dismissed</option>
+                <option value="all" selected="@(ViewData["StateFilter"] as string == "all")">All history</option>
+            </select></label>
             <label>Application <select name="app"><option value="">All</option>
                 @foreach (var name in new[] { "AgentPortal", "ClientApp", "ParfaitApp", "ProtectWebsite" }) { <option value="@name" selected="@(ViewData["AppFilter"] as string == name)">@name</option> }
             </select></label>
@@ -187,8 +192,8 @@
         @if (details) { <a asp-route="FounderDiagnosticsIndex">All observations</a> }
         else
         {
-            @if (page > 1) { <a asp-route="FounderDiagnosticsIndex" asp-route-page="@(page - 1)" asp-route-app="@(ViewData["AppFilter"] as string)" asp-route-category="@(ViewData["CategoryFilter"] as string)">Previous</a> }
-            @if (ViewData["HasMore"] as bool? == true) { <a asp-route="FounderDiagnosticsIndex" asp-route-page="@(page + 1)" asp-route-app="@(ViewData["AppFilter"] as string)" asp-route-category="@(ViewData["CategoryFilter"] as string)">Next</a> }
+            @if (page > 1) { <a asp-route="FounderDiagnosticsIndex" asp-route-page="@(page - 1)" asp-route-app="@(ViewData["AppFilter"] as string)" asp-route-category="@(ViewData["CategoryFilter"] as string)" asp-route-state="@(ViewData["StateFilter"] as string)">Previous</a> }
+            @if (ViewData["HasMore"] as bool? == true) { <a asp-route="FounderDiagnosticsIndex" asp-route-page="@(page + 1)" asp-route-app="@(ViewData["AppFilter"] as string)" asp-route-category="@(ViewData["CategoryFilter"] as string)" asp-route-state="@(ViewData["StateFilter"] as string)">Next</a> }
         }
     </nav>
 </section>

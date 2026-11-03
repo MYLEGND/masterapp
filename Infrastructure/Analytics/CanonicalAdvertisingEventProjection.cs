@@ -123,6 +123,34 @@ public static class CanonicalAdvertisingEventProjection
             source.Id > 0, source.CommerceBusinessId, source.AgentTrackingProfileId, source.AgentSlug,
             source.WebsiteContentVersionId, source.MetadataJson, source.Host, ct);
 
+    /// <summary>One read-only projection resolves each complete owner identity once, without caching across requests.</summary>
+    public static async Task<IReadOnlyDictionary<AnalyticsEvent, MarketingOwnerScope?>> ResolveOwnersAsync(
+        MasterAppDbContext db, IConfiguration configuration, IReadOnlyCollection<AnalyticsEvent> sources, CancellationToken ct = default)
+    {
+        var result = new Dictionary<AnalyticsEvent, MarketingOwnerScope?>();
+        foreach (var group in sources.GroupBy(source => new {
+            Verified = source.Id > 0, source.CommerceBusinessId, source.AgentTrackingProfileId, source.AgentSlug,
+            source.WebsiteContentVersionId, source.Host, LegendStamp = HasLegendSiteStamp(source.MetadataJson) }))
+        {
+            ct.ThrowIfCancellationRequested();
+            var owner = await ResolveOwnerAsync(db, configuration, group.First(), ct);
+            foreach (var source in group) result[source] = owner;
+        }
+        return result;
+    }
+
+    private static bool HasLegendSiteStamp(string? metadataJson)
+    {
+        try
+        {
+            using var metadata = JsonDocument.Parse(metadataJson ?? "{}");
+            return metadata.RootElement.ValueKind == JsonValueKind.Object &&
+                metadata.RootElement.TryGetProperty("siteKey", out var site) && site.ValueKind == JsonValueKind.String &&
+                site.GetString() == WebsiteEditorSiteKeys.Legend;
+        }
+        catch (JsonException) { return false; }
+    }
+
     private static async Task<MarketingOwnerScope?> ResolveOwnerIdentityAsync(MasterAppDbContext db, IConfiguration configuration,
         bool canonicalIdentityVerified, Guid? commerceBusinessId, Guid? agentTrackingProfileId, string? agentSlug,
         Guid? websiteContentVersionId, string? metadataJson, string? host, CancellationToken ct)
@@ -142,14 +170,8 @@ public static class CanonicalAdvertisingEventProjection
         }
         // The ingest authority stamps the top-level siteKey and Host after public-origin resolution.
         // Nested browser metadata cannot select the permanent owner.
-        try
-        {
-            using var metadata = JsonDocument.Parse(metadataJson ?? "{}");
-            if (canonicalIdentityVerified && metadata.RootElement.ValueKind == JsonValueKind.Object && metadata.RootElement.TryGetProperty("siteKey", out var site) &&
-                site.ValueKind == JsonValueKind.String && site.GetString() == WebsiteEditorSiteKeys.Legend && PublicWebsiteRuntimeScopeResolver.IsLegendHost(host))
-                return MarketingOwnerScope.Founder;
-        }
-        catch (JsonException) { }
+        if (canonicalIdentityVerified && HasLegendSiteStamp(metadataJson) && PublicWebsiteRuntimeScopeResolver.IsLegendHost(host))
+            return MarketingOwnerScope.Founder;
         // An unscoped string supplied by a browser is not Founder ownership evidence.
         if (websiteContentVersionId is not Guid version) return null;
         var website = await (from v in db.Set<WebsiteContentVersion>().AsNoTracking()

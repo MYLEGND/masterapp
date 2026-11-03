@@ -269,70 +269,13 @@ public class LeadsController : Controller
     // Centralized canonical selector to avoid drift across endpoints.
     private async Task<WorkstationLeadProfile?> LoadCanonicalLeadAsync(string agentId, string leadId, string context)
     {
-        var rows = await _db.WorkstationLeadProfiles
+        var rows = await _db.WorkstationLeadProfiles.ActiveLeadQueue()
             .Where(x => x.AgentUserId == agentId && x.LeadId == leadId)
             .ToListAsync();
         return LeadCanonicalizer.SelectCanonical(rows, _logger, context);
     }
 
-    private const string HistoryDeletionConflict = "No leads were deleted. This selection contains retained history or submission evidence, or its ownership changed. Preserve these records through the existing archive and disposition process.";
-
-    private async Task<int?> DeleteLeadProfilesAsync(IEnumerable<WorkstationLeadProfile> leads)
-    {
-        var ownedLeads = leads
-            .Where(x => x != null && !string.IsNullOrWhiteSpace(x.LeadId))
-            .GroupBy(x => x.LeadId, StringComparer.OrdinalIgnoreCase)
-            .Select(g => g.OrderByDescending(x => x.UpdatedUtc).First())
-            .ToList();
-
-        if (ownedLeads.Count == 0)
-            return 0;
-
-        var leadIds = ownedLeads
-            .Select(x => x.LeadId)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        if (leadIds.Length == 0)
-            return 0;
-
-        await using var transaction = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
-            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, HttpContext.RequestAborted) : null;
-        var owner = ownedLeads[0].AgentUserId;
-        var current = await _db.WorkstationLeadProfiles.AsNoTracking()
-            .Where(x => leadIds.Contains(x.LeadId) && x.AgentUserId == owner).ToListAsync(HttpContext.RequestAborted);
-        var historyKeys = leadIds.Select(Infrastructure.Crm.CrmHistoryStore.LeadKey).ToArray();
-        // Fail closed for legacy/unrecognized metadata. An empty new history table
-        // does not prove that a relationship has no records to retain.
-        if (current.Count != ownedLeads.Count || current.Any(x =>
-                !string.IsNullOrWhiteSpace(x.CrmNotes) && x.CrmNotes.Trim() is not ("{}" or "null")) ||
-            await _db.WebsiteLeadIntakeLinks.AnyAsync(x => leadIds.Contains(x.WorkstationLeadId), HttpContext.RequestAborted) ||
-            await _db.Set<CrmHistoryEntry>().AnyAsync(x => historyKeys.Contains(x.RelationshipKey), HttpContext.RequestAborted) ||
-            _db.ChangeTracker.Entries<CrmHistoryEntry>().Any(x => historyKeys.Contains(x.Entity.RelationshipKey)) ||
-            await new Infrastructure.Crm.CrmHistoryStore(_db).HasLegacySelfNotesAsync(leadIds, HttpContext.RequestAborted))
-            return null;
-
-        var appointments = await _db.LeadAppointments
-            .Where(x => leadIds.Contains(x.WorkstationLeadId))
-            .ToListAsync();
-        if (appointments.Count != 0)
-            _db.LeadAppointments.RemoveRange(appointments);
-
-        _db.WorkstationLeadProfiles.RemoveRange(ownedLeads);
-        try
-        {
-            await _db.SaveChangesAsync(HttpContext.RequestAborted);
-            if (transaction is not null) await transaction.CommitAsync(HttpContext.RequestAborted);
-            return ownedLeads.Count;
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (transaction is not null) await transaction.RollbackAsync(HttpContext.RequestAborted);
-            _db.ChangeTracker.Clear();
-            return null;
-        }
-    }
+    private const string HistoryDeletionConflict = "No leads were removed. This selection changed ownership or was already archived. Refresh and try again.";
 
     private static string Norm(string? v) => (v ?? "").Trim().ToLowerInvariant();
 
@@ -2567,11 +2510,13 @@ public class LeadsController : Controller
         try { agentId = GetAgentIdOrChallenge(); }
         catch { return Challenge(); }
 
-        var lead = await _db.WorkstationLeadProfiles.FirstOrDefaultAsync(x =>
+        var lead = await _db.WorkstationLeadProfiles.ActiveLeadQueue().FirstOrDefaultAsync(x =>
             x.LeadId == clientUserId && x.AgentUserId == agentId);
         if (lead == null) return NotFound();
 
-        if (await DeleteLeadProfilesAsync(new[] { lead }) is null) return Conflict(HistoryDeletionConflict);
+        if (await WorkstationLeadConversionLifecycle.ArchiveAsync(_db, new[] { lead }, HttpContext.RequestAborted) is null) return Conflict(HistoryDeletionConflict);
+        if (Request.Headers["X-Requested-With"] == "fetch")
+            return Json(new { ok = true, redirectUrl = Url.Action(nameof(Index)) });
         return RedirectToAction(nameof(Index));
     }
 
@@ -2585,12 +2530,12 @@ public class LeadsController : Controller
         try { agentId = GetAgentIdOrChallenge(); }
         catch { return Challenge(); }
 
-        var toDelete = await _db.WorkstationLeadProfiles
+        var toDelete = await _db.WorkstationLeadProfiles.ActiveLeadQueue()
             .Where(x => ids.Contains(x.LeadId) && x.AgentUserId == agentId)
             .ToListAsync();
         if (toDelete.Count == 0) return Json(new { deleted = 0 });
 
-        var deletedCount = await DeleteLeadProfilesAsync(toDelete);
+        var deletedCount = await WorkstationLeadConversionLifecycle.ArchiveAsync(_db, toDelete, HttpContext.RequestAborted);
         if (deletedCount is null) return Conflict(HistoryDeletionConflict);
         return Json(new { deleted = deletedCount });
     }
@@ -2618,7 +2563,7 @@ public class LeadsController : Controller
             : Array.Empty<string>();
 
         var toDelete = isProductBucket
-            ? await _db.WorkstationLeadProfiles
+            ? await _db.WorkstationLeadProfiles.ActiveLeadQueue()
                 .Where(x =>
                     x.AgentUserId == agentId &&
                     ((x.OriginalLeadType != null && bucketValues.Contains(x.OriginalLeadType)) ||
@@ -2626,7 +2571,7 @@ public class LeadsController : Controller
                 .OrderByDescending(x => x.CreatedUtc)
                 .Take(batchSize)
                 .ToListAsync()
-            : await _db.WorkstationLeadProfiles
+            : await _db.WorkstationLeadProfiles.ActiveLeadQueue()
                 .Where(x => x.AgentUserId == agentId && x.Bucket == bucket)
                 .OrderByDescending(x => x.CreatedUtc)
                 .Take(batchSize)
@@ -2634,15 +2579,15 @@ public class LeadsController : Controller
 
         if (toDelete.Count == 0) return Json(new { deleted = 0 });
 
-        var deletedCount = await DeleteLeadProfilesAsync(toDelete);
+        var deletedCount = await WorkstationLeadConversionLifecycle.ArchiveAsync(_db, toDelete, HttpContext.RequestAborted);
         if (deletedCount is null) return Conflict(HistoryDeletionConflict);
         var remaining = isProductBucket
-            ? await _db.WorkstationLeadProfiles
+            ? await _db.WorkstationLeadProfiles.ActiveLeadQueue()
                 .CountAsync(x =>
                     x.AgentUserId == agentId &&
                     ((x.OriginalLeadType != null && bucketValues.Contains(x.OriginalLeadType)) ||
                      ((x.OriginalLeadType == null || x.OriginalLeadType == "") && x.Bucket != null && bucketValues.Contains(x.Bucket))))
-            : await _db.WorkstationLeadProfiles
+            : await _db.WorkstationLeadProfiles.ActiveLeadQueue()
                 .CountAsync(x => x.AgentUserId == agentId && x.Bucket == bucket);
         return Json(new { deleted = deletedCount, remaining });
     }
@@ -2666,7 +2611,7 @@ public class LeadsController : Controller
         try { agentId = GetAgentIdOrChallenge(); }
         catch { return Challenge(); }
 
-        var leads = await _db.WorkstationLeadProfiles
+        var leads = await _db.WorkstationLeadProfiles.ActiveLeadQueue()
             .Where(x => ids.Contains(x.LeadId) && x.AgentUserId == agentId)
             .ToListAsync();
 

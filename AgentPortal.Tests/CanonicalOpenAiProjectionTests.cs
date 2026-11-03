@@ -5,6 +5,8 @@ using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using System.Reflection;
+using System.Data.Common;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Domain.Entities;
@@ -27,6 +29,43 @@ namespace AgentPortal.Tests;
 
 public sealed class CanonicalOpenAiProjectionTests
 {
+    [Fact]
+    public async Task BatchedOwnerProjectionRetainsIdentityBoundariesAndDoesNotCacheAcrossReads()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:"); await connection.OpenAsync();
+        var counter = new OwnerReadCounter();
+        await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).AddInterceptors(counter).Options);
+        await db.Database.EnsureCreatedAsync();
+        var business = new CommerceBusiness { Key = "qa-owner", DisplayName = "Synthetic", IsActive = true, Status = "Active" };
+        db.Add(business); await db.SaveChangesAsync();
+        var config = new ConfigurationBuilder().Build();
+        var sources = Enumerable.Range(1, 100).Select(i => new AnalyticsEvent { Id = i, CommerceBusinessId = business.Id, MetadataJson = "{\"irrelevantEventDetail\":" + i + "}" }).ToList();
+        counter.Reads = 0;
+        var owners = await CanonicalAdvertisingEventProjection.ResolveOwnersAsync(db, config, sources);
+        Assert.Equal(1, counter.Reads);
+        Assert.All(sources, source => Assert.Equal(MarketingOwnerScope.Business(business.Id), owners[source]));
+        var cases = new List<AnalyticsEvent> {
+            new() {Id=101,CommerceBusinessId=business.Id,AgentTrackingProfileId=Guid.NewGuid()},
+            new() {Id=102,Host="mylegnd.com",MetadataJson="{\"siteKey\":\""+WebsiteEditorSiteKeys.Legend+"\"}"},
+            new() {Id=0,Host="mylegnd.com",MetadataJson="{\"siteKey\":\""+WebsiteEditorSiteKeys.Legend+"\"}"},
+            new() {Id=103,Host="mylegnd.com",MetadataJson="{\"nested\":{\"siteKey\":\""+WebsiteEditorSiteKeys.Legend+"\"}}"},
+            new() {Id=104,Host="foreign.invalid",MetadataJson="{\"siteKey\":\""+WebsiteEditorSiteKeys.Legend+"\"}"}
+        };
+        owners = await CanonicalAdvertisingEventProjection.ResolveOwnersAsync(db, config, cases);
+        foreach(var source in cases) Assert.Equal(await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, config, source), owners[source]);
+        Assert.Equal(MarketingOwnerScope.Founder, owners[cases[1]]);
+        Assert.All(cases.Where(x=>x!=cases[1]), source=>Assert.Null(owners[source]));
+        business.IsActive=false;await db.SaveChangesAsync();
+        owners=await CanonicalAdvertisingEventProjection.ResolveOwnersAsync(db,config,sources);
+        Assert.All(sources,source=>Assert.Null(owners[source]));
+    }
+    private sealed class OwnerReadCounter : DbCommandInterceptor
+    {
+        public int Reads;
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken=default)
+        { if(command.CommandText.StartsWith("SELECT",StringComparison.Ordinal)) Reads++;return ValueTask.FromResult(result); }
+    }
+
     [Fact]
     public async Task OwnerResolutionUsesPermanentProfilesAndRejectsMixedOrSpoofedScope()
     {

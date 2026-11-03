@@ -87,6 +87,7 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
         var receipts = await db.Set<MarketingDestinationDelivery>().AsNoTracking().Where(r => r.Channel == "server" && r.CanonicalSource == nameof(AnalyticsEvent) &&
                 r.AnalyticsEventId.HasValue && sourceIds.Contains(r.AnalyticsEventId.Value)).ToListAsync(ct);
         var meta = await db.MetaSignalEvents.AsNoTracking().Where(m => m.WebsiteContentVersionId.HasValue && versionIds.Contains(m.WebsiteContentVersionId.Value)).ToListAsync(ct);
+        var sourceOwners = await CanonicalAdvertisingEventProjection.ResolveOwnersAsync(db, configuration, events, ct);
         var historicalReceipts = new Dictionary<long, MarketingDestinationDelivery>();
         var legacyEventIds = meta.Select(m => m.EventId).ToArray();
         var legacyReceipts = await db.MarketingDestinationDeliveries.AsNoTracking()
@@ -97,7 +98,7 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
                 events.Any(e => e.Id == id && e.AgentTrackingProfileId == m.AgentTrackingProfileId && e.CommerceBusinessId == m.CommerceBusinessId))
             {
                 var source = events.Single(e => e.Id == id);
-                var sourceOwner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, source, ct);
+                var sourceOwner = sourceOwners[source];
                 if (sourceOwner is null) continue;
                 var receipt = legacyReceipts.FirstOrDefault(r => r.CanonicalEventId == m.EventId && r.OwnerKey == sourceOwner.Key);
                 if (receipt is not null) historicalReceipts[id] = receipt;
@@ -112,10 +113,7 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
             var stateOwner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, state, ct);
             var stateEvents = new List<AnalyticsEvent>();
             if (stateOwner is not null)
-                foreach (var group in events.Where(e => e.WebsiteContentVersionId == version?.Id)
-                    .GroupBy(e => new { e.CommerceBusinessId, e.AgentTrackingProfileId, e.AgentSlug, e.Host }))
-                    if (await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, group.First(), ct) == stateOwner)
-                        stateEvents.AddRange(group);
+                stateEvents.AddRange(events.Where(e => e.WebsiteContentVersionId == version?.Id && sourceOwners[e] == stateOwner));
             void Add(string page, string element, string? label, string? action, WebsiteSignalBinding? binding, AnalyticsBehaviorContract? behavior, bool automatic)
             {
                 // Store reports contain only the authored Store page and commerce lifecycle.

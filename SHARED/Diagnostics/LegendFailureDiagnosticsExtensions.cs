@@ -27,7 +27,7 @@ public static class LegendFailureDiagnosticsExtensions
             var excluded = path.Equals("/api/runtime-diagnostics", StringComparison.OrdinalIgnoreCase) ||
                 path.Equals("/api/v1/mobile/runtime-diagnostics", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/founder/diagnostics", StringComparison.OrdinalIgnoreCase);
-            using var performance = excluded ? null : new RuntimeDiagnosticScope();
+            using var performance = excluded ? null : new RuntimeDiagnosticScope(context.RequestServices.GetService<TimeProvider>());
             var outcome = "completed";
             try { await next(); }
             catch (OperationCanceledException ex)
@@ -49,7 +49,9 @@ public static class LegendFailureDiagnosticsExtensions
                 {
                     try
                     {
-                        if (performance.ElapsedMs >= 10_000 || outcome is "failed" or "deadline_exceeded" || context.Response.StatusCode >= 500)
+                        // A successful protocol upgrade measures the connection lifetime, not request latency.
+                        // Failed handshakes and exceptions still use the ordinary failure capture.
+                        if ((performance.ElapsedMs >= 10_000 && context.Response.StatusCode != StatusCodes.Status101SwitchingProtocols) || outcome is "failed" or "deadline_exceeded" || context.Response.StatusCode >= 500)
                             await CapturePerformanceAsync(context, performance.Snapshot(outcome), appName);
                     }
                     catch { /* Capture never changes business response/cancellation. */ }

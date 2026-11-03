@@ -3205,8 +3205,8 @@ async function bulkDeleteSelected(){
     return;
   }
   const confirmMsg = ids.length === 1
-    ? "Delete this lead? This cannot be undone."
-    : `Delete ${ids.length} leads? This cannot be undone.`;
+    ? "Delete this lead? Original records and history will be retained."
+    : `Delete ${ids.length} leads? Original records and history will be retained.`;
   if (!window.confirm(confirmMsg)) return;
   try{
     await postJson(crmRoute("/Leads/DeleteBulk"), ids);
@@ -3215,7 +3215,7 @@ async function bulkDeleteSelected(){
       if (row) row.remove();
       if (liveSync) liveSync.sendDelete(id);
     });
-    toast(`Deleted ${ids.length} lead${ids.length === 1 ? "" : "s"}.`);
+    toast(`Removed ${ids.length} lead${ids.length === 1 ? "" : "s"}.`);
     renderAll();
   }catch(err){
     console.error(err);
@@ -3323,12 +3323,12 @@ async function deleteCurrentBucket(){
     return;
   }
   const bucketLabel = pipelineLabel(bucket);
-  const message = `Delete the most recent 100 lead(s) in “${bucketLabel}”? This cannot be undone.`;
+  const message = `Delete the most recent 100 lead(s) in “${bucketLabel}”? Original records and history will be retained.`;
   if (!window.confirm(message)) return;
   try{
     const res = await postJson(crmRoute("/Leads/DeleteBucket"), { bucket, batchSize: 100 });
     const remaining = res.remaining ?? 0;
-    toast(`Deleted ${res.deleted || 0} (latest) from “${bucketLabel}”. ${remaining} remaining. Reloading...`, { persistent: true });
+    toast(`Removed ${res.deleted || 0} (latest) from “${bucketLabel}”. ${remaining} remaining. Reloading...`, { persistent: true });
     setTimeout(() => window.location.reload(), 1200);
   }catch(err){
     console.error(err);
@@ -4883,24 +4883,28 @@ if (btnOpenQueue && LEADS_ONLY){
   });
 }
 
-btnDeleteClient?.addEventListener("click", (e) => {
+btnDeleteClient?.addEventListener("click", async (e) => {
   e.preventDefault();
-  if (!activeClientId) return;
-  if (!confirm("Delete this lead? This removes the lead record.")) return;
-
-  const f = document.getElementById("__af");
-  if (!f) return toast("Missing antiforgery form.");
-
-  f.setAttribute("action", crmRoute("/Leads/Delete"));
-  f.querySelectorAll("input[name='clientUserId']").forEach(x => x.remove());
-
-  const inp = document.createElement("input");
-  inp.type = "hidden";
-  inp.name = "clientUserId";
-  inp.value = activeClientId;
-  f.appendChild(inp);
-
-  f.submit();
+  if (!activeClientId || btnDeleteClient.disabled) return;
+  if (!confirm("Remove this lead from the active CRM? Its history and original submission will be retained.")) return;
+  const form = document.getElementById("__af");
+  if (!form) return toast("Missing antiforgery form.");
+  const data = new FormData(form);
+  data.set("clientUserId", activeClientId);
+  btnDeleteClient.disabled = true;
+  try {
+    const response = await fetch(crmRoute("/Leads/Delete"), {
+      method: "POST", credentials: "include", body: data,
+      headers: { "X-Requested-With": "fetch" }
+    });
+    if (!response.ok) throw new Error(await response.text() || "Could not remove the lead. Please try again.");
+    const result = await response.json();
+    if (!result.ok) throw new Error("Could not confirm removal. Refresh before trying again.");
+    window.location.assign(result.redirectUrl || window.location.pathname);
+  } catch (error) {
+    toast(error.message || "Could not remove the lead.");
+    btnDeleteClient.disabled = false;
+  }
 });
 
 btnAddActivity?.addEventListener("click", () => {
@@ -5361,72 +5365,20 @@ function renderPipelineNav(filteredRows){
 }
 
 function renderLaneCards(rowsForStage){
-  if (!rowsForStage.length){
-    return `<div class="pipeline-empty">No contacts in this stage right now.</div>`;
-  }
-
-  const formatPhone = (raw) => {
-    const digits = (raw || "").replace(/\D/g, "");
-    if (digits.length === 10){
-      return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
-    }
-    return raw || "";
-  };
-
-  return rowsForStage.map(r => {
-    const name = fullName(r);
-    const isStarred = rowIsStarred(r);
-    const email = norm(r.dataset.email);
-    const phone = norm(r.dataset.phone);
-    const stage = currentPipelineStage(r, "");
-    const phoneDisplay = formatPhone(phone);
-    const phoneDigits = phone.replace(/\D/g, "");
-    const shortPhone = phoneDigits ? `···${phoneDigits.slice(-4)}` : "";
-    const displayName = name || (phone ? `Lead • ${shortPhone}` : `Lead • ${r.dataset.clientId.slice(0, 6)}`);
-    const paidAmount = Number(r.dataset.prodPaid || r.dataset.paid || 0);
-    const issuedAmount = Number(r.dataset.prodIssued || 0);
-    const submittedAmount = Number(r.dataset.prodSubmitted || 0);
-    const prodBadgeHtml = renderPipelineProdBadge({
-      paid: paidAmount,
-      issued: issuedAmount,
-      submitted: submittedAmount
-    });
-    const prodBadge = `<div class="lead-prod-badge ${prodBadgeHtml ? "" : "hidden"}" data-prod-card data-card-prod="${safeHtml(r.dataset.clientId)}">${prodBadgeHtml}</div>`;
-    const phoneActions = phone
-      ? `
-          <a class="btn btn-ghost" href="tel:${safeHtml(phone)}">Call</a>
-          <a class="btn btn-ghost" href="sms:${safeHtml(phone)}">Text</a>
-        `
-      : "";
-    const appointmentFooter = renderPipelineAppointmentFooter(r, safeHtml, phoneActions);
-
-    return `
-      <article class="client-card ${pipelineBadgeClass(stage)} ${isStarred ? "is-starred" : ""}"
-               draggable="true"
-               data-cardid="${safeHtml(r.dataset.clientId)}"
-               data-open-card="${safeHtml(r.dataset.clientId)}"
-               role="button"
-               tabindex="0"
-               aria-label="Open Quick View for ${safeHtml(displayName)}">
-        <div class="client-card-head">
-          <div class="client-card-main">
-            <h3 class="cc-name" data-open-card="${safeHtml(r.dataset.clientId)}">${safeHtml(displayName)}</h3>
-            <div class="cc-sub cc-sub-primary">${phone ? `<a class="link link-phone" href="tel:${safeHtml(phone)}">${safeHtml(phoneDisplay)}</a>` : "No phone"}</div>
-            <div class="cc-sub">${renderEmailLinkHtml(email)}</div>
-          </div>
-          <button type="button"
-                  class="crm-star-toggle ${isStarred ? "is-starred" : ""}"
-                  data-star-contact="${safeHtml(r.dataset.clientId)}"
-                  draggable="false"
-                  aria-pressed="${isStarred ? "true" : "false"}"
-                  aria-label="${isStarred ? "Unstar" : "Star"} ${safeHtml(displayName)}"
-                  title="${isStarred ? "Unstar contact" : "Keep contact at top"}">★</button>
-          ${prodBadge}
-        </div>
-        ${appointmentFooter}
-      </article>
-    `;
-  }).join("");
+  if (!rowsForStage.length) return `<div class="pipeline-empty">No contacts in this stage right now.</div>`;
+  return rowsForStage.map(row => window.LegendCrmContactCard.render({
+    id: row.dataset.clientId,
+    name: fullName(row),
+    phone: norm(row.dataset.phone),
+    starred: rowIsStarred(row),
+    stageClass: pipelineBadgeClass(currentPipelineStage(row, "")),
+    productionHtml: renderPipelineProdBadge({
+      paid: Number(row.dataset.prodPaid || row.dataset.paid || 0),
+      issued: Number(row.dataset.prodIssued || 0),
+      submitted: Number(row.dataset.prodSubmitted || 0)
+    }),
+    appointmentHtml: renderPipelineAppointmentFooter(row, safeHtml)
+  })).join("");
 }
 
 function renderCards(filteredRows){
