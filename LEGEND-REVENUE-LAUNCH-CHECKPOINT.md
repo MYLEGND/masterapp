@@ -3014,3 +3014,89 @@ Founder enabled extension file access, but browser setFiles still reports missin
 Confirmed second cause: scoped /internal uploads write Protect's persistent media storage, but LEGEND public /uploads requests select Parfait's separate disk. Canonical Worker now routes only apex/www LEGEND product media to the existing management/website origin. Existing commerce/custom-domain routing unchanged. Existing CommercePreviewMediaMiddleware now admits published LEGEND catalog media through CommerceStoreContextService's authenticated-host/immutable-publication authority when no custom-domain preview/cutover admission exists; image-product-business match, safe paths, nonlinked files and private-no-store retained. No new storage service, copied files, tenant inference, secret or configuration change. Protect must deploy before Worker; existing8e647897 Worker retained as recovery. Parfait does not register this middleware and retains its accepted5921 package.
 
 Follow-up local acceptance PASS:26 Worker routing tests and Wrangler dry-run;12 focused media/store/host tests cover apexGET,wwwHEAD, wrongsecret, validsecret/wrongtransport, foreigntenant, unpublishedStore and traversal. Actual localhost1444 with disposableSQL, real ParfaitProductService upload and actual CommercePreviewMediaMiddleware returns200 image/jpeg332402bytes exactly matching source SHA25611a0df526d43d87b11645fc26ec248baaa3ff1d5f18ba9cd9cae2f463a4cb2de;HEAD200/emptybody. Browser gallery renders uploadedphoto1080x1616. Earlier fixture's generic static uploader was replaced for this proof; no weakening of production authorization. Exact review, Protectpackage/security, direct Protect+Worker publication, live savedphoto readback and PR760 integration remain.
+
+## 2026-11-03 — isolated native Work and CRM completion
+
+Founder scope: complete iOS/Android local builds/runs; separate Work from personal
+notifications; surface assigned Business Client/entity CRM records; provide a scoped
+paid-order fulfillment queue using the website backend. No production publication
+or App Store/Play upload has been performed for this mobile change. Active Store
+release checkout and its deployment ownership remain separate.
+
+Task checkout: `.worktrees/mobile-readiness-audit-20261103`; task branch
+`isolation/mobile-workspace-completion-20261103`; canonical/base at preflight:
+`69f282796e0a8e183f0e75305cd280b339f01a87`. Session preflight passed with exact remote
+readback and no unpublished or dirty source. Root checkout was preserved at
+`6ee4dd95e40ab83ec5fbb23774e95ec76b38d069`.
+
+Implemented: existing recipient notification ledger now projects personal/work
+channels and signals channel-contract support. Existing APNs/FCM transports carry
+the channel and route taps through native navigation owners. iOS conversation taps
+retain their opaque destination and route from any mounted tab. Native Home adds
+one Work entry; its order queue reads CommerceOrders and rechecks canonical
+business membership/order capability. Fulfillment shares CommerceOrderFulfillment
+with the website, preserves financial evidence, and rejects stale native saves.
+Exact server timestamps round-trip as opaque strings on both platforms. The existing
+notification worker also stages paid-order projections with deterministic per-order,
+per-recipient IDs and the existing push outbox; its order scan is bounded to50
+source rows/tick with a volatile fair-scan offset. No new table, migration, inbox,
+checkout engine, authentication authority or background timer was introduced.
+
+Assigned CRM lists no longer depend on social-directory subscription entitlement;
+AgentClients and ClientRecordClassification remain authoritative. Entity labels use
+BusinessIdentityProjection in list/detail; cards show phone and linked business
+rather than exposing email at first glance. Personal account read state/badges use
+the existing server ledger; social viewed state and device planner remain separate
+existing concerns. Dual-role test now isolates its cache/biometric fixture.
+
+Implementation commit: `a70dc51c8cdd446ca789cb7b99f092b2fc739484`.
+Final stable-source validation PASS:201iOS unit tests;99Android unit tests and
+successful debug build (all50Gradle tasks rerun);50focused backend tests. Backend
+coverage includes shared fulfillment validation, SQLite relational fresh/stale
+fractional timestamp saves, unauthorized membership, work filtering before limits,
+and concurrent real-engine producer deduplication (one notification/one outbox).
+Original APNs/FCM and shared commerce ownership contracts passed. Scope-specific
+logs: `/private/tmp/legend-mobile-ios-final3.log`,
+`/private/tmp/legend-mobile-android-final3.log`,
+`/private/tmp/legend-mobile-backend-final3.log`.
+Initial incremental Infrastructure reuse was proven stale by its portable-PDB
+source checksum; forced no-incremental rebuild succeeded and the checksum then
+matched. Source ownership tests require GITHUB_WORKSPACE=this isolated checkout.
+Independent review accepted the exact36-file implementation for source preservation,
+manifest SHA256 `296e4d51e3a03a0f60a8681eee82d1c210d7a3a3a4b6d68c1eb623fa7f5187ce`,
+after independently reading the final successful test logs. This does not grant
+Store integration, deployment or live acceptance. Work uses a channel filter in
+the SAME NotificationEngine query before sorting/Take, so personal traffic cannot
+hide older work records; native work snapshots are read projections of that ledger.
+
+Rendered evidence: Xcode loaded this task branch; iPhone17Pro simulator launched
+the signed-in Home shell and Work modal (Notifications/Orders). Founder explicitly
+authorized official Gradle/adb operation of the existing Pixel10Pro emulator after
+Studio native control repeatedly timed out. Debug APK installed successfully on
+emulator-5554; APK SHA256 `f02753609f5f31bda82bcfe185bb024249f46a04a093977fc83f7430362dcf40`;
+path `Legend-Android/app/build/outputs/apk/debug/app-debug.apk`; final am start reported Status:ok, COLD launch8433ms. Signed-in Home and
+third Work button/modal rendered. The old live backend lacks the new endpoint and
+channel contract; native UI now distinguishes temporary unavailability from an
+empty work inbox. This does NOT verify updated authenticated Work/order persistence.
+No real order, payment or customer message was changed in mobile verification.
+No signed AAB/archive, Play/AppStore upload or production deployment occurred.
+
+Integration/release hold: the separate active Store checkout is now
+`71e939e68a2e7ad5adc5c93265bb3e186ebd1989` and changes the SAME
+CommerceCore/Services/ParfaitOrderService.cs. It introduces shipping-label state,
+unresolved label-purchase protection, serializable/revision checks, expanded
+processor evidence and further order effects. This mobile branch has NOT copied,
+merged, deployed or overwritten that work. Shared validation now preserves the
+known Shipped tracking requirement,120/160carrier/tracking bounds and fully-refunded
+advancement prohibition. Before backend publication or fast-track integration,
+reconcile the Store ancestry/content and preserve its shipping-label/model,
+transaction/concurrency, financial-authority and downstream-effect protections in
+the native transport. Source-only preservation against69f is not compatibility or
+production acceptance against71e939. This checkpoint is prepared for session finish; exact remote preservation is established only by its terminal receipt/readback.
+SQL Server provider behavior, real push delivery, completed order/editor acceptance,
+backend release admission/publication and fast-track integration remain open.
+
+Artifact provenance note: native debug validation/builds ran against the stable
+reviewed working tree before implementation commit; their content matches the
+accepted manifest, but diagnostic Git metadata can retain69f with localChanges=true.
+These are local test artifacts, not exact-commit production/archive packages.
