@@ -40,6 +40,22 @@ public sealed class SquareMerchantPaymentGateway(IHttpClientFactory clients, ICo
         var result = await Token(account.Environment,new { client_id=Setting(Provider,account.Environment,"ApplicationId"),client_secret=Setting(Provider,account.Environment,"ApplicationSecret"),refresh_token=account.Credential.RefreshToken,grant_type="refresh_token" },ct);
         Require(result.AccountId == account.AccountId,"MERCHANT_IDENTITY_MISMATCH"); return result.Credential;
     }
+    public async Task<MerchantAccount> ResolvePlatformAccountAsync(string environment, CancellationToken ct)
+    {
+        var options = Infrastructure.Billing.Square.SquareBillingOptions.FromConfiguration(Configuration);
+        Require(options.Environment.ToString() == environment && options.HasServerCredentials() && options.HasBrowserCredentials(), "PLATFORM_PAYMENT_CONFIGURATION_UNAVAILABLE");
+        Require(options.ApplicationId == Setting(Provider, environment, "ApplicationId"), "PLATFORM_APPLICATION_MISMATCH");
+        var response = await Api(environment, HttpMethod.Get, "/v2/locations", options.AccessToken!, null, ct);
+        var locations = P(response, "locations");
+        Require(locations.ValueKind == JsonValueKind.Array, "PROVIDER_INVALID_RESPONSE");
+        var matches = locations.EnumerateArray().Where(x => S(x, "id") == options.LocationId).ToArray();
+        Require(matches.Length == 1 && S(matches[0], "merchant_id") != "", "MERCHANT_IDENTITY_MISMATCH");
+        var account = new MerchantAccount(Provider, environment, S(matches[0], "merchant_id"), options.LocationId,
+            new MerchantCredential(options.AccessToken!, Source: "PlatformBilling", ApplicationId: options.ApplicationId));
+        var readiness = await GetReadinessAsync(account, ct);
+        Require(readiness.CanAcceptPayments(Provider) && readiness.Locations.Contains(options.LocationId!), "MERCHANT_NOT_READY");
+        return account;
+    }
     public async Task<MerchantReadiness> GetReadinessAsync(MerchantAccount account, CancellationToken ct)
     {
         var merchant = await Api(account.Environment,HttpMethod.Get,"/v2/merchants/"+Escape(account.AccountId),account.Credential.AccessToken,null,ct);

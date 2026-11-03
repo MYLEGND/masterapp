@@ -2,7 +2,7 @@ namespace Infrastructure.Commerce.Payments;
 
 [Flags]
 public enum MerchantCapabilities { None = 0, Checkout = 1, Refund = 2, Capture = 4, Reconcile = 8, Revoke = 16, Disputes = 32 }
-public sealed record MerchantCredential(string AccessToken, string? RefreshToken = null, DateTime? ExpiresUtc = null);
+public sealed record MerchantCredential(string AccessToken, string? RefreshToken = null, DateTime? ExpiresUtc = null, string Source = "OAuth", string? ApplicationId = null);
 public sealed record MerchantAccount(string Provider, string Environment, string AccountId, string? LocationId, MerchantCredential Credential);
 public sealed record MerchantConnectionRequest(Guid BusinessId, string Environment, string State, string CallbackUrl, string? ExistingAccountId = null);
 public sealed record MerchantAuthorization(string RedirectUrl, string? AccountId = null);

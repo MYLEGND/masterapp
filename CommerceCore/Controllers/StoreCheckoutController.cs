@@ -148,6 +148,9 @@ public sealed class StoreCheckoutController : Controller
 
         ApplyStoreContext(store);
         ViewBag.MerchantHostedCheckout = UseMerchantCheckout(store);
+        ViewBag.CheckoutAvailable = UseMerchantCheckout(store)
+            ? _merchantCheckout is not null && await _merchantCheckout.IsConfiguredAsync(store.CommerceBusinessId, ct)
+            : _squareOptions.HasBrowserCredentials() && _squareOptions.HasServerCredentials();
         ViewBag.SquareApplicationId = UseMerchantCheckout(store) ? null : _squareOptions.ApplicationId;
         ViewBag.SquareLocationId = UseMerchantCheckout(store) ? null : _squareOptions.LocationId;
         ViewBag.SquareEnvironment = _squareOptions.Environment.ToString();

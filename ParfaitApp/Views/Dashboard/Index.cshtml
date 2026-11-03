@@ -16,7 +16,8 @@
     var analyticsUrl = CommerceUrl("/internal/analytics", "/commerce/manage/analytics");
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
 
-    var storeReady = Model.HasCheckoutUrl && Model.HasMetaPixel && Model.HasMetaConnection;
+    var paymentConfigured = ViewData["PaymentConfigured"] as bool?;
+    var storeReady = paymentConfigured == true && Model.HasCheckoutUrl && Model.HasMetaPixel && Model.HasMetaConnection;
     var orderAttention = Model.OpenFulfillmentCount > 0 || Model.PendingOrderCount > 0;
 }
 
@@ -40,7 +41,7 @@
     <section class="pf-dashboard-kpis" aria-label="Store overview">
         <article class="pf-dashboard-kpi">
             <span>Store status</span>
-            <strong>@(storeReady ? "Ready" : "Review")</strong>
+            <strong>@(storeReady ? "Configured" : paymentConfigured == false ? "Payments inactive" : "Review")</strong>
             <small>@Model.BusinessType</small>
         </article>
         <article class="pf-dashboard-kpi">

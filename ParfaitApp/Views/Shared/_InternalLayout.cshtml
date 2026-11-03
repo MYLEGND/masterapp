@@ -13,7 +13,7 @@
         : null;
     var faviconUrl = !scopedManager || scopedStore?.IsParfait == true
         ? Url.Content("~/images/favicon/parfait-logo.png")
-        : scopedLogoUrl ?? "https://www.mylegnd.com/favicon.jpg";
+        : scopedStore?.FaviconUrl ?? "/favicon.jpg";
     var storeRoot = scopedStore?.StoreRootPath ?? "/store";
     var visiblePages = scopedManager
         ? Array.Empty<ParfaitApp.Models.ParfaitInternalPageDefinition>()

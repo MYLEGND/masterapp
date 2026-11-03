@@ -24,10 +24,24 @@
         }
         <p>New payments use the selected default. Existing payments stay with their original processor for reconciliation and refunds.</p>
     </div>
-    <section class="pf-workspace-grid" aria-label="Payment providers">
+    @if (ViewData["CanUsePlatformPaymentAccount"] as bool? == true)
+    {
+        <section class="pf-module-card">
+            <h2>LEGEND payment account</h2>
+            <p>Use the existing Square account that processes LEGEND subscriptions. The account and location are verified before you confirm this Store connection.</p>
+            <form method="post" action="@ActionUrl("/connect")" class="d-grid gap-3">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="provider" value="PlatformBilling" />
+                <input type="hidden" name="environment" value="@Model.Environment" />
+                <label><input type="checkbox" name="authorizeSharing" value="true" required /> Use the existing LEGEND subscription payment account for this Store.</label>
+                <button class="pf-action" type="submit">Verify existing LEGEND account</button>
+            </form>
+        </section>
+    }
+    <section class="pf-payment-provider-grid" aria-label="Payment providers">
     @foreach (var provider in Model.Providers)
     {
-        <div class="pf-module-card pf-span-4">
+        <div class="pf-module-card">
             <h2>@provider.Provider</h2>
             @{
                 var dashboard = provider.Provider switch
@@ -87,7 +101,7 @@
             </dl>
             @if (!string.IsNullOrWhiteSpace(connection.Readiness.RequiredAction))
             { <p role="status">@connection.Readiness.RequiredAction</p> }
-            @if (connection.State != "Disconnected" &&
+            @if (connection.CredentialSource != "PlatformBilling" && connection.State != "Disconnected" &&
                  (connection.State == "PendingConfirmation" || !connection.Readiness.CanAcceptPayments(connection.Provider)))
             {
                 <form method="post" action="@ActionUrl("/resume")" target="_blank" rel="noopener">
@@ -106,7 +120,12 @@
                 <input type="hidden" name="revision" value="@connection.Revision" />
                 <input type="hidden" name="environment" value="@Model.Environment" />
                 <input type="hidden" name="accountId" value="@connection.AccountId" />
-                @if (connection.Readiness.Locations.Length > 0)
+                @if (connection.CredentialSource == "PlatformBilling")
+                {
+                    <p>Subscription payment location: @connection.LocationId</p>
+                    <input type="hidden" name="locationId" value="@connection.LocationId" />
+                }
+                else if (connection.Readiness.Locations.Length > 0)
                 {
                     <label>Merchant location
                         <select name="locationId" class="form-select" required>

@@ -436,6 +436,106 @@ public sealed class MerchantPaymentsTests
         Assert.Null(readiness.SettlementsEnabled);
     }
 
+    [Fact]
+    public async Task WebsiteOwnerPaymentAuthorizationPreservesNullableIdentityAndRechecksLifecycle()
+    {
+        using var f = new Fixture();
+        var actor = Guid.NewGuid().ToString();
+        var business = new CommerceBusiness { Id=f.Business, Key="owner-store", DisplayName="Owner Store", IsActive=true, Status="Active" };
+        f.Db.Add(business);
+        f.Db.Add(new WebsiteContentState { SiteKey=WebsiteEditorSiteKeys.Legend, OwnerKey=WebsiteEditorSiteKeys.GlobalOwnerKey,
+            CommerceBusinessId=f.Business, ProvisionedStoreBusinessId=f.Business, DraftJson="{}" });
+        var agent = new AgentProfile { AgentUserId=actor, IsActive=true };
+        f.Db.Add(agent); await f.Db.SaveChangesAsync();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?> {
+            ["Founder:Oid"]=actor, ["MerchantPayments:Fake:Production:CallbackUrl"]="https://example.test/commerce/manage/payments/callback"
+        }).Build();
+        var stores = new CommerceStoreContextService(f.Db, new CommerceBusinessScopeResolver(f.Db), null!,
+            new WebsiteDomainService(f.Db, Mock.Of<System.Net.Http.IHttpClientFactory>(), config), config);
+        var service = new MerchantConnectionService(f.Db, f.Protection, new[]{f.Gateway}, config, stores);
+        Assert.NotNull(await service.ListAsync(f.Business, null, actor, null, "Production", default));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(()=>service.ListAsync(f.Business,null,"wrong-owner",null,"Production",default));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(()=>service.ListAsync(Guid.NewGuid(),null,actor,null,"Production",default));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(()=>service.ListAsync(f.Business,Guid.NewGuid(),actor,null,"Production",default));
+        await service.BeginAsync(f.Business,null,actor,null,"Fake","Production","ignored","ticket",default);
+        Assert.Null((await f.Db.CommerceMerchantAuthorizations.SingleAsync()).ClientProfileId);
+        var state = f.Gateway.AuthorizationState!;
+        agent.IsActive=false; await f.Db.SaveChangesAsync();
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(()=>service.CompleteAsync(f.Business,null,actor,null,state,"code",default));
+        Assert.Equal(0,f.Gateway.AuthorizationCompletions);
+        agent.IsActive=true; await f.Db.SaveChangesAsync();
+        await service.CompleteAsync(f.Business,null,actor,null,state,"code",default);
+        Assert.Equal(1,f.Gateway.AuthorizationCompletions);
+    }
+
+    [Fact]
+    public async Task PlatformBindingPinsIdentityWithoutCopyingOrRevokingSubscriptionCredential()
+    {
+        using var f = new Fixture();
+        var actor = Guid.NewGuid().ToString();
+        f.Db.Add(new CommerceBusiness { Id=f.Business, Key="platform-store", DisplayName="Platform", IsActive=true, Status="Active" });
+        f.Db.Add(new WebsiteContentState { SiteKey=WebsiteEditorSiteKeys.Legend, OwnerKey=WebsiteEditorSiteKeys.GlobalOwnerKey,
+            CommerceBusinessId=f.Business, ProvisionedStoreBusinessId=f.Business, DraftJson="{}" });
+        f.Db.Add(new AgentProfile { AgentUserId=actor, IsActive=true }); await f.Db.SaveChangesAsync();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?> {
+            ["Founder:Oid"]=actor, ["Square:Environment"]="Production", ["Square:ApplicationId"]="synthetic-app",
+            ["Square:AccessToken"]="synthetic-token", ["Square:LocationId"]="location-one",
+            ["MerchantPayments:Square:Production:Enabled"]="true", ["MerchantPayments:Square:Production:ApplicationId"]="synthetic-app",
+            ["MerchantPayments:Square:Production:ApplicationSecret"]="synthetic-secret",
+            ["MerchantPayments:Square:Production:WebhookSignatureKey"]="synthetic-webhook",
+            ["MerchantPayments:Square:Production:WebhookUrl"]="https://example.test/commerce/payments/webhooks/Square/Production"
+        }).Build();
+        var handler = new PlatformAccountHandler();
+        var factory = new Mock<System.Net.Http.IHttpClientFactory>();
+        factory.Setup(x=>x.CreateClient(It.IsAny<string>())).Returns(()=>new System.Net.Http.HttpClient(handler,false));
+        var gateway = new SquareMerchantPaymentGateway(factory.Object, config);
+        var stores = new CommerceStoreContextService(f.Db, new CommerceBusinessScopeResolver(f.Db), null!,
+            new WebsiteDomainService(f.Db,factory.Object,config),config);
+        var service = new MerchantConnectionService(f.Db,f.Protection,new[]{gateway},config,stores);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(()=>service.BindPlatformAccountAsync(f.Business,null,"other",null,"Production",default));
+        Assert.False(await service.CanUsePlatformAccountAsync(Guid.NewGuid(),actor,default));
+        var id = await service.BindPlatformAccountAsync(f.Business,null,actor,null,"Production",default);
+        var row = await f.Db.CommerceMerchantConnections.SingleAsync(x=>x.Id==id);
+        Assert.Equal("PendingConfirmation",row.State);
+        var credential = JsonSerializer.Deserialize<MerchantCredential>(f.Protection.CreateProtector("Legend.Merchant.Credential.v1",id.ToString("N"),f.Business.ToString("N"),"Square","Production").Unprotect(row.ProtectedCredential))!;
+        Assert.Equal("",credential.AccessToken); Assert.Equal("PlatformBilling",credential.Source);
+        Assert.Equal(id,await service.BindPlatformAccountAsync(f.Business,null,actor,null,"Production",default));
+        var pendingRevision = row.Revision;
+        await Assert.ThrowsAsync<MerchantPaymentException>(()=>service.ConfirmAsync(f.Business,null,actor,null,id,"merchant-one","location-two",row.Revision,default));
+        Assert.Equal(pendingRevision,row.Revision); Assert.Equal("PendingConfirmation",row.State);
+        await service.ConfirmAsync(f.Business,null,actor,null,id,"merchant-one","location-one",row.Revision,default);
+        await service.SetDefaultAsync(f.Business,null,actor,null,id,row.Revision,default);
+        var revision = await f.Db.CommerceMerchantConnectionRevisions.SingleAsync(x=>x.ConnectionId==id && x.Revision==row.Revision);
+        Assert.Equal("synthetic-token",(await service.LoadAccountAsync(revision,default)).Credential.AccessToken);
+        config["Square:AccessToken"]="synthetic-rotated";
+        Assert.Equal("synthetic-rotated",(await service.LoadAccountAsync(revision,default)).Credential.AccessToken);
+        await service.RefreshAsync(f.Business,null,actor,null,id,row.Revision,default);
+        Assert.DoesNotContain("synthetic-rotated",f.Protection.CreateProtector("Legend.Merchant.Credential.v1",id.ToString("N"),f.Business.ToString("N"),"Square","Production").Unprotect(row.ProtectedCredential));
+        handler.Merchant="other-merchant";
+        await Assert.ThrowsAsync<MerchantPaymentException>(()=>service.LoadAccountAsync(revision,default));
+        handler.Merchant="merchant-one";
+        config["Square:ApplicationId"]="different-app";
+        await Assert.ThrowsAsync<MerchantPaymentException>(()=>service.LoadAccountAsync(revision,default));
+        config["Square:ApplicationId"]="synthetic-app";
+        await service.RevokeAsync(f.Business,null,actor,null,id,row.Revision,default);
+        Assert.Equal("Disconnected",row.State); Assert.Null(await service.ResolveActiveAsync(f.Business,"Production",default));
+        Assert.Equal("synthetic-rotated",(await service.LoadAccountAsync(revision,default)).Credential.AccessToken);
+        Assert.Equal(0,handler.Writes);
+    }
+    private sealed class PlatformAccountHandler : System.Net.Http.HttpMessageHandler
+    {
+        public string Merchant="merchant-one";
+        public int Writes;
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request,CancellationToken ct)
+        {
+            if(request.Method != System.Net.Http.HttpMethod.Get) Writes++;
+            var json = request.RequestUri!.AbsolutePath == "/v2/locations"
+                ? JsonSerializer.Serialize(new { locations=new[]{new { id="location-one",merchant_id=Merchant,status="ACTIVE",currency="USD",capabilities=new[]{"CREDIT_CARD_PROCESSING"} }, new { id="location-two",merchant_id=Merchant,status="ACTIVE",currency="USD",capabilities=new[]{"CREDIT_CARD_PROCESSING"} }} })
+                : JsonSerializer.Serialize(new { merchant=new { id=Merchant,status="ACTIVE" } });
+            return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content=new System.Net.Http.StringContent(json) });
+        }
+    }
+
     private sealed class CompletionWriteFailure : SaveChangesInterceptor
     {
         public bool Armed;

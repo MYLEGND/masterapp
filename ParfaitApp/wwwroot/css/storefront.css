@@ -1188,6 +1188,7 @@ body.sp-body {
 }
 
 .sp-card-container {
+    color: var(--sp-theme-text);
     display: grid;
     align-items: center;
     width: min(100%, 560px);

@@ -9,23 +9,25 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Infrastructure.Commerce.Payments;
 
-public sealed record MerchantConnectionView(Guid Id, string Provider, string Environment, string AccountId, string? LocationId, int Revision, string State, MerchantReadiness Readiness);
+public sealed record MerchantConnectionView(Guid Id, string Provider, string Environment, string AccountId, string? LocationId, int Revision, string State, MerchantReadiness Readiness, string CredentialSource = "OAuth");
 public sealed record MerchantProviderView(string Provider, bool Available, MerchantCapabilities Capabilities);
 public sealed record MerchantConnectionsView(string Environment, Guid? DefaultConnectionId, IReadOnlyList<MerchantConnectionView> Connections, IReadOnlyList<MerchantProviderView> Providers);
 
-public sealed class MerchantConnectionService(MasterAppDbContext db, IDataProtectionProvider protection, IEnumerable<IMerchantPaymentGateway> gateways, Microsoft.Extensions.Configuration.IConfiguration configuration)
+public sealed class MerchantConnectionService(MasterAppDbContext db, IDataProtectionProvider protection, IEnumerable<IMerchantPaymentGateway> gateways, Microsoft.Extensions.Configuration.IConfiguration configuration, ParfaitApp.Services.CommerceStoreContextService? stores = null, MerchantPaymentProtection? sharedProtection = null)
 {
-    private sealed record AuthorizationState(Guid Id, Guid BusinessId, Guid ProfileId, string Actor, string Ticket, string Environment, DateTime ExpiresUtc, string Nonce, string? ExpectedMerchantId);
-    private IDataProtector StateProtector => protection.CreateProtector("Legend.Merchant.Authorization.v1");
+    private sealed record AuthorizationState(Guid Id, Guid BusinessId, Guid? ProfileId, string Actor, string Ticket, string Environment, DateTime ExpiresUtc, string Nonce, string? ExpectedMerchantId);
+    private IDataProtector StateProtector => (sharedProtection?.Provider ?? protection).CreateProtector("Legend.Merchant.Authorization.v1");
     private IMerchantPaymentGateway Gateway(string provider) => gateways.SingleOrDefault(x => x.Provider == provider) ?? throw new MerchantPaymentException("unsupported_provider");
     private static string EnvironmentKey(string environment) => environment is "Sandbox" or "Production" ? environment : throw new MerchantPaymentException("invalid_environment");
-    private async Task Authorize(Guid businessId, Guid profileId, string actor, string? email, CancellationToken ct)
+    private async Task Authorize(Guid businessId, Guid? profileId, string actor, string? email, CancellationToken ct)
     {
-        if (await BusinessWorkspaceAccess.ResolveAsync(db, businessId, profileId, actor, email, "settings", ct) is null)
-            throw new UnauthorizedAccessException("Merchant connection owner access required.");
+        var authorized = profileId is Guid id
+            ? await BusinessWorkspaceAccess.ResolveAsync(db, businessId, id, actor, email, "settings", ct) is not null
+            : stores is not null && await stores.ResolveWebsiteOwnerActorAsync(businessId, actor, "settings", ct) is not null;
+        if (!authorized) throw new UnauthorizedAccessException("Merchant connection owner access required.");
     }
     private IDataProtector CredentialProtector(Guid id, Guid business, string provider, string environment) =>
-        protection.CreateProtector("Legend.Merchant.Credential.v1", id.ToString("N"), business.ToString("N"), provider, environment);
+        (sharedProtection?.Provider ?? protection).CreateProtector("Legend.Merchant.Credential.v1", id.ToString("N"), business.ToString("N"), provider, environment);
     private static MerchantReadiness Readiness(CommerceMerchantConnection x)
     {
         MerchantReadiness? result;
@@ -37,29 +39,66 @@ public sealed class MerchantConnectionService(MasterAppDbContext db, IDataProtec
         // Do not migrate rows or infer transfer capability from that obsolete assertion.
         return x.Provider == "Square" ? result with { SettlementsEnabled = null } : result;
     }
-    public async Task<MerchantConnectionsView> ListAsync(Guid businessId, Guid profileId, string actor, string? email, string environment, CancellationToken ct)
+    public async Task<MerchantConnectionsView> ListAsync(Guid businessId, Guid? profileId, string actor, string? email, string environment, CancellationToken ct)
     {
         await Authorize(businessId, profileId, actor, email, ct);
         EnvironmentKey(environment);
         var rows = await db.CommerceMerchantConnections.AsNoTracking().Where(x => x.CommerceBusinessId == businessId && x.Environment == environment).ToListAsync(ct);
         var config = await db.CommerceMerchantConfigurations.AsNoTracking().SingleOrDefaultAsync(x => x.CommerceBusinessId == businessId && x.Environment == environment, ct);
-        return new(environment, config?.DefaultConnectionId, rows.Select(x => new MerchantConnectionView(x.Id,x.Provider,x.Environment,x.AccountId,x.LocationId,x.Revision,x.State,Readiness(x))).ToArray(), gateways.Select(x => new MerchantProviderView(x.Provider,x.IsAvailable(environment),x.Capabilities)).ToArray());
+        return new(environment, config?.DefaultConnectionId, rows.Select(x => new MerchantConnectionView(x.Id,x.Provider,x.Environment,x.AccountId,x.LocationId,x.Revision,x.State,Readiness(x),StoredCredential(x).Source)).ToArray(), gateways.Select(x => new MerchantProviderView(x.Provider,x.IsAvailable(environment),x.Capabilities)).ToArray());
     }
-    public async Task<string> BeginAsync(Guid businessId, Guid profileId, string actor, string? email, string provider, string environment, string callbackUrl, string returnTicket, CancellationToken ct)
+    public async Task<bool> CanUsePlatformAccountAsync(Guid businessId, string actor, CancellationToken ct)
+    {
+        var founder = configuration["Founder:Oid"] ?? configuration["FOUNDER_OID"] ?? Environment.GetEnvironmentVariable("FOUNDER_OID");
+        if (!Shared.Auth.FounderAuthority.IsConfiguredFounderIdentity(actor, founder) || stores is null) return false;
+        if (!await db.Set<WebsiteContentState>().AsNoTracking().AnyAsync(x =>
+            x.SiteKey == Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Legend &&
+            x.OwnerKey == Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.GlobalOwnerKey &&
+            x.CommerceBusinessId == businessId && x.ProvisionedStoreBusinessId == businessId, ct)) return false;
+        return await stores.ResolveWebsiteOwnerActorAsync(businessId, actor, "settings", ct) is not null;
+    }
+    public async Task<Guid> BindPlatformAccountAsync(Guid businessId, Guid? profileId, string actor, string? email, string environment, CancellationToken ct)
+    {
+        await Authorize(businessId, profileId, actor, email, ct);
+        if (!await CanUsePlatformAccountAsync(businessId, actor, ct)) throw new UnauthorizedAccessException();
+        EnvironmentKey(environment);
+        var gateway = Gateway("Square") as Providers.SquareMerchantPaymentGateway ?? throw new MerchantPaymentException("unsupported_provider");
+        if (!gateway.IsAvailable(environment)) throw new MerchantPaymentException("provider_not_configured");
+        var account = await gateway.ResolvePlatformAccountAsync(environment, ct);
+        var existing = await db.CommerceMerchantConnections.AsNoTracking().SingleOrDefaultAsync(x => x.Provider == "Square" && x.Environment == environment && x.AccountId == account.AccountId, ct);
+        if (existing is not null)
+        {
+            if (existing.CommerceBusinessId != businessId) throw new MerchantPaymentException("merchant_already_bound");
+            if (StoredCredential(existing).Source != "PlatformBilling") throw new MerchantPaymentException("merchant_connection_source_conflict");
+            return existing.Id; // A retry does not recreate, replace or reactivate a connection.
+        }
+        var readiness = await gateway.GetReadinessAsync(account, ct);
+        var row = new CommerceMerchantConnection { Id=Guid.NewGuid(), CommerceBusinessId=businessId, Provider="Square", Environment=environment,
+            AccountId=account.AccountId, LocationId=account.LocationId, Revision=1, State="PendingConfirmation",
+            ReadinessJson=JsonSerializer.Serialize(readiness), GrantedScopesJson="[]", CreatedUtc=DateTime.UtcNow, UpdatedUtc=DateTime.UtcNow };
+        // Persist only an explicit reference and the immutable application identity, never a second token.
+        row.ProtectedCredential=CredentialProtector(row.Id,businessId,row.Provider,environment).Protect(JsonSerializer.Serialize(account.Credential with { AccessToken="" }));
+        db.CommerceMerchantConnections.Add(row);
+        Snapshot(row,actor,"PlatformBillingBound");
+        await db.SaveChangesAsync(ct);
+        return row.Id;
+    }
+    public async Task<string> BeginAsync(Guid businessId, Guid? profileId, string actor, string? email, string provider, string environment, string callbackUrl, string returnTicket, CancellationToken ct)
     {
         await Authorize(businessId, profileId, actor, email, ct);
         return await BeginAuthorizedAsync(businessId, profileId, actor, provider, environment, callbackUrl, returnTicket, null, ct);
     }
-    public async Task<string> ResumeAsync(Guid businessId, Guid profileId, string actor, string? email,
+    public async Task<string> ResumeAsync(Guid businessId, Guid? profileId, string actor, string? email,
         Guid connectionId, int expectedRevision, string callbackUrl, string returnTicket, CancellationToken ct)
     {
         var connection = await Owned(businessId, profileId, actor, email, connectionId, ct);
         CheckRevision(connection, expectedRevision);
         if (connection.State == "Disconnected") throw new MerchantPaymentException("connection_disconnected");
+        if (StoredCredential(connection).Source == "PlatformBilling") throw new MerchantPaymentException("platform_account_uses_canonical_configuration");
         return await BeginAuthorizedAsync(businessId, profileId, actor, connection.Provider,
             connection.Environment, callbackUrl, returnTicket, connection.AccountId, ct);
     }
-    private async Task<string> BeginAuthorizedAsync(Guid businessId, Guid profileId, string actor,
+    private async Task<string> BeginAuthorizedAsync(Guid businessId, Guid? profileId, string actor,
         string provider, string environment, string callbackUrl, string returnTicket,
         string? existingAccountId, CancellationToken ct)
     {
@@ -92,7 +131,7 @@ public sealed class MerchantConnectionService(MasterAppDbContext db, IDataProtec
     }
     public string InspectTicket(string state) => ParseState(state).Ticket;
     public string InspectEnvironment(string state) => ParseState(state).Environment;
-    public async Task<Guid> CompleteAsync(Guid businessId, Guid profileId, string actor, string? email, string state, string code, CancellationToken ct)
+    public async Task<Guid> CompleteAsync(Guid businessId, Guid? profileId, string actor, string? email, string state, string code, CancellationToken ct)
     {
         await Authorize(businessId,profileId,actor,email,ct);
         var parsed = ParseState(state);
@@ -114,6 +153,7 @@ public sealed class MerchantConnectionService(MasterAppDbContext db, IDataProtec
         if(existing is not null)
         {
             if(existing.CommerceBusinessId!=businessId) throw new MerchantPaymentException("merchant_already_bound");
+            if(StoredCredential(existing).Source != "OAuth") throw new MerchantPaymentException("merchant_connection_source_conflict");
             existing.ProtectedCredential=CredentialProtector(existing.Id,businessId,existing.Provider,existing.Environment).Protect(JsonSerializer.Serialize(result.Credential));
             existing.ReadinessJson=connection.ReadinessJson; existing.GrantedScopesJson=connection.GrantedScopesJson;
             existing.State="PendingConfirmation"; existing.DisconnectedUtc=null; existing.Revision++; existing.UpdatedUtc=DateTime.UtcNow;
@@ -124,16 +164,18 @@ public sealed class MerchantConnectionService(MasterAppDbContext db, IDataProtec
         await db.SaveChangesAsync(ct);
         return connection.Id;
     }
-    private async Task<CommerceMerchantConnection> Owned(Guid businessId,Guid profileId,string actor,string? email,Guid id,CancellationToken ct)
+    private async Task<CommerceMerchantConnection> Owned(Guid businessId,Guid? profileId,string actor,string? email,Guid id,CancellationToken ct)
     {
         await Authorize(businessId,profileId,actor,email,ct);
         return await db.CommerceMerchantConnections.SingleOrDefaultAsync(x => x.Id==id && x.CommerceBusinessId==businessId,ct) ?? throw new MerchantPaymentException("connection_not_found");
     }
-    public async Task ConfirmAsync(Guid businessId,Guid profileId,string actor,string? email,Guid connectionId,string accountId,string? locationId,int expectedRevision,CancellationToken ct)
+    public async Task ConfirmAsync(Guid businessId,Guid? profileId,string actor,string? email,Guid connectionId,string accountId,string? locationId,int expectedRevision,CancellationToken ct)
     {
         var row = await Owned(businessId,profileId,actor,email,connectionId,ct);
         CheckRevision(row,expectedRevision);
         if (row.State != "PendingConfirmation" || row.AccountId != accountId) throw new MerchantPaymentException("merchant_confirmation_mismatch");
+        if (StoredCredential(row).Source == "PlatformBilling" && locationId != row.LocationId)
+            throw new MerchantPaymentException("platform_payment_location_pinned");
         var account = Account(row) with { LocationId = locationId };
         var readiness = await Gateway(row.Provider).GetReadinessAsync(account,ct);
         if (readiness.Locations.Length > 0 && (locationId is null || !readiness.Locations.Contains(locationId,StringComparer.Ordinal))) throw new MerchantPaymentException("select_verified_location");
@@ -141,7 +183,7 @@ public sealed class MerchantConnectionService(MasterAppDbContext db, IDataProtec
         row.LocationId=locationId; row.State="Active"; row.Revision++; row.UpdatedUtc=DateTime.UtcNow; row.ReadinessJson=JsonSerializer.Serialize(readiness);
         Snapshot(row, actor, "Confirmed"); await db.SaveChangesAsync(ct);
     }
-    public async Task SetDefaultAsync(Guid businessId,Guid profileId,string actor,string? email,Guid connectionId,int expectedRevision,CancellationToken ct)
+    public async Task SetDefaultAsync(Guid businessId,Guid? profileId,string actor,string? email,Guid connectionId,int expectedRevision,CancellationToken ct)
     {
         var row=await Owned(businessId,profileId,actor,email,connectionId,ct);
         CheckRevision(row,expectedRevision);
@@ -154,7 +196,7 @@ public sealed class MerchantConnectionService(MasterAppDbContext db, IDataProtec
         row.ReadinessJson=JsonSerializer.Serialize(readiness); row.UpdatedUtc=DateTime.UtcNow; row.Revision++; Snapshot(row, actor, "DefaultSelected");
         await db.SaveChangesAsync(ct);
     }
-    public async Task RevokeAsync(Guid businessId,Guid profileId,string actor,string? email,Guid connectionId,int expectedRevision,CancellationToken ct)
+    public async Task RevokeAsync(Guid businessId,Guid? profileId,string actor,string? email,Guid connectionId,int expectedRevision,CancellationToken ct)
     {
         var row=await Owned(businessId,profileId,actor,email,connectionId,ct);
         CheckRevision(row,expectedRevision);
@@ -170,15 +212,16 @@ public sealed class MerchantConnectionService(MasterAppDbContext db, IDataProtec
     {
         if(row.Revision!=expectedRevision) throw new MerchantPaymentException("connection_revision_changed");
     }
-    public async Task RefreshAsync(Guid businessId,Guid profileId,string actor,string? email,Guid connectionId,int expectedRevision,CancellationToken ct)
+    public async Task RefreshAsync(Guid businessId,Guid? profileId,string actor,string? email,Guid connectionId,int expectedRevision,CancellationToken ct)
     {
         var row=await Owned(businessId,profileId,actor,email,connectionId,ct);
         CheckRevision(row,expectedRevision);
         if(row.State=="Disconnected") throw new MerchantPaymentException("connection_disconnected");
         var account=Account(row);
-        var credential=await Gateway(row.Provider).RefreshAsync(account,ct);
+        var credential=account.Credential.Source == "PlatformBilling" ? account.Credential : await Gateway(row.Provider).RefreshAsync(account,ct);
         var readiness=await Gateway(row.Provider).GetReadinessAsync(account with { Credential=credential },ct);
-        row.ProtectedCredential=CredentialProtector(row.Id,row.CommerceBusinessId,row.Provider,row.Environment).Protect(JsonSerializer.Serialize(credential));
+        if (credential.Source != "PlatformBilling")
+            row.ProtectedCredential=CredentialProtector(row.Id,row.CommerceBusinessId,row.Provider,row.Environment).Protect(JsonSerializer.Serialize(credential));
         row.ReadinessJson=JsonSerializer.Serialize(readiness); row.Revision++; row.UpdatedUtc=DateTime.UtcNow;
         Snapshot(row, actor, "Refreshed"); await db.SaveChangesAsync(ct);
     }
@@ -188,7 +231,35 @@ public sealed class MerchantConnectionService(MasterAppDbContext db, IDataProtec
         var id=await db.CommerceMerchantConfigurations.Where(x=>x.CommerceBusinessId==businessId && x.Environment==environment).Select(x=>x.DefaultConnectionId).SingleOrDefaultAsync(ct);
         return id is null ? null : await db.CommerceMerchantConnections.AsNoTracking().SingleOrDefaultAsync(x=>x.Id==id && x.CommerceBusinessId==businessId && x.Environment==environment && x.State=="Active",ct);
     }
-    private MerchantAccount Account(CommerceMerchantConnection row) => new(row.Provider,row.Environment,row.AccountId,row.LocationId,JsonSerializer.Deserialize<MerchantCredential>(CredentialProtector(row.Id,row.CommerceBusinessId,row.Provider,row.Environment).Unprotect(row.ProtectedCredential)) ?? throw new MerchantPaymentException("credential_unavailable"));
+    public async Task<bool> IsCheckoutConfiguredAsync(Guid businessId, string environment, CancellationToken ct)
+    {
+        if (environment is not ("Production" or "Sandbox")) return false;
+        var row = await ResolveActiveAsync(businessId, environment, ct);
+        if (row is null || !Gateway(row.Provider).IsAvailable(environment)) return false;
+        try { _ = Account(row); }
+        catch (MerchantPaymentException) { return false; }
+        var readiness = Readiness(row);
+        return readiness.CanAcceptPayments(row.Provider) && readiness.Currencies.Contains("USD", StringComparer.OrdinalIgnoreCase) &&
+            (row.Provider != "Square" || !string.IsNullOrWhiteSpace(row.LocationId) && readiness.Locations.Contains(row.LocationId));
+    }
+
+    private MerchantCredential StoredCredential(CommerceMerchantConnection row) =>
+        JsonSerializer.Deserialize<MerchantCredential>(CredentialProtector(row.Id,row.CommerceBusinessId,row.Provider,row.Environment).Unprotect(row.ProtectedCredential))
+            ?? throw new MerchantPaymentException("credential_unavailable");
+    private MerchantAccount Account(CommerceMerchantConnection row)
+    {
+        var credential = StoredCredential(row);
+        if (credential.Source == "PlatformBilling")
+        {
+            var options = Infrastructure.Billing.Square.SquareBillingOptions.FromConfiguration(configuration);
+            if (row.Provider != "Square" || row.Environment != options.Environment.ToString() ||
+                credential.ApplicationId != options.ApplicationId || row.LocationId != options.LocationId || !options.HasServerCredentials())
+                throw new MerchantPaymentException("platform_payment_binding_changed");
+            credential = credential with { AccessToken = options.AccessToken! };
+        }
+        else if (credential.Source != "OAuth") throw new MerchantPaymentException("credential_source_unsupported");
+        return new(row.Provider,row.Environment,row.AccountId,row.LocationId,credential);
+    }
     public async Task<MerchantAccount> LoadAccountAsync(CommerceMerchantConnectionRevision revision,CancellationToken ct)
     {
         // Credentials may rotate, but settlement remains pinned to the original merchant and location.
@@ -202,7 +273,10 @@ public sealed class MerchantConnectionService(MasterAppDbContext db, IDataProtec
             await db.SaveChangesAsync(ct);
             account=account with { Credential=refreshed };
         }
-        return account with { LocationId=revision.LocationId };
+        account = account with { LocationId=revision.LocationId };
+        if (account.Credential.Source == "PlatformBilling")
+            await Gateway(row.Provider).GetReadinessAsync(account, ct); // Provider verifies the immutable merchant and location before any payment operation.
+        return account;
     }
     private void Snapshot(CommerceMerchantConnection row, string actor, string action) => db.CommerceMerchantConnectionRevisions.Add(new() {Id=Guid.NewGuid(),ConnectionId=row.Id,CommerceBusinessId=row.CommerceBusinessId,Provider=row.Provider,Environment=row.Environment,AccountId=row.AccountId,LocationId=row.LocationId,Revision=row.Revision,ProtectedCredential=row.ProtectedCredential,State=row.State,ActorId=actor,Action=action,GrantedScopesJson=row.GrantedScopesJson,ReadinessJson=row.ReadinessJson,CreatedUtc=DateTime.UtcNow});
 }

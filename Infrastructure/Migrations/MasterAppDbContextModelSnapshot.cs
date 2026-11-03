@@ -2692,7 +2692,7 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
-                    b.Property<Guid>("ClientProfileId")
+                    b.Property<Guid?>("ClientProfileId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("CommerceBusinessId")

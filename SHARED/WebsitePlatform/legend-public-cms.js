@@ -602,6 +602,7 @@
         : {showInNavigation:true,order:0,isDeleted:false};
       navigation.showInNavigation=navigation.showInNavigation!==false;
       navigation.isDeleted=navigation.isDeleted===true;
+      navigation.isPublished=navigation.isPublished!==false;
       navigation.order=Number.isFinite(Number(navigation.order)) ? Number(navigation.order) : 0;
       if(navigation.showInNavigation && !navigation.isDeleted && !String(navigation.label||'').trim())
         navigation.label=defaultNavigationLabel(route,title);
@@ -4778,7 +4779,19 @@
   }
 
   function applyBusinessPageNavigation() {
-    if (SITE_KEY !== 'business') return;
+    if (SITE_KEY !== 'business') {
+      const pages=new Map(websitePageEntries(true).map(page=>[page.route,page]));
+      for(const [path,navigation] of Object.entries(renderInput?.pageNavigation || {})) {
+        if(editorMode) break;
+        pages.set(canonicalSiteRoute(path),{deleted:navigation.isDeleted===true,published:navigation.isPublished!==false,showInNavigation:navigation.showInNavigation!==false});
+      }
+      document.querySelectorAll('.site-header nav a[href],.site-header .nav a[href]').forEach(link=>{
+        const route=canonicalSiteRoute(new URL(link.getAttribute('href'),location.href).pathname);
+        const page=pages.get(route);
+        if(page && (page.deleted || page.published===false || page.showInNavigation===false)) link.remove();
+      });
+      return;
+    }
     const header=document.querySelector('.site-header');
     const nav=header?.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]') || document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
     if (!nav) return;
@@ -4791,7 +4804,7 @@
     // the catalog; doing so lets stale/default links survive beside managed
     // pages and creates duplicate banner tabs.
     const entries=websitePageEntries(false)
-      .filter(value=>value.showInNavigation!==false && !value.deleted && !value.parentPath)
+      .filter(value=>value.showInNavigation!==false && value.published!==false && !value.deleted && !value.parentPath)
       .sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0) || a.route.localeCompare(b.route));
 
     nav.querySelectorAll('[data-legend-page-nav="true"],a:not([data-legend-store-nav])').forEach(node=>node.remove());
@@ -4964,7 +4977,9 @@
   }
 
   function storeIsEnabled() {
-    return documentState.store?.enabled === true && storeContext?.enabled === true && !!storeContext?.storefrontUrl;
+    const page=documentState.pages?.['/store'];
+    return documentState.store?.enabled === true && storeContext?.enabled === true && !!storeContext?.storefrontUrl &&
+      (editorMode || (page?.navigation?.isPublished!==false && page?.navigation?.isDeleted!==true));
   }
 
   function effectiveCartIcon() {
@@ -5106,6 +5121,7 @@
         showInNavigation:page.showInNavigation !== false,
         parentPath:normalizePageRoute(page.parentPath),
         order:Number.isFinite(Number(page.order)) ? Number(page.order) : index * 10,
+        published:page.published !== false,
         deleted:page.deleted === true
       });
     });
@@ -5135,6 +5151,7 @@
         nativeRoute:previous?.nativeRoute===true,
         legacyTemplatePath:normalizePageRoute(legacy?.templatePath),
         deleted:navigation.isDeleted===true,
+        published:navigation.isPublished!==false,
         showInNavigation:navigation.showInNavigation!==false,
         parentPath:normalizePageRoute(navigation.parentPath),
         order:Number.isFinite(Number(navigation.order))?Number(navigation.order):0
@@ -5506,7 +5523,7 @@
       open.disabled=entry.deleted; open.setAttribute('aria-current',String(entry.route===current));
       open.addEventListener('click',()=>void navigateToEditorPage(entry.route)); row.appendChild(open);
 
-      if (SITE_KEY==='business') {
+      {
         const label=document.createElement('input');
         label.type='text'; label.maxLength=120; label.value=entry.label; label.setAttribute('aria-label',`Navigation label for ${entry.route}`);
         label.disabled=entry.deleted;
@@ -5557,20 +5574,19 @@
         row.appendChild(remove);
       }
 
-      if (SITE_KEY==='protect' && entry.route==='/trainingpackages') {
-        // This obsolete Protect-only route has a recoverable retirement action,
-        // not the business site's arbitrary page creation/removal permissions.
-        open.disabled=true;
-        const retire=document.createElement('button'); retire.type='button';
-        retire.textContent=entry.deleted?'Training page retired':'Retire training page';
-        retire.disabled=entry.deleted;
-        retire.addEventListener('click',async()=>{
-          retire.disabled=true;
-          try { await creativeApplyMutationBatch([{type:'removePage',pagePath:entry.route}]); }
-          catch(error) { retire.disabled=false; alert(error.message || 'The page could not be retired.'); }
-        });
-        row.appendChild(retire);
-      }
+      const publicationLabel=document.createElement('label');
+      publicationLabel.className='legend-cms-page-publication';
+      const published=document.createElement('input'); published.type='checkbox';
+      published.checked=entry.published!==false && !entry.deleted;
+      published.disabled=entry.deleted;
+      published.setAttribute('aria-label',`Publish ${entry.label}`);
+      published.addEventListener('change',event=>{
+        checkpoint();
+        ensurePageRecord(entry.route).navigation.isPublished=event.target.checked;
+        markDirty(); renderPageManager();
+      });
+      publicationLabel.append(published,document.createTextNode('Published website'));
+      row.appendChild(publicationLabel);
       host.appendChild(row);
     }
   }

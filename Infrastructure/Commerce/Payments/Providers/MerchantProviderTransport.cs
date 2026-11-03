@@ -7,6 +7,7 @@ namespace Infrastructure.Commerce.Payments.Providers;
 
 public abstract class MerchantProviderTransport(IHttpClientFactory clients, IConfiguration configuration)
 {
+    protected IConfiguration Configuration => configuration;
     protected string Setting(string provider, string environment, string name) => configuration[$"MerchantPayments:{provider}:{environment}:{name}"] ?? "";
     protected bool Enabled(string provider, string environment) => environment is "Sandbox" or "Production" && Setting(provider, environment, "Enabled").Equals("true", StringComparison.OrdinalIgnoreCase);
     protected bool WebhookConfigured(string provider,string environment,string verificationSetting) =>

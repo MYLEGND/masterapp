@@ -8,12 +8,15 @@ using Microsoft.Extensions.Configuration;
 
 namespace Infrastructure.Commerce.Payments;
 
-/// <summary>Only merchant routing authority. Platform billing credentials are never consulted.</summary>
+/// <summary>Only merchant routing authority. Every checkout uses an explicit scoped connection and immutable revision.</summary>
 public sealed class MerchantCheckoutService(MasterAppDbContext db, MerchantConnectionService connections,
     IEnumerable<IMerchantPaymentGateway> gateways, IConfiguration configuration)
 {
     public Task<CommercePaymentAttempt?> GetAttemptAsync(Guid businessId, Guid orderId, CancellationToken ct = default) =>
         db.CommercePaymentAttempts.AsNoTracking().SingleOrDefaultAsync(x => x.CommerceBusinessId == businessId && x.CommerceOrderId == orderId, ct);
+
+    public Task<bool> IsConfiguredAsync(Guid businessId, CancellationToken ct = default) =>
+        connections.IsCheckoutConfiguredAsync(businessId, configuration["MerchantPayments:CheckoutEnvironment"] ?? "Production", ct);
 
     public async Task<MerchantPaymentEvidence> BeginAsync(Guid businessId, Guid orderId, string returnUrl,
         string? signalContextJson = null, CancellationToken ct = default)

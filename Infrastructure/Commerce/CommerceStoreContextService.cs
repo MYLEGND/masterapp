@@ -42,7 +42,8 @@ public sealed record CommerceStoreContext(
     string? StorePageShellPrefix = null,
     string? StorePageShellSuffix = null,
     string? StorePageBeforeCatalog = null,
-    string? StorePageAfterCatalog = null);
+    string? StorePageAfterCatalog = null,
+    string? FaviconUrl = null);
 
 /// <summary>
 /// One public storefront scope resolver for Parfait and every website-linked commerce tenant.
@@ -208,6 +209,24 @@ public sealed class CommerceStoreContextService(
             new Domain.Accounts.AccountLifecycleSubject(actor, Domain.Messaging.MessagingParticipantTypes.Agent, agents[0].Id), ct)).AllowsFullAccess)
             return null;
         return new(actor, null, slug);
+    }
+
+    public async Task<CommerceManagementActor?> ResolveWebsiteOwnerActorAsync(
+        Guid businessId, string actorUserId, string capability, CancellationToken ct = default)
+    {
+        var states = await db.Set<WebsiteContentState>().AsNoTracking()
+            .Where(x => x.CommerceBusinessId == businessId && x.ProvisionedStoreBusinessId == businessId)
+            .Select(x => new { x.SiteKey, x.OwnerKey }).Take(2).ToListAsync(ct);
+        if (states.Count != 1) return null;
+        var state = states[0];
+        var business = await businesses.ResolveActiveByIdAsync(businessId, ct);
+        if (business is null) return null;
+        var root = await WebsiteStoreRootAsync(db, configuration, state.SiteKey, businessId, business.Key, ct);
+        if (!Uri.TryCreate(root, UriKind.Absolute, out var uri)) return null;
+        var scope = await ResolveManagementScopeAsync(new StoreManagementLoginRequest(
+            businessId, state.SiteKey, state.OwnerKey, uri.GetLeftPart(UriPartial.Authority),
+            "/internal", new string('0', 64), DateTime.UtcNow.AddMinutes(1)), ct);
+        return scope is null ? null : await ResolveManagementActorAsync(scope, actorUserId, capability, null, ct);
     }
 
     public Task<bool> HasProvisionedStoreAsync(CommerceManagementScope scope, CancellationToken ct = default) =>
@@ -457,7 +476,9 @@ public sealed class CommerceStoreContextService(
         }
 
         var isParfait = IsParfaitKey(business.Key);
-        if (publishedOnly && !isParfait && websiteDocument?.Store?.Enabled != true) return null;
+        if (publishedOnly && !isParfait && (websiteDocument?.Store?.Enabled != true ||
+            websiteDocument.Pages.TryGetValue("/store", out var storePage) &&
+            (storePage.Navigation.IsDeleted || !storePage.Navigation.IsPublished))) return null;
 
         Guid? agentTrackingProfileId = null;
         if (string.Equals(websiteSiteKey, WebsiteEditorSiteKeys.Protect, StringComparison.OrdinalIgnoreCase) &&
@@ -510,7 +531,12 @@ public sealed class CommerceStoreContextService(
             theme,
             isParfait ? null : websiteShellPrefix,
             isParfait ? null : websiteShellSuffix,
-            storeShellPrefix, storeShellSuffix, storeBefore, storeAfter);
+            storeShellPrefix, storeShellSuffix, storeBefore, storeAfter,
+            websiteSiteKey == WebsiteEditorSiteKeys.Legend
+                ? WebsiteFaviconParity.PublicUrl(configuration, websiteSiteKey)
+                : websiteSiteKey == WebsiteEditorSiteKeys.Business ? "/favicon.jpg"
+                : WebsiteFaviconParity.ResolvePublished(websiteDocument?.FaviconImageDataUrl)?.RedirectUrl
+                  ?? websiteDocument?.FaviconImageDataUrl ?? WebsiteFaviconParity.FallbackUrl(configuration));
     }
 
 

@@ -12,6 +12,7 @@
     var appId = ViewBag.SquareApplicationId as string;
     var locationId = ViewBag.SquareLocationId as string;
     var environment = ViewBag.SquareEnvironment as string ?? "Sandbox";
+    var checkoutAvailable = ViewBag.CheckoutAvailable as bool? ?? false;
     var squareScript = environment.Equals("Production", StringComparison.OrdinalIgnoreCase)
         ? "https://web.squarecdn.com/v1/square.js"
         : "https://sandbox.web.squarecdn.com/v1/square.js";
@@ -120,12 +121,14 @@
                     </div>
 
                     <div class="sp-payment-panel">
-                        <div id="card-container" class="sp-card-container"></div>
+                        <div id="card-container" class="sp-card-container" role="status">@(checkoutAvailable
+                            ? hosted ? "Continue to secure processor checkout to enter your payment details." : "Loading secure payment form…"
+                            : "This store is not accepting online payments yet. Please return when payment setup is complete.")</div>
                     </div>
                 </div>
 
                 <div class="sp-checkout-submit-row">
-                    <button id="spPayButton" class="sp-button sp-button--primary sp-button--checkout sp-button--purchase" type="button">
+                    <button id="spPayButton" disabled="@(!checkoutAvailable)" class="sp-button sp-button--primary sp-button--checkout sp-button--purchase" type="button">
                         <span class="sp-button-main">
                             <span id="spPaySpinner" class="spinner-border spinner-border-sm" role="status" aria-hidden="true" hidden></span>
                             <span id="spPayButtonLabel">Complete Purchase</span>
@@ -428,6 +431,7 @@
             };
 
             async function startSquare() {
+                if (!@System.Text.Json.JsonSerializer.Serialize(checkoutAvailable)) return;
                 const firstQuote = await requestQuote();
 
                 if (!hosted) {
