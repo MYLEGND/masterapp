@@ -3100,3 +3100,79 @@ Artifact provenance note: native debug validation/builds ran against the stable
 reviewed working tree before implementation commit; their content matches the
 accepted manifest, but diagnostic Git metadata can retain69f with localChanges=true.
 These are local test artifacts, not exact-commit production/archive packages.
+
+## 2026-11-03 — native inbox styling and Founder Engineering separation
+
+Founder requested canonical native styling, icon-only Today's Activity, a separate
+Founder Engineering modal, read/check and clear controls, and red unopened counts
+on every Home inbox entry. Continued the SAME isolated mobile branch after clean
+mandatory session preflight against accepted/preserved
+`9ed97f74b340e63343304558b8c141624a8230f1`. Remote fast-track remained
+`69f282796e0a8e183f0e75305cd280b339f01a87` at the read-only head check. Existing
+Store overlap/integration/backend-release hold above remains in force.
+
+Implementation: `517902880b62015b6800a28c7b2a68256e217993`. Independent read-only
+review accepted exact15-path manifest SHA256
+`821d18403933d9b8e511c88f22fdeccc31fcf66835489abae56d2833dc503308` after reading
+the final green logs. Acceptance covers source commit/preservation only.
+
+The existing NotificationEngine/recipient ledger owns Engineering channel filtering,
+full unread totals and per-notice soft dismissal. Personal activity totals exclude
+conversation notices, so Home does not duplicate Messages' badge. Filters precede
+Take; counts cover the full scoped unread ledger, not just the latest visible rows.
+Engineering query/dismiss endpoints enforce Founder identity; engine dismissal also
+matches recipient+participant+Engineering kind. A checkmark marks a notice read;
+Clear notification soft-clears that notice and reconciles the existing global badge.
+It never deletes audit evidence, approves a release, or resolves an open work item.
+Existing server action authority still removes resolved work from open actions.
+No new ledger/table, migration, engineering state machine or notification worker.
+
+Both native Home rows use compact canonical navy icon controls with red numeric
+badges (99+ display for larger totals). Today's Activity uses the existing scoped
+local viewed-ID storage for device planner entries. Personal viewed state cannot
+acknowledge Engineering actions. Founder capability controls the Engineering entry;
+backend Founder checks remain authoritative. Work and Engineering snapshots query
+the same notification API with server channel filters. Engineering push taps route
+to its own modal, including consume-once iOS navigation. Work iOS uses existing
+Next sheet header, typography, canvas and close control instead of default List
+chrome. Existing approved design tokens remain the color/style authority.
+
+Final validation PASS:203iOS tests;100Android tests (zero failed/error/skipped) and
+debug build;41backend tests. Logs:
+`/private/tmp/legend-mobile-inbox-ios-final2.log`,
+`/private/tmp/legend-mobile-inbox-android-final2.log`,
+`/private/tmp/legend-mobile-inbox-backend-final.log`.
+Backend regression proves personal102/activity101 with a chat notice, Work counts
+before list limiting, recipient/channel isolation, idempotent Engineering dismissal
+and preserved audit row. Relational evidence uses SQLite, not production SQL Server.
+Native regressions cover full aggregate totals independent of visible rows,
+Engineering push consume-once separation and personal activity exclusion.
+`git diff --check` passed. Initial sandbox build cache/IPC restrictions were handled
+through approved native tool escalation; the lingering failed test process was stopped.
+
+Rendered acceptance: Xcode ran this task project on iPhone17Pro; compact Home row
+and red42 Engineering badge visibly rendered. Separate Engineering modal shows
+existing canonical open actions; Work modal now shows compact Next header/close,
+segmented Notifications/Orders and honest unsupported-server state. Android final
+APK installed/launched on emulator-5554 through Founder-authorized Gradle/adb;
+Home's four icon controls and separate Engineering modal visibly rendered.
+Screenshots: `/private/tmp/legend-mobile-inbox-android-home.png` and
+`/private/tmp/legend-mobile-inbox-android-engineering.png`. Intermittent simulator
+accessibility/capture failures recovered through refreshed bindings/direct authorized
+Android screenshots; no alternate iOS UI automation was used.
+
+APK SHA256 `fdb070a7782c0e514eab777e726dc1cbb0cc3d87dfc44da8b5725fa6e2bcd839` at
+`Legend-Android/app/build/outputs/apk/debug/app-debug.apk`; adb reported Status:ok,
+COLD launch30315ms. Debug artifacts were built before implementation commit from
+the stable accepted source; diagnostic Git metadata may retain9ed97 with local changes.
+They are local debug artifacts, not exact-commit signed production packages.
+
+Remaining: live server lacks channel/control contract, so Engineering notice controls
+are explicitly unavailable and Work data remains unavailable. No real engineering
+notice was cleared, work item resolved, release approved, order changed, payment
+made, backend deployed, archive/AAB published or Store checkout modified. Local
+SQLite read/dismiss behavior is proven; authenticated deployed persistence and actual
+push delivery still require the reconciled backend release and live acceptance.
+Fast-track integration remains held for the earlier Store order protections. Mandatory
+session finish will establish source preservation only through exact remote readback;
+this checkpoint does not claim publication or fast-track synchronization.
