@@ -104,6 +104,7 @@ struct LegendApplicationShell: View {
     @State private var accountNavigationPath: [LegendAccountNavigationRoute] = []
     @State private var isPresentingLegendFounderAi = false
     @State private var workNotificationsOpen = false
+    @State private var engineeringNotificationsOpen = false
 
     init(
         currentSession: MobileSession,
@@ -147,6 +148,9 @@ struct LegendApplicationShell: View {
         .onReceive(NotificationCenter.default.publisher(for: .legendPreferredLanguageDidChange)) { _ in
             Task { await messages.refreshLanguagePresentation() }
         }
+        .sheet(isPresented: $engineeringNotificationsOpen) {
+            LegendInAppNotificationsSheet(activity: activity, currentIdentity: currentSession.actor.identity, social: social, engineeringOnly: true, notificationStore: bootstrap.stores.notifications)
+        }
         .sheet(isPresented: $workNotificationsOpen) {
             LegendWorkNotificationsSheet(store: bootstrap.stores.notifications) { id in
                 workNotificationsOpen = false
@@ -167,6 +171,8 @@ struct LegendApplicationShell: View {
         if let conversationID = LegendPushNotificationNavigation.consumePendingConversation() {
             pendingMessageConversationID = conversationID
             selectedTab = .messages
+        } else if LegendPushNotificationNavigation.consumePendingEngineering() {
+            if currentSession.capabilities.contains("founder") { engineeringNotificationsOpen = true }
         } else if LegendPushNotificationNavigation.consumePendingWork() {
             workNotificationsOpen = true
         } else if LegendPushNotificationNavigation.consumePendingNotifications() {
@@ -1456,6 +1462,7 @@ private struct LegendHomeView: View {
     @ObservedObject private var activity: LegendDailyActivityStore
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
     @State private var presentedScripture: MobileDailyScripture? = nil
+    @State private var engineeringOpen = false
     let openWork: () -> Void
     @ObservedObject private var notifications: MobileNotificationStore
 
@@ -1509,6 +1516,9 @@ private struct LegendHomeView: View {
             }
         }
         .legendNextPageBackground()
+        .sheet(isPresented: $engineeringOpen) {
+            LegendInAppNotificationsSheet(activity: activity, currentIdentity: currentSession.actor.identity, social: social, engineeringOnly: true, notificationStore: notifications)
+        }
         .sheet(item: $presentedScripture) { scripture in
             DailyScriptureSheet(scripture: scripture)
         }
@@ -1537,49 +1547,19 @@ private struct LegendHomeView: View {
                 ) {
                     homeHero(home)
                     HStack(spacing: LegendNextSpacing.xs) {
-                        LegendTodayActivitySummaryPill(activity: activity) {
+                        LegendHomeInboxButton(symbol: "checklist", title: LegendLocalized("Today's Activity"), count: activity.plannerUnopenedCount) {
                             scrollChrome.requestHomeAction(.todayActivity)
                         }
-                        .frame(maxWidth: .infinity)
-
-                        Button {
-                            openWork()
-                        } label: {
-                            Image(systemName: "briefcase")
-                                .overlay(alignment: .topTrailing) {
-                                    if notifications.snapshot?.notifications.contains(where: { $0.channel == "work" && !$0.isRead }) == true {
-                                        Circle().fill(LegendNextColor.goldBright).frame(width: 8, height: 8).offset(x: 4, y: -4)
-                                    }
-                                }
-                        }
-                        .buttonStyle(LegendNextIconButtonStyle(tone: .navy))
-                        .accessibilityLabel(LegendLocalized("Work notifications"))
-
-                        Button {
+                        LegendHomeInboxButton(symbol: "briefcase", title: LegendLocalized("Work notifications"), count: notifications.unreadCount(channel: "work"), action: openWork)
+                        LegendHomeInboxButton(symbol: "heart", title: LegendLocalized("Notifications"), count: activity.unreadBadgeCount) {
                             scrollChrome.requestHomeAction(.notifications)
-                        } label: {
-                            ZStack(alignment: .topTrailing) {
-                                Image(systemName: "heart")
-
-                                if activity.unreadBadgeCount > 0 {
-                                    Text("\(min(activity.unreadBadgeCount, 99))")
-                                        .font(.caption2.weight(.bold))
-                                        .foregroundStyle(.white)
-                                        .padding(5)
-                                        .background(
-                                            LegendNextColor.danger,
-                                            in: Circle()
-                                        )
-                                        .offset(x: 4, y: -4)
-                                }
+                        }
+                        if currentSession.capabilities.contains("founder") {
+                            LegendHomeInboxButton(symbol: "wrench.and.screwdriver", title: LegendLocalized("Engineering notifications"), count: notifications.unreadCount(channel: "engineering")) {
+                                engineeringOpen = true
                             }
                         }
-                        .buttonStyle(
-                            LegendNextIconButtonStyle(tone: .navy)
-                        )
-                        .accessibilityLabel(
-                            LegendLocalized("Open notifications, {value1} recent interactions", context: "accessibility copy", arguments: ["value1": String(describing: (activity.unreadBadgeCount))])
-                        )
+                        Spacer(minLength: 0)
                     }
                 }
             }
@@ -12141,7 +12121,9 @@ private struct LegendWorkNotificationsSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                    LegendNextSheetHeader(eyebrow: LegendLocalized("Your business"), title: LegendLocalized("Work"), detail: LegendLocalized("Notifications and orders to fulfill."), dismiss: { dismiss() })
                 Picker(LegendLocalized("Work"), selection: $showsOrders) {
                     Text(LegendLocalized("Notifications")).tag(false)
                     Text(LegendLocalized("Orders")).tag(true)
@@ -12201,9 +12183,13 @@ private struct LegendWorkNotificationsSheet: View {
                 }
                 }
             }
-            .navigationTitle(LegendLocalized("Work"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(LegendLocalized("Done")) { dismiss() } } }
+                .padding(LegendNextSpacing.md)
+            }
+            .scrollContentBackground(.hidden)
+            .background(LegendNextCanvas())
+            .font(LegendNextTypography.supporting)
+            .tint(LegendNextColor.gold)
+            .toolbar(.hidden, for: .navigationBar)
             .refreshable { await store.loadWorkNotifications(); await store.loadWorkOrders() }
             .task { await store.loadWorkNotifications(); await store.loadWorkOrders() }
             .sheet(item: $selectedOrder) { order in LegendWorkOrderEditor(order: order, store: store) }

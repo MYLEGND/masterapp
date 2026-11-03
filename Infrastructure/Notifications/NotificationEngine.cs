@@ -31,7 +31,7 @@ public sealed record NotificationLedgerItem(
 public static class NotificationChannel
 {
     public static readonly string[] WorkKinds = ["WebsiteLead", "BusinessInquiry", "StoreOrder", "OrderFulfillment"];
-    public static string ForKind(string kind) => WorkKinds.Contains(kind, StringComparer.Ordinal) ? "work" : "personal";
+    public static string ForKind(string kind) => kind == "Engineering" ? "engineering" : WorkKinds.Contains(kind, StringComparer.Ordinal) ? "work" : "personal";
 }
 
 public sealed record NotificationBadgeSnapshot(
@@ -41,7 +41,10 @@ public sealed record NotificationBadgeSnapshot(
 
 public sealed record NotificationSnapshot(
     NotificationBadgeSnapshot Badge,
-    IReadOnlyList<NotificationLedgerItem> Notifications);
+    IReadOnlyList<NotificationLedgerItem> Notifications)
+{
+    public IReadOnlyDictionary<string, int> ChannelUnreadCounts { get; init; } = new Dictionary<string, int>();
+}
 
 /// <summary>
 /// Safe APNs state for the authenticated actor's existing device registration.
@@ -158,6 +161,8 @@ public interface INotificationEngine
         MessagingActor actor,
         Guid notificationId,
         CancellationToken cancellationToken = default);
+
+    Task<NotificationBadgeSnapshot> DismissEngineeringNotificationAsync(MessagingActor actor, Guid notificationId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
     Task<NotificationBadgeSnapshot> ClearBadgeAndPublishAsync(
         MessagingActor actor,
@@ -507,7 +512,7 @@ internal sealed class NotificationEngine : INotificationEngine
     public async Task<NotificationSnapshot> GetChannelSnapshotAsync(MessagingActor actor, int take, string? channel,
         CancellationToken cancellationToken = default)
     {
-        if (channel is not (null or "work" or "personal")) throw new ArgumentException("Unknown channel.", nameof(channel));
+        if (channel is not (null or "work" or "personal" or "engineering")) throw new ArgumentException("Unknown channel.", nameof(channel));
         var recipient = Normalize(actor);
         var query = _db.MobileActivityNotifications
             .AsNoTracking()
@@ -516,7 +521,8 @@ internal sealed class NotificationEngine : INotificationEngine
                 notification.RecipientParticipantType == recipient.ParticipantType &&
                 !notification.IsCleared);
         if (channel == "work") query = query.Where(n => NotificationChannel.WorkKinds.Contains(n.Kind));
-        else if (channel == "personal") query = query.Where(n => !NotificationChannel.WorkKinds.Contains(n.Kind));
+        else if (channel == "personal") query = query.Where(n => n.Kind != "Engineering" && !NotificationChannel.WorkKinds.Contains(n.Kind));
+        else if (channel == "engineering") query = query.Where(n => n.Kind == "Engineering");
         var rows = await query.OrderByDescending(notification => notification.OccurredUtc)
             .ThenByDescending(notification => notification.Id)
             .Take(Math.Clamp(take, 1, 100))
@@ -549,7 +555,14 @@ internal sealed class NotificationEngine : INotificationEngine
                 notifications.Add(row.Item with { Detail = detail });
         }
         var badge = await ReconcileBadgeAsync(recipient, cancellationToken);
-        return new NotificationSnapshot(badge, notifications);
+        var unreadKinds = await _db.MobileActivityNotifications.AsNoTracking()
+            .Where(n => n.RecipientUserId == recipient.UserId && n.RecipientParticipantType == recipient.ParticipantType && !n.IsCleared && !n.IsRead)
+            .GroupBy(n => new { n.Kind, IsConversation = n.ConversationId != null }).Select(g => new { g.Key.Kind, g.Key.IsConversation, Count = g.Count() }).ToListAsync(cancellationToken);
+        var counts = unreadKinds.GroupBy(n => NotificationChannel.ForKind(n.Kind)).ToDictionary(g => g.Key, g => g.Sum(n => n.Count));
+        counts["activity"] = unreadKinds.Where(n => !n.IsConversation && NotificationChannel.ForKind(n.Kind) == "personal").Sum(n => n.Count);
+        return new NotificationSnapshot(badge, notifications) {
+            ChannelUnreadCounts = counts
+        };
     }
 
     public async Task<NotificationBadgeSnapshot> MarkReadAndPublishAsync(
@@ -571,6 +584,23 @@ internal sealed class NotificationEngine : INotificationEngine
             await _db.SaveChangesAsync(cancellationToken);
         }
 
+        return await ReconcileAndPublishAsync([recipient], cancellationToken);
+    }
+
+    // Dismiss only the actor's engineering notice. Work-item state and audit evidence remain intact.
+    public async Task<NotificationBadgeSnapshot> DismissEngineeringNotificationAsync(MessagingActor actor, Guid notificationId, CancellationToken cancellationToken = default)
+    {
+        var recipient = Normalize(actor);
+        var notice = await _db.MobileActivityNotifications.SingleOrDefaultAsync(n => n.Id == notificationId &&
+            n.RecipientUserId == recipient.UserId && n.RecipientParticipantType == recipient.ParticipantType && n.Kind == "Engineering", cancellationToken);
+        if (notice is not null && !notice.IsCleared)
+        {
+            notice.IsRead = true;
+            notice.ReadUtc ??= DateTime.UtcNow;
+            notice.IsCleared = true;
+            notice.ClearedUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
         return await ReconcileAndPublishAsync([recipient], cancellationToken);
     }
 

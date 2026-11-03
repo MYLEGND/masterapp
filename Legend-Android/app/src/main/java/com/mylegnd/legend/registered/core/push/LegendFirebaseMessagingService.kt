@@ -85,6 +85,7 @@ class LegendFirebaseMessagingService : FirebaseMessagingService() {
             .putExtra(LegendNotificationNavigation.EXTRA_CONVERSATION_ID, conversationId)
             .putExtra(LegendNotificationNavigation.EXTRA_NOTIFICATION_ID, notificationId)
             .putExtra("channel", message.data["channel"])
+            .putExtra("kind", message.data["kind"])
         val pendingIntent = PendingIntent.getActivity(
             this,
             (notificationId.ifBlank { conversationId }).hashCode(),

@@ -35,6 +35,8 @@ struct MobileNotificationSnapshot: Codable, Equatable, Sendable {
     var badge: MobileNotificationUnreadCount
     var notifications: [MobileNotificationItem]
     var workChannelsVersion: Int? = nil
+    var engineeringChannelsVersion: Int? = nil
+    var channelUnreadCounts: [String: Int]? = nil
 }
 
 struct MobileWorkOrder: Codable, Equatable, Identifiable, Sendable {
@@ -112,6 +114,8 @@ enum MobilePushRegistrationState: Equatable, Sendable {
 }
 
 protocol MobileNotificationAPI: Sendable {
+    func engineeringSnapshot(accessToken: String) async throws -> MobileNotificationSnapshot
+    func dismissEngineering(id: UUID, accessToken: String) async throws
     func workSnapshot(accessToken: String) async throws -> MobileNotificationSnapshot
     func workOrders(accessToken: String) async throws -> [MobileWorkOrder]
     func fulfill(_ order: MobileWorkOrder, status: String, carrier: String?, tracking: String?, accessToken: String) async throws
@@ -129,6 +133,8 @@ protocol MobileNotificationAPI: Sendable {
 }
 
 extension MobileNotificationAPI {
+    func engineeringSnapshot(accessToken: String) async throws -> MobileNotificationSnapshot { throw MobileAPIError.invalidServerResponse }
+    func dismissEngineering(id: UUID, accessToken: String) async throws { throw MobileAPIError.invalidServerResponse }
     func workSnapshot(accessToken: String) async throws -> MobileNotificationSnapshot { throw MobileAPIError.invalidServerResponse }
     func workOrders(accessToken: String) async throws -> [MobileWorkOrder] { throw MobileAPIError.invalidServerResponse }
     func fulfill(_ order: MobileWorkOrder, status: String, carrier: String?, tracking: String?, accessToken: String) async throws { throw MobileAPIError.invalidServerResponse }
@@ -182,6 +188,14 @@ struct URLSessionMobileNotificationAPI: MobileNotificationAPI {
             body: MobileWorkFulfillmentInput(businessId: order.businessId, profileId: order.profileId,
                 status: status, trackingCarrier: carrier, trackingNumber: tracking, expectedUpdatedUtc: order.updatedUtc),
             accessToken: accessToken, headers: participantHeader)
+    }
+
+    func engineeringSnapshot(accessToken: String) async throws -> MobileNotificationSnapshot {
+        try await client.get("/api/v1/mobile/notifications", accessToken: accessToken, queryItems: [URLQueryItem(name: "channel", value: "engineering"), URLQueryItem(name: "take", value: "100")], headers: participantHeader, response: MobileNotificationSnapshot.self)
+    }
+
+    func dismissEngineering(id: UUID, accessToken: String) async throws {
+        try await client.delete("/api/v1/mobile/notifications/engineering/\(id.uuidString)", accessToken: accessToken, headers: participantHeader)
     }
 
     func workSnapshot(accessToken: String) async throws -> MobileNotificationSnapshot {
@@ -302,6 +316,32 @@ final class MobileNotificationStore: ObservableObject {
         }
     }
 
+    @Published private(set) var engineeringSnapshot: MobileNotificationSnapshot?
+    @Published private(set) var engineeringFailure: String?
+    func loadEngineering() async {
+        do {
+            let result = try await api.engineeringSnapshot(accessToken: try await accessTokenProvider())
+            guard result.engineeringChannelsVersion == 1 else { throw MobileAPIError.invalidServerResponse }
+            engineeringSnapshot = result
+            engineeringFailure = nil
+        } catch { engineeringFailure = LegendLocalized("Engineering notifications could not be refreshed. Please retry.") }
+    }
+
+    func dismissEngineering(_ id: UUID) async {
+        do {
+            try await api.dismissEngineering(id: id, accessToken: try await accessTokenProvider())
+            engineeringFailure = nil
+            await loadEngineering()
+            await sync()
+        } catch { engineeringFailure = LegendLocalized("Notification could not be cleared. Please retry.") }
+    }
+
+    func unreadCount(channel: String) -> Int {
+        if let counts = snapshot?.channelUnreadCounts { return counts[channel] ?? 0 }
+        return snapshot?.notifications.filter { !$0.isRead && !$0.isCleared &&
+            (channel == "engineering" ? $0.kind == "Engineering" : $0.channel == channel) }.count ?? 0
+    }
+
     func loadWorkNotifications() async {
         guard !isLoadingWorkNotifications else { return }
         isLoadingWorkNotifications = true
@@ -362,10 +402,13 @@ final class MobileNotificationStore: ObservableObject {
                 }
                 self.snapshot = snapshot
             }
+            await sync()
+            if engineeringSnapshot?.notifications.contains(where: { $0.id == notificationID }) == true { await loadEngineering() }
             if workSnapshot?.notifications.contains(where: { $0.id == notificationID }) == true {
                 await loadWorkNotifications()
             }
         } catch {
+            if engineeringSnapshot?.notifications.contains(where: { $0.id == notificationID }) == true { engineeringFailure = LegendLocalized("Notification could not be marked read. Please retry.") }
             diagnostics.record(category: .networking, summary: "Notification could not be marked read.")
         }
     }
@@ -467,6 +510,7 @@ final class MobileNotificationStore: ObservableObject {
             unreadCount: unreadCount,
             revision: revision,
             updatedUTC: Date()))
+        Task { await sync() }
     }
 
     private func apply(_ next: MobileNotificationSnapshot) {
@@ -477,7 +521,7 @@ final class MobileNotificationStore: ObservableObject {
     private func apply(badge: MobileNotificationUnreadCount) {
         if let current = snapshot?.badge, badge.revision < current.revision { return }
         if var snapshot {
-            snapshot = MobileNotificationSnapshot(badge: badge, notifications: snapshot.notifications, workChannelsVersion: snapshot.workChannelsVersion)
+            snapshot = MobileNotificationSnapshot(badge: badge, notifications: snapshot.notifications, workChannelsVersion: snapshot.workChannelsVersion, engineeringChannelsVersion: snapshot.engineeringChannelsVersion, channelUnreadCounts: snapshot.channelUnreadCounts)
             self.snapshot = snapshot
         } else {
             snapshot = MobileNotificationSnapshot(badge: badge, notifications: [])

@@ -41,6 +41,7 @@ extension Notification.Name {
 
 enum LegendPushNotificationNavigation {
     private static let pendingKey = "legend.push.pending-notifications"
+    private static let engineeringKey = "legend.push.pending-engineering"
     private static let workKey = "legend.push.pending-work"
     private static let conversationKey = "legend.push.pending-conversation"
 
@@ -56,11 +57,19 @@ enum LegendPushNotificationNavigation {
         return value
     }
 
-    static func requestNotifications(work: Bool = false) {
+    static func requestNotifications(work: Bool = false, engineering: Bool = false) {
+        UserDefaults.standard.set(engineering, forKey: engineeringKey)
         UserDefaults.standard.set(work, forKey: workKey)
         UserDefaults.standard.removeObject(forKey: conversationKey)
         UserDefaults.standard.set(true, forKey: pendingKey)
         NotificationCenter.default.post(name: .legendOpenNotifications, object: nil)
+    }
+
+    static func consumePendingEngineering() -> Bool {
+        guard UserDefaults.standard.bool(forKey: pendingKey), UserDefaults.standard.bool(forKey: engineeringKey) else { return false }
+        UserDefaults.standard.removeObject(forKey: engineeringKey)
+        UserDefaults.standard.removeObject(forKey: pendingKey)
+        return true
     }
 
     static func consumePendingWork() -> Bool {
@@ -147,7 +156,7 @@ final class LegendPushNotificationDelegate: NSObject, UIApplicationDelegate, UNU
         if let conversationID, let id = UUID(uuidString: conversationID) {
             LegendPushNotificationNavigation.requestConversation(id)
         } else {
-            LegendPushNotificationNavigation.requestNotifications(work: payload["channel"] as? String == "work")
+            LegendPushNotificationNavigation.requestNotifications(work: payload["channel"] as? String == "work", engineering: payload["channel"] as? String == "engineering" || payload["kind"] as? String == "Engineering")
         }
     }
 

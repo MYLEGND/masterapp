@@ -145,6 +145,8 @@ interface LegendApi {
     @GET("api/v1/mobile/work/orders") suspend fun workOrders(@Header("X-Legend-Participant-Type") role: String): Response<List<MobileWorkOrder>>
     @PUT("api/v1/mobile/work/orders/{id}/fulfillment") suspend fun fulfillOrder(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String, @Body input: MobileWorkFulfillmentInput): Response<Unit>
     @GET("api/v1/mobile/notifications") suspend fun notifications(@Header("X-Legend-Participant-Type") participantType: String): Response<NotificationSnapshot>
+    @DELETE("api/v1/mobile/notifications/engineering/{id}") suspend fun dismissEngineering(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<Unit>
+    @GET("api/v1/mobile/notifications?channel=engineering&take=100") suspend fun engineeringNotifications(@Header("X-Legend-Participant-Type") role: String): Response<NotificationSnapshot>
     @GET("api/v1/mobile/notifications?channel=work&take=100") suspend fun workNotifications(@Header("X-Legend-Participant-Type") role: String): Response<NotificationSnapshot>
     @POST("api/v1/mobile/notifications/{id}/read") suspend fun markNotificationRead(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String): Response<NotificationBadge>
     @POST("api/v1/mobile/notifications/clear-badges") suspend fun clearNotificationBadges(@Header("X-Legend-Participant-Type") participantType: String): Response<NotificationBadge>
@@ -169,7 +171,7 @@ interface LegendApi {
 @Serializable data class FcmDeviceTokenRequest(val deviceToken: String, val supportsCommunicationNotifications: Boolean)
 @Serializable data class SocialViewRequest(val watchDurationSeconds: Double? = null, val watchCompletionPercentage: Double? = null, val storyInteractionType: String? = null)
 @Serializable data class SocialProfileVisitRequest(val targetUserId: String, val targetParticipantType: String, val sourcePostId: String? = null)
-@Serializable data class NotificationSnapshot(val badge: NotificationBadge, val notifications: List<NotificationItem> = emptyList(), val workChannelsVersion: Int? = null)
+@Serializable data class NotificationSnapshot(val badge: NotificationBadge, val notifications: List<NotificationItem> = emptyList(), val workChannelsVersion: Int? = null, val engineeringChannelsVersion: Int? = null, val channelUnreadCounts: Map<String, Int>? = null)
 @Serializable data class NotificationBadge(val unreadCount: Int, val revision: Long, val updatedUtc: String)
 @Serializable data class NotificationItem(val id: String, val kind: String, val title: String, val detail: String, val conversationId: String? = null, val occurredUtc: String, val isRead: Boolean, val isCleared: Boolean, val channel: String = "personal")
 @Serializable data class JourneyDashboard(val profile: JourneyProfile? = null, val preferences: JourneyPreferences? = null, val recommendations: List<JourneyRecommendation> = emptyList(), val connections: List<JourneyConnection> = emptyList(), val requests: List<JourneyConnection> = emptyList(), val taxonomy: JourneyTaxonomy = JourneyTaxonomy())

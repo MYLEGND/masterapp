@@ -208,6 +208,8 @@ class SocialRepository(private val client: LegendApiClient) {
     suspend fun joinPromotedGroup(role: String, id: String) = request { client.api.joinPromotedGroup(role, id).legendBody() }
 }
 class NotificationRepository(private val client: LegendApiClient) {
+    suspend fun dismissEngineering(role: String, id: String) = request { client.api.dismissEngineering(role, id).legendBody() }
+    suspend fun engineeringNotifications(role: String) = request { client.api.engineeringNotifications(role).legendBody() }
     suspend fun workNotifications(role: String) = request { client.api.workNotifications(role).legendBody() }
     suspend fun workOrders(role: String) = request { client.api.workOrders(role).legendBody() }
     suspend fun fulfillOrder(role: String, order: MobileWorkOrder, status: String, carrier: String, tracking: String) = request {

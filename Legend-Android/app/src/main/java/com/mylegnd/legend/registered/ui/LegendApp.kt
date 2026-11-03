@@ -614,7 +614,7 @@ private val LocalLegendOpenSharedPost = staticCompositionLocalOf<(String) -> Uni
 private val LocalLegendSocialShare = staticCompositionLocalOf<(SocialPost) -> Unit> { {} }
 
 /** A shell event, not a second home controller. Home remains the owner of creation. */
-private enum class LegendHomeChromeAction { CREATE, NOTIFICATIONS, WORK }
+private enum class LegendHomeChromeAction { CREATE, NOTIFICATIONS, WORK, ENGINEERING }
 
 @Composable
 private fun LegendPillNavigation(
@@ -982,7 +982,7 @@ private fun AuthenticatedShell(
         }
         if (destination.openNotifications) {
             tab = LegendTab.HOME
-            homeChromeAction = if (destination.openWork) LegendHomeChromeAction.WORK else LegendHomeChromeAction.NOTIFICATIONS
+            homeChromeAction = if (destination.openEngineering) LegendHomeChromeAction.ENGINEERING else if (destination.openWork) LegendHomeChromeAction.WORK else LegendHomeChromeAction.NOTIFICATIONS
         }
         container.notificationNavigation.markHandled(destination)
     }
@@ -1056,6 +1056,7 @@ private fun AuthenticatedShell(
                     mediaRepository = container.authenticatedMediaRepository,
                     participantType = participantType,
                     currentActor = session.actor,
+                    isFounder = session.capabilities.isFounder,
                     chromeAction = homeChromeAction,
                     onChromeActionHandled = { homeChromeAction = null },
                     openSocial = { tab = LegendTab.SOCIAL },
@@ -1751,6 +1752,7 @@ private fun HomeScreen(
     mediaRepository: AuthenticatedMediaRepository,
     participantType: String,
     currentActor: MobileActor,
+    isFounder: Boolean,
     chromeAction: LegendHomeChromeAction?,
     onChromeActionHandled: () -> Unit,
     openSocial: () -> Unit,
@@ -1759,6 +1761,7 @@ private fun HomeScreen(
     val homeState by homeViewModel.state.collectAsStateWithLifecycle()
     val publication by socialViewModel.publication.collectAsStateWithLifecycle()
     val socialState by socialViewModel.state.collectAsStateWithLifecycle()
+    val workReadFailure by notificationsViewModel.workReadFailure.collectAsStateWithLifecycle()
     val workLedgerState by notificationsViewModel.workState.collectAsStateWithLifecycle()
     val ledgerState by notificationsViewModel.state.collectAsStateWithLifecycle()
     val ordersState by notificationsViewModel.orders.collectAsStateWithLifecycle()
@@ -1776,14 +1779,19 @@ private fun HomeScreen(
     var activityOpen by remember { mutableStateOf(false) }
     var notificationsOpen by remember { mutableStateOf(false) }
     var workNotificationsOpen by remember { mutableStateOf(false) }
+    var engineeringOpen by remember { mutableStateOf(false) }
+    val engineeringNotices by notificationsViewModel.engineeringNotices.collectAsStateWithLifecycle()
+    val engineeringNoticeFailure by notificationsViewModel.engineeringNoticeFailure.collectAsStateWithLifecycle()
     val notificationPreferences = remember { context.getSharedPreferences("legend-notification-viewed", Context.MODE_PRIVATE) }
     val notificationKey = "${currentActor.identity.participantType}:${currentActor.identity.userId}"
+    var plannerViewedIds by remember(notificationKey) { mutableStateOf(notificationPreferences.getStringSet(notificationKey + ":planner", emptySet()).orEmpty().toSet()) }
     var viewedAt by remember(notificationKey) { mutableStateOf(notificationPreferences.getString(notificationKey, "").orEmpty()) }
 
 
     LaunchedEffect(chromeAction) {
         when (chromeAction) {
             LegendHomeChromeAction.CREATE -> creating = true
+            LegendHomeChromeAction.ENGINEERING -> { if (isFounder) { notificationsViewModel.loadActivity(); notificationsViewModel.load(); notificationsViewModel.loadEngineeringNotices(); engineeringOpen = true } }
             LegendHomeChromeAction.WORK -> { notificationsViewModel.loadWorkNotifications(); notificationsViewModel.loadOrders(); workNotificationsOpen = true }
             LegendHomeChromeAction.NOTIFICATIONS -> {
                 notificationsViewModel.loadActivity()
@@ -1819,14 +1827,13 @@ private fun HomeScreen(
                 LegendInAppActivityProjection.make(network, emptyList()),
                 viewedAt,
             )
-            val viewedInstant = runCatching { java.time.Instant.parse(viewedAt) }.getOrDefault(java.time.Instant.MIN)
-            val engineeringUnread = engineeringItems.count {
-                runCatching { java.time.Instant.parse(it.updatedUtc) }.getOrDefault(java.time.Instant.MIN) > viewedInstant
-            }
-            val personalUnread = (ledgerState as? LoadState.Data)?.value?.notifications.orEmpty().count {
+            val personalUnread = (ledgerState as? LoadState.Data)?.value?.channelUnreadCounts?.get("activity") ?: (ledgerState as? LoadState.Data)?.value?.notifications.orEmpty().count {
                 !it.isRead && it.channel != "work" && it.conversationId == null && it.kind != "Engineering"
             }
-            val notificationCount = genericUnread + engineeringUnread + personalUnread
+            val notificationCount = genericUnread + personalUnread
+            val ledger = (ledgerState as? LoadState.Data)?.value
+            val workUnread = ledger?.channelUnreadCounts?.get("work") ?: ledger?.notifications.orEmpty().count { it.channel == "work" && !it.isRead }
+            val engineeringNoticeUnread = ledger?.channelUnreadCounts?.get("engineering") ?: ledger?.notifications.orEmpty().count { it.kind == "Engineering" && !it.isRead }
             val activityCount = planner.entries.size
             LazyColumn(
                 modifier = Modifier.fillMaxSize().background(LegendColors.Canvas),
@@ -1850,14 +1857,16 @@ private fun HomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        LegendHomeActivityPill(
-                            count = activityCount,
-                            hasActivity = activityCount > 0,
-                            openActivity = { activityOpen = true },
-                            modifier = Modifier.weight(1f),
-                        )
-                        IconButton(onClick = { notificationsViewModel.loadWorkNotifications(); notificationsViewModel.loadOrders(); workNotificationsOpen = true }) {
-                            Icon(Icons.Default.Work, contentDescription = legendLocalized("Work notifications"), tint = LegendColors.Navy)
+                        LegendHomeInboxButton(Icons.Default.Checklist, "Today's Activity", planner.entries.count { it.id.toString() !in plannerViewedIds }) {
+                            plannerViewedIds = planner.entries.map { it.id.toString() }.toSet()
+                            notificationPreferences.edit().putStringSet(notificationKey + ":planner", plannerViewedIds).apply()
+                            activityOpen = true
+                        }
+                        LegendHomeInboxButton(Icons.Default.Work, "Work notifications", workUnread) {
+                            notificationsViewModel.loadWorkNotifications(); notificationsViewModel.loadOrders(); workNotificationsOpen = true
+                        }
+                        if (isFounder) LegendHomeInboxButton(Icons.Default.Build, "Engineering notifications", engineeringNoticeUnread) {
+                            notificationsViewModel.loadActivity(); notificationsViewModel.load(); notificationsViewModel.loadEngineeringNotices(); engineeringOpen = true
                         }
                         LegendNotificationButton(
                             notificationCount = notificationCount,
@@ -1990,6 +1999,7 @@ private fun HomeScreen(
     if (workNotificationsOpen) {
         NotificationInboxSheet(
             state = workLedgerState,
+            readFailure = workReadFailure,
             orders = ordersState,
             openOrder = { selectedWorkOrder = it; workNotificationsOpen = false },
             retryOrders = { notificationsViewModel.loadOrders() },
@@ -2000,7 +2010,7 @@ private fun HomeScreen(
             } },
         )
     }
-    if (notificationsOpen) {
+    if (notificationsOpen || engineeringOpen) {
         LegendHomeNotificationsSheet(
             socialState = socialState,
             accountState = accountActivity,
@@ -2009,9 +2019,14 @@ private fun HomeScreen(
             social = socialViewModel,
             mediaRepository = mediaRepository,
             participantType = participantType,
-            dismiss = { notificationsOpen = false },
-            retry = { notificationsViewModel.loadActivity(); socialViewModel.load() },
+            dismiss = { notificationsOpen = false; engineeringOpen = false },
+            retry = { notificationsViewModel.loadActivity(); if (engineeringOpen) notificationsViewModel.loadEngineeringNotices() else socialViewModel.load() },
             decideEngineering = notificationsViewModel::decideEngineering,
+            engineeringOnly = engineeringOpen,
+            ledger = (engineeringNotices as? LoadState.Data)?.value,
+            noticeFailure = engineeringNoticeFailure ?: (engineeringNotices as? LoadState.Error)?.message,
+            readNotice = { notificationsViewModel.markRead(it) {} },
+            clearNotice = notificationsViewModel::dismissEngineeringNotice,
         )
     }
 }
@@ -2526,83 +2541,20 @@ private fun LegendHomeHero(home: MobileHomeResponse, openScripture: () -> Unit) 
 }
 
 @Composable
-private fun LegendHomeActivityPill(
-    count: Int,
-    hasActivity: Boolean,
-    openActivity: () -> Unit,
-    modifier: Modifier = Modifier,
-) = Card(
-    onClick = openActivity,
-    modifier = modifier
-        .border(
-            LegendSpacing.Hairline,
-            LegendColors.Gold.copy(alpha = 0.58f),
-            CircleShape,
-        ),
-    shape = CircleShape,
-    colors = CardDefaults.cardColors(containerColor = LegendColors.Navy),
-    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(LegendGradients.Hero)
-            .padding(horizontal = LegendSpacing.CardContent, vertical = LegendSpacing.Xs),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            Icons.Default.Checklist,
-            contentDescription = null,
-            tint = LegendColors.GoldBright,
-            modifier = Modifier
-                .size(LegendSize.AvatarMedium)
-                .border(LegendSpacing.Hairline, LegendColors.GoldBright.copy(alpha = 0.22f), CircleShape)
-                .padding(LegendSpacing.Xs),
-        )
-        Spacer(Modifier.width(LegendSpacing.Sm))
-        Column(Modifier.weight(1f)) {
-            Text(legendLocalized("TODAY'S ACTIVITY"), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
-            Text(if (hasActivity) legendLocalized("Your live LEGEND activity") else legendLocalized("Your day is clear"), style = LegendTypography.Body, color = LegendColors.OnNavy.copy(alpha = 0.84f))
+private fun LegendHomeInboxButton(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, count: Int, open: () -> Unit) {
+    Box {
+        IconButton(onClick = open, modifier = Modifier.size(LegendSize.MinimumTapTarget).clip(CircleShape).background(LegendColors.Navy)) {
+            Icon(icon, contentDescription = legendLocalized(title) + ", $count " + legendLocalized("unopened"), tint = LegendColors.OnNavy)
         }
-        Text(count.toString(), style = LegendTypography.Title, color = LegendColors.GoldBright)
-        Spacer(Modifier.width(LegendSpacing.Xs))
-        Icon(Icons.Default.ChevronRight, contentDescription = legendLocalized("Open today's activity", "accessibility copy"), tint = LegendColors.OnNavy.copy(alpha = 0.70f))
+        if (count > 0) Text(if (count > 99) "99+" else count.toString(), style = LegendTypography.Eyebrow, color = LegendColors.OnNavy,
+            modifier = Modifier.align(Alignment.TopEnd).offset(x = LegendSpacing.Xs, y = -LegendSpacing.Micro)
+                .background(LegendColors.Error, CircleShape).padding(horizontal = LegendSpacing.Xs, vertical = LegendSpacing.Micro))
     }
 }
 
 @Composable
-private fun LegendNotificationButton(
-    notificationCount: Int,
-    openNotifications: () -> Unit,
-) {
-    Box {
-        IconButton(
-            onClick = openNotifications,
-            modifier = Modifier
-                .size(LegendSize.MinimumTapTarget)
-                .clip(CircleShape)
-                .background(LegendColors.Navy),
-        ) {
-            Icon(
-                Icons.Default.FavoriteBorder,
-                contentDescription = legendLocalized("Open notifications, {count} recent interactions", LegendLocalizationRuntime.AccessibilityContext, mapOf("count" to notificationCount)),
-                tint = LegendColors.OnNavy,
-            )
-        }
-        if (notificationCount > 0) {
-            Text(
-                text = notificationCount.coerceAtMost(99).toString(),
-                style = LegendTypography.Eyebrow,
-                color = LegendColors.OnNavy,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = LegendSpacing.Xs, y = -LegendSpacing.Micro)
-                    .background(LegendColors.Error, CircleShape)
-                    .padding(horizontal = LegendSpacing.Xs, vertical = LegendSpacing.Micro),
-            )
-        }
-    }
-}
+private fun LegendNotificationButton(notificationCount: Int, openNotifications: () -> Unit) =
+    LegendHomeInboxButton(Icons.Default.FavoriteBorder, "Notifications", notificationCount, openNotifications)
 
 @Composable
 private fun LegendStoryRail(
@@ -2805,6 +2757,7 @@ private fun DailyScriptureSheet(scripture: MobileDailyScripture, dismiss: () -> 
 @Composable
 private fun NotificationInboxSheet(
     state: LoadState<NotificationSnapshot>,
+    readFailure: String?,
     orders: LoadState<List<MobileWorkOrder>>,
     openOrder: (MobileWorkOrder) -> Unit,
     retryOrders: () -> Unit,
@@ -2812,6 +2765,7 @@ private fun NotificationInboxSheet(
     retry: () -> Unit,
     open: (NotificationItem) -> Unit,
 ) = ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Surface) {
+    if (readFailure != null) Text(legendLocalized(readFailure), color = LegendColors.Error, modifier = Modifier.padding(LegendSpacing.Sm))
     when (state) {
         LoadState.Idle,
         LoadState.Loading -> Box(Modifier.fillMaxWidth().height(LegendSize.AvatarHero), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = LegendColors.Navy) }
@@ -8660,15 +8614,20 @@ private fun LegendHomeNotificationsSheet(
     dismiss: () -> Unit,
     retry: () -> Unit,
     decideEngineering: (FounderEngineeringActionItem, String) -> Unit,
+    engineeringOnly: Boolean = false,
+    ledger: NotificationSnapshot? = null,
+    noticeFailure: String? = null,
+    readNotice: (String) -> Unit = {},
+    clearNotice: (String) -> Unit = {},
 ) {
     val openProfile = LocalLegendOpenProfile.current
     val snapshot = (socialState as? LoadState.Data<SocialSnapshot>)?.value
-    val entries = LegendInAppActivityProjection.make(
+    val entries = if (engineeringOnly) emptyList() else LegendInAppActivityProjection.make(
         snapshot?.activity.orEmpty(),
         (accountState as? LoadState.Data<List<MessagingActivityNotification>>)?.value.orEmpty(),
     )
     val engineeringItems =
-        (engineeringState as? LoadState.Data<List<FounderEngineeringActionItem>>)?.value.orEmpty()
+        if (engineeringOnly) (engineeringState as? LoadState.Data<List<FounderEngineeringActionItem>>)?.value.orEmpty() else emptyList()
     var selectedPost by remember { mutableStateOf<SocialPost?>(null) }
     var denyCandidate by remember { mutableStateOf<FounderEngineeringActionItem?>(null) }
 
@@ -8684,9 +8643,9 @@ private fun LegendHomeNotificationsSheet(
                         Modifier.fillMaxWidth().padding(LegendSpacing.Lg),
                         verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
                     ) {
-                        Text(legendLocalized("Notifications"), style = LegendTypography.Title, color = LegendColors.OnNavy)
+                        Text(legendLocalized(if (engineeringOnly) "Engineering" else "Notifications"), style = LegendTypography.Title, color = LegendColors.OnNavy)
                         Text(
-                            legendLocalized("Founder engineering actions, account updates, follows, reactions, comments, and reposts."),
+                            legendLocalized(if (engineeringOnly) "Founder actions and engineering updates." else "Account updates, follows, reactions, comments, and reposts."),
                             style = LegendTypography.Supporting,
                             color = LegendColors.OnNavy.copy(alpha = 0.78f),
                         )
@@ -8695,6 +8654,24 @@ private fun LegendHomeNotificationsSheet(
                 }
             }
 
+            if (engineeringOnly) {
+                item { Text(legendLocalized("Clearing a notification preserves the engineering record. Open actions remain until resolved by Engineering."), style = LegendTypography.Caption, color = LegendColors.TextSecondary) }
+                if (ledger?.engineeringChannelsVersion != 1) item { Text(legendLocalized("Engineering notification controls require the server update."), color = LegendColors.TextSecondary) }
+                if (noticeFailure != null) item { Text(legendLocalized(noticeFailure), color = LegendColors.Error) }
+                items(ledger?.notifications.orEmpty().filter { it.kind == "Engineering" }, key = { "notice:" + it.id }) { notice ->
+                    Surface(color = LegendColors.SurfaceElevated, shape = LegendShapes.Control) {
+                        Column(Modifier.fillMaxWidth().padding(LegendSpacing.Sm), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+                            Text(notice.title, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
+                            Text(notice.detail, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                            Row {
+                                if (!notice.isRead) TextButton(onClick = { readNotice(notice.id) }) { Text(legendLocalized("Mark read")) }
+                                Spacer(Modifier.weight(1f))
+                                TextButton(onClick = { clearNotice(notice.id) }, enabled = ledger?.engineeringChannelsVersion == 1) { Text(legendLocalized("Clear notification")) }
+                            }
+                        }
+                    }
+                }
+            }
             if (engineeringItems.isNotEmpty()) {
                 item {
                     Text(
@@ -8793,10 +8770,10 @@ private fun LegendHomeNotificationsSheet(
                 }
             }
 
-            if (socialState is LoadState.Error || accountState is LoadState.Error || engineeringState is LoadState.Error) {
+            if (if (engineeringOnly) engineeringState is LoadState.Error else socialState is LoadState.Error || accountState is LoadState.Error) {
                 item { LegendInlineRetry("Some activity could not be loaded.", retry) }
             }
-            if (socialState is LoadState.Loading || accountState is LoadState.Loading || engineeringState is LoadState.Loading) {
+            if (if (engineeringOnly) engineeringState is LoadState.Loading else socialState is LoadState.Loading || accountState is LoadState.Loading) {
                 item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             }
             if (entries.isEmpty() && engineeringItems.isEmpty() &&

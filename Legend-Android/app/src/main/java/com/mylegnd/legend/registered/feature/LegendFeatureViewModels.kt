@@ -1151,14 +1151,44 @@ class NotificationsViewModel(
             updatedUtc = event.occurredUtc ?: currentBadge?.updatedUtc ?: Instant.now().toString(),
         )
         _state.value = LoadState.Data((current ?: NotificationSnapshot(nextBadge)).copy(badge = nextBadge))
+        load()
     }
     fun markRead(id: String, open: (NotificationItem) -> Unit) = viewModelScope.launch {
-        val item = (_workState.value as? LoadState.Data)?.value?.notifications?.firstOrNull { it.id == id }
+        val item = (_engineeringNotices.value as? LoadState.Data)?.value?.notifications?.firstOrNull { it.id == id }
+            ?: (_workState.value as? LoadState.Data)?.value?.notifications?.firstOrNull { it.id == id }
             ?: (_state.value as? LoadState.Data)?.value?.notifications?.firstOrNull { it.id == id }
-        repository.markRead(role, id)
+        val result = repository.markRead(role, id)
+        if (result is LoadState.Error) {
+            if (item?.kind == "Engineering") _engineeringNoticeFailure.value = "Notification could not be marked read. Please retry."
+            else _workReadFailure.value = "Notification could not be marked read. Please retry."
+            return@launch
+        }
+        if (item?.kind == "Engineering") _engineeringNoticeFailure.value = null else _workReadFailure.value = null
+        if (isFounder) loadEngineeringNotices()
         load()
         loadWorkNotifications()
         item?.let(open)
+    }
+    private val _workReadFailure = MutableStateFlow<String?>(null)
+    val workReadFailure = _workReadFailure.asStateFlow()
+    private val _engineeringNotices = MutableStateFlow<LoadState<NotificationSnapshot>>(LoadState.Idle)
+    val engineeringNotices = _engineeringNotices.asStateFlow()
+    fun loadEngineeringNotices() = viewModelScope.launch {
+        if (!isFounder) return@launch
+        _engineeringNotices.value = LoadState.Loading
+        val result = repository.engineeringNotifications(role)
+        _engineeringNotices.value = if (result is LoadState.Data && result.value.engineeringChannelsVersion != 1)
+            LoadState.Error("Engineering notifications are temporarily unavailable.") else result
+    }
+    private val _engineeringNoticeFailure = MutableStateFlow<String?>(null)
+    val engineeringNoticeFailure = _engineeringNoticeFailure.asStateFlow()
+    fun dismissEngineeringNotice(id: String) = viewModelScope.launch {
+        if (!isFounder) return@launch
+        when (repository.dismissEngineering(role, id)) {
+            is LoadState.Data -> { _engineeringNoticeFailure.value = null; load(); loadEngineeringNotices() }
+            is LoadState.Error -> _engineeringNoticeFailure.value = "Notification could not be cleared. Please retry."
+            else -> Unit
+        }
     }
     fun clearBadges() = viewModelScope.launch { repository.clearBadges(role); load() }
 }
