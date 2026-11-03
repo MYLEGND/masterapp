@@ -111,7 +111,17 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         var automations = ReadSource("CommerceCore", "Services", "ParfaitCustomerAutomationService.cs");
         var hosted = ReadSource("CommerceCore", "Services", "ParfaitCustomerAutomationHostedService.cs");
 
-        Assert.DoesNotContain("_automations.CaptureCheckoutLead(", checkout, StringComparison.Ordinal);
+        // Explicit opt-in is captured by the scoped durable preparation callback;
+        // the retired unsolicited lead-capture endpoint remains gone below.
+        var preparation = checkout[checkout.IndexOf("paymentStart = _orders.BeginCheckoutPayment(", StringComparison.Ordinal)..];
+        preparation = preparation[..preparation.IndexOf("} : null);", StringComparison.Ordinal)];
+        Assert.Contains("request.MarketingEmailConsent ? order =>", preparation, StringComparison.Ordinal);
+        Assert.Contains("_automations.RecordMarketingOptIn(store.CommerceBusinessId, order", preparation, StringComparison.Ordinal);
+        Assert.Contains("_automations.CaptureCheckoutLead(store.CommerceBusinessId,", preparation, StringComparison.Ordinal);
+        Assert.Equal(1, checkout.Split("_automations.CaptureCheckoutLead(").Length - 1);
+        var orders = ReadSource("CommerceCore", "Services", "ParfaitOrderService.cs");
+        Assert.Contains("prepareBeforePayment?.Invoke(prepared)", orders, StringComparison.Ordinal);
+        Assert.Contains("preparationTransaction?.Commit()", orders, StringComparison.Ordinal);
         Assert.Contains("StatusCodes.Status410Gone", checkout, StringComparison.Ordinal);
         var completion = ReadSource("CommerceCore", "Services", "MerchantPaymentCompletionService.cs");
         Assert.Contains("_completion.CompleteLegacyAsync(paymentResult.PaymentRecord!.Id, store.CommerceBusinessId, ct)", checkout, StringComparison.Ordinal);

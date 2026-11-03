@@ -1878,9 +1878,48 @@ class ReleaseAdmissionScopeRegressionTests(unittest.TestCase):
         self.assertTrue(scope['selected']); self.assertTrue(scope['commerce'])
         self.assertFalse(scope['schema']); self.assertFalse(scope['routing'])
 
+class SourceIntegrationAdmissionTests(unittest.TestCase):
+    def test_selector_returns_no_resource_scope_and_never_falls_through(self):
+        policy = Mock(); policy.source_integration_requested.return_value = True
+        policy.source_integration.return_value = dict(phase='source-integration', productionEligible=False)
+        with patch.object(authority, '_fast_track_policy', return_value=policy), \
+             patch.object(authority, 'fast_track_source_admission', return_value={}) as admission, \
+             patch.object(authority, 'completed_resource_selection', side_effect=AssertionError('publication')), \
+             patch.object(authority, 'fast_track_effective_baseline', side_effect=AssertionError('recovery')):
+            result = authority.fast_track_selection('a'*40, 'b'*40)
+            self.assertFalse(result['productionEligible'])
+            self.assertEqual({'include': []}, result['matrix'])
+            self.assertFalse(any(result[key] for key in ('selected','commerce','schema','routing')))
+            admission.assert_called_once_with(allow_nonpublishing=True)
+            policy.source_integration.side_effect = ValueError('malformed marker')
+            with self.assertRaisesRegex(ValueError, 'malformed marker'):
+                authority.fast_track_selection('a'*40, 'b'*40)
+            policy.tool_promotion_requested.assert_not_called()
+
+    def test_historical_source_proof_cannot_be_used_as_tool_authority(self):
+        policy = Mock(); policy.source_integration_requested.return_value = True
+        policy.tool_promotion_requested.return_value = False
+        with patch.object(authority, '_fast_track_policy', return_value=policy):
+            self.assertIsNone(authority.fast_track_promotion_parent('owner/repo', {'head_sha':'b'*40}, 'fixture'))
+
+    def test_every_historical_attempt_requires_exact_nonentry_receipt(self):
+        policy = Mock(); policy.source_integration_requested.return_value = True
+        policy.read_request.return_value = {'sourceIntegration': {'baseRevision': 'a'*40}}
+        policy.source_integration.return_value = {'phase':'source-integration'}
+        run = dict(head_sha='b'*40, status='completed', conclusion='success', run_attempt=2)
+        with patch.object(authority, '_fast_track_policy', return_value=policy), \
+             patch.object(authority, 'is_fast_track_producer', return_value=True), \
+             patch.object(authority, 'fast_track_merged_source_proof', return_value={}), \
+             patch.object(authority, '_fast_track_nonpublishing_receipt', return_value=True) as receipt:
+            self.assertEqual('a'*40, authority.fast_track_source_integration_parent('owner/repo', run, 'fixture'))
+            self.assertEqual([1,2], [call.args[1]['run_attempt'] for call in receipt.call_args_list])
+            receipt.side_effect = ValueError('earlier attempt unproven')
+            with self.assertRaises(ValueError): authority.fast_track_source_integration_parent('owner/repo', run, 'fixture')
+
+
 class TrustedToolPromotionAdmissionTests(unittest.TestCase):
     def test_promotion_never_enters_recovery_or_provider(self):
-        policy=Mock();policy.completed_resource_baselines.return_value=None;policy.tool_promotion_requested.return_value=True
+        policy=Mock();policy.source_integration_requested.return_value=False;policy.completed_resource_baselines.return_value=None;policy.tool_promotion_requested.return_value=True
         policy.trusted_tool_promotion.return_value={'productionEligible':False}
         with patch.object(authority,'_fast_track_policy',return_value=policy),patch.object(authority,'fast_track_source_admission',return_value={}) as proof,patch.object(authority,'fast_track_effective_baseline',side_effect=AssertionError('recovery')),patch.object(authority,'fast_track_pending_routing',side_effect=AssertionError('routing')),patch.object(authority.subprocess,'check_output',side_effect=AssertionError('git diff')):
             result=authority.fast_track_selection('a'*40,'b'*40)
@@ -1890,18 +1929,18 @@ class TrustedToolPromotionAdmissionTests(unittest.TestCase):
         self.assertEqual({'include':[]},result['matrix'])
 
     def test_bad_marker_never_falls_back_to_application_release(self):
-        policy=Mock();policy.completed_resource_baselines.return_value=None;policy.tool_promotion_requested.return_value=True
+        policy=Mock();policy.source_integration_requested.return_value=False;policy.completed_resource_baselines.return_value=None;policy.tool_promotion_requested.return_value=True
         policy.trusted_tool_promotion.side_effect=ValueError('bad marker')
         with patch.object(authority,'_fast_track_policy',return_value=policy),patch.object(authority,'fast_track_source_admission',return_value={}),patch.object(authority,'fast_track_effective_baseline',side_effect=AssertionError('recovery')):
             with self.assertRaisesRegex(ValueError,'bad marker'):authority.fast_track_selection('a'*40,'b'*40)
 
-    def history(self, mutate=None, carry=False, recovery=False):
+    def history(self, mutate=None, carry=False, recovery=False, integration=False):
         before,head='a'*40,'b'*40
         run=dict(id=77,run_attempt=1,head_sha=head,status='completed',conclusion='success',
             head_branch=authority.FAST_TRACK_PR_BASE,event='push',
             path='.github/workflows/'+authority.FAST_TRACK_RELEASE_WORKFLOW,
             head_repository=dict(full_name='MYLEGND/masterapp'))
-        proof={'phase':'trusted-tool-promotion','baseRevision':before}
+        proof={'phase':'source-integration' if integration else 'trusted-tool-promotion','baseRevision':before}
         jobs=[dict(name=name,conclusion='success' if index==0 else 'skipped',run_id=77,run_attempt=1,head_sha=head) for index,name in enumerate(('Select exact affected applications','Admit exact validated fast-track source','Reconcile production schema before publication','Publish verified website routing','Affected App Deploy'))]
         if recovery:
             jobs.append(dict(name=authority.FAST_TRACK_RECOVERY_JOB, status='completed', conclusion='skipped',
@@ -1909,8 +1948,9 @@ class TrustedToolPromotionAdmissionTests(unittest.TestCase):
         artifact=dict(id=99,name='fast-track-admission-77-1',expired=False,workflow_run={'id':77})
         receipt=dict(proof,producingRun=77,producingAttempt=1)
         if mutate:mutate(run,jobs,artifact,receipt)
-        policy=Mock();policy.completed_resource_baselines.return_value=None;policy.tool_promotion_requested.side_effect=lambda sha:sha==head
-        policy.read_request.return_value={'trustedToolPromotion':{'baseRevision':before}}
+        policy=Mock();policy.source_integration_requested.return_value=integration;policy.completed_resource_baselines.return_value=None;policy.tool_promotion_requested.side_effect=lambda sha:not integration and sha==head
+        policy.read_request.return_value={('sourceIntegration' if integration else 'trustedToolPromotion'):{'baseRevision':before}}
+        policy.source_integration.return_value=proof
         policy.trusted_tool_promotion.return_value=proof
         def api(repo,path,token):
             if '/artifacts?' in path:return {'total_count':1,'artifacts':[artifact]}
@@ -1921,7 +1961,18 @@ class TrustedToolPromotionAdmissionTests(unittest.TestCase):
         def download(repo,runid,name,root,**kwargs):
             self.assertEqual(99,kwargs['artifact_id']);(root/'fast-track-admission.json').write_text(json.dumps(receipt))
         with patch.object(authority,'_release_history_source',return_value='jobs:\n  recover-fast-track:\n' if recovery else ''),patch.object(authority,'_fast_track_policy',return_value=policy),patch.object(authority,'is_fast_track_producer',return_value=True),patch.object(authority,'fast_track_merged_source_proof',return_value={}),patch.object(authority,'api_get',side_effect=api),patch.object(authority,'_download_run_artifact',side_effect=download),patch.object(authority,'fast_track_untriggered_repair_parent',return_value=None),patch.object(authority.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.dict(os.environ,{'GITHUB_REPOSITORY':'MYLEGND/masterapp','GH_TOKEN':'fixture'}):
+            if integration: return authority.fast_track_source_integration_parent('MYLEGND/masterapp',run,'fixture')
             return authority.fast_track_effective_baseline(head,'c'*40) if carry else authority.fast_track_promotion_parent('MYLEGND/masterapp',run,'fixture')
+
+    def test_source_integration_requires_unchanged_receipt_and_all_jobs_skipped(self):
+        self.assertEqual('a'*40, self.history(integration=True, recovery=True))
+        for mutation in (lambda r,j,a,p:p.update(phase='trusted-tool-promotion'),
+                         lambda r,j,a,p:a.update(expired=True),
+                         lambda r,j,a,p:j[-1].update(conclusion='success'),
+                         lambda r,j,a,p:j[2].update(conclusion='success'),
+                         lambda r,j,a,p:p.update(producingAttempt=2)):
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                self.history(mutation, integration=True, recovery=True)
 
     def test_successful_nonpublishing_promotion_preserves_original_recovery_baseline(self):
         self.assertEqual('a'*40,self.history(carry=True))
@@ -1948,7 +1999,7 @@ class TrustedToolPromotionAdmissionTests(unittest.TestCase):
         self.assertEqual(4,len(scope['matrix']['include']))
 
     def test_following_release_selects_recovered_application_and_routing(self):
-        policy=Mock();policy.completed_resource_baselines.return_value=None;policy.tool_promotion_requested.side_effect=lambda sha:sha=='b'*40
+        policy=Mock();policy.source_integration_requested.return_value=False;policy.completed_resource_baselines.return_value=None;policy.tool_promotion_requested.side_effect=lambda sha:sha=='b'*40
         policy.read_request.return_value={}
         normal=authority.fast_track_scope(['Infrastructure/Infrastructure.csproj'])
         policy.release_after_tool_promotion.return_value={'targets':[r['azure_app'] for r in normal['matrix']['include']],'cloudflareWebsiteRouting':True}
@@ -2636,7 +2687,7 @@ class FounderProtectSupersessionTests(unittest.TestCase):
         self.assertIsNone(self.invoke())
 
     def test_selector_uses_only_authorized_baseline_and_keeps_source_gate(self):
-        proof=self.invoke();policy=Mock();policy.completed_resource_baselines.return_value=None;policy.tool_promotion_requested.return_value=False
+        proof=self.invoke();policy=Mock();policy.source_integration_requested.return_value=False;policy.completed_resource_baselines.return_value=None;policy.tool_promotion_requested.return_value=False
         policy.read_request.return_value=self.request
         with patch.object(authority,'_fast_track_policy',return_value=policy), patch.object(authority,'fast_track_protect_supersession',return_value=proof), patch.object(authority,'fast_track_source_admission') as source, patch.object(authority,'fast_track_effective_baseline',side_effect=AssertionError('No old receipt search')) as old, patch.object(authority.subprocess,'check_output',return_value='Infrastructure/Infrastructure.csproj\n'), patch.object(authority,'attested_website_only_recovery_scope',return_value=False), patch.object(authority,'fast_track_pending_routing',return_value=False):
             result=authority.fast_track_selection(self.parent,self.revision)

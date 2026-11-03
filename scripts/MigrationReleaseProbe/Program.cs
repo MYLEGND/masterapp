@@ -777,7 +777,14 @@ internal static class TrustedCandidateContract
         var storeIndex = Array.FindIndex(current.Migrations, m => m.Id == CandidateContract.StoreContinuationMigration);
         if (storeIndex >= 0)
         {
-            Require(current.Migrations.Skip(storeIndex).Select(m => m.Id).SequenceEqual(CandidateContract.StoreMigrations));
+            // Exercise the reviewed historical Store segment, not later application migrations.
+            // The complete current contract remains subject to the generic checks below.
+            var storeEnd = storeIndex + CandidateContract.StoreMigrations.Length;
+            Require(current.Migrations.Skip(storeIndex).Take(CandidateContract.StoreMigrations.Length)
+                .Select(m => m.Id).SequenceEqual(CandidateContract.StoreMigrations));
+            current = complete with { Migrations = complete.Migrations[..storeEnd] };
+            if (complete.Migrations.Length > storeEnd)
+                Reject(() => Prove(current, complete)); // No implicit authority for a newer append.
             for (var start = storeIndex; start < current.Migrations.Length; start++)
             {
                 var prefix = current with { Migrations = current.Migrations[..start] };
@@ -798,6 +805,7 @@ internal static class TrustedCandidateContract
             }
             Console.WriteLine("LEGEND_STORE_APPEND_TEST:PROVEN");
         }
+        current = complete;
         var path = Path.Combine(Path.GetTempPath(), "legend-contract-test-" + Guid.NewGuid().ToString("N") + ".json");
         try
         {

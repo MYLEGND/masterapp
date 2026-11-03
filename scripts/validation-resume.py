@@ -7398,6 +7398,9 @@ def completed_resource_currentness(repository, revision, contract, proofs, token
                 latest[resource]=proof['reference']
             continue
         request = _fast_track_policy().read_request(run['head_sha'])
+        if _fast_track_policy().source_integration_requested(run['head_sha']):
+            fast_track_source_integration_parent(repository, run, token)
+            continue  # Authenticated nonentry; never advance resource baselines.
         if _fast_track_policy().tool_promotion_requested(run['head_sha']):
             if fast_track_promotion_parent(repository,run,token) is None:
                 raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PROMOTION_UNPROVEN')
@@ -7576,6 +7579,11 @@ def fast_track_selection(before, head):
     if not re.fullmatch('[a-f0-9]{40}', head) or not re.fullmatch('[a-f0-9]{40}', before):
         raise ValueError('FAST_TRACK_SELECTION_IDENTITY_UNPROVEN')
     policy = _fast_track_policy()
+    if policy.source_integration_requested(head):
+        admission = fast_track_source_admission(allow_nonpublishing=True)
+        proof = policy.source_integration(before, head, admission)
+        return dict(matrix={'include': []}, selected=False, commerce=False, schema=False,
+            routing=False, impacts={}, baseline=before, productionEligible=False, promotion=proof)
     promotion = policy.tool_promotion_requested(head)
     transition = None
     if promotion:
@@ -7644,6 +7652,33 @@ def fast_track_promotion_parent(repository, run, token):
     before = request.get('trustedToolPromotion', {}).get('baseRevision')
     admission = fast_track_merged_source_proof(repository, revision, token)
     expected = policy.trusted_tool_promotion(before, revision, admission)
+    _fast_track_nonpublishing_receipt(repository, run, token, expected)
+    return before
+
+
+def fast_track_source_integration_parent(repository, run, token):
+    """Prove nonentry only; this is never tool-promotion or recovery authority."""
+    policy = _fast_track_policy()
+    revision = run.get('head_sha', '')
+    if (not policy.source_integration_requested(revision) or not is_fast_track_producer(repository, run)
+        or run.get('status') != 'completed' or run.get('conclusion') != 'success'
+        or type(run.get('run_attempt')) is not int or not 1 <= run['run_attempt'] <= 100):
+        raise ValueError('SOURCE_INTEGRATION_HISTORY_UNPROVEN')
+    request = policy.read_request(revision)
+    marker = request.get('sourceIntegration')
+    before = marker.get('baseRevision') if isinstance(marker, dict) else None
+    expected = policy.source_integration(before, revision,
+        fast_track_merged_source_proof(repository, revision, token))
+    # A successful retry cannot hide an earlier entered/ambiguous attempt.
+    for attempt in range(1, run['run_attempt'] + 1):
+        _fast_track_nonpublishing_receipt(repository, dict(run, run_attempt=attempt), token, expected)
+    return before
+
+
+def _fast_track_nonpublishing_receipt(repository, run, token, expected):
+    """Shared exact artifact and job nonentry proof, without authority inheritance."""
+    import tempfile
+    revision = run['head_sha']
     name = f"fast-track-admission-{run['id']}-{run['run_attempt']}"
     inventory = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
     rows = inventory.get('artifacts')
@@ -7689,7 +7724,7 @@ def fast_track_promotion_parent(repository, run, token):
             value = json.loads(receipt.read_text())
     if value != dict(expected, producingRun=run['id'], producingAttempt=run['run_attempt']):
         raise ValueError('TRUSTED_TOOL_PROMOTION_RECEIPT_IDENTITY_CHANGED')
-    return before
+    return True
 
 
 def _live_identity_diagnostic(reason, *, run=None, expected_job=None, **details):
@@ -7891,6 +7926,8 @@ def assert_fast_track_release_execution(*, allow_nonpublishing=False, target=Non
     name, runner = _fast_track_job_name(env), env.get('RUNNER_NAME', '')
     if not runner:
         raise RuntimeError('FAST_TRACK_ACTIVE_JOB_UNPROVEN')
+    if not allow_nonpublishing and _fast_track_policy().source_integration_requested(revision):
+        raise RuntimeError('FAST_TRACK_SOURCE_INTEGRATION_NONPUBLISHING')
     if not allow_nonpublishing and _fast_track_policy().tool_promotion_requested(revision):
         raise RuntimeError('FAST_TRACK_TRUSTED_TOOL_PROMOTION_NONPUBLISHING')
     expected = dict(id=int(run_id), run_attempt=int(attempt), path='.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW,
