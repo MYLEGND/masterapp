@@ -316,7 +316,8 @@ test('internal pages and writes retain trusted website scope and bypass public r
         assert.equal(new URL(upstream.url).pathname, '/internal/commerce/products');
         assert.equal(upstream.headers.get('X-Legend-Original-Host'), host);
         assert.equal(upstream.headers.get('Cookie'), 'synthetic=session');
-        assert.equal(options.cf.cacheEverything, false);
+        assert.equal(options.cache, "no-store");
+        assert.equal(options.cf?.cacheTtl, undefined);
         if (method === 'POST') assert.equal(await upstream.text(), 'name=Synthetic');
         return new Response('private workspace', {headers: {'Set-Cookie': 'synthetic=new; Secure; HttpOnly'}});
       });
@@ -334,7 +335,8 @@ test('shared internal assets use the website origin on every Store host without 
         assert.equal(new URL(upstream.url).hostname, 'masterapp-protect.azurewebsites.net');
         assert.equal(new URL(upstream.url).pathname, path);
         assert.equal(upstream.headers.get('X-Legend-Original-Host'), host);
-        assert.equal(options.cf.cacheEverything, false);
+        assert.equal(options.cache, "no-store");
+        assert.equal(options.cf?.cacheTtl, undefined);
         return new Response('synthetic asset');
       });
       assert.equal(response.status, 200);

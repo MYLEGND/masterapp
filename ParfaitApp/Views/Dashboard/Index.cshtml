@@ -30,11 +30,7 @@
         <div class="pf-dashboard-head-actions">
             <a class="pf-secondary-action" href="@storeUrl" target="_blank" rel="noopener">View Store</a>
             <a class="pf-secondary-action" href="@analyticsUrl">Analytics</a>
-            @if (scopedManager)
-            {
-                <a class="pf-secondary-action" href="@analyticsUrl">Marketing + Meta</a>
-            }
-            else
+            @if (!scopedManager)
             {
                 <a class="pf-secondary-action" href="/internal/settings/business-profile">Business Profile</a>
             }

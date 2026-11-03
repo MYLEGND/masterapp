@@ -178,6 +178,35 @@ public sealed class CommerceManagementScopeTests
         Assert.Null(await service.ResolveManagementActorAsync(scope, actor, "analytics"));
     }
 
+    [Theory]
+    [InlineData("mylegnd.com", true, true)]
+    [InlineData("www.mylegnd.com", true, true)]
+    [InlineData("mylegnd.com", false, false)]
+    [InlineData("portal.mylegnd.com", true, false)]
+    public async Task Marketing_owner_uses_verified_public_host_behind_bridge(string publicHost, bool trusted, bool expected)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var secret = new string('s', 40);
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
+            ["WebsiteRouting:BridgeSecret"] = secret
+        }).Build();
+        var context = Request("masterapp-protect.azurewebsites.net");
+        context.Request.Headers[WebsiteRequestHostResolver.OriginalHostHeader] = publicHost;
+        context.Request.Headers[WebsiteRequestHostResolver.BridgeSecretHeader] = trusted ? secret : "invalid";
+        await using var services = new ServiceCollection().AddSingleton(db).BuildServiceProvider();
+        context.RequestServices = services;
+        var controller = new CommerceManagementController(null!, config, Service(db, config), null!, null!, null!, null!, null!, null!, null!, null!, null!)
+            { ControllerContext = new ControllerContext { HttpContext = context } };
+        var store = new CommerceStoreContext(Guid.NewGuid(), null, null, "legend", "legend-store", "Synthetic", "Store", "cart",
+            "Store", "", "/store", "/store/cart", "/store/checkout", "/store/success", "synthetic", false, "#c79931", null, null,
+            new WebsiteDesignTheme(), null, null);
+        var method = typeof(CommerceManagementController).GetMethod("ResolveMarketingOwnerAsync",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var task = (Task<Shared.Analytics.MarketingOwnerScope>)method.Invoke(controller, new object[] { store, System.Threading.CancellationToken.None })!;
+        if (expected) Assert.Equal(Shared.Analytics.MarketingOwnerScope.Founder, await task);
+        else await Assert.ThrowsAsync<InvalidOperationException>(async () => await task);
+    }
+
     private static (CommerceBusiness, WebsiteContentState) Seed(MasterAppDbContext db, string site, string key)
     {
         var business = new CommerceBusiness { Key = key, Status = "Active", IsActive = true };

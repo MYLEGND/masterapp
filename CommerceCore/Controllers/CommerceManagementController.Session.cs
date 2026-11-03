@@ -91,7 +91,7 @@ public sealed partial class CommerceManagementController
     {
         if (!Request.Path.StartsWithSegments("/internal")) return NotFound();
         Response.Headers["Cache-Control"] = "no-store";
-        return View("~/Views/Shared/StoreSession.cshtml", new StoreSessionForm("Continue to store", "/internal/login", businessKey, returnPath, null));
+        return View("~/Views/Shared/StoreSession.cshtml", new StoreSessionForm("Signing in to store", "/internal/login", businessKey, returnPath, null));
     }
 
     [HttpGet("session/complete")]
@@ -100,7 +100,7 @@ public sealed partial class CommerceManagementController
         if (!Request.Path.StartsWithSegments("/internal")) return NotFound();
         Response.Headers["Cache-Control"] = "no-store";
         Response.Headers["Referrer-Policy"] = "no-referrer";
-        return View("~/Views/Shared/StoreSession.cshtml", new StoreSessionForm("Open store workspace", "/internal/login/complete", businessKey, null, state));
+        return View("~/Views/Shared/StoreSession.cshtml", new StoreSessionForm("Opening store workspace", "/internal/login/complete", businessKey, null, state));
     }
 
     [HttpPost("session/login")]

@@ -144,7 +144,9 @@ export async function handleWebsiteRouting(request, env, fetchImpl = fetch) {
       (!isPlatformHost(hostname) || COMMERCE_PLATFORM_HOSTS.has(hostname))) {
     const bridged = buildBridgeRequest(request, env);
     if (bridged.error) return bridged.error;
-    const response = await fetchImpl(bridged.request, { cf: { cacheTtl: 0, cacheEverything: false } });
+    // A zero cacheTtl still forces edge caching and can discard Set-Cookie.
+    // Private Store forms and sessions must bypass storage entirely.
+    const response = await fetchImpl(bridged.request, { cache: "no-store" });
     const headers = new Headers(response.headers);
     headers.set("Cache-Control", "private, no-store, no-cache, must-revalidate");
     headers.set("Pragma", "no-cache");
