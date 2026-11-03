@@ -3,6 +3,7 @@ using Domain.Entities;
 using Domain.Enums;
 using Domain.Messaging;
 using Infrastructure.Data;
+using Infrastructure.Businesses;
 using Infrastructure.Mobile;
 using Microsoft.EntityFrameworkCore;
 
@@ -55,6 +56,7 @@ public sealed class MobileAgentCrmService(MasterAppDbContext db)
         var profiles = await db.ClientProfiles.AsNoTracking()
             .Where(p => db.AgentClients.Any(link => link.AgentUserId.ToLower() == owner &&
                 link.ClientUserId.ToLower() == p.ClientUserId.ToLower())).ToListAsync(ct);
+        var entityLabels = await BusinessIdentityProjection.LoadLabelsAsync(db, profiles.Select(p => p.Id), ct);
         var records = profiles.OrderByDescending(p => p.UpdatedUtc).Select(p =>
         {
             var isLead = ClientRecordClassification.IsLead(p.ClientUserId, p.CrmNotes, p.CrmStatus);
@@ -65,7 +67,7 @@ public sealed class MobileAgentCrmService(MasterAppDbContext db)
                 isLead ? ClientRecordClassification.ResolvePipelineStage(p.ClientUserId, p.CrmNotes) : p.CrmStatus ?? "Active",
                 "/Clients?clientUserId=" + Uri.EscapeDataString(p.ClientUserId),
                 isLead ? null : "/Clients/Edit?clientUserId=" + Uri.EscapeDataString(p.ClientUserId), SafeMeetingUrl(meta?.ZoomJoinUrl),
-                isLead ? AgentPortal.Controllers.LeadsController.CanonicalOutcomeCodes.Where(code => code != "Booked" && AgentPortal.Controllers.ClientsController.SupportsOutcome(code)).ToArray() : []) { FirstName = p.FirstName, LastName = p.LastName, Phone2 = meta?.Phone2, AddressLine = meta?.AddressLine, City = meta?.City, State = meta?.State, ZipCode = meta?.ZipCode, UpdatedUtc = DateTime.SpecifyKind(p.UpdatedUtc, DateTimeKind.Utc), CanRestore = restorable.Contains(p.Id), Archived = closed.Contains(p.Id.ToString()) || closed.Contains(p.ClientUserId) || CrmArchiveScope.ArchivedStatus(p.CrmStatus) };
+                isLead ? AgentPortal.Controllers.LeadsController.CanonicalOutcomeCodes.Where(code => code != "Booked" && AgentPortal.Controllers.ClientsController.SupportsOutcome(code)).ToArray() : []) { EntityName = entityLabels.GetValueOrDefault(p.Id), RecordType = ClientRecordClassification.Resolve(p.ClientUserId, p.CrmNotes), FirstName = p.FirstName, LastName = p.LastName, Phone2 = meta?.Phone2, AddressLine = meta?.AddressLine, City = meta?.City, State = meta?.State, ZipCode = meta?.ZipCode, UpdatedUtc = DateTime.SpecifyKind(p.UpdatedUtc, DateTimeKind.Utc), CanRestore = restorable.Contains(p.Id), Archived = closed.Contains(p.Id.ToString()) || closed.Contains(p.ClientUserId) || CrmArchiveScope.ArchivedStatus(p.CrmStatus) };
         }).ToList();
         var leads = await db.WorkstationLeadProfiles.AsNoTracking()
             .Where(l => l.AgentUserId.ToLower() == owner).ToListAsync(ct);
@@ -92,6 +94,8 @@ public sealed class MobileAgentCrmService(MasterAppDbContext db)
 public sealed record MobileCrmRecord(string Id, string Kind, string? ProfileId, string UserId, string? SourceLeadId,
     string DisplayName, string? Email, string? Phone, string Stage, string ManagementPath, string? AccountPath, string? MeetingUrl = null, IReadOnlyList<string>? AvailableOutcomes = null)
 {
+    public string? EntityName { get; init; }
+    public string? RecordType { get; init; }
     public string? FirstName { get; init; }
     public string? LastName { get; init; }
     public string? Phone2 { get; init; }

@@ -775,7 +775,7 @@ enum LegendInAppNotificationProjection {
         accountNotifications: [MobileActivityNotification]
     ) -> [LegendDailyActivityItem] {
         var notifications = accountNotifications
-            .filter { $0.kind.caseInsensitiveCompare("Engineering") != .orderedSame }
+            .filter { $0.channel != "work" && $0.kind.caseInsensitiveCompare("Engineering") != .orderedSame }
             .map {
             LegendDailyActivityItem(
                 id: "account:\($0.id.uuidString)",
@@ -819,6 +819,7 @@ final class LegendDailyActivityStore: ObservableObject {
     private let identity: LogicalParticipantIdentity
     private let social: MobileSocialStore
     private let messages: MessagingStore
+    private let notifications: MobileNotificationStore?
     private let calendar: Calendar
     private var cancellables = Set<AnyCancellable>()
 
@@ -826,12 +827,14 @@ final class LegendDailyActivityStore: ObservableObject {
         identity: LogicalParticipantIdentity,
         social: MobileSocialStore,
         messages: MessagingStore,
+        notifications: MobileNotificationStore? = nil,
         planner: LegendDevicePlannerStore? = nil,
         calendar: Calendar = .autoupdatingCurrent
     ) {
         self.identity = identity
         self.social = social
         self.messages = messages
+        self.notifications = notifications
         self.planner = planner ?? LegendDevicePlannerStore(
             storageScope: "\(identity.participantType.rawValue).\(identity.userID)")
         self.calendar = calendar
@@ -876,9 +879,25 @@ final class LegendDailyActivityStore: ObservableObject {
         return completed
     }
 
+    var plannerUnopenedCount: Int {
+        (today + pastDue).filter { !isCompleted($0) && !viewedIdentifiers.contains("planner:" + $0.id) }.count
+    }
+    func markPlannerViewed() {
+        var seen = viewedIdentifiers
+        seen.formUnion((today + pastDue).map { "planner:" + $0.id })
+        viewedIdentifiers = seen
+        rebuild()
+    }
+
     func markNotificationsViewed() {
-        let identifiers = inAppNotifications.map(\.id) +
-            engineeringActions.map { "engineering:\($0.workItemID.uuidString)" }
+        if let notifications {
+            let visible = Set(inAppNotifications.map(\.id))
+            let ids = notifications.snapshot?.notifications.filter {
+                !$0.isRead && $0.channel != "work" && visible.contains("account:\($0.id.uuidString)")
+            }.map(\.id) ?? []
+            Task { for id in ids { await notifications.markRead(id) } }
+        }
+        let identifiers = inAppNotifications.filter { $0.source != .account }.map(\.id)
         var seen = viewedIdentifiers
         seen.formUnion(identifiers)
         viewedIdentifiers = seen
@@ -955,6 +974,7 @@ final class LegendDailyActivityStore: ObservableObject {
     }
 
     private func observeSources() {
+        notifications?.$snapshot.receive(on: RunLoop.main).sink { [weak self] _ in self?.rebuild() }.store(in: &cancellables)
         social.$state
             .sink { [weak self] _ in self?.rebuild() }
             .store(in: &cancellables)
@@ -991,10 +1011,11 @@ final class LegendDailyActivityStore: ObservableObject {
                 : nil
         }
 
-        unreadBadgeCount = inAppNotifications.count {
-            !viewedIdentifiers.contains($0.id)
-        } + engineeringActions.count {
-            !viewedIdentifiers.contains("engineering:\($0.workItemID.uuidString)")
+        let accountUnread = notifications?.snapshot?.channelUnreadCounts?["activity"] ?? notifications?.snapshot?.notifications.filter {
+            $0.channel != "work" && !$0.isRead && $0.conversationID == nil && $0.kind != "Engineering"
+        }.count ?? 0
+        unreadBadgeCount = accountUnread + inAppNotifications.count {
+            $0.source != .account && !viewedIdentifiers.contains($0.id)
         }
     }
 
@@ -1026,113 +1047,26 @@ final class LegendDailyActivityStore: ObservableObject {
     }
 }
 
-struct LegendTodayActivitySummaryPill: View {
-    @ObservedObject var activity: LegendDailyActivityStore
-    let openActivity: () -> Void
-
+/// Shared Home notification entry, styled by the canonical Next design tokens.
+struct LegendHomeInboxButton: View {
+    let symbol: String
+    let title: String
+    let count: Int
+    let action: () -> Void
     var body: some View {
-        Button(action: openActivity) {
-            HStack(spacing: LegendNextSpacing.sm) {
-                Image(systemName: "checklist")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(LegendNextColor.goldBright)
-                    .frame(width: 40, height: 40)
-                    .background(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.15),
-                                LegendNextColor.gold.opacity(0.10)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        in: Circle()
-                    )
-                    .overlay {
-                        Circle()
-                            .stroke(
-                                LegendNextColor.goldBright.opacity(0.18),
-                                lineWidth: 1
-                            )
-                    }
-                    .shadow(
-                        color: LegendNextColor.midnight.opacity(0.20),
-                        radius: 5,
-                        y: 3
-                    )
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(LegendLocalized("TODAY'S ACTIVITY"))
-                        .font(LegendNextTypography.eyebrow)
-                        .tracking(0.8)
-                        .foregroundStyle(LegendNextColor.goldBright)
-
-                    categorySummary
-                }
-
-                Spacer(minLength: LegendNextSpacing.xs)
-
-                Text("\(activity.today.count)")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(LegendNextColor.goldBright)
-                    .accessibilityHidden(true)
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.white.opacity(0.70))
-            }
-            .padding(.horizontal, LegendNextSpacing.sm)
-            .padding(.vertical, LegendNextSpacing.xs)
-            .background(LegendNextGradient.hero, in: Capsule())
-            .overlay {
-                Capsule()
-                    .strokeBorder(LegendNextGradient.premiumStroke, lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(LegendLocalized("Open today's activity. {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (summary))]))
-    }
-
-    private var categorySummary: some View {
-        Group {
-            if activity.categoryCounts.isEmpty {
-                Text(LegendLocalized("Your day is clear"))
-                    .foregroundStyle(.white.opacity(0.84))
-            } else {
-                HStack(spacing: 5) {
-                    ForEach(
-                        Array(activity.categoryCounts.prefix(3).enumerated()),
-                        id: \.element.id
-                    ) { index, category in
-                        if index > 0 {
-                            Text("·")
-                                .foregroundStyle(.white.opacity(0.46))
-                        }
-
-                        Text("\(category.count)")
-                            .foregroundStyle(category.source.tone.color)
-
-                        Text(category.source.title.lowercased())
-                            .foregroundStyle(.white.opacity(0.84))
+        Button(action: action) {
+            Image(systemName: symbol)
+                .overlay(alignment: .topTrailing) {
+                    if count > 0 {
+                        Text(count > 99 ? "99+" : "\(count)")
+                            .font(.caption2.weight(.bold)).foregroundStyle(.white)
+                            .padding(5).background(LegendNextColor.danger, in: Capsule())
+                            .fixedSize().offset(x: 10, y: -10)
                     }
                 }
-            }
         }
-        .font(LegendNextTypography.supporting)
-        .lineLimit(1)
-        .minimumScaleFactor(0.82)
-        .allowsTightening(true)
-    }
-
-    private var summary: String {
-        guard !activity.categoryCounts.isEmpty else {
-            return LegendLocalized("Your day is clear")
-        }
-
-        return activity.categoryCounts.prefix(3).map {
-            "\($0.count) \($0.source.title.lowercased())"
-        }
-        .joined(separator: " · ")
+        .buttonStyle(LegendNextIconButtonStyle(tone: .navy))
+        .accessibilityLabel("\(title), \(count) " + LegendLocalized("unopened"))
     }
 }
 
@@ -1224,6 +1158,7 @@ struct LegendDailyActivitySheet: View {
         )
         .task {
             await activity.refreshDevicePlanner()
+            activity.markPlannerViewed()
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
@@ -1421,6 +1356,8 @@ struct LegendInAppNotificationsSheet: View {
     @ObservedObject var activity: LegendDailyActivityStore
     let currentIdentity: LogicalParticipantIdentity
     @ObservedObject var social: MobileSocialStore
+    var engineeringOnly = false
+    var notificationStore: MobileNotificationStore? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var selectedPost: MobileSocialPost?
     @State private var selectedProfile: LegendPublicProfileRoute?
@@ -1433,22 +1370,25 @@ struct LegendInAppNotificationsSheet: View {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
                         eyebrow: LegendLocalized("Your Legend"),
-                        title: LegendLocalized("Notifications"),
-                        detail: LegendLocalized("Founder engineering actions, account updates, follows, reactions, comments, and reposts."),
+                        title: LegendLocalized(engineeringOnly ? "Engineering" : "Notifications"),
+                        detail: LegendLocalized(engineeringOnly ? "Founder actions and engineering updates." : "Account updates, follows, reactions, comments, and reposts."),
                         dismiss: { dismiss() }
                     )
 
                     LegendNextSurface(style: .navy, padding: LegendNextSpacing.sm) {
                         Label(
-                            LegendLocalized("IN-APP ACTIVITY"),
-                            systemImage: "heart.fill"
+                            LegendLocalized(engineeringOnly ? "FOUNDER ENGINEERING" : "IN-APP ACTIVITY"),
+                            systemImage: engineeringOnly ? "wrench.and.screwdriver.fill" : "heart.fill"
                         )
                         .font(LegendNextTypography.eyebrow)
                         .tracking(0.8)
                         .foregroundStyle(LegendNextColor.goldBright)
                     }
 
-                    if !activity.engineeringActions.isEmpty {
+                    if engineeringOnly, let notificationStore {
+                        LegendEngineeringNotices(store: notificationStore)
+                    }
+                    if engineeringOnly && !activity.engineeringActions.isEmpty {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                             Label(
                                 LegendLocalized("FOUNDER ENGINEERING"),
@@ -1546,13 +1486,13 @@ struct LegendInAppNotificationsSheet: View {
                         }
                     }
 
-                    if activity.inAppNotifications.isEmpty {
+                    if !engineeringOnly && activity.inAppNotifications.isEmpty {
                         LegendNextEmptyState(
                             title: LegendLocalized("You're all caught up"),
                             message: LegendLocalized("New follows, reactions, comments, reposts, and account updates will appear here."),
                             systemImage: "heart")
                     } else {
-                        ForEach(activity.inAppNotifications) { notification in
+                        ForEach(engineeringOnly ? [] : activity.inAppNotifications) { notification in
                             LegendDailyActivityRow(
                                 item: notification,
                                 isCompleted: false,
@@ -1601,7 +1541,8 @@ struct LegendInAppNotificationsSheet: View {
         }
         .task {
             await activity.refreshInAppNotifications()
-            activity.markNotificationsViewed()
+            if !engineeringOnly { activity.markNotificationsViewed() }
+            else { await notificationStore?.loadEngineering() }
         }
         .confirmationDialog(
             LegendLocalized("Deny this release?"),
@@ -2110,5 +2051,37 @@ private struct LegendDailyActivityDetailView: View {
         }
         .background(LegendNextCanvas())
         .toolbar(.hidden, for: .navigationBar)
+    }
+}
+
+private struct LegendEngineeringNotices: View {
+    @ObservedObject var store: MobileNotificationStore
+    var body: some View {
+        if let failure = store.engineeringFailure {
+            Text(failure).foregroundStyle(LegendNextColor.danger)
+            Button(LegendLocalized("Retry")) { Task { await store.loadEngineering() } }
+        }
+        if store.engineeringSnapshot?.engineeringChannelsVersion != 1 {
+            Text(LegendLocalized("Engineering notification controls require the server update."))
+                .font(LegendNextTypography.supporting).foregroundStyle(LegendNextColor.textSecondary)
+        }
+        ForEach(store.engineeringSnapshot?.notifications.filter { $0.kind == "Engineering" } ?? []) { item in
+            LegendNextSurface(style: .elevated, padding: LegendNextSpacing.sm) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                    Text(item.title).font(LegendNextTypography.cardTitle)
+                    Text(item.detail).font(LegendNextTypography.supporting).foregroundStyle(LegendNextColor.textSecondary)
+                    HStack {
+                        if !item.isRead {
+                            Button { Task { await store.markRead(item.id) } } label: { Label(LegendLocalized("Mark read"), systemImage: "checkmark.circle") }
+                        }
+                        Spacer()
+                        Button { Task { await store.dismissEngineering(item.id) } } label: { Label(LegendLocalized("Clear notification"), systemImage: "trash") }
+                            .disabled(store.engineeringSnapshot?.engineeringChannelsVersion != 1)
+                    }.font(LegendNextTypography.caption).tint(LegendNextColor.gold)
+                }
+            }
+        }
+        Text(LegendLocalized("Clearing a notification preserves the engineering record. Open actions remain until resolved by Engineering."))
+            .font(LegendNextTypography.caption).foregroundStyle(LegendNextColor.textSecondary)
     }
 }

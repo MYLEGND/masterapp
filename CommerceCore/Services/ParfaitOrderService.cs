@@ -330,7 +330,17 @@ public sealed class ParfaitOrderService
         return UpdateOrder(businessId, request, out _);
     }
 
-    public bool UpdateOrder(Guid businessId, ParfaitOrderAdminUpdateRequest request, out string? error)
+    public bool UpdateOrder(Guid businessId, ParfaitOrderAdminUpdateRequest request, out string? error) =>
+        UpdateOrderCore(businessId, request, out error);
+
+    public bool UpdateFulfillment(Guid businessId, Guid orderId, long? expectedUpdatedTicks,
+        string status, string? carrier, string? tracking, out string? error) =>
+        UpdateOrderCore(businessId, new ParfaitOrderAdminUpdateRequest {
+            ExpectedUpdatedTicks = expectedUpdatedTicks, FulfillmentStatus = status,
+            TrackingCarrier = carrier, TrackingNumber = tracking
+        }, out error, orderId);
+
+    private bool UpdateOrderCore(Guid businessId, ParfaitOrderAdminUpdateRequest request, out string? error, Guid? fulfillmentOrderId = null)
     {
         error = null;
         lock (Lock)
@@ -342,7 +352,7 @@ public sealed class ParfaitOrderService
 
             var order = _db.CommerceOrders
                 .Include(x => x.Lines)
-                .FirstOrDefault(x => x.CommerceBusinessId == businessId && x.OrderNumber == cleaned);
+                .FirstOrDefault(x => x.CommerceBusinessId == businessId && (fulfillmentOrderId != null ? x.Id == fulfillmentOrderId : x.OrderNumber == cleaned));
 
             if (order is null)
             {
@@ -356,26 +366,26 @@ public sealed class ParfaitOrderService
                 error = "This order changed since you opened it. Review the latest details and try again.";
                 return false;
             }
-            var fulfillment = NormalizeFulfillmentStatus(request.FulfillmentStatus);
-            if (!string.Equals(fulfillment, request.FulfillmentStatus?.Trim(), StringComparison.OrdinalIgnoreCase))
+            if (fulfillmentOrderId is not null)
             {
-                error = "Select a valid fulfillment status.";
-                return false;
-            }
-            if (fulfillment != order.FulfillmentStatus && fulfillment is ("Processing" or "Packed" or "Shipped" or "Fulfilled"))
-            {
-                if (NormalizePaymentStatus(request.PaymentStatus) != "Paid" || request.RefundedCents >= order.TotalCents && order.TotalCents > 0)
+                if (order.IsPaymentProcessing || order.PaymentStatus != "Paid" || order.ReturnStatus is not ("None" or "Closed")
+                    || order.TotalCents > 0 && order.RefundedCents >= order.TotalCents)
                 {
-                    error = "Confirm payment before processing or fulfilling this order.";
+                    error = "This order needs payment or return review before fulfillment.";
                     return false;
                 }
+                // Native fulfillment cannot submit or overwrite financial/admin evidence.
+                // Copy the current values only after the canonical transactional reload.
+                request.PaymentStatus = order.PaymentStatus;
+                request.RefundedCents = order.RefundedCents;
+                request.ReturnStatus = order.ReturnStatus;
+                request.AdminNotes = order.AdminNotes;
             }
-            if (fulfillment == "Shipped" && (string.IsNullOrWhiteSpace(request.TrackingCarrier) || string.IsNullOrWhiteSpace(request.TrackingNumber)))
-            {
-                error = "Add the carrier and tracking number before marking this order shipped.";
-                return false;
-            }
-            if ((request.TrackingCarrier?.Trim().Length ?? 0) > 120 || (request.TrackingNumber?.Trim().Length ?? 0) > 160 || (request.AdminNotes?.Trim().Length ?? 0) > 2000)
+            var fulfillment = CommerceOrderFulfillment.Normalize(request.FulfillmentStatus);
+            error = CommerceOrderFulfillment.Validate(order, request.FulfillmentStatus, request.TrackingCarrier,
+                request.TrackingNumber, NormalizePaymentStatus(request.PaymentStatus), request.RefundedCents);
+            if (error is not null) return false;
+            if ((request.AdminNotes?.Trim().Length ?? 0) > 2000)
             {
                 error = "Carrier, tracking, or notes exceed the allowed length.";
                 return false;
@@ -398,10 +408,7 @@ public sealed class ParfaitOrderService
             var previousCarrier = order.TrackingCarrier;
             var previousTracking = order.TrackingNumber;
             order.PaymentStatus = NormalizePaymentStatus(request.PaymentStatus);
-            order.FulfillmentStatus = fulfillment;
             order.ReturnStatus = NormalizeReturnStatus(request.ReturnStatus);
-            order.TrackingCarrier = NullIfEmpty(request.TrackingCarrier);
-            order.TrackingNumber = NullIfEmpty(request.TrackingNumber);
             order.AdminNotes = NullIfEmpty(request.AdminNotes);
             order.RefundedCents = Math.Clamp(request.RefundedCents, 0, order.TotalCents);
 
@@ -414,20 +421,11 @@ public sealed class ParfaitOrderService
                 order.PaymentProcessingStartedUtc = null;
             }
 
-            if (string.Equals(order.FulfillmentStatus, "Shipped", StringComparison.OrdinalIgnoreCase))
-                order.ShippedUtc ??= now;
-
-            if (string.Equals(order.FulfillmentStatus, "Fulfilled", StringComparison.OrdinalIgnoreCase))
-            {
-                order.FulfilledUtc ??= now;
-            }
-
             if (string.Equals(order.PaymentStatus, "Refunded", StringComparison.OrdinalIgnoreCase) && order.RefundedCents == 0)
                 order.RefundedCents = order.TotalCents;
 
             order.CommerceBusinessId = businessId;
-            order.UpdatedUtc = now;
-            order.Status = BuildStatus(MapOrder(order));
+            CommerceOrderFulfillment.Apply(order, fulfillment, request.TrackingCarrier, request.TrackingNumber, now);
 
             ParfaitCustomerAutomationService.EnqueueShipmentNotice(_db, order,
                 previousFulfillment, previousCarrier, previousTracking);

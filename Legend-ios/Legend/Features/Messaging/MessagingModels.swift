@@ -397,9 +397,10 @@ struct MobileActivityNotification: Codable, Equatable, Identifiable, Sendable {
     let detail: String
     let occurredUTC: Date
     let controlledResourceRequestID: UUID?
+    var channel: String? = nil
 
     private enum CodingKeys: String, CodingKey {
-        case id, kind, title, detail
+        case id, kind, title, detail, channel
         case occurredUTC = "occurredUtc"
         case controlledResourceRequestID = "controlledResourceRequestId"
     }

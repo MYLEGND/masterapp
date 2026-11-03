@@ -32,7 +32,8 @@ internal sealed record FirebasePushDeliveryRequest(
     Guid? ConversationId,
     Shared.Calling.LegendCallSnapshot? Call = null,
     NotificationSenderPresentation? Sender = null,
-    bool SupportsCommunicationNotifications = false);
+    bool SupportsCommunicationNotifications = false,
+    string Channel = "personal");
 
 internal sealed record FirebasePushDeliveryResult(
     FirebasePushDeliveryOutcome Outcome,
@@ -175,6 +176,7 @@ internal sealed class FirebasePushGateway : IFirebasePushGateway
                             ["body"] = request.Body,
                             ["sender"] = request.Sender is null ? string.Empty : JsonSerializer.Serialize(request.Sender, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
                             ["notificationId"] = request.NotificationId.ToString("D"),
+                            ["channel"] = request.Channel,
                             ["conversationId"] = request.ConversationId?.ToString("D") ?? string.Empty,
                             ["unreadCount"] = Math.Max(0, request.BadgeCount).ToString(System.Globalization.CultureInfo.InvariantCulture)
                         },
@@ -350,6 +352,7 @@ internal sealed class FirebasePushDeliveryHostedService : BackgroundService
                     notification.RecipientParticipantType,
                     notification.Title,
                     notification.Detail,
+                    notification.Kind,
                     notification.ConversationId,
                     notification.IsRead,
                     notification.IsCleared,
@@ -411,7 +414,8 @@ internal sealed class FirebasePushDeliveryHostedService : BackgroundService
                     Sender: await engine.GetSenderPresentationAsync(
                         new MessagingActor(candidate.RecipientUserId, candidate.RecipientParticipantType),
                         candidate.NotificationId, cancellationToken),
-                    SupportsCommunicationNotifications: candidate.SupportsCommunicationNotifications),
+                    SupportsCommunicationNotifications: candidate.SupportsCommunicationNotifications,
+                    Channel: NotificationChannel.ForKind(candidate.Kind)),
                 cancellationToken);
             ApplyResult(delivery, result, now);
 
@@ -460,6 +464,7 @@ internal sealed class FirebasePushDeliveryHostedService : BackgroundService
         string RecipientParticipantType,
         string Title,
         string Detail,
+        string Kind,
         Guid? ConversationId,
         bool IsRead,
         bool IsCleared,

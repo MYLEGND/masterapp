@@ -27,6 +27,12 @@ public static class WebsiteLeadServiceRegistration
         services.AddWebsiteLeadNotificationTransport();
         services.TryAddScoped<BusinessInquiryNotificationService>();
         services.TryAddScoped<WebsiteLeadAppNotificationService>();
+        services.AddOptions<Infrastructure.Commerce.CommerceOrderNotificationOptions>()
+            .BindConfiguration("Notifications")
+            .Validate(options => string.IsNullOrWhiteSpace(options.StoreOrderPushStartUtc) || options.TryGetStart(out _),
+                "Notifications:StoreOrderPushStartUtc must be an explicit UTC timestamp.")
+            .ValidateOnStart();
+        services.TryAddScoped<Infrastructure.Commerce.CommerceOrderAppNotificationService>();
         services.AddHostedService<BusinessInquiryNotificationWorker>();
         services.AddHostedService<WebsiteLeadNotificationRecoveryWorker>();
         services.AddHostedService<WebsiteLeadAppNotificationWorker>();

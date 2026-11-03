@@ -142,7 +142,12 @@ interface LegendApi {
     @POST("api/v1/mobile/social/posts/{id}/view") suspend fun recordView(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Body request: SocialViewRequest): Response<SocialPostMetrics>
     @GET("api/v1/mobile/social/profiles/metrics") suspend fun profileMetrics(@Header("X-Legend-Participant-Type") participantType: String, @Query("userId") userId: String? = null, @Query("participantType") profileParticipantType: String? = null, @Query("profileId") profileId: String? = null): Response<SocialProfileMetrics>
     @POST("api/v1/mobile/social/profiles/visit") suspend fun recordProfileVisit(@Header("X-Legend-Participant-Type") participantType: String, @Body request: SocialProfileVisitRequest): Response<SocialStateResult>
+    @GET("api/v1/mobile/work/orders") suspend fun workOrders(@Header("X-Legend-Participant-Type") role: String): Response<List<MobileWorkOrder>>
+    @PUT("api/v1/mobile/work/orders/{id}/fulfillment") suspend fun fulfillOrder(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String, @Body input: MobileWorkFulfillmentInput): Response<Unit>
     @GET("api/v1/mobile/notifications") suspend fun notifications(@Header("X-Legend-Participant-Type") participantType: String): Response<NotificationSnapshot>
+    @DELETE("api/v1/mobile/notifications/engineering/{id}") suspend fun dismissEngineering(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<Unit>
+    @GET("api/v1/mobile/notifications?channel=engineering&take=100") suspend fun engineeringNotifications(@Header("X-Legend-Participant-Type") role: String): Response<NotificationSnapshot>
+    @GET("api/v1/mobile/notifications?channel=work&take=100") suspend fun workNotifications(@Header("X-Legend-Participant-Type") role: String): Response<NotificationSnapshot>
     @POST("api/v1/mobile/notifications/{id}/read") suspend fun markNotificationRead(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String): Response<NotificationBadge>
     @POST("api/v1/mobile/notifications/clear-badges") suspend fun clearNotificationBadges(@Header("X-Legend-Participant-Type") participantType: String): Response<NotificationBadge>
     @PUT("api/v1/mobile/notifications/devices/fcm") suspend fun registerFcmDevice(@Header("X-Legend-Participant-Type") participantType: String, @Body request: FcmDeviceTokenRequest): Response<NotificationBadge>
@@ -166,9 +171,9 @@ interface LegendApi {
 @Serializable data class FcmDeviceTokenRequest(val deviceToken: String, val supportsCommunicationNotifications: Boolean)
 @Serializable data class SocialViewRequest(val watchDurationSeconds: Double? = null, val watchCompletionPercentage: Double? = null, val storyInteractionType: String? = null)
 @Serializable data class SocialProfileVisitRequest(val targetUserId: String, val targetParticipantType: String, val sourcePostId: String? = null)
-@Serializable data class NotificationSnapshot(val badge: NotificationBadge, val notifications: List<NotificationItem> = emptyList())
+@Serializable data class NotificationSnapshot(val badge: NotificationBadge, val notifications: List<NotificationItem> = emptyList(), val workChannelsVersion: Int? = null, val engineeringChannelsVersion: Int? = null, val channelUnreadCounts: Map<String, Int>? = null)
 @Serializable data class NotificationBadge(val unreadCount: Int, val revision: Long, val updatedUtc: String)
-@Serializable data class NotificationItem(val id: String, val kind: String, val title: String, val detail: String, val conversationId: String? = null, val occurredUtc: String, val isRead: Boolean, val isCleared: Boolean)
+@Serializable data class NotificationItem(val id: String, val kind: String, val title: String, val detail: String, val conversationId: String? = null, val occurredUtc: String, val isRead: Boolean, val isCleared: Boolean, val channel: String = "personal")
 @Serializable data class JourneyDashboard(val profile: JourneyProfile? = null, val preferences: JourneyPreferences? = null, val recommendations: List<JourneyRecommendation> = emptyList(), val connections: List<JourneyConnection> = emptyList(), val requests: List<JourneyConnection> = emptyList(), val taxonomy: JourneyTaxonomy = JourneyTaxonomy())
 @Serializable data class JourneyProfile(val clientProfileId: String, val displayName: String, val introduction: String? = null, val lifeStages: List<String> = emptyList(), val locations: List<String> = emptyList(), val goals: List<String> = emptyList(), val interests: List<String> = emptyList(), val circleCodes: List<String> = emptyList(), val connectionTypes: List<String> = emptyList(), val communicationStyles: List<String> = emptyList(), val accountabilityFrequencies: List<String> = emptyList(), val avatar: MobileAvatar? = null)
 @Serializable data class JourneyPreferences(val consentAffirmed: Boolean, val isOptedIn: Boolean, val isDiscoverable: Boolean, val allowSuggestions: Boolean, val allowConnectionRequests: Boolean)
@@ -242,3 +247,13 @@ suspend fun <T> Response<T>.legendBody(json: Json = Json { ignoreUnknownKeys = t
     val problem = errorBody()?.use { body -> body.string() }?.let { runCatching { json.decodeFromString(MobileApiProblem.serializer(), it) }.getOrNull() }
     throw LegendApiException(code(), problem)
 }
+
+@Serializable data class MobileWorkOrder(val id: String, val businessId: String, val profileId: String,
+    val businessName: String? = null, val orderNumber: String, val fulfillmentStatus: String,
+    val allowedStatuses: List<String>, val trackingCarrier: String? = null, val trackingNumber: String? = null,
+    val updatedUtc: String? = null, val firstName: String, val lastName: String,
+    val addressLine1: String, val addressLine2: String? = null, val city: String, val state: String,
+    val postalCode: String, val items: List<MobileWorkOrderLine>)
+@Serializable data class MobileWorkOrderLine(val productName: String, val size: String, val quantity: Int)
+@Serializable data class MobileWorkFulfillmentInput(val businessId: String, val profileId: String,
+    val status: String, val trackingCarrier: String?, val trackingNumber: String?, val expectedUpdatedUtc: String?)

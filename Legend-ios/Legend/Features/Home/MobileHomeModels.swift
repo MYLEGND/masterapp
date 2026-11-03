@@ -948,12 +948,13 @@ struct MobileAgentClientSummary: Codable, Equatable, Identifiable, Sendable {
 
     var archived: Bool? = nil
     var phone: String? = nil
+    var entityName: String? = nil
 
     var id: UUID { profileID }
 
     private enum CodingKeys: String, CodingKey {
         case profileID = "profileId"
-        case displayName, email, crmStatus, avatar, archived, phone
+        case displayName, email, crmStatus, avatar, archived, phone, entityName
     }
 }
 
@@ -1105,6 +1106,8 @@ struct MobileCrmAppointment: Decodable, Identifiable, Sendable {
 }
 
 struct MobileCrmRecord: Decodable, Identifiable, Sendable {
+    var entityName: String? = nil
+    var recordType: String? = nil
     var userId: String? = nil
     let id: String
     let kind: String

@@ -3233,3 +3233,237 @@ FullowningSQLretry twicehitSELECT1perattemptTimeoutExpired10s beforefixture, alt
 Usingfinalcompiledprivatefixture andcorrectedhelper: actualbroadpayment-and-successors SQLPASS. Exactexpanded-store-only initiallyFAIL becauseEnsureCreated lacks twomigration-owneddefaults alreadyappliedinproduction (CRM AssociationVersion/Store CanManageCrm); existingbaselineFinishStoreBaseline/CRMdefaultcondition ranonlywhenhistoricalStorepending. Astraauditedreconstructionconditions andchangedONLY FinishStoreBaseline tostore||expanded andCRMdefault to(store||expanded)&&!crm; PrepareStoreBaseline staysstore-only toavoidrecreatingpremembershipconstraint. Solacceptedexactfixturehashba7224b15b22b273882c1b54e78e9c6286bf49685c4d570409124eebcbe2cb2e. Rehearsal-onlypublishPASS0warnings. Actualcorrectedexpanded-store-only3pendingSQLPASS (/private/tmp/legend-expanded-fixture-runtime-corrected.log); remaining10historicalscenarios running. Broadsuccessreuse valid: twochangedconditionsfollowidenticalbranchforbroadstore+crm, noC#application/schema change. Final12terminalscenarioPASS stillmandatorybeforedeployment; no releaseadmissionclaimed.
 
 Freshproductionreadonly:5apps/all10returnedjournals terminal/unsettled[]/activeoperationsunchanged; SQL227registered/232history/exactsame3pending; correctMasterAppDbOnline/PITRearliest2026-10-27T19:47:48.779085Z. No runtime/configuration/schema/legacytransfer/upload/restart/payment/postage/email write. Approved16IAMgrants remainonlyproductioneffects. FinalcurrentCI/packagebinding/independentoperationaladmission thenexistingnativecontrolledcutover/livejourneys/source-onlyfasttrackintegration remain. Preserveallreviewedancestors. Afterthisfinalsourceanchor, keepoperationalreceipts private forrequest-onlyintegrationcontract; do notappendcheckpointbetweenanchorandrequest-onlycandidate.
+
+## 2026-11-03 — isolated native Work and CRM completion
+
+Founder scope: complete iOS/Android local builds/runs; separate Work from personal
+notifications; surface assigned Business Client/entity CRM records; provide a scoped
+paid-order fulfillment queue using the website backend. No production publication
+or App Store/Play upload has been performed for this mobile change. Active Store
+release checkout and its deployment ownership remain separate.
+
+Task checkout: `.worktrees/mobile-readiness-audit-20261103`; task branch
+`isolation/mobile-workspace-completion-20261103`; canonical/base at preflight:
+`69f282796e0a8e183f0e75305cd280b339f01a87`. Session preflight passed with exact remote
+readback and no unpublished or dirty source. Root checkout was preserved at
+`6ee4dd95e40ab83ec5fbb23774e95ec76b38d069`.
+
+Implemented: existing recipient notification ledger now projects personal/work
+channels and signals channel-contract support. Existing APNs/FCM transports carry
+the channel and route taps through native navigation owners. iOS conversation taps
+retain their opaque destination and route from any mounted tab. Native Home adds
+one Work entry; its order queue reads CommerceOrders and rechecks canonical
+business membership/order capability. Fulfillment shares CommerceOrderFulfillment
+with the website, preserves financial evidence, and rejects stale native saves.
+Exact server timestamps round-trip as opaque strings on both platforms. The existing
+notification worker also stages paid-order projections with deterministic per-order,
+per-recipient IDs and the existing push outbox; its order scan is bounded to50
+source rows/tick with a volatile fair-scan offset. No new table, migration, inbox,
+checkout engine, authentication authority or background timer was introduced.
+
+Assigned CRM lists no longer depend on social-directory subscription entitlement;
+AgentClients and ClientRecordClassification remain authoritative. Entity labels use
+BusinessIdentityProjection in list/detail; cards show phone and linked business
+rather than exposing email at first glance. Personal account read state/badges use
+the existing server ledger; social viewed state and device planner remain separate
+existing concerns. Dual-role test now isolates its cache/biometric fixture.
+
+Implementation commit: `a70dc51c8cdd446ca789cb7b99f092b2fc739484`.
+Final stable-source validation PASS:201iOS unit tests;99Android unit tests and
+successful debug build (all50Gradle tasks rerun);50focused backend tests. Backend
+coverage includes shared fulfillment validation, SQLite relational fresh/stale
+fractional timestamp saves, unauthorized membership, work filtering before limits,
+and concurrent real-engine producer deduplication (one notification/one outbox).
+Original APNs/FCM and shared commerce ownership contracts passed. Scope-specific
+logs: `/private/tmp/legend-mobile-ios-final3.log`,
+`/private/tmp/legend-mobile-android-final3.log`,
+`/private/tmp/legend-mobile-backend-final3.log`.
+Initial incremental Infrastructure reuse was proven stale by its portable-PDB
+source checksum; forced no-incremental rebuild succeeded and the checksum then
+matched. Source ownership tests require GITHUB_WORKSPACE=this isolated checkout.
+Independent review accepted the exact36-file implementation for source preservation,
+manifest SHA256 `296e4d51e3a03a0f60a8681eee82d1c210d7a3a3a4b6d68c1eb623fa7f5187ce`,
+after independently reading the final successful test logs. This does not grant
+Store integration, deployment or live acceptance. Work uses a channel filter in
+the SAME NotificationEngine query before sorting/Take, so personal traffic cannot
+hide older work records; native work snapshots are read projections of that ledger.
+
+Rendered evidence: Xcode loaded this task branch; iPhone17Pro simulator launched
+the signed-in Home shell and Work modal (Notifications/Orders). Founder explicitly
+authorized official Gradle/adb operation of the existing Pixel10Pro emulator after
+Studio native control repeatedly timed out. Debug APK installed successfully on
+emulator-5554; APK SHA256 `f02753609f5f31bda82bcfe185bb024249f46a04a093977fc83f7430362dcf40`;
+path `Legend-Android/app/build/outputs/apk/debug/app-debug.apk`; final am start reported Status:ok, COLD launch8433ms. Signed-in Home and
+third Work button/modal rendered. The old live backend lacks the new endpoint and
+channel contract; native UI now distinguishes temporary unavailability from an
+empty work inbox. This does NOT verify updated authenticated Work/order persistence.
+No real order, payment or customer message was changed in mobile verification.
+No signed AAB/archive, Play/AppStore upload or production deployment occurred.
+
+Integration/release hold: the separate active Store checkout is now
+`71e939e68a2e7ad5adc5c93265bb3e186ebd1989` and changes the SAME
+CommerceCore/Services/ParfaitOrderService.cs. It introduces shipping-label state,
+unresolved label-purchase protection, serializable/revision checks, expanded
+processor evidence and further order effects. This mobile branch has NOT copied,
+merged, deployed or overwritten that work. Shared validation now preserves the
+known Shipped tracking requirement,120/160carrier/tracking bounds and fully-refunded
+advancement prohibition. Before backend publication or fast-track integration,
+reconcile the Store ancestry/content and preserve its shipping-label/model,
+transaction/concurrency, financial-authority and downstream-effect protections in
+the native transport. Source-only preservation against69f is not compatibility or
+production acceptance against71e939. This checkpoint is prepared for session finish; exact remote preservation is established only by its terminal receipt/readback.
+SQL Server provider behavior, real push delivery, completed order/editor acceptance,
+backend release admission/publication and fast-track integration remain open.
+
+Artifact provenance note: native debug validation/builds ran against the stable
+reviewed working tree before implementation commit; their content matches the
+accepted manifest, but diagnostic Git metadata can retain69f with localChanges=true.
+These are local test artifacts, not exact-commit production/archive packages.
+
+## 2026-11-03 — native inbox styling and Founder Engineering separation
+
+Founder requested canonical native styling, icon-only Today's Activity, a separate
+Founder Engineering modal, read/check and clear controls, and red unopened counts
+on every Home inbox entry. Continued the SAME isolated mobile branch after clean
+mandatory session preflight against accepted/preserved
+`9ed97f74b340e63343304558b8c141624a8230f1`. Remote fast-track remained
+`69f282796e0a8e183f0e75305cd280b339f01a87` at the read-only head check. Existing
+Store overlap/integration/backend-release hold above remains in force.
+
+Implementation: `517902880b62015b6800a28c7b2a68256e217993`. Independent read-only
+review accepted exact15-path manifest SHA256
+`821d18403933d9b8e511c88f22fdeccc31fcf66835489abae56d2833dc503308` after reading
+the final green logs. Acceptance covers source commit/preservation only.
+
+The existing NotificationEngine/recipient ledger owns Engineering channel filtering,
+full unread totals and per-notice soft dismissal. Personal activity totals exclude
+conversation notices, so Home does not duplicate Messages' badge. Filters precede
+Take; counts cover the full scoped unread ledger, not just the latest visible rows.
+Engineering query/dismiss endpoints enforce Founder identity; engine dismissal also
+matches recipient+participant+Engineering kind. A checkmark marks a notice read;
+Clear notification soft-clears that notice and reconciles the existing global badge.
+It never deletes audit evidence, approves a release, or resolves an open work item.
+Existing server action authority still removes resolved work from open actions.
+No new ledger/table, migration, engineering state machine or notification worker.
+
+Both native Home rows use compact canonical navy icon controls with red numeric
+badges (99+ display for larger totals). Today's Activity uses the existing scoped
+local viewed-ID storage for device planner entries. Personal viewed state cannot
+acknowledge Engineering actions. Founder capability controls the Engineering entry;
+backend Founder checks remain authoritative. Work and Engineering snapshots query
+the same notification API with server channel filters. Engineering push taps route
+to its own modal, including consume-once iOS navigation. Work iOS uses existing
+Next sheet header, typography, canvas and close control instead of default List
+chrome. Existing approved design tokens remain the color/style authority.
+
+Final validation PASS:203iOS tests;100Android tests (zero failed/error/skipped) and
+debug build;41backend tests. Logs:
+`/private/tmp/legend-mobile-inbox-ios-final2.log`,
+`/private/tmp/legend-mobile-inbox-android-final2.log`,
+`/private/tmp/legend-mobile-inbox-backend-final.log`.
+Backend regression proves personal102/activity101 with a chat notice, Work counts
+before list limiting, recipient/channel isolation, idempotent Engineering dismissal
+and preserved audit row. Relational evidence uses SQLite, not production SQL Server.
+Native regressions cover full aggregate totals independent of visible rows,
+Engineering push consume-once separation and personal activity exclusion.
+`git diff --check` passed. Initial sandbox build cache/IPC restrictions were handled
+through approved native tool escalation; the lingering failed test process was stopped.
+
+Rendered acceptance: Xcode ran this task project on iPhone17Pro; compact Home row
+and red42 Engineering badge visibly rendered. Separate Engineering modal shows
+existing canonical open actions; Work modal now shows compact Next header/close,
+segmented Notifications/Orders and honest unsupported-server state. Android final
+APK installed/launched on emulator-5554 through Founder-authorized Gradle/adb;
+Home's four icon controls and separate Engineering modal visibly rendered.
+Screenshots: `/private/tmp/legend-mobile-inbox-android-home.png` and
+`/private/tmp/legend-mobile-inbox-android-engineering.png`. Intermittent simulator
+accessibility/capture failures recovered through refreshed bindings/direct authorized
+Android screenshots; no alternate iOS UI automation was used.
+
+APK SHA256 `fdb070a7782c0e514eab777e726dc1cbb0cc3d87dfc44da8b5725fa6e2bcd839` at
+`Legend-Android/app/build/outputs/apk/debug/app-debug.apk`; adb reported Status:ok,
+COLD launch30315ms. Debug artifacts were built before implementation commit from
+the stable accepted source; diagnostic Git metadata may retain9ed97 with local changes.
+They are local debug artifacts, not exact-commit signed production packages.
+
+Remaining: live server lacks channel/control contract, so Engineering notice controls
+are explicitly unavailable and Work data remains unavailable. No real engineering
+notice was cleared, work item resolved, release approved, order changed, payment
+made, backend deployed, archive/AAB published or Store checkout modified. Local
+SQLite read/dismiss behavior is proven; authenticated deployed persistence and actual
+push delivery still require the reconciled backend release and live acceptance.
+Fast-track integration remains held for the earlier Store order protections. Mandatory
+session finish will establish source preservation only through exact remote readback;
+this checkpoint does not claim publication or fast-track synchronization.
+
+## 2026-11-03 — isolated Store/native backend reconciliation
+
+Founder authorized reconciliation of Store `5a659556da639cbaedbfb1352d23e7b23857c229`
+and mobile `aed1e50f6e4b964b29603f2df6e729bd4633b520` in the separate
+`.worktrees/store-mobile-reconciliation-20261103` checkout and
+`isolation/store-mobile-reconciliation-20261103` branch. Normal merge preserves both
+histories. The active scoped Store release checkout was not modified. Canonical
+session preflight passed after a normal accepted-baseline branch bootstrap; remote
+fast-track readback remained `69f282796e0a8e183f0e75305cd280b339f01a87`.
+
+Native fulfillment now calls the existing ParfaitOrderService transactional owner.
+Its fulfillment-only entry reloads current state under the same serializable
+transaction, checks the exact revision, rejects unresolved shipping purchases and
+payment/return review states, and copies financial/admin values inside that
+transaction. The old native ExecuteUpdate mutation is removed. Merchant and legacy
+SubscriptionPayment authority, shipping state, pickup Fulfilled without invented
+ShippedUtc, and atomic shipment-notice enqueue are preserved. Shared fulfillment
+validation/mutation is consumed inside this transaction; existing checkout/payment
+status consumers remain unchanged.
+
+Portal references the existing CommerceCore assembly and registers only the order
+service. The canonical Portal MVC registration excludes CommerceCore controllers;
+no commerce worker or public storefront controller is activated there. Existing
+native Work/Engineering/CRM and push-channel changes retain the mobile branch's
+accepted source. No native app archive/publication was performed.
+
+Automatic Work order push requires explicit `Notifications:StoreOrderPushStartUtc`
+(Azure `Notifications__StoreOrderPushStartUtc`). Unset/empty disables automatic
+order push while Work Orders remains available. Invalid/non-UTC values fail options
+validation. The existing worker filters canonical PaidUtc at or after that boundary,
+with no current-time/CreatedUtc fallback, new timer, ledger or tenant hardcoding.
+Recipient membership/capability checks and deterministic notification/outbox IDs
+remain authoritative. Activation requires an explicit reviewed runtime value;
+none was written during this reconciliation.
+
+Validation PASS:81 focused native/notification/CRM/fulfillment/shipping/shipment and
+CommerceCore ownership checks, zero failures/skips; log
+`/private/tmp/legend-store-mobile-acceptance.log`. Corrected real route assertions
+passed against SQLite and disposable loopback SQL Server using the same final
+HTTP fixture: native GET/PUT authorization, tenant scope, fractional revision/stale
+409, validation400/notfound404, label purchase claim without UpdatedUtc change,
+legacy payment record preservation and exactly one durable shipment notice.
+Portal ControllerFeature contains no CommerceCore controllers; actual
+`/store/checkout` and `/commerce/manage/payments` return404. Logs:
+`/private/tmp/legend-mobile-http-final-routes.log` and
+`/private/tmp/legend-mobile-sql-http-final-routes.log` (explicit SqlServer PASS, exit0).
+No real provider, charge, postage, email or push was invoked. Existing unrelated
+obsolete TestServer/nullability test warnings remain. Native203iOS/100Android
+validation from the unchanged mobile source is retained, not relabeled as new builds.
+
+Concurrent Store release facts supplied by its owner: all five apps Running;
+Protect/Parfait verified live at exact5a659 above, Website retained
+`76268f2d551205bd9cef5a3de60e4608e72cc6db`. Exact three SQL migrations applied,
+history235/postconditions passed. Legacy1181byte Parfait transfer readback verified
+zero workflows/dispatches and one cart lead. Four existing payment vault values
+retained without rotation; two app settings reconciled and all14 Square references
+resolved. Existing uploads/restarts have original durable receipts. Private evidence:
+`work/release-evidence-5a659556d/native-runtime-verification.json`,
+`payment-runtime-references.json`, and `work/native-deployment-receipts/upload-intent.json`.
+Founder Payments GET works, Square available with no default binding. Automatic
+review rejected platform-binding consent; specific approval remained pending at this
+checkpoint. No binding, charge, refund, email or postage was performed.
+
+This reconciliation is LOCAL PRETEST PASS, not combined deployment/live acceptance
+or fast-track synchronization. Independent exact-source review and mandatory session
+finish must establish final candidate/source preservation. Root owns subsequent
+normal fast-forward of the existing PR761 branch, current-head CI, affected four
+.NET backend packages, release admission, selective publication/live verification,
+and later sourceIntegration request. No release request was edited here. Existing
+Store deployment receipts must not be replayed. Native actual push delivery and
+updated-backend device persistence remain explicit post-release checks.
