@@ -14,6 +14,38 @@ internal static class CandidateContractTests
         using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
             .UseSqlServer("Server=127.0.0.1;Database=ContractTests;Integrated Security=true").Options);
         var assembly = db.GetService<IMigrationsAssembly>();
+        const string owner = "20261103081639_ScopedMerchantWebsiteOwners";
+        if (assembly.Migrations.ContainsKey(owner))
+        {
+            IReadOnlyList<MigrationOperation> OwnerOperations() => assembly.CreateMigration(assembly.Migrations[owner], db.Database.ProviderName!).UpOperations;
+            Check(RehearsalFixture.ExactOwnerFixtureOperations(OwnerOperations()), "exact disposable owner operations");
+            Check(!CandidateContract.Describe(owner, OwnerOperations()).Supported, "production owner remains unsupported");
+            foreach (var mutation in new Action<AlterColumnOperation>[] {
+                x => x.IsNullable = false, x => x.ColumnType = "nvarchar(36)", x => x.OldColumn.IsNullable = true,
+                x => x.Table = "CommerceOrders" })
+            {
+                var changed = OwnerOperations(); mutation((AlterColumnOperation)changed.Single());
+                Check(!RehearsalFixture.ExactOwnerFixtureOperations(changed), "mutated owner operations rejected");
+            }
+            Check(!RehearsalFixture.ExactOwnerFixtureOperations(OwnerOperations().Concat(new MigrationOperation[] {
+                new DropForeignKeyOperation { Name = "Unknown", Table = "CommerceMerchantAuthorizations" } }).ToArray()), "extra owner FK mutation rejected");
+            var current = CandidateContract.Current(db);
+            RehearsalFixture.ValidateExpandedFixture(db, current);
+            var malformedOriginal = current with { Migrations = current.Migrations.Select(x => x.Id != "20261011064911_AddBusinessScopedMerchantPayments" ? x : x with {
+                Tables = x.Tables.Select(t => t.Name != "CommerceMerchantAuthorizations" ? t : t with {
+                    Columns = t.Columns.Select(c => c.Name != "ClientProfileId" ? c : c with { Type = "nvarchar(36)" }).ToArray() }).ToArray() }).ToArray() };
+            try { RehearsalFixture.AppliedOwnerFixtureContract(malformedOriginal); throw new Exception("Wrong original owner column accepted"); }
+            catch (ProbeObservationFailure error) when (error.Message == "MIGRATION_COMPATIBILITY_UNPROVEN") { }
+
+            foreach (var bad in new[] {
+                current with { Migrations = current.Migrations.Concat(new[] { current.Migrations[^1] with { Id = "29990101000000_Unknown" } }).ToArray() },
+                current with { Migrations = current.Migrations[..^2].Concat(current.Migrations.TakeLast(2).Reverse()).ToArray() },
+                current with { Migrations = current.Migrations.Select(x => x.Id == owner ? x with { Supported = true } : x).ToArray() } })
+            {
+                try { RehearsalFixture.ValidateExpandedFixture(db, bad); throw new Exception("Unreviewed fixture suffix accepted"); }
+                catch (ProbeObservationFailure error) when (error.Message == "MIGRATION_COMPATIBILITY_UNPROVEN") { }
+            }
+        }
         const string payment = "20261011064911_AddBusinessScopedMerchantPayments";
         var operations = assembly.CreateMigration(assembly.Migrations[payment], db.Database.ProviderName!).UpOperations;
         var entry = CandidateContract.Describe(payment, operations);

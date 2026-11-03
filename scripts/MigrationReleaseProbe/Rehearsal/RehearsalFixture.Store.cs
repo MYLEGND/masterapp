@@ -88,7 +88,7 @@ internal static partial class RehearsalFixture
             var partial = "ALTER TABLE dbo." + quote.QuoteIdentifier(column.Table) + " ADD " +
                 quote.QuoteIdentifier(column.Name) + " " + column.Type + " NULL";
             await db.Database.ExecuteSqlRawAsync(partial, ct);
-            try { await CandidateContract.Verify(db, contract, applied, ct); throw new InvalidOperationException("Partial Store schema accepted"); }
+            try { await VerifyFixtureContract(db, contract, applied, ct); throw new InvalidOperationException("Partial Store schema accepted"); }
             catch (ProbeObservationFailure e) when (e.Message == "PHYSICAL_SCHEMA_DRIFT") { }
             await transaction.RollbackAsync(ct);
         }
@@ -116,7 +116,7 @@ internal static partial class RehearsalFixture
         if (!(await db.Database.GetAppliedMigrationsAsync(ct)).SequenceEqual(baselineHistory) ||
             await StoreBaselineSnapshot(db, ct) != baseline)
             throw new InvalidOperationException("Store transaction retention failed");
-        await CandidateContract.Verify(db, contract, baselineHistory, ct);
+        await VerifyFixtureContract(db, contract, baselineHistory, ct);
     }
     private static async Task ExecuteStoreSql(MasterAppDbContext db, string sql, CancellationToken ct)
     {
@@ -196,7 +196,7 @@ internal static partial class RehearsalFixture
             """, ct);
         // Legitimate post-migration edits are not historical backfill drift.
         await db.Database.ExecuteSqlRawAsync("UPDATE dbo.CommerceBusinessMembers SET CanManageCrm=1-CAST(CanManageCrm AS int) WHERE CommerceBusinessId='a1000000-0000-0000-0000-000000000001'", ct);
-        await CandidateContract.Verify(db, CandidateContract.Current(db), db.Database.GetMigrations().ToArray(), ct);
+        await VerifyFixtureContract(db, CandidateContract.Current(db), db.Database.GetMigrations().ToArray(), ct);
         await transaction.RollbackAsync(ct);
     }
 }

@@ -1906,7 +1906,7 @@ class SelectorVisibilityPollingTests(unittest.TestCase):
             GITHUB_REF='refs/heads/'+m.FAST_TRACK_PR_BASE,GITHUB_JOB='select-targets',RUNNER_NAME='runner-fixture',
             GITHUB_WORKFLOW_REF='owner/repo/.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW+'@refs/heads/'+m.FAST_TRACK_PR_BASE)
         self.runs=[self.run]; self.inventories=[dict(total_count=1,jobs=[self.job])]
-        self.policy=SimpleNamespace(tool_promotion_requested=lambda revision:False)
+        self.policy=SimpleNamespace(source_integration_requested=lambda revision:False,tool_promotion_requested=lambda revision:False)
     def sleep(self,seconds):
         self.sleeps.append(seconds); self.now+=seconds
     def api(self,repo,path,token):
@@ -2070,11 +2070,12 @@ class LiveWorkflowIdentityPollingTests(unittest.TestCase):
         if path.startswith('pulls/'):
             return self.pr
         return self.runs.pop(0) if len(self.runs)>1 else self.runs[0]
-    def production(self,target='portal'):
+    def production(self,target='portal',*,integration=False,allow_nonpublishing=False):
         with patch.dict(os.environ,self.env,clear=True),patch.object(m,'api_get',side_effect=self.api), \
              patch.object(m,'_fast_track_policy') as policy:
+            policy.return_value.source_integration_requested.return_value=integration
             policy.return_value.tool_promotion_requested.return_value=False
-            return m.assert_fast_track_release_execution(target=target,clock=lambda:self.now,sleep=self.sleep)
+            return m.assert_fast_track_release_execution(target=target,allow_nonpublishing=allow_nonpublishing,clock=lambda:self.now,sleep=self.sleep)
     def source(self,workflow='masterapp-platform-architecture-validation.yml',key='validate',name='architecture-validation',
                source=None,preflight=True):
         self.env.update(GITHUB_JOB=key)
@@ -2091,6 +2092,18 @@ class LiveWorkflowIdentityPollingTests(unittest.TestCase):
              patch.object(m,'_release_history_source',return_value=source), \
              patch.object(m,'approved_head_preflight',return_value=dict(current=preflight,approvedHeadSha='b'*40)):
             return m.fast_track_source_validation_scope(args,clock=lambda:self.now,sleep=self.sleep)
+    def test_source_integration_cannot_enter_publication(self):
+        with self.assertRaisesRegex(RuntimeError,'FAST_TRACK_SOURCE_INTEGRATION_NONPUBLISHING'):
+            self.production(integration=True)
+        self.assertEqual([],self.reads)
+
+    def test_source_integration_nonpublishing_observation_still_requires_exact_live_identity(self):
+        self.assertEqual(self.run,self.production(integration=True,allow_nonpublishing=True))
+        self.assertIn('git/ref/heads/'+m.FAST_TRACK_PR_BASE,self.reads)
+        self.head='b'*40
+        with self.assertRaisesRegex(RuntimeError,'FAST_TRACK_RELEASE_HEAD_CHANGED'):
+            self.production(integration=True,allow_nonpublishing=True)
+
     def test_empty_then_unassigned_then_exact_active_target_is_only_success_boundary(self):
         self.inventories=[dict(total_count=0,jobs=[]),dict(total_count=1,jobs=[self.job|dict(status='queued',runner_name='')]),self.inventories[0]]
         self.assertEqual('queued',self.production()['status']);self.assertEqual([2,2],self.sleeps)
@@ -8390,7 +8403,7 @@ class RecoveryAdmissionProofTests(unittest.TestCase):
         jobs=[dict(id=i+1,run_id=10,run_attempt=1,head_sha='a'*40,name=name,status='completed',
             conclusion='success' if i==0 else 'skipped',steps=[]) for i,name in enumerate(names)]
         expected=dict(authorizesMutation=False,productionEligible=False)
-        policy=SimpleNamespace(tool_promotion_requested=lambda rev:True,read_request=lambda rev:dict(trustedToolPromotion=dict(baseRevision='b'*40)),
+        policy=SimpleNamespace(source_integration_requested=lambda revision:False,tool_promotion_requested=lambda rev:True,read_request=lambda rev:dict(trustedToolPromotion=dict(baseRevision='b'*40)),
             trusted_tool_promotion=lambda *args:expected)
         def api(repo,path,token):
             if path=='actions/runs/10':return run
@@ -8620,7 +8633,7 @@ class RecoveryCompleteHistoryTests(unittest.TestCase):
         artifact=dict(id=40,name='fast-track-admission-19-1',expired=False,digest='sha256:'+'d'*64,workflow_run=dict(id=19))
         self.data['actions/runs/19/artifacts?per_page=100']=dict(total_count=1,artifacts=[artifact])
         self.expected=dict(authorizesMutation=False,productionEligible=False)
-        self.policy=SimpleNamespace(tool_promotion_requested=lambda rev:True,read_request=lambda rev:dict(trustedToolPromotion=dict(baseRevision='d'*40)),trusted_tool_promotion=lambda *args:self.expected)
+        self.policy=SimpleNamespace(source_integration_requested=lambda revision:False,tool_promotion_requested=lambda rev:True,read_request=lambda rev:dict(trustedToolPromotion=dict(baseRevision='d'*40)),trusted_tool_promotion=lambda *args:self.expected)
     def transport(self,repo,path,token):
         self.calls.append(path)
         if path.startswith('actions/runs?branch='):
@@ -10288,7 +10301,7 @@ class CompletedResourceBaselineTests(unittest.TestCase):
             if '/jobs?' in path:return {'total_count':0,'jobs':[]}
             return LegacyQueuedRunDispositionTests.run_record(status='completed', conclusion='cancelled')
         fake=SimpleNamespace(COMPLETED_RESOURCE_ROOT_REFS=policy.COMPLETED_RESOURCE_ROOT_REFS,
-            read_request=lambda sha:{'targets':['masterapp-client']},tool_promotion_requested=lambda sha:False)
+            read_request=lambda sha:{'targets':['masterapp-client']},source_integration_requested=lambda sha:False,tool_promotion_requested=lambda sha:False)
         with contextlib.ExitStack() as stack:
             patches={'_fast_track_policy':dict(return_value=fake),'completed_resource_other_writers':{},
                 '_fast_track_history_observation':dict(return_value=rows),'api_get':dict(side_effect=api),
@@ -10322,7 +10335,7 @@ class CompletedResourceBaselineTests(unittest.TestCase):
         row=dict(id=10,head_sha='a'*40,path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,
             status='completed',conclusion='failure',event='push',run_attempt=1)
         fake=SimpleNamespace(COMPLETED_RESOURCE_ROOT_REFS=contract['resources'],
-            read_request=lambda sha:{'targets':['masterapp-protect']},tool_promotion_requested=lambda sha:False)
+            read_request=lambda sha:{'targets':['masterapp-protect']},source_integration_requested=lambda sha:False,tool_promotion_requested=lambda sha:False)
         with contextlib.ExitStack() as stack:
             for name,kwargs in {
                 '_fast_track_policy':dict(return_value=fake),'completed_resource_other_writers':{},

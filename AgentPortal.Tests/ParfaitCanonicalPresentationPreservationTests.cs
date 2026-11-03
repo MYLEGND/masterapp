@@ -44,7 +44,7 @@ public sealed partial class ParfaitCanonicalPresentationPreservationTests
     [InlineData("wwwroot/css/storefront.css", "1f2dac2641ba0c9427fd1727239c6364f3d503cf")]
     // Reviewed be032 refines internal header typography and responsive payment-provider cards.
     // Reviewed shared premium compact layout; single shell, page-only light mode and right navigation remain intact.
-    [InlineData("wwwroot/css/internal.css", "fc6d957fad171d02efbf2bc676f2f3c97035a5b9")]
+    [InlineData("wwwroot/css/internal.css", "a38d3a9839eb01ca36643178f232fef4ff201611")]
     [InlineData("wwwroot/js/storefront.js", "ee0256aa52937cc25831c54b80141b768be72e96")]
     // Reviewed internal health behavior: unavailable identity evidence must not render as zero.
     // CommerceCoreOwnershipContractTests covers the payload; public design assets remain pinned.

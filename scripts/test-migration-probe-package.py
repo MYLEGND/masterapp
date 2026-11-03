@@ -744,6 +744,40 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
                 with self.subTest(change=change),self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
                 self.assertFalse(self.sql_entered)
 
+    def test_expanded_disposable_fixture_preserves_unknown_suffix_rejection(self):
+        import copy
+        ids = ['20261020160000_AddReceptionistCoordination', '20261026000134_AddCanonicalSubscriptionPaymentCompletion',
+            '20261026063902_AddScopedTrainingSubscriptions', '20261026210738_AddReceptionistManagement',
+            '20261026223148_ReceptionistBrowserCreation', '20261030033900_RuntimeDiagnosticPerformanceEvidence',
+            '20261030070000_CrmRelationshipHistory'] + [row[0] for row in m.AUTHORITY.REVIEWED_STORE_ENTRIES]
+        historical = [dict(id=value, supported=True) for value in ids]
+        expanded = json.loads('[{"id":"20261103081639_ScopedMerchantWebsiteOwners","supported":false,"columns":[],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]},{"id":"20261103170724_SharedCommerceAutomationState","supported":true,"columns":[{"schema":"dbo","table":"CommerceBusinessSettings","name":"CustomerAutomationStateJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]},{"id":"20261103174446_SharedCommerceShippingState","supported":true,"columns":[{"schema":"dbo","table":"CommerceOrders","name":"ShippingLabelStateJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CommerceBusinessSettings","name":"ShippingConfigurationJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]}]')
+        self.current['migrations'] = historical + expanded
+        self.source_present.update(row['id'] + '.cs' for row in self.current['migrations'])
+        self.test_stdout += ''.join('LEGEND_' + marker + '_APPEND_TEST:PROVEN\n' for marker in
+            ('REVIEWED', 'CANONICAL_PAYMENT', 'TRAINING', 'MANAGEMENT', 'BROWSER', 'DIAGNOSTICS', 'CRM', 'STORE'))
+        digest = lambda row: hashlib.sha256(json.dumps(row,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        names = ['REVIEWED_RECEPTIONIST_ENTRY','REVIEWED_CANONICAL_PAYMENT_ENTRY','REVIEWED_TRAINING_ENTRY',
+            'REVIEWED_MANAGEMENT_ENTRY','REVIEWED_BROWSER_ENTRY','REVIEWED_DIAGNOSTICS_ENTRY','REVIEWED_CRM_ENTRY']
+        patches = dict(zip(names, map(digest, historical[:7])))
+        patches['REVIEWED_STORE_ENTRIES'] = [(row['id'],digest(row)) for row in historical[7:]]
+        with patch.multiple(m.AUTHORITY, **patches):
+            self.gate()
+            fixtures = [kw['env']['LEGEND_REHEARSAL_PENDING_COUNT'] for cmd,kw in self.calls if cmd[-1]=='migration-test']
+            self.assertIn('payment-and-successors', fixtures)
+            self.assertIn('expanded-store-only', fixtures)
+            original = copy.deepcopy(self.current)
+            for change in ('unknown','reorder','owner','json'):
+                self.current=copy.deepcopy(original); self.sql_entered=False
+                rows=self.current['migrations']
+                if change=='unknown': rows.append(dict(id='29990101000000_Unknown'))
+                elif change=='reorder': rows[-2:]=rows[-2:][::-1]
+                elif change=='owner': rows[-3]['supported']=True
+                else: rows[-1]['columns'][0]['nullable']=False
+                with self.subTest(change=change), self.assertRaisesRegex(RuntimeError, 'Reviewed migration (entry|suffix) contract failed'):
+                    self.gate()
+                self.assertFalse(self.sql_entered)
+
     def test_payment_suffix_cannot_skip_reorder_duplicate_or_append_unknown(self):
         import copy
         with self.payment_fixture():

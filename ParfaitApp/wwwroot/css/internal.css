@@ -3654,13 +3654,6 @@ button.pf-secondary-action,
     .pf-modal-grid {
         grid-template-columns: 1fr;
     }
-
-    .pf-action,
-    .pf-secondary-action,
-    button.pf-action,
-    button.pf-secondary-action {
-        width: 100%;
-    }
 }
 
 /* === PARFAIT CLEAN GLOBAL INTERNAL UI SYSTEM END === */

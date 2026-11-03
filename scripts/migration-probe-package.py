@@ -666,6 +666,11 @@ def test_schema_contract(directory):
         ('20261026223148_ReceptionistBrowserCreation', AUTHORITY.REVIEWED_BROWSER_ENTRY, 'LEGEND_BROWSER_APPEND_TEST:PROVEN'),
         ('20261030033900_RuntimeDiagnosticPerformanceEvidence', AUTHORITY.REVIEWED_DIAGNOSTICS_ENTRY, 'LEGEND_DIAGNOSTICS_APPEND_TEST:PROVEN'),
         ('20261030070000_CrmRelationshipHistory', AUTHORITY.REVIEWED_CRM_ENTRY, 'LEGEND_CRM_APPEND_TEST:PROVEN')] + [(migration_id, digest, 'LEGEND_STORE_APPEND_TEST:PROVEN') for migration_id, digest in AUTHORITY.REVIEWED_STORE_ENTRIES]
+    # Disposable fixture identities only; production append authority is unchanged.
+    reviewed += [
+        ('20261103081639_ScopedMerchantWebsiteOwners', '66e40e423f5828e5b76d11fb68d1ef8c6235905a8a8662b05017925b8f2f3cc0', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
+        ('20261103170724_SharedCommerceAutomationState', 'a37f31f2f2f5d2f6a82b6e3b645a3aff82cde8fd4cc24ee261d09c3a2f245b30', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
+        ('20261103174446_SharedCommerceShippingState', '28661e65b1183ce05e6764e9c9050d9e748c4547e1850f0bd189bb89d2efc02e', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS')]
     migrations = current['migrations']
     for index, (migration_id, digest, marker) in enumerate(reviewed):
         entries = [row for row in migrations if row.get('id') == migration_id]
@@ -685,6 +690,8 @@ def test_schema_contract(directory):
         '-c', 'Release', '--nologo', '-o', str(directory), '-m:1', '-nr:false',
         '-p:UseSharedCompilation=false'], check=True)
     scenarios = ['payment-and-successors']
+    if any(row.get('id') == reviewed[-1][0] for row in migrations):
+        scenarios.append('expanded-store-only')
     if any(row.get('id') == reviewed[10][0] for row in migrations):
         scenarios.extend(['canonical-payment-training-management-browser-diagnostics-crm-store', 'training-management-browser-diagnostics-crm-store', 'management-browser-diagnostics-crm-store', 'browser-diagnostics-crm-store', 'diagnostics-crm-store', 'crm-store', 'store-all', 'store-crm-provisioning-membership', 'store-provisioning-membership', 'store-membership'])
     elif any(row.get('id') == reviewed[6][0] for row in migrations):
