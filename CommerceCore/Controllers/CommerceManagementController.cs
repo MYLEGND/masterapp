@@ -887,7 +887,7 @@ public sealed partial class CommerceManagementController(
 
     private async Task<MarketingOwnerScope> ResolveMarketingOwnerAsync(CommerceStoreContext store, CancellationToken ct) =>
         await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(
-            HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>(), configuration, store, Request.Host.Host, ct)
+            HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>(), configuration, store, stores.ResolveEffectivePublicHost(HttpContext), ct)
         ?? throw new InvalidOperationException("The permanent website marketing owner could not be resolved.");
 
     private static object MarketingStatusPayload(MarketingConnection? row)
