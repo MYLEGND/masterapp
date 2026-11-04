@@ -35,6 +35,8 @@ html {
     --web-gold-strong: var(--pf-public-accent);
     --web-navy-deep: var(--pf-public-elevated);
     --web-on-accent: var(--pf-public-ink);
+    --web-action-background: var(--sp-theme-primary);
+    --web-action-foreground: var(--sp-theme-on-accent);
     --web-on-secondary: var(--pf-public-ink);
     --web-on-elevated: var(--pf-public-ink);
     --web-surface: var(--pf-public-surface);
@@ -46,12 +48,28 @@ html {
 
 }
 
+/* Native Parfait palette. Recompute inherited commerce tokens at the same
+   element as the authored theme so every buying step uses this brand. */
+body[data-commerce-business-key="parfait"] {
+    --pf-public-accent: var(--pf-cocoa-800);
+    --web-gold-strong: var(--pf-public-accent);
+    --web-on-accent: var(--pf-public-surface);
+    --web-border-color: var(--pf-public-accent);
+    --sp-theme-primary: var(--web-gold-strong);
+    --sp-theme-on-accent: var(--web-on-accent);
+    --sp-line: var(--sp-theme-border, var(--web-border-color));
+    --sp-dark-line: var(--sp-line);
+    --sp-focus-border: var(--sp-theme-primary);
+    --web-action-background: var(--sp-theme-primary);
+    --web-action-foreground: var(--sp-theme-on-accent);
+}
+
 .btn:focus,
 .btn:active:focus,
 .btn-link.nav-link:focus,
 .form-control:focus,
 .form-check-input:focus {
-    box-shadow: 0 0 0 0.1rem #ffffff, 0 0 0 0.25rem #258cfb;
+    box-shadow: 0 0 0 0.1rem var(--sp-theme-surface), 0 0 0 0.25rem var(--sp-theme-primary);
 }
 
 html,

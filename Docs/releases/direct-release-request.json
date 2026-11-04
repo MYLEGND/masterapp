@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized the checkout presentation fixes, direct Mac release, and mandatory normal source incorporation. This validate-only source-integration request authorizes no GitHub deployment, migration, configuration, payment, postage, routing, or provider mutation.",
-  "purpose": "Incorporate the accepted checkout polish application bytes from2502ed8cb9adac86a00fbd836f87ed29c1edc36b, preserved unchanged through the shared-head integration and current checkpoint. The two Store hosts require later separately admitted direct Mac publication; all live apps remain42. Preserve the existing connections and completed operations. Founder account binding, catalog recovery, authenticated staff checks and final live purchase verification remain pending on the locked Mac. Do not publish or replay any operation from this merge.",
-  "requestId": "parfait-checkout-polish-source-integration-20261104-v1",
+  "authorization": "Founder authorized Parfait-only CSS cleanup and mandatory normal source incorporation. This request authorizes source integration only, with no GitHub production publication or other resource mutation.",
+  "purpose": "Preserve already deployed5ac ancestry and reviewed Parfait-only cocoa-border CSS correction. All non-Parfait styling remains unchanged. Parfait-only native deployment remains separately gated; no backend, payment, shipping configuration, SQL, IAM or routing change.",
+  "requestId": "parfait-css-source-integration-20261104-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -78,7 +78,7 @@
   },
   "sourceIntegration": {
     "schemaVersion": 1,
-    "baseRevision": "ae2b354deeaf941c559d8937468f3ff967cede7f",
-    "sourceRevision": "c15a85f05da2f6d2d661ce07f39ebb8452fa7168"
+    "baseRevision": "2ced2b136402f86a7e8f07b2dc8249c4d8732dbb",
+    "sourceRevision": "c6913872fe9197f20fa5df221288219b7d4f3fc6"
   }
 }

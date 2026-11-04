@@ -26,8 +26,8 @@
         <form data-openai-connect-form>
             @Html.AntiForgeryToken()
             <label class="form-label">OpenAI advertiser API key<input class="form-control" data-openai-key type="password" maxlength="4096" autocomplete="new-password" required /></label>
-            <button class="btn btn-primary" type="submit">Verify and connect ChatGPT Ads</button>
-            <button class="btn btn-outline-secondary" type="button" data-openai-refresh>Verify / refresh</button>
+            <button class="pf-action" type="submit">Verify and connect ChatGPT Ads</button>
+            <button class="pf-secondary-action" type="button" data-openai-refresh>Verify / refresh</button>
             <button class="btn btn-outline-danger" type="button" data-openai-disconnect>Disconnect ChatGPT Ads</button>
         </form>
         <p class="mt-2" role="status" aria-live="polite" data-setup-status></p>

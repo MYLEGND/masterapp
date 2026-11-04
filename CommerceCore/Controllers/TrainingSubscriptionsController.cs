@@ -18,7 +18,7 @@ public sealed class TrainingSubscriptionsController(CommerceStoreContextService 
     public async Task<IActionResult> Index(CancellationToken ct)
     {
         var store = await stores.ResolvePublicAsync(HttpContext, null, ct);
-        if (store is null || !store.IsParfait) return NotFound();
+        if (store is null || !store.IsParfait || !store.TrainingPagePublished) return NotFound();
         ViewData["CommerceStoreContext"] = store;
         ViewData["TrainingPreview"] = IsPreviewOnly();
         var plans = await enrollment.PlansAsync(store.CommerceBusinessId, ct);
@@ -30,9 +30,9 @@ public sealed class TrainingSubscriptionsController(CommerceStoreContextService 
     [EnableRateLimiting(PlatformRateLimiting.PublicFormPolicy)]
     public async Task<IActionResult> RequestInvitation(Guid productId, string email, string? promotionCode, bool emailConsent, CancellationToken ct, int? expectedMonthlyAmountCents = null)
     {
-        if (IsPreviewOnly()) return StatusCode(405);
         var store = await stores.ResolvePublicAsync(HttpContext, null, ct);
-        if (store is null || !store.IsParfait) return NotFound();
+        if (store is null || !store.IsParfait || !store.TrainingPagePublished) return NotFound();
+        if (IsPreviewOnly()) return StatusCode(405);
         if (!emailConsent || string.IsNullOrWhiteSpace(email)) return BadRequest("Consent and a valid email address are required.");
         try
         {

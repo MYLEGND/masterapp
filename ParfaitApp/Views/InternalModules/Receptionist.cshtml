@@ -16,14 +16,14 @@
         <p>Pause stops new AI conversations without deleting your configuration. Existing calls may still need to finish or be stopped from the conversation controls.</p>
         <div class="d-flex flex-wrap gap-2 align-items-center">
         @if (workspace is not null) {
-            <a class="btn btn-primary" href="@workspace">Open receptionist setup</a>
-            <a class="btn btn-outline-secondary" href="@(workspace + "/connections")">Voice connection and review</a>
+            <a class="pf-action" href="@workspace">Open receptionist setup</a>
+            <a class="pf-secondary-action" href="@(workspace + "/connections")">Voice connection and review</a>
         } else { <p role="status">The business workspace address is unavailable. Ask your administrator to configure the Portal address.</p> }
         @if (Model.ConfigurationId.HasValue && Model.AdmissionEnabled) {
             <form asp-action="PauseReceptionist" method="post" class="m-0">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="expectedRevision" value="@Model.ConnectionRevision" />
-                <button type="submit" class="btn btn-outline-secondary">Pause new conversations</button>
+                <button type="submit" class="pf-secondary-action">Pause new conversations</button>
             </form>
         }
         </div>
