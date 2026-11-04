@@ -35,7 +35,15 @@ public abstract class ShippingHttpProvider(IHttpClientFactory clients) : ICommer
         // No automatic retry of a non-idempotent label purchase.
         using var response = await clients.CreateClient("CommerceShipping").SendAsync(request, ct);
         if (!response.IsSuccessStatusCode) throw new ShippingProviderException((int)response.StatusCode);
-        return JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        JsonDocument document;
+        try { document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct)); }
+        catch (JsonException) { throw new ShippingProviderException(502); }
+        if (document.RootElement.ValueKind != JsonValueKind.Object)
+        {
+            document.Dispose();
+            throw new ShippingProviderException(502);
+        }
+        return document;
     }
     protected static string S(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String ? item.GetString()! : "";
     protected static decimal Money(JsonElement value, string name) => decimal.Parse(S(value, name), CultureInfo.InvariantCulture);
@@ -47,9 +55,18 @@ public abstract class ShippingHttpProvider(IHttpClientFactory clients) : ICommer
     public abstract Task<ShippingLabel> RetrieveAsync(string token, bool test, string shipmentId, string transactionId, string reference, CancellationToken ct);
 }
 
-public sealed class ShippingProviderException(int status) : Exception("The shipping provider could not complete this request. Verify the connection or reconcile an existing label before trying again.")
+public sealed class ShippingProviderException(int status) : Exception(Describe(status))
 {
     public int StatusCode { get; } = status;
+    private static string Describe(int status) => status switch
+    {
+        401 => "The shipping provider rejected the API key. Check the selected provider and use its complete API key.",
+        403 => "The shipping provider denied this key's permissions. Check that the account and key allow shipping API access.",
+        400 or 422 => "The shipping provider rejected the request. Check the provider account setup and selected environment before trying again.",
+        429 => "The shipping provider is receiving too many requests. Wait before verifying again; reconcile an existing label before retrying its purchase.",
+        >= 500 and <= 599 => "The shipping provider is unavailable or returned an unreadable response. Check the request status before retrying.",
+        _ => "The shipping provider could not complete this request. Verify the connection or reconcile an existing label before trying again."
+    };
 }
 
 public sealed class EasyPostShippingProvider(IHttpClientFactory clients) : ShippingHttpProvider(clients)

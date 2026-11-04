@@ -43,7 +43,8 @@ public sealed record CommerceStoreContext(
     string? StorePageShellSuffix = null,
     string? StorePageBeforeCatalog = null,
     string? StorePageAfterCatalog = null,
-    string? FaviconUrl = null);
+    string? FaviconUrl = null,
+    bool TrainingPagePublished = false);
 
 /// <summary>
 /// One public storefront scope resolver for Parfait and every website-linked commerce tenant.
@@ -530,6 +531,17 @@ public sealed class CommerceStoreContextService(
         }
 
         var isParfait = IsParfaitKey(business.Key);
+        // Native optional pages use immutable Studio publication, never draft visibility.
+        var trainingPagePublished = false;
+        if (isParfait && linkedState?.PublishedVersionId is Guid nativeVersionId)
+        {
+            var nativePublication = WebsiteContentStore.ReadImmutablePublication(() => db.Set<WebsiteContentVersion>().AsNoTracking()
+                .SingleOrDefault(x => x.Id == nativeVersionId && x.StateId == linkedState.Id && x.SnapshotRetiredUtc == null), ct);
+            publishedVersionId = nativePublication?.Id;
+            trainingPagePublished = PublicWebsiteRuntimeScopeResolver.PublishedDocumentContainsPath(
+                nativePublication, "/store/training", WebsiteEditorSiteKeys.Business);
+        }
+
         if (publishedOnly && !isParfait && websiteDocument is null) return null;
         if (publishedOnly && !isParfait && !retainedTransaction && (websiteDocument?.Store?.Enabled != true ||
             websiteDocument.Pages.TryGetValue("/store", out var storePage) &&
@@ -591,7 +603,8 @@ public sealed class CommerceStoreContextService(
                 ? WebsiteFaviconParity.PublicUrl(configuration, websiteSiteKey)
                 : websiteSiteKey == WebsiteEditorSiteKeys.Business ? "/favicon.jpg"
                 : WebsiteFaviconParity.ResolvePublished(websiteDocument?.FaviconImageDataUrl)?.RedirectUrl
-                  ?? websiteDocument?.FaviconImageDataUrl ?? WebsiteFaviconParity.FallbackUrl(configuration));
+                  ?? websiteDocument?.FaviconImageDataUrl ?? WebsiteFaviconParity.FallbackUrl(configuration),
+            trainingPagePublished);
     }
 
 

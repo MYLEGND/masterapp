@@ -34,7 +34,8 @@ public sealed class ParfaitPublicPreviewController(
             return NotFound();
 
         var store = await stores.ResolvePublicAsync(HttpContext, null, ct);
-        if (store is null || !store.IsParfait)
+        if (store is null || !store.IsParfait ||
+            (viewName is "Training" or "TrainingPackages" && !store.TrainingPagePublished))
             return NotFound();
 
         ViewData["CommerceStoreContext"] = store;

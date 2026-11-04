@@ -134,7 +134,10 @@
                 else
                 {
                     <a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index" data-parfait-nav-tab="true">Home</a>
+                    @if (commerce?.TrainingPagePublished == true)
+                    {
                     <a class="nav-link @Active("TrainingPackages")" asp-controller="TrainingPackages" asp-action="Index" target="_blank" rel="noopener" data-parfait-nav-tab="true">Training</a>
+                    }
                     <a class="nav-link @Active("Contact")" asp-controller="Contact" asp-action="Index" target="_blank" rel="noopener" data-parfait-nav-tab="true">Contact</a>
                     <a class="nav-link @Active("About")" asp-controller="About" asp-action="About" target="_blank" rel="noopener" data-parfait-nav-tab="true">About Us</a>
                     <a class="nav-link @Active("Store")" href="/store" target="_blank" rel="noopener" data-parfait-nav-tab="true">Shop</a>

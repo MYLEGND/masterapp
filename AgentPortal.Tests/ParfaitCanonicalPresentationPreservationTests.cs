@@ -19,7 +19,7 @@ public sealed partial class ParfaitCanonicalPresentationPreservationTests
     [InlineData("Views/Home/Terms.cshtml", "4de5260fa3f13dcb01c6a2398e6ffd214bfffc73")]
     [InlineData("Views/Home/Privacy.cshtml", "97c9060926b2d10f796ff274691b1a25ef2a7484")]
     // Reviewed shared theme contrast and versioned canonical Store assets.
-    [InlineData("Views/Shared/_Layout.cshtml", "80333ca55c42e8a8e8ec3dcf6c43ddb4c547f605")]
+    [InlineData("Views/Shared/_Layout.cshtml", "34241456661004a59fd57dea4ff7eec124019222")]
     [InlineData("Views/Shared/_ScopedWebsiteStoreLayout.cshtml", "0aba44aa950901314854d30b3b470d39c6185ec5")]
     [InlineData("Views/Home/Index.cshtml", "9abd970701d5f915d6f0431255869c68e479aed4")]
     // Reviewed Razor invocation and neutral no-photo presentation preserve real images.
@@ -33,7 +33,7 @@ public sealed partial class ParfaitCanonicalPresentationPreservationTests
     // default-selected marketing preference; prior unsubscribe remains authoritative.
     [InlineData("Views/Store/Checkout.cshtml", "8c4479bef8ba0d4272331cb4252b68c97c8f7db3")]
     [InlineData("Views/Store/Success.cshtml", "0d2aa2e9953dd908ed26115f2e881789d58d47bf")]
-    [InlineData("wwwroot/css/site.css", "3d421e41b9070fb34c0698262587db696502bdda")]
+    [InlineData("wwwroot/css/site.css", "e00ab06729e459b13b92b6178f3468d25b42cb68")]
     [InlineData("wwwroot/css/home.css", "2b1c97a3012f53f9f242e4656822f28a6ae944a2")]
     // Reviewed responsive Store hierarchy and canonical editor theme tokens;
     // hidden summary rows and original Parfait identity remain preserved.

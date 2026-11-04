@@ -18,6 +18,35 @@ public sealed class CommerceShippingProviderTests
     private static readonly ShippingParcel Parcel = new(10.5m, 8m, 2m, 12.25m);
     private static readonly ShippingRate Rate = new("rate_1", "USPS", "Ground", 4.25m, "USD", 3);
 
+    [Theory]
+    [InlineData(401, "rejected the API key")]
+    [InlineData(403, "permissions")]
+    [InlineData(400, "account setup")]
+    [InlineData(422, "account setup")]
+    [InlineData(429, "too many requests")]
+    [InlineData(502, "unreadable response")]
+    public void ProviderFailureGivesBoundedActionableReason(int status, string reason)
+    {
+        var error = new ShippingProviderException(status);
+        Assert.Equal(status, error.StatusCode);
+        Assert.Contains(reason, error.Message);
+    }
+
+    [Theory]
+    [InlineData("not-json")]
+    [InlineData("[]")]
+    [InlineData("null")]
+    public async Task MalformedSuccessfulVerificationIsSanitized(string body)
+    {
+        using var easy = new FakeHttp(body);
+        using var shippo = new FakeHttp(body);
+        var first = await Assert.ThrowsAsync<ShippingProviderException>(() => new EasyPostShippingProvider(easy).VerifyAsync("synthetic", true, default));
+        var second = await Assert.ThrowsAsync<ShippingProviderException>(() => new ShippoShippingProvider(shippo).VerifyAsync("shippo_test_synthetic", true, default));
+        Assert.Equal(502, first.StatusCode);
+        Assert.Equal(502, second.StatusCode);
+        Assert.DoesNotContain(body, first.Message);
+    }
+
     [Fact]
     public async Task ConnectionVerificationDoesNotPurchasePostage()
     {

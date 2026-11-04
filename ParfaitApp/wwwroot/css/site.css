@@ -35,6 +35,8 @@ html {
     --web-gold-strong: var(--pf-public-accent);
     --web-navy-deep: var(--pf-public-elevated);
     --web-on-accent: var(--pf-public-ink);
+    --web-action-background: var(--sp-theme-primary);
+    --web-action-foreground: var(--sp-theme-on-accent);
     --web-on-secondary: var(--pf-public-ink);
     --web-on-elevated: var(--pf-public-ink);
     --web-surface: var(--pf-public-surface);
@@ -51,7 +53,7 @@ html {
 .btn-link.nav-link:focus,
 .form-control:focus,
 .form-check-input:focus {
-    box-shadow: 0 0 0 0.1rem #ffffff, 0 0 0 0.25rem #258cfb;
+    box-shadow: 0 0 0 0.1rem var(--sp-theme-surface), 0 0 0 0.25rem var(--sp-theme-primary);
 }
 
 html,

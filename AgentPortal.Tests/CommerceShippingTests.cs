@@ -19,6 +19,33 @@ namespace AgentPortal.Tests;
 
 public sealed class CommerceShippingTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedVerificationNeverCreatesOrReplacesConnection(bool connected)
+    {
+        using var f = new Fixture();
+        if (connected) await f.Connect();
+        var before = f.Db.CommerceBusinessSettings.AsNoTracking().SingleOrDefault()?.ShippingConfigurationJson;
+        f.Provider.Setup(x => x.VerifyAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ShippingProviderException(401));
+        await Assert.ThrowsAsync<ShippingProviderException>(() => f.Connect());
+        f.Db.ChangeTracker.Clear();
+        Assert.Equal(before, f.Db.CommerceBusinessSettings.AsNoTracking().SingleOrDefault()?.ShippingConfigurationJson);
+    }
+
+    [Fact]
+    public async Task SavedConnectionAndProtectedKeySurviveFreshContextAndKeyringReload()
+    {
+        using var f = new Fixture();
+        await f.Connect(true);
+        var saved = f.Service.Setup(f.Business);
+        var reloaded = await f.ReloadAndQuote();
+        Assert.Equal(System.Text.Json.JsonSerializer.Serialize(saved), System.Text.Json.JsonSerializer.Serialize(reloaded));
+        Assert.DoesNotContain("synthetic-key", System.Text.Json.JsonSerializer.Serialize(reloaded));
+        f.Provider.Verify(x => x.QuoteAsync("synthetic-key", true, It.IsAny<ShippingAddress>(), It.IsAny<ShippingAddress>(), It.IsAny<ShippingParcel>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [Fact]
     public async Task AddressOnlySaveRetainsConnectionWithoutVerifyingOrExposingKey()
     {
@@ -224,6 +251,18 @@ public sealed class CommerceShippingTests
             Provider.Setup(x => x.BuyAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<string>(), It.IsAny<ShippingRate>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ShippingLabel("transaction-one", "Purchased", "https://example.test/label.pdf", "TRACK-1", "Carrier"));
             OtherProvider.SetupGet(x => x.Option).Returns(new ShippingProviderOption("other", "Other", "Other", "https://example.test"));
             Service = new(Db, [Provider.Object, OtherProvider.Object], protection, new ParfaitOrderService(Db));
+        }
+        public async Task<ShippingSetupView> ReloadAndQuote()
+        {
+            using var freshDb = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(sql).Options);
+            var environment = new Mock<IHostEnvironment>();
+            environment.SetupGet(x => x.EnvironmentName).Returns("Development");
+            environment.SetupGet(x => x.ContentRootPath).Returns(Path.Combine(root, "host"));
+            using var freshProtection = MerchantPaymentProtection.CreateShared(new ConfigurationBuilder().Build(), environment.Object);
+            var service = new CommerceShippingService(freshDb, [Provider.Object, OtherProvider.Object], freshProtection, new ParfaitOrderService(freshDb));
+            var setup = service.Setup(Business);
+            await service.QuoteAsync(Business, Package(), default);
+            return setup;
         }
         public Task Connect(bool test = false) => Service.ConnectAsync(Business, new ShippingSetupInput { ExpectedRevision = Service.Setup(Business).Revision, Provider = "test", ApiKey = "synthetic-key", TestMode = test, Name = "Test", Street1 = "123 Test Street", City = "Test City", State = "AZ", PostalCode = "85001", Country = "US", Phone = "5550100" }, default);
         public ShippingSetupInput AddressUpdate() => new() { ExpectedRevision = Service.Setup(Business).Revision, Provider = "test", TestMode = false, Name = "Test", Street1 = "123 Test Street", City = "Test City", State = "AZ", PostalCode = "85001", Country = "US", Phone = "5550100" };
