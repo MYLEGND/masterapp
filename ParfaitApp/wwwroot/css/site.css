@@ -33,25 +33,17 @@ html {
     --pf-public-ink: var(--pf-cocoa-900);
     --pf-public-muted: #655b55;
     --web-gold-strong: var(--pf-public-accent);
+    --web-navy-deep: var(--pf-public-elevated);
+    --web-on-accent: var(--pf-public-ink);
+    --web-on-secondary: var(--pf-public-ink);
+    --web-on-elevated: var(--pf-public-ink);
     --web-surface: var(--pf-public-surface);
     --web-surface-elevated: var(--pf-public-elevated);
     --web-surface-muted: var(--pf-public-muted-surface);
     --web-ink: var(--pf-public-ink);
     --web-muted: var(--pf-public-muted);
     --web-border-color: color-mix(in srgb, var(--pf-public-accent) 42%, transparent);
-    --sp-theme-primary: var(--web-gold-strong);
-    --sp-theme-secondary: var(--web-navy-deep, var(--sp-theme-surface-elevated));
-    --sp-theme-surface: var(--web-surface);
-    --sp-theme-surface-elevated: var(--web-surface-elevated);
-    --sp-theme-surface-muted: var(--web-surface-muted);
-    --sp-theme-on-elevated: var(--sp-theme-text);
-    --sp-theme-text: var(--web-ink);
-    --sp-theme-muted: var(--web-muted);
-    --sp-theme-on-primary: var(--sp-theme-text);
-    --sp-theme-on-secondary: var(--sp-theme-on-primary);
-    --sp-theme-on-accent: #241813;
-    --sp-theme-font: var(--pf-font-ui);
-    --sp-theme-radius: 22px;
+
 }
 
 .btn:focus,

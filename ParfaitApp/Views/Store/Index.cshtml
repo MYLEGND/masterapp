@@ -7,9 +7,6 @@
 
 }
 
-@section Styles {
-    @await Html.PartialAsync("~/Views/Shared/_StorefrontStyles.cshtml")
-}
 
 @if (ViewData["CommerceStoreContext"] is ParfaitApp.Services.CommerceStoreContext { StorePageBeforeCatalog: not null, StorePageAfterCatalog: not null } authored)
 {

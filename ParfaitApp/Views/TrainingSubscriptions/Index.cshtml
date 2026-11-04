@@ -6,9 +6,6 @@
     ViewData["LayoutContentClass"] = "sp-layout-content";
     var preview = ViewData["TrainingPreview"] as bool? == true;
 }
-@section Styles {
-    @await Html.PartialAsync("~/Views/Shared/_StorefrontStyles.cshtml")
-}
 <section class="sp-store-page sp-training-page">
     <div class="sp-shell sp-transaction-page">
         <header class="sp-transaction-header">

@@ -15,9 +15,6 @@
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
 }
 
-@section Styles {
-    @await Html.PartialAsync("~/Views/Shared/_StorefrontStyles.cshtml")
-}
 
 <section class="sp-store-page sp-store-page--success">
     <article class="sp-shell sp-receipt" aria-labelledby="receipt-title">

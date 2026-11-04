@@ -66,6 +66,8 @@
     <link rel="stylesheet" href="@Infrastructure.Commerce.CommerceStorefrontPresentation.VersionedAsset(WebsiteEnvironment, WebsiteFileVersions, Context.Request.PathBase, "css/site.css")" />
     <link rel="stylesheet" href="@(storefrontAssetRoot + "/LegendCorePlatform.styles.css")" />
 
+    @await Html.PartialAsync("~/Views/Shared/_StorefrontStyles.cshtml")
+
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,400;0,600;0,700;0,800;0,900;1,700&display=swap" rel="stylesheet">
 
