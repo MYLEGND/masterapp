@@ -20,11 +20,11 @@
 @section Styles {
     <style>
         .contact-clarity{max-width:900px;margin:0 auto;padding:2.2rem 1rem 4rem}
-        .contact-clarity__card{padding:clamp(1.25rem,3vw,2rem);border-radius:30px;border:1px solid rgba(179,131,97,.34);background:#fff;box-shadow:0 24px 64px rgba(43,28,22,.12)}
+        .contact-clarity__card{padding:clamp(1.25rem,3vw,2rem);border-radius:min(var(--sp-theme-radius),16px);border:1px solid var(--sp-line,var(--pf-line-strong));background:var(--sp-theme-surface-elevated);color:var(--sp-theme-on-elevated);box-shadow:0 24px 64px rgba(43,28,22,.12)}
         .contact-clarity__header{margin-bottom:1rem}
         .contact-clarity__title{margin:0;font-size:clamp(2.2rem,4vw,3.3rem);line-height:1;letter-spacing:-.05em}
-        .contact-clarity__subtitle{margin:.45rem 0 0;color:#6d5a50}
-        .contact-clarity__card>p{margin:0 0 1.4rem;color:#6d5a50}
+        .contact-clarity__subtitle{margin:.45rem 0 0;color:color-mix(in srgb,var(--sp-theme-on-elevated) 80%,var(--sp-theme-surface-elevated))}
+        .contact-clarity__card>p{margin:0 0 1.4rem;color:color-mix(in srgb,var(--sp-theme-on-elevated) 80%,var(--sp-theme-surface-elevated))}
         @@media(max-width:640px){.contact-clarity{padding:1.3rem .85rem 3rem}.contact-clarity__card{padding:1rem;border-radius:24px}}
     </style>
 }

@@ -40,6 +40,7 @@ public sealed class ParfaitTeamAccessService(MasterAppDbContext db, ParfaitBusin
         "/internal/automations" => "automations",
         "/internal/settings/business-profile" => "settings",
         "/internal/settings/shipping" => "settings",
+        "/internal/settings/receptionist" => "settings",
         "/internal/settings/team" => "team",
         _ => null
     };

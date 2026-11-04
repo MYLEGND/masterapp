@@ -1,4 +1,5 @@
-﻿@inject Microsoft.AspNetCore.Mvc.ViewFeatures.IFileVersionProvider WebsiteFileVersions
+@using Microsoft.Extensions.DependencyInjection
+@inject Microsoft.AspNetCore.Mvc.ViewFeatures.IFileVersionProvider WebsiteFileVersions
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment WebsiteEnvironment
 @{
     var scriptAssetPath = WebsiteEnvironment.WebRootFileProvider.GetFileInfo("store-assets/js/storefront.js").Exists
@@ -7,8 +8,13 @@
     var bodyClass = ViewData["BodyClass"] as string ?? "";
     var contentContainerClass = ViewData["ContentContainerClass"] as string ?? "container";
     var layoutContentClass = ViewData["LayoutContentClass"] as string ?? "";
-    var commerce = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
+    var commerceContexts = Context.RequestServices.GetRequiredService<ParfaitApp.Services.CommerceStoreContextService>();
+    var isNativePublicHost = commerceContexts.IsCentralCommerceHost(Context);
+    var commerce = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext
+        ?? await commerceContexts.ResolvePublicAsync(Context, null, Context.RequestAborted);
     var storefrontAssetRoot = commerce is null ? "" : "/store-assets";
+    var receptionistEnabled = commerce is { IsParfait: true } &&
+        (await Context.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingConnectionStore>().GetReceptionistConfigurationAsync(Shared.Analytics.MarketingOwnerScope.Business(commerce.CommerceBusinessId), Shared.Analytics.MarketingDestinationKeys.OpenAi, Context.RequestAborted)).AdmissionEnabled;
     var isScopedStore = commerce is { IsParfait: false };
     var storeRoot = commerce?.StoreRootPath ?? "/store";
     var storeCart = commerce?.CartPath ?? "/store/cart";
@@ -23,21 +29,23 @@
     var font = theme?.FontFamily;
     var radius = theme?.BorderRadius;
     var onAccent = ParfaitApp.Services.CommerceThemeContrast.Foreground(primary, secondary, "#6f4b3b");
+    var elevated = theme?.SurfaceElevated ?? surface;
+    var surfaceMuted = theme?.SurfaceMuted ?? surface;
     var onSecondary = ParfaitApp.Services.CommerceThemeContrast.Foreground(secondary, surface, "#1f120d");
     var commerceStyle = string.Join(";", new[]
     {
-        string.IsNullOrWhiteSpace(theme?.SurfaceElevated) ? null : $"--sp-theme-surface-elevated:{theme.SurfaceElevated}",
-        string.IsNullOrWhiteSpace(theme?.SurfaceMuted) ? null : $"--sp-theme-surface-muted:{theme.SurfaceMuted}",
-        string.IsNullOrWhiteSpace(theme?.BorderColor) ? null : $"--sp-theme-border:{theme.BorderColor}",
-        $"--sp-theme-on-elevated:{ParfaitApp.Services.CommerceThemeContrast.Foreground(theme?.SurfaceElevated ?? surface, text, "#ffffff")}",
-        $"--sp-theme-on-accent:{onAccent}",
-        $"--sp-theme-on-secondary:{onSecondary}",
-        $"--sp-theme-on-primary:{onSecondary}",
-        string.IsNullOrWhiteSpace(primary) ? null : $"--sp-theme-primary:{primary}",
-        string.IsNullOrWhiteSpace(secondary) ? null : $"--sp-theme-secondary:{secondary}",
-        string.IsNullOrWhiteSpace(surface) ? null : $"--sp-theme-surface:{surface}",
-        string.IsNullOrWhiteSpace(text) ? null : $"--sp-theme-text:{text}",
-        string.IsNullOrWhiteSpace(muted) ? null : $"--sp-theme-muted:{muted}",
+        string.IsNullOrWhiteSpace(elevated) ? null : $"--sp-theme-surface-elevated:{elevated};--web-surface-elevated:{elevated}",
+        string.IsNullOrWhiteSpace(surfaceMuted) ? null : $"--sp-theme-surface-muted:{surfaceMuted};--web-surface-muted:{surfaceMuted}",
+        string.IsNullOrWhiteSpace(theme?.BorderColor) ? null : $"--sp-theme-border:{theme.BorderColor};--web-border-color:{theme.BorderColor}",
+        string.IsNullOrWhiteSpace(elevated) ? null : $"--sp-theme-on-elevated:{ParfaitApp.Services.CommerceThemeContrast.Foreground(elevated, text, "#ffffff")}",
+        string.IsNullOrWhiteSpace(primary) ? null : $"--sp-theme-on-accent:{onAccent}",
+        string.IsNullOrWhiteSpace(secondary) ? null : $"--sp-theme-on-secondary:{onSecondary}",
+        string.IsNullOrWhiteSpace(secondary) ? null : $"--sp-theme-on-primary:{onSecondary}",
+        string.IsNullOrWhiteSpace(primary) ? null : $"--sp-theme-primary:{primary};--web-gold-strong:{primary}",
+        string.IsNullOrWhiteSpace(secondary) ? null : $"--sp-theme-secondary:{secondary};--web-navy-deep:{secondary}",
+        string.IsNullOrWhiteSpace(surface) ? null : $"--sp-theme-surface:{surface};--web-surface:{surface}",
+        string.IsNullOrWhiteSpace(text) ? null : $"--sp-theme-text:{text};--web-ink:{text}",
+        string.IsNullOrWhiteSpace(muted) ? null : $"--sp-theme-muted:{muted};--web-muted:{muted}",
         string.IsNullOrWhiteSpace(font) ? null : $"--sp-theme-font:{font}",
         radius.HasValue ? $"--sp-theme-radius:{radius.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}px" : null
     }.Where(value => !string.IsNullOrWhiteSpace(value)));
@@ -49,9 +57,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@Html.Raw(ViewData["Title"]) - @storeName</title>
 
+    @if (isNativePublicHost)
+    {
+        <script>window.LEGEND_PUBLIC_CMS_CONTEXT = Object.assign({}, window.LEGEND_PUBLIC_CMS_CONTEXT, @Html.Raw(System.Text.Json.JsonSerializer.Serialize(new { receptionistEnabled })));</script>
+    }
     <!-- Bootstrap -->
     <link rel="stylesheet" href="@(storefrontAssetRoot + "/lib/bootstrap/dist/css/bootstrap.min.css")" />
-    <link rel="stylesheet" href="@(storefrontAssetRoot + "/css/site.css")" />
+    <link rel="stylesheet" href="@Infrastructure.Commerce.CommerceStorefrontPresentation.VersionedAsset(WebsiteEnvironment, WebsiteFileVersions, Context.Request.PathBase, "css/site.css")" />
     <link rel="stylesheet" href="@(storefrontAssetRoot + "/LegendCorePlatform.styles.css")" />
 
     <!-- Google Fonts -->

@@ -8,7 +8,7 @@
 }
 
 @section Styles {
-    <link rel="stylesheet" href="/store-assets/css/storefront.css" asp-append-version="true" />
+    @await Html.PartialAsync("~/Views/Shared/_StorefrontStyles.cshtml")
 }
 
 @if (ViewData["CommerceStoreContext"] is ParfaitApp.Services.CommerceStoreContext { StorePageBeforeCatalog: not null, StorePageAfterCatalog: not null } authored)

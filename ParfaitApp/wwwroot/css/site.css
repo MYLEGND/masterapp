@@ -26,12 +26,30 @@ html {
     --pf-weight-bold: 800;
     --pf-weight-black: 900;
     --pf-header-offset: 102px;
-    --sp-theme-primary: var(--pf-cocoa-700);
-    --sp-theme-secondary: var(--pf-cocoa-900);
-    --sp-theme-surface: #ffffff;
-    --sp-theme-text: var(--pf-cocoa-900);
-    --sp-theme-muted: var(--pf-cocoa-600);
-    --sp-theme-on-primary: #ffffff;
+    --pf-public-accent: #d9b17a;
+    --pf-public-surface: #ffffff;
+    --pf-public-elevated: #ffffff;
+    --pf-public-muted-surface: #f7f7f7;
+    --pf-public-ink: var(--pf-cocoa-900);
+    --pf-public-muted: #655b55;
+    --web-gold-strong: var(--pf-public-accent);
+    --web-surface: var(--pf-public-surface);
+    --web-surface-elevated: var(--pf-public-elevated);
+    --web-surface-muted: var(--pf-public-muted-surface);
+    --web-ink: var(--pf-public-ink);
+    --web-muted: var(--pf-public-muted);
+    --web-border-color: color-mix(in srgb, var(--pf-public-accent) 42%, transparent);
+    --sp-theme-primary: var(--web-gold-strong);
+    --sp-theme-secondary: var(--web-navy-deep, var(--sp-theme-surface-elevated));
+    --sp-theme-surface: var(--web-surface);
+    --sp-theme-surface-elevated: var(--web-surface-elevated);
+    --sp-theme-surface-muted: var(--web-surface-muted);
+    --sp-theme-on-elevated: var(--sp-theme-text);
+    --sp-theme-text: var(--web-ink);
+    --sp-theme-muted: var(--web-muted);
+    --sp-theme-on-primary: var(--sp-theme-text);
+    --sp-theme-on-secondary: var(--sp-theme-on-primary);
+    --sp-theme-on-accent: #241813;
     --sp-theme-font: var(--pf-font-ui);
     --sp-theme-radius: 22px;
 }
@@ -134,7 +152,7 @@ main {
 
 .title-nunito-expanded {
     margin: 0;
-    color: var(--sp-theme-secondary);
+    color: var(--sp-theme-text);
     font-family: var(--sp-theme-font);
     font-size: clamp(1.34rem, 1.95vw, 1.68rem);
     font-style: italic;
@@ -188,16 +206,16 @@ main {
 }
 
 .navbar-right .login-link {
-    border-color: #6f4b3b;
-    background: #6f4b3b;
+    border-color: var(--sp-theme-primary);
+    background: var(--sp-theme-primary);
     box-shadow: none;
-    color: #ffffff;
+    color: var(--sp-theme-on-accent);
 }
 
 .navbar-right .login-link:hover,
 .navbar-right .login-link.active {
-    background: #5d3e30;
-    color: #ffffff;
+    background: color-mix(in srgb, var(--sp-theme-primary) 88%, var(--sp-theme-text));
+    color: var(--sp-theme-on-accent);
 }
 
 .nav-icon {
@@ -346,7 +364,7 @@ footer.footer {
 }
 
 .footer-link:hover {
-    color: #4d3429;
+    color: var(--sp-theme-primary);
     text-decoration: underline;
     text-underline-offset: 3px;
 }
@@ -356,9 +374,7 @@ footer.footer {
 }
 
 body.legal-theme {
-    background:
-        radial-gradient(circle at top, rgba(173, 123, 92, 0.12), transparent 36%),
-        var(--pf-cream-100);
+    background: var(--sp-theme-surface);
 }
 
 .legal-layout-content {
@@ -374,17 +390,15 @@ body.legal-theme {
 
 .legal-hero {
     padding: 30px 26px;
-    border: 1.5px solid rgba(146, 105, 80, 0.5);
+    border: 1px solid var(--pf-line-strong);
     border-radius: 18px;
-    background: linear-gradient(155deg, #2b1c16 0%, #4d3429 56%, #241813 100%);
-    box-shadow:
-        0 20px 42px rgba(36, 24, 19, 0.22),
-        inset 0 1px 0 rgba(255, 250, 245, 0.08);
+    background: var(--sp-theme-surface-elevated);
+    box-shadow: var(--pf-shadow);
 }
 
 .legal-kicker {
     margin: 0 0 10px;
-    color: rgba(255, 244, 236, 0.74);
+    color: var(--sp-theme-on-elevated);
     font-size: 0.84rem;
     font-weight: 800;
     letter-spacing: 0.15em;
@@ -393,7 +407,7 @@ body.legal-theme {
 
 .legal-title {
     margin: 0;
-    color: #fffaf5;
+    color: var(--sp-theme-on-elevated);
     font-size: clamp(1.9rem, 4vw, 2.45rem);
     font-weight: 900;
     letter-spacing: 0.02em;
@@ -403,7 +417,7 @@ body.legal-theme {
 
 .legal-intro {
     margin: 12px 0 0;
-    color: rgba(255, 248, 243, 0.92);
+    color: var(--sp-theme-on-elevated);
     font-size: 1.03rem;
     font-weight: 600;
     line-height: 1.6;
@@ -412,16 +426,16 @@ body.legal-theme {
 .legal-card {
     margin-top: 14px;
     padding: 24px 24px 22px;
-    border: 1.2px solid rgba(146, 105, 80, 0.42);
+    border: 1px solid var(--pf-line-strong);
     border-radius: 16px;
-    background: linear-gradient(180deg, #3a271f 0%, #241813 100%);
-    box-shadow: 0 18px 38px rgba(36, 24, 19, 0.18);
+    background: var(--sp-theme-surface-elevated);
+    box-shadow: var(--pf-shadow);
 }
 
 .legal-prose p {
     margin: 0 0 14px;
     max-width: 72ch;
-    color: rgba(255, 246, 240, 0.92);
+    color: var(--sp-theme-on-elevated);
     font-size: 1rem;
     line-height: 1.75;
 }
@@ -431,19 +445,19 @@ body.legal-theme {
 }
 
 .legal-contact a {
-    color: #f4d6c1;
+    color: var(--sp-theme-on-elevated);
     font-weight: 700;
     text-decoration: none;
 }
 
 .legal-contact a:hover {
-    color: #fff7f1;
+    color: var(--sp-theme-on-elevated);
     text-decoration: underline;
 }
 
 .legal-updated {
     margin-top: 18px;
-    color: rgba(255, 242, 234, 0.66);
+    color: var(--sp-theme-on-elevated);
     font-size: 0.84rem;
     letter-spacing: 0.02em;
 }

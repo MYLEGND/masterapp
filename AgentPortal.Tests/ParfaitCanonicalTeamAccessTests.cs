@@ -94,12 +94,32 @@ public sealed class ParfaitCanonicalTeamAccessTests
         Assert.Equal(1,resolved);
     }
 
+    [Fact]
+    public async Task ReceptionistSettingsRequireCanonicalSettingsAndRespectPageRestrictions()
+    {
+        await using var db=ControllerTestHelpers.BuildDb();
+        var oid=Guid.NewGuid().ToString();
+        var business=new CommerceBusiness {Key="parfait",Status="Active",IsActive=true};
+        var profile=new ClientProfile {ClientUserId=oid};
+        var member=new CommerceBusinessMember {CommerceBusinessId=business.Id,ClientProfileId=profile.Id,RoleKey="staff",CanManageOrders=true};
+        db.AddRange(business,profile,member);await db.SaveChangesAsync();var service=Service(db);
+        Assert.False((await service.AuthorizePageAsync(User(oid),"/internal/settings/receptionist")).Allowed);
+        member.RoleKey="owner";await db.SaveChangesAsync();
+        Assert.True((await service.AuthorizePageAsync(User(oid),"/internal/settings/receptionist")).Allowed);
+        member.ParfaitPageGrantsJson="[\"/internal/commerce/orders\"]";await db.SaveChangesAsync();
+        Assert.False((await service.AuthorizePageAsync(User(oid),"/internal/settings/receptionist")).Allowed);
+        var pause=typeof(ParfaitApp.Controllers.InternalModulesController).GetMethod("PauseReceptionist")!;
+        Assert.NotEmpty(pause.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.ValidateAntiForgeryTokenAttribute),true));
+        Assert.DoesNotContain(pause.GetParameters(),p=>p.Name is "businessId" or "enabled");
+    }
+
     private static ClaimsPrincipal User(string oid)=>new(new ClaimsIdentity(new[]{new Claim("oid",oid),new Claim(ClaimTypes.Email,"same@mylegnd.com")},"test"));
     private static ParfaitTeamAccessService Service(Infrastructure.Data.MasterAppDbContext db)
     {
         var pages=new List<ParfaitInternalPageDefinition> {
             new(){Key="/internal/commerce/orders",Route="/internal/commerce/orders",Title="Orders",Group="Commerce",Description=""},
-            new(){Key="/internal/analytics",Route="/internal/analytics",Title="Analytics",Group="Analytics",Description=""}
+            new(){Key="/internal/analytics",Route="/internal/analytics",Title="Analytics",Group="Analytics",Description=""},
+            new(){Key="/internal/settings/receptionist",Route="/internal/settings/receptionist",Title="AI Receptionist",Group="Settings",Description=""}
         };
         var registry=new Mock<IParfaitInternalPageRegistry>();registry.Setup(x=>x.GetAllPages()).Returns(pages);
         registry.Setup(x=>x.ResolveByPath(It.IsAny<string>())).Returns((string path)=>pages.Find(p=>p.Key==path));

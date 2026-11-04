@@ -12,6 +12,17 @@ public static class CommerceStorefrontPresentation
     public const string ParfaitOriginalLayout = "_Layout";
     public const string PublishedBusinessLayout = "_ScopedWebsiteStoreLayout";
 
+    public static string VersionedAsset(Microsoft.AspNetCore.Hosting.IWebHostEnvironment environment,
+        Microsoft.AspNetCore.Mvc.ViewFeatures.IFileVersionProvider versions,
+        Microsoft.AspNetCore.Http.PathString pathBase, string relativePath)
+    {
+        var servedPath = "/store-assets/" + relativePath;
+        var owningPath = environment.WebRootFileProvider.GetFileInfo("store-assets/" + relativePath).Exists
+            ? servedPath : "/" + relativePath;
+        var versioned = versions.AddFileVersionToPath(pathBase, owningPath);
+        return servedPath + versioned[owningPath.Length..];
+    }
+
     public static string ResolveLayout(CommerceStoreContext? context)
     {
         if (context is null || context.IsParfait)

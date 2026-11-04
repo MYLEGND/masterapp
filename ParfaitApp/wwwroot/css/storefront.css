@@ -11,18 +11,6 @@
     --sp-shadow: 0 8px 24px color-mix(in srgb, var(--sp-theme-secondary) 8%, transparent);
     --sp-dark-shadow: 0 8px 24px color-mix(in srgb, var(--sp-theme-secondary) 12%, transparent);
     --sp-font: "Nunito Sans", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-    --sp-theme-primary: var(--web-gold-strong, var(--web-gold, var(--sp-cocoa-700)));
-    --sp-theme-secondary: var(--web-navy-deep, var(--sp-cocoa-950));
-    --sp-theme-surface: var(--web-surface, #fff);
-    --sp-theme-surface-elevated: var(--web-surface-elevated, var(--sp-theme-surface));
-    --sp-theme-surface-muted: var(--web-surface-muted, #f4f4f4);
-    --sp-theme-on-elevated: var(--web-on-elevated, var(--sp-theme-text));
-    --sp-theme-text: var(--web-ink, var(--sp-cocoa-900));
-    --sp-theme-muted: var(--web-muted, var(--sp-cocoa-600));
-    --sp-theme-on-accent: var(--web-on-accent, var(--web-navy-deep, #fff));
-    --sp-theme-on-secondary: var(--web-on-secondary, var(--web-surface, var(--sp-cream)));
-    --sp-theme-font: var(--web-font, var(--sp-font));
-    --sp-theme-radius: var(--web-radius, 22px);
     --sp-sticky-top: calc(var(--pf-header-offset, 102px) + .9rem);
 }
 
@@ -43,9 +31,9 @@ body.sp-body {
 .sp-transaction-header {
     border: 1px solid var(--sp-line);
     border-radius: min(var(--sp-theme-radius), 14px);
-    background: var(--sp-theme-secondary);
-    color: var(--sp-theme-on-secondary);
-    box-shadow: var(--sp-dark-shadow);
+    background: var(--sp-theme-surface-elevated);
+    color: var(--sp-theme-on-elevated);
+    box-shadow: var(--sp-shadow);
 }
 
 .sp-store-hero {
@@ -606,7 +594,7 @@ body.sp-body {
 
 .sp-transaction-kicker {
     margin: 0 0 .28rem;
-    color: color-mix(in srgb, var(--sp-theme-on-secondary) 80%, transparent);
+    color: color-mix(in srgb, var(--sp-theme-on-elevated) 80%, var(--sp-theme-surface-elevated));
     font-size: .68rem;
     font-weight: 900;
     letter-spacing: .17em;
@@ -615,7 +603,7 @@ body.sp-body {
 
 .sp-transaction-header h1 {
     margin: 0;
-    color: var(--sp-theme-on-secondary);
+    color: var(--sp-theme-on-elevated);
     font-size: clamp(1.3rem, 2.5vw, 1.85rem);
     font-weight: 900;
     letter-spacing: -.02em;
@@ -964,7 +952,7 @@ body.sp-body {
 .sp-review-unit-price,
 .sp-cart-compare-price {
     margin: 0;
-    color: rgba(255, 248, 241, .7);
+    color: color-mix(in srgb, var(--sp-theme-on-secondary) 82%, var(--sp-theme-secondary));
     font-size: .7rem;
     font-weight: 700;
 }
@@ -1043,7 +1031,7 @@ body.sp-body {
 .sp-field {
     display: grid;
     gap: .28rem;
-    color: rgba(255, 248, 241, .84);
+    color: color-mix(in srgb, var(--sp-theme-on-secondary) 82%, var(--sp-theme-secondary));
     font-size: .62rem;
     font-weight: 900;
     letter-spacing: .08em;
@@ -1076,7 +1064,7 @@ body.sp-body {
     width: 100%;
     min-height: 40px;
     padding: 0 .72rem;
-    border: 1px solid rgba(255, 248, 241, .18);
+    border: 1px solid var(--sp-line);
     border-radius: 12px;
     background: rgba(255, 248, 241, .1);
     color: var(--sp-theme-on-secondary);
@@ -1090,7 +1078,7 @@ body.sp-body {
 .sp-store-page--checkout .sp-flow-card input:not([type="checkbox"])::placeholder,
 .sp-store-page--cart .sp-discount-entry input::placeholder,
 .sp-store-page--checkout .sp-discount-entry input::placeholder {
-    color: rgba(255, 248, 241, .46);
+    color: color-mix(in srgb, var(--sp-theme-on-secondary) 82%, var(--sp-theme-secondary));
 }
 
 .sp-store-page--cart .sp-flow-card input:focus,
@@ -1129,7 +1117,7 @@ body.sp-body {
 
 .sp-summary-tile span,
 .sp-summary-total-bar span {
-    color: rgba(255, 248, 241, .64);
+    color: color-mix(in srgb, var(--sp-theme-on-secondary) 82%, var(--sp-theme-secondary));
     font-size: .54rem;
     font-weight: 900;
     letter-spacing: .12em;
@@ -1323,7 +1311,7 @@ body.sp-body {
 
 .sp-checkout-final-total-copy span,
 .sp-checkout-final-total-amount span {
-    color: rgba(255, 248, 241, .66);
+    color: color-mix(in srgb, var(--sp-theme-on-secondary) 82%, var(--sp-theme-secondary));
     font-size: .62rem;
     font-weight: 900;
     letter-spacing: .13em;
@@ -1331,7 +1319,7 @@ body.sp-body {
 }
 
 .sp-checkout-final-total-copy small {
-    color: rgba(255, 248, 241, .78);
+    color: color-mix(in srgb, var(--sp-theme-on-secondary) 82%, var(--sp-theme-secondary));
     font-size: .78rem;
     font-weight: 700;
 }
