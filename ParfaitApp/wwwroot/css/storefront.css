@@ -1106,7 +1106,7 @@ body.sp-body {
 .sp-store-page--checkout .sp-flow-card select:focus,
 .sp-store-page--cart .sp-discount-entry input:focus,
 .sp-store-page--checkout .sp-discount-entry input:focus {
-    border-color: rgba(244, 212, 150, .8);
+    border-color: var(--sp-focus-border, rgba(244, 212, 150, .8));
     box-shadow: 0 0 0 3px var(--sp-line);
 }
 

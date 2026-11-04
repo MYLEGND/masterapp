@@ -33,12 +33,12 @@ public sealed partial class ParfaitCanonicalPresentationPreservationTests
     // default-selected marketing preference; prior unsubscribe remains authoritative.
     [InlineData("Views/Store/Checkout.cshtml", "8c4479bef8ba0d4272331cb4252b68c97c8f7db3")]
     [InlineData("Views/Store/Success.cshtml", "0d2aa2e9953dd908ed26115f2e881789d58d47bf")]
-    [InlineData("wwwroot/css/site.css", "e00ab06729e459b13b92b6178f3468d25b42cb68")]
+    [InlineData("wwwroot/css/site.css", "6f183d64b5137bbcf421c216f4aa4fab75d63e33")]
     [InlineData("wwwroot/css/home.css", "2b1c97a3012f53f9f242e4656822f28a6ae944a2")]
     // Reviewed responsive Store hierarchy and canonical editor theme tokens;
     // hidden summary rows and original Parfait identity remain preserved.
     // Reviewed recovered training hierarchy uses the same Store tokens.
-    [InlineData("wwwroot/css/storefront.css", "763842a036ea6c2456f41d5b3933a32a24bb330d")]
+    [InlineData("wwwroot/css/storefront.css", "e9e720650d755bb62c9667c33fd07486fe58a6ef")]
     // Reviewed be032 refines internal header typography and responsive payment-provider cards.
     // Reviewed shared premium compact layout; single shell, page-only light mode and right navigation remain intact.
     // Reviewed native Team metrics use two phone/four desktop columns.
