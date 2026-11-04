@@ -49,6 +49,7 @@ Infrastructure.Reception.ReceptionistServiceRegistration.AddReceptionistRuntime(
 Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingBackgroundWorkers(builder.Services, builder.Configuration);
 Infrastructure.Leads.WebsiteLeadServiceRegistration.AddWebsiteLeadBackgroundWorkers(builder.Services);
 builder.Services.AddScoped<Infrastructure.Businesses.BusinessWorkspaceService>();
+builder.Services.AddScoped<Infrastructure.Businesses.ICommerceBusinessProvisioningService, Infrastructure.Businesses.CommerceBusinessProvisioningService>();
 
 // QuestPDF license (Community; change if revenue threshold exceeded)
 QuestPDF.Settings.License = LicenseType.Community;
