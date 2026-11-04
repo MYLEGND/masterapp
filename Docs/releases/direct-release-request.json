@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized direct Mac release42 and mandatory normal incorporation into Legend/fast-track-release. This source-integration request authorizes no GitHub deployment, migration, configuration, payment, postage, routing, or provider mutation.",
-  "purpose": "Synchronize the preserved Parfait standalone source42 after direct Mac upload/restart and five actual runtime readbacks. White public styling and shipping-to-email sign-in were verified live. Keep account binding, catalog recovery, authenticated staff acceptance, and the separately reviewed checkout presentation follow-up explicitly pending; do not republish the deployed packages.",
-  "requestId": "parfait-direct-mac-42-source-integration-20261104-v1",
+  "authorization": "Founder authorized the checkout presentation fixes, direct Mac release, and mandatory normal source incorporation. This validate-only source-integration request authorizes no GitHub deployment, migration, configuration, payment, postage, routing, or provider mutation.",
+  "purpose": "Incorporate the accepted checkout polish application bytes from2502ed8cb9adac86a00fbd836f87ed29c1edc36b, preserved unchanged through the shared-head integration and current checkpoint. The two Store hosts require later separately admitted direct Mac publication; all live apps remain42. Preserve the existing connections and completed operations. Founder account binding, catalog recovery, authenticated staff checks and final live purchase verification remain pending on the locked Mac. Do not publish or replay any operation from this merge.",
+  "requestId": "parfait-checkout-polish-source-integration-20261104-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -78,7 +78,7 @@
   },
   "sourceIntegration": {
     "schemaVersion": 1,
-    "baseRevision": "e16c0d2330fee15bd4ae117a27a767b78b1e616c",
-    "sourceRevision": "42c40d5b420e18111791d51a402ee45427544981"
+    "baseRevision": "ae2b354deeaf941c559d8937468f3ff967cede7f",
+    "sourceRevision": "c15a85f05da2f6d2d661ce07f39ebb8452fa7168"
   }
 }

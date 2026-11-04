@@ -118,9 +118,12 @@
                     </div>
 
                     <div class="sp-payment-panel">
-                        <div id="card-container" class="sp-card-container" role="status">@(checkoutAvailable
-                            ? hosted ? "Continue to secure processor checkout to enter your payment details." : "Loading secure payment form…"
-                            : "This store is not accepting online payments yet. Please return when payment setup is complete.")</div>
+                        <div class="sp-card-container">
+                            <div id="spPaymentStatus" role="status">@(checkoutAvailable
+                                ? hosted ? "Continue to secure processor checkout to enter your payment details." : "Loading secure payment form…"
+                                : "This store is not accepting online payments yet. Please return when payment setup is complete.")</div>
+                            <div id="card-container"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -414,8 +417,9 @@
                 const payments = window.Square.payments(appId, locationId);
                 card = await payments.card();
                 await card.attach("#card-container");
-                } catch (error) { if (!pendingReference) throw error; }
-                } else { document.getElementById("card-container").textContent = "Continue to your secure payment provider to complete your purchase."; }
+                document.getElementById("spPaymentStatus").hidden = true;
+                } catch (error) { document.getElementById("spPaymentStatus").hidden = true; if (!pendingReference) throw error; }
+                } else { document.getElementById("spPaymentStatus").textContent = "Continue to your secure payment provider to complete your purchase."; }
                 ensureCheckoutAttemptId();
 
                 let declinedCheckout = false;
