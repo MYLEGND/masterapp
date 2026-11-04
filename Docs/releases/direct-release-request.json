@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized the direct Mac standalone Parfait reconciliation and normal preservation into Legend/fast-track-release. This validate-only request authorizes no GitHub application, database, configuration, payment, postage, routing or provider mutation; direct Mac operations require separate reviewed admission.",
-  "purpose": "Validate the Parfait standalone access, shipping, existing-client account reconciliation, recovered training and CRM candidate. Preserve prior Store/mobile work, existing Square authority, shared release ancestry and native operation receipts. Deployment, account/catalog configuration and verified live acceptance remain pending.",
-  "requestId": "parfait-standalone-reconciliation-20261103-v1",
+  "authorization": "Founder authorized direct Mac release42 and mandatory normal incorporation into Legend/fast-track-release. This source-integration request authorizes no GitHub deployment, migration, configuration, payment, postage, routing, or provider mutation.",
+  "purpose": "Synchronize the preserved Parfait standalone source42 after direct Mac upload/restart and five actual runtime readbacks. White public styling and shipping-to-email sign-in were verified live. Keep account binding, catalog recovery, authenticated staff acceptance, and the separately reviewed checkout presentation follow-up explicitly pending; do not republish the deployed packages.",
+  "requestId": "parfait-direct-mac-42-source-integration-20261104-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -75,5 +75,10 @@
     "rollbackArtifactId": 13016709993,
     "rollbackArtifactDigest": "sha256:171f0b608107fb23f33ce5cb572ded74303018e120ca088e93341dad18aeb3d0",
     "rollbackPackageDigest": "3e8ba8b6073bec9e3a64204c0e0b745e8dcf894c28be05900b158bdc2e28431c"
+  },
+  "sourceIntegration": {
+    "schemaVersion": 1,
+    "baseRevision": "e16c0d2330fee15bd4ae117a27a767b78b1e616c",
+    "sourceRevision": "42c40d5b420e18111791d51a402ee45427544981"
   }
 }
